@@ -1,0 +1,99 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#211429" />
+      <stop offset="0.48" stop-color="#5c2f50" />
+      <stop offset="1" stop-color="#d4788e" />
+    </linearGradient>
+    <linearGradient id="horizon" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd5df" stop-opacity="0.4" />
+      <stop offset="1" stop-color="#4a243f" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#421c31" stop-opacity="0.94" />
+      <stop offset="1" stop-color="#160e1b" stop-opacity="0.93" />
+    </linearGradient>
+    <linearGradient id="choice" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4f223b" stop-opacity="0.94" />
+      <stop offset="1" stop-color="#1d111f" stop-opacity="0.84" />
+    </linearGradient>
+    <linearGradient id="choiceActive" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#e493a8" />
+      <stop offset="1" stop-color="#a84e75" />
+    </linearGradient>
+    <radialGradient id="moon">
+      <stop offset="0" stop-color="#fff8fb" />
+      <stop offset="0.72" stop-color="#ffd9e5" />
+      <stop offset="1" stop-color="#f3a9bd" stop-opacity="0" />
+    </radialGradient>
+    <filter id="blur24"><feGaussianBlur stdDeviation="24" /></filter>
+    <filter id="blur8"><feGaussianBlur stdDeviation="8" /></filter>
+    <filter id="shadow"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#160812" flood-opacity="0.46" /></filter>
+  </defs>
+
+  <rect width="960" height="540" fill="url(#sky)" />
+  <circle cx="760" cy="105" r="96" fill="url(#moon)" opacity="0.9" />
+  <ellipse cx="600" cy="265" rx="390" ry="150" fill="url(#horizon)" filter="url(#blur24)" />
+  <g opacity="0.33" fill="#1a1020">
+    <path d="M0 250L110 160L220 252L332 132L455 255V360H0Z" />
+    <path d="M500 264L640 142L760 248L870 164L960 239V362H500Z" />
+  </g>
+  <g opacity="0.34" fill="#ffdbe6" filter="url(#blur8)">
+    <circle cx="145" cy="96" r="8" /><circle cx="222" cy="58" r="4" /><circle cx="610" cy="72" r="6" />
+    <circle cx="856" cy="196" r="7" /><circle cx="710" cy="224" r="4" /><circle cx="428" cy="108" r="5" />
+  </g>
+
+  <g fill="#ffd9e5" opacity="0.72">
+    <path d="M116 82c14-15 27 5 7 11 9 19-13 24-16 4-20 8-26-14-5-17-5-20 18-24 14 2Z" />
+    <path d="M878 72c10-11 20 4 5 8 7 14-9 18-12 3-14 6-19-10-3-12-4-15 13-18 10 1Z" />
+    <path d="M690 168c7-8 14 2 4 5 4 10-7 13-9 2-10 4-13-7-2-8-3-10 9-12 7 1Z" />
+    <path d="M342 74c8-9 17 3 4 6 6 12-8 15-10 2-12 5-16-8-3-9-3-12 11-14 9 1Z" />
+  </g>
+
+  <g transform="translate(128 74)" filter="url(#shadow)">
+    <path d="M104 46c52 0 82 42 82 94v156H20V140c0-52 32-94 84-94Z" fill="#1c1220" opacity="0.9" />
+    <circle cx="104" cy="72" r="55" fill="#f4c8c2" />
+    <path d="M47 71C47 22 76 0 110 0c42 0 70 29 67 79-18-12-34-38-39-58-13 24-45 45-91 50Z" fill="#3b2035" />
+    <path d="M58 117c25 25 69 29 94 1l24 178H33Z" fill="#fff0f4" />
+    <path d="M44 163c36 29 84 31 123 0l18 133H22Z" fill="#7e3c65" />
+    <path d="M83 118h42l-8 43-13 20-14-20Z" fill="#f4c8c2" />
+    <path d="M77 153l27 28 27-28 12 143H65Z" fill="#d4788e" />
+  </g>
+
+  <g font-family="Arial, sans-serif" fill="#fff8fb">
+    <text x="48" y="56" font-size="28" font-weight="700" letter-spacing="5">SAKURA DREAM</text>
+    <text x="50" y="78" font-size="11" letter-spacing="3" opacity="0.72">GALGAME UI THEME · SHINSEKAI PINK</text>
+  </g>
+
+  <g transform="translate(560 142)" filter="url(#shadow)" font-family="'Microsoft YaHei', Arial, sans-serif">
+    <g transform="translate(0 0)">
+      <rect width="336" height="52" rx="16" fill="url(#choice)" stroke="#f4b2c4" stroke-opacity="0.46" />
+      <rect x="1" y="11" width="3" height="30" rx="2" fill="#d4788e" />
+      <text x="168" y="33" text-anchor="middle" fill="#fff8fb" font-size="16">陪她走过开满樱花的小径</text>
+    </g>
+    <g transform="translate(0 66)">
+      <rect width="336" height="52" rx="16" fill="url(#choiceActive)" stroke="#ffe4ed" stroke-opacity="0.86" />
+      <rect x="1" y="8" width="3" height="36" rx="2" fill="#fff8fb" />
+      <text x="168" y="33" text-anchor="middle" fill="#ffffff" font-size="16" font-weight="700">说出一直藏在心里的答案</text>
+    </g>
+    <g transform="translate(0 132)">
+      <rect width="336" height="52" rx="16" fill="url(#choice)" stroke="#f4b2c4" stroke-opacity="0.46" />
+      <rect x="1" y="11" width="3" height="30" rx="2" fill="#d4788e" />
+      <text x="168" y="33" text-anchor="middle" fill="#fff8fb" font-size="16">把这一刻留给温柔的晚风</text>
+    </g>
+  </g>
+
+  <g transform="translate(54 378)" filter="url(#shadow)" font-family="'Microsoft YaHei', Arial, sans-serif">
+    <rect width="852" height="126" rx="22" fill="url(#panel)" stroke="#f4b2c4" stroke-opacity="0.52" />
+    <path d="M1 42V22Q1 1 23 1h62M767 1h62q22 0 22 21v20" fill="none" stroke="#ffe4ed" stroke-opacity="0.8" stroke-width="2" />
+    <path d="M851 84v19q0 22-22 22h-62M85 125H23Q1 125 1 103V84" fill="none" stroke="#d4788e" stroke-width="2" />
+    <g transform="translate(24 -18)">
+      <rect width="178" height="42" rx="21" fill="url(#choiceActive)" stroke="#ffe4ed" stroke-opacity="0.8" />
+      <text x="89" y="27" text-anchor="middle" fill="#ffffff" font-size="17" font-weight="700">樱井 澪</text>
+    </g>
+    <text x="32" y="61" fill="#fff8fb" font-size="19">“如果明天醒来，这场梦还没有结束……”</text>
+    <text x="32" y="94" fill="#f8dfe7" font-size="17" opacity="0.88">那就再陪我走一会儿吧，直到最后一片樱花落下。</text>
+    <circle cx="818" cy="94" r="4" fill="#ffdbe6" />
+    <circle cx="832" cy="94" r="2.5" fill="#d4788e" />
+  </g>
+</svg>

@@ -12,6 +12,12 @@
   gap: var(--space-3);
 }
 
+.system-chat-theme .section__actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
 .system-network-proxy .section__header {
   align-items: flex-start;
 }

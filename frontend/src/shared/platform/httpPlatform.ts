@@ -587,7 +587,13 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           window.clearTimeout(timeoutId);
         };
       },
-      listThemes: () => requestJson<ChatThemeSummary[]>(apiBase, "/api/chat/themes"),
+      listThemes: async () => {
+        const themes = await requestJson<ChatThemeSummary[]>(apiBase, "/api/chat/themes");
+        return themes.map((theme) => ({
+          ...theme,
+          previewUrl: theme.previewUrl ? bridgeUrl(apiBase, theme.previewUrl) : undefined,
+        }));
+      },
       getThemeManifest: (id) => requestJson<ChatThemeManifest>(apiBase, `/api/chat/themes/${encodePath(id)}`),
       getActiveThemeId: async () => {
         const result = await requestJson<{ id: string }>(apiBase, "/api/chat/themes/active");

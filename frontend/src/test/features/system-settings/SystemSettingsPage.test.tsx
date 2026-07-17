@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SystemSettingsPage } from "../../../features/system-settings/SystemSettingsPage";
@@ -47,7 +48,12 @@ function renderPage() {
         <FileBrowserProvider browse={browseFiles}>
           <AppStateProvider>
             <I18nProvider language="zh_CN">
-              <SystemSettingsPage />
+              <MemoryRouter initialEntries={["/settings/system"]}>
+                <Routes>
+                  <Route element={<SystemSettingsPage />} path="/settings/system" />
+                  <Route element={<h1>Theme management destination</h1>} path="/settings/system/chat-themes" />
+                </Routes>
+              </MemoryRouter>
             </I18nProvider>
           </AppStateProvider>
         </FileBrowserProvider>
@@ -159,13 +165,23 @@ describe("SystemSettingsPage", () => {
     expect(await screen.findByText("程序设置")).toBeInTheDocument();
     const themeSelect = await screen.findByRole("combobox", { name: "聊天主题" });
     await waitFor(() => expect(themeSelect).toHaveTextContent("风旅冒险 · 内置"));
+    const sectionGuide = screen.getByRole("navigation", { name: "程序设置" });
+    expect(within(sectionGuide).getByRole("button", { name: "界面" })).toBeInTheDocument();
+    expect(within(sectionGuide).getByRole("button", { name: "聊天主题" })).toBeInTheDocument();
+    expect(within(sectionGuide).getByRole("button", { name: "系统代理" })).toBeInTheDocument();
+    expect(within(sectionGuide).getByRole("button", { name: "镜像源" })).toBeInTheDocument();
+    expect(within(sectionGuide).getByRole("button", { name: "媒体与直播" })).toBeInTheDocument();
+    expect(document.getElementById("system-ui")).toHaveClass("page-section-anchor");
+    expect(document.getElementById("system-chat-theme")).toHaveClass("page-section-anchor");
+    expect(document.getElementById("system-network-proxy")).toHaveClass("page-section-anchor");
+    expect(screen.getByRole("button", { name: "主题管理" })).toBeInTheDocument();
     fireEvent.click(themeSelect);
     expect(await screen.findByRole("option", { name: "风旅冒险 · 内置" })).toBeInTheDocument();
     const uiHeading = screen.getByRole("heading", { name: "界面" });
     const themeHeading = screen.getByRole("heading", { name: "聊天主题" });
     const proxyHeading = screen.getByRole("heading", { name: "系统代理" });
-    expect(screen.getByText("镜像源")).toBeInTheDocument();
-    expect(screen.getByText("系统代理")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "镜像源" })).toBeInTheDocument();
+    expect(proxyHeading).toBeInTheDocument();
     expect(uiHeading.compareDocumentPosition(themeHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(themeHeading.compareDocumentPosition(proxyHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByText("这是 React Stage 的主题，仅在聊天界面模式为 React Stage 时可选择。")).toBeInTheDocument();
@@ -174,6 +190,15 @@ describe("SystemSettingsPage", () => {
     expect(screen.getByLabelText("HTTPS 代理")).toBeInTheDocument();
     expect(screen.getByLabelText("SOCKS5 代理")).toBeInTheDocument();
     expect(screen.queryByText("桌面运行环境")).not.toBeInTheDocument();
+  });
+
+  it("navigates to the standalone chat theme management page", async () => {
+    mockGetAppConfig.mockResolvedValue(mockSystemConfig());
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "主题管理" }));
+
+    expect(await screen.findByRole("heading", { name: "Theme management destination" })).toBeInTheDocument();
   });
 
   it("disables React Stage theme selection for the native chat UI", async () => {
@@ -258,7 +283,7 @@ describe("SystemSettingsPage", () => {
 
     renderPage();
 
-    expect(await screen.findByText("桌面运行环境")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "桌面运行环境" })).toBeInTheDocument();
     expect(await screen.findByText("Shinsekai bundled runtime")).toBeInTheDocument();
     expect(screen.queryByText("Shinsekai managed runtime")).not.toBeInTheDocument();
     expect(screen.getByText("C:\\Shinsekai\\runtime\\python.exe")).toBeInTheDocument();

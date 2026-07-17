@@ -35,7 +35,7 @@ export interface FrameVisualBlock extends VisualBlock {
   frameImage?: string;
   /** 素材坐标系中的九宫格切片值（无单位），clamp 1–200，默认 32。 */
   frameSlice?: number;
-  /** 屏幕上的边框显示厚度（px），clamp 0–96；省略时兼容回退到 frameSlice。 */
+  /** 屏幕上的九宫格边框带宽（px），决定角块显示尺寸与素材缩放，clamp 0–96；省略时回退到 frameSlice。 */
   frameWidthPx?: number;
   /** 边框向容器外绘制的距离（px），不参与布局，clamp 0–96，默认 0。 */
   frameOutsetPx?: number;
@@ -105,6 +105,7 @@ export interface ChatThemeTokens {
     decoration?: "accent" | "line-dots";
     fontFamily?: string;
     hideWhenStartOption?: boolean;
+    overlapPx?: number;
     textShadow?: string;
     textSizePx?: number;
     textWeight?: number;
@@ -329,7 +330,7 @@ function applyFrameVisualBlock(
   if (legacyShorthand && frameImage) {
     const legacySlice = slice ?? 32;
     // Deprecated shorthand retained for themes or extensions that still consume it directly.
-    style[`--chat-${prefix}-frame`] = `url("${frameImage}") ${legacySlice} fill / ${legacySlice}px round`;
+    style[`--chat-${prefix}-frame`] = `url("${frameImage}") ${legacySlice} fill / ${legacySlice}px stretch`;
   }
 }
 
@@ -697,6 +698,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   }
   setPxVar(style, "--chat-name-theme-font-size", tokens.name?.textSizePx, 15, 12, 56);
   setIntegerVar(style, "--chat-name-theme-font-weight", tokens.name?.textWeight, 800, 300, 900);
+  setPxVar(style, "--chat-name-overlap", tokens.name?.overlapPx, 1, 0, 48);
   setStyleVar(style, "--chat-name-text-shadow", tokens.name?.textShadow);
   if (tokens.name?.align === "center") {
     style["--chat-name-justify-content"] = "center";

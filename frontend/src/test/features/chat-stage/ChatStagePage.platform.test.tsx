@@ -105,8 +105,11 @@ describe("ChatStagePage http platform integration", () => {
   });
 
   it("resolves local stage media paths through platform file URLs", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     const mediaSnapshot = snapshot({
       backgroundPath: "data/backgrounds/school.png",
+      bgmPath: "data/bgm/school.mp3",
       sprites: [{ id: "mio", label: "Mio", path: "data/characters/mio.png" }],
     });
     const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
@@ -126,7 +129,7 @@ describe("ChatStagePage http platform integration", () => {
     vi.stubGlobal("fetch", fetchMock);
     platformMocks.getPlatform.mockReturnValue(createHttpPlatform("http://127.0.0.1:8787"));
 
-    renderPage();
+    const { unmount } = renderPage();
 
     await screen.findByText("Ready");
     expect(document.querySelector(".chat-stage__background img")).toHaveAttribute(
@@ -137,6 +140,16 @@ describe("ChatStagePage http platform integration", () => {
       "src",
       "http://127.0.0.1:8787/api/media?path=data%2Fcharacters%2Fmio.png",
     );
+    expect(document.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute(
+      "src",
+      "http://127.0.0.1:8787/api/media?path=data%2Fbgm%2Fschool.mp3",
+    );
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+
+    unmount();
+    expect(pause).toHaveBeenCalledTimes(1);
+    play.mockRestore();
+    pause.mockRestore();
   });
 
   it("reopens the input layer through repository and httpPlatform when a command clears closed-session markers", async () => {

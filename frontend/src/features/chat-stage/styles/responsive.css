@@ -11,10 +11,6 @@
     --chat-send-padding: 0;
   }
 
-  .sprite-layer {
-    gap: 8px;
-  }
-
   .dialog-stack {
     bottom: max(12px, var(--chat-dialog-stack-bottom), calc(var(--stage-control-stack-height) + 10px));
     width: calc(100vw - 24px);
@@ -122,9 +118,37 @@
     border-radius: 8px;
   }
 
+  .stat-layer {
+    top: 66px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-width: none;
+    max-height: 78px;
+    grid-auto-columns: minmax(220px, 300px);
+    grid-auto-flow: column;
+    grid-template-columns: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .chat-stage[data-stat-visible="true"] .chat-stage__busy,
+  .chat-stage[data-stat-visible="true"] .chat-stage__notification {
+    top: 154px;
+  }
+
   .chat-stage[data-token-visible="true"] .chat-stage__busy,
   .chat-stage[data-token-visible="true"] .chat-stage__notification {
     top: 180px;
+  }
+
+  .chat-stage[data-stat-visible="true"] .token-usage-layer {
+    top: 154px;
+  }
+
+  .chat-stage[data-stat-visible="true"][data-token-visible="true"] .chat-stage__busy,
+  .chat-stage[data-stat-visible="true"][data-token-visible="true"] .chat-stage__notification {
+    top: 282px;
   }
 
   .token-usage-layer {

@@ -767,6 +767,8 @@ export interface ChatSprite {
   id: string;
   label: string;
   path: string;
+  scale?: number;
+  slot?: number;
   x?: number;
   y?: number;
 }
@@ -801,8 +803,18 @@ export interface ChatExperimentalFeatures {
   forkHistory: boolean;
 }
 
+export type ChatStatIcon = "clock" | "coins" | "gauge" | "heart" | "shield" | "sparkles" | "star" | "target" | "zap";
+
+export interface ChatStat {
+  icon: ChatStatIcon;
+  label: string;
+  max?: number;
+  value: number;
+}
+
 export interface ChatSnapshot {
   backgroundPath?: string;
+  bgmPath?: string;
   busyDurationSeconds?: number;
   busyText?: string;
   characterName?: string;
@@ -827,6 +839,7 @@ export interface ChatSnapshot {
   sessionClosedReason?: string;
   sessionId?: string;
   sprites: ChatSprite[];
+  stats?: ChatStat[];
   status: ChatRuntimeStatus;
   statusMessage?: string;
   systemMessageText?: string;
@@ -914,11 +927,13 @@ export type ChatStageEvent =
     })
   | (ChatEventBase & { type: "sprite.remove"; characterName: string })
   | (ChatEventBase & { type: "background.change"; url: string })
+  | (ChatEventBase & { type: "bgm.change"; url: string })
   | (ChatEventBase & { type: "cg.show"; url: string })
   | (ChatEventBase & { type: "cg.hide" })
   | (ChatEventBase & { type: "options.show"; options: string[] })
   | (ChatEventBase & { type: "options.clear" })
   | (ChatEventBase & { type: "numeric.update"; html: string })
+  | (ChatEventBase & { type: "stats.update"; stats: ChatStat[] })
   | (ChatEventBase & { type: "busy.show"; text: string; durationSeconds: number })
   | (ChatEventBase & { type: "busy.hide" })
   | (ChatEventBase & { type: "notification.change"; text: string })

@@ -90,7 +90,7 @@ my-theme/
       "color": "#e9fbff",
       "frameImage": "assets/frame-dialog.svg",
       "frameSlice": 28,
-      "frameWidthPx": 10,
+      "frameWidthPx": 28,
       "frameOutsetPx": 2,
       "padding": 24,
       "widthPct": 84
@@ -264,12 +264,12 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 | --- | --- | --- |
 | `frameImage` | 相对路径 | SVG 或位图九宫格素材；省略时不显示边框层。 |
 | `frameSlice` | `1–200` | 素材坐标系中的切片值；存在图片时默认 `32`。 |
-| `frameWidthPx` | `0–96` | 屏幕上显示的边框厚度；省略时回退为最终 `frameSlice`。 |
+| `frameWidthPx` | `0–96` | 屏幕上的九宫格边框带宽，决定角块显示尺寸和素材缩放；省略时回退为最终 `frameSlice`。 |
 | `frameOutsetPx` | `0–96` | 向组件外绘制的距离；默认 `0`，不参与布局。 |
 
-建议总是显式填写 `frameWidthPx`。例如 `frameSlice: 28` 是素材切片坐标，不代表屏幕上也需要 28 px 厚的边框；省略 `frameWidthPx` 很容易得到过厚的边框。
+建议总是显式填写 `frameWidthPx`。它不是 SVG 线条的 stroke 粗细，而是九宫格角块在屏幕上的目标宽高。若希望素材按 1:1 比例显示并避免角块压缩，可让它与 `frameSlice` 使用相同数值；需要整体缩放边框时再按比例调整。
 
-边框运行时是覆盖在组件上的绝对定位透明层：`inset: 0`、`pointer-events: none`、`border-image-repeat: round`。它不会改变文本、按钮或输入框的位置。SVG 可以形成不规则的视觉轮廓，但组件的布局盒和点击区域仍是原来的矩形。`frameOutsetPx` 也不占布局空间，值过大时可能与相邻组件重叠，或被祖先容器裁切。
+边框运行时是覆盖在组件上的绝对定位透明层：`inset: 0`、`pointer-events: none`、`border-image-repeat: stretch`。中间边条会拉伸到组件边缘之间，不会重复平铺装饰片段。它不会改变文本、按钮或输入框的位置。SVG 可以形成不规则的视觉轮廓，但组件的布局盒和点击区域仍是原来的矩形。`frameOutsetPx` 也不占布局空间，值过大时可能与相邻组件重叠，或被祖先容器裁切。
 
 ### 7.3 SVG 制作建议
 
@@ -293,7 +293,7 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 {
   "frameImage": "assets/frame-dialog.svg",
   "frameSlice": 28,
-  "frameWidthPx": 10,
+  "frameWidthPx": 28,
   "frameOutsetPx": 2
 }
 ```
@@ -302,7 +302,7 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 
 - `frameSlice` 按 SVG 的 `viewBox` 坐标计算，而不是屏幕像素；
 - 切片值应小于素材宽高的一半，确保四角之间仍有可重复的边段；
-- 把关键切角和装饰放在四角切片内，把可连续的线条放在边段；
+- 把关键切角和装饰放在四角切片内，把可拉伸的连续线条放在边段；
 - 中心区域不会作为面板内容填充，面板底色应写在 `background`；
 - 建议使用 `preserveAspectRatio="none"`，并在不同宽高比下预览；
 - 线条、辉光和外伸装饰应留出安全边距，避免裁切；
@@ -310,9 +310,9 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 
 当前赛博朋克主题可作为参考：
 
-- [`frame-dialog.svg`](../assets/chat_ui_themes/neon-night-city/frame-dialog.svg)：`128 × 128`，`slice 28 / width 10 / outset 2`；
-- [`frame-name.svg`](../assets/chat_ui_themes/neon-night-city/frame-name.svg)：`96 × 64`，`slice 16 / width 12 / outset 2`；
-- [`frame-panel.svg`](../assets/chat_ui_themes/neon-night-city/frame-panel.svg)：`96 × 96`，`slice 24 / width 12 / outset 2`。
+- [`frame-dialog.svg`](../assets/chat_ui_themes/neon-night-city/frame-dialog.svg)：`128 × 128`，`slice 28 / width 28 / outset 2`；
+- [`frame-name.svg`](../assets/chat_ui_themes/neon-night-city/frame-name.svg)：`96 × 64`，`slice 16 / width 16 / outset 2`；
+- [`frame-panel.svg`](../assets/chat_ui_themes/neon-night-city/frame-panel.svg)：`96 × 96`，`slice 24 / width 24 / outset 2`。
 
 ## 8. Token 定义
 
@@ -436,6 +436,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | `decoration` | `accent \| line-dots` | 强调装饰或两侧线点装饰。 |
 | `fontFamily` | string | 姓名单独使用的字体族，优先于 `global.fontFamily`。 |
 | `hideWhenStartOption` | boolean | 起始选项出现时隐藏姓名。 |
+| `overlapPx` | `0–48` | 姓名框向下覆盖对话框上沿的深度，单位 px；用于让姓名框及其 frame 挡住一部分对话框边框。省略时为 1 px。 |
 | `textShadow` | string | 姓名文字阴影。 |
 | `textSizePx` | `12–56` | 当前前端有效字号范围。SDK 校验兼容到 64，但运行时上限为 56。 |
 | `textWeight` | `300–900` | 姓名字重。 |
@@ -526,7 +527,8 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | 现象 | 原因与处理 |
 | --- | --- |
 | 所有框都变成同一个形状 | 在多个块中重复填写了同一个 `frameImage`。只在需要的组件上配置，或分别提供素材。 |
-| 边框特别厚 | 省略了 `frameWidthPx`，运行时回退为 `frameSlice`。显式设置较小的显示宽度。 |
+| 边框整体过大或过小 | `frameWidthPx` 与期望的素材显示比例不匹配。1:1 显示时让它与 `frameSlice` 相同，再按比例微调。 |
+| 边线分成重复小节 | 使用了会平铺边段的旧版 `round` 渲染。升级到使用 `stretch` 的版本，并确保边段只包含可连续拉伸的线条。 |
 | 四角被拉扯或边线错位 | `frameSlice` 与素材 `viewBox` 不匹配。根据角区实际尺寸调整，并保证切片小于宽高的一半。 |
 | SVG 没显示 | 检查相对路径、文件是否存在、配置块是否支持 frame，以及 `frameWidthPx` 是否为 0。 |
 | 选项按钮全部出现边框 | `tokens.options` 定义的是每一个选项的共同外观，这是预期行为。 |

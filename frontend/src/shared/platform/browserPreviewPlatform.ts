@@ -484,13 +484,18 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     previewThemeManifests.get(id) ?? previewThemeManifests.get(DEFAULT_CHAT_THEME_ID);
 
   const listPreviewThemes = (): ChatThemeSummary[] =>
-    Array.from(previewThemeManifests.values()).map((manifest) => ({
-      id: manifest.id,
-      name: clone(manifest.name),
-      author: manifest.author,
-      version: manifest.version,
-      source: previewThemeSources.get(manifest.id) ?? "user",
-    }));
+    Array.from(previewThemeManifests.values()).map((manifest) => {
+      const source = previewThemeSources.get(manifest.id) ?? "user";
+      const previewPath = manifest.preview ? `data/chat_ui_themes/${manifest.id}/${manifest.preview}` : "";
+      return {
+        id: manifest.id,
+        name: clone(manifest.name),
+        author: manifest.author,
+        version: manifest.version,
+        previewUrl: source === "builtin" ? builtinChatThemeAssetUrls[previewPath] : undefined,
+        source,
+      };
+    });
 
   return {
     backgrounds: {

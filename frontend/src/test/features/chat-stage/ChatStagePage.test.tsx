@@ -313,6 +313,145 @@ describe("ChatStagePage", () => {
     expect(screen.queryByText("old reply")).not.toBeInTheDocument();
   });
 
+  it("remounts only the sprite image when an expression changes so the switch animation replays", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ sprites: [{ id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 }] }),
+    );
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    const { container } = renderPage();
+
+    await screen.findByText("Ready");
+    const originalFigure = container.querySelector(".sprite-layer__figure");
+    const originalImage = container.querySelector(".sprite-layer__image");
+
+    act(() => {
+      listener?.({
+        characterName: "Mio",
+        scale: 1,
+        seq: 1,
+        slot: 0,
+        ts: 1,
+        type: "sprite.show",
+        url: "asset://mio-happy.png",
+        v: 1,
+      });
+    });
+
+    const nextFigure = container.querySelector(".sprite-layer__figure");
+    const nextImage = container.querySelector(".sprite-layer__image");
+    expect(nextFigure).toBe(originalFigure);
+    expect(nextFigure).toHaveAttribute("data-slot", "0");
+    expect(nextImage).not.toBe(originalImage);
+    expect(nextImage).toHaveAttribute("src", "asset://mio-happy.png");
+  });
+
+  it("switches the rendered background and looping BGM from stream events", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        backgroundPath: "asset://day-room.png",
+        bgmPath: "asset://day-theme.mp3",
+        eventSeq: 0,
+      }),
+    );
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    const { container } = renderPage();
+
+    await screen.findByText("Ready");
+    expect(container.querySelector(".chat-stage__background img")).toHaveAttribute("src", "asset://day-room.png");
+    expect(container.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute("src", "asset://day-theme.mp3");
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      listener?.({
+        seq: 1,
+        ts: 1,
+        type: "background.change",
+        url: "asset://night-room.png",
+        v: 1,
+      });
+      listener?.({
+        seq: 2,
+        ts: 2,
+        type: "bgm.change",
+        url: "asset://night-theme.mp3",
+        v: 1,
+      });
+    });
+
+    expect(container.querySelector(".chat-stage__background img")).toHaveAttribute("src", "asset://night-room.png");
+    expect(container.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute("src", "asset://night-theme.mp3");
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+    expect(pause).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      listener?.({ seq: 3, ts: 3, type: "bgm.change", url: "", v: 1 });
+    });
+
+    expect(container.querySelector("audio[data-chat-stage-bgm]")).not.toBeInTheDocument();
+    expect(pause).toHaveBeenCalledTimes(2);
+    play.mockRestore();
+    pause.mockRestore();
+  });
+
+  it("reveals the native stat layer only after the first stats event", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ eventSeq: 0, stats: [] }));
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+
+    await screen.findByText("Ready");
+    expect(screen.queryByRole("status", { name: "Character stats" })).not.toBeInTheDocument();
+    expect(document.querySelector(".chat-stage")).toHaveAttribute("data-stat-visible", "false");
+
+    act(() => {
+      listener?.({
+        seq: 1,
+        stats: [
+          { icon: "heart", label: "HP", max: 100, value: 72 },
+          { icon: "coins", label: "Gold", value: 320 },
+        ],
+        ts: 1,
+        type: "stats.update",
+        v: 1,
+      });
+    });
+
+    const statLayer = screen.getByRole("status", { name: "Character stats" });
+    expect(statLayer).toHaveTextContent("HP72 / 100");
+    expect(statLayer).toHaveTextContent("Gold320");
+    expect(statLayer.querySelector('[data-icon="heart"] .lucide-heart')).not.toBeNull();
+    expect(screen.getByRole("progressbar", { name: "HP" })).toHaveAttribute("value", "72");
+    expect(screen.getByRole("progressbar", { name: "HP" })).toHaveAttribute("max", "100");
+    expect(document.querySelector(".chat-stage")).toHaveAttribute("data-stat-visible", "true");
+
+    act(() => {
+      listener?.({
+        color: "#fff",
+        fullHtml: "<p>Stats remain visible</p>",
+        isSystem: false,
+        seq: 2,
+        speaker: "Mio",
+        ts: 2,
+        type: "dialog.end",
+        v: 1,
+      });
+    });
+    expect(screen.getByRole("status", { name: "Character stats" })).toBeInTheDocument();
+  });
+
   it("shows a selected option as the user message before the command response arrives", async () => {
     let resolveCommand!: (snapshot: ChatSnapshot) => void;
     mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));
@@ -531,6 +670,26 @@ describe("ChatStagePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Token usage" }));
     expect(document.querySelector(".token-usage-layer")).toBeNull();
     expect(document.querySelector(".chat-stage")).toHaveAttribute("data-token-visible", "false");
+  });
+
+  it("opens theme management from the top toolbar and disables transparent-window click-through", async () => {
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+    themeContextMocks.optional = { style: {} };
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ backgroundPath: "" }));
+
+    renderPage(["/chat-stage"]);
+
+    await screen.findByText("Ready");
+    const stage = document.querySelector(".chat-stage") as HTMLElement;
+    expect(stage).toHaveAttribute("data-click-through", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Manage themes" }));
+
+    const picker = await screen.findByRole("dialog", { name: "Chat themes" });
+    expect(stage).toHaveAttribute("data-click-through", "false");
+
+    fireEvent.click(within(picker).getByRole("button", { name: "Close" }));
+    expect(stage).toHaveAttribute("data-click-through", "true");
   });
 
   it("renders core chat actions at the dialog bottom and supports locking the tray", async () => {
@@ -1586,7 +1745,7 @@ describe("ChatStagePage", () => {
     expect(desktopApiMocks.closeDesktopWindow).not.toHaveBeenCalled();
     expect(desktopApiMocks.startDesktopWindowDrag).not.toHaveBeenCalled();
 
-    fireEvent.mouseDown(container.querySelector(".sprite-layer__figure")!, { button: 0 });
+    fireEvent.mouseDown(container.querySelector(".sprite-layer__image")!, { button: 0 });
     await waitFor(() => expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1));
     expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1);
   });

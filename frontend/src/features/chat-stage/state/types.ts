@@ -3,6 +3,7 @@ import type {
   ChatRuntimeStatus,
   ChatSnapshot,
   ChatSprite,
+  ChatStat,
   ChatStageEvent,
   ChatTransportMode,
   ChatTransportState,
@@ -22,8 +23,6 @@ export interface ChatStageLayers {
 
 export interface ChatStageSprite extends ChatSprite {
   characterName?: string;
-  scale?: number;
-  slot?: number;
 }
 
 export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
@@ -64,6 +63,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
 
 export interface ChatStageViewModel {
   backgroundPath?: string;
+  bgmPath?: string;
   busyText?: string;
   cgPath?: string;
   dialogCharacterName?: string;
@@ -75,6 +75,7 @@ export interface ChatStageViewModel {
   notificationText?: string;
   options: string[];
   sprites: ChatStageSprite[];
+  stats: ChatStat[];
   status: ChatRuntimeStatus;
   statusText: string;
   tokenUsageText?: string;

@@ -688,7 +688,7 @@
     "r_choice_pos": "选项：dialog の最後は必ず {choice}。",
     "r_choice_format": "选项：{choice} の speech 内を / で区切る。選択可能な短文のみ。",
     "r_choice_balance": "选项三種：ふざけ/無茶、理詰め/冷静、中間。状況とキャラに合うこと。",
-    "r_stats": "{stat}：dialog 前寄り。character_name が {stat} なら speech を <span> 等の淡色マカロン系。複数は <br>。",
+    "r_stats": "{stat}：dialog の前寄りに配置できます。character_name が {stat} の場合、speech の各行は icon|label|value|max 形式のみ（max は省略可）。icon は heart、shield、zap、star、sparkles、target、coins、clock、gauge。例：heart|HP|72|100\\nzap|元気|30|100。HTML、色、補足説明は出力しないでください。",
     "r_cg": "CG：見せ場で character_name={cg}。speech は SD 用。highres, masterpiece, 8k, bestscores、1girl 等。背景のみは no person, pure scenery。",
     "r_translate": "translate：speech の{target_voice_name}訳（システムの音声目標言語）のみ。動作・ト書きは訳に含めない。",
     "r_effect": "effect：任意。キーワードのみ = セリフ前1回; loop:キーワード = ループ開始; stop:キーワード = ループ停止; before:キーワード = セリフ前; after:キーワード = セリフ後。LEAVE = 退場。不要なら省略。",

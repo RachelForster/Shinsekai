@@ -127,6 +127,7 @@ describe("chat theme runtime", () => {
             align: "center",
             decoration: "line-dots",
             fontFamily: "Trebuchet MS, Georgia, serif",
+            overlapPx: 14,
             textShadow: "0 2px 4px rgba(0,0,0,0.7)",
             hideWhenStartOption: true,
             textSizePx: 30,
@@ -201,7 +202,9 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-dialog-body-min-height"]).toBe("0px");
     expect(resolved.style["--chat-dialog-body-overflow"]).toBe("auto");
     expect(resolved.style["--chat-dialog-body-scrollbar-gutter"]).toBe("auto");
-    expect(resolved.style["--chat-dialog-frame"]).toBe('url("asset://assets/dialog-border.svg") 28 fill / 28px round');
+    expect(resolved.style["--chat-dialog-frame"]).toBe(
+      'url("asset://assets/dialog-border.svg") 28 fill / 28px stretch',
+    );
     expect(resolved.style["--chat-dialog-frame-image"]).toBe('url("asset://assets/dialog-border.svg")');
     expect(resolved.style["--chat-dialog-frame-slice"]).toBe("28");
     expect(resolved.style["--chat-dialog-frame-width"]).toBe("28px");
@@ -258,7 +261,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-send-color"]).toBe("#ffffff");
     expect(resolved.style["--chat-name-background"]).toBe("rgba(28,22,48,0.92)");
     expect(resolved.style["--chat-name-background-image"]).toBe('url("asset://assets/name-plate.png")');
-    expect(resolved.style["--chat-name-frame"]).toBe('url("asset://assets/name-border.svg") 16 fill / 16px round');
+    expect(resolved.style["--chat-name-frame"]).toBe('url("asset://assets/name-border.svg") 16 fill / 16px stretch');
     expect(resolved.style["--chat-name-frame-image"]).toBe('url("asset://assets/name-border.svg")');
     expect(resolved.style["--chat-name-frame-slice"]).toBe("16");
     expect(resolved.style["--chat-name-frame-width"]).toBe("16px");
@@ -282,6 +285,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-name-border"]).toBe("0 solid transparent");
     expect(resolved.style["--chat-name-border-bottom"]).toBe("0 solid transparent");
     expect(resolved.style["--chat-name-hide-when-start-option"]).toBe("true");
+    expect(resolved.style["--chat-name-overlap"]).toBe("14px");
     expect(resolved.style["--chat-name-sheen"]).toBe("none");
     expect(resolved.style["--chat-name-text-shadow"]).toBe("0 2px 4px rgba(0,0,0,0.7)");
     expect(resolved.style["--chat-name-theme-font-size"]).toBe("30px");
@@ -646,6 +650,8 @@ describe("chat theme runtime", () => {
   });
 
   it("supports upload, switch, and delete flows through the theme picker", async () => {
+    const onActiveThemeChange = vi.fn();
+    const onThemesChange = vi.fn();
     const windborneManifest: ChatThemeManifest = {
       schema: 1,
       id: "windborne-adventure",
@@ -683,10 +689,10 @@ describe("chat theme runtime", () => {
     repoMocks.setActiveChatTheme.mockResolvedValue(undefined);
     repoMocks.deleteChatTheme.mockResolvedValue(undefined);
 
-    renderThemeTree(<ChatThemePicker />);
+    renderThemeTree(<ChatThemePicker onActiveThemeChange={onActiveThemeChange} onThemesChange={onThemesChange} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Manage themes" }));
-    expect(await screen.findByRole("dialog", { name: "Chat themes" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Chat themes" })).toHaveClass("chat-theme-picker__dialog");
 
     const uploadInput = document.querySelector(".chat-theme-picker__file-input") as HTMLInputElement;
     const file = new File(["theme"], "my-theme.zip", { type: "application/zip" });
@@ -694,6 +700,8 @@ describe("chat theme runtime", () => {
 
     await waitFor(() => expect(repoMocks.uploadChatTheme).toHaveBeenCalled());
     await waitFor(() => expect(repoMocks.setActiveChatTheme).toHaveBeenCalledWith("my-theme"));
+    expect(onThemesChange).toHaveBeenCalledTimes(1);
+    expect(onActiveThemeChange).toHaveBeenCalledWith("my-theme");
     await waitFor(() =>
       expect(document.documentElement.style.getPropertyValue("--logs-code-background")).toBe("rgba(5,30,25,0.9)"),
     );
@@ -709,6 +717,8 @@ describe("chat theme runtime", () => {
     fireEvent.click(within(confirm).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(repoMocks.deleteChatTheme).toHaveBeenCalledWith("my-theme"));
+    expect(onThemesChange).toHaveBeenCalledTimes(2);
+    expect(onActiveThemeChange).toHaveBeenLastCalledWith(null);
     expect(await screen.findByText("Theme deleted")).toBeInTheDocument();
   });
 });
