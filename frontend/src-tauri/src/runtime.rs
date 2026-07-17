@@ -13,11 +13,60 @@ pub use resolver::{RuntimeCandidateView, RuntimeRepairActionKind, RuntimeScanVie
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 pub const INSTALL_DIR_RUNTIME_ID: &str = python_probe::INSTALL_DIR_RUNTIME_ID;
 
+const CORE_REQUIREMENTS_FILE: &str = "requirements-runtime-core.txt";
+
 #[derive(Debug)]
 pub struct PythonRuntime {
     pub command: Command,
     pub description: String,
     pub candidate_id: Option<String>,
+}
+
+pub fn manual_install_command(
+    source_root: &Path,
+    candidate: Option<&RuntimeCandidateView>,
+) -> Option<String> {
+    let candidate = candidate.filter(|candidate| {
+        candidate.managed
+            && !candidate.path.trim().is_empty()
+            && matches!(
+                candidate.status,
+                resolver::RuntimeCandidateStatus::Ready
+                    | resolver::RuntimeCandidateStatus::MissingCoreDeps
+                    | resolver::RuntimeCandidateStatus::MissingOptionalDeps
+                    | resolver::RuntimeCandidateStatus::BrokenBridge
+            )
+    })?;
+    let python = if candidate.display_path.trim().is_empty() {
+        python_probe::display_path(Path::new(&candidate.path))
+    } else {
+        candidate.display_path.clone()
+    };
+    let requirements = python_probe::display_path(&source_root.join(CORE_REQUIREMENTS_FILE));
+    Some(manual_install_command_for_shell(
+        &python,
+        &requirements,
+        cfg!(windows),
+    ))
+}
+
+fn manual_install_command_for_shell(python: &str, requirements: &str, windows: bool) -> String {
+    let python = quote_shell_argument(python, windows);
+    let requirements = quote_shell_argument(requirements, windows);
+    let invocation = if windows {
+        format!("& {python}")
+    } else {
+        python
+    };
+    format!("{invocation} -m pip install --requirement {requirements}")
+}
+
+fn quote_shell_argument(value: &str, windows: bool) -> String {
+    if windows {
+        format!("'{}'", value.replace('\'', "''"))
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
 }
 
 pub fn scan_runtime_view<R: Runtime>(app: &impl Manager<R>, source_root: &Path) -> RuntimeScanView {
@@ -278,6 +327,30 @@ fn normalized_path(path: &Path) -> PathBuf {
 mod tests {
     use super::*;
     use std::{fs, time::SystemTime};
+
+    #[test]
+    fn manual_install_command_quotes_windows_paths_for_powershell() {
+        assert_eq!(
+            manual_install_command_for_shell(
+                r"C:\Users\O'Brien\Shinsekai runtime\python.exe",
+                r"C:\Program Files\Shinsekai\requirements-runtime-core.txt",
+                true,
+            ),
+            "& 'C:\\Users\\O''Brien\\Shinsekai runtime\\python.exe' -m pip install --requirement 'C:\\Program Files\\Shinsekai\\requirements-runtime-core.txt'"
+        );
+    }
+
+    #[test]
+    fn manual_install_command_quotes_posix_paths() {
+        assert_eq!(
+            manual_install_command_for_shell(
+                "/Users/o'brien/Shinsekai runtime/bin/python3",
+                "/Applications/Shinsekai/resources/requirements-runtime-core.txt",
+                false,
+            ),
+            "'/Users/o'\\''brien/Shinsekai runtime/bin/python3' -m pip install --requirement '/Applications/Shinsekai/resources/requirements-runtime-core.txt'"
+        );
+    }
 
     #[test]
     fn ready_candidate_id_for_path_matches_python_executable() {

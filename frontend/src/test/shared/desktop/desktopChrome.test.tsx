@@ -217,6 +217,43 @@ describe("DesktopChrome", () => {
     expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
   });
 
+  it("shows a manual dependency command when the bridge exits after runtime scanning", async () => {
+    desktopApi.isTauriDesktop.mockReturnValue(true);
+    const manualInstallCommand =
+      "& 'C:\\Users\\test\\Shinsekai\\runtime\\python.exe' -m pip install --requirement 'C:\\Program Files\\Shinsekai\\requirements-runtime-core.txt'";
+    desktopApi.getDesktopRuntimeState.mockResolvedValue({
+      bridgeUrl: "",
+      candidates: [
+        {
+          id: "python-ready",
+          displayPath: "C:\\Users\\test\\Shinsekai\\runtime\\python.exe",
+          kind: "managed",
+          label: "Shinsekai bundled runtime",
+          managed: true,
+          missingImports: [],
+          missingPackages: [],
+          path: "\\\\?\\C:\\Users\\test\\Shinsekai\\runtime\\python.exe",
+          repairActions: ["start"],
+          score: 100,
+          selected: true,
+          status: "ready",
+          version: "3.10.20",
+          warnings: [],
+        },
+      ],
+      manualInstallCommand,
+      message: "Python bridge exited before startup completed: exit code: 1",
+      status: "error",
+    });
+
+    renderChrome(<main>App content</main>);
+
+    expect(await screen.findByText("Install dependencies manually")).toBeInTheDocument();
+    expect(screen.getByText(manualInstallCommand)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy command" })).toBeInTheDocument();
+    expect(screen.queryByText("App content")).not.toBeInTheDocument();
+  });
+
   it("wires title bar buttons and drag region to desktop commands", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
 

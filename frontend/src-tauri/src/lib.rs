@@ -198,6 +198,7 @@ struct DesktopRuntimeView {
     status: &'static str,
     message: Option<String>,
     bridge_url: String,
+    manual_install_command: Option<String>,
     selected_candidate_id: Option<String>,
     recommended_action: Option<runtime::RuntimeRepairActionKind>,
     candidates: Vec<runtime::RuntimeCandidateView>,
@@ -313,10 +314,18 @@ impl DesktopState {
         for candidate in &mut candidates {
             candidate.selected = Some(&candidate.id) == selected_candidate_id.as_ref();
         }
+        let manual_install_command = runtime::manual_install_command(
+            &self.source_root,
+            candidates
+                .iter()
+                .find(|candidate| candidate.selected)
+                .or_else(|| candidates.first()),
+        );
         DesktopRuntimeView {
             status,
             message,
             bridge_url: self.bridge_url(),
+            manual_install_command,
             selected_candidate_id,
             recommended_action,
             candidates,

@@ -248,6 +248,11 @@ export const jaMessages: Record<MessageKey, string> = {
   "desktop.runtime.defaultDetail": "Shinsekai の実行環境を確認しています。",
   "desktop.runtime.eyebrow": "実行環境",
   "desktop.runtime.installDepsButton": "依存関係をインストール",
+  "desktop.runtime.commandCopied": "コピー済み",
+  "desktop.runtime.copyCommand": "コマンドをコピー",
+  "desktop.runtime.manualInstallHint":
+    "Shinsekai を終了し、ターミナルで次のコマンドを実行してください。完了後にアプリを再起動します。",
+  "desktop.runtime.manualInstallTitle": "依存関係を手動でインストール",
   "desktop.runtime.phase.checkingBridge": "Bridge を確認中",
   "desktop.runtime.phase.installingDeps": "依存関係をインストール中",
   "desktop.runtime.phase.probing": "インストール先 runtime を確認中",

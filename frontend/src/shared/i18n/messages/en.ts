@@ -245,6 +245,11 @@ export const enMessages: Record<MessageKey, string> = {
   "desktop.runtime.defaultDetail": "Checking the Shinsekai runtime.",
   "desktop.runtime.eyebrow": "Runtime",
   "desktop.runtime.installDepsButton": "Install dependencies",
+  "desktop.runtime.commandCopied": "Copied",
+  "desktop.runtime.copyCommand": "Copy command",
+  "desktop.runtime.manualInstallHint":
+    "Close Shinsekai, run this command in a terminal, then reopen the app after installation completes.",
+  "desktop.runtime.manualInstallTitle": "Install dependencies manually",
   "desktop.runtime.phase.checkingBridge": "Checking bridge",
   "desktop.runtime.phase.installingDeps": "Installing dependencies",
   "desktop.runtime.phase.probing": "Checking install-directory runtime",
