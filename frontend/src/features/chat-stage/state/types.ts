@@ -62,6 +62,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
 
 export interface ChatStageViewModel {
   backgroundPath?: string;
+  bgmPath?: string;
   busyText?: string;
   cgPath?: string;
   dialogCharacterName?: string;

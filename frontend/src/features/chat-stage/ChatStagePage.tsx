@@ -16,6 +16,7 @@ import { HistoryDialog } from "./components/HistoryDialog";
 import { InputLayer } from "./components/InputLayer";
 import {
   BackgroundLayer,
+  BgmLayer,
   BusyLayer,
   CgLayer,
   DialogLayer,
@@ -378,6 +379,7 @@ export function ChatStagePage() {
           path={viewModel.backgroundPath}
           transparent={transparentBackground}
         />
+        <BgmLayer path={viewModel.bgmPath} />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer
           hidden={!viewModel.layers.sprites}

@@ -632,7 +632,11 @@ def main():
                 from core.runtime.event_sink import WSClientSink
 
                 stream_sink = WSClientSink(args.stream_endpoint)
-            ui_updates = StreamingUIUpdateManager(stream_sink, chat_history=chat_history)
+            ui_updates = StreamingUIUpdateManager(
+                stream_sink,
+                chat_history=chat_history,
+                bg_group=bg_group or [],
+            )
             set_app_runtime(
                 AppRuntime(
                     config=config,
@@ -1023,6 +1027,7 @@ def main():
                     ui_updates.post_background(bg_group[0].get("path", ""))
                 except Exception:
                     pass
+            ui_updates.switch_bgm(bgm_list[0] if bgm_list else "")
 
             restored_sprite = False
             if audio_path_queue is not None:

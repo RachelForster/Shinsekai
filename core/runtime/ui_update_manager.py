@@ -574,10 +574,12 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self,
         sink: "ChatEventSink",
         chat_history: Optional[MutableSequence[str]] = None,
+        bg_group: Optional[List] = None,
         max_sprite_slots: int = 3,
     ) -> None:
         super().__init__(chat_history=chat_history)
         self._sink = sink
+        self.bg_group = list(bg_group or [])
         try:
             normalized_slot_count = int(max_sprite_slots)
         except (TypeError, ValueError):
@@ -639,6 +641,11 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     def post_background(self, path: str) -> None:
         self.current_background_path = path or None
         self._sink.emit({"type": "background.change", "url": self._media_url(path)})
+
+    def switch_bgm(self, new_bgm_path: str) -> None:
+        path = str(new_bgm_path or "").strip()
+        self.current_bgm_path = path or None
+        self._sink.emit({"type": "bgm.change", "url": self._media_url(path)})
 
     def post_cg(self, path: str) -> None:
         if path:
@@ -777,10 +784,9 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
 
     需要存活的 ``QApplication``。M5 切默认后改用无 Qt 的 ``StreamingUIUpdateManager``（Option A）。
     """
-    mirror = StreamingUIUpdateManager(sink, chat_history=ui.chat_history)
+    mirror = StreamingUIUpdateManager(sink, chat_history=ui.chat_history, bg_group=ui.bg_group)
     mirror.current_background_path = ui.current_background_path
     mirror.current_bgm_path = ui.current_bgm_path
-    mirror.bg_group = ui.bg_group
     mirror.sync_history_entries()
 
     original_update_dialog = ui.update_dialog
@@ -795,6 +801,7 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
     original_post_numeric_value = ui.post_numeric_value
     original_post_context_token_estimate = ui.post_context_token_estimate
     original_post_background = ui.post_background
+    original_switch_bgm = ui.switch_bgm
     original_post_cg = ui.post_cg
     original_post_llm_reply_finished = ui.post_llm_reply_finished
     original_post_pause_asr = ui.post_pause_asr
@@ -864,6 +871,10 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
         original_post_background(path)
         mirror.post_background(path)
 
+    def switch_bgm(path: str) -> None:
+        original_switch_bgm(path)
+        mirror.switch_bgm(path)
+
     def post_cg(path: str) -> None:
         original_post_cg(path)
         mirror.post_cg(path)
@@ -908,6 +919,7 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
     ui.post_numeric_value = post_numeric_value
     ui.post_context_token_estimate = post_context_token_estimate
     ui.post_background = post_background
+    ui.switch_bgm = switch_bgm
     ui.post_cg = post_cg
     ui.post_llm_reply_finished = post_llm_reply_finished
     ui.post_pause_asr = post_pause_asr

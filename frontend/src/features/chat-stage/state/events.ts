@@ -110,6 +110,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         backgroundPath: event.url,
         eventSeq: Math.max(state.eventSeq, event.seq),
       });
+    case "bgm.change":
+      return withResolvedLayers({
+        ...state,
+        bgmPath: event.url,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+      });
     case "cg.show":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),

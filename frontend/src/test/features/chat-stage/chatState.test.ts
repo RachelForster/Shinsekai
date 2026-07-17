@@ -4,6 +4,33 @@ import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../..
 import { chatStageSpriteAxisCenter } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
+  it("applies background and BGM changes from the runtime stream", () => {
+    const withBackground = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        ts: 1,
+        type: "background.change",
+        url: "asset://night-street.png",
+        v: 1,
+      },
+      type: "event",
+    });
+    const withBgm = chatStageReducer(withBackground, {
+      event: {
+        seq: 2,
+        ts: 2,
+        type: "bgm.change",
+        url: "asset://night-theme.mp3",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(withBgm.backgroundPath).toBe("asset://night-street.png");
+    expect(withBgm.bgmPath).toBe("asset://night-theme.mp3");
+    expect(buildChatStageViewModel(withBgm).bgmPath).toBe("asset://night-theme.mp3");
+  });
+
   it("optimistically commits a user message and clears the input draft atomically", () => {
     const state = chatStageReducer(
       {

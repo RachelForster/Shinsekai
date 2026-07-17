@@ -349,6 +349,60 @@ describe("ChatStagePage", () => {
     expect(nextImage).toHaveAttribute("src", "asset://mio-happy.png");
   });
 
+  it("switches the rendered background and looping BGM from stream events", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        backgroundPath: "asset://day-room.png",
+        bgmPath: "asset://day-theme.mp3",
+        eventSeq: 0,
+      }),
+    );
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    const { container } = renderPage();
+
+    await screen.findByText("Ready");
+    expect(container.querySelector(".chat-stage__background img")).toHaveAttribute("src", "asset://day-room.png");
+    expect(container.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute("src", "asset://day-theme.mp3");
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      listener?.({
+        seq: 1,
+        ts: 1,
+        type: "background.change",
+        url: "asset://night-room.png",
+        v: 1,
+      });
+      listener?.({
+        seq: 2,
+        ts: 2,
+        type: "bgm.change",
+        url: "asset://night-theme.mp3",
+        v: 1,
+      });
+    });
+
+    expect(container.querySelector(".chat-stage__background img")).toHaveAttribute("src", "asset://night-room.png");
+    expect(container.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute("src", "asset://night-theme.mp3");
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+    expect(pause).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      listener?.({ seq: 3, ts: 3, type: "bgm.change", url: "", v: 1 });
+    });
+
+    expect(container.querySelector("audio[data-chat-stage-bgm]")).not.toBeInTheDocument();
+    expect(pause).toHaveBeenCalledTimes(2);
+    play.mockRestore();
+    pause.mockRestore();
+  });
+
   it("shows a selected option as the user message before the command response arrives", async () => {
     let resolveCommand!: (snapshot: ChatSnapshot) => void;
     mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));

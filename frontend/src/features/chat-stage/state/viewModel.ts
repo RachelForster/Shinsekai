@@ -24,6 +24,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
   };
   return {
     backgroundPath: state.backgroundPath,
+    bgmPath: state.bgmPath,
     busyText: state.busyText,
     cgPath: state.cgPath,
     dialogCharacterName: systemPromptText ? undefined : dialog.characterName,

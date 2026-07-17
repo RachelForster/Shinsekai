@@ -805,6 +805,7 @@ export interface ChatExperimentalFeatures {
 
 export interface ChatSnapshot {
   backgroundPath?: string;
+  bgmPath?: string;
   busyDurationSeconds?: number;
   busyText?: string;
   characterName?: string;
@@ -916,6 +917,7 @@ export type ChatStageEvent =
     })
   | (ChatEventBase & { type: "sprite.remove"; characterName: string })
   | (ChatEventBase & { type: "background.change"; url: string })
+  | (ChatEventBase & { type: "bgm.change"; url: string })
   | (ChatEventBase & { type: "cg.show"; url: string })
   | (ChatEventBase & { type: "cg.hide" })
   | (ChatEventBase & { type: "options.show"; options: string[] })

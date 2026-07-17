@@ -1,4 +1,12 @@
-import { createElement, type CSSProperties, type MouseEvent, type MouseEventHandler, type ReactNode } from "react";
+import {
+  createElement,
+  useEffect,
+  useRef,
+  type CSSProperties,
+  type MouseEvent,
+  type MouseEventHandler,
+  type ReactNode,
+} from "react";
 
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
@@ -37,6 +45,45 @@ export function BackgroundLayer({
       {src ? <img alt="" onError={hideBrokenStageAsset} src={src} /> : null}
     </div>
   );
+}
+
+export function BgmLayer({ path }: { path?: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const src = stageAssetUrl(path);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !src) {
+      return;
+    }
+
+    let disposed = false;
+    const play = () => {
+      if (disposed) {
+        return;
+      }
+      const request = audio.play();
+      if (request) {
+        void request.catch(() => undefined);
+      }
+    };
+    const request = audio.play();
+    if (request) {
+      void request.catch(() => {
+        if (!disposed) {
+          document.addEventListener("pointerdown", play, { once: true });
+        }
+      });
+    }
+
+    return () => {
+      disposed = true;
+      document.removeEventListener("pointerdown", play);
+      audio.pause();
+    };
+  }, [src]);
+
+  return src ? <audio aria-hidden data-chat-stage-bgm loop preload="auto" ref={audioRef} src={src} /> : null;
 }
 
 export function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {

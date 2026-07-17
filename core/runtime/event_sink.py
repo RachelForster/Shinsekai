@@ -247,6 +247,10 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["backgroundPath"] = str(event.get("url") or "")
         return next_snapshot
 
+    if event_type == "bgm.change":
+        next_snapshot["bgmPath"] = str(event.get("url") or "")
+        return next_snapshot
+
     if event_type == "cg.show":
         _clear_transient_notification_state(next_snapshot)
         next_snapshot["cgPath"] = str(event.get("url") or "")

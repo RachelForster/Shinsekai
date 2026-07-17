@@ -4,6 +4,31 @@ from core.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_sn
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
+    def test_background_and_bgm_changes_are_folded_for_reconnect(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "seq": 1,
+                "ts": 1,
+                "type": "background.change",
+                "url": "asset://room.png",
+                "v": 1,
+            },
+        )
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 2,
+                "ts": 2,
+                "type": "bgm.change",
+                "url": "asset://room.mp3",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(next_snapshot["backgroundPath"], "asset://room.png")
+        self.assertEqual(next_snapshot["bgmPath"], "asset://room.mp3")
+
     def test_sprite_show_replaces_the_previous_slot_occupant_and_preserves_axes(self):
         snapshot = fold_event_into_snapshot(
             make_empty_chat_snapshot(),
