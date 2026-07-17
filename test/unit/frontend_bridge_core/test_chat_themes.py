@@ -148,7 +148,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
                     "sakura-dream\n", encoding="utf-8"
                 )
 
-                self.assertFalse(_is_builtin_theme_dir(spoofed_dir))
+                self.assertFalse(_is_builtin_theme_dir("sakura-dream"))
             finally:
                 os.chdir(previous_cwd)
 

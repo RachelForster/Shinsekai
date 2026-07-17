@@ -64,14 +64,12 @@ def _registered_builtin_theme(theme_id: str) -> Optional[tuple[str, Path]]:
     return None
 
 
-def _is_builtin_theme_dir(theme_dir: Path) -> bool:
+def _is_builtin_theme_dir(theme_id: str) -> bool:
     try:
-        registered = _registered_builtin_theme(theme_dir.name)
+        registered = _registered_builtin_theme(theme_id)
         if registered is None:
             return False
         theme_id, registered_dir = registered
-        if theme_dir.resolve(strict=False) != registered_dir.resolve(strict=False):
-            return False
         if theme_id in LEGACY_UNMARKED_BUILTIN_THEME_IDS:
             return True
         marker = safe_child_path(registered_dir, BUILTIN_THEME_OWNER_MARKER)
@@ -80,13 +78,11 @@ def _is_builtin_theme_dir(theme_dir: Path) -> bool:
         return False
 
 
-def _mark_builtin_theme_owned(theme_dir: Path, theme_id: str) -> None:
+def _mark_builtin_theme_owned(theme_id: str) -> None:
     registered = _registered_builtin_theme(theme_id)
     if registered is None:
         raise ValueError(f"unknown built-in theme id: {theme_id}")
     registered_id, registered_dir = registered
-    if theme_dir.resolve(strict=False) != registered_dir.resolve(strict=False):
-        raise PermissionError("built-in theme directory is outside the theme root")
     marker = safe_child_path(registered_dir, BUILTIN_THEME_OWNER_MARKER)
     marker.write_text(f"{registered_id}\n", encoding="utf-8")
 
@@ -124,14 +120,14 @@ def _seed_builtin_themes() -> None:
             continue
         if not target.exists():
             shutil.copytree(source, target)
-            _mark_builtin_theme_owned(target, theme_id)
+            _mark_builtin_theme_owned(theme_id)
             continue
-        if not target.is_dir() or not _is_builtin_theme_dir(target):
+        if not target.is_dir() or not _is_builtin_theme_dir(theme_id):
             continue
         source_version = _theme_version(source)
         if target.is_dir() and source_version and source_version != _theme_version(target):
             shutil.copytree(source, target, dirs_exist_ok=True)
-        _mark_builtin_theme_owned(target, theme_id)
+        _mark_builtin_theme_owned(theme_id)
 
 
 def _read_manifest(theme_dir: Path) -> Optional[Dict[str, Any]]:
@@ -172,7 +168,7 @@ def _summary(theme_dir: Path, manifest: Dict[str, Any]) -> Dict[str, Any]:
         "author": manifest.get("author"),
         "version": manifest.get("version"),
         "previewUrl": preview_url,
-        "source": "builtin" if _is_builtin_theme_dir(theme_dir) else "user",
+        "source": "builtin" if _is_builtin_theme_dir(theme_dir.name) else "user",
     }
 
 
@@ -203,7 +199,7 @@ def get_chat_theme_manifest(state: BridgeState, theme_id: str) -> Dict[str, Any]
         raise FileNotFoundError(f"主题不存在或 theme.json 无效: {theme_id}")
     root = _themes_root()
     manifest = _read_manifest(root / safe_id)
-    if manifest is None and safe_id != DEFAULT_BUILTIN_CHAT_THEME_ID and _is_builtin_theme_dir(root / safe_id):
+    if manifest is None and safe_id != DEFAULT_BUILTIN_CHAT_THEME_ID and _is_builtin_theme_dir(safe_id):
         manifest = _read_manifest(root / DEFAULT_BUILTIN_CHAT_THEME_ID)
     if manifest is None:
         raise FileNotFoundError(f"主题不存在或 theme.json 无效: {theme_id}")
@@ -288,7 +284,7 @@ def delete_chat_theme(state: BridgeState, theme_id: str) -> Dict[str, Any]:
     """删除一个用户主题目录。内置主题（M5 种子化后只读）不可删。"""
     safe_id = _safe_theme_id(theme_id)
     target = safe_child_path(_themes_root(), safe_id)
-    if _is_builtin_theme_dir(target):
+    if _is_builtin_theme_dir(safe_id):
         raise PermissionError(f"内置主题不可删除：{theme_id}")
     if not target.is_dir():
         raise FileNotFoundError(f"主题不存在：{theme_id}")
