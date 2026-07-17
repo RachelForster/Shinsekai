@@ -36,6 +36,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     notificationText: state.notificationText || systemMessageText || systemPromptText,
     options: state.options,
     sprites: state.sprites,
+    stats: state.stats ?? [],
     status: state.status,
     statusText: state.status,
     tokenUsageText,

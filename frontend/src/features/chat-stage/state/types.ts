@@ -3,6 +3,7 @@ import type {
   ChatRuntimeStatus,
   ChatSnapshot,
   ChatSprite,
+  ChatStat,
   ChatStageEvent,
   ChatTransportMode,
   ChatTransportState,
@@ -74,6 +75,7 @@ export interface ChatStageViewModel {
   notificationText?: string;
   options: string[];
   sprites: ChatStageSprite[];
+  stats: ChatStat[];
   status: ChatRuntimeStatus;
   statusText: string;
   tokenUsageText?: string;

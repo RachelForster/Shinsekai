@@ -688,7 +688,7 @@
     "r_choice_pos": "选项位置：dialog 数组的最后一个元素必须是 {choice}。",
     "r_choice_format": "选项格式：{choice} 的 speech 内用 '/' 分隔子选项。必须是用户可选择的对话或行为的纯文本描述，不得包含任何多余的描述或说明。",
     "r_choice_balance": "选项平衡：必须包括一个插科打诨/无厘头、一个精明/理智、以及一个中庸的选项。所有选项必须与当前剧情与人物性格相符。",
-    "r_stats": "数值显示：{stat} 元素表示用户或角色状态/任务，宜出现在 dialog 前部。当 character_name 为 {stat} 时，speech 内用富文本（如 <span style='color:xxxx;'>HP: 100</span>），淡色马卡龙系，多值用 <br> 分隔。",
+    "r_stats": "数值显示：{stat} 元素表示用户或角色状态，宜出现在 dialog 前部。character_name 为 {stat} 时，speech 每行只能使用 icon|label|value|max 格式；max 可省略。可用 icon：heart、shield、zap、star、sparkles、target、coins、clock、gauge。例如：heart|生命|72|100\\nzap|精力|30|100。不要输出 HTML、颜色或其他说明。",
     "r_cg": "CG 生成：在要表现角色魅力、剧情关键节点或情感高潮时，将 character_name 设置为 {cg}，speech 内容必须是用于 Stable Diffusion 生成图片的 Prompt，必须在开头加入 highres, masterpiece, 8k, bestscores 等高质量关键字，描述人数，例如1girl，并写出人物名称，例如nanami chiaki、人物发型发色，以及眼睛颜色、服装、表情、动作和场景。可以加入和viewer的互动，例如looking at the viewer如果要用CG生成背景图片，请先加入质量关键词，再加入no person, pure senery, 再详细描述景物，景色。",
     "r_translate": "翻译字段：translate 须为角色台词 speech 的{target_voice_name}译文，与系统语音目标语言一致；只翻译台词语义，不翻译动作或旁白。",
     "r_effect": "特效使用：effect 字段为可选。直接填关键词（对话前播放一次）；loop:关键词 开始循环；stop:关键词 停止循环；before:关键词 对话前播放（同直接写）；after:关键词 对话后播放。LEAVE=人物离场。无需求时省略此字段。",

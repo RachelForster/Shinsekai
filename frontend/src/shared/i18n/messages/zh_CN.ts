@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "chat.stats.label": "角色状态",
   "api.memory.cachedNotLoaded": "embedding 模型已缓存，尚未加载",
   "api.memory.enableReady": "自动长期记忆已启用。",
   "api.memory.modelMissingKeepOff": "embedding 模型尚未下载，长期记忆已保持关闭。",

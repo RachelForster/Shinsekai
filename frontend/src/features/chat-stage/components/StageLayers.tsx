@@ -7,10 +7,12 @@ import {
   type MouseEventHandler,
   type ReactNode,
 } from "react";
+import { Clock, Coins, Gauge, Heart, Shield, Sparkles, Star, Target, Zap, type LucideIcon } from "lucide-react";
 
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
+import type { ChatStat } from "../../../shared/platform/types";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
@@ -356,6 +358,56 @@ export function NotificationLayer({ hidden, text }: { hidden: boolean; text?: st
     >
       {text}
     </div>
+  );
+}
+
+const statIcons: Record<ChatStat["icon"], LucideIcon> = {
+  clock: Clock,
+  coins: Coins,
+  gauge: Gauge,
+  heart: Heart,
+  shield: Shield,
+  sparkles: Sparkles,
+  star: Star,
+  target: Target,
+  zap: Zap,
+};
+
+function formatStatNumber(value: number) {
+  if (Number.isInteger(value)) {
+    return String(value);
+  }
+  return value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+export function StatLayer({ stats }: { stats: ChatStat[] }) {
+  const { t } = useI18n();
+  if (!stats.length) {
+    return null;
+  }
+  return (
+    <aside aria-label={t("chat.stats.label")} className="stat-layer" role="status">
+      {stats.map((stat, index) => {
+        const Icon = statIcons[stat.icon] ?? Gauge;
+        const hasRange = typeof stat.max === "number" && Number.isFinite(stat.max) && stat.max > 0;
+        const progressValue = hasRange ? Math.min(Math.max(stat.value, 0), stat.max as number) : undefined;
+        return (
+          <article className="stat-layer__item" data-icon={stat.icon} key={`${stat.label}-${index}`}>
+            <span aria-hidden className="stat-layer__icon">
+              <Icon />
+            </span>
+            <span className="stat-layer__label">{stat.label}</span>
+            <output className="stat-layer__value">
+              {formatStatNumber(stat.value)}
+              {hasRange ? <span className="stat-layer__maximum"> / {formatStatNumber(stat.max as number)}</span> : null}
+            </output>
+            {hasRange ? (
+              <progress aria-label={stat.label} className="stat-layer__progress" max={stat.max} value={progressValue} />
+            ) : null}
+          </article>
+        );
+      })}
+    </aside>
   );
 }
 

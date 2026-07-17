@@ -691,7 +691,7 @@
     "r_choice_pos": "Choices: the last item in dialog must be {choice}.",
     "r_choice_format": "Choice: in {choice}’s speech, split sub-options with '/'. Only plain, selectable lines—no extra labels.",
     "r_choice_balance": "Balance: one silly, one rational, one middle-ground; all must match the story and cast.",
-    "r_stats": "Stats: {stat} can appear near the start of dialog. When character_name is {stat}, use light HTML in speech (e.g. <span style='color:xxxx;'>HP: 100</span>), macaron colors, <br> between values.",
+    "r_stats": "Stats: {stat} may appear near the start of dialog. When character_name is {stat}, every speech line must use icon|label|value|max; max is optional. Allowed icons: heart, shield, zap, star, sparkles, target, coins, clock, gauge. Example: heart|HP|72|100\\nzap|Energy|30|100. Do not emit HTML, colors, or extra commentary.",
     "r_cg": "CG: For a highlight, set character_name to {cg} and use speech as an SD prompt: highres, masterpiece, 8k, bestscores, count (e.g. 1girl), name, hair, eyes, clothes, expression, action, scene. “looking at the viewer” allowed. For background-only: quality first, no person, pure scenery, then details.",
     "r_translate": "translate: a {target_voice_name} rendering of the speech line only, matching the system target voice language; do not translate stage directions or narration.",
     "r_effect": "Effect: effect is optional. Plain keyword = play once before dialog; loop:keyword = start looping; stop:keyword = stop looping; before:keyword = play before dialog; after:keyword = play after dialog. LEAVE means exit. Omit when no effect needed.",

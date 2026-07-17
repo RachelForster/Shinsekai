@@ -311,7 +311,7 @@ class UIUpdateManagerTests(unittest.TestCase):
         manager.post_busy_bar("", 9.0)
         manager.hide_busy_bar()
         manager.post_options([])
-        manager.post_numeric_value("<b>42</b>")
+        manager.post_numeric_value("heart|HP|42|100")
         manager.post_context_token_estimate(
             {
                 "system_prompt_tokens": 1200,
@@ -333,7 +333,7 @@ class UIUpdateManagerTests(unittest.TestCase):
                 "busy.hide",
                 "options.clear",
                 "history.replace",
-                "numeric.update",
+                "stats.update",
                 "numeric.update",
                 "sprite.remove",
                 "sprite.remove",
@@ -346,8 +346,14 @@ class UIUpdateManagerTests(unittest.TestCase):
         self.assertEqual(sink.events[1]["durationSeconds"], 1.5)
         self.assertEqual(sink.events[5]["entries"][0]["role"], "user")
         self.assertEqual(sink.events[5]["entries"][0]["text"], "你: hello")
-        self.assertEqual(sink.events[6]["html"], "<b>42</b>")
-        self.assertEqual(sink.events[7]["html"], "tokens sys 1.2k | hist 34.6k | tools 890 | total 36.7k")
+        self.assertEqual(
+            sink.events[6]["stats"],
+            [{"icon": "heart", "label": "HP", "max": 100, "value": 42}],
+        )
+        self.assertEqual(
+            sink.events[7]["html"],
+            "tokens sys 1.2k | hist 34.6k | tools 890 | total 36.7k",
+        )
         self.assertEqual(sink.events[8]["characterName"], "Mio")
         self.assertEqual(sink.events[9]["characterName"], "Nanami")
         self.assertEqual(sink.events[11]["status"], "idle")
@@ -411,7 +417,7 @@ class UIUpdateManagerTests(unittest.TestCase):
         ui.post_busy_bar("", 9.0)
         ui.hide_busy_bar()
         ui.post_options([])
-        ui.post_numeric_value("<b>42</b>")
+        ui.post_numeric_value("heart|HP|42|100")
         ui.post_context_token_estimate(
             {
                 "system_prompt_tokens": 1200,
@@ -437,7 +443,7 @@ class UIUpdateManagerTests(unittest.TestCase):
                 "busy.hide",
                 "options.clear",
                 "history.replace",
-                "numeric.update",
+                "stats.update",
                 "numeric.update",
                 "sprite.remove",
                 "sprite.remove",
@@ -449,8 +455,14 @@ class UIUpdateManagerTests(unittest.TestCase):
         self.assertEqual(sink.events[1]["text"], "Ready")
         self.assertEqual(sink.events[2]["durationSeconds"], 1.5)
         self.assertEqual(sink.events[6]["entries"][0]["text"], "你: hello")
-        self.assertEqual(sink.events[7]["html"], "<b>42</b>")
-        self.assertEqual(sink.events[8]["html"], "tokens sys 1.2k | hist 34.6k | tools 890 | total 36.7k")
+        self.assertEqual(
+            sink.events[7]["stats"],
+            [{"icon": "heart", "label": "HP", "max": 100, "value": 42}],
+        )
+        self.assertEqual(
+            sink.events[8]["html"],
+            "tokens sys 1.2k | hist 34.6k | tools 890 | total 36.7k",
+        )
         self.assertEqual(sink.events[9]["characterName"], "Mio")
         self.assertEqual(sink.events[10]["characterName"], "Nanami")
         self.assertFalse(

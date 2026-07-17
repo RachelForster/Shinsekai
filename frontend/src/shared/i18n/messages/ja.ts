@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "chat.stats.label": "キャラクターステータス",
   "api.memory.cachedNotLoaded": "埋め込みモデルはキャッシュ済み（未読み込み）",
   "api.memory.enableReady": "自動長期記憶を有効にしました。",
   "api.memory.modelMissingKeepOff": "埋め込みモデルが未ダウンロードのため、長期記憶はオフのままです。",

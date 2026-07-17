@@ -4,6 +4,34 @@ from core.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_sn
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
+    def test_stats_are_folded_for_reconnect_without_replacing_token_usage(self):
+        snapshot = make_empty_chat_snapshot()
+        snapshot["numericInfo"] = "tokens total 42"
+
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 1,
+                "stats": [
+                    {"icon": "heart", "label": "HP", "max": 100, "value": 72},
+                    {"icon": "coins", "label": "Gold", "value": 320},
+                    {"icon": "gauge", "label": "Broken", "value": float("nan")},
+                ],
+                "ts": 1,
+                "type": "stats.update",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(
+            next_snapshot["stats"],
+            [
+                {"icon": "heart", "label": "HP", "max": 100, "value": 72},
+                {"icon": "coins", "label": "Gold", "value": 320},
+            ],
+        )
+        self.assertEqual(next_snapshot["numericInfo"], "tokens total 42")
+
     def test_background_and_bgm_changes_are_folded_for_reconnect(self):
         snapshot = fold_event_into_snapshot(
             make_empty_chat_snapshot(),

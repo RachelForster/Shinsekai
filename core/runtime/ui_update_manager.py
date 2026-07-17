@@ -34,6 +34,7 @@ except ImportError:
     def Signal(*args: Any, **kwargs: Any) -> _NoopSignal:
         return _NoopSignal()
 
+from core.messaging.stat_payload import format_stats_html, parse_stat_payload
 from core.sprite.chat_history import serialize_chat_history_entries
 
 SOUND_EFFECT_CHANNEL_ID = 6
@@ -283,7 +284,8 @@ class UIUpdateManager(QObject):
         self.update_option_signal.emit(option_list)
 
     def post_numeric_value(self, text: str) -> None:
-        self.update_value_signal.emit(text)
+        stats = parse_stat_payload(text)
+        self.update_value_signal.emit(format_stats_html(stats) if stats else text)
 
     def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
         self.update_context_token_estimate_signal.emit(format_context_token_estimate(estimate))
@@ -633,7 +635,9 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self.sync_history_entries()
 
     def post_numeric_value(self, text: str) -> None:
-        self._sink.emit({"type": "numeric.update", "html": text})
+        stats = parse_stat_payload(text)
+        if stats or not str(text or "").strip():
+            self._sink.emit({"type": "stats.update", "stats": stats})
 
     def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
         self._sink.emit({"type": "numeric.update", "html": format_context_token_estimate(estimate)})

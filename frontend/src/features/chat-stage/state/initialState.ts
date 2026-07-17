@@ -9,6 +9,7 @@ export const emptyChatState: ChatStageState = {
   layers: defaultLayers(),
   options: [],
   sprites: [],
+  stats: [],
   status: "idle",
   transportMode: "snapshot",
   transportState: "connecting",

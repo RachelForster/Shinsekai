@@ -231,6 +231,7 @@
 .options-layer ::selection,
 .chat-stage__busy::selection,
 .chat-stage__notification::selection,
+.stat-layer ::selection,
 .token-usage-layer ::selection,
 .chat-history-dialog ::selection {
   background: transparent;

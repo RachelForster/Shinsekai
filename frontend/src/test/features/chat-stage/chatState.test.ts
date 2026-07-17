@@ -719,6 +719,29 @@ describe("chatStageReducer", () => {
     expect(withoutSprite.layers.sprites).toBe(false);
   });
 
+  it("keeps structured character stats separate from token usage", () => {
+    const withStats = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        stats: [
+          { icon: "heart", label: "HP", max: 100, value: 72 },
+          { icon: "coins", label: "Gold", value: 320 },
+        ],
+        ts: 1,
+        type: "stats.update",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    const viewModel = buildChatStageViewModel(withStats);
+    expect(viewModel.stats).toEqual([
+      { icon: "heart", label: "HP", max: 100, value: 72 },
+      { icon: "coins", label: "Gold", value: 320 },
+    ]);
+    expect(viewModel.tokenUsageText).toBeUndefined();
+  });
+
   it("keeps expression changes in the same display slot and evicts slots by LRU", () => {
     const showSprite = (
       state: typeof emptyChatState,

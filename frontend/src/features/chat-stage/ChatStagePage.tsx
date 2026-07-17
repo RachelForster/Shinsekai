@@ -23,6 +23,7 @@ import {
   NotificationLayer,
   OptionsLayer,
   SpriteLayer,
+  StatLayer,
   StandaloneDesktopResizeHandles,
   TokenUsageLayer,
 } from "./components/StageLayers";
@@ -95,6 +96,7 @@ export function ChatStagePage() {
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
   const handleSpriteDragStart = useDesktopWindowDrag(standaloneDesktopWindow);
   const transparentBackground = !viewModel.backgroundPath;
+  const statsVisible = viewModel.stats.length > 0;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen =
     themePickerOpen ||
@@ -351,6 +353,7 @@ export function ChatStagePage() {
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}
         data-click-through={clickThroughEnabled ? "true" : "false"}
+        data-stat-visible={statsVisible ? "true" : "false"}
         data-token-visible={tokenUsageVisible ? "true" : "false"}
         onContextMenuCapture={handleStageContextMenu}
         onFocusCapture={handleStageFocus}
@@ -388,6 +391,7 @@ export function ChatStagePage() {
           speaker={viewModel.dialogCharacterName}
           sprites={viewModel.sprites}
         />
+        <StatLayer stats={viewModel.stats} />
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
         <NotificationLayer hidden={!viewModel.layers.notification} text={viewModel.notificationText} />

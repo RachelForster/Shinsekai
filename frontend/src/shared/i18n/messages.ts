@@ -530,6 +530,7 @@ export type MessageKey =
   | "chat.transport.polling"
   | "chat.transport.reconnecting"
   | "chat.transport.snapshot"
+  | "chat.stats.label"
   | "chat.toolbar.autoPlay"
   | "chat.toolbar.close"
   | "chat.toolbar.config"

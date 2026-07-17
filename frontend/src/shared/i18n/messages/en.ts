@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "chat.stats.label": "Character stats",
   "api.memory.cachedNotLoaded": "Embedding model cached; not loaded",
   "api.memory.checking": "Checking",
   "api.memory.description":

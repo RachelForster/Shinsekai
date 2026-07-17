@@ -146,6 +146,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         eventSeq: Math.max(state.eventSeq, event.seq),
         numericInfo: htmlToText(event.html),
       });
+    case "stats.update":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        stats: event.stats.map((stat) => ({ ...stat })),
+      });
     case "busy.show":
       return withResolvedLayers({
         ...state,

@@ -16,6 +16,7 @@ import base64
 import collections
 import itertools
 import json
+import math
 import os
 import re
 import secrets
@@ -63,6 +64,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "inputDraft": "",
         "options": [],
         "sprites": [],
+        "stats": [],
         "status": "idle",
         "systemMessageText": "",
         "userDisplayName": "你",
@@ -143,6 +145,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     next_snapshot.setdefault("inputDraft", "")
     next_snapshot.setdefault("options", [])
     next_snapshot.setdefault("sprites", [])
+    next_snapshot.setdefault("stats", [])
     next_snapshot.setdefault("status", "idle")
 
     if event_type == "snapshot":
@@ -283,6 +286,38 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "numeric.update":
         next_snapshot["numericInfo"] = _plain_text(str(event.get("html") or ""))
+        return next_snapshot
+
+    if event_type == "stats.update":
+        stats: list[dict[str, Any]] = []
+        for item in event.get("stats") or []:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            value = item.get("value")
+            if (
+                not label
+                or isinstance(value, bool)
+                or not isinstance(value, (int, float))
+            ):
+                continue
+            if not math.isfinite(float(value)):
+                continue
+            stat: dict[str, Any] = {
+                "icon": str(item.get("icon") or "gauge"),
+                "label": label,
+                "value": value,
+            }
+            maximum = item.get("max")
+            if (
+                not isinstance(maximum, bool)
+                and isinstance(maximum, (int, float))
+                and math.isfinite(float(maximum))
+                and maximum > 0
+            ):
+                stat["max"] = maximum
+            stats.append(stat)
+        next_snapshot["stats"] = stats
         return next_snapshot
 
     if event_type == "busy.show":

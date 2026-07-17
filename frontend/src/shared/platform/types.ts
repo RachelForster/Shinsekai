@@ -803,6 +803,15 @@ export interface ChatExperimentalFeatures {
   forkHistory: boolean;
 }
 
+export type ChatStatIcon = "clock" | "coins" | "gauge" | "heart" | "shield" | "sparkles" | "star" | "target" | "zap";
+
+export interface ChatStat {
+  icon: ChatStatIcon;
+  label: string;
+  max?: number;
+  value: number;
+}
+
 export interface ChatSnapshot {
   backgroundPath?: string;
   bgmPath?: string;
@@ -830,6 +839,7 @@ export interface ChatSnapshot {
   sessionClosedReason?: string;
   sessionId?: string;
   sprites: ChatSprite[];
+  stats?: ChatStat[];
   status: ChatRuntimeStatus;
   statusMessage?: string;
   systemMessageText?: string;
@@ -923,6 +933,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "options.show"; options: string[] })
   | (ChatEventBase & { type: "options.clear" })
   | (ChatEventBase & { type: "numeric.update"; html: string })
+  | (ChatEventBase & { type: "stats.update"; stats: ChatStat[] })
   | (ChatEventBase & { type: "busy.show"; text: string; durationSeconds: number })
   | (ChatEventBase & { type: "busy.hide" })
   | (ChatEventBase & { type: "notification.change"; text: string })

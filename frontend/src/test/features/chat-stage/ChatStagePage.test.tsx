@@ -403,6 +403,55 @@ describe("ChatStagePage", () => {
     pause.mockRestore();
   });
 
+  it("reveals the native stat layer only after the first stats event", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ eventSeq: 0, stats: [] }));
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+
+    await screen.findByText("Ready");
+    expect(screen.queryByRole("status", { name: "Character stats" })).not.toBeInTheDocument();
+    expect(document.querySelector(".chat-stage")).toHaveAttribute("data-stat-visible", "false");
+
+    act(() => {
+      listener?.({
+        seq: 1,
+        stats: [
+          { icon: "heart", label: "HP", max: 100, value: 72 },
+          { icon: "coins", label: "Gold", value: 320 },
+        ],
+        ts: 1,
+        type: "stats.update",
+        v: 1,
+      });
+    });
+
+    const statLayer = screen.getByRole("status", { name: "Character stats" });
+    expect(statLayer).toHaveTextContent("HP72 / 100");
+    expect(statLayer).toHaveTextContent("Gold320");
+    expect(statLayer.querySelector('[data-icon="heart"] .lucide-heart')).not.toBeNull();
+    expect(screen.getByRole("progressbar", { name: "HP" })).toHaveAttribute("value", "72");
+    expect(screen.getByRole("progressbar", { name: "HP" })).toHaveAttribute("max", "100");
+    expect(document.querySelector(".chat-stage")).toHaveAttribute("data-stat-visible", "true");
+
+    act(() => {
+      listener?.({
+        color: "#fff",
+        fullHtml: "<p>Stats remain visible</p>",
+        isSystem: false,
+        seq: 2,
+        speaker: "Mio",
+        ts: 2,
+        type: "dialog.end",
+        v: 1,
+      });
+    });
+    expect(screen.getByRole("status", { name: "Character stats" })).toBeInTheDocument();
+  });
+
   it("shows a selected option as the user message before the command response arrives", async () => {
     let resolveCommand!: (snapshot: ChatSnapshot) => void;
     mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut"] }));

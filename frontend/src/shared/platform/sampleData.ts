@@ -314,6 +314,11 @@ export const sampleChatSnapshot: ChatSnapshot = {
   options: ["继续", "查看历史", "切换角色"],
   runtimeMode: "react",
   sprites: [{ id: "nanami-default", path: "/assets/present_example.png", label: "Nanami" }],
+  stats: [
+    { icon: "heart", label: "HP", max: 100, value: 72 },
+    { icon: "sparkles", label: "Affinity", max: 100, value: 38 },
+    { icon: "coins", label: "Gold", value: 320 },
+  ],
   status: "idle",
   userDisplayName: "你",
   voiceLanguage: "ja",
