@@ -7,7 +7,26 @@ import { AppShell } from "../../../app/shell/AppShell";
 import { I18nProvider } from "../../../shared/i18n";
 
 vi.mock("../../../app/shell/StartupUpdatePrompt", () => ({
-  StartupUpdatePrompt: () => <div data-testid="startup-update-prompt" />,
+  StartupUpdatePrompt: ({
+    onStateChange,
+  }: {
+    onStateChange: (state: { checkComplete: boolean; open: boolean }) => void;
+  }) => (
+    <div data-testid="startup-update-prompt">
+      <button onClick={() => onStateChange({ checkComplete: true, open: false })} type="button">
+        Finish update check
+      </button>
+      <button onClick={() => onStateChange({ checkComplete: true, open: true })} type="button">
+        Show update
+      </button>
+    </div>
+  ),
+}));
+
+vi.mock("../../../features/release-highlights/FeatureHighlightsPrompt", () => ({
+  FeatureHighlightsPrompt: ({ enabled }: { enabled: boolean }) => (
+    <div data-enabled={enabled} data-testid="feature-highlights-prompt" />
+  ),
 }));
 
 vi.mock("../../../features/tools/ToolsDrawer", () => ({
@@ -53,6 +72,11 @@ describe("AppShell", () => {
 
     expect(screen.getByText("Workspace content")).toBeInTheDocument();
     expect(screen.getByTestId("startup-update-prompt")).toBeInTheDocument();
+    expect(screen.getByTestId("feature-highlights-prompt")).toHaveAttribute("data-enabled", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Finish update check" }));
+    expect(screen.getByTestId("feature-highlights-prompt")).toHaveAttribute("data-enabled", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Show update" }));
+    expect(screen.getByTestId("feature-highlights-prompt")).toHaveAttribute("data-enabled", "false");
     fireEvent.click(screen.getByRole("button", { name: "Tools" }));
 
     expect(await screen.findByRole("dialog", { name: "Tools drawer mock" })).toBeInTheDocument();

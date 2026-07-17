@@ -36,6 +36,10 @@ export const jaMessages: Record<MessageKey, string> = {
   "app.preview": "設定",
   "app.shellMeta": "AI RPG Tools",
   "app.title": "新世界プログラム",
+  "releaseHighlights.dismiss": "確認しました",
+  "releaseHighlights.explore": "今すぐ試す",
+  "releaseHighlights.title": "新バージョンのハイライト",
+  "releaseHighlights.version": "バージョン {version}",
   "app.projectRoot.body":
     "Shinsekai は使用すべきプロジェクトデータのフォルダーを安全に判断できませんでした。データの分散や上書きを防ぐため、今後使用する場所を一つ選んでください。",
   "app.projectRoot.blocked":

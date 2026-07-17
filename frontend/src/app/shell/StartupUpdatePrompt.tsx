@@ -15,27 +15,37 @@ import { AsyncButton, Button, Dialog } from "../../shared/ui";
 
 type StartupUpdateStatus = "idle" | "available" | "downloading" | "installing" | "restartRequired" | "error";
 
-let startupUpdateCheckStarted = false;
+let startupUpdateCheckPromise: Promise<DesktopUpdate | null> | null = null;
 
-export function StartupUpdatePrompt() {
+function checkDesktopUpdateOnce() {
+  startupUpdateCheckPromise ??= checkDesktopUpdate();
+  return startupUpdateCheckPromise;
+}
+
+export interface StartupUpdatePromptState {
+  checkComplete: boolean;
+  open: boolean;
+}
+
+export function StartupUpdatePrompt({ onStateChange }: { onStateChange?: (state: StartupUpdatePromptState) => void }) {
   const { t } = useI18n();
   const [status, setStatus] = useState<StartupUpdateStatus>("idle");
   const [update, setUpdate] = useState<DesktopUpdate | null>(null);
   const [progress, setProgress] = useState<DesktopUpdateProgress | null>(null);
   const [error, setError] = useState("");
+  const [checkComplete, setCheckComplete] = useState(() => !isTauriDesktop());
 
   const busy = status === "downloading" || status === "installing";
   const open = Boolean(update) || busy || status === "restartRequired" || status === "error";
 
   useEffect(() => {
-    if (!isTauriDesktop() || startupUpdateCheckStarted) {
+    if (!isTauriDesktop()) {
+      setCheckComplete(true);
       return;
     }
-
-    startupUpdateCheckStarted = true;
     let cancelled = false;
 
-    void checkDesktopUpdate()
+    void checkDesktopUpdateOnce()
       .then((nextUpdate) => {
         if (cancelled || !nextUpdate) {
           return;
@@ -45,12 +55,21 @@ export function StartupUpdatePrompt() {
       })
       .catch((checkError) => {
         console.warn("[desktop-update] startup update check failed", checkError);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setCheckComplete(true);
+        }
       });
 
     return () => {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    onStateChange?.({ checkComplete, open });
+  }, [checkComplete, onStateChange, open]);
 
   useEffect(() => {
     if (!isTauriDesktop() || !open) {

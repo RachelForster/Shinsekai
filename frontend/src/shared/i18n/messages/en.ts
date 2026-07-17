@@ -32,6 +32,10 @@ export const enMessages: Record<MessageKey, string> = {
   "app.preview": "Settings",
   "app.shellMeta": "AI RPG Tools",
   "app.title": "Shinsekai",
+  "releaseHighlights.dismiss": "Got it",
+  "releaseHighlights.explore": "Explore now",
+  "releaseHighlights.title": "What's new",
+  "releaseHighlights.version": "Version {version}",
   "app.projectRoot.body":
     "Shinsekai could not safely determine which project data folder to use. Choose the single location to use from now on so the app does not split or overwrite your data.",
   "app.projectRoot.blocked":

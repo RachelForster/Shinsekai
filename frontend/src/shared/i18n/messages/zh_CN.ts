@@ -35,6 +35,10 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "app.preview": "设置",
   "app.shellMeta": "AI RPG Tools",
   "app.title": "新世界程序",
+  "releaseHighlights.dismiss": "知道了",
+  "releaseHighlights.explore": "开始体验",
+  "releaseHighlights.title": "新版本亮点",
+  "releaseHighlights.version": "版本 {version}",
   "app.projectRoot.body":
     "Shinsekai 无法安全判断应使用哪个项目数据目录。请选择今后唯一使用的位置，避免数据被分散或覆盖。",
   "app.projectRoot.blocked":
