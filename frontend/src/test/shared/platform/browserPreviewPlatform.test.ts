@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import neonNightCityFrameDialogUrl from "../../../../../assets/chat_ui_themes/neon-night-city/frame-dialog.svg?url";
 import neonNightCityPreviewUrl from "../../../../../assets/chat_ui_themes/neon-night-city/preview.png?url";
+import sakuraDreamPreviewUrl from "../../../../../assets/chat_ui_themes/sakura-dream/preview.png?url";
 import windborneAdventurePreviewUrl from "../../../../../assets/chat_ui_themes/windborne-adventure/preview.png?url";
 import { createBrowserPreviewPlatform } from "../../../shared/platform/browserPreviewPlatform";
 import { sampleConfig } from "../../../shared/platform/sampleData";
@@ -119,8 +120,12 @@ describe("browser preview platform chat themes", () => {
     await expect(platform.chat.getActiveThemeId()).resolves.toBe("windborne-adventure");
 
     const themes = await platform.chat.listThemes();
-    expect(themes.map((theme) => theme.id)).toEqual(["windborne-adventure", "neon-night-city"]);
-    expect(themes.map((theme) => theme.previewUrl)).toEqual([windborneAdventurePreviewUrl, neonNightCityPreviewUrl]);
+    expect(themes.map((theme) => theme.id)).toEqual(["windborne-adventure", "neon-night-city", "sakura-dream"]);
+    expect(themes.map((theme) => theme.previewUrl)).toEqual([
+      windborneAdventurePreviewUrl,
+      neonNightCityPreviewUrl,
+      sakuraDreamPreviewUrl,
+    ]);
 
     const windborneManifest = await platform.chat.getThemeManifest("windborne-adventure");
     expect(windborneManifest.tokens.global?.themeColor).toBe("#f3cf57");
@@ -150,6 +155,14 @@ describe("browser preview platform chat themes", () => {
     await platform.chat.setActiveThemeId("neon-night-city");
     await expect(platform.chat.getActiveThemeId()).resolves.toBe("neon-night-city");
     await expect(platform.chat.getTheme()).resolves.toMatchObject({ themeColor: "#00f5ff" });
+
+    const sakuraManifest = await platform.chat.getThemeManifest("sakura-dream");
+    expect(sakuraManifest.name.zh_CN).toBe("樱色梦境");
+    expect(sakuraManifest.tokens.global?.themeColor).toBe("#d4788e");
+    expect(sakuraManifest.tokens.dialog?.frameImage).toBe("frame-dialog.svg");
+    expect(sakuraManifest.tokens.options?.frameImage).toBe("frame-option.svg");
+    await platform.chat.setActiveThemeId("sakura-dream");
+    await expect(platform.chat.getTheme()).resolves.toMatchObject({ themeColor: "#d4788e" });
   });
 
   it("adds uploaded preview themes as user themes and protects builtins from deletion", async () => {

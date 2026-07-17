@@ -10,10 +10,12 @@ from __future__ import annotations
 
 DEFAULT_BUILTIN_CHAT_THEME_ID = "windborne-adventure"
 NEON_NIGHT_CITY_THEME_ID = "neon-night-city"
+SAKURA_DREAM_THEME_ID = "sakura-dream"
 
 BUILTIN_THEME_IDS = frozenset(
     {
         DEFAULT_BUILTIN_CHAT_THEME_ID,
         NEON_NIGHT_CITY_THEME_ID,
+        SAKURA_DREAM_THEME_ID,
     }
 )

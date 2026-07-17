@@ -1,0 +1,237 @@
+{
+  "schema": 1,
+  "id": "sakura-dream",
+  "name": {
+    "zh_CN": "樱色梦境",
+    "en": "Sakura Dream",
+    "ja": "桜色ドリーム"
+  },
+  "author": "Shinsekai",
+  "version": "1.0.0",
+  "description": {
+    "zh_CN": "以默认樱粉色为核心，融合夜樱、玻璃质感和现代视觉小说排版的 Galgame 主题。",
+    "en": "A modern galgame theme built around Shinsekai pink, night-sakura glass surfaces, and elegant visual-novel typography.",
+    "ja": "新世界のピンクを基調に、夜桜の光とガラス質感を重ねたモダンなビジュアルノベルテーマです。"
+  },
+  "preview": "preview.png",
+  "tokens": {
+    "global": {
+      "themeColor": "#d4788e",
+      "fontFamily": "Noto Serif SC, Source Han Serif SC, Microsoft YaHei, Yu Mincho, Georgia, serif"
+    },
+    "dialog": {
+      "background": "linear-gradient(135deg, rgba(48,19,34,0.9), rgba(19,12,24,0.92))",
+      "borderColor": "rgba(255,205,222,0.38)",
+      "borderRadius": "22px",
+      "boxShadow": "0 24px 64px rgba(20,7,15,0.48), 0 0 28px rgba(212,120,142,0.14), inset 0 1px 0 rgba(255,255,255,0.14)",
+      "chrome": "panel",
+      "color": "#fff8fb",
+      "frameImage": "frame-dialog.svg",
+      "frameOutsetPx": 3,
+      "frameSlice": 32,
+      "frameWidthPx": 24,
+      "heightPx": 178,
+      "nameInputGapVh": 20,
+      "offsetY": 0,
+      "padding": 26,
+      "textAlign": "left",
+      "textShadow": "0 2px 8px rgba(20,7,15,0.7)",
+      "textSizePx": 22,
+      "textWeight": 500,
+      "widthPct": 86
+    },
+    "name": {
+      "align": "left",
+      "background": "linear-gradient(100deg, rgba(212,120,142,0.96), rgba(129,60,94,0.94))",
+      "borderColor": "rgba(255,226,235,0.64)",
+      "borderRadius": "999px",
+      "boxShadow": "0 10px 26px rgba(69,23,47,0.36), inset 0 1px 0 rgba(255,255,255,0.28)",
+      "color": "#ffffff",
+      "decoration": "accent",
+      "fontFamily": "Noto Serif SC, Source Han Serif SC, Microsoft YaHei, Yu Mincho, Georgia, serif",
+      "frameImage": "frame-name.svg",
+      "frameOutsetPx": 2,
+      "frameSlice": 22,
+      "frameWidthPx": 14,
+      "hideWhenStartOption": true,
+      "padding": 10,
+      "textShadow": "0 2px 7px rgba(69,23,47,0.62)",
+      "textSizePx": 20,
+      "textWeight": 700
+    },
+    "options": {
+      "background": "linear-gradient(100deg, rgba(58,25,43,0.92), rgba(26,16,30,0.84))",
+      "borderColor": "rgba(255,205,222,0.32)",
+      "borderRadius": "16px",
+      "boxShadow": "0 14px 34px rgba(24,8,17,0.34), inset 0 1px 0 rgba(255,255,255,0.1)",
+      "color": "#fff8fb",
+      "frameImage": "frame-option.svg",
+      "frameOutsetPx": 2,
+      "frameSlice": 20,
+      "frameWidthPx": 12,
+      "gap": 12,
+      "active": {
+        "background": "linear-gradient(100deg, rgba(228,143,164,0.98), rgba(168,78,117,0.98))",
+        "borderColor": "#ffe4ed",
+        "boxShadow": "0 16px 34px rgba(91,30,61,0.42), 0 0 24px rgba(212,120,142,0.34)",
+        "color": "#ffffff"
+      },
+      "hover": {
+        "background": "linear-gradient(100deg, rgba(212,120,142,0.94), rgba(126,57,91,0.94))",
+        "borderColor": "rgba(255,231,239,0.82)",
+        "boxShadow": "0 16px 38px rgba(76,24,51,0.42), 0 0 26px rgba(212,120,142,0.28)",
+        "color": "#ffffff"
+      },
+      "icon": "none",
+      "minHeightPx": 54,
+      "nameClearanceVh": 3.8,
+      "placement": "center",
+      "textShadow": "0 2px 7px rgba(24,8,17,0.7)",
+      "textSizePx": 18,
+      "textWeight": 600,
+      "widthMode": "fixed",
+      "widthPx": 660
+    },
+    "input": {
+      "background": "linear-gradient(100deg, rgba(48,20,35,0.94), rgba(23,14,27,0.92))",
+      "borderColor": "rgba(255,205,222,0.36)",
+      "borderRadius": "999px",
+      "boxShadow": "0 16px 42px rgba(20,7,15,0.4), 0 0 22px rgba(212,120,142,0.12), inset 0 1px 0 rgba(255,255,255,0.12)",
+      "color": "#fff8fb",
+      "fieldBackground": "rgba(255,255,255,0.04)",
+      "fieldBorderRadius": "999px",
+      "layout": "pill",
+      "maxWidthPx": 680
+    },
+    "toolbar": {
+      "background": "rgba(39,18,31,0.86)",
+      "borderColor": "rgba(255,205,222,0.28)",
+      "borderRadius": "999px",
+      "boxShadow": "0 12px 30px rgba(20,7,15,0.34), inset 0 1px 0 rgba(255,255,255,0.1)",
+      "color": "#ffe8ef",
+      "placement": "input-top",
+      "reveal": "hover"
+    },
+    "send": {
+      "background": "linear-gradient(145deg, #e493a8, #b85f86)",
+      "borderColor": "rgba(255,235,241,0.72)",
+      "borderRadius": "50%",
+      "boxShadow": "0 8px 22px rgba(93,31,63,0.38), 0 0 18px rgba(212,120,142,0.26)",
+      "color": "#ffffff"
+    },
+    "logs": {
+      "page": {
+        "background": "linear-gradient(145deg, #180f17, #261421)",
+        "color": "#fff5f8"
+      },
+      "panel": {
+        "background": "rgba(43,20,34,0.9)",
+        "borderColor": "rgba(255,205,222,0.24)",
+        "borderRadius": "16px",
+        "boxShadow": "0 18px 44px rgba(20,7,15,0.34)",
+        "color": "#fff5f8",
+        "frameImage": "frame-dialog.svg",
+        "frameOutsetPx": 2,
+        "frameSlice": 32,
+        "frameWidthPx": 18
+      },
+      "toolbar": {
+        "background": "rgba(54,23,41,0.9)",
+        "borderColor": "rgba(255,205,222,0.24)",
+        "color": "#ffe8ef"
+      },
+      "sidebar": {
+        "background": "rgba(31,16,27,0.94)",
+        "borderColor": "rgba(255,205,222,0.16)",
+        "color": "#f8dfe7"
+      },
+      "source": {
+        "background": "rgba(212,120,142,0.14)",
+        "borderColor": "rgba(212,120,142,0.42)",
+        "color": "#ffc8d8"
+      },
+      "viewer": {
+        "background": "rgba(24,13,22,0.88)",
+        "borderColor": "rgba(255,205,222,0.16)",
+        "color": "#fff5f8"
+      },
+      "code": {
+        "background": "rgba(17,9,16,0.94)",
+        "color": "#f7dfe7",
+        "fontFamily": "Cascadia Mono, JetBrains Mono, Consolas, monospace"
+      },
+      "line": {
+        "borderColor": "rgba(255,205,222,0.08)",
+        "expanded": {
+          "background": "rgba(212,120,142,0.12)"
+        },
+        "hover": {
+          "background": "rgba(255,205,222,0.06)"
+        }
+      },
+      "number": {
+        "borderColor": "rgba(255,205,222,0.1)",
+        "color": "rgba(248,223,231,0.5)"
+      },
+      "detail": {
+        "background": "rgba(255,255,255,0.045)",
+        "borderColor": "rgba(255,205,222,0.14)",
+        "color": "#f8dfe7"
+      },
+      "badge": {
+        "background": "rgba(212,120,142,0.12)",
+        "borderColor": "rgba(212,120,142,0.34)",
+        "color": "#ffc8d8"
+      },
+      "event": {
+        "background": "rgba(212,120,142,0.14)",
+        "borderColor": "rgba(212,120,142,0.4)",
+        "color": "#ffc8d8"
+      },
+      "fileItem": {
+        "background": "rgba(255,255,255,0.025)",
+        "borderColor": "rgba(255,205,222,0.09)",
+        "color": "#f8dfe7",
+        "active": {
+          "background": "rgba(212,120,142,0.16)",
+          "borderColor": "rgba(212,120,142,0.46)",
+          "color": "#ffe3ec"
+        },
+        "hover": {
+          "background": "rgba(255,205,222,0.06)",
+          "borderColor": "rgba(255,205,222,0.18)"
+        }
+      },
+      "levels": {
+        "debug": {
+          "background": "rgba(153,109,191,0.13)",
+          "borderColor": "rgba(190,145,225,0.36)",
+          "color": "#dfbdf7"
+        },
+        "default": {
+          "background": "rgba(255,255,255,0.05)",
+          "borderColor": "rgba(255,205,222,0.12)",
+          "color": "#e9ced7"
+        },
+        "error": {
+          "background": "rgba(236,80,104,0.14)",
+          "borderColor": "rgba(236,80,104,0.42)",
+          "color": "#ff9cac"
+        },
+        "info": {
+          "background": "rgba(212,120,142,0.13)",
+          "borderColor": "rgba(212,120,142,0.4)",
+          "color": "#ffc4d4"
+        },
+        "warn": {
+          "background": "rgba(224,168,88,0.13)",
+          "borderColor": "rgba(224,168,88,0.42)",
+          "color": "#f5ca8a"
+        }
+      }
+    },
+    "typewriter": {
+      "cps": 34
+    }
+  }
+}

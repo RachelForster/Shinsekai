@@ -36,8 +36,9 @@ class ChatThemeBridgeTests(unittest.TestCase):
             try:
                 themes = list_chat_themes(state)
                 theme_index = {item["id"]: item for item in themes}
-                self.assertEqual(list(theme_index), ["neon-night-city", "windborne-adventure"])
+                self.assertEqual(list(theme_index), ["neon-night-city", "sakura-dream", "windborne-adventure"])
                 self.assertEqual(theme_index["neon-night-city"]["source"], "builtin")
+                self.assertEqual(theme_index["sakura-dream"]["source"], "builtin")
                 self.assertEqual(theme_index["windborne-adventure"]["source"], "builtin")
                 self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "neon-night-city" / "theme.json").is_file()
@@ -53,6 +54,9 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 )
                 self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "windborne-adventure" / "theme.json").is_file()
+                )
+                self.assertTrue(
+                    (Path(tempdir) / "data" / "chat_ui_themes" / "sakura-dream" / "preview.png").is_file()
                 )
             finally:
                 os.chdir(previous_cwd)
@@ -143,6 +147,8 @@ class ChatThemeBridgeTests(unittest.TestCase):
                     delete_chat_theme(state, "windborne-adventure")
                 with self.assertRaises(PermissionError):
                     delete_chat_theme(state, "neon-night-city")
+                with self.assertRaises(PermissionError):
+                    delete_chat_theme(state, "sakura-dream")
             finally:
                 os.chdir(previous_cwd)
 
