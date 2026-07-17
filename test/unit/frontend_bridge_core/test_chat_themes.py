@@ -248,6 +248,47 @@ class ChatThemeBridgeTests(unittest.TestCase):
             finally:
                 os.chdir(previous_cwd)
 
+    def test_save_chat_theme_rejects_path_components_in_theme_ids(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                for theme_id in ("../escaped-theme", "nested/escaped-theme", "nested\\escaped-theme"):
+                    with self.subTest(theme_id=theme_id), self.assertRaises(ValueError):
+                        save_chat_theme(
+                            state,
+                            {
+                                "baseId": "windborne-adventure",
+                                "manifest": {
+                                    "schema": 1,
+                                    "id": theme_id,
+                                    "name": {"en": "Escaped"},
+                                    "tokens": {},
+                                },
+                            },
+                        )
+
+                with self.assertRaises(ValueError):
+                    save_chat_theme(
+                        state,
+                        {
+                            "baseId": "../windborne-adventure",
+                            "manifest": {
+                                "schema": 1,
+                                "id": "escaped-theme",
+                                "name": {"en": "Escaped"},
+                                "tokens": {},
+                            },
+                        },
+                    )
+
+                themes_root = Path(tempdir) / "data" / "chat_ui_themes"
+                self.assertFalse((Path(tempdir) / "data" / "escaped-theme").exists())
+                self.assertFalse((themes_root / "nested").exists())
+            finally:
+                os.chdir(previous_cwd)
+
     def test_delete_builtin_theme_is_rejected(self):
         state = self._make_state()
         previous_cwd = Path.cwd()

@@ -315,7 +315,9 @@ def save_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str, Any]:
             raise FileNotFoundError(f"基础主题不存在或无效：{base_id}")
 
     with tempfile.TemporaryDirectory(prefix="chat_theme_save_", dir=root) as tmp:
-        staging = Path(tmp) / theme_id
+        # The temporary directory is unique already. Keep its child name
+        # server-controlled so request data is never used in this copy path.
+        staging = Path(tmp) / "working-theme"
         shutil.copytree(source, staging)
         safe_child_path(staging, BUILTIN_THEME_OWNER_MARKER).unlink(missing_ok=True)
         (staging / MANIFEST_NAME).write_text(
