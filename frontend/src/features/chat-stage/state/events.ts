@@ -3,19 +3,10 @@ import { clearTransientNotificationState, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
 import { htmlToText } from "./text";
 import type { ChatStageSprite, ChatStageState } from "./types";
-
-function sortSprites(sprites: ChatStageSprite[]) {
-  return [...sprites].sort((left, right) => {
-    const slotDiff = (left.slot ?? Number.MAX_SAFE_INTEGER) - (right.slot ?? Number.MAX_SAFE_INTEGER);
-    if (slotDiff !== 0) {
-      return slotDiff;
-    }
-    return left.id.localeCompare(right.id);
-  });
-}
+import { upsertChatStageSprite } from "./sprites";
 
 function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { type: "sprite.show" }>): ChatStageState {
-  const id = event.slot != null ? `${event.characterName}:${event.slot}` : event.characterName;
+  const id = event.characterName;
   const nextSprite: ChatStageSprite = {
     characterName: event.characterName,
     id,
@@ -26,10 +17,7 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
     x: event.x,
     y: event.y,
   };
-  const sprites = sortSprites([
-    ...state.sprites.filter((sprite) => sprite.id !== id && sprite.label !== event.characterName),
-    nextSprite,
-  ]);
+  const sprites = upsertChatStageSprite(state.sprites, nextSprite);
   return withResolvedLayers({
     ...clearTransientNotificationState(state),
     eventSeq: Math.max(state.eventSeq, event.seq),
@@ -122,6 +110,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         backgroundPath: event.url,
         eventSeq: Math.max(state.eventSeq, event.seq),
       });
+    case "bgm.change":
+      return withResolvedLayers({
+        ...state,
+        bgmPath: event.url,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+      });
     case "cg.show":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
@@ -151,6 +145,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         ...state,
         eventSeq: Math.max(state.eventSeq, event.seq),
         numericInfo: htmlToText(event.html),
+      });
+    case "stats.update":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        stats: event.stats.map((stat) => ({ ...stat })),
       });
     case "busy.show":
       return withResolvedLayers({

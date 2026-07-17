@@ -205,6 +205,7 @@ pnpm sync:version
 |------|------|
 | **项目主页（GitHub Pages）** | [rachelforster.github.io/Shinsekai](https://rachelforster.github.io/Shinsekai/) |
 | **图形界面使用指南（新手）** | [docs/GUI_USER_GUIDE_zh-CN.md](docs/GUI_USER_GUIDE_zh-CN.md) |
+| 聊天皮肤定义与制作指南 | [docs/CHAT_UI_THEME_GUIDE_zh-CN.md](docs/CHAT_UI_THEME_GUIDE_zh-CN.md) |
 | 英文说明 | [docs/README_EN.md](docs/README_EN.md) |
 | 插件开发者指南 | [docs/PLUGIN_DEVELOPER_GUIDE.md](docs/PLUGIN_DEVELOPER_GUIDE.md) |
 | 本仓库 | [github.com/RachelForster/Shinsekai](https://github.com/RachelForster/Shinsekai) |

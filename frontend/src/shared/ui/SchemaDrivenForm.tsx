@@ -16,6 +16,7 @@ interface SchemaDrivenFormProps<T extends object> {
   errors?: SchemaErrorMap<T>;
   groups: Array<FormGroupSchema<T>>;
   onChange: (draft: T) => void;
+  sectionIdPrefix?: string;
   value: T;
 }
 
@@ -248,18 +249,23 @@ export function SchemaDrivenForm<T extends object>({
   errors = {},
   groups,
   onChange,
+  sectionIdPrefix = "",
   value,
 }: SchemaDrivenFormProps<T>) {
   return (
     <div className="settings-grid">
       {groups.map((group) => {
+        const sectionId = sectionIdPrefix ? `${sectionIdPrefix}${group.id}` : undefined;
+        const sectionClassName = ["section", "schema-section", sectionId ? "page-section-anchor" : ""]
+          .filter(Boolean)
+          .join(" ");
         const fields = (
           <SchemaFieldGrid disabled={disabled} errors={errors} group={group} onChange={onChange} value={value} />
         );
 
         if (collapsedGroupIds.includes(group.id)) {
           return (
-            <details className="section schema-section" key={group.id}>
+            <details className={sectionClassName} id={sectionId} key={group.id}>
               <summary className="schema-section__summary">{group.title}</summary>
               {fields}
             </details>
@@ -267,7 +273,7 @@ export function SchemaDrivenForm<T extends object>({
         }
 
         return (
-          <section className="section schema-section" key={group.id}>
+          <section className={sectionClassName} id={sectionId} key={group.id}>
             <div className="section__header">
               <h2 className="section__title">{group.title}</h2>
             </div>

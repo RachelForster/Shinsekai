@@ -109,7 +109,7 @@ export function DesktopRuntimeSection() {
   const currentCandidate = visibleCandidates[0] ?? null;
 
   return (
-    <section className="section desktop-runtime-settings">
+    <section className="section desktop-runtime-settings page-section-anchor" id="system-runtime">
       <div className="section__header">
         <div>
           <h2 className="section__title">{t("system.runtime.title")}</h2>

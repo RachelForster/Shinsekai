@@ -18,7 +18,7 @@ import {
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
 import type { ChatCommand } from "../../../shared/platform/types";
-import { ToolbarButton } from "../../../shared/ui";
+import { ThemeFrame, ToolbarButton } from "../../../shared/ui";
 
 export function DialogStageControls({
   asrPaused,
@@ -82,6 +82,7 @@ export function DialogStageControls({
       onPointerDown={stopDialogPointerPropagation}
     >
       <div className="dialog-stage-controls__surface">
+        <ThemeFrame prefix="chat-toolbar" />
         <div aria-label={t("chat.actionBar.title")} className="dialog-stage-controls__rail" role="toolbar">
           <ToolbarButton
             aria-label={lockLabel}

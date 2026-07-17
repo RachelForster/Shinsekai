@@ -138,6 +138,7 @@
 ## 11. 想了解更多
 
 - 项目总说明（功能列表、下载）：[`README.md`](../README.md)  
+- 制作聊天皮肤：[`CHAT_UI_THEME_GUIDE_zh-CN.md`](CHAT_UI_THEME_GUIDE_zh-CN.md)
 - 插件开发（面向会编程的用户）：[`PLUGIN_DEVELOPER_GUIDE.md`](PLUGIN_DEVELOPER_GUIDE.md)
 
 若界面与本文略有出入，以您安装的 **版本界面文字** 为准。

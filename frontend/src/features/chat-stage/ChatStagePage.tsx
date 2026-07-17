@@ -16,12 +16,14 @@ import { HistoryDialog } from "./components/HistoryDialog";
 import { InputLayer } from "./components/InputLayer";
 import {
   BackgroundLayer,
+  BgmLayer,
   BusyLayer,
   CgLayer,
   DialogLayer,
   NotificationLayer,
   OptionsLayer,
   SpriteLayer,
+  StatLayer,
   StandaloneDesktopResizeHandles,
   TokenUsageLayer,
 } from "./components/StageLayers";
@@ -58,6 +60,7 @@ export function ChatStagePage() {
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
   const mainThemeColor = useMainThemeColor();
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
   const voskModelState = useVoskModelAvailability();
@@ -93,9 +96,15 @@ export function ChatStagePage() {
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
   const handleSpriteDragStart = useDesktopWindowDrag(standaloneDesktopWindow);
   const transparentBackground = !viewModel.backgroundPath;
+  const statsVisible = viewModel.stats.length > 0;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen =
-    toolbarConfigOpen || branchDialogOpen || historyDialogOpen || confirmClearHistory || confirmRevertUserIndex != null;
+    themePickerOpen ||
+    toolbarConfigOpen ||
+    branchDialogOpen ||
+    historyDialogOpen ||
+    confirmClearHistory ||
+    confirmRevertUserIndex != null;
   const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
   const dialogToolbarPlacement =
     typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
@@ -204,6 +213,18 @@ export function ChatStagePage() {
 
   const updateRuntimeTextSpeed = (typewriterCps: number) => {
     setRuntimeConfig((current) => ({ ...current, typewriterCps }));
+  };
+
+  const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, immersiveMode }));
+  };
+
+  const updateRuntimeAutoHideTopTools = (autoHideTopTools: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, autoHideTopTools }));
+  };
+
+  const updateRuntimeAutoHideInput = (autoHideInput: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, autoHideInput }));
   };
 
   const updateRuntimeDialogOpacity = (dialogOpacity: number) => {
@@ -332,6 +353,7 @@ export function ChatStagePage() {
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}
         data-click-through={clickThroughEnabled ? "true" : "false"}
+        data-stat-visible={statsVisible ? "true" : "false"}
         data-token-visible={tokenUsageVisible ? "true" : "false"}
         onContextMenuCapture={handleStageContextMenu}
         onFocusCapture={handleStageFocus}
@@ -342,11 +364,14 @@ export function ChatStagePage() {
       >
         <StandaloneDesktopResizeHandles hidden={!standaloneDesktopWindow} />
         <TopStageTools
+          autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideTopTools}
           hidden={!viewModel.layers.toolbar}
           onCloseDesktopWindow={closeSurface}
+          onThemePickerOpenChange={setThemePickerOpen}
           onTokenUsageOpenChange={setTokenUsageOpen}
           standaloneDesktopWindow={standaloneDesktopWindow}
           status={viewModel.statusText}
+          themePickerOpen={themePickerOpen}
           tokenUsageAvailable={Boolean(viewModel.tokenUsageText)}
           tokenUsageOpen={tokenUsageOpen}
           transportMode={viewModel.transportMode}
@@ -357,6 +382,7 @@ export function ChatStagePage() {
           path={viewModel.backgroundPath}
           transparent={transparentBackground}
         />
+        <BgmLayer path={viewModel.bgmPath} />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer
           hidden={!viewModel.layers.sprites}
@@ -365,6 +391,7 @@ export function ChatStagePage() {
           speaker={viewModel.dialogCharacterName}
           sprites={viewModel.sprites}
         />
+        <StatLayer stats={viewModel.stats} />
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
         <NotificationLayer hidden={!viewModel.layers.notification} text={viewModel.notificationText} />
@@ -408,6 +435,7 @@ export function ChatStagePage() {
         ) : null}
         <InputLayer
           asrPaused={viewModel.status === "paused"}
+          autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
           disabled={viewModel.inputDisabled}
           hidden={!viewModel.layers.input}
           inputLayout={inputLayout}
@@ -447,6 +475,8 @@ export function ChatStagePage() {
           />
         ) : null}
         <ChatConfigDialog
+          autoHideInput={runtimeConfig.autoHideInput}
+          autoHideTopTools={runtimeConfig.autoHideTopTools}
           configThemeColor={runtimeConfig.configThemeColor}
           configUseMainThemeColor={runtimeConfig.configUseMainThemeColor}
           dialogFill={runtimeConfig.dialogFill}
@@ -455,6 +485,7 @@ export function ChatStagePage() {
           dialogScale={runtimeConfig.dialogScale}
           effectiveDialogText={effectiveDialogText}
           effectiveNameText={effectiveNameText}
+          immersiveMode={runtimeConfig.immersiveMode}
           longPressTalk={runtimeConfig.longPressTalk}
           longPressTalkAvailable={voskModelState.available}
           longPressTalkVisible={longPressTalkVisible}
@@ -462,11 +493,14 @@ export function ChatStagePage() {
           nameText={runtimeConfig.nameText}
           onClose={() => setToolbarConfigOpen(false)}
           onCommand={sendCommand}
+          onAutoHideInputChange={updateRuntimeAutoHideInput}
+          onAutoHideTopToolsChange={updateRuntimeAutoHideTopTools}
           onConfigThemeColorChange={updateRuntimeConfigThemeColor}
           onConfigUseMainThemeColorChange={updateRuntimeConfigUseMainThemeColor}
           onDialogFillChange={updateRuntimeDialogFill}
           onDialogOpacityChange={updateRuntimeDialogOpacity}
           onDialogScaleChange={updateRuntimeDialogScale}
+          onImmersiveModeChange={updateRuntimeImmersiveMode}
           onLongPressTalkChange={updateRuntimeLongPressTalk}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}

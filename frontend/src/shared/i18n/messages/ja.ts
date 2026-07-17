@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "chat.stats.label": "キャラクターステータス",
   "api.memory.cachedNotLoaded": "埋め込みモデルはキャッシュ済み（未読み込み）",
   "api.memory.enableReady": "自動長期記憶を有効にしました。",
   "api.memory.modelMissingKeepOff": "埋め込みモデルが未ダウンロードのため、長期記憶はオフのままです。",
@@ -462,11 +463,14 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.dialogTextAlignLeft": "左揃え",
   "chat.config.dialogTextAlignRight": "右揃え",
   "chat.config.dialogTextDirection": "本文の方向",
+  "chat.config.autoHideInput": "入力欄を自動的に隠す",
+  "chat.config.autoHideTopTools": "右上ツールバーを自動的に隠す",
   "chat.config.fontFamilyPlaceholder": "空欄ならテーマフォント",
   "chat.config.fontSizeValue": "{value}px",
   "chat.config.longPressTalk": "長押しで話す",
   "chat.config.longPressTalkVoskMissing":
     "有効にするには先に Vosk 音声モデルをダウンロードして設定してください。システム設定でダウンロードできます。現在のパス: {path}",
+  "chat.config.immersiveMode": "没入モード",
   "chat.config.menuThemeColor": "設定メニュー色",
   "chat.config.nameBold": "名札を太字にする",
   "chat.config.nameColor": "名札文字色",
@@ -474,6 +478,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.nameFontSize": "名札フォントサイズ",
   "chat.config.scaleValue": "{value}%",
   "chat.config.sectionConversation": "会話",
+  "chat.config.sectionImmersive": "没入モード",
   "chat.config.sectionLayout": "レイアウト",
   "chat.config.sectionMenuAppearance": "設定パネルの外観",
   "chat.config.sectionSprites": "立ち絵",
@@ -573,6 +578,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.toolbar.unlockActions": "チャット操作の固定を解除",
   "chat.theme.active": "適用中",
   "chat.theme.apply": "適用",
+  "chat.theme.backToSettings": "システム設定に戻る",
   "chat.theme.delete": "削除",
   "chat.theme.deleteConfirmBody": "テーマ「{name}」を削除しますか？",
   "chat.theme.deleteConfirmTitle": "テーマを削除",
@@ -581,6 +587,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.theme.error.delete": "チャットテーマを削除できませんでした。",
   "chat.theme.error.upload": "チャットテーマをアップロードできませんでした。",
   "chat.theme.open": "テーマ管理",
+  "chat.theme.pageDescription": "チャット画面のテーマを管理、インポート、適用します。",
   "chat.theme.sourceBuiltin": "標準",
   "chat.theme.sourceUser": "ユーザー",
   "chat.theme.title": "チャットテーマ",

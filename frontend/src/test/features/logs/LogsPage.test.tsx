@@ -110,9 +110,13 @@ describe("LogsPage", () => {
   });
 
   it("renders structured lines, expands details, and filters by level and search text", async () => {
-    renderPage();
+    const { container } = renderPage();
 
     expect(await screen.findByRole("heading", { name: "运行日志" })).toBeInTheDocument();
+    expect(container.querySelectorAll('[data-theme-frame^="logs-"]')).toHaveLength(3);
+    expect(container.querySelector('.logs-toolbar > [data-theme-frame="logs-toolbar"]')).toBeInTheDocument();
+    expect(container.querySelector('.logs-sidebar > [data-theme-frame="logs-sidebar"]')).toBeInTheDocument();
+    expect(container.querySelector('.logs-viewer-frame-host > [data-theme-frame="logs-viewer"]')).toBeInTheDocument();
     expect(await screen.findByText("Boom")).toBeInTheDocument();
     const viewer = screen.getByLabelText("日志内容");
     expect(screen.getAllByText("app.log").length).toBeGreaterThan(0);

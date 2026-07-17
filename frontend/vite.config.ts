@@ -60,6 +60,9 @@ export default defineConfig({
     },
   },
   server: {
+    fs: {
+      allow: [modulePath("."), modulePath("../assets/chat_ui_themes")],
+    },
     host: "127.0.0.1",
     port: 5173,
   },

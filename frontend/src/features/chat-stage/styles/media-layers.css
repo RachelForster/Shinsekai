@@ -73,58 +73,63 @@
   position: absolute;
   inset: 0;
   z-index: 3;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  gap: clamp(12px, 3vw, 42px);
-  padding: 0 var(--stage-safe-x);
+  overflow: hidden;
   pointer-events: none;
 }
 
 .sprite-layer__figure {
+  --sprite-axis-center: 50%;
+  --sprite-layer-order: 1;
   --sprite-offset-x: 0px;
   --sprite-offset-y: 0px;
   --sprite-scale: 1;
-  height: 90%;
-  max-width: 100%;
-  min-width: 0;
+  position: absolute;
+  inset: 0;
+  z-index: var(--sprite-layer-order);
   margin: 0;
-  transform: translate(
-      calc(var(--chat-sprite-runtime-offset-x) + var(--sprite-offset-x)),
-      calc(var(--chat-sprite-runtime-offset-y) + var(--sprite-offset-y))
-    )
-    scale(var(--sprite-scale));
-  transform-origin: bottom center;
-  transition:
-    transform 160ms ease,
-    filter 280ms ease,
-    opacity 280ms ease;
-  animation: chat-stage-sprite-in 340ms ease-out;
-}
-
-.sprite-layer__figure[data-draggable="true"] {
-  cursor: move;
-  pointer-events: auto;
-  user-select: none;
-}
-
-.sprite-layer__figure[data-dim="true"] {
-  filter: brightness(0.6) saturate(0.82);
-}
-
-.sprite-layer__figure[data-speaking="true"] {
-  filter: brightness(1.06) saturate(1.04);
+  pointer-events: none;
 }
 
 .sprite-layer__image {
+  position: absolute;
+  bottom: 0;
+  left: var(--sprite-axis-center);
   display: block;
   width: auto;
-  height: 100%;
+  height: 90%;
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;
   object-position: bottom center;
+  transform-origin: bottom center;
+  translate: calc(-50% + var(--chat-sprite-runtime-offset-x) + var(--sprite-offset-x))
+    calc(var(--chat-sprite-runtime-offset-y) + var(--sprite-offset-y));
+  scale: var(--sprite-scale);
+  transition:
+    translate 160ms ease,
+    scale 160ms ease,
+    filter 280ms ease,
+    opacity 280ms ease;
   user-select: none;
   -webkit-user-drag: none;
-  animation: chat-stage-sprite-slide 360ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation:
+    chat-stage-sprite-in 340ms ease-out,
+    chat-stage-sprite-slide 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sprite-layer__figure[data-draggable="true"] .sprite-layer__image {
+  cursor: move;
+  pointer-events: auto;
+}
+
+.sprite-layer__figure[data-dim="true"] .sprite-layer__image {
+  filter: brightness(0.6) saturate(0.82);
+}
+
+.sprite-layer__figure[data-speaking="true"] {
+  z-index: 100;
+}
+
+.sprite-layer__figure[data-speaking="true"] .sprite-layer__image {
+  filter: brightness(1.06) saturate(1.04);
 }

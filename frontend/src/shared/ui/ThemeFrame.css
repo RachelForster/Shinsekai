@@ -1,0 +1,17 @@
+.theme-frame {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  border-style: solid;
+  border-width: var(--theme-frame-width, 0px);
+  border-color: transparent;
+  border-image-source: var(--theme-frame-image, none);
+  border-image-slice: var(--theme-frame-slice, 32);
+  border-image-width: var(--theme-frame-width, 0px);
+  border-image-outset: var(--theme-frame-outset, 0px);
+  border-image-repeat: stretch;
+  background: transparent;
+  pointer-events: none;
+  user-select: none;
+}

@@ -92,6 +92,10 @@ class _MirrorUiStub:
         self.calls.append(("post_background", path))
         self.current_background_path = path
 
+    def switch_bgm(self, path):
+        self.calls.append(("switch_bgm", path))
+        self.current_bgm_path = path
+
     def post_cg(self, path):
         self.calls.append(("post_cg", path))
 
@@ -168,20 +172,27 @@ class UIUpdateManagerTests(unittest.TestCase):
         self.assertEqual(array[0, 0].tolist(), [10, 20, 30, 40])
         self.assertEqual(array[0, 1].tolist(), [50, 60, 70, 255])
 
-    def test_streaming_ui_update_manager_maps_background_and_cg_paths_to_media_urls(self):
+    def test_streaming_ui_update_manager_maps_background_bgm_and_cg_paths_to_media_urls(self):
         sink = _SinkStub()
-        manager = StreamingUIUpdateManager(sink)
+        bg_group = [{"path": "data/backgrounds/room.png"}]
+        manager = StreamingUIUpdateManager(sink, bg_group=bg_group)
 
         manager.post_background("data/backgrounds/room.png")
+        manager.switch_bgm("data/bgm/room.mp3")
         manager.post_cg("data/cg/scene.png")
         manager.post_cg("")
 
+        self.assertEqual(manager.bg_group, bg_group)
         self.assertEqual(
             sink.events,
             [
                 {
                     "type": "background.change",
                     "url": "http://127.0.0.1:8787/api/media?path=data/backgrounds/room.png",
+                },
+                {
+                    "type": "bgm.change",
+                    "url": "http://127.0.0.1:8787/api/media?path=data/bgm/room.mp3",
                 },
                 {
                     "type": "cg.show",
@@ -216,6 +227,40 @@ class UIUpdateManagerTests(unittest.TestCase):
                 }
             ],
         )
+
+    def test_streaming_ui_update_manager_keeps_display_slot_when_expression_changes(self):
+        sink = _SinkStub()
+        manager = StreamingUIUpdateManager(sink)
+
+        class _Character:
+            sprite_scale = 1.0
+            sprites = [
+                {"path": "data/sprites/mio-neutral.png"},
+                {"path": "data/sprites/mio-happy.png"},
+            ]
+
+        with patch("core.runtime.ui_update_manager.get_character_by_name", return_value=_Character()):
+            manager.update_sprite("Mio", 0)
+            manager.update_sprite("Mio", 1)
+
+        self.assertEqual([event["slot"] for event in sink.events], [0, 0])
+        self.assertTrue(sink.events[1]["url"].endswith("mio-happy.png"))
+
+    def test_streaming_ui_update_manager_reuses_slots_with_character_lru(self):
+        sink = _SinkStub()
+        manager = StreamingUIUpdateManager(sink, max_sprite_slots=2)
+
+        manager.update_sprite_from_path("data/sprites/mio.png", character_name="Mio")
+        manager.update_sprite_from_path("data/sprites/ren.png", character_name="Ren")
+        manager.update_sprite_from_path("data/sprites/mio-2.png", character_name="Mio")
+        manager.update_sprite_from_path("data/sprites/aoi.png", character_name="Aoi")
+
+        self.assertEqual([event["slot"] for event in sink.events], [0, 1, 0, 1])
+        self.assertEqual(list(manager._sprite_lru.items()), [("Mio", 0), ("Aoi", 1)])
+
+        manager.remove_character_sprite("Mio")
+        manager.update_sprite_from_path("data/sprites/ren-2.png", character_name="Ren")
+        self.assertEqual(sink.events[-1]["slot"], 0)
 
     def test_streaming_ui_update_manager_emits_tts_play_and_skip_events(self):
         sink = _SinkStub()
@@ -266,7 +311,7 @@ class UIUpdateManagerTests(unittest.TestCase):
         manager.post_busy_bar("", 9.0)
         manager.hide_busy_bar()
         manager.post_options([])
-        manager.post_numeric_value("<b>42</b>")
+        manager.post_numeric_value("heart|HP|42|100")
         manager.post_context_token_estimate(
             {
                 "system_prompt_tokens": 1200,
@@ -288,7 +333,7 @@ class UIUpdateManagerTests(unittest.TestCase):
                 "busy.hide",
                 "options.clear",
                 "history.replace",
-                "numeric.update",
+                "stats.update",
                 "numeric.update",
                 "sprite.remove",
                 "sprite.remove",
@@ -301,8 +346,14 @@ class UIUpdateManagerTests(unittest.TestCase):
         self.assertEqual(sink.events[1]["durationSeconds"], 1.5)
         self.assertEqual(sink.events[5]["entries"][0]["role"], "user")
         self.assertEqual(sink.events[5]["entries"][0]["text"], "你: hello")
-        self.assertEqual(sink.events[6]["html"], "<b>42</b>")
-        self.assertEqual(sink.events[7]["html"], "tokens sys 1.2k | hist 34.6k | tools 890 | total 36.7k")
+        self.assertEqual(
+            sink.events[6]["stats"],
+            [{"icon": "heart", "label": "HP", "max": 100, "value": 42}],
+        )
+        self.assertEqual(
+            sink.events[7]["html"],
+            "tokens sys 1.2k | hist 34.6k | tools 890 | total 36.7k",
+        )
         self.assertEqual(sink.events[8]["characterName"], "Mio")
         self.assertEqual(sink.events[9]["characterName"], "Nanami")
         self.assertEqual(sink.events[11]["status"], "idle")
@@ -316,6 +367,7 @@ class UIUpdateManagerTests(unittest.TestCase):
         ui.record_user_message("hello")
         ui.update_dialog("Mio", "Ready", "#fff", False)
         ui.post_background("data/backgrounds/room.png")
+        ui.switch_bgm("data/bgm/room.mp3")
         ui.update_sprite_from_path("data/sprites/mio.png", character_name="Mio", scale=1.25)
         ui.post_options(["Go"])
         ui.post_llm_reply_finished()
@@ -332,6 +384,7 @@ class UIUpdateManagerTests(unittest.TestCase):
                 "dialog.end",
                 "history.replace",
                 "background.change",
+                "bgm.change",
                 "sprite.show",
                 "options.show",
                 "history.replace",
@@ -345,10 +398,11 @@ class UIUpdateManagerTests(unittest.TestCase):
         self.assertEqual(sink.events[0]["entries"], [])
         self.assertEqual([item["text"] for item in sink.events[1]["entries"]], ["你: hello"])
         self.assertEqual([item["text"] for item in sink.events[3]["entries"]], ["你: hello", "Mio：Ready"])
-        self.assertEqual([item["text"] for item in sink.events[7]["entries"]], ["你: hello", "Mio：Ready"])
+        self.assertEqual([item["text"] for item in sink.events[8]["entries"]], ["你: hello", "Mio：Ready"])
         self.assertEqual(sink.events[4]["url"], "http://127.0.0.1:8787/api/media?path=data/backgrounds/room.png")
-        self.assertEqual(sink.events[5]["url"], "http://127.0.0.1:8787/api/media?path=data/sprites/mio.png")
-        self.assertEqual(sink.events[11]["url"], "http://127.0.0.1:8787/api/media?path=data/audio/mio.wav")
+        self.assertEqual(sink.events[5]["url"], "http://127.0.0.1:8787/api/media?path=data/bgm/room.mp3")
+        self.assertEqual(sink.events[6]["url"], "http://127.0.0.1:8787/api/media?path=data/sprites/mio.png")
+        self.assertEqual(sink.events[12]["url"], "http://127.0.0.1:8787/api/media?path=data/audio/mio.wav")
 
     def test_connect_to_stream_sink_mirrors_control_events_and_skips_failed_sprite_updates(self):
         sink = _SinkStub()
@@ -363,7 +417,7 @@ class UIUpdateManagerTests(unittest.TestCase):
         ui.post_busy_bar("", 9.0)
         ui.hide_busy_bar()
         ui.post_options([])
-        ui.post_numeric_value("<b>42</b>")
+        ui.post_numeric_value("heart|HP|42|100")
         ui.post_context_token_estimate(
             {
                 "system_prompt_tokens": 1200,
@@ -389,7 +443,7 @@ class UIUpdateManagerTests(unittest.TestCase):
                 "busy.hide",
                 "options.clear",
                 "history.replace",
-                "numeric.update",
+                "stats.update",
                 "numeric.update",
                 "sprite.remove",
                 "sprite.remove",
@@ -401,8 +455,14 @@ class UIUpdateManagerTests(unittest.TestCase):
         self.assertEqual(sink.events[1]["text"], "Ready")
         self.assertEqual(sink.events[2]["durationSeconds"], 1.5)
         self.assertEqual(sink.events[6]["entries"][0]["text"], "你: hello")
-        self.assertEqual(sink.events[7]["html"], "<b>42</b>")
-        self.assertEqual(sink.events[8]["html"], "tokens sys 1.2k | hist 34.6k | tools 890 | total 36.7k")
+        self.assertEqual(
+            sink.events[7]["stats"],
+            [{"icon": "heart", "label": "HP", "max": 100, "value": 42}],
+        )
+        self.assertEqual(
+            sink.events[8]["html"],
+            "tokens sys 1.2k | hist 34.6k | tools 890 | total 36.7k",
+        )
         self.assertEqual(sink.events[9]["characterName"], "Mio")
         self.assertEqual(sink.events[10]["characterName"], "Nanami")
         self.assertFalse(

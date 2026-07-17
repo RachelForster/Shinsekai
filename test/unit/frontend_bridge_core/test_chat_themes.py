@@ -1,4 +1,5 @@
 import os
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from frontend_bridge_core.chat_themes import (
+    BUILTIN_THEME_OWNER_MARKER,
+    _is_builtin_theme_dir,
     delete_chat_theme,
     get_chat_theme_manifest,
     list_chat_themes,
@@ -35,15 +38,41 @@ class ChatThemeBridgeTests(unittest.TestCase):
             try:
                 themes = list_chat_themes(state)
                 theme_index = {item["id"]: item for item in themes}
-                self.assertEqual(list(theme_index), ["windborne-adventure"])
+                self.assertEqual(list(theme_index), ["neon-night-city", "sakura-dream", "windborne-adventure"])
+                self.assertEqual(theme_index["neon-night-city"]["source"], "builtin")
+                self.assertEqual(theme_index["sakura-dream"]["source"], "builtin")
                 self.assertEqual(theme_index["windborne-adventure"]["source"], "builtin")
                 self.assertTrue(
+                    (Path(tempdir) / "data" / "chat_ui_themes" / "neon-night-city" / "theme.json").is_file()
+                )
+                self.assertTrue(
+                    (
+                        Path(tempdir)
+                        / "data"
+                        / "chat_ui_themes"
+                        / "neon-night-city"
+                        / "frame-dialog.svg"
+                    ).is_file()
+                )
+                self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "windborne-adventure" / "theme.json").is_file()
+                )
+                self.assertTrue(
+                    (Path(tempdir) / "data" / "chat_ui_themes" / "sakura-dream" / "preview.png").is_file()
+                )
+                self.assertTrue(
+                    (
+                        Path(tempdir)
+                        / "data"
+                        / "chat_ui_themes"
+                        / "sakura-dream"
+                        / BUILTIN_THEME_OWNER_MARKER
+                    ).is_file()
                 )
             finally:
                 os.chdir(previous_cwd)
 
-    def test_list_chat_themes_falls_back_to_tracked_builtin_manifests(self):
+    def test_missing_builtin_assets_do_not_create_python_manifest_fallbacks(self):
         state = self._make_state()
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
@@ -51,10 +80,100 @@ class ChatThemeBridgeTests(unittest.TestCase):
             try:
                 with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=Path(tempdir) / "missing"):
                     themes = list_chat_themes(state)
+                    self.assertEqual(themes, [])
+                    with self.assertRaises(FileNotFoundError):
+                        get_chat_theme_manifest(state, "windborne-adventure")
+                default_theme_dir = Path(tempdir) / "data" / "chat_ui_themes" / "windborne-adventure"
+                self.assertFalse(default_theme_dir.exists())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_list_chat_themes_refreshes_outdated_builtin_assets(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                target = Path(tempdir) / "data" / "chat_ui_themes" / "neon-night-city"
+                target.mkdir(parents=True)
+                (target / "theme.json").write_text(
+                    '{"schema":1,"id":"neon-night-city","name":{"en":"Old Neon"},"version":"1.0.0","tokens":{}}',
+                    encoding="utf-8",
+                )
+
+                themes = list_chat_themes(state)
+
                 theme_index = {item["id"]: item for item in themes}
-                self.assertIn("windborne-adventure", theme_index)
-                manifest = get_chat_theme_manifest(state, "windborne-adventure")
-                self.assertEqual(manifest["tokens"]["global"]["themeColor"], "#f3cf57")
+                self.assertEqual(theme_index["neon-night-city"]["version"], "1.3.2")
+                self.assertTrue((target / "frame-dialog.svg").is_file())
+                self.assertTrue((target / BUILTIN_THEME_OWNER_MARKER).is_file())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_preexisting_sakura_dream_stays_user_owned_and_is_not_refreshed(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                target = Path(tempdir) / "data" / "chat_ui_themes" / "sakura-dream"
+                target.mkdir(parents=True)
+                original_manifest = (
+                    '{"schema":1,"id":"sakura-dream","name":{"en":"My Sakura"},"tokens":{}}'
+                )
+                (target / "theme.json").write_text(original_manifest, encoding="utf-8")
+                (target / "frame-dialog.svg").write_text("user-owned-frame", encoding="utf-8")
+
+                themes = list_chat_themes(state)
+
+                summary = next(theme for theme in themes if theme["id"] == "sakura-dream")
+                self.assertEqual(summary["source"], "user")
+                self.assertEqual((target / "theme.json").read_text(encoding="utf-8"), original_manifest)
+                self.assertEqual((target / "frame-dialog.svg").read_text(encoding="utf-8"), "user-owned-frame")
+                self.assertFalse((target / BUILTIN_THEME_OWNER_MARKER).exists())
+
+                delete_chat_theme(state, "sakura-dream")
+                self.assertFalse(target.exists())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_builtin_owner_marker_is_only_trusted_under_the_registered_theme_root(self):
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                spoofed_dir = Path(tempdir) / "outside" / "sakura-dream"
+                spoofed_dir.mkdir(parents=True)
+                (spoofed_dir / BUILTIN_THEME_OWNER_MARKER).write_text(
+                    "sakura-dream\n", encoding="utf-8"
+                )
+
+                self.assertFalse(_is_builtin_theme_dir("sakura-dream"))
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_missing_non_default_builtin_falls_back_to_default_manifest(self):
+        state = self._make_state()
+        project_root = Path(__file__).resolve().parents[3]
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            builtin_root = Path(tempdir) / "builtin"
+            shutil.copytree(
+                project_root / "assets" / "chat_ui_themes" / "windborne-adventure",
+                builtin_root / "windborne-adventure",
+            )
+            os.chdir(tempdir)
+            try:
+                with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=builtin_root):
+                    themes = list_chat_themes(state)
+                    self.assertEqual([theme["id"] for theme in themes], ["windborne-adventure"])
+
+                    manifest = get_chat_theme_manifest(state, "neon-night-city")
+                    self.assertEqual(manifest["id"], "windborne-adventure")
+                    self.assertEqual(manifest["tokens"]["global"]["themeColor"], "#f3cf57")
+
+                    with self.assertRaises(FileNotFoundError):
+                        set_active_chat_theme(state, {"id": "neon-night-city"})
             finally:
                 os.chdir(previous_cwd)
 
@@ -80,6 +199,10 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 list_chat_themes(state)
                 with self.assertRaises(PermissionError):
                     delete_chat_theme(state, "windborne-adventure")
+                with self.assertRaises(PermissionError):
+                    delete_chat_theme(state, "neon-night-city")
+                with self.assertRaises(PermissionError):
+                    delete_chat_theme(state, "sakura-dream")
             finally:
                 os.chdir(previous_cwd)
 
@@ -120,7 +243,9 @@ class ChatThemeBridgeTests(unittest.TestCase):
                           "background": "rgba(10,10,10,0.9)",
                           "chrome": "none",
                           "frameImage": "assets/dialog-frame.svg",
+                          "frameOutsetPx": -5,
                           "frameSlice": 500,
+                          "frameWidthPx": 200,
                           "heightPx": 999,
                           "padding": 100,
                           "textAlign": "center",
@@ -181,7 +306,9 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 self.assertEqual(manifest["id"], "custom-theme")
                 self.assertEqual(manifest["tokens"]["dialog"]["frameImage"], "assets/dialog-frame.svg")
                 self.assertEqual(manifest["tokens"]["dialog"]["chrome"], "none")
+                self.assertEqual(manifest["tokens"]["dialog"]["frameOutsetPx"], 0)
                 self.assertEqual(manifest["tokens"]["dialog"]["frameSlice"], 200)
+                self.assertEqual(manifest["tokens"]["dialog"]["frameWidthPx"], 96)
                 self.assertEqual(manifest["tokens"]["dialog"]["heightPx"], 260)
                 self.assertEqual(manifest["tokens"]["dialog"]["padding"], 72)
                 self.assertEqual(manifest["tokens"]["dialog"]["textAlign"], "center")

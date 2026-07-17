@@ -196,6 +196,9 @@ describe("ChatStagePage", () => {
     const option = await screen.findByRole("button", { name: "Take the shortcut" });
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
     expect(option.closest(".dialog-stack")).not.toBeNull();
+    expect(document.querySelector('.options-layer > [data-theme-frame="chat-dialog"]')).not.toBeInTheDocument();
+    expect(document.querySelector('.options-layer__item > [data-theme-frame="chat-option"]')).toBeInTheDocument();
+    expect(option.closest(".options-layer__scroll")).not.toBeNull();
     fireEvent.click(option);
     await waitFor(() =>
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({
@@ -203,6 +206,19 @@ describe("ChatStagePage", () => {
         type: "submit-option",
       }),
     );
+  });
+
+  it("anchors decorative frames to the main chat surfaces", async () => {
+    renderPage();
+
+    await screen.findByText("Ready");
+    expect(document.querySelector('.dialog-layer > [data-theme-frame="chat-dialog"]')).toBeInTheDocument();
+    expect(document.querySelector('.dialog-layer__name > [data-theme-frame="chat-name"]')).toBeInTheDocument();
+    expect(document.querySelector('.input-layer > [data-theme-frame="chat-input"]')).toBeInTheDocument();
+    expect(document.querySelector('.top-stage-tools > [data-theme-frame="chat-toolbar"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('.dialog-stage-controls__surface > [data-theme-frame="chat-toolbar"]'),
+    ).toBeInTheDocument();
   });
 
   it("suppresses context menus inside the chat stage", async () => {
@@ -219,6 +235,7 @@ describe("ChatStagePage", () => {
     renderPage();
 
     const input = await screen.findByRole("textbox");
+    expect(input.tagName).toBe("TEXTAREA");
     fireEvent.change(input, { target: { value: "  enter submit  " } });
     fireEvent.keyDown(input, { key: "Enter" });
 
@@ -294,6 +311,145 @@ describe("ChatStagePage", () => {
     expect(document.querySelector(".dialog-layer__name")).toHaveTextContent("Aoi");
     expect(screen.getByText("stay visible")).toBeInTheDocument();
     expect(screen.queryByText("old reply")).not.toBeInTheDocument();
+  });
+
+  it("remounts only the sprite image when an expression changes so the switch animation replays", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ sprites: [{ id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 }] }),
+    );
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    const { container } = renderPage();
+
+    await screen.findByText("Ready");
+    const originalFigure = container.querySelector(".sprite-layer__figure");
+    const originalImage = container.querySelector(".sprite-layer__image");
+
+    act(() => {
+      listener?.({
+        characterName: "Mio",
+        scale: 1,
+        seq: 1,
+        slot: 0,
+        ts: 1,
+        type: "sprite.show",
+        url: "asset://mio-happy.png",
+        v: 1,
+      });
+    });
+
+    const nextFigure = container.querySelector(".sprite-layer__figure");
+    const nextImage = container.querySelector(".sprite-layer__image");
+    expect(nextFigure).toBe(originalFigure);
+    expect(nextFigure).toHaveAttribute("data-slot", "0");
+    expect(nextImage).not.toBe(originalImage);
+    expect(nextImage).toHaveAttribute("src", "asset://mio-happy.png");
+  });
+
+  it("switches the rendered background and looping BGM from stream events", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        backgroundPath: "asset://day-room.png",
+        bgmPath: "asset://day-theme.mp3",
+        eventSeq: 0,
+      }),
+    );
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    const { container } = renderPage();
+
+    await screen.findByText("Ready");
+    expect(container.querySelector(".chat-stage__background img")).toHaveAttribute("src", "asset://day-room.png");
+    expect(container.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute("src", "asset://day-theme.mp3");
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      listener?.({
+        seq: 1,
+        ts: 1,
+        type: "background.change",
+        url: "asset://night-room.png",
+        v: 1,
+      });
+      listener?.({
+        seq: 2,
+        ts: 2,
+        type: "bgm.change",
+        url: "asset://night-theme.mp3",
+        v: 1,
+      });
+    });
+
+    expect(container.querySelector(".chat-stage__background img")).toHaveAttribute("src", "asset://night-room.png");
+    expect(container.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute("src", "asset://night-theme.mp3");
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+    expect(pause).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      listener?.({ seq: 3, ts: 3, type: "bgm.change", url: "", v: 1 });
+    });
+
+    expect(container.querySelector("audio[data-chat-stage-bgm]")).not.toBeInTheDocument();
+    expect(pause).toHaveBeenCalledTimes(2);
+    play.mockRestore();
+    pause.mockRestore();
+  });
+
+  it("reveals the native stat layer only after the first stats event", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ eventSeq: 0, stats: [] }));
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+
+    await screen.findByText("Ready");
+    expect(screen.queryByRole("status", { name: "Character stats" })).not.toBeInTheDocument();
+    expect(document.querySelector(".chat-stage")).toHaveAttribute("data-stat-visible", "false");
+
+    act(() => {
+      listener?.({
+        seq: 1,
+        stats: [
+          { icon: "heart", label: "HP", max: 100, value: 72 },
+          { icon: "coins", label: "Gold", value: 320 },
+        ],
+        ts: 1,
+        type: "stats.update",
+        v: 1,
+      });
+    });
+
+    const statLayer = screen.getByRole("status", { name: "Character stats" });
+    expect(statLayer).toHaveTextContent("HP72 / 100");
+    expect(statLayer).toHaveTextContent("Gold320");
+    expect(statLayer.querySelector('[data-icon="heart"] .lucide-heart')).not.toBeNull();
+    expect(screen.getByRole("progressbar", { name: "HP" })).toHaveAttribute("value", "72");
+    expect(screen.getByRole("progressbar", { name: "HP" })).toHaveAttribute("max", "100");
+    expect(document.querySelector(".chat-stage")).toHaveAttribute("data-stat-visible", "true");
+
+    act(() => {
+      listener?.({
+        color: "#fff",
+        fullHtml: "<p>Stats remain visible</p>",
+        isSystem: false,
+        seq: 2,
+        speaker: "Mio",
+        ts: 2,
+        type: "dialog.end",
+        v: 1,
+      });
+    });
+    expect(screen.getByRole("status", { name: "Character stats" })).toBeInTheDocument();
   });
 
   it("shows a selected option as the user message before the command response arrives", async () => {
@@ -516,6 +672,26 @@ describe("ChatStagePage", () => {
     expect(document.querySelector(".chat-stage")).toHaveAttribute("data-token-visible", "false");
   });
 
+  it("opens theme management from the top toolbar and disables transparent-window click-through", async () => {
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+    themeContextMocks.optional = { style: {} };
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ backgroundPath: "" }));
+
+    renderPage(["/chat-stage"]);
+
+    await screen.findByText("Ready");
+    const stage = document.querySelector(".chat-stage") as HTMLElement;
+    expect(stage).toHaveAttribute("data-click-through", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Manage themes" }));
+
+    const picker = await screen.findByRole("dialog", { name: "Chat themes" });
+    expect(stage).toHaveAttribute("data-click-through", "false");
+
+    fireEvent.click(within(picker).getByRole("button", { name: "Close" }));
+    expect(stage).toHaveAttribute("data-click-through", "true");
+  });
+
   it("renders core chat actions at the dialog bottom and supports locking the tray", async () => {
     renderPage();
 
@@ -699,7 +875,15 @@ describe("ChatStagePage", () => {
   it("uses a single-line pill input and keeps the plus panel scoped to ASR actions", async () => {
     themeContextMocks.optional = {
       resolved: { typewriter: { cps: 40 } },
-      style: { "--chat-input-layout": "pill" } as CSSProperties,
+      style: {
+        "--chat-input-layout": "pill",
+        "--chat-send-background": "#123456",
+        "--chat-send-border-color": "#abcdef",
+        "--chat-send-border-radius": "14px",
+        "--chat-send-box-shadow": "0 0 7px #abcdef",
+        "--chat-send-color": "#fedcba",
+        "--chat-toolbar-border-radius": "17px",
+      } as CSSProperties,
     };
 
     renderPage();
@@ -707,6 +891,11 @@ describe("ChatStagePage", () => {
     await screen.findByText("Ready");
     const input = screen.getByRole("textbox");
     expect(input.tagName).toBe("INPUT");
+    const stage = document.querySelector(".chat-stage") as HTMLElement;
+    const quickSubmit = document.querySelector(".input-layer__quick-submit") as HTMLElement;
+    expect(stage.style.getPropertyValue("--chat-send-background")).toBe("#123456");
+    expect(stage.style.getPropertyValue("--chat-toolbar-border-radius")).toBe("17px");
+    expect(quickSubmit).toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: "  pill submit  " } });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -890,10 +1079,13 @@ describe("ChatStagePage", () => {
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
       config: {
         auto: false,
+        autoHideInput: true,
+        autoHideTopTools: true,
         configThemeColor: "#88cc44",
         configUseMainThemeColor: false,
         dialogText: {
           align: "right",
+          alignOverride: true,
           bold: true,
           boldOverride: true,
           color: "#ddeeff",
@@ -911,6 +1103,7 @@ describe("ChatStagePage", () => {
         },
         dialogOpacity: 0.55,
         dialogScale: 1.05,
+        immersiveMode: false,
         longPressTalk: false,
         nameText: {
           bold: false,
@@ -930,6 +1123,170 @@ describe("ChatStagePage", () => {
       },
       version: chatStageRuntimeConfigVersion,
     });
+  });
+
+  it("auto-hides top tools and input controls through independent immersive settings", async () => {
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = screen.getByRole("dialog", { name: "Chat appearance settings" });
+    const immersiveMode = within(config).getByLabelText("Immersive mode");
+    const autoHideTopTools = within(config).getByLabelText("Auto-hide top-right tools");
+    const autoHideInput = within(config).getByLabelText("Auto-hide input controls");
+    const topTools = document.querySelector(".top-stage-tools") as HTMLElement;
+    const inputLayer = document.querySelector(".input-layer") as HTMLElement;
+
+    expect(immersiveMode).toHaveClass("switch__input");
+    expect(autoHideTopTools).toHaveClass("switch__input");
+    expect(autoHideInput).toHaveClass("switch__input");
+    expect(immersiveMode).not.toBeChecked();
+    expect(autoHideTopTools).toBeChecked();
+    expect(autoHideInput).toBeChecked();
+    expect(autoHideTopTools).toBeDisabled();
+    expect(autoHideInput).toBeDisabled();
+    expect(topTools).toHaveAttribute("data-auto-hide", "false");
+    expect(inputLayer).toHaveAttribute("data-auto-hide", "false");
+
+    vi.useFakeTimers();
+    fireEvent.click(immersiveMode);
+
+    expect(autoHideTopTools).not.toBeDisabled();
+    expect(autoHideInput).not.toBeDisabled();
+    expect(topTools).toHaveAttribute("data-auto-hide", "true");
+    expect(inputLayer).toHaveAttribute("data-auto-hide", "true");
+
+    act(() => vi.advanceTimersByTime(600));
+    expect(topTools).toHaveAttribute("data-visible", "false");
+    expect(inputLayer).toHaveAttribute("data-visible", "false");
+    expect(getComputedStyle(topTools).pointerEvents).toBe("none");
+    expect(getComputedStyle(inputLayer).pointerEvents).toBe("none");
+
+    fireEvent.pointerEnter(topTools);
+    fireEvent.pointerEnter(inputLayer);
+    expect(topTools).toHaveAttribute("data-visible", "true");
+    expect(inputLayer).toHaveAttribute("data-visible", "true");
+
+    fireEvent.pointerLeave(topTools);
+    act(() => vi.advanceTimersByTime(599));
+    expect(topTools).toHaveAttribute("data-visible", "true");
+    act(() => vi.advanceTimersByTime(1));
+    expect(topTools).toHaveAttribute("data-visible", "false");
+
+    const textInput = screen.getByPlaceholderText("Enter dialogue");
+    fireEvent.focus(textInput);
+    fireEvent.pointerLeave(inputLayer);
+    act(() => vi.advanceTimersByTime(600));
+    expect(inputLayer).toHaveAttribute("data-visible", "true");
+    fireEvent.blur(textInput);
+    act(() => vi.advanceTimersByTime(600));
+    expect(inputLayer).toHaveAttribute("data-visible", "false");
+
+    fireEvent.change(textInput, { target: { value: "pending" } });
+    act(() => vi.advanceTimersByTime(600));
+    expect(inputLayer).toHaveAttribute("data-force-visible", "true");
+    expect(inputLayer).toHaveAttribute("data-visible", "true");
+
+    fireEvent.click(autoHideTopTools);
+    expect(topTools).toHaveAttribute("data-auto-hide", "false");
+    expect(topTools).toHaveAttribute("data-visible", "true");
+    expect(inputLayer).toHaveAttribute("data-auto-hide", "true");
+  });
+
+  it("keeps an immersive pill input visible while its action panel or microphone is active", async () => {
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: new () => {
+        abort: () => void;
+        continuous: boolean;
+        interimResults: boolean;
+        lang: string;
+        onend: (() => void) | null;
+        onerror: (() => void) | null;
+        onresult: (() => void) | null;
+        start: () => void;
+        stop: () => void;
+      };
+    };
+    speechWindow.SpeechRecognition = class {
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      onend = null;
+      onerror = null;
+      onresult = null;
+      abort() {}
+      start() {}
+      stop() {}
+    };
+    themeContextMocks.optional = {
+      resolved: { typewriter: { cps: 32 } },
+      style: { "--chat-input-layout": "pill" } as CSSProperties,
+    };
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({ autoHideInput: true, immersiveMode: true }),
+    );
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    const inputLayer = document.querySelector(".input-layer") as HTMLElement;
+    fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
+    expect(inputLayer).toHaveAttribute("data-panel-open", "true");
+    expect(inputLayer).toHaveAttribute("data-force-visible", "true");
+    expect(inputLayer).toHaveAttribute("data-visible", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start microphone" }));
+    expect(inputLayer).toHaveAttribute("data-listening", "true");
+    expect(inputLayer).toHaveAttribute("data-force-visible", "true");
+    expect(inputLayer).toHaveAttribute("data-visible", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Stop microphone" }));
+    delete speechWindow.SpeechRecognition;
+  });
+
+  it("resets immersive input focus when a closed session restores the input layer", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({ autoHideInput: true, immersiveMode: true }),
+    );
+
+    renderPage();
+    const input = await screen.findByPlaceholderText("Enter dialogue");
+    fireEvent.focus(input);
+
+    act(() => {
+      listener?.({
+        reason: "Session closed",
+        seq: 1,
+        ts: Date.now(),
+        type: "session.closed",
+        v: 1,
+      });
+    });
+    expect(screen.queryByPlaceholderText("Enter dialogue")).not.toBeInTheDocument();
+
+    vi.useFakeTimers();
+    act(() => {
+      listener?.({
+        seq: 2,
+        snapshot: snapshot({ eventSeq: 2, notificationText: "", sessionClosedReason: "" }),
+        ts: Date.now(),
+        type: "snapshot",
+        v: 1,
+      });
+    });
+
+    const restoredInput = screen.getByPlaceholderText("Enter dialogue");
+    const restoredLayer = restoredInput.closest(".input-layer") as HTMLElement;
+    act(() => vi.advanceTimersByTime(600));
+    expect(restoredLayer).toHaveAttribute("data-visible", "false");
   });
 
   it("resolves theme text defaults for config controls", () => {
@@ -1388,8 +1745,26 @@ describe("ChatStagePage", () => {
     expect(desktopApiMocks.closeDesktopWindow).not.toHaveBeenCalled();
     expect(desktopApiMocks.startDesktopWindowDrag).not.toHaveBeenCalled();
 
-    fireEvent.mouseDown(container.querySelector(".sprite-layer__figure")!, { button: 0 });
+    fireEvent.mouseDown(container.querySelector(".sprite-layer__image")!, { button: 0 });
     await waitFor(() => expect(desktopApiMocks.startDesktopWindowDrag).toHaveBeenCalledTimes(1));
     expect(chatWindowMocks.closeChatSurface).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an immersive standalone toolbar centered while hidden", async () => {
+    desktopApiMocks.isTauriDesktop.mockReturnValue(true);
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({ autoHideTopTools: true, immersiveMode: true }),
+    );
+
+    const { container } = renderPage(["/chat-stage"]);
+    await screen.findByText("Ready");
+    vi.useFakeTimers();
+
+    const topTools = container.querySelector(".top-stage-tools") as HTMLElement;
+    fireEvent.pointerLeave(topTools);
+    act(() => vi.advanceTimersByTime(600));
+
+    expect(topTools).toHaveAttribute("data-visible", "false");
   });
 });

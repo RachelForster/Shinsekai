@@ -10,6 +10,7 @@ import traceback
 import html
 import re
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 
@@ -33,6 +34,7 @@ except ImportError:
     def Signal(*args: Any, **kwargs: Any) -> _NoopSignal:
         return _NoopSignal()
 
+from core.messaging.stat_payload import format_stats_html, parse_stat_payload
 from core.sprite.chat_history import serialize_chat_history_entries
 
 SOUND_EFFECT_CHANNEL_ID = 6
@@ -282,7 +284,8 @@ class UIUpdateManager(QObject):
         self.update_option_signal.emit(option_list)
 
     def post_numeric_value(self, text: str) -> None:
-        self.update_value_signal.emit(text)
+        stats = parse_stat_payload(text)
+        self.update_value_signal.emit(format_stats_html(stats) if stats else text)
 
     def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
         self.update_context_token_estimate_signal.emit(format_context_token_estimate(estimate))
@@ -573,9 +576,33 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self,
         sink: "ChatEventSink",
         chat_history: Optional[MutableSequence[str]] = None,
+        bg_group: Optional[List] = None,
+        max_sprite_slots: int = 3,
     ) -> None:
         super().__init__(chat_history=chat_history)
         self._sink = sink
+        self.bg_group = list(bg_group or [])
+        try:
+            normalized_slot_count = int(max_sprite_slots)
+        except (TypeError, ValueError):
+            normalized_slot_count = 3
+        self.max_sprite_slots = max(1, normalized_slot_count)
+        self._sprite_lru: OrderedDict[str, int] = OrderedDict()
+
+    def _get_or_create_sprite_slot(self, character_name: str) -> int:
+        """Mirror the legacy Qt SpritePanel character-to-slot LRU."""
+        if character_name in self._sprite_lru:
+            slot = self._sprite_lru.pop(character_name)
+            self._sprite_lru[character_name] = slot
+            return slot
+
+        used_slots = set(self._sprite_lru.values())
+        if len(used_slots) < self.max_sprite_slots:
+            slot = next(index for index in range(self.max_sprite_slots) if index not in used_slots)
+        else:
+            _oldest_character, slot = self._sprite_lru.popitem(last=False)
+        self._sprite_lru[character_name] = slot
+        return slot
 
     def _media_url(self, raw_path: str) -> str:
         if hasattr(self._sink, "media_url"):
@@ -608,7 +635,9 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self.sync_history_entries()
 
     def post_numeric_value(self, text: str) -> None:
-        self._sink.emit({"type": "numeric.update", "html": text})
+        stats = parse_stat_payload(text)
+        if stats or not str(text or "").strip():
+            self._sink.emit({"type": "stats.update", "stats": stats})
 
     def post_context_token_estimate(self, estimate: Dict[str, Any]) -> None:
         self._sink.emit({"type": "numeric.update", "html": format_context_token_estimate(estimate)})
@@ -616,6 +645,11 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     def post_background(self, path: str) -> None:
         self.current_background_path = path or None
         self._sink.emit({"type": "background.change", "url": self._media_url(path)})
+
+    def switch_bgm(self, new_bgm_path: str) -> None:
+        path = str(new_bgm_path or "").strip()
+        self.current_bgm_path = path or None
+        self._sink.emit({"type": "bgm.change", "url": self._media_url(path)})
 
     def post_cg(self, path: str) -> None:
         if path:
@@ -707,13 +741,14 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         except Exception as e:
             print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
             return
+        display_slot = self._get_or_create_sprite_slot(character_name)
         self._sink.emit(
             {
                 "type": "sprite.show",
                 "characterName": character_name,
                 "url": self._media_url(image_path),
                 "scale": scale,
-                "slot": int(sprite_id),
+                "slot": display_slot,
             }
         )
 
@@ -727,17 +762,20 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         path = str(image_path or "").strip()
         if not path:
             return False
+        resolved_character_name = character_name or Path(path).stem or "initial"
         self._sink.emit(
             {
                 "type": "sprite.show",
-                "characterName": character_name or Path(path).stem or "initial",
+                "characterName": resolved_character_name,
                 "url": self._media_url(path),
                 "scale": float(scale or 1.0),
+                "slot": self._get_or_create_sprite_slot(resolved_character_name),
             }
         )
         return True
 
     def remove_character_sprite(self, character_name: str) -> None:
+        self._sprite_lru.pop(character_name, None)
         self._sink.emit({"type": "sprite.remove", "characterName": character_name})
 
     def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> None:
@@ -750,10 +788,9 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
 
     需要存活的 ``QApplication``。M5 切默认后改用无 Qt 的 ``StreamingUIUpdateManager``（Option A）。
     """
-    mirror = StreamingUIUpdateManager(sink, chat_history=ui.chat_history)
+    mirror = StreamingUIUpdateManager(sink, chat_history=ui.chat_history, bg_group=ui.bg_group)
     mirror.current_background_path = ui.current_background_path
     mirror.current_bgm_path = ui.current_bgm_path
-    mirror.bg_group = ui.bg_group
     mirror.sync_history_entries()
 
     original_update_dialog = ui.update_dialog
@@ -768,6 +805,7 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
     original_post_numeric_value = ui.post_numeric_value
     original_post_context_token_estimate = ui.post_context_token_estimate
     original_post_background = ui.post_background
+    original_switch_bgm = ui.switch_bgm
     original_post_cg = ui.post_cg
     original_post_llm_reply_finished = ui.post_llm_reply_finished
     original_post_pause_asr = ui.post_pause_asr
@@ -837,6 +875,10 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
         original_post_background(path)
         mirror.post_background(path)
 
+    def switch_bgm(path: str) -> None:
+        original_switch_bgm(path)
+        mirror.switch_bgm(path)
+
     def post_cg(path: str) -> None:
         original_post_cg(path)
         mirror.post_cg(path)
@@ -881,6 +923,7 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
     ui.post_numeric_value = post_numeric_value
     ui.post_context_token_estimate = post_context_token_estimate
     ui.post_background = post_background
+    ui.switch_bgm = switch_bgm
     ui.post_cg = post_cg
     ui.post_llm_reply_finished = post_llm_reply_finished
     ui.post_pause_asr = post_pause_asr

@@ -34,6 +34,144 @@
   top: var(--stage-token-offset-top);
 }
 
+.stat-layer {
+  position: absolute;
+  top: var(--stage-safe-top);
+  left: var(--stage-safe-x);
+  z-index: 9;
+  display: grid;
+  width: min(320px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: min(46vh, 380px);
+  gap: 8px;
+  overflow-y: auto;
+  pointer-events: none;
+  scrollbar-color: color-mix(in oklch, var(--stage-accent) 42%, transparent) transparent;
+  scrollbar-width: thin;
+  animation: chat-stage-rise 180ms ease-out;
+}
+
+.stat-layer__item {
+  --stat-item-accent: var(--chat-stat-accent, var(--stage-accent));
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in oklch, var(--stat-item-accent) 34%, var(--stage-line));
+  border-radius: 11px;
+  color: var(--chat-toolbar-color, #f7f1f0);
+  background:
+    linear-gradient(105deg, color-mix(in oklch, var(--stat-item-accent) 11%, transparent), transparent 58%),
+    var(--chat-sheen), var(--chat-toolbar-background);
+  box-shadow:
+    0 10px 26px var(--stage-shadow),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px) saturate(1.08);
+}
+
+.stat-layer__item[data-icon="heart"] {
+  --stat-item-accent: var(--chat-stat-heart, #ff829d);
+}
+
+.stat-layer__item[data-icon="shield"] {
+  --stat-item-accent: var(--chat-stat-shield, #79b8ff);
+}
+
+.stat-layer__item[data-icon="zap"] {
+  --stat-item-accent: var(--chat-stat-energy, #ffd166);
+}
+
+.stat-layer__item[data-icon="sparkles"] {
+  --stat-item-accent: var(--chat-stat-affinity, #d99cff);
+}
+
+.stat-layer__item[data-icon="coins"],
+.stat-layer__item[data-icon="star"] {
+  --stat-item-accent: var(--chat-stat-reward, #f4ca64);
+}
+
+.stat-layer__item[data-icon="target"] {
+  --stat-item-accent: var(--chat-stat-progress, #7bdcaf);
+}
+
+.stat-layer__item[data-icon="clock"] {
+  --stat-item-accent: var(--chat-stat-time, #77d3e8);
+}
+
+.stat-layer__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  grid-row: 1 / span 2;
+  place-items: center;
+  border: 1px solid color-mix(in oklch, var(--stat-item-accent) 42%, transparent);
+  border-radius: 10px;
+  color: var(--stat-item-accent);
+  background: color-mix(in oklch, var(--stat-item-accent) 14%, var(--stage-glass-soft));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+.stat-layer__icon svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.2;
+}
+
+.stat-layer__label {
+  min-width: 0;
+  overflow: hidden;
+  color: color-mix(in oklch, var(--chat-toolbar-color, #f7f1f0) 78%, transparent);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-layer__value {
+  color: var(--chat-toolbar-color, #f7f1f0);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.stat-layer__maximum {
+  color: color-mix(in oklch, var(--chat-toolbar-color, #f7f1f0) 48%, transparent);
+  font-weight: 650;
+}
+
+.stat-layer__progress {
+  width: 100%;
+  height: 5px;
+  grid-column: 2 / -1;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  appearance: none;
+  background: color-mix(in oklch, var(--stat-item-accent) 10%, rgba(255, 255, 255, 0.08));
+}
+
+.stat-layer__progress::-webkit-progress-bar {
+  border-radius: inherit;
+  background: color-mix(in oklch, var(--stat-item-accent) 10%, rgba(255, 255, 255, 0.08));
+}
+
+.stat-layer__progress::-webkit-progress-value {
+  border-radius: inherit;
+  background: var(--stat-item-accent);
+  box-shadow: 0 0 12px color-mix(in oklch, var(--stat-item-accent) 58%, transparent);
+}
+
+.stat-layer__progress::-moz-progress-bar {
+  border-radius: inherit;
+  background: var(--stat-item-accent);
+  box-shadow: 0 0 12px color-mix(in oklch, var(--stat-item-accent) 58%, transparent);
+}
+
 .token-usage-layer {
   position: absolute;
   top: var(--stage-token-layer-top);

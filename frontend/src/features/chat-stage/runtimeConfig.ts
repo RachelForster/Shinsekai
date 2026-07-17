@@ -6,7 +6,7 @@ import { DEFAULT_THEME_COLOR, normalizeThemeColor } from "../../shared/theme/app
 
 export const clickThroughGuardIntervalMs = 32;
 const runtimeConfigStorageKey = "shinsekai-chat-stage-runtime-config";
-export const chatStageRuntimeConfigVersion = 2;
+export const chatStageRuntimeConfigVersion = 3;
 export const runtimeTextSpeedMin = 1;
 export const runtimeTextSpeedMax = 200;
 export const runtimeDialogOpacityMin = 0.35;
@@ -49,6 +49,7 @@ export interface ChatStageTextStyleConfig {
   bold: boolean;
   boldOverride?: boolean;
   align?: ChatStageTextAlign;
+  alignOverride?: boolean;
   direction?: ChatStageTextDirection;
 }
 
@@ -63,11 +64,14 @@ export interface ChatStageDialogFillConfig {
 
 export interface ChatStageRuntimeConfig {
   auto: boolean;
+  autoHideInput: boolean;
+  autoHideTopTools: boolean;
   configThemeColor: string;
   configUseMainThemeColor: boolean;
   dialogFill: ChatStageDialogFillConfig;
   dialogOpacity: number;
   dialogScale: number;
+  immersiveMode: boolean;
   longPressTalk: boolean;
   spriteScales: Record<string, number>;
   spriteOffsetX: number;
@@ -89,6 +93,8 @@ interface ChatStageRuntimeConfigStorageEnvelope {
 
 export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   auto: false,
+  autoHideInput: true,
+  autoHideTopTools: true,
   configThemeColor: DEFAULT_THEME_COLOR,
   configUseMainThemeColor: true,
   dialogText: {
@@ -109,6 +115,7 @@ export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   },
   dialogOpacity: 1,
   dialogScale: 1,
+  immersiveMode: false,
   longPressTalk: false,
   nameText: {
     bold: true,
@@ -225,6 +232,7 @@ function readRuntimeTextStyle(
   max: number,
 ) {
   const next: ChatStageTextStyleConfig = {
+    alignOverride: typeof parsed?.alignOverride === "boolean" ? parsed.alignOverride : undefined,
     bold: typeof parsed?.bold === "boolean" ? parsed.bold : fallback.bold,
     boldOverride: typeof parsed?.boldOverride === "boolean" ? parsed.boldOverride : undefined,
     color: sanitizeRuntimeColor(parsed?.color, fallback.color),
@@ -258,6 +266,12 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
   const parsed = unwrapRuntimeConfigStoragePayload(value);
   return {
     auto: typeof parsed.auto === "boolean" ? parsed.auto : defaultChatStageRuntimeConfig.auto,
+    autoHideInput:
+      typeof parsed.autoHideInput === "boolean" ? parsed.autoHideInput : defaultChatStageRuntimeConfig.autoHideInput,
+    autoHideTopTools:
+      typeof parsed.autoHideTopTools === "boolean"
+        ? parsed.autoHideTopTools
+        : defaultChatStageRuntimeConfig.autoHideTopTools,
     configThemeColor: sanitizeRuntimeColor(parsed.configThemeColor, defaultChatStageRuntimeConfig.configThemeColor),
     configUseMainThemeColor:
       typeof parsed.configUseMainThemeColor === "boolean"
@@ -276,6 +290,8 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
       runtimeDialogScaleMin,
       runtimeDialogScaleMax,
     ),
+    immersiveMode:
+      typeof parsed.immersiveMode === "boolean" ? parsed.immersiveMode : defaultChatStageRuntimeConfig.immersiveMode,
     longPressTalk:
       typeof parsed.longPressTalk === "boolean" ? parsed.longPressTalk : defaultChatStageRuntimeConfig.longPressTalk,
     typewriterCps:
@@ -399,6 +415,15 @@ function runtimeTextBoldIsExplicit(config: ChatStageTextStyleConfig, fallback: C
   return config.boldOverride === true || config.bold !== fallback.bold;
 }
 
+function runtimeTextAlignIsExplicit(config: ChatStageTextStyleConfig, fallback: ChatStageTextStyleConfig) {
+  return config.alignOverride === true || config.align !== fallback.align;
+}
+
+function runtimeThemeTextAlign(themeStyle: CSSProperties, fallback: ChatStageTextAlign) {
+  const value = themeStyleString(themeStyle, "--chat-dialog-text-theme-align") as ChatStageTextAlign;
+  return chatStageTextAlignments.includes(value) ? value : fallback;
+}
+
 function hexToRgb(value: string) {
   const match = value.match(/^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i);
   if (!match) {
@@ -479,7 +504,9 @@ export function effectiveChatStageTextStyle(
   const themeColor = sanitizeRuntimeColor(themeStyleString(themeStyle, colorVar), fallback.color);
   const themeFontFamily = themeStyleString(themeStyle, familyVar) || themeStyleString(themeStyle, "--font-chat");
   const explicitBold = runtimeTextBoldIsExplicit(config, fallback);
+  const explicitAlign = runtimeTextAlignIsExplicit(config, fallback);
   const next: ChatStageTextStyleConfig = {
+    alignOverride: config.alignOverride,
     bold: explicitBold ? config.bold : runtimeThemeBold(themeStyle, weightVar, fallback.bold),
     boldOverride: config.boldOverride,
     color: config.color === fallback.color ? themeColor : config.color,
@@ -490,7 +517,7 @@ export function effectiveChatStageTextStyle(
         : config.fontSize,
   };
   if (fallback.align) {
-    next.align = config.align ?? fallback.align;
+    next.align = explicitAlign ? (config.align ?? fallback.align) : runtimeThemeTextAlign(themeStyle, fallback.align);
   }
   if (fallback.direction) {
     next.direction = config.direction ?? fallback.direction;
@@ -548,7 +575,9 @@ export function chatStageRuntimeStyle(
       "400",
       runtimeTextBoldIsExplicit(config.dialogText, defaultChatStageRuntimeConfig.dialogText),
     ),
-    "--chat-dialog-text-align": config.dialogText.align ?? defaultChatStageRuntimeConfig.dialogText.align ?? "center",
+    "--chat-dialog-text-align": runtimeTextAlignIsExplicit(config.dialogText, defaultChatStageRuntimeConfig.dialogText)
+      ? (config.dialogText.align ?? defaultChatStageRuntimeConfig.dialogText.align ?? "center")
+      : "var(--chat-dialog-text-theme-align, center)",
     "--chat-dialog-text-direction":
       config.dialogText.direction ?? defaultChatStageRuntimeConfig.dialogText.direction ?? "ltr",
     "--chat-dialog-render-direction": "ltr",

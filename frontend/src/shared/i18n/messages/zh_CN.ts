@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "chat.stats.label": "角色状态",
   "api.memory.cachedNotLoaded": "embedding 模型已缓存，尚未加载",
   "api.memory.enableReady": "自动长期记忆已启用。",
   "api.memory.modelMissingKeepOff": "embedding 模型尚未下载，长期记忆已保持关闭。",
@@ -449,11 +450,14 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.config.dialogTextAlignLeft": "左对齐",
   "chat.config.dialogTextAlignRight": "右对齐",
   "chat.config.dialogTextDirection": "对话文字方向",
+  "chat.config.autoHideInput": "自动隐藏输入区",
+  "chat.config.autoHideTopTools": "自动隐藏右上角工具栏",
   "chat.config.fontFamilyPlaceholder": "留空使用主题字体",
   "chat.config.fontSizeValue": "{value}px",
   "chat.config.longPressTalk": "长按键说话",
   "chat.config.longPressTalkVoskMissing":
     "需要先下载并配置 Vosk 语音模型后才能开启。请前往系统设置下载模型，当前路径：{path}",
+  "chat.config.immersiveMode": "沉浸模式",
   "chat.config.menuThemeColor": "配置菜单颜色",
   "chat.config.nameBold": "名牌文字加粗",
   "chat.config.nameColor": "名牌文字颜色",
@@ -461,6 +465,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.config.nameFontSize": "名牌字号",
   "chat.config.scaleValue": "{value}%",
   "chat.config.sectionConversation": "对话",
+  "chat.config.sectionImmersive": "沉浸模式",
   "chat.config.sectionLayout": "布局",
   "chat.config.sectionMenuAppearance": "设置面板外观",
   "chat.config.sectionSprites": "立绘",
@@ -559,6 +564,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.toolbar.unlockActions": "解锁聊天操作",
   "chat.theme.active": "当前使用",
   "chat.theme.apply": "应用",
+  "chat.theme.backToSettings": "返回程序设置",
   "chat.theme.delete": "删除",
   "chat.theme.deleteConfirmBody": "确认删除主题“{name}”？",
   "chat.theme.deleteConfirmTitle": "删除主题",
@@ -567,6 +573,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.theme.error.delete": "无法删除聊天主题。",
   "chat.theme.error.upload": "无法上传聊天主题。",
   "chat.theme.open": "主题管理",
+  "chat.theme.pageDescription": "管理、导入并应用聊天界面主题。",
   "chat.theme.sourceBuiltin": "内置",
   "chat.theme.sourceUser": "用户",
   "chat.theme.title": "聊天主题",

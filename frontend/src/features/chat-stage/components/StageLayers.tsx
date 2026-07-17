@@ -1,12 +1,23 @@
-import { createElement, type CSSProperties, type MouseEvent, type MouseEventHandler, type ReactNode } from "react";
+import {
+  createElement,
+  useEffect,
+  useRef,
+  type CSSProperties,
+  type MouseEvent,
+  type MouseEventHandler,
+  type ReactNode,
+} from "react";
+import { Clock, Coins, Gauge, Heart, Shield, Sparkles, Star, Target, Zap, type LucideIcon } from "lucide-react";
 
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
-import { Button } from "../../../shared/ui";
+import type { ChatStat } from "../../../shared/platform/types";
+import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
 import type { DialogHtmlNode, DialogHtmlStyleProperty } from "../dialogTypewriter";
+import { chatStageSpriteAxisCenter, chatStageSpriteCharacterName } from "../state/sprites";
 
 function closestDialogInteractiveElement(target: EventTarget | null) {
   if (!(target instanceof Element)) {
@@ -38,6 +49,45 @@ export function BackgroundLayer({
   );
 }
 
+export function BgmLayer({ path }: { path?: string }) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const src = stageAssetUrl(path);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !src) {
+      return;
+    }
+
+    let disposed = false;
+    const play = () => {
+      if (disposed) {
+        return;
+      }
+      const request = audio.play();
+      if (request) {
+        void request.catch(() => undefined);
+      }
+    };
+    const request = audio.play();
+    if (request) {
+      void request.catch(() => {
+        if (!disposed) {
+          document.addEventListener("pointerdown", play, { once: true });
+        }
+      });
+    }
+
+    return () => {
+      disposed = true;
+      document.removeEventListener("pointerdown", play);
+      audio.pause();
+    };
+  }, [src]);
+
+  return src ? <audio aria-hidden data-chat-stage-bgm loop preload="auto" ref={audioRef} src={src} /> : null;
+}
+
 export function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
   const src = stageAssetUrl(path);
   return (
@@ -61,8 +111,8 @@ export function SpriteLayer({
   sprites: ChatStageSprite[];
 }) {
   const activeSpeaker = speaker?.trim() ?? "";
-  const spriteName = (sprite: ChatStageSprite) => (sprite.characterName ?? sprite.label ?? "").trim();
-  const hasSpeakingSprite = activeSpeaker.length > 0 && sprites.some((sprite) => spriteName(sprite) === activeSpeaker);
+  const hasSpeakingSprite =
+    activeSpeaker.length > 0 && sprites.some((sprite) => chatStageSpriteCharacterName(sprite) === activeSpeaker);
   return (
     <div
       aria-hidden={hidden}
@@ -71,21 +121,21 @@ export function SpriteLayer({
       hidden={hidden}
     >
       {sprites.map((sprite, index) => {
-        const speaking = hasSpeakingSprite && spriteName(sprite) === activeSpeaker;
+        const speaking = hasSpeakingSprite && chatStageSpriteCharacterName(sprite) === activeSpeaker;
+        const axisCenter = chatStageSpriteAxisCenter(sprites, sprite, index);
         return (
           <figure
             className="sprite-layer__figure"
-            data-chat-stage-hitbox={onDragStart ? "true" : undefined}
+            data-axis-center={String(axisCenter)}
             data-dim={hasSpeakingSprite && !speaking ? "true" : "false"}
             data-draggable={onDragStart ? "true" : "false"}
             data-slot={sprite.slot ?? index}
             data-speaking={speaking ? "true" : "false"}
             key={sprite.id}
-            onMouseDown={onDragStart}
             style={
               {
-                "--sprite-count": sprites.length,
-                "--sprite-index": index,
+                "--sprite-axis-center": `${axisCenter}%`,
+                "--sprite-layer-order": index + 1,
                 "--sprite-offset-x": `${sprite.x ?? 0}px`,
                 "--sprite-offset-y": `${sprite.y ?? 0}px`,
                 "--sprite-scale": (sprite.scale ?? 1) * runtimeScaleForSprite(sprite, index),
@@ -95,7 +145,10 @@ export function SpriteLayer({
             <img
               alt={sprite.label}
               className="sprite-layer__image"
+              data-chat-stage-hitbox={onDragStart ? "true" : undefined}
+              key={sprite.path}
               onError={hideBrokenStageAsset}
+              onMouseDown={onDragStart}
               src={stageAssetUrl(sprite.path)}
             />
           </figure>
@@ -153,7 +206,13 @@ export function DialogLayer({
       hidden={hidden}
       onClick={handleDialogClick}
     >
-      {characterName ? <p className="dialog-layer__name">{characterName}</p> : null}
+      <ThemeFrame prefix="chat-dialog" />
+      {characterName ? (
+        <p className="dialog-layer__name">
+          <ThemeFrame prefix="chat-name" />
+          <span className="dialog-layer__name-content">{characterName}</span>
+        </p>
+      ) : null}
       {htmlNodes !== undefined ? (
         <div className="dialog-layer__body">
           <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
@@ -255,11 +314,16 @@ export function OptionsLayer({
       data-chat-stage-hitbox="true"
       hidden={hidden}
     >
-      {options.map((option) => (
-        <Button className="options-layer__button" key={option} onClick={() => onSelect(option)}>
-          {option}
-        </Button>
-      ))}
+      <div className="options-layer__scroll">
+        {options.map((option) => (
+          <div className="options-layer__item" key={option}>
+            <ThemeFrame prefix="chat-option" />
+            <Button className="options-layer__button" onClick={() => onSelect(option)}>
+              {option}
+            </Button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -294,6 +358,56 @@ export function NotificationLayer({ hidden, text }: { hidden: boolean; text?: st
     >
       {text}
     </div>
+  );
+}
+
+const statIcons: Record<ChatStat["icon"], LucideIcon> = {
+  clock: Clock,
+  coins: Coins,
+  gauge: Gauge,
+  heart: Heart,
+  shield: Shield,
+  sparkles: Sparkles,
+  star: Star,
+  target: Target,
+  zap: Zap,
+};
+
+function formatStatNumber(value: number) {
+  if (Number.isInteger(value)) {
+    return String(value);
+  }
+  return value.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+export function StatLayer({ stats }: { stats: ChatStat[] }) {
+  const { t } = useI18n();
+  if (!stats.length) {
+    return null;
+  }
+  return (
+    <aside aria-label={t("chat.stats.label")} className="stat-layer" role="status">
+      {stats.map((stat, index) => {
+        const Icon = statIcons[stat.icon] ?? Gauge;
+        const hasRange = typeof stat.max === "number" && Number.isFinite(stat.max) && stat.max > 0;
+        const progressValue = hasRange ? Math.min(Math.max(stat.value, 0), stat.max as number) : undefined;
+        return (
+          <article className="stat-layer__item" data-icon={stat.icon} key={`${stat.label}-${index}`}>
+            <span aria-hidden className="stat-layer__icon">
+              <Icon />
+            </span>
+            <span className="stat-layer__label">{stat.label}</span>
+            <output className="stat-layer__value">
+              {formatStatNumber(stat.value)}
+              {hasRange ? <span className="stat-layer__maximum"> / {formatStatNumber(stat.max as number)}</span> : null}
+            </output>
+            {hasRange ? (
+              <progress aria-label={stat.label} className="stat-layer__progress" max={stat.max} value={progressValue} />
+            ) : null}
+          </article>
+        );
+      })}
+    </aside>
   );
 }
 

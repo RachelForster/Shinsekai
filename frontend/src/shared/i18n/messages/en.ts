@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "chat.stats.label": "Character stats",
   "api.memory.cachedNotLoaded": "Embedding model cached; not loaded",
   "api.memory.checking": "Checking",
   "api.memory.description":
@@ -456,11 +457,14 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.dialogTextAlignLeft": "Left",
   "chat.config.dialogTextAlignRight": "Right",
   "chat.config.dialogTextDirection": "Dialog text direction",
+  "chat.config.autoHideInput": "Auto-hide input controls",
+  "chat.config.autoHideTopTools": "Auto-hide top-right tools",
   "chat.config.fontFamilyPlaceholder": "Use theme font when blank",
   "chat.config.fontSizeValue": "{value}px",
   "chat.config.longPressTalk": "Long press to talk",
   "chat.config.longPressTalkVoskMissing":
     "Download and configure a Vosk speech model before enabling this. Go to System settings to download it. Current path: {path}",
+  "chat.config.immersiveMode": "Immersive mode",
   "chat.config.menuThemeColor": "Config menu color",
   "chat.config.nameBold": "Bold nameplate text",
   "chat.config.nameColor": "Nameplate text color",
@@ -468,6 +472,7 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.nameFontSize": "Nameplate font size",
   "chat.config.scaleValue": "{value}%",
   "chat.config.sectionConversation": "Conversation",
+  "chat.config.sectionImmersive": "Immersive mode",
   "chat.config.sectionLayout": "Layout",
   "chat.config.sectionMenuAppearance": "Settings panel appearance",
   "chat.config.sectionSprites": "Sprites",
@@ -568,6 +573,7 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.toolbar.unlockActions": "Unlock chat actions",
   "chat.theme.active": "Active",
   "chat.theme.apply": "Apply",
+  "chat.theme.backToSettings": "Back to system settings",
   "chat.theme.delete": "Delete",
   "chat.theme.deleteConfirmBody": 'Delete theme "{name}"?',
   "chat.theme.deleteConfirmTitle": "Delete theme",
@@ -576,6 +582,7 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.theme.error.delete": "Could not delete chat theme.",
   "chat.theme.error.upload": "Could not upload chat theme.",
   "chat.theme.open": "Manage themes",
+  "chat.theme.pageDescription": "Manage, import, and apply themes for the chat interface.",
   "chat.theme.sourceBuiltin": "Built-in",
   "chat.theme.sourceUser": "User",
   "chat.theme.title": "Chat themes",

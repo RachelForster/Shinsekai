@@ -4,6 +4,128 @@ from core.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_sn
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
+    def test_stats_are_folded_for_reconnect_without_replacing_token_usage(self):
+        snapshot = make_empty_chat_snapshot()
+        snapshot["numericInfo"] = "tokens total 42"
+
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 1,
+                "stats": [
+                    {"icon": "heart", "label": "HP", "max": 100, "value": 72},
+                    {"icon": "coins", "label": "Gold", "value": 320},
+                    {"icon": "gauge", "label": "Broken", "value": float("nan")},
+                ],
+                "ts": 1,
+                "type": "stats.update",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(
+            next_snapshot["stats"],
+            [
+                {"icon": "heart", "label": "HP", "max": 100, "value": 72},
+                {"icon": "coins", "label": "Gold", "value": 320},
+            ],
+        )
+        self.assertEqual(next_snapshot["numericInfo"], "tokens total 42")
+
+    def test_background_and_bgm_changes_are_folded_for_reconnect(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "seq": 1,
+                "ts": 1,
+                "type": "background.change",
+                "url": "asset://room.png",
+                "v": 1,
+            },
+        )
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 2,
+                "ts": 2,
+                "type": "bgm.change",
+                "url": "asset://room.mp3",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(next_snapshot["backgroundPath"], "asset://room.png")
+        self.assertEqual(next_snapshot["bgmPath"], "asset://room.mp3")
+
+    def test_sprite_show_replaces_the_previous_slot_occupant_and_preserves_axes(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "characterName": "Mio",
+                "scale": 1.0,
+                "seq": 1,
+                "slot": 0,
+                "ts": 1,
+                "type": "sprite.show",
+                "url": "asset://mio.png",
+                "v": 1,
+            },
+        )
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "characterName": "Ren",
+                "scale": 0.9,
+                "seq": 2,
+                "slot": 0,
+                "ts": 2,
+                "type": "sprite.show",
+                "url": "asset://ren.png",
+                "v": 1,
+                "x": 18,
+                "y": -12,
+            },
+        )
+
+        self.assertEqual(
+            next_snapshot["sprites"],
+            [
+                {
+                    "characterName": "Ren",
+                    "id": "Ren:0",
+                    "label": "Ren",
+                    "path": "asset://ren.png",
+                    "scale": 0.9,
+                    "slot": 0,
+                    "x": 18,
+                    "y": -12,
+                }
+            ],
+        )
+
+    def test_sprite_snapshot_preserves_most_recent_foreground_order(self):
+        snapshot = make_empty_chat_snapshot()
+        for seq, name, slot in ((1, "Mio", 0), (2, "Aoi", 2), (3, "Mio", 0)):
+            snapshot = fold_event_into_snapshot(
+                snapshot,
+                {
+                    "characterName": name,
+                    "scale": 1.0,
+                    "seq": seq,
+                    "slot": slot,
+                    "ts": seq,
+                    "type": "sprite.show",
+                    "url": f"asset://{name.lower()}-{seq}.png",
+                    "v": 1,
+                },
+            )
+
+        self.assertEqual(
+            [(sprite["characterName"], sprite["slot"]) for sprite in snapshot["sprites"]],
+            [("Aoi", 2), ("Mio", 0)],
+        )
+        self.assertEqual(snapshot["sprites"][-1]["path"], "asset://mio-3.png")
+
     def test_chat_init_progress_is_folded_into_snapshot_and_sanitized(self):
         snapshot = make_empty_chat_snapshot()
 

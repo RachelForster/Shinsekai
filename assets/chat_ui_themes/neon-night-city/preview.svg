@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#020714" />
+      <stop offset="0.56" stop-color="#10051d" />
+      <stop offset="1" stop-color="#260526" />
+    </linearGradient>
+    <linearGradient id="panel" x1="0" x2="1">
+      <stop offset="0" stop-color="#030c1c" stop-opacity="0.96" />
+      <stop offset="1" stop-color="#1c0321" stop-opacity="0.94" />
+    </linearGradient>
+    <linearGradient id="road" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#140621" />
+      <stop offset="1" stop-color="#02050d" />
+    </linearGradient>
+    <filter id="cyanGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="5" result="blur" />
+      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+    <filter id="pinkGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+  </defs>
+  <rect width="960" height="540" fill="url(#sky)" />
+  <circle cx="770" cy="120" r="70" fill="#ff2da3" opacity="0.12" filter="url(#pinkGlow)" />
+  <g fill="#050b18" stroke="#10243a" stroke-width="2">
+    <path d="M0 140H130V370H0Z" />
+    <path d="M104 82H255V370H104Z" />
+    <path d="M224 164H356V370H224Z" />
+    <path d="M612 116H746V370H612Z" />
+    <path d="M712 62H862V370H712Z" />
+    <path d="M838 150H960V370H838Z" />
+  </g>
+  <g fill="#00f5ff" opacity="0.5">
+    <rect x="125" y="116" width="8" height="38" /><rect x="150" y="116" width="8" height="18" />
+    <rect x="181" y="116" width="8" height="28" /><rect x="214" y="116" width="8" height="42" />
+    <rect x="642" y="144" width="7" height="32" /><rect x="673" y="144" width="7" height="20" />
+    <rect x="733" y="92" width="8" height="36" /><rect x="775" y="92" width="8" height="20" />
+  </g>
+  <g filter="url(#pinkGlow)">
+    <rect x="269" y="196" width="64" height="96" rx="4" fill="#16051e" stroke="#ff2da3" stroke-width="3" />
+    <text x="301" y="222" text-anchor="middle" fill="#ff63bb" font-family="Consolas, monospace" font-size="14" font-weight="700">NIGHT</text>
+    <text x="301" y="245" text-anchor="middle" fill="#ff63bb" font-family="Consolas, monospace" font-size="14" font-weight="700">CITY</text>
+    <path d="M284 265h34M284 276h34" stroke="#ff2da3" stroke-width="2" />
+  </g>
+  <path d="M0 370H960V540H0Z" fill="url(#road)" />
+  <g stroke="#00f5ff" opacity="0.35">
+    <path d="M480 370L220 540M480 370L340 540M480 370L620 540M480 370L740 540" />
+    <path d="M0 405H960M0 448H960M0 498H960" />
+  </g>
+  <g transform="translate(86 288)">
+    <rect width="788" height="140" rx="6" fill="url(#panel)" stroke="#00f5ff" stroke-width="2" />
+    <rect x="1" y="1" width="786" height="138" rx="5" fill="none" stroke="#ff2da3" stroke-opacity="0.28" />
+    <path d="M0 24h92l16-16h112" fill="none" stroke="#00f5ff" stroke-width="2" filter="url(#cyanGlow)" />
+    <path d="M788 114h-92l-16 16H568" fill="none" stroke="#ff2da3" stroke-width="2" filter="url(#pinkGlow)" />
+    <rect x="26" y="-18" width="190" height="38" rx="3" fill="#12071d" stroke="#ff2da3" stroke-width="2" />
+    <text x="44" y="8" fill="#ff63bb" font-family="Consolas, monospace" font-size="19" font-weight="700">// NIGHT RUNNER</text>
+    <text x="34" y="62" fill="#dffcff" font-family="Segoe UI, sans-serif" font-size="23" font-weight="600">The signal is clean. We move before sunrise.</text>
+    <text x="34" y="96" fill="#7fc8d0" font-family="Consolas, monospace" font-size="14">CHANNEL 07  ·  ENCRYPTED LINK ACTIVE</text>
+    <rect x="34" y="114" width="540" height="2" fill="#00f5ff" opacity="0.55" />
+  </g>
+  <g transform="translate(180 458)">
+    <rect width="600" height="58" rx="29" fill="url(#panel)" stroke="#00f5ff" stroke-width="2" filter="url(#cyanGlow)" />
+    <rect x="2" y="2" width="596" height="54" rx="27" fill="none" stroke="#ff2da3" stroke-opacity="0.28" />
+    <circle cx="31" cy="29" r="20" fill="#00f5ff" fill-opacity="0.08" />
+    <path d="M31 17v17M24 27c0 10 14 10 14 0M31 38v5M25 43h12" fill="none" stroke="#8ffaff" stroke-linecap="round" stroke-width="2" />
+    <text x="64" y="35" fill="#8baeb7" font-family="Segoe UI, sans-serif" font-size="16">Transmit a message...</text>
+    <circle cx="521" cy="29" r="20" fill="#ff2da3" fill-opacity="0.14" />
+    <path d="M512 29h17M522 21l8 8-8 8" fill="none" stroke="#ff8acb" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" />
+    <circle cx="568" cy="29" r="20" fill="#00f5ff" fill-opacity="0.08" />
+    <path d="M568 21v16M560 29h16" stroke="#8ffaff" stroke-linecap="round" stroke-width="2.2" />
+  </g>
+  <text x="42" y="46" fill="#00f5ff" font-family="Consolas, monospace" font-size="18" font-weight="700" filter="url(#cyanGlow)">SHINSEKAI // NEON NIGHT CITY</text>
+  <text x="42" y="70" fill="#6a95a2" font-family="Consolas, monospace" font-size="12">SYSTEM ONLINE · 02:47:16 · SECTOR 09</text>
+</svg>

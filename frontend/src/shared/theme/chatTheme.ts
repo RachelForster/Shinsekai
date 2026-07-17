@@ -27,10 +27,18 @@ export interface VisualBlock {
   /** 像素值；解析时 clamp。 */
   padding?: number;
   boxShadow?: string;
-  /** ADV 边框贴图（9-slice），主题目录内相对路径（沙箱）。仅 dialog / name 块消费。 */
+}
+
+/** 只用于具有独立边框层的低密度 UI 外壳；列表行、按钮状态等 VisualBlock 不接受这些字段。 */
+export interface FrameVisualBlock extends VisualBlock {
+  /** SVG/位图九宫格边框，主题目录内相对路径（沙箱）。 */
   frameImage?: string;
-  /** 边框切片像素（border-image slice/width），clamp 1–200，默认 32。 */
+  /** 素材坐标系中的九宫格切片值（无单位），clamp 1–200，默认 32。 */
   frameSlice?: number;
+  /** 屏幕上的九宫格边框带宽（px），决定角块显示尺寸与素材缩放，clamp 0–96；省略时回退到 frameSlice。 */
+  frameWidthPx?: number;
+  /** 边框向容器外绘制的距离（px），不参与布局，clamp 0–96，默认 0。 */
+  frameOutsetPx?: number;
 }
 
 /** 自定义字体声明，运行时注入为 @font-face。src 为主题目录内相对路径。 */
@@ -45,7 +53,7 @@ export interface ChatThemeFontFace {
 export interface ChatThemeTokens {
   global?: { themeColor?: string; fontFamily?: string };
   fonts?: ChatThemeFontFace[];
-  dialog?: VisualBlock & {
+  dialog?: FrameVisualBlock & {
     /** 对话区 chrome；none = 字幕模式，无背景框、无边框、无滚动限制。 */
     chrome?: "panel" | "none";
     /** 对话框宽度占比（vw），clamp 30–100。 */
@@ -62,7 +70,7 @@ export interface ChatThemeTokens {
     textSizePx?: number;
     textWeight?: number;
   };
-  options?: VisualBlock & {
+  options?: FrameVisualBlock & {
     active?: VisualBlock;
     gap?: number;
     hover?: VisualBlock;
@@ -80,20 +88,24 @@ export interface ChatThemeTokens {
     widthPx?: number;
     widthMode?: "fixed" | "content";
   };
-  input?: VisualBlock & {
+  input?: FrameVisualBlock & {
     fieldBackground?: string;
     fieldBorderRadius?: string;
     layout?: "default" | "pill";
     maxWidthPx?: number;
     sendPlacement?: "outside" | "inside";
   };
-  toolbar?: VisualBlock & { placement?: "dialog-top" | "input" | "input-top"; reveal?: "always" | "hover" };
+  toolbar?: FrameVisualBlock & {
+    placement?: "dialog-top" | "input" | "input-top";
+    reveal?: "always" | "hover";
+  };
   send?: VisualBlock;
-  name?: VisualBlock & {
+  name?: FrameVisualBlock & {
     align?: "left" | "center";
     decoration?: "accent" | "line-dots";
     fontFamily?: string;
     hideWhenStartOption?: boolean;
+    overlapPx?: number;
     textShadow?: string;
     textSizePx?: number;
     textWeight?: number;
@@ -115,11 +127,11 @@ export interface LogsThemeTokens {
   line?: VisualBlock & { expanded?: VisualBlock; hover?: VisualBlock };
   number?: VisualBlock;
   page?: VisualBlock;
-  panel?: VisualBlock;
-  sidebar?: VisualBlock;
+  panel?: FrameVisualBlock;
+  sidebar?: FrameVisualBlock;
   source?: VisualBlock;
-  toolbar?: VisualBlock;
-  viewer?: VisualBlock;
+  toolbar?: FrameVisualBlock;
+  viewer?: FrameVisualBlock;
 }
 
 /** 完整主题清单（theme.json）。 */
@@ -283,11 +295,51 @@ function setIntegerVar(
   style[name] = String(Math.round(clampNumber(value, fallback, min, max)));
 }
 
+function applyFrameVisualBlock(
+  style: ChatStageStyle,
+  namespace: "chat" | "logs",
+  prefix: string,
+  frame: FrameVisualBlock,
+  assetUrl?: (rel: string) => string,
+  legacyShorthand = false,
+) {
+  const frameImage = assetUrl && frame.frameImage ? resolveThemeAssetUrl(frame.frameImage, assetUrl) : "";
+  const slice =
+    frame.frameSlice === undefined ? (frameImage ? 32 : undefined) : clampNumber(frame.frameSlice, 32, 1, 200);
+  const width =
+    frame.frameWidthPx === undefined
+      ? frameImage
+        ? (slice ?? 32)
+        : undefined
+      : clampNumber(frame.frameWidthPx, slice ?? 32, 0, 96);
+  const outset =
+    frame.frameOutsetPx === undefined ? (frameImage ? 0 : undefined) : clampNumber(frame.frameOutsetPx, 0, 0, 96);
+
+  if (frameImage) {
+    style[`--${namespace}-${prefix}-frame-image`] = `url("${frameImage}")`;
+  }
+  if (slice !== undefined) {
+    style[`--${namespace}-${prefix}-frame-slice`] = String(slice);
+  }
+  if (width !== undefined) {
+    style[`--${namespace}-${prefix}-frame-width`] = `${width}px`;
+  }
+  if (outset !== undefined) {
+    style[`--${namespace}-${prefix}-frame-outset`] = `${outset}px`;
+  }
+  if (legacyShorthand && frameImage) {
+    const legacySlice = slice ?? 32;
+    // Deprecated shorthand retained for themes or extensions that still consume it directly.
+    style[`--chat-${prefix}-frame`] = `url("${frameImage}") ${legacySlice} fill / ${legacySlice}px stretch`;
+  }
+}
+
 function applyVisualBlock(
   style: ChatStageStyle,
   prefix: string,
   block?: VisualBlock | null,
   assetUrl?: (rel: string) => string,
+  allowFrame = false,
 ) {
   if (!block) {
     return;
@@ -299,12 +351,9 @@ function applyVisualBlock(
       style[`--chat-${prefix}-background-image`] = `url("${backgroundImage}")`;
     }
   }
-  if (assetUrl && block.frameImage) {
-    const frameImage = resolveThemeAssetUrl(block.frameImage, assetUrl);
-    if (frameImage) {
-      const slice = clampNumber(block.frameSlice, 32, 1, 200);
-      style[`--chat-${prefix}-frame`] = `url("${frameImage}") ${slice} fill / ${slice}px round`;
-    }
+  const frame = allowFrame ? (block as FrameVisualBlock) : undefined;
+  if (frame) {
+    applyFrameVisualBlock(style, "chat", prefix, frame, assetUrl, true);
   }
   setStyleVar(style, `--chat-${prefix}-border-color`, block.borderColor);
   setStyleVar(style, `--chat-${prefix}-border-radius`, block.borderRadius);
@@ -320,6 +369,7 @@ function applyLogsVisualBlock(
   prefix: string,
   block?: VisualBlock | null,
   assetUrl?: (rel: string) => string,
+  allowFrame = false,
 ) {
   if (!block) {
     return;
@@ -330,6 +380,10 @@ function applyLogsVisualBlock(
     if (backgroundImage) {
       style[`--logs-${prefix}-background-image`] = `url("${backgroundImage}")`;
     }
+  }
+  const frame = allowFrame ? (block as FrameVisualBlock) : undefined;
+  if (frame) {
+    applyFrameVisualBlock(style, "logs", prefix, frame, assetUrl);
   }
   setStyleVar(style, `--logs-${prefix}-border-color`, block.borderColor);
   setStyleVar(style, `--logs-${prefix}-border-radius`, block.borderRadius);
@@ -347,8 +401,26 @@ function mergeVisualBlock<T extends VisualBlock>(base?: T | null, override?: T |
   return { ...(base ?? {}), ...(override ?? {}) } as T;
 }
 
+function withoutFrame(block?: FrameVisualBlock | null): VisualBlock | undefined {
+  if (!block) {
+    return undefined;
+  }
+  return {
+    background: block.background,
+    backgroundImage: block.backgroundImage,
+    borderColor: block.borderColor,
+    borderRadius: block.borderRadius,
+    boxShadow: block.boxShadow,
+    color: block.color,
+    padding: block.padding,
+  };
+}
+
 function resolveLogsThemeTokens(tokens: ChatThemeTokens): LogsThemeTokens {
   const logs = tokens.logs ?? {};
+  const dialogFallback = withoutFrame(tokens.dialog);
+  const inputFallback = withoutFrame(tokens.input);
+  const toolbarFallback = withoutFrame(tokens.toolbar);
   const accentBlock: VisualBlock = {
     background: tokens.options?.background,
     borderColor: tokens.options?.borderColor,
@@ -360,15 +432,15 @@ function resolveLogsThemeTokens(tokens: ChatThemeTokens): LogsThemeTokens {
   };
   return {
     page: mergeVisualBlock({ color: tokens.dialog?.color }, logs.page),
-    panel: mergeVisualBlock(tokens.toolbar ?? tokens.dialog, logs.panel),
-    toolbar: mergeVisualBlock(tokens.toolbar, logs.toolbar),
-    sidebar: mergeVisualBlock(tokens.toolbar ?? tokens.input, logs.sidebar),
+    panel: mergeVisualBlock(toolbarFallback ?? dialogFallback, logs.panel),
+    toolbar: mergeVisualBlock(toolbarFallback, logs.toolbar),
+    sidebar: mergeVisualBlock(toolbarFallback ?? inputFallback, logs.sidebar),
     source: mergeVisualBlock(accentBlock, logs.source),
-    viewer: mergeVisualBlock(tokens.dialog, logs.viewer),
+    viewer: mergeVisualBlock(dialogFallback, logs.viewer),
     code: mergeVisualBlock(codeFallback, logs.code),
     line: logs.line,
     number: logs.number,
-    detail: mergeVisualBlock(tokens.input, logs.detail),
+    detail: mergeVisualBlock(inputFallback, logs.detail),
     badge: mergeVisualBlock({ color: tokens.options?.color ?? tokens.dialog?.color }, logs.badge),
     event: mergeVisualBlock(accentBlock, logs.event),
     fileItem: logs.fileItem,
@@ -422,7 +494,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   }
 
   const dialog = tokens.dialog;
-  applyVisualBlock(style, "dialog", dialog, assetUrl);
+  applyVisualBlock(style, "dialog", dialog, assetUrl, true);
   if (typeof dialog?.heightPx === "number" || dialog?.chrome === "none") {
     style["--chat-dialog-height"] = `${clampNumber(dialog?.heightPx, 156, 96, 260)}px`;
     style["--chat-dialog-body-height"] = "100%";
@@ -451,8 +523,8 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   if (typeof dialog?.offsetY === "number") {
     style["--chat-dialog-offset-y"] = `${clampNumber(dialog.offsetY, 0, -240, 240)}px`;
   }
-  if (dialog?.textAlign === "center") {
-    style["--chat-dialog-text-align"] = "center";
+  if (dialog?.textAlign === "left" || dialog?.textAlign === "center") {
+    style["--chat-dialog-text-theme-align"] = dialog.textAlign;
   }
   if (isSafeCssValue(dialog?.color)) {
     style["--chat-dialog-text-theme-color"] = dialog.color.trim();
@@ -469,7 +541,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   setStyleVar(style, "--chat-dialog-text-shadow", dialog?.textShadow);
 
   const options = tokens.options;
-  applyVisualBlock(style, "option", options, assetUrl);
+  applyVisualBlock(style, "option", options, assetUrl, true);
   applyVisualBlock(style, "option-active", options?.active, assetUrl);
   applyVisualBlock(style, "option-hover", options?.hover, assetUrl);
   if (isSafeCssValue(options?.color)) {
@@ -518,22 +590,18 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   }
 
   const input = tokens.input;
-  applyVisualBlock(style, "input", input, assetUrl);
-  if (isSafeCssValue(input?.fieldBackground)) {
-    style["--chat-input-field-background"] = input.fieldBackground;
-  }
-  if (isSafeCssValue(input?.fieldBorderRadius)) {
-    style["--chat-input-field-border-radius"] = input.fieldBorderRadius;
-  }
-  if (typeof input?.maxWidthPx === "number") {
-    style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
-  }
   if (input?.layout === "pill") {
     style["--chat-input-layout"] = "pill";
     style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
     style["--stage-input-height"] = "calc(var(--chat-input-button-size) + clamp(10px, 1.44svh, 14px))";
-    style["--chat-input-border"] = "0 solid transparent";
+    style["--chat-input-border-color"] = "transparent";
     style["--chat-input-border-radius"] = "999px";
+    style["--chat-send-background"] = "transparent";
+    style["--chat-send-border-color"] = "transparent";
+    style["--chat-send-border-radius"] = "50%";
+    style["--chat-send-box-shadow"] = "none";
+    style["--chat-send-color"] = "var(--chat-input-color, #fff)";
+    style["--chat-send-sheen"] = "none";
     style["--chat-input-field-background"] = "transparent";
     style["--chat-input-field-border-radius"] = "0px";
     style["--chat-input-field-display"] = "contents";
@@ -550,13 +618,14 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-input-textarea-padding-right"] = "0px";
     style["--chat-input-voice-stack-display"] = "none";
   }
+  // Pill owns its submit surface; sendPlacement only selects a variant of the default layout.
   if (input?.sendPlacement === "inside" && input?.layout !== "pill") {
     style["--chat-input-grid-template-columns"] = "minmax(0, 1fr) 38px";
     style["--chat-input-field-display"] = "block";
     style["--chat-input-field-position"] = "relative";
     style["--chat-input-textarea-padding-right"] = "56px";
     style["--chat-send-active-transform"] = "translateY(-50%)";
-    style["--chat-send-border"] = "0 solid transparent";
+    style["--chat-send-border-color"] = "transparent";
     style["--chat-send-box-shadow"] = "none";
     style["--chat-send-height"] = "36px";
     style["--chat-send-hover-sheen"] = "none";
@@ -573,9 +642,20 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-send-transform"] = "translateY(-50%)";
     style["--chat-send-width"] = "36px";
   }
+  // Layout presets provide defaults. Explicit visual tokens always win.
+  applyVisualBlock(style, "input", input, assetUrl, true);
+  if (isSafeCssValue(input?.fieldBackground)) {
+    style["--chat-input-field-background"] = input.fieldBackground;
+  }
+  if (isSafeCssValue(input?.fieldBorderRadius)) {
+    style["--chat-input-field-border-radius"] = input.fieldBorderRadius;
+  }
+  if (typeof input?.maxWidthPx === "number") {
+    style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
+  }
 
   const toolbar = tokens.toolbar;
-  applyVisualBlock(style, "toolbar", toolbar, assetUrl);
+  applyVisualBlock(style, "toolbar", toolbar, assetUrl, true);
   if (toolbar?.placement === "dialog-top") {
     style["--chat-dialog-toolbar-placement"] = "dialog-top";
     style["--chat-dialog-toolbar-layer-bottom"] =
@@ -606,7 +686,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     }
   }
   applyVisualBlock(style, "send", tokens.send, assetUrl);
-  applyVisualBlock(style, "name", tokens.name, assetUrl);
+  applyVisualBlock(style, "name", tokens.name, assetUrl, true);
   if (isSafeCssValue(tokens.name?.color)) {
     style["--chat-name-theme-color"] = tokens.name.color.trim();
   }
@@ -618,6 +698,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   }
   setPxVar(style, "--chat-name-theme-font-size", tokens.name?.textSizePx, 15, 12, 56);
   setIntegerVar(style, "--chat-name-theme-font-weight", tokens.name?.textWeight, 800, 300, 900);
+  setPxVar(style, "--chat-name-overlap", tokens.name?.overlapPx, 1, 0, 48);
   setStyleVar(style, "--chat-name-text-shadow", tokens.name?.textShadow);
   if (tokens.name?.align === "center") {
     style["--chat-name-justify-content"] = "center";
@@ -652,11 +733,11 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
 
   const logs = resolveLogsThemeTokens(tokens);
   applyLogsVisualBlock(style, "page", logs?.page, assetUrl);
-  applyLogsVisualBlock(style, "panel", logs?.panel, assetUrl);
-  applyLogsVisualBlock(style, "toolbar", logs?.toolbar, assetUrl);
-  applyLogsVisualBlock(style, "sidebar", logs?.sidebar, assetUrl);
+  applyLogsVisualBlock(style, "panel", logs?.panel, assetUrl, true);
+  applyLogsVisualBlock(style, "toolbar", logs?.toolbar, assetUrl, true);
+  applyLogsVisualBlock(style, "sidebar", logs?.sidebar, assetUrl, true);
   applyLogsVisualBlock(style, "source", logs?.source, assetUrl);
-  applyLogsVisualBlock(style, "viewer", logs?.viewer, assetUrl);
+  applyLogsVisualBlock(style, "viewer", logs?.viewer, assetUrl, true);
   applyLogsVisualBlock(style, "code", logs?.code, assetUrl);
   applyLogsVisualBlock(style, "line", logs?.line, assetUrl);
   applyLogsVisualBlock(style, "line-hover", logs?.line?.hover, assetUrl);

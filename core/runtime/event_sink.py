@@ -16,6 +16,7 @@ import base64
 import collections
 import itertools
 import json
+import math
 import os
 import re
 import secrets
@@ -63,6 +64,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "inputDraft": "",
         "options": [],
         "sprites": [],
+        "stats": [],
         "status": "idle",
         "systemMessageText": "",
         "userDisplayName": "你",
@@ -143,6 +145,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     next_snapshot.setdefault("inputDraft", "")
     next_snapshot.setdefault("options", [])
     next_snapshot.setdefault("sprites", [])
+    next_snapshot.setdefault("stats", [])
     next_snapshot.setdefault("status", "idle")
 
     if event_type == "snapshot":
@@ -209,19 +212,23 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         current = [
             item
             for item in current
-            if item.get("id") != sprite_id and item.get("label") != character_name and item.get("characterName") != character_name
+            if item.get("id") != sprite_id
+            and item.get("label") != character_name
+            and item.get("characterName") != character_name
+            and (slot is None or item.get("slot") != slot)
         ]
-        current.append(
-            {
-                "id": sprite_id,
-                "label": character_name,
-                "path": str(event.get("url") or ""),
-                "characterName": character_name,
-                "scale": event.get("scale"),
-                "slot": slot,
-            }
-        )
-        current.sort(key=lambda item: (item.get("slot") if item.get("slot") is not None else 10**9, str(item.get("id") or "")))
+        next_sprite = {
+            "id": sprite_id,
+            "label": character_name,
+            "path": str(event.get("url") or ""),
+            "characterName": character_name,
+            "scale": event.get("scale"),
+            "slot": slot,
+        }
+        for axis in ("x", "y"):
+            if event.get(axis) is not None:
+                next_sprite[axis] = event.get(axis)
+        current.append(next_sprite)
         next_snapshot["sprites"] = current
         return next_snapshot
 
@@ -240,6 +247,10 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     if event_type == "background.change":
         _clear_transient_notification_state(next_snapshot)
         next_snapshot["backgroundPath"] = str(event.get("url") or "")
+        return next_snapshot
+
+    if event_type == "bgm.change":
+        next_snapshot["bgmPath"] = str(event.get("url") or "")
         return next_snapshot
 
     if event_type == "cg.show":
@@ -274,6 +285,38 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "numeric.update":
         next_snapshot["numericInfo"] = _plain_text(str(event.get("html") or ""))
+        return next_snapshot
+
+    if event_type == "stats.update":
+        stats: list[dict[str, Any]] = []
+        for item in event.get("stats") or []:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            value = item.get("value")
+            if (
+                not label
+                or isinstance(value, bool)
+                or not isinstance(value, (int, float))
+            ):
+                continue
+            if not math.isfinite(float(value)):
+                continue
+            stat: dict[str, Any] = {
+                "icon": str(item.get("icon") or "gauge"),
+                "label": label,
+                "value": value,
+            }
+            maximum = item.get("max")
+            if (
+                not isinstance(maximum, bool)
+                and isinstance(maximum, (int, float))
+                and math.isfinite(float(maximum))
+                and maximum > 0
+            ):
+                stat["max"] = maximum
+            stats.append(stat)
+        next_snapshot["stats"] = stats
         return next_snapshot
 
     if event_type == "busy.show":

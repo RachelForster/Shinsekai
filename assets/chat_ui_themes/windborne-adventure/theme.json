@@ -90,11 +90,8 @@
       "borderRadius": "999px",
       "boxShadow": "0 14px 34px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.16)",
       "color": "#ffffff",
-      "fieldBackground": "transparent",
-      "fieldBorderRadius": "0px",
       "layout": "pill",
-      "maxWidthPx": 640,
-      "sendPlacement": "inside"
+      "maxWidthPx": 640
     },
     "toolbar": {
       "background": "rgba(31,42,52,0.72)",
@@ -107,7 +104,7 @@
     "send": {
       "background": "rgba(0,0,0,0)",
       "borderColor": "rgba(255,255,255,0)",
-      "borderRadius": "10px",
+      "borderRadius": "50%",
       "color": "#f3cf57"
     },
     "logs": {

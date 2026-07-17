@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" preserveAspectRatio="none">
+  <path
+    d="M28 4H100L124 28V100L100 124H28L4 100V28Z"
+    fill="none"
+    stroke="#00f5ff"
+    stroke-opacity="0.08"
+    stroke-width="4"
+  />
+  <path
+    d="M28 4H100L124 28V100L100 124H28L4 100V28Z"
+    fill="none"
+    stroke="#69f9ff"
+    stroke-width="1.75"
+  />
+  <path d="M88 4H100L124 28V44" fill="none" stroke="#ff3aa8" stroke-width="2.25" />
+  <path d="M4 84V100L28 124H40" fill="none" stroke="#00dce8" stroke-width="2.25" />
+  <rect x="106" y="10" width="12" height="3" fill="#ff3aa8" opacity="0.85" />
+  <rect x="10" y="115" width="12" height="3" fill="#00dce8" opacity="0.85" />
+</svg>

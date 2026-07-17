@@ -36,6 +36,10 @@ vi.mock("../../../features/chat-stage/ChatStagePage", () => ({
   ChatStagePage: () => <h1>Chat stage route</h1>,
 }));
 
+vi.mock("../../../features/chat-stage/theme/ChatThemeManagementPage", () => ({
+  ChatThemeManagementPage: () => <h1>Chat themes route</h1>,
+}));
+
 vi.mock("../../../features/logs/LogsPage", () => ({
   LogsPage: () => <h1>Logs route</h1>,
 }));
@@ -94,6 +98,7 @@ describe("AppRoutes", () => {
     ["/settings/music-cover", "Music cover route"],
     ["/settings/launch", "Launch route"],
     ["/settings/system", "System route"],
+    ["/settings/system/chat-themes", "Chat themes route"],
     ["/chat", "Chat stage route"],
     ["/chat-stage", "Chat stage route"],
   ])("renders %s", async (path, heading) => {

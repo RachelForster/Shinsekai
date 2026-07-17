@@ -1,8 +1,36 @@
 import { describe, expect, it } from "vitest";
 
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
+import { chatStageSpriteAxisCenter } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
+  it("applies background and BGM changes from the runtime stream", () => {
+    const withBackground = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        ts: 1,
+        type: "background.change",
+        url: "asset://night-street.png",
+        v: 1,
+      },
+      type: "event",
+    });
+    const withBgm = chatStageReducer(withBackground, {
+      event: {
+        seq: 2,
+        ts: 2,
+        type: "bgm.change",
+        url: "asset://night-theme.mp3",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(withBgm.backgroundPath).toBe("asset://night-street.png");
+    expect(withBgm.bgmPath).toBe("asset://night-theme.mp3");
+    expect(buildChatStageViewModel(withBgm).bgmPath).toBe("asset://night-theme.mp3");
+  });
+
   it("optimistically commits a user message and clears the input draft atomically", () => {
     const state = chatStageReducer(
       {
@@ -689,6 +717,102 @@ describe("chatStageReducer", () => {
     });
     expect(withoutSprite.sprites).toEqual([]);
     expect(withoutSprite.layers.sprites).toBe(false);
+  });
+
+  it("keeps structured character stats separate from token usage", () => {
+    const withStats = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        stats: [
+          { icon: "heart", label: "HP", max: 100, value: 72 },
+          { icon: "coins", label: "Gold", value: 320 },
+        ],
+        ts: 1,
+        type: "stats.update",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    const viewModel = buildChatStageViewModel(withStats);
+    expect(viewModel.stats).toEqual([
+      { icon: "heart", label: "HP", max: 100, value: 72 },
+      { icon: "coins", label: "Gold", value: 320 },
+    ]);
+    expect(viewModel.tokenUsageText).toBeUndefined();
+  });
+
+  it("keeps expression changes in the same display slot and evicts slots by LRU", () => {
+    const showSprite = (
+      state: typeof emptyChatState,
+      seq: number,
+      characterName: string,
+      slot: number,
+      url = `asset://${characterName}-${seq}.png`,
+    ) =>
+      chatStageReducer(state, {
+        event: {
+          characterName,
+          scale: 1,
+          seq,
+          slot,
+          ts: seq,
+          type: "sprite.show",
+          url,
+          v: 1,
+        },
+        type: "event",
+      });
+
+    const mio = showSprite(emptyChatState, 1, "Mio", 2);
+    const mioExpression = showSprite(mio, 2, "Mio", 1, "asset://mio-happy.png");
+    expect(mioExpression.sprites).toHaveLength(1);
+    expect(mioExpression.sprites[0]).toEqual(
+      expect.objectContaining({
+        id: "Mio",
+        path: "asset://mio-happy.png",
+        slot: 0,
+      }),
+    );
+
+    const ren = showSprite(mioExpression, 3, "Ren", 0);
+    const nanami = showSprite(ren, 4, "Nanami", 0);
+    const refreshedMio = showSprite(nanami, 5, "Mio", 0);
+    const aoi = showSprite(refreshedMio, 6, "Aoi", 1);
+
+    expect(aoi.sprites.map((sprite) => sprite.characterName)).toEqual(["Nanami", "Mio", "Aoi"]);
+    expect(aoi.sprites.map((sprite) => sprite.slot)).toEqual([2, 0, 1]);
+  });
+
+  it("preserves snapshot LRU order so the most recent sprite stays in front", () => {
+    const hydrated = chatStageReducer(emptyChatState, {
+      snapshot: {
+        dialogText: "",
+        eventSeq: 3,
+        inputDraft: "",
+        options: [],
+        sprites: [
+          { id: "Aoi:2", label: "Aoi", path: "asset://aoi.png", slot: 2 },
+          { id: "Mio:0", label: "Mio", path: "asset://mio-happy.png", slot: 0 },
+        ],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+
+    expect(hydrated.sprites.map((sprite) => sprite.label)).toEqual(["Aoi", "Mio"]);
+    expect(hydrated.sprites.map((sprite) => sprite.slot)).toEqual([2, 0]);
+  });
+
+  it("centers occupied sprite axes with the legacy Qt compensation", () => {
+    const left = { id: "Mio", label: "Mio", path: "mio.png", slot: 0 };
+    const middle = { id: "Ren", label: "Ren", path: "ren.png", slot: 1 };
+    const right = { id: "Aoi", label: "Aoi", path: "aoi.png", slot: 2 };
+
+    expect(chatStageSpriteAxisCenter([left], left, 0)).toBe(50);
+    expect(chatStageSpriteAxisCenter([left, middle], left, 0)).toBeCloseTo(100 / 3);
+    expect(chatStageSpriteAxisCenter([left, middle], middle, 1)).toBeCloseTo(200 / 3);
+    expect(chatStageSpriteAxisCenter([left, middle, right], right, 2)).toBeCloseTo(250 / 3);
   });
 
   it("ignores runtime status labels when building token usage text", () => {

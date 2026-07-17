@@ -87,9 +87,9 @@ class LlmResponseStreamParser:
             json_str = self._buffer[start_index:end_index]
             try:
                 dialog_item = json.loads(json_str)
-                msg = LLMDialogMessage(**dialog_item)
+                messages = self._dialog_messages(dialog_item)
                 self._buffer = self._buffer[end_index:].strip()
-                yield msg
+                yield from messages
             except json.JSONDecodeError:
                 self.parse_failures += 1
                 _snippet = json_str[:120].replace("\n", " ")
@@ -100,3 +100,20 @@ class LlmResponseStreamParser:
                 self.last_error = str(e)[:200]
                 self._buffer = self._buffer[end_index:].strip()
                 break
+
+    @staticmethod
+    def _dialog_messages(dialog_item: object) -> list[LLMDialogMessage]:
+        """Turn one parsed JSON object into dialogue messages.
+
+        The output contract wraps utterances in ``{"dialog": [ {...}, ... ]}``.
+        While streaming, the inner objects each complete before the wrapper's
+        closing brace arrives, so they are drained individually. A non-streaming
+        response instead delivers the whole wrapper in a single chunk, so unwrap
+        it here into its utterances; both paths then yield the same messages.
+        The ``dialog`` key matches ``parse_assistant_dialog_content``.
+        """
+        if isinstance(dialog_item, dict) and isinstance(dialog_item.get("dialog"), list):
+            items = [item for item in dialog_item["dialog"] if isinstance(item, dict)]
+        else:
+            items = [dialog_item]
+        return [LLMDialogMessage(**item) for item in items]

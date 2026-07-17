@@ -170,8 +170,17 @@ class ChatStreamService:
             snapshot.update(initial_snapshot)
         snapshot["sessionId"] = session_id
         snapshot["wsUrl"] = self.ws_base
+        try:
+            initial_seq = max(0, int(snapshot.get("eventSeq") or 0))
+        except (TypeError, ValueError):
+            initial_seq = 0
+        snapshot["eventSeq"] = initial_seq
         with self._lock:
-            self._sessions[session_id] = _ChatStreamSession(session_id=session_id, snapshot=snapshot)
+            self._sessions[session_id] = _ChatStreamSession(
+                session_id=session_id,
+                snapshot=snapshot,
+                last_seq=initial_seq,
+            )
         producer_endpoint = f"{self.ws_base}?sessionId={quote(session_id)}&role=producer"
         if self.auth_token:
             producer_endpoint = _append_query(
@@ -248,6 +257,12 @@ class ChatStreamService:
             next_snapshot.update(snapshot)
             next_snapshot["sessionId"] = session_id
             next_snapshot["wsUrl"] = self.ws_base
+            try:
+                snapshot_seq = max(0, int(next_snapshot.get("eventSeq") or 0))
+            except (TypeError, ValueError):
+                snapshot_seq = 0
+            session.last_seq = max(session.last_seq, snapshot_seq)
+            next_snapshot["eventSeq"] = session.last_seq
             session.snapshot = next_snapshot
 
     def send_command(self, session_id: str, command: dict[str, Any]) -> bool:
@@ -434,18 +449,23 @@ class ChatStreamService:
             session = self._sessions.get(session_id)
             if session is None:
                 return
-            try:
-                session.last_seq = max(session.last_seq, int(event.get("seq") or 0))
-            except (TypeError, ValueError):
-                pass
-            session.snapshot = fold_event_into_snapshot(session.snapshot, event)
+            # Producer processes own a local sequence counter that restarts at
+            # one after a runtime restart or reconnect. The bridge session is
+            # the serialization boundary, so expose one monotonic sequence to
+            # viewers instead of forwarding that reset counter. Otherwise the
+            # React reducer correctly treats every new event as stale once a
+            # newer snapshot has already been hydrated.
+            normalized_event = dict(event)
+            normalized_event["seq"] = session.last_seq + 1
+            session.last_seq = int(normalized_event["seq"])
+            session.snapshot = fold_event_into_snapshot(session.snapshot, normalized_event)
             session.snapshot["sessionId"] = session_id
             session.snapshot["wsUrl"] = self.ws_base
             viewers = list(session.viewers)
         stale: list[_WebSocketConnection] = []
         for viewer in viewers:
             try:
-                await viewer.send_json(event)
+                await viewer.send_json(normalized_event)
             except Exception:
                 stale.append(viewer)
         for viewer in stale:

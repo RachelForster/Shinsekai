@@ -1,0 +1,42 @@
+.chat-theme-management-page__header {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.chat-theme-management-page__heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.chat-theme-management-page__heading > div {
+  min-width: 0;
+}
+
+.chat-theme-management-page__back {
+  flex: 0 0 auto;
+}
+
+.chat-theme-management-page__description {
+  margin: 3px 0 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-theme-management-page__content {
+  min-height: 320px;
+}
+
+@media (max-width: 760px) {
+  .chat-theme-management-page__heading {
+    align-items: flex-start;
+  }
+
+  .chat-theme-management-page__description {
+    white-space: normal;
+  }
+}
