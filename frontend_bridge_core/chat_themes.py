@@ -56,28 +56,39 @@ def _builtin_themes_root() -> Path:
     return (Path(__file__).resolve().parents[1] / BUILTIN_THEMES_DIR).resolve()
 
 
-def _is_builtin_theme_id(theme_id: str) -> bool:
-    return theme_id in BUILTIN_THEME_IDS
-
-
-def _builtin_theme_owner_marker(theme_dir: Path) -> Path:
-    return theme_dir / BUILTIN_THEME_OWNER_MARKER
+def _registered_builtin_theme(theme_id: str) -> Optional[tuple[str, Path]]:
+    """Return a trusted registry ID and its canonical user-data directory."""
+    for registered_id in BUILTIN_THEME_IDS:
+        if theme_id == registered_id:
+            return registered_id, safe_child_path(_themes_root(), registered_id)
+    return None
 
 
 def _is_builtin_theme_dir(theme_dir: Path) -> bool:
-    theme_id = theme_dir.name
-    if not _is_builtin_theme_id(theme_id):
-        return False
-    if theme_id in LEGACY_UNMARKED_BUILTIN_THEME_IDS:
-        return True
     try:
-        return _builtin_theme_owner_marker(theme_dir).read_text(encoding="utf-8").strip() == theme_id
-    except OSError:
+        registered = _registered_builtin_theme(theme_dir.name)
+        if registered is None:
+            return False
+        theme_id, registered_dir = registered
+        if theme_dir.resolve(strict=False) != registered_dir.resolve(strict=False):
+            return False
+        if theme_id in LEGACY_UNMARKED_BUILTIN_THEME_IDS:
+            return True
+        marker = safe_child_path(registered_dir, BUILTIN_THEME_OWNER_MARKER)
+        return marker.read_text(encoding="utf-8").strip() == theme_id
+    except (OSError, ValueError):
         return False
 
 
 def _mark_builtin_theme_owned(theme_dir: Path, theme_id: str) -> None:
-    _builtin_theme_owner_marker(theme_dir).write_text(f"{theme_id}\n", encoding="utf-8")
+    registered = _registered_builtin_theme(theme_id)
+    if registered is None:
+        raise ValueError(f"unknown built-in theme id: {theme_id}")
+    registered_id, registered_dir = registered
+    if theme_dir.resolve(strict=False) != registered_dir.resolve(strict=False):
+        raise PermissionError("built-in theme directory is outside the theme root")
+    marker = safe_child_path(registered_dir, BUILTIN_THEME_OWNER_MARKER)
+    marker.write_text(f"{registered_id}\n", encoding="utf-8")
 
 
 def _is_retired_builtin_theme_id(theme_id: str) -> bool:
@@ -264,7 +275,7 @@ def install_theme_from_zip(
 
         # 以校验后规整的 manifest 落地（剔除非法字段），其余资源原样拷贝。
         shutil.copytree(manifest_root, target)
-        _builtin_theme_owner_marker(target).unlink(missing_ok=True)
+        safe_child_path(target, BUILTIN_THEME_OWNER_MARKER).unlink(missing_ok=True)
         (target / MANIFEST_NAME).write_text(
             json.dumps(result.normalized, ensure_ascii=False, indent=2), encoding="utf-8"
         )

@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from frontend_bridge_core.chat_themes import (
     BUILTIN_THEME_OWNER_MARKER,
+    _is_builtin_theme_dir,
     delete_chat_theme,
     get_chat_theme_manifest,
     list_chat_themes,
@@ -133,6 +134,21 @@ class ChatThemeBridgeTests(unittest.TestCase):
 
                 delete_chat_theme(state, "sakura-dream")
                 self.assertFalse(target.exists())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_builtin_owner_marker_is_only_trusted_under_the_registered_theme_root(self):
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                spoofed_dir = Path(tempdir) / "outside" / "sakura-dream"
+                spoofed_dir.mkdir(parents=True)
+                (spoofed_dir / BUILTIN_THEME_OWNER_MARKER).write_text(
+                    "sakura-dream\n", encoding="utf-8"
+                )
+
+                self.assertFalse(_is_builtin_theme_dir(spoofed_dir))
             finally:
                 os.chdir(previous_cwd)
 
