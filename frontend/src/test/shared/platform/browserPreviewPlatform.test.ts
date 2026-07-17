@@ -184,6 +184,43 @@ describe("browser preview platform chat themes", () => {
     expect(nextThemes.find((theme) => theme.id === "mint-breeze")).toBeUndefined();
   });
 
+  it("clones and updates user themes in browser preview mode", async () => {
+    const platform = createBrowserPreviewPlatform();
+    const base = await platform.chat.getThemeManifest("windborne-adventure");
+    const manifest = {
+      ...base,
+      id: "windborne-custom",
+      name: { ...base.name, en: "Windborne Custom" },
+      tokens: {
+        ...base.tokens,
+        global: { ...base.tokens.global, themeColor: "#cc88ff" },
+      },
+    };
+
+    await expect(platform.chat.saveTheme({ baseId: "windborne-adventure", manifest })).resolves.toMatchObject({
+      id: "windborne-custom",
+      source: "user",
+    });
+    await expect(platform.chat.getThemeManifest("windborne-custom")).resolves.toMatchObject({
+      id: "windborne-custom",
+      tokens: { global: { themeColor: "#cc88ff" } },
+    });
+
+    const updated = {
+      ...manifest,
+      tokens: {
+        ...manifest.tokens,
+        global: { ...manifest.tokens.global, themeColor: "#88ddff" },
+      },
+    };
+    await platform.chat.saveTheme({ baseId: "windborne-custom", manifest: updated });
+    await expect(platform.chat.getThemeManifest("windborne-custom")).resolves.toMatchObject({
+      tokens: { global: { themeColor: "#88ddff" } },
+    });
+
+    await expect(platform.chat.saveTheme({ baseId: "windborne-adventure", manifest: base })).rejects.toThrow();
+  });
+
   it("advances option and message commands through preview runtime states", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();

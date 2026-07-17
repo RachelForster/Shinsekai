@@ -40,6 +40,11 @@ const ChatThemeManagementPage = lazy(() =>
     default: ChatThemeManagementPage,
   })),
 );
+const ChatThemeCustomizerPage = lazy(() =>
+  import("../../features/chat-stage/theme/ChatThemeCustomizerPage").then(({ ChatThemeCustomizerPage }) => ({
+    default: ChatThemeCustomizerPage,
+  })),
+);
 const LogsPage = lazy(() =>
   import("../../features/logs/LogsPage").then(({ LogsPage }) => ({
     default: LogsPage,
@@ -114,6 +119,7 @@ export function AppRoutes() {
         <Route element={lazyRouteElement(<ChatLauncherPage />)} path="launch" />
         <Route element={lazyRouteElement(<SystemSettingsPage />)} path="system" />
         <Route element={lazyRouteElement(<ChatThemeManagementPage />)} path="system/chat-themes" />
+        <Route element={lazyRouteElement(<ChatThemeCustomizerPage />)} path="system/chat-themes/customize" />
       </Route>
       <Route element={chatStageRouteElement()} path="/chat" />
       <Route element={chatStageRouteElement()} path="/chat-stage" />

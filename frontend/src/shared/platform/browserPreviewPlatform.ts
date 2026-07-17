@@ -1206,6 +1206,25 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           source: "user",
         });
       },
+      async saveTheme(input) {
+        const manifest = clone(input.manifest);
+        const existingSource = previewThemeSources.get(manifest.id);
+        if (existingSource === "builtin") {
+          throw new Error("内置主题不可编辑。");
+        }
+        if (!previewThemeManifests.has(manifest.id) && !previewThemeManifests.has(input.baseId)) {
+          throw new Error(`基础主题不存在：${input.baseId}`);
+        }
+        previewThemeManifests.set(manifest.id, manifest);
+        previewThemeSources.set(manifest.id, "user");
+        return delay<ChatThemeSummary>({
+          id: manifest.id,
+          name: clone(manifest.name),
+          author: manifest.author,
+          version: manifest.version,
+          source: "user",
+        });
+      },
       async deleteTheme(id) {
         if ((previewThemeSources.get(id) ?? "user") !== "user") {
           throw new Error("内置主题不能删除。");

@@ -789,6 +789,35 @@ describe("http platform", () => {
     ]);
   });
 
+  it("saves chat theme manifests through the bridge", async () => {
+    const manifest = {
+      id: "windborne-custom",
+      name: { en: "Windborne Custom" },
+      schema: 1 as const,
+      tokens: { global: { themeColor: "#cc88ff" } },
+      version: "1.0.0",
+    };
+    const summary = {
+      id: manifest.id,
+      name: manifest.name,
+      source: "user" as const,
+      version: manifest.version,
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(summary));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+
+    await expect(platform.chat.saveTheme({ baseId: "windborne-adventure", manifest })).resolves.toEqual(summary);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/themes/save",
+      expect.objectContaining({
+        body: JSON.stringify({ baseId: "windborne-adventure", manifest }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("reads lightweight chat runtime status through the bridge", async () => {
     const runtimeStatus = {
       chatProcessRunning: true,

@@ -63,6 +63,7 @@ from frontend_bridge_core.chat_themes import (
     get_chat_theme_manifest,
     install_theme_from_zip,
     list_chat_themes,
+    save_chat_theme,
     set_active_chat_theme,
 )
 from frontend_bridge_core.chat_init import start_chat_init
@@ -1074,6 +1075,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_handle_chat_command(self.state, body))
             elif method == "POST" and path == "/api/chat/themes/active":
                 self._send_json(set_active_chat_theme(self.state, body))
+            elif method == "POST" and path == "/api/chat/themes/save":
+                self._send_json(save_chat_theme(self.state, body))
             elif method == "POST" and path == "/api/chat/themes/upload":
                 temp_dir, paths = self._read_upload_files()
                 try:

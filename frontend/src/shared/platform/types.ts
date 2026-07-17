@@ -1,5 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
-import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
+import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
 export interface Sprite {
   path: string;
@@ -1091,6 +1091,8 @@ export interface ShinsekaiPlatform {
     setActiveThemeId: (id: string) => Promise<void>;
     /** 上传一个主题 .zip 安装（multipart）；返回安装后的概要。 */
     uploadTheme: (file: File) => Promise<ChatThemeSummary>;
+    /** 创建或更新用户主题，同时保留主题目录中的资源文件。 */
+    saveTheme: (input: SaveChatThemeInput) => Promise<ChatThemeSummary>;
     /** 删除一个用户主题。 */
     deleteTheme: (id: string) => Promise<void>;
     // --- 实时事件流（WebSocket）；M0 占位，M2/M3 接真实 WS ---

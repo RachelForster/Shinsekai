@@ -280,6 +280,67 @@ def install_theme_from_zip(
     return _summary(target, manifest or {})
 
 
+def save_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str, Any]:
+    """Create or update a user-owned theme from a validated manifest.
+
+    New themes clone the selected base directory so relative frame, font, sound,
+    and background assets keep working. Existing user themes retain their own
+    assets and only replace ``theme.json``. Built-in ownership is never changed.
+    """
+    _seed_builtin_themes()
+    root = _themes_root()
+    root.mkdir(parents=True, exist_ok=True)
+
+    raw_manifest = (body or {}).get("manifest")
+    result = validate_manifest(raw_manifest)
+    if not result.ok:
+        raise ValueError("主题配置校验失败：\n" + "\n".join(result.errors))
+    manifest = result.normalized
+    theme_id = _safe_theme_id(str(manifest.get("id") or ""))
+    target = safe_child_path(root, theme_id)
+
+    if target.exists() and _is_builtin_theme_dir(theme_id):
+        raise PermissionError(f"内置主题不可编辑：{theme_id}")
+    if target.exists() and not target.is_dir():
+        raise FileExistsError(f"主题路径不是目录：{theme_id}")
+
+    if target.is_dir():
+        source = target
+    else:
+        base_id = _safe_theme_id(str((body or {}).get("baseId") or DEFAULT_BUILTIN_CHAT_THEME_ID))
+        if _is_retired_builtin_theme_id(base_id):
+            raise FileNotFoundError(f"基础主题不存在：{base_id}")
+        source = safe_child_path(root, base_id)
+        if _read_manifest(source) is None:
+            raise FileNotFoundError(f"基础主题不存在或无效：{base_id}")
+
+    with tempfile.TemporaryDirectory(prefix="chat_theme_save_", dir=root) as tmp:
+        staging = Path(tmp) / theme_id
+        shutil.copytree(source, staging)
+        safe_child_path(staging, BUILTIN_THEME_OWNER_MARKER).unlink(missing_ok=True)
+        (staging / MANIFEST_NAME).write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        staged_result = validate_theme_dir(staging)
+        if not staged_result.ok:
+            raise ValueError("主题资源校验失败：\n" + "\n".join(staged_result.errors))
+
+        if target.is_dir():
+            pending_manifest = target / f".{MANIFEST_NAME}.tmp"
+            pending_manifest.write_text(
+                json.dumps(staged_result.normalized, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            pending_manifest.replace(target / MANIFEST_NAME)
+        else:
+            shutil.copytree(staging, target)
+
+    saved_manifest = _read_manifest(target)
+    if saved_manifest is None:
+        raise ValueError(f"保存后的主题无效：{theme_id}")
+    return _summary(target, saved_manifest)
+
+
 def delete_chat_theme(state: BridgeState, theme_id: str) -> Dict[str, Any]:
     """删除一个用户主题目录。内置主题（M5 种子化后只读）不可删。"""
     safe_id = _safe_theme_id(theme_id)

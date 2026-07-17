@@ -12,6 +12,7 @@ from frontend_bridge_core.chat_themes import (
     delete_chat_theme,
     get_chat_theme_manifest,
     list_chat_themes,
+    save_chat_theme,
     set_active_chat_theme,
 )
 
@@ -187,6 +188,63 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 self.assertEqual(result, {"id": "windborne-adventure"})
                 self.assertEqual(state.config_manager.config.system_config.chat_ui_theme_id, "windborne-adventure")
                 self.assertEqual(self.saved, 1)
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_save_chat_theme_clones_builtin_assets_without_builtin_ownership(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                summary = save_chat_theme(
+                    state,
+                    {
+                        "baseId": "neon-night-city",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "my-neon",
+                            "name": {"zh_CN": "我的霓虹"},
+                            "tokens": {
+                                "global": {"themeColor": "#ff66aa"},
+                                "dialog": {"frameImage": "frame-dialog.svg"},
+                            },
+                        },
+                    },
+                )
+
+                target = Path(tempdir) / "data" / "chat_ui_themes" / "my-neon"
+                self.assertEqual(summary["id"], "my-neon")
+                self.assertEqual(summary["source"], "user")
+                self.assertTrue((target / "frame-dialog.svg").is_file())
+                self.assertFalse((target / BUILTIN_THEME_OWNER_MARKER).exists())
+                self.assertEqual(
+                    get_chat_theme_manifest(state, "my-neon")["tokens"]["global"]["themeColor"],
+                    "#ff66aa",
+                )
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_save_chat_theme_rejects_builtin_overwrite(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                list_chat_themes(state)
+                with self.assertRaises(PermissionError):
+                    save_chat_theme(
+                        state,
+                        {
+                            "baseId": "windborne-adventure",
+                            "manifest": {
+                                "schema": 1,
+                                "id": "windborne-adventure",
+                                "name": {"en": "Overwrite"},
+                                "tokens": {},
+                            },
+                        },
+                    )
             finally:
                 os.chdir(previous_cwd)
 
