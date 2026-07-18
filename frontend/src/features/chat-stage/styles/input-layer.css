@@ -50,6 +50,8 @@
 }
 
 .input-layer[data-layout="pill"] {
+  --chat-input-text-inline-padding: clamp(2px, 0.4vw, 4px);
+
   align-items: center;
   grid-template-rows: minmax(0, 1fr);
   background: var(--chat-input-background);
@@ -79,9 +81,8 @@
 }
 
 .input-layer__attachments {
-  --chat-attachment-inline-offset: max(
-    3px,
-    calc((var(--chat-input-resolved-width) - var(--chat-options-max-width)) / 2 + 1px)
+  --chat-attachment-inline-offset: calc(
+    var(--chat-input-button-size) + var(--chat-input-gap) + var(--chat-input-text-inline-padding, 0px)
   );
 
   grid-column: 1 / -1;
@@ -166,7 +167,7 @@
   min-height: var(--chat-input-textarea-min-height);
   max-height: var(--chat-input-textarea-min-height);
   border: 0;
-  padding: 0 clamp(2px, 0.4vw, 4px);
+  padding: 0 var(--chat-input-text-inline-padding);
   color: var(--chat-input-color, #fff);
   background: var(--chat-input-field-background, transparent);
   box-shadow: none;
