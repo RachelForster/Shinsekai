@@ -515,6 +515,7 @@
   gap: 14px;
   padding: 9px 10px;
   border-radius: 10px;
+  color: var(--chat-toolbar-color, #fffaf0);
   background: color-mix(in oklch, var(--stage-accent) 7%, rgba(255, 255, 255, 0.04));
 }
 
@@ -544,7 +545,7 @@
   color: inherit;
   font-size: 12px;
   line-height: 1.35;
-  opacity: 0.88;
+  opacity: 1;
 }
 
 .dialog-stage-controls__batch-row {
