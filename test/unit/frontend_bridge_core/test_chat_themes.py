@@ -8,10 +8,12 @@ from unittest.mock import patch
 
 from frontend_bridge_core.chat_themes import (
     BUILTIN_THEME_OWNER_MARKER,
+    _copy_theme_source,
     _is_builtin_theme_dir,
     delete_chat_theme,
     get_chat_theme_manifest,
     list_chat_themes,
+    save_chat_theme,
     set_active_chat_theme,
 )
 
@@ -189,6 +191,205 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 self.assertEqual(self.saved, 1)
             finally:
                 os.chdir(previous_cwd)
+
+    def test_save_chat_theme_clones_builtin_assets_without_builtin_ownership(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                summary = save_chat_theme(
+                    state,
+                    {
+                        "baseId": "neon-night-city",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "my-neon",
+                            "name": {"zh_CN": "我的霓虹"},
+                            "tokens": {
+                                "global": {"themeColor": "#ff66aa"},
+                                "dialog": {"frameImage": "frame-dialog.svg"},
+                            },
+                        },
+                    },
+                )
+
+                target = Path(tempdir) / "data" / "chat_ui_themes" / "my-neon"
+                self.assertEqual(summary["id"], "my-neon")
+                self.assertEqual(summary["source"], "user")
+                self.assertTrue((target / "frame-dialog.svg").is_file())
+                self.assertFalse((target / BUILTIN_THEME_OWNER_MARKER).exists())
+                self.assertEqual(
+                    get_chat_theme_manifest(state, "my-neon")["tokens"]["global"]["themeColor"],
+                    "#ff66aa",
+                )
+
+                save_chat_theme(
+                    state,
+                    {
+                        "baseId": "my-neon",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "my-neon",
+                            "name": {"en": "Updated Neon"},
+                            "tokens": {
+                                "global": {"themeColor": "#33aaff"},
+                                "dialog": {"frameImage": "frame-dialog.svg"},
+                            },
+                        },
+                    },
+                )
+                self.assertTrue((target / "frame-dialog.svg").is_file())
+                self.assertEqual(
+                    get_chat_theme_manifest(state, "my-neon")["tokens"]["global"]["themeColor"],
+                    "#33aaff",
+                )
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_clone_save_rejects_a_concurrently_created_target(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                save_chat_theme(
+                    state,
+                    {
+                        "baseId": "neon-night-city",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "shared-custom",
+                            "name": {"en": "First clone"},
+                            "tokens": {"global": {"themeColor": "#112233"}},
+                        },
+                    },
+                )
+
+                with self.assertRaises(FileExistsError):
+                    save_chat_theme(
+                        state,
+                        {
+                            "baseId": "sakura-dream",
+                            "manifest": {
+                                "schema": 1,
+                                "id": "shared-custom",
+                                "name": {"en": "Stale second clone"},
+                                "tokens": {"global": {"themeColor": "#ffeeee"}},
+                            },
+                        },
+                    )
+
+                saved = get_chat_theme_manifest(state, "shared-custom")
+                self.assertEqual(saved["name"]["en"], "First clone")
+                self.assertEqual(saved["tokens"]["global"]["themeColor"], "#112233")
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_new_theme_publish_failure_leaves_no_partial_target(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                target = Path(tempdir) / "data" / "chat_ui_themes" / "atomic-custom"
+                with patch("pathlib.Path.rename", side_effect=OSError("publish interrupted")):
+                    with self.assertRaisesRegex(OSError, "publish interrupted"):
+                        save_chat_theme(
+                            state,
+                            {
+                                "baseId": "neon-night-city",
+                                "manifest": {
+                                    "schema": 1,
+                                    "id": "atomic-custom",
+                                    "name": {"en": "Atomic clone"},
+                                    "tokens": {"dialog": {"frameImage": "frame-dialog.svg"}},
+                                },
+                            },
+                        )
+
+                self.assertFalse(target.exists())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_save_chat_theme_rejects_builtin_overwrite(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                list_chat_themes(state)
+                with self.assertRaises(PermissionError):
+                    save_chat_theme(
+                        state,
+                        {
+                            "baseId": "windborne-adventure",
+                            "manifest": {
+                                "schema": 1,
+                                "id": "windborne-adventure",
+                                "name": {"en": "Overwrite"},
+                                "tokens": {},
+                            },
+                        },
+                    )
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_save_chat_theme_rejects_path_components_in_theme_ids(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                for theme_id in ("../escaped-theme", "nested/escaped-theme", "nested\\escaped-theme"):
+                    with self.subTest(theme_id=theme_id), self.assertRaises(ValueError):
+                        save_chat_theme(
+                            state,
+                            {
+                                "baseId": "windborne-adventure",
+                                "manifest": {
+                                    "schema": 1,
+                                    "id": theme_id,
+                                    "name": {"en": "Escaped"},
+                                    "tokens": {},
+                                },
+                            },
+                        )
+
+                with self.assertRaises(ValueError):
+                    save_chat_theme(
+                        state,
+                        {
+                            "baseId": "../windborne-adventure",
+                            "manifest": {
+                                "schema": 1,
+                                "id": "escaped-theme",
+                                "name": {"en": "Escaped"},
+                                "tokens": {},
+                            },
+                        },
+                    )
+
+                themes_root = Path(tempdir) / "data" / "chat_ui_themes"
+                self.assertFalse((Path(tempdir) / "data" / "escaped-theme").exists())
+                self.assertFalse((themes_root / "nested").exists())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_copy_theme_source_rejects_a_source_outside_themes_root(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            themes_root = temp_root / "themes"
+            themes_root.mkdir()
+            outside_source = temp_root / "outside-theme"
+            outside_source.mkdir()
+            (outside_source / "theme.json").write_text("{}", encoding="utf-8")
+            staging = themes_root / "staging"
+
+            with self.assertRaises(PermissionError):
+                _copy_theme_source(outside_source, staging, themes_root)
+
+            self.assertFalse(staging.exists())
 
     def test_delete_builtin_theme_is_rejected(self):
         state = self._make_state()

@@ -189,6 +189,7 @@ enum DesktopRuntimePhase {
     Error {
         message: String,
         view: Option<runtime::RuntimeScanView>,
+        dependency_install_failed: bool,
     },
 }
 
@@ -198,6 +199,7 @@ struct DesktopRuntimeView {
     status: &'static str,
     message: Option<String>,
     bridge_url: String,
+    manual_install_command: Option<String>,
     selected_candidate_id: Option<String>,
     recommended_action: Option<runtime::RuntimeRepairActionKind>,
     candidates: Vec<runtime::RuntimeCandidateView>,
@@ -289,15 +291,20 @@ impl DesktopState {
             .unwrap_or_else(|_| DesktopRuntimePhase::Error {
                 message: "runtime state lock is poisoned".to_string(),
                 view: None,
+                dependency_install_failed: false,
             });
-        let (status, message, scan_view) = match phase {
-            DesktopRuntimePhase::Checking { view } => ("checking", None, view),
+        let (status, message, scan_view, dependency_install_failed) = match phase {
+            DesktopRuntimePhase::Checking { view } => ("checking", None, view, false),
             DesktopRuntimePhase::NeedsAction { view } => {
-                ("needsAction", view.message.clone(), Some(view))
+                ("needsAction", view.message.clone(), Some(view), false)
             }
-            DesktopRuntimePhase::Updating { view } => ("updating", None, view),
-            DesktopRuntimePhase::Ready { view } => ("ready", None, view),
-            DesktopRuntimePhase::Error { message, view } => ("error", Some(message), view),
+            DesktopRuntimePhase::Updating { view } => ("updating", None, view, false),
+            DesktopRuntimePhase::Ready { view } => ("ready", None, view, false),
+            DesktopRuntimePhase::Error {
+                message,
+                view,
+                dependency_install_failed,
+            } => ("error", Some(message), view, dependency_install_failed),
         };
         let scanned_selected_candidate_id = scan_view
             .as_ref()
@@ -313,10 +320,22 @@ impl DesktopState {
         for candidate in &mut candidates {
             candidate.selected = Some(&candidate.id) == selected_candidate_id.as_ref();
         }
+        let manual_install_command = dependency_install_failed
+            .then(|| {
+                runtime::manual_install_command(
+                    &self.source_root,
+                    candidates
+                        .iter()
+                        .find(|candidate| candidate.selected)
+                        .or_else(|| candidates.first()),
+                )
+            })
+            .flatten();
         DesktopRuntimeView {
             status,
             message,
             bridge_url: self.bridge_url(),
+            manual_install_command,
             selected_candidate_id,
             recommended_action,
             candidates,
@@ -646,9 +665,14 @@ fn desktop_runtime_repair_blocking(
     ));
     let scan = runtime::scan_runtime_view(app, &state.source_root);
     state.set_runtime(DesktopRuntimePhase::Updating { view: Some(scan) });
+    let dependency_install_attempted =
+        action == runtime::RuntimeRepairActionKind::InstallRuntimeDeps;
     let repaired_path =
-        runtime::repair_runtime_candidate(app, &state.source_root, &candidate_id, action)
-            .map_err(|error| set_runtime_error_state(app, state, error.to_string()))?;
+        runtime::repair_runtime_candidate(app, &state.source_root, &candidate_id, action).map_err(
+            |error| {
+                set_runtime_error_state(app, state, error.to_string(), dependency_install_attempted)
+            },
+        )?;
     emit_runtime_progress(
         app,
         "checkingBridge",
@@ -656,7 +680,12 @@ fn desktop_runtime_repair_blocking(
         None,
         Some("Checking repaired runtime"),
     );
-    start_repaired_runtime_for_state(app, state, repaired_path.as_deref())
+    start_repaired_runtime_for_state(
+        app,
+        state,
+        repaired_path.as_deref(),
+        dependency_install_attempted,
+    )
 }
 
 #[tauri::command]
@@ -934,6 +963,7 @@ fn start_runtime_candidate_for_state(
             app,
             state,
             "Shinsekai only starts the managed Python runtime under runtime/.".to_string(),
+            false,
         ));
     }
     let scan = runtime::install_dir_runtime_view(&state.source_root);
@@ -991,6 +1021,7 @@ fn start_runtime_candidate_for_state(
             state.set_runtime(DesktopRuntimePhase::Error {
                 message: message.clone(),
                 view: Some(view),
+                dependency_install_failed: false,
             });
             Err(message)
         }
@@ -1001,6 +1032,7 @@ fn start_repaired_runtime_for_state(
     app: &AppHandle,
     state: &DesktopState,
     repaired_path: Option<&Path>,
+    dependency_install_attempted: bool,
 ) -> Result<DesktopRuntimeView, String> {
     let repaired_candidate_id = repaired_path
         .and_then(|path| runtime::ready_candidate_id_for_path(app, &state.source_root, path));
@@ -1009,16 +1041,28 @@ fn start_repaired_runtime_for_state(
             app,
             state,
             "repaired runtime did not produce a ready candidate".to_string(),
+            dependency_install_attempted,
         ));
     }
-    start_runtime_candidate_for_state(app, state, repaired_candidate_id.as_deref())
+    match start_runtime_candidate_for_state(app, state, repaired_candidate_id.as_deref()) {
+        Err(message) if dependency_install_attempted => {
+            Err(set_runtime_error_state(app, state, message, true))
+        }
+        result => result,
+    }
 }
 
-fn set_runtime_error_state(app: &AppHandle, state: &DesktopState, message: String) -> String {
+fn set_runtime_error_state(
+    app: &AppHandle,
+    state: &DesktopState,
+    message: String,
+    dependency_install_failed: bool,
+) -> String {
     let view = runtime::scan_runtime_view(app, &state.source_root);
     state.set_runtime(DesktopRuntimePhase::Error {
         message: message.clone(),
         view: Some(view),
+        dependency_install_failed,
     });
     message
 }

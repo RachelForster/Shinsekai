@@ -159,6 +159,11 @@ export interface ChatThemeSummary {
   source: "builtin" | "user";
 }
 
+export interface SaveChatThemeInput {
+  baseId: string;
+  manifest: ChatThemeManifest;
+}
+
 /** resolveChatTheme 的产物：可直接喂给 style / <style> / 打字机的中间结构。 */
 export interface ResolvedChatTheme {
   /** 写入 chat stage 根元素 style 的 --chat-* 变量集合。 */

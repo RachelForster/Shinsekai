@@ -606,6 +606,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         });
       },
       uploadTheme: (file) => uploadFiles<ChatThemeSummary>(apiBase, "/api/chat/themes/upload", [file]),
+      saveTheme: (input) =>
+        requestJson<ChatThemeSummary>(apiBase, "/api/chat/themes/save", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
       deleteTheme: async (id) => {
         await requestJson(apiBase, `/api/chat/themes/${encodePath(id)}`, { method: "DELETE" });
       },

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import { StartupUpdatePrompt } from "../../../app/shell/StartupUpdatePrompt";
@@ -20,16 +21,19 @@ vi.mock("../../../shared/desktop/desktopApi", () => ({
   onDesktopUpdateProgress: desktopMocks.onDesktopUpdateProgress,
 }));
 
-function renderPrompt() {
+function renderPrompt(onStateChange = vi.fn()) {
   return render(
-    <I18nProvider language="en">
-      <StartupUpdatePrompt />
-    </I18nProvider>,
+    <StrictMode>
+      <I18nProvider language="en">
+        <StartupUpdatePrompt onStateChange={onStateChange} />
+      </I18nProvider>
+    </StrictMode>,
   );
 }
 
 describe("StartupUpdatePrompt", () => {
   it("checks for desktop updates on startup and installs the selected update", async () => {
+    const onStateChange = vi.fn();
     desktopMocks.isTauriDesktop.mockReturnValue(true);
     desktopMocks.checkDesktopUpdate.mockResolvedValue({
       body: "Small fixes",
@@ -39,12 +43,14 @@ describe("StartupUpdatePrompt", () => {
     desktopMocks.installDesktopUpdate.mockResolvedValue(undefined);
     desktopMocks.onDesktopUpdateProgress.mockResolvedValue(vi.fn());
 
-    renderPrompt();
+    renderPrompt(onStateChange);
 
     const dialog = await screen.findByRole("dialog", { name: "Desktop update" });
     expect(within(dialog).getByText("Version 2.0.3 is available")).toBeInTheDocument();
     expect(within(dialog).getByText("Published: 2026-06-07")).toBeInTheDocument();
     expect(within(dialog).getByText("Small fixes")).toBeInTheDocument();
+    await waitFor(() => expect(onStateChange).toHaveBeenCalledWith({ checkComplete: true, open: true }));
+    expect(desktopMocks.checkDesktopUpdate).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Install and restart" }));
     expect(desktopMocks.installDesktopUpdate).toHaveBeenCalledTimes(1);

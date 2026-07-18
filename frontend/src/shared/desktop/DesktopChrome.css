@@ -317,6 +317,51 @@
   line-height: 1.45;
 }
 
+.desktop-runtime__manual-install {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  margin-top: 18px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--color-bg-elevated);
+}
+
+.desktop-runtime__manual-install-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.desktop-runtime__manual-install-header strong {
+  color: var(--color-text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.desktop-runtime__manual-install-header p {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.desktop-runtime__manual-install > code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border-radius: 6px;
+  padding: 9px 10px;
+  color: var(--color-text-primary);
+  background: color-mix(in oklch, var(--color-bg-app) 90%, black);
+  font-family: var(--font-mono, "Cascadia Mono", Consolas, monospace);
+  font-size: 11px;
+  line-height: 1.55;
+  user-select: text;
+}
+
 .desktop-runtime__import-row input {
   min-width: 0;
   border: 1px solid var(--color-border);
@@ -338,6 +383,11 @@
 }
 
 @media (max-width: 620px) {
+  .desktop-runtime__manual-install-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .desktop-runtime__import-row {
     grid-template-columns: minmax(0, 1fr);
   }

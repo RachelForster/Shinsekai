@@ -11,7 +11,7 @@ import type {
   TaskProgressOptions,
 } from "../../shared/platform/types";
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
-import type { ChatThemeManifest, ChatThemeSummary } from "../../shared/theme/chatTheme";
+import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../../shared/theme/chatTheme";
 import type { ChatStageEvent } from "../../shared/platform/types";
 
 export const chatQueryKey = ["chat"] as const;
@@ -86,6 +86,10 @@ export function setActiveChatTheme(id: string): Promise<void> {
 
 export function uploadChatTheme(file: File): Promise<ChatThemeSummary> {
   return getPlatform().chat.uploadTheme(file);
+}
+
+export function saveChatTheme(input: SaveChatThemeInput): Promise<ChatThemeSummary> {
+  return getPlatform().chat.saveTheme(input);
 }
 
 export function deleteChatTheme(id: string): Promise<void> {

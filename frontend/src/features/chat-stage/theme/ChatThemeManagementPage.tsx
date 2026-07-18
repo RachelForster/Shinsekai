@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Paintbrush } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { chatThemeQueryKey } from "../../../entities/chat/repository";
@@ -51,6 +51,13 @@ export function ChatThemeManagementPage() {
             <p className="chat-theme-management-page__description">{t("chat.theme.pageDescription")}</p>
           </div>
         </div>
+        <Button
+          icon={<Paintbrush aria-hidden className="button__icon" />}
+          onClick={() => navigate("/settings/system/chat-themes/customize")}
+          variant="primary"
+        >
+          {t("chat.theme.customize")}
+        </Button>
       </header>
       <section className="section chat-theme-management-page__content">
         <ChatThemeManager onActiveThemeChange={handleActiveThemeChange} onThemesChange={handleThemesChange} />
