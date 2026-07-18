@@ -23,6 +23,16 @@ class LLMAdapter(ABC):
         self.user_template = ""
         self._current_stream: object | None = None
         self._current_response: object | None = None
+        self.provider = str(kwargs.get("llm_provider") or "")
+
+    @property
+    def supports_native_vision(self) -> bool | None:
+        """Whether this adapter accepts provider-neutral local image blocks.
+
+        ``None`` means unknown and is treated as native-first. Text-only
+        adapters should override this with ``False``.
+        """
+        return None
 
     @classmethod
     def get_config_schema(cls) -> dict[str, dict]:

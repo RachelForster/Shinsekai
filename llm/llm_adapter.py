@@ -2,6 +2,7 @@
 from sdk.adapters import LLMAdapter
 from sdk.exception.types import http_client_error_from_exception
 from llm.claude_url import normalize_claude_base_url_for_sdk
+from ai.vision.message_content import normalize_anthropic_user_content, normalize_openai_messages
 from openai import OpenAI
 import time
 import json
@@ -67,6 +68,10 @@ class DeepSeekAdapter(LLMAdapter):
             self._current_stream = None
         self._current_response = None
 
+    @property
+    def supports_native_vision(self) -> bool:
+        return False
+
     @classmethod
     def get_config_schema(cls) -> dict[str, dict]:
         return {
@@ -111,7 +116,7 @@ class DeepSeekAdapter(LLMAdapter):
             use_tools = bool(kwargs.get("tools"))
             create_kwargs: dict = {
                 "model": self.model,
-                "messages": messages,
+                "messages": normalize_openai_messages(messages),
                 "stream": stream,
                 "extra_body": extra_body,
                 **kwargs,
@@ -171,7 +176,7 @@ class OpenAIAdapter(LLMAdapter):
             use_tools = bool(kwargs.get("tools"))
             create_kwargs = {
                 "model": self.model,
-                "messages": messages,
+                "messages": normalize_openai_messages(messages),
                 "stream": stream,
                 **kwargs,
             }
@@ -212,6 +217,10 @@ class GeminiAdapter(LLMAdapter):
                 pass
             self._current_stream = None
         self._current_response = None
+
+    @property
+    def supports_native_vision(self) -> bool:
+        return False
 
     def chat(self, messages: list, stream: bool = False, **kwargs):
         """Sends a message to the Gemini LLM."""
@@ -264,6 +273,10 @@ class ClaudeAdapter(LLMAdapter):
                 pass
             self._current_stream = None
         self._current_response = None
+
+    @property
+    def supports_native_vision(self) -> bool:
+        return True
 
     def set_user_template(self, template: str):
         self.system_prompt = template
@@ -319,8 +332,9 @@ class ClaudeAdapter(LLMAdapter):
 
             # 处理 User 消息
             elif role == "user":
-                if content.strip():
-                    api_messages.append({"role": "user", "content": content})
+                user_content = normalize_anthropic_user_content(content)
+                if user_content:
+                    api_messages.append({"role": "user", "content": user_content})
 
             # 处理 Tool 结果 (映射为 User 角色)
             elif role == "tool":
