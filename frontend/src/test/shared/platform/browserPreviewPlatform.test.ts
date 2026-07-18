@@ -336,6 +336,28 @@ describe("browser preview platform chat themes", () => {
     unsubscribe();
   });
 
+  it("renders structured attachment payloads in browser preview chat", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+
+    const sendPromise = platform.chat.command({
+      payload: {
+        attachments: [
+          { kind: "image", name: "scene.png", path: "D:/attachments/scene.png" },
+          { kind: "file", name: "notes.txt", path: "D:/attachments/notes.txt" },
+        ],
+        text: "Inspect these",
+      },
+      type: "send-message",
+    });
+    await vi.advanceTimersByTimeAsync(120);
+    const sending = await sendPromise;
+
+    expect(sending.dialogText).toBe("Inspect these\n[image: scene.png] [file: notes.txt]");
+    expect(sending.historyEntries?.at(-1)?.text).toContain("[image: scene.png] [file: notes.txt]");
+    await vi.advanceTimersByTimeAsync(1_400);
+  });
+
   it("clears closed-session markers when preview realtime commands resume interaction", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();

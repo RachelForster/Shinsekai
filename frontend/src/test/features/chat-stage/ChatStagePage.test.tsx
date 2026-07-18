@@ -978,7 +978,7 @@ describe("ChatStagePage", () => {
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "pause-asr" }));
   });
 
-  it("uses a single-line pill input and keeps the plus panel scoped to ASR actions", async () => {
+  it("uses a single-line pill input and scopes the plus panel to attachments", async () => {
     themeContextMocks.optional = {
       resolved: { typewriter: { cps: 40 } },
       style: {
@@ -1003,6 +1003,17 @@ describe("ChatStagePage", () => {
     expect(stage.style.getPropertyValue("--chat-toolbar-border-radius")).toBe("17px");
     expect(quickSubmit).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
+    const panel = document.querySelector(".input-layer__panel") as HTMLElement;
+    expect(panel).toHaveAttribute("data-open", "true");
+    expect(within(panel).queryByRole("button", { name: "Start microphone" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("button", { name: "Pause ASR" })).not.toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Image" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "File" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(panel).toHaveAttribute("data-open", "false"));
+
     fireEvent.change(input, { target: { value: "  pill submit  " } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() =>
@@ -1011,19 +1022,73 @@ describe("ChatStagePage", () => {
         type: "send-message",
       }),
     );
+  });
+
+  it("selects image and file attachments, renders colored names, and sends a structured payload", async () => {
+    themeContextMocks.optional = {
+      resolved: { typewriter: { cps: 40 } },
+      style: { "--chat-input-layout": "pill" } as CSSProperties,
+    };
+    mocks.browseFiles.mockImplementation(async (options?: { path?: string; showHidden?: boolean }) => {
+      if (options?.path === "D:/models/vosk") {
+        return {
+          cwd: "D:/models/vosk",
+          entries: [
+            { kind: "directory", name: "am", path: "D:/models/vosk/am" },
+            { kind: "directory", name: "conf", path: "D:/models/vosk/conf" },
+            { kind: "directory", name: "graph", path: "D:/models/vosk/graph" },
+          ],
+          roots: [],
+        };
+      }
+      return {
+        cwd: "D:/attachments",
+        entries: [
+          { kind: "file", name: "scene.png", path: "D:/attachments/scene.png", size: 12 },
+          { kind: "file", name: "notes.txt", path: "D:/attachments/notes.txt", size: 24 },
+        ],
+        roots: [],
+      };
+    });
+
+    renderPage();
+    await screen.findByText("Ready");
 
     fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
-    const panel = document.querySelector(".input-layer__panel") as HTMLElement;
-    expect(panel).toHaveAttribute("data-open", "true");
-    expect(within(panel).queryByRole("button", { name: "Start microphone" })).not.toBeInTheDocument();
-    fireEvent.click(within(panel).getByRole("button", { name: "Pause ASR" }));
-    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "pause-asr" }));
-    await waitFor(() => expect(panel).toHaveAttribute("data-open", "false"));
+    fireEvent.click(screen.getByRole("button", { name: "Image" }));
+    const imageDialog = await screen.findByRole("dialog", { name: "Attach images" });
+    const imageEntry = await within(imageDialog).findByText("scene.png");
+    expect(within(imageDialog).getByText("notes.txt").closest("tr")).not.toHaveClass("path-picker__row--selectable");
+    fireEvent.click(imageEntry.closest("tr")!);
+    fireEvent.click(within(imageDialog).getByRole("button", { name: "Select file" }));
+
+    const imageAttachment = await screen.findByRole("button", { name: "Remove attachment scene.png" });
+    expect(imageAttachment).toHaveAttribute("data-kind", "image");
 
     fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
-    await waitFor(() => expect(panel).toHaveAttribute("data-open", "true"));
-    fireEvent.pointerDown(document.body);
-    await waitFor(() => expect(panel).toHaveAttribute("data-open", "false"));
+    fireEvent.click(screen.getByRole("button", { name: "File" }));
+    const fileDialog = await screen.findByRole("dialog", { name: "Attach files" });
+    const fileEntry = await within(fileDialog).findByText("notes.txt");
+    fireEvent.click(fileEntry.closest("tr")!);
+    fireEvent.click(within(fileDialog).getByRole("button", { name: "Select file" }));
+
+    const fileAttachment = await screen.findByRole("button", { name: "Remove attachment notes.txt" });
+    expect(fileAttachment).toHaveAttribute("data-kind", "file");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Inspect these" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: {
+          attachments: [
+            { kind: "image", name: "scene.png", path: "D:/attachments/scene.png" },
+            { kind: "file", name: "notes.txt", path: "D:/attachments/notes.txt" },
+          ],
+          text: "Inspect these",
+        },
+        type: "send-message",
+      }),
+    );
   });
 
   it("keeps hold-to-talk disabled and prompts when the Vosk model is missing", async () => {

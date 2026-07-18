@@ -1,4 +1,5 @@
 import type {
+  ChatAttachmentInput,
   ChatHistoryEntry,
   ChatRuntimeStatus,
   ChatSnapshot,
@@ -36,8 +37,10 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
   error?: string;
   eventSeq: number;
   layers: ChatStageLayers;
+  inputAttachments: ChatAttachmentInput[];
   notificationText?: string;
   optimisticSubmission?: {
+    attachmentsEditedAfterSubmission: boolean;
     draftEditedAfterSubmission: boolean;
     eventSeq: number;
     previous: {
@@ -46,6 +49,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
       dialogText: string;
       error?: string;
       inputDraft: string;
+      inputAttachments: ChatAttachmentInput[];
       notificationText?: string;
       options: string[];
       sessionClosedReason?: string;
@@ -74,6 +78,7 @@ export interface ChatStageViewModel {
   dialogHtml?: string;
   dialogText: string;
   inputDisabled: boolean;
+  inputAttachments: ChatAttachmentInput[];
   inputDraft: string;
   layers: ChatStageLayers;
   notificationText?: string;
@@ -95,6 +100,7 @@ export type ChatStageAction =
   | { type: "submitUserMessage"; text: string; queued?: boolean; source?: "send-message" | "submit-option" }
   | { type: "rollbackUserSubmission"; source: "send-message" | "submit-option" }
   | { type: "setHistoryEntries"; historyEntries: ChatHistoryEntry[] }
+  | { type: "setAttachments"; attachments: ChatAttachmentInput[] }
   | { type: "setDraft"; text: string }
   | { type: "setTurnOptions"; options: ChatTurnOptions }
   | { type: "setStatus"; status: ChatRuntimeStatus }

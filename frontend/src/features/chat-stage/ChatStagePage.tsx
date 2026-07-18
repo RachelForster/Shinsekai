@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { browseFiles } from "../../entities/files/repository";
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { sendChatCommand } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
-import type { ChatTurnOptions } from "../../shared/platform/types";
+import type { ChatAttachmentInput, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
-import { AlertDialog, useToast } from "../../shared/ui";
+import { AlertDialog, PathPickerDialog, useToast } from "../../shared/ui";
 import { VOSK_MODEL_PATH } from "../api-settings/apiSettingsUtils";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
 import { ChatConfigDialog } from "./components/ChatConfigDialog";
@@ -50,6 +51,12 @@ import {
   writeChatStageRuntimeConfig,
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
+import {
+  CHAT_ATTACHMENT_LIMIT,
+  CHAT_IMAGE_EXTENSIONS,
+  chatAttachmentDisplayText,
+  mergeChatAttachments,
+} from "./attachments";
 
 export function ChatStagePage() {
   const location = useLocation();
@@ -65,6 +72,7 @@ export function ChatStagePage() {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
+  const [attachmentPickerKind, setAttachmentPickerKind] = useState<ChatAttachmentInput["kind"] | null>(null);
   const voskModelState = useVoskModelAvailability();
   const { showToast } = useToast();
   const { t } = useI18n();
@@ -105,6 +113,7 @@ export function ChatStagePage() {
     toolbarConfigOpen ||
     branchDialogOpen ||
     historyDialogOpen ||
+    attachmentPickerKind != null ||
     confirmClearHistory ||
     confirmRevertUserIndex != null;
   const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
@@ -199,12 +208,40 @@ export function ChatStagePage() {
 
   const submit = async () => {
     const text = viewModel.inputDraft.trim();
-    if (!text) {
+    const attachments = viewModel.inputAttachments.map((attachment) => ({ ...attachment }));
+    if (!text && !attachments.length) {
       return;
     }
+    const displayText = chatAttachmentDisplayText(text, attachments);
+    const payload: string | ChatSendPayload = attachments.length ? { attachments, text } : text;
     showDialogImmediately();
-    dispatch({ queued: state.turnOptions.batchEnabled, source: "send-message", text, type: "submitUserMessage" });
-    await sendCommand({ payload: text, type: "send-message" });
+    dispatch({
+      queued: state.turnOptions.batchEnabled,
+      source: "send-message",
+      text: displayText,
+      type: "submitUserMessage",
+    });
+    await sendCommand({ payload, type: "send-message" });
+  };
+
+  const addAttachmentPaths = (kind: ChatAttachmentInput["kind"], paths: string[]) => {
+    const next = mergeChatAttachments(state.inputAttachments, kind, paths);
+    const existing = new Set(state.inputAttachments.map((attachment) => `${attachment.kind}\0${attachment.path}`));
+    const requested = new Set(
+      paths
+        .map((path) => path.trim())
+        .filter(Boolean)
+        .map((path) => `${kind}\0${path}`)
+        .filter((key) => !existing.has(key)),
+    );
+    if (next.length - state.inputAttachments.length < requested.size) {
+      showToast({
+        kind: "error",
+        message: t("chat.input.attachmentLimit", { count: CHAT_ATTACHMENT_LIMIT }),
+        title: t("common.operationFailed"),
+      });
+    }
+    dispatch({ attachments: next, type: "setAttachments" });
   };
 
   const submitOption = (option: string) => {
@@ -467,6 +504,7 @@ export function ChatStagePage() {
         ) : null}
         <InputLayer
           asrPaused={viewModel.status === "paused"}
+          attachments={viewModel.inputAttachments}
           autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
           batchEnabled={state.turnOptions.batchEnabled}
           disabled={viewModel.inputDisabled}
@@ -477,6 +515,15 @@ export function ChatStagePage() {
           onCommand={sendCommand}
           onFlushBatch={() => sendCommand({ type: "flush-input-batch" })}
           onInputActivity={updateInputActivity}
+          onPickAttachments={setAttachmentPickerKind}
+          onRemoveAttachment={(attachment) =>
+            dispatch({
+              attachments: state.inputAttachments.filter(
+                (candidate) => candidate.kind !== attachment.kind || candidate.path !== attachment.path,
+              ),
+              type: "setAttachments",
+            })
+          }
           onSubmit={submit}
           value={viewModel.inputDraft}
         />
@@ -557,6 +604,28 @@ export function ChatStagePage() {
           windowScale={runtimeConfig.windowScale}
         />
       </main>
+      <PathPickerDialog
+        acceptedExtensions={attachmentPickerKind === "image" ? CHAT_IMAGE_EXTENSIONS : undefined}
+        mode="file"
+        multiple
+        onBrowse={browseFiles}
+        onClose={() => setAttachmentPickerKind(null)}
+        onSelect={(path) => {
+          if (attachmentPickerKind) {
+            addAttachmentPaths(attachmentPickerKind, [path]);
+          }
+          setAttachmentPickerKind(null);
+        }}
+        onSelectMany={(paths) => {
+          if (attachmentPickerKind) {
+            addAttachmentPaths(attachmentPickerKind, paths);
+          }
+          setAttachmentPickerKind(null);
+        }}
+        open={attachmentPickerKind != null}
+        title={attachmentPickerKind === "image" ? t("chat.input.imagePickerTitle") : t("chat.input.filePickerTitle")}
+        value=""
+      />
       <AlertDialog
         body={t("chat.clear.confirmBody")}
         cancelLabel={t("common.cancel")}

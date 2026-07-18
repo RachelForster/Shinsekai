@@ -124,6 +124,23 @@ describe("chatStageReducer", () => {
     expect(restored.optimisticSubmission).toBeUndefined();
   });
 
+  it("clears attachments optimistically and restores them when sending fails", () => {
+    const attachment = { kind: "image" as const, name: "scene.png", path: "D:/scene.png" };
+    const submitted = chatStageReducer(
+      { ...emptyChatState, inputAttachments: [attachment], inputDraft: "Inspect" },
+      { source: "send-message", text: "Inspect\n[image: scene.png]", type: "submitUserMessage" },
+    );
+
+    expect(submitted.inputAttachments).toEqual([]);
+    const restored = chatStageReducer(submitted, {
+      source: "send-message",
+      type: "rollbackUserSubmission",
+    });
+
+    expect(restored.inputAttachments).toEqual([attachment]);
+    expect(restored.inputDraft).toBe("Inspect");
+  });
+
   it("does not roll back a submission after a newer authoritative event", () => {
     const submitted = chatStageReducer(
       {
