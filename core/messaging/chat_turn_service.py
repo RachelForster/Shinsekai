@@ -68,6 +68,7 @@ class ChatTurnService:
         options: ChatTurnOptions | None = None,
         on_state_change: Callable[[BatchState], None] | None = None,
         cancel_current: Callable[[], None] | None = None,
+        clear_buffered_delivery: Callable[[], None] | None = None,
         clear_pending: Iterable[Callable[[], None]] = (),
         stop_playback: Callable[[], None] | None = None,
         hide_status: Callable[[], None] | None = None,
@@ -77,6 +78,7 @@ class ChatTurnService:
         self.options = options or ChatTurnOptions(interrupt_enabled=False)
         self._on_state_change = on_state_change
         self._cancel_current = cancel_current
+        self._clear_buffered_delivery = clear_buffered_delivery
         self._clear_pending = tuple(clear_pending)
         self._stop_playback = stop_playback
         self._hide_status = hide_status
@@ -90,6 +92,7 @@ class ChatTurnService:
         self._batch: list[str] = []
         self._batch_deadline: float | None = None
         self._batch_timer: threading.Timer | None = None
+        self._batch_revision = 0
         self._typing = False
         self._closed = False
 
@@ -137,25 +140,40 @@ class ChatTurnService:
 
     def flush(self) -> BatchState:
         """Deliver all buffered messages as one user turn."""
+        return self._flush(expected_revision=None)
+
+    def _flush(self, *, expected_revision: int | None) -> BatchState:
         combined = ""
         with self._lock:
+            if self._closed or (
+                expected_revision is not None and expected_revision != self._batch_revision
+            ):
+                return self._batch_state_locked()
             self._cancel_batch_timer_locked()
             self._typing = False
             if self._batch:
                 combined = self.options.batch_separator.join(self._batch)
                 self._batch.clear()
+            # Serialize delivery with cancellation. A history boundary can then
+            # invalidate the timer and clear a just-delivered queue item before
+            # mutating the active branch.
+            if combined:
+                self._sink(combined)
             state = self._batch_state_locked()
-        if combined:
-            self._sink(combined)
         self._publish_state(state)
         return state
 
     def cancel_pending_batch(self) -> BatchState:
-        """Discard buffered user input without affecting the active turn."""
+        """Discard buffered and delivered-but-not-consumed batch input."""
         with self._lock:
             self._cancel_batch_timer_locked()
             self._batch.clear()
             self._typing = False
+            if self._clear_buffered_delivery is not None:
+                try:
+                    self._clear_buffered_delivery()
+                except Exception:
+                    logger.debug("chat turn buffered-delivery cleanup failed", exc_info=True)
             state = self._batch_state_locked()
         self._publish_state(state)
         return state
@@ -179,9 +197,9 @@ class ChatTurnService:
                     self._batch.clear()
             elif options.batch_enabled and self._batch and not self._typing:
                 self._schedule_flush_locked()
+            if combined:
+                self._sink(combined)
             state = self._batch_state_locked()
-        if combined:
-            self._sink(combined)
         self._publish_state(state)
         return state
 
@@ -267,12 +285,14 @@ class ChatTurnService:
         self._cancel_batch_timer_locked()
         delay = max(0.01, float(self.options.batch_idle_seconds))
         self._batch_deadline = time.monotonic() + delay
-        timer = threading.Timer(delay, self.flush)
+        revision = self._batch_revision
+        timer = threading.Timer(delay, self._flush, kwargs={"expected_revision": revision})
         timer.daemon = True
         self._batch_timer = timer
         timer.start()
 
     def _cancel_batch_timer_locked(self) -> None:
+        self._batch_revision += 1
         timer = self._batch_timer
         self._batch_timer = None
         self._batch_deadline = None

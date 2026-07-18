@@ -312,6 +312,23 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
                 "scheduled": bool(state.get("scheduled")),
                 "typing": bool(state.get("typing")),
             }
+        options = event.get("options")
+        if isinstance(options, dict):
+            interrupt_enabled = options.get("interruptEnabled")
+            batch_enabled = options.get("batchEnabled")
+            batch_idle_seconds = options.get("batchIdleSeconds")
+            if (
+                isinstance(interrupt_enabled, bool)
+                and isinstance(batch_enabled, bool)
+                and not isinstance(batch_idle_seconds, bool)
+                and isinstance(batch_idle_seconds, (int, float))
+                and math.isfinite(float(batch_idle_seconds))
+            ):
+                next_snapshot["turnOptions"] = {
+                    "interruptEnabled": interrupt_enabled,
+                    "batchEnabled": batch_enabled,
+                    "batchIdleSeconds": float(batch_idle_seconds),
+                }
         return next_snapshot
 
     if event_type == "numeric.update":

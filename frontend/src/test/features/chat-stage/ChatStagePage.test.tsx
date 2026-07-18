@@ -327,6 +327,35 @@ describe("ChatStagePage", () => {
     });
   });
 
+  it.each([
+    { inputTag: "TEXTAREA", layout: "default" as const },
+    { inputTag: "INPUT", layout: "pill" as const },
+  ])("submits the current $layout fragment before flushing a batch with Ctrl+Enter", async ({ inputTag, layout }) => {
+    if (layout === "pill") {
+      themeContextMocks.optional = {
+        resolved: { typewriter: { cps: 40 } },
+        style: { "--chat-input-layout": "pill" } as CSSProperties,
+      };
+    }
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ turnOptions: { batchEnabled: true, batchIdleSeconds: 5, interruptEnabled: true } }),
+    );
+    renderPage();
+
+    const input = await screen.findByRole("textbox");
+    expect(input.tagName).toBe(inputTag);
+    fireEvent.change(input, { target: { value: "flush this fragment" } });
+    mocks.sendChatCommand.mockClear();
+    fireEvent.keyDown(input, { ctrlKey: true, key: "Enter" });
+
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledTimes(2));
+    expect(mocks.sendChatCommand).toHaveBeenNthCalledWith(1, {
+      payload: "flush this fragment",
+      type: "send-message",
+    });
+    expect(mocks.sendChatCommand).toHaveBeenNthCalledWith(2, { type: "flush-input-batch" });
+  });
+
   it("clears the draft and shows the user message before the command response arrives", async () => {
     let resolveCommand!: (snapshot: ChatSnapshot) => void;
     mocks.sendChatCommand.mockReturnValueOnce(

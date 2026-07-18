@@ -103,6 +103,27 @@ def test_typing_pauses_and_empty_input_reschedules_batch() -> None:
     wait_until(lambda: delivered == ["one"])
 
 
+def test_cancel_pending_batch_invalidates_timer_and_clears_buffered_delivery() -> None:
+    delivered: list[str] = ["already queued"]
+    service = ChatTurnService(
+        sink=delivered.append,
+        clear_buffered_delivery=delivered.clear,
+        options=ChatTurnOptions(
+            interrupt_enabled=False,
+            batch_enabled=True,
+            batch_idle_seconds=0.03,
+        ),
+    )
+    service.submit("stale branch input")
+
+    state = service.cancel_pending_batch()
+    time.sleep(0.06)
+
+    assert delivered == []
+    assert state.pending_count == 0
+    assert not state.scheduled
+
+
 def test_turn_handles_keep_old_work_cancelled_after_new_turn_starts() -> None:
     service = ChatTurnService(options=ChatTurnOptions(interrupt_enabled=True))
     first = service.begin_turn()

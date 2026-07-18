@@ -104,6 +104,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
       return withResolvedLayers({
         ...state,
         eventSeq: Math.max(state.eventSeq, event.seq),
+        turnOptions: event.options ? { ...event.options } : state.turnOptions,
         turnState: {
           ...event.state,
           pendingMessages: [...(event.state.pendingMessages ?? [])],

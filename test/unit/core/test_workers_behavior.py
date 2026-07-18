@@ -130,6 +130,7 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     assert isinstance(output, LLMDialogMessage)
     assert output.name == "Alice"
     assert output.text == "Hi"
+    assert output.turn_id == runtime.chat_turn_service.current_turn().id
     assert user_input_queue.task_done_calls == 2
     assert user_input_queue.unfinished_tasks == 0
     runtime.llm_manager.chat.assert_called_once_with("hello", stream=False)
@@ -176,6 +177,34 @@ def test_tts_worker_start_clears_previous_cancel_state(monkeypatch) -> None:
 
     assert not worker._cancel_event.is_set()
     assert starts == [worker]
+
+
+def test_tts_worker_drops_message_scoped_to_interrupted_turn(monkeypatch) -> None:
+    tts_queue = CountingQueue()
+    audio_path_queue = CountingQueue()
+    runtime = _make_app_runtime(tts_queue=tts_queue, audio_path_queue=audio_path_queue)
+    interrupted_turn = runtime.chat_turn_service.begin_turn()
+    runtime.chat_turn_service.interrupt()
+    current_turn = runtime.chat_turn_service.begin_turn()
+    tts_queue.put(
+        LLMDialogMessage(
+            name="Alice",
+            text="stale reply",
+            asset_id="-1",
+            turn_id=interrupted_turn.id,
+        )
+    )
+    tts_queue.put(None)
+    worker = TTSWorker(tts_queue, audio_path_queue)
+    monkeypatch.setattr(worker, "_init_app", lambda: None)
+    worker.tts_message_dispatcher = SimpleNamespace(dispatch=MagicMock())
+
+    worker.run()
+
+    assert current_turn.id != interrupted_turn.id
+    worker.tts_message_dispatcher.dispatch.assert_not_called()
+    assert audio_path_queue.empty()
+    assert tts_queue.task_done_calls == 2
 
 
 def test_tts_worker_drops_dispatch_output_after_cancel() -> None:

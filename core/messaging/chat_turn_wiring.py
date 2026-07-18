@@ -52,6 +52,7 @@ def create_chat_turn_service(
         options=options,
         on_state_change=on_state_change,
         cancel_current=getattr(llm_manager, "cancel_current_chat", None),
+        clear_buffered_delivery=clear_queue(user_input_queue),
         clear_pending=(clear_queue(tts_queue), clear_queue(audio_queue)),
         stop_playback=getattr(ui_worker, "skip_speech", None),
         hide_status=getattr(ui_updates, "hide_busy_bar", None),

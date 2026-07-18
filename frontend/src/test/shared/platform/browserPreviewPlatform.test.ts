@@ -303,6 +303,9 @@ describe("browser preview platform chat themes", () => {
       interruptEnabled: false,
     });
     expect(events.at(-1)?.type).toBe("chat.turn.state");
+    expect(events.at(-1)).toMatchObject({
+      options: { batchEnabled: true, batchIdleSeconds: 8, interruptEnabled: false },
+    });
 
     const sendPromise = platform.chat.command({ payload: "first fragment", type: "send-message" });
     await vi.advanceTimersByTimeAsync(120);
@@ -315,6 +318,16 @@ describe("browser preview platform chat themes", () => {
       scheduled: true,
     });
     expect(events.at(-1)?.type).toBe("chat.turn.state");
+
+    const optionPromise = platform.chat.command({ payload: "second fragment", type: "submit-option" });
+    await vi.advanceTimersByTimeAsync(120);
+    const optionPending = await optionPromise;
+    expect(optionPending.status).toBe("idle");
+    expect(optionPending.turnState).toMatchObject({
+      pendingCount: 2,
+      pendingMessages: ["first fragment", "second fragment"],
+      scheduled: true,
+    });
 
     const flushPromise = platform.chat.command({ type: "flush-input-batch" });
     await vi.advanceTimersByTimeAsync(120);

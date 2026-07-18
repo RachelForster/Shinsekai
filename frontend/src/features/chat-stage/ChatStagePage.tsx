@@ -197,14 +197,14 @@ export function ChatStagePage() {
     }
   }, [runtimeConfig.longPressTalk, voskModelState.available, voskModelState.loading]);
 
-  const submit = () => {
+  const submit = async () => {
     const text = viewModel.inputDraft.trim();
     if (!text) {
       return;
     }
     showDialogImmediately();
     dispatch({ queued: state.turnOptions.batchEnabled, source: "send-message", text, type: "submitUserMessage" });
-    void sendCommand({ payload: text, type: "send-message" });
+    await sendCommand({ payload: text, type: "send-message" });
   };
 
   const submitOption = (option: string) => {
@@ -475,6 +475,7 @@ export function ChatStagePage() {
           longPressTalkEnabled={longPressTalkEnabled}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
           onCommand={sendCommand}
+          onFlushBatch={() => sendCommand({ type: "flush-input-batch" })}
           onInputActivity={updateInputActivity}
           onSubmit={submit}
           value={viewModel.inputDraft}

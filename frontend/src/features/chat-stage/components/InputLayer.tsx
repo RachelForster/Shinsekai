@@ -23,6 +23,7 @@ export function InputLayer({
   longPressTalkEnabled = false,
   onChange,
   onCommand,
+  onFlushBatch,
   onInputActivity,
   onSubmit,
   value,
@@ -36,8 +37,9 @@ export function InputLayer({
   longPressTalkEnabled?: boolean;
   onChange: (value: string) => void;
   onCommand: (command: ChatCommand) => void;
+  onFlushBatch: () => void | Promise<void>;
   onInputActivity: (state: { composing: boolean; hasText: boolean }) => void;
-  onSubmit: () => void;
+  onSubmit: () => void | Promise<void>;
   value: string;
 }) {
   const { language, t } = useI18n();
@@ -81,6 +83,13 @@ export function InputLayer({
   const handleInputChange = (nextValue: string) => {
     onChange(nextValue);
     reportInputActivity(nextValue, false);
+  };
+
+  const submitFromKeyboard = async (flushBatch: boolean) => {
+    await onSubmit();
+    if (flushBatch && batchEnabled) {
+      await onFlushBatch();
+    }
   };
 
   const stopListening = () => {
@@ -288,7 +297,7 @@ export function InputLayer({
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) {
                 event.preventDefault();
-                onSubmit();
+                void submitFromKeyboard(event.ctrlKey);
               }
             }}
             placeholder={t("chat.input.placeholder")}
@@ -304,7 +313,7 @@ export function InputLayer({
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
-                onSubmit();
+                void submitFromKeyboard(event.ctrlKey);
               }
             }}
             placeholder={t("chat.input.placeholder")}

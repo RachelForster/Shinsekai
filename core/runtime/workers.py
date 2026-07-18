@@ -210,7 +210,7 @@ class LLMWorker(QThreadDagNode):
                         raw_chunks.append(chunk_message)
                         for llm_dialog in parser.feed(chunk_message):
                             message_count += 1
-                            self.tts_queue.put(llm_dialog)
+                            self.tts_queue.put(llm_dialog.model_copy(update={"turn_id": turn.id}))
 
                 # --- Interrupted: write committed context, discard the rest ---
                 if turn.is_cancelled():
@@ -392,6 +392,7 @@ class TTSWorker(QThreadDagNode):
         self._init_app()
         while self.running:
             item: Optional[LLMDialogMessage] = None
+            turn = None
             got_item = False
             try:
                 item = self.tts_queue.get()
@@ -399,6 +400,9 @@ class TTSWorker(QThreadDagNode):
                 if item is None:
                     break
                 turn = get_app_runtime().chat_turn_service.current_turn()
+                item_turn_id = getattr(item, "turn_id", None)
+                if item_turn_id is not None and item_turn_id != turn.id:
+                    continue
                 if turn.is_cancelled():
                     continue
                 with tracker.track("TTS dispatch"):
@@ -407,7 +411,13 @@ class TTSWorker(QThreadDagNode):
                     self.audio_path_queue.clear()
             except Exception as e:
                 logger.exception("TTS worker task failed", extra={"event": "tts.worker.failed"})
-                if item is not None:
+                current_turn = get_app_runtime().chat_turn_service.current_turn()
+                if (
+                    item is not None
+                    and turn is not None
+                    and turn.id == current_turn.id
+                    and not turn.is_cancelled()
+                ):
                     self.put_data(
                         get_app_runtime().opencc.convert(item.name),
                         item.text,

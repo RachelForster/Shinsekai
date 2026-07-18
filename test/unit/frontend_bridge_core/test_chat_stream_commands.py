@@ -282,6 +282,31 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertEqual(snapshot["inputDraft"], "")
         self.assertEqual(chat_stream.command[1]["type"], "send-message")
 
+    def test_batched_option_preserves_idle_snapshot_until_the_batch_flushes(self):
+        chat_stream = _StubChatStream()
+        chat_stream.snapshot.update(
+            {
+                "characterName": "Mio",
+                "dialogHtml": "<p>Choose</p>",
+                "dialogText": "Choose",
+                "status": "idle",
+            }
+        )
+        config_manager = _config_manager_with_chat_experiments()
+        config_manager.config.api_config.is_batch_input_enabled = True
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+            config_manager=config_manager,
+        )
+
+        snapshot = _handle_chat_command(state, {"payload": "Left", "type": "submit-option"})
+
+        self.assertEqual(snapshot["status"], "idle")
+        self.assertEqual(snapshot["dialogText"], "Choose")
+        self.assertEqual(snapshot["dialogHtml"], "<p>Choose</p>")
+        self.assertEqual(chat_stream.command[1]["type"], "submit-option")
+
     def test_handle_chat_command_clears_closed_session_markers_when_restarting_runtime_interaction(self):
         chat_stream = _StubChatStream()
         chat_stream.snapshot["notificationText"] = "聊天会话已结束。"
@@ -484,6 +509,45 @@ class ChatStreamCommandTests(unittest.TestCase):
         completed = service.get_snapshot(session["sessionId"])["initTask"]
         self.assertEqual(completed["status"], "succeeded")
         self.assertEqual(completed["progress"], 1.0)
+
+    def test_chat_stream_broadcasts_turn_options_to_connected_viewers(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
+        session = service.create_session()
+        viewer = _FakeConnection()
+        with service._lock:
+            service._sessions[session["sessionId"]].viewers.add(viewer)
+
+        asyncio.run(
+            service._publish_event(
+                session["sessionId"],
+                {
+                    "options": {
+                        "batchEnabled": True,
+                        "batchIdleSeconds": 9.0,
+                        "interruptEnabled": False,
+                    },
+                    "state": {
+                        "enabled": True,
+                        "pendingCount": 0,
+                        "pendingMessages": [],
+                        "remainingSeconds": None,
+                        "scheduled": False,
+                        "typing": False,
+                    },
+                    "type": "chat.turn.state",
+                },
+            )
+        )
+
+        self.assertEqual(len(viewer.messages), 1)
+        self.assertEqual(
+            viewer.messages[0]["options"],
+            {"batchEnabled": True, "batchIdleSeconds": 9.0, "interruptEnabled": False},
+        )
+        self.assertEqual(
+            service.get_snapshot(session["sessionId"])["turnOptions"],
+            {"batchEnabled": True, "batchIdleSeconds": 9.0, "interruptEnabled": False},
+        )
 
     def test_chat_stream_close_session_broadcasts_closed_event_and_updates_snapshot(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=8787)

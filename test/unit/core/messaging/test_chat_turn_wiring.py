@@ -8,12 +8,12 @@ from core.messaging.chat_turn_wiring import create_chat_turn_service
 from core.messaging.queue import ClearableQueue
 
 
-def make_config(*, interrupt_enabled: bool) -> object:
+def make_config(*, interrupt_enabled: bool, batch_enabled: bool = False) -> object:
     return SimpleNamespace(
         config=SimpleNamespace(
             api_config=SimpleNamespace(
                 interrupt_enabled=interrupt_enabled,
-                is_batch_input_enabled=False,
+                is_batch_input_enabled=batch_enabled,
                 batch_input_timeout=5.0,
                 batch_input_separator="\n---\n",
             )
@@ -71,3 +71,23 @@ def test_wiring_clears_downstream_ports_on_interrupt() -> None:
     ui_worker.skip_speech.assert_called_once_with()
     ui_updates.hide_busy_bar.assert_called_once_with()
     assert input_queue.get_nowait().text == "next"
+
+
+def test_wiring_clears_flushed_batch_delivery_when_batch_is_cancelled() -> None:
+    input_queue = ClearableQueue()
+    service = create_chat_turn_service(
+        config=make_config(interrupt_enabled=False, batch_enabled=True),
+        user_input_queue=input_queue,
+        tts_queue=ClearableQueue(),
+        audio_queue=ClearableQueue(),
+        llm_manager=MagicMock(),
+        ui_worker=MagicMock(),
+        ui_updates=MagicMock(),
+    )
+    service.submit("stale branch input")
+    service.flush()
+    assert not input_queue.empty()
+
+    service.cancel_pending_batch()
+
+    assert input_queue.empty()

@@ -373,6 +373,11 @@ class EventSinkSnapshotTests(unittest.TestCase):
             make_empty_chat_snapshot(),
             {
                 "seq": 8,
+                "options": {
+                    "batchEnabled": True,
+                    "batchIdleSeconds": 6.5,
+                    "interruptEnabled": False,
+                },
                 "state": {
                     "enabled": True,
                     "pendingCount": 2,
@@ -396,6 +401,14 @@ class EventSinkSnapshotTests(unittest.TestCase):
                 "remainingSeconds": 4,
                 "scheduled": True,
                 "typing": False,
+            },
+        )
+        self.assertEqual(
+            next_snapshot["turnOptions"],
+            {
+                "batchEnabled": True,
+                "batchIdleSeconds": 6.5,
+                "interruptEnabled": False,
             },
         )
 

@@ -1118,6 +1118,11 @@ describe("chatStageReducer", () => {
     const next = chatStageReducer(emptyChatState, {
       event: {
         seq: 1,
+        options: {
+          batchEnabled: true,
+          batchIdleSeconds: 7,
+          interruptEnabled: false,
+        },
         state: {
           enabled: true,
           pendingCount: 3,
@@ -1140,6 +1145,11 @@ describe("chatStageReducer", () => {
       remainingSeconds: 2,
       scheduled: true,
       typing: false,
+    });
+    expect(next.turnOptions).toEqual({
+      batchEnabled: true,
+      batchIdleSeconds: 7,
+      interruptEnabled: false,
     });
   });
 });

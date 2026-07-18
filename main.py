@@ -642,8 +642,14 @@ def main():
             )
 
             def emit_chat_turn_state(state) -> None:
+                options = chat_turn_service.options
                 stream_sink.emit(
                     {
+                        "options": {
+                            "batchEnabled": options.batch_enabled,
+                            "batchIdleSeconds": options.batch_idle_seconds,
+                            "interruptEnabled": options.interrupt_enabled,
+                        },
                         "type": "chat.turn.state",
                         "state": {
                             "enabled": state.enabled,
@@ -819,7 +825,6 @@ def main():
         def _fork_history_branch(user_index: int) -> None:
             if user_index < 0:
                 raise ValueError("分支索引无效。")
-            _save_active_branch()
             user_pos = _user_history_position(user_index)
             if user_pos < 0:
                 raise ValueError("找不到可分叉的历史记录。")
@@ -827,6 +832,8 @@ def main():
             user_text = _plain_user_text(source_entry)
             if not user_text:
                 raise ValueError("分支输入内容为空。")
+            chat_turn_service.cancel_pending_batch()
+            _save_active_branch()
             prefix_history = list(chat_history[:user_pos])
             prefix_messages = _messages_before_user(user_index)
             branch_state["counter"] = int(branch_state.get("counter") or 1) + 1
@@ -858,6 +865,7 @@ def main():
             branches = _branches()
             if not target_id or target_id not in branches:
                 raise ValueError("对话分支不存在。")
+            chat_turn_service.cancel_pending_batch()
             _save_active_branch()
             branch = branches[target_id]
             branch_state["active"] = target_id
@@ -1004,6 +1012,7 @@ def main():
                 if command_type == "clear-history":
                     if audio_path_queue is None:
                         raise RuntimeError("聊天历史清理队列未就绪。")
+                    chat_turn_service.cancel_pending_batch()
                     history_target = str(chat_history_active_path(args.history)) if args.history else str(
                         Path("data/chat_history") / "_temp.json"
                     )
@@ -1044,6 +1053,7 @@ def main():
                     return
                 if command_type == "revert-history":
                     index = int(payload)
+                    chat_turn_service.cancel_pending_batch()
                     revert_chat_history(
                         index,
                         llm_manager=llm_manager,

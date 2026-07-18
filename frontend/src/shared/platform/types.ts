@@ -941,7 +941,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "user.display_name.change"; name: string })
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[] })
   | (ChatEventBase & { type: "conversation.tree"; tree: ChatConversationTree })
-  | (ChatEventBase & { type: "chat.turn.state"; state: ChatTurnState })
+  | (ChatEventBase & { type: "chat.turn.state"; state: ChatTurnState; options?: ChatTurnOptions })
   | (ChatEventBase & {
       type: "sprite.show";
       characterName: string;

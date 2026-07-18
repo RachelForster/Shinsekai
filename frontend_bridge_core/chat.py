@@ -955,31 +955,30 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
     if command in {"chat-input-state", "flush-input-batch", "cancel-input-batch"}:
         return _forward_runtime_command(_current_runtime_status())
 
-    if command == "send-message":
-        text = str(body.get("payload") or "").strip()
-        if not text:
-            raise ValueError("消息内容不能为空。")
-        user_display_name = _chat_user_display_name_from_snapshot(state)
+    if command in {"send-message", "submit-option"}:
+        submitted_text = str(body.get("payload") or "").strip()
+        if not submitted_text:
+            raise ValueError("选项不能为空。" if command == "submit-option" else "消息内容不能为空。")
         if _chat_turn_options(state)["batchEnabled"]:
+            snapshot_patch: dict[str, Any] = {"inputDraft": ""}
+            if command == "send-message":
+                snapshot_patch["userDisplayName"] = _chat_user_display_name_from_snapshot(state)
             return _forward_runtime_command(
                 _current_runtime_status(),
-                snapshot_patch={"inputDraft": "", "userDisplayName": user_display_name},
+                snapshot_patch=snapshot_patch,
             )
+        if command == "submit-option":
+            return _forward_runtime_command("generating", f"已选择：{submitted_text}")
+        user_display_name = _chat_user_display_name_from_snapshot(state)
         return _forward_runtime_command(
             "generating",
-            text,
+            submitted_text,
             snapshot_patch={
                 "characterName": user_display_name,
                 "inputDraft": "",
                 "userDisplayName": user_display_name,
             },
         )
-
-    if command == "submit-option":
-        option = str(body.get("payload") or "").strip()
-        if not option:
-            raise ValueError("选项不能为空。")
-        return _forward_runtime_command("generating", f"已选择：{option}")
 
     if command == "skip-speech":
         return _forward_runtime_command("idle", "已跳过当前语音。")

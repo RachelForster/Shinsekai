@@ -462,6 +462,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     const snapshot = clone(chat);
     chatListeners.forEach((listener) => listener(snapshot));
     const event: ChatStageEvent = {
+      options: clone(chat.turnOptions ?? sampleChatSnapshot.turnOptions!),
       seq: (previewChatEventSeq += 1),
       state: clone(chat.turnState ?? sampleChatSnapshot.turnState!),
       ts: Date.now(),
@@ -915,8 +916,25 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           scheduleChatUpdate(1400, (current) => ({ ...current, numericInfo: "idle", status: "idle" }));
         }
         if (command.type === "submit-option") {
-          clearScheduledChatUpdates();
           const option = String(command.payload ?? "").trim();
+          if (chat.turnOptions?.batchEnabled) {
+            chat = {
+              ...chat,
+              inputDraft: "",
+              turnState: {
+                ...(chat.turnState ?? sampleChatSnapshot.turnState!),
+                enabled: true,
+                pendingCount: (chat.turnState?.pendingCount ?? 0) + 1,
+                pendingMessages: [...(chat.turnState?.pendingMessages ?? []), option],
+                remainingSeconds: chat.turnOptions.batchIdleSeconds,
+                scheduled: true,
+                typing: false,
+              },
+            };
+            emitTurnState();
+            return delay(chat);
+          }
+          clearScheduledChatUpdates();
           chat = {
             ...chat,
             dialogText: `选择：${option}`,
