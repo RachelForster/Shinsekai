@@ -8,13 +8,17 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 
 class UserInputMessage(BaseModel):
     """用户输入队列的消息格式 (user_input_queue)。"""
 
     text: str = Field(..., description="用户输入的聊天文本")
+    attachments: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="User-selected chat attachments validated by core.media before processing.",
+    )
 
 
 class LLMDialogMessage(BaseModel):

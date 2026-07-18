@@ -210,6 +210,31 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertIsNone(chat_stream.snapshot["dialogHtml"])
         self.assertEqual(chat_stream.snapshot["characterName"], "你")
 
+    def test_handle_chat_command_validates_and_forwards_attachments(self):
+        chat_stream = _StubChatStream()
+        state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            image = Path(temp_dir) / "scene.png"
+            image.write_bytes(b"image")
+
+            snapshot = _handle_chat_command(
+                state,
+                {
+                    "payload": {
+                        "attachments": [{"kind": "image", "name": "spoofed.exe", "path": str(image)}],
+                        "text": "Inspect this",
+                    },
+                    "type": "send-message",
+                },
+            )
+
+        self.assertEqual(snapshot["dialogText"], "Inspect this\n[image: scene.png]")
+        self.assertIsNotNone(chat_stream.command)
+        command = chat_stream.command[1]
+        self.assertEqual(command["payload"]["text"], "Inspect this")
+        self.assertEqual(command["payload"]["attachments"][0]["name"], "scene.png")
+        self.assertEqual(command["payload"]["attachments"][0]["mimeType"], "image/png")
+
     def test_handle_chat_command_updates_voice_language_for_runtime_session(self):
         chat_stream = _StubChatStream()
         state = SimpleNamespace(

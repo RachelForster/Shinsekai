@@ -38,7 +38,7 @@ def test_chat_vision_service_prefers_native_image_blocks(tmp_path: Path):
 
     assert prepared.mode == "native"
     assert isinstance(prepared.content, list)
-    assert prepared.content[0] == {"type": "text", "text": "What is here?"}
+    assert prepared.content[0] == {"type": "text", "text": "What is here?\n\nImage attachments: moon.png"}
     assert prepared.content[1]["type"] == "local_image"
     assert prepared.content[1]["path"] == str(image.path)
 

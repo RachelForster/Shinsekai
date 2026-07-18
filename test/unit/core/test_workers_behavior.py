@@ -136,6 +136,44 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     runtime.llm_manager.chat.assert_called_once_with("hello", stream=False)
 
 
+def test_llm_worker_prepares_attachments_and_activates_file_tools(tmp_path) -> None:
+    image = tmp_path / "scene.png"
+    image.write_bytes(b"image")
+    document = tmp_path / "notes.txt"
+    document.write_text("notes", encoding="utf-8")
+    user_input_queue = CountingQueue()
+    tts_queue = CountingQueue()
+    user_input_queue.put(
+        UserInputMessage(
+            text="Inspect these",
+            attachments=[
+                {"kind": "image", "path": str(image)},
+                {"kind": "file", "path": str(document)},
+            ],
+        )
+    )
+    user_input_queue.put(None)
+
+    runtime = _make_app_runtime()
+    runtime.config.config.api_config.is_streaming = False
+    runtime.llm_manager.llm_adapter.supports_native_vision = True
+    runtime.llm_manager.chat.return_value = '{"character_name":"Alice","speech":"Done","sprite":"0"}'
+    worker = LLMWorker(user_input_queue, tts_queue)
+    worker.run()
+
+    content = runtime.llm_manager.chat.call_args.args[0]
+    assert content[0]["type"] == "text"
+    assert "file_read" in content[0]["text"]
+    assert content[1]["type"] == "local_image"
+    assert runtime.llm_manager.chat.call_args.kwargs["user_display_text"] == (
+        "Inspect these\n[image: scene.png] [file: notes.txt]"
+    )
+    assert runtime.llm_manager.chat.call_args.kwargs["tool_groups"] == ["file"]
+    runtime.ui_update_manager.record_user_message.assert_called_once_with(
+        "Inspect these\n[image: scene.png] [file: notes.txt]"
+    )
+
+
 def test_tts_worker_exception_path_uses_original_put_data_fallback(
     monkeypatch,
 ) -> None:

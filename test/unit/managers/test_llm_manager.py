@@ -2,6 +2,7 @@
 
 import json
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -475,6 +476,32 @@ class TestLLMManagerCompact:
         mgr.chat("Hello", stream=False, include_local_time=True)
         user_msg = mgr.messages[-2]["content"]
         assert "本地时间" in user_msg
+
+    def test_chat_prefixes_structured_input_and_keeps_display_content(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["Response."]
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
+        content = [
+            {"type": "text", "text": "Inspect"},
+            {"type": "local_image", "path": "C:/scene.png"},
+        ]
+
+        mgr.chat(content, stream=False, user_display_text="Inspect\n[image: scene.png]")
+
+        user_message = mgr.messages[-2]
+        assert "本地时间" in user_message["content"][0]["text"]
+        assert user_message["content"][1] == content[1]
+        assert user_message["display_content"] == "Inspect\n[image: scene.png]"
+
+    def test_chat_activates_requested_tool_groups_inside_turn(self, mock_llm_adapter, monkeypatch):
+        mock_llm_adapter.responses = ["Response."]
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
+        activate = MagicMock(wraps=mgr._activate_tool_group)
+        monkeypatch.setattr(mgr, "_activate_tool_group", activate)
+
+        mgr.chat("Read the attachment", stream=False, tool_groups=["file"])
+
+        activate.assert_called_once_with("file")
+        assert mgr._active_tool_groups == ["default"]
 
     def test_chat_exclude_local_time_preserves_text(self, mock_llm_adapter):
         mock_llm_adapter.responses = ["Response."]

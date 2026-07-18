@@ -65,6 +65,7 @@ class ChatVisionService:
             )
 
         if self.supports_native_images(adapter):
+            prompt_parts.append("Image attachments: " + ", ".join(image.name for image in images))
             content: list[dict[str, Any]] = [{"type": "text", "text": "\n\n".join(prompt_parts)}]
             content.extend(local_image_block(image) for image in images)
             return PreparedChatInput(

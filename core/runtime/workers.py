@@ -31,6 +31,8 @@ from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from core.runtime.app_runtime import get_app_runtime, try_get_app_runtime, tts_emit_to_ui_queue
 from core.messaging.stream_parser import LlmResponseStreamParser
 from core.handlers.handler_registry import default_tts_handler_chain, default_ui_output_handler_chain
+from core.media.chat_attachments import resolve_chat_attachments
+from ai.vision.service import ChatVisionService
 
 logger = get_logger(__name__)
 
@@ -112,6 +114,7 @@ class LLMWorker(QThreadDagNode):
     ):
         super().__init__(name, parent=parent)
         self._app_inited = False
+        self.chat_vision_service = ChatVisionService()
         self.user_input_queue = input_queue
         self.tts_queue = output_queue
         if input_queue is not None:
@@ -156,28 +159,41 @@ class LLMWorker(QThreadDagNode):
 
                 turn_scope = log_context(turn_id=new_log_id("turn_"))
                 turn_scope.__enter__()
+                attachments = resolve_chat_attachments(message.attachments)
+                prepared_input = self.chat_vision_service.prepare(
+                    message.text,
+                    attachments,
+                    adapter=self.llm_manager.llm_adapter,
+                )
                 logger.info(
                     "LLM worker processing user message",
                     extra={
                         "event": "chat.turn.started",
                         "input_chars": len(message.text or ""),
+                        "attachment_count": len(attachments),
+                        "vision_mode": prepared_input.mode,
                     },
                 )
                 tracker.start_cross("e2e")
                 self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
 
                 if hasattr(self.ui_update_manager, "record_user_message"):
-                    self.ui_update_manager.record_user_message(message.text)
+                    self.ui_update_manager.record_user_message(prepared_input.display_text)
                 else:
                     formatted_user_message = (
                         "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
-                        f"<b style='color:white;'>你</b>: {message.text}</p>"
+                        f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
                     )
                     self.ui_update_manager.chat_history.append(formatted_user_message)
 
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
-                    raw_response = self.llm_manager.chat(message.text, stream=is_streaming)
+                    chat_kwargs = {"stream": is_streaming}
+                    if prepared_input.uses_file_tool:
+                        chat_kwargs["tool_groups"] = ["file"]
+                    if attachments:
+                        chat_kwargs["user_display_text"] = prepared_input.display_text
+                    raw_response = self.llm_manager.chat(prepared_input.content, **chat_kwargs)
 
                 if turn.is_cancelled():
                     # chat() returned early due to cancel — skip parse / persist

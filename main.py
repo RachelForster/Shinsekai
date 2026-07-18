@@ -106,6 +106,7 @@ from core.runtime.app_runtime import AppRuntime, set_app_runtime
 from core.runtime.launch_mode import should_init_desktop_mixer
 from core.runtime.shutdown import shutdown_chat_runtime
 from core.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
+from core.media.chat_attachments import resolve_chat_attachments
 from core.paths import resource_path
 from core.sprite.chat_branch_storage import (
     chat_history_active_path,
@@ -697,7 +698,7 @@ def main():
                 if user_input_queue is not None
                 else None
             )
-        last_user_message = {"text": ""}
+        last_user_message: dict[str, object] = {"attachments": [], "text": ""}
         def _default_branch_state() -> dict[str, object]:
             now = int(time.time() * 1000)
             return {
@@ -730,16 +731,23 @@ def main():
 
         branch_state: dict[str, object] = _load_initial_branch_state()
 
-        def submit_runtime_text(text: str, *, notify_key: str | None = "main.notify_submitted") -> None:
+        def submit_runtime_text(
+            text: str,
+            *,
+            attachments: list[dict[str, object]] | None = None,
+            notify_key: str | None = "main.notify_submitted",
+        ) -> None:
             value = str(text or "").strip()
-            if not value:
+            resolved_attachments = resolve_chat_attachments(attachments)
+            if not value and not resolved_attachments:
                 return
             last_user_message["text"] = value
+            last_user_message["attachments"] = [attachment.to_payload() for attachment in resolved_attachments]
             if emit_user_text is None:
                 if notify_key:
                     ui_updates.post_notification(tr_i18n("main.notify_chat"))
                 return
-            emit_user_text(value)
+            emit_user_text(value, attachments=last_user_message["attachments"])
             if notify_key:
                 ui_updates.post_notification(tr_i18n(notify_key))
 
@@ -920,7 +928,15 @@ def main():
                     shutdown_requested.set()
                     return
                 if command_type == "send-message":
-                    submit_runtime_text(str(payload or ""), notify_key=None)
+                    if isinstance(payload, dict):
+                        raw_attachments = payload.get("attachments")
+                        submit_runtime_text(
+                            str(payload.get("text") or ""),
+                            attachments=raw_attachments if isinstance(raw_attachments, list) else [],
+                            notify_key=None,
+                        )
+                    else:
+                        submit_runtime_text(str(payload or ""), notify_key=None)
                     emit_ack(ok=True)
                     return
                 if command_type == "submit-option":
@@ -1005,7 +1021,10 @@ def main():
                         ui_updates.sync_history_entries()
                     if reroll_text and emit_user_text is not None:
                         last_user_message["text"] = reroll_text
-                        emit_user_text(reroll_text)
+                        emit_user_text(
+                            reroll_text,
+                            attachments=list(last_user_message.get("attachments") or []),
+                        )
                         ui_updates.post_notification(tr_i18n("main.notify_reroll"))
                     emit_ack(ok=True)
                     return

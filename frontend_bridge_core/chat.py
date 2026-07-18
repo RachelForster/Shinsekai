@@ -27,6 +27,7 @@ from core.messaging.dialog_tokens import (
 from core.paths import app_root as runtime_app_root
 from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
+from core.media.chat_attachments import chat_attachment_display_text, resolve_chat_attachments
 from core.sprite.chat_branch_storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
@@ -664,7 +665,7 @@ def _serialize_history_entries_from_messages(
             continue
         role = str(message.get("role") or "").strip()
         if role == "user":
-            text = str(message.get("content") or "").strip()
+            text = str(message.get("display_content") or message.get("content") or "").strip()
             if not text:
                 continue
             entry = {
@@ -956,8 +957,19 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         return _forward_runtime_command(_current_runtime_status())
 
     if command in {"send-message", "submit-option"}:
-        submitted_text = str(body.get("payload") or "").strip()
-        if not submitted_text:
+        attachments = []
+        payload = body.get("payload")
+        if command == "send-message" and isinstance(payload, dict):
+            submitted_text = str(payload.get("text") or "").strip()
+            raw_attachments = payload.get("attachments")
+            attachments = resolve_chat_attachments(raw_attachments if isinstance(raw_attachments, list) else [])
+            body["payload"] = {
+                "attachments": [attachment.to_payload() for attachment in attachments],
+                "text": submitted_text,
+            }
+        else:
+            submitted_text = str(payload or "").strip()
+        if not submitted_text and not attachments:
             raise ValueError("选项不能为空。" if command == "submit-option" else "消息内容不能为空。")
         if _chat_turn_options(state)["batchEnabled"]:
             snapshot_patch: dict[str, Any] = {"inputDraft": ""}
@@ -972,7 +984,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         user_display_name = _chat_user_display_name_from_snapshot(state)
         return _forward_runtime_command(
             "generating",
-            submitted_text,
+            chat_attachment_display_text(submitted_text, attachments),
             snapshot_patch={
                 "characterName": user_display_name,
                 "inputDraft": "",

@@ -90,10 +90,19 @@ def _tool_result_status(result: str) -> str:
         return "error"
     return str(parsed.get("status") or "success")
 
-def _prefix_user_text_with_local_time(text: str) -> str:
+def _prefix_user_text_with_local_time(text: Any) -> Any:
     """为发送给模型的用户正文加上本机本地时间（供模型感知「何时」发送）。"""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    return f"[本地时间 {ts}]\n{text}"
+    prefix = f"[本地时间 {ts}]"
+    if not isinstance(text, list):
+        return f"{prefix}\n{text}"
+    content = copy.deepcopy(text)
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "text":
+            block["text"] = f"{prefix}\n{str(block.get('text') or '')}"
+            return content
+    content.insert(0, {"type": "text", "text": prefix})
+    return content
 
 
 def _notify_tool_call_hint(tool_name: str) -> None:
@@ -737,7 +746,7 @@ class LLMManager:
             print("Error: new_messages must be a list.")
             
     
-    def chat(self, user_input: Optional[str], stream: bool = True, **kwargs) -> Union[Generator, str]:
+    def chat(self, user_input: Optional[Any], stream: bool = True, **kwargs) -> Union[Generator, str]:
         """
         统一入口：根据 stream 参数决定调用流式还是同步私有方法。
 
@@ -755,10 +764,20 @@ class LLMManager:
 
         try:
             include_local_time = bool(kwargs.pop("include_local_time", True))
+            user_display_text = str(kwargs.pop("user_display_text", "") or "").strip()
+            requested_tool_groups = kwargs.pop("tool_groups", ())
+            if isinstance(requested_tool_groups, str):
+                requested_tool_groups = (requested_tool_groups,)
+            for group in requested_tool_groups:
+                self._activate_tool_group(str(group or "").strip())
             if user_input:
                 if include_local_time:
                     user_input = _prefix_user_text_with_local_time(user_input)
-                self.add_message("user", user_input)
+                self.add_message(
+                    "user",
+                    user_input,
+                    **({"display_content": user_display_text} if user_display_text else {}),
+                )
 
             if stream:
                 return self._stream_with_chat_scope(self._chat_with_tools_stream(**kwargs))

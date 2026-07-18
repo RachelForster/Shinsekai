@@ -128,9 +128,10 @@ class HistoryManager:
         try:
             for message in messages:
                 if message["role"] == 'user':
+                    display_content = message.get("display_content") or message.get("content", "")
                     self.chat_history.append(
                         f"<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
-                        f"<b style='color:white;'>你</b>: {message['content']}</p>"
+                        f"<b style='color:white;'>你</b>: {display_content}</p>"
                     )
                 if message['role'] == 'assistant':
                     content = message.get('content', '')
