@@ -22,11 +22,14 @@ Shinsekai keeps `main` open for development during releases. Maintainers cut a `
 
 ## Local presubmit hooks
 
-Install the repository hooks once per clone:
+Husky installs the repository hooks automatically when you install the frontend dependencies:
 
 ```bash
-git config core.hooksPath .githooks
+cd frontend
+pnpm install
 ```
+
+If the dependencies are already installed, run `pnpm prepare` from `frontend/` to initialize the hooks. Husky configures Git to use the root-level `.husky/` directory; no manual `core.hooksPath` command is needed. The installer skips hook setup in CI and production environments.
 
 The `commit-msg` hook requires commit titles to follow Conventional Commits:
 
