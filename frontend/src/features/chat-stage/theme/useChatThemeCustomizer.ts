@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { chatThemeQueryKey, getChatThemeManifest } from "../../../entities/chat/repository";
 import { configQueryKey } from "../../../entities/config/repository";
@@ -40,18 +40,20 @@ export function useChatThemeCustomizer() {
   const { language, t } = useI18n();
   const { showToast } = useToast();
   const theme = useOptionalChatTheme();
-  const [sourceId, setSourceId] = useState("");
+  const [sourceId, setSourceIdState] = useState("");
   const [assetThemeId, setAssetThemeId] = useState("");
   const [draft, setDraft] = useState<ChatThemeManifest | null>(null);
   const [original, setOriginal] = useState<ChatThemeManifest | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const loadRequestId = useRef(0);
 
   const themes = theme?.themes ?? EMPTY_THEMES;
   const source = themes.find((item) => item.id === sourceId);
   const isNewTheme = source?.source === "builtin";
-  const dirty = Boolean(draft && original && JSON.stringify(draft) !== JSON.stringify(original));
+  const sourceReady = Boolean(sourceId && assetThemeId === sourceId && draft && original && !loading);
+  const dirty = Boolean(sourceReady && draft && original && JSON.stringify(draft) !== JSON.stringify(original));
   const idError = draft && !themeIdPattern.test(draft.id) ? t("chat.theme.customizer.idError") : "";
   const nameError =
     draft && !Object.values(draft.name).some((value) => value.trim()) ? t("chat.theme.customizer.nameError") : "";
@@ -60,14 +62,20 @@ export function useChatThemeCustomizer() {
   const themeCatalogKey = themes.map((item) => `${item.id}:${item.source}:${JSON.stringify(item.name)}`).join("|");
 
   const loadTheme = useCallback(
-    async (id: string) => {
-      if (!id) {
+    async (id: string, requestId: number) => {
+      if (!id || requestId !== loadRequestId.current) {
         return;
       }
       setLoading(true);
       setLoadError("");
+      setAssetThemeId("");
+      setDraft(null);
+      setOriginal(null);
       try {
         const manifest = await getChatThemeManifest(id);
+        if (requestId !== loadRequestId.current) {
+          return;
+        }
         const summary = themes.find((item) => item.id === id);
         const next = cloneManifest(manifest);
         if (summary?.source === "builtin") {
@@ -88,9 +96,13 @@ export function useChatThemeCustomizer() {
         setDraft(next);
         setOriginal(cloneManifest(next));
       } catch (error) {
-        setLoadError(error instanceof Error ? error.message : t("chat.theme.customizer.loadError"));
+        if (requestId === loadRequestId.current) {
+          setLoadError(error instanceof Error ? error.message : t("chat.theme.customizer.loadError"));
+        }
       } finally {
-        setLoading(false);
+        if (requestId === loadRequestId.current) {
+          setLoading(false);
+        }
       }
     },
     // The key keeps equal catalog refetches from resetting unsaved edits.
@@ -98,17 +110,29 @@ export function useChatThemeCustomizer() {
     [language, t, themeCatalogKey],
   );
 
+  const selectSourceId = useCallback((id: string) => {
+    loadRequestId.current += 1;
+    setSourceIdState(id);
+    setAssetThemeId("");
+    setDraft(null);
+    setOriginal(null);
+    setLoadError("");
+    setLoading(Boolean(id));
+  }, []);
+
   useEffect(() => {
     if (!theme || theme.loading || sourceId || !themes.length) {
       return;
     }
     const initial = themes.find((item) => item.id === theme.activeId)?.id ?? themes[0]?.id ?? "";
-    setSourceId(initial);
-  }, [sourceId, theme, themes]);
+    selectSourceId(initial);
+  }, [selectSourceId, sourceId, theme, themes]);
 
   useEffect(() => {
     if (sourceId) {
-      void loadTheme(sourceId);
+      const requestId = loadRequestId.current + 1;
+      loadRequestId.current = requestId;
+      void loadTheme(sourceId, requestId);
     }
   }, [loadTheme, sourceId]);
 
@@ -155,13 +179,13 @@ export function useChatThemeCustomizer() {
   };
 
   const reset = () => {
-    if (original) {
+    if (sourceReady && original) {
       setDraft(cloneManifest(original));
     }
   };
 
   const save = async () => {
-    if (!theme || !draft || invalid || !assetThemeId) {
+    if (!theme || !draft || invalid || !sourceReady) {
       return;
     }
     setSaving(true);
@@ -180,7 +204,7 @@ export function useChatThemeCustomizer() {
         queryClient.invalidateQueries({ queryKey: configQueryKey }),
         queryClient.invalidateQueries({ queryKey: chatThemeQueryKey }),
       ]);
-      setSourceId(summary.id);
+      setSourceIdState(summary.id);
       setAssetThemeId(summary.id);
       setOriginal(cloneManifest(draft));
       showToast({
@@ -217,8 +241,9 @@ export function useChatThemeCustomizer() {
     reset,
     save,
     saving,
-    setSourceId,
+    setSourceId: selectSourceId,
     sourceId,
+    sourceReady,
     themes,
   };
 }

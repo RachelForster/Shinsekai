@@ -75,6 +75,26 @@ describe("browser preview platform chat themes", () => {
     expect(platform.files.fileUrl("data/backgrounds/preview.png")).toBe("data/backgrounds/preview.png");
   });
 
+  it("resolves bundled assets through a saved clone's base theme", async () => {
+    const platform = createBrowserPreviewPlatform();
+    const base = await platform.chat.getThemeManifest("neon-night-city");
+    const manifest = { ...base, id: "neon-preview-custom", name: { en: "Neon Preview Custom" } };
+
+    await platform.chat.saveTheme({ baseId: "neon-night-city", manifest });
+
+    expect(platform.files.fileUrl("data/chat_ui_themes/neon-preview-custom/frame-dialog.svg")).toBe(
+      neonNightCityFrameDialogUrl,
+    );
+
+    await platform.chat.saveTheme({
+      baseId: "neon-preview-custom",
+      manifest: { ...manifest, name: { en: "Updated Neon Preview Custom" } },
+    });
+    expect(platform.files.fileUrl("data/chat_ui_themes/neon-preview-custom/frame-dialog.svg")).toBe(
+      neonNightCityFrameDialogUrl,
+    );
+  });
+
   it("tracks the lightweight runtime status across launch and close", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();
@@ -205,6 +225,7 @@ describe("browser preview platform chat themes", () => {
       id: "windborne-custom",
       tokens: { global: { themeColor: "#cc88ff" } },
     });
+    await expect(platform.chat.saveTheme({ baseId: "neon-night-city", manifest })).rejects.toThrow("windborne-custom");
 
     const updated = {
       ...manifest,

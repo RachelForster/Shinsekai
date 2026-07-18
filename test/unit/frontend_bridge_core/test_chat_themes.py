@@ -222,6 +222,92 @@ class ChatThemeBridgeTests(unittest.TestCase):
                     get_chat_theme_manifest(state, "my-neon")["tokens"]["global"]["themeColor"],
                     "#ff66aa",
                 )
+
+                save_chat_theme(
+                    state,
+                    {
+                        "baseId": "my-neon",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "my-neon",
+                            "name": {"en": "Updated Neon"},
+                            "tokens": {
+                                "global": {"themeColor": "#33aaff"},
+                                "dialog": {"frameImage": "frame-dialog.svg"},
+                            },
+                        },
+                    },
+                )
+                self.assertTrue((target / "frame-dialog.svg").is_file())
+                self.assertEqual(
+                    get_chat_theme_manifest(state, "my-neon")["tokens"]["global"]["themeColor"],
+                    "#33aaff",
+                )
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_clone_save_rejects_a_concurrently_created_target(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                save_chat_theme(
+                    state,
+                    {
+                        "baseId": "neon-night-city",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "shared-custom",
+                            "name": {"en": "First clone"},
+                            "tokens": {"global": {"themeColor": "#112233"}},
+                        },
+                    },
+                )
+
+                with self.assertRaises(FileExistsError):
+                    save_chat_theme(
+                        state,
+                        {
+                            "baseId": "sakura-dream",
+                            "manifest": {
+                                "schema": 1,
+                                "id": "shared-custom",
+                                "name": {"en": "Stale second clone"},
+                                "tokens": {"global": {"themeColor": "#ffeeee"}},
+                            },
+                        },
+                    )
+
+                saved = get_chat_theme_manifest(state, "shared-custom")
+                self.assertEqual(saved["name"]["en"], "First clone")
+                self.assertEqual(saved["tokens"]["global"]["themeColor"], "#112233")
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_new_theme_publish_failure_leaves_no_partial_target(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                target = Path(tempdir) / "data" / "chat_ui_themes" / "atomic-custom"
+                with patch("pathlib.Path.rename", side_effect=OSError("publish interrupted")):
+                    with self.assertRaisesRegex(OSError, "publish interrupted"):
+                        save_chat_theme(
+                            state,
+                            {
+                                "baseId": "neon-night-city",
+                                "manifest": {
+                                    "schema": 1,
+                                    "id": "atomic-custom",
+                                    "name": {"en": "Atomic clone"},
+                                    "tokens": {"dialog": {"frameImage": "frame-dialog.svg"}},
+                                },
+                            },
+                        )
+
+                self.assertFalse(target.exists())
             finally:
                 os.chdir(previous_cwd)
 

@@ -439,6 +439,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   const previewThemeSources = new Map<string, ChatThemeSummary["source"]>(
     sampleChatThemeSummaries.map((theme) => [theme.id, theme.source]),
   );
+  const previewThemeAssetBases = new Map<string, string>(
+    sampleChatThemeSummaries.filter((theme) => theme.source === "builtin").map((theme) => [theme.id, theme.id]),
+  );
 
   const emitChat = () => {
     const snapshot = clone(chat);
@@ -482,6 +485,29 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
 
   const resolvePreviewManifest = (id: string) =>
     previewThemeManifests.get(id) ?? previewThemeManifests.get(DEFAULT_CHAT_THEME_ID);
+
+  const resolvePreviewThemeAssetUrl = (path: string) => {
+    const direct = builtinChatThemeAssetUrls[path];
+    if (direct) {
+      return direct;
+    }
+    const prefix = "data/chat_ui_themes/";
+    if (!path.startsWith(prefix)) {
+      return path;
+    }
+    const themePath = path.slice(prefix.length);
+    const separator = themePath.indexOf("/");
+    if (separator <= 0) {
+      return path;
+    }
+    const themeId = themePath.slice(0, separator);
+    const relativeAsset = themePath.slice(separator + 1);
+    const assetBaseId = previewThemeAssetBases.get(themeId);
+    if (!assetBaseId || assetBaseId === themeId) {
+      return path;
+    }
+    return builtinChatThemeAssetUrls[`${prefix}${assetBaseId}/${relativeAsset}`] ?? path;
+  };
 
   const listPreviewThemes = (): ChatThemeSummary[] =>
     Array.from(previewThemeManifests.values()).map((manifest) => {
@@ -1198,6 +1224,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         };
         previewThemeManifests.set(id, manifest);
         previewThemeSources.set(id, "user");
+        previewThemeAssetBases.delete(id);
         return delay<ChatThemeSummary>({
           id,
           name: clone(manifest.name),
@@ -1209,14 +1236,26 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       async saveTheme(input) {
         const manifest = clone(input.manifest);
         const existingSource = previewThemeSources.get(manifest.id);
+        const creating = manifest.id !== input.baseId;
         if (existingSource === "builtin") {
           throw new Error("内置主题不可编辑。");
+        }
+        if (creating && previewThemeManifests.has(manifest.id)) {
+          throw new Error(`主题已存在：${manifest.id}`);
         }
         if (!previewThemeManifests.has(manifest.id) && !previewThemeManifests.has(input.baseId)) {
           throw new Error(`基础主题不存在：${input.baseId}`);
         }
         previewThemeManifests.set(manifest.id, manifest);
         previewThemeSources.set(manifest.id, "user");
+        if (creating) {
+          const assetBaseId = previewThemeAssetBases.get(input.baseId);
+          if (assetBaseId) {
+            previewThemeAssetBases.set(manifest.id, assetBaseId);
+          } else {
+            previewThemeAssetBases.delete(manifest.id);
+          }
+        }
         return delay<ChatThemeSummary>({
           id: manifest.id,
           name: clone(manifest.name),
@@ -1231,6 +1270,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         previewThemeManifests.delete(id);
         previewThemeSources.delete(id);
+        previewThemeAssetBases.delete(id);
         if (activeThemeId === id) {
           activeThemeId = DEFAULT_CHAT_THEME_ID;
         }
@@ -1705,7 +1745,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(previewFileBrowser(options?.path));
       },
       fileUrl(path) {
-        return builtinChatThemeAssetUrls[path] ?? path;
+        return resolvePreviewThemeAssetUrl(path);
       },
       thumbnailBatch(paths, _options) {
         return delay(Object.fromEntries(paths.filter(Boolean).map((path) => [path, path])));

@@ -209,7 +209,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             "path": urlparse(getattr(self, "path", "")).path,
             "error_type": exc.__class__.__name__,
         }
-        if isinstance(exc, (KeyError, FileNotFoundError, PermissionError, ValueError)):
+        if isinstance(
+            exc,
+            (KeyError, FileExistsError, FileNotFoundError, PermissionError, ValueError),
+        ):
             logger.warning("Frontend bridge request failed: %s", exc, extra=extra)
         else:
             logger.exception("Frontend bridge request failed", extra=extra)
@@ -313,7 +316,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self._send_json({"error": str(exc), "type": exc.__class__.__name__}, status)
 
     def _send_exception_json(self, exc: Exception) -> None:
-        if isinstance(exc, (KeyError, FileNotFoundError)):
+        if isinstance(exc, FileExistsError):
+            self._send_error_json(exc, HTTPStatus.CONFLICT)
+        elif isinstance(exc, (KeyError, FileNotFoundError)):
             self._send_error_json(exc, HTTPStatus.NOT_FOUND)
         elif isinstance(exc, PermissionError):
             self._send_error_json(exc, HTTPStatus.FORBIDDEN)

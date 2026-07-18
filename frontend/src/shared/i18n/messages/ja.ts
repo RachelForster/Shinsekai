@@ -255,7 +255,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "desktop.runtime.commandCopied": "コピー済み",
   "desktop.runtime.copyCommand": "コマンドをコピー",
   "desktop.runtime.manualInstallHint":
-    "Shinsekai を終了し、ターミナルで次のコマンドを実行してください。完了後にアプリを再起動します。",
+    "Shinsekai を終了し、Windows では PowerShell（macOS/Linux ではターミナルシェル）で次のコマンドを実行してください。完了後にアプリを再起動します。",
   "desktop.runtime.manualInstallTitle": "依存関係を手動でインストール",
   "desktop.runtime.phase.checkingBridge": "Bridge を確認中",
   "desktop.runtime.phase.installingDeps": "依存関係をインストール中",

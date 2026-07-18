@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,6 +50,14 @@ const themeContext = vi.hoisted(() => ({
 const repository = vi.hoisted(() => ({
   getChatThemeManifest: vi.fn(),
 }));
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
 
 vi.mock("../../../features/chat-stage/theme/ChatThemeProvider", () => ({
   chatThemeAssetUrl: (themeId: string, rel: string) => `/theme-assets/${themeId}/${rel}`,
@@ -151,5 +159,57 @@ describe("ChatThemeCustomizerPage", () => {
     expect(queryClient.getQueryData<{ system_config: { chat_ui_theme_id: string } }>(configQueryKey)).toEqual({
       system_config: { chat_ui_theme_id: "windborne-adventure-custom" },
     });
+  });
+
+  it("ignores an obsolete theme load and cannot save it under the newly selected source", async () => {
+    const firstLoad = deferred<ChatThemeManifest>();
+    const secondLoad = deferred<ChatThemeManifest>();
+    themeContext.activeId = "theme-a";
+    themeContext.themes = [
+      { id: "theme-a", name: { en: "Theme A" }, source: "builtin" },
+      { id: "theme-b", name: { en: "Theme B" }, source: "builtin" },
+    ];
+    repository.getChatThemeManifest.mockImplementation((id: string) =>
+      id === "theme-a" ? firstLoad.promise : secondLoad.promise,
+    );
+
+    const { container } = renderPage();
+
+    await waitFor(() => expect(repository.getChatThemeManifest).toHaveBeenCalledWith("theme-a"));
+    const sourceSelect = container.querySelector<HTMLSelectElement>("select.custom-select__native");
+    expect(sourceSelect).not.toBeNull();
+    fireEvent.change(sourceSelect!, { target: { value: "theme-b" } });
+    await waitFor(() => expect(repository.getChatThemeManifest).toHaveBeenCalledWith("theme-b"));
+
+    await act(async () => {
+      firstLoad.resolve({ ...structuredClone(baseManifest), id: "theme-a" });
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByDisplayValue("theme-a-custom")).not.toBeInTheDocument();
+    const saveButton = container.querySelector<HTMLButtonElement>(
+      ".chat-theme-customizer-page__actions .button--primary",
+    );
+    expect(saveButton).toBeDisabled();
+
+    await act(async () => {
+      secondLoad.resolve({ ...structuredClone(baseManifest), id: "theme-b" });
+      await Promise.resolve();
+    });
+    await screen.findByDisplayValue("theme-b-custom");
+
+    const colorInput = container.querySelector<HTMLInputElement>('input[type="color"]');
+    expect(colorInput).not.toBeNull();
+    fireEvent.change(colorInput!, { target: { value: "#33aaff" } });
+    fireEvent.click(saveButton!);
+
+    await waitFor(() =>
+      expect(themeContext.saveTheme).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseId: "theme-b",
+          manifest: expect.objectContaining({ id: "theme-b-custom" }),
+        }),
+      ),
+    );
   });
 });

@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -43,6 +44,7 @@ RETIRED_BUILTIN_THEME_IDS = {"classic-dark", "light-paper"}
 #: manifest schema 版本，与前端 CHAT_THEME_SCHEMA 一致。
 CHAT_THEME_SCHEMA = 1
 BUILTIN_THEME_OWNER_MARKER = ".shinsekai-builtin-theme"
+_THEME_PUBLICATION_LOCK = threading.Lock()
 
 
 def _themes_root() -> Path:
@@ -97,6 +99,39 @@ def _safe_theme_id(theme_id: str) -> str:
     if not safe_id or safe_id != raw:
         raise ValueError("主题 id 无效")
     return safe_id
+
+
+def _atomic_write_manifest(theme_dir: Path, manifest: Dict[str, Any]) -> None:
+    pending: Optional[Path] = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=theme_dir,
+            prefix=f".{MANIFEST_NAME}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            json.dump(manifest, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+            pending = Path(handle.name)
+        pending.replace(theme_dir / MANIFEST_NAME)
+    finally:
+        if pending is not None:
+            pending.unlink(missing_ok=True)
+
+
+def _publish_new_theme(staging: Path, target: Path, theme_id: str) -> None:
+    """Atomically publish a complete staged directory without replacing a peer."""
+    with _THEME_PUBLICATION_LOCK:
+        if target.exists():
+            raise FileExistsError(f"主题已存在：{theme_id}")
+        try:
+            staging.rename(target)
+        except OSError as error:
+            if target.exists():
+                raise FileExistsError(f"主题已存在：{theme_id}") from error
+            raise
 
 
 def _theme_version(theme_dir: Path) -> str:
@@ -297,6 +332,8 @@ def save_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("主题配置校验失败：\n" + "\n".join(result.errors))
     manifest = result.normalized
     theme_id = _safe_theme_id(str(manifest.get("id") or ""))
+    base_id = _safe_theme_id(str((body or {}).get("baseId") or DEFAULT_BUILTIN_CHAT_THEME_ID))
+    creating = base_id != theme_id
     target = safe_child_path(root, theme_id)
 
     if target.exists() and _is_builtin_theme_dir(theme_id):
@@ -304,15 +341,18 @@ def save_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str, Any]:
     if target.exists() and not target.is_dir():
         raise FileExistsError(f"主题路径不是目录：{theme_id}")
 
-    if target.is_dir():
-        source = target
-    else:
-        base_id = _safe_theme_id(str((body or {}).get("baseId") or DEFAULT_BUILTIN_CHAT_THEME_ID))
+    if creating:
+        if target.exists():
+            raise FileExistsError(f"主题已存在：{theme_id}")
         if _is_retired_builtin_theme_id(base_id):
             raise FileNotFoundError(f"基础主题不存在：{base_id}")
         source = safe_child_path(root, base_id)
         if _read_manifest(source) is None:
             raise FileNotFoundError(f"基础主题不存在或无效：{base_id}")
+    else:
+        if not target.is_dir():
+            raise FileNotFoundError(f"主题不存在：{theme_id}")
+        source = target
 
     with tempfile.TemporaryDirectory(prefix="chat_theme_save_", dir=root) as tmp:
         # The temporary directory is unique already. Keep its child name
@@ -326,16 +366,15 @@ def save_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str, Any]:
         staged_result = validate_theme_dir(staging)
         if not staged_result.ok:
             raise ValueError("主题资源校验失败：\n" + "\n".join(staged_result.errors))
+        normalized_manifest = staged_result.normalized
+        (staging / MANIFEST_NAME).write_text(
+            json.dumps(normalized_manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
 
-        if target.is_dir():
-            pending_manifest = target / f".{MANIFEST_NAME}.tmp"
-            pending_manifest.write_text(
-                json.dumps(staged_result.normalized, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
-            pending_manifest.replace(target / MANIFEST_NAME)
+        if creating:
+            _publish_new_theme(staging, target, theme_id)
         else:
-            shutil.copytree(staging, target)
+            _atomic_write_manifest(target, normalized_manifest)
 
     saved_manifest = _read_manifest(target)
     if saved_manifest is None:

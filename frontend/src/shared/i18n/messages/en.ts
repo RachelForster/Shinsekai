@@ -252,7 +252,7 @@ export const enMessages: Record<MessageKey, string> = {
   "desktop.runtime.commandCopied": "Copied",
   "desktop.runtime.copyCommand": "Copy command",
   "desktop.runtime.manualInstallHint":
-    "Close Shinsekai, run this command in a terminal, then reopen the app after installation completes.",
+    "Close Shinsekai, run this command in PowerShell on Windows (or a terminal shell on macOS/Linux), then reopen the app after installation completes.",
   "desktop.runtime.manualInstallTitle": "Install dependencies manually",
   "desktop.runtime.phase.checkingBridge": "Checking bridge",
   "desktop.runtime.phase.installingDeps": "Installing dependencies",

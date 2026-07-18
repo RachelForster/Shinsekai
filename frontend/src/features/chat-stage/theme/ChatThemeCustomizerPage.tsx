@@ -34,14 +34,21 @@ export function ChatThemeCustomizerPage() {
         </div>
         <div className="chat-theme-customizer-page__actions">
           <Button
-            disabled={!customizer.dirty || customizer.saving}
+            disabled={!customizer.sourceReady || !customizer.dirty || customizer.saving}
             icon={<RotateCcw aria-hidden className="button__icon" />}
             onClick={customizer.reset}
           >
             {t("chat.theme.customizer.reset")}
           </Button>
           <Button
-            disabled={!customizer.draft || customizer.invalid || !customizer.dirty || customizer.saving}
+            disabled={
+              !customizer.sourceReady ||
+              !customizer.draft ||
+              customizer.invalid ||
+              !customizer.dirty ||
+              customizer.loading ||
+              customizer.saving
+            }
             icon={<Save aria-hidden className="button__icon" />}
             loading={customizer.saving}
             onClick={() => void customizer.save()}
@@ -57,7 +64,7 @@ export function ChatThemeCustomizerPage() {
           <span>{t("chat.theme.customizer.baseTheme")}</span>
           <Select
             aria-label={t("chat.theme.customizer.baseTheme")}
-            disabled={customizer.loading || customizer.saving}
+            disabled={customizer.saving}
             onChange={(event) => customizer.setSourceId(event.target.value)}
             value={customizer.sourceId}
           >

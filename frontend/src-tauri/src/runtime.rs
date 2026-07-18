@@ -13,8 +13,6 @@ pub use resolver::{RuntimeCandidateView, RuntimeRepairActionKind, RuntimeScanVie
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 pub const INSTALL_DIR_RUNTIME_ID: &str = python_probe::INSTALL_DIR_RUNTIME_ID;
 
-const CORE_REQUIREMENTS_FILE: &str = "requirements-runtime-core.txt";
-
 #[derive(Debug)]
 pub struct PythonRuntime {
     pub command: Command,
@@ -42,12 +40,26 @@ pub fn manual_install_command(
     } else {
         candidate.display_path.clone()
     };
-    let requirements = python_probe::display_path(&source_root.join(CORE_REQUIREMENTS_FILE));
+    let profile = runtime_profile();
+    let requirements =
+        python_probe::display_path(&runtime_requirements_path(source_root, &profile));
     Some(manual_install_command_for_shell(
         &python,
         &requirements,
         cfg!(windows),
     ))
+}
+
+fn runtime_requirements_path(source_root: &Path, profile: &str) -> PathBuf {
+    let runtime_manifest = manifest::load_manifest(source_root).ok();
+    let requirements =
+        manifest::runtime_requirements(source_root, runtime_manifest.as_ref(), profile);
+    let path = PathBuf::from(requirements.requirements_file);
+    if path.is_absolute() {
+        path
+    } else {
+        source_root.join(path)
+    }
 }
 
 fn manual_install_command_for_shell(python: &str, requirements: &str, windows: bool) -> String {
@@ -350,6 +362,33 @@ mod tests {
             ),
             "'/Users/o'\\''brien/Shinsekai runtime/bin/python3' -m pip install --requirement '/Applications/Shinsekai/resources/requirements-runtime-core.txt'"
         );
+    }
+
+    #[test]
+    fn manual_install_command_uses_profile_requirements() {
+        let source_root = unique_temp_dir("manual-profile-requirements");
+        fs::create_dir_all(&source_root).unwrap();
+        fs::write(
+            source_root.join(manifest::MANIFEST_FILE),
+            r#"{
+                "version": "test",
+                "profiles": {
+                    "desktop-core": { "requirements": "requirements-runtime-core.txt" },
+                    "local-ai": {
+                        "extends": "desktop-core",
+                        "requirements": "requirements-runtime-local-ai.txt"
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            runtime_requirements_path(&source_root, "local-ai"),
+            source_root.join("requirements-runtime-local-ai.txt")
+        );
+
+        let _ = fs::remove_dir_all(source_root);
     }
 
     #[test]
