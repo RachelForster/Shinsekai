@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from frontend_bridge_core.chat_themes import (
     BUILTIN_THEME_OWNER_MARKER,
+    _copy_theme_source,
     _is_builtin_theme_dir,
     delete_chat_theme,
     get_chat_theme_manifest,
@@ -374,6 +375,21 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 self.assertFalse((themes_root / "nested").exists())
             finally:
                 os.chdir(previous_cwd)
+
+    def test_copy_theme_source_rejects_a_source_outside_themes_root(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            temp_root = Path(tempdir)
+            themes_root = temp_root / "themes"
+            themes_root.mkdir()
+            outside_source = temp_root / "outside-theme"
+            outside_source.mkdir()
+            (outside_source / "theme.json").write_text("{}", encoding="utf-8")
+            staging = themes_root / "staging"
+
+            with self.assertRaises(PermissionError):
+                _copy_theme_source(outside_source, staging, themes_root)
+
+            self.assertFalse(staging.exists())
 
     def test_delete_builtin_theme_is_rejected(self):
         state = self._make_state()
