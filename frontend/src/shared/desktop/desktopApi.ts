@@ -56,6 +56,7 @@ export interface DesktopRuntimeState {
   status: DesktopRuntimeStatus;
   message?: string | null;
   bridgeUrl: string;
+  manualInstallCommand?: string | null;
   selectedCandidateId?: string | null;
   recommendedAction?: DesktopRuntimeRepairAction | null;
   candidates: DesktopRuntimeCandidate[];

@@ -1,8 +1,9 @@
 import { lazy, Suspense, useState } from "react";
 import { Outlet } from "react-router-dom";
 
+import { FeatureHighlightsPrompt } from "../../features/release-highlights/FeatureHighlightsPrompt";
 import { SidebarNav } from "./SidebarNav";
-import { StartupUpdatePrompt } from "./StartupUpdatePrompt";
+import { StartupUpdatePrompt, type StartupUpdatePromptState } from "./StartupUpdatePrompt";
 
 const ToolsDrawer = lazy(() =>
   import("../../features/tools/ToolsDrawer").then(({ ToolsDrawer }) => ({
@@ -16,6 +17,10 @@ function DrawerFallback() {
 
 export function AppShell() {
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [startupUpdateState, setStartupUpdateState] = useState<StartupUpdatePromptState>({
+    checkComplete: false,
+    open: false,
+  });
 
   return (
     <div className="app-shell">
@@ -28,7 +33,8 @@ export function AppShell() {
           <ToolsDrawer onClose={() => setToolsOpen(false)} open={toolsOpen} />
         </Suspense>
       ) : null}
-      <StartupUpdatePrompt />
+      <StartupUpdatePrompt onStateChange={setStartupUpdateState} />
+      <FeatureHighlightsPrompt enabled={startupUpdateState.checkComplete && !startupUpdateState.open} />
     </div>
   );
 }

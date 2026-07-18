@@ -35,6 +35,10 @@ function renderPage(activeThemeId = "windborne-adventure") {
           <MemoryRouter initialEntries={["/settings/system/chat-themes"]}>
             <Routes>
               <Route element={<ChatThemeManagementPage />} path="/settings/system/chat-themes" />
+              <Route
+                element={<h1>Chat theme customizer destination</h1>}
+                path="/settings/system/chat-themes/customize"
+              />
               <Route element={<h1>System settings destination</h1>} path="/settings/system" />
             </Routes>
           </MemoryRouter>
@@ -93,6 +97,14 @@ describe("ChatThemeManagementPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "返回程序设置" }));
 
     expect(await screen.findByRole("heading", { name: "System settings destination" })).toBeInTheDocument();
+  });
+
+  it("opens the chat UI customizer", async () => {
+    renderPage();
+
+    fireEvent.click(screen.getByRole("button", { name: "自定义主题" }));
+
+    expect(await screen.findByRole("heading", { name: "Chat theme customizer destination" })).toBeInTheDocument();
   });
 
   it("updates and invalidates the config cache after applying a theme", async () => {

@@ -13,6 +13,7 @@ import {
   getActiveChatThemeId,
   getChatThemeManifest,
   listChatThemes,
+  saveChatTheme,
   setActiveChatTheme,
   uploadChatTheme,
 } from "../../../entities/chat/repository";
@@ -25,6 +26,7 @@ import type {
   ChatThemeManifest,
   ChatThemeSummary,
   ResolvedChatTheme,
+  SaveChatThemeInput,
 } from "../../../shared/theme/chatTheme";
 
 export interface ChatThemeContextValue {
@@ -43,6 +45,8 @@ export interface ChatThemeContextValue {
   refresh: () => Promise<void>;
   /** 上传 .zip 安装一个主题，安装后刷新列表并返回其概要。 */
   uploadTheme: (file: File) => Promise<ChatThemeSummary>;
+  /** 创建或保存用户主题，并刷新主题列表。 */
+  saveTheme: (input: SaveChatThemeInput) => Promise<ChatThemeSummary>;
   /** 删除一个用户主题，删除后刷新列表。 */
   removeTheme: (id: string) => Promise<void>;
 }
@@ -53,7 +57,7 @@ function assetUrl(rel: string): string {
   return getPlatform().files.fileUrl(rel);
 }
 
-function themeAssetUrl(themeId: string, rel: string): string {
+export function chatThemeAssetUrl(themeId: string, rel: string): string {
   const normalizedThemeId = themeId.trim();
   const normalizedRel = rel.replace(/^\.?\//, "").replace(/^\/+/, "");
   return assetUrl(`data/chat_ui_themes/${normalizedThemeId}/${normalizedRel}`);
@@ -88,6 +92,15 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
   const uploadTheme = useCallback(
     async (file: File) => {
       const summary = await uploadChatTheme(file);
+      await refresh();
+      return summary;
+    },
+    [refresh],
+  );
+
+  const saveTheme = useCallback(
+    async (input: SaveChatThemeInput) => {
+      const summary = await saveChatTheme(input);
       await refresh();
       return summary;
     },
@@ -153,7 +166,7 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
         typewriter: { cps: DEFAULT_TYPEWRITER_CPS },
       } satisfies ResolvedChatTheme;
     }
-    const next = resolveChatTheme(manifest, (rel) => themeAssetUrl(manifest.id, rel));
+    const next = resolveChatTheme(manifest, (rel) => chatThemeAssetUrl(manifest.id, rel));
     return {
       ...next,
       style: { ...fallbackStyle, ...next.style },
@@ -209,9 +222,10 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
       switchTheme,
       refresh,
       uploadTheme,
+      saveTheme,
       removeTheme,
     }),
-    [themes, activeId, resolved, loading, switchTheme, refresh, uploadTheme, removeTheme],
+    [themes, activeId, resolved, loading, switchTheme, refresh, uploadTheme, saveTheme, removeTheme],
   );
 
   return <ChatThemeContext.Provider value={value}>{children}</ChatThemeContext.Provider>;

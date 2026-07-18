@@ -1,0 +1,124 @@
+.dialog.feature-highlights {
+  width: min(720px, 100%);
+  max-height: min(760px, calc(100vh - 32px));
+}
+
+.feature-highlights__body {
+  display: grid;
+  gap: 18px;
+}
+
+.feature-highlights__intro {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.feature-highlights__mark {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--color-accent-primary) 45%, var(--color-border));
+  border-radius: 14px;
+  color: var(--color-accent-primary);
+  background: color-mix(in srgb, var(--color-accent-primary) 12%, transparent);
+}
+
+.feature-highlights__mark svg {
+  width: 24px;
+  height: 24px;
+}
+
+.feature-highlights__intro > div {
+  display: grid;
+  gap: 5px;
+}
+
+.feature-highlights__intro strong {
+  color: var(--color-text-primary);
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.feature-highlights__intro p,
+.feature-highlights__feature p {
+  margin: 0;
+  color: var(--color-text-muted);
+  line-height: 1.55;
+}
+
+.feature-highlights__releases,
+.feature-highlights__release {
+  display: grid;
+  gap: 10px;
+}
+
+.feature-highlights__version {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.feature-highlights__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.feature-highlights__feature {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 13px;
+  background: var(--color-surface);
+}
+
+.feature-highlights__feature > img {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 7px;
+  object-fit: cover;
+}
+
+.feature-highlights__icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 9px;
+  color: var(--color-accent-primary);
+  background: color-mix(in srgb, var(--color-accent-primary) 10%, var(--color-bg-elevated));
+}
+
+.feature-highlights__icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.feature-highlights__feature > div {
+  display: grid;
+  gap: 5px;
+}
+
+.feature-highlights__feature strong {
+  color: var(--color-text-primary);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.feature-highlights__feature p {
+  font-size: 12px;
+}
+
+@media (max-width: 680px) {
+  .feature-highlights__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -39,6 +39,17 @@ def test_start_chat_init_validates_launch_payload():
         handler._start_chat_init({"mode": "unknown"})
 
 
+def test_file_exists_errors_are_reported_as_conflicts():
+    handler = _handler()
+    responses: list[tuple[Exception, HTTPStatus]] = []
+    handler._send_error_json = lambda error, status=HTTPStatus.BAD_REQUEST: responses.append((error, status))
+
+    error = FileExistsError("theme already exists")
+    handler._send_exception_json(error)
+
+    assert responses == [(error, HTTPStatus.CONFLICT)]
+
+
 def test_start_chat_init_forwards_launch_and_resume_callbacks(monkeypatch):
     handler = _handler()
     calls: list[tuple[str, object, object]] = []

@@ -1,5 +1,5 @@
 .chat-theme-management-page__header {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .chat-theme-management-page__heading {
@@ -32,6 +32,10 @@
 }
 
 @media (max-width: 760px) {
+  .chat-theme-management-page__header {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .chat-theme-management-page__heading {
     align-items: flex-start;
   }
