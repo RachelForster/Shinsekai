@@ -13,5 +13,17 @@ export const emptyChatState: ChatStageState = {
   status: "idle",
   transportMode: "snapshot",
   transportState: "connecting",
+  turnOptions: {
+    batchEnabled: false,
+    batchIdleSeconds: 5,
+    interruptEnabled: true,
+  },
+  turnState: {
+    enabled: false,
+    pendingCount: 0,
+    remainingSeconds: null,
+    scheduled: false,
+    typing: false,
+  },
   userDisplayName: defaultUserDialogSpeaker,
 };

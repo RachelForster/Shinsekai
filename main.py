@@ -2,6 +2,7 @@ import copy
 import json
 import os
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 import signal
 import sys
@@ -639,6 +640,21 @@ def main():
                 chat_history=chat_history,
                 bg_group=bg_group or [],
             )
+
+            def emit_chat_turn_state(state) -> None:
+                stream_sink.emit(
+                    {
+                        "type": "chat.turn.state",
+                        "state": {
+                            "enabled": state.enabled,
+                            "pendingCount": state.pending_count,
+                            "remainingSeconds": state.remaining_seconds,
+                            "scheduled": state.scheduled,
+                            "typing": state.typing,
+                        },
+                    }
+                )
+
             chat_turn_service = create_chat_turn_service(
                 config=config,
                 user_input_queue=user_input_queue,
@@ -647,7 +663,9 @@ def main():
                 llm_manager=llm_manager,
                 ui_worker=_um,
                 ui_updates=ui_updates,
+                on_state_change=emit_chat_turn_state,
             )
+            emit_chat_turn_state(chat_turn_service.batch_state())
             set_app_runtime(
                 AppRuntime(
                     config=config,
@@ -898,6 +916,51 @@ def main():
                     return
                 if command_type == "submit-option":
                     submit_runtime_text(str(payload or ""))
+                    emit_ack(ok=True)
+                    return
+                if command_type == "update-turn-options":
+                    if not isinstance(payload, dict):
+                        raise ValueError("Chat turn options must be an object.")
+                    interrupt_enabled = payload.get("interruptEnabled")
+                    batch_enabled = payload.get("batchEnabled")
+                    batch_idle_seconds = payload.get("batchIdleSeconds")
+                    if not isinstance(interrupt_enabled, bool) or not isinstance(batch_enabled, bool):
+                        raise ValueError("Chat turn switches must be boolean values.")
+                    if isinstance(batch_idle_seconds, bool) or not isinstance(batch_idle_seconds, (int, float)):
+                        raise ValueError("Batch input timeout must be numeric.")
+                    timeout = float(batch_idle_seconds)
+                    if not 0.3 <= timeout <= 120.0:
+                        raise ValueError("Batch input timeout must be between 0.3 and 120 seconds.")
+                    chat_turn_service.update_options(
+                        replace(
+                            chat_turn_service.options,
+                            interrupt_enabled=interrupt_enabled,
+                            batch_enabled=batch_enabled,
+                            batch_idle_seconds=timeout,
+                        )
+                    )
+                    api_config = config.config.api_config.model_copy(deep=True)
+                    api_config.interrupt_enabled = interrupt_enabled
+                    api_config.is_batch_input_enabled = batch_enabled
+                    api_config.batch_input_timeout = timeout
+                    config.config.api_config = api_config
+                    emit_ack(ok=True)
+                    return
+                if command_type == "chat-input-state":
+                    if not isinstance(payload, dict):
+                        raise ValueError("Chat input state must be an object.")
+                    chat_turn_service.input_changed(
+                        has_text=bool(payload.get("hasText")),
+                        composing=bool(payload.get("composing")),
+                    )
+                    emit_ack(ok=True)
+                    return
+                if command_type == "flush-input-batch":
+                    chat_turn_service.flush()
+                    emit_ack(ok=True)
+                    return
+                if command_type == "cancel-input-batch":
+                    chat_turn_service.cancel_pending_batch()
                     emit_ack(ok=True)
                     return
                 if command_type in {"skip-speech", "dialog-advance"}:

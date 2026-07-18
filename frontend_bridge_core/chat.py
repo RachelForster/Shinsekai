@@ -53,9 +53,12 @@ from .templates import (
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
 _RUNTIME_CHAT_COMMANDS = {
+    "cancel-input-batch",
     "change-voice-language",
+    "chat-input-state",
     "clear-history",
     "dialog-advance",
+    "flush-input-batch",
     "fork-history",
     "pause-asr",
     "rename-branch",
@@ -66,6 +69,7 @@ _RUNTIME_CHAT_COMMANDS = {
     "skip-speech",
     "switch-branch",
     "submit-option",
+    "update-turn-options",
 }
 _main_chat_process: subprocess.Popen[bytes] | None = None
 _main_chat_process_lock = threading.Lock()
@@ -92,6 +96,16 @@ def _chat_experimental_features(state: BridgeState) -> dict[str, bool]:
     return {
         "conversationTree": bool(getattr(system_config, "react_chat_flowchart_experimental_enabled", False)),
         "forkHistory": bool(getattr(system_config, "react_chat_fork_experimental_enabled", False)),
+    }
+
+
+def _chat_turn_options(state: BridgeState) -> dict[str, Any]:
+    config_manager = getattr(state, "config_manager", None)
+    api_config = getattr(getattr(config_manager, "config", None), "api_config", None)
+    return {
+        "interruptEnabled": bool(getattr(api_config, "interrupt_enabled", True)),
+        "batchEnabled": bool(getattr(api_config, "is_batch_input_enabled", False)),
+        "batchIdleSeconds": float(getattr(api_config, "batch_input_timeout", 5.0) or 5.0),
     }
 
 
@@ -729,6 +743,7 @@ def _chat_snapshot(
     runtime_state = {
         "chatProcessRunning": _chat_process_running(),
         "chatRuntimeClosing": _chat_runtime_closing(state),
+        "turnOptions": _chat_turn_options(state),
     }
     if session_id and chat_stream is not None:
         snapshot = chat_stream.get_snapshot(session_id)
@@ -846,6 +861,15 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         chat_stream.update_session_snapshot(session_id, next_snapshot)
         return _chat_snapshot(state, next_status, next_message, extra=snapshot_patch)
 
+    def _current_runtime_status() -> str:
+        if session_id and chat_stream is not None:
+            snapshot = chat_stream.get_snapshot(session_id)
+            if isinstance(snapshot, dict):
+                status = str(snapshot.get("status") or "").strip()
+                if status:
+                    return status
+        return "idle"
+
     if command == "copy-history":
         entries = _chat_history_entries(state)
         text = _plain_history_text_from_entries(entries)
@@ -891,11 +915,56 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         remove_chat_history_storage(history_path)
         return _chat_snapshot(state, "idle", "历史记录已经清空。", extra={"historyEntries": [], "options": []})
 
+    if command == "update-turn-options":
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("Chat turn options must be an object.")
+        interrupt_enabled = payload.get("interruptEnabled")
+        batch_enabled = payload.get("batchEnabled")
+        batch_idle_seconds = payload.get("batchIdleSeconds")
+        if not isinstance(interrupt_enabled, bool) or not isinstance(batch_enabled, bool):
+            raise ValueError("Chat turn switches must be boolean values.")
+        if isinstance(batch_idle_seconds, bool) or not isinstance(batch_idle_seconds, (int, float)):
+            raise ValueError("Batch input timeout must be numeric.")
+        timeout = float(batch_idle_seconds)
+        if not 0.3 <= timeout <= 120.0:
+            raise ValueError("Batch input timeout must be between 0.3 and 120 seconds.")
+
+        config_manager = state.config_manager
+        previous = config_manager.config.api_config
+        updated = previous.model_copy(deep=True)
+        updated.interrupt_enabled = interrupt_enabled
+        updated.is_batch_input_enabled = batch_enabled
+        updated.batch_input_timeout = timeout
+        config_manager.config.api_config = updated
+        try:
+            config_manager.save_api_config()
+            turn_options = _chat_turn_options(state)
+            return _forward_runtime_command(
+                _current_runtime_status(),
+                snapshot_patch={"turnOptions": turn_options},
+            )
+        except Exception:
+            config_manager.config.api_config = previous
+            try:
+                config_manager.save_api_config()
+            except Exception:
+                pass
+            raise
+
+    if command in {"chat-input-state", "flush-input-batch", "cancel-input-batch"}:
+        return _forward_runtime_command(_current_runtime_status())
+
     if command == "send-message":
         text = str(body.get("payload") or "").strip()
         if not text:
             raise ValueError("消息内容不能为空。")
         user_display_name = _chat_user_display_name_from_snapshot(state)
+        if _chat_turn_options(state)["batchEnabled"]:
+            return _forward_runtime_command(
+                _current_runtime_status(),
+                snapshot_patch={"inputDraft": "", "userDisplayName": user_display_name},
+            )
         return _forward_runtime_command(
             "generating",
             text,

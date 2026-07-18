@@ -56,7 +56,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         return next;
       }
       if (action.event.type === "snapshot") {
-        const authoritativeEventSeq = snapshotEventSeq(action.event.snapshot);
+        const authoritativeEventSeq = Math.max(snapshotEventSeq(action.event.snapshot), action.event.seq);
         if (authoritativeEventSeq <= state.eventSeq) {
           return state;
         }
@@ -80,7 +80,34 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         ? { ...next, optimisticSubmission: undefined }
         : preserveOptimisticPresentation(state, next);
     }
-    case "submitUserMessage":
+    case "submitUserMessage": {
+      const optimisticSubmission: NonNullable<ChatStageState["optimisticSubmission"]> = {
+        draftEditedAfterSubmission: false,
+        eventSeq: state.eventSeq,
+        previous: {
+          characterName: state.characterName,
+          dialogHtml: state.dialogHtml,
+          dialogText: state.dialogText,
+          error: state.error,
+          inputDraft: state.inputDraft,
+          notificationText: state.notificationText,
+          options: [...state.options],
+          sessionClosedReason: state.sessionClosedReason,
+          status: state.status,
+          statusMessage: state.statusMessage,
+          systemMessageText: state.systemMessageText,
+        },
+        source: action.source ?? "send-message",
+        text: action.text,
+      };
+      if (action.queued) {
+        return withResolvedLayers({
+          ...clearTransientNotificationState(state),
+          inputDraft: "",
+          optimisticSubmission,
+          options: [],
+        });
+      }
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
         characterName: normalizedUserDisplayName(state.userDisplayName),
@@ -88,31 +115,14 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         dialogText: action.text,
         error: undefined,
         inputDraft: "",
-        optimisticSubmission: {
-          draftEditedAfterSubmission: false,
-          eventSeq: state.eventSeq,
-          previous: {
-            characterName: state.characterName,
-            dialogHtml: state.dialogHtml,
-            dialogText: state.dialogText,
-            error: state.error,
-            inputDraft: state.inputDraft,
-            notificationText: state.notificationText,
-            options: [...state.options],
-            sessionClosedReason: state.sessionClosedReason,
-            status: state.status,
-            statusMessage: state.statusMessage,
-            systemMessageText: state.systemMessageText,
-          },
-          source: action.source ?? "send-message",
-          text: action.text,
-        },
+        optimisticSubmission,
         options: [],
         sessionClosedReason: undefined,
         status: "generating",
         statusMessage: undefined,
         systemMessageText: undefined,
       });
+    }
     case "rollbackUserSubmission": {
       const optimistic = state.optimisticSubmission;
       if (!optimistic || optimistic.source !== action.source) {
@@ -139,6 +149,11 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         optimisticSubmission: state.optimisticSubmission
           ? { ...state.optimisticSubmission, draftEditedAfterSubmission: true }
           : undefined,
+      });
+    case "setTurnOptions":
+      return withResolvedLayers({
+        ...state,
+        turnOptions: { ...action.options },
       });
     case "setStatus":
       return withResolvedLayers({

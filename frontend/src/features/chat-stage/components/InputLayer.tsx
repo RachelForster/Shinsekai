@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Ear, EarOff, Mic, MicOff, Plus, Send } from "lucide-react";
+import { Ear, EarOff, Layers3, Mic, MicOff, Play, Plus, Send, Settings, X, Zap } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
-import type { ChatCommand } from "../../../shared/platform/types";
+import type { ChatCommand, ChatTurnOptions, ChatTurnState } from "../../../shared/platform/types";
 import { Button, IconButton, TextArea, TextInput, ThemeFrame, useToast } from "../../../shared/ui";
 import {
   appendTranscript,
@@ -21,8 +21,15 @@ export function InputLayer({
   inputLayout = "default",
   longPressTalkEnabled = false,
   onChange,
+  onCancelBatch,
   onCommand,
+  onFlushBatch,
+  onInputActivity,
+  onOpenChatSettings,
   onSubmit,
+  onTurnOptionsChange,
+  turnOptions,
+  turnState,
   value,
 }: {
   asrPaused: boolean;
@@ -32,8 +39,15 @@ export function InputLayer({
   inputLayout?: "default" | "pill";
   longPressTalkEnabled?: boolean;
   onChange: (value: string) => void;
+  onCancelBatch: () => void;
   onCommand: (command: ChatCommand) => void;
+  onFlushBatch: () => void;
+  onInputActivity: (state: { composing: boolean; hasText: boolean }) => void;
+  onOpenChatSettings: () => void;
   onSubmit: () => void;
+  onTurnOptionsChange: (options: ChatTurnOptions) => void;
+  turnOptions: ChatTurnOptions;
+  turnState: ChatTurnState;
   value: string;
 }) {
   const { language, t } = useI18n();
@@ -46,16 +60,54 @@ export function InputLayer({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const transcriptBaseRef = useRef("");
   const valueRef = useRef(value);
+  const inputActivityRef = useRef("");
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(turnState.remainingSeconds);
   const pillLayout = inputLayout === "pill";
   const pressToTalk = pillLayout && longPressTalkEnabled;
   const canSubmit = Boolean(value.trim()) && !disabled;
   const closePanel = useCallback(() => setPanelOpen(false), []);
-  const forceVisible = Boolean(value.trim()) || listening || panelOpen || holdTalkActive;
+  const forceVisible = Boolean(value.trim()) || listening || panelOpen || holdTalkActive || turnState.pendingCount > 0;
   const autoHideRegion = useAutoHideRegion({ active: !hidden, enabled: autoHide, forceVisible });
 
   useEffect(() => {
     valueRef.current = value;
+    if (!value.trim()) {
+      inputActivityRef.current = "false:false";
+    }
   }, [value]);
+
+  useEffect(() => {
+    setRemainingSeconds(turnState.remainingSeconds);
+  }, [turnState.remainingSeconds]);
+
+  useEffect(() => {
+    if (!turnState.scheduled || remainingSeconds == null || remainingSeconds <= 0) {
+      return;
+    }
+    const timer = window.setTimeout(
+      () => setRemainingSeconds((current) => (current == null ? null : Math.max(0, current - 1))),
+      1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [remainingSeconds, turnState.scheduled]);
+
+  const reportInputActivity = (nextValue: string, composing: boolean) => {
+    if (!turnOptions.batchEnabled) {
+      return;
+    }
+    const activity = { composing, hasText: Boolean(nextValue.trim()) };
+    const key = `${activity.hasText}:${activity.composing}`;
+    if (inputActivityRef.current === key) {
+      return;
+    }
+    inputActivityRef.current = key;
+    onInputActivity(activity);
+  };
+
+  const handleInputChange = (nextValue: string) => {
+    onChange(nextValue);
+    reportInputActivity(nextValue, false);
+  };
 
   const stopListening = () => {
     const recognition = recognitionRef.current;
@@ -206,6 +258,71 @@ export function InputLayer({
       style={autoHideRegion.visible ? undefined : { pointerEvents: "none" }}
     >
       <ThemeFrame prefix="chat-input" />
+      <div aria-label={t("chat.input.turnControls")} className="input-layer__turn-bar" role="group">
+        <button
+          aria-pressed={turnOptions.interruptEnabled}
+          className="input-layer__turn-toggle"
+          data-active={turnOptions.interruptEnabled ? "true" : "false"}
+          onClick={() => onTurnOptionsChange({ ...turnOptions, interruptEnabled: !turnOptions.interruptEnabled })}
+          type="button"
+        >
+          <Zap aria-hidden className="input-layer__turn-icon" />
+          <span>{t("chat.input.interrupt")}</span>
+        </button>
+        <button
+          aria-pressed={turnOptions.batchEnabled}
+          className="input-layer__turn-toggle"
+          data-active={turnOptions.batchEnabled ? "true" : "false"}
+          onClick={() => onTurnOptionsChange({ ...turnOptions, batchEnabled: !turnOptions.batchEnabled })}
+          type="button"
+        >
+          <Layers3 aria-hidden className="input-layer__turn-icon" />
+          <span>{t("chat.input.batch")}</span>
+        </button>
+        {turnOptions.batchEnabled && turnState.pendingCount > 0 ? (
+          <span className="input-layer__batch-status" role="status">
+            {turnState.typing
+              ? t("chat.input.batchWaiting", { count: turnState.pendingCount })
+              : t("chat.input.batchCountdown", {
+                  count: turnState.pendingCount,
+                  seconds: remainingSeconds ?? turnOptions.batchIdleSeconds,
+                })}
+          </span>
+        ) : null}
+        {turnOptions.batchEnabled ? (
+          <>
+            <button
+              aria-label={t("chat.input.batchSendNow")}
+              className="input-layer__turn-action"
+              disabled={turnState.pendingCount === 0}
+              onClick={onFlushBatch}
+              title={t("chat.input.batchSendNow")}
+              type="button"
+            >
+              <Play aria-hidden className="input-layer__turn-icon" />
+            </button>
+            <button
+              aria-label={t("chat.input.batchCancel")}
+              className="input-layer__turn-action"
+              disabled={turnState.pendingCount === 0}
+              onClick={onCancelBatch}
+              title={t("chat.input.batchCancel")}
+              type="button"
+            >
+              <X aria-hidden className="input-layer__turn-icon" />
+            </button>
+          </>
+        ) : null}
+        <button
+          aria-label={t("chat.input.settings")}
+          className="input-layer__turn-action input-layer__settings"
+          onClick={onOpenChatSettings}
+          title={t("chat.input.settings")}
+          type="button"
+        >
+          <Settings aria-hidden className="input-layer__turn-icon" />
+        </button>
+      </div>
       {pillLayout ? (
         <IconButton
           className="input-layer__press"
@@ -256,7 +373,9 @@ export function InputLayer({
             autoComplete="off"
             className="input-layer__input input-layer__input--single"
             disabled={disabled}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => handleInputChange(event.target.value)}
+            onCompositionEnd={(event) => reportInputActivity(event.currentTarget.value, false)}
+            onCompositionStart={(event) => reportInputActivity(event.currentTarget.value, true)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) {
                 event.preventDefault();
@@ -270,7 +389,9 @@ export function InputLayer({
           <TextArea
             className="input-layer__input"
             disabled={disabled}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => handleInputChange(event.target.value)}
+            onCompositionEnd={(event) => reportInputActivity(event.currentTarget.value, false)}
+            onCompositionStart={(event) => reportInputActivity(event.currentTarget.value, true)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();

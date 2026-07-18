@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from core.messaging.chat_turn_service import ChatTurnOptions, ChatTurnService
+from core.messaging.chat_turn_service import BatchState, ChatTurnOptions, ChatTurnService
 
 
 def create_chat_turn_service(
@@ -16,6 +16,7 @@ def create_chat_turn_service(
     llm_manager: object | None,
     ui_worker: object | None,
     ui_updates: object | None,
+    on_state_change: Callable[[BatchState], None] | None = None,
 ) -> ChatTurnService:
     """Adapt host managers and queues to the service's callback ports."""
     api_config = getattr(getattr(config, "config", None), "api_config", None)
@@ -49,6 +50,7 @@ def create_chat_turn_service(
     return ChatTurnService(
         sink=deliver,
         options=options,
+        on_state_change=on_state_change,
         cancel_current=getattr(llm_manager, "cancel_current_chat", None),
         clear_pending=(clear_queue(tts_queue), clear_queue(audio_queue)),
         stop_playback=getattr(ui_worker, "skip_speech", None),

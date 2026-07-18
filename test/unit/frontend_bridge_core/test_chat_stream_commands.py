@@ -8,12 +8,13 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from frontend_bridge_core.chat import _handle_chat_command
 from frontend_bridge_core.chat_stream import ChatStreamService
 from core.runtime.event_sink import WSClientSink
+from config.schema import ApiConfig
 
 
 class _StubChatStream:
@@ -54,13 +55,15 @@ class _FakeConnection:
 def _config_manager_with_chat_experiments(*, fork: bool = False, flowchart: bool = False):
     return SimpleNamespace(
         config=SimpleNamespace(
+            api_config=ApiConfig(),
             system_config=SimpleNamespace(
                 chat_ui_runtime_mode="react",
                 react_chat_flowchart_experimental_enabled=flowchart,
                 react_chat_fork_experimental_enabled=fork,
                 voice_language="ja",
             )
-        )
+        ),
+        save_api_config=MagicMock(),
     )
 
 
@@ -226,6 +229,58 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertEqual(command["payload"], "en")
         self.assertIsInstance(command["cmdId"], str)
         self.assertTrue(command["cmdId"])
+
+    def test_handle_chat_command_updates_and_persists_turn_options(self):
+        chat_stream = _StubChatStream()
+        config_manager = _config_manager_with_chat_experiments()
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+            config_manager=config_manager,
+        )
+
+        snapshot = _handle_chat_command(
+            state,
+            {
+                "payload": {
+                    "batchEnabled": True,
+                    "batchIdleSeconds": 7.5,
+                    "interruptEnabled": False,
+                },
+                "type": "update-turn-options",
+            },
+        )
+
+        self.assertEqual(
+            snapshot["turnOptions"],
+            {"batchEnabled": True, "batchIdleSeconds": 7.5, "interruptEnabled": False},
+        )
+        self.assertFalse(config_manager.config.api_config.interrupt_enabled)
+        self.assertTrue(config_manager.config.api_config.is_batch_input_enabled)
+        self.assertEqual(config_manager.config.api_config.batch_input_timeout, 7.5)
+        config_manager.save_api_config.assert_called_once_with()
+        self.assertEqual(chat_stream.command[1]["type"], "update-turn-options")
+
+    def test_batched_send_preserves_current_dialog_until_the_batch_flushes(self):
+        chat_stream = _StubChatStream()
+        chat_stream.snapshot.update(
+            {"characterName": "Mio", "dialogHtml": "<p>Current</p>", "dialogText": "Current"}
+        )
+        config_manager = _config_manager_with_chat_experiments()
+        config_manager.config.api_config.is_batch_input_enabled = True
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+            config_manager=config_manager,
+        )
+
+        snapshot = _handle_chat_command(state, {"payload": "next fragment", "type": "send-message"})
+
+        self.assertEqual(snapshot["status"], "idle")
+        self.assertEqual(snapshot["dialogText"], "Current")
+        self.assertEqual(snapshot["dialogHtml"], "<p>Current</p>")
+        self.assertEqual(snapshot["inputDraft"], "")
+        self.assertEqual(chat_stream.command[1]["type"], "send-message")
 
     def test_handle_chat_command_clears_closed_session_markers_when_restarting_runtime_interaction(self):
         chat_stream = _StubChatStream()

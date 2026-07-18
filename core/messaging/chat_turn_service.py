@@ -65,6 +65,7 @@ class ChatTurnService:
         *,
         sink: Callable[[str], None] | None = None,
         options: ChatTurnOptions | None = None,
+        on_state_change: Callable[[BatchState], None] | None = None,
         cancel_current: Callable[[], None] | None = None,
         clear_pending: Iterable[Callable[[], None]] = (),
         stop_playback: Callable[[], None] | None = None,
@@ -73,6 +74,7 @@ class ChatTurnService:
     ) -> None:
         self._sink = sink or (lambda _text: None)
         self.options = options or ChatTurnOptions(interrupt_enabled=False)
+        self._on_state_change = on_state_change
         self._cancel_current = cancel_current
         self._clear_pending = tuple(clear_pending)
         self._stop_playback = stop_playback
@@ -114,7 +116,9 @@ class ChatTurnService:
             self._batch.append(value)
             self._typing = False
             self._schedule_flush_locked()
-            return self._batch_state_locked()
+            state = self._batch_state_locked()
+        self._publish_state(state)
+        return state
 
     def input_changed(self, *, has_text: bool, composing: bool = False) -> BatchState:
         """Update input activity without exposing UI details to the service."""
@@ -126,7 +130,9 @@ class ChatTurnService:
                 self._cancel_batch_timer_locked()
             elif self._batch:
                 self._schedule_flush_locked()
-            return self._batch_state_locked()
+            state = self._batch_state_locked()
+        self._publish_state(state)
+        return state
 
     def flush(self) -> BatchState:
         """Deliver all buffered messages as one user turn."""
@@ -140,6 +146,7 @@ class ChatTurnService:
             state = self._batch_state_locked()
         if combined:
             self._sink(combined)
+        self._publish_state(state)
         return state
 
     def cancel_pending_batch(self) -> BatchState:
@@ -148,7 +155,34 @@ class ChatTurnService:
             self._cancel_batch_timer_locked()
             self._batch.clear()
             self._typing = False
-            return self._batch_state_locked()
+            state = self._batch_state_locked()
+        self._publish_state(state)
+        return state
+
+    def update_options(self, options: ChatTurnOptions) -> BatchState:
+        """Apply a new admission policy without replacing the service.
+
+        Disabling batching flushes already accepted fragments immediately so a
+        settings change cannot strand user input.  Updating the timeout while a
+        batch is pending reschedules it from the time of the change.
+        """
+        combined = ""
+        with self._lock:
+            previous = self.options
+            self.options = options
+            if previous.batch_enabled and not options.batch_enabled:
+                self._cancel_batch_timer_locked()
+                self._typing = False
+                if self._batch:
+                    combined = previous.batch_separator.join(self._batch)
+                    self._batch.clear()
+            elif options.batch_enabled and self._batch and not self._typing:
+                self._schedule_flush_locked()
+            state = self._batch_state_locked()
+        if combined:
+            self._sink(combined)
+        self._publish_state(state)
+        return state
 
     def batch_state(self) -> BatchState:
         with self._lock:
@@ -218,6 +252,15 @@ class ChatTurnService:
         with self._lock:
             self._closed = True
             self._cancel_batch_timer_locked()
+
+    def _publish_state(self, state: BatchState) -> None:
+        callback = self._on_state_change
+        if callback is None:
+            return
+        try:
+            callback(state)
+        except Exception:
+            logger.debug("chat turn state callback failed", exc_info=True)
 
     def _schedule_flush_locked(self) -> None:
         self._cancel_batch_timer_locked()

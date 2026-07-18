@@ -190,6 +190,47 @@ describe("chatStageReducer", () => {
     expect(staleSnapshot.historyEntries).toEqual([{ id: "user-1", role: "user", text: "Aoi: hello" }]);
   });
 
+  it("accepts a newer wrapped snapshot when its payload omits eventSeq", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "old reply",
+        eventSeq: 2,
+        inputDraft: "hello",
+        userDisplayName: "Aoi",
+      },
+      { queued: true, source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    const pending = chatStageReducer(submitted, {
+      event: {
+        seq: 3,
+        snapshot: {
+          characterName: "Mio",
+          dialogText: "old reply",
+          inputDraft: "",
+          options: [],
+          sprites: [],
+          status: "idle",
+          turnState: {
+            enabled: true,
+            pendingCount: 1,
+            remainingSeconds: 5,
+            scheduled: true,
+            typing: false,
+          },
+        },
+        ts: 3,
+        type: "snapshot",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(pending.eventSeq).toBe(3);
+    expect(pending.turnState).toMatchObject({ pendingCount: 1, scheduled: true });
+  });
+
   it.each(["send-message", "submit-option"] as const)(
     "keeps the first %s submission through a newer startup feedback snapshot",
     (source) => {
@@ -1048,5 +1089,32 @@ describe("chatStageReducer", () => {
     });
     expect(withNotificationAgain.notificationText).toBeUndefined();
     expect(withNotificationAgain.layers.notification).toBe(false);
+  });
+
+  it("applies live chat turn state events", () => {
+    const next = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        state: {
+          enabled: true,
+          pendingCount: 3,
+          remainingSeconds: 2,
+          scheduled: true,
+          typing: false,
+        },
+        ts: 1,
+        type: "chat.turn.state",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(next.turnState).toEqual({
+      enabled: true,
+      pendingCount: 3,
+      remainingSeconds: 2,
+      scheduled: true,
+      typing: false,
+    });
   });
 });

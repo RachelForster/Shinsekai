@@ -100,6 +100,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         },
         eventSeq: Math.max(state.eventSeq, event.seq),
       });
+    case "chat.turn.state":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        turnState: { ...event.state },
+      });
     case "sprite.show":
       return upsertSprite(state, event);
     case "sprite.remove":

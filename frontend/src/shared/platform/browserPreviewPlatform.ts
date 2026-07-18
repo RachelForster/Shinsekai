@@ -432,6 +432,8 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   const cachedModelAssets = new Set<string>();
   const characterMemories = new Map<string, CharacterMemoryList>();
   const chatListeners = new Set<(snapshot: ChatSnapshot) => void>();
+  const chatEventListeners = new Set<(event: ChatStageEvent) => void>();
+  let previewChatEventSeq = 0;
   const pendingChatTimeouts = new Set<number>();
   const previewThemeManifests = new Map<string, ChatThemeManifest>(
     Object.entries(sampleChatThemeManifests).map(([id, manifest]) => [id, clone(manifest)]),
@@ -446,6 +448,27 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   const emitChat = () => {
     const snapshot = clone(chat);
     chatListeners.forEach((listener) => listener(snapshot));
+    const event: ChatStageEvent = {
+      seq: (previewChatEventSeq += 1),
+      snapshot,
+      ts: Date.now(),
+      type: "snapshot",
+      v: 1,
+    };
+    chatEventListeners.forEach((listener) => listener(event));
+  };
+
+  const emitTurnState = () => {
+    const snapshot = clone(chat);
+    chatListeners.forEach((listener) => listener(snapshot));
+    const event: ChatStageEvent = {
+      seq: (previewChatEventSeq += 1),
+      state: clone(chat.turnState ?? sampleChatSnapshot.turnState!),
+      ts: Date.now(),
+      type: "chat.turn.state",
+      v: 1,
+    };
+    chatEventListeners.forEach((listener) => listener(event));
   };
 
   const previewBranchTree = () => ({
@@ -783,7 +806,70 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             sessionClosedReason: "",
           };
         }
+        if (command.type === "update-turn-options") {
+          const payload = command.payload as Partial<NonNullable<ChatSnapshot["turnOptions"]>> | undefined;
+          const nextOptions = {
+            batchEnabled: Boolean(payload?.batchEnabled),
+            batchIdleSeconds: Math.min(120, Math.max(0.3, Number(payload?.batchIdleSeconds) || 5)),
+            interruptEnabled: payload?.interruptEnabled !== false,
+          };
+          config.api_config.interrupt_enabled = nextOptions.interruptEnabled;
+          config.api_config.is_batch_input_enabled = nextOptions.batchEnabled;
+          config.api_config.batch_input_timeout = nextOptions.batchIdleSeconds;
+          chat = {
+            ...chat,
+            turnOptions: nextOptions,
+            turnState: {
+              ...(chat.turnState ?? sampleChatSnapshot.turnState!),
+              enabled: nextOptions.batchEnabled,
+            },
+          };
+          emitTurnState();
+        }
+        if (command.type === "chat-input-state") {
+          const payload = command.payload as { composing?: unknown; hasText?: unknown } | undefined;
+          const active = Boolean(payload?.composing || payload?.hasText);
+          chat = {
+            ...chat,
+            turnState: {
+              ...(chat.turnState ?? sampleChatSnapshot.turnState!),
+              remainingSeconds: active ? null : (chat.turnOptions?.batchIdleSeconds ?? 5),
+              scheduled: !active && (chat.turnState?.pendingCount ?? 0) > 0,
+              typing: active && (chat.turnState?.pendingCount ?? 0) > 0,
+            },
+          };
+          emitTurnState();
+        }
+        if (command.type === "flush-input-batch" || command.type === "cancel-input-batch") {
+          chat = {
+            ...chat,
+            turnState: {
+              ...(chat.turnState ?? sampleChatSnapshot.turnState!),
+              pendingCount: 0,
+              remainingSeconds: null,
+              scheduled: false,
+              typing: false,
+            },
+          };
+          emitTurnState();
+        }
         if (command.type === "send-message") {
+          if (chat.turnOptions?.batchEnabled) {
+            chat = {
+              ...chat,
+              inputDraft: "",
+              turnState: {
+                ...(chat.turnState ?? sampleChatSnapshot.turnState!),
+                enabled: true,
+                pendingCount: (chat.turnState?.pendingCount ?? 0) + 1,
+                remainingSeconds: chat.turnOptions.batchIdleSeconds,
+                scheduled: true,
+                typing: false,
+              },
+            };
+            emitChat();
+            return delay(chat);
+          }
           clearScheduledChatUpdates();
           const payload = String(command.payload ?? "").trim();
           const userDisplayName = chat.userDisplayName?.trim() || "你";
@@ -1276,20 +1362,17 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
       },
       subscribeEvents(listener) {
-        let seq = 0;
-        const emitEvent = (snapshot: ChatSnapshot) => {
-          const event: ChatStageEvent = {
-            seq: (seq += 1),
-            snapshot,
-            ts: Date.now(),
-            type: "snapshot",
-            v: 1,
-          };
-          listener(event);
+        chatEventListeners.add(listener);
+        listener({
+          seq: (previewChatEventSeq += 1),
+          snapshot: clone(chat),
+          ts: Date.now(),
+          type: "snapshot",
+          v: 1,
+        });
+        return () => {
+          chatEventListeners.delete(listener);
         };
-        chatListeners.add(emitEvent);
-        emitEvent(clone(chat));
-        return () => chatListeners.delete(emitEvent);
       },
     },
     characters: {

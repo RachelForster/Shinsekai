@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from core.messaging.chat_turn_service import ChatTurnOptions, ChatTurnService
+from core.messaging.chat_turn_service import BatchState, ChatTurnOptions, ChatTurnService
 
 
 def wait_until(predicate, timeout: float = 1.0) -> None:
@@ -122,3 +122,58 @@ def test_pipeline_stays_active_until_generation_and_downstream_are_idle() -> Non
     service.mark_generation_complete(turn)
     service.mark_idle(turn)
     assert not service.is_active()
+
+
+def test_option_update_flushes_pending_batch_when_batching_is_disabled() -> None:
+    delivered: list[str] = []
+    states: list[BatchState] = []
+    service = ChatTurnService(
+        sink=delivered.append,
+        on_state_change=states.append,
+        options=ChatTurnOptions(
+            interrupt_enabled=True,
+            batch_enabled=True,
+            batch_idle_seconds=30,
+            batch_separator=" | ",
+        ),
+    )
+    service.submit("one")
+    service.submit("two")
+
+    state = service.update_options(
+        ChatTurnOptions(
+            interrupt_enabled=False,
+            batch_enabled=False,
+            batch_idle_seconds=5,
+            batch_separator="\n---\n",
+        )
+    )
+
+    assert delivered == ["one | two"]
+    assert not state.enabled
+    assert state.pending_count == 0
+    assert states[-1] == state
+
+
+def test_option_update_reschedules_pending_batch_with_new_timeout() -> None:
+    delivered: list[str] = []
+    service = ChatTurnService(
+        sink=delivered.append,
+        options=ChatTurnOptions(
+            interrupt_enabled=False,
+            batch_enabled=True,
+            batch_idle_seconds=30,
+        ),
+    )
+    service.submit("one")
+
+    state = service.update_options(
+        ChatTurnOptions(
+            interrupt_enabled=False,
+            batch_enabled=True,
+            batch_idle_seconds=0.03,
+        )
+    )
+
+    assert state.scheduled
+    wait_until(lambda: delivered == ["one"])

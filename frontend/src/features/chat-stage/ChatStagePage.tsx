@@ -3,7 +3,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
+import { sendChatCommand } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
+import type { ChatTurnOptions } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
@@ -201,19 +203,44 @@ export function ChatStagePage() {
       return;
     }
     showDialogImmediately();
-    dispatch({ source: "send-message", text, type: "submitUserMessage" });
+    dispatch({ queued: state.turnOptions.batchEnabled, source: "send-message", text, type: "submitUserMessage" });
     void sendCommand({ payload: text, type: "send-message" });
   };
 
   const submitOption = (option: string) => {
     showDialogImmediately();
-    dispatch({ source: "submit-option", text: option, type: "submitUserMessage" });
+    dispatch({
+      queued: state.turnOptions.batchEnabled,
+      source: "submit-option",
+      text: option,
+      type: "submitUserMessage",
+    });
     void sendCommand({ payload: option, type: "submit-option" });
   };
 
   const updateRuntimeTextSpeed = (typewriterCps: number) => {
     setRuntimeConfig((current) => ({ ...current, typewriterCps }));
   };
+
+  const updateTurnOptions = useCallback(
+    (options: ChatTurnOptions) => {
+      const previous = state.turnOptions;
+      dispatch({ options, type: "setTurnOptions" });
+      void sendChatCommand({ payload: options, type: "update-turn-options" }).catch((error) => {
+        dispatch({ options: previous, type: "setTurnOptions" });
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("chat.error.commandFallback"),
+          title: t("common.operationFailed"),
+        });
+      });
+    },
+    [showToast, state.turnOptions, t],
+  );
+
+  const updateInputActivity = useCallback((inputState: { composing: boolean; hasText: boolean }) => {
+    void sendChatCommand({ payload: inputState, type: "chat-input-state" }).catch(() => undefined);
+  }, []);
 
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
@@ -441,8 +468,15 @@ export function ChatStagePage() {
           inputLayout={inputLayout}
           longPressTalkEnabled={longPressTalkEnabled}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
+          onCancelBatch={() => void sendCommand({ type: "cancel-input-batch" })}
           onCommand={sendCommand}
+          onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
+          onInputActivity={updateInputActivity}
+          onOpenChatSettings={() => setToolbarConfigOpen(true)}
           onSubmit={submit}
+          onTurnOptionsChange={updateTurnOptions}
+          turnOptions={state.turnOptions}
+          turnState={state.turnState}
           value={viewModel.inputDraft}
         />
         <HistoryDialog
@@ -507,6 +541,7 @@ export function ChatStagePage() {
           onSpriteScaleChange={updateRuntimeSpriteScale}
           onTextSpeedChange={updateRuntimeTextSpeed}
           onTextStyleChange={updateRuntimeTextStyle}
+          onTurnOptionsChange={updateTurnOptions}
           onWindowScaleChange={updateRuntimeWindowScale}
           open={toolbarConfigOpen}
           spriteOffsetX={runtimeConfig.spriteOffsetX}
@@ -514,6 +549,7 @@ export function ChatStagePage() {
           spriteScales={runtimeConfig.spriteScales}
           sprites={viewModel.sprites}
           textSpeed={typewriterCps}
+          turnOptions={state.turnOptions}
           voiceLanguage={viewModel.voiceLanguage || "ja"}
           windowScale={runtimeConfig.windowScale}
         />

@@ -6,7 +6,7 @@ import sakuraDreamPreviewUrl from "../../../../../assets/chat_ui_themes/sakura-d
 import windborneAdventurePreviewUrl from "../../../../../assets/chat_ui_themes/windborne-adventure/preview.png?url";
 import { createBrowserPreviewPlatform } from "../../../shared/platform/browserPreviewPlatform";
 import { sampleConfig } from "../../../shared/platform/sampleData";
-import type { TemplateLaunchSession } from "../../../shared/platform/types";
+import type { ChatStageEvent, TemplateLaunchSession } from "../../../shared/platform/types";
 
 async function resolvePreview<T>(promise: Promise<T>, ms = 2_000) {
   await vi.advanceTimersByTimeAsync(ms);
@@ -282,6 +282,43 @@ describe("browser preview platform chat themes", () => {
     expect(finalSnapshot.characterName).toBe("Nanami");
     expect(finalSnapshot.dialogText).toBe("收到：你好");
 
+    unsubscribe();
+  });
+
+  it("previews chat turn settings and pending stacked messages", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    const events: ChatStageEvent[] = [];
+    const unsubscribe = platform.chat.subscribeEvents((event) => events.push(event));
+
+    const settingsPromise = platform.chat.command({
+      payload: { batchEnabled: true, batchIdleSeconds: 8, interruptEnabled: false },
+      type: "update-turn-options",
+    });
+    await vi.advanceTimersByTimeAsync(120);
+    const settings = await settingsPromise;
+    expect(settings.turnOptions).toEqual({
+      batchEnabled: true,
+      batchIdleSeconds: 8,
+      interruptEnabled: false,
+    });
+    expect(events.at(-1)?.type).toBe("chat.turn.state");
+
+    const sendPromise = platform.chat.command({ payload: "first fragment", type: "send-message" });
+    await vi.advanceTimersByTimeAsync(120);
+    const pending = await sendPromise;
+    expect(pending.turnState).toMatchObject({
+      enabled: true,
+      pendingCount: 1,
+      remainingSeconds: 8,
+      scheduled: true,
+    });
+    expect(events.at(-1)?.type).toBe("snapshot");
+
+    const flushPromise = platform.chat.command({ type: "flush-input-batch" });
+    await vi.advanceTimersByTimeAsync(120);
+    expect((await flushPromise).turnState?.pendingCount).toBe(0);
+    expect(events.at(-1)?.type).toBe("chat.turn.state");
     unsubscribe();
   });
 

@@ -67,6 +67,13 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "stats": [],
         "status": "idle",
         "systemMessageText": "",
+        "turnState": {
+            "enabled": False,
+            "pendingCount": 0,
+            "remainingSeconds": None,
+            "scheduled": False,
+            "typing": False,
+        },
         "userDisplayName": "你",
     }
 
@@ -281,6 +288,23 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         tree = event.get("tree")
         if isinstance(tree, dict):
             next_snapshot["conversationTree"] = dict(tree)
+        return next_snapshot
+
+    if event_type == "chat.turn.state":
+        state = event.get("state")
+        if isinstance(state, dict):
+            remaining = state.get("remainingSeconds")
+            next_snapshot["turnState"] = {
+                "enabled": bool(state.get("enabled")),
+                "pendingCount": max(0, int(state.get("pendingCount") or 0)),
+                "remainingSeconds": (
+                    max(0, int(remaining))
+                    if isinstance(remaining, (int, float)) and not isinstance(remaining, bool)
+                    else None
+                ),
+                "scheduled": bool(state.get("scheduled")),
+                "typing": bool(state.get("typing")),
+            }
         return next_snapshot
 
     if event_type == "numeric.update":

@@ -177,6 +177,9 @@ describe("ChatStagePage", () => {
         dialogText: command.type,
         inputDraft: "",
         options: [],
+        ...(command.type === "update-turn-options"
+          ? { turnOptions: command.payload as ChatSnapshot["turnOptions"] }
+          : {}),
       }),
     );
     desktopApiMocks.startDesktopWindowDrag.mockResolvedValue(undefined);
@@ -206,6 +209,65 @@ describe("ChatStagePage", () => {
         type: "submit-option",
       }),
     );
+  });
+
+  it("places interrupt, stacking, and chat settings controls above the input", async () => {
+    renderPage();
+
+    const input = await screen.findByRole("textbox");
+    const controls = screen.getByRole("group", { name: "Chat sending controls" });
+    expect(within(controls).getByRole("button", { name: "Interrupt" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(controls).getByRole("button", { name: "Stack" })).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.change(input, { target: { value: "keep this draft" } });
+    fireEvent.click(within(controls).getByRole("button", { name: "Stack" }));
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: { batchEnabled: true, batchIdleSeconds: 5, interruptEnabled: true },
+        type: "update-turn-options",
+      }),
+    );
+    await waitFor(() =>
+      expect(within(controls).getByRole("button", { name: "Stack" })).toHaveAttribute("aria-pressed", "true"),
+    );
+    expect(input).toHaveValue("keep this draft");
+
+    fireEvent.click(within(controls).getByRole("button", { name: "Chat settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Chat appearance settings" });
+    expect(within(dialog).getByText("Sending behavior")).toBeInTheDocument();
+    expect(within(dialog).getByRole("slider", { name: "Stack idle timeout" })).toHaveValue("5");
+  });
+
+  it("shows pending stack state and keeps input enabled only when interruption is allowed", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        status: "generating",
+        turnOptions: { batchEnabled: true, batchIdleSeconds: 5, interruptEnabled: true },
+        turnState: {
+          enabled: true,
+          pendingCount: 2,
+          remainingSeconds: 4,
+          scheduled: true,
+          typing: false,
+        },
+      }),
+    );
+
+    const { unmount } = renderPage();
+
+    expect(await screen.findByRole("textbox")).not.toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("2 queued · 4s");
+    unmount();
+
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        status: "generating",
+        turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false },
+      }),
+    );
+    renderPage();
+    expect(await screen.findByRole("textbox")).toBeDisabled();
   });
 
   it("anchors decorative frames to the main chat surfaces", async () => {
