@@ -210,11 +210,21 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
           `DesktopRuntimeGate repair displayed bridge error: ${desktopRestartErrorMessage(error)}`,
         );
       }
-      setRuntime((current) => ({
-        ...current,
-        message: desktopRestartErrorMessage(error),
-        status: "error",
-      }));
+      const message = desktopRestartErrorMessage(error);
+      try {
+        const failedRuntime = await getDesktopRuntimeState();
+        setRuntime({
+          ...failedRuntime,
+          message: failedRuntime.message || message,
+          status: "error",
+        });
+      } catch {
+        setRuntime((current) => ({
+          ...current,
+          message,
+          status: "error",
+        }));
+      }
     } finally {
       setBusy(false);
     }
@@ -237,7 +247,13 @@ function DesktopRuntimeGate({ children }: { children: ReactNode }) {
   }, [runtime.manualInstallCommand]);
 
   useEffect(() => {
-    if (busy || runtime.status === "checking" || runtime.status === "updating" || runtime.status === "ready") {
+    if (
+      busy ||
+      runtime.manualInstallCommand ||
+      runtime.status === "checking" ||
+      runtime.status === "updating" ||
+      runtime.status === "ready"
+    ) {
       return;
     }
     const candidate = runtime.candidates?.find((candidate) => candidate.selected) ?? runtime.candidates?.[0];

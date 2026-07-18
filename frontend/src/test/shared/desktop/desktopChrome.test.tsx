@@ -9,6 +9,7 @@ const desktopApi = vi.hoisted(() => ({
   desktopRestartErrorMessage: vi.fn((error: unknown) => (error instanceof Error ? error.message : String(error))),
   getDesktopProjectRootStatus: vi.fn(),
   getDesktopRuntimeState: vi.fn(),
+  isDesktopBridgeConnectionError: vi.fn(() => false),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn<() => Promise<void>>(),
   onDesktopRuntimeProgress: vi.fn(),
@@ -217,10 +218,8 @@ describe("DesktopChrome", () => {
     expect(screen.queryByRole("button", { name: "Update" })).not.toBeInTheDocument();
   });
 
-  it("shows a manual dependency command when the bridge exits after runtime scanning", async () => {
+  it("does not show a manual dependency command for a bridge startup error", async () => {
     desktopApi.isTauriDesktop.mockReturnValue(true);
-    const manualInstallCommand =
-      "& 'C:\\Users\\test\\Shinsekai\\runtime\\python.exe' -m pip install --requirement 'C:\\Program Files\\Shinsekai\\requirements-runtime-core.txt'";
     desktopApi.getDesktopRuntimeState.mockResolvedValue({
       bridgeUrl: "",
       candidates: [
@@ -241,17 +240,62 @@ describe("DesktopChrome", () => {
           warnings: [],
         },
       ],
-      manualInstallCommand,
       message: "Python bridge exited before startup completed: exit code: 1",
       status: "error",
     });
 
     renderChrome(<main>App content</main>);
 
+    expect(await screen.findByText("Runtime update required")).toBeInTheDocument();
+    expect(screen.queryByText("Install dependencies manually")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Copy command" })).not.toBeInTheDocument();
+    expect(screen.queryByText("App content")).not.toBeInTheDocument();
+  });
+
+  it("shows the manual dependency command only after automatic installation fails", async () => {
+    desktopApi.isTauriDesktop.mockReturnValue(true);
+    const manualInstallCommand =
+      "& 'C:\\Users\\test\\Shinsekai\\runtime\\python.exe' -m pip install --requirement 'C:\\Program Files\\Shinsekai\\requirements-runtime-core.txt'";
+    const missingDependencyState = {
+      bridgeUrl: "",
+      candidates: [
+        {
+          id: "python-ready",
+          displayPath: "C:\\Users\\test\\Shinsekai\\runtime\\python.exe",
+          kind: "managed" as const,
+          label: "Shinsekai bundled runtime",
+          managed: true,
+          missingImports: ["pydantic"],
+          missingPackages: ["pydantic"],
+          path: "\\\\?\\C:\\Users\\test\\Shinsekai\\runtime\\python.exe",
+          repairActions: ["installRuntimeDeps" as const],
+          score: 100,
+          selected: false,
+          status: "missingCoreDeps" as const,
+          version: "3.10.20",
+          warnings: [],
+        },
+      ],
+      message: "Python was found, but Shinsekai core dependencies are missing.",
+      status: "needsAction" as const,
+    };
+    desktopApi.getDesktopRuntimeState.mockResolvedValueOnce(missingDependencyState).mockResolvedValueOnce({
+      ...missingDependencyState,
+      manualInstallCommand,
+      message: "Dependency download failed",
+      status: "error",
+    });
+    desktopApi.repairDesktopRuntime.mockRejectedValueOnce(new Error("Dependency download failed"));
+
+    renderChrome(<main>App content</main>);
+
+    await waitFor(() => {
+      expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledWith("python-ready", "installRuntimeDeps");
+    });
     expect(await screen.findByText("Install dependencies manually")).toBeInTheDocument();
     expect(screen.getByText(manualInstallCommand)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Copy command" })).toBeInTheDocument();
-    expect(screen.queryByText("App content")).not.toBeInTheDocument();
+    expect(desktopApi.repairDesktopRuntime).toHaveBeenCalledTimes(1);
   });
 
   it("wires title bar buttons and drag region to desktop commands", async () => {
