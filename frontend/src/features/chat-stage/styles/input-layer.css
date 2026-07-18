@@ -81,7 +81,7 @@
 .input-layer__attachments {
   --chat-attachment-inline-offset: max(
     3px,
-    calc((var(--chat-input-resolved-width) - var(--chat-options-max-width)) / 2 + 3px)
+    calc((var(--chat-input-resolved-width) - var(--chat-options-max-width)) / 2 + 1px)
   );
 
   grid-column: 1 / -1;

@@ -419,8 +419,9 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-layout"]).toBe("pill");
     expect(resolved.style["--chat-input-max-width"]).toBe("640px");
     expect(resolved.style["--stage-input-height"]).toBe(
-      "calc(var(--chat-input-button-size) + clamp(10px, 1.44svh, 14px))",
+      "calc(var(--chat-input-button-size) + clamp(14px, 1.8svh, 18px))",
     );
+    expect(resolved.style["--chat-input-padding"]).toBe("clamp(7px, 0.9svh, 9px) clamp(9px, 1.2svh, 12px)");
     expect(resolved.style["--chat-input-grid-template-columns"]).toBe(
       "var(--chat-input-button-size) minmax(0, 1fr) auto",
     );

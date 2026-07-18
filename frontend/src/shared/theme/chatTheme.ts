@@ -598,7 +598,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   if (input?.layout === "pill") {
     style["--chat-input-layout"] = "pill";
     style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
-    style["--stage-input-height"] = "calc(var(--chat-input-button-size) + clamp(10px, 1.44svh, 14px))";
+    style["--stage-input-height"] = "calc(var(--chat-input-button-size) + clamp(14px, 1.8svh, 18px))";
     style["--chat-input-border-color"] = "transparent";
     style["--chat-input-border-radius"] = "999px";
     style["--chat-send-background"] = "transparent";
@@ -613,7 +613,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-input-field-position"] = "static";
     style["--chat-input-gap"] = "clamp(8px, 1.2vw, 14px)";
     style["--chat-input-grid-template-columns"] = "var(--chat-input-button-size) minmax(0, 1fr) auto";
-    style["--chat-input-padding"] = "clamp(5px, 0.72svh, 7px) clamp(7px, 0.9svh, 10px)";
+    style["--chat-input-padding"] = "clamp(7px, 0.9svh, 9px) clamp(9px, 1.2svh, 12px)";
     style["--chat-input-panel-display"] = "grid";
     style["--chat-input-pill-control-display"] = "inline-flex";
     style["--chat-input-send-display"] = "none";
