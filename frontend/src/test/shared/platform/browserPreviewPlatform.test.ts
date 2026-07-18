@@ -310,14 +310,15 @@ describe("browser preview platform chat themes", () => {
     expect(pending.turnState).toMatchObject({
       enabled: true,
       pendingCount: 1,
+      pendingMessages: ["first fragment"],
       remainingSeconds: 8,
       scheduled: true,
     });
-    expect(events.at(-1)?.type).toBe("snapshot");
+    expect(events.at(-1)?.type).toBe("chat.turn.state");
 
     const flushPromise = platform.chat.command({ type: "flush-input-batch" });
     await vi.advanceTimersByTimeAsync(120);
-    expect((await flushPromise).turnState?.pendingCount).toBe(0);
+    expect((await flushPromise).turnState).toMatchObject({ pendingCount: 0, pendingMessages: [] });
     expect(events.at(-1)?.type).toBe("chat.turn.state");
     unsubscribe();
   });

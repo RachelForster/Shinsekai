@@ -7,20 +7,28 @@ import {
 import type { ChatStageState, ChatStageViewModel } from "./types";
 
 export function buildChatStageViewModel(state: ChatStageState): ChatStageViewModel {
+  const pendingBatchText = (state.turnState.pendingMessages ?? []).filter((message) => message.trim()).join("\n");
   const dialog = normalizeDialogView(
-    state.error ? undefined : state.characterName,
-    state.error ?? state.dialogText,
-    state.error ? undefined : state.dialogHtml,
+    state.error ? undefined : pendingBatchText ? normalizedUserDisplayName(state.userDisplayName) : state.characterName,
+    state.error ?? (pendingBatchText || state.dialogText),
+    state.error || pendingBatchText ? undefined : state.dialogHtml,
     state.userDisplayName,
   );
   const tokenUsageText = normalizeTokenUsageText(state.numericInfo, state.status);
-  const systemPromptText = systemPromptTextFromState(state, dialog.dialogText);
-  const systemMessageText = state.systemMessageText?.trim();
+  const systemPromptText = pendingBatchText ? undefined : systemPromptTextFromState(state, dialog.dialogText);
+  const systemMessageText = pendingBatchText ? undefined : state.systemMessageText?.trim();
+  const notificationText = pendingBatchText
+    ? undefined
+    : state.notificationText || systemMessageText || systemPromptText;
   const layers = {
     ...state.layers,
     dialog:
-      state.layers.dialog && !systemMessageText && !systemPromptText && Boolean(dialog.dialogHtml || dialog.dialogText),
-    notification: Boolean(state.notificationText || systemMessageText || systemPromptText),
+      (state.layers.dialog || Boolean(pendingBatchText)) &&
+      !systemMessageText &&
+      !systemPromptText &&
+      Boolean(dialog.dialogHtml || dialog.dialogText),
+    notification: Boolean(notificationText),
+    options: pendingBatchText ? false : state.layers.options,
   };
   return {
     backgroundPath: state.backgroundPath,
@@ -35,7 +43,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
       ((state.status === "generating" || state.status === "streaming") && !state.turnOptions.interruptEnabled),
     inputDraft: state.inputDraft,
     layers,
-    notificationText: state.notificationText || systemMessageText || systemPromptText,
+    notificationText,
     options: state.options,
     sprites: state.sprites,
     stats: state.stats ?? [],

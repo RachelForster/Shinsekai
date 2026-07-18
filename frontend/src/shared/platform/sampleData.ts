@@ -332,6 +332,7 @@ export const sampleChatSnapshot: ChatSnapshot = {
   turnState: {
     enabled: false,
     pendingCount: 0,
+    pendingMessages: [],
     remainingSeconds: null,
     scheduled: false,
     typing: false,

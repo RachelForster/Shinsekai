@@ -52,6 +52,29 @@ describe("chatStageReducer", () => {
     expect(state.status).toBe("generating");
   });
 
+  it("renders pending stacked messages as newline-separated user dialogue", () => {
+    const viewModel = buildChatStageViewModel({
+      ...emptyChatState,
+      characterName: "Mio",
+      dialogHtml: "<p>old reply</p>",
+      dialogText: "old reply",
+      turnState: {
+        enabled: true,
+        pendingCount: 2,
+        pendingMessages: ["message A", "message B"],
+        remainingSeconds: 4,
+        scheduled: true,
+        typing: false,
+      },
+      userDisplayName: "Aoi",
+    });
+
+    expect(viewModel.dialogCharacterName).toBe("Aoi");
+    expect(viewModel.dialogHtml).toBeUndefined();
+    expect(viewModel.dialogText).toBe("message A\nmessage B");
+    expect(viewModel.layers.dialog).toBe(true);
+  });
+
   it("rolls an optimistic option submission back to the previous presentation", () => {
     const submitted = chatStageReducer(
       {
@@ -1098,6 +1121,7 @@ describe("chatStageReducer", () => {
         state: {
           enabled: true,
           pendingCount: 3,
+          pendingMessages: ["one", "two", "three"],
           remainingSeconds: 2,
           scheduled: true,
           typing: false,
@@ -1112,6 +1136,7 @@ describe("chatStageReducer", () => {
     expect(next.turnState).toEqual({
       enabled: true,
       pendingCount: 3,
+      pendingMessages: ["one", "two", "three"],
       remainingSeconds: 2,
       scheduled: true,
       typing: false,

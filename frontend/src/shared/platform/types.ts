@@ -816,6 +816,7 @@ export interface ChatTurnOptions {
 export interface ChatTurnState {
   enabled: boolean;
   pendingCount: number;
+  pendingMessages?: string[];
   remainingSeconds: number | null;
   scheduled: boolean;
   typing: boolean;

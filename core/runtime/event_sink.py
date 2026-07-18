@@ -70,6 +70,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "turnState": {
             "enabled": False,
             "pendingCount": 0,
+            "pendingMessages": [],
             "remainingSeconds": None,
             "scheduled": False,
             "typing": False,
@@ -294,9 +295,15 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         state = event.get("state")
         if isinstance(state, dict):
             remaining = state.get("remainingSeconds")
+            pending_messages = state.get("pendingMessages")
+            if not isinstance(pending_messages, list):
+                pending_messages = []
             next_snapshot["turnState"] = {
                 "enabled": bool(state.get("enabled")),
                 "pendingCount": max(0, int(state.get("pendingCount") or 0)),
+                "pendingMessages": [
+                    message for message in (pending_messages or []) if isinstance(message, str) and message
+                ],
                 "remainingSeconds": (
                     max(0, int(remaining))
                     if isinstance(remaining, (int, float)) and not isinstance(remaining, bool)

@@ -376,6 +376,7 @@ class EventSinkSnapshotTests(unittest.TestCase):
                 "state": {
                     "enabled": True,
                     "pendingCount": 2,
+                    "pendingMessages": ["message A", "message B"],
                     "remainingSeconds": 4,
                     "scheduled": True,
                     "typing": False,
@@ -391,6 +392,7 @@ class EventSinkSnapshotTests(unittest.TestCase):
             {
                 "enabled": True,
                 "pendingCount": 2,
+                "pendingMessages": ["message A", "message B"],
                 "remainingSeconds": 4,
                 "scheduled": True,
                 "typing": False,

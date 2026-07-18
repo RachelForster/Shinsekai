@@ -71,10 +71,13 @@ def test_batch_auto_flushes_without_a_ui_timer() -> None:
     )
 
     service.submit("one")
-    service.submit("two")
+    pending = service.submit("two")
 
+    assert pending.pending_messages == ("one", "two")
     wait_until(lambda: delivered == ["one | two"])
-    assert service.batch_state().pending_count == 0
+    flushed = service.batch_state()
+    assert flushed.pending_count == 0
+    assert flushed.pending_messages == ()
 
 
 def test_typing_pauses_and_empty_input_reschedules_batch() -> None:

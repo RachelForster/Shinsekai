@@ -822,6 +822,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             turnState: {
               ...(chat.turnState ?? sampleChatSnapshot.turnState!),
               enabled: nextOptions.batchEnabled,
+              ...(!nextOptions.batchEnabled
+                ? { pendingCount: 0, pendingMessages: [], remainingSeconds: null, scheduled: false, typing: false }
+                : {}),
             },
           };
           emitTurnState();
@@ -846,6 +849,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             turnState: {
               ...(chat.turnState ?? sampleChatSnapshot.turnState!),
               pendingCount: 0,
+              pendingMessages: [],
               remainingSeconds: null,
               scheduled: false,
               typing: false,
@@ -854,24 +858,26 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           emitTurnState();
         }
         if (command.type === "send-message") {
+          const payload = String(command.payload ?? "").trim();
           if (chat.turnOptions?.batchEnabled) {
             chat = {
               ...chat,
               inputDraft: "",
+              options: [],
               turnState: {
                 ...(chat.turnState ?? sampleChatSnapshot.turnState!),
                 enabled: true,
                 pendingCount: (chat.turnState?.pendingCount ?? 0) + 1,
+                pendingMessages: [...(chat.turnState?.pendingMessages ?? []), payload],
                 remainingSeconds: chat.turnOptions.batchIdleSeconds,
                 scheduled: true,
                 typing: false,
               },
             };
-            emitChat();
+            emitTurnState();
             return delay(chat);
           }
           clearScheduledChatUpdates();
-          const payload = String(command.payload ?? "").trim();
           const userDisplayName = chat.userDisplayName?.trim() || "你";
           const nextUserIndex =
             Math.max(-1, ...cloneHistoryEntries(chat.historyEntries).map((entry) => entry.revertUserIndex ?? -1)) + 1;

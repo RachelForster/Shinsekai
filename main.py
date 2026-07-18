@@ -648,6 +648,7 @@ def main():
                         "state": {
                             "enabled": state.enabled,
                             "pendingCount": state.pending_count,
+                            "pendingMessages": list(state.pending_messages),
                             "remainingSeconds": state.remaining_seconds,
                             "scheduled": state.scheduled,
                             "typing": state.typing,

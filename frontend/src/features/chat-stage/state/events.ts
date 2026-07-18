@@ -104,7 +104,10 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
       return withResolvedLayers({
         ...state,
         eventSeq: Math.max(state.eventSeq, event.seq),
-        turnState: { ...event.state },
+        turnState: {
+          ...event.state,
+          pendingMessages: [...(event.state.pendingMessages ?? [])],
+        },
       });
     case "sprite.show":
       return upsertSprite(state, event);

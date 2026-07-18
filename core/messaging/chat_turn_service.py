@@ -35,6 +35,7 @@ class BatchState:
 
     enabled: bool
     pending_count: int
+    pending_messages: tuple[str, ...]
     remaining_seconds: int | None
     scheduled: bool
     typing: bool
@@ -286,6 +287,7 @@ class ChatTurnService:
         return BatchState(
             enabled=self.options.batch_enabled,
             pending_count=len(self._batch),
+            pending_messages=tuple(self._batch),
             remaining_seconds=remaining,
             scheduled=deadline is not None,
             typing=self._typing,

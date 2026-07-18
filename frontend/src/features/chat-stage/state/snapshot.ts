@@ -42,7 +42,11 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
     sprites: normalizeChatStageSprites(snapshot.sprites.map((sprite) => ({ ...sprite }))),
     stats: (snapshot.stats ?? []).map((stat) => ({ ...stat })),
     turnOptions: { ...emptyChatState.turnOptions, ...snapshot.turnOptions },
-    turnState: { ...emptyChatState.turnState, ...snapshot.turnState },
+    turnState: {
+      ...emptyChatState.turnState,
+      ...snapshot.turnState,
+      pendingMessages: [...(snapshot.turnState?.pendingMessages ?? [])],
+    },
     ...transport,
   });
 }
