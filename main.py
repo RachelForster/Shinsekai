@@ -99,6 +99,8 @@ import llm.tools.chat_ui_tools
 from llm.template_generator import is_transparent_background
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor
+from core.messaging.chat_turn_wiring import create_chat_turn_service
+from core.messaging.queue import ClearableQueue
 from core.runtime.app_runtime import AppRuntime, set_app_runtime
 from core.runtime.launch_mode import should_init_desktop_mixer
 from core.runtime.shutdown import shutdown_chat_runtime
@@ -117,7 +119,6 @@ from t2i.t2i_manager import T2IAdapterFactory, T2IManager
 import pygame
 from opencc import OpenCC
 from queue import Queue
-from core.runtime.queue_utils import ClearableQueue
 
 from core.sprite.chat_history import (
     chat_history,
@@ -638,6 +639,15 @@ def main():
                 chat_history=chat_history,
                 bg_group=bg_group or [],
             )
+            chat_turn_service = create_chat_turn_service(
+                config=config,
+                user_input_queue=user_input_queue,
+                tts_queue=tts_queue,
+                audio_queue=audio_path_queue,
+                llm_manager=llm_manager,
+                ui_worker=_um,
+                ui_updates=ui_updates,
+            )
             set_app_runtime(
                 AppRuntime(
                     config=config,
@@ -651,12 +661,17 @@ def main():
                     audio_path_queue=audio_path_queue,
                     text_processor=text_processor,
                     opencc=cc,
+                    chat_turn_service=chat_turn_service,
                 )
             )
             if hasattr(ui_updates, "sync_history_entries"):
                 ui_updates.sync_history_entries()
 
-            emit_user_text = wire_user_input_plugins(user_input_queue) if user_input_queue is not None else None
+            emit_user_text = (
+                wire_user_input_plugins(user_input_queue, sink=chat_turn_service.submit)
+                if user_input_queue is not None
+                else None
+            )
         last_user_message = {"text": ""}
         def _default_branch_state() -> dict[str, object]:
             now = int(time.time() * 1000)
@@ -1101,6 +1116,15 @@ def main():
         from core.runtime.ui_update_manager import HeadlessUIUpdateManager
 
         ui_updates = HeadlessUIUpdateManager(chat_history=chat_history)
+        chat_turn_service = create_chat_turn_service(
+            config=config,
+            user_input_queue=user_input_queue,
+            tts_queue=tts_queue,
+            audio_queue=audio_path_queue,
+            llm_manager=llm_manager,
+            ui_worker=_um,
+            ui_updates=ui_updates,
+        )
         set_app_runtime(
             AppRuntime(
                 config=config,
@@ -1115,6 +1139,7 @@ def main():
                 audio_path_queue=audio_path_queue,
                 text_processor=text_processor,
                 opencc=cc,
+                chat_turn_service=chat_turn_service,
             )
         )
         workflow.start()
@@ -1142,6 +1167,7 @@ def main():
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
     from ui.chat_ui.chat_ui import ChatUIWindow
+    from ui.chat_ui.chat_turn_controller import ChatTurnController
     from ui.chat_ui.qss_fusion import ensure_fusion_style
 
     app = QApplication([])
@@ -1165,6 +1191,15 @@ def main():
         mirror_stream_sink = WSClientSink(args.mirror_stream_endpoint)
         connect_to_stream_sink(ui_updates, mirror_stream_sink)
 
+    chat_turn_service = create_chat_turn_service(
+        config=config,
+        user_input_queue=user_input_queue,
+        tts_queue=tts_queue,
+        audio_queue=audio_path_queue,
+        llm_manager=llm_manager,
+        ui_worker=_um,
+        ui_updates=ui_updates,
+    )
     set_app_runtime(
         AppRuntime(
             config=config,
@@ -1179,7 +1214,7 @@ def main():
             audio_path_queue=audio_path_queue,
             text_processor=text_processor,
             opencc=cc,
-            ui_worker=_um,
+            chat_turn_service=chat_turn_service,
         )
     )
 
@@ -1208,9 +1243,11 @@ def main():
     window.setNotification(tr_i18n("main.notify_chat"))
 
     if user_input_queue is not None:
-        emit_user_text = wire_user_input_plugins(user_input_queue)
+        emit_user_text = wire_user_input_plugins(user_input_queue, sink=chat_turn_service.submit)
     else:
         emit_user_text = None
+
+    window._chat_turn_controller = ChatTurnController(window, chat_turn_service, ui_updates)
 
     sc = config.config.system_config.model_copy(deep=True)
     if bg_group:

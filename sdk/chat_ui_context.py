@@ -195,12 +195,6 @@ class ChatUIContext:
     def on_skip_speech_signal(self, handler: Callable[[], None]) -> Callable[[], None]:
         return _wire_handler(self._bridge.skip_speech_signal, handler)
 
-    def on_interrupt_requested(self, handler: Callable[[], None]) -> Callable[[], None]:
-        return _wire_handler(self._bridge.interrupt_requested, handler)
-
-    def on_flush_batch(self, handler: Callable[[], None]) -> Callable[[], None]:
-        return _wire_handler(self._bridge.flush_batch, handler)
-
     def on_llm_reply_finished(self, handler: Callable[[], None]) -> Callable[[], None]:
         return _wire_handler(self._bridge.llm_reply_finished, handler)
 

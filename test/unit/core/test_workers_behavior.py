@@ -224,6 +224,7 @@ def test_tts_worker_drops_dispatch_output_after_cancel() -> None:
 def test_tts_worker_drops_dispatch_output_after_runtime_cancel() -> None:
     audio_path_queue = CountingQueue()
     runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
+    turn = runtime.chat_turn_service.begin_turn()
     worker = TTSWorker(CountingQueue(), audio_path_queue)
     started = threading.Event()
     release = threading.Event()
@@ -250,7 +251,7 @@ def test_tts_worker_drops_dispatch_output_after_runtime_cancel() -> None:
 
     runner.start()
     assert started.wait(timeout=1)
-    runtime.cancellation_requested.set()
+    turn.cancelled.set()
     release.set()
     assert attempted_emit.wait(timeout=1)
     runner.join(timeout=1)

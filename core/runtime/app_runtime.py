@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
+from core.messaging.chat_turn_service import ChatTurnService
+
 
 @dataclass
 class UiPlaybackBridge:
@@ -33,9 +35,7 @@ class AppRuntime:
     opencc: Any  # OpenCC
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
     ui_playback: UiPlaybackBridge = field(default_factory=UiPlaybackBridge)
-    cancellation_requested: Any = field(default_factory=lambda: __import__('threading').Event())
-    generating: Any = field(default_factory=lambda: __import__('threading').Event())
-    ui_worker: Any = None
+    chat_turn_service: ChatTurnService = field(default_factory=ChatTurnService)
 
 
 _runtime: Optional[AppRuntime] = None
@@ -82,77 +82,6 @@ def tts_emit_to_ui_queue(
 
 
 def is_generating() -> bool:
-    """Return True when LLM is actively generating a response."""
+    """Compatibility query delegated to the chat turn service."""
     rt = try_get_app_runtime()
-    return rt is not None and rt.generating.is_set()
-
-
-def is_anything_running() -> bool:
-    """Return True when **any** part of the pipeline is active — LLM, TTS, or UI
-    playback. Use this to decide whether an interrupt is worth performing."""
-    rt = try_get_app_runtime()
-    if rt is None:
-        return False
-    if rt.generating.is_set():
-        return True
-    # Check if TTS is producing audio or UI is still displaying/playing
-    if rt.tts_queue is not None and not rt.tts_queue.empty():
-        return True
-    if rt.audio_path_queue is not None and not rt.audio_path_queue.empty():
-        return True
-    return False
-
-
-def request_interrupt() -> None:
-    """Cancel the current LLM generation and flush all downstream queues.
-
-    This is the central interrupt orchestrator.  It:
-    1. Signals cancellation so the LLM stream loop exits early.
-    2. Aborts the in-flight HTTP request via the adapter.
-    3. Clears the TTS queue (parsed dialog messages not yet synthesized).
-    4. Stops currently-playing TTS audio.
-    5. Clears the UI queue (synthesized audio not yet displayed).
-    6. Hides the busy bar and resets the generating flag.
-    """
-    rt = get_app_runtime()
-
-    # 1. Signal cancellation — LLMWorker stream loop will break on this
-    rt.cancellation_requested.set()
-
-    # 2. Abort the in-flight LLM API request
-    if rt.llm_manager is not None:
-        try:
-            rt.llm_manager.cancel_current_chat()
-        except Exception:
-            pass
-
-    # 3. Discard pending TTS synthesis items
-    if rt.tts_queue is not None:
-        try:
-            rt.tts_queue.clear()
-        except Exception:
-            pass
-
-    # 4. Stop currently-playing audio
-    if rt.ui_worker is not None:
-        try:
-            rt.ui_worker.skip_speech()
-        except Exception:
-            pass
-
-    # 5. Discard pending UI display items
-    if rt.audio_path_queue is not None:
-        try:
-            rt.audio_path_queue.clear()
-        except Exception:
-            pass
-
-    # 6. Hide busy bar
-    if rt.ui_update_manager is not None:
-        try:
-            rt.ui_update_manager.hide_busy_bar()
-        except Exception:
-            pass
-
-    # 7. Reset generating flag
-    rt.generating.clear()
+    return rt is not None and rt.chat_turn_service.is_active()
