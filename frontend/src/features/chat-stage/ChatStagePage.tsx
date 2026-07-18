@@ -363,14 +363,19 @@ export function ChatStagePage() {
       hideCloseButton={standaloneDesktopWindow}
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
+      onCancelBatch={() => void sendCommand({ type: "cancel-input-batch" })}
       onCloseSurface={closeSurface}
       onCommand={sendCommand}
       onConfigOpenChange={setToolbarConfigOpen}
+      onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
       onLockedChange={setDialogControlsLocked}
       onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
+      onTurnOptionsChange={updateTurnOptions}
       showBranches={conversationTreeEnabled}
       showAsrControl={!viewModel.layers.input && viewModel.status === "paused"}
+      turnOptions={state.turnOptions}
+      turnState={state.turnState}
     />
   );
 
@@ -463,20 +468,15 @@ export function ChatStagePage() {
         <InputLayer
           asrPaused={viewModel.status === "paused"}
           autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
+          batchEnabled={state.turnOptions.batchEnabled}
           disabled={viewModel.inputDisabled}
           hidden={!viewModel.layers.input}
           inputLayout={inputLayout}
           longPressTalkEnabled={longPressTalkEnabled}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
-          onCancelBatch={() => void sendCommand({ type: "cancel-input-batch" })}
           onCommand={sendCommand}
-          onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
           onInputActivity={updateInputActivity}
-          onOpenChatSettings={() => setToolbarConfigOpen(true)}
           onSubmit={submit}
-          onTurnOptionsChange={updateTurnOptions}
-          turnOptions={state.turnOptions}
-          turnState={state.turnState}
           value={viewModel.inputDraft}
         />
         <HistoryDialog

@@ -211,16 +211,32 @@ describe("ChatStagePage", () => {
     );
   });
 
-  it("places interrupt, stacking, and chat settings controls above the input", async () => {
+  it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {
+    themeContextMocks.optional = {
+      style: {
+        "--chat-dialog-toolbar-placement": "input",
+        "--chat-dialog-toolbar-reveal": "hover",
+      } as CSSProperties,
+    };
     renderPage();
 
     const input = await screen.findByRole("textbox");
-    const controls = screen.getByRole("group", { name: "Chat sending controls" });
-    expect(within(controls).getByRole("button", { name: "Interrupt" })).toHaveAttribute("aria-pressed", "true");
-    expect(within(controls).getByRole("button", { name: "Stack" })).toHaveAttribute("aria-pressed", "false");
+    expect(document.querySelector(".input-layer__turn-bar")).toBeNull();
+    const toolbarLayer = document.querySelector(".dialog-toolbar-layer") as HTMLElement;
+    expect(toolbarLayer).toHaveAttribute("data-placement", "input");
+    expect(toolbarLayer).toHaveAttribute("data-reveal", "hover");
+    const toolbar = within(toolbarLayer).getByRole("toolbar", { name: "Chat stage actions" });
+    const settingsButton = within(toolbar).getByRole("button", { name: "Chat settings" });
+    expect(screen.queryByRole("dialog", { name: "Chat settings" })).not.toBeInTheDocument();
+
+    fireEvent.click(settingsButton);
+    const settings = screen.getByRole("dialog", { name: "Chat settings" });
+    const stackSwitch = within(settings).getByRole("checkbox", { name: "Stack consecutive messages" });
+    expect(stackSwitch).not.toBeChecked();
+    expect(within(settings).getByRole("checkbox", { name: "Allow new messages to interrupt replies" })).toBeChecked();
 
     fireEvent.change(input, { target: { value: "keep this draft" } });
-    fireEvent.click(within(controls).getByRole("button", { name: "Stack" }));
+    fireEvent.click(stackSwitch);
 
     await waitFor(() =>
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({
@@ -228,15 +244,8 @@ describe("ChatStagePage", () => {
         type: "update-turn-options",
       }),
     );
-    await waitFor(() =>
-      expect(within(controls).getByRole("button", { name: "Stack" })).toHaveAttribute("aria-pressed", "true"),
-    );
+    await waitFor(() => expect(stackSwitch).toBeChecked());
     expect(input).toHaveValue("keep this draft");
-
-    fireEvent.click(within(controls).getByRole("button", { name: "Chat settings" }));
-    const dialog = await screen.findByRole("dialog", { name: "Chat appearance settings" });
-    expect(within(dialog).getByText("Sending behavior")).toBeInTheDocument();
-    expect(within(dialog).getByRole("slider", { name: "Stack idle timeout" })).toHaveValue("5");
   });
 
   it("shows pending stack state and keeps input enabled only when interruption is allowed", async () => {
@@ -257,7 +266,8 @@ describe("ChatStagePage", () => {
     const { unmount } = renderPage();
 
     expect(await screen.findByRole("textbox")).not.toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("2 queued · 4s");
+    fireEvent.click(screen.getByRole("button", { name: "Chat settings" }));
+    expect(screen.getByRole("status")).toHaveTextContent(/2 queued.*4s/);
     unmount();
 
     mocks.getChatSnapshot.mockResolvedValue(
@@ -776,6 +786,7 @@ describe("ChatStagePage", () => {
     expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
     expect(within(actionBar).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
     expect(within(actionBar).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
+    expect(within(actionBar).getByRole("button", { name: "Chat settings" })).toHaveTextContent("Chat settings");
     expect(within(actionBar).getByRole("button", { name: "Chat appearance settings" })).toHaveTextContent("APPEARANCE");
     expect(within(dialog).queryByRole("slider")).not.toBeInTheDocument();
 
