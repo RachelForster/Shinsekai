@@ -150,6 +150,7 @@ describe("browser preview platform chat themes", () => {
     const windborneManifest = await platform.chat.getThemeManifest("windborne-adventure");
     expect(windborneManifest.tokens.global?.themeColor).toBe("#f3cf57");
     expect(windborneManifest.tokens.dialog?.chrome).toBe("none");
+    expect(windborneManifest.tokens.input?.borderRadius).toBe("calc(var(--stage-input-height) / 2)");
     expect(windborneManifest.tokens.logs?.code?.background).toBe("rgba(10,19,25,0.88)");
 
     const windborneTheme = await platform.chat.getTheme();

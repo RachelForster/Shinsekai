@@ -600,7 +600,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
     style["--stage-input-height"] = "calc(var(--chat-input-button-size) + clamp(14px, 1.8svh, 18px))";
     style["--chat-input-border-color"] = "transparent";
-    style["--chat-input-border-radius"] = "999px";
+    style["--chat-input-border-radius"] = "calc(var(--stage-input-height) / 2)";
     style["--chat-send-background"] = "transparent";
     style["--chat-send-border-color"] = "transparent";
     style["--chat-send-border-radius"] = "50%";

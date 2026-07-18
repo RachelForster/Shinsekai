@@ -429,7 +429,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-send-display"]).toBe("none");
     expect(resolved.style["--chat-input-voice-stack-display"]).toBe("none");
     expect(resolved.style["--chat-input-border-color"]).toBe("transparent");
-    expect(resolved.style["--chat-input-border-radius"]).toBe("999px");
+    expect(resolved.style["--chat-input-border-radius"]).toBe("calc(var(--stage-input-height) / 2)");
     expect(resolved.style["--chat-input-field-background"]).toBe("transparent");
     expect(resolved.style["--chat-input-field-border-radius"]).toBe("0px");
     expect(resolved.style["--chat-send-background"]).toBe("transparent");

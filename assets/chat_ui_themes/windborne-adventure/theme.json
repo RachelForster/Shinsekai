@@ -8,7 +8,7 @@
     "ja": "風渡りアドベンチャー"
   },
   "author": "Shinsekai",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": {
     "zh_CN": "参考蓝天山野冒险截图制作的 ADV 风格主题：右侧胶囊选项、金色名牌、底部白字字幕。",
     "en": "An open-sky adventure ADV theme with right-side choice pills, a gold nameplate, and bottom caption text.",
@@ -87,7 +87,7 @@
     "input": {
       "background": "rgba(87,91,104,0.9)",
       "borderColor": "rgba(244,250,255,0)",
-      "borderRadius": "999px",
+      "borderRadius": "calc(var(--stage-input-height) / 2)",
       "boxShadow": "0 14px 34px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.16)",
       "color": "#ffffff",
       "layout": "pill",
