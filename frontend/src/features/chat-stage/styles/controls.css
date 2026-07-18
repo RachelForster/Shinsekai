@@ -448,10 +448,11 @@
 .dialog-stage-controls__rail {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
+  white-space: nowrap;
 }
 
 .dialog-stage-controls__rail > [data-plugin-slot="chat-dialog-actions"] {

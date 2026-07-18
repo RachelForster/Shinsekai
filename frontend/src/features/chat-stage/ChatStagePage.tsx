@@ -483,7 +483,9 @@ export function ChatStagePage() {
           entries={state.historyEntries ?? []}
           forkEnabled={forkHistoryEnabled}
           loading={historyLoading}
+          onClear={() => void sendCommand({ type: "clear-history" })}
           onClose={() => setHistoryDialogOpen(false)}
+          onCopy={() => void sendCommand({ type: "copy-history" })}
           onFork={(userIndex) => {
             setHistoryDialogOpen(false);
             void sendCommand({ payload: { userIndex }, type: "fork-history" });

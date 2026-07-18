@@ -75,6 +75,17 @@
   background: var(--logs-event-background, rgba(255, 255, 255, 0.12));
 }
 
+.chat-history__header-action {
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 9px;
+}
+
+.chat-history-dialog .chat-history__header-action.button--danger {
+  border-color: color-mix(in oklch, var(--danger, #ff6b78) 44%, transparent);
+  color: var(--danger, #ff8b95);
+}
+
 .chat-history__empty {
   margin: 0;
   color: var(--history-muted);

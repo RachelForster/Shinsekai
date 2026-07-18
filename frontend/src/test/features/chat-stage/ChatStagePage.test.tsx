@@ -687,7 +687,9 @@ describe("ChatStagePage", () => {
     renderPage();
 
     await screen.findByText("Ready");
-    fireEvent.click(await screen.findByRole("button", { name: "Clear history" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open history" }));
+    const historyDialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    fireEvent.click(within(historyDialog).getByRole("button", { name: "Clear history" }));
     expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "clear-history" });
 
     const dialog = screen.getByRole("dialog", { name: "Clear history" });
@@ -780,14 +782,16 @@ describe("ChatStagePage", () => {
     const actionBar = within(actionTray).getByRole("toolbar", { name: "Chat stage actions" });
     const lockButton = within(actionBar).getByRole("button", { name: "Lock chat actions" });
     expect(lockButton).toHaveTextContent("LOCK");
-    expect(within(actionBar).getByRole("button", { name: "Open history" })).toHaveTextContent("LOG");
+    expect(within(actionBar).getByRole("button", { name: "Open history" })).toHaveTextContent("HISTORY");
     expect(within(actionBar).getByRole("button", { name: "Open conversation tree" })).toHaveTextContent("TREE");
-    expect(within(actionBar).getByRole("button", { name: "Skip" })).toHaveTextContent("SKIP");
     expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
-    expect(within(actionBar).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
-    expect(within(actionBar).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
+    expect(within(actionBar).queryByRole("button", { name: "Skip" })).not.toBeInTheDocument();
+    expect(within(actionBar).queryByRole("button", { name: "Copy history" })).not.toBeInTheDocument();
+    expect(within(actionBar).queryByRole("button", { name: "Clear history" })).not.toBeInTheDocument();
     expect(within(actionBar).getByRole("button", { name: "Chat settings" })).toHaveTextContent("Chat settings");
-    expect(within(actionBar).getByRole("button", { name: "Chat appearance settings" })).toHaveTextContent("APPEARANCE");
+    expect(within(actionBar).getByRole("button", { name: "Chat appearance settings" })).toHaveTextContent(
+      "APPEARANCE SETTINGS",
+    );
     expect(within(dialog).queryByRole("slider")).not.toBeInTheDocument();
 
     fireEvent.click(lockButton);
@@ -1032,10 +1036,12 @@ describe("ChatStagePage", () => {
     renderPage();
 
     await screen.findByText("Ready");
-    fireEvent.click(screen.getByRole("button", { name: "Copy history" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open history" }));
+    const historyDialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    fireEvent.click(within(historyDialog).getByRole("button", { name: "Copy history" }));
 
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "copy-history" }));
-    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(document.querySelector(".dialog-layer__html")).toHaveTextContent("Ready");
   });
 
   it("applies runtime text speed and dialog opacity from chat config", async () => {
@@ -1504,6 +1510,8 @@ describe("ChatStagePage", () => {
     expect(dialog).toHaveClass("chat-stage-modal");
     expect(dialog.querySelector(".chat-stage-modal__header")).not.toBeNull();
     expect(dialog.querySelector(".chat-stage-modal__summary")?.tagName).toBe("DIV");
+    expect(within(dialog).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
+    expect(within(dialog).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
     expect(within(dialog).getByText("2 entries")).toBeInTheDocument();
     const nameplates = dialog.querySelectorAll(".chat-history__nameplate");
     expect(nameplates).toHaveLength(2);

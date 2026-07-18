@@ -63,6 +63,21 @@
   min-width: 0;
 }
 
+.chat-stage-modal__header-controls,
+.chat-stage-modal__header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.chat-stage-modal__header-controls {
+  gap: 10px;
+}
+
+.chat-stage-modal__header-actions {
+  gap: 8px;
+}
+
 .chat-stage-modal__eyebrow {
   display: block;
   margin-bottom: 5px;

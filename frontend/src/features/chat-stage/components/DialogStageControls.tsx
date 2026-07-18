@@ -7,7 +7,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
-  Copy,
   GitBranch,
   History,
   Lock,
@@ -16,9 +15,7 @@ import {
   Play,
   RotateCcw,
   Settings,
-  SkipForward,
   SlidersHorizontal,
-  Trash2,
   Unlock,
   X,
 } from "lucide-react";
@@ -151,15 +148,6 @@ export function DialogStageControls({
             {t("chat.actionBar.branches")}
           </ToolbarButton>
           <ToolbarButton
-            aria-label={t("chat.toolbar.skipSpeech")}
-            className="dialog-stage-controls__button"
-            icon={<SkipForward aria-hidden className="button__icon" />}
-            onClick={() => onCommand({ type: "skip-speech" })}
-            tooltip={t("chat.toolbar.skipSpeech")}
-          >
-            {t("chat.actionBar.skip")}
-          </ToolbarButton>
-          <ToolbarButton
             aria-label={t("chat.toolbar.autoPlay")}
             aria-pressed={auto}
             className="dialog-stage-controls__button"
@@ -197,24 +185,6 @@ export function DialogStageControls({
               {t(asrPaused ? "chat.actionBar.resumeAsr" : "chat.actionBar.pauseAsr")}
             </ToolbarButton>
           ) : null}
-          <ToolbarButton
-            aria-label={t("chat.toolbar.copyHistory")}
-            className="dialog-stage-controls__button"
-            icon={<Copy aria-hidden className="button__icon" />}
-            onClick={() => onCommand({ type: "copy-history" })}
-            tooltip={t("chat.toolbar.copyHistory")}
-          >
-            {t("chat.actionBar.copy")}
-          </ToolbarButton>
-          <ToolbarButton
-            aria-label={t("chat.toolbar.clearHistory")}
-            className="dialog-stage-controls__button dialog-stage-controls__button--danger"
-            icon={<Trash2 aria-hidden className="button__icon" />}
-            onClick={() => onCommand({ type: "clear-history" })}
-            tooltip={t("chat.toolbar.clearHistory")}
-          >
-            {t("chat.actionBar.clear")}
-          </ToolbarButton>
           <ToolbarButton
             aria-controls="chat-turn-settings-popover"
             aria-expanded={chatSettingsOpen}
