@@ -73,20 +73,23 @@ def _resolve_selected_file(raw_path: Any) -> Path:
         raise ValueError("Attachment path is too long")
     if "\x00" in value:
         raise ValueError("Attachment path contains null bytes")
-    selected = Path(value).expanduser()
-    if not selected.is_absolute():
-        raise ValueError("Attachment path must be absolute")
-    if any(part in {".", ".."} for part in selected.parts):
+    if any(part in {".", ".."} for part in value.replace("\\", "/").split("/")):
         raise ValueError("Attachment path contains invalid traversal segments")
-    resolved = selected.resolve(strict=True)
-    root = _chat_attachment_root()
-    try:
-        resolved.relative_to(root)
-    except ValueError as exc:
-        raise ValueError("Attachment path is outside the allowed directory") from exc
-    if not resolved.is_file():
-        raise ValueError(f"Attachment is not a file: {resolved}")
-    return resolved
+
+    expanded = os.path.expanduser(value)
+    if not os.path.isabs(expanded):
+        raise ValueError("Attachment path must be absolute")
+
+    normalized = os.path.normcase(os.path.realpath(expanded))
+    root = os.path.normcase(os.path.realpath(str(_chat_attachment_root())))
+    root_prefix = root if root.endswith(os.sep) else f"{root}{os.sep}"
+    if not normalized.startswith(root_prefix):
+        raise ValueError("Attachment path is outside the allowed directory")
+
+    selected = Path(normalized).resolve(strict=True)
+    if not selected.is_file():
+        raise ValueError(f"Attachment is not a file: {selected}")
+    return selected
 
 
 def resolve_chat_attachments(raw_items: Iterable[Mapping[str, Any]] | None) -> list[ResolvedChatAttachment]:

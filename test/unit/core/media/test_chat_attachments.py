@@ -58,7 +58,9 @@ def test_resolve_chat_attachments_rejects_explicit_traversal_segments(tmp_path: 
 def test_resolve_chat_attachments_rejects_paths_outside_configured_root(tmp_path: Path, monkeypatch):
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir()
-    outside_file = tmp_path / "private.txt"
+    outside_root = tmp_path / "allowed-private"
+    outside_root.mkdir()
+    outside_file = outside_root / "private.txt"
     outside_file.write_text("secret", encoding="utf-8")
     monkeypatch.setenv(CHAT_ATTACHMENTS_ROOT_ENV, str(allowed_root))
 
