@@ -46,6 +46,7 @@ Shinsekai/
     tools/
 
   core/
+    messaging/
     model_assets/
     runtime/
     media/
@@ -184,6 +185,7 @@ ai/tools/memory_tools.py LLM tool 注册和参数包装
 ```text
 core/model_assets/  模型下载、缓存检测、模型源、下载进度
 core/runtime/       Python runtime、依赖检测、运行诊断
+core/messaging/     消息接入、输入批处理、会话打断和流式消息解析
 core/media/         文件、路径、安全校验、媒体资源处理
 core/sprite/        聊天记录、立绘、分支存储等角色演出数据
 core/app_update/    主程序更新、GitHub Release、updater manifest
@@ -331,6 +333,7 @@ test/unit/sdk/
 
 - 新的模型下载、缓存、来源逻辑：放 `core/model_assets/`。
 - 新的 runtime 检测和依赖安装逻辑：放 `core/runtime/`。
+- 新的消息接入、批处理和会话打断逻辑：放 `core/messaging/`。
 - 新的长期记忆业务逻辑：放 `ai/memory/`。
 - 新的 LLM tool 包装：放 `ai/tools/`，或在迁移前暂放 `llm/tools/`。
 - 新的图片理解 adapter 和 provider 调度：放 `ai/vision/`；图片文件处理与业务编排仍放 `core/media/`。

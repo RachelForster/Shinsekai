@@ -52,6 +52,29 @@ describe("chatStageReducer", () => {
     expect(state.status).toBe("generating");
   });
 
+  it("renders pending stacked messages as newline-separated user dialogue", () => {
+    const viewModel = buildChatStageViewModel({
+      ...emptyChatState,
+      characterName: "Mio",
+      dialogHtml: "<p>old reply</p>",
+      dialogText: "old reply",
+      turnState: {
+        enabled: true,
+        pendingCount: 2,
+        pendingMessages: ["message A", "message B"],
+        remainingSeconds: 4,
+        scheduled: true,
+        typing: false,
+      },
+      userDisplayName: "Aoi",
+    });
+
+    expect(viewModel.dialogCharacterName).toBe("Aoi");
+    expect(viewModel.dialogHtml).toBeUndefined();
+    expect(viewModel.dialogText).toBe("message A\nmessage B");
+    expect(viewModel.layers.dialog).toBe(true);
+  });
+
   it("rolls an optimistic option submission back to the previous presentation", () => {
     const submitted = chatStageReducer(
       {
@@ -188,6 +211,47 @@ describe("chatStageReducer", () => {
     expect(staleSnapshot.status).toBe("generating");
     expect(staleSnapshot.optimisticSubmission?.text).toBe("hello");
     expect(staleSnapshot.historyEntries).toEqual([{ id: "user-1", role: "user", text: "Aoi: hello" }]);
+  });
+
+  it("accepts a newer wrapped snapshot when its payload omits eventSeq", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "old reply",
+        eventSeq: 2,
+        inputDraft: "hello",
+        userDisplayName: "Aoi",
+      },
+      { queued: true, source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    const pending = chatStageReducer(submitted, {
+      event: {
+        seq: 3,
+        snapshot: {
+          characterName: "Mio",
+          dialogText: "old reply",
+          inputDraft: "",
+          options: [],
+          sprites: [],
+          status: "idle",
+          turnState: {
+            enabled: true,
+            pendingCount: 1,
+            remainingSeconds: 5,
+            scheduled: true,
+            typing: false,
+          },
+        },
+        ts: 3,
+        type: "snapshot",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(pending.eventSeq).toBe(3);
+    expect(pending.turnState).toMatchObject({ pendingCount: 1, scheduled: true });
   });
 
   it.each(["send-message", "submit-option"] as const)(
@@ -1048,5 +1112,44 @@ describe("chatStageReducer", () => {
     });
     expect(withNotificationAgain.notificationText).toBeUndefined();
     expect(withNotificationAgain.layers.notification).toBe(false);
+  });
+
+  it("applies live chat turn state events", () => {
+    const next = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        options: {
+          batchEnabled: true,
+          batchIdleSeconds: 7,
+          interruptEnabled: false,
+        },
+        state: {
+          enabled: true,
+          pendingCount: 3,
+          pendingMessages: ["one", "two", "three"],
+          remainingSeconds: 2,
+          scheduled: true,
+          typing: false,
+        },
+        ts: 1,
+        type: "chat.turn.state",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(next.turnState).toEqual({
+      enabled: true,
+      pendingCount: 3,
+      pendingMessages: ["one", "two", "three"],
+      remainingSeconds: 2,
+      scheduled: true,
+      typing: false,
+    });
+    expect(next.turnOptions).toEqual({
+      batchEnabled: true,
+      batchIdleSeconds: 7,
+      interruptEnabled: false,
+    });
   });
 });

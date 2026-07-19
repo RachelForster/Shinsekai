@@ -47,8 +47,13 @@ export function useChatStageCommands({
       }
       try {
         const snapshot = await sendChatCommand(command);
-        const commandAlreadyApplied = command.type === "send-message" || command.type === "submit-option";
-        if (command.type !== "copy-history" && !commandAlreadyApplied) {
+        const commandAppliedByEventStream = [
+          "cancel-input-batch",
+          "flush-input-batch",
+          "send-message",
+          "submit-option",
+        ].includes(command.type);
+        if (command.type !== "copy-history" && !commandAppliedByEventStream) {
           dispatch({ snapshot, type: "hydrate" });
         }
         if (command.type === "copy-history") {

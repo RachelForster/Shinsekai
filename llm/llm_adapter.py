@@ -57,6 +57,16 @@ class DeepSeekAdapter(LLMAdapter):
         _re = str(reasoning_effort or "high").strip().lower()
         self.reasoning_effort = _re if _re in ("high", "max") else "high"
 
+    def cancel(self) -> None:
+        """Close the active DeepSeek stream/response to abort an in-flight request."""
+        if self._current_stream is not None:
+            try:
+                self._current_stream.close()
+            except Exception:
+                pass
+            self._current_stream = None
+        self._current_response = None
+
     @classmethod
     def get_config_schema(cls) -> dict[str, dict]:
         return {
@@ -112,6 +122,10 @@ class DeepSeekAdapter(LLMAdapter):
                 create_kwargs["reasoning_effort"] = self.reasoning_effort
 
             response = self.client.chat.completions.create(**create_kwargs)
+            if stream:
+                self._current_stream = response
+            else:
+                self._current_response = response
             return response
         except Exception as e:
             _raise_if_http_client_error(e)
@@ -126,6 +140,16 @@ class OpenAIAdapter(LLMAdapter):
         else:
             self.client = OpenAI(api_key=api_key)
         self.model = model
+
+    def cancel(self) -> None:
+        """Close the active OpenAI stream/response to abort an in-flight request."""
+        if self._current_stream is not None:
+            try:
+                self._current_stream.close()
+            except Exception:
+                pass
+            self._current_stream = None
+        self._current_response = None
 
     @classmethod
     def get_unsupported_chat_params(cls, provider: str) -> set[str]:
@@ -157,6 +181,10 @@ class OpenAIAdapter(LLMAdapter):
             if not use_tools:
                 create_kwargs["response_format"] = response_format
             response = self.client.chat.completions.create(**create_kwargs)
+            if stream:
+                self._current_stream = response
+            else:
+                self._current_response = response
             return response
         except Exception as e:
             _raise_if_http_client_error(e)
@@ -172,9 +200,22 @@ class GeminiAdapter(LLMAdapter):
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel(model)
 
+    def cancel(self) -> None:
+        """Abort the active Gemini request."""
+        if self._current_stream is not None:
+            try:
+                if hasattr(self._current_stream, 'cancel'):
+                    self._current_stream.cancel()
+                elif hasattr(self._current_stream, 'close'):
+                    self._current_stream.close()
+            except Exception:
+                pass
+            self._current_stream = None
+        self._current_response = None
+
     def chat(self, messages: list, stream: bool = False, **kwargs):
         """Sends a message to the Gemini LLM."""
-        
+
         # messages to history format
         history = []
         for msg in messages:
@@ -188,6 +229,10 @@ class GeminiAdapter(LLMAdapter):
                 stream=stream,
                 **kwargs
             )
+            if stream:
+                self._current_stream = response
+            else:
+                self._current_response = response
             return response
         except Exception as e:
             _raise_if_http_client_error(e)
@@ -209,6 +254,16 @@ class ClaudeAdapter(LLMAdapter):
         )
         self.model = model
         self.system_prompt = ''
+
+    def cancel(self) -> None:
+        """Close the active Claude stream/response to abort an in-flight request."""
+        if self._current_stream is not None:
+            try:
+                self._current_stream.close()
+            except Exception:
+                pass
+            self._current_stream = None
+        self._current_response = None
 
     def set_user_template(self, template: str):
         self.system_prompt = template
@@ -320,7 +375,7 @@ class ClaudeAdapter(LLMAdapter):
                     })
 
             if stream:
-                return self.client.messages.stream(
+                stream_obj = self.client.messages.stream(
                     model=self.model,
                     system=system_msg,
                     messages=cleaned_msgs,
@@ -328,8 +383,10 @@ class ClaudeAdapter(LLMAdapter):
                     max_tokens=kwargs.get("max_tokens", 4096),
                     temperature=kwargs.get("temperature", 0.7)
                 )
+                self._current_stream = stream_obj
+                return stream_obj
             else:
-                return self.client.messages.create(
+                resp = self.client.messages.create(
                     model=self.model,
                     system=system_msg,
                     messages=cleaned_msgs,
@@ -337,6 +394,8 @@ class ClaudeAdapter(LLMAdapter):
                     max_tokens=kwargs.get("max_tokens", 4096),
                     temperature=kwargs.get("temperature", 0.7)
                 )
+                self._current_response = resp
+                return resp
         except Exception as e:
             _raise_if_http_client_error(e)
             print(f"Claude API Error: {e}")

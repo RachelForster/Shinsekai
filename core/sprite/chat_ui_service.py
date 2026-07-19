@@ -72,6 +72,7 @@ def wire_chat_ui_bridge(
         if emit_user_text is None:
             ctx.set_notification_hint(_tr("main.notify_chat"))
             return
+
         emit_user_text(message)
         ctx.set_notification_hint(_tr("main.notify_submitted"))
 
@@ -125,6 +126,7 @@ def wire_chat_ui_bridge(
         )
     if ui_worker is not None and hasattr(ui_worker, "skip_speech"):
         ctx.on_skip_speech_signal(lambda: ui_worker.skip_speech())
+
     ctx.on_copy_chat_history_to_clipboard(copy_chat_history_to_clipboard)
     ctx.on_revert_chat_history(
         lambda index: revert_chat_history(

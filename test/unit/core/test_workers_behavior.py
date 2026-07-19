@@ -130,6 +130,7 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     assert isinstance(output, LLMDialogMessage)
     assert output.name == "Alice"
     assert output.text == "Hi"
+    assert output.turn_id == runtime.chat_turn_service.current_turn().id
     assert user_input_queue.task_done_calls == 2
     assert user_input_queue.unfinished_tasks == 0
     runtime.llm_manager.chat.assert_called_once_with("hello", stream=False)
@@ -178,6 +179,34 @@ def test_tts_worker_start_clears_previous_cancel_state(monkeypatch) -> None:
     assert starts == [worker]
 
 
+def test_tts_worker_drops_message_scoped_to_interrupted_turn(monkeypatch) -> None:
+    tts_queue = CountingQueue()
+    audio_path_queue = CountingQueue()
+    runtime = _make_app_runtime(tts_queue=tts_queue, audio_path_queue=audio_path_queue)
+    interrupted_turn = runtime.chat_turn_service.begin_turn()
+    runtime.chat_turn_service.interrupt()
+    current_turn = runtime.chat_turn_service.begin_turn()
+    tts_queue.put(
+        LLMDialogMessage(
+            name="Alice",
+            text="stale reply",
+            asset_id="-1",
+            turn_id=interrupted_turn.id,
+        )
+    )
+    tts_queue.put(None)
+    worker = TTSWorker(tts_queue, audio_path_queue)
+    monkeypatch.setattr(worker, "_init_app", lambda: None)
+    worker.tts_message_dispatcher = SimpleNamespace(dispatch=MagicMock())
+
+    worker.run()
+
+    assert current_turn.id != interrupted_turn.id
+    worker.tts_message_dispatcher.dispatch.assert_not_called()
+    assert audio_path_queue.empty()
+    assert tts_queue.task_done_calls == 2
+
+
 def test_tts_worker_drops_dispatch_output_after_cancel() -> None:
     audio_path_queue = CountingQueue()
     _make_app_runtime(audio_path_queue=audio_path_queue)
@@ -221,6 +250,50 @@ def test_tts_worker_drops_dispatch_output_after_cancel() -> None:
     assert get_app_runtime().audio_path_queue is audio_path_queue
 
 
+def test_tts_worker_drops_dispatch_output_after_runtime_cancel() -> None:
+    audio_path_queue = CountingQueue()
+    runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
+    turn = runtime.chat_turn_service.begin_turn()
+    worker = TTSWorker(CountingQueue(), audio_path_queue)
+    started = threading.Event()
+    release = threading.Event()
+    attempted_emit = threading.Event()
+
+    def dispatch(_item):
+        started.set()
+        assert release.wait(timeout=1)
+        get_app_runtime().audio_path_queue.put(
+            TTSOutputMessage(
+                audio_path="late.wav",
+                name="Alice",
+                text="late",
+                asset_id="-1",
+            )
+        )
+        attempted_emit.set()
+
+    worker.tts_message_dispatcher = SimpleNamespace(dispatch=dispatch)
+    runner = threading.Thread(
+        target=worker._dispatch_with_cancel,
+        args=(LLMDialogMessage(name="Alice", text="hello", asset_id="-1"),),
+    )
+
+    runner.start()
+    assert started.wait(timeout=1)
+    turn.cancelled.set()
+    release.set()
+    assert attempted_emit.wait(timeout=1)
+    runner.join(timeout=1)
+
+    assert not runner.is_alive()
+    assert audio_path_queue.empty()
+    for _ in range(20):
+        if get_app_runtime().audio_path_queue is audio_path_queue:
+            break
+        time.sleep(0.01)
+    assert get_app_runtime().audio_path_queue is audio_path_queue
+
+
 def test_ui_worker_skip_speech_is_noop_when_no_dialog_or_audio_is_active() -> None:
     audio_path_queue = Queue()
     runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
@@ -237,6 +310,25 @@ def test_ui_worker_skip_speech_is_noop_when_no_dialog_or_audio_is_active() -> No
     worker.dialog_channel.stop.assert_not_called()
     runtime.ui_update_manager.post_tts_skip.assert_not_called()
     assert worker.task_done_requested.set_calls == 0
+
+
+def test_ui_worker_skip_speech_stops_busy_channel_without_queued_audio() -> None:
+    audio_path_queue = Queue()
+    runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
+    worker = UIWorker(audio_path_queue)
+    worker.task_done_requested = FakeEvent()
+    worker.current_audio_path = None
+    runtime.ui_playback.current_audio_path = None
+    worker.dialog_channel = MagicMock()
+    worker.dialog_channel.get_busy.return_value = True
+
+    worker.skip_speech()
+
+    worker.dialog_channel.stop.assert_called_once_with()
+    assert worker.current_audio_path is None
+    assert runtime.ui_playback.current_audio_path is None
+    runtime.ui_update_manager.post_tts_skip.assert_called_once_with()
+    assert worker.task_done_requested.set_calls == 1
 
 
 def test_ui_worker_skip_speech_stops_active_audio_and_emits_tts_skip() -> None:

@@ -63,6 +63,10 @@ export interface ApiConfig {
   llm_model: Record<string, string>;
   llm_provider: string;
   is_streaming: boolean;
+  interrupt_enabled: boolean;
+  is_batch_input_enabled: boolean;
+  batch_input_timeout: number;
+  batch_input_separator: string;
   temperature: number;
   repetition_penalty: number;
   presence_penalty: number;
@@ -803,6 +807,21 @@ export interface ChatExperimentalFeatures {
   forkHistory: boolean;
 }
 
+export interface ChatTurnOptions {
+  batchEnabled: boolean;
+  batchIdleSeconds: number;
+  interruptEnabled: boolean;
+}
+
+export interface ChatTurnState {
+  enabled: boolean;
+  pendingCount: number;
+  pendingMessages?: string[];
+  remainingSeconds: number | null;
+  scheduled: boolean;
+  typing: boolean;
+}
+
 export type ChatStatIcon = "clock" | "coins" | "gauge" | "heart" | "shield" | "sparkles" | "star" | "target" | "zap";
 
 export interface ChatStat {
@@ -843,6 +862,8 @@ export interface ChatSnapshot {
   status: ChatRuntimeStatus;
   statusMessage?: string;
   systemMessageText?: string;
+  turnOptions?: ChatTurnOptions;
+  turnState?: ChatTurnState;
   userDisplayName?: string;
   voiceLanguage?: string;
   wsUrl?: string;
@@ -861,11 +882,14 @@ export interface ChatCommand {
   cmdId?: string;
   payload?: unknown;
   type:
+    | "cancel-input-batch"
     | "change-voice-language"
+    | "chat-input-state"
     | "clear-history"
     | "copy-history"
     | "dialog-advance"
     | "fork-history"
+    | "flush-input-batch"
     | "open-history"
     | "pause-asr"
     | "rename-branch"
@@ -875,7 +899,8 @@ export interface ChatCommand {
     | "send-message"
     | "skip-speech"
     | "switch-branch"
-    | "submit-option";
+    | "submit-option"
+    | "update-turn-options";
 }
 
 export type ChatRealtimeCommandType = Exclude<ChatCommand["type"], "copy-history" | "open-history"> | "revert-history";
@@ -916,6 +941,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "user.display_name.change"; name: string })
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[] })
   | (ChatEventBase & { type: "conversation.tree"; tree: ChatConversationTree })
+  | (ChatEventBase & { type: "chat.turn.state"; state: ChatTurnState; options?: ChatTurnOptions })
   | (ChatEventBase & {
       type: "sprite.show";
       characterName: string;

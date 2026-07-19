@@ -3,7 +3,7 @@ import { Languages } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
-import type { ChatCommand } from "../../../shared/platform/types";
+import type { ChatCommand, ChatTurnOptions } from "../../../shared/platform/types";
 import { Select, Switch } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { ChatStageModal } from "./ChatStageModal";
@@ -125,6 +125,7 @@ export function ChatConfigDialog({
   onSpriteScaleChange,
   onTextSpeedChange,
   onTextStyleChange,
+  onTurnOptionsChange,
   onWindowScaleChange,
   open,
   spriteOffsetX,
@@ -132,6 +133,7 @@ export function ChatConfigDialog({
   spriteScales,
   sprites,
   textSpeed,
+  turnOptions,
   voiceLanguage,
   windowScale,
 }: {
@@ -167,6 +169,7 @@ export function ChatConfigDialog({
   onSpriteScaleChange: (spriteKey: string, value: number) => void;
   onTextSpeedChange: (value: number) => void;
   onTextStyleChange: (target: ChatStageTextStyleTarget, patch: ChatStageTextStylePatch) => void;
+  onTurnOptionsChange: (options: ChatTurnOptions) => void;
   onWindowScaleChange: (value: number) => void;
   open: boolean;
   spriteOffsetX: number;
@@ -174,6 +177,7 @@ export function ChatConfigDialog({
   spriteScales: Record<string, number>;
   sprites: ChatStageSprite[];
   textSpeed: number;
+  turnOptions: ChatTurnOptions;
   voiceLanguage: string;
   windowScale: number;
 }) {
@@ -337,6 +341,54 @@ export function ChatConfigDialog({
               onChange={(event) => onAutoHideInputChange(event.target.checked)}
             />
           </div>
+        </section>
+        <section className="chat-config-dialog__section">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionSending")}</h3>
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <label className="chat-config-dialog__label" htmlFor="chat-config-interrupt-enabled">
+              {t("chat.config.interruptEnabled")}
+            </label>
+            <Switch
+              checked={turnOptions.interruptEnabled}
+              className="chat-config-dialog__switch"
+              id="chat-config-interrupt-enabled"
+              onChange={(event) => onTurnOptionsChange({ ...turnOptions, interruptEnabled: event.target.checked })}
+            />
+          </div>
+          <p className="chat-config-dialog__help">{t("chat.config.interruptHelp")}</p>
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <label className="chat-config-dialog__label" htmlFor="chat-config-batch-enabled">
+              {t("chat.config.batchEnabled")}
+            </label>
+            <Switch
+              checked={turnOptions.batchEnabled}
+              className="chat-config-dialog__switch"
+              id="chat-config-batch-enabled"
+              onChange={(event) => onTurnOptionsChange({ ...turnOptions, batchEnabled: event.target.checked })}
+            />
+          </div>
+          <p className="chat-config-dialog__help">{t("chat.config.batchHelp")}</p>
+          <label className="chat-config-dialog__row chat-config-dialog__range-row">
+            <span className="chat-config-dialog__label">{t("chat.config.batchTimeout")}</span>
+            <span className="chat-config-dialog__range-control">
+              <input
+                aria-label={t("chat.config.batchTimeout")}
+                className="chat-config-dialog__range"
+                disabled={!turnOptions.batchEnabled}
+                max={120}
+                min={0.3}
+                onChange={(event) =>
+                  onTurnOptionsChange({ ...turnOptions, batchIdleSeconds: Number(event.target.value) })
+                }
+                step={0.1}
+                type="range"
+                value={turnOptions.batchIdleSeconds}
+              />
+              <span className="chat-config-dialog__range-value">
+                {t("chat.config.batchTimeoutValue", { value: turnOptions.batchIdleSeconds })}
+              </span>
+            </span>
+          </label>
         </section>
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionConversation")}</h3>

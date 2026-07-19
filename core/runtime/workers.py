@@ -8,7 +8,7 @@ from sdk.logging.timing import tracker
 from sdk.exception.types import classify_exception
 from sdk.exception.presenter import format_llm_exception_message
 
-from queue import Queue
+from queue import Queue, Empty
 
 from PySide6.QtCore import QThread
 
@@ -39,12 +39,15 @@ logger = get_logger(__name__)
 class _CancelAwareQueue:
     """Delegate queue operations, but drop new outputs after cancellation."""
 
-    def __init__(self, queue, cancel_event: threading.Event) -> None:
+    def __init__(self, queue, *cancel_events: threading.Event | None) -> None:
         self._queue = queue
-        self._cancel_event = cancel_event
+        self._cancel_events = tuple(event for event in cancel_events if event is not None)
+
+    def _cancelled(self) -> bool:
+        return any(event.is_set() for event in self._cancel_events)
 
     def put(self, *args, **kwargs):
-        if self._cancel_event.is_set():
+        if self._cancelled():
             return None
         return self._queue.put(*args, **kwargs)
 
@@ -138,11 +141,18 @@ class LLMWorker(QThreadDagNode):
         while self.running:
             got_item = False
             turn_scope = None
+            turn = None
             try:
                 message: UserInputMessage = self.user_input_queue.get()
                 got_item = True
                 if message is None:
                     break
+
+                rt = get_app_runtime()
+                turn = rt.chat_turn_service.begin_turn()
+
+                if turn.is_cancelled():
+                    continue
 
                 turn_scope = log_context(turn_id=new_log_id("turn_"))
                 turn_scope.__enter__()
@@ -169,6 +179,10 @@ class LLMWorker(QThreadDagNode):
                 with tracker.track("LLM chat total"):
                     raw_response = self.llm_manager.chat(message.text, stream=is_streaming)
 
+                if turn.is_cancelled():
+                    # chat() returned early due to cancel — skip parse / persist
+                    continue
+
                 if is_streaming:
                     response_stream = raw_response
                 else:
@@ -177,9 +191,12 @@ class LLMWorker(QThreadDagNode):
                 parser = LlmResponseStreamParser()
                 reasoning_shown = ""
                 message_count = 0
+                raw_chunks: list = []
 
                 with tracker.track("LLM stream parse"):
                     for chunk in response_stream:
+                        if turn.is_cancelled():
+                            break
                         if isinstance(chunk, dict) and STREAM_REASONING_DELTA_KEY in chunk:
                             reasoning_shown += chunk[STREAM_REASONING_DELTA_KEY]
                             preview = _busy_preview_reasoning(reasoning_shown)
@@ -190,9 +207,26 @@ class LLMWorker(QThreadDagNode):
                         chunk_message = (
                             chunk if isinstance(chunk, str) else str(chunk) if chunk is not None else ""
                         )
+                        raw_chunks.append(chunk_message)
                         for llm_dialog in parser.feed(chunk_message):
                             message_count += 1
-                            self.tts_queue.put(llm_dialog)
+                            self.tts_queue.put(llm_dialog.model_copy(update={"turn_id": turn.id}))
+
+                # --- Interrupted: write committed context, discard the rest ---
+                if turn.is_cancelled():
+                    total_raw = "".join(raw_chunks)
+                    buf: str = getattr(parser, "buffer", "") or ""
+                    buf = buf.strip()
+                    if buf and total_raw.endswith(buf):
+                        committed_raw = total_raw[: len(total_raw) - len(buf)]
+                    else:
+                        committed_raw = total_raw
+                    if committed_raw.strip():
+                        try:
+                            self.llm_manager.add_message("assistant", committed_raw.strip())
+                        except Exception:
+                            pass
+                    continue
 
                 if message_count == 0:
                     _msg = tr("desktop.llm_parse_empty")
@@ -232,6 +266,8 @@ class LLMWorker(QThreadDagNode):
                 except Exception:
                     pass
             finally:
+                if turn is not None:
+                    get_app_runtime().chat_turn_service.mark_generation_complete(turn)
                 if turn_scope is not None:
                     turn_scope.__exit__(None, None, None)
                 if got_item:
@@ -295,29 +331,41 @@ class TTSWorker(QThreadDagNode):
         self._cancel_event.clear()
         super().start()
 
-    def _dispatch_with_cancel(self, item):
+    def _dispatch_with_cancel(self, item, turn=None):
         """
         在 daemon 子线程中执行 dispatcher.dispatch，主线程等待完成或取消。
-        - 取消发生时（_cancel_event 被设置），直接返回，不等待子线程。
+        - worker stop 或 runtime interrupt 取消时，直接返回，不等待子线程。
         - 子线程异常会被捕获并在主线程重新抛出，保持原有异常处理路径。
         """
         done = threading.Event()
         error = [None]
+        rt = try_get_app_runtime()
+        if turn is None and rt is not None:
+            turn = rt.chat_turn_service.current_turn()
+        runtime_cancel_event = getattr(turn, "cancelled", None)
+
+        def cancelled() -> bool:
+            return self._cancel_event.is_set() or bool(
+                runtime_cancel_event is not None and runtime_cancel_event.is_set()
+            )
 
         def work():
-            rt = try_get_app_runtime()
             original_audio_queue = None
             guarded_audio_queue = None
             try:
                 if rt is not None:
                     original_audio_queue = rt.audio_path_queue
-                    guarded_audio_queue = _CancelAwareQueue(original_audio_queue, self._cancel_event)
+                    guarded_audio_queue = _CancelAwareQueue(
+                        original_audio_queue,
+                        self._cancel_event,
+                        runtime_cancel_event,
+                    )
                     rt.audio_path_queue = guarded_audio_queue
-                if self._cancel_event.is_set():
+                if cancelled():
                     return
                 self.tts_message_dispatcher.dispatch(item)
             except Exception as e:
-                if not self._cancel_event.is_set():
+                if not cancelled():
                     error[0] = e
             finally:
                 if (
@@ -331,10 +379,10 @@ class TTSWorker(QThreadDagNode):
         t = threading.Thread(target=work, daemon=True)
         t.start()
 
-        while not done.is_set() and not self._cancel_event.is_set():
+        while not done.is_set() and not cancelled():
             t.join(timeout=0.1)
 
-        if self._cancel_event.is_set() and not done.is_set():
+        if cancelled() and not done.is_set():
             return
 
         if error[0] is not None:
@@ -344,17 +392,32 @@ class TTSWorker(QThreadDagNode):
         self._init_app()
         while self.running:
             item: Optional[LLMDialogMessage] = None
+            turn = None
             got_item = False
             try:
                 item = self.tts_queue.get()
                 got_item = True
                 if item is None:
                     break
+                turn = get_app_runtime().chat_turn_service.current_turn()
+                item_turn_id = getattr(item, "turn_id", None)
+                if item_turn_id is not None and item_turn_id != turn.id:
+                    continue
+                if turn.is_cancelled():
+                    continue
                 with tracker.track("TTS dispatch"):
-                    self._dispatch_with_cancel(item)   # ← 原来是直接 dispatch
+                    self._dispatch_with_cancel(item, turn)
+                if turn.is_cancelled():
+                    self.audio_path_queue.clear()
             except Exception as e:
                 logger.exception("TTS worker task failed", extra={"event": "tts.worker.failed"})
-                if item is not None:
+                current_turn = get_app_runtime().chat_turn_service.current_turn()
+                if (
+                    item is not None
+                    and turn is not None
+                    and turn.id == current_turn.id
+                    and not turn.is_cancelled()
+                ):
                     self.put_data(
                         get_app_runtime().opencc.convert(item.name),
                         item.text,
@@ -447,15 +510,33 @@ class UIWorker(QThreadDagNode):
 
     def run(self):
         self._init_app()
+        idle_count = 0
         while self.running:
             output_data: Optional[TTSOutputMessage] = None
             got_item = False
             try:
                 self.task_done_requested.clear()
-                output_data = self.audio_path_queue.get()
-                got_item = True
+                try:
+                    output_data = self.audio_path_queue.get(timeout=0.4)
+                    got_item = True
+                    idle_count = 0
+                except Empty:
+                    # Timeout — check if the full pipeline is now idle
+                    idle_count += 1
+                    if idle_count >= 12:  # ~5 s of silence
+                        rt = get_app_runtime()
+                        if rt.tts_queue.empty() and rt.audio_path_queue.empty():
+                            busy = self.dialog_channel is not None and self.dialog_channel.get_busy()
+                            if not busy:
+                                rt.chat_turn_service.mark_idle(rt.chat_turn_service.current_turn())
+                                idle_count = 0
+                    continue
+
                 if output_data is None:
                     break
+                turn = get_app_runtime().chat_turn_service.current_turn()
+                if turn.is_cancelled():
+                    continue
                 self._dialog_active = True
                 self.ui_out_dispatcher.dispatch(output_data)
             except Exception as e:

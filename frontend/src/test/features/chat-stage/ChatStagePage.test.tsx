@@ -177,6 +177,9 @@ describe("ChatStagePage", () => {
         dialogText: command.type,
         inputDraft: "",
         options: [],
+        ...(command.type === "update-turn-options"
+          ? { turnOptions: command.payload as ChatSnapshot["turnOptions"] }
+          : {}),
       }),
     );
     desktopApiMocks.startDesktopWindowDrag.mockResolvedValue(undefined);
@@ -206,6 +209,75 @@ describe("ChatStagePage", () => {
         type: "submit-option",
       }),
     );
+  });
+
+  it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {
+    themeContextMocks.optional = {
+      style: {
+        "--chat-dialog-toolbar-placement": "input",
+        "--chat-dialog-toolbar-reveal": "hover",
+      } as CSSProperties,
+    };
+    renderPage();
+
+    const input = await screen.findByRole("textbox");
+    expect(document.querySelector(".input-layer__turn-bar")).toBeNull();
+    const toolbarLayer = document.querySelector(".dialog-toolbar-layer") as HTMLElement;
+    expect(toolbarLayer).toHaveAttribute("data-placement", "input");
+    expect(toolbarLayer).toHaveAttribute("data-reveal", "hover");
+    const toolbar = within(toolbarLayer).getByRole("toolbar", { name: "Chat stage actions" });
+    const settingsButton = within(toolbar).getByRole("button", { name: "Chat settings" });
+    expect(screen.queryByRole("dialog", { name: "Chat settings" })).not.toBeInTheDocument();
+
+    fireEvent.click(settingsButton);
+    const settings = screen.getByRole("dialog", { name: "Chat settings" });
+    const stackSwitch = within(settings).getByRole("checkbox", { name: "Stack consecutive messages" });
+    expect(stackSwitch).not.toBeChecked();
+    expect(within(settings).getByRole("checkbox", { name: "Allow new messages to interrupt replies" })).toBeChecked();
+
+    fireEvent.change(input, { target: { value: "keep this draft" } });
+    fireEvent.click(stackSwitch);
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: { batchEnabled: true, batchIdleSeconds: 5, interruptEnabled: true },
+        type: "update-turn-options",
+      }),
+    );
+    await waitFor(() => expect(stackSwitch).toBeChecked());
+    expect(input).toHaveValue("keep this draft");
+  });
+
+  it("shows pending stack state and keeps input enabled only when interruption is allowed", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        status: "generating",
+        turnOptions: { batchEnabled: true, batchIdleSeconds: 5, interruptEnabled: true },
+        turnState: {
+          enabled: true,
+          pendingCount: 2,
+          remainingSeconds: 4,
+          scheduled: true,
+          typing: false,
+        },
+      }),
+    );
+
+    const { unmount } = renderPage();
+
+    expect(await screen.findByRole("textbox")).not.toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Chat settings" }));
+    expect(screen.getByRole("status")).toHaveTextContent(/2 queued.*4s/);
+    unmount();
+
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        status: "generating",
+        turnOptions: { batchEnabled: false, batchIdleSeconds: 5, interruptEnabled: false },
+      }),
+    );
+    renderPage();
+    expect(await screen.findByRole("textbox")).toBeDisabled();
   });
 
   it("anchors decorative frames to the main chat surfaces", async () => {
@@ -253,6 +325,35 @@ describe("ChatStagePage", () => {
       payload: "draft line",
       type: "send-message",
     });
+  });
+
+  it.each([
+    { inputTag: "TEXTAREA", layout: "default" as const },
+    { inputTag: "INPUT", layout: "pill" as const },
+  ])("submits the current $layout fragment before flushing a batch with Ctrl+Enter", async ({ inputTag, layout }) => {
+    if (layout === "pill") {
+      themeContextMocks.optional = {
+        resolved: { typewriter: { cps: 40 } },
+        style: { "--chat-input-layout": "pill" } as CSSProperties,
+      };
+    }
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({ turnOptions: { batchEnabled: true, batchIdleSeconds: 5, interruptEnabled: true } }),
+    );
+    renderPage();
+
+    const input = await screen.findByRole("textbox");
+    expect(input.tagName).toBe(inputTag);
+    fireEvent.change(input, { target: { value: "flush this fragment" } });
+    mocks.sendChatCommand.mockClear();
+    fireEvent.keyDown(input, { ctrlKey: true, key: "Enter" });
+
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledTimes(2));
+    expect(mocks.sendChatCommand).toHaveBeenNthCalledWith(1, {
+      payload: "flush this fragment",
+      type: "send-message",
+    });
+    expect(mocks.sendChatCommand).toHaveBeenNthCalledWith(2, { type: "flush-input-batch" });
   });
 
   it("clears the draft and shows the user message before the command response arrives", async () => {
@@ -615,7 +716,9 @@ describe("ChatStagePage", () => {
     renderPage();
 
     await screen.findByText("Ready");
-    fireEvent.click(await screen.findByRole("button", { name: "Clear history" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open history" }));
+    const historyDialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    fireEvent.click(within(historyDialog).getByRole("button", { name: "Clear history" }));
     expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "clear-history" });
 
     const dialog = screen.getByRole("dialog", { name: "Clear history" });
@@ -708,13 +811,16 @@ describe("ChatStagePage", () => {
     const actionBar = within(actionTray).getByRole("toolbar", { name: "Chat stage actions" });
     const lockButton = within(actionBar).getByRole("button", { name: "Lock chat actions" });
     expect(lockButton).toHaveTextContent("LOCK");
-    expect(within(actionBar).getByRole("button", { name: "Open history" })).toHaveTextContent("LOG");
+    expect(within(actionBar).getByRole("button", { name: "Open history" })).toHaveTextContent("HISTORY");
     expect(within(actionBar).getByRole("button", { name: "Open conversation tree" })).toHaveTextContent("TREE");
-    expect(within(actionBar).getByRole("button", { name: "Skip" })).toHaveTextContent("SKIP");
     expect(within(actionBar).getByRole("button", { name: "Retry reply" })).toHaveTextContent("RETRY");
-    expect(within(actionBar).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
-    expect(within(actionBar).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
-    expect(within(actionBar).getByRole("button", { name: "Chat appearance settings" })).toHaveTextContent("APPEARANCE");
+    expect(within(actionBar).queryByRole("button", { name: "Skip" })).not.toBeInTheDocument();
+    expect(within(actionBar).queryByRole("button", { name: "Copy history" })).not.toBeInTheDocument();
+    expect(within(actionBar).queryByRole("button", { name: "Clear history" })).not.toBeInTheDocument();
+    expect(within(actionBar).getByRole("button", { name: "Chat settings" })).toHaveTextContent("Chat settings");
+    expect(within(actionBar).getByRole("button", { name: "Chat appearance settings" })).toHaveTextContent(
+      "APPEARANCE SETTINGS",
+    );
     expect(within(dialog).queryByRole("slider")).not.toBeInTheDocument();
 
     fireEvent.click(lockButton);
@@ -959,10 +1065,12 @@ describe("ChatStagePage", () => {
     renderPage();
 
     await screen.findByText("Ready");
-    fireEvent.click(screen.getByRole("button", { name: "Copy history" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open history" }));
+    const historyDialog = await screen.findByRole("dialog", { name: "Conversation history" });
+    fireEvent.click(within(historyDialog).getByRole("button", { name: "Copy history" }));
 
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "copy-history" }));
-    expect(screen.getByText("Ready")).toBeInTheDocument();
+    expect(document.querySelector(".dialog-layer__html")).toHaveTextContent("Ready");
   });
 
   it("applies runtime text speed and dialog opacity from chat config", async () => {
@@ -1431,6 +1539,8 @@ describe("ChatStagePage", () => {
     expect(dialog).toHaveClass("chat-stage-modal");
     expect(dialog.querySelector(".chat-stage-modal__header")).not.toBeNull();
     expect(dialog.querySelector(".chat-stage-modal__summary")?.tagName).toBe("DIV");
+    expect(within(dialog).getByRole("button", { name: "Copy history" })).toHaveTextContent("COPY");
+    expect(within(dialog).getByRole("button", { name: "Clear history" })).toHaveTextContent("CLEAR");
     expect(within(dialog).getByText("2 entries")).toBeInTheDocument();
     const nameplates = dialog.querySelectorAll(".chat-history__nameplate");
     expect(nameplates).toHaveLength(2);

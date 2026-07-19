@@ -5,6 +5,8 @@ import type {
   ChatSprite,
   ChatStat,
   ChatStageEvent,
+  ChatTurnOptions,
+  ChatTurnState,
   ChatTransportMode,
   ChatTransportState,
 } from "../../../shared/platform/types";
@@ -58,6 +60,8 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
   sprites: ChatStageSprite[];
   transportMode: ChatTransportMode;
   transportState: ChatTransportState;
+  turnOptions: ChatTurnOptions;
+  turnState: ChatTurnState;
   userDisplayName: string;
 }
 
@@ -88,9 +92,10 @@ export interface ChatStageViewModel {
 export type ChatStageAction =
   | { type: "event"; event: ChatStageEvent }
   | { type: "hydrate"; snapshot: ChatSnapshot }
-  | { type: "submitUserMessage"; text: string; source?: "send-message" | "submit-option" }
+  | { type: "submitUserMessage"; text: string; queued?: boolean; source?: "send-message" | "submit-option" }
   | { type: "rollbackUserSubmission"; source: "send-message" | "submit-option" }
   | { type: "setHistoryEntries"; historyEntries: ChatHistoryEntry[] }
   | { type: "setDraft"; text: string }
+  | { type: "setTurnOptions"; options: ChatTurnOptions }
   | { type: "setStatus"; status: ChatRuntimeStatus }
   | { type: "error"; message: string };

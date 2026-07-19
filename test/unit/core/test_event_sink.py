@@ -368,6 +368,50 @@ class EventSinkSnapshotTests(unittest.TestCase):
 
         self.assertEqual(next_snapshot.get("options"), [])
 
+    def test_chat_turn_state_is_folded_into_reconnect_snapshot(self):
+        next_snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "seq": 8,
+                "options": {
+                    "batchEnabled": True,
+                    "batchIdleSeconds": 6.5,
+                    "interruptEnabled": False,
+                },
+                "state": {
+                    "enabled": True,
+                    "pendingCount": 2,
+                    "pendingMessages": ["message A", "message B"],
+                    "remainingSeconds": 4,
+                    "scheduled": True,
+                    "typing": False,
+                },
+                "ts": 8,
+                "type": "chat.turn.state",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(
+            next_snapshot["turnState"],
+            {
+                "enabled": True,
+                "pendingCount": 2,
+                "pendingMessages": ["message A", "message B"],
+                "remainingSeconds": 4,
+                "scheduled": True,
+                "typing": False,
+            },
+        )
+        self.assertEqual(
+            next_snapshot["turnOptions"],
+            {
+                "batchEnabled": True,
+                "batchIdleSeconds": 6.5,
+                "interruptEnabled": False,
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

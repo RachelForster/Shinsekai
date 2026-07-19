@@ -8,6 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
+from core.messaging.chat_turn_service import ChatTurnService
+
 
 @dataclass
 class UiPlaybackBridge:
@@ -33,6 +35,7 @@ class AppRuntime:
     opencc: Any  # OpenCC
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
     ui_playback: UiPlaybackBridge = field(default_factory=UiPlaybackBridge)
+    chat_turn_service: ChatTurnService = field(default_factory=ChatTurnService)
 
 
 _runtime: Optional[AppRuntime] = None
@@ -76,3 +79,9 @@ def tts_emit_to_ui_queue(
         effect=effect,
     )
     rt.audio_path_queue.put(out)
+
+
+def is_generating() -> bool:
+    """Compatibility query delegated to the chat turn service."""
+    rt = try_get_app_runtime()
+    return rt is not None and rt.chat_turn_service.is_active()

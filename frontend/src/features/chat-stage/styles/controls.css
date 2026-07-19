@@ -448,14 +448,125 @@
 .dialog-stage-controls__rail {
   display: flex;
   min-width: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: flex-end;
   gap: 4px;
+  white-space: nowrap;
 }
 
 .dialog-stage-controls__rail > [data-plugin-slot="chat-dialog-actions"] {
   display: contents;
+}
+
+.dialog-stage-controls__chat-settings {
+  position: absolute;
+  right: 6px;
+  bottom: calc(100% + 8px);
+  z-index: 6;
+  display: grid;
+  width: min(290px, calc(100vw - 28px));
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in oklch, var(--stage-accent) 32%, rgba(255, 255, 255, 0.2));
+  border-radius: 14px;
+  color: var(--chat-toolbar-color, #fffaf0);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.1), transparent 52%),
+    color-mix(in oklch, var(--chat-dialog-actions-background) 92%, var(--stage-accent) 8%);
+  box-shadow:
+    0 18px 46px color-mix(in oklch, var(--stage-shadow-heavy) 82%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(24px) saturate(1.2);
+}
+
+.dialog-stage-controls__chat-settings-header,
+.dialog-stage-controls__batch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dialog-stage-controls__chat-settings-header strong {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.dialog-stage-controls__chat-settings-close.icon-button,
+.dialog-stage-controls__batch-actions .icon-button {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  border-color: transparent;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.dialog-stage-controls__chat-settings-options {
+  display: grid;
+  gap: 4px;
+}
+
+.dialog-stage-controls__chat-setting.switch {
+  width: 100%;
+  min-width: 0;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 9px 10px;
+  border-radius: 10px;
+  color: var(--chat-toolbar-color, #fffaf0);
+  background: color-mix(in oklch, var(--stage-accent) 7%, rgba(255, 255, 255, 0.04));
+}
+
+.dialog-stage-controls__chat-setting .switch__track {
+  order: 2;
+  flex: 0 0 auto;
+  border-color: color-mix(in oklch, var(--stage-accent) 28%, rgba(255, 255, 255, 0.26));
+  background: color-mix(in oklch, var(--chat-dialog-actions-background) 76%, rgba(255, 255, 255, 0.1));
+}
+
+.dialog-stage-controls__chat-setting .switch__input:checked + .switch__track {
+  border-color: color-mix(in oklch, var(--stage-accent) 68%, rgba(255, 255, 255, 0.34));
+  background: color-mix(in oklch, var(--stage-accent) 58%, var(--chat-dialog-actions-background));
+}
+
+.dialog-stage-controls__chat-setting .switch__thumb {
+  background: color-mix(in oklch, var(--chat-toolbar-color, #fffaf0) 70%, transparent);
+}
+
+.dialog-stage-controls__chat-setting .switch__input:checked + .switch__track > .switch__thumb {
+  background: var(--chat-toolbar-color, #fffaf0);
+}
+
+.dialog-stage-controls__chat-setting .switch__label {
+  order: 1;
+  min-width: 0;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  opacity: 1;
+}
+
+.dialog-stage-controls__batch-row {
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in oklch, var(--stage-accent) 18%, rgba(255, 255, 255, 0.12));
+}
+
+.dialog-stage-controls__batch-status {
+  min-width: 0;
+  color: color-mix(in oklch, var(--chat-toolbar-color, #fffaf0) 74%, transparent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dialog-stage-controls__batch-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
 }
 
 .dialog-stage-controls__button.button {
