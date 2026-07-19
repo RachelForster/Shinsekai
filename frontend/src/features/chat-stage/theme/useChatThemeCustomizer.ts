@@ -1,12 +1,19 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { chatThemeQueryKey, getChatThemeManifest } from "../../../entities/chat/repository";
+import {
+  chatThemeQueryKey,
+  deleteChatThemeAsset,
+  getChatThemeManifest,
+  listChatThemeAssets,
+  uploadChatThemeAsset,
+} from "../../../entities/chat/repository";
 import { configQueryKey } from "../../../entities/config/repository";
 import type { AppConfig } from "../../../entities/config/types";
 import { useI18n } from "../../../shared/i18n";
 import {
   chatThemeDisplayName,
+  type ChatThemeAsset,
   type ChatThemeManifest,
   type ChatThemeSummary,
   type ChatThemeTokens,
@@ -100,6 +107,8 @@ export function useChatThemeCustomizer() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [assets, setAssets] = useState<ChatThemeAsset[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
   const loadRequestId = useRef(0);
 
   const themes = theme?.themes ?? EMPTY_THEMES;
@@ -107,6 +116,7 @@ export function useChatThemeCustomizer() {
   const source = themes.find((item) => item.id === sourceId);
   const isNewTheme = source?.source === "builtin";
   const sourceReady = Boolean(sourceId && assetThemeId === sourceId && draft && original && !loading);
+  const canManageAssets = Boolean(sourceReady && source?.source === "user");
   const dirty = Boolean(sourceReady && draft && original && JSON.stringify(draft) !== JSON.stringify(original));
   const idError = draft && !themeIdPattern.test(draft.id) ? t("chat.theme.customizer.idError") : "";
   const nameError =
@@ -214,6 +224,29 @@ export function useChatThemeCustomizer() {
     }
   }, [loadTheme, sourceId]);
 
+  const refreshAssets = useCallback(async () => {
+    if (!canManageAssets || !assetThemeId) {
+      setAssets([]);
+      return;
+    }
+    setAssetsLoading(true);
+    try {
+      setAssets(await listChatThemeAssets(assetThemeId));
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("chat.theme.customizer.assetListError"),
+        title: t("common.operationFailed"),
+      });
+    } finally {
+      setAssetsLoading(false);
+    }
+  }, [assetThemeId, canManageAssets, showToast, t]);
+
+  useEffect(() => {
+    void refreshAssets();
+  }, [refreshAssets]);
+
   const patchManifest = (patch: Partial<ChatThemeManifest>) => {
     updateDraft((current) => ({ ...current, ...patch }));
   };
@@ -291,6 +324,42 @@ export function useChatThemeCustomizer() {
     });
   };
 
+  const uploadAsset = async (file: File) => {
+    if (!canManageAssets || !assetThemeId) {
+      throw new Error(t("chat.theme.customizer.assetSaveFirst"));
+    }
+    try {
+      const asset = await uploadChatThemeAsset(assetThemeId, file);
+      setAssets((current) => [...current.filter((item) => item.path !== asset.path), asset]);
+      showToast({ kind: "success", message: asset.path, title: t("chat.theme.customizer.assetUploaded") });
+      return asset;
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("chat.theme.customizer.assetUploadError"),
+        title: t("common.operationFailed"),
+      });
+      throw error;
+    }
+  };
+
+  const deleteAsset = async (path: string) => {
+    if (!canManageAssets || !assetThemeId) {
+      return;
+    }
+    try {
+      await deleteChatThemeAsset(assetThemeId, path);
+      setAssets((current) => current.filter((item) => item.path !== path));
+      showToast({ kind: "success", message: path, title: t("chat.theme.customizer.assetDeleted") });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("chat.theme.customizer.assetDeleteError"),
+        title: t("common.deleteFailed"),
+      });
+    }
+  };
+
   const save = async () => {
     if (!theme || !draft || invalid || !sourceReady) {
       return;
@@ -332,6 +401,8 @@ export function useChatThemeCustomizer() {
   };
 
   return {
+    assets,
+    assetsLoading,
     assetThemeId,
     dirty,
     draft,
@@ -349,6 +420,8 @@ export function useChatThemeCustomizer() {
     patchTypewriter,
     canRedo: draftHistory.future.length > 0,
     canUndo: draftHistory.past.length > 0,
+    canManageAssets,
+    deleteAsset,
     redo,
     reset,
     resetSection,
@@ -359,5 +432,6 @@ export function useChatThemeCustomizer() {
     sourceReady,
     themes,
     undo,
+    uploadAsset,
   };
 }

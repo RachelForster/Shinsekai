@@ -99,6 +99,9 @@ export function ChatThemeCustomizerPage() {
       ) : (
         <div className="chat-theme-customizer__workspace">
           <ChatThemeEditor
+            assets={customizer.assets}
+            assetsLoading={customizer.assetsLoading}
+            canManageAssets={customizer.canManageAssets}
             draft={customizer.draft}
             duplicateId={customizer.duplicateId}
             idError={customizer.idError}
@@ -107,6 +110,8 @@ export function ChatThemeCustomizerPage() {
             onPatchManifest={customizer.patchManifest}
             onPatchToken={customizer.patchToken}
             onResetSection={customizer.resetSection}
+            onDeleteAsset={(path) => void customizer.deleteAsset(path)}
+            onUploadAsset={customizer.uploadAsset}
           />
           <ChatThemePreview
             assetThemeId={customizer.assetThemeId}
