@@ -335,9 +335,22 @@ def _frontend_chat_ui_contributions() -> list[Any]:
     )
 
 
+def _frontend_chat_ui_action(contribution: Any) -> tuple[str, str]:
+    action = getattr(contribution, "action", None)
+    if callable(action):
+        return "callback", ""
+    if isinstance(action, Mapping):
+        action_type = str(action.get("type") or "").strip()
+        page_id = str(action.get("page_id") or action.get("pageId") or "").strip()
+        if action_type == "open-plugin-page" and page_id:
+            return action_type, page_id[:128]
+    return "none", ""
+
+
 def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
-    allowed_slots = {"chat-dialog-actions", "chat-output", "chat-toolbar"}
-    allowed_icons = {"info", "play", "puzzle", "settings", "sparkles"}
+    allowed_slots = {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"}
+    allowed_icons = {"info", "play", "puzzle", "settings", "smartphone", "sparkles"}
+    allowed_presentations = {"button", "icon-only"}
     allowed_variants = {"danger", "ghost", "primary"}
     rows: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
@@ -350,18 +363,25 @@ def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
         if not plugin_id or not contribution_id or not title or slot not in allowed_slots or key in seen:
             continue
         seen.add(key)
+        action_type, page_id = _frontend_chat_ui_action(contribution)
         icon = str(getattr(contribution, "icon", "") or "puzzle").strip()
+        presentation = str(getattr(contribution, "presentation", "") or "button").strip()
+        if slot == "chat-top-toolbar":
+            presentation = "icon-only"
         variant = str(getattr(contribution, "variant", "") or "ghost").strip()
         rows.append(
             {
                 "actionLabel": str(getattr(contribution, "action_label", "") or "").strip() or title,
-                "actionable": callable(getattr(contribution, "action", None)),
+                "actionType": action_type,
+                "actionable": action_type != "none",
                 "description": str(getattr(contribution, "description", "") or "").strip()[:500],
                 "icon": icon if icon in allowed_icons else "puzzle",
                 "id": contribution_id[:128],
                 "order": float(getattr(contribution, "order", 100.0) or 100.0),
+                "pageId": page_id,
                 "pluginId": plugin_id[:128],
                 "pluginVersion": str(getattr(contribution, "plugin_version", "") or "")[:64],
+                "presentation": presentation if presentation in allowed_presentations else "button",
                 "slot": slot,
                 "title": title[:160],
                 "variant": variant if variant in allowed_variants else "ghost",

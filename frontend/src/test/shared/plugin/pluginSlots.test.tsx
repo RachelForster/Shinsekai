@@ -99,13 +99,16 @@ describe("plugin slot registry", () => {
     repository.list.mockResolvedValue([
       {
         actionLabel: "Run safe action",
+        actionType: "callback",
         actionable: true,
         description: "No plugin JavaScript is rendered.",
         icon: "sparkles",
         id: "demo.safe-action",
         order: 10,
+        pageId: "",
         pluginId: "demo.plugin",
         pluginVersion: "1.0.0",
+        presentation: "button",
         slot: "chat-output",
         title: "Safe contribution",
         variant: "primary",
@@ -126,5 +129,43 @@ describe("plugin slot registry", () => {
 
     await waitFor(() => expect(repository.run).toHaveBeenCalledWith("demo.plugin", "demo.safe-action"));
     expect(await screen.findByText("Action complete")).toBeInTheDocument();
+  });
+
+  it("renders a host-owned phone icon that opens a declared plugin page", async () => {
+    repository.list.mockResolvedValue([
+      {
+        actionLabel: "Phone",
+        actionType: "open-plugin-page",
+        actionable: true,
+        description: "Open the phone panel",
+        icon: "smartphone",
+        id: "demo.phone",
+        order: 30,
+        pageId: "phone",
+        pluginId: "demo.plugin",
+        pluginVersion: "1.0.0",
+        presentation: "icon-only",
+        slot: "chat-top-toolbar",
+        title: "Phone",
+        variant: "ghost",
+      },
+    ]);
+    const onOpenPluginPage = vi.fn();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-top-toolbar" />
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+
+    const phoneButton = await screen.findByRole("button", { name: "Phone" });
+    expect(phoneButton).toHaveClass("top-stage-tools__button", "plugin-slot__icon-button");
+    expect(phoneButton).not.toHaveTextContent("Phone");
+    fireEvent.click(phoneButton);
+
+    expect(onOpenPluginPage).toHaveBeenCalledWith({ pageId: "phone", pluginId: "demo.plugin" });
+    expect(repository.run).not.toHaveBeenCalled();
   });
 });

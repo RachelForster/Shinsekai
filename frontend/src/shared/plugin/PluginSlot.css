@@ -2,6 +2,15 @@
   display: contents;
 }
 
+.plugin-slot > [data-plugin-contribution] {
+  display: contents;
+}
+
+.plugin-slot__icon-button.button {
+  min-height: 28px;
+  padding: 0;
+}
+
 .plugin-slot__output {
   display: grid;
   min-width: 0;

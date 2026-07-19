@@ -144,9 +144,34 @@ def test_frontend_chat_ui_contribution_gets_plugin_context_and_validates_slots()
     assert contribution.plugin_version == "1.2.3"
     assert contribution.action() == "done"
 
+    registry.register_frontend_chat_ui(
+        FrontendChatUIContribution(
+            contribution_id="demo.phone",
+            slot="chat-top-toolbar",
+            title="Phone",
+            icon="smartphone",
+            presentation="icon-only",
+            action={"type": "open-plugin-page", "page_id": "phone"},
+        )
+    )
+    assert registry.frontend_chat_ui_contributions[1].action == {
+        "type": "open-plugin-page",
+        "page_id": "phone",
+    }
+
     with pytest.raises(ValueError, match="requires a non-empty id and title"):
         registry.register_frontend_chat_ui(
             FrontendChatUIContribution(contribution_id="", slot="chat-output", title="Missing")
+        )
+
+    with pytest.raises(ValueError, match="requires a non-empty page_id"):
+        registry.register_frontend_chat_ui(
+            FrontendChatUIContribution(
+                contribution_id="demo.invalid-phone",
+                slot="chat-top-toolbar",
+                title="Invalid phone",
+                action={"type": "open-plugin-page"},
+            )
         )
 
 
