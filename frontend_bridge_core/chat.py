@@ -27,7 +27,11 @@ from core.messaging.dialog_tokens import (
 from core.paths import app_root as runtime_app_root
 from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
-from core.media.chat_attachments import chat_attachment_display_text, resolve_chat_attachments
+from core.media.chat_attachments import (
+    CHAT_ATTACHMENTS_ROOT_ENV,
+    chat_attachment_display_text,
+    resolve_chat_attachments,
+)
 from core.sprite.chat_branch_storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
@@ -445,6 +449,9 @@ def _launch_chat(
         env["SHINSEKAI_PROJECT_ROOT"] = str(project_root)
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
+        attachment_root = os.environ.get(CHAT_ATTACHMENTS_ROOT_ENV, "").strip() or str(app_root)
+        os.environ.setdefault(CHAT_ATTACHMENTS_ROOT_ENV, attachment_root)
+        env[CHAT_ATTACHMENTS_ROOT_ENV] = attachment_root
         env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"
         api_config = state.config_manager.config.api_config
         env["SHINSEKAI_MEMORY_AUTO_ENABLED"] = "1" if bool(getattr(api_config, "memory_auto_enabled", False)) else "0"

@@ -3,6 +3,7 @@ from __future__ import annotations
 import mimetypes
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
@@ -11,6 +12,7 @@ MAX_CHAT_ATTACHMENTS = 8
 MAX_CHAT_ATTACHMENT_BYTES = 25 * 1024 * 1024
 MAX_CHAT_IMAGE_BYTES = 20 * 1024 * 1024
 MAX_CHAT_ATTACHMENTS_TOTAL_BYTES = 50 * 1024 * 1024
+CHAT_ATTACHMENTS_ROOT_ENV = "SHINSEKAI_CHAT_ATTACHMENTS_ROOT"
 SUPPORTED_CHAT_IMAGE_MIME_TYPES = frozenset(
     {
         "image/gif",
@@ -52,6 +54,17 @@ def _attachment_kind(value: Any) -> str:
     return kind
 
 
+@lru_cache(maxsize=1)
+def _chat_attachment_root() -> Path:
+    root_value = os.environ.get(CHAT_ATTACHMENTS_ROOT_ENV, "").strip()
+    if not root_value:
+        raise ValueError(f"{CHAT_ATTACHMENTS_ROOT_ENV} must be configured")
+    root = Path(root_value).expanduser().resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError(f"{CHAT_ATTACHMENTS_ROOT_ENV} must point to an existing directory")
+    return root
+
+
 def _resolve_selected_file(raw_path: Any) -> Path:
     value = _reject_control_characters(str(raw_path or "").strip(), field="attachment path")
     if not value:
@@ -61,10 +74,12 @@ def _resolve_selected_file(raw_path: Any) -> Path:
     selected = Path(value).expanduser()
     if not selected.is_absolute():
         raise ValueError("Attachment path must be absolute")
-    # Selecting arbitrary absolute local files is the feature's trust boundary:
-    # the authenticated desktop picker supplies the path, and the checks above
-    # reject malformed or relative values before resolving the concrete target.
-    resolved = selected.resolve(strict=True)  # lgtm[py/path-injection] explicitly selected local attachment
+    resolved = selected.resolve(strict=True)
+    root = _chat_attachment_root()
+    try:
+        resolved.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("Attachment path is outside the allowed directory") from exc
     if not resolved.is_file():
         raise ValueError(f"Attachment is not a file: {resolved}")
     return resolved
