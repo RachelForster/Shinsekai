@@ -3,11 +3,19 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 from sdk.manager import PluginManager
 from sdk.plugin import PluginBase
 from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry
-from sdk.types import ChatUIContribution, FrontendConfigAction, FrontendConfigContribution, FrontendPageContribution
+from sdk.types import (
+    ChatUIContribution,
+    FrontendChatUIContribution,
+    FrontendConfigAction,
+    FrontendConfigContribution,
+    FrontendPageContribution,
+)
 
 
 def test_plugin_host_context_exposes_huggingface_cache_dir(tmp_path: Path) -> None:
@@ -117,6 +125,29 @@ def test_chat_ui_contribution_gets_plugin_context() -> None:
     contribution = registry.chat_ui_contributions[0]
     assert contribution.plugin_id == "demo.plugin"
     assert contribution.plugin_version == "1.2.3"
+
+
+def test_frontend_chat_ui_contribution_gets_plugin_context_and_validates_slots() -> None:
+    registry = PluginCapabilityRegistry()
+    registry.set_settings_ui_plugin_context("demo.plugin", "1.2.3")
+    registry.register_frontend_chat_ui(
+        FrontendChatUIContribution(
+            contribution_id="demo.action",
+            slot="chat-dialog-actions",
+            title="Demo action",
+            action=lambda: "done",
+        )
+    )
+
+    contribution = registry.frontend_chat_ui_contributions[0]
+    assert contribution.plugin_id == "demo.plugin"
+    assert contribution.plugin_version == "1.2.3"
+    assert contribution.action() == "done"
+
+    with pytest.raises(ValueError, match="requires a non-empty id and title"):
+        registry.register_frontend_chat_ui(
+            FrontendChatUIContribution(contribution_id="", slot="chat-output", title="Missing")
+        )
 
 
 def test_frontend_page_contribution_gets_plugin_context() -> None:

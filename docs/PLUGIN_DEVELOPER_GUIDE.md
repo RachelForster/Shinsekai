@@ -54,6 +54,7 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_tools_tab`            | Extra tab under **Settings → Tools** (PySide)              |
 | `register_frontend_config_page` | React-renderable plugin config page (schema + load/save callbacks) |
 | `register_frontend_page`        | Plugin-owned static frontend page embedded by iframe       |
+| `register_frontend_chat_ui`     | JSON-only Chat UI item rendered by the React host          |
 | `register_chat_ui_widget`       | Chat window widget + placement hint                        |
 | `register_dag_yaml`             | Workflow YAML path (convenience — delegates to `register_workflow`) |
 | `register_workflow`             | Workflow with optional output contract/schema              |
@@ -67,7 +68,7 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 **Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`,
 `clear_settings_ui_plugin_context`. The host wraps `initialize` so
 `SettingsUIContribution` / `ToolsTabContribution` / `FrontendConfigContribution` /
-`FrontendPageContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version`
+`FrontendPageContribution` / `FrontendChatUIContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version`
 when you leave those fields `None`.
 
 Adapter registration stores the **class** (not an instance); registering the same
@@ -961,6 +962,37 @@ def initialize(self, register, plugin_root: Path, host) -> None:
 This keeps downloaded plugins self-contained: after install and app restart, the host
 discovers the contribution from the plugin's Python entry point and serves the bundled
 frontend files without rebuilding the main React app.
+
+---
+
+### `register_frontend_chat_ui(contribution)`
+
+Use this for the React Chat UI. The contribution crosses the bridge as JSON metadata only; the host owns the button/card markup, icon set, styles, loading state, and toast. The optional `action` callback stays in Python and is invoked through a dedicated bridge endpoint. Plugins cannot inject HTML, JavaScript, React nodes, or arbitrary CSS through this protocol.
+
+Supported slots are `chat-dialog-actions`, `chat-output`, and `chat-toolbar`. Supported icons are `info`, `play`, `puzzle`, `settings`, and `sparkles`.
+
+```python
+from sdk.register import PluginCapabilityRegistry
+from sdk.types import FrontendChatUIContribution
+
+
+def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> None:
+    register.register_frontend_chat_ui(
+        FrontendChatUIContribution(
+            contribution_id="my-plugin.scene-hint",
+            slot="chat-dialog-actions",
+            title="Scene hint",
+            description="Generate a short prompt for the current scene.",
+            icon="sparkles",
+            variant="ghost",
+            action_label="Hint",
+            action=lambda: {"kind": "success", "message": "Hint generated."},
+            order=40,
+        )
+    )
+```
+
+An action may return a string, `None`, or a mapping with `kind` (`success`, `info`, or `error`) and `message`. Use `register_chat_ui_widget` only for the legacy PySide Chat UI where an actual `QWidget` is required.
 
 ---
 
