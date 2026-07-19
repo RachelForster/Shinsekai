@@ -158,6 +158,21 @@ const detailPage: PluginUIPage = {
   values: { status: "ready" },
 };
 
+const phonePage: PluginUIPage = {
+  ...detailPage,
+  description: "Phone panel",
+  id: "phone",
+  schema: [
+    {
+      fields: [{ defaultValue: true, key: "enabled", label: "Enabled", type: "boolean" }],
+      id: "phone-main",
+      title: "Phone controls",
+    },
+  ],
+  title: "Phone",
+  values: { enabled: true },
+};
+
 function LocationProbe() {
   const location = useLocation();
   return (
@@ -279,6 +294,29 @@ describe("PluginManagerPage", () => {
     expect(await screen.findByText("Dynamic detail description")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Dynamic Group" })).toBeInTheDocument();
     expect(mockGetPluginUiDetail).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens the requested plugin page and returns to Chat", async () => {
+    mockGetPluginUiDetail.mockResolvedValue({ pages: [detailPage, phonePage], plugin: configurablePlugin });
+    renderPage(
+      [
+        {
+          pathname: "/settings/plugins",
+          state: {
+            pageId: "phone",
+            pluginId: "configurable",
+            returnTo: { pathname: "/chat-stage", search: "?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787" },
+          },
+        },
+      ],
+      true,
+    );
+
+    expect(await screen.findByText("Phone panel")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Phone controls" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to plugins" }));
+
+    await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent("/chat-stage"));
   });
 
   it("returns plugin configuration to the route it came from", async () => {

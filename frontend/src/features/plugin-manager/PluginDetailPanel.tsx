@@ -197,10 +197,11 @@ function pluginConfigPageStateKey(page: PluginUIPage) {
 
 interface PluginDetailPanelProps {
   detailPlugin: PluginManifest;
+  initialPageId?: string;
   onBack: () => void;
 }
 
-export function PluginDetailPanel({ detailPlugin, onBack }: PluginDetailPanelProps) {
+export function PluginDetailPanel({ detailPlugin, initialPageId = "", onBack }: PluginDetailPanelProps) {
   const { language, t } = useI18n();
   const detailLookupId = pluginActionId(detailPlugin);
   const [activeDetailPageId, setActiveDetailPageId] = useState("");
@@ -223,9 +224,12 @@ export function PluginDetailPanel({ detailPlugin, onBack }: PluginDetailPanelPro
   useEffect(() => {
     const pageKeys = detailPages.map(pluginUiPageKey);
     if (pageKeys.length && !pageKeys.includes(activeDetailPageId)) {
-      setActiveDetailPageId(pageKeys[0]);
+      const preferredPage = detailPages.find(
+        (page) => page.id === initialPageId || pluginUiPageKey(page) === initialPageId,
+      );
+      setActiveDetailPageId(preferredPage ? pluginUiPageKey(preferredPage) : pageKeys[0]);
     }
-  }, [activeDetailPageId, detailPageSignature, detailPages]);
+  }, [activeDetailPageId, detailPageSignature, detailPages, initialPageId]);
 
   const activeDetailPage = detailPages.find((page) => pluginUiPageKey(page) === activeDetailPageId) ?? detailPages[0];
   const loaded = detailPluginRow.loaded !== false;
