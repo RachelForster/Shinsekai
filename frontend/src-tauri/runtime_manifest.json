@@ -1,5 +1,5 @@
 {
-  "version": "2.2.0",
+  "version": "2.3.0",
   "schema": 2,
   "required_modules": [
     "yaml",
