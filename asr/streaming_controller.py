@@ -28,7 +28,7 @@ class StreamingASRController:
         *,
         adapter_factory: AdapterFactory,
         emit_event: EventEmitter,
-        submit_final: Callable[[str], None],
+        submit_final: Callable[[str], bool | None],
         on_loading_changed: Callable[[bool], None] | None = None,
         on_error: Callable[[str, BaseException], None] | None = None,
         resume_delay_seconds: float = 0.5,
@@ -43,6 +43,9 @@ class StreamingASRController:
         self._silence_submit_seconds = max(0.0, float(silence_submit_seconds))
 
         self._lock = threading.RLock()
+        # Serialize callbacks with close(). Once close() returns, no callback
+        # that already passed the state guard can still publish or submit.
+        self._callback_lock = threading.RLock()
         self._adapter: ASRAdapter | None = None
         self._enabled = False
         self._active = False
@@ -78,7 +81,7 @@ class StreamingASRController:
         self._activate_async()
 
     def user_pause(self) -> None:
-        """Disable automatic resume until the user explicitly enables ASR again."""
+        """Disable ASR and release capture until the user enables it again."""
         with self._lock:
             if self._closed:
                 return
@@ -89,7 +92,8 @@ class StreamingASRController:
             self._cancel_resume_timer_locked()
             self._cancel_silence_timer_locked()
             adapter = self._adapter if self._started else None
-        self._pause_adapter(adapter)
+            self._started = False
+        self._stop_adapter(adapter)
         self._emit_state()
 
     def pause_for_turn(self) -> bool:
@@ -133,11 +137,12 @@ class StreamingASRController:
             self._cancel_silence_timer_locked()
             adapter = self._adapter
             self._adapter = None
-        if adapter is not None:
-            try:
-                adapter.stop()
-            except Exception as exc:
-                self._report_error("stop", exc)
+            self._started = False
+        # A callback may have left _lock just before _closed was set. Wait for
+        # that callback to finish before the caller publishes session.closed.
+        with self._callback_lock:
+            pass
+        self._stop_adapter(adapter)
 
     def _resume_after_delay(self) -> None:
         with self._lock:
@@ -197,12 +202,17 @@ class StreamingASRController:
                     self._adapter = adapter
             self._notify_loading(False)
             if stale:
-                try:
-                    adapter.stop()
-                except Exception:
-                    _log.debug(
-                        "Failed to stop stale streaming ASR adapter", exc_info=True
+                with self._lock:
+                    self._activating = False
+                    retry_activation = (
+                        not self._closed
+                        and self._enabled
+                        and not self._turn_paused
+                        and not self._active
                     )
+                self._stop_adapter(adapter, report=False)
+                if retry_activation:
+                    self._activate_async()
                 return
 
         if adapter is None:
@@ -235,12 +245,20 @@ class StreamingASRController:
                 adapter.resume()
             else:
                 adapter.start()
+            status = adapter.get_status()
+            normalized_status = str(status or "").strip().lower()
+            if normalized_status in {"error", "failed", "idle", "paused", "stopped"}:
+                raise RuntimeError(
+                    f"ASR adapter did not enter a running state (status={status!r})"
+                )
         except BaseException as exc:
             with self._lock:
                 if generation == self._generation:
                     self._activating = False
                     self._active = False
                     self._enabled = False
+                    self._started = False
+            self._stop_adapter(adapter, report=False)
             self._report_error("start", exc)
             self._emit_state()
             return
@@ -264,11 +282,11 @@ class StreamingASRController:
         if not should_remain_active:
             with self._lock:
                 closed = self._closed
-            if closed:
-                try:
-                    adapter.stop()
-                except Exception as exc:
-                    self._report_error("stop", exc)
+                enabled = self._enabled
+            if closed or not enabled:
+                with self._lock:
+                    self._started = False
+                self._stop_adapter(adapter)
             else:
                 self._pause_adapter(adapter)
             self._emit_state()
@@ -278,6 +296,10 @@ class StreamingASRController:
         self._emit_state()
 
     def _handle_transcription(self, text: str, is_partial: bool) -> None:
+        with self._callback_lock:
+            self._process_transcription(text, is_partial)
+
+    def _process_transcription(self, text: str, is_partial: bool) -> None:
         raw_text = str(text or "")
         with self._lock:
             if self._closed or not self._enabled or self._turn_paused:
@@ -326,12 +348,17 @@ class StreamingASRController:
         if is_partial:
             return
 
+        with self._lock:
+            if self._closed or not self._enabled or not self._turn_paused:
+                return
         self._pause_adapter(active_adapter)
         self._emit_state()
         try:
-            self._submit_final(displayed)
+            accepted = self._submit_final(displayed)
         except BaseException as exc:
             self._report_error("submit", exc)
+            accepted = False
+        if accepted is False:
             with self._lock:
                 if not self._closed and self._enabled:
                     self._turn_paused = False
@@ -345,6 +372,17 @@ class StreamingASRController:
             adapter.pause()
         except Exception as exc:
             self._report_error("pause", exc)
+
+    def _stop_adapter(self, adapter: ASRAdapter | None, *, report: bool = True) -> None:
+        if adapter is None:
+            return
+        try:
+            adapter.stop()
+        except Exception as exc:
+            if report:
+                self._report_error("stop", exc)
+            else:
+                _log.debug("Failed to stop streaming ASR adapter", exc_info=True)
 
     def _emit_state(self) -> None:
         with self._lock:
@@ -365,10 +403,14 @@ class StreamingASRController:
         )
 
     def _emit_event_safe(self, event: dict[str, Any]) -> None:
-        try:
-            self._emit_event(event)
-        except Exception as exc:
-            self._report_error("event", exc)
+        with self._callback_lock:
+            with self._lock:
+                if self._closed:
+                    return
+            try:
+                self._emit_event(event)
+            except Exception as exc:
+                self._report_error("event", exc)
 
     def _notify_loading(self, loading: bool) -> None:
         callback = self._on_loading_changed
@@ -387,7 +429,9 @@ class StreamingASRController:
             exc_info=(type(exc), exc, exc.__traceback__),
         )
         callback = self._on_error
-        if callback is not None:
+        with self._lock:
+            closed = self._closed
+        if callback is not None and not closed:
             try:
                 callback(operation, exc)
             except Exception:

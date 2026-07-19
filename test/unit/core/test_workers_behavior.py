@@ -361,6 +361,37 @@ def test_ui_worker_skip_speech_is_noop_when_no_dialog_or_audio_is_active() -> No
     assert worker.task_done_requested.set_calls == 0
 
 
+def test_ui_worker_finishes_turn_after_all_system_output_is_drained() -> None:
+    ui_manager = MagicMock()
+    runtime = _make_app_runtime(ui_manager=ui_manager)
+    turn = runtime.chat_turn_service.begin_turn()
+    runtime.chat_turn_service.mark_generation_complete(turn)
+    worker = UIWorker(runtime.audio_path_queue)
+    worker.ui_update_manager = ui_manager
+    worker.dialog_channel = MagicMock()
+    worker.dialog_channel.get_busy.return_value = False
+
+    assert worker._finish_turn_if_drained(turn) is True
+    assert runtime.chat_turn_service.is_active() is False
+    ui_manager.post_llm_reply_finished.assert_called_once_with()
+
+
+def test_ui_worker_does_not_finish_while_tts_work_is_still_inflight() -> None:
+    ui_manager = MagicMock()
+    runtime = _make_app_runtime(ui_manager=ui_manager)
+    turn = runtime.chat_turn_service.begin_turn()
+    runtime.chat_turn_service.mark_generation_complete(turn)
+    runtime.tts_queue.put(LLMDialogMessage(name="NARR", text="pending", asset_id="-1"))
+    worker = UIWorker(runtime.audio_path_queue)
+    worker.ui_update_manager = ui_manager
+    worker.dialog_channel = MagicMock()
+    worker.dialog_channel.get_busy.return_value = False
+
+    assert worker._finish_turn_if_drained(turn) is False
+    assert runtime.chat_turn_service.is_active() is True
+    ui_manager.post_llm_reply_finished.assert_not_called()
+
+
 def test_ui_worker_skip_speech_stops_busy_channel_without_queued_audio() -> None:
     audio_path_queue = Queue()
     runtime = _make_app_runtime(audio_path_queue=audio_path_queue)

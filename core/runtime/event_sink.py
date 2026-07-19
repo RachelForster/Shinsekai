@@ -411,7 +411,10 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "asr.final":
         _clear_transient_notification_state(next_snapshot)
-        next_snapshot["inputDraft"] = str(event.get("text") or "")
+        # The final transcript has already entered the chat turn pipeline.
+        # Persist its consumed presentation state for reconnect hydration.
+        next_snapshot["inputDraft"] = ""
+        next_snapshot["options"] = []
         return next_snapshot
 
     if event_type == "asr.state":

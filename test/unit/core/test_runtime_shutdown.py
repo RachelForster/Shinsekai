@@ -23,6 +23,7 @@ class RuntimeShutdownTests(unittest.TestCase):
 
         shutdown_chat_runtime(
             workflow=workflow,
+            pre_shutdown=lambda: calls.append("pre_shutdown"),
             plugin_shutdown=lambda: calls.append("plugin_shutdown"),
             tts_shutdown=lambda: calls.append("tts_shutdown"),
             save_history=lambda: calls.append("save_history"),
@@ -34,6 +35,7 @@ class RuntimeShutdownTests(unittest.TestCase):
         self.assertEqual(
             calls,
             [
+                "pre_shutdown",
                 "emit_session_closed",
                 "workflow_stop",
                 "save_history",
@@ -57,6 +59,7 @@ class RuntimeShutdownTests(unittest.TestCase):
 
         result = shutdown_chat_runtime(
             workflow=workflow,
+            pre_shutdown=lambda: calls.append("pre_shutdown"),
             plugin_shutdown=broken_plugin_shutdown,
             tts_shutdown=lambda: calls.append("tts_shutdown"),
             save_history=lambda: calls.append("save_history"),
@@ -69,6 +72,7 @@ class RuntimeShutdownTests(unittest.TestCase):
         self.assertEqual(
             calls,
             [
+                "pre_shutdown",
                 "emit_session_closed",
                 "workflow_stop",
                 "save_history",
@@ -102,6 +106,21 @@ class RuntimeShutdownTests(unittest.TestCase):
         self.assertEqual(calls, ["memory_shutdown", "plugin_shutdown"])
         self.assertEqual(errors, [("memory_shutdown", "memory boom")])
         self.assertEqual(result[0][0], "memory_shutdown")
+
+    def test_pre_shutdown_failure_does_not_prevent_session_closed(self):
+        calls = []
+
+        def broken_pre_shutdown():
+            calls.append("pre_shutdown")
+            raise RuntimeError("quiesce failed")
+
+        result = shutdown_chat_runtime(
+            pre_shutdown=broken_pre_shutdown,
+            emit_session_closed=lambda: calls.append("emit_session_closed"),
+        )
+
+        self.assertEqual(calls, ["pre_shutdown", "emit_session_closed"])
+        self.assertEqual(result[0][0], "pre_shutdown")
 
     def test_shutdown_hook_unregister_removes_step(self):
         calls = []

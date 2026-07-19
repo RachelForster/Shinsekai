@@ -9,6 +9,7 @@ from sdk.hooks import iter_shutdown_hooks
 def shutdown_chat_runtime(
     *,
     workflow: Any | None = None,
+    pre_shutdown: Callable[[], None] | None = None,
     plugin_shutdown: Callable[[], None] | None = None,
     tts_shutdown: Callable[[], None] | None = None,
     save_history: Callable[[], None] | None = None,
@@ -19,11 +20,14 @@ def shutdown_chat_runtime(
 ) -> list[tuple[str, Exception]]:
     """Run chat runtime shutdown steps in a resilient, testable sequence.
 
-    Each step is attempted even if an earlier one fails. Callers may provide an
-    ``on_error`` hook for logging.
+    ``pre_shutdown`` quiesces event producers before session closure is
+    published. Each step is attempted even if an earlier one fails. Callers may
+    provide an ``on_error`` hook for logging.
     """
 
     steps: list[tuple[str, Callable[[], None]]] = []
+    if pre_shutdown is not None:
+        steps.append(("pre_shutdown", pre_shutdown))
     if emit_session_closed is not None:
         steps.append(("emit_session_closed", emit_session_closed))
     if workflow is not None and hasattr(workflow, "stop"):

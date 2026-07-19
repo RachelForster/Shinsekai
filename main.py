@@ -738,7 +738,7 @@ def main():
             attachments: list[dict[str, object]] | None = None,
             ignore_unavailable_attachments: bool = False,
             notify_key: str | None = "main.notify_submitted",
-        ) -> None:
+        ) -> bool:
             value = str(text or "").strip()
             try:
                 resolved_attachments = resolve_chat_attachments(attachments)
@@ -752,26 +752,32 @@ def main():
                     except (OSError, ValueError):
                         continue
             if not value and not resolved_attachments:
-                return
+                return False
             last_user_message["text"] = value
             last_user_message["attachments"] = [attachment.to_payload() for attachment in resolved_attachments]
             if emit_user_text is None:
                 if notify_key:
                     ui_updates.post_notification(tr_i18n("main.notify_chat"))
-                return
-            emit_user_text(value, attachments=last_user_message["attachments"])
+                return False
+            accepted = emit_user_text(value, attachments=last_user_message["attachments"])
+            if accepted is False:
+                return False
             if notify_key:
                 ui_updates.post_notification(tr_i18n(notify_key))
+            return True
 
         from asr.streaming_controller import StreamingASRController
 
-        def _submit_asr_text(text: str) -> None:
-            submit_runtime_text(text, notify_key=None)
+        def _submit_asr_text(text: str) -> bool:
+            accepted = submit_runtime_text(text, notify_key=None)
+            if not accepted:
+                return False
             if chat_turn_service.options.batch_enabled:
                 # Voice mode is turn-based: a completed utterance must not remain
                 # buffered behind the stacked-message idle timer.
                 chat_turn_service.flush()
             stream_sink.emit({"type": "status.change", "status": "generating"})
+            return True
 
         def _set_asr_loading(loading: bool) -> None:
             if loading:
@@ -1258,10 +1264,6 @@ def main():
             },
         )
 
-        def _shutdown_stream_plugins() -> None:
-            runtime_asr.close()
-            _shutdown_plugins()
-
         try:
             restore_interrupt_handlers = _install_interrupt_handlers()
             while not shutdown_requested.wait(1):
@@ -1272,7 +1274,8 @@ def main():
             restore_interrupt_handlers()
             shutdown_chat_runtime(
                 workflow=workflow,
-                plugin_shutdown=_shutdown_stream_plugins,
+                pre_shutdown=runtime_asr.close,
+                plugin_shutdown=_shutdown_plugins,
                 tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
                 save_history=_persist_branch_state,
                 save_background=lambda: save_bg(

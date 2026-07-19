@@ -302,6 +302,25 @@ class EventSinkSnapshotTests(unittest.TestCase):
         self.assertFalse(next_snapshot.get("asrLoading"))
         self.assertFalse(next_snapshot.get("asrRunning"))
 
+    def test_asr_final_snapshot_persists_consumed_transcript_state(self):
+        snapshot = make_empty_chat_snapshot()
+        snapshot["inputDraft"] = "hello wor"
+        snapshot["options"] = ["stale option"]
+
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 5,
+                "text": "hello world",
+                "ts": 5,
+                "type": "asr.final",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(next_snapshot.get("inputDraft"), "")
+        self.assertEqual(next_snapshot.get("options"), [])
+
     def test_asr_state_preserves_reply_status_while_listening_is_temporarily_paused(
         self,
     ):

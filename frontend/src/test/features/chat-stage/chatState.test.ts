@@ -128,6 +128,27 @@ describe("chatStageReducer", () => {
     expect(resumed.status).toBe("listening");
   });
 
+  it("hydrates an ASR-final snapshot without restoring a sendable draft", () => {
+    const state = chatStageReducer(emptyChatState, {
+      snapshot: {
+        asrEnabled: true,
+        asrRunning: false,
+        dialogText: "",
+        eventSeq: 4,
+        inputDraft: "",
+        options: [],
+        sessionId: "session-1",
+        sprites: [],
+        status: "generating",
+      },
+      type: "hydrate",
+    });
+
+    expect(state.inputDraft).toBe("");
+    expect(state.options).toEqual([]);
+    expect(state.status).toBe("generating");
+  });
+
   it("renders pending stacked messages as newline-separated user dialogue", () => {
     const viewModel = buildChatStageViewModel({
       ...emptyChatState,

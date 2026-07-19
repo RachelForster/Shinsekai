@@ -217,7 +217,8 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         ...clearTransientNotificationState(state),
         asrTranscript: event.text,
         eventSeq: Math.max(state.eventSeq, event.seq),
-        inputDraft: event.text,
+        inputDraft: "",
+        options: [],
       });
     case "asr.state": {
       const asrEnabled = event.enabled ?? event.running;

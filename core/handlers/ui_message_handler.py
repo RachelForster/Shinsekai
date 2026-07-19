@@ -191,7 +191,6 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         if audio_path:
             audio_path = Path(audio_path).as_posix()
         effect = out.effect
-        is_final = out.is_final_segment
         is_continuation = not speech  # 非首段，仅播放音频
 
         if not is_continuation:
@@ -265,15 +264,6 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             remaining = min_stop_time - (end_time - start_time)
             if remaining > 0:
                 ev.wait(timeout=remaining)
-        if is_final:
-            # sendMessage 已暂停 ASR；无 TTS / 音频失败时原先不会走到 post_llm_reply_finished，导致麦克风永久暂停。
-            get_asr_log().info(
-                "CharacterDialogUiHandler: dialog handler done "
-                "(audio_played=%s) → post_llm_reply_finished",
-                audio_played,
-            )
-            ui.post_llm_reply_finished()
-
     def post_process(self, out: TTSOutputMessage) -> None:
         if not out.is_final_segment:
             return
