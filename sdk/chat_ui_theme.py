@@ -60,9 +60,12 @@ EXTRA_BLOCK_PROPS = {
         {
             "chrome",
             "heightPx",
+            "fontFamily",
             "nameInputGapVh",
             "widthPct",
             "offsetY",
+            "opacity",
+            "scale",
             "textAlign",
             "textShadow",
             "textSizePx",
@@ -160,6 +163,9 @@ NUMERIC_BOUNDS = {
     "textSizePx": (12, 64),
     "textWeight": (300, 900),
     "widthPx": (260, 720),
+    "opacity": (0.35, 1),
+    "scale": (0.8, 1.2),
+    "windowScale": (0.8, 1.2),
 }
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -413,6 +419,10 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
         for k, v in tokens["global"].items():
             if k in {"themeColor", "fontFamily"} and isinstance(v, str) and _is_safe_css_value(v):
                 g[k] = v
+            elif k == "windowScale":
+                normalized_scale = _clamp_number(k, v, errors, "tokens.global.windowScale")
+                if normalized_scale is not None:
+                    g[k] = normalized_scale
             else:
                 errors.append(f"tokens.global.{k} 非法")
         normalized_tokens["global"] = g
@@ -452,7 +462,7 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
         # 额外字段语义校验
         if block_name == "dialog":
             _copy_numeric_fields(out, block, ("heightPx", "widthPct", "offsetY"), errors, "tokens.dialog")
-            _copy_number_fields(out, block, ("nameInputGapVh",), errors, "tokens.dialog")
+            _copy_number_fields(out, block, ("nameInputGapVh", "opacity", "scale"), errors, "tokens.dialog")
             if "chrome" in block:
                 val = _validate_enum(block["chrome"], frozenset({"panel", "none"}), errors, "tokens.dialog.chrome")
                 if val is not None:
@@ -462,6 +472,7 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
                 if val is not None:
                     out["textAlign"] = val
             _copy_numeric_fields(out, block, ("textSizePx", "textWeight"), errors, "tokens.dialog")
+            _copy_safe_css_field(out, block, "fontFamily", errors, "tokens.dialog.fontFamily")
             _copy_safe_css_field(out, block, "textShadow", errors, "tokens.dialog.textShadow")
         if block_name == "options":
             _copy_numeric_fields(

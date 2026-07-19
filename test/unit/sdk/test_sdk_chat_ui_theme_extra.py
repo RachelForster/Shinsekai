@@ -28,7 +28,7 @@ def _valid_manifest() -> dict:
         "description": "Demo theme",
         "preview": "assets/preview.png",
         "tokens": {
-            "global": {"themeColor": "#123456", "fontFamily": "Arial"},
+            "global": {"themeColor": "#123456", "fontFamily": "Arial", "windowScale": 0.9},
             "fonts": [{"family": "Demo", "src": "assets/demo.woff2", "weight": 400}],
             "dialog": {
                 "background": "rgba(1,2,3,0.8)",
@@ -39,9 +39,12 @@ def _valid_manifest() -> dict:
                 "frameSlice": 36,
                 "frameWidthPx": 14,
                 "heightPx": 120,
+                "fontFamily": "Demo",
                 "nameInputGapVh": 20,
                 "offsetY": -10,
+                "opacity": 0.75,
                 "padding": 16,
+                "scale": 1.1,
                 "textAlign": "left",
                 "textShadow": "0 1px 2px rgba(0,0,0,0.3)",
                 "widthPct": 80,
@@ -114,6 +117,10 @@ def test_slugify_and_validate_manifest_normalizes_rich_theme() -> None:
     assert result.normalized["author"] == "Tester"
     assert result.normalized["preview"] == "assets/preview.png"
     assert result.normalized["tokens"]["dialog"]["chrome"] == "panel"
+    assert result.normalized["tokens"]["dialog"]["opacity"] == 0.75
+    assert result.normalized["tokens"]["dialog"]["scale"] == 1.1
+    assert result.normalized["tokens"]["dialog"]["fontFamily"] == "Demo"
+    assert result.normalized["tokens"]["global"]["windowScale"] == 0.9
     assert result.normalized["tokens"]["dialog"]["frameOutsetPx"] == 5
     assert result.normalized["tokens"]["dialog"]["frameWidthPx"] == 14
     assert result.normalized["tokens"]["options"]["active"]["background"] == "rgba(40,40,40,0.9)"

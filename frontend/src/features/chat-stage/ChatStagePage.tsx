@@ -41,8 +41,10 @@ import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
 import {
   chatStageRuntimeStyle,
+  clearMaterializedChatStageAppearance,
   defaultChatStageRuntimeConfig,
   effectiveChatStageTextStyle,
+  materializeChatStageAppearanceTheme,
   readChatStageRuntimeConfig,
   resetChatStageRuntimeThemeAppearance,
   runtimeSpriteScale,
@@ -75,6 +77,7 @@ export function ChatStagePage() {
   const imageAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAttachmentSlotsRef = useRef(0);
+  const [savingAppearance, setSavingAppearance] = useState(false);
   const { showToast } = useToast();
   const { t } = useI18n();
   const theme = useOptionalChatTheme();
@@ -339,6 +342,41 @@ export function ChatStagePage() {
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
+
+  const saveCurrentAppearanceAsTheme = useCallback(async () => {
+    if (!theme?.manifest || savingAppearance) {
+      return;
+    }
+    const existingIds = new Set(theme.themes.map((item) => item.id));
+    const baseSlug = `${theme.manifest.id}-appearance`.slice(0, 58).replace(/[-_]+$/, "") || "chat-appearance";
+    let id = baseSlug;
+    let suffix = 2;
+    while (existingIds.has(id)) {
+      id = `${baseSlug}-${suffix}`.slice(0, 64);
+      suffix += 1;
+    }
+
+    setSavingAppearance(true);
+    try {
+      const manifest = materializeChatStageAppearanceTheme(theme.manifest, runtimeConfig, id);
+      const saved = await theme.saveTheme({ baseId: theme.manifest.id, manifest });
+      await theme.switchTheme(saved.id);
+      setRuntimeConfig((current) => clearMaterializedChatStageAppearance(current));
+      showToast({
+        kind: "success",
+        message: t("chat.config.appearanceSaved", { id: saved.id }),
+        title: t("chat.config.saveAppearanceAsTheme"),
+      });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("chat.config.appearanceSaveError"),
+        title: t("common.operationFailed"),
+      });
+    } finally {
+      setSavingAppearance(false);
+    }
+  }, [runtimeConfig, savingAppearance, showToast, t, theme]);
 
   const updateRuntimeAutoHideTopTools = (autoHideTopTools: boolean) => {
     setRuntimeConfig((current) => ({ ...current, autoHideTopTools }));
@@ -624,6 +662,7 @@ export function ChatStagePage() {
           alwaysOnTop={runtimeConfig.alwaysOnTop}
           autoHideInput={runtimeConfig.autoHideInput}
           autoHideTopTools={runtimeConfig.autoHideTopTools}
+          canSaveAppearance={Boolean(theme?.manifest)}
           configThemeColor={runtimeConfig.configThemeColor}
           configUseMainThemeColor={runtimeConfig.configUseMainThemeColor}
           dialogFill={runtimeConfig.dialogFill}
@@ -647,6 +686,7 @@ export function ChatStagePage() {
           onDialogScaleChange={updateRuntimeDialogScale}
           onImmersiveModeChange={updateRuntimeImmersiveMode}
           onResetThemeAppearance={resetRuntimeThemeAppearance}
+          onSaveAppearanceAsTheme={() => void saveCurrentAppearanceAsTheme()}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
           onSpriteScaleChange={updateRuntimeSpriteScale}
@@ -659,6 +699,7 @@ export function ChatStagePage() {
           spriteOffsetY={runtimeConfig.spriteOffsetY}
           spriteScales={runtimeConfig.spriteScales}
           sprites={viewModel.sprites}
+          savingAppearance={savingAppearance}
           textSpeed={typewriterCps}
           turnOptions={state.turnOptions}
           voiceLanguage={viewModel.voiceLanguage || "ja"}

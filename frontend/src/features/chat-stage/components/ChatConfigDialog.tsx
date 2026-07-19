@@ -1,5 +1,5 @@
 import { useId, type ChangeEvent } from "react";
-import { Languages, RotateCcw } from "lucide-react";
+import { Languages, RotateCcw, Save } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
@@ -108,6 +108,7 @@ export function ChatConfigDialog({
   mainThemeColor,
   nameText,
   onAlwaysOnTopChange,
+  canSaveAppearance,
   onAutoHideInputChange,
   onAutoHideTopToolsChange,
   onConfigThemeColorChange,
@@ -119,6 +120,7 @@ export function ChatConfigDialog({
   onDialogScaleChange,
   onImmersiveModeChange,
   onResetThemeAppearance,
+  onSaveAppearanceAsTheme,
   onSpriteOffsetXChange,
   onSpriteOffsetYChange,
   onSpriteScaleChange,
@@ -131,6 +133,7 @@ export function ChatConfigDialog({
   spriteOffsetY,
   spriteScales,
   sprites,
+  savingAppearance,
   textSpeed,
   turnOptions,
   voiceLanguage,
@@ -152,6 +155,7 @@ export function ChatConfigDialog({
   mainThemeColor: string;
   nameText: ChatStageTextStyleConfig;
   onAlwaysOnTopChange: (value: boolean) => void;
+  canSaveAppearance: boolean;
   onAutoHideInputChange: (value: boolean) => void;
   onAutoHideTopToolsChange: (value: boolean) => void;
   onConfigThemeColorChange: (value: string) => void;
@@ -163,6 +167,7 @@ export function ChatConfigDialog({
   onDialogScaleChange: (value: number) => void;
   onImmersiveModeChange: (value: boolean) => void;
   onResetThemeAppearance: () => void;
+  onSaveAppearanceAsTheme: () => void;
   onSpriteOffsetXChange: (value: number) => void;
   onSpriteOffsetYChange: (value: number) => void;
   onSpriteScaleChange: (spriteKey: string, value: number) => void;
@@ -175,6 +180,7 @@ export function ChatConfigDialog({
   spriteOffsetY: number;
   spriteScales: Record<string, number>;
   sprites: ChatStageSprite[];
+  savingAppearance: boolean;
   textSpeed: number;
   turnOptions: ChatTurnOptions;
   voiceLanguage: string;
@@ -295,6 +301,27 @@ export function ChatConfigDialog({
             </div>
           </section>
         ) : null}
+        <section className="chat-config-dialog__section chat-config-dialog__appearance-flow">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionAppearanceFlow")}</h3>
+          <div className="chat-config-dialog__appearance-layers" aria-label={t("chat.config.appearancePrecedence")}>
+            <span>{t("chat.config.appearanceGlobal")}</span>
+            <span aria-hidden>→</span>
+            <span>{t("chat.config.appearanceTheme")}</span>
+            <span aria-hidden>→</span>
+            <strong>{t("chat.config.appearanceSession")}</strong>
+          </div>
+          <p className="chat-config-dialog__help">{t("chat.config.appearanceHelp")}</p>
+          <Button
+            disabled={!canSaveAppearance || savingAppearance}
+            icon={<Save aria-hidden className="button__icon" />}
+            loading={savingAppearance}
+            onClick={onSaveAppearanceAsTheme}
+            variant="primary"
+          >
+            {t("chat.config.saveAppearanceAsTheme")}
+          </Button>
+          <p className="chat-config-dialog__help">{t("chat.config.saveAppearanceHint")}</p>
+        </section>
         <section className="chat-config-dialog__section">
           <div className="chat-config-dialog__section-heading">
             <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionMenuAppearance")}</h3>
