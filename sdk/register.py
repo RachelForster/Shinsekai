@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 from sdk.plugin import PluginBase
 from sdk.types import (
     ChatUIContribution,
+    FrontendChatUIContribution,
     FrontendConfigContribution,
     FrontendPageContribution,
     OutputContractPatch,
@@ -140,6 +141,7 @@ class PluginCapabilityRegistry:
         self._settings_ui_plugin_ctx: tuple[str, str] | None = None
         self._tools_tab_contributions: list[ToolsTabContribution] = []
         self._frontend_config_contributions: list[FrontendConfigContribution] = []
+        self._frontend_chat_ui_contributions: list[FrontendChatUIContribution] = []
         self._frontend_page_contributions: list[FrontendPageContribution] = []
         self._chat_ui_contributions: list[ChatUIContribution] = []
         self._workflow_contributions: list[WorkflowContribution] = []
@@ -234,6 +236,22 @@ class PluginCapabilityRegistry:
                 plugin_version=contribution.plugin_version or ver,
             )
         self._frontend_page_contributions.append(contribution)
+
+    def register_frontend_chat_ui(self, contribution: FrontendChatUIContribution) -> None:
+        """Register a JSON-only Chat UI item rendered by the host application."""
+        if contribution.slot not in {"chat-dialog-actions", "chat-output", "chat-toolbar"}:
+            raise ValueError(f"Unsupported frontend chat UI slot: {contribution.slot}")
+        if not contribution.contribution_id.strip() or not contribution.title.strip():
+            raise ValueError("FrontendChatUIContribution requires a non-empty id and title")
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
+        self._frontend_chat_ui_contributions.append(contribution)
 
     def register_chat_ui_widget(self, contribution: ChatUIContribution) -> None:
         ctx = self._settings_ui_plugin_ctx
@@ -377,6 +395,10 @@ class PluginCapabilityRegistry:
     @property
     def frontend_page_contributions(self) -> list[FrontendPageContribution]:
         return sorted(self._frontend_page_contributions, key=lambda c: c.order)
+
+    @property
+    def frontend_chat_ui_contributions(self) -> list[FrontendChatUIContribution]:
+        return sorted(self._frontend_chat_ui_contributions, key=lambda c: c.order)
 
     @property
     def chat_ui_contributions(self) -> list[ChatUIContribution]:

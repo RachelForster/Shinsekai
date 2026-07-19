@@ -130,7 +130,14 @@ from frontend_bridge_core.plugin_publisher import (
     _scan_local_plugin,
     _validate_plugin_submission,
 )
-from frontend_bridge_core.plugin_ui import _plugin_ui_detail, _resolve_plugin_frontend_file, _run_plugin_ui_action, _save_plugin_ui_config
+from frontend_bridge_core.plugin_ui import (
+    _frontend_chat_ui_contribution_payloads,
+    _plugin_ui_detail,
+    _resolve_plugin_frontend_file,
+    _run_frontend_chat_ui_contribution,
+    _run_plugin_ui_action,
+    _save_plugin_ui_config,
+)
 from frontend_bridge_core.plugin_updates import (
     _app_update_info,
     _app_update_tags,
@@ -461,6 +468,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_log_file_list(Path.cwd().resolve()))
             elif path == "/api/plugins":
                 self._send_json(_plugin_rows(plugin_load_snapshot(self.state)))
+            elif path == "/api/plugins/chat-ui-contributions":
+                self._send_json(_frontend_chat_ui_contribution_payloads())
             elif path == "/api/plugins/status":
                 self._send_json(plugin_load_snapshot(self.state))
             elif path.startswith("/api/plugins/") and path.endswith("/ui"):
@@ -1038,6 +1047,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path.startswith("/api/plugins/") and path.endswith("/enabled"):
                 plugin_id = unquote(path[len("/api/plugins/") : -len("/enabled")])
                 self._send_json(_set_plugin_enabled(plugin_id, bool(body.get("enabled"))))
+            elif method == "POST" and path.startswith("/api/plugins/") and "/chat-ui/" in path and path.endswith("/run"):
+                rest = path[len("/api/plugins/") :]
+                plugin_part, _, contribution_tail = rest.partition("/chat-ui/")
+                contribution_part = contribution_tail[: -len("/run")]
+                self._send_json(
+                    _run_frontend_chat_ui_contribution(
+                        unquote(plugin_part),
+                        unquote(contribution_part),
+                    )
+                )
             elif method == "POST" and path.startswith("/api/plugins/") and "/ui/" in path and "/actions/" in path:
                 # /api/plugins/{plugin_id}/ui/{page_id}/actions/{action_id}
                 rest = path[len("/api/plugins/") :]

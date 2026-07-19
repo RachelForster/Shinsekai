@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from sdk.types import (
         ChatUIContribution,
         FrontendConfigContribution,
+        FrontendChatUIContribution,
         FrontendPageContribution,
         OutputContractPatch,
         SettingsUIContribution,
@@ -273,6 +274,17 @@ def collect_frontend_page_contributions() -> List["FrontendPageContribution"]:
         return mgr.collect_frontend_page_contributions()
     except Exception:
         logger.exception("collect_frontend_page_contributions failed")
+        return []
+
+
+def collect_frontend_chat_ui_contributions() -> List["FrontendChatUIContribution"]:
+    mgr = _plugin_manager
+    if mgr is None:
+        return []
+    try:
+        return mgr.collect_frontend_chat_ui_contributions()
+    except Exception:
+        logger.exception("collect_frontend_chat_ui_contributions failed")
         return []
 
 

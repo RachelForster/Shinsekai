@@ -2174,7 +2174,34 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(plugin, 400);
       },
       list: () => delay(plugins),
+      listSlotContributions: () =>
+        delay(
+          plugins.some((plugin) => plugin.id === "core-tools" && plugin.enabled)
+            ? [
+                {
+                  actionLabel: "生成场景提示",
+                  actionable: true,
+                  description: "由宿主安全渲染的浏览器预览贡献。",
+                  icon: "sparkles" as const,
+                  id: "scene-prompt",
+                  order: 100,
+                  pluginId: "core-tools",
+                  pluginVersion: "built-in",
+                  slot: "chat-output" as const,
+                  title: "场景灵感",
+                  variant: "ghost" as const,
+                },
+              ]
+            : [],
+        ),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
+      runSlotContribution: (pluginId, contributionId) =>
+        delay({
+          id: contributionId,
+          kind: "success" as const,
+          message: "浏览器预览动作已执行。",
+          pluginId,
+        }),
       scanLocal(input) {
         const baseName = input.path.split(/[\\/]/).filter(Boolean).pop() || "preview-plugin";
         return delay({

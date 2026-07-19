@@ -1716,6 +1716,46 @@ describe("http platform", () => {
     );
   });
 
+  it("lists and runs host-rendered plugin slot contributions", async () => {
+    const contribution = {
+      actionLabel: "Run",
+      actionable: true,
+      description: "Host rendered",
+      icon: "sparkles" as const,
+      id: "demo-action",
+      order: 10,
+      pluginId: "demo.plugin",
+      pluginVersion: "1.0.0",
+      slot: "chat-dialog-actions" as const,
+      title: "Demo action",
+      variant: "primary" as const,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse([contribution]))
+      .mockResolvedValueOnce(
+        await mockJsonResponse({ id: "demo-action", kind: "success", message: "done", pluginId: "demo.plugin" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(platform.plugins.listSlotContributions()).resolves.toEqual([contribution]);
+    await expect(platform.plugins.runSlotContribution("demo.plugin", "demo-action")).resolves.toMatchObject({
+      message: "done",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8787/api/plugins/chat-ui-contributions",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8787/api/plugins/demo.plugin/chat-ui/demo-action/run",
+      expect.objectContaining({ body: JSON.stringify({}), method: "POST" }),
+    );
+  });
+
   it("reads and saves plugin UI config through the bridge", async () => {
     const detail = {
       pages: [

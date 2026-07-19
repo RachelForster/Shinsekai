@@ -184,6 +184,30 @@ export type PluginSlotId =
   | "settings-extension"
   | "settings-tools";
 
+export type PluginSlotContributionIcon = "info" | "play" | "puzzle" | "settings" | "sparkles";
+export type PluginSlotContributionVariant = "danger" | "ghost" | "primary";
+
+export interface PluginSlotContribution {
+  actionLabel: string;
+  actionable: boolean;
+  description: string;
+  icon: PluginSlotContributionIcon;
+  id: string;
+  order: number;
+  pluginId: string;
+  pluginVersion: string;
+  slot: PluginSlotId;
+  title: string;
+  variant: PluginSlotContributionVariant;
+}
+
+export interface PluginSlotActionResult {
+  id: string;
+  kind: "error" | "info" | "success";
+  message: string;
+  pluginId: string;
+}
+
 export interface PluginManifest {
   author: string;
   description: string;
@@ -1257,6 +1281,7 @@ export interface ShinsekaiPlatform {
     ) => Promise<PluginManifest>;
     getUi: (id: string) => Promise<PluginUIDetail>;
     list: () => Promise<PluginManifest[]>;
+    listSlotContributions: () => Promise<PluginSlotContribution[]>;
     repoTags: (repo: string) => Promise<string[]>;
     scanLocal: (input: { path: string }) => Promise<PluginLocalScanResult>;
     validateSubmission: (input: PluginSubmissionInput) => Promise<PluginSubmissionValidationResult>;
@@ -1268,6 +1293,7 @@ export interface ShinsekaiPlatform {
       actionId: string,
       values: Record<string, unknown>,
     ) => Promise<PluginConfigActionResult>;
+    runSlotContribution: (pluginId: string, contributionId: string) => Promise<PluginSlotActionResult>;
     saveUiConfig: (id: string, pageId: string, values: Record<string, unknown>) => Promise<PluginConfigSaveResult>;
     setEnabled: (id: string, enabled: boolean) => Promise<PluginManifest>;
     uninstall: (id: string) => Promise<PluginUninstallResult>;
