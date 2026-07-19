@@ -6,7 +6,12 @@ import { useI18n } from "../../../shared/i18n";
 import { chatThemeDisplayName } from "../../../shared/theme/chatTheme";
 import { Button, Select } from "../../../shared/ui";
 import { ChatThemeEditor } from "./ChatThemeEditor";
-import { ChatThemePreview, type ChatThemePreviewMode } from "./ChatThemePreview";
+import {
+  ChatThemePreview,
+  type ChatThemePreviewMode,
+  type ChatThemePreviewState,
+  type ChatThemePreviewViewport,
+} from "./ChatThemePreview";
 import "./chat-theme-customizer-page.css";
 import { useChatThemeCustomizer } from "./useChatThemeCustomizer";
 
@@ -14,6 +19,8 @@ export function ChatThemeCustomizerPage() {
   const navigate = useNavigate();
   const { language, t } = useI18n();
   const [previewMode, setPreviewMode] = useState<ChatThemePreviewMode>("dialog");
+  const [previewState, setPreviewState] = useState<ChatThemePreviewState>("default");
+  const [previewViewport, setPreviewViewport] = useState<ChatThemePreviewViewport>("desktop");
   const customizer = useChatThemeCustomizer();
 
   return (
@@ -115,9 +122,15 @@ export function ChatThemeCustomizerPage() {
           />
           <ChatThemePreview
             assetThemeId={customizer.assetThemeId}
+            assets={customizer.assets}
+            assetsLoading={customizer.assetsLoading}
             manifest={customizer.draft}
             mode={previewMode}
             onModeChange={setPreviewMode}
+            onStateChange={setPreviewState}
+            onViewportChange={setPreviewViewport}
+            state={previewState}
+            viewport={previewViewport}
           />
         </div>
       )}
