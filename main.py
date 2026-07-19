@@ -767,8 +767,11 @@ def main():
 
         def _submit_asr_text(text: str) -> None:
             submit_runtime_text(text, notify_key=None)
-            if not chat_turn_service.options.batch_enabled:
-                stream_sink.emit({"type": "status.change", "status": "generating"})
+            if chat_turn_service.options.batch_enabled:
+                # Voice mode is turn-based: a completed utterance must not remain
+                # buffered behind the stacked-message idle timer.
+                chat_turn_service.flush()
+            stream_sink.emit({"type": "status.change", "status": "generating"})
 
         def _set_asr_loading(loading: bool) -> None:
             if loading:

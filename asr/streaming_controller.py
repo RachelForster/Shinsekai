@@ -19,7 +19,8 @@ class StreamingASRController:
 
     The lifecycle mirrors ``MicButton``: the adapter remains loaded while it is
     paused for a chat turn, a final transcript is submitted immediately, and
-    listening resumes shortly after the reply finishes.
+    listening resumes shortly after the reply finishes. Partial-only adapters
+    are finalized after a short silence so they cannot strand a recognized turn.
     """
 
     def __init__(
@@ -31,6 +32,7 @@ class StreamingASRController:
         on_loading_changed: Callable[[bool], None] | None = None,
         on_error: Callable[[str, BaseException], None] | None = None,
         resume_delay_seconds: float = 0.5,
+        silence_submit_seconds: float = 2.0,
     ) -> None:
         self._adapter_factory = adapter_factory
         self._emit_event = emit_event
@@ -38,6 +40,7 @@ class StreamingASRController:
         self._on_loading_changed = on_loading_changed
         self._on_error = on_error
         self._resume_delay_seconds = max(0.0, float(resume_delay_seconds))
+        self._silence_submit_seconds = max(0.0, float(silence_submit_seconds))
 
         self._lock = threading.RLock()
         self._adapter: ASRAdapter | None = None
@@ -51,6 +54,8 @@ class StreamingASRController:
         self._generation = 0
         self._clear_on_activation = False
         self._resume_timer: threading.Timer | None = None
+        self._silence_timer: threading.Timer | None = None
+        self._silence_generation = 0
         self._original_text = ""
         self._current_text = ""
 
@@ -68,6 +73,7 @@ class StreamingASRController:
             self._turn_paused = False
             self._clear_on_activation = True
             self._cancel_resume_timer_locked()
+            self._cancel_silence_timer_locked()
         self._emit_state()
         self._activate_async()
 
@@ -81,6 +87,7 @@ class StreamingASRController:
             self._turn_paused = False
             self._clear_on_activation = False
             self._cancel_resume_timer_locked()
+            self._cancel_silence_timer_locked()
             adapter = self._adapter if self._started else None
         self._pause_adapter(adapter)
         self._emit_state()
@@ -93,6 +100,7 @@ class StreamingASRController:
             self._turn_paused = True
             self._active = False
             self._cancel_resume_timer_locked()
+            self._cancel_silence_timer_locked()
             adapter = self._adapter if self._started else None
         self._pause_adapter(adapter)
         self._emit_state()
@@ -122,6 +130,7 @@ class StreamingASRController:
             self._turn_paused = False
             self._generation += 1
             self._cancel_resume_timer_locked()
+            self._cancel_silence_timer_locked()
             adapter = self._adapter
             self._adapter = None
         if adapter is not None:
@@ -278,9 +287,17 @@ class StreamingASRController:
             if is_partial:
                 if not raw_text:
                     return
+                previous = self._current_text
                 self._current_text = f"{self._original_text}{raw_text}"
                 displayed = self._current_text
+                # Some realtime engines keep reporting the same hypothesis while
+                # the microphone is silent. Treat only transcript changes as
+                # speech activity so those duplicate callbacks cannot postpone
+                # the silence fallback forever.
+                if displayed != previous or self._silence_timer is None:
+                    self._schedule_silence_submit_locked()
             else:
+                self._cancel_silence_timer_locked()
                 final_piece = (
                     raw_text.strip()
                     if language.startswith("en")
@@ -379,5 +396,47 @@ class StreamingASRController:
     def _cancel_resume_timer_locked(self) -> None:
         timer = self._resume_timer
         self._resume_timer = None
+        if timer is not None:
+            timer.cancel()
+
+    def _schedule_silence_submit_locked(self) -> None:
+        self._cancel_silence_timer_locked()
+        if self._silence_submit_seconds <= 0:
+            return
+        generation = self._silence_generation
+        timer = threading.Timer(
+            self._silence_submit_seconds,
+            self._submit_after_silence,
+            args=(generation,),
+        )
+        timer.daemon = True
+        self._silence_timer = timer
+        timer.start()
+
+    def _submit_after_silence(self, generation: int) -> None:
+        with self._lock:
+            if generation != self._silence_generation:
+                return
+            self._silence_timer = None
+            if (
+                self._closed
+                or not self._enabled
+                or not self._active
+                or self._turn_paused
+            ):
+                return
+            displayed = self._current_text.strip()
+        if not displayed:
+            return
+        _log.info(
+            "Streaming ASR finalized transcript after %.1fs of silence",
+            self._silence_submit_seconds,
+        )
+        self._handle_transcription(displayed, False)
+
+    def _cancel_silence_timer_locked(self) -> None:
+        self._silence_generation += 1
+        timer = self._silence_timer
+        self._silence_timer = None
         if timer is not None:
             timer.cancel()

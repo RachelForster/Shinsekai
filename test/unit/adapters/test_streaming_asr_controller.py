@@ -174,6 +174,88 @@ def test_turn_pause_keeps_asr_enabled_until_the_user_disables_it() -> None:
     controller.close()
 
 
+def test_partial_transcript_is_submitted_after_silence_without_adapter_final() -> None:
+    adapters: list[_FakeASRAdapter] = []
+    events: list[dict] = []
+    submitted: list[str] = []
+
+    def factory(callback):
+        adapter = _FakeASRAdapter(callback)
+        adapters.append(adapter)
+        return adapter
+
+    controller = StreamingASRController(
+        adapter_factory=factory,
+        emit_event=events.append,
+        submit_final=submitted.append,
+        silence_submit_seconds=0.01,
+    )
+    controller.user_resume()
+    _wait_until(lambda: bool(adapters) and "start" in adapters[0].calls)
+    adapter = adapters[0]
+
+    adapter.callback("silence fallback", True)
+    _wait_until(lambda: submitted == ["silence fallback"])
+
+    assert {"type": "asr.final", "text": "silence fallback"} in events
+    assert adapter.calls[-1] == "pause"
+    adapter.callback("silence fallback", False)
+    assert submitted == ["silence fallback"]
+    controller.close()
+
+
+def test_user_pause_cancels_pending_silence_submission() -> None:
+    adapters: list[_FakeASRAdapter] = []
+    submitted: list[str] = []
+
+    def factory(callback):
+        adapter = _FakeASRAdapter(callback)
+        adapters.append(adapter)
+        return adapter
+
+    controller = StreamingASRController(
+        adapter_factory=factory,
+        emit_event=lambda _event: None,
+        submit_final=submitted.append,
+        silence_submit_seconds=0.01,
+    )
+    controller.user_resume()
+    _wait_until(lambda: bool(adapters) and "start" in adapters[0].calls)
+
+    adapters[0].callback("do not submit", True)
+    controller.user_pause()
+    time.sleep(0.03)
+
+    assert submitted == []
+    controller.close()
+
+
+def test_repeated_identical_partials_do_not_postpone_silence_submission() -> None:
+    adapters: list[_FakeASRAdapter] = []
+
+    def factory(callback):
+        adapter = _FakeASRAdapter(callback)
+        adapters.append(adapter)
+        return adapter
+
+    controller = StreamingASRController(
+        adapter_factory=factory,
+        emit_event=lambda _event: None,
+        submit_final=lambda _text: None,
+        silence_submit_seconds=30,
+    )
+    controller.user_resume()
+    _wait_until(lambda: bool(adapters) and "start" in adapters[0].calls)
+
+    adapters[0].callback("stable transcript", True)
+    original_timer = controller._silence_timer
+    adapters[0].callback("stable transcript", True)
+
+    assert original_timer is not None
+    assert controller._silence_timer is original_timer
+    controller.close()
+
+
 def test_user_can_cancel_and_restart_lazy_adapter_loading() -> None:
     factory_entered = Event()
     release_factory = Event()
