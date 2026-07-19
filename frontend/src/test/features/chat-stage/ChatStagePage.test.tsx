@@ -951,7 +951,7 @@ describe("ChatStagePage", () => {
     expect(screen.getByRole("button", { name: "开始" })).toBeInTheDocument();
   });
 
-  it("enables hold-to-talk only for the pill input theme when a Vosk model is available", async () => {
+  it("uses one click-to-toggle ASR microphone for the pill input theme", async () => {
     themeContextMocks.optional = {
       resolved: { typewriter: { cps: 40 } },
       style: { "--chat-input-layout": "pill" } as CSSProperties,
@@ -964,18 +964,13 @@ describe("ChatStagePage", () => {
     const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     expect(config).toHaveClass("chat-stage-modal");
     expect(config.querySelector(".chat-stage-modal__header")).not.toBeNull();
-    const longPress = within(config).getByLabelText("Long press to talk");
-    expect(longPress.closest(".switch")).not.toBeNull();
-    expect(longPress.nextElementSibling).toHaveClass("switch__track");
-    fireEvent.click(within(config).getByText("Long press to talk"));
-    await waitFor(() => expect(longPress).toBeChecked());
+    expect(within(config).queryByLabelText("Long press to talk")).not.toBeInTheDocument();
     fireEvent.click(within(config).getByRole("button", { name: "Close" }));
 
-    const holdButton = await screen.findByRole("button", { name: "Hold to talk" });
-    fireEvent.pointerDown(holdButton);
+    const asrButtons = await screen.findAllByRole("button", { name: "Resume ASR" });
+    expect(asrButtons).toHaveLength(1);
+    fireEvent.click(asrButtons[0]);
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "resume-asr" }));
-    fireEvent.pointerUp(holdButton);
-    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "pause-asr" }));
   });
 
   it("uses a single-line pill input and scopes the plus panel to attachments", async () => {
@@ -1008,6 +1003,7 @@ describe("ChatStagePage", () => {
     expect(panel).toHaveAttribute("data-open", "true");
     expect(within(panel).queryByRole("button", { name: "Start microphone" })).not.toBeInTheDocument();
     expect(within(panel).queryByRole("button", { name: "Pause ASR" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Resume ASR" })).toHaveLength(1);
     expect(within(panel).getByRole("button", { name: "Image" })).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "File" })).toBeInTheDocument();
 
@@ -1085,7 +1081,7 @@ describe("ChatStagePage", () => {
     );
   });
 
-  it("keeps hold-to-talk disabled and prompts when the Vosk model is missing", async () => {
+  it("lets the configured backend report ASR availability instead of probing Vosk in the frontend", async () => {
     mocks.browseFiles.mockResolvedValueOnce({
       cwd: "D:/models/vosk",
       entries: [],
@@ -1099,17 +1095,9 @@ describe("ChatStagePage", () => {
     renderPage();
 
     await screen.findByText("Ready");
-    await waitFor(() => expect(mocks.browseFiles).toHaveBeenCalledWith({ path: "D:/models/vosk", showHidden: false }));
-    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
-    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
-    const longPress = within(config).getByLabelText("Long press to talk");
-    fireEvent.click(within(config).getByText("Long press to talk"));
-
-    await screen.findByText(
-      "Download and configure a Vosk speech model before enabling this. Go to System settings to download it. Current path: D:/models/vosk",
-    );
-    expect(longPress).not.toBeChecked();
-    expect(screen.queryByRole("button", { name: "Hold to talk" })).not.toBeInTheDocument();
+    expect(mocks.browseFiles).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Resume ASR" }));
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "resume-asr" }));
   });
 
   it("keeps the current dialog visible after copying history", async () => {
@@ -1360,31 +1348,20 @@ describe("ChatStagePage", () => {
     expect(inputLayer).toHaveAttribute("data-auto-hide", "true");
   });
 
-  it("keeps an immersive pill input visible while its action panel or microphone is active", async () => {
-    const speechWindow = window as typeof window & {
-      SpeechRecognition?: new () => {
-        abort: () => void;
-        continuous: boolean;
-        interimResults: boolean;
-        lang: string;
-        onend: (() => void) | null;
-        onerror: (() => void) | null;
-        onresult: (() => void) | null;
-        start: () => void;
-        stop: () => void;
-      };
-    };
-    speechWindow.SpeechRecognition = class {
-      continuous = false;
-      interimResults = false;
-      lang = "";
-      onend = null;
-      onerror = null;
-      onresult = null;
-      abort() {}
-      start() {}
-      stop() {}
-    };
+  it("keeps the single ASR microphone visible and themed while it loads and listens", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    mocks.sendChatCommand.mockImplementation(async (command: ChatCommand) =>
+      snapshot({
+        asrEnabled: command.type === "resume-asr",
+        asrLoading: command.type === "resume-asr",
+        asrRunning: false,
+        status: "paused",
+      }),
+    );
     themeContextMocks.optional = {
       resolved: { typewriter: { cps: 32 } },
       style: { "--chat-input-layout": "pill" } as CSSProperties,
@@ -1404,13 +1381,70 @@ describe("ChatStagePage", () => {
     expect(inputLayer).toHaveAttribute("data-visible", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
-    fireEvent.click(screen.getByRole("button", { name: "Start microphone" }));
-    expect(inputLayer).toHaveAttribute("data-listening", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Resume ASR" }));
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "resume-asr" }));
+
+    const loadingButton = await screen.findByRole("button", { name: "Pause ASR" });
+    expect(loadingButton).toHaveAttribute("aria-busy", "true");
+    expect(loadingButton).toHaveAttribute("aria-pressed", "true");
+    expect(loadingButton).toHaveClass("input-layer__asr-button--enabled", "input-layer__asr-button--loading");
+    expect(inputLayer).toHaveAttribute("data-asr-enabled", "true");
     expect(inputLayer).toHaveAttribute("data-force-visible", "true");
     expect(inputLayer).toHaveAttribute("data-visible", "true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Stop microphone" }));
-    delete speechWindow.SpeechRecognition;
+    act(() => {
+      listener?.({
+        enabled: true,
+        loading: false,
+        running: true,
+        seq: 1,
+        ts: 1,
+        type: "asr.state",
+        v: 1,
+      });
+    });
+    const listeningButton = screen.getByRole("button", { name: "Pause ASR" });
+    expect(listeningButton).toHaveAttribute("aria-busy", "false");
+    expect(listeningButton).toHaveClass("input-layer__asr-button--listening");
+    expect(inputLayer).toHaveAttribute("data-listening", "true");
+
+    fireEvent.click(listeningButton);
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "pause-asr" }));
+  });
+
+  it("keeps ASR enabled through automatic submission and resumes after the final reply", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+
+    await screen.findByText("Ready");
+    act(() => {
+      listener?.({ enabled: true, loading: false, running: true, seq: 1, ts: 1, type: "asr.state", v: 1 });
+      listener?.({ seq: 2, text: "hello wor", ts: 2, type: "asr.partial", v: 1 });
+    });
+    expect(screen.getByPlaceholderText("Enter dialogue")).toHaveValue("hello wor");
+
+    act(() => {
+      listener?.({ seq: 3, text: "hello world", ts: 3, type: "asr.final", v: 1 });
+      listener?.({ enabled: true, loading: false, running: false, seq: 4, ts: 4, type: "asr.state", v: 1 });
+    });
+    expect(screen.getByText("hello world")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Enter dialogue")).toHaveValue("");
+    const pausedForReplyButton = screen.getByRole("button", { name: "Pause ASR" });
+    expect(pausedForReplyButton).toHaveAttribute("aria-pressed", "true");
+    expect(pausedForReplyButton).not.toBeDisabled();
+    expect(document.querySelector(".input-layer")).toHaveAttribute("data-listening", "false");
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith(expect.objectContaining({ type: "send-message" }));
+
+    act(() => {
+      listener?.({ seq: 5, ts: 5, type: "reply.finished", v: 1 });
+      listener?.({ enabled: true, loading: false, running: true, seq: 6, ts: 6, type: "asr.state", v: 1 });
+    });
+    expect(document.querySelector(".input-layer")).toHaveAttribute("data-listening", "true");
+    expect(screen.getByRole("button", { name: "Pause ASR" })).toHaveClass("input-layer__asr-button--listening");
   });
 
   it("resets immersive input focus when a closed session restores the input layer", async () => {
@@ -1842,6 +1876,9 @@ describe("ChatStagePage", () => {
     );
     mocks.sendChatCommand.mockResolvedValue(
       snapshot({
+        asrEnabled: true,
+        asrLoading: false,
+        asrRunning: true,
         notificationText: "",
         options: [],
         sessionClosedReason: "",

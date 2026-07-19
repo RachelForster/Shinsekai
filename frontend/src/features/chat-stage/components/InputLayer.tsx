@@ -1,27 +1,22 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Ear, EarOff, FileText, ImagePlus, Mic, MicOff, Plus, Send, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { FileText, ImagePlus, LoaderCircle, Mic, MicOff, Plus, Send, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatAttachmentInput, ChatCommand } from "../../../shared/platform/types";
-import { Button, IconButton, TextArea, TextInput, ThemeFrame, useToast } from "../../../shared/ui";
-import {
-  appendTranscript,
-  getSpeechRecognitionConstructor,
-  speechRecognitionLanguage,
-  type BrowserSpeechRecognition,
-} from "../speechRecognition";
+import { Button, IconButton, TextArea, TextInput, ThemeFrame } from "../../../shared/ui";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
 import { useAutoHideRegion } from "../hooks/useAutoHideRegion";
 
 export function InputLayer({
   attachments,
   autoHide = false,
-  asrPaused,
+  asrEnabled,
+  asrLoading,
+  asrRunning,
   batchEnabled,
   disabled,
   hidden,
   inputLayout = "default",
-  longPressTalkEnabled = false,
   onChange,
   onCommand,
   onFlushBatch,
@@ -31,43 +26,35 @@ export function InputLayer({
   onSubmit,
   value,
 }: {
-  asrPaused: boolean;
+  asrEnabled: boolean;
+  asrLoading: boolean;
+  asrRunning: boolean;
   attachments: ChatAttachmentInput[];
   autoHide?: boolean;
   batchEnabled: boolean;
   disabled: boolean;
   hidden: boolean;
   inputLayout?: "default" | "pill";
-  longPressTalkEnabled?: boolean;
   onChange: (value: string) => void;
-  onCommand: (command: ChatCommand) => void;
+  onCommand: (command: ChatCommand) => void | Promise<void>;
   onFlushBatch: () => void | Promise<void>;
   onInputActivity: (state: { composing: boolean; hasText: boolean }) => void;
-  onSubmit: () => void | Promise<void>;
+  onSubmit: (textOverride?: string) => void | Promise<void>;
   onPickAttachments: (kind: ChatAttachmentInput["kind"]) => void;
   onRemoveAttachment: (attachment: ChatAttachmentInput) => void;
   value: string;
 }) {
-  const { language, t } = useI18n();
-  const { showToast } = useToast();
-  const [listening, setListening] = useState(false);
+  const { t } = useI18n();
   const [panelOpen, setPanelOpen] = useState(false);
-  const [holdTalkActive, setHoldTalkActive] = useState(false);
-  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
-  const holdTalkActiveRef = useRef(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const transcriptBaseRef = useRef("");
-  const valueRef = useRef(value);
   const inputActivityRef = useRef("");
   const pillLayout = inputLayout === "pill";
-  const pressToTalk = pillLayout && longPressTalkEnabled;
   const canSubmit = Boolean(value.trim() || attachments.length) && !disabled;
   const closePanel = useCallback(() => setPanelOpen(false), []);
-  const forceVisible = Boolean(value.trim() || attachments.length) || listening || panelOpen || holdTalkActive;
+  const forceVisible = Boolean(value.trim() || attachments.length) || asrEnabled || panelOpen;
   const autoHideRegion = useAutoHideRegion({ active: !hidden, enabled: autoHide, forceVisible });
 
   useEffect(() => {
-    valueRef.current = value;
     if (!value.trim()) {
       inputActivityRef.current = "false:false";
     }
@@ -98,54 +85,25 @@ export function InputLayer({
     }
   };
 
-  const stopListening = () => {
-    const recognition = recognitionRef.current;
-    recognitionRef.current = null;
-    if (recognition) {
-      recognition.stop();
-    }
-    setListening(false);
+  const toggleAsr = () => {
+    void onCommand({ type: asrEnabled ? "pause-asr" : "resume-asr" });
   };
-
-  const toggleListening = () => {
-    if (listening) {
-      stopListening();
-    } else {
-      startListening();
-    }
-  };
-
-  const stopHoldTalk = (event?: KeyboardEvent<HTMLButtonElement> | PointerEvent<HTMLButtonElement>) => {
-    if (!holdTalkActiveRef.current) {
-      return;
-    }
-    event?.preventDefault();
-    holdTalkActiveRef.current = false;
-    setHoldTalkActive(false);
-    onCommand({ type: "pause-asr" });
-  };
-
-  const startHoldTalk = (event: KeyboardEvent<HTMLButtonElement> | PointerEvent<HTMLButtonElement>) => {
-    if (!pressToTalk || disabled || holdTalkActiveRef.current) {
-      return;
-    }
-    event.preventDefault();
-    holdTalkActiveRef.current = true;
-    setHoldTalkActive(true);
-    onCommand({ type: "resume-asr" });
-  };
-
-  useEffect(() => {
-    if (disabled && listening) {
-      stopListening();
-    }
-  }, [disabled, listening]);
-
-  useEffect(() => {
-    if (!pressToTalk || disabled) {
-      stopHoldTalk();
-    }
-  }, [disabled, pressToTalk]);
+  const asrButtonClassName = [
+    "input-layer__asr-button",
+    asrEnabled ? "input-layer__asr-button--enabled" : "",
+    asrRunning ? "input-layer__asr-button--listening" : "",
+    asrLoading ? "input-layer__asr-button--loading" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const asrLabel = t(asrEnabled ? "chat.toolbar.pauseAsr" : "chat.toolbar.resumeAsr");
+  const asrIcon = asrLoading ? (
+    <LoaderCircle aria-hidden className="icon-button__icon input-layer__asr-spinner" />
+  ) : asrEnabled ? (
+    <MicOff aria-hidden className="icon-button__icon" />
+  ) : (
+    <Mic aria-hidden className="icon-button__icon" />
+  );
 
   useDismissableLayer({ active: panelOpen, onDismiss: closePanel, rootRef });
 
@@ -154,76 +112,6 @@ export function InputLayer({
       setPanelOpen(false);
     }
   }, [hidden, pillLayout]);
-
-  useEffect(
-    () => () => {
-      recognitionRef.current?.abort();
-      recognitionRef.current = null;
-    },
-    [],
-  );
-
-  const startListening = () => {
-    const Recognition = getSpeechRecognitionConstructor();
-    if (!Recognition) {
-      showToast({ kind: "error", message: t("chat.input.micUnsupported"), title: t("common.operationFailed") });
-      return;
-    }
-    try {
-      const recognition = new Recognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = speechRecognitionLanguage(language);
-      transcriptBaseRef.current = valueRef.current.trim();
-      recognition.onresult = (event) => {
-        let finalText = "";
-        let interimText = "";
-        for (let index = event.resultIndex; index < event.results.length; index += 1) {
-          const result = event.results[index];
-          const transcript = result[0]?.transcript ?? "";
-          if (result.isFinal) {
-            finalText += transcript;
-          } else {
-            interimText += transcript;
-          }
-        }
-        if (finalText) {
-          const next = appendTranscript(transcriptBaseRef.current, finalText, language);
-          transcriptBaseRef.current = next;
-          onChange(next);
-        } else if (interimText) {
-          onChange(appendTranscript(transcriptBaseRef.current, interimText, language));
-        }
-      };
-      recognition.onerror = (event) => {
-        recognitionRef.current = null;
-        setListening(false);
-        const denied = event.error === "not-allowed" || event.error === "service-not-allowed";
-        if (event.error !== "no-speech") {
-          showToast({
-            kind: "error",
-            message: denied ? t("chat.input.micDenied") : event.message || event.error || t("chat.input.micError"),
-            title: t("common.operationFailed"),
-          });
-        }
-      };
-      recognition.onend = () => {
-        recognitionRef.current = null;
-        setListening(false);
-      };
-      recognitionRef.current = recognition;
-      recognition.start();
-      setListening(true);
-    } catch (error) {
-      recognitionRef.current = null;
-      setListening(false);
-      showToast({
-        kind: "error",
-        message: error instanceof Error ? error.message : t("chat.input.micError"),
-        title: t("common.operationFailed"),
-      });
-    }
-  };
 
   if (hidden) {
     return null;
@@ -237,7 +125,9 @@ export function InputLayer({
       data-chat-stage-hitbox="true"
       data-force-visible={forceVisible ? "true" : "false"}
       data-layout={inputLayout}
-      data-listening={listening ? "true" : "false"}
+      data-asr-enabled={asrEnabled ? "true" : "false"}
+      data-asr-loading={asrLoading ? "true" : "false"}
+      data-listening={asrRunning ? "true" : "false"}
       data-has-attachments={attachments.length ? "true" : "false"}
       data-panel-open={panelOpen ? "true" : "false"}
       data-visible={autoHideRegion.visible ? "true" : "false"}
@@ -250,46 +140,15 @@ export function InputLayer({
       <ThemeFrame prefix="chat-input" />
       {pillLayout ? (
         <IconButton
-          className="input-layer__press"
-          data-active={holdTalkActive || listening ? "true" : "false"}
-          disabled={pressToTalk ? disabled : disabled && !listening}
-          label={
-            pressToTalk ? t("chat.input.holdToTalk") : listening ? t("chat.input.micStop") : t("chat.input.micStart")
-          }
-          onBlur={() => stopHoldTalk()}
-          onClick={(event) => {
-            if (pressToTalk) {
-              event.preventDefault();
-              return;
-            }
-            toggleListening();
-          }}
-          onKeyDown={(event) => {
-            if ((event.key === " " || event.key === "Enter") && !event.repeat) {
-              startHoldTalk(event);
-            }
-          }}
-          onKeyUp={(event) => {
-            if (event.key === " " || event.key === "Enter") {
-              stopHoldTalk(event);
-            }
-          }}
-          onLostPointerCapture={(event) => stopHoldTalk(event)}
-          onPointerCancel={(event) => stopHoldTalk(event)}
-          onPointerDown={(event) => {
-            if (pressToTalk) {
-              event.currentTarget.setPointerCapture?.(event.pointerId);
-              startHoldTalk(event);
-            }
-          }}
-          onPointerLeave={(event) => stopHoldTalk(event)}
-          onPointerUp={(event) => stopHoldTalk(event)}
+          aria-busy={asrLoading}
+          aria-pressed={asrEnabled}
+          className={`input-layer__press ${asrButtonClassName}`}
+          data-active={asrEnabled ? "true" : "false"}
+          disabled={disabled && !asrEnabled}
+          label={asrLabel}
+          onClick={toggleAsr}
         >
-          {pressToTalk || !listening ? (
-            <Mic aria-hidden className="icon-button__icon" />
-          ) : (
-            <MicOff aria-hidden className="icon-button__icon" />
-          )}
+          {asrIcon}
         </IconButton>
       ) : null}
       <div className="input-layer__field">
@@ -352,7 +211,7 @@ export function InputLayer({
             className="input-layer__send"
             disabled={!canSubmit}
             icon={<Send aria-hidden className="button__icon" />}
-            onClick={onSubmit}
+            onClick={() => void onSubmit()}
             variant="primary"
           >
             {t("chat.input.send")}
@@ -386,7 +245,7 @@ export function InputLayer({
               className="input-layer__quick-submit"
               disabled={!canSubmit}
               label={t("chat.input.send")}
-              onClick={onSubmit}
+              onClick={() => void onSubmit()}
             >
               <Send aria-hidden className="icon-button__icon" />
             </IconButton>
@@ -437,36 +296,14 @@ export function InputLayer({
       {!pillLayout ? (
         <div className="input-layer__voice-stack" role="group">
           <IconButton
-            className={["input-layer__voice-button", "input-layer__mic", listening ? "input-layer__mic--active" : ""]
-              .filter(Boolean)
-              .join(" ")}
-            disabled={disabled && !listening}
-            label={listening ? t("chat.input.micStop") : t("chat.input.micStart")}
-            onClick={toggleListening}
+            aria-busy={asrLoading}
+            aria-pressed={asrEnabled}
+            className={`input-layer__voice-button ${asrButtonClassName}`}
+            disabled={disabled && !asrEnabled}
+            label={asrLabel}
+            onClick={toggleAsr}
           >
-            {listening ? (
-              <MicOff aria-hidden className="icon-button__icon" />
-            ) : (
-              <Mic aria-hidden className="icon-button__icon" />
-            )}
-          </IconButton>
-          <IconButton
-            aria-pressed={asrPaused}
-            className={[
-              "input-layer__voice-button",
-              "input-layer__asr-toggle",
-              asrPaused ? "input-layer__asr-toggle--paused" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
-            onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
-          >
-            {asrPaused ? (
-              <Ear aria-hidden className="icon-button__icon" />
-            ) : (
-              <EarOff aria-hidden className="icon-button__icon" />
-            )}
+            {asrIcon}
           </IconButton>
         </div>
       ) : null}

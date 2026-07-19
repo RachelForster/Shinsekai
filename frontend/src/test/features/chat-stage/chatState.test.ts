@@ -52,6 +52,103 @@ describe("chatStageReducer", () => {
     expect(state.status).toBe("generating");
   });
 
+  it("presents a backend ASR final transcript as an automatically submitted user turn", () => {
+    const state = chatStageReducer(
+      {
+        ...emptyChatState,
+        asrEnabled: true,
+        asrRunning: true,
+        inputDraft: "hello wor",
+        status: "listening",
+        userDisplayName: "Aoi",
+      },
+      {
+        event: {
+          seq: 1,
+          text: "hello world",
+          ts: 1,
+          type: "asr.final",
+          v: 1,
+        },
+        type: "event",
+      },
+    );
+
+    expect(state.asrTranscript).toBe("hello world");
+    expect(state.characterName).toBe("Aoi");
+    expect(state.dialogText).toBe("hello world");
+    expect(state.inputDraft).toBe("");
+    expect(state.status).toBe("generating");
+    expect(state.asrEnabled).toBe(true);
+    expect(state.asrRunning).toBe(true);
+    expect(state.optimisticSubmission?.text).toBe("hello world");
+  });
+
+  it("keeps ASR enabled while a character reply temporarily pauses capture", () => {
+    const generating = {
+      ...emptyChatState,
+      asrEnabled: true,
+      asrRunning: true,
+      status: "generating" as const,
+    };
+
+    const pausedForReply = chatStageReducer(generating, {
+      event: {
+        enabled: true,
+        loading: false,
+        running: false,
+        seq: 1,
+        ts: 1,
+        type: "asr.state",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(pausedForReply.asrEnabled).toBe(true);
+    expect(pausedForReply.asrLoading).toBe(false);
+    expect(pausedForReply.asrRunning).toBe(false);
+    expect(pausedForReply.status).toBe("generating");
+
+    const resumed = chatStageReducer(pausedForReply, {
+      event: {
+        enabled: true,
+        loading: false,
+        running: true,
+        seq: 2,
+        ts: 2,
+        type: "asr.state",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(resumed.asrEnabled).toBe(true);
+    expect(resumed.asrRunning).toBe(true);
+    expect(resumed.status).toBe("listening");
+  });
+
+  it("hydrates an ASR-final snapshot without restoring a sendable draft", () => {
+    const state = chatStageReducer(emptyChatState, {
+      snapshot: {
+        asrEnabled: true,
+        asrRunning: false,
+        dialogText: "",
+        eventSeq: 4,
+        inputDraft: "",
+        options: [],
+        sessionId: "session-1",
+        sprites: [],
+        status: "generating",
+      },
+      type: "hydrate",
+    });
+
+    expect(state.inputDraft).toBe("");
+    expect(state.options).toEqual([]);
+    expect(state.status).toBe("generating");
+  });
+
   it("renders pending stacked messages as newline-separated user dialogue", () => {
     const viewModel = buildChatStageViewModel({
       ...emptyChatState,

@@ -982,12 +982,26 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         if (command.type === "pause-asr") {
           clearScheduledChatUpdates();
-          chat = { ...chat, status: "paused", numericInfo: "paused" };
+          chat = {
+            ...chat,
+            asrEnabled: false,
+            asrLoading: false,
+            asrRunning: false,
+            status: "paused",
+            numericInfo: "paused",
+          };
           emitChat();
         }
         if (command.type === "resume-asr") {
           clearScheduledChatUpdates();
-          chat = { ...chat, status: "listening", numericInfo: "listening" };
+          chat = {
+            ...chat,
+            asrEnabled: true,
+            asrLoading: false,
+            asrRunning: true,
+            status: "listening",
+            numericInfo: "listening",
+          };
           emitChat();
         }
         if (command.type === "change-voice-language") {

@@ -49,10 +49,80 @@ function snapshotReplacesOptimisticPresentation(
   return Boolean(speaker && speaker !== userName);
 }
 
+function submitUserMessageState(
+  state: ChatStageState,
+  {
+    queued,
+    source = "send-message",
+    text,
+  }: {
+    queued?: boolean;
+    source?: "send-message" | "submit-option";
+    text: string;
+  },
+): ChatStageState {
+  const optimisticSubmission: NonNullable<ChatStageState["optimisticSubmission"]> = {
+    attachmentsEditedAfterSubmission: false,
+    draftEditedAfterSubmission: false,
+    eventSeq: state.eventSeq,
+    previous: {
+      characterName: state.characterName,
+      dialogHtml: state.dialogHtml,
+      dialogText: state.dialogText,
+      error: state.error,
+      inputDraft: state.inputDraft,
+      inputAttachments: state.inputAttachments.map((attachment) => ({ ...attachment })),
+      notificationText: state.notificationText,
+      options: [...state.options],
+      sessionClosedReason: state.sessionClosedReason,
+      status: state.status,
+      statusMessage: state.statusMessage,
+      systemMessageText: state.systemMessageText,
+    },
+    source,
+    text,
+  };
+  if (queued) {
+    return withResolvedLayers({
+      ...clearTransientNotificationState(state),
+      inputAttachments: [],
+      inputDraft: "",
+      optimisticSubmission,
+      options: [],
+    });
+  }
+  return withResolvedLayers({
+    ...clearTransientNotificationState(state),
+    characterName: normalizedUserDisplayName(state.userDisplayName),
+    dialogHtml: undefined,
+    dialogText: text,
+    error: undefined,
+    inputDraft: "",
+    inputAttachments: [],
+    optimisticSubmission,
+    options: [],
+    sessionClosedReason: undefined,
+    status: "generating",
+    statusMessage: undefined,
+    systemMessageText: undefined,
+  });
+}
+
 export function chatStageReducer(state: ChatStageState, action: ChatStageAction): ChatStageState {
   switch (action.type) {
     case "event": {
       const next = applyStageEvent(state, action.event);
+      if (
+        next !== state &&
+        action.event.type === "asr.final" &&
+        action.event.text.trim() &&
+        !state.optimisticSubmission
+      ) {
+        return submitUserMessageState(next, {
+          queued: next.turnOptions.batchEnabled,
+          text: action.event.text.trim(),
+        });
+      }
       if (!state.optimisticSubmission || next === state) {
         return next;
       }
@@ -81,53 +151,8 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         ? { ...next, optimisticSubmission: undefined }
         : preserveOptimisticPresentation(state, next);
     }
-    case "submitUserMessage": {
-      const optimisticSubmission: NonNullable<ChatStageState["optimisticSubmission"]> = {
-        attachmentsEditedAfterSubmission: false,
-        draftEditedAfterSubmission: false,
-        eventSeq: state.eventSeq,
-        previous: {
-          characterName: state.characterName,
-          dialogHtml: state.dialogHtml,
-          dialogText: state.dialogText,
-          error: state.error,
-          inputDraft: state.inputDraft,
-          inputAttachments: state.inputAttachments.map((attachment) => ({ ...attachment })),
-          notificationText: state.notificationText,
-          options: [...state.options],
-          sessionClosedReason: state.sessionClosedReason,
-          status: state.status,
-          statusMessage: state.statusMessage,
-          systemMessageText: state.systemMessageText,
-        },
-        source: action.source ?? "send-message",
-        text: action.text,
-      };
-      if (action.queued) {
-        return withResolvedLayers({
-          ...clearTransientNotificationState(state),
-          inputAttachments: [],
-          inputDraft: "",
-          optimisticSubmission,
-          options: [],
-        });
-      }
-      return withResolvedLayers({
-        ...clearTransientNotificationState(state),
-        characterName: normalizedUserDisplayName(state.userDisplayName),
-        dialogHtml: undefined,
-        dialogText: action.text,
-        error: undefined,
-        inputDraft: "",
-        inputAttachments: [],
-        optimisticSubmission,
-        options: [],
-        sessionClosedReason: undefined,
-        status: "generating",
-        statusMessage: undefined,
-        systemMessageText: undefined,
-      });
-    }
+    case "submitUserMessage":
+      return submitUserMessageState(state, action);
     case "rollbackUserSubmission": {
       const optimistic = state.optimisticSubmission;
       if (!optimistic || optimistic.source !== action.source) {

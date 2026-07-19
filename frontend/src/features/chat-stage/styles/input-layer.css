@@ -297,14 +297,6 @@
   background: rgba(255, 255, 255, 0.13);
 }
 
-.input-layer__mic--active,
-.input-layer[data-listening="true"] .input-layer__mic,
-.input-layer .input-layer__voice-button.input-layer__asr-toggle--paused {
-  border-color: var(--chat-send-border-color, var(--stage-accent));
-  color: var(--chat-send-color, #061016);
-  background: var(--chat-send-background);
-}
-
 .input-layer__press,
 .input-layer__quick-submit,
 .input-layer__extra-toggle {
@@ -351,6 +343,48 @@
 .input-layer__press[data-active="true"] {
   background: rgba(255, 255, 255, 0.13);
   transform: translateY(-1px);
+}
+
+.input-layer .input-layer__asr-button--enabled {
+  border-color: color-mix(in srgb, var(--stage-accent) 78%, white 22%);
+  color: color-mix(in srgb, var(--stage-accent) 62%, white 38%);
+  background: color-mix(in srgb, var(--stage-accent) 24%, var(--chat-input-field-background));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--stage-accent) 36%, transparent),
+    0 0 14px color-mix(in srgb, var(--stage-accent) 20%, transparent);
+}
+
+.input-layer .input-layer__press.input-layer__asr-button--enabled {
+  background: color-mix(in srgb, var(--stage-accent) 26%, transparent);
+}
+
+.input-layer .input-layer__asr-button--listening {
+  border-color: var(--chat-send-border-color, var(--stage-accent));
+  color: var(--chat-send-color, #061016);
+  background: var(--chat-send-background);
+  animation: input-layer-asr-listening 1.8s ease-in-out infinite;
+}
+
+.input-layer .input-layer__asr-button--loading {
+  cursor: progress;
+}
+
+.input-layer__asr-spinner {
+  animation: input-layer-asr-spin 0.9s linear infinite;
+}
+
+@keyframes input-layer-asr-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes input-layer-asr-listening {
+  50% {
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--stage-accent) 50%, transparent),
+      0 0 20px color-mix(in srgb, var(--stage-accent) 42%, transparent);
+  }
 }
 
 .input-layer__quick-submit:disabled,
@@ -467,6 +501,11 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .input-layer .input-layer__asr-button--listening,
+  .input-layer__asr-spinner {
+    animation: none;
+  }
+
   .input-layer[data-auto-hide="true"] {
     transition-duration: 0.01ms;
   }

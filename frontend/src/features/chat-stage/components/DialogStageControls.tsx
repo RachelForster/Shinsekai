@@ -28,7 +28,7 @@ import { useDismissableLayer } from "../hooks/useDismissableLayer";
 import { ChatTurnSettingsPopover } from "./ChatTurnSettingsPopover";
 
 export function DialogStageControls({
-  asrPaused,
+  asrEnabled,
   auto,
   closeLabel,
   configOpen,
@@ -50,7 +50,7 @@ export function DialogStageControls({
   turnOptions,
   turnState,
 }: {
-  asrPaused: boolean;
+  asrEnabled: boolean;
   auto: boolean;
   closeLabel: string;
   configOpen: boolean;
@@ -169,20 +169,20 @@ export function DialogStageControls({
           </ToolbarButton>
           {showAsrControl ? (
             <ToolbarButton
-              aria-label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+              aria-label={t(asrEnabled ? "chat.toolbar.pauseAsr" : "chat.toolbar.resumeAsr")}
               className="dialog-stage-controls__button"
-              data-active={asrPaused ? "true" : "false"}
+              data-active={asrEnabled ? "true" : "false"}
               icon={
-                asrPaused ? (
-                  <Mic aria-hidden className="button__icon" />
-                ) : (
+                asrEnabled ? (
                   <MicOff aria-hidden className="button__icon" />
+                ) : (
+                  <Mic aria-hidden className="button__icon" />
                 )
               }
-              onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
-              tooltip={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
+              onClick={() => onCommand({ type: asrEnabled ? "pause-asr" : "resume-asr" })}
+              tooltip={t(asrEnabled ? "chat.toolbar.pauseAsr" : "chat.toolbar.resumeAsr")}
             >
-              {t(asrPaused ? "chat.actionBar.resumeAsr" : "chat.actionBar.pauseAsr")}
+              {t(asrEnabled ? "chat.actionBar.pauseAsr" : "chat.actionBar.resumeAsr")}
             </ToolbarButton>
           ) : null}
           <ToolbarButton

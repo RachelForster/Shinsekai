@@ -31,6 +31,9 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     options: pendingBatchText ? false : state.layers.options,
   };
   return {
+    asrEnabled: Boolean(state.asrEnabled),
+    asrLoading: Boolean(state.asrLoading),
+    asrRunning: Boolean(state.asrRunning),
     backgroundPath: state.backgroundPath,
     bgmPath: state.bgmPath,
     busyText: state.busyText,

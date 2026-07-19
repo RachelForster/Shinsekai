@@ -15,8 +15,23 @@ def test_user_input_processors_preserve_chat_attachments(monkeypatch) -> None:
     monkeypatch.setattr(plugin_host, "_plugin_manager", _PluginManager())
     emit = plugin_host.wire_user_input_plugins(queue)
 
-    emit("hello", attachments=[{"kind": "file", "path": "C:/notes.txt"}])
+    accepted = emit("hello", attachments=[{"kind": "file", "path": "C:/notes.txt"}])
 
+    assert accepted is True
     message = queue.get_nowait()
     assert message.text == "processed:hello"
     assert message.attachments == [{"kind": "file", "path": "C:/notes.txt"}]
+
+
+def test_user_input_processor_reports_rejected_input(monkeypatch) -> None:
+    class _RejectingPluginManager:
+        def wire_user_input(self, emit_user_text, processors) -> None:
+            processors.append(lambda _text: None)
+
+    queue = Queue()
+    monkeypatch.setattr(plugin_host, "_plugin_manager", _RejectingPluginManager())
+
+    accepted = plugin_host.wire_user_input_plugins(queue)("rejected")
+
+    assert accepted is False
+    assert queue.empty()

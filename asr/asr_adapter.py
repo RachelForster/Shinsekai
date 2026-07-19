@@ -175,8 +175,9 @@ class VoskAdapter(ASRAdapter):
             return
 
         if self.model is None:
-            _log.error("Vosk start: model load failed, cannot start")
-            return
+            message = f"Vosk model is unavailable: {self.model_path}"
+            _log.error(message)
+            raise RuntimeError(message)
 
         _log.info("Vosk starting…")
         self._is_running = True

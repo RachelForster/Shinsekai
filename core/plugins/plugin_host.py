@@ -193,7 +193,7 @@ def wire_user_input_plugins(
     user_input_queue: Queue,
     *,
     sink: Callable[..., None] | None = None,
-) -> Callable[..., None]:
+) -> Callable[..., bool]:
     """
     Build the user-input pipeline (plugin processors) and return ``emit_user_text``
     for code that registers hooks via :meth:`sdk.register.PluginCapabilityRegistry.register_user_input_trigger`
@@ -207,22 +207,23 @@ def wire_user_input_plugins(
     mgr = _plugin_manager
     processors: list[Callable[[str], str | None]] = []
 
-    def emit_user_text(text: str, *, attachments: list[dict[str, Any]] | None = None) -> None:
+    def emit_user_text(text: str, *, attachments: list[dict[str, Any]] | None = None) -> bool:
         t = text
         for proc in processors:
             try:
                 out = proc(t)
             except Exception:
                 logger.exception("user_input processor failed")
-                return
+                return False
             if out is None:
-                return
+                return False
             t = out
         attachment_payloads = list(attachments or [])
         if sink is not None:
             sink(t, attachments=attachment_payloads)
         else:
             user_input_queue.put(UserInputMessage(text=t, attachments=attachment_payloads))
+        return True
 
     if mgr is not None:
         try:

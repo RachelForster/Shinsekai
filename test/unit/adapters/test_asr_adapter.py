@@ -4,6 +4,7 @@ import pytest
 
 from asr.asr_manager import ASRAdapterFactory
 from asr.asr_adapter import (
+    VoskAdapter,
     voice_ui_to_asr_lang,
     ui_lang_to_asr_lang,
     system_config_to_asr_lang,
@@ -27,7 +28,17 @@ class TestASRAdapterFactory:
 
     def test_factory_values_are_adapter_subclasses(self):
         for key, cls in ASRAdapterFactory._adapters.items():
-            assert issubclass(cls, ASRAdapter), f"{key} → {cls} is not an ASRAdapter subclass"
+            assert issubclass(cls, ASRAdapter), key
+
+
+def test_vosk_start_raises_when_model_failed_to_load() -> None:
+    adapter = object.__new__(VoskAdapter)
+    adapter._is_running = False
+    adapter.model = None
+    adapter.model_path = "C:/missing-vosk-model"
+
+    with pytest.raises(RuntimeError, match="Vosk model is unavailable"):
+        adapter.start()
 
 
 class TestMockASRAdapter:

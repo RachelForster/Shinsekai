@@ -106,9 +106,6 @@ export function ChatConfigDialog({
   immersiveMode,
   mainThemeColor,
   nameText,
-  longPressTalk,
-  longPressTalkAvailable,
-  longPressTalkVisible = false,
   onAutoHideInputChange,
   onAutoHideTopToolsChange,
   onConfigThemeColorChange,
@@ -119,7 +116,6 @@ export function ChatConfigDialog({
   onDialogFillChange,
   onDialogScaleChange,
   onImmersiveModeChange,
-  onLongPressTalkChange,
   onSpriteOffsetXChange,
   onSpriteOffsetYChange,
   onSpriteScaleChange,
@@ -150,9 +146,6 @@ export function ChatConfigDialog({
   immersiveMode: boolean;
   mainThemeColor: string;
   nameText: ChatStageTextStyleConfig;
-  longPressTalk: boolean;
-  longPressTalkAvailable: boolean;
-  longPressTalkVisible?: boolean;
   onAutoHideInputChange: (value: boolean) => void;
   onAutoHideTopToolsChange: (value: boolean) => void;
   onConfigThemeColorChange: (value: string) => void;
@@ -163,7 +156,6 @@ export function ChatConfigDialog({
   onDialogFillChange: (patch: ChatStageDialogFillPatch) => void;
   onDialogScaleChange: (value: number) => void;
   onImmersiveModeChange: (value: boolean) => void;
-  onLongPressTalkChange: (value: boolean) => void;
   onSpriteOffsetXChange: (value: number) => void;
   onSpriteOffsetYChange: (value: number) => void;
   onSpriteScaleChange: (spriteKey: string, value: number) => void;
@@ -428,20 +420,6 @@ export function ChatConfigDialog({
               </span>
             </span>
           </label>
-          {longPressTalkVisible ? (
-            <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-              <label className="chat-config-dialog__label" htmlFor="chat-config-long-press-talk">
-                {t("chat.config.longPressTalk")}
-              </label>
-              <Switch
-                aria-disabled={!longPressTalkAvailable && !longPressTalk}
-                checked={longPressTalk && longPressTalkAvailable}
-                className="chat-config-dialog__switch"
-                id="chat-config-long-press-talk"
-                onChange={(event) => onLongPressTalkChange(event.target.checked)}
-              />
-            </div>
-          ) : null}
         </section>
 
         <section className="chat-config-dialog__section">
