@@ -159,6 +159,15 @@ export const chatThemeEditorSections: ChatThemeEditorSection[] = [
     fields: [
       { kind: "color", labelKey: "chat.theme.customizer.themeColor", path: "global.themeColor" },
       { kind: "text", labelKey: "chat.theme.customizer.fontFamily", path: "global.fontFamily" },
+      {
+        kind: "number",
+        labelKey: "chat.config.windowScale",
+        max: 1.2,
+        min: 0.8,
+        path: "global.windowScale",
+        step: 0.05,
+        suffix: "×",
+      },
     ],
     id: "global",
     labelKey: "chat.theme.customizer.sectionGlobal",
@@ -210,6 +219,24 @@ export const chatThemeEditorSections: ChatThemeEditorSection[] = [
         suffix: "px",
       },
       {
+        kind: "number",
+        labelKey: "chat.config.dialogOpacity",
+        max: 1,
+        min: 0.35,
+        path: "dialog.opacity",
+        step: 0.05,
+        suffix: "×",
+      },
+      {
+        kind: "number",
+        labelKey: "chat.config.dialogScale",
+        max: 1.2,
+        min: 0.8,
+        path: "dialog.scale",
+        step: 0.05,
+        suffix: "×",
+      },
+      {
         kind: "select",
         labelKey: "chat.theme.customizer.align",
         options: [
@@ -218,6 +245,7 @@ export const chatThemeEditorSections: ChatThemeEditorSection[] = [
         ],
         path: "dialog.textAlign",
       },
+      { advanced: true, kind: "text", labelKey: "chat.theme.customizer.fontFamily", path: "dialog.fontFamily" },
       { advanced: true, kind: "text", labelKey: "chat.theme.customizer.textShadow", path: "dialog.textShadow" },
       textSize("dialog.textSizePx"),
       textWeight("dialog.textWeight"),

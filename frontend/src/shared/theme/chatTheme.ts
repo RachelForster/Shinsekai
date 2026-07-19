@@ -51,7 +51,7 @@ export interface ChatThemeFontFace {
 
 /** 主题可填写的全部 token —— 即"统一设计规范"。 */
 export interface ChatThemeTokens {
-  global?: { themeColor?: string; fontFamily?: string };
+  global?: { themeColor?: string; fontFamily?: string; windowScale?: number };
   fonts?: ChatThemeFontFace[];
   dialog?: FrameVisualBlock & {
     /** 对话区 chrome；none = 字幕模式，无背景框、无边框、无滚动限制。 */
@@ -64,6 +64,11 @@ export interface ChatThemeTokens {
     nameInputGapVh?: number;
     /** 垂直偏移（px），clamp -240–240。 */
     offsetY?: number;
+    /** Baseline opacity inherited by the session appearance layer. */
+    opacity?: number;
+    /** Baseline dialog scale inherited by the session appearance layer. */
+    scale?: number;
+    fontFamily?: string;
     /** 正文对齐方式。 */
     textAlign?: "left" | "center";
     textShadow?: string;
@@ -505,9 +510,33 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
       style["--font-chat"] = fontFamily;
     }
   }
+  const themeWindowScale =
+    typeof tokens.global?.windowScale === "number" ? clampNumber(tokens.global.windowScale, 1, 0.8, 1.2) : undefined;
+  if (themeWindowScale !== undefined) {
+    style["--chat-ui-theme-window-scale"] = String(themeWindowScale);
+    style["--chat-ui-window-scale"] = String(themeWindowScale);
+    style["--chat-toolbar-runtime-scale"] = String(themeWindowScale);
+  }
 
   const dialog = tokens.dialog;
   applyVisualBlock(style, "dialog", dialog, assetUrl, true);
+  const themeDialogScale =
+    typeof dialog?.scale === "number" ? clampNumber(dialog.scale, 1, 0.8, 1.2) : undefined;
+  if (typeof dialog?.opacity === "number") {
+    const opacity = clampNumber(dialog.opacity, 1, 0.35, 1);
+    style["--chat-dialog-theme-opacity"] = String(opacity);
+    style["--chat-dialog-runtime-opacity"] = String(opacity);
+  }
+  if (themeDialogScale !== undefined) {
+    style["--chat-dialog-theme-scale"] = String(themeDialogScale);
+    style["--chat-dialog-runtime-scale"] = String(themeDialogScale);
+    style["--chat-dialog-runtime-inverse-scale"] = String(Number((1 / themeDialogScale).toFixed(4)));
+  }
+  if (themeDialogScale !== undefined || themeWindowScale !== undefined) {
+    style["--chat-dialog-composed-scale"] = String(
+      Number(((themeDialogScale ?? 1) * (themeWindowScale ?? 1)).toFixed(4)),
+    );
+  }
   if (typeof dialog?.heightPx === "number" || dialog?.chrome === "none") {
     style["--chat-dialog-height"] = `${clampNumber(dialog?.heightPx, 156, 96, 260)}px`;
     style["--chat-dialog-body-height"] = "100%";
@@ -542,10 +571,15 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   if (isSafeCssValue(dialog?.color)) {
     style["--chat-dialog-text-theme-color"] = dialog.color.trim();
   }
+  if (typeof dialog?.fontFamily === "string" || typeof tokens.global?.fontFamily === "string") {
+    const fontFamily = quotedFontFamily(dialog?.fontFamily ?? tokens.global?.fontFamily ?? "");
+    if (fontFamily) {
+      style["--chat-dialog-text-theme-font-family"] = fontFamily;
+    }
+  }
   if (typeof tokens.global?.fontFamily === "string") {
     const fontFamily = quotedFontFamily(tokens.global.fontFamily);
     if (fontFamily) {
-      style["--chat-dialog-text-theme-font-family"] = fontFamily;
       style["--chat-name-theme-font-family"] = fontFamily;
     }
   }

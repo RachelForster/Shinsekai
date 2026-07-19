@@ -35,6 +35,8 @@ export interface ChatThemeContextValue {
   themes: ChatThemeSummary[];
   /** 当前激活的主题 id。 */
   activeId: string | null;
+  /** 当前激活的可序列化主题清单。 */
+  manifest: ChatThemeManifest | null;
   /** 解析后的样式 / 字体 / 打字机参数，直接喂给 chat stage。 */
   resolved: ResolvedChatTheme | null;
   /** 仅 style 部分的便捷别名（写到 stage 根元素 style）。 */
@@ -221,6 +223,7 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
     () => ({
       themes,
       activeId,
+      manifest,
       resolved,
       style: resolved.style,
       loading,
@@ -231,7 +234,7 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
       removeTheme,
       exportTheme,
     }),
-    [themes, activeId, resolved, loading, switchTheme, refresh, uploadTheme, saveTheme, removeTheme, exportTheme],
+    [themes, activeId, manifest, resolved, loading, switchTheme, refresh, uploadTheme, saveTheme, removeTheme, exportTheme],
   );
 
   return <ChatThemeContext.Provider value={value}>{children}</ChatThemeContext.Provider>;

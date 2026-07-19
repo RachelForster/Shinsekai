@@ -1,7 +1,7 @@
 import type { CSSProperties } from "react";
 
 import type { ChatStageSprite } from "./chatState";
-import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
+import { DEFAULT_TYPEWRITER_CPS, type ChatThemeManifest } from "../../shared/theme/chatTheme";
 import { DEFAULT_THEME_COLOR, normalizeThemeColor } from "../../shared/theme/appTheme";
 
 export const clickThroughGuardIntervalMs = 32;
@@ -470,6 +470,111 @@ function runtimeDialogFillBackground(fill: ChatStageDialogFillConfig) {
   return `linear-gradient(${angle}, ${primary}, ${transparent})`;
 }
 
+function currentAppearanceName(name: Record<string, string>) {
+  return Object.fromEntries(
+    Object.entries(name).map(([language, value]) => {
+      const suffix = language === "zh_CN" ? "（当前外观）" : language === "ja" ? "（現在の外観）" : " (Current appearance)";
+      return [language, `${value}${suffix}`];
+    }),
+  );
+}
+
+/**
+ * Materialize theme-compatible session overrides into a serializable theme manifest.
+ * Content-specific sprite positions and behavioral toggles intentionally remain session settings.
+ */
+export function materializeChatStageAppearanceTheme(
+  base: ChatThemeManifest,
+  config: ChatStageRuntimeConfig,
+  id: string,
+): ChatThemeManifest {
+  const fallback = defaultChatStageRuntimeConfig;
+  const global = { ...(base.tokens.global ?? {}) };
+  const dialog = { ...(base.tokens.dialog ?? {}) };
+  const name = { ...(base.tokens.name ?? {}) };
+  const typewriter = { ...(base.tokens.typewriter ?? {}) };
+  const fillBackground = runtimeDialogFillBackground(config.dialogFill);
+
+  if (config.windowScale !== fallback.windowScale) {
+    global.windowScale = config.windowScale;
+  }
+  if (config.dialogOpacity !== fallback.dialogOpacity) {
+    dialog.opacity = config.dialogOpacity;
+  }
+  if (config.dialogScale !== fallback.dialogScale) {
+    dialog.scale = config.dialogScale;
+  }
+  if (fillBackground) {
+    dialog.background = fillBackground;
+  }
+  if (config.dialogText.color !== fallback.dialogText.color) {
+    dialog.color = config.dialogText.color;
+  }
+  if (config.dialogText.fontFamily) {
+    dialog.fontFamily = config.dialogText.fontFamily;
+  }
+  if (config.dialogText.fontSize !== fallback.dialogText.fontSize) {
+    dialog.textSizePx = config.dialogText.fontSize;
+  }
+  if (runtimeTextBoldIsExplicit(config.dialogText, fallback.dialogText)) {
+    dialog.textWeight = config.dialogText.bold ? 700 : 400;
+  }
+  if (
+    runtimeTextAlignIsExplicit(config.dialogText, fallback.dialogText) &&
+    (config.dialogText.align === "left" || config.dialogText.align === "center")
+  ) {
+    dialog.textAlign = config.dialogText.align;
+  }
+  if (config.nameText.color !== fallback.nameText.color) {
+    name.color = config.nameText.color;
+  }
+  if (config.nameText.fontFamily) {
+    name.fontFamily = config.nameText.fontFamily;
+  }
+  if (config.nameText.fontSize !== fallback.nameText.fontSize) {
+    name.textSizePx = config.nameText.fontSize;
+  }
+  if (runtimeTextBoldIsExplicit(config.nameText, fallback.nameText)) {
+    name.textWeight = config.nameText.bold ? 800 : 600;
+  }
+  if (config.typewriterCps !== null) {
+    typewriter.cps = config.typewriterCps;
+  }
+
+  return {
+    ...base,
+    id,
+    name: currentAppearanceName(base.name),
+    tokens: {
+      ...base.tokens,
+      dialog,
+      global,
+      name,
+      typewriter,
+    },
+  };
+}
+
+/** Reset only the values that were materialized into a theme, preserving behavior and sprite/session layout. */
+export function clearMaterializedChatStageAppearance(config: ChatStageRuntimeConfig): ChatStageRuntimeConfig {
+  const align = config.dialogText.align;
+  const retainUnsupportedAlign = align === "right" || align === "justify";
+  return {
+    ...config,
+    dialogFill: { ...defaultChatStageRuntimeConfig.dialogFill },
+    dialogOpacity: defaultChatStageRuntimeConfig.dialogOpacity,
+    dialogScale: defaultChatStageRuntimeConfig.dialogScale,
+    dialogText: {
+      ...defaultChatStageRuntimeConfig.dialogText,
+      ...(retainUnsupportedAlign ? { align, alignOverride: true } : {}),
+      direction: config.dialogText.direction,
+    },
+    nameText: { ...defaultChatStageRuntimeConfig.nameText },
+    typewriterCps: null,
+    windowScale: defaultChatStageRuntimeConfig.windowScale,
+  };
+}
+
 function themeStyleString(themeStyle: CSSProperties, name: `--${string}`) {
   const value = (themeStyle as Record<string, unknown>)[name];
   return typeof value === "string" ? value.trim() : "";
@@ -479,6 +584,11 @@ function runtimeThemeFontSize(themeStyle: CSSProperties, name: `--${string}`, fa
   const value = themeStyleString(themeStyle, name);
   const match = value.match(/^(\d+(?:\.\d+)?)px$/);
   return match ? Math.round(clampRuntimeNumber(match[1], fallback, 1, 96)) : fallback;
+}
+
+function runtimeThemeNumber(themeStyle: CSSProperties, name: `--${string}`, fallback: number, min: number, max: number) {
+  const value = Number(themeStyleString(themeStyle, name));
+  return Number.isFinite(value) ? clampRuntimeNumber(value, fallback, min, max) : fallback;
 }
 
 function runtimeThemeBold(themeStyle: CSSProperties, name: `--${string}`, fallback: boolean) {
@@ -532,22 +642,55 @@ export function chatStageRuntimeStyle(
 ): CSSProperties {
   const configAccent = normalizeThemeColor(config.configUseMainThemeColor ? mainThemeColor : config.configThemeColor);
   const dialogFillBackground = runtimeDialogFillBackground(config.dialogFill);
-  const dialogScale = clampRuntimeNumber(
-    config.dialogScale,
-    defaultChatStageRuntimeConfig.dialogScale,
-    runtimeDialogScaleMin,
-    runtimeDialogScaleMax,
-  );
-  const windowScale = clampRuntimeNumber(
-    config.windowScale,
-    defaultChatStageRuntimeConfig.windowScale,
-    runtimeWindowScaleMin,
-    runtimeWindowScaleMax,
-  );
+  const dialogOpacity =
+    config.dialogOpacity === defaultChatStageRuntimeConfig.dialogOpacity
+      ? runtimeThemeNumber(
+          themeStyle,
+          "--chat-dialog-theme-opacity",
+          defaultChatStageRuntimeConfig.dialogOpacity,
+          runtimeDialogOpacityMin,
+          runtimeDialogOpacityMax,
+        )
+      : clampRuntimeNumber(
+          config.dialogOpacity,
+          defaultChatStageRuntimeConfig.dialogOpacity,
+          runtimeDialogOpacityMin,
+          runtimeDialogOpacityMax,
+        );
+  const dialogScale =
+    config.dialogScale === defaultChatStageRuntimeConfig.dialogScale
+      ? runtimeThemeNumber(
+          themeStyle,
+          "--chat-dialog-theme-scale",
+          defaultChatStageRuntimeConfig.dialogScale,
+          runtimeDialogScaleMin,
+          runtimeDialogScaleMax,
+        )
+      : clampRuntimeNumber(
+          config.dialogScale,
+          defaultChatStageRuntimeConfig.dialogScale,
+          runtimeDialogScaleMin,
+          runtimeDialogScaleMax,
+        );
+  const windowScale =
+    config.windowScale === defaultChatStageRuntimeConfig.windowScale
+      ? runtimeThemeNumber(
+          themeStyle,
+          "--chat-ui-theme-window-scale",
+          defaultChatStageRuntimeConfig.windowScale,
+          runtimeWindowScaleMin,
+          runtimeWindowScaleMax,
+        )
+      : clampRuntimeNumber(
+          config.windowScale,
+          defaultChatStageRuntimeConfig.windowScale,
+          runtimeWindowScaleMin,
+          runtimeWindowScaleMax,
+        );
   return {
     ...themeStyle,
     "--chat-config-accent": configAccent,
-    "--chat-dialog-runtime-opacity": String(config.dialogOpacity),
+    "--chat-dialog-runtime-opacity": String(dialogOpacity),
     ...(dialogFillBackground ? { "--chat-dialog-runtime-background": dialogFillBackground } : {}),
     "--chat-dialog-runtime-inverse-scale": String(Number((1 / dialogScale).toFixed(4))),
     "--chat-dialog-runtime-scale": String(dialogScale),

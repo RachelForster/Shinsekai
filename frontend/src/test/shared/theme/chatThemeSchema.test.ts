@@ -8,8 +8,12 @@ describe("chat theme editor schema", () => {
     expect(chatThemeEditorFieldPaths).toEqual(
       expect.arrayContaining([
         "global.themeColor",
+        "global.windowScale",
         "fonts",
         "dialog.frameImage",
+        "dialog.opacity",
+        "dialog.scale",
+        "dialog.fontFamily",
         "options.hover.background",
         "options.active.background",
         "input.sendPlacement",

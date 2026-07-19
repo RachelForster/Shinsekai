@@ -11,6 +11,7 @@ import {
 } from "../../../features/chat-stage/runtimeConfig";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import type { ChatCommand, ChatHistoryEntry, ChatSnapshot, ChatStageEvent } from "../../../shared/platform/types";
+import { CHAT_THEME_SCHEMA, type ChatThemeManifest } from "../../../shared/theme/chatTheme";
 import { ToastProvider } from "../../../shared/ui";
 
 const mocks = {
@@ -26,8 +27,13 @@ const mocks = {
 
 const themeContextMocks = vi.hoisted(() => ({
   optional: null as null | {
+    activeId?: string;
+    manifest?: ChatThemeManifest;
     resolved?: { typewriter: { cps: number } };
+    saveTheme?: ReturnType<typeof vi.fn>;
     style: CSSProperties;
+    switchTheme?: ReturnType<typeof vi.fn>;
+    themes?: Array<{ id: string }>;
   },
 }));
 
@@ -291,6 +297,48 @@ describe("ChatStagePage", () => {
     expect(
       document.querySelector('.dialog-stage-controls__surface > [data-theme-frame="chat-toolbar"]'),
     ).toBeInTheDocument();
+  });
+
+  it("saves compatible session appearance overrides as a new active theme", async () => {
+    const manifest: ChatThemeManifest = {
+      id: "base-theme",
+      name: { en: "Base theme" },
+      schema: CHAT_THEME_SCHEMA,
+      tokens: { dialog: { background: "#111111" } },
+    };
+    const saveTheme = vi.fn(async ({ manifest: next }: { manifest: ChatThemeManifest }) => ({
+      id: next.id,
+      name: next.name,
+      source: "user" as const,
+    }));
+    const switchTheme = vi.fn(async () => undefined);
+    themeContextMocks.optional = {
+      activeId: manifest.id,
+      manifest,
+      saveTheme,
+      style: {},
+      switchTheme,
+      themes: [{ id: manifest.id }],
+    };
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
+    fireEvent.change(within(config).getByRole("slider", { name: "Dialog opacity" }), {
+      target: { value: "0.65" },
+    });
+    fireEvent.click(within(config).getByRole("button", { name: "Save current appearance as theme" }));
+
+    await waitFor(() => expect(saveTheme).toHaveBeenCalledTimes(1));
+    expect(saveTheme).toHaveBeenCalledWith({
+      baseId: "base-theme",
+      manifest: expect.objectContaining({
+        id: "base-theme-appearance",
+        tokens: expect.objectContaining({ dialog: expect.objectContaining({ opacity: 0.65 }) }),
+      }),
+    });
+    await waitFor(() => expect(switchTheme).toHaveBeenCalledWith("base-theme-appearance"));
   });
 
   it("suppresses context menus inside the chat stage", async () => {

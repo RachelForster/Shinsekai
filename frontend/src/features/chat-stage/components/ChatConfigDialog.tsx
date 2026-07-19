@@ -1,10 +1,10 @@
 import { useId, type ChangeEvent } from "react";
-import { Languages } from "lucide-react";
+import { Languages, Save } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
 import type { ChatCommand, ChatTurnOptions } from "../../../shared/platform/types";
-import { Select, Switch } from "../../../shared/ui";
+import { Button, Select, Switch } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { ChatStageModal } from "./ChatStageModal";
 import {
@@ -109,6 +109,7 @@ export function ChatConfigDialog({
   longPressTalk,
   longPressTalkAvailable,
   longPressTalkVisible = false,
+  canSaveAppearance,
   onAutoHideInputChange,
   onAutoHideTopToolsChange,
   onConfigThemeColorChange,
@@ -120,6 +121,7 @@ export function ChatConfigDialog({
   onDialogScaleChange,
   onImmersiveModeChange,
   onLongPressTalkChange,
+  onSaveAppearanceAsTheme,
   onSpriteOffsetXChange,
   onSpriteOffsetYChange,
   onSpriteScaleChange,
@@ -132,6 +134,7 @@ export function ChatConfigDialog({
   spriteOffsetY,
   spriteScales,
   sprites,
+  savingAppearance,
   textSpeed,
   turnOptions,
   voiceLanguage,
@@ -153,6 +156,7 @@ export function ChatConfigDialog({
   longPressTalk: boolean;
   longPressTalkAvailable: boolean;
   longPressTalkVisible?: boolean;
+  canSaveAppearance: boolean;
   onAutoHideInputChange: (value: boolean) => void;
   onAutoHideTopToolsChange: (value: boolean) => void;
   onConfigThemeColorChange: (value: string) => void;
@@ -164,6 +168,7 @@ export function ChatConfigDialog({
   onDialogScaleChange: (value: number) => void;
   onImmersiveModeChange: (value: boolean) => void;
   onLongPressTalkChange: (value: boolean) => void;
+  onSaveAppearanceAsTheme: () => void;
   onSpriteOffsetXChange: (value: number) => void;
   onSpriteOffsetYChange: (value: number) => void;
   onSpriteScaleChange: (spriteKey: string, value: number) => void;
@@ -176,6 +181,7 @@ export function ChatConfigDialog({
   spriteOffsetY: number;
   spriteScales: Record<string, number>;
   sprites: ChatStageSprite[];
+  savingAppearance: boolean;
   textSpeed: number;
   turnOptions: ChatTurnOptions;
   voiceLanguage: string;
@@ -279,6 +285,27 @@ export function ChatConfigDialog({
       title={t("chat.toolbar.config")}
     >
       <div className="chat-stage-modal__body chat-config-dialog__body">
+        <section className="chat-config-dialog__section chat-config-dialog__appearance-flow">
+          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionAppearanceFlow")}</h3>
+          <div className="chat-config-dialog__appearance-layers" aria-label={t("chat.config.appearancePrecedence")}>
+            <span>{t("chat.config.appearanceGlobal")}</span>
+            <span aria-hidden>→</span>
+            <span>{t("chat.config.appearanceTheme")}</span>
+            <span aria-hidden>→</span>
+            <strong>{t("chat.config.appearanceSession")}</strong>
+          </div>
+          <p className="chat-config-dialog__help">{t("chat.config.appearanceHelp")}</p>
+          <Button
+            disabled={!canSaveAppearance || savingAppearance}
+            icon={<Save aria-hidden className="button__icon" />}
+            loading={savingAppearance}
+            onClick={onSaveAppearanceAsTheme}
+            variant="primary"
+          >
+            {t("chat.config.saveAppearanceAsTheme")}
+          </Button>
+          <p className="chat-config-dialog__help">{t("chat.config.saveAppearanceHint")}</p>
+        </section>
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionMenuAppearance")}</h3>
           <label className="chat-config-dialog__row">
