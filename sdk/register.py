@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Type
@@ -239,10 +239,17 @@ class PluginCapabilityRegistry:
 
     def register_frontend_chat_ui(self, contribution: FrontendChatUIContribution) -> None:
         """Register a JSON-only Chat UI item rendered by the host application."""
-        if contribution.slot not in {"chat-dialog-actions", "chat-output", "chat-toolbar"}:
+        if contribution.slot not in {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"}:
             raise ValueError(f"Unsupported frontend chat UI slot: {contribution.slot}")
         if not contribution.contribution_id.strip() or not contribution.title.strip():
             raise ValueError("FrontendChatUIContribution requires a non-empty id and title")
+        if contribution.presentation not in {"button", "icon-only"}:
+            raise ValueError(f"Unsupported frontend chat UI presentation: {contribution.presentation}")
+        if isinstance(contribution.action, Mapping):
+            action_type = str(contribution.action.get("type") or "").strip()
+            page_id = str(contribution.action.get("page_id") or contribution.action.get("pageId") or "").strip()
+            if action_type != "open-plugin-page" or not page_id:
+                raise ValueError("FrontendChatUIContribution open-plugin-page action requires a non-empty page_id")
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
             pid, ver = ctx

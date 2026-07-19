@@ -181,21 +181,27 @@ export type PluginSlotId =
   | "chat-dialog-actions"
   | "chat-output"
   | "chat-toolbar"
+  | "chat-top-toolbar"
   | "settings-extension"
   | "settings-tools";
 
-export type PluginSlotContributionIcon = "info" | "play" | "puzzle" | "settings" | "sparkles";
+export type PluginSlotContributionActionType = "callback" | "none" | "open-plugin-page";
+export type PluginSlotContributionIcon = "info" | "play" | "puzzle" | "settings" | "smartphone" | "sparkles";
+export type PluginSlotContributionPresentation = "button" | "icon-only";
 export type PluginSlotContributionVariant = "danger" | "ghost" | "primary";
 
 export interface PluginSlotContribution {
   actionLabel: string;
+  actionType: PluginSlotContributionActionType;
   actionable: boolean;
   description: string;
   icon: PluginSlotContributionIcon;
   id: string;
   order: number;
+  pageId: string;
   pluginId: string;
   pluginVersion: string;
+  presentation: PluginSlotContributionPresentation;
   slot: PluginSlotId;
   title: string;
   variant: PluginSlotContributionVariant;

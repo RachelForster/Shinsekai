@@ -103,13 +103,16 @@ def test_frontend_chat_ui_contributions_are_serialized_without_callbacks(monkeyp
     assert payload == [
         {
             "actionLabel": "Run",
+            "actionType": "callback",
             "actionable": True,
             "description": "Host rendered",
             "icon": "sparkles",
             "id": "demo.action",
             "order": 12.0,
+            "pageId": "",
             "pluginId": "demo.plugin",
             "pluginVersion": "1.0",
+            "presentation": "button",
             "slot": "chat-dialog-actions",
             "title": "Demo action",
             "variant": "primary",
@@ -123,6 +126,47 @@ def test_frontend_chat_ui_contributions_are_serialized_without_callbacks(monkeyp
         "message": "done",
         "pluginId": "demo.plugin",
     }
+
+
+def test_frontend_chat_ui_contribution_serializes_phone_page_navigation(monkeypatch):
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_chat_ui_contributions",
+        lambda: [
+            SimpleNamespace(
+                action={"type": "open-plugin-page", "page_id": " phone "},
+                contribution_id="demo.phone",
+                description="Open phone",
+                icon="smartphone",
+                order=30,
+                plugin_id="demo.plugin",
+                plugin_version="1.0",
+                presentation="button",
+                slot="chat-top-toolbar",
+                title="Phone",
+                variant="ghost",
+            )
+        ],
+    )
+
+    assert _frontend_chat_ui_contribution_payloads() == [
+        {
+            "actionLabel": "Phone",
+            "actionType": "open-plugin-page",
+            "actionable": True,
+            "description": "Open phone",
+            "icon": "smartphone",
+            "id": "demo.phone",
+            "order": 30.0,
+            "pageId": "phone",
+            "pluginId": "demo.plugin",
+            "pluginVersion": "1.0",
+            "presentation": "icon-only",
+            "slot": "chat-top-toolbar",
+            "title": "Phone",
+            "variant": "ghost",
+        }
+    ]
 
 
 def test_frontend_config_page_payload_normalizes_kind_and_values():

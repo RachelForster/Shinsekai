@@ -2180,13 +2180,16 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             ? [
                 {
                   actionLabel: "生成场景提示",
+                  actionType: "callback" as const,
                   actionable: true,
                   description: "由宿主安全渲染的浏览器预览贡献。",
                   icon: "sparkles" as const,
                   id: "scene-prompt",
                   order: 100,
+                  pageId: "",
                   pluginId: "core-tools",
                   pluginVersion: "built-in",
+                  presentation: "button" as const,
                   slot: "chat-output" as const,
                   title: "场景灵感",
                   variant: "ghost" as const,
