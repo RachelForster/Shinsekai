@@ -16,24 +16,30 @@ import { useAutoHideRegion } from "../hooks/useAutoHideRegion";
 export function InputLayer({
   autoHide = false,
   asrPaused,
+  batchEnabled,
   disabled,
   hidden,
   inputLayout = "default",
   longPressTalkEnabled = false,
   onChange,
   onCommand,
+  onFlushBatch,
+  onInputActivity,
   onSubmit,
   value,
 }: {
   asrPaused: boolean;
   autoHide?: boolean;
+  batchEnabled: boolean;
   disabled: boolean;
   hidden: boolean;
   inputLayout?: "default" | "pill";
   longPressTalkEnabled?: boolean;
   onChange: (value: string) => void;
   onCommand: (command: ChatCommand) => void;
-  onSubmit: () => void;
+  onFlushBatch: () => void | Promise<void>;
+  onInputActivity: (state: { composing: boolean; hasText: boolean }) => void;
+  onSubmit: () => void | Promise<void>;
   value: string;
 }) {
   const { language, t } = useI18n();
@@ -46,6 +52,7 @@ export function InputLayer({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const transcriptBaseRef = useRef("");
   const valueRef = useRef(value);
+  const inputActivityRef = useRef("");
   const pillLayout = inputLayout === "pill";
   const pressToTalk = pillLayout && longPressTalkEnabled;
   const canSubmit = Boolean(value.trim()) && !disabled;
@@ -55,7 +62,35 @@ export function InputLayer({
 
   useEffect(() => {
     valueRef.current = value;
+    if (!value.trim()) {
+      inputActivityRef.current = "false:false";
+    }
   }, [value]);
+
+  const reportInputActivity = (nextValue: string, composing: boolean) => {
+    if (!batchEnabled) {
+      return;
+    }
+    const activity = { composing, hasText: Boolean(nextValue.trim()) };
+    const key = `${activity.hasText}:${activity.composing}`;
+    if (inputActivityRef.current === key) {
+      return;
+    }
+    inputActivityRef.current = key;
+    onInputActivity(activity);
+  };
+
+  const handleInputChange = (nextValue: string) => {
+    onChange(nextValue);
+    reportInputActivity(nextValue, false);
+  };
+
+  const submitFromKeyboard = async (flushBatch: boolean) => {
+    await onSubmit();
+    if (flushBatch && batchEnabled) {
+      await onFlushBatch();
+    }
+  };
 
   const stopListening = () => {
     const recognition = recognitionRef.current;
@@ -256,11 +291,13 @@ export function InputLayer({
             autoComplete="off"
             className="input-layer__input input-layer__input--single"
             disabled={disabled}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => handleInputChange(event.target.value)}
+            onCompositionEnd={(event) => reportInputActivity(event.currentTarget.value, false)}
+            onCompositionStart={(event) => reportInputActivity(event.currentTarget.value, true)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) {
                 event.preventDefault();
-                onSubmit();
+                void submitFromKeyboard(event.ctrlKey);
               }
             }}
             placeholder={t("chat.input.placeholder")}
@@ -270,11 +307,13 @@ export function InputLayer({
           <TextArea
             className="input-layer__input"
             disabled={disabled}
-            onChange={(event) => onChange(event.target.value)}
+            onChange={(event) => handleInputChange(event.target.value)}
+            onCompositionEnd={(event) => reportInputActivity(event.currentTarget.value, false)}
+            onCompositionStart={(event) => reportInputActivity(event.currentTarget.value, true)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
                 event.preventDefault();
-                onSubmit();
+                void submitFromKeyboard(event.ctrlKey);
               }
             }}
             placeholder={t("chat.input.placeholder")}

@@ -134,4 +134,3 @@ def filter_unpaired_tool_messages_for_request(messages: list[dict[str, Any]]) ->
         i = j
 
     return cleaned if changed else messages
-

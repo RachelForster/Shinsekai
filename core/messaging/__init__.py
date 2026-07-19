@@ -1,1 +1,1 @@
-"""Queue message models, dialog token vocabulary, and LLM stream parsing."""
+"""Message dispatch, queue models, dialog tokens, and LLM stream parsing."""

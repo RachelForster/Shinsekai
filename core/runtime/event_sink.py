@@ -67,6 +67,14 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "stats": [],
         "status": "idle",
         "systemMessageText": "",
+        "turnState": {
+            "enabled": False,
+            "pendingCount": 0,
+            "pendingMessages": [],
+            "remainingSeconds": None,
+            "scheduled": False,
+            "typing": False,
+        },
         "userDisplayName": "你",
     }
 
@@ -281,6 +289,46 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         tree = event.get("tree")
         if isinstance(tree, dict):
             next_snapshot["conversationTree"] = dict(tree)
+        return next_snapshot
+
+    if event_type == "chat.turn.state":
+        state = event.get("state")
+        if isinstance(state, dict):
+            remaining = state.get("remainingSeconds")
+            pending_messages = state.get("pendingMessages")
+            if not isinstance(pending_messages, list):
+                pending_messages = []
+            next_snapshot["turnState"] = {
+                "enabled": bool(state.get("enabled")),
+                "pendingCount": max(0, int(state.get("pendingCount") or 0)),
+                "pendingMessages": [
+                    message for message in (pending_messages or []) if isinstance(message, str) and message
+                ],
+                "remainingSeconds": (
+                    max(0, int(remaining))
+                    if isinstance(remaining, (int, float)) and not isinstance(remaining, bool)
+                    else None
+                ),
+                "scheduled": bool(state.get("scheduled")),
+                "typing": bool(state.get("typing")),
+            }
+        options = event.get("options")
+        if isinstance(options, dict):
+            interrupt_enabled = options.get("interruptEnabled")
+            batch_enabled = options.get("batchEnabled")
+            batch_idle_seconds = options.get("batchIdleSeconds")
+            if (
+                isinstance(interrupt_enabled, bool)
+                and isinstance(batch_enabled, bool)
+                and not isinstance(batch_idle_seconds, bool)
+                and isinstance(batch_idle_seconds, (int, float))
+                and math.isfinite(float(batch_idle_seconds))
+            ):
+                next_snapshot["turnOptions"] = {
+                    "interruptEnabled": interrupt_enabled,
+                    "batchEnabled": batch_enabled,
+                    "batchIdleSeconds": float(batch_idle_seconds),
+                }
         return next_snapshot
 
     if event_type == "numeric.update":

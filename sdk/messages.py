@@ -27,6 +27,12 @@ class LLMDialogMessage(BaseModel):
     asset_id: Optional[Union[str, int]] = Field("-1", alias="sprite", description="资源编号（立绘索引 / BGM 索引等），-1 表示无需变化")
     translate: Optional[str] = Field("", description="可选的翻译文本，如果存在则用于 TTS")
     effect: Optional[str] = Field("", description="特效名称")
+    turn_id: Optional[int] = Field(
+        None,
+        exclude=True,
+        repr=False,
+        description="Internal runtime turn identity",
+    )
 
 
 class TTSOutputMessage(BaseModel):

@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from "react";
-import { GitFork, RotateCcw } from "lucide-react";
+import { Copy, GitFork, RotateCcw, Trash2 } from "lucide-react";
 
 import type { ChatHistoryEntry } from "../../../shared/platform/types";
 import { Button } from "../../../shared/ui";
@@ -106,7 +106,9 @@ export function HistoryDialog({
   entries,
   forkEnabled,
   loading,
+  onClear,
   onClose,
+  onCopy,
   onFork,
   onRefresh,
   onRevert,
@@ -116,7 +118,9 @@ export function HistoryDialog({
   entries: ChatHistoryEntry[];
   forkEnabled: boolean;
   loading: boolean;
+  onClear: () => void;
   onClose: () => void;
+  onCopy: () => void;
   onFork: (userIndex: number) => void;
   onRefresh: () => void;
   onRevert: (userIndex: number) => void;
@@ -175,7 +179,28 @@ export function HistoryDialog({
       backdropClassName="chat-history-backdrop"
       closeLabel={t("common.close")}
       dialogClassName="chat-history-dialog"
-      eyebrow="LOG"
+      eyebrow={t("chat.actionBar.history")}
+      headerActions={
+        <>
+          <Button
+            aria-label={t("chat.toolbar.copyHistory")}
+            className="chat-history__header-action"
+            icon={<Copy aria-hidden className="button__icon" />}
+            onClick={onCopy}
+          >
+            {t("chat.actionBar.copy")}
+          </Button>
+          <Button
+            aria-label={t("chat.toolbar.clearHistory")}
+            className="chat-history__header-action"
+            icon={<Trash2 aria-hidden className="button__icon" />}
+            onClick={onClear}
+            variant="danger"
+          >
+            {t("chat.actionBar.clear")}
+          </Button>
+        </>
+      }
       labelledBy={titleId}
       onClose={onClose}
       open={open}

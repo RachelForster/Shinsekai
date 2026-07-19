@@ -189,17 +189,25 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
     return _plugin_manager
 
 
-def wire_user_input_plugins(user_input_queue: Queue) -> Callable[[str], None]:
+def wire_user_input_plugins(
+    user_input_queue: Queue,
+    *,
+    sink: Callable[[str], None] | None = None,
+) -> Callable[[str], None]:
     """
     Build the user-input pipeline (plugin processors) and return ``emit_user_text``
     for code that registers hooks via :meth:`sdk.register.PluginCapabilityRegistry.register_user_input_trigger`
     or :meth:`~sdk.register.PluginCapabilityRegistry.register_user_input_processor` inside
     :meth:`sdk.plugin.PluginBase.initialize`.
 
-    The returned callable runs processors then enqueues :class:`~core.messaging.message.UserInputMessage`.
+    The returned callable runs processors and delegates the processed text to
+    ``sink``.  Without a custom sink it preserves the historical behavior of
+    enqueuing :class:`~sdk.messages.UserInputMessage` directly.
     """
     mgr = _plugin_manager
     processors: list[Callable[[str], str | None]] = []
+
+    deliver = sink or (lambda text: user_input_queue.put(UserInputMessage(text=text)))
 
     def emit_user_text(text: str) -> None:
         t = text
@@ -212,7 +220,8 @@ def wire_user_input_plugins(user_input_queue: Queue) -> Callable[[str], None]:
             if out is None:
                 return
             t = out
-        user_input_queue.put(UserInputMessage(text=t))
+
+        deliver(t)
 
     if mgr is not None:
         try:

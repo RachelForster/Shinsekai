@@ -1,6 +1,12 @@
-import type { MouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import {
-  Copy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import {
   GitBranch,
   History,
   Lock,
@@ -8,17 +14,18 @@ import {
   MicOff,
   Play,
   RotateCcw,
-  SkipForward,
+  Settings,
   SlidersHorizontal,
-  Trash2,
   Unlock,
   X,
 } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
-import type { ChatCommand } from "../../../shared/platform/types";
+import type { ChatCommand, ChatTurnOptions, ChatTurnState } from "../../../shared/platform/types";
 import { ThemeFrame, ToolbarButton } from "../../../shared/ui";
+import { useDismissableLayer } from "../hooks/useDismissableLayer";
+import { ChatTurnSettingsPopover } from "./ChatTurnSettingsPopover";
 
 export function DialogStageControls({
   asrPaused,
@@ -29,14 +36,19 @@ export function DialogStageControls({
   hidden,
   locked,
   onAutoChange,
+  onCancelBatch,
   onCloseSurface,
   onCommand,
   onConfigOpenChange,
+  onFlushBatch,
   onLockedChange,
   onOpenBranches,
   onOpenHistory,
+  onTurnOptionsChange,
   showBranches,
   showAsrControl,
+  turnOptions,
+  turnState,
 }: {
   asrPaused: boolean;
   auto: boolean;
@@ -46,16 +58,32 @@ export function DialogStageControls({
   hideCloseButton: boolean;
   locked: boolean;
   onAutoChange: (auto: boolean) => void;
+  onCancelBatch: () => void;
   onCloseSurface: () => void;
   onCommand: (command: ChatCommand) => void;
   onConfigOpenChange: (open: boolean) => void;
+  onFlushBatch: () => void;
   onLockedChange: (locked: boolean) => void;
   onOpenBranches: () => void;
   onOpenHistory: () => void;
+  onTurnOptionsChange: (options: ChatTurnOptions) => void;
   showBranches: boolean;
   showAsrControl: boolean;
+  turnOptions: ChatTurnOptions;
+  turnState: ChatTurnState;
 }) {
   const { t } = useI18n();
+  const [chatSettingsOpen, setChatSettingsOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const closeChatSettings = useCallback(() => setChatSettingsOpen(false), []);
+  useDismissableLayer({ active: chatSettingsOpen, onDismiss: closeChatSettings, rootRef });
+
+  useEffect(() => {
+    if (hidden) {
+      setChatSettingsOpen(false);
+    }
+  }, [hidden]);
+
   const stopDialogActionPropagation = (event: MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
   };
@@ -80,6 +108,7 @@ export function DialogStageControls({
       data-locked={locked ? "true" : "false"}
       onClick={stopDialogActionPropagation}
       onPointerDown={stopDialogPointerPropagation}
+      ref={rootRef}
     >
       <div className="dialog-stage-controls__surface">
         <ThemeFrame prefix="chat-toolbar" />
@@ -117,15 +146,6 @@ export function DialogStageControls({
             tooltip={branchTooltip}
           >
             {t("chat.actionBar.branches")}
-          </ToolbarButton>
-          <ToolbarButton
-            aria-label={t("chat.toolbar.skipSpeech")}
-            className="dialog-stage-controls__button"
-            icon={<SkipForward aria-hidden className="button__icon" />}
-            onClick={() => onCommand({ type: "skip-speech" })}
-            tooltip={t("chat.toolbar.skipSpeech")}
-          >
-            {t("chat.actionBar.skip")}
           </ToolbarButton>
           <ToolbarButton
             aria-label={t("chat.toolbar.autoPlay")}
@@ -166,22 +186,20 @@ export function DialogStageControls({
             </ToolbarButton>
           ) : null}
           <ToolbarButton
-            aria-label={t("chat.toolbar.copyHistory")}
+            aria-controls="chat-turn-settings-popover"
+            aria-expanded={chatSettingsOpen}
+            aria-label={t("chat.input.settings")}
+            aria-pressed={chatSettingsOpen}
             className="dialog-stage-controls__button"
-            icon={<Copy aria-hidden className="button__icon" />}
-            onClick={() => onCommand({ type: "copy-history" })}
-            tooltip={t("chat.toolbar.copyHistory")}
+            data-active={chatSettingsOpen ? "true" : "false"}
+            icon={<Settings aria-hidden className="button__icon" />}
+            onClick={() => {
+              onConfigOpenChange(false);
+              setChatSettingsOpen((current) => !current);
+            }}
+            tooltip={t("chat.input.settings")}
           >
-            {t("chat.actionBar.copy")}
-          </ToolbarButton>
-          <ToolbarButton
-            aria-label={t("chat.toolbar.clearHistory")}
-            className="dialog-stage-controls__button dialog-stage-controls__button--danger"
-            icon={<Trash2 aria-hidden className="button__icon" />}
-            onClick={() => onCommand({ type: "clear-history" })}
-            tooltip={t("chat.toolbar.clearHistory")}
-          >
-            {t("chat.actionBar.clear")}
+            {t("chat.input.settings")}
           </ToolbarButton>
           <ToolbarButton
             aria-controls="chat-stage-dialog-config"
@@ -191,7 +209,10 @@ export function DialogStageControls({
             className="dialog-stage-controls__button"
             data-active={configOpen ? "true" : "false"}
             icon={<SlidersHorizontal aria-hidden className="button__icon" />}
-            onClick={() => onConfigOpenChange(!configOpen)}
+            onClick={() => {
+              closeChatSettings();
+              onConfigOpenChange(!configOpen);
+            }}
             tooltip={t("chat.toolbar.config")}
           >
             {t("chat.actionBar.config")}
@@ -209,6 +230,15 @@ export function DialogStageControls({
           )}
           <PluginSlot slot="chat-dialog-actions" />
         </div>
+        <ChatTurnSettingsPopover
+          onCancelBatch={onCancelBatch}
+          onClose={closeChatSettings}
+          onFlushBatch={onFlushBatch}
+          onTurnOptionsChange={onTurnOptionsChange}
+          open={chatSettingsOpen}
+          turnOptions={turnOptions}
+          turnState={turnState}
+        />
       </div>
     </div>
   );

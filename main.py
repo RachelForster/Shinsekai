@@ -2,6 +2,7 @@ import copy
 import json
 import os
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 import signal
 import sys
@@ -99,6 +100,8 @@ import llm.tools.chat_ui_tools
 from llm.template_generator import is_transparent_background
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor
+from core.messaging.chat_turn_wiring import create_chat_turn_service
+from core.messaging.queue import ClearableQueue
 from core.runtime.app_runtime import AppRuntime, set_app_runtime
 from core.runtime.launch_mode import should_init_desktop_mixer
 from core.runtime.shutdown import shutdown_chat_runtime
@@ -616,7 +619,7 @@ def main():
     with _startup_phase("workflow.build"):
         workflow = build_runtime_workflow(
             workflow_path=args.workflow or headless_workflow,
-            queue_factory=Queue,
+            queue_factory=ClearableQueue,
         )
         chat_handles = get_chat_workflow_handles(workflow)
     user_input_queue = chat_handles.input_queue
@@ -637,6 +640,39 @@ def main():
                 chat_history=chat_history,
                 bg_group=bg_group or [],
             )
+
+            def emit_chat_turn_state(state) -> None:
+                options = chat_turn_service.options
+                stream_sink.emit(
+                    {
+                        "options": {
+                            "batchEnabled": options.batch_enabled,
+                            "batchIdleSeconds": options.batch_idle_seconds,
+                            "interruptEnabled": options.interrupt_enabled,
+                        },
+                        "type": "chat.turn.state",
+                        "state": {
+                            "enabled": state.enabled,
+                            "pendingCount": state.pending_count,
+                            "pendingMessages": list(state.pending_messages),
+                            "remainingSeconds": state.remaining_seconds,
+                            "scheduled": state.scheduled,
+                            "typing": state.typing,
+                        },
+                    }
+                )
+
+            chat_turn_service = create_chat_turn_service(
+                config=config,
+                user_input_queue=user_input_queue,
+                tts_queue=tts_queue,
+                audio_queue=audio_path_queue,
+                llm_manager=llm_manager,
+                ui_worker=_um,
+                ui_updates=ui_updates,
+                on_state_change=emit_chat_turn_state,
+            )
+            emit_chat_turn_state(chat_turn_service.batch_state())
             set_app_runtime(
                 AppRuntime(
                     config=config,
@@ -650,12 +686,17 @@ def main():
                     audio_path_queue=audio_path_queue,
                     text_processor=text_processor,
                     opencc=cc,
+                    chat_turn_service=chat_turn_service,
                 )
             )
             if hasattr(ui_updates, "sync_history_entries"):
                 ui_updates.sync_history_entries()
 
-            emit_user_text = wire_user_input_plugins(user_input_queue) if user_input_queue is not None else None
+            emit_user_text = (
+                wire_user_input_plugins(user_input_queue, sink=chat_turn_service.submit)
+                if user_input_queue is not None
+                else None
+            )
         last_user_message = {"text": ""}
         def _default_branch_state() -> dict[str, object]:
             now = int(time.time() * 1000)
@@ -784,7 +825,6 @@ def main():
         def _fork_history_branch(user_index: int) -> None:
             if user_index < 0:
                 raise ValueError("分支索引无效。")
-            _save_active_branch()
             user_pos = _user_history_position(user_index)
             if user_pos < 0:
                 raise ValueError("找不到可分叉的历史记录。")
@@ -792,6 +832,8 @@ def main():
             user_text = _plain_user_text(source_entry)
             if not user_text:
                 raise ValueError("分支输入内容为空。")
+            chat_turn_service.cancel_pending_batch()
+            _save_active_branch()
             prefix_history = list(chat_history[:user_pos])
             prefix_messages = _messages_before_user(user_index)
             branch_state["counter"] = int(branch_state.get("counter") or 1) + 1
@@ -823,6 +865,7 @@ def main():
             branches = _branches()
             if not target_id or target_id not in branches:
                 raise ValueError("对话分支不存在。")
+            chat_turn_service.cancel_pending_batch()
             _save_active_branch()
             branch = branches[target_id]
             branch_state["active"] = target_id
@@ -884,6 +927,51 @@ def main():
                     submit_runtime_text(str(payload or ""))
                     emit_ack(ok=True)
                     return
+                if command_type == "update-turn-options":
+                    if not isinstance(payload, dict):
+                        raise ValueError("Chat turn options must be an object.")
+                    interrupt_enabled = payload.get("interruptEnabled")
+                    batch_enabled = payload.get("batchEnabled")
+                    batch_idle_seconds = payload.get("batchIdleSeconds")
+                    if not isinstance(interrupt_enabled, bool) or not isinstance(batch_enabled, bool):
+                        raise ValueError("Chat turn switches must be boolean values.")
+                    if isinstance(batch_idle_seconds, bool) or not isinstance(batch_idle_seconds, (int, float)):
+                        raise ValueError("Batch input timeout must be numeric.")
+                    timeout = float(batch_idle_seconds)
+                    if not 0.3 <= timeout <= 120.0:
+                        raise ValueError("Batch input timeout must be between 0.3 and 120 seconds.")
+                    chat_turn_service.update_options(
+                        replace(
+                            chat_turn_service.options,
+                            interrupt_enabled=interrupt_enabled,
+                            batch_enabled=batch_enabled,
+                            batch_idle_seconds=timeout,
+                        )
+                    )
+                    api_config = config.config.api_config.model_copy(deep=True)
+                    api_config.interrupt_enabled = interrupt_enabled
+                    api_config.is_batch_input_enabled = batch_enabled
+                    api_config.batch_input_timeout = timeout
+                    config.config.api_config = api_config
+                    emit_ack(ok=True)
+                    return
+                if command_type == "chat-input-state":
+                    if not isinstance(payload, dict):
+                        raise ValueError("Chat input state must be an object.")
+                    chat_turn_service.input_changed(
+                        has_text=bool(payload.get("hasText")),
+                        composing=bool(payload.get("composing")),
+                    )
+                    emit_ack(ok=True)
+                    return
+                if command_type == "flush-input-batch":
+                    chat_turn_service.flush()
+                    emit_ack(ok=True)
+                    return
+                if command_type == "cancel-input-batch":
+                    chat_turn_service.cancel_pending_batch()
+                    emit_ack(ok=True)
+                    return
                 if command_type in {"skip-speech", "dialog-advance"}:
                     if _um is not None and hasattr(_um, "skip_speech"):
                         _um.skip_speech()
@@ -924,6 +1012,7 @@ def main():
                 if command_type == "clear-history":
                     if audio_path_queue is None:
                         raise RuntimeError("聊天历史清理队列未就绪。")
+                    chat_turn_service.cancel_pending_batch()
                     history_target = str(chat_history_active_path(args.history)) if args.history else str(
                         Path("data/chat_history") / "_temp.json"
                     )
@@ -964,6 +1053,7 @@ def main():
                     return
                 if command_type == "revert-history":
                     index = int(payload)
+                    chat_turn_service.cancel_pending_batch()
                     revert_chat_history(
                         index,
                         llm_manager=llm_manager,
@@ -1100,6 +1190,15 @@ def main():
         from core.runtime.ui_update_manager import HeadlessUIUpdateManager
 
         ui_updates = HeadlessUIUpdateManager(chat_history=chat_history)
+        chat_turn_service = create_chat_turn_service(
+            config=config,
+            user_input_queue=user_input_queue,
+            tts_queue=tts_queue,
+            audio_queue=audio_path_queue,
+            llm_manager=llm_manager,
+            ui_worker=_um,
+            ui_updates=ui_updates,
+        )
         set_app_runtime(
             AppRuntime(
                 config=config,
@@ -1114,6 +1213,7 @@ def main():
                 audio_path_queue=audio_path_queue,
                 text_processor=text_processor,
                 opencc=cc,
+                chat_turn_service=chat_turn_service,
             )
         )
         workflow.start()
@@ -1141,6 +1241,7 @@ def main():
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import QApplication
     from ui.chat_ui.chat_ui import ChatUIWindow
+    from ui.chat_ui.chat_turn_controller import ChatTurnController
     from ui.chat_ui.qss_fusion import ensure_fusion_style
 
     app = QApplication([])
@@ -1164,6 +1265,15 @@ def main():
         mirror_stream_sink = WSClientSink(args.mirror_stream_endpoint)
         connect_to_stream_sink(ui_updates, mirror_stream_sink)
 
+    chat_turn_service = create_chat_turn_service(
+        config=config,
+        user_input_queue=user_input_queue,
+        tts_queue=tts_queue,
+        audio_queue=audio_path_queue,
+        llm_manager=llm_manager,
+        ui_worker=_um,
+        ui_updates=ui_updates,
+    )
     set_app_runtime(
         AppRuntime(
             config=config,
@@ -1178,6 +1288,7 @@ def main():
             audio_path_queue=audio_path_queue,
             text_processor=text_processor,
             opencc=cc,
+            chat_turn_service=chat_turn_service,
         )
     )
 
@@ -1206,9 +1317,11 @@ def main():
     window.setNotification(tr_i18n("main.notify_chat"))
 
     if user_input_queue is not None:
-        emit_user_text = wire_user_input_plugins(user_input_queue)
+        emit_user_text = wire_user_input_plugins(user_input_queue, sink=chat_turn_service.submit)
     else:
         emit_user_text = None
+
+    window._chat_turn_controller = ChatTurnController(window, chat_turn_service, ui_updates)
 
     sc = config.config.system_config.model_copy(deep=True)
     if bg_group:

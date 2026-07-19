@@ -81,6 +81,8 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
     # 聊天输入框 QTextEdit：获得 / 失去焦点（见 eventFilter）
     user_input_started = Signal()
     user_input_ended = Signal()
+    flush_batch = Signal()  # Ctrl+Enter — commit accumulated batch immediately
+    input_composition_started = Signal()
 
     def __init__(self, image_queue, emotion_queue, llm_manager, sprite_mode=False, background_mode = False, max_sprite_slots=3):
         """初始化窗口"""
@@ -1122,7 +1124,6 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             if hasattr(self, "_reroll_btn") and self._reroll_btn is not None:
                 self._reroll_btn.hide()
             print(f"UI发送消息: {message}")
-            self.input_box.clear()
             self.setDisplayWords(f"<b>你</b>：{message}")
             self.input_box.setPlaceholderText(tr("desktop.sending"))
             self.mic_button.asr_pause_requested.emit()
@@ -1133,7 +1134,10 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 self.chat_worker.response_received.connect(self.handleResponse)
                 self.chat_worker.start()
 
-            self.message_submitted.emit(message)  # 发出消息提交信号
+            # Emit before clearing so the dispatch service buffers this message
+            # before the input-state adapter observes an empty editor.
+            self.message_submitted.emit(message)
+            self.input_box.clear()
 
     def _on_reroll(self):
         msg = getattr(self, "_last_user_message", "")
@@ -1545,12 +1549,20 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 self.user_input_started.emit()
             elif et_in == QEvent.Type.FocusOut:
                 self.user_input_ended.emit()
+            elif et_in == QEvent.Type.InputMethod:
+                self.input_composition_started.emit()
             elif et_in == QEvent.Type.KeyPress:
                 if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-                    # 同样判断是否带有修饰键
-                    if not event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-                        self.send_btn.click()  # 你的发送函数
-                        return True  # 表示事件已处理，不再向下传递（即不换行）
+                    if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                        # Submit the current editor contents, then flush the
+                        # complete batch including that message.
+                        self.send_btn.click()
+                        self.flush_batch.emit()
+                        return True
+                    else:
+                        # Enter without Ctrl: send normally (accumulate in batch mode)
+                        self.send_btn.click()
+                        return True
         if isinstance(event, QMouseEvent):
             met = event.type()
             if met == QEvent.Type.MouseButtonPress and event.button() == Qt.MouseButton.LeftButton:

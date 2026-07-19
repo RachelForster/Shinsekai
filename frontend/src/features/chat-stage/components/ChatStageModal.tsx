@@ -30,6 +30,7 @@ export function ChatStageModal({
   dialogClassName,
   dialogId,
   eyebrow,
+  headerActions,
   labelledBy,
   onClose,
   open,
@@ -42,6 +43,7 @@ export function ChatStageModal({
   dialogClassName: string;
   dialogId?: string;
   eyebrow?: ReactNode;
+  headerActions?: ReactNode;
   labelledBy: string;
   onClose: () => void;
   open: boolean;
@@ -163,9 +165,12 @@ export function ChatStageModal({
             </h2>
             {summary ? <div className="chat-stage-modal__summary">{summary}</div> : null}
           </div>
-          <IconButton className="chat-stage-modal__close" label={closeLabel} onClick={onClose} ref={closeButtonRef}>
-            <X aria-hidden className="icon-button__icon" />
-          </IconButton>
+          <div className="chat-stage-modal__header-controls">
+            {headerActions ? <div className="chat-stage-modal__header-actions">{headerActions}</div> : null}
+            <IconButton className="chat-stage-modal__close" label={closeLabel} onClick={onClose} ref={closeButtonRef}>
+              <X aria-hidden className="icon-button__icon" />
+            </IconButton>
+          </div>
         </header>
         {children}
       </section>

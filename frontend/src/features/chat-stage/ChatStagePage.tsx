@@ -3,7 +3,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
+import { sendChatCommand } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
+import type { ChatTurnOptions } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
@@ -195,25 +197,50 @@ export function ChatStagePage() {
     }
   }, [runtimeConfig.longPressTalk, voskModelState.available, voskModelState.loading]);
 
-  const submit = () => {
+  const submit = async () => {
     const text = viewModel.inputDraft.trim();
     if (!text) {
       return;
     }
     showDialogImmediately();
-    dispatch({ source: "send-message", text, type: "submitUserMessage" });
-    void sendCommand({ payload: text, type: "send-message" });
+    dispatch({ queued: state.turnOptions.batchEnabled, source: "send-message", text, type: "submitUserMessage" });
+    await sendCommand({ payload: text, type: "send-message" });
   };
 
   const submitOption = (option: string) => {
     showDialogImmediately();
-    dispatch({ source: "submit-option", text: option, type: "submitUserMessage" });
+    dispatch({
+      queued: state.turnOptions.batchEnabled,
+      source: "submit-option",
+      text: option,
+      type: "submitUserMessage",
+    });
     void sendCommand({ payload: option, type: "submit-option" });
   };
 
   const updateRuntimeTextSpeed = (typewriterCps: number) => {
     setRuntimeConfig((current) => ({ ...current, typewriterCps }));
   };
+
+  const updateTurnOptions = useCallback(
+    (options: ChatTurnOptions) => {
+      const previous = state.turnOptions;
+      dispatch({ options, type: "setTurnOptions" });
+      void sendChatCommand({ payload: options, type: "update-turn-options" }).catch((error) => {
+        dispatch({ options: previous, type: "setTurnOptions" });
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("chat.error.commandFallback"),
+          title: t("common.operationFailed"),
+        });
+      });
+    },
+    [showToast, state.turnOptions, t],
+  );
+
+  const updateInputActivity = useCallback((inputState: { composing: boolean; hasText: boolean }) => {
+    void sendChatCommand({ payload: inputState, type: "chat-input-state" }).catch(() => undefined);
+  }, []);
 
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
@@ -336,14 +363,19 @@ export function ChatStagePage() {
       hideCloseButton={standaloneDesktopWindow}
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
+      onCancelBatch={() => void sendCommand({ type: "cancel-input-batch" })}
       onCloseSurface={closeSurface}
       onCommand={sendCommand}
       onConfigOpenChange={setToolbarConfigOpen}
+      onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
       onLockedChange={setDialogControlsLocked}
       onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
+      onTurnOptionsChange={updateTurnOptions}
       showBranches={conversationTreeEnabled}
       showAsrControl={!viewModel.layers.input && viewModel.status === "paused"}
+      turnOptions={state.turnOptions}
+      turnState={state.turnState}
     />
   );
 
@@ -436,12 +468,15 @@ export function ChatStagePage() {
         <InputLayer
           asrPaused={viewModel.status === "paused"}
           autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
+          batchEnabled={state.turnOptions.batchEnabled}
           disabled={viewModel.inputDisabled}
           hidden={!viewModel.layers.input}
           inputLayout={inputLayout}
           longPressTalkEnabled={longPressTalkEnabled}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
           onCommand={sendCommand}
+          onFlushBatch={() => sendCommand({ type: "flush-input-batch" })}
+          onInputActivity={updateInputActivity}
           onSubmit={submit}
           value={viewModel.inputDraft}
         />
@@ -449,7 +484,9 @@ export function ChatStagePage() {
           entries={state.historyEntries ?? []}
           forkEnabled={forkHistoryEnabled}
           loading={historyLoading}
+          onClear={() => void sendCommand({ type: "clear-history" })}
           onClose={() => setHistoryDialogOpen(false)}
+          onCopy={() => void sendCommand({ type: "copy-history" })}
           onFork={(userIndex) => {
             setHistoryDialogOpen(false);
             void sendCommand({ payload: { userIndex }, type: "fork-history" });
@@ -507,6 +544,7 @@ export function ChatStagePage() {
           onSpriteScaleChange={updateRuntimeSpriteScale}
           onTextSpeedChange={updateRuntimeTextSpeed}
           onTextStyleChange={updateRuntimeTextStyle}
+          onTurnOptionsChange={updateTurnOptions}
           onWindowScaleChange={updateRuntimeWindowScale}
           open={toolbarConfigOpen}
           spriteOffsetX={runtimeConfig.spriteOffsetX}
@@ -514,6 +552,7 @@ export function ChatStagePage() {
           spriteScales={runtimeConfig.spriteScales}
           sprites={viewModel.sprites}
           textSpeed={typewriterCps}
+          turnOptions={state.turnOptions}
           voiceLanguage={viewModel.voiceLanguage || "ja"}
           windowScale={runtimeConfig.windowScale}
         />

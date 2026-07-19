@@ -71,4 +71,3 @@ class CharacterConfig:
                 pronunciation_map=char_data.get("pronunciation_map", None),
             )
         return character
-    

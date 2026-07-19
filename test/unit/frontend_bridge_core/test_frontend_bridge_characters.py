@@ -31,5 +31,3 @@ def test_remote_voice_paths_still_validate_model_suffixes():
             _character_payload(sovits_model_path="/kaggle/input/voice-model/model.ckpt"),
             allow_remote_voice_paths=True,
         )
-
-

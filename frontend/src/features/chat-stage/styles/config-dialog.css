@@ -32,6 +32,13 @@
   color: var(--chat-config-accent-local);
 }
 
+.chat-config-dialog__help {
+  margin: -3px 0 1px;
+  color: color-mix(in oklch, var(--chat-dialog-color, #f7f1f0) 55%, transparent);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .chat-config-dialog__row {
   display: grid;
   min-width: 0;

@@ -270,7 +270,7 @@
 .input-layer__panel {
   position: absolute;
   right: 0;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + 50px);
   z-index: 3;
   display: var(--chat-input-panel-display);
   width: min(238px, calc(100vw - 32px));
