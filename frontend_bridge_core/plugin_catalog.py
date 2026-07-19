@@ -82,6 +82,7 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
         from core.plugins.plugin_host import (
             collect_chat_ui_contributions,
             collect_frontend_config_contributions,
+            collect_frontend_chat_ui_contributions,
             collect_frontend_page_contributions,
             collect_settings_contributions,
             collect_tools_tab_contributions,
@@ -99,6 +100,7 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
     chat_by_plugin: dict[str, list[str]] = {}
     frontend_settings_by_plugin: dict[str, list[str]] = {}
     frontend_tools_by_plugin: dict[str, list[str]] = {}
+    frontend_chat_by_plugin: dict[str, list[str]] = {}
     for contribution in collect_settings_contributions():
         plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
         label = str(getattr(contribution, "nav_label", "") or "").strip()
@@ -134,6 +136,11 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
             frontend_tools_by_plugin.setdefault(plugin_id, []).append(label)
         else:
             frontend_settings_by_plugin.setdefault(plugin_id, []).append(label)
+    for contribution in collect_frontend_chat_ui_contributions():
+        plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
+        slot = str(getattr(contribution, "slot", "") or "").strip()
+        if plugin_id and slot in {"chat-dialog-actions", "chat-output", "chat-toolbar"}:
+            frontend_chat_by_plugin.setdefault(plugin_id, []).append(slot)
 
     def _row(
         *,
@@ -165,6 +172,7 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
         if chat_by_plugin.get(plugin_id):
             slots.add("chat-dialog-actions")
             slots.add("chat-output")
+        slots.update(frontend_chat_by_plugin.get(plugin_id, []))
         if not slots:
             slots.add("settings-extension")
         return {
@@ -252,7 +260,7 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
                     version=str(plugin.plugin_version),
                 )
             )
-        for key in sorted(set(settings_by_plugin.keys()) | set(tools_by_plugin.keys())):
+        for key in sorted(set(settings_by_plugin.keys()) | set(tools_by_plugin.keys()) | set(frontend_chat_by_plugin.keys())):
             if key in seen_plugin_ids:
                 continue
             label = key
