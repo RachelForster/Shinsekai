@@ -70,6 +70,9 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
 }
 
 export interface ChatStageViewModel {
+  asrEnabled: boolean;
+  asrLoading: boolean;
+  asrRunning: boolean;
   backgroundPath?: string;
   bgmPath?: string;
   busyText?: string;

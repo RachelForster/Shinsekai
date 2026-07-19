@@ -159,6 +159,9 @@ describe("ChatStagePage http platform integration", () => {
       status: "paused",
     });
     const reopenedSnapshot = snapshot({
+      asrEnabled: true,
+      asrLoading: false,
+      asrRunning: true,
       dialogText: "语音识别已恢复。",
       notificationText: "",
       sessionClosedReason: "",

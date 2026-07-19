@@ -832,6 +832,9 @@ export interface ChatStat {
 }
 
 export interface ChatSnapshot {
+  asrEnabled?: boolean;
+  asrLoading?: boolean;
+  asrRunning?: boolean;
   backgroundPath?: string;
   bgmPath?: string;
   busyDurationSeconds?: number;
@@ -979,7 +982,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "tts.skip" })
   | (ChatEventBase & { type: "asr.partial"; text: string })
   | (ChatEventBase & { type: "asr.final"; text: string })
-  | (ChatEventBase & { type: "asr.state"; running: boolean })
+  | (ChatEventBase & { type: "asr.state"; enabled?: boolean; loading?: boolean; running: boolean })
   | (ChatEventBase & { type: "reply.finished" })
   | (ChatEventBase & { type: "session.closed"; reason: string });
 

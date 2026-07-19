@@ -524,11 +524,33 @@ class UIWorker(QThreadDagNode):
                 ui_updates.post_tts_skip()
         self.task_done_requested.set()
 
+    @staticmethod
+    def _queue_drained(queue) -> bool:
+        unfinished = getattr(queue, "unfinished_tasks", None)
+        if unfinished is not None:
+            return int(unfinished) == 0
+        return bool(queue.empty())
+
+    def _finish_turn_if_drained(self, turn) -> bool:
+        """Publish completion once every downstream result has been consumed."""
+        rt = get_app_runtime()
+        if turn.is_cancelled() or not turn.generation_complete.is_set():
+            return False
+        if not self._queue_drained(rt.tts_queue) or not self._queue_drained(rt.audio_path_queue):
+            return False
+        if self.dialog_channel is not None and self.dialog_channel.get_busy():
+            return False
+        if not rt.chat_turn_service.mark_idle(turn):
+            return False
+        self.ui_update_manager.post_llm_reply_finished()
+        return True
+
     def run(self):
         self._init_app()
         idle_count = 0
         while self.running:
             output_data: Optional[TTSOutputMessage] = None
+            turn = None
             got_item = False
             try:
                 self.task_done_requested.clear()
@@ -539,12 +561,12 @@ class UIWorker(QThreadDagNode):
                 except Empty:
                     # Timeout — check if the full pipeline is now idle
                     idle_count += 1
-                    if idle_count >= 12:  # ~5 s of silence
+                    if idle_count >= 1:
                         rt = get_app_runtime()
                         if rt.tts_queue.empty() and rt.audio_path_queue.empty():
                             busy = self.dialog_channel is not None and self.dialog_channel.get_busy()
                             if not busy:
-                                rt.chat_turn_service.mark_idle(rt.chat_turn_service.current_turn())
+                                self._finish_turn_if_drained(rt.chat_turn_service.current_turn())
                                 idle_count = 0
                     continue
 
@@ -569,6 +591,8 @@ class UIWorker(QThreadDagNode):
                 self._dialog_active = False
                 if got_item:
                     self.audio_path_queue.task_done()
+                if output_data is not None and turn is not None:
+                    self._finish_turn_if_drained(turn)
 
     def stop(self):
         self.running = False

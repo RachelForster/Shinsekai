@@ -241,15 +241,17 @@ class ChatTurnService:
         """Record that the LLM stage is no longer producing downstream work."""
         turn.generation_complete.set()
 
-    def mark_idle(self, turn: TurnHandle | None = None) -> None:
+    def mark_idle(self, turn: TurnHandle | None = None) -> bool:
         """Mark the pipeline idle unless a newer turn has already started."""
         with self._lock:
             candidate = turn or self._current_turn
             if candidate.id != self._current_turn.id:
-                return
+                return False
             if not candidate.is_cancelled() and not candidate.generation_complete.is_set():
-                return
+                return False
+            was_active = self._active.is_set()
             self._active.clear()
+            return was_active
 
     def is_active(self) -> bool:
         if self._active.is_set():

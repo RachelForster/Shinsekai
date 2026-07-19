@@ -195,7 +195,7 @@ class TestCharacterDialogUiHandler:
         ui.hide_busy_bar.assert_called_once_with()
         ui.post_tts_play.assert_called_once_with("Alice", audio_path.as_posix())
         ui.post_pause_asr.assert_called_once_with()
-        ui.post_llm_reply_finished.assert_called_once_with()
+        ui.post_llm_reply_finished.assert_not_called()
         playback.dialog_channel.play.assert_called_once_with(sound)
         sound.set_volume.assert_called_once_with(0.8)
         assert playback.current_audio_path is None
