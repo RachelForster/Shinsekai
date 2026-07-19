@@ -369,7 +369,7 @@ def main():
         config = ConfigManager()
     with _startup_phase("i18n.import"):
         from i18n import init_i18n, tr as tr_i18n, tr_in_bundle
-        from asr.asr_adapter import system_config_to_asr_lang
+        from asr.asr_adapter import create_default_asr_adapter, system_config_to_asr_lang
 
     with _startup_phase("i18n.init"):
         init_i18n(config.config.system_config.ui_language)
@@ -763,6 +763,44 @@ def main():
             if notify_key:
                 ui_updates.post_notification(tr_i18n(notify_key))
 
+        from asr.streaming_controller import StreamingASRController
+
+        def _submit_asr_text(text: str) -> None:
+            submit_runtime_text(text, notify_key=None)
+            if not chat_turn_service.options.batch_enabled:
+                stream_sink.emit({"type": "status.change", "status": "generating"})
+
+        def _set_asr_loading(loading: bool) -> None:
+            if loading:
+                ui_updates.post_busy_bar(tr_i18n("desktop.mic_loading_model"), 0.0)
+            else:
+                ui_updates.hide_busy_bar()
+
+        def _report_asr_error(operation: str, exc: BaseException) -> None:
+            logger.error(
+                "Streaming ASR %s failed",
+                operation,
+                exc_info=(type(exc), exc, exc.__traceback__),
+                extra={"event": "asr.streaming.failed", "operation": operation},
+            )
+            ui_updates.post_notification(str(exc))
+
+        runtime_asr = StreamingASRController(
+            adapter_factory=create_default_asr_adapter,
+            emit_event=stream_sink.emit,
+            submit_final=_submit_asr_text,
+            on_loading_changed=_set_asr_loading,
+            on_error=_report_asr_error,
+            resume_delay_seconds=0.5,
+        )
+        original_post_llm_reply_finished = ui_updates.post_llm_reply_finished
+
+        def _post_llm_reply_finished_and_resume_asr() -> None:
+            original_post_llm_reply_finished()
+            runtime_asr.reply_finished()
+
+        ui_updates.post_llm_reply_finished = _post_llm_reply_finished_and_resume_asr
+
         def _branch_messages() -> list:
             return copy.deepcopy(llm_manager.get_messages())
 
@@ -960,6 +998,7 @@ def main():
                     shutdown_requested.set()
                     return
                 if command_type == "send-message":
+                    runtime_asr.pause_for_turn()
                     if isinstance(payload, dict):
                         raw_attachments = payload.get("attachments")
                         submit_runtime_text(
@@ -972,6 +1011,7 @@ def main():
                     emit_ack(ok=True)
                     return
                 if command_type == "submit-option":
+                    runtime_asr.pause_for_turn()
                     submit_runtime_text(str(payload or ""))
                     emit_ack(ok=True)
                     return
@@ -1026,11 +1066,11 @@ def main():
                     emit_ack(ok=True)
                     return
                 if command_type == "pause-asr":
-                    ui_updates.post_pause_asr()
+                    runtime_asr.user_pause()
                     emit_ack(ok=True)
                     return
                 if command_type == "resume-asr":
-                    stream_sink.emit({"type": "asr.state", "running": True})
+                    runtime_asr.user_resume()
                     emit_ack(ok=True)
                     return
                 if command_type == "reroll":
@@ -1208,6 +1248,11 @@ def main():
                 "duration_ms": round((time.perf_counter() - main_started) * 1000, 2),
             },
         )
+
+        def _shutdown_stream_plugins() -> None:
+            runtime_asr.close()
+            _shutdown_plugins()
+
         try:
             restore_interrupt_handlers = _install_interrupt_handlers()
             while not shutdown_requested.wait(1):
@@ -1218,7 +1263,7 @@ def main():
             restore_interrupt_handlers()
             shutdown_chat_runtime(
                 workflow=workflow,
-                plugin_shutdown=_shutdown_plugins,
+                plugin_shutdown=_shutdown_stream_plugins,
                 tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
                 save_history=_persist_branch_state,
                 save_background=lambda: save_bg(

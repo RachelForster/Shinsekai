@@ -9,6 +9,11 @@ import {
   defaultChatStageRuntimeConfig,
   effectiveChatStageTextStyle,
 } from "../../../features/chat-stage/runtimeConfig";
+import {
+  SPEECH_RECOGNITION_RESTART_DELAY_MS,
+  SPEECH_RECOGNITION_SILENCE_SUBMIT_MS,
+  type BrowserSpeechRecognition,
+} from "../../../features/chat-stage/speechRecognition";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import type { ChatCommand, ChatHistoryEntry, ChatSnapshot, ChatStageEvent } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
@@ -1410,6 +1415,70 @@ describe("ChatStagePage", () => {
     expect(inputLayer).toHaveAttribute("data-visible", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "Stop microphone" }));
+    delete speechWindow.SpeechRecognition;
+  });
+
+  it("restarts browser speech recognition and submits the accumulated transcript after silence", async () => {
+    const instances: MockSpeechRecognition[] = [];
+
+    class MockSpeechRecognition implements BrowserSpeechRecognition {
+      continuous = false;
+      interimResults = false;
+      lang = "";
+      onend: (() => void) | null = null;
+      onerror: BrowserSpeechRecognition["onerror"] = null;
+      onresult: BrowserSpeechRecognition["onresult"] = null;
+      abort = vi.fn();
+      start = vi.fn();
+      stop = vi.fn();
+
+      constructor() {
+        instances.push(this);
+      }
+    }
+
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: new () => BrowserSpeechRecognition;
+    };
+    speechWindow.SpeechRecognition = MockSpeechRecognition;
+    renderPage();
+
+    await screen.findByText("Ready");
+    vi.useFakeTimers();
+    fireEvent.click(screen.getByRole("button", { name: "Start microphone" }));
+
+    expect(instances).toHaveLength(1);
+    expect(instances[0]).toMatchObject({ continuous: true, interimResults: true, lang: "en-US" });
+    act(() => {
+      instances[0].onresult?.({
+        resultIndex: 0,
+        results: [{ 0: { transcript: "hello" }, isFinal: true }],
+      });
+    });
+    expect(screen.getByPlaceholderText("Enter dialogue")).toHaveValue("hello");
+
+    act(() => {
+      instances[0].onend?.();
+      vi.advanceTimersByTime(SPEECH_RECOGNITION_RESTART_DELAY_MS);
+    });
+    expect(instances).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "Stop microphone" })).toBeInTheDocument();
+
+    act(() => {
+      instances[1].onresult?.({
+        resultIndex: 0,
+        results: [{ 0: { transcript: "world" }, isFinal: true }],
+      });
+      vi.advanceTimersByTime(SPEECH_RECOGNITION_SILENCE_SUBMIT_MS - 1);
+    });
+    expect(screen.getByPlaceholderText("Enter dialogue")).toHaveValue("hello world");
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith(expect.objectContaining({ type: "send-message" }));
+
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(mocks.sendChatCommand).toHaveBeenCalledWith({ payload: "hello world", type: "send-message" });
+    expect(instances[1].stop).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Start microphone" })).toBeInTheDocument();
+
     delete speechWindow.SpeechRecognition;
   });
 

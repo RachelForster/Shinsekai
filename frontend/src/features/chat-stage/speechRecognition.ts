@@ -14,6 +14,9 @@ export interface BrowserSpeechRecognition {
 
 type BrowserSpeechRecognitionConstructor = new () => BrowserSpeechRecognition;
 
+export const SPEECH_RECOGNITION_RESTART_DELAY_MS = 100;
+export const SPEECH_RECOGNITION_SILENCE_SUBMIT_MS = 2_000;
+
 export function getSpeechRecognitionConstructor(): BrowserSpeechRecognitionConstructor | null {
   const scope = window as typeof window & {
     SpeechRecognition?: BrowserSpeechRecognitionConstructor;

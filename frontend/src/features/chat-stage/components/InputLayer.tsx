@@ -7,6 +7,8 @@ import { Button, IconButton, TextArea, TextInput, ThemeFrame, useToast } from ".
 import {
   appendTranscript,
   getSpeechRecognitionConstructor,
+  SPEECH_RECOGNITION_RESTART_DELAY_MS,
+  SPEECH_RECOGNITION_SILENCE_SUBMIT_MS,
   speechRecognitionLanguage,
   type BrowserSpeechRecognition,
 } from "../speechRecognition";
@@ -43,7 +45,7 @@ export function InputLayer({
   onCommand: (command: ChatCommand) => void;
   onFlushBatch: () => void | Promise<void>;
   onInputActivity: (state: { composing: boolean; hasText: boolean }) => void;
-  onSubmit: () => void | Promise<void>;
+  onSubmit: (textOverride?: string) => void | Promise<void>;
   onPickAttachments: (kind: ChatAttachmentInput["kind"]) => void;
   onRemoveAttachment: (attachment: ChatAttachmentInput) => void;
   value: string;
@@ -54,10 +56,16 @@ export function InputLayer({
   const [panelOpen, setPanelOpen] = useState(false);
   const [holdTalkActive, setHoldTalkActive] = useState(false);
   const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
+  const recognitionRequestedRef = useRef(false);
+  const restartTimerRef = useRef<number | null>(null);
+  const silenceTimerRef = useRef<number | null>(null);
+  const startRecognitionSessionRef = useRef<() => void>(() => undefined);
   const holdTalkActiveRef = useRef(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const transcriptBaseRef = useRef("");
   const valueRef = useRef(value);
+  const disabledRef = useRef(disabled);
+  const onSubmitRef = useRef(onSubmit);
   const inputActivityRef = useRef("");
   const pillLayout = inputLayout === "pill";
   const pressToTalk = pillLayout && longPressTalkEnabled;
@@ -72,6 +80,9 @@ export function InputLayer({
       inputActivityRef.current = "false:false";
     }
   }, [value]);
+
+  disabledRef.current = disabled;
+  onSubmitRef.current = onSubmit;
 
   const reportInputActivity = (nextValue: string, composing: boolean) => {
     if (!batchEnabled) {
@@ -98,7 +109,24 @@ export function InputLayer({
     }
   };
 
+  const clearRestartTimer = () => {
+    if (restartTimerRef.current !== null) {
+      window.clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
+    }
+  };
+
+  const clearSilenceTimer = () => {
+    if (silenceTimerRef.current !== null) {
+      window.clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  };
+
   const stopListening = () => {
+    recognitionRequestedRef.current = false;
+    clearRestartTimer();
+    clearSilenceTimer();
     const recognition = recognitionRef.current;
     recognitionRef.current = null;
     if (recognition) {
@@ -157,15 +185,36 @@ export function InputLayer({
 
   useEffect(
     () => () => {
+      recognitionRequestedRef.current = false;
+      clearRestartTimer();
+      clearSilenceTimer();
       recognitionRef.current?.abort();
       recognitionRef.current = null;
     },
     [],
   );
 
-  const startListening = () => {
+  const scheduleSilenceSubmit = () => {
+    clearSilenceTimer();
+    silenceTimerRef.current = window.setTimeout(() => {
+      silenceTimerRef.current = null;
+      const text = valueRef.current.trim();
+      if (!recognitionRequestedRef.current || disabledRef.current || !text) {
+        return;
+      }
+      stopListening();
+      void onSubmitRef.current(text);
+    }, SPEECH_RECOGNITION_SILENCE_SUBMIT_MS);
+  };
+
+  const startRecognitionSession = () => {
+    if (!recognitionRequestedRef.current || disabledRef.current || recognitionRef.current) {
+      return;
+    }
     const Recognition = getSpeechRecognitionConstructor();
     if (!Recognition) {
+      recognitionRequestedRef.current = false;
+      setListening(false);
       showToast({ kind: "error", message: t("chat.input.micUnsupported"), title: t("common.operationFailed") });
       return;
     }
@@ -174,8 +223,10 @@ export function InputLayer({
       recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = speechRecognitionLanguage(language);
-      transcriptBaseRef.current = valueRef.current.trim();
       recognition.onresult = (event) => {
+        if (!recognitionRequestedRef.current || recognitionRef.current !== recognition) {
+          return;
+        }
         let finalText = "";
         let interimText = "";
         for (let index = event.resultIndex; index < event.results.length; index += 1) {
@@ -190,16 +241,32 @@ export function InputLayer({
         if (finalText) {
           const next = appendTranscript(transcriptBaseRef.current, finalText, language);
           transcriptBaseRef.current = next;
-          onChange(next);
+          const displayed = interimText ? appendTranscript(next, interimText, language) : next;
+          valueRef.current = displayed;
+          onChange(displayed);
         } else if (interimText) {
-          onChange(appendTranscript(transcriptBaseRef.current, interimText, language));
+          const displayed = appendTranscript(transcriptBaseRef.current, interimText, language);
+          valueRef.current = displayed;
+          onChange(displayed);
+        }
+        if (finalText || interimText) {
+          scheduleSilenceSubmit();
         }
       };
       recognition.onerror = (event) => {
-        recognitionRef.current = null;
-        setListening(false);
+        if (recognitionRef.current !== recognition) {
+          return;
+        }
         const denied = event.error === "not-allowed" || event.error === "service-not-allowed";
-        if (event.error !== "no-speech") {
+        const retryable = event.error === "no-speech";
+        if (!retryable) {
+          recognitionRequestedRef.current = false;
+          recognitionRef.current = null;
+          clearRestartTimer();
+          clearSilenceTimer();
+          setListening(false);
+        }
+        if (!retryable && event.error !== "aborted") {
           showToast({
             kind: "error",
             message: denied ? t("chat.input.micDenied") : event.message || event.error || t("chat.input.micError"),
@@ -208,13 +275,25 @@ export function InputLayer({
         }
       };
       recognition.onend = () => {
+        if (recognitionRef.current !== recognition) {
+          return;
+        }
         recognitionRef.current = null;
-        setListening(false);
+        if (!recognitionRequestedRef.current || disabledRef.current) {
+          setListening(false);
+          return;
+        }
+        clearRestartTimer();
+        restartTimerRef.current = window.setTimeout(() => {
+          restartTimerRef.current = null;
+          startRecognitionSessionRef.current();
+        }, SPEECH_RECOGNITION_RESTART_DELAY_MS);
       };
       recognitionRef.current = recognition;
       recognition.start();
       setListening(true);
     } catch (error) {
+      recognitionRequestedRef.current = false;
       recognitionRef.current = null;
       setListening(false);
       showToast({
@@ -223,6 +302,19 @@ export function InputLayer({
         title: t("common.operationFailed"),
       });
     }
+  };
+
+  startRecognitionSessionRef.current = startRecognitionSession;
+
+  const startListening = () => {
+    if (!getSpeechRecognitionConstructor()) {
+      showToast({ kind: "error", message: t("chat.input.micUnsupported"), title: t("common.operationFailed") });
+      return;
+    }
+    recognitionRequestedRef.current = true;
+    transcriptBaseRef.current = valueRef.current.trim();
+    setListening(true);
+    startRecognitionSessionRef.current();
   };
 
   if (hidden) {
@@ -352,7 +444,7 @@ export function InputLayer({
             className="input-layer__send"
             disabled={!canSubmit}
             icon={<Send aria-hidden className="button__icon" />}
-            onClick={onSubmit}
+            onClick={() => void onSubmit()}
             variant="primary"
           >
             {t("chat.input.send")}
@@ -386,7 +478,7 @@ export function InputLayer({
               className="input-layer__quick-submit"
               disabled={!canSubmit}
               label={t("chat.input.send")}
-              onClick={onSubmit}
+              onClick={() => void onSubmit()}
             >
               <Send aria-hidden className="icon-button__icon" />
             </IconButton>
@@ -459,6 +551,7 @@ export function InputLayer({
             ]
               .filter(Boolean)
               .join(" ")}
+            disabled={disabled}
             label={asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}
             onClick={() => onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" })}
           >

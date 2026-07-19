@@ -206,8 +206,8 @@ export function ChatStagePage() {
     }
   }, [runtimeConfig.longPressTalk, voskModelState.available, voskModelState.loading]);
 
-  const submit = async () => {
-    const text = viewModel.inputDraft.trim();
+  const submit = async (textOverride?: string) => {
+    const text = (textOverride ?? viewModel.inputDraft).trim();
     const attachments = viewModel.inputAttachments.map((attachment) => ({ ...attachment }));
     if (!text && !attachments.length) {
       return;
@@ -503,7 +503,7 @@ export function ChatStagePage() {
           </div>
         ) : null}
         <InputLayer
-          asrPaused={viewModel.status === "paused"}
+          asrPaused={viewModel.status !== "listening"}
           attachments={viewModel.inputAttachments}
           autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
           batchEnabled={state.turnOptions.batchEnabled}

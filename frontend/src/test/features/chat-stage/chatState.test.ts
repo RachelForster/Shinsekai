@@ -52,6 +52,34 @@ describe("chatStageReducer", () => {
     expect(state.status).toBe("generating");
   });
 
+  it("presents a backend ASR final transcript as an automatically submitted user turn", () => {
+    const state = chatStageReducer(
+      {
+        ...emptyChatState,
+        inputDraft: "hello wor",
+        status: "listening",
+        userDisplayName: "Aoi",
+      },
+      {
+        event: {
+          seq: 1,
+          text: "hello world",
+          ts: 1,
+          type: "asr.final",
+          v: 1,
+        },
+        type: "event",
+      },
+    );
+
+    expect(state.asrTranscript).toBe("hello world");
+    expect(state.characterName).toBe("Aoi");
+    expect(state.dialogText).toBe("hello world");
+    expect(state.inputDraft).toBe("");
+    expect(state.status).toBe("generating");
+    expect(state.optimisticSubmission?.text).toBe("hello world");
+  });
+
   it("renders pending stacked messages as newline-separated user dialogue", () => {
     const viewModel = buildChatStageViewModel({
       ...emptyChatState,
