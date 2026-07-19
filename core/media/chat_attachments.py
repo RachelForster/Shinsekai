@@ -71,9 +71,13 @@ def _resolve_selected_file(raw_path: Any) -> Path:
         raise ValueError("Attachment path cannot be empty")
     if len(value) > 4096:
         raise ValueError("Attachment path is too long")
+    if "\x00" in value:
+        raise ValueError("Attachment path contains null bytes")
     selected = Path(value).expanduser()
     if not selected.is_absolute():
         raise ValueError("Attachment path must be absolute")
+    if any(part in {".", ".."} for part in selected.parts):
+        raise ValueError("Attachment path contains invalid traversal segments")
     resolved = selected.resolve(strict=True)
     root = _chat_attachment_root()
     try:

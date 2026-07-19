@@ -46,6 +46,15 @@ def test_resolve_chat_attachments_rejects_relative_and_non_image_paths(tmp_path:
         resolve_chat_attachments([{"kind": "image", "path": str(text_file)}])
 
 
+def test_resolve_chat_attachments_rejects_explicit_traversal_segments(tmp_path: Path):
+    document = tmp_path / "notes.txt"
+    document.write_text("notes", encoding="utf-8")
+    traversal_path = tmp_path / "nested" / ".." / document.name
+
+    with pytest.raises(ValueError, match="invalid traversal segments"):
+        resolve_chat_attachments([{"kind": "file", "path": str(traversal_path)}])
+
+
 def test_resolve_chat_attachments_rejects_paths_outside_configured_root(tmp_path: Path, monkeypatch):
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir()
