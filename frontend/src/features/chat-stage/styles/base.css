@@ -109,7 +109,7 @@
   --chat-input-field-display: contents;
   --chat-input-field-position: static;
   --chat-input-gap: 6px;
-  --chat-input-grid-template-columns: minmax(0, 1fr) 38px minmax(78px, auto);
+  --chat-input-grid-template-columns: minmax(0, 1fr) 38px 38px minmax(78px, auto);
   --chat-input-layout: default;
   --chat-input-max-width: var(--chat-ui-runtime-width);
   --chat-input-resolved-width: min(var(--chat-input-max-width), var(--chat-ui-runtime-width), calc(100vw - 32px));

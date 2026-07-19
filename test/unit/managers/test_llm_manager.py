@@ -1,5 +1,6 @@
 """Unit tests for LLMManager — message management, compact, tool calling."""
 
+import copy
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -298,6 +299,17 @@ class TestLLMManagerCompact:
 
         assert cm.count_tokens(with_tool_call) > cm.count_tokens(base)
 
+    def test_count_tokens_excludes_embedded_historical_image_bytes(self, mock_llm_adapter):
+        cm = CompactManager(mock_llm_adapter, max_tokens=100000)
+        without_data = [{
+            "role": "user",
+            "content": [{"type": "text", "text": "Inspect"}, {"type": "local_image", "name": "scene.png"}],
+        }]
+        with_data = copy.deepcopy(without_data)
+        with_data[0]["content"][1]["data"] = "a" * 100_000
+
+        assert cm.count_tokens(with_data) - cm.count_tokens(without_data) < 100
+
     def test_compact_failure_falls_back_to_bounded_history(self, mock_llm_adapter):
         def _fail(*args, **kwargs):
             raise RuntimeError("summary failed")
@@ -485,12 +497,21 @@ class TestLLMManagerCompact:
             {"type": "local_image", "path": "C:/scene.png"},
         ]
 
-        mgr.chat(content, stream=False, user_display_text="Inspect\n[image: scene.png]")
+        attachments = [{"kind": "image", "name": "scene.png", "path": "C:/scene.png"}]
+        mgr.chat(
+            content,
+            stream=False,
+            user_display_text="Inspect\n[image: scene.png]",
+            user_input_text="Inspect",
+            user_attachments=attachments,
+        )
 
         user_message = mgr.messages[-2]
         assert "本地时间" in user_message["content"][0]["text"]
         assert user_message["content"][1] == content[1]
         assert user_message["display_content"] == "Inspect\n[image: scene.png]"
+        assert user_message["input_text"] == "Inspect"
+        assert user_message["attachments"] == attachments
 
     def test_chat_activates_requested_tool_groups_inside_turn(self, mock_llm_adapter, monkeypatch):
         mock_llm_adapter.responses = ["Response."]

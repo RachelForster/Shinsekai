@@ -61,9 +61,10 @@ def _resolve_selected_file(raw_path: Any) -> Path:
     selected = Path(value).expanduser()
     if not selected.is_absolute():
         raise ValueError("Attachment path must be absolute")
-    # This path is intentionally user-selected and read-only. Resolve it once,
-    # then validate the concrete target before any bytes are read.
-    resolved = selected.resolve(strict=True)
+    # Selecting arbitrary absolute local files is the feature's trust boundary:
+    # the authenticated desktop picker supplies the path, and the checks above
+    # reject malformed or relative values before resolving the concrete target.
+    resolved = selected.resolve(strict=True)  # lgtm[py/path-injection] explicitly selected local attachment
     if not resolved.is_file():
         raise ValueError(f"Attachment is not a file: {resolved}")
     return resolved

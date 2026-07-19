@@ -123,6 +123,7 @@ from opencc import OpenCC
 from queue import Queue
 
 from core.sprite.chat_history import (
+    canonical_user_turn_payload,
     chat_history,
     clear_chat_history,
     get_history,
@@ -130,7 +131,7 @@ from core.sprite.chat_history import (
     history_entry_plain_text,
     load_chat_history,
     is_user_history_entry,
-    pop_last_assistant_turn,
+    pop_last_assistant_turn_payload,
     replay_history_entry,
     revert_chat_history,
     save_bg,
@@ -735,10 +736,21 @@ def main():
             text: str,
             *,
             attachments: list[dict[str, object]] | None = None,
+            ignore_unavailable_attachments: bool = False,
             notify_key: str | None = "main.notify_submitted",
         ) -> None:
             value = str(text or "").strip()
-            resolved_attachments = resolve_chat_attachments(attachments)
+            try:
+                resolved_attachments = resolve_chat_attachments(attachments)
+            except (OSError, ValueError):
+                if not ignore_unavailable_attachments:
+                    raise
+                resolved_attachments = []
+                for attachment in attachments or []:
+                    try:
+                        resolved_attachments.extend(resolve_chat_attachments([attachment]))
+                    except (OSError, ValueError):
+                        continue
             if not value and not resolved_attachments:
                 return
             last_user_message["text"] = value
@@ -821,6 +833,16 @@ def main():
                 new_messages.append(copy.deepcopy(message))
             return new_messages
 
+        def _user_message(user_index: int) -> dict[str, object] | None:
+            current_user_idx = -1
+            for message in llm_manager.get_messages():
+                if message.get("role") != "user":
+                    continue
+                current_user_idx += 1
+                if current_user_idx == user_index:
+                    return message
+            return None
+
         def _plain_user_text(history_entry: object) -> str:
             text = history_entry_plain_text(history_entry)
             for separator in ("：", ":"):
@@ -837,8 +859,13 @@ def main():
             if user_pos < 0:
                 raise ValueError("找不到可分叉的历史记录。")
             source_entry = chat_history[user_pos]
-            user_text = _plain_user_text(source_entry)
-            if not user_text:
+            replay_payload = canonical_user_turn_payload(
+                _user_message(user_index),
+                fallback_text=_plain_user_text(source_entry),
+            )
+            user_text = str(replay_payload["text"] or "")
+            user_attachments = list(replay_payload["attachments"] or [])
+            if not user_text and not user_attachments:
                 raise ValueError("分支输入内容为空。")
             chat_turn_service.cancel_pending_batch()
             _save_active_branch()
@@ -866,7 +893,12 @@ def main():
                 ui_updates.sync_history_entries()
             _emit_branch_tree()
             _persist_branch_state()
-            submit_runtime_text(user_text, notify_key=None)
+            submit_runtime_text(
+                user_text,
+                attachments=user_attachments,
+                ignore_unavailable_attachments=True,
+                notify_key=None,
+            )
 
         def _switch_history_branch(branch_id: str) -> None:
             target_id = str(branch_id or "").strip()
@@ -1005,25 +1037,21 @@ def main():
                     messages_ref = llm_manager.get_messages()
                     if hasattr(llm_manager, "_strip_orphaned_tool_calls"):
                         llm_manager._strip_orphaned_tool_calls()
-                    reroll_text = pop_last_assistant_turn(chat_history, messages_ref)
-                    if not reroll_text:
-                        reroll_text = last_user_message["text"]
-                    else:
-                        plain_text = history_entry_plain_text(reroll_text)
-                        if plain_text.startswith("你："):
-                            reroll_text = plain_text[2:].strip()
-                        elif plain_text.startswith("你:"):
-                            reroll_text = plain_text[2:].strip()
-                        else:
-                            reroll_text = plain_text
+                    reroll_payload = pop_last_assistant_turn_payload(chat_history, messages_ref)
+                    reroll_text = str(reroll_payload.get("text") or "")
+                    reroll_attachments = list(reroll_payload.get("attachments") or [])
+                    if not reroll_text and not reroll_attachments:
+                        reroll_text = str(last_user_message.get("text") or "")
+                        reroll_attachments = list(last_user_message.get("attachments") or [])
                     stream_sink.emit({"type": "options.clear"})
                     if hasattr(ui_updates, "sync_history_entries"):
                         ui_updates.sync_history_entries()
-                    if reroll_text and emit_user_text is not None:
-                        last_user_message["text"] = reroll_text
-                        emit_user_text(
+                    if (reroll_text or reroll_attachments) and emit_user_text is not None:
+                        submit_runtime_text(
                             reroll_text,
-                            attachments=list(last_user_message.get("attachments") or []),
+                            attachments=reroll_attachments,
+                            ignore_unavailable_attachments=True,
+                            notify_key=None,
                         )
                         ui_updates.post_notification(tr_i18n("main.notify_reroll"))
                     emit_ack(ok=True)

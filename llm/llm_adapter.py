@@ -116,7 +116,10 @@ class DeepSeekAdapter(LLMAdapter):
             use_tools = bool(kwargs.get("tools"))
             create_kwargs: dict = {
                 "model": self.model,
-                "messages": normalize_openai_messages(messages),
+                "messages": normalize_openai_messages(
+                    messages,
+                    supports_native_vision=self.supports_native_vision,
+                ),
                 "stream": stream,
                 "extra_body": extra_body,
                 **kwargs,
@@ -145,6 +148,21 @@ class OpenAIAdapter(LLMAdapter):
         else:
             self.client = OpenAI(api_key=api_key)
         self.model = model
+
+    @property
+    def supports_native_vision(self) -> bool:
+        """Opt in only model families known to accept OpenAI image content."""
+        model = str(self.model or "").strip().lower()
+        return model.startswith(
+            (
+                "chatgpt-4o",
+                "gpt-4o",
+                "gpt-4.1",
+                "gpt-4.5",
+                "gpt-4-turbo",
+                "gpt-5",
+            )
+        )
 
     def cancel(self) -> None:
         """Close the active OpenAI stream/response to abort an in-flight request."""
@@ -176,7 +194,10 @@ class OpenAIAdapter(LLMAdapter):
             use_tools = bool(kwargs.get("tools"))
             create_kwargs = {
                 "model": self.model,
-                "messages": normalize_openai_messages(messages),
+                "messages": normalize_openai_messages(
+                    messages,
+                    supports_native_vision=self.supports_native_vision,
+                ),
                 "stream": stream,
                 **kwargs,
             }
@@ -227,7 +248,11 @@ class GeminiAdapter(LLMAdapter):
 
         # messages to history format
         history = []
-        for msg in messages:
+        normalized_messages = normalize_openai_messages(
+            messages,
+            supports_native_vision=self.supports_native_vision,
+        )
+        for msg in normalized_messages:
             role = 'user' if msg['role'] == 'user' else 'model'
             history.append({"role": role, "parts": [msg["content"]]})
 

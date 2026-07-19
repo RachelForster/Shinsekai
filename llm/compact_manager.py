@@ -71,8 +71,20 @@ class CompactManager:
 
     def _message_token_text(self, message: Dict[str, Any]) -> str:
         """把完整消息结构转成稳定文本，避免漏算 tool_calls 等字段。"""
+        def scrub(value: Any) -> Any:
+            if isinstance(value, dict):
+                if value.get("type") == "local_image":
+                    return {
+                        key: "[embedded image data omitted]" if key == "data" else scrub(item)
+                        for key, item in value.items()
+                    }
+                return {key: scrub(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [scrub(item) for item in value]
+            return value
+
         try:
-            return json.dumps(message, ensure_ascii=False, separators=(",", ":"), default=str)
+            return json.dumps(scrub(message), ensure_ascii=False, separators=(",", ":"), default=str)
         except Exception:
             return str(message)
 
@@ -311,7 +323,9 @@ class CompactManager:
                 role = "助手"
             elif role == "tool":
                 role = f"工具:{message.get('name', '')}"
-            content = message.get('content', '')
+            content = message.get("display_content") or message.get('content', '')
+            if isinstance(content, (dict, list)):
+                content = self._message_token_text({"content": content})
             prompt += f"\n{role}: {content}"
         
         prompt += "\n\n请提供对话总结："

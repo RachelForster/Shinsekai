@@ -765,6 +765,8 @@ class LLMManager:
         try:
             include_local_time = bool(kwargs.pop("include_local_time", True))
             user_display_text = str(kwargs.pop("user_display_text", "") or "").strip()
+            user_input_text = kwargs.pop("user_input_text", None)
+            user_attachments = kwargs.pop("user_attachments", None)
             requested_tool_groups = kwargs.pop("tool_groups", ())
             if isinstance(requested_tool_groups, str):
                 requested_tool_groups = (requested_tool_groups,)
@@ -773,10 +775,17 @@ class LLMManager:
             if user_input:
                 if include_local_time:
                     user_input = _prefix_user_text_with_local_time(user_input)
+                user_metadata: dict[str, Any] = {}
+                if user_display_text:
+                    user_metadata["display_content"] = user_display_text
+                if user_input_text is not None:
+                    user_metadata["input_text"] = str(user_input_text or "")
+                if isinstance(user_attachments, list):
+                    user_metadata["attachments"] = copy.deepcopy(user_attachments)
                 self.add_message(
                     "user",
                     user_input,
-                    **({"display_content": user_display_text} if user_display_text else {}),
+                    **user_metadata,
                 )
 
             if stream:

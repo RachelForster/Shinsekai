@@ -133,7 +133,12 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     assert output.turn_id == runtime.chat_turn_service.current_turn().id
     assert user_input_queue.task_done_calls == 2
     assert user_input_queue.unfinished_tasks == 0
-    runtime.llm_manager.chat.assert_called_once_with("hello", stream=False)
+    runtime.llm_manager.chat.assert_called_once_with(
+        "hello",
+        stream=False,
+        user_attachments=[],
+        user_input_text="hello",
+    )
 
 
 def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_path) -> None:
@@ -169,6 +174,11 @@ def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_
     assert runtime.llm_manager.chat.call_args.kwargs["user_display_text"] == (
         "Inspect these\n[image: scene.png] [file: notes.txt]"
     )
+    assert runtime.llm_manager.chat.call_args.kwargs["user_input_text"] == "Inspect these"
+    assert [item["kind"] for item in runtime.llm_manager.chat.call_args.kwargs["user_attachments"]] == [
+        "image",
+        "file",
+    ]
     assert "tool_groups" not in runtime.llm_manager.chat.call_args.kwargs
     runtime.ui_update_manager.record_user_message.assert_called_once_with(
         "Inspect these\n[image: scene.png] [file: notes.txt]"

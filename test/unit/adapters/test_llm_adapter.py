@@ -100,6 +100,20 @@ class TestOpenAIAdapter:
         adapter.set_user_template("You are helpful.")
         assert adapter.user_template == "You are helpful."
 
+    @pytest.mark.parametrize(
+        ("model", "expected"),
+        [
+            ("gpt-3.5-turbo", False),
+            ("custom-text-model", False),
+            ("gpt-4", False),
+            ("gpt-4o-mini", True),
+            ("gpt-4.1-mini", True),
+        ],
+    )
+    def test_native_vision_requires_a_known_capable_model(self, model, expected):
+        adapter = OpenAIAdapter(api_key="sk-test", model=model)
+        assert adapter.supports_native_vision is expected
+
 
 class TestClaudeAdapter:
     @pytest.mark.parametrize(

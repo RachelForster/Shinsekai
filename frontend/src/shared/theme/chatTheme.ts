@@ -625,7 +625,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   }
   // Pill owns its submit surface; sendPlacement only selects a variant of the default layout.
   if (input?.sendPlacement === "inside" && input?.layout !== "pill") {
-    style["--chat-input-grid-template-columns"] = "minmax(0, 1fr) 38px";
+    style["--chat-input-grid-template-columns"] = "minmax(0, 1fr) 38px 38px";
     style["--chat-input-field-display"] = "block";
     style["--chat-input-field-position"] = "relative";
     style["--chat-input-textarea-padding-right"] = "56px";

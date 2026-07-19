@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+from collections.abc import Mapping
 from typing import Any
 
 from core.messaging.dialog_tokens import (
@@ -219,6 +220,60 @@ def pop_last_assistant_turn(chat_history: list, messages: list) -> str:
     if messages and messages[-1].get("role") == "user":
         messages.pop()
     return last_user
+
+
+_ATTACHMENT_LABEL_SUFFIX = re.compile(r"(?:\s*\[(?:image|file):[^\]\r\n]*\])+\s*$", re.IGNORECASE)
+
+
+def _history_user_body(history_entry: Any) -> str:
+    plain_text = history_entry_plain_text(history_entry)
+    for separator in ("：", ":"):
+        if separator in plain_text:
+            speaker, body = plain_text.split(separator, 1)
+            if len(speaker.strip()) <= 16:
+                return body.strip()
+    return plain_text.strip()
+
+
+def canonical_user_turn_payload(
+    message: Mapping[str, Any] | None,
+    *,
+    fallback_text: str = "",
+) -> dict[str, Any]:
+    """Return the persisted source text and attachment payload for one user turn."""
+    source = message or {}
+    attachments = [
+        dict(item)
+        for item in (source.get("attachments") or [])
+        if isinstance(item, Mapping)
+    ]
+    if "input_text" in source:
+        text = str(source.get("input_text") or "").strip()
+    else:
+        text = str(
+            fallback_text
+            or source.get("display_content")
+            or source.get("content")
+            or ""
+        ).strip()
+        text = _ATTACHMENT_LABEL_SUFFIX.sub("", text).strip()
+    return {"text": text, "attachments": attachments}
+
+
+def pop_last_assistant_turn_payload(chat_history: list, messages: list) -> dict[str, Any]:
+    """Remove the latest turn and return its canonical replay payload."""
+    last_user_message: Mapping[str, Any] | None = None
+    for message in reversed(messages):
+        if message.get("role") == "user":
+            last_user_message = message
+            break
+    history_entry = pop_last_assistant_turn(chat_history, messages)
+    payload = canonical_user_turn_payload(
+        last_user_message,
+        fallback_text=_history_user_body(history_entry),
+    )
+    payload["history_entry"] = history_entry
+    return payload
 
 
 def extract_valid_dialog_from_messages(messages: list) -> list:

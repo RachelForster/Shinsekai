@@ -359,6 +359,26 @@ export function InputLayer({
           </Button>
         ) : null}
       </div>
+      {!pillLayout ? (
+        <div aria-label={t("chat.input.attachments")} className="input-layer__attachment-stack" role="group">
+          <IconButton
+            className="input-layer__attachment-button"
+            disabled={disabled}
+            label={t("chat.input.attachImage")}
+            onClick={() => onPickAttachments("image")}
+          >
+            <ImagePlus aria-hidden className="icon-button__icon" />
+          </IconButton>
+          <IconButton
+            className="input-layer__attachment-button"
+            disabled={disabled}
+            label={t("chat.input.attachFile")}
+            onClick={() => onPickAttachments("file")}
+          >
+            <FileText aria-hidden className="icon-button__icon" />
+          </IconButton>
+        </div>
+      ) : null}
       {pillLayout ? (
         <>
           <div className="input-layer__pill-actions" role="group">

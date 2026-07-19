@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping
 
 from ai.vision.message_content import local_image_block
+from ai.vision.moondream_adapter import MoondreamPluginUnavailable, installed_moondream_directory
 from ai.vision.vision_manager import VisionManager
 from core.media.chat_attachments import (
     ResolvedChatAttachment,
@@ -27,6 +28,7 @@ class PreparedChatInput:
 
 VisionManagerFactory = Callable[[], VisionManager]
 FileReader = Callable[[str], Mapping[str, Any]]
+FallbackAvailability = Callable[[], bool]
 
 
 class ChatVisionService:
@@ -36,15 +38,40 @@ class ChatVisionService:
         self,
         fallback_factory: VisionManagerFactory | None = None,
         *,
+        fallback_available: FallbackAvailability | None = None,
         file_reader: FileReader | None = None,
     ) -> None:
         self._fallback_factory = fallback_factory or (lambda: VisionManager("moondream"))
+        self._fallback_available = fallback_available or (
+            (lambda: installed_moondream_directory() is not None)
+            if fallback_factory is None
+            else (lambda: True)
+        )
         self._file_reader = file_reader or file_read
 
     @staticmethod
     def supports_native_images(adapter: Any) -> bool:
         capability = getattr(adapter, "supports_native_vision", None)
-        return True if capability is None else bool(capability)
+        return bool(capability)
+
+    @staticmethod
+    def _fallback_unavailable_input(
+        prompt_parts: list[str],
+        images: list[ResolvedChatAttachment],
+        display_text: str,
+    ) -> PreparedChatInput:
+        names = ", ".join(image.name for image in images)
+        prompt_parts.append(
+            "Image attachments could not be inspected. The current language model does not support "
+            "native image input, and the optional local Moondream fallback is not installed or available. "
+            f"Uninspected attachments: {names}. Explain this limitation to the user and ask them to install "
+            "or enable Moondream, switch to a vision-capable model, or describe the images in text."
+        )
+        return PreparedChatInput(
+            content="\n\n".join(prompt_parts),
+            display_text=display_text,
+            mode="unavailable",
+        )
 
     def _read_file_attachments(self, attachments: Iterable[ResolvedChatAttachment]) -> str:
         files = [attachment for attachment in attachments if attachment.kind == "file"]
@@ -97,7 +124,17 @@ class ChatVisionService:
                 mode="native",
             )
 
-        fallback = self._fallback_factory()
+        try:
+            fallback_available = self._fallback_available()
+        except Exception:
+            fallback_available = False
+        if not fallback_available:
+            return self._fallback_unavailable_input(prompt_parts, images, display_text)
+
+        try:
+            fallback = self._fallback_factory()
+        except MoondreamPluginUnavailable:
+            return self._fallback_unavailable_input(prompt_parts, images, display_text)
         descriptions: list[str] = []
         for image in images:
             description = fallback.describe(image.path.read_bytes(), DEFAULT_IMAGE_PROMPT).strip()

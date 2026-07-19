@@ -186,7 +186,11 @@ class LLMWorker(QThreadDagNode):
 
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
-                    chat_kwargs = {"stream": is_streaming}
+                    chat_kwargs = {
+                        "stream": is_streaming,
+                        "user_input_text": message.text,
+                        "user_attachments": [attachment.to_payload() for attachment in attachments],
+                    }
                     if attachments:
                         chat_kwargs["user_display_text"] = prepared_input.display_text
                     raw_response = self.llm_manager.chat(prepared_input.content, **chat_kwargs)

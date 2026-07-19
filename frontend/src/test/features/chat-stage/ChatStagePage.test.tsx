@@ -1024,11 +1024,7 @@ describe("ChatStagePage", () => {
     );
   });
 
-  it("selects image and file attachments, renders colored names, and sends a structured payload", async () => {
-    themeContextMocks.optional = {
-      resolved: { typewriter: { cps: 40 } },
-      style: { "--chat-input-layout": "pill" } as CSSProperties,
-    };
+  it("selects image and file attachments from the default layout and sends a structured payload", async () => {
     mocks.browseFiles.mockImplementation(async (options?: { path?: string; showHidden?: boolean }) => {
       if (options?.path === "D:/models/vosk") {
         return {
@@ -1054,7 +1050,6 @@ describe("ChatStagePage", () => {
     renderPage();
     await screen.findByText("Ready");
 
-    fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
     fireEvent.click(screen.getByRole("button", { name: "Image" }));
     const imageDialog = await screen.findByRole("dialog", { name: "Attach images" });
     const imageEntry = await within(imageDialog).findByText("scene.png");
@@ -1065,7 +1060,6 @@ describe("ChatStagePage", () => {
     const imageAttachment = await screen.findByRole("button", { name: "Remove attachment scene.png" });
     expect(imageAttachment).toHaveAttribute("data-kind", "image");
 
-    fireEvent.click(screen.getByRole("button", { name: "More input actions" }));
     fireEvent.click(screen.getByRole("button", { name: "File" }));
     const fileDialog = await screen.findByRole("dialog", { name: "Attach files" });
     const fileEntry = await within(fileDialog).findByText("notes.txt");

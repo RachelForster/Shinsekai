@@ -18,7 +18,7 @@ from llm.history_manager import (
     parse_assistant_dialog_content,
     HistoryManager,
 )
-from core.sprite.chat_history import pop_last_assistant_turn
+from core.sprite.chat_history import canonical_user_turn_payload, pop_last_assistant_turn, pop_last_assistant_turn_payload
 
 
 def _uh(msg: str) -> str:
@@ -90,6 +90,35 @@ class TestPopLastAssistantTurn:
         assert last == ""
         assert hist == []
         assert msgs == []
+
+    def test_payload_restores_canonical_text_and_attachments_without_rendered_labels(self):
+        attachment = {"kind": "image", "name": "scene.png", "path": "C:/scene.png"}
+        hist = [_uh("Inspect\n[image: scene.png]"), _ah("Bot", "done")]
+        msgs = [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": "Inspect"}],
+                "display_content": "Inspect\n[image: scene.png]",
+                "input_text": "Inspect",
+                "attachments": [attachment],
+            },
+            _a("done"),
+        ]
+
+        payload = pop_last_assistant_turn_payload(hist, msgs)
+
+        assert payload["text"] == "Inspect"
+        assert payload["attachments"] == [attachment]
+        assert "[image:" not in payload["text"]
+        assert hist == []
+        assert msgs == []
+
+    def test_legacy_rendered_attachment_labels_are_not_replayed_as_text(self):
+        payload = canonical_user_turn_payload(
+            {"role": "user", "display_content": "Inspect\n[image: scene.png] [file: notes.txt]"}
+        )
+
+        assert payload == {"text": "Inspect", "attachments": []}
 
 
 class TestParseAssistantDialogContent:

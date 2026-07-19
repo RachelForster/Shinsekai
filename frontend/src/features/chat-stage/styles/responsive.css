@@ -4,7 +4,7 @@
     --stage-input-height: 112px;
     --stage-safe-x: 12px;
     --stage-safe-top: 12px;
-    --chat-input-grid-template-columns: minmax(0, 1fr) 38px 46px;
+    --chat-input-grid-template-columns: minmax(0, 1fr) 38px 38px 46px;
     --chat-input-resolved-width: min(var(--chat-input-max-width), calc(100vw - 24px));
     --chat-send-label-display: none;
     --chat-send-min-width: 46px;
@@ -80,15 +80,22 @@
     grid-column: 2;
   }
 
-  .input-layer__voice-stack {
+  .input-layer__attachment-stack {
     grid-column: 2;
     width: 38px;
     min-width: 38px;
     min-height: var(--chat-input-textarea-min-height);
   }
 
-  .input-layer .input-layer__send.button--primary {
+  .input-layer__voice-stack {
     grid-column: 3;
+    width: 38px;
+    min-width: 38px;
+    min-height: var(--chat-input-textarea-min-height);
+  }
+
+  .input-layer .input-layer__send.button--primary {
+    grid-column: 4;
     min-width: var(--chat-send-min-width);
     padding: var(--chat-send-padding);
   }

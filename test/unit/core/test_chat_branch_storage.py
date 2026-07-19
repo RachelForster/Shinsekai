@@ -105,7 +105,12 @@ class ChatBranchStorageTests(unittest.TestCase):
                     "label": "七海路线",
                     "parentId": "main",
                     "history": ["你: hello"],
-                    "messages": [{"role": "user", "content": "hello"}],
+                    "messages": [{
+                        "role": "user",
+                        "content": "hello",
+                        "input_text": "hello",
+                        "attachments": [{"kind": "image", "name": "scene.png", "path": "C:/scene.png"}],
+                    }],
                 },
             },
         }
@@ -117,6 +122,11 @@ class ChatBranchStorageTests(unittest.TestCase):
             self.assertEqual(restored["active"], "branch-2")
             self.assertEqual(restored["branches"]["branch-2"]["label"], "七海路线")
             self.assertEqual(restored["branches"]["branch-2"]["messages"][0]["content"], "hello")
+            self.assertEqual(restored["branches"]["branch-2"]["messages"][0]["input_text"], "hello")
+            self.assertEqual(
+                restored["branches"]["branch-2"]["messages"][0]["attachments"][0]["name"],
+                "scene.png",
+            )
         finally:
             remove_chat_history_storage(root)
 
