@@ -818,6 +818,48 @@ describe("http platform", () => {
     );
   });
 
+  it("manages and exports chat theme assets through the bridge", async () => {
+    const asset = { kind: "image" as const, name: "frame.png", path: "assets/frame.png", size: 5 };
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/assets") && !init?.method) {
+        return mockJsonResponse([asset]);
+      }
+      if (url.endsWith("/assets/upload")) {
+        return mockJsonResponse(asset);
+      }
+      if (url.endsWith("/assets/delete")) {
+        return mockJsonResponse({ deleted: true });
+      }
+      if (url.endsWith("/export")) {
+        return mockJsonResponse({
+          downloadUrl: "/api/download?path=data/export/chat_ui_themes/custom.zip",
+          path: "data/export/chat_ui_themes/custom.zip",
+        });
+      }
+      return mockJsonResponse({}, false);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const file = new File(["image"], "frame.png", { type: "image/png" });
+
+    await expect(platform.chat.listThemeAssets("custom")).resolves.toEqual([asset]);
+    await expect(platform.chat.uploadThemeAsset("custom", file)).resolves.toEqual(asset);
+    await platform.chat.deleteThemeAsset("custom", asset.path);
+    await expect(platform.chat.exportTheme("custom")).resolves.toBe("data/export/chat_ui_themes/custom.zip");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/themes/custom/assets/upload",
+      expect.objectContaining({ body: expect.any(FormData), method: "POST" }),
+    );
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/download?path=data/export/chat_ui_themes/custom.zip"),
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+
   it("reads lightweight chat runtime status through the bridge", async () => {
     const runtimeStatus = {
       chatProcessRunning: true,
@@ -1671,6 +1713,46 @@ describe("http platform", () => {
       expect.objectContaining({
         headers: expect.objectContaining({ "Content-Type": "application/json" }),
       }),
+    );
+  });
+
+  it("lists and runs host-rendered plugin slot contributions", async () => {
+    const contribution = {
+      actionLabel: "Run",
+      actionable: true,
+      description: "Host rendered",
+      icon: "sparkles" as const,
+      id: "demo-action",
+      order: 10,
+      pluginId: "demo.plugin",
+      pluginVersion: "1.0.0",
+      slot: "chat-dialog-actions" as const,
+      title: "Demo action",
+      variant: "primary" as const,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse([contribution]))
+      .mockResolvedValueOnce(
+        await mockJsonResponse({ id: "demo-action", kind: "success", message: "done", pluginId: "demo.plugin" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(platform.plugins.listSlotContributions()).resolves.toEqual([contribution]);
+    await expect(platform.plugins.runSlotContribution("demo.plugin", "demo-action")).resolves.toMatchObject({
+      message: "done",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8787/api/plugins/chat-ui-contributions",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8787/api/plugins/demo.plugin/chat-ui/demo-action/run",
+      expect.objectContaining({ body: JSON.stringify({}), method: "POST" }),
     );
   });
 

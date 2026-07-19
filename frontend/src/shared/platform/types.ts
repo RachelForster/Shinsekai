@@ -1,5 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
-import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
+import type { ChatThemeAsset, ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
 export interface Sprite {
   path: string;
@@ -183,6 +183,30 @@ export type PluginSlotId =
   | "chat-toolbar"
   | "settings-extension"
   | "settings-tools";
+
+export type PluginSlotContributionIcon = "info" | "play" | "puzzle" | "settings" | "sparkles";
+export type PluginSlotContributionVariant = "danger" | "ghost" | "primary";
+
+export interface PluginSlotContribution {
+  actionLabel: string;
+  actionable: boolean;
+  description: string;
+  icon: PluginSlotContributionIcon;
+  id: string;
+  order: number;
+  pluginId: string;
+  pluginVersion: string;
+  slot: PluginSlotId;
+  title: string;
+  variant: PluginSlotContributionVariant;
+}
+
+export interface PluginSlotActionResult {
+  id: string;
+  kind: "error" | "info" | "success";
+  message: string;
+  pluginId: string;
+}
 
 export interface PluginManifest {
   author: string;
@@ -1130,6 +1154,14 @@ export interface ShinsekaiPlatform {
     uploadTheme: (file: File) => Promise<ChatThemeSummary>;
     /** 创建或更新用户主题，同时保留主题目录中的资源文件。 */
     saveTheme: (input: SaveChatThemeInput) => Promise<ChatThemeSummary>;
+    /** 列出主题目录中的可引用静态资源。 */
+    listThemeAssets: (id: string) => Promise<ChatThemeAsset[]>;
+    /** 上传一个静态资源到用户主题。 */
+    uploadThemeAsset: (id: string, file: File) => Promise<ChatThemeAsset>;
+    /** 删除一个未被清单引用的用户主题资源。 */
+    deleteThemeAsset: (id: string, path: string) => Promise<void>;
+    /** 打包并下载主题 ZIP，返回导出路径。 */
+    exportTheme: (id: string) => Promise<string>;
     /** 删除一个用户主题。 */
     deleteTheme: (id: string) => Promise<void>;
     // --- 实时事件流（WebSocket）；M0 占位，M2/M3 接真实 WS ---
@@ -1249,6 +1281,7 @@ export interface ShinsekaiPlatform {
     ) => Promise<PluginManifest>;
     getUi: (id: string) => Promise<PluginUIDetail>;
     list: () => Promise<PluginManifest[]>;
+    listSlotContributions: () => Promise<PluginSlotContribution[]>;
     repoTags: (repo: string) => Promise<string[]>;
     scanLocal: (input: { path: string }) => Promise<PluginLocalScanResult>;
     validateSubmission: (input: PluginSubmissionInput) => Promise<PluginSubmissionValidationResult>;
@@ -1260,6 +1293,7 @@ export interface ShinsekaiPlatform {
       actionId: string,
       values: Record<string, unknown>,
     ) => Promise<PluginConfigActionResult>;
+    runSlotContribution: (pluginId: string, contributionId: string) => Promise<PluginSlotActionResult>;
     saveUiConfig: (id: string, pageId: string, values: Record<string, unknown>) => Promise<PluginConfigSaveResult>;
     setEnabled: (id: string, enabled: boolean) => Promise<PluginManifest>;
     uninstall: (id: string) => Promise<PluginUninstallResult>;

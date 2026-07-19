@@ -1,8 +1,21 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { normalizePluginContributions, PluginSlot } from "../../../shared/plugin/PluginSlot";
 import type { PluginUIContribution } from "../../../shared/plugin/PluginSlot";
+import { ToastProvider } from "../../../shared/ui";
+
+const repository = vi.hoisted(() => ({
+  list: vi.fn(),
+  run: vi.fn(),
+}));
+
+vi.mock("../../../entities/plugin/repository", () => ({
+  listPluginSlotContributions: repository.list,
+  pluginSlotContributionsQueryKey: ["plugins", "slot-contributions"],
+  runPluginSlotContribution: repository.run,
+}));
 
 const validContribution: PluginUIContribution = {
   id: "demo.output",
@@ -13,6 +26,15 @@ const validContribution: PluginUIContribution = {
 };
 
 describe("plugin slot registry", () => {
+  beforeEach(() => {
+    repository.list.mockReset().mockResolvedValue([]);
+    repository.run.mockReset().mockResolvedValue({
+      id: "demo.safe-action",
+      kind: "success",
+      message: "Action complete",
+      pluginId: "demo.plugin",
+    });
+  });
   it("keeps only declared, unique plugin contributions", () => {
     const normalized = normalizePluginContributions([
       { ...validContribution, id: " demo.output ", title: " Demo Output " },
@@ -71,5 +93,38 @@ describe("plugin slot registry", () => {
       "data-plugin-slot",
       "chat-dialog-actions",
     );
+  });
+
+  it("fetches JSON contributions and renders them through host-owned components", async () => {
+    repository.list.mockResolvedValue([
+      {
+        actionLabel: "Run safe action",
+        actionable: true,
+        description: "No plugin JavaScript is rendered.",
+        icon: "sparkles",
+        id: "demo.safe-action",
+        order: 10,
+        pluginId: "demo.plugin",
+        pluginVersion: "1.0.0",
+        slot: "chat-output",
+        title: "Safe contribution",
+        variant: "primary",
+      },
+    ]);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <PluginSlot slot="chat-output" />
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+
+    const action = await screen.findByRole("button", { name: "Run safe action" });
+    expect(action.closest("[data-plugin-contribution]"))?.toHaveAttribute("data-plugin-id", "demo.plugin");
+    fireEvent.click(action);
+
+    await waitFor(() => expect(repository.run).toHaveBeenCalledWith("demo.plugin", "demo.safe-action"));
+    expect(await screen.findByText("Action complete")).toBeInTheDocument();
   });
 });

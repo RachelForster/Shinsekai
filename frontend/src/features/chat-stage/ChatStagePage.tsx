@@ -44,8 +44,10 @@ import { useMainThemeColor } from "./hooks/useMainThemeColor";
 import { useVoskModelAvailability } from "./hooks/useVoskModelAvailability";
 import {
   chatStageRuntimeStyle,
+  clearMaterializedChatStageAppearance,
   defaultChatStageRuntimeConfig,
   effectiveChatStageTextStyle,
+  materializeChatStageAppearanceTheme,
   readChatStageRuntimeConfig,
   runtimeSpriteScale,
   writeChatStageRuntimeConfig,
@@ -72,6 +74,7 @@ export function ChatStagePage() {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
+  const [savingAppearance, setSavingAppearance] = useState(false);
   const [attachmentPickerKind, setAttachmentPickerKind] = useState<ChatAttachmentInput["kind"] | null>(null);
   const voskModelState = useVoskModelAvailability();
   const { showToast } = useToast();
@@ -282,6 +285,41 @@ export function ChatStagePage() {
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
+
+  const saveCurrentAppearanceAsTheme = useCallback(async () => {
+    if (!theme?.manifest || savingAppearance) {
+      return;
+    }
+    const existingIds = new Set(theme.themes.map((item) => item.id));
+    const baseSlug = `${theme.manifest.id}-appearance`.slice(0, 58).replace(/[-_]+$/, "") || "chat-appearance";
+    let id = baseSlug;
+    let suffix = 2;
+    while (existingIds.has(id)) {
+      id = `${baseSlug}-${suffix}`.slice(0, 64);
+      suffix += 1;
+    }
+
+    setSavingAppearance(true);
+    try {
+      const manifest = materializeChatStageAppearanceTheme(theme.manifest, runtimeConfig, id);
+      const saved = await theme.saveTheme({ baseId: theme.manifest.id, manifest });
+      await theme.switchTheme(saved.id);
+      setRuntimeConfig((current) => clearMaterializedChatStageAppearance(current));
+      showToast({
+        kind: "success",
+        message: t("chat.config.appearanceSaved", { id: saved.id }),
+        title: t("chat.config.saveAppearanceAsTheme"),
+      });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("chat.config.appearanceSaveError"),
+        title: t("common.operationFailed"),
+      });
+    } finally {
+      setSavingAppearance(false);
+    }
+  }, [runtimeConfig, savingAppearance, showToast, t, theme]);
 
   const updateRuntimeAutoHideTopTools = (autoHideTopTools: boolean) => {
     setRuntimeConfig((current) => ({ ...current, autoHideTopTools }));
@@ -561,6 +599,7 @@ export function ChatStagePage() {
         <ChatConfigDialog
           autoHideInput={runtimeConfig.autoHideInput}
           autoHideTopTools={runtimeConfig.autoHideTopTools}
+          canSaveAppearance={Boolean(theme?.manifest)}
           configThemeColor={runtimeConfig.configThemeColor}
           configUseMainThemeColor={runtimeConfig.configUseMainThemeColor}
           dialogFill={runtimeConfig.dialogFill}
@@ -586,6 +625,7 @@ export function ChatStagePage() {
           onDialogScaleChange={updateRuntimeDialogScale}
           onImmersiveModeChange={updateRuntimeImmersiveMode}
           onLongPressTalkChange={updateRuntimeLongPressTalk}
+          onSaveAppearanceAsTheme={() => void saveCurrentAppearanceAsTheme()}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
           onSpriteScaleChange={updateRuntimeSpriteScale}
@@ -598,6 +638,7 @@ export function ChatStagePage() {
           spriteOffsetY={runtimeConfig.spriteOffsetY}
           spriteScales={runtimeConfig.spriteScales}
           sprites={viewModel.sprites}
+          savingAppearance={savingAppearance}
           textSpeed={typewriterCps}
           turnOptions={state.turnOptions}
           voiceLanguage={viewModel.voiceLanguage || "ja"}

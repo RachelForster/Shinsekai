@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { Check, Palette, RefreshCw, Trash2, Upload } from "lucide-react";
+import { Check, Download, Palette, RefreshCw, Trash2, Upload } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import { Button, Dialog, IconButton, useToast } from "../../../shared/ui";
@@ -21,6 +21,7 @@ function ThemeCard({
   busy,
   displayName,
   onDelete,
+  onExport,
   onSwitch,
   theme,
 }: {
@@ -28,6 +29,7 @@ function ThemeCard({
   busy: boolean;
   displayName: string;
   onDelete: (theme: ChatThemeSummary) => void;
+  onExport: (theme: ChatThemeSummary) => void;
   onSwitch: (theme: ChatThemeSummary) => void;
   theme: ChatThemeSummary;
 }) {
@@ -64,6 +66,9 @@ function ThemeCard({
         >
           {active ? t("chat.theme.active") : t("chat.theme.apply")}
         </Button>
+        <IconButton disabled={busy} label={t("chat.theme.export")} onClick={() => onExport(theme)}>
+          <Download aria-hidden className="icon-button__icon" />
+        </IconButton>
         {removable ? (
           <IconButton disabled={busy} label={t("chat.theme.delete")} onClick={() => onDelete(theme)}>
             <Trash2 aria-hidden className="icon-button__icon" />
@@ -112,7 +117,7 @@ export function ChatThemeManager({ onActiveThemeChange, onThemesChange }: ChatTh
     return null;
   }
 
-  const { loading, refresh, removeTheme, switchTheme, uploadTheme } = theme;
+  const { exportTheme, loading, refresh, removeTheme, switchTheme, uploadTheme } = theme;
 
   const handleSwitch = async (theme: ChatThemeSummary) => {
     setBusyId(theme.id);
@@ -181,6 +186,22 @@ export function ChatThemeManager({ onActiveThemeChange, onThemesChange }: ChatTh
     }
   };
 
+  const handleExport = async (item: ChatThemeSummary) => {
+    setBusyId(item.id);
+    try {
+      await exportTheme(item.id);
+      showToast({ kind: "success", title: t("chat.theme.exported"), message: displayName(item) });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        title: t("common.operationFailed"),
+        message: error instanceof Error ? error.message : t("chat.theme.error.export"),
+      });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <>
       <div className="chat-theme-manager">
@@ -218,6 +239,7 @@ export function ChatThemeManager({ onActiveThemeChange, onThemesChange }: ChatTh
               displayName={displayName(theme)}
               key={theme.id}
               onDelete={setDeleteCandidate}
+              onExport={(item) => void handleExport(item)}
               onSwitch={handleSwitch}
               theme={theme}
             />

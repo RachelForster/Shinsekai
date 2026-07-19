@@ -29,6 +29,7 @@ __all__ = [
     "ChatOutputContract",
     "FieldPatch",
     "FrontendConfigAction",
+    "FrontendChatUIContribution",
     "FrontendConfigContribution",
     "FrontendPageContribution",
     "OutputContractPatch",
@@ -160,6 +161,27 @@ class FrontendPageContribution:
     kind: Literal["settings", "tools"] = "settings"
     description: str = ""
     order: float = 100.0
+    plugin_id: str | None = None
+    plugin_version: str | None = None
+
+
+@dataclass(frozen=True)
+class FrontendChatUIContribution:
+    """Serializable Chat UI contribution rendered entirely by the React host.
+
+    Plugins provide metadata plus an optional server-side callback. No HTML,
+    JavaScript, React element, or arbitrary CSS crosses the bridge.
+    """
+
+    contribution_id: str
+    slot: Literal["chat-dialog-actions", "chat-output", "chat-toolbar"]
+    title: str
+    action: Callable[[], Mapping[str, Any] | str | None] | None = None
+    action_label: str = ""
+    description: str = ""
+    icon: Literal["info", "play", "puzzle", "settings", "sparkles"] = "puzzle"
+    order: float = 100.0
+    variant: Literal["danger", "ghost", "primary"] = "ghost"
     plugin_id: str | None = None
     plugin_version: str | None = None
 

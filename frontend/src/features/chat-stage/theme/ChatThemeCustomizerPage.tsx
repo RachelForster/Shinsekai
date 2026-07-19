@@ -1,4 +1,4 @@
-import { ArrowLeft, RotateCcw, Save } from "lucide-react";
+import { ArrowLeft, Redo2, RotateCcw, Save, Undo2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -6,7 +6,12 @@ import { useI18n } from "../../../shared/i18n";
 import { chatThemeDisplayName } from "../../../shared/theme/chatTheme";
 import { Button, Select } from "../../../shared/ui";
 import { ChatThemeEditor } from "./ChatThemeEditor";
-import { ChatThemePreview, type ChatThemePreviewMode } from "./ChatThemePreview";
+import {
+  ChatThemePreview,
+  type ChatThemePreviewMode,
+  type ChatThemePreviewState,
+  type ChatThemePreviewViewport,
+} from "./ChatThemePreview";
 import "./chat-theme-customizer-page.css";
 import { useChatThemeCustomizer } from "./useChatThemeCustomizer";
 
@@ -14,6 +19,8 @@ export function ChatThemeCustomizerPage() {
   const navigate = useNavigate();
   const { language, t } = useI18n();
   const [previewMode, setPreviewMode] = useState<ChatThemePreviewMode>("dialog");
+  const [previewState, setPreviewState] = useState<ChatThemePreviewState>("default");
+  const [previewViewport, setPreviewViewport] = useState<ChatThemePreviewViewport>("desktop");
   const customizer = useChatThemeCustomizer();
 
   return (
@@ -33,6 +40,20 @@ export function ChatThemeCustomizerPage() {
           </div>
         </div>
         <div className="chat-theme-customizer-page__actions">
+          <Button
+            disabled={!customizer.canUndo || customizer.saving}
+            icon={<Undo2 aria-hidden className="button__icon" />}
+            onClick={customizer.undo}
+          >
+            {t("common.undo")}
+          </Button>
+          <Button
+            disabled={!customizer.canRedo || customizer.saving}
+            icon={<Redo2 aria-hidden className="button__icon" />}
+            onClick={customizer.redo}
+          >
+            {t("common.redo")}
+          </Button>
           <Button
             disabled={!customizer.sourceReady || !customizer.dirty || customizer.saving}
             icon={<RotateCcw aria-hidden className="button__icon" />}
@@ -85,21 +106,31 @@ export function ChatThemeCustomizerPage() {
       ) : (
         <div className="chat-theme-customizer__workspace">
           <ChatThemeEditor
+            assets={customizer.assets}
+            assetsLoading={customizer.assetsLoading}
+            canManageAssets={customizer.canManageAssets}
             draft={customizer.draft}
             duplicateId={customizer.duplicateId}
             idError={customizer.idError}
             isNewTheme={customizer.isNewTheme}
             nameError={customizer.nameError}
-            onPatchBlock={customizer.patchBlock}
-            onPatchGlobal={customizer.patchGlobal}
             onPatchManifest={customizer.patchManifest}
-            onPatchTypewriter={customizer.patchTypewriter}
+            onPatchToken={customizer.patchToken}
+            onResetSection={customizer.resetSection}
+            onDeleteAsset={(path) => void customizer.deleteAsset(path)}
+            onUploadAsset={customizer.uploadAsset}
           />
           <ChatThemePreview
             assetThemeId={customizer.assetThemeId}
+            assets={customizer.assets}
+            assetsLoading={customizer.assetsLoading}
             manifest={customizer.draft}
             mode={previewMode}
             onModeChange={setPreviewMode}
+            onStateChange={setPreviewState}
+            onViewportChange={setPreviewViewport}
+            state={previewState}
+            viewport={previewViewport}
           />
         </div>
       )}

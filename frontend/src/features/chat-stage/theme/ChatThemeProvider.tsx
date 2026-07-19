@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 
 import {
   deleteChatTheme,
+  exportChatTheme,
   getChatTheme,
   getActiveChatThemeId,
   getChatThemeManifest,
@@ -34,6 +35,8 @@ export interface ChatThemeContextValue {
   themes: ChatThemeSummary[];
   /** 当前激活的主题 id。 */
   activeId: string | null;
+  /** 当前激活的可序列化主题清单。 */
+  manifest: ChatThemeManifest | null;
   /** 解析后的样式 / 字体 / 打字机参数，直接喂给 chat stage。 */
   resolved: ResolvedChatTheme | null;
   /** 仅 style 部分的便捷别名（写到 stage 根元素 style）。 */
@@ -49,6 +52,8 @@ export interface ChatThemeContextValue {
   saveTheme: (input: SaveChatThemeInput) => Promise<ChatThemeSummary>;
   /** 删除一个用户主题，删除后刷新列表。 */
   removeTheme: (id: string) => Promise<void>;
+  /** 导出一个可重新导入的主题 ZIP。 */
+  exportTheme: (id: string) => Promise<string>;
 }
 
 const ChatThemeContext = createContext<ChatThemeContextValue | null>(null);
@@ -118,6 +123,8 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
     },
     [activeId, applyManifest, refresh],
   );
+
+  const exportTheme = useCallback((id: string) => exportChatTheme(id), []);
 
   useEffect(() => {
     let mounted = true;
@@ -216,6 +223,7 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
     () => ({
       themes,
       activeId,
+      manifest,
       resolved,
       style: resolved.style,
       loading,
@@ -224,8 +232,21 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
       uploadTheme,
       saveTheme,
       removeTheme,
+      exportTheme,
     }),
-    [themes, activeId, resolved, loading, switchTheme, refresh, uploadTheme, saveTheme, removeTheme],
+    [
+      themes,
+      activeId,
+      manifest,
+      resolved,
+      loading,
+      switchTheme,
+      refresh,
+      uploadTheme,
+      saveTheme,
+      removeTheme,
+      exportTheme,
+    ],
   );
 
   return <ChatThemeContext.Provider value={value}>{children}</ChatThemeContext.Provider>;

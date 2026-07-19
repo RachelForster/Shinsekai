@@ -11,7 +11,12 @@ import type {
   TaskProgressOptions,
 } from "../../shared/platform/types";
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
-import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../../shared/theme/chatTheme";
+import type {
+  ChatThemeAsset,
+  ChatThemeManifest,
+  ChatThemeSummary,
+  SaveChatThemeInput,
+} from "../../shared/theme/chatTheme";
 import type { ChatStageEvent } from "../../shared/platform/types";
 
 export const chatQueryKey = ["chat"] as const;
@@ -90,6 +95,22 @@ export function uploadChatTheme(file: File): Promise<ChatThemeSummary> {
 
 export function saveChatTheme(input: SaveChatThemeInput): Promise<ChatThemeSummary> {
   return getPlatform().chat.saveTheme(input);
+}
+
+export function listChatThemeAssets(id: string): Promise<ChatThemeAsset[]> {
+  return getPlatform().chat.listThemeAssets(id);
+}
+
+export function uploadChatThemeAsset(id: string, file: File): Promise<ChatThemeAsset> {
+  return getPlatform().chat.uploadThemeAsset(id, file);
+}
+
+export function deleteChatThemeAsset(id: string, path: string): Promise<void> {
+  return getPlatform().chat.deleteThemeAsset(id, path);
+}
+
+export function exportChatTheme(id: string): Promise<string> {
+  return getPlatform().chat.exportTheme(id);
 }
 
 export function deleteChatTheme(id: string): Promise<void> {

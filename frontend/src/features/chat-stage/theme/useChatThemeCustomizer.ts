@@ -1,12 +1,19 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { chatThemeQueryKey, getChatThemeManifest } from "../../../entities/chat/repository";
+import {
+  chatThemeQueryKey,
+  deleteChatThemeAsset,
+  getChatThemeManifest,
+  listChatThemeAssets,
+  uploadChatThemeAsset,
+} from "../../../entities/chat/repository";
 import { configQueryKey } from "../../../entities/config/repository";
 import type { AppConfig } from "../../../entities/config/types";
 import { useI18n } from "../../../shared/i18n";
 import {
   chatThemeDisplayName,
+  type ChatThemeAsset,
   type ChatThemeManifest,
   type ChatThemeSummary,
   type ChatThemeTokens,
@@ -16,11 +23,64 @@ import { useOptionalChatTheme } from "./ChatThemeProvider";
 
 export type EditableThemeBlock = "dialog" | "input" | "name" | "options";
 
+interface DraftHistory {
+  future: ChatThemeManifest[];
+  past: ChatThemeManifest[];
+  present: ChatThemeManifest | null;
+}
+
 const EMPTY_THEMES: ChatThemeSummary[] = [];
 const themeIdPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 
 function cloneManifest(manifest: ChatThemeManifest): ChatThemeManifest {
   return JSON.parse(JSON.stringify(manifest)) as ChatThemeManifest;
+}
+
+function valueAtPath(source: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((current, segment) => {
+    if (!current || typeof current !== "object") {
+      return undefined;
+    }
+    return (current as Record<string, unknown>)[segment];
+  }, source);
+}
+
+export function patchChatThemeTokenPath(tokens: ChatThemeTokens, path: string, value: unknown): ChatThemeTokens {
+  const segments = path.split(".").filter(Boolean);
+  if (!segments.length) {
+    return tokens;
+  }
+  const root = cloneManifest({ schema: 1, id: "draft", name: { en: "Draft" }, tokens }).tokens as Record<
+    string,
+    unknown
+  >;
+  let cursor = root;
+  for (const segment of segments.slice(0, -1)) {
+    const child = cursor[segment];
+    if (!child || typeof child !== "object" || Array.isArray(child)) {
+      cursor[segment] = {};
+    }
+    cursor = cursor[segment] as Record<string, unknown>;
+  }
+  const finalSegment = segments[segments.length - 1];
+  if (value === undefined) {
+    delete cursor[finalSegment];
+  } else {
+    cursor[finalSegment] = value;
+  }
+
+  const prune = (target: Record<string, unknown>) => {
+    for (const [key, child] of Object.entries(target)) {
+      if (child && typeof child === "object" && !Array.isArray(child)) {
+        prune(child as Record<string, unknown>);
+        if (!Object.keys(child as Record<string, unknown>).length) {
+          delete target[key];
+        }
+      }
+    }
+  };
+  prune(root);
+  return root as ChatThemeTokens;
 }
 
 function customThemeId(baseId: string, ids: Set<string>) {
@@ -42,17 +102,21 @@ export function useChatThemeCustomizer() {
   const theme = useOptionalChatTheme();
   const [sourceId, setSourceIdState] = useState("");
   const [assetThemeId, setAssetThemeId] = useState("");
-  const [draft, setDraft] = useState<ChatThemeManifest | null>(null);
+  const [draftHistory, setDraftHistory] = useState<DraftHistory>({ future: [], past: [], present: null });
   const [original, setOriginal] = useState<ChatThemeManifest | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [assets, setAssets] = useState<ChatThemeAsset[]>([]);
+  const [assetsLoading, setAssetsLoading] = useState(false);
   const loadRequestId = useRef(0);
 
   const themes = theme?.themes ?? EMPTY_THEMES;
+  const draft = draftHistory.present;
   const source = themes.find((item) => item.id === sourceId);
   const isNewTheme = source?.source === "builtin";
   const sourceReady = Boolean(sourceId && assetThemeId === sourceId && draft && original && !loading);
+  const canManageAssets = Boolean(sourceReady && source?.source === "user");
   const dirty = Boolean(sourceReady && draft && original && JSON.stringify(draft) !== JSON.stringify(original));
   const idError = draft && !themeIdPattern.test(draft.id) ? t("chat.theme.customizer.idError") : "";
   const nameError =
@@ -60,6 +124,27 @@ export function useChatThemeCustomizer() {
   const duplicateId = Boolean(isNewTheme && draft && themes.some((item) => item.id === draft.id));
   const invalid = Boolean(idError || nameError || duplicateId);
   const themeCatalogKey = themes.map((item) => `${item.id}:${item.source}:${JSON.stringify(item.name)}`).join("|");
+
+  const replaceDraft = useCallback((present: ChatThemeManifest | null) => {
+    setDraftHistory({ future: [], past: [], present });
+  }, []);
+
+  const updateDraft = useCallback((updater: (current: ChatThemeManifest) => ChatThemeManifest) => {
+    setDraftHistory((current) => {
+      if (!current.present) {
+        return current;
+      }
+      const next = updater(current.present);
+      if (JSON.stringify(next) === JSON.stringify(current.present)) {
+        return current;
+      }
+      return {
+        future: [],
+        past: [...current.past, cloneManifest(current.present)].slice(-50),
+        present: next,
+      };
+    });
+  }, []);
 
   const loadTheme = useCallback(
     async (id: string, requestId: number) => {
@@ -69,7 +154,7 @@ export function useChatThemeCustomizer() {
       setLoading(true);
       setLoadError("");
       setAssetThemeId("");
-      setDraft(null);
+      replaceDraft(null);
       setOriginal(null);
       try {
         const manifest = await getChatThemeManifest(id);
@@ -93,7 +178,7 @@ export function useChatThemeCustomizer() {
           delete next.description;
         }
         setAssetThemeId(id);
-        setDraft(next);
+        replaceDraft(next);
         setOriginal(cloneManifest(next));
       } catch (error) {
         if (requestId === loadRequestId.current) {
@@ -107,18 +192,21 @@ export function useChatThemeCustomizer() {
     },
     // The key keeps equal catalog refetches from resetting unsaved edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [language, t, themeCatalogKey],
+    [language, replaceDraft, t, themeCatalogKey],
   );
 
-  const selectSourceId = useCallback((id: string) => {
-    loadRequestId.current += 1;
-    setSourceIdState(id);
-    setAssetThemeId("");
-    setDraft(null);
-    setOriginal(null);
-    setLoadError("");
-    setLoading(Boolean(id));
-  }, []);
+  const selectSourceId = useCallback(
+    (id: string) => {
+      loadRequestId.current += 1;
+      setSourceIdState(id);
+      setAssetThemeId("");
+      replaceDraft(null);
+      setOriginal(null);
+      setLoadError("");
+      setLoading(Boolean(id));
+    },
+    [replaceDraft],
+  );
 
   useEffect(() => {
     if (!theme || theme.loading || sourceId || !themes.length) {
@@ -136,15 +224,35 @@ export function useChatThemeCustomizer() {
     }
   }, [loadTheme, sourceId]);
 
+  const refreshAssets = useCallback(async () => {
+    if (!canManageAssets || !assetThemeId) {
+      setAssets([]);
+      return;
+    }
+    setAssetsLoading(true);
+    try {
+      setAssets(await listChatThemeAssets(assetThemeId));
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("chat.theme.customizer.assetListError"),
+        title: t("common.operationFailed"),
+      });
+    } finally {
+      setAssetsLoading(false);
+    }
+  }, [assetThemeId, canManageAssets, showToast, t]);
+
+  useEffect(() => {
+    void refreshAssets();
+  }, [refreshAssets]);
+
   const patchManifest = (patch: Partial<ChatThemeManifest>) => {
-    setDraft((current) => (current ? { ...current, ...patch } : current));
+    updateDraft((current) => ({ ...current, ...patch }));
   };
 
   const patchBlock = (block: EditableThemeBlock, patch: Record<string, unknown>) => {
-    setDraft((current) => {
-      if (!current) {
-        return current;
-      }
+    updateDraft((current) => {
       const previous = (current.tokens[block] ?? {}) as Record<string, unknown>;
       return {
         ...current,
@@ -157,30 +265,98 @@ export function useChatThemeCustomizer() {
   };
 
   const patchGlobal = (patch: NonNullable<ChatThemeTokens["global"]>) => {
-    setDraft((current) =>
-      current
-        ? {
-            ...current,
-            tokens: { ...current.tokens, global: { ...(current.tokens.global ?? {}), ...patch } },
-          }
-        : current,
-    );
+    updateDraft((current) => ({
+      ...current,
+      tokens: { ...current.tokens, global: { ...(current.tokens.global ?? {}), ...patch } },
+    }));
   };
 
   const patchTypewriter = (patch: NonNullable<ChatThemeTokens["typewriter"]>) => {
-    setDraft((current) =>
-      current
-        ? {
-            ...current,
-            tokens: { ...current.tokens, typewriter: { ...(current.tokens.typewriter ?? {}), ...patch } },
-          }
-        : current,
-    );
+    updateDraft((current) => ({
+      ...current,
+      tokens: { ...current.tokens, typewriter: { ...(current.tokens.typewriter ?? {}), ...patch } },
+    }));
+  };
+
+  const patchToken = (path: string, value: unknown) => {
+    updateDraft((current) => ({ ...current, tokens: patchChatThemeTokenPath(current.tokens, path, value) }));
+  };
+
+  const resetSection = (path: string) => {
+    if (!original) {
+      return;
+    }
+    const value = valueAtPath(original.tokens, path);
+    patchToken(path, value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
   };
 
   const reset = () => {
     if (sourceReady && original) {
-      setDraft(cloneManifest(original));
+      updateDraft(() => cloneManifest(original));
+    }
+  };
+
+  const undo = () => {
+    setDraftHistory((current) => {
+      const previous = current.past.at(-1);
+      if (!previous || !current.present) {
+        return current;
+      }
+      return {
+        future: [cloneManifest(current.present), ...current.future].slice(0, 50),
+        past: current.past.slice(0, -1),
+        present: cloneManifest(previous),
+      };
+    });
+  };
+
+  const redo = () => {
+    setDraftHistory((current) => {
+      const next = current.future[0];
+      if (!next || !current.present) {
+        return current;
+      }
+      return {
+        future: current.future.slice(1),
+        past: [...current.past, cloneManifest(current.present)].slice(-50),
+        present: cloneManifest(next),
+      };
+    });
+  };
+
+  const uploadAsset = async (file: File) => {
+    if (!canManageAssets || !assetThemeId) {
+      throw new Error(t("chat.theme.customizer.assetSaveFirst"));
+    }
+    try {
+      const asset = await uploadChatThemeAsset(assetThemeId, file);
+      setAssets((current) => [...current.filter((item) => item.path !== asset.path), asset]);
+      showToast({ kind: "success", message: asset.path, title: t("chat.theme.customizer.assetUploaded") });
+      return asset;
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("chat.theme.customizer.assetUploadError"),
+        title: t("common.operationFailed"),
+      });
+      throw error;
+    }
+  };
+
+  const deleteAsset = async (path: string) => {
+    if (!canManageAssets || !assetThemeId) {
+      return;
+    }
+    try {
+      await deleteChatThemeAsset(assetThemeId, path);
+      setAssets((current) => current.filter((item) => item.path !== path));
+      showToast({ kind: "success", message: path, title: t("chat.theme.customizer.assetDeleted") });
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("chat.theme.customizer.assetDeleteError"),
+        title: t("common.deleteFailed"),
+      });
     }
   };
 
@@ -207,6 +383,7 @@ export function useChatThemeCustomizer() {
       setSourceIdState(summary.id);
       setAssetThemeId(summary.id);
       setOriginal(cloneManifest(draft));
+      replaceDraft(cloneManifest(draft));
       showToast({
         kind: "success",
         message: chatThemeDisplayName(summary, language),
@@ -224,6 +401,8 @@ export function useChatThemeCustomizer() {
   };
 
   return {
+    assets,
+    assetsLoading,
     assetThemeId,
     dirty,
     draft,
@@ -237,13 +416,22 @@ export function useChatThemeCustomizer() {
     patchBlock,
     patchGlobal,
     patchManifest,
+    patchToken,
     patchTypewriter,
+    canRedo: draftHistory.future.length > 0,
+    canUndo: draftHistory.past.length > 0,
+    canManageAssets,
+    deleteAsset,
+    redo,
     reset,
+    resetSection,
     save,
     saving,
     setSourceId: selectSourceId,
     sourceId,
     sourceReady,
     themes,
+    undo,
+    uploadAsset,
   };
 }

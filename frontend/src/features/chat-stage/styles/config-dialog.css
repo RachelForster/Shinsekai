@@ -32,6 +32,42 @@
   color: var(--chat-config-accent-local);
 }
 
+.chat-config-dialog__appearance-flow {
+  border: 1px solid color-mix(in oklch, var(--chat-config-accent-local) 28%, transparent);
+}
+
+.chat-config-dialog__appearance-layers {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in oklch, var(--chat-dialog-color, #f7f1f0) 62%, transparent);
+  font-size: 11px;
+}
+
+.chat-config-dialog__appearance-layers span,
+.chat-config-dialog__appearance-layers strong {
+  padding: 4px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+}
+
+.chat-config-dialog__appearance-layers span[aria-hidden] {
+  padding: 0;
+  border: 0;
+}
+
+.chat-config-dialog__appearance-layers strong {
+  border-color: color-mix(in oklch, var(--chat-config-accent-local) 42%, transparent);
+  color: var(--chat-dialog-color, #f7f1f0);
+  background: color-mix(in oklch, var(--chat-config-accent-local) 16%, transparent);
+}
+
+.chat-config-dialog__appearance-flow > .button {
+  justify-self: start;
+}
+
 .chat-config-dialog__help {
   margin: -3px 0 1px;
   color: color-mix(in oklch, var(--chat-dialog-color, #f7f1f0) 55%, transparent);

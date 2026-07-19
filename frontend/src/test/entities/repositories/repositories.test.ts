@@ -415,6 +415,12 @@ describe("entity repositories", () => {
         setActiveThemeId: vi.fn().mockResolvedValue(undefined),
         uploadTheme: vi.fn().mockResolvedValue({ id: "uploaded", name: {}, source: "user" }),
         saveTheme: vi.fn().mockResolvedValue({ id: "custom", name: {}, source: "user" }),
+        listThemeAssets: vi.fn().mockResolvedValue([]),
+        uploadThemeAsset: vi
+          .fn()
+          .mockResolvedValue({ kind: "image", name: "frame.png", path: "assets/frame.png", size: 1 }),
+        deleteThemeAsset: vi.fn().mockResolvedValue(undefined),
+        exportTheme: vi.fn().mockResolvedValue("/tmp/custom.zip"),
         deleteTheme: vi.fn().mockResolvedValue(undefined),
         subscribeEvents: vi.fn().mockReturnValue(unsubscribe),
       },
@@ -454,6 +460,7 @@ describe("entity repositories", () => {
         getUi: vi.fn().mockResolvedValue({ pages: [], pluginId: "core-tools" }),
         install: vi.fn().mockResolvedValue({ id: "core-tools" }),
         list: vi.fn().mockResolvedValue([]),
+        listSlotContributions: vi.fn().mockResolvedValue([]),
         repoTags: vi.fn().mockResolvedValue(["v0.1.0"]),
         scanLocal: vi.fn().mockResolvedValue({
           author: "Shinsekai Contributors",
@@ -508,6 +515,12 @@ describe("entity repositories", () => {
           },
           plugin: { id: "core-tools" },
           result: { reloaded: true },
+        }),
+        runSlotContribution: vi.fn().mockResolvedValue({
+          id: "demo",
+          kind: "success",
+          message: "ok",
+          pluginId: "core-tools",
         }),
         saveUiConfig: vi.fn().mockResolvedValue({ message: "ok", values: {} }),
         setEnabled: vi.fn().mockResolvedValue({ id: "core-tools" }),
@@ -600,6 +613,8 @@ describe("entity repositories", () => {
     await plugin.listAppUpdateTags();
     await plugin.runAppUpdate({ refKind: "tag", tagName: "v0.1.0" }, taskOptions);
     await plugin.installPlugin({ source: "repo", tagName: "v0.1.0" }, taskOptions);
+    await plugin.listPluginSlotContributions();
+    await plugin.runPluginSlotContribution("core-tools", "demo");
     await plugin.setPluginEnabled("core-tools", false);
     await plugin.uninstallPlugin("core-tools");
     await plugin.getMcpConfig();

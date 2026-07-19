@@ -5,10 +5,12 @@ import pytest
 from frontend_bridge_core import plugin_ui
 from frontend_bridge_core.plugin_ui import (
     _frontend_config_page_payload,
+    _frontend_chat_ui_contribution_payloads,
     _frontend_page_payload,
     _plugin_config_field,
     _plugin_data_root,
     _run_plugin_ui_action,
+    _run_frontend_chat_ui_contribution,
 )
 
 
@@ -72,6 +74,55 @@ def test_plugin_config_field_omits_path_kind_when_not_set():
     """_plugin_config_field omits pathKind when not provided."""
     field = _plugin_config_field("output_dir", "Output Directory", "text")
     assert "pathKind" not in field
+
+
+def test_frontend_chat_ui_contributions_are_serialized_without_callbacks(monkeypatch):
+    action = lambda: {"kind": "info", "message": "done"}
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_chat_ui_contributions",
+        lambda: [
+            SimpleNamespace(
+                action=action,
+                action_label="Run",
+                contribution_id=" demo.action ",
+                description="Host rendered",
+                icon="sparkles",
+                order=12,
+                plugin_id="demo.plugin",
+                plugin_version="1.0",
+                slot="chat-dialog-actions",
+                title=" Demo action ",
+                variant="primary",
+            )
+        ],
+    )
+
+    payload = _frontend_chat_ui_contribution_payloads()
+
+    assert payload == [
+        {
+            "actionLabel": "Run",
+            "actionable": True,
+            "description": "Host rendered",
+            "icon": "sparkles",
+            "id": "demo.action",
+            "order": 12.0,
+            "pluginId": "demo.plugin",
+            "pluginVersion": "1.0",
+            "slot": "chat-dialog-actions",
+            "title": "Demo action",
+            "variant": "primary",
+        }
+    ]
+    assert "action" not in payload[0]
+
+    assert _run_frontend_chat_ui_contribution("demo.plugin", "demo.action") == {
+        "id": "demo.action",
+        "kind": "info",
+        "message": "done",
+        "pluginId": "demo.plugin",
+    }
 
 
 def test_frontend_config_page_payload_normalizes_kind_and_values():

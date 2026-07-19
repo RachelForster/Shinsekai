@@ -14,7 +14,12 @@ import { DEFAULT_CHARACTER_COLOR } from "../constants";
 import { numberedTags, tagContents } from "../assets/assetText";
 import { runtimeStatusFromSnapshot } from "./chatRuntimeStatus";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
-import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../theme/chatTheme";
+import {
+  DEFAULT_CHAT_THEME_ID,
+  type ChatThemeAsset,
+  type ChatThemeManifest,
+  type ChatThemeSummary,
+} from "../theme/chatTheme";
 import type {
   BatchToolResult,
   Background,
@@ -460,6 +465,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   const previewThemeAssetBases = new Map<string, string>(
     sampleChatThemeSummaries.filter((theme) => theme.source === "builtin").map((theme) => [theme.id, theme.id]),
   );
+  const previewThemeAssetUrls = new Map<string, { asset: ChatThemeAsset; url: string }>();
 
   const emitChat = () => {
     const snapshot = clone(chat);
@@ -527,6 +533,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     previewThemeManifests.get(id) ?? previewThemeManifests.get(DEFAULT_CHAT_THEME_ID);
 
   const resolvePreviewThemeAssetUrl = (path: string) => {
+    const uploaded = previewThemeAssetUrls.get(path);
+    if (uploaded) {
+      return uploaded.url;
+    }
     const direct = builtinChatThemeAssetUrls[path];
     if (direct) {
       return direct;
@@ -1391,6 +1401,51 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           source: "user",
         });
       },
+      listThemeAssets(id) {
+        const prefix = `data/chat_ui_themes/${id}/`;
+        return delay(
+          Array.from(previewThemeAssetUrls.entries())
+            .filter(([path]) => path.startsWith(prefix))
+            .map(([, entry]) => entry.asset),
+        );
+      },
+      async uploadThemeAsset(id, file) {
+        if ((previewThemeSources.get(id) ?? "builtin") !== "user") {
+          throw new Error("内置主题资源不可修改，请先保存为用户主题。");
+        }
+        const sanitized = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-") || "asset";
+        const extensionIndex = sanitized.lastIndexOf(".");
+        const stem = extensionIndex > 0 ? sanitized.slice(0, extensionIndex) : sanitized;
+        const extension = extensionIndex > 0 ? sanitized.slice(extensionIndex) : "";
+        let relative = `assets/${sanitized}`;
+        let counter = 2;
+        while (previewThemeAssetUrls.has(`data/chat_ui_themes/${id}/${relative}`)) {
+          relative = `assets/${stem}-${counter}${extension}`;
+          counter += 1;
+        }
+        const suffix = extension.toLowerCase();
+        const kind: ChatThemeAsset["kind"] = [".woff", ".woff2", ".ttf", ".otf"].includes(suffix)
+          ? "font"
+          : [".wav", ".mp3", ".ogg"].includes(suffix)
+            ? "audio"
+            : "image";
+        const asset = { kind, name: file.name, path: relative, size: file.size } satisfies ChatThemeAsset;
+        previewThemeAssetUrls.set(`data/chat_ui_themes/${id}/${relative}`, {
+          asset,
+          url: URL.createObjectURL(file),
+        });
+        return delay(asset);
+      },
+      async deleteThemeAsset(id, path) {
+        const key = `data/chat_ui_themes/${id}/${path}`;
+        const entry = previewThemeAssetUrls.get(key);
+        if (!entry) {
+          throw new Error(`主题资源不存在：${path}`);
+        }
+        URL.revokeObjectURL(entry.url);
+        previewThemeAssetUrls.delete(key);
+      },
+      exportTheme: (id) => delay(`./data/export/chat_ui_themes/${id}.zip`),
       async deleteTheme(id) {
         if ((previewThemeSources.get(id) ?? "user") !== "user") {
           throw new Error("内置主题不能删除。");
@@ -2119,7 +2174,34 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(plugin, 400);
       },
       list: () => delay(plugins),
+      listSlotContributions: () =>
+        delay(
+          plugins.some((plugin) => plugin.id === "core-tools" && plugin.enabled)
+            ? [
+                {
+                  actionLabel: "生成场景提示",
+                  actionable: true,
+                  description: "由宿主安全渲染的浏览器预览贡献。",
+                  icon: "sparkles" as const,
+                  id: "scene-prompt",
+                  order: 100,
+                  pluginId: "core-tools",
+                  pluginVersion: "built-in",
+                  slot: "chat-output" as const,
+                  title: "场景灵感",
+                  variant: "ghost" as const,
+                },
+              ]
+            : [],
+        ),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
+      runSlotContribution: (pluginId, contributionId) =>
+        delay({
+          id: contributionId,
+          kind: "success" as const,
+          message: "浏览器预览动作已执行。",
+          pluginId,
+        }),
       scanLocal(input) {
         const baseName = input.path.split(/[\\/]/).filter(Boolean).pop() || "preview-plugin";
         return delay({
