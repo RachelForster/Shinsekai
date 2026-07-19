@@ -9,9 +9,9 @@ from core.plugins.registry_catalog import (
 from core.plugins.registry_download import normalize_repo_slug
 
 
-def test_default_registry_url_points_to_r2_generated_cache():
+def test_default_registry_url_points_to_counting_gateway():
     assert DEFAULT_REGISTRY_JSON_URL == (
-        "https://r2.shinsekai.studio/registry/plugin_cache_original.json"
+        "https://downloads.shinsekai.studio/registry/plugin_cache_original.json"
     )
 
 
@@ -72,6 +72,7 @@ def test_parse_registry_plugins_accepts_market_object_payload():
                 "commit_sha": "deadbeef",
                 "size": "4096",
                 "updated_at": "2026-06-06T00:00:00Z",
+                "download_count": "345",
                 "tags": "utility, ai",
                 "logo": "https://plugins.example.invalid/plugins/demo/logo.png",
                 "stars": "12",
@@ -100,6 +101,7 @@ def test_parse_registry_plugins_accepts_market_object_payload():
     assert rec.commit_sha == "deadbeef"
     assert rec.size == 4096
     assert rec.package_size == 4096
+    assert rec.download_count == 345
     assert rec.tags == ["utility", "ai"]
     assert rec.logo.endswith("/logo.png")
     assert rec.stars == 12

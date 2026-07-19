@@ -35,6 +35,21 @@ if errorlevel 1 (
     exit /b 1
 )
 
+where cargo > nul 2>&1
+if errorlevel 1 (
+    if exist "%USERPROFILE%\.cargo\bin\cargo.exe" (
+        set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+    )
+)
+
+where cargo > nul 2>&1
+if errorlevel 1 (
+    echo Error: cargo was not found in PATH.
+    echo Please install Rust with rustup, then reopen this terminal.
+    pause
+    exit /b 1
+)
+
 if not exist "frontend\package.json" (
     echo Error: frontend\package.json was not found.
     pause

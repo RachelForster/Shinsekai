@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import { ChevronLeft, ChevronRight, Search } from "lucide-react";
 
 import { useI18n } from "../../shared/i18n";
@@ -62,6 +62,7 @@ export function usePagedPluginList<T>({ items, matcher, pageSize }: PagedSearchO
 }
 
 interface PluginListControlsProps {
+  afterSearch?: ReactNode;
   filteredCount: number;
   page: number;
   placeholder: string;
@@ -73,6 +74,7 @@ interface PluginListControlsProps {
 }
 
 export function PluginListControls({
+  afterSearch,
   filteredCount,
   page,
   placeholder,
@@ -85,7 +87,7 @@ export function PluginListControls({
   const { t } = useI18n();
 
   return (
-    <div className="plugin-list-controls">
+    <div className={`plugin-list-controls${afterSearch ? " plugin-list-controls--with-after-search" : ""}`}>
       <label className="plugin-list-controls__search">
         <Search aria-hidden className="plugin-list-controls__icon" />
         <TextInput
@@ -95,6 +97,7 @@ export function PluginListControls({
           value={query}
         />
       </label>
+      {afterSearch ? <div className="plugin-list-controls__after-search">{afterSearch}</div> : null}
       <span className="inline-status plugin-list-controls__count">
         {t("plugin.list.count", { count: filteredCount, total: totalCount })}
       </span>

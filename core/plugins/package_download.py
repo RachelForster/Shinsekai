@@ -138,9 +138,22 @@ def _is_transient_network_error(exc: BaseException) -> bool:
     )
 
 
-def _read_url(url: str, *, timeout_sec: float = 180.0, max_bytes: int | None = None) -> bytes:
+def _read_url(
+    url: str,
+    *,
+    timeout_sec: float = 180.0,
+    max_bytes: int | None = None,
+    download_id: str = "",
+) -> bytes:
     limit = max_bytes if max_bytes is not None else _max_bytes()
-    req = Request(url, headers={"User-Agent": _PACKAGE_USER_AGENT})
+    request_id = download_id.strip() or str(uuid.uuid4())
+    req = Request(
+        url,
+        headers={
+            "User-Agent": _PACKAGE_USER_AGENT,
+            "X-Shinsekai-Download-Id": request_id,
+        },
+    )
     try:
         with urlopen(req, timeout=timeout_sec) as resp:
             content_length = resp.headers.get("Content-Length")
@@ -337,7 +350,13 @@ def install_registry_package_under_plugins(
     if target.is_dir() and not overwrite:
         return target.resolve(strict=False)
 
-    body = _read_url(package_url, timeout_sec=timeout_sec, max_bytes=_max_bytes())
+    download_id = str(uuid.uuid4())
+    body = _read_url(
+        package_url,
+        timeout_sec=timeout_sec,
+        max_bytes=_max_bytes(),
+        download_id=download_id,
+    )
     _verify_package(
         body,
         expected_sha256=(record.package_sha256 or record.sha256 or "").strip(),

@@ -911,9 +911,13 @@ export const enMessages: Record<MessageKey, string> = {
   "plugin.catalog.errorBody": "Check the network and try again.",
   "plugin.catalog.errorTitle": "Could not load plugin catalog",
   "plugin.catalog.loading": "Loading plugin catalog",
+  "plugin.catalog.downloads": "{count} downloads",
   "plugin.catalog.metadataLabel": "Plugin metadata",
   "plugin.catalog.officialPackage": "Official package",
   "plugin.catalog.securityScanPassed": "Scan passed",
+  "plugin.catalog.sortDownloads": "Downloads",
+  "plugin.catalog.sortLabel": "Sort plugins",
+  "plugin.catalog.sortLatest": "Latest upload",
   "plugin.catalog.title": "Discover",
   "plugin.description":
     "Plugins contribute only to fixed slots and are installed, enabled, or disabled through the platform layer.",
