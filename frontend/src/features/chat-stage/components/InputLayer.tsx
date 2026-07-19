@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { Ear, EarOff, Mic, MicOff, Plus, Send } from "lucide-react";
+import { Ear, EarOff, FileText, ImagePlus, Mic, MicOff, Plus, Send, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
-import type { ChatCommand } from "../../../shared/platform/types";
+import type { ChatAttachmentInput, ChatCommand } from "../../../shared/platform/types";
 import { Button, IconButton, TextArea, TextInput, ThemeFrame, useToast } from "../../../shared/ui";
 import {
   appendTranscript,
@@ -14,6 +14,7 @@ import { useDismissableLayer } from "../hooks/useDismissableLayer";
 import { useAutoHideRegion } from "../hooks/useAutoHideRegion";
 
 export function InputLayer({
+  attachments,
   autoHide = false,
   asrPaused,
   batchEnabled,
@@ -25,10 +26,13 @@ export function InputLayer({
   onCommand,
   onFlushBatch,
   onInputActivity,
+  onPickAttachments,
+  onRemoveAttachment,
   onSubmit,
   value,
 }: {
   asrPaused: boolean;
+  attachments: ChatAttachmentInput[];
   autoHide?: boolean;
   batchEnabled: boolean;
   disabled: boolean;
@@ -40,6 +44,8 @@ export function InputLayer({
   onFlushBatch: () => void | Promise<void>;
   onInputActivity: (state: { composing: boolean; hasText: boolean }) => void;
   onSubmit: () => void | Promise<void>;
+  onPickAttachments: (kind: ChatAttachmentInput["kind"]) => void;
+  onRemoveAttachment: (attachment: ChatAttachmentInput) => void;
   value: string;
 }) {
   const { language, t } = useI18n();
@@ -55,9 +61,9 @@ export function InputLayer({
   const inputActivityRef = useRef("");
   const pillLayout = inputLayout === "pill";
   const pressToTalk = pillLayout && longPressTalkEnabled;
-  const canSubmit = Boolean(value.trim()) && !disabled;
+  const canSubmit = Boolean(value.trim() || attachments.length) && !disabled;
   const closePanel = useCallback(() => setPanelOpen(false), []);
-  const forceVisible = Boolean(value.trim()) || listening || panelOpen || holdTalkActive;
+  const forceVisible = Boolean(value.trim() || attachments.length) || listening || panelOpen || holdTalkActive;
   const autoHideRegion = useAutoHideRegion({ active: !hidden, enabled: autoHide, forceVisible });
 
   useEffect(() => {
@@ -232,6 +238,7 @@ export function InputLayer({
       data-force-visible={forceVisible ? "true" : "false"}
       data-layout={inputLayout}
       data-listening={listening ? "true" : "false"}
+      data-has-attachments={attachments.length ? "true" : "false"}
       data-panel-open={panelOpen ? "true" : "false"}
       data-visible={autoHideRegion.visible ? "true" : "false"}
       onBlurCapture={autoHideRegion.handleBlur}
@@ -286,6 +293,25 @@ export function InputLayer({
         </IconButton>
       ) : null}
       <div className="input-layer__field">
+        {attachments.length ? (
+          <div aria-label={t("chat.input.attachments")} className="input-layer__attachments">
+            {attachments.map((attachment) => (
+              <button
+                aria-label={t("chat.input.removeAttachment", { name: attachment.name })}
+                className="input-layer__attachment"
+                data-kind={attachment.kind}
+                disabled={disabled}
+                key={`${attachment.kind}:${attachment.path}`}
+                onClick={() => onRemoveAttachment(attachment)}
+                title={attachment.name}
+                type="button"
+              >
+                <span className="input-layer__attachment-name">{attachment.name}</span>
+                <X aria-hidden className="input-layer__attachment-remove" />
+              </button>
+            ))}
+          </div>
+        ) : null}
         {pillLayout ? (
           <TextInput
             autoComplete="off"
@@ -333,6 +359,26 @@ export function InputLayer({
           </Button>
         ) : null}
       </div>
+      {!pillLayout ? (
+        <div aria-label={t("chat.input.attachments")} className="input-layer__attachment-stack" role="group">
+          <IconButton
+            className="input-layer__attachment-button"
+            disabled={disabled}
+            label={t("chat.input.attachImage")}
+            onClick={() => onPickAttachments("image")}
+          >
+            <ImagePlus aria-hidden className="icon-button__icon" />
+          </IconButton>
+          <IconButton
+            className="input-layer__attachment-button"
+            disabled={disabled}
+            label={t("chat.input.attachFile")}
+            onClick={() => onPickAttachments("file")}
+          >
+            <FileText aria-hidden className="icon-button__icon" />
+          </IconButton>
+        </div>
+      ) : null}
       {pillLayout ? (
         <>
           <div className="input-layer__pill-actions" role="group">
@@ -360,21 +406,30 @@ export function InputLayer({
             role="group"
           >
             <button
-              aria-pressed={asrPaused}
               className="input-layer__panel-button"
+              disabled={disabled}
               onClick={() => {
-                onCommand({ type: asrPaused ? "resume-asr" : "pause-asr" });
                 setPanelOpen(false);
+                onPickAttachments("image");
               }}
               tabIndex={panelOpen ? undefined : -1}
               type="button"
             >
-              {asrPaused ? (
-                <Ear aria-hidden className="input-layer__panel-icon" />
-              ) : (
-                <EarOff aria-hidden className="input-layer__panel-icon" />
-              )}
-              <span>{asrPaused ? t("chat.toolbar.resumeAsr") : t("chat.toolbar.pauseAsr")}</span>
+              <ImagePlus aria-hidden className="input-layer__panel-icon" />
+              <span>{t("chat.input.attachImage")}</span>
+            </button>
+            <button
+              className="input-layer__panel-button"
+              disabled={disabled}
+              onClick={() => {
+                setPanelOpen(false);
+                onPickAttachments("file");
+              }}
+              tabIndex={panelOpen ? undefined : -1}
+              type="button"
+            >
+              <FileText aria-hidden className="input-layer__panel-icon" />
+              <span>{t("chat.input.attachFile")}</span>
             </button>
           </div>
         </>

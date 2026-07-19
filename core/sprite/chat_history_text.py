@@ -193,7 +193,7 @@ def _turns_from_message(message: Mapping[str, Any], user_display_name: str) -> l
     if role in {"system", "tool"}:
         return []
     if role == "user":
-        content = _content_text(message.get("content"))
+        content = _content_text(message.get("display_content") or message.get("content"))
         return [_turn("user", user_display_name, content)] if content else []
     if role != "assistant":
         return []

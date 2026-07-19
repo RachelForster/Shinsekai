@@ -150,6 +150,7 @@ describe("browser preview platform chat themes", () => {
     const windborneManifest = await platform.chat.getThemeManifest("windborne-adventure");
     expect(windborneManifest.tokens.global?.themeColor).toBe("#f3cf57");
     expect(windborneManifest.tokens.dialog?.chrome).toBe("none");
+    expect(windborneManifest.tokens.input?.borderRadius).toBe("calc(var(--stage-input-height) / 2)");
     expect(windborneManifest.tokens.logs?.code?.background).toBe("rgba(10,19,25,0.88)");
 
     const windborneTheme = await platform.chat.getTheme();
@@ -334,6 +335,28 @@ describe("browser preview platform chat themes", () => {
     expect((await flushPromise).turnState).toMatchObject({ pendingCount: 0, pendingMessages: [] });
     expect(events.at(-1)?.type).toBe("chat.turn.state");
     unsubscribe();
+  });
+
+  it("renders structured attachment payloads in browser preview chat", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+
+    const sendPromise = platform.chat.command({
+      payload: {
+        attachments: [
+          { kind: "image", name: "scene.png", path: "D:/attachments/scene.png" },
+          { kind: "file", name: "notes.txt", path: "D:/attachments/notes.txt" },
+        ],
+        text: "Inspect these",
+      },
+      type: "send-message",
+    });
+    await vi.advanceTimersByTimeAsync(120);
+    const sending = await sendPromise;
+
+    expect(sending.dialogText).toBe("Inspect these\n[image: scene.png] [file: notes.txt]");
+    expect(sending.historyEntries?.at(-1)?.text).toContain("[image: scene.png] [file: notes.txt]");
+    await vi.advanceTimersByTimeAsync(1_400);
   });
 
   it("clears closed-session markers when preview realtime commands resume interaction", async () => {

@@ -125,6 +125,7 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
         return _DummyProcess()
 
     monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.delenv("SHINSEKAI_CHAT_ATTACHMENTS_ROOT", raising=False)
     monkeypatch.setattr(chat.sys, "frozen", False, raising=False)
     monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
     monkeypatch.setattr(chat, "_main_chat_process", None)
@@ -153,6 +154,7 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     assert captured["env"]["SHINSEKAI_PROJECT_ROOT"] == str(project_root)
     assert captured["env"]["EASYAI_PROJECT_ROOT"] == str(project_root)
     assert captured["env"]["SHINSEKAI_APP_ROOT"] == str(app_root)
+    assert captured["env"]["SHINSEKAI_CHAT_ATTACHMENTS_ROOT"] == str(app_root)
     assert captured["env"]["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] == "1"
     assert captured["cmd"][1] != str(project_root / "main.py")
 

@@ -39,6 +39,7 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
     asrTranscript: undefined,
     error: undefined,
     eventSeq: nextEventSeq,
+    inputAttachments: state.inputAttachments,
     sprites: normalizeChatStageSprites(snapshot.sprites.map((sprite) => ({ ...sprite }))),
     stats: (snapshot.stats ?? []).map((stat) => ({ ...stat })),
     turnOptions: { ...emptyChatState.turnOptions, ...snapshot.turnOptions },

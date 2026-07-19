@@ -10,6 +10,7 @@ function preserveOptimisticPresentation(state: ChatStageState, next: ChatStageSt
     characterName: state.characterName,
     dialogHtml: state.dialogHtml,
     dialogText: state.dialogText,
+    inputAttachments: state.inputAttachments,
     inputDraft: state.inputDraft,
     optimisticSubmission: state.optimisticSubmission,
     options: [...state.options],
@@ -82,6 +83,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
     }
     case "submitUserMessage": {
       const optimisticSubmission: NonNullable<ChatStageState["optimisticSubmission"]> = {
+        attachmentsEditedAfterSubmission: false,
         draftEditedAfterSubmission: false,
         eventSeq: state.eventSeq,
         previous: {
@@ -90,6 +92,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
           dialogText: state.dialogText,
           error: state.error,
           inputDraft: state.inputDraft,
+          inputAttachments: state.inputAttachments.map((attachment) => ({ ...attachment })),
           notificationText: state.notificationText,
           options: [...state.options],
           sessionClosedReason: state.sessionClosedReason,
@@ -103,6 +106,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       if (action.queued) {
         return withResolvedLayers({
           ...clearTransientNotificationState(state),
+          inputAttachments: [],
           inputDraft: "",
           optimisticSubmission,
           options: [],
@@ -115,6 +119,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         dialogText: action.text,
         error: undefined,
         inputDraft: "",
+        inputAttachments: [],
         optimisticSubmission,
         options: [],
         sessionClosedReason: undefined,
@@ -129,10 +134,14 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         return state;
       }
       const inputDraft = optimistic.draftEditedAfterSubmission ? state.inputDraft : optimistic.previous.inputDraft;
+      const inputAttachments = optimistic.attachmentsEditedAfterSubmission
+        ? state.inputAttachments
+        : optimistic.previous.inputAttachments;
       return withResolvedLayers({
         ...state,
         ...optimistic.previous,
         inputDraft,
+        inputAttachments: inputAttachments.map((attachment) => ({ ...attachment })),
         options: [...optimistic.previous.options],
         optimisticSubmission: undefined,
       });
@@ -141,6 +150,14 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       return withResolvedLayers({
         ...state,
         historyEntries: action.historyEntries.map((entry) => ({ ...entry })),
+      });
+    case "setAttachments":
+      return withResolvedLayers({
+        ...state,
+        inputAttachments: action.attachments.map((attachment) => ({ ...attachment })),
+        optimisticSubmission: state.optimisticSubmission
+          ? { ...state.optimisticSubmission, attachmentsEditedAfterSubmission: true }
+          : undefined,
       });
     case "setDraft":
       return withResolvedLayers({

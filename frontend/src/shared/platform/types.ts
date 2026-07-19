@@ -878,6 +878,17 @@ export interface ChatCommandResult extends ChatSnapshot {
 export type ChatTransportState = "connected" | "connecting" | "polling" | "reconnecting";
 export type ChatTransportMode = "snapshot" | "websocket";
 
+export interface ChatAttachmentInput {
+  kind: "file" | "image";
+  name: string;
+  path: string;
+}
+
+export interface ChatSendPayload {
+  attachments: ChatAttachmentInput[];
+  text: string;
+}
+
 export interface ChatCommand {
   cmdId?: string;
   payload?: unknown;

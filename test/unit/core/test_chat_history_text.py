@@ -39,6 +39,21 @@ def test_raw_messages_become_dialog_rows_and_skip_system_and_tool() -> None:
     )
 
 
+def test_history_payload_prefers_attachment_display_content_over_internal_blocks() -> None:
+    payload = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "internal prompt"},
+                {"type": "local_image", "path": "C:/private/scene.png"},
+            ],
+            "display_content": "Inspect this\n[image: scene.png]",
+        }
+    ]
+
+    assert history_payload_to_plain_text(payload) == "你: Inspect this\n[image: scene.png]"
+
+
 def test_structured_turns_keep_speaker_content_and_rendered_text() -> None:
     turns = chat_history_to_turns(
         [

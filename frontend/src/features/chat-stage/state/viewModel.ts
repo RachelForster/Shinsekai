@@ -38,6 +38,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     dialogCharacterName: systemPromptText ? undefined : dialog.characterName,
     dialogHtml: systemPromptText ? undefined : dialog.dialogHtml,
     dialogText: systemPromptText ? "" : dialog.dialogText,
+    inputAttachments: state.inputAttachments,
     inputDisabled:
       !state.layers.input ||
       ((state.status === "generating" || state.status === "streaming") && !state.turnOptions.interruptEnabled),

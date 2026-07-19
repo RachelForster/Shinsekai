@@ -39,6 +39,7 @@ def _configure_test_temp_dir() -> None:
     os.environ.setdefault("TMPDIR", temp_path)
     os.environ.setdefault("TEMP", temp_path)
     os.environ.setdefault("TMP", temp_path)
+    os.environ.setdefault("SHINSEKAI_CHAT_ATTACHMENTS_ROOT", temp_path)
     tempfile.tempdir = temp_path
 
 

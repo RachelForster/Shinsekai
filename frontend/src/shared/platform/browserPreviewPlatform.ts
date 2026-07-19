@@ -24,6 +24,7 @@ import type {
   CharacterMemoryList,
   ChatConversationBranch,
   ChatHistoryEntry,
+  ChatSendPayload,
   ChatSnapshot,
   ChatStageEvent,
   Effect,
@@ -357,6 +358,21 @@ function previewLogSnapshot(): LogSnapshot {
 
 function cloneHistoryEntries(entries: ChatHistoryEntry[] | undefined): ChatHistoryEntry[] {
   return (entries ?? []).map((entry) => ({ ...entry }));
+}
+
+function browserPreviewChatPayload(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    const text = String(payload ?? "").trim();
+    return { displayText: text, text };
+  }
+  const candidate = payload as Partial<ChatSendPayload>;
+  const text = String(candidate.text ?? "").trim();
+  const labels = Array.isArray(candidate.attachments)
+    ? candidate.attachments
+        .filter((attachment) => attachment?.kind === "image" || attachment?.kind === "file")
+        .map((attachment) => `[${attachment.kind}: ${String(attachment.name || "attachment")}]`)
+    : [];
+  return { displayText: [text, labels.join(" ")].filter(Boolean).join("\n"), text };
 }
 
 function isPreviewRealtimeCommand(command: { type: string }) {
@@ -859,7 +875,8 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           emitTurnState();
         }
         if (command.type === "send-message") {
-          const payload = String(command.payload ?? "").trim();
+          const payload = browserPreviewChatPayload(command.payload);
+          const displayText = payload.displayText;
           if (chat.turnOptions?.batchEnabled) {
             chat = {
               ...chat,
@@ -869,7 +886,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
                 ...(chat.turnState ?? sampleChatSnapshot.turnState!),
                 enabled: true,
                 pendingCount: (chat.turnState?.pendingCount ?? 0) + 1,
-                pendingMessages: [...(chat.turnState?.pendingMessages ?? []), payload],
+                pendingMessages: [...(chat.turnState?.pendingMessages ?? []), displayText],
                 remainingSeconds: chat.turnOptions.batchIdleSeconds,
                 scheduled: true,
                 typing: false,
@@ -885,7 +902,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           chat = {
             ...chat,
             characterName: userDisplayName,
-            dialogText: payload,
+            dialogText: displayText,
             historyEntries: [
               ...cloneHistoryEntries(chat.historyEntries),
               {
@@ -893,7 +910,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
                 id: `history-${Date.now()}-user`,
                 revertUserIndex: nextUserIndex,
                 role: "user",
-                text: `${userDisplayName}: ${payload}`,
+                text: `${userDisplayName}: ${displayText}`,
               },
             ],
             inputDraft: "",
@@ -905,10 +922,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           scheduleChatUpdate(700, (current) => ({
             ...current,
             characterName: "Nanami",
-            dialogText: `收到：${payload}`,
+            dialogText: `收到：${displayText}`,
             historyEntries: [
               ...cloneHistoryEntries(current.historyEntries),
-              { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 收到：${payload}` },
+              { id: `history-${Date.now()}-assistant`, role: "assistant", text: `Nanami: 收到：${displayText}` },
             ],
             numericInfo: "speaking",
             status: "speaking",

@@ -26,6 +26,28 @@ def test_submit_delivers_immediately_when_batching_is_disabled() -> None:
     assert delivered == ["hello"]
 
 
+def test_submit_preserves_attachments_for_immediate_and_batched_delivery() -> None:
+    delivered: list[tuple[str, list[dict[str, str]]]] = []
+    service = ChatTurnService(
+        sink=lambda text, *, attachments: delivered.append((text, attachments)),
+        options=ChatTurnOptions(
+            interrupt_enabled=False,
+            batch_enabled=True,
+            batch_idle_seconds=30,
+            batch_separator=" | ",
+        ),
+    )
+    image = {"kind": "image", "name": "scene.png", "path": "C:/scene.png"}
+    document = {"kind": "file", "name": "notes.txt", "path": "C:/notes.txt"}
+
+    service.submit("inspect", attachments=[image])
+    state = service.submit("", attachments=[document])
+    service.flush()
+
+    assert state.pending_messages == ("inspect", "[file: notes.txt]")
+    assert delivered == [("inspect", [image, document])]
+
+
 def test_submit_interrupts_active_turn_before_delivery() -> None:
     events: list[str] = []
     service = ChatTurnService(

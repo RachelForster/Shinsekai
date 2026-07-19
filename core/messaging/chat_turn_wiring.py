@@ -27,12 +27,12 @@ def create_chat_turn_service(
         batch_separator=str(getattr(api_config, "batch_input_separator", "\n---\n")),
     )
 
-    def deliver(text: str) -> None:
+    def deliver(text: str, *, attachments: list[dict[str, object]] | None = None) -> None:
         if user_input_queue is None:
             return
         from sdk.messages import UserInputMessage
 
-        user_input_queue.put(UserInputMessage(text=text))
+        user_input_queue.put(UserInputMessage(text=text, attachments=list(attachments or [])))
 
     def clear_queue(queue: object | None) -> Callable[[], None]:
         def clear() -> None:

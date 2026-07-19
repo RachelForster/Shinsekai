@@ -252,7 +252,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-background"]).toBe("rgba(34,34,40,0.9)");
     expect(resolved.style["--chat-input-field-background"]).toBe("rgba(50,50,50,0.78)");
     expect(resolved.style["--chat-input-field-border-radius"]).toBe("12px");
-    expect(resolved.style["--chat-input-grid-template-columns"]).toBe("minmax(0, 1fr) 38px");
+    expect(resolved.style["--chat-input-grid-template-columns"]).toBe("minmax(0, 1fr) 38px 38px");
     expect(resolved.style["--chat-input-max-width"]).toBe("720px");
     expect(resolved.style["--chat-send-label-display"]).toBe("none");
     expect(resolved.style["--chat-send-position"]).toBe("absolute");
@@ -419,8 +419,9 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-layout"]).toBe("pill");
     expect(resolved.style["--chat-input-max-width"]).toBe("640px");
     expect(resolved.style["--stage-input-height"]).toBe(
-      "calc(var(--chat-input-button-size) + clamp(10px, 1.44svh, 14px))",
+      "calc(var(--chat-input-button-size) + clamp(14px, 1.8svh, 18px))",
     );
+    expect(resolved.style["--chat-input-padding"]).toBe("clamp(7px, 0.9svh, 9px) clamp(9px, 1.2svh, 12px)");
     expect(resolved.style["--chat-input-grid-template-columns"]).toBe(
       "var(--chat-input-button-size) minmax(0, 1fr) auto",
     );
@@ -428,7 +429,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-send-display"]).toBe("none");
     expect(resolved.style["--chat-input-voice-stack-display"]).toBe("none");
     expect(resolved.style["--chat-input-border-color"]).toBe("transparent");
-    expect(resolved.style["--chat-input-border-radius"]).toBe("999px");
+    expect(resolved.style["--chat-input-border-radius"]).toBe("calc(var(--stage-input-height) / 2)");
     expect(resolved.style["--chat-input-field-background"]).toBe("transparent");
     expect(resolved.style["--chat-input-field-border-radius"]).toBe("0px");
     expect(resolved.style["--chat-send-background"]).toBe("transparent");
@@ -475,7 +476,7 @@ describe("chat theme runtime", () => {
 
     expect(resolved.style["--chat-input-field-display"]).toBe("block");
     expect(resolved.style["--chat-input-field-position"]).toBe("relative");
-    expect(resolved.style["--chat-input-grid-template-columns"]).toBe("minmax(0, 1fr) 38px");
+    expect(resolved.style["--chat-input-grid-template-columns"]).toBe("minmax(0, 1fr) 38px 38px");
     expect(resolved.style["--chat-input-textarea-padding-right"]).toBe("56px");
     expect(resolved.style["--chat-send-label-display"]).toBe("none");
     expect(resolved.style["--chat-send-position"]).toBe("absolute");

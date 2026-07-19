@@ -133,7 +133,56 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     assert output.turn_id == runtime.chat_turn_service.current_turn().id
     assert user_input_queue.task_done_calls == 2
     assert user_input_queue.unfinished_tasks == 0
-    runtime.llm_manager.chat.assert_called_once_with("hello", stream=False)
+    runtime.llm_manager.chat.assert_called_once_with(
+        "hello",
+        stream=False,
+        user_attachments=[],
+        user_input_text="hello",
+    )
+
+
+def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_path) -> None:
+    image = tmp_path / "scene.png"
+    image.write_bytes(b"image")
+    document = tmp_path / "notes.txt"
+    document.write_text("notes", encoding="utf-8")
+    user_input_queue = CountingQueue()
+    tts_queue = CountingQueue()
+    user_input_queue.put(
+        UserInputMessage(
+            text="Inspect these",
+            attachments=[
+                {"kind": "image", "path": str(image)},
+                {"kind": "file", "path": str(document)},
+            ],
+        )
+    )
+    user_input_queue.put(None)
+
+    runtime = _make_app_runtime()
+    runtime.config.config.api_config.is_streaming = False
+    runtime.llm_manager.llm_adapter.supports_native_vision = True
+    runtime.llm_manager.chat.return_value = '{"character_name":"Alice","speech":"Done","sprite":"0"}'
+    worker = LLMWorker(user_input_queue, tts_queue)
+    worker.run()
+
+    content = runtime.llm_manager.chat.call_args.args[0]
+    assert content[0]["type"] == "text"
+    assert "notes" in content[0]["text"]
+    assert "BEGIN ATTACHED FILE: notes.txt" in content[0]["text"]
+    assert content[1]["type"] == "local_image"
+    assert runtime.llm_manager.chat.call_args.kwargs["user_display_text"] == (
+        "Inspect these\n[image: scene.png] [file: notes.txt]"
+    )
+    assert runtime.llm_manager.chat.call_args.kwargs["user_input_text"] == "Inspect these"
+    assert [item["kind"] for item in runtime.llm_manager.chat.call_args.kwargs["user_attachments"]] == [
+        "image",
+        "file",
+    ]
+    assert "tool_groups" not in runtime.llm_manager.chat.call_args.kwargs
+    runtime.ui_update_manager.record_user_message.assert_called_once_with(
+        "Inspect these\n[image: scene.png] [file: notes.txt]"
+    )
 
 
 def test_tts_worker_exception_path_uses_original_put_data_fallback(
