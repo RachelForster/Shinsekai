@@ -204,6 +204,29 @@ def test_partial_transcript_is_submitted_after_silence_without_adapter_final() -
     controller.close()
 
 
+def test_default_silence_window_allows_natural_speech_pauses() -> None:
+    adapters: list[_FakeASRAdapter] = []
+
+    def factory(callback):
+        adapter = _FakeASRAdapter(callback)
+        adapters.append(adapter)
+        return adapter
+
+    controller = StreamingASRController(
+        adapter_factory=factory,
+        emit_event=lambda _event: None,
+        submit_final=lambda _text: None,
+    )
+    controller.user_resume()
+    _wait_until(lambda: bool(adapters) and "start" in adapters[0].calls)
+
+    adapters[0].callback("keep listening", True)
+
+    assert controller._silence_timer is not None
+    assert controller._silence_timer.interval == 3.5
+    controller.close()
+
+
 def test_user_pause_cancels_pending_silence_submission() -> None:
     adapters: list[_FakeASRAdapter] = []
     submitted: list[str] = []

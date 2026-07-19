@@ -32,7 +32,7 @@ class StreamingASRController:
         on_loading_changed: Callable[[bool], None] | None = None,
         on_error: Callable[[str, BaseException], None] | None = None,
         resume_delay_seconds: float = 0.5,
-        silence_submit_seconds: float = 2.0,
+        silence_submit_seconds: float = 3.5,
     ) -> None:
         self._adapter_factory = adapter_factory
         self._emit_event = emit_event
