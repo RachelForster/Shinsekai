@@ -6,7 +6,6 @@ import pytest
 
 from core.media.chat_attachments import (
     chat_attachment_display_text,
-    chat_file_tool_prompt,
     resolve_chat_attachments,
 )
 
@@ -38,12 +37,9 @@ def test_resolve_chat_attachments_rejects_relative_and_non_image_paths(tmp_path:
         resolve_chat_attachments([{"kind": "image", "path": str(text_file)}])
 
 
-def test_chat_attachment_prompts_keep_display_names_separate_from_tool_paths(tmp_path: Path):
+def test_chat_attachment_display_uses_trusted_file_name(tmp_path: Path):
     document = tmp_path / "story.txt"
     document.write_text("Once upon a time", encoding="utf-8")
     attachments = resolve_chat_attachments([{"kind": "file", "path": str(document)}])
 
     assert chat_attachment_display_text("Summarize", attachments) == "Summarize\n[file: story.txt]"
-    prompt = chat_file_tool_prompt(attachments)
-    assert "file_read" in prompt
-    assert str(document.resolve()) in prompt

@@ -136,7 +136,7 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     runtime.llm_manager.chat.assert_called_once_with("hello", stream=False)
 
 
-def test_llm_worker_prepares_attachments_and_activates_file_tools(tmp_path) -> None:
+def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_path) -> None:
     image = tmp_path / "scene.png"
     image.write_bytes(b"image")
     document = tmp_path / "notes.txt"
@@ -163,12 +163,13 @@ def test_llm_worker_prepares_attachments_and_activates_file_tools(tmp_path) -> N
 
     content = runtime.llm_manager.chat.call_args.args[0]
     assert content[0]["type"] == "text"
-    assert "file_read" in content[0]["text"]
+    assert "notes" in content[0]["text"]
+    assert "BEGIN ATTACHED FILE: notes.txt" in content[0]["text"]
     assert content[1]["type"] == "local_image"
     assert runtime.llm_manager.chat.call_args.kwargs["user_display_text"] == (
         "Inspect these\n[image: scene.png] [file: notes.txt]"
     )
-    assert runtime.llm_manager.chat.call_args.kwargs["tool_groups"] == ["file"]
+    assert "tool_groups" not in runtime.llm_manager.chat.call_args.kwargs
     runtime.ui_update_manager.record_user_message.assert_called_once_with(
         "Inspect these\n[image: scene.png] [file: notes.txt]"
     )

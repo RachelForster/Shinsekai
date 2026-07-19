@@ -42,6 +42,26 @@ def test_wiring_honors_disabled_interrupt_option() -> None:
     assert input_queue.get_nowait().text == "next"
 
 
+def test_wiring_preserves_attachment_payloads() -> None:
+    input_queue = Queue()
+    service = create_chat_turn_service(
+        config=make_config(interrupt_enabled=False),
+        user_input_queue=input_queue,
+        tts_queue=ClearableQueue(),
+        audio_queue=ClearableQueue(),
+        llm_manager=MagicMock(),
+        ui_worker=MagicMock(),
+        ui_updates=MagicMock(),
+    )
+    attachments = [{"kind": "file", "name": "notes.txt", "path": "C:/notes.txt"}]
+
+    service.submit("read", attachments=attachments)
+
+    message = input_queue.get_nowait()
+    assert message.text == "read"
+    assert message.attachments == attachments
+
+
 def test_wiring_clears_downstream_ports_on_interrupt() -> None:
     input_queue = Queue()
     tts_queue = ClearableQueue()

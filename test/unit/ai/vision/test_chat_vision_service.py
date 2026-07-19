@@ -70,14 +70,19 @@ def test_native_image_blocks_are_encoded_only_at_provider_boundary(tmp_path: Pat
     assert anthropic[1]["source"]["data"] == base64.b64encode(b"image-bytes").decode("ascii")
 
 
-def test_file_attachments_activate_tool_prompt_without_becoming_image_blocks(tmp_path: Path):
+def test_file_attachments_are_read_locally_and_passed_to_the_llm(tmp_path: Path):
     document = tmp_path / "facts.txt"
     document.write_text("facts", encoding="utf-8")
     attachment = resolve_chat_attachments([{"kind": "file", "path": str(document)}])[0]
+    reads: list[str] = []
 
-    prepared = ChatVisionService().prepare("Read it", [attachment], adapter=_NativeAdapter())
+    def local_file_read(path: str):
+        reads.append(path)
+        return {"content": "facts from local file_read", "path": path, "truncated": False}
+
+    prepared = ChatVisionService(file_reader=local_file_read).prepare("Read it", [attachment], adapter=_NativeAdapter())
 
     assert prepared.mode == "text"
-    assert prepared.uses_file_tool is True
-    assert "file_read" in prepared.content
-    assert str(document.resolve()) in prepared.content
+    assert reads == [str(document.resolve())]
+    assert "facts from local file_read" in prepared.content
+    assert "BEGIN ATTACHED FILE: facts.txt" in prepared.content

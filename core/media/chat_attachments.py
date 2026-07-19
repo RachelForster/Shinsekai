@@ -115,14 +115,3 @@ def chat_attachment_display_text(text: str, attachments: Iterable[ResolvedChatAt
     value = str(text or "").strip()
     labels = [f"[{attachment.kind}: {attachment.name}]" for attachment in attachments]
     return "\n".join(part for part in [value, " ".join(labels)] if part).strip()
-
-
-def chat_file_tool_prompt(attachments: Iterable[ResolvedChatAttachment]) -> str:
-    files = [attachment for attachment in attachments if attachment.kind == "file"]
-    if not files:
-        return ""
-    rows = [
-        "The user attached local files. Use the file_read tool when their contents are needed:",
-        *[f"- {attachment.name}: {attachment.path}" for attachment in files],
-    ]
-    return "\n".join(rows)

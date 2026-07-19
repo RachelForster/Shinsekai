@@ -13,7 +13,7 @@ import logging
 import math
 import threading
 import time
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
 
 logger = logging.getLogger(__name__)
@@ -64,7 +64,7 @@ class ChatTurnService:
     def __init__(
         self,
         *,
-        sink: Callable[[str], None] | None = None,
+        sink: Callable[..., None] | None = None,
         options: ChatTurnOptions | None = None,
         on_state_change: Callable[[BatchState], None] | None = None,
         cancel_current: Callable[[], None] | None = None,
@@ -89,14 +89,14 @@ class ChatTurnService:
         self._turn_counter = 0
         self._current_turn = TurnHandle(0, threading.Event(), threading.Event())
 
-        self._batch: list[str] = []
+        self._batch: list[tuple[str, list[dict[str, Any]]]] = []
         self._batch_deadline: float | None = None
         self._batch_timer: threading.Timer | None = None
         self._batch_revision = 0
         self._typing = False
         self._closed = False
 
-    def submit(self, text: str) -> BatchState:
+    def submit(self, text: str, *, attachments: list[dict[str, Any]] | None = None) -> BatchState:
         """Accept one processed user message.
 
         When batching is disabled the message is delivered immediately.  In
@@ -104,20 +104,21 @@ class ChatTurnService:
         sources do not require a UI timer to make progress.
         """
         value = str(text or "")
-        if not value:
+        attachment_payloads = list(attachments or [])
+        if not value and not attachment_payloads:
             return self.batch_state()
 
         if self.options.interrupt_enabled and self.is_active():
             self.interrupt()
 
         if not self.options.batch_enabled:
-            self._sink(value)
+            self._deliver(value, attachment_payloads)
             return self.batch_state()
 
         with self._lock:
             if self._closed:
                 return self._batch_state_locked()
-            self._batch.append(value)
+            self._batch.append((value, attachment_payloads))
             self._typing = False
             self._schedule_flush_locked()
             state = self._batch_state_locked()
@@ -144,6 +145,7 @@ class ChatTurnService:
 
     def _flush(self, *, expected_revision: int | None) -> BatchState:
         combined = ""
+        combined_attachments: list[dict[str, Any]] = []
         with self._lock:
             if self._closed or (
                 expected_revision is not None and expected_revision != self._batch_revision
@@ -152,13 +154,20 @@ class ChatTurnService:
             self._cancel_batch_timer_locked()
             self._typing = False
             if self._batch:
-                combined = self.options.batch_separator.join(self._batch)
+                combined = self.options.batch_separator.join(
+                    text for text, _attachments in self._batch if text
+                )
+                combined_attachments = [
+                    attachment
+                    for _text, attachments in self._batch
+                    for attachment in attachments
+                ]
                 self._batch.clear()
             # Serialize delivery with cancellation. A history boundary can then
             # invalidate the timer and clear a just-delivered queue item before
             # mutating the active branch.
-            if combined:
-                self._sink(combined)
+            if combined or combined_attachments:
+                self._deliver(combined, combined_attachments)
             state = self._batch_state_locked()
         self._publish_state(state)
         return state
@@ -186,6 +195,7 @@ class ChatTurnService:
         batch is pending reschedules it from the time of the change.
         """
         combined = ""
+        combined_attachments: list[dict[str, Any]] = []
         with self._lock:
             previous = self.options
             self.options = options
@@ -193,12 +203,19 @@ class ChatTurnService:
                 self._cancel_batch_timer_locked()
                 self._typing = False
                 if self._batch:
-                    combined = previous.batch_separator.join(self._batch)
+                    combined = previous.batch_separator.join(
+                        text for text, _attachments in self._batch if text
+                    )
+                    combined_attachments = [
+                        attachment
+                        for _text, attachments in self._batch
+                        for attachment in attachments
+                    ]
                     self._batch.clear()
             elif options.batch_enabled and self._batch and not self._typing:
                 self._schedule_flush_locked()
-            if combined:
-                self._sink(combined)
+            if combined or combined_attachments:
+                self._deliver(combined, combined_attachments)
             state = self._batch_state_locked()
         self._publish_state(state)
         return state
@@ -272,6 +289,12 @@ class ChatTurnService:
             self._closed = True
             self._cancel_batch_timer_locked()
 
+    def _deliver(self, text: str, attachments: list[dict[str, Any]]) -> None:
+        if attachments:
+            self._sink(text, attachments=attachments)
+        else:
+            self._sink(text)
+
     def _publish_state(self, state: BatchState) -> None:
         callback = self._on_state_change
         if callback is None:
@@ -307,7 +330,14 @@ class ChatTurnService:
         return BatchState(
             enabled=self.options.batch_enabled,
             pending_count=len(self._batch),
-            pending_messages=tuple(self._batch),
+            pending_messages=tuple(
+                text
+                or " ".join(
+                    f"[{attachment.get('kind', 'file')}: {attachment.get('name', 'attachment')}]"
+                    for attachment in attachments
+                )
+                for text, attachments in self._batch
+            ),
             remaining_seconds=remaining,
             scheduled=deadline is not None,
             typing=self._typing,

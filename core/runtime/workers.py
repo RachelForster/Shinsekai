@@ -16,7 +16,6 @@ from sdk.graph import DagNode, Port
 
 # 假设以下依赖文件已在项目路径中
 from llm.llm_manager import STREAM_REASONING_DELTA_KEY
-from llm.tools.tool_manager import ToolManager
 import threading
 import pygame
 import sys
@@ -130,7 +129,6 @@ class LLMWorker(QThreadDagNode):
         self.llm_manager = rt.llm_manager
         self.user_input_queue = self.inq(self.PORT_USER_INPUT)
         self.tts_queue = self.outq(self.PORT_LLM_OUTPUT)
-        self.tool_manager = ToolManager()
         self._app_inited = True
 
     def inputs(self) -> dict[str, Port]:
@@ -189,8 +187,6 @@ class LLMWorker(QThreadDagNode):
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
                     chat_kwargs = {"stream": is_streaming}
-                    if prepared_input.uses_file_tool:
-                        chat_kwargs["tool_groups"] = ["file"]
                     if attachments:
                         chat_kwargs["user_display_text"] = prepared_input.display_text
                     raw_response = self.llm_manager.chat(prepared_input.content, **chat_kwargs)
