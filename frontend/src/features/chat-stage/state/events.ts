@@ -204,6 +204,9 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
     case "asr.partial":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
+        asrEnabled: true,
+        asrLoading: false,
+        asrRunning: true,
         asrTranscript: event.text,
         eventSeq: Math.max(state.eventSeq, event.seq),
         inputDraft: event.text,
@@ -216,12 +219,18 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         eventSeq: Math.max(state.eventSeq, event.seq),
         inputDraft: event.text,
       });
-    case "asr.state":
+    case "asr.state": {
+      const asrEnabled = event.enabled ?? event.running;
+      const replyInProgress = ["generating", "streaming", "speaking"].includes(state.status);
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
+        asrEnabled,
+        asrLoading: Boolean(event.loading) && asrEnabled,
+        asrRunning: event.running && asrEnabled,
         eventSeq: Math.max(state.eventSeq, event.seq),
-        status: event.running ? "listening" : "paused",
+        status: event.running ? "listening" : replyInProgress ? state.status : "paused",
       });
+    }
     case "reply.finished":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),

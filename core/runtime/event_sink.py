@@ -58,6 +58,9 @@ def _append_query(url: str, params: dict[str, str]) -> str:
 
 def make_empty_chat_snapshot() -> Dict[str, Any]:
     return {
+        "asrEnabled": False,
+        "asrLoading": False,
+        "asrRunning": False,
         "dialogText": "",
         "eventSeq": 0,
         "historyEntries": [],
@@ -399,6 +402,9 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "asr.partial":
         _clear_transient_notification_state(next_snapshot)
+        next_snapshot["asrEnabled"] = True
+        next_snapshot["asrLoading"] = False
+        next_snapshot["asrRunning"] = True
         next_snapshot["inputDraft"] = str(event.get("text") or "")
         next_snapshot["status"] = "listening"
         return next_snapshot
@@ -410,7 +416,16 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "asr.state":
         _clear_transient_notification_state(next_snapshot)
-        next_snapshot["status"] = "listening" if bool(event.get("running")) else "paused"
+        running = bool(event.get("running"))
+        enabled = bool(event.get("enabled", running))
+        next_snapshot["asrEnabled"] = enabled
+        next_snapshot["asrLoading"] = bool(event.get("loading")) and enabled
+        next_snapshot["asrRunning"] = running and enabled
+        current_status = str(next_snapshot.get("status") or "idle")
+        if running:
+            next_snapshot["status"] = "listening"
+        elif current_status not in {"generating", "streaming", "speaking"}:
+            next_snapshot["status"] = "paused"
         return next_snapshot
 
     if event_type == "reply.finished":

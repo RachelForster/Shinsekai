@@ -10,7 +10,6 @@ import type { ChatAttachmentInput, ChatSendPayload, ChatTurnOptions } from "../.
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, PathPickerDialog, useToast } from "../../shared/ui";
-import { VOSK_MODEL_PATH } from "../api-settings/apiSettingsUtils";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
 import { ChatConfigDialog } from "./components/ChatConfigDialog";
 import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
@@ -41,7 +40,6 @@ import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
 import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
 import { useMainThemeColor } from "./hooks/useMainThemeColor";
-import { useVoskModelAvailability } from "./hooks/useVoskModelAvailability";
 import {
   chatStageRuntimeStyle,
   defaultChatStageRuntimeConfig,
@@ -73,7 +71,6 @@ export function ChatStagePage() {
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
   const [attachmentPickerKind, setAttachmentPickerKind] = useState<ChatAttachmentInput["kind"] | null>(null);
-  const voskModelState = useVoskModelAvailability();
   const { showToast } = useToast();
   const { t } = useI18n();
   const theme = useOptionalChatTheme();
@@ -124,8 +121,6 @@ export function ChatStagePage() {
   const dialogToolbarDetached = dialogToolbarPlacement === "input" || dialogToolbarPlacement === "dialog-top";
   const dialogToolbarReveal = themeStyle["--chat-dialog-toolbar-reveal"] === "hover" ? "hover" : "always";
   const inputLayout = themeStyle["--chat-input-layout"] === "pill" ? "pill" : "default";
-  const longPressTalkVisible = inputLayout === "pill";
-  const longPressTalkEnabled = longPressTalkVisible && runtimeConfig.longPressTalk && voskModelState.available;
   const forkHistoryEnabled = state.experimentalFeatures?.forkHistory === true;
   const conversationTreeEnabled = state.experimentalFeatures?.conversationTree === true;
   const dialogTextDirection = effectiveDialogText.direction ?? "ltr";
@@ -199,12 +194,6 @@ export function ChatStagePage() {
   useEffect(() => {
     writeChatStageRuntimeConfig(runtimeConfig);
   }, [runtimeConfig]);
-
-  useEffect(() => {
-    if (!voskModelState.loading && !voskModelState.available && runtimeConfig.longPressTalk) {
-      setRuntimeConfig((current) => (current.longPressTalk ? { ...current, longPressTalk: false } : current));
-    }
-  }, [runtimeConfig.longPressTalk, voskModelState.available, voskModelState.loading]);
 
   const submit = async (textOverride?: string) => {
     const text = (textOverride ?? viewModel.inputDraft).trim();
@@ -333,18 +322,6 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, configUseMainThemeColor }));
   };
 
-  const updateRuntimeLongPressTalk = (longPressTalk: boolean) => {
-    if (longPressTalk && !voskModelState.available) {
-      showToast({
-        kind: "info",
-        message: t("chat.config.longPressTalkVoskMissing", { path: voskModelState.path || VOSK_MODEL_PATH }),
-        title: t("chat.config.longPressTalk"),
-      });
-      return;
-    }
-    setRuntimeConfig((current) => ({ ...current, longPressTalk }));
-  };
-
   const updateRuntimeTextStyle: Parameters<typeof ChatConfigDialog>[0]["onTextStyleChange"] = (target, patch) => {
     setRuntimeConfig((current) => ({
       ...current,
@@ -392,7 +369,7 @@ export function ChatStagePage() {
   const dialogSurfaceVisible = viewModel.layers.dialog || viewModel.layers.options;
   const dialogToolbar = (
     <DialogStageControls
-      asrPaused={viewModel.status === "paused"}
+      asrEnabled={viewModel.asrEnabled}
       auto={runtimeConfig.auto}
       closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
       configOpen={toolbarConfigOpen}
@@ -410,7 +387,7 @@ export function ChatStagePage() {
       onOpenHistory={openHistoryDialog}
       onTurnOptionsChange={updateTurnOptions}
       showBranches={conversationTreeEnabled}
-      showAsrControl={!viewModel.layers.input && viewModel.status === "paused"}
+      showAsrControl={!viewModel.layers.input}
       turnOptions={state.turnOptions}
       turnState={state.turnState}
     />
@@ -503,14 +480,15 @@ export function ChatStagePage() {
           </div>
         ) : null}
         <InputLayer
-          asrPaused={viewModel.status !== "listening"}
+          asrEnabled={viewModel.asrEnabled}
+          asrLoading={viewModel.asrLoading}
+          asrRunning={viewModel.asrRunning}
           attachments={viewModel.inputAttachments}
           autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideInput}
           batchEnabled={state.turnOptions.batchEnabled}
           disabled={viewModel.inputDisabled}
           hidden={!viewModel.layers.input}
           inputLayout={inputLayout}
-          longPressTalkEnabled={longPressTalkEnabled}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
           onCommand={sendCommand}
           onFlushBatch={() => sendCommand({ type: "flush-input-batch" })}
@@ -570,9 +548,6 @@ export function ChatStagePage() {
           effectiveDialogText={effectiveDialogText}
           effectiveNameText={effectiveNameText}
           immersiveMode={runtimeConfig.immersiveMode}
-          longPressTalk={runtimeConfig.longPressTalk}
-          longPressTalkAvailable={voskModelState.available}
-          longPressTalkVisible={longPressTalkVisible}
           mainThemeColor={mainThemeColor}
           nameText={runtimeConfig.nameText}
           onClose={() => setToolbarConfigOpen(false)}
@@ -585,7 +560,6 @@ export function ChatStagePage() {
           onDialogOpacityChange={updateRuntimeDialogOpacity}
           onDialogScaleChange={updateRuntimeDialogScale}
           onImmersiveModeChange={updateRuntimeImmersiveMode}
-          onLongPressTalkChange={updateRuntimeLongPressTalk}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
           onSpriteScaleChange={updateRuntimeSpriteScale}

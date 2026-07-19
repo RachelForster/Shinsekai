@@ -68,6 +68,7 @@ class StreamingASRController:
             self._turn_paused = False
             self._clear_on_activation = True
             self._cancel_resume_timer_locked()
+        self._emit_state()
         self._activate_async()
 
     def user_pause(self) -> None:
@@ -82,7 +83,7 @@ class StreamingASRController:
             self._cancel_resume_timer_locked()
             adapter = self._adapter if self._started else None
         self._pause_adapter(adapter)
-        self._emit_state(False)
+        self._emit_state()
 
     def pause_for_turn(self) -> bool:
         """Temporarily pause an enabled adapter while a chat turn is processed."""
@@ -94,7 +95,7 @@ class StreamingASRController:
             self._cancel_resume_timer_locked()
             adapter = self._adapter if self._started else None
         self._pause_adapter(adapter)
-        self._emit_state(False)
+        self._emit_state()
         return True
 
     def reply_finished(self) -> None:
@@ -151,6 +152,7 @@ class StreamingASRController:
             self._activating = True
             self._generation += 1
             generation = self._generation
+        self._emit_state()
         threading.Thread(
             target=self._activate_worker,
             args=(generation,),
@@ -177,7 +179,7 @@ class StreamingASRController:
                         self._enabled = False
                 self._notify_loading(False)
                 self._report_error("load", exc)
-                self._emit_state(False)
+                self._emit_state()
                 return
             with self._lock:
                 self._loading = False
@@ -231,7 +233,7 @@ class StreamingASRController:
                     self._active = False
                     self._enabled = False
             self._report_error("start", exc)
-            self._emit_state(False)
+            self._emit_state()
             return
 
         with self._lock:
@@ -260,11 +262,11 @@ class StreamingASRController:
                     self._report_error("stop", exc)
             else:
                 self._pause_adapter(adapter)
-            self._emit_state(False)
+            self._emit_state()
             return
         if clear_transcript:
             self._emit_event_safe({"type": "asr.partial", "text": ""})
-        self._emit_state(True)
+        self._emit_state()
 
     def _handle_transcription(self, text: str, is_partial: bool) -> None:
         raw_text = str(text or "")
@@ -308,7 +310,7 @@ class StreamingASRController:
             return
 
         self._pause_adapter(active_adapter)
-        self._emit_state(False)
+        self._emit_state()
         try:
             self._submit_final(displayed)
         except BaseException as exc:
@@ -327,8 +329,23 @@ class StreamingASRController:
         except Exception as exc:
             self._report_error("pause", exc)
 
-    def _emit_state(self, running: bool) -> None:
-        self._emit_event_safe({"type": "asr.state", "running": bool(running)})
+    def _emit_state(self) -> None:
+        with self._lock:
+            enabled = self._enabled and not self._closed
+            running = enabled and self._active and not self._turn_paused
+            loading = (
+                enabled
+                and not self._turn_paused
+                and (self._loading or self._activating)
+            )
+        self._emit_event_safe(
+            {
+                "type": "asr.state",
+                "enabled": enabled,
+                "loading": loading,
+                "running": running,
+            }
+        )
 
     def _emit_event_safe(self, event: dict[str, Any]) -> None:
         try:

@@ -60,7 +60,18 @@ def test_streaming_asr_submits_final_and_resumes_after_reply() -> None:
     _wait_until(lambda: bool(adapters) and "start" in adapters[0].calls)
     adapter = adapters[0]
     assert loading == [True, False]
-    assert events[-1] == {"type": "asr.state", "running": True}
+    assert {
+        "type": "asr.state",
+        "enabled": True,
+        "loading": True,
+        "running": False,
+    } in events
+    assert events[-1] == {
+        "type": "asr.state",
+        "enabled": True,
+        "loading": False,
+        "running": True,
+    }
 
     adapter.callback("hello", True)
     assert events[-1] == {"type": "asr.partial", "text": "hello"}
@@ -70,14 +81,24 @@ def test_streaming_asr_submits_final_and_resumes_after_reply() -> None:
     assert adapter.calls[-1] == "pause"
     assert events[-2:] == [
         {"type": "asr.final", "text": "hello world"},
-        {"type": "asr.state", "running": False},
+        {
+            "type": "asr.state",
+            "enabled": True,
+            "loading": False,
+            "running": False,
+        },
     ]
 
     controller.reply_finished()
     _wait_until(lambda: "resume" in adapter.calls)
     assert events[-2:] == [
         {"type": "asr.partial", "text": ""},
-        {"type": "asr.state", "running": True},
+        {
+            "type": "asr.state",
+            "enabled": True,
+            "loading": False,
+            "running": True,
+        },
     ]
 
     controller.close()
@@ -86,6 +107,7 @@ def test_streaming_asr_submits_final_and_resumes_after_reply() -> None:
 
 def test_user_pause_cancels_automatic_resume() -> None:
     adapters: list[_FakeASRAdapter] = []
+    events: list[dict] = []
 
     def factory(callback):
         adapter = _FakeASRAdapter(callback, language="zh")
@@ -94,7 +116,7 @@ def test_user_pause_cancels_automatic_resume() -> None:
 
     controller = StreamingASRController(
         adapter_factory=factory,
-        emit_event=lambda _event: None,
+        emit_event=events.append,
         submit_final=lambda _text: None,
         resume_delay_seconds=0.01,
     )
@@ -110,6 +132,45 @@ def test_user_pause_cancels_automatic_resume() -> None:
 
     assert adapter.calls.count("resume") == resume_count
     assert controller.enabled is False
+    assert events[-1] == {
+        "type": "asr.state",
+        "enabled": False,
+        "loading": False,
+        "running": False,
+    }
+    controller.close()
+
+
+def test_turn_pause_keeps_asr_enabled_until_the_user_disables_it() -> None:
+    adapters: list[_FakeASRAdapter] = []
+    events: list[dict] = []
+
+    def factory(callback):
+        adapter = _FakeASRAdapter(callback)
+        adapters.append(adapter)
+        return adapter
+
+    controller = StreamingASRController(
+        adapter_factory=factory,
+        emit_event=events.append,
+        submit_final=lambda _text: None,
+        resume_delay_seconds=0.01,
+    )
+    controller.user_resume()
+    _wait_until(lambda: bool(adapters) and "start" in adapters[0].calls)
+
+    assert controller.pause_for_turn() is True
+    assert controller.enabled is True
+    assert events[-1] == {
+        "type": "asr.state",
+        "enabled": True,
+        "loading": False,
+        "running": False,
+    }
+
+    controller.user_pause()
+    assert controller.enabled is False
+    assert controller.pause_for_turn() is False
     controller.close()
 
 

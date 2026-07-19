@@ -298,6 +298,35 @@ class EventSinkSnapshotTests(unittest.TestCase):
         self.assertEqual(next_snapshot.get("sessionClosedReason"), "")
         self.assertEqual(next_snapshot.get("notificationText"), "")
         self.assertEqual(next_snapshot.get("status"), "paused")
+        self.assertFalse(next_snapshot.get("asrEnabled"))
+        self.assertFalse(next_snapshot.get("asrLoading"))
+        self.assertFalse(next_snapshot.get("asrRunning"))
+
+    def test_asr_state_preserves_reply_status_while_listening_is_temporarily_paused(
+        self,
+    ):
+        snapshot = make_empty_chat_snapshot()
+        snapshot["status"] = "generating"
+        snapshot["asrEnabled"] = True
+        snapshot["asrRunning"] = True
+
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "enabled": True,
+                "loading": False,
+                "running": False,
+                "seq": 5,
+                "ts": 5,
+                "type": "asr.state",
+                "v": 1,
+            },
+        )
+
+        self.assertTrue(next_snapshot.get("asrEnabled"))
+        self.assertFalse(next_snapshot.get("asrLoading"))
+        self.assertFalse(next_snapshot.get("asrRunning"))
+        self.assertEqual(next_snapshot.get("status"), "generating")
 
     def test_reply_finished_clears_stale_notification_text_in_snapshot(self):
         snapshot = make_empty_chat_snapshot()

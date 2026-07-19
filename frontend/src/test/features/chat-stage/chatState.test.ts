@@ -56,6 +56,8 @@ describe("chatStageReducer", () => {
     const state = chatStageReducer(
       {
         ...emptyChatState,
+        asrEnabled: true,
+        asrRunning: true,
         inputDraft: "hello wor",
         status: "listening",
         userDisplayName: "Aoi",
@@ -77,7 +79,53 @@ describe("chatStageReducer", () => {
     expect(state.dialogText).toBe("hello world");
     expect(state.inputDraft).toBe("");
     expect(state.status).toBe("generating");
+    expect(state.asrEnabled).toBe(true);
+    expect(state.asrRunning).toBe(true);
     expect(state.optimisticSubmission?.text).toBe("hello world");
+  });
+
+  it("keeps ASR enabled while a character reply temporarily pauses capture", () => {
+    const generating = {
+      ...emptyChatState,
+      asrEnabled: true,
+      asrRunning: true,
+      status: "generating" as const,
+    };
+
+    const pausedForReply = chatStageReducer(generating, {
+      event: {
+        enabled: true,
+        loading: false,
+        running: false,
+        seq: 1,
+        ts: 1,
+        type: "asr.state",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(pausedForReply.asrEnabled).toBe(true);
+    expect(pausedForReply.asrLoading).toBe(false);
+    expect(pausedForReply.asrRunning).toBe(false);
+    expect(pausedForReply.status).toBe("generating");
+
+    const resumed = chatStageReducer(pausedForReply, {
+      event: {
+        enabled: true,
+        loading: false,
+        running: true,
+        seq: 2,
+        ts: 2,
+        type: "asr.state",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(resumed.asrEnabled).toBe(true);
+    expect(resumed.asrRunning).toBe(true);
+    expect(resumed.status).toBe("listening");
   });
 
   it("renders pending stacked messages as newline-separated user dialogue", () => {

@@ -795,10 +795,16 @@ def main():
         )
         original_post_llm_reply_finished = ui_updates.post_llm_reply_finished
 
+        def _post_pause_asr_for_reply() -> None:
+            # The streaming controller owns the distinction between a user-disabled
+            # microphone and the temporary pause used while the character replies.
+            runtime_asr.pause_for_turn()
+
         def _post_llm_reply_finished_and_resume_asr() -> None:
             original_post_llm_reply_finished()
             runtime_asr.reply_finished()
 
+        ui_updates.post_pause_asr = _post_pause_asr_for_reply
         ui_updates.post_llm_reply_finished = _post_llm_reply_finished_and_resume_asr
 
         def _branch_messages() -> list:
