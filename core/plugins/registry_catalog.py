@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 logger = logging.getLogger(__name__)
 
 DEFAULT_REGISTRY_JSON_URL = (
-    "https://r2.shinsekai.studio/registry/plugin_cache_original.json"
+    "https://downloads.shinsekai.studio/registry/plugin_cache_original.json"
 )
 LEGACY_REGISTRY_JSON_URL = (
     "https://raw.githubusercontent.com/RachelForster/Shinsekai-Plugin-Registry/main/plugins.json"
@@ -48,6 +48,7 @@ class RegistryPluginRecord:
     commit_sha: str = ""
     size: int | None = None
     updated_at: str = ""
+    download_count: int = 0
     tags: list[str] | None = None
     logo: str = ""
     stars: int = 0
@@ -202,6 +203,11 @@ def parse_registry_plugins(raw: Any) -> list[RegistryPluginRecord]:
                 commit_sha=_as_string(item.get("commit_sha") or item.get("commitSha")),
                 size=size,
                 updated_at=_as_string(item.get("updated_at") or item.get("updatedAt")),
+                download_count=_as_count(
+                    item.get("download_count")
+                    if item.get("download_count") is not None
+                    else item.get("downloadCount")
+                ),
                 tags=_as_string_list(item.get("tags")),
                 logo=_as_string(item.get("logo")),
                 stars=_as_count(item.get("stars") if item.get("stars") is not None else item.get("stargazers_count")),

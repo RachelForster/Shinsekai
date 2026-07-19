@@ -55,6 +55,7 @@ const officialPlugin: PluginCatalogItem = {
   author: "Alice",
   description: "Official package plugin",
   displayName: "Official Demo",
+  downloadCount: 1234,
   downloaded: false,
   entry: "official.plugin:Demo",
   id: "official-demo",
@@ -81,6 +82,7 @@ const officialPlugin: PluginCatalogItem = {
 const repoPlugin: PluginCatalogItem = {
   author: "Bob",
   description: "Community repo plugin",
+  downloadCount: 9000,
   downloaded: false,
   entry: "repo.plugin:Demo",
   id: "repo-demo",
@@ -189,6 +191,7 @@ describe("PluginCatalogPanel", () => {
     expect(screen.getByText("Version 1.2.0")).toBeInTheDocument();
     expect(screen.getByText("Supports 0.2.0")).toBeInTheDocument();
     expect(screen.getByText("Scan passed")).toBeInTheDocument();
+    expect(screen.getByText("1,234 downloads")).toBeInTheDocument();
     expect(screen.getByText("1.5 KB")).toBeInTheDocument();
     expect(screen.getByText("+1")).toBeInTheDocument();
 
@@ -211,6 +214,22 @@ describe("PluginCatalogPanel", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     expect(catalogQuery.refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("defaults to latest upload and lets the user switch to download count", async () => {
+    renderPanel({ catalogQuery: fakeCatalogQuery([repoPlugin, officialPlugin]) });
+
+    expect(document.querySelector(".plugin-catalog-sort__icon")).toBeInTheDocument();
+    let cards = await screen.findAllByRole("article");
+    expect(within(cards[0]!).getByRole("heading", { name: "Official Demo" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("combobox", { name: "Sort plugins" }));
+    fireEvent.click(await screen.findByRole("option", { name: "Downloads" }));
+
+    await waitFor(() => {
+      cards = screen.getAllByRole("article");
+      expect(within(cards[0]!).getByRole("heading", { name: "repo-demo" })).toBeInTheDocument();
+    });
   });
 
   it("runs non-desktop app updates from a selected tag", async () => {

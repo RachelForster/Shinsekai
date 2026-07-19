@@ -300,6 +300,7 @@ def _plugin_registry_rows() -> list[dict[str, Any]]:
                 "description": str(rec.description or ""),
                 "displayName": str(getattr(rec, "display_name", "") or rec.name or repo),
                 "downloadUrl": str(getattr(rec, "download_url", "") or ""),
+                "downloadCount": int(getattr(rec, "download_count", 0) or 0),
                 "downloaded": downloaded,
                 "entry": entry,
                 "forks": int(getattr(rec, "forks", 0) or 0),

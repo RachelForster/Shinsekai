@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import socket
+import uuid
 import zipfile
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -77,6 +78,9 @@ def test_registry_package_install_verifies_checksum_size_and_extracts(tmp_path, 
     def fake_urlopen(request, timeout):
         calls.append(request.full_url)
         assert timeout == 1
+        request_id = request.get_header("X-shinsekai-download-id")
+        assert request_id is not None
+        uuid.UUID(request_id)
         return _FakeResponse(body)
 
     monkeypatch.setenv("SHINSEKAI_PLUGIN_PACKAGE_HOSTS", "packages.example")

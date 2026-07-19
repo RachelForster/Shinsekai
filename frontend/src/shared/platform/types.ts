@@ -222,6 +222,7 @@ export interface PluginCatalogItem {
   author: string;
   commitSha?: string;
   description: string;
+  downloadCount?: number;
   displayName?: string;
   downloadUrl?: string;
   downloaded: boolean;

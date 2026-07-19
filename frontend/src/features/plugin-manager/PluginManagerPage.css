@@ -35,6 +35,10 @@
   box-shadow: 0 8px 18px color-mix(in oklch, var(--color-shadow) 42%, transparent);
 }
 
+.plugin-list-controls--with-after-search {
+  grid-template-columns: minmax(180px, 1fr) auto auto auto;
+}
+
 .plugin-list-controls__search {
   position: relative;
   display: block;
@@ -61,6 +65,11 @@
   justify-content: flex-end;
 }
 
+.plugin-list-controls__after-search {
+  display: flex;
+  align-items: center;
+}
+
 .plugin-list-controls__pager {
   display: flex;
   align-items: center;
@@ -73,6 +82,33 @@
   width: 30px;
   min-height: 30px;
   padding-inline: 0;
+}
+
+.plugin-catalog-sort {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.plugin-catalog-sort .custom-select {
+  min-width: 170px;
+}
+
+.plugin-catalog-sort .custom-select__button {
+  padding-left: 34px;
+}
+
+.plugin-catalog-sort__icon {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  left: 11px;
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .plugin-card-grid {
@@ -1144,7 +1180,8 @@
 }
 
 @media (max-width: 860px) {
-  .plugin-list-controls {
+  .plugin-list-controls,
+  .plugin-list-controls--with-after-search {
     grid-template-columns: minmax(0, 1fr);
     align-items: stretch;
   }
