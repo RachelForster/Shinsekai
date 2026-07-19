@@ -72,22 +72,24 @@ export function normalizeSerializablePluginContributions(
 ): PluginSlotContribution[] {
   const seen = new Set<string>();
   return contributions
-    .map((item): PluginSlotContribution => ({
-      ...item,
-      actionLabel: item.actionLabel.trim() || item.title.trim(),
-      actionType:
-        item.actionType === "open-plugin-page" || item.actionType === "callback"
-          ? item.actionType
-          : item.actionable
-            ? "callback"
-            : "none",
-      description: item.description.trim(),
-      id: item.id.trim(),
-      pageId: item.pageId?.trim() ?? "",
-      pluginId: item.pluginId.trim(),
-      presentation: item.presentation === "icon-only" ? "icon-only" : "button",
-      title: item.title.trim(),
-    }))
+    .map(
+      (item): PluginSlotContribution => ({
+        ...item,
+        actionLabel: item.actionLabel.trim() || item.title.trim(),
+        actionType:
+          item.actionType === "open-plugin-page" || item.actionType === "callback"
+            ? item.actionType
+            : item.actionable
+              ? "callback"
+              : "none",
+        description: item.description.trim(),
+        id: item.id.trim(),
+        pageId: item.pageId?.trim() ?? "",
+        pluginId: item.pluginId.trim(),
+        presentation: item.presentation === "icon-only" ? "icon-only" : "button",
+        title: item.title.trim(),
+      }),
+    )
     .filter((item) => {
       const key = `${item.pluginId}:${item.id}`;
       if (!item.id || !item.pluginId || !item.title || !isPluginSlotId(item.slot) || seen.has(key)) {
