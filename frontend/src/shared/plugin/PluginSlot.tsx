@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Info, Play, Puzzle, Settings, Sparkles } from "lucide-react";
+import { Info, Play, Puzzle, Settings, Smartphone, Sparkles } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import {
@@ -23,6 +23,11 @@ export interface PluginRenderContext {
   title: string;
 }
 
+export interface PluginPageTarget {
+  pageId: string;
+  pluginId: string;
+}
+
 /** Trusted in-process contribution kept for host-owned extensions and compatibility. */
 export interface PluginUIContribution {
   configSchema?: PluginConfigGroupSchema[];
@@ -36,6 +41,7 @@ export interface PluginUIContribution {
 
 interface PluginSlotProps {
   contributions?: PluginUIContribution[];
+  onOpenPluginPage?: (target: PluginPageTarget) => void;
   slot: PluginSlotId;
 }
 
@@ -66,14 +72,24 @@ export function normalizeSerializablePluginContributions(
 ): PluginSlotContribution[] {
   const seen = new Set<string>();
   return contributions
-    .map((item) => ({
-      ...item,
-      actionLabel: item.actionLabel.trim() || item.title.trim(),
-      description: item.description.trim(),
-      id: item.id.trim(),
-      pluginId: item.pluginId.trim(),
-      title: item.title.trim(),
-    }))
+    .map(
+      (item): PluginSlotContribution => ({
+        ...item,
+        actionLabel: item.actionLabel.trim() || item.title.trim(),
+        actionType:
+          item.actionType === "open-plugin-page" || item.actionType === "callback"
+            ? item.actionType
+            : item.actionable
+              ? "callback"
+              : "none",
+        description: item.description.trim(),
+        id: item.id.trim(),
+        pageId: item.pageId?.trim() ?? "",
+        pluginId: item.pluginId.trim(),
+        presentation: item.presentation === "icon-only" ? "icon-only" : "button",
+        title: item.title.trim(),
+      }),
+    )
     .filter((item) => {
       const key = `${item.pluginId}:${item.id}`;
       if (!item.id || !item.pluginId || !item.title || !isPluginSlotId(item.slot) || seen.has(key)) {
@@ -90,14 +106,30 @@ const hostIcons: Record<PluginSlotContributionIcon, ReactNode> = {
   play: <Play aria-hidden className="button__icon" />,
   puzzle: <Puzzle aria-hidden className="button__icon" />,
   settings: <Settings aria-hidden className="button__icon" />,
+  smartphone: <Smartphone aria-hidden className="button__icon" />,
   sparkles: <Sparkles aria-hidden className="button__icon" />,
 };
 
-function SerializableContribution({ contribution }: { contribution: PluginSlotContribution }) {
+function SerializableContribution({
+  contribution,
+  onOpenPluginPage,
+}: {
+  contribution: PluginSlotContribution;
+  onOpenPluginPage?: (target: PluginPageTarget) => void;
+}) {
   const [running, setRunning] = useState(false);
   const { showToast } = useToast();
   const run = async () => {
     if (!contribution.actionable || running) {
+      return;
+    }
+    if (contribution.actionType === "open-plugin-page") {
+      if (contribution.pageId && onOpenPluginPage) {
+        onOpenPluginPage({ pageId: contribution.pageId, pluginId: contribution.pluginId });
+      }
+      return;
+    }
+    if (contribution.actionType !== "callback") {
       return;
     }
     setRunning(true);
@@ -136,22 +168,41 @@ function SerializableContribution({ contribution }: { contribution: PluginSlotCo
     );
   }
 
+  const iconOnly = contribution.presentation === "icon-only" || contribution.slot === "chat-top-toolbar";
+  const canRun =
+    contribution.actionable &&
+    (contribution.actionType === "callback" ||
+      (contribution.actionType === "open-plugin-page" && Boolean(contribution.pageId && onOpenPluginPage)));
+  const className =
+    contribution.slot === "chat-dialog-actions"
+      ? "dialog-stage-controls__button"
+      : contribution.slot === "chat-top-toolbar"
+        ? "top-stage-tools__button plugin-slot__icon-button"
+        : "";
+
   return (
     <Button
-      className={contribution.slot === "chat-dialog-actions" ? "dialog-stage-controls__button" : ""}
-      disabled={!contribution.actionable}
+      aria-label={iconOnly ? contribution.title : undefined}
+      className={className}
+      disabled={!canRun}
       icon={hostIcons[contribution.icon]}
       loading={running}
       onClick={() => void run()}
-      title={contribution.description || contribution.title}
+      tooltip={contribution.description || contribution.title}
       variant={contribution.variant}
     >
-      {contribution.actionLabel}
+      {iconOnly ? null : contribution.actionLabel}
     </Button>
   );
 }
 
-function ConnectedPluginSlot({ slot }: { slot: PluginSlotId }) {
+function ConnectedPluginSlot({
+  onOpenPluginPage,
+  slot,
+}: {
+  onOpenPluginPage?: (target: PluginPageTarget) => void;
+  slot: PluginSlotId;
+}) {
   const query = useQuery({
     queryFn: listPluginSlotContributions,
     queryKey: pluginSlotContributionsQueryKey,
@@ -171,16 +222,16 @@ function ConnectedPluginSlot({ slot }: { slot: PluginSlotId }) {
           data-plugin-title={item.title}
           key={`${item.pluginId}:${item.id}`}
         >
-          <SerializableContribution contribution={item} />
+          <SerializableContribution contribution={item} onOpenPluginPage={onOpenPluginPage} />
         </div>
       ))}
     </div>
   );
 }
 
-export function PluginSlot({ contributions, slot }: PluginSlotProps) {
+export function PluginSlot({ contributions, onOpenPluginPage, slot }: PluginSlotProps) {
   if (contributions === undefined) {
-    return <ConnectedPluginSlot slot={slot} />;
+    return <ConnectedPluginSlot onOpenPluginPage={onOpenPluginPage} slot={slot} />;
   }
   const items = normalizePluginContributions(contributions).filter((item) => item.slot === slot);
   if (!items.length) {

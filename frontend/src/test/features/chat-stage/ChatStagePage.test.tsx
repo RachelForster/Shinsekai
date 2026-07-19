@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { CSSProperties } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChatStagePage } from "../../../features/chat-stage/ChatStagePage";
@@ -37,6 +37,8 @@ const themeContextMocks = vi.hoisted(() => ({
   },
 }));
 
+const pluginSlotMocks = vi.hoisted(() => ({ renderPhoneEntry: false }));
+
 vi.mock("../../../entities/chat/repository", () => ({
   closeChat: () => mocks.closeChat(),
   getChatHistory: () => mocks.getChatHistory(),
@@ -59,7 +61,18 @@ vi.mock("../../../features/chat-stage/theme/ChatThemeProvider", () => ({
 }));
 
 vi.mock("../../../shared/plugin/PluginSlot", () => ({
-  PluginSlot: () => null,
+  PluginSlot: ({
+    onOpenPluginPage,
+    slot,
+  }: {
+    onOpenPluginPage?: (target: { pageId: string; pluginId: string }) => void;
+    slot: string;
+  }) =>
+    pluginSlotMocks.renderPhoneEntry && slot === "chat-top-toolbar" ? (
+      <button onClick={() => onOpenPluginPage?.({ pageId: "phone", pluginId: "demo.plugin" })} type="button">
+        Phone
+      </button>
+    ) : null,
 }));
 
 const chatWindowMocks = vi.hoisted(() => ({
@@ -129,12 +142,23 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
   };
 }
 
-function renderPage(initialEntries = ["/"]) {
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output aria-label="location">{`${location.pathname}${location.search}:${JSON.stringify(location.state)}`}</output>
+  );
+}
+
+function renderPage(
+  initialEntries: Parameters<typeof MemoryRouter>[0]["initialEntries"] = ["/"],
+  includeLocationProbe = false,
+) {
   return render(
     <ToastProvider>
       <MemoryRouter initialEntries={initialEntries}>
         <I18nProvider language="en">
           <ChatStagePage />
+          {includeLocationProbe ? <LocationProbe /> : null}
         </I18nProvider>
       </MemoryRouter>
     </ToastProvider>,
@@ -152,6 +176,7 @@ describe("ChatStagePage", () => {
     vi.useRealTimers();
     window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
     themeContextMocks.optional = null;
+    pluginSlotMocks.renderPhoneEntry = false;
     mocks.closeChat.mockResolvedValue(snapshot());
     mocks.getAppConfig.mockResolvedValue({
       api_config: {
@@ -215,6 +240,18 @@ describe("ChatStagePage", () => {
         type: "submit-option",
       }),
     );
+  });
+
+  it("opens a declared phone plugin page from the top toolbar and preserves the Chat return route", async () => {
+    pluginSlotMocks.renderPhoneEntry = true;
+    renderPage([{ pathname: "/chat-stage", search: "?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787" }], true);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Phone" }));
+
+    await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent("/settings/plugins"));
+    expect(screen.getByLabelText("location")).toHaveTextContent('"pageId":"phone"');
+    expect(screen.getByLabelText("location")).toHaveTextContent('"pluginId":"demo.plugin"');
+    expect(screen.getByLabelText("location")).toHaveTextContent('"pathname":"/chat-stage"');
   });
 
   it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {

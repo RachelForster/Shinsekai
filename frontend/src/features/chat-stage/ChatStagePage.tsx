@@ -6,6 +6,7 @@ import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { sendChatCommand } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
+import type { PluginPageTarget } from "../../shared/plugin/PluginSlot";
 import type { ChatAttachmentInput, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
@@ -427,6 +428,27 @@ export function ChatStagePage() {
     });
   };
 
+  const openPluginPage = useCallback(
+    ({ pageId, pluginId }: PluginPageTarget) => {
+      navigate(
+        { pathname: "/settings/plugins", search: location.search },
+        {
+          state: {
+            pageId,
+            pluginId,
+            returnTo: {
+              hash: location.hash,
+              pathname: location.pathname,
+              search: location.search,
+              state: location.state,
+            },
+          },
+        },
+      );
+    },
+    [location.hash, location.pathname, location.search, location.state, navigate],
+  );
+
   const dialogSurfaceVisible = viewModel.layers.dialog || viewModel.layers.options;
   const dialogToolbar = (
     <DialogStageControls
@@ -446,6 +468,7 @@ export function ChatStagePage() {
       onLockedChange={setDialogControlsLocked}
       onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
+      onOpenPluginPage={openPluginPage}
       onTurnOptionsChange={updateTurnOptions}
       showBranches={conversationTreeEnabled}
       showAsrControl={!viewModel.layers.input && viewModel.status === "paused"}
@@ -474,6 +497,7 @@ export function ChatStagePage() {
           autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideTopTools}
           hidden={!viewModel.layers.toolbar}
           onCloseDesktopWindow={closeSurface}
+          onOpenPluginPage={openPluginPage}
           onThemePickerOpenChange={setThemePickerOpen}
           onTokenUsageOpenChange={setTokenUsageOpen}
           standaloneDesktopWindow={standaloneDesktopWindow}
@@ -625,6 +649,7 @@ export function ChatStagePage() {
           onDialogScaleChange={updateRuntimeDialogScale}
           onImmersiveModeChange={updateRuntimeImmersiveMode}
           onLongPressTalkChange={updateRuntimeLongPressTalk}
+          onOpenPluginPage={openPluginPage}
           onSaveAppearanceAsTheme={() => void saveCurrentAppearanceAsTheme()}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}

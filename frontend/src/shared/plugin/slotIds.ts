@@ -4,6 +4,7 @@ export const pluginSlotIds: PluginSlotId[] = [
   "chat-dialog-actions",
   "chat-output",
   "chat-toolbar",
+  "chat-top-toolbar",
   "settings-extension",
   "settings-tools",
 ];

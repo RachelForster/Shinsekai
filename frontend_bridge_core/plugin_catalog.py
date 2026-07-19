@@ -139,7 +139,7 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
     for contribution in collect_frontend_chat_ui_contributions():
         plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
         slot = str(getattr(contribution, "slot", "") or "").strip()
-        if plugin_id and slot in {"chat-dialog-actions", "chat-output", "chat-toolbar"}:
+        if plugin_id and slot in {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"}:
             frontend_chat_by_plugin.setdefault(plugin_id, []).append(slot)
 
     def _row(

@@ -969,7 +969,7 @@ frontend files without rebuilding the main React app.
 
 Use this for the React Chat UI. The contribution crosses the bridge as JSON metadata only; the host owns the button/card markup, icon set, styles, loading state, and toast. The optional `action` callback stays in Python and is invoked through a dedicated bridge endpoint. Plugins cannot inject HTML, JavaScript, React nodes, or arbitrary CSS through this protocol.
 
-Supported slots are `chat-dialog-actions`, `chat-output`, and `chat-toolbar`. Supported icons are `info`, `play`, `puzzle`, `settings`, and `sparkles`.
+Supported slots are `chat-dialog-actions`, `chat-output`, `chat-toolbar`, and `chat-top-toolbar`. The `chat-top-toolbar` slot is the compact toolbar beside the Chat transport status; the older `chat-toolbar` slot remains inside the Chat appearance dialog for compatibility. Supported icons are `info`, `play`, `puzzle`, `settings`, `smartphone`, and `sparkles`.
 
 ```python
 from sdk.register import PluginCapabilityRegistry
@@ -993,6 +993,25 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 ```
 
 An action may return a string, `None`, or a mapping with `kind` (`success`, `info`, or `error`) and `message`. Use `register_chat_ui_widget` only for the legacy PySide Chat UI where an actual `QWidget` is required.
+
+Toolbar entries can also open one of the same plugin's registered frontend pages without executing plugin JavaScript in the host. `chat-top-toolbar` is always rendered as an icon-only host button; other slots may opt into the same presentation explicitly.
+
+```python
+register.register_frontend_chat_ui(
+    FrontendChatUIContribution(
+        contribution_id="my-plugin.phone",
+        slot="chat-top-toolbar",
+        title="Phone",
+        description="Open the phone panel.",
+        icon="smartphone",
+        presentation="icon-only",
+        action={"type": "open-plugin-page", "page_id": "phone"},
+        order=30,
+    )
+)
+```
+
+`open-plugin-page` only accepts a `page_id`; the host supplies the current plugin ID, performs navigation, and provides a safe return route to Chat. Arbitrary URLs, HTML, JavaScript, React nodes, and CSS remain unsupported.
 
 ---
 

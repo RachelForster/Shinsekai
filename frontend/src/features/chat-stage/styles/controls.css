@@ -6,7 +6,7 @@
 }
 
 .top-stage-tools {
-  --top-stage-tools-controls-width: 64px;
+  --top-stage-tools-controls-width: min(360px, calc(100vw - 160px));
   position: absolute;
   top: var(--stage-safe-top);
   right: var(--stage-safe-x);
@@ -52,7 +52,7 @@
 }
 
 .top-stage-tools[data-standalone-desktop="true"] {
-  --top-stage-tools-controls-width: 160px;
+  --top-stage-tools-controls-width: min(448px, calc(100vw - 160px));
   right: auto;
   left: calc(50% + var(--chat-sprite-runtime-offset-x, 0px));
   transform: translateX(-50%);
@@ -331,6 +331,11 @@
   flex: 0 0 28px;
   width: 28px;
   height: 28px;
+}
+
+.top-stage-tools__button.button {
+  min-height: 28px;
+  padding: 0;
 }
 
 .chat-stage .top-stage-tools__button {

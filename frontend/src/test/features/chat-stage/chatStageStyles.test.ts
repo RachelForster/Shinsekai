@@ -21,9 +21,11 @@ describe("chat stage immersive styles", () => {
   });
 
   it("reserves enough toolbar width for standalone desktop window controls", () => {
-    expect(controlsCss).toMatch(/\.top-stage-tools\s*\{[\s\S]*?--top-stage-tools-controls-width:\s*64px;/);
     expect(controlsCss).toMatch(
-      /\.top-stage-tools\[data-standalone-desktop="true"\]\s*\{[\s\S]*?--top-stage-tools-controls-width:\s*160px;/,
+      /\.top-stage-tools\s*\{[\s\S]*?--top-stage-tools-controls-width:\s*min\(360px, calc\(100vw - 160px\)\);/,
+    );
+    expect(controlsCss).toMatch(
+      /\.top-stage-tools\[data-standalone-desktop="true"\]\s*\{[\s\S]*?--top-stage-tools-controls-width:\s*min\(448px, calc\(100vw - 160px\)\);/,
     );
     expect(controlsCss).toMatch(
       /\.top-stage-tools:is\(:hover, :focus-within\) \.top-stage-tools__controls\s*\{[\s\S]*?max-width:\s*var\(--top-stage-tools-controls-width\);/,

@@ -174,13 +174,14 @@ class FrontendChatUIContribution:
     """
 
     contribution_id: str
-    slot: Literal["chat-dialog-actions", "chat-output", "chat-toolbar"]
+    slot: Literal["chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"]
     title: str
-    action: Callable[[], Mapping[str, Any] | str | None] | None = None
+    action: Callable[[], Mapping[str, Any] | str | None] | Mapping[str, str] | None = None
     action_label: str = ""
     description: str = ""
-    icon: Literal["info", "play", "puzzle", "settings", "sparkles"] = "puzzle"
+    icon: Literal["info", "play", "puzzle", "settings", "smartphone", "sparkles"] = "puzzle"
     order: float = 100.0
+    presentation: Literal["button", "icon-only"] = "button"
     variant: Literal["danger", "ghost", "primary"] = "ghost"
     plugin_id: str | None = None
     plugin_version: str | None = None
