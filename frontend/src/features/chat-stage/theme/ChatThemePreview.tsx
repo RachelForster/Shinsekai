@@ -15,11 +15,7 @@ import { useMemo, type CSSProperties } from "react";
 
 import { useI18n } from "../../../shared/i18n";
 import { diagnoseChatTheme } from "../../../shared/theme/chatThemeDiagnostics";
-import {
-  resolveChatTheme,
-  type ChatThemeAsset,
-  type ChatThemeManifest,
-} from "../../../shared/theme/chatTheme";
+import { resolveChatTheme, type ChatThemeAsset, type ChatThemeManifest } from "../../../shared/theme/chatTheme";
 import { Button, SegmentedTabs, ThemeFrame } from "../../../shared/ui";
 import { DialogLayer, OptionsLayer } from "../components/StageLayers";
 import "../chat-stage.css";

@@ -444,7 +444,8 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.actionBar.title": "Chat stage actions",
   "chat.actionBar.unlock": "UNLOCK",
   "chat.config.appearanceGlobal": "Global defaults",
-  "chat.config.appearanceHelp": "Later layers override earlier ones. Default session values continue to inherit from the active theme.",
+  "chat.config.appearanceHelp":
+    "Later layers override earlier ones. Default session values continue to inherit from the active theme.",
   "chat.config.appearancePrecedence": "Appearance override priority",
   "chat.config.appearanceSaveError": "Could not save the current appearance as a theme.",
   "chat.config.appearanceSaved": "Saved and activated as {id}.",
@@ -494,7 +495,8 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.interruptEnabled": "Allow new messages to interrupt replies",
   "chat.config.interruptHelp": "A new message cancels the current generation and queued speech before it is sent.",
   "chat.config.saveAppearanceAsTheme": "Save current appearance as theme",
-  "chat.config.saveAppearanceHint": "Colors, typography, dialog opacity/scale, window scale, and typing speed are saved. Sprite positions and behavior remain session settings.",
+  "chat.config.saveAppearanceHint":
+    "Colors, typography, dialog opacity/scale, window scale, and typing speed are saved. Sprite positions and behavior remain session settings.",
   "chat.config.sectionAppearanceFlow": "Appearance layers",
   "chat.config.sectionConversation": "Conversation",
   "chat.config.sectionImmersive": "Immersive mode",

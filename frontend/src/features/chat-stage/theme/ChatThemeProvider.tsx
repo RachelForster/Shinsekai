@@ -234,7 +234,19 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
       removeTheme,
       exportTheme,
     }),
-    [themes, activeId, manifest, resolved, loading, switchTheme, refresh, uploadTheme, saveTheme, removeTheme, exportTheme],
+    [
+      themes,
+      activeId,
+      manifest,
+      resolved,
+      loading,
+      switchTheme,
+      refresh,
+      uploadTheme,
+      saveTheme,
+      removeTheme,
+      exportTheme,
+    ],
   );
 
   return <ChatThemeContext.Provider value={value}>{children}</ChatThemeContext.Provider>;

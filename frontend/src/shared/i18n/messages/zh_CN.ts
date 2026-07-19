@@ -487,7 +487,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.config.interruptEnabled": "允许新消息打断回复",
   "chat.config.interruptHelp": "发送新消息前会取消当前生成，并清理尚未播放的语音。",
   "chat.config.saveAppearanceAsTheme": "将当前外观保存为主题",
-  "chat.config.saveAppearanceHint": "颜色、字体、对话框透明度/缩放、窗口缩放和打字速度会写入主题；立绘位置与行为设置仍保留在当前会话。",
+  "chat.config.saveAppearanceHint":
+    "颜色、字体、对话框透明度/缩放、窗口缩放和打字速度会写入主题；立绘位置与行为设置仍保留在当前会话。",
   "chat.config.sectionAppearanceFlow": "外观层级",
   "chat.config.sectionConversation": "对话",
   "chat.config.sectionImmersive": "沉浸模式",

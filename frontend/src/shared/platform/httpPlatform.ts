@@ -1160,8 +1160,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
       getUi: (id) => requestJson<PluginUIDetail>(apiBase, `/api/plugins/${encodePath(id)}/ui`),
       list: () => requestJson<PluginManifest[]>(apiBase, "/api/plugins"),
-      listSlotContributions: () =>
-        requestJson<PluginSlotContribution[]>(apiBase, "/api/plugins/chat-ui-contributions"),
+      listSlotContributions: () => requestJson<PluginSlotContribution[]>(apiBase, "/api/plugins/chat-ui-contributions"),
       async repoTags(repo) {
         const result = await requestJson<{ tags: string[] }>(apiBase, "/api/plugins/repo-tags", {
           body: JSON.stringify({ repo }),

@@ -520,8 +520,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
 
   const dialog = tokens.dialog;
   applyVisualBlock(style, "dialog", dialog, assetUrl, true);
-  const themeDialogScale =
-    typeof dialog?.scale === "number" ? clampNumber(dialog.scale, 1, 0.8, 1.2) : undefined;
+  const themeDialogScale = typeof dialog?.scale === "number" ? clampNumber(dialog.scale, 1, 0.8, 1.2) : undefined;
   if (typeof dialog?.opacity === "number") {
     const opacity = clampNumber(dialog.opacity, 1, 0.35, 1);
     style["--chat-dialog-theme-opacity"] = String(opacity);

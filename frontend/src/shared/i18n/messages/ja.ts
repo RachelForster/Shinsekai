@@ -450,7 +450,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.actionBar.title": "チャットステージ操作",
   "chat.actionBar.unlock": "解除",
   "chat.config.appearanceGlobal": "全体の既定値",
-  "chat.config.appearanceHelp": "後のレイヤーほど優先されます。セッション値が既定のままなら、アクティブテーマを継承します。",
+  "chat.config.appearanceHelp":
+    "後のレイヤーほど優先されます。セッション値が既定のままなら、アクティブテーマを継承します。",
   "chat.config.appearancePrecedence": "外観の上書き優先順位",
   "chat.config.appearanceSaveError": "現在の外観をテーマとして保存できませんでした。",
   "chat.config.appearanceSaved": "{id} として保存し、有効にしました。",
@@ -500,7 +501,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.interruptEnabled": "新しいメッセージで応答を中断する",
   "chat.config.interruptHelp": "新しいメッセージを送る前に、現在の生成と未再生の音声をキャンセルします。",
   "chat.config.saveAppearanceAsTheme": "現在の外観をテーマとして保存",
-  "chat.config.saveAppearanceHint": "色、文字、ダイアログの不透明度・拡大率、ウィンドウ拡大率、表示速度を保存します。立ち絵位置と動作設定はセッションに残ります。",
+  "chat.config.saveAppearanceHint":
+    "色、文字、ダイアログの不透明度・拡大率、ウィンドウ拡大率、表示速度を保存します。立ち絵位置と動作設定はセッションに残ります。",
   "chat.config.sectionAppearanceFlow": "外観レイヤー",
   "chat.config.sectionConversation": "会話",
   "chat.config.sectionImmersive": "没入モード",

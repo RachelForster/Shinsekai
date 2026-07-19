@@ -473,7 +473,8 @@ function runtimeDialogFillBackground(fill: ChatStageDialogFillConfig) {
 function currentAppearanceName(name: Record<string, string>) {
   return Object.fromEntries(
     Object.entries(name).map(([language, value]) => {
-      const suffix = language === "zh_CN" ? "（当前外观）" : language === "ja" ? "（現在の外観）" : " (Current appearance)";
+      const suffix =
+        language === "zh_CN" ? "（当前外观）" : language === "ja" ? "（現在の外観）" : " (Current appearance)";
       return [language, `${value}${suffix}`];
     }),
   );
@@ -586,7 +587,13 @@ function runtimeThemeFontSize(themeStyle: CSSProperties, name: `--${string}`, fa
   return match ? Math.round(clampRuntimeNumber(match[1], fallback, 1, 96)) : fallback;
 }
 
-function runtimeThemeNumber(themeStyle: CSSProperties, name: `--${string}`, fallback: number, min: number, max: number) {
+function runtimeThemeNumber(
+  themeStyle: CSSProperties,
+  name: `--${string}`,
+  fallback: number,
+  min: number,
+  max: number,
+) {
   const value = Number(themeStyleString(themeStyle, name));
   return Number.isFinite(value) ? clampRuntimeNumber(value, fallback, min, max) : fallback;
 }
