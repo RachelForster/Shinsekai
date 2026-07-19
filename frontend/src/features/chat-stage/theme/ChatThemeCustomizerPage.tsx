@@ -1,4 +1,4 @@
-import { ArrowLeft, RotateCcw, Save } from "lucide-react";
+import { ArrowLeft, Redo2, RotateCcw, Save, Undo2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -33,6 +33,20 @@ export function ChatThemeCustomizerPage() {
           </div>
         </div>
         <div className="chat-theme-customizer-page__actions">
+          <Button
+            disabled={!customizer.canUndo || customizer.saving}
+            icon={<Undo2 aria-hidden className="button__icon" />}
+            onClick={customizer.undo}
+          >
+            {t("common.undo")}
+          </Button>
+          <Button
+            disabled={!customizer.canRedo || customizer.saving}
+            icon={<Redo2 aria-hidden className="button__icon" />}
+            onClick={customizer.redo}
+          >
+            {t("common.redo")}
+          </Button>
           <Button
             disabled={!customizer.sourceReady || !customizer.dirty || customizer.saving}
             icon={<RotateCcw aria-hidden className="button__icon" />}
@@ -90,10 +104,9 @@ export function ChatThemeCustomizerPage() {
             idError={customizer.idError}
             isNewTheme={customizer.isNewTheme}
             nameError={customizer.nameError}
-            onPatchBlock={customizer.patchBlock}
-            onPatchGlobal={customizer.patchGlobal}
             onPatchManifest={customizer.patchManifest}
-            onPatchTypewriter={customizer.patchTypewriter}
+            onPatchToken={customizer.patchToken}
+            onResetSection={customizer.resetSection}
           />
           <ChatThemePreview
             assetThemeId={customizer.assetThemeId}
