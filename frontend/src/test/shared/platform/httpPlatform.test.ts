@@ -818,6 +818,48 @@ describe("http platform", () => {
     );
   });
 
+  it("manages and exports chat theme assets through the bridge", async () => {
+    const asset = { kind: "image" as const, name: "frame.png", path: "assets/frame.png", size: 5 };
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/assets") && !init?.method) {
+        return mockJsonResponse([asset]);
+      }
+      if (url.endsWith("/assets/upload")) {
+        return mockJsonResponse(asset);
+      }
+      if (url.endsWith("/assets/delete")) {
+        return mockJsonResponse({ deleted: true });
+      }
+      if (url.endsWith("/export")) {
+        return mockJsonResponse({
+          downloadUrl: "/api/download?path=data/export/chat_ui_themes/custom.zip",
+          path: "data/export/chat_ui_themes/custom.zip",
+        });
+      }
+      return mockJsonResponse({}, false);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const file = new File(["image"], "frame.png", { type: "image/png" });
+
+    await expect(platform.chat.listThemeAssets("custom")).resolves.toEqual([asset]);
+    await expect(platform.chat.uploadThemeAsset("custom", file)).resolves.toEqual(asset);
+    await platform.chat.deleteThemeAsset("custom", asset.path);
+    await expect(platform.chat.exportTheme("custom")).resolves.toBe("data/export/chat_ui_themes/custom.zip");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/themes/custom/assets/upload",
+      expect.objectContaining({ body: expect.any(FormData), method: "POST" }),
+    );
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/download?path=data/export/chat_ui_themes/custom.zip"),
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+
   it("reads lightweight chat runtime status through the bridge", async () => {
     const runtimeStatus = {
       chatProcessRunning: true,

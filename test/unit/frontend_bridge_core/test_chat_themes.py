@@ -2,6 +2,7 @@ import os
 import shutil
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -10,11 +11,15 @@ from frontend_bridge_core.chat_themes import (
     BUILTIN_THEME_OWNER_MARKER,
     _copy_theme_source,
     _is_builtin_theme_dir,
+    delete_chat_theme_asset,
     delete_chat_theme,
+    export_chat_theme,
     get_chat_theme_manifest,
     list_chat_themes,
+    list_chat_theme_assets,
     save_chat_theme,
     set_active_chat_theme,
+    upload_chat_theme_asset,
 )
 
 
@@ -71,6 +76,77 @@ class ChatThemeBridgeTests(unittest.TestCase):
                         / BUILTIN_THEME_OWNER_MARKER
                     ).is_file()
                 )
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_user_theme_asset_upload_delete_and_export_round_trip(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            try:
+                save_chat_theme(
+                    state,
+                    {
+                        "baseId": "windborne-adventure",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "asset-custom",
+                            "name": {"en": "Asset custom"},
+                            "tokens": {},
+                        },
+                    },
+                )
+                source = Path(tempdir) / "frame.png"
+                source.write_bytes(b"not-a-real-png-but-static")
+
+                uploaded = upload_chat_theme_asset(state, "asset-custom", source)
+                self.assertEqual(uploaded["path"], "assets/frame.png")
+                self.assertEqual(uploaded["kind"], "image")
+                self.assertIn(uploaded, list_chat_theme_assets(state, "asset-custom"))
+
+                save_chat_theme(
+                    state,
+                    {
+                        "baseId": "asset-custom",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "asset-custom",
+                            "name": {"en": "Asset custom"},
+                            "tokens": {"dialog": {"backgroundImage": "assets/frame.png"}},
+                        },
+                    },
+                )
+                with self.assertRaisesRegex(ValueError, "仍被主题引用"):
+                    delete_chat_theme_asset(
+                        state,
+                        {"id": "asset-custom", "path": "assets/frame.png"},
+                    )
+
+                exported = export_chat_theme(state, {"id": "asset-custom"})
+                archive = Path(tempdir) / exported["path"]
+                self.assertTrue(archive.is_file())
+                with zipfile.ZipFile(archive) as bundle:
+                    self.assertIn("theme.json", bundle.namelist())
+                    self.assertIn("assets/frame.png", bundle.namelist())
+
+                save_chat_theme(
+                    state,
+                    {
+                        "baseId": "asset-custom",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "asset-custom",
+                            "name": {"en": "Asset custom"},
+                            "tokens": {},
+                        },
+                    },
+                )
+                deleted = delete_chat_theme_asset(
+                    state,
+                    {"id": "asset-custom", "path": "assets/frame.png"},
+                )
+                self.assertTrue(deleted["deleted"])
             finally:
                 os.chdir(previous_cwd)
 

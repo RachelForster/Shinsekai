@@ -58,13 +58,17 @@ from frontend_bridge_core.chat import (
     _sanitize_user_display_name,
 )
 from frontend_bridge_core.chat_themes import (
+    delete_chat_theme_asset,
     delete_chat_theme,
+    export_chat_theme,
     get_active_chat_theme_id,
     get_chat_theme_manifest,
     install_theme_from_zip,
+    list_chat_theme_assets,
     list_chat_themes,
     save_chat_theme,
     set_active_chat_theme,
+    upload_chat_theme_asset,
 )
 from frontend_bridge_core.chat_init import start_chat_init
 from frontend_bridge_core.characters import (
@@ -495,6 +499,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(list_chat_themes(self.state))
             elif path == "/api/chat/themes/active":
                 self._send_json(get_active_chat_theme_id(self.state))
+            elif path.startswith("/api/chat/themes/") and path.endswith("/assets"):
+                theme_id = unquote(path[len("/api/chat/themes/") : -len("/assets")]).strip("/")
+                self._send_json(list_chat_theme_assets(self.state, theme_id))
             elif path.startswith("/api/chat/themes/"):
                 theme_id = unquote(path[len("/api/chat/themes/"):])
                 self._send_json(get_chat_theme_manifest(self.state, theme_id))
@@ -581,14 +588,19 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         try:
             path = urlparse(self.path).path
             self._require_authorized_write(path)
-            is_upload = method == "POST" and path in {
+            is_theme_asset_upload = (
+                method == "POST"
+                and path.startswith("/api/chat/themes/")
+                and path.endswith("/assets/upload")
+            )
+            is_upload = method == "POST" and (path in {
                 "/api/characters/import-upload",
                 "/api/characters/memories/import-preview-upload",
                 "/api/characters/memories/import-upload",
                 "/api/backgrounds/import-upload",
                 "/api/logs/import-upload",
                 "/api/chat/themes/upload",
-            }
+            } or is_theme_asset_upload)
             body = {} if method == "DELETE" or is_upload else self._read_json()
             if method in {"POST", "PUT"} and path == "/api/config/api":
                 self._send_json(_save_api_config(self.state, body))
@@ -1082,6 +1094,19 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(set_active_chat_theme(self.state, body))
             elif method == "POST" and path == "/api/chat/themes/save":
                 self._send_json(save_chat_theme(self.state, body))
+            elif method == "POST" and path == "/api/chat/themes/export":
+                self._send_json(export_chat_theme(self.state, body))
+            elif method == "POST" and path == "/api/chat/themes/assets/delete":
+                self._send_json(delete_chat_theme_asset(self.state, body))
+            elif is_theme_asset_upload:
+                theme_id = unquote(path[len("/api/chat/themes/") : -len("/assets/upload")]).strip("/")
+                temp_dir, paths = self._read_upload_files()
+                try:
+                    if len(paths) != 1:
+                        raise ValueError("每次只能上传一个主题资源")
+                    self._send_json(upload_chat_theme_asset(self.state, theme_id, paths[0]))
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/chat/themes/upload":
                 temp_dir, paths = self._read_upload_files()
                 try:

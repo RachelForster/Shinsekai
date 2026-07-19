@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 
 import {
   deleteChatTheme,
+  exportChatTheme,
   getChatTheme,
   getActiveChatThemeId,
   getChatThemeManifest,
@@ -49,6 +50,8 @@ export interface ChatThemeContextValue {
   saveTheme: (input: SaveChatThemeInput) => Promise<ChatThemeSummary>;
   /** 删除一个用户主题，删除后刷新列表。 */
   removeTheme: (id: string) => Promise<void>;
+  /** 导出一个可重新导入的主题 ZIP。 */
+  exportTheme: (id: string) => Promise<string>;
 }
 
 const ChatThemeContext = createContext<ChatThemeContextValue | null>(null);
@@ -118,6 +121,8 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
     },
     [activeId, applyManifest, refresh],
   );
+
+  const exportTheme = useCallback((id: string) => exportChatTheme(id), []);
 
   useEffect(() => {
     let mounted = true;
@@ -224,8 +229,9 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
       uploadTheme,
       saveTheme,
       removeTheme,
+      exportTheme,
     }),
-    [themes, activeId, resolved, loading, switchTheme, refresh, uploadTheme, saveTheme, removeTheme],
+    [themes, activeId, resolved, loading, switchTheme, refresh, uploadTheme, saveTheme, removeTheme, exportTheme],
   );
 
   return <ChatThemeContext.Provider value={value}>{children}</ChatThemeContext.Provider>;

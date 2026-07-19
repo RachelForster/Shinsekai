@@ -415,6 +415,12 @@ describe("entity repositories", () => {
         setActiveThemeId: vi.fn().mockResolvedValue(undefined),
         uploadTheme: vi.fn().mockResolvedValue({ id: "uploaded", name: {}, source: "user" }),
         saveTheme: vi.fn().mockResolvedValue({ id: "custom", name: {}, source: "user" }),
+        listThemeAssets: vi.fn().mockResolvedValue([]),
+        uploadThemeAsset: vi
+          .fn()
+          .mockResolvedValue({ kind: "image", name: "frame.png", path: "assets/frame.png", size: 1 }),
+        deleteThemeAsset: vi.fn().mockResolvedValue(undefined),
+        exportTheme: vi.fn().mockResolvedValue("/tmp/custom.zip"),
         deleteTheme: vi.fn().mockResolvedValue(undefined),
         subscribeEvents: vi.fn().mockReturnValue(unsubscribe),
       },

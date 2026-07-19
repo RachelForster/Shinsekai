@@ -95,6 +95,35 @@ describe("browser preview platform chat themes", () => {
     );
   });
 
+  it("uploads, resolves, lists, deletes, and exports user-theme assets", async () => {
+    const platform = createBrowserPreviewPlatform();
+    const createObjectUrl = vi.fn().mockReturnValue("blob:theme-frame");
+    const revokeObjectUrl = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectUrl });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectUrl });
+    const base = await platform.chat.getThemeManifest("windborne-adventure");
+    await platform.chat.saveTheme({
+      baseId: "windborne-adventure",
+      manifest: { ...base, id: "asset-preview-custom", name: { en: "Asset Preview" } },
+    });
+    const file = new File(["image"], "frame.png", { type: "image/png" });
+
+    const asset = await platform.chat.uploadThemeAsset("asset-preview-custom", file);
+    expect(asset).toMatchObject({ kind: "image", path: "assets/frame.png", size: 5 });
+    await expect(platform.chat.listThemeAssets("asset-preview-custom")).resolves.toEqual([asset]);
+    expect(platform.files.fileUrl("data/chat_ui_themes/asset-preview-custom/assets/frame.png")).toBe(
+      "blob:theme-frame",
+    );
+    await expect(platform.chat.exportTheme("asset-preview-custom")).resolves.toContain("asset-preview-custom.zip");
+
+    await platform.chat.deleteThemeAsset("asset-preview-custom", asset.path);
+    await expect(platform.chat.listThemeAssets("asset-preview-custom")).resolves.toEqual([]);
+    expect(createObjectUrl).toHaveBeenCalledWith(file);
+    expect(revokeObjectUrl).toHaveBeenCalledWith("blob:theme-frame");
+    Reflect.deleteProperty(URL, "createObjectURL");
+    Reflect.deleteProperty(URL, "revokeObjectURL");
+  });
+
   it("tracks the lightweight runtime status across launch and close", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();

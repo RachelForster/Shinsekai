@@ -1,5 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
-import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
+import type { ChatThemeAsset, ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
 import {
   isTauriDesktop,
   isDesktopBridgeRestarting,
@@ -611,6 +611,23 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify(input),
           method: "POST",
         }),
+      listThemeAssets: (id) => requestJson<ChatThemeAsset[]>(apiBase, `/api/chat/themes/${encodePath(id)}/assets`),
+      uploadThemeAsset: (id, file) =>
+        uploadFiles<ChatThemeAsset>(apiBase, `/api/chat/themes/${encodePath(id)}/assets/upload`, [file]),
+      deleteThemeAsset: async (id, path) => {
+        await requestJson(apiBase, "/api/chat/themes/assets/delete", {
+          body: JSON.stringify({ id, path }),
+          method: "POST",
+        });
+      },
+      exportTheme: async (id) => {
+        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/chat/themes/export", {
+          body: JSON.stringify({ id }),
+          method: "POST",
+        });
+        openBridgeWindow(apiBase, result.downloadUrl);
+        return result.path;
+      },
       deleteTheme: async (id) => {
         await requestJson(apiBase, `/api/chat/themes/${encodePath(id)}`, { method: "DELETE" });
       },

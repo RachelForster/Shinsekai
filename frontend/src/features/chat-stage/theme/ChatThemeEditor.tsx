@@ -1,8 +1,8 @@
-import { RotateCcw, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { FileAudio, FileImage, RotateCcw, Trash2, Type, Upload } from "lucide-react";
+import { useRef, useState } from "react";
 
 import { useI18n } from "../../../shared/i18n";
-import type { ChatThemeManifest, ChatThemeTokens } from "../../../shared/theme/chatTheme";
+import type { ChatThemeAsset, ChatThemeManifest, ChatThemeTokens } from "../../../shared/theme/chatTheme";
 import {
   chatThemeEditorSections,
   type ChatThemeEditorField,
@@ -30,13 +30,73 @@ function FieldClearButton({ label, onClear }: { label: string; onClear: () => vo
   );
 }
 
+function assetAccept(path: string) {
+  if (path === "typewriter.sound") {
+    return ".wav,.mp3,.ogg,audio/*";
+  }
+  if (path === "fonts") {
+    return ".woff,.woff2,.ttf,.otf,font/*";
+  }
+  return ".png,.jpg,.jpeg,.gif,.webp,.svg,image/*";
+}
+
+function AssetUploadButton({
+  disabled,
+  onUpload,
+  path,
+}: {
+  disabled: boolean;
+  onUpload: (file: File) => Promise<ChatThemeAsset>;
+  path: string;
+}) {
+  const { t } = useI18n();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  return (
+    <>
+      <input
+        accept={assetAccept(path)}
+        className="chat-theme-customizer__asset-file-input"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (!file) {
+            return;
+          }
+          setUploading(true);
+          void onUpload(file)
+            .catch(() => undefined)
+            .finally(() => {
+              setUploading(false);
+              if (inputRef.current) {
+                inputRef.current.value = "";
+              }
+            });
+        }}
+        ref={inputRef}
+        type="file"
+      />
+      <IconButton
+        disabled={disabled || uploading}
+        label={t(disabled ? "chat.theme.customizer.assetSaveFirst" : "chat.theme.customizer.assetUpload")}
+        onClick={() => inputRef.current?.click()}
+      >
+        <Upload aria-hidden className="icon-button__icon" />
+      </IconButton>
+    </>
+  );
+}
+
 function ThemeField({
+  canManageAssets,
   field,
   onChange,
+  onUploadAsset,
   value,
 }: {
+  canManageAssets: boolean;
   field: ChatThemeEditorField;
   onChange: (path: string, value: unknown) => void;
+  onUploadAsset: (file: File) => Promise<ChatThemeAsset>;
   value: unknown;
 }) {
   const { t } = useI18n();
@@ -108,14 +168,38 @@ function ThemeField({
     );
   }
 
+  if (field.kind === "asset") {
+    return (
+      <label className="chat-theme-customizer__field">
+        <span>{label}</span>
+        <span className="chat-theme-customizer__inline-control">
+          <TextInput
+            className="chat-theme-customizer__asset-input"
+            onChange={(event) => onChange(field.path, event.target.value || undefined)}
+            placeholder={t("chat.theme.customizer.assetPlaceholder")}
+            value={String(value ?? "")}
+          />
+          <AssetUploadButton
+            disabled={!canManageAssets}
+            onUpload={async (file) => {
+              const asset = await onUploadAsset(file);
+              onChange(field.path, asset.path);
+              return asset;
+            }}
+            path={field.path}
+          />
+          {value !== undefined ? <FieldClearButton label={t("chat.theme.customizer.inherit")} onClear={clear} /> : null}
+        </span>
+      </label>
+    );
+  }
+
   return (
     <label className="chat-theme-customizer__field">
       <span>{label}</span>
       <span className="chat-theme-customizer__inline-control">
         <TextInput
-          className={field.kind === "asset" ? "chat-theme-customizer__asset-input" : undefined}
           onChange={(event) => onChange(field.path, event.target.value || undefined)}
-          placeholder={field.kind === "asset" ? t("chat.theme.customizer.assetPlaceholder") : undefined}
           value={String(value ?? "")}
         />
         {value !== undefined ? <FieldClearButton label={t("chat.theme.customizer.inherit")} onClear={clear} /> : null}
@@ -125,16 +209,20 @@ function ThemeField({
 }
 
 function ThemeSection({
+  canManageAssets,
   mode,
   onPatchToken,
   onResetSection,
+  onUploadAsset,
   section,
   tokens,
   topLevel = false,
 }: {
+  canManageAssets: boolean;
   mode: EditorMode;
   onPatchToken: (path: string, value: unknown) => void;
   onResetSection: (path: string) => void;
+  onUploadAsset: (file: File) => Promise<ChatThemeAsset>;
   section: ChatThemeEditorSection;
   tokens: ChatThemeTokens;
   topLevel?: boolean;
@@ -170,9 +258,11 @@ function ThemeSection({
         <div className="chat-theme-customizer__field-grid">
           {fields.map((field) => (
             <ThemeField
+              canManageAssets={canManageAssets}
               field={field}
               key={field.path}
               onChange={onPatchToken}
+              onUploadAsset={onUploadAsset}
               value={valueAtPath(tokens, field.path)}
             />
           ))}
@@ -182,10 +272,12 @@ function ThemeSection({
         <div className="chat-theme-customizer__subsections">
           {children.map((child) => (
             <ThemeSection
+              canManageAssets={canManageAssets}
               key={child.id}
               mode={mode}
               onPatchToken={onPatchToken}
               onResetSection={onResetSection}
+              onUploadAsset={onUploadAsset}
               section={child}
               tokens={tokens}
             />
@@ -197,15 +289,19 @@ function ThemeSection({
 }
 
 function FontsEditor({
+  canManageAssets,
   draft,
   mode,
   onPatchToken,
   onResetSection,
+  onUploadAsset,
 }: {
+  canManageAssets: boolean;
   draft: ChatThemeManifest;
   mode: EditorMode;
   onPatchToken: (path: string, value: unknown) => void;
   onResetSection: (path: string) => void;
+  onUploadAsset: (file: File) => Promise<ChatThemeAsset>;
 }) {
   const { t } = useI18n();
   if (mode !== "advanced") {
@@ -253,6 +349,18 @@ function FontsEditor({
               placeholder={t("chat.theme.customizer.fontSource")}
               value={font.src}
             />
+            <AssetUploadButton
+              disabled={!canManageAssets}
+              onUpload={async (file) => {
+                const asset = await onUploadAsset(file);
+                const next = fonts.map((item, itemIndex) =>
+                  itemIndex === index ? { ...item, src: asset.path } : item,
+                );
+                onPatchToken("fonts", next);
+                return asset;
+              }}
+              path="fonts"
+            />
             <TextInput
               aria-label={t("chat.theme.customizer.fontWeight")}
               onChange={(event) => {
@@ -289,6 +397,9 @@ function FontsEditor({
 }
 
 export function ChatThemeEditor({
+  assets,
+  assetsLoading,
+  canManageAssets,
   draft,
   duplicateId,
   idError,
@@ -297,7 +408,12 @@ export function ChatThemeEditor({
   onPatchManifest,
   onPatchToken,
   onResetSection,
+  onDeleteAsset,
+  onUploadAsset,
 }: {
+  assets: ChatThemeAsset[];
+  assetsLoading: boolean;
+  canManageAssets: boolean;
   draft: ChatThemeManifest;
   duplicateId: boolean;
   idError: string;
@@ -306,6 +422,8 @@ export function ChatThemeEditor({
   onPatchManifest: (patch: Partial<ChatThemeManifest>) => void;
   onPatchToken: (path: string, value: unknown) => void;
   onResetSection: (path: string) => void;
+  onDeleteAsset: (path: string) => void;
+  onUploadAsset: (file: File) => Promise<ChatThemeAsset>;
 }) {
   const { language, t } = useI18n();
   const [mode, setMode] = useState<EditorMode>("basic");
@@ -371,16 +489,56 @@ export function ChatThemeEditor({
 
       {chatThemeEditorSections.map((section) => (
         <ThemeSection
+          canManageAssets={canManageAssets}
           key={section.id}
           mode={mode}
           onPatchToken={onPatchToken}
           onResetSection={onResetSection}
+          onUploadAsset={onUploadAsset}
           section={section}
           tokens={draft.tokens}
           topLevel
         />
       ))}
-      <FontsEditor draft={draft} mode={mode} onPatchToken={onPatchToken} onResetSection={onResetSection} />
+      <FontsEditor
+        canManageAssets={canManageAssets}
+        draft={draft}
+        mode={mode}
+        onPatchToken={onPatchToken}
+        onResetSection={onResetSection}
+        onUploadAsset={onUploadAsset}
+      />
+      {mode === "advanced" ? (
+        <details>
+          <summary>{t("chat.theme.customizer.sectionAssets")}</summary>
+          <div className="chat-theme-customizer__asset-workbench">
+            {!canManageAssets ? <p>{t("chat.theme.customizer.assetSaveFirst")}</p> : null}
+            {assetsLoading ? <p>{t("chat.theme.customizer.assetsLoading")}</p> : null}
+            {canManageAssets && !assetsLoading && !assets.length ? (
+              <p>{t("chat.theme.customizer.assetsEmpty")}</p>
+            ) : null}
+            {assets.map((asset) => (
+              <div className="chat-theme-customizer__asset-row" key={asset.path}>
+                {asset.kind === "audio" ? (
+                  <FileAudio aria-hidden />
+                ) : asset.kind === "font" ? (
+                  <Type aria-hidden />
+                ) : (
+                  <FileImage aria-hidden />
+                )}
+                <span>
+                  <strong>{asset.name}</strong>
+                  <small>{asset.path}</small>
+                </span>
+                <small>{Math.max(1, Math.round(asset.size / 1024))} KiB</small>
+                <IconButton label={t("common.delete")} onClick={() => onDeleteAsset(asset.path)}>
+                  <Trash2 aria-hidden className="icon-button__icon" />
+                </IconButton>
+              </div>
+            ))}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

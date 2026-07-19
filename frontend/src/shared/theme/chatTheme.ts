@@ -159,6 +159,14 @@ export interface ChatThemeSummary {
   source: "builtin" | "user";
 }
 
+export interface ChatThemeAsset {
+  kind: "audio" | "font" | "image";
+  name: string;
+  /** Theme-root-relative path suitable for a manifest asset field. */
+  path: string;
+  size: number;
+}
+
 export interface SaveChatThemeInput {
   baseId: string;
   manifest: ChatThemeManifest;
