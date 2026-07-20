@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Copy, GitFork, RotateCcw, Trash2 } from "lucide-react";
 
 import type { ChatHistoryEntry } from "../../../shared/platform/types";
@@ -131,12 +131,28 @@ export function HistoryDialog({
   const titleId = useId();
   const [query, setQuery] = useState("");
   const [visibleLimit, setVisibleLimit] = useState(historyRenderBatchSize);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (open) {
       setVisibleLimit(historyRenderBatchSize);
     }
   }, [open, query]);
+
+  useEffect(() => {
+    if (!open || loading) {
+      return;
+    }
+    // Open on the newest messages (bottom) rather than the oldest (top).
+    // The scroll container is the modal body (overflow: auto), not the list.
+    const frame = requestAnimationFrame(() => {
+      const body = bodyRef.current;
+      if (body) {
+        body.scrollTop = body.scrollHeight;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, loading]);
 
   const roleLabels = useMemo<Record<ChatHistoryEntry["role"], string>>(
     () => ({
@@ -167,8 +183,11 @@ export function HistoryDialog({
         return haystack.includes(normalizedQuery);
       });
   }, [entries, normalizedQuery, roleLabels, userDisplayName]);
-  const renderedEntries = visibleEntries.slice(0, visibleLimit);
-  const moreEntriesAvailable = renderedEntries.length < visibleEntries.length;
+  // Render the newest `visibleLimit` entries so the dialog opens on the latest
+  // messages; "show more" then reveals older entries above.
+  const hiddenOlderCount = Math.max(0, visibleEntries.length - visibleLimit);
+  const renderedEntries = visibleEntries.slice(hiddenOlderCount);
+  const moreEntriesAvailable = hiddenOlderCount > 0;
 
   if (!open) {
     return null;
@@ -207,7 +226,7 @@ export function HistoryDialog({
       summary={t("chat.history.count", { count: visibleEntries.length })}
       title={t("chat.history.title")}
     >
-      <div className="chat-stage-modal__body chat-history-dialog__body">
+      <div className="chat-stage-modal__body chat-history-dialog__body" ref={bodyRef}>
         <div className="chat-history__filters">
           <input
             aria-label={t("chat.history.search")}
@@ -230,6 +249,14 @@ export function HistoryDialog({
         ) : null}
         {!loading && visibleEntries.length > 0 ? (
           <div className="chat-history__list">
+            {moreEntriesAvailable ? (
+              <Button
+                className="chat-history__show-more"
+                onClick={() => setVisibleLimit((current) => current + historyRenderBatchSize)}
+              >
+                {t("chat.history.showMore", { count: hiddenOlderCount })}
+              </Button>
+            ) : null}
             {renderedEntries.map(({ dialog, entry, localTime }, index) => {
               return (
                 <section
@@ -245,7 +272,9 @@ export function HistoryDialog({
                       <span className="chat-history__role">{roleLabels[entry.role]}</span>
                     </div>
                     <div className="chat-history__meta">
-                      <span className="chat-history__index">{t("chat.history.entryIndex", { index: index + 1 })}</span>
+                      <span className="chat-history__index">
+                        {t("chat.history.entryIndex", { index: hiddenOlderCount + index + 1 })}
+                      </span>
                       {localTime ? (
                         <time className="chat-history__time" dateTime={new Date(entry.createdAt ?? 0).toISOString()}>
                           {localTime}
@@ -277,14 +306,6 @@ export function HistoryDialog({
                 </section>
               );
             })}
-            {moreEntriesAvailable ? (
-              <Button
-                className="chat-history__show-more"
-                onClick={() => setVisibleLimit((current) => current + historyRenderBatchSize)}
-              >
-                {t("chat.history.showMore", { count: visibleEntries.length - renderedEntries.length })}
-              </Button>
-            ) : null}
           </div>
         ) : null}
       </div>

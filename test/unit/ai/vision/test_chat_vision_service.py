@@ -54,7 +54,7 @@ def test_chat_vision_service_falls_back_to_moondream_for_text_only_adapter(tmp_p
 
     prepared = ChatVisionService(lambda: fallback).prepare("Explain", [image], adapter=_TextAdapter())
 
-    assert prepared.mode == "moondream"
+    assert prepared.mode == "fallback"
     assert "a moon over a quiet lake" in prepared.content
     assert fallback.calls[0][0] == b"image-bytes"
 

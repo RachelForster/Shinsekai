@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { browseFiles } from "../../entities/files/repository";
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
-import { sendChatCommand } from "../../entities/chat/repository";
+import { sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
 import type { ChatAttachmentInput, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
@@ -53,6 +53,7 @@ import {
   CHAT_ATTACHMENT_LIMIT,
   CHAT_IMAGE_EXTENSIONS,
   chatAttachmentDisplayText,
+  mergeChatAttachmentInputs,
   mergeChatAttachments,
 } from "./attachments";
 
@@ -71,6 +72,7 @@ export function ChatStagePage() {
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
   const [attachmentPickerKind, setAttachmentPickerKind] = useState<ChatAttachmentInput["kind"] | null>(null);
+  const pendingAttachmentSlotsRef = useRef(0);
   const { showToast } = useToast();
   const { t } = useI18n();
   const theme = useOptionalChatTheme();
@@ -213,14 +215,13 @@ export function ChatStagePage() {
     await sendCommand({ payload, type: "send-message" });
   };
 
-  const addAttachmentPaths = (kind: ChatAttachmentInput["kind"], paths: string[]) => {
-    const next = mergeChatAttachments(state.inputAttachments, kind, paths);
+  const addAttachments = (attachments: ChatAttachmentInput[]) => {
+    const next = mergeChatAttachmentInputs(state.inputAttachments, attachments);
     const existing = new Set(state.inputAttachments.map((attachment) => `${attachment.kind}\0${attachment.path}`));
     const requested = new Set(
-      paths
-        .map((path) => path.trim())
-        .filter(Boolean)
-        .map((path) => `${kind}\0${path}`)
+      attachments
+        .map((attachment) => `${attachment.kind}\0${attachment.path.trim()}`)
+        .filter((key) => !key.endsWith("\0"))
         .filter((key) => !existing.has(key)),
     );
     if (next.length - state.inputAttachments.length < requested.size) {
@@ -230,7 +231,45 @@ export function ChatStagePage() {
         title: t("common.operationFailed"),
       });
     }
-    dispatch({ attachments: next, type: "setAttachments" });
+    dispatch({ attachments, type: "addAttachments" });
+  };
+
+  const addAttachmentPaths = (kind: ChatAttachmentInput["kind"], paths: string[]) => {
+    addAttachments(mergeChatAttachments([], kind, paths));
+  };
+
+  const handleDropFiles = async (files: File[]) => {
+    if (!files.length) {
+      return;
+    }
+    const availableSlots = Math.max(
+      0,
+      CHAT_ATTACHMENT_LIMIT - state.inputAttachments.length - pendingAttachmentSlotsRef.current,
+    );
+    const acceptedFiles = files.slice(0, availableSlots);
+    if (acceptedFiles.length < files.length) {
+      showToast({
+        kind: "error",
+        message: t("chat.input.attachmentLimit", { count: CHAT_ATTACHMENT_LIMIT }),
+        title: t("common.operationFailed"),
+      });
+    }
+    if (!acceptedFiles.length) {
+      return;
+    }
+    pendingAttachmentSlotsRef.current += acceptedFiles.length;
+    try {
+      const { attachments } = await uploadChatAttachments(acceptedFiles);
+      addAttachments(attachments);
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+        title: t("common.operationFailed"),
+      });
+    } finally {
+      pendingAttachmentSlotsRef.current = Math.max(0, pendingAttachmentSlotsRef.current - acceptedFiles.length);
+    }
   };
 
   const submitOption = (option: string) => {
@@ -491,6 +530,7 @@ export function ChatStagePage() {
           inputLayout={inputLayout}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
           onCommand={sendCommand}
+          onDropFiles={handleDropFiles}
           onFlushBatch={() => sendCommand({ type: "flush-input-batch" })}
           onInputActivity={updateInputActivity}
           onPickAttachments={setAttachmentPickerKind}

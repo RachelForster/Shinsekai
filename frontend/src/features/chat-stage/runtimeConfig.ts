@@ -6,7 +6,7 @@ import { DEFAULT_THEME_COLOR, normalizeThemeColor } from "../../shared/theme/app
 
 export const clickThroughGuardIntervalMs = 32;
 const runtimeConfigStorageKey = "shinsekai-chat-stage-runtime-config";
-export const chatStageRuntimeConfigVersion = 3;
+export const chatStageRuntimeConfigVersion = 4;
 export const runtimeTextSpeedMin = 1;
 export const runtimeTextSpeedMax = 200;
 export const runtimeDialogOpacityMin = 0.35;
@@ -138,7 +138,10 @@ export function clampRuntimeNumber(value: unknown, fallback: number, min: number
   return Math.min(max, Math.max(min, next));
 }
 
-function readRuntimeSpriteScales(parsed: Partial<ChatStageRuntimeConfig> & { spriteScale?: unknown }) {
+function readRuntimeSpriteScales(
+  parsed: Partial<ChatStageRuntimeConfig> & { spriteScale?: unknown },
+  storedVersion: number,
+) {
   const spriteScales: Record<string, number> = {};
   const rawSpriteScales = parsed.spriteScales;
   if (rawSpriteScales && typeof rawSpriteScales === "object" && !Array.isArray(rawSpriteScales)) {
@@ -157,6 +160,21 @@ function readRuntimeSpriteScales(parsed: Partial<ChatStageRuntimeConfig> & { spr
       runtimeSpriteScaleMin,
       runtimeSpriteScaleMax,
     );
+  }
+  if (storedVersion < chatStageRuntimeConfigVersion) {
+    const legacyKeys = Object.keys(spriteScales).sort((left, right) => {
+      const leftIndex = Number(/-(\d+)$/.exec(left)?.[1] ?? Number.MAX_SAFE_INTEGER);
+      const rightIndex = Number(/-(\d+)$/.exec(right)?.[1] ?? Number.MAX_SAFE_INTEGER);
+      return leftIndex - rightIndex;
+    });
+    for (const legacyKey of legacyKeys) {
+      const match = /^(.+)-(\d+)$/.exec(legacyKey);
+      const characterKey = match?.[1]?.trim();
+      const scale = spriteScales[legacyKey];
+      if (characterKey && scale != null && spriteScales[characterKey] == null) {
+        spriteScales[characterKey] = scale;
+      }
+    }
   }
   return spriteScales;
 }
@@ -252,18 +270,24 @@ function isRuntimeRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function unwrapRuntimeConfigStoragePayload(value: unknown): Partial<ChatStageRuntimeConfig> {
+function unwrapRuntimeConfigStoragePayload(value: unknown): {
+  config: Partial<ChatStageRuntimeConfig>;
+  version: number;
+} {
   if (!isRuntimeRecord(value)) {
-    return {};
+    return { config: {}, version: 0 };
   }
   if (typeof value.version === "number" && isRuntimeRecord(value.config)) {
-    return value.config as Partial<ChatStageRuntimeConfig>;
+    return {
+      config: value.config as Partial<ChatStageRuntimeConfig>,
+      version: value.version,
+    };
   }
-  return value as Partial<ChatStageRuntimeConfig>;
+  return { config: value as Partial<ChatStageRuntimeConfig>, version: 0 };
 }
 
 export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntimeConfig {
-  const parsed = unwrapRuntimeConfigStoragePayload(value);
+  const { config: parsed, version } = unwrapRuntimeConfigStoragePayload(value);
   return {
     auto: typeof parsed.auto === "boolean" ? parsed.auto : defaultChatStageRuntimeConfig.auto,
     autoHideInput:
@@ -300,7 +324,7 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
         : Math.round(
             clampRuntimeNumber(parsed.typewriterCps, DEFAULT_TYPEWRITER_CPS, runtimeTextSpeedMin, runtimeTextSpeedMax),
           ),
-    spriteScales: readRuntimeSpriteScales(parsed),
+    spriteScales: readRuntimeSpriteScales(parsed, version),
     spriteOffsetX: Math.round(
       clampRuntimeNumber(
         parsed.spriteOffsetX,
@@ -372,7 +396,11 @@ export function writeChatStageRuntimeConfig(config: ChatStageRuntimeConfig) {
 }
 
 export function runtimeSpriteKey(sprite: ChatStageSprite, index: number) {
-  return sprite.id || sprite.characterName || sprite.label || `slot-${sprite.slot ?? index}`;
+  // Key sprite scale by CHARACTER identity (same order as chatStageSpriteCharacterName),
+  // never the volatile `id`: the backend sends `id` as "{name}-0" in snapshots but the
+  // live `sprite.show` event uses "{name}", so an id-first key gives one character's
+  // sprites mismatched sizes as expressions swap or the stage reloads.
+  return (sprite.characterName ?? sprite.label ?? sprite.id ?? "").trim() || `slot-${sprite.slot ?? index}`;
 }
 
 export function runtimeSpriteLabel(sprite: ChatStageSprite, index: number) {

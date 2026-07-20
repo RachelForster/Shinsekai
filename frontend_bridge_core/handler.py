@@ -588,6 +588,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 "/api/backgrounds/import-upload",
                 "/api/logs/import-upload",
                 "/api/chat/themes/upload",
+                "/api/chat/attachments/upload",
             }
             body = {} if method == "DELETE" or is_upload else self._read_json()
             if method in {"POST", "PUT"} and path == "/api/config/api":
@@ -1088,6 +1089,14 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     if not paths:
                         raise ValueError("未收到主题压缩包")
                     self._send_json(install_theme_from_zip(self.state, paths[0]))
+                finally:
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+            elif method == "POST" and path == "/api/chat/attachments/upload":
+                from core.media.chat_attachments import stage_uploaded_chat_attachments
+
+                temp_dir, paths = self._read_upload_files()
+                try:
+                    self._send_json({"attachments": stage_uploaded_chat_attachments(paths)})
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
             else:

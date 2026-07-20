@@ -12,7 +12,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Type
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
-from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
+from sdk.adapters import (
+    ASRAdapter,
+    LLMAdapter,
+    T2IAdapter,
+    TTSAdapter,
+    VisionAdapterFactory,
+    VisionAvailabilityProbe,
+    VisionFallbackContribution,
+)
 from sdk.chat_init import InitChatContext
 from sdk.hooks import (
     BeforeChatContext,
@@ -131,6 +139,7 @@ class PluginCapabilityRegistry:
         self._tts_adapters: dict[str, Type[TTSAdapter]] = {}
         self._asr_adapters: dict[str, Type[ASRAdapter]] = {}
         self._t2i_adapters: dict[str, Type[T2IAdapter]] = {}
+        self._vision_fallbacks: dict[str, VisionFallbackContribution] = {}
         self._llm_tool_registrars: list[Callable[[ToolManager], None]] = []
         self._tts_handlers: list[MessageHandler] = []
         self._ui_handlers: list[UIOutputMessageHandler] = []
@@ -160,6 +169,27 @@ class PluginCapabilityRegistry:
     def register_t2i_adapter(self, provider: str, adapter_cls: Type[T2IAdapter]) -> None:
         """Register optional T2I backends (slug 建议小写，与 ``T2IAdapterFactory.create_adapter`` 查找一致)。"""
         self._t2i_adapters[provider.strip().lower()] = adapter_cls
+
+    def register_vision_fallback(
+        self,
+        provider: str,
+        factory: VisionAdapterFactory,
+        available: VisionAvailabilityProbe,
+        *,
+        priority: int = 100,
+    ) -> None:
+        """Register an optional image-understanding backend for text-only LLMs."""
+        clean_provider = str(provider or "").strip().lower()
+        if not clean_provider:
+            raise ValueError("vision fallback provider cannot be empty")
+        if not callable(factory) or not callable(available):
+            raise TypeError("vision fallback factory and available probe must be callables")
+        self._vision_fallbacks[clean_provider] = VisionFallbackContribution(
+            provider=clean_provider,
+            factory=factory,
+            available=available,
+            priority=int(priority),
+        )
 
     def register_llm_tool(self, registrar: Callable[[ToolManager], None]) -> None:
         self._llm_tool_registrars.append(registrar)
@@ -351,6 +381,13 @@ class PluginCapabilityRegistry:
     @property
     def t2i_adapters(self) -> dict[str, Type[T2IAdapter]]:
         return dict(self._t2i_adapters)
+
+    @property
+    def vision_fallbacks(self) -> list[VisionFallbackContribution]:
+        return sorted(
+            self._vision_fallbacks.values(),
+            key=lambda contribution: (contribution.priority, contribution.provider),
+        )
 
     @property
     def message_handlers(self) -> tuple[list[MessageHandler], list[UIOutputMessageHandler]]:

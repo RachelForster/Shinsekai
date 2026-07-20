@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 import sdk
-from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
+from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter, VisionAdapter
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.plugin import PluginBase
 
@@ -46,6 +46,11 @@ class _ConcreteTTS(TTSAdapter):
 
     def switch_model(self, model_info):
         return TTSAdapter.switch_model(self, model_info)
+
+
+class _ConcreteVision(VisionAdapter):
+    def describe(self, image_bytes: bytes, prompt: str) -> str:
+        return f"{prompt}:{len(image_bytes)}"
 
 
 class _ConcretePlugin(PluginBase):
@@ -105,6 +110,8 @@ def test_adapter_base_defaults_and_abstract_passthroughs():
     assert _ConcreteTTS().generate_speech("hello", file_path="out.wav") is None
     assert _ConcreteTTS().switch_model({"voice": "demo"}) is None
 
+    assert _ConcreteVision().describe(b"image", "inspect") == "inspect:5"
+
 
 def test_plugin_base_defaults_and_names():
     plugin = _ConcretePlugin()
@@ -141,6 +148,7 @@ def test_handler_base_noop_lifecycle_methods():
 
 def test_sdk_lazy_exports_and_dir():
     assert sdk.LLMAdapter is LLMAdapter
+    assert sdk.VisionAdapter is VisionAdapter
     assert "PluginBase" in dir(sdk)
 
     with pytest.raises(AttributeError, match="does-not-exist"):

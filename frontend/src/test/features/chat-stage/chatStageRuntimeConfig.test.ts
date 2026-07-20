@@ -8,6 +8,7 @@ import {
   effectiveChatStageTextStyle,
   normalizeChatStageRuntimeConfig,
   readChatStageRuntimeConfig,
+  runtimeSpriteScale,
 } from "../../../features/chat-stage/runtimeConfig";
 
 describe("chat stage runtime config", () => {
@@ -58,6 +59,23 @@ describe("chat stage runtime config", () => {
       dialogScale: 1.1,
       immersiveMode: true,
     });
+  });
+
+  it("migrates legacy sprite-id scale keys to stable character keys", () => {
+    const config = normalizeChatStageRuntimeConfig({
+      config: {
+        spriteScales: {
+          "Mio-1": 0.8,
+          "Mio-0": 1.35,
+        },
+      },
+      version: 3,
+    });
+
+    expect(config.spriteScales).toEqual({ "Mio-0": 1.35, "Mio-1": 0.8, Mio: 1.35 });
+    expect(
+      runtimeSpriteScale(config, { characterName: "Mio", id: "Mio-0", label: "Mio", path: "asset://mio.png" }, 0),
+    ).toBe(1.35);
   });
 
   it("falls back safely when persisted JSON is malformed", () => {
