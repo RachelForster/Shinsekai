@@ -53,6 +53,36 @@ set_tool_ready_callback(_on_tool_ready)
 STREAM_REASONING_DELTA_KEY = "reasoning_delta"
 FIRST_USER_TURN_TOOL_CALL_LIMIT = 1
 
+# A model can legitimately be given tools and still choose to answer directly.
+# OpenAI-compatible providers commonly cannot combine tool calling with JSON mode,
+# so the first (tool-capable) request is intentionally not schema-enforced.  Keep
+# the recovery prompt concise: it is sent only after that final answer fails the
+# dialogue contract, and is made without tools so JSON mode can be enabled again.
+_DIALOG_FORMAT_REPAIR_PROMPT = (
+    "Reformat your immediately preceding answer as the application's dialogue JSON. "
+    "Return only a JSON object with a non-empty `dialog` array. Each item must have "
+    "`character_name`, `sprite`, and `speech`. Do not call tools or add markdown."
+)
+
+# Escalated instruction used for the second and later repair attempts, after the
+# gentler reformat above did not produce valid dialogue JSON.
+_DIALOG_FORMAT_RETRY_PROMPT = (
+    "That reply is STILL not valid. You MUST answer with ONLY a JSON object — a "
+    "non-empty `dialog` array whose items each have `character_name`, `sprite`, and "
+    "`speech`. Output that JSON and nothing else: no prose, no markdown fences, no tool calls."
+)
+
+
+def _has_valid_dialog_output(content: Any) -> bool:
+    """Whether *content* can produce at least one runtime dialogue message."""
+    if not isinstance(content, str) or not content.strip():
+        return False
+    # Import here to keep the manager independent from the worker at module load.
+    from core.messaging.stream_parser import LlmResponseStreamParser
+
+    parser = LlmResponseStreamParser()
+    return bool(list(parser.feed(content)))
+
 
 @dataclass
 class _ChatTurnState:
@@ -849,6 +879,83 @@ class LLMManager:
             )
             return response, recovered_messages
 
+    def _repair_invalid_dialog_output(
+        self,
+        content: str,
+        messages: list[dict],
+        generation_kwargs: dict[str, Any],
+        max_attempts: int = 2,
+    ) -> str:
+        """Make up to *max_attempts* schema-enforced, tool-free repair requests.
+
+        The first attempt asks the model to reformat its malformed answer; each
+        later attempt escalates with a stricter "JSON only" instruction and the
+        prior failed reply as context.  Neither the malformed answers nor the
+        repair instructions are added to persisted history — they are request-
+        local context only.
+        """
+        if _has_valid_dialog_output(content) or isinstance(self.llm_adapter, ClaudeAdapter):
+            return content
+
+        attempts = max(1, max_attempts)
+        repair_messages = copy.deepcopy(messages)
+        repair_messages.append({"role": "assistant", "content": content})
+
+        for attempt in range(attempts):
+            if self._cancel_requested:
+                return content
+            prompt = _DIALOG_FORMAT_REPAIR_PROMPT if attempt == 0 else _DIALOG_FORMAT_RETRY_PROMPT
+            repair_messages.append({"role": "user", "content": prompt})
+            try:
+                response = self.llm_adapter.chat(
+                    messages=repair_messages,
+                    stream=False,
+                    tools=None,
+                    **generation_kwargs,
+                )
+                if not response:
+                    raise RuntimeError("empty format-repair response")
+                if isinstance(self.llm_adapter, GeminiAdapter):
+                    repaired = getattr(response, "text", "") or ""
+                else:
+                    repaired = response.choices[0].message.content or ""
+            except Exception as exc:
+                self.logger.error(
+                    "LLM dialogue format repair failed",
+                    extra={
+                        "event": "llm.dialog_format.repair_failed",
+                        "attempt": attempt + 1,
+                        "error_type": type(exc).__name__,
+                        "raw_chars": len(content),
+                    },
+                )
+                return content
+
+            if _has_valid_dialog_output(repaired):
+                self.logger.warning(
+                    "Recovered malformed LLM dialogue output with a tool-free JSON repair request",
+                    extra={
+                        "event": "llm.dialog_format.repaired",
+                        "attempt": attempt + 1,
+                        "raw_chars": len(content),
+                        "repaired_chars": len(repaired),
+                    },
+                )
+                return repaired
+
+            # Still invalid — show the model its failed reply before the next, stricter retry.
+            repair_messages.append({"role": "assistant", "content": repaired})
+
+        self.logger.error(
+            "LLM dialogue format repair returned no valid dialogue",
+            extra={
+                "event": "llm.dialog_format.repair_invalid",
+                "attempts": attempts,
+                "raw_chars": len(content),
+            },
+        )
+        return content
+
     def _budget_exhausted_tool_result(self, tool_name: str) -> str:
         return json.dumps(
             {
@@ -1142,7 +1249,18 @@ class LLMManager:
                 return
             yield from self._chat_with_tools_stream(**kwargs)
         else:
+            needs_repair = not _has_valid_dialog_output(collected_content)
+            if needs_repair:
+                collected_content = self._repair_invalid_dialog_output(
+                    collected_content,
+                    chat_context.messages,
+                    merged_kwargs,
+                )
             self._persist_plain_assistant_turn(collected_content, collected_reasoning)
+            # The original stream content has already been yielded.  Only append
+            # a second chunk when the repair actually supplied a replacement.
+            if needs_repair and _has_valid_dialog_output(collected_content):
+                yield collected_content
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
         tools_defs = self._current_tool_definitions()
@@ -1247,5 +1365,10 @@ class LLMManager:
                 return ""
             return self._chat_with_tools_sync(**kwargs)
         else:
+            content = self._repair_invalid_dialog_output(
+                content,
+                chat_context.messages,
+                merged_kwargs,
+            )
             self._persist_plain_assistant_turn(content, reasoning)
             return content
