@@ -97,6 +97,8 @@ import llm.tools.memory_tools
 import llm.tools.tool_search
 import llm.tools.file_tools
 import llm.tools.chat_ui_tools
+import llm.tools.macos_tools
+import llm.tools.agent_tools
 from llm.template_generator import is_transparent_background
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor
@@ -465,6 +467,8 @@ def main():
             f"./data/character_templates/{args.template}.txt", "r", encoding="utf-8"
         ) as f:
             user_template = f.read()
+        # 角色卡后附执行能力声明：角色在人设层面就知道自己有 agent_task 这双手。
+        user_template = llm.tools.agent_tools.with_agent_capability(user_template)
 
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
     logger.info(
