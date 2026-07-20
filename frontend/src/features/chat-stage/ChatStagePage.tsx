@@ -4,7 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { browseFiles } from "../../entities/files/repository";
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
-import { sendChatCommand } from "../../entities/chat/repository";
+import { sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
 import type { ChatAttachmentInput, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
@@ -231,6 +231,29 @@ export function ChatStagePage() {
       });
     }
     dispatch({ attachments: next, type: "setAttachments" });
+  };
+
+  const handleDropFiles = async (files: File[]) => {
+    if (!files.length) {
+      return;
+    }
+    try {
+      const { attachments } = await uploadChatAttachments(files);
+      const imagePaths = attachments.filter((item) => item.kind === "image").map((item) => item.path);
+      const filePaths = attachments.filter((item) => item.kind !== "image").map((item) => item.path);
+      if (imagePaths.length) {
+        addAttachmentPaths("image", imagePaths);
+      }
+      if (filePaths.length) {
+        addAttachmentPaths("file", filePaths);
+      }
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+        title: t("common.operationFailed"),
+      });
+    }
   };
 
   const submitOption = (option: string) => {
@@ -491,6 +514,7 @@ export function ChatStagePage() {
           inputLayout={inputLayout}
           onChange={(text) => dispatch({ text, type: "setDraft" })}
           onCommand={sendCommand}
+          onDropFiles={handleDropFiles}
           onFlushBatch={() => sendCommand({ type: "flush-input-batch" })}
           onInputActivity={updateInputActivity}
           onPickAttachments={setAttachmentPickerKind}

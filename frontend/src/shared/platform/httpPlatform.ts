@@ -68,6 +68,7 @@ import type {
   TemplateSummary,
   TtsBundleDownloadResult,
   TtsBundleRecommendation,
+  ChatAttachmentInput,
 } from "./types";
 
 const bridgeAuthTokens = new Map<string, string>();
@@ -606,6 +607,8 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         });
       },
       uploadTheme: (file) => uploadFiles<ChatThemeSummary>(apiBase, "/api/chat/themes/upload", [file]),
+      uploadAttachments: (files) =>
+        uploadFiles<{ attachments: ChatAttachmentInput[] }>(apiBase, "/api/chat/attachments/upload", files),
       saveTheme: (input) =>
         requestJson<ChatThemeSummary>(apiBase, "/api/chat/themes/save", {
           body: JSON.stringify(input),

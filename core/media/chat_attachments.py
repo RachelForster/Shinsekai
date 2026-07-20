@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import mimetypes
 import os
+import shutil
+import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -138,3 +140,54 @@ def chat_attachment_display_text(text: str, attachments: Iterable[ResolvedChatAt
     value = str(text or "").strip()
     labels = [f"[{attachment.kind}: {attachment.name}]" for attachment in attachments]
     return "\n".join(part for part in [value, " ".join(labels)] if part).strip()
+
+
+CHAT_ATTACHMENT_STAGE_SUBDIR = ("data", "chat_attachments")
+
+
+def stage_uploaded_chat_attachments(source_paths: Iterable[Any]) -> list[dict[str, str | int]]:
+    """Copy uploaded files into the attachment root and return payloads.
+
+    Files dropped or uploaded from the browser arrive in a temporary directory
+    that lives outside the allowed attachment root, so sending them directly is
+    rejected by :func:`resolve_chat_attachments`.  This copies each file under
+    ``<root>/data/chat_attachments/<uuid>/<name>`` — inside the allowed root —
+    and returns attachment payloads whose ``path`` passes that check.  Supported
+    images are tagged ``kind="image"``; every other file is tagged
+    ``kind="file"`` (its text content is read for the model at send time).
+    """
+    root = _chat_attachment_root()
+    stage_root = root.joinpath(*CHAT_ATTACHMENT_STAGE_SUBDIR)
+    stage_root.mkdir(parents=True, exist_ok=True)
+
+    results: list[dict[str, str | int]] = []
+    for raw in source_paths:
+        source = Path(raw)
+        if not source.is_file():
+            raise ValueError(f"Uploaded attachment is not a file: {source.name}")
+        name = _reject_control_characters(source.name, field="attachment name")
+        mime_type = mimetypes.guess_type(name)[0] or "application/octet-stream"
+        is_image = mime_type in SUPPORTED_CHAT_IMAGE_MIME_TYPES
+        kind = "image" if is_image else "file"
+        size = source.stat().st_size
+        limit = MAX_CHAT_IMAGE_BYTES if is_image else MAX_CHAT_ATTACHMENT_BYTES
+        if size > limit:
+            raise ValueError(f"Attachment is too large: {name}")
+
+        dest_dir = stage_root / uuid.uuid4().hex
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / name
+        shutil.copyfile(source, dest)
+        results.append(
+            {
+                "kind": kind,
+                "mimeType": mime_type,
+                "name": name,
+                "path": str(dest),
+                "size": size,
+            }
+        )
+
+    if not results:
+        raise ValueError("No attachments were uploaded")
+    return results

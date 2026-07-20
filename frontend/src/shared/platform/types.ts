@@ -1132,6 +1132,8 @@ export interface ShinsekaiPlatform {
     setActiveThemeId: (id: string) => Promise<void>;
     /** 上传一个主题 .zip 安装（multipart）；返回安装后的概要。 */
     uploadTheme: (file: File) => Promise<ChatThemeSummary>;
+    /** 上传聊天图片附件（multipart）；复制进允许目录后返回可直接发送的暂存附件。 */
+    uploadAttachments: (files: File[]) => Promise<{ attachments: ChatAttachmentInput[] }>;
     /** 创建或更新用户主题，同时保留主题目录中的资源文件。 */
     saveTheme: (input: SaveChatThemeInput) => Promise<ChatThemeSummary>;
     /** 删除一个用户主题。 */
