@@ -64,6 +64,28 @@ def test_invalid_final_answer_gives_up_after_max_attempts() -> None:
     assert len(adapter.call_history) == 2
 
 
+def test_repair_discards_response_when_cancelled_during_blocking_request() -> None:
+    cancelled = False
+
+    class CancellingAdapter(MockLLMAdapter):
+        def chat(self, messages, stream=False, **kwargs):
+            nonlocal cancelled
+            response = super().chat(messages, stream=stream, **kwargs)
+            cancelled = True
+            return response
+
+    result = repair_dialog_output(
+        CancellingAdapter(responses=[VALID_DIALOG]),
+        "plain text answer",
+        [{"role": "system", "content": "S"}],
+        {},
+        cancelled=lambda: cancelled,
+        event_logger=MagicMock(),
+    )
+
+    assert result == "plain text answer"
+
+
 def test_provider_neutral_response_extraction_supports_content_blocks() -> None:
     class ContentBlockAdapter:
         def chat(self, messages, stream=False, **kwargs):
@@ -99,3 +121,53 @@ def test_manager_repairs_when_dialog_contract_is_explicitly_required() -> None:
     assert result == VALID_DIALOG
     assert len(adapter.call_history) == 2
     assert "_dialog_output_required" not in adapter.call_history[0]["kwargs"]
+
+
+def test_manager_does_not_persist_sync_repair_cancelled_in_flight() -> None:
+    manager: LLMManager
+
+    class CancellingAdapter(MockLLMAdapter):
+        def chat(self, messages, stream=False, **kwargs):
+            response = super().chat(messages, stream=stream, **kwargs)
+            if len(self.call_history) == 2:
+                manager.cancel_current_chat()
+            return response
+
+    adapter = CancellingAdapter(responses=["plain text answer", VALID_DIALOG])
+    manager = LLMManager(adapter=adapter, user_template="S")
+
+    result = manager.chat(
+        "hello",
+        stream=False,
+        include_local_time=False,
+        dialog_output_required=True,
+    )
+
+    assert result == ""
+    assert [message["role"] for message in manager.messages] == ["system", "user"]
+
+
+def test_manager_does_not_persist_stream_repair_cancelled_in_flight() -> None:
+    manager: LLMManager
+
+    class CancellingAdapter(MockLLMAdapter):
+        def chat(self, messages, stream=False, **kwargs):
+            response = super().chat(messages, stream=stream, **kwargs)
+            if len(self.call_history) == 2:
+                manager.cancel_current_chat()
+            return response
+
+    adapter = CancellingAdapter(responses=["plain text answer", VALID_DIALOG])
+    manager = LLMManager(adapter=adapter, user_template="S")
+
+    chunks = list(
+        manager.chat(
+            "hello",
+            stream=True,
+            include_local_time=False,
+            dialog_output_required=True,
+        )
+    )
+
+    assert "".join(chunk for chunk in chunks if isinstance(chunk, str)) == "plain text answer"
+    assert [message["role"] for message in manager.messages] == ["system", "user"]

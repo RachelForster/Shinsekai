@@ -145,6 +145,15 @@ def chat_attachment_display_text(text: str, attachments: Iterable[ResolvedChatAt
 CHAT_ATTACHMENT_STAGE_SUBDIR = ("data", "chat_attachments")
 
 
+@dataclass(frozen=True, slots=True)
+class _UploadedAttachmentCandidate:
+    source: Path
+    kind: str
+    mime_type: str
+    name: str
+    size: int
+
+
 def stage_uploaded_chat_attachments(source_paths: Iterable[Any]) -> list[dict[str, str | int]]:
     """Copy uploaded files into the attachment root and return payloads.
 
@@ -156,13 +165,15 @@ def stage_uploaded_chat_attachments(source_paths: Iterable[Any]) -> list[dict[st
     images are tagged ``kind="image"``; every other file is tagged
     ``kind="file"`` (its text content is read for the model at send time).
     """
-    root = _chat_attachment_root()
-    stage_root = root.joinpath(*CHAT_ATTACHMENT_STAGE_SUBDIR)
-    stage_root.mkdir(parents=True, exist_ok=True)
+    sources = [Path(raw) for raw in source_paths]
+    if not sources:
+        raise ValueError("No attachments were uploaded")
+    if len(sources) > MAX_CHAT_ATTACHMENTS:
+        raise ValueError(f"A message can include at most {MAX_CHAT_ATTACHMENTS} attachments")
 
-    results: list[dict[str, str | int]] = []
-    for raw in source_paths:
-        source = Path(raw)
+    candidates: list[_UploadedAttachmentCandidate] = []
+    total_size = 0
+    for source in sources:
         if not source.is_file():
             raise ValueError(f"Uploaded attachment is not a file: {source.name}")
         name = _reject_control_characters(source.name, field="attachment name")
@@ -173,21 +184,43 @@ def stage_uploaded_chat_attachments(source_paths: Iterable[Any]) -> list[dict[st
         limit = MAX_CHAT_IMAGE_BYTES if is_image else MAX_CHAT_ATTACHMENT_BYTES
         if size > limit:
             raise ValueError(f"Attachment is too large: {name}")
-
-        dest_dir = stage_root / uuid.uuid4().hex
-        dest_dir.mkdir(parents=True, exist_ok=True)
-        dest = dest_dir / name
-        shutil.copyfile(source, dest)
-        results.append(
-            {
-                "kind": kind,
-                "mimeType": mime_type,
-                "name": name,
-                "path": str(dest),
-                "size": size,
-            }
+        total_size += size
+        if total_size > MAX_CHAT_ATTACHMENTS_TOTAL_BYTES:
+            raise ValueError("Chat attachments exceed the total size limit")
+        candidates.append(
+            _UploadedAttachmentCandidate(
+                source=source,
+                kind=kind,
+                mime_type=mime_type,
+                name=name,
+                size=size,
+            )
         )
 
-    if not results:
-        raise ValueError("No attachments were uploaded")
+    root = _chat_attachment_root()
+    stage_root = root.joinpath(*CHAT_ATTACHMENT_STAGE_SUBDIR)
+    stage_root.mkdir(parents=True, exist_ok=True)
+    created_dirs: list[Path] = []
+    results: list[dict[str, str | int]] = []
+    try:
+        for candidate in candidates:
+            dest_dir = stage_root / uuid.uuid4().hex
+            dest_dir.mkdir(parents=True, exist_ok=False)
+            created_dirs.append(dest_dir)
+            dest = dest_dir / candidate.name
+            shutil.copyfile(candidate.source, dest)
+            results.append(
+                {
+                    "kind": candidate.kind,
+                    "mimeType": candidate.mime_type,
+                    "name": candidate.name,
+                    "path": str(dest),
+                    "size": candidate.size,
+                }
+            )
+    except Exception:
+        for created_dir in reversed(created_dirs):
+            shutil.rmtree(created_dir, ignore_errors=True)
+        raise
+
     return results

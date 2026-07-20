@@ -83,6 +83,8 @@ def repair_dialog_output(
                 tools=None,
                 **request_kwargs,
             )
+            if cancelled():
+                return content
             repaired = _response_text(response)
             if not repaired:
                 raise RuntimeError("empty format-repair response")

@@ -724,12 +724,15 @@ class LLMManager:
         finally:
             self._finish_chat_scope()
 
-    def _persist_plain_assistant_turn(self, content: str, reasoning: str) -> None:
+    def _persist_plain_assistant_turn(self, content: str, reasoning: str) -> bool:
         """无 tool_calls 的一轮：把 assistant 正文与（若存在）思考写入历史，供下游 API 与存档。"""
+        if self._cancel_requested:
+            return False
         extra = _deepseek_reasoning_message_kwargs(self.llm_adapter, reasoning)
         if not (content or "").strip() and not extra:
-            return
+            return False
         self.add_message("assistant", content or "", **extra)
+        return True
 
     def get_messages(self):
         """Returns the current list of messages."""
@@ -1177,10 +1180,12 @@ class LLMManager:
                     cancelled=lambda: self._cancel_requested,
                     event_logger=self.logger,
                 )
-            self._persist_plain_assistant_turn(collected_content, collected_reasoning)
+            if self._cancel_requested:
+                return
+            persisted = self._persist_plain_assistant_turn(collected_content, collected_reasoning)
             # The original stream content has already been yielded.  Only append
             # a second chunk when the repair actually supplied a replacement.
-            if needs_repair and has_valid_dialog_output(collected_content):
+            if persisted and needs_repair and has_valid_dialog_output(collected_content):
                 yield collected_content
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
@@ -1299,5 +1304,7 @@ class LLMManager:
                     cancelled=lambda: self._cancel_requested,
                     event_logger=self.logger,
                 )
+            if self._cancel_requested:
+                return ""
             self._persist_plain_assistant_turn(content, reasoning)
             return content

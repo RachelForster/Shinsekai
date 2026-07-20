@@ -1,3 +1,4 @@
+import { mergeChatAttachmentInputs } from "../attachments";
 import { applyStageEvent } from "./events";
 import { clearTransientNotificationState, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
@@ -175,6 +176,14 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       return withResolvedLayers({
         ...state,
         historyEntries: action.historyEntries.map((entry) => ({ ...entry })),
+      });
+    case "addAttachments":
+      return withResolvedLayers({
+        ...state,
+        inputAttachments: mergeChatAttachmentInputs(state.inputAttachments, action.attachments),
+        optimisticSubmission: state.optimisticSubmission
+          ? { ...state.optimisticSubmission, attachmentsEditedAfterSubmission: true }
+          : undefined,
       });
     case "setAttachments":
       return withResolvedLayers({

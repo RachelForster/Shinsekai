@@ -10,7 +10,13 @@ import {
   effectiveChatStageTextStyle,
 } from "../../../features/chat-stage/runtimeConfig";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
-import type { ChatCommand, ChatHistoryEntry, ChatSnapshot, ChatStageEvent } from "../../../shared/platform/types";
+import type {
+  ChatAttachmentInput,
+  ChatCommand,
+  ChatHistoryEntry,
+  ChatSnapshot,
+  ChatStageEvent,
+} from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
 
 const mocks = {
@@ -22,6 +28,7 @@ const mocks = {
   getChatTheme: vi.fn(),
   sendChatCommand: vi.fn(),
   subscribeChatEvents: vi.fn(),
+  uploadChatAttachments: vi.fn(),
 };
 
 const themeContextMocks = vi.hoisted(() => ({
@@ -38,6 +45,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   getChatTheme: () => mocks.getChatTheme(),
   sendChatCommand: (command: ChatCommand) => mocks.sendChatCommand(command),
   subscribeChatEvents: (listener: (event: ChatStageEvent) => void) => mocks.subscribeChatEvents(listener),
+  uploadChatAttachments: (files: File[]) => mocks.uploadChatAttachments(files),
 }));
 
 vi.mock("../../../entities/config/repository", () => ({
@@ -182,6 +190,8 @@ describe("ChatStagePage", () => {
           : {}),
       }),
     );
+    mocks.uploadChatAttachments.mockReset();
+    mocks.uploadChatAttachments.mockResolvedValue({ attachments: [] });
     desktopApiMocks.startDesktopWindowDrag.mockResolvedValue(undefined);
     desktopApiMocks.startDesktopWindowResize.mockResolvedValue(undefined);
     mocks.subscribeChatEvents.mockReturnValue(vi.fn());
@@ -1079,6 +1089,58 @@ describe("ChatStagePage", () => {
         type: "send-message",
       }),
     );
+  });
+
+  it("merges mixed browser drops in one atomic attachment update", async () => {
+    const image = new File(["image"], "scene.png", { type: "image/png" });
+    const documentFile = new File(["notes"], "notes.txt", { type: "text/plain" });
+    mocks.uploadChatAttachments.mockResolvedValueOnce({
+      attachments: [
+        { kind: "image", name: "scene.png", path: "D:/staged/scene.png" },
+        { kind: "file", name: "notes.txt", path: "D:/staged/notes.txt" },
+      ],
+    });
+
+    renderPage();
+    await screen.findByText("Ready");
+    fireEvent.drop(document.querySelector(".input-layer")!, {
+      dataTransfer: { files: [image, documentFile], types: ["Files"] },
+    });
+
+    expect(await screen.findByRole("button", { name: "Remove attachment scene.png" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Remove attachment notes.txt" })).toBeInTheDocument();
+    expect(mocks.uploadChatAttachments).toHaveBeenCalledWith([image, documentFile]);
+  });
+
+  it("does not restore a removed attachment when an earlier drop finishes later", async () => {
+    const first = new File(["first"], "first.txt", { type: "text/plain" });
+    const second = new File(["second"], "second.png", { type: "image/png" });
+    let resolveSecondUpload: (value: { attachments: ChatAttachmentInput[] }) => void = () => undefined;
+    const secondUpload = new Promise<{ attachments: ChatAttachmentInput[] }>((resolve) => {
+      resolveSecondUpload = resolve;
+    });
+    mocks.uploadChatAttachments
+      .mockResolvedValueOnce({
+        attachments: [{ kind: "file", name: "first.txt", path: "D:/staged/first.txt" }],
+      })
+      .mockReturnValueOnce(secondUpload);
+
+    renderPage();
+    await screen.findByText("Ready");
+    const inputLayer = document.querySelector(".input-layer")!;
+    fireEvent.drop(inputLayer, { dataTransfer: { files: [first], types: ["Files"] } });
+    const removeFirst = await screen.findByRole("button", { name: "Remove attachment first.txt" });
+
+    fireEvent.drop(inputLayer, { dataTransfer: { files: [second], types: ["Files"] } });
+    fireEvent.click(removeFirst);
+    expect(screen.queryByRole("button", { name: "Remove attachment first.txt" })).not.toBeInTheDocument();
+
+    resolveSecondUpload({
+      attachments: [{ kind: "image", name: "second.png", path: "D:/staged/second.png" }],
+    });
+
+    expect(await screen.findByRole("button", { name: "Remove attachment second.png" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove attachment first.txt" })).not.toBeInTheDocument();
   });
 
   it("lets the configured backend report ASR availability instead of probing Vosk in the frontend", async () => {
