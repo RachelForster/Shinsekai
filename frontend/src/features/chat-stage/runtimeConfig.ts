@@ -372,7 +372,11 @@ export function writeChatStageRuntimeConfig(config: ChatStageRuntimeConfig) {
 }
 
 export function runtimeSpriteKey(sprite: ChatStageSprite, index: number) {
-  return sprite.id || sprite.characterName || sprite.label || `slot-${sprite.slot ?? index}`;
+  // Key sprite scale by CHARACTER identity (same order as chatStageSpriteCharacterName),
+  // never the volatile `id`: the backend sends `id` as "{name}-0" in snapshots but the
+  // live `sprite.show` event uses "{name}", so an id-first key gives one character's
+  // sprites mismatched sizes as expressions swap or the stage reloads.
+  return (sprite.characterName ?? sprite.label ?? sprite.id ?? "").trim() || `slot-${sprite.slot ?? index}`;
 }
 
 export function runtimeSpriteLabel(sprite: ChatStageSprite, index: number) {
