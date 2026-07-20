@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping
 
+from ai.vision.fallback_registry import active_preferred_fallback
 from ai.vision.message_content import local_image_block
 from ai.vision.moondream_adapter import MoondreamPluginUnavailable, installed_moondream_directory
 from ai.vision.vision_manager import VisionManager
@@ -31,6 +32,21 @@ FileReader = Callable[[str], Mapping[str, Any]]
 FallbackAvailability = Callable[[], bool]
 
 
+def _default_fallback_factory() -> VisionManager:
+    """Prefer a plugin-registered vision fallback, else the local Moondream plugin."""
+    preferred = active_preferred_fallback()
+    if preferred is not None:
+        return preferred.factory()
+    return VisionManager("moondream")
+
+
+def _default_fallback_available() -> bool:
+    """Report whether any built-in fallback (plugin-preferred or Moondream) can run."""
+    if active_preferred_fallback() is not None:
+        return True
+    return installed_moondream_directory() is not None
+
+
 class ChatVisionService:
     """Prepare image attachments for the active model without provider logic in callers."""
 
@@ -41,9 +57,9 @@ class ChatVisionService:
         fallback_available: FallbackAvailability | None = None,
         file_reader: FileReader | None = None,
     ) -> None:
-        self._fallback_factory = fallback_factory or (lambda: VisionManager("moondream"))
+        self._fallback_factory = fallback_factory or _default_fallback_factory
         self._fallback_available = fallback_available or (
-            (lambda: installed_moondream_directory() is not None)
+            _default_fallback_available
             if fallback_factory is None
             else (lambda: True)
         )
@@ -63,9 +79,11 @@ class ChatVisionService:
         names = ", ".join(image.name for image in images)
         prompt_parts.append(
             "Image attachments could not be inspected. The current language model does not support "
-            "native image input, and the optional local Moondream fallback is not installed or available. "
-            f"Uninspected attachments: {names}. Explain this limitation to the user and ask them to install "
-            "or enable Moondream, switch to a vision-capable model, or describe the images in text."
+            "native image input, and no vision fallback is currently available. "
+            f"Uninspected attachments: {names}. Explain this to the user and offer these options: "
+            "install or enable the local Moondream plugin (本地识图), "
+            "enable and configure the Cloud Vision plugin for a cloud vision API (云端识图), "
+            "switch to a vision-capable model, or describe the images in text."
         )
         return PreparedChatInput(
             content="\n\n".join(prompt_parts),
