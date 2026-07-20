@@ -92,7 +92,7 @@ def _chat_runtime_mode(state: BridgeState) -> str:
     config_manager = getattr(state, "config_manager", None)
     system_config = getattr(getattr(config_manager, "config", None), "system_config", None)
     mode = str(getattr(system_config, "chat_ui_runtime_mode", "") or "").strip().lower()
-    return "react" if mode == "react" else "native"
+    return "native" if mode == "native" else "react"
 
 
 def _chat_experimental_features(state: BridgeState) -> dict[str, bool]:

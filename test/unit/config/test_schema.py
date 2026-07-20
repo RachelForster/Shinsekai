@@ -91,6 +91,11 @@ class TestApiConfig:
         assert ac.compact_target_ratio == pytest.approx(0.35)
 
 
+class TestSystemConfig:
+    def test_react_chat_ui_is_enabled_by_default(self):
+        assert SystemConfig().chat_ui_runtime_mode == "react"
+
+
 class TestAppConfig:
     def test_valid_app_config(self, sample_app_config):
         assert len(sample_app_config.characters) >= 1

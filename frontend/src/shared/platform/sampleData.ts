@@ -166,7 +166,7 @@ export const sampleConfig: AppConfig = {
     chat_window_geometry_b64: "",
     chat_ui_theme_path: "",
     chat_ui_theme_id: DEFAULT_CHAT_THEME_ID,
-    chat_ui_runtime_mode: "native",
+    chat_ui_runtime_mode: "react",
     react_chat_fork_experimental_enabled: false,
     react_chat_flowchart_experimental_enabled: false,
     mirror_auto_detect_china: true,
