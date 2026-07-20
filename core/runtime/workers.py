@@ -188,6 +188,7 @@ class LLMWorker(QThreadDagNode):
                 with tracker.track("LLM chat total"):
                     chat_kwargs = {
                         "stream": is_streaming,
+                        "dialog_output_required": True,
                         "user_input_text": message.text,
                         "user_attachments": [attachment.to_payload() for attachment in attachments],
                     }

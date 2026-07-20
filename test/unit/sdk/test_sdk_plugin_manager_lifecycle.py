@@ -60,6 +60,12 @@ class _DemoPlugin(_BasePlugin):
         register.register_tts_adapter("demo-tts", object)  # type: ignore[arg-type]
         register.register_asr_adapter("demo-asr", object)  # type: ignore[arg-type]
         register.register_t2i_adapter("DEMO-T2I", object)  # type: ignore[arg-type]
+        register.register_vision_fallback(
+            "DEMO-VISION",
+            lambda: object(),  # type: ignore[return-value]
+            lambda: True,
+            priority=25,
+        )
         register.register_message_handler(tts_handler="tts", ui_handler="ui")  # type: ignore[arg-type]
         register.register_user_input_trigger(lambda emit: emit("triggered"))
         register.register_user_input_processor(lambda text: text.upper())
@@ -142,6 +148,12 @@ def test_plugin_manager_collects_every_registered_capability(tmp_path: Path) -> 
     target.clear()
     manager.apply_t2i_providers(target)
     assert target["demo-t2i"] is object
+
+    vision_fallbacks = manager.collect_vision_fallbacks()
+    assert len(vision_fallbacks) == 1
+    assert vision_fallbacks[0].provider == "demo-vision"
+    assert vision_fallbacks[0].priority == 25
+    assert vision_fallbacks[0].available() is True
 
     tts_handlers, ui_handlers = manager.collect_message_handlers()
     assert tts_handlers == ["tts"]

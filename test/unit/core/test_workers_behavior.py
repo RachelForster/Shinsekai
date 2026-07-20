@@ -136,6 +136,7 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     runtime.llm_manager.chat.assert_called_once_with(
         "hello",
         stream=False,
+        dialog_output_required=True,
         user_attachments=[],
         user_input_text="hello",
     )
@@ -175,6 +176,7 @@ def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_
         "Inspect these\n[image: scene.png] [file: notes.txt]"
     )
     assert runtime.llm_manager.chat.call_args.kwargs["user_input_text"] == "Inspect these"
+    assert runtime.llm_manager.chat.call_args.kwargs["dialog_output_required"] is True
     assert [item["kind"] for item in runtime.llm_manager.chat.call_args.kwargs["user_attachments"]] == [
         "image",
         "file",

@@ -7,6 +7,7 @@ import pytest
 from ai.vision import fallback_registry
 from ai.vision.service import ChatVisionService
 from core.media.chat_attachments import ResolvedChatAttachment
+from sdk.adapters import VisionFallbackContribution
 
 
 class _TextAdapter:
@@ -24,9 +25,9 @@ class _FakeManager:
 
 @pytest.fixture(autouse=True)
 def _clean_registry():
-    fallback_registry.clear_preferred_fallback()
+    fallback_registry.configure_registered_fallbacks([])
     yield
-    fallback_registry.clear_preferred_fallback()
+    fallback_registry.configure_registered_fallbacks([])
 
 
 def _image(tmp_path: Path) -> ResolvedChatAttachment:
@@ -39,13 +40,13 @@ def _image(tmp_path: Path) -> ResolvedChatAttachment:
 
 def test_default_service_uses_registered_preferred_fallback(tmp_path: Path):
     manager = _FakeManager()
-    fallback_registry.set_preferred_fallback(
-        "plugin.cloud", lambda: manager, lambda: True
+    fallback_registry.configure_registered_fallbacks(
+        [VisionFallbackContribution("plugin.cloud", lambda: manager, lambda: True)]
     )
 
     prepared = ChatVisionService().prepare("what's this?", [_image(tmp_path)], adapter=_TextAdapter())
 
-    assert prepared.mode == "moondream"  # the fallback-description path
+    assert prepared.mode == "fallback"
     assert "cloud vision saw a red apple" in prepared.content
     assert manager.calls and manager.calls[0][0] == b"apple-bytes"
 
@@ -55,8 +56,8 @@ def test_unavailable_preferred_fallback_is_bypassed(tmp_path: Path, monkeypatch)
     # the service must not use the preferred fallback and reports "unavailable".
     monkeypatch.setattr("ai.vision.service.installed_moondream_directory", lambda: None)
     manager = _FakeManager()
-    fallback_registry.set_preferred_fallback(
-        "plugin.cloud", lambda: manager, lambda: False
+    fallback_registry.configure_registered_fallbacks(
+        [VisionFallbackContribution("plugin.cloud", lambda: manager, lambda: False)]
     )
 
     prepared = ChatVisionService().prepare("what's this?", [_image(tmp_path)], adapter=_TextAdapter())

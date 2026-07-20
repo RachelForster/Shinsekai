@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, Protocol
 
-from ai.vision.fallback_registry import active_preferred_fallback
+from ai.vision.fallback_registry import active_vision_fallback
 from ai.vision.message_content import local_image_block
 from ai.vision.moondream_adapter import MoondreamPluginUnavailable, installed_moondream_directory
 from ai.vision.vision_manager import VisionManager
@@ -27,14 +27,18 @@ class PreparedChatInput:
     mode: str
 
 
-VisionManagerFactory = Callable[[], VisionManager]
+class VisionDescriber(Protocol):
+    def describe(self, image_bytes: bytes, prompt: str) -> str: ...
+
+
+VisionManagerFactory = Callable[[], VisionDescriber]
 FileReader = Callable[[str], Mapping[str, Any]]
 FallbackAvailability = Callable[[], bool]
 
 
-def _default_fallback_factory() -> VisionManager:
+def _default_fallback_factory() -> VisionDescriber:
     """Prefer a plugin-registered vision fallback, else the local Moondream plugin."""
-    preferred = active_preferred_fallback()
+    preferred = active_vision_fallback()
     if preferred is not None:
         return preferred.factory()
     return VisionManager("moondream")
@@ -42,7 +46,7 @@ def _default_fallback_factory() -> VisionManager:
 
 def _default_fallback_available() -> bool:
     """Report whether any built-in fallback (plugin-preferred or Moondream) can run."""
-    if active_preferred_fallback() is not None:
+    if active_vision_fallback() is not None:
         return True
     return installed_moondream_directory() is not None
 
@@ -81,8 +85,7 @@ class ChatVisionService:
             "Image attachments could not be inspected. The current language model does not support "
             "native image input, and no vision fallback is currently available. "
             f"Uninspected attachments: {names}. Explain this to the user and offer these options: "
-            "install or enable the local Moondream plugin (本地识图), "
-            "enable and configure the Cloud Vision plugin for a cloud vision API (云端识图), "
+            "install or enable a vision fallback plugin (for example local Moondream), "
             "switch to a vision-capable model, or describe the images in text."
         )
         return PreparedChatInput(
@@ -161,5 +164,5 @@ class ChatVisionService:
         return PreparedChatInput(
             content="\n\n".join(prompt_parts),
             display_text=display_text,
-            mode="moondream",
+            mode="fallback",
         )
