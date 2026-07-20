@@ -1268,8 +1268,8 @@ describe("ChatStagePage", () => {
           fontSize: 19,
         },
         spriteScales: {
-          mio: 1.35,
-          ren: 0.8,
+          Mio: 1.35,
+          Ren: 0.8,
         },
         spriteOffsetX: 72,
         spriteOffsetY: -48,
@@ -1569,8 +1569,8 @@ describe("ChatStagePage", () => {
         dialogOpacity: 0.65,
         dialogScale: 1.1,
         spriteScales: {
-          mio: 1.4,
-          ren: 0.75,
+          Mio: 1.4,
+          Ren: 0.75,
         },
         spriteOffsetX: 36,
         spriteOffsetY: -24,
@@ -1695,11 +1695,14 @@ describe("ChatStagePage", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
     await waitFor(() => expect(within(dialog).getByText("120 / 130 shown")).toBeInTheDocument());
-    expect(within(dialog).queryByText("target ending")).not.toBeInTheDocument();
+    // The dialog opens on the newest messages, so the latest entry is visible and
+    // the oldest entries are batched out of view until "show more".
+    expect(within(dialog).getByText("target ending")).toBeInTheDocument();
+    expect(within(dialog).queryByText("filler 0")).not.toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Show 10 more" }));
     expect(within(dialog).getByText("130 / 130 shown")).toBeInTheDocument();
-    expect(within(dialog).getByText("target ending")).toBeInTheDocument();
+    expect(within(dialog).getByText("filler 0")).toBeInTheDocument();
 
     fireEvent.change(within(dialog).getByRole("searchbox", { name: "Search history" }), {
       target: { value: "target" },
