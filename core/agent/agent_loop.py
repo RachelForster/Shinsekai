@@ -207,7 +207,7 @@ class AgentSession:
         self.interact_backend = interact_backend or _LLMBackend()
         # 执行线程：拿 macOS 动作/取数工具。交互线程：默认不带可调用工具（只说话）。
         self.loop_tools = (
-            loop_tools if loop_tools is not None else tool_manager.get_definitions(groups=["macos"])
+            loop_tools if loop_tools is not None else tool_manager.get_definitions(groups=["macos", "web"])
         )
         self.interact_tools = interact_tools if interact_tools is not None else []
         self.run_tool = run_tool or tool_manager.execute
@@ -219,12 +219,12 @@ class AgentSession:
                 f"- 系统：macOS {platform.mac_ver()[0]}（{platform.machine()}）\n"
                 f"- 工作目录：{os.getcwd()}\n"
                 f"- 已装应用（连同系统自带 App，都可用 AppleScript 驱动）：{apps}\n"
-                f"- 联网：run_shell 的 curl 可以上网；搜索用 curl -sL 'https://html.duckduckgo.com/html/?q=…'"
-                f"（Google 会挡脚本），网页太长就配合 grep/sed 截取要点\n"
+                f"- 联网：搜索一律用 web_search 工具（返回带来源的检索上下文）；"
+                f"需要读某个具体网页时用 run_shell 的 curl，太长就配合 grep/sed 截取要点\n"
                 f"- AppleScript 有 30 秒硬超时，超时多半说明查询写成了全量遍历：备忘录/笔记/日历"
                 f"一律窄查——用 whose 按名称或日期过滤、第一步只取 name/日期等轻字段、"
                 f"锁定少量匹配后再读 body，绝不要 repeat 遍历所有条目\n"
-                f"- 工具域：macos（本机自动化；详细工具规格随请求附带）"
+                f"- 工具域：macos（本机自动化）+ web（联网搜索）；详细工具规格随请求附带"
             )
         )
         digest = "\n".join(
