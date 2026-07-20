@@ -334,17 +334,18 @@ class ConfigManager:
         # 返回 Base URL, 模型名称, API Key
         return base_url, llm_model, api_key
 
-    def save_characters_config(self) -> None:
-        """独立保存角色列表配置到 characters.yaml"""
+    def save_characters_config(self) -> bool:
+        """独立保存角色列表配置到 characters.yaml。成功返回 True，失败返回 False。"""
         if self._config is None:
             print("警告：配置未加载或加载失败，无法保存角色配置。")
-            return
-            
+            return False
+
         print("正在保存 characters.yaml...")
         # 角色列表需要将每个 Character 实体转换为字典
         characters_data = [char.model_dump(by_alias=True) for char in self.config.characters]
-        self._save_single_config(self._CHARACTERS_CONFIG_PATH, characters_data)
-        print("characters.yaml 保存完成。")
+        saved = self._save_single_config(self._CHARACTERS_CONFIG_PATH, characters_data)
+        print("characters.yaml 保存完成。" if saved else "characters.yaml 保存失败。")
+        return saved
     
     def save_background_config(self) -> None:
         if self._config is None:
@@ -366,15 +367,17 @@ class ConfigManager:
         self._save_single_config(self._EFFECT_CONFIG_PATH, effect_data)
         print("effect.yaml 保存完成。")
 
-    def _save_single_config(self, file_path: Path, data: Union[Dict, List]) -> None:
-        """保存单个配置到 YAML 文件"""
+    def _save_single_config(self, file_path: Path, data: Union[Dict, List]) -> bool:
+        """保存单个配置到 YAML 文件。成功返回 True，失败返回 False。"""
         file_path.parent.mkdir(parents=True, exist_ok=True) # 确保目录存在
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
                 # 使用 default_flow_style=False 提高 YAML 的可读性
                 yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+            return True
         except Exception as e:
             print(f"错误：保存配置到 {file_path} 失败: {e}")
+            return False
 
     def get_background_by_name(self, name: str) -> Optional[Background]:
         for char in self.config.background_list:
