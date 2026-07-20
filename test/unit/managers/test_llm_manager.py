@@ -968,7 +968,7 @@ class TestLLMManagerToolCalling:
                     choices=[
                         SimpleNamespace(
                             message=SimpleNamespace(
-                                content="final",
+                                content='{"dialog":[{"character_name":"Alice","sprite":"0","speech":"final"}]}',
                                 reasoning_content=None,
                                 tool_calls=[],
                             )
@@ -981,7 +981,7 @@ class TestLLMManagerToolCalling:
 
         result = mgr.chat("Hello", stream=False, include_local_time=False)
 
-        assert result == "final"
+        assert result == '{"dialog":[{"character_name":"Alice","sprite":"0","speech":"final"}]}'
         assert calls == {"a": 1, "b": 0}
         assert len(adapter.call_history) == 2
         assert adapter.call_history[0]["kwargs"]["tools"]

@@ -103,9 +103,9 @@ def get_plugin_output_contract_patches(
 
 def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager | None:
     """
-    Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge LLM/TTS/ASR/T2I
-    provider tables into the respective factories, register tools on the global ToolManager, and cache message handlers
-    for :mod:`core.handlers.handler_registry`.
+    Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge adapter
+    providers and vision fallbacks, register tools on the global ToolManager, and
+    cache message handlers for :mod:`core.handlers.handler_registry`.
     """
     global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers
     global _plugin_dag_yaml_paths
@@ -141,6 +141,12 @@ def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager 
         mgr.apply_t2i_providers(T2IAdapterFactory._adapters)
     except Exception:
         logger.exception("apply_t2i_providers failed")
+    try:
+        from ai.vision.fallback_registry import configure_registered_fallbacks
+
+        configure_registered_fallbacks(mgr.collect_vision_fallbacks())
+    except Exception:
+        logger.exception("collect_vision_fallbacks failed")
     try:
         from sdk.tool_registry import apply_registered_tools
 

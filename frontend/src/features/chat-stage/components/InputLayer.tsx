@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import { FileText, ImagePlus, LoaderCircle, Mic, MicOff, Plus, Send, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
@@ -19,6 +19,7 @@ export function InputLayer({
   inputLayout = "default",
   onChange,
   onCommand,
+  onDropFiles,
   onFlushBatch,
   onInputActivity,
   onPickAttachments,
@@ -37,6 +38,7 @@ export function InputLayer({
   inputLayout?: "default" | "pill";
   onChange: (value: string) => void;
   onCommand: (command: ChatCommand) => void | Promise<void>;
+  onDropFiles?: (files: File[]) => void | Promise<void>;
   onFlushBatch: () => void | Promise<void>;
   onInputActivity: (state: { composing: boolean; hasText: boolean }) => void;
   onSubmit: (textOverride?: string) => void | Promise<void>;
@@ -46,6 +48,7 @@ export function InputLayer({
 }) {
   const { t } = useI18n();
   const [panelOpen, setPanelOpen] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputActivityRef = useRef("");
   const pillLayout = inputLayout === "pill";
@@ -76,6 +79,31 @@ export function InputLayer({
   const handleInputChange = (nextValue: string) => {
     onChange(nextValue);
     reportInputActivity(nextValue, false);
+  };
+
+  const canDropFiles = Boolean(onDropFiles) && !disabled;
+  const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+    if (!canDropFiles || !Array.from(event.dataTransfer.types).includes("Files")) {
+      return;
+    }
+    event.preventDefault();
+    setDragActive(true);
+  };
+  const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+    if (event.currentTarget === event.target) {
+      setDragActive(false);
+    }
+  };
+  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+    if (!canDropFiles) {
+      return;
+    }
+    event.preventDefault();
+    setDragActive(false);
+    const files = Array.from(event.dataTransfer.files);
+    if (files.length) {
+      void onDropFiles?.(files);
+    }
   };
 
   const submitFromKeyboard = async (flushBatch: boolean) => {
@@ -130,8 +158,12 @@ export function InputLayer({
       data-listening={asrRunning ? "true" : "false"}
       data-has-attachments={attachments.length ? "true" : "false"}
       data-panel-open={panelOpen ? "true" : "false"}
+      data-drag-active={dragActive ? "true" : "false"}
       data-visible={autoHideRegion.visible ? "true" : "false"}
       onBlurCapture={autoHideRegion.handleBlur}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       onFocusCapture={autoHideRegion.handleFocus}
       onPointerEnter={autoHideRegion.show}
       onPointerLeave={autoHideRegion.scheduleHide}

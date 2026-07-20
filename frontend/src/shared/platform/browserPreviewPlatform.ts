@@ -1374,6 +1374,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           source: "user",
         });
       },
+      async uploadAttachments() {
+        return { attachments: [] };
+      },
       async saveTheme(input) {
         const manifest = clone(input.manifest);
         const existingSource = previewThemeSources.get(manifest.id);

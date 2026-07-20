@@ -13,7 +13,7 @@ Quick reference
 ---------------
 - :mod:`sdk.messages` — 队列消息模型 (UserInputMessage, LLMDialogMessage, TTSOutputMessage)
 - :mod:`sdk.handlers` — 抽象处理器基类 (MessageHandler, UIOutputMessageHandler)
-- :mod:`sdk.adapters` — 适配器抽象 (LLMAdapter, ASRAdapter, TTSAdapter, T2IAdapter)
+- :mod:`sdk.adapters` — 适配器抽象 (LLMAdapter, ASRAdapter, TTSAdapter, T2IAdapter, VisionAdapter)
 - :mod:`sdk.plugin` — 插件入口 (PluginBase)
 - :mod:`sdk.types` — 贡献声明 (SettingsUIContribution, ToolsTabContribution, ChatUIContribution)
 - :mod:`sdk.tool_registry` — LLM 工具注册 (@tool 装饰器)
@@ -105,6 +105,10 @@ __all__ = [
     "UIOutputMessageHandler",
     "UserInputMessage",
     "WorkflowContribution",
+    "VisionAdapter",
+    "VisionAdapterFactory",
+    "VisionAvailabilityProbe",
+    "VisionFallbackContribution",
     "normalize_lang",
     "set_chat_ui_context",
     "SUPPORTED_LANGS",
@@ -118,6 +122,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "T2IAdapter": ("sdk.adapters", "T2IAdapter"),
     "TTSAdapter": ("sdk.adapters", "TTSAdapter"),
     "TranscriptionCallback": ("sdk.adapters", "TranscriptionCallback"),
+    "VisionAdapter": ("sdk.adapters", "VisionAdapter"),
+    "VisionAdapterFactory": ("sdk.adapters", "VisionAdapterFactory"),
+    "VisionAvailabilityProbe": ("sdk.adapters", "VisionAvailabilityProbe"),
+    "VisionFallbackContribution": ("sdk.adapters", "VisionFallbackContribution"),
     # ── messages ──
     "LLMDialogMessage": ("sdk.messages", "LLMDialogMessage"),
     "TTSOutputMessage": ("sdk.messages", "TTSOutputMessage"),

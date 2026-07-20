@@ -88,6 +88,10 @@ export function uploadChatTheme(file: File): Promise<ChatThemeSummary> {
   return getPlatform().chat.uploadTheme(file);
 }
 
+export function uploadChatAttachments(files: File[]) {
+  return getPlatform().chat.uploadAttachments(files);
+}
+
 export function saveChatTheme(input: SaveChatThemeInput): Promise<ChatThemeSummary> {
   return getPlatform().chat.saveTheme(input);
 }

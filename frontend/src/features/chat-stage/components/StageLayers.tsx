@@ -195,6 +195,16 @@ export function DialogLayer({
   };
   const renderedDirection = textDirection === "rtl" ? "ltr" : textDirection;
 
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    // Keep the newest content in view: follow the typewriter reveal and the
+    // growing batched-input preview by pinning the dialogue box to the bottom.
+    const body = bodyRef.current;
+    if (body) {
+      body.scrollTop = body.scrollHeight;
+    }
+  }, [htmlNodes, text]);
+
   return (
     <section
       aria-hidden={hidden}
@@ -214,14 +224,14 @@ export function DialogLayer({
         </p>
       ) : null}
       {htmlNodes !== undefined ? (
-        <div className="dialog-layer__body">
+        <div className="dialog-layer__body" ref={bodyRef}>
           <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
             <div className="dialog-layer__html">{renderDialogHtmlNodes(htmlNodes)}</div>
             {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
           </div>
         </div>
       ) : (
-        <div className="dialog-layer__body">
+        <div className="dialog-layer__body" ref={bodyRef}>
           <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
             {text}
             {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}

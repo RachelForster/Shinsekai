@@ -414,6 +414,7 @@ describe("entity repositories", () => {
         getActiveThemeId: vi.fn().mockResolvedValue("windborne-adventure"),
         setActiveThemeId: vi.fn().mockResolvedValue(undefined),
         uploadTheme: vi.fn().mockResolvedValue({ id: "uploaded", name: {}, source: "user" }),
+        uploadAttachments: vi.fn().mockResolvedValue({ attachments: [] }),
         saveTheme: vi.fn().mockResolvedValue({ id: "custom", name: {}, source: "user" }),
         deleteTheme: vi.fn().mockResolvedValue(undefined),
         subscribeEvents: vi.fn().mockReturnValue(unsubscribe),

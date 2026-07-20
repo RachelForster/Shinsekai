@@ -100,6 +100,7 @@ export interface ChatStageViewModel {
 export type ChatStageAction =
   | { type: "event"; event: ChatStageEvent }
   | { type: "hydrate"; snapshot: ChatSnapshot }
+  | { type: "addAttachments"; attachments: ChatAttachmentInput[] }
   | { type: "submitUserMessage"; text: string; queued?: boolean; source?: "send-message" | "submit-option" }
   | { type: "rollbackUserSubmission"; source: "send-message" | "submit-option" }
   | { type: "setHistoryEntries"; historyEntries: ChatHistoryEntry[] }

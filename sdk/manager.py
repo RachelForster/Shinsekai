@@ -13,7 +13,13 @@ from typing import TYPE_CHECKING, Type
 import yaml
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
-from sdk.adapters import ASRAdapter, LLMAdapter, T2IAdapter, TTSAdapter
+from sdk.adapters import (
+    ASRAdapter,
+    LLMAdapter,
+    T2IAdapter,
+    TTSAdapter,
+    VisionFallbackContribution,
+)
 
 from sdk.hooks import PluginHookDispatcher
 from sdk.plugin import PluginBase
@@ -50,7 +56,7 @@ class PluginManager:
     1. ``load_manifest_file`` and/or ``register_plugin_class`` / ``register_plugin_entry``
     2. ``instantiate_all()`` — build instances only
     3. ``load_own_config_all(app_config=...)`` — call ``initialize`` on each plugin
-    4. ``apply_llm_providers`` / ``apply_tts_providers`` / ``apply_asr_providers`` / ``apply_t2i_providers``
+    4. Apply adapter providers and collect optional capabilities such as vision fallbacks
 
     **Manifest:** JSON/YAML list of :class:`~sdk.types.PluginDescriptor` dicts::
 
@@ -211,6 +217,12 @@ class PluginManager:
         self._ensure_plugins_initialized()
         if self._capabilities is not None:
             target.update(self._capabilities.t2i_adapters)
+
+    def collect_vision_fallbacks(self) -> list[VisionFallbackContribution]:
+        self._ensure_plugins_initialized()
+        if self._capabilities is None:
+            return []
+        return self._capabilities.vision_fallbacks
 
     def apply_llm_tools(self, tool_manager: ToolManager) -> None:
         self._ensure_plugins_initialized()
