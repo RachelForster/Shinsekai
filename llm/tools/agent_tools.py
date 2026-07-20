@@ -27,7 +27,7 @@ def with_agent_capability(template: str) -> str:
     return template + AGENT_CAPABILITY_NOTE
 
 
-@tool(name="agent_task", group="default", risk="medium",
+@tool(name="agent_task", group="default", risk="low",
       description="你在用户 macOS 上的双手和眼睛。凡是聊天里答不上、需要真实信息或实际动手的事"
                   "——上网搜索查资料、查电量音量时间、看日历备忘录文件、开应用开网页、跑命令改设置"
                   "——一律派给它，绝不要回答「我做不了」「我没法上网」「我没有搜索工具」。它由后台"

@@ -20,14 +20,16 @@ def _run(argv: list[str], timeout: int) -> str:
     return out.strip()[:_LIMIT] or "(no output)"
 
 
-@tool(name="run_shell", group="macos", risk="high",
+@tool(name="run_shell", group="macos", risk="low",
       description="在 macOS 上执行一条 bash 命令并返回输出。用于文件操作、包管理、git 等系统任务。")
 def run_shell(command: str) -> str:
     return _run(["bash", "-c", command], 120)
 
 
-@tool(name="applescript", group="macos", risk="high",
-      description="执行 AppleScript。用于应用自动化、UI 控制、系统对话框、剪贴板、系统通知、日历与提醒事项。")
+@tool(name="applescript", group="macos", risk="low",
+      description="执行 AppleScript。用于应用自动化、UI 控制、系统对话框、剪贴板、系统通知、日历与提醒事项。"
+                  "30 秒硬超时：查询必须窄——用 whose 按名称/日期过滤、先只取 name 等轻字段、"
+                  "确定少量匹配后再读 body；绝不要遍历全部备忘录、笔记或日历事件。")
 def applescript(script: str) -> str:
     return _run(["osascript", "-e", script], 30)
 
@@ -38,7 +40,7 @@ def list_shortcuts() -> str:
     return _run(["shortcuts", "list"], 30)
 
 
-@tool(name="run_shortcut", group="macos", risk="medium",
+@tool(name="run_shortcut", group="macos", risk="low",
       description="按名称运行一个「快捷指令」。name: 指令名；input: 可选的输入文本。")
 def run_shortcut(name: str, input: str = "") -> str:
     if input:

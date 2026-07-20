@@ -221,6 +221,9 @@ class AgentSession:
                 f"- 已装应用（连同系统自带 App，都可用 AppleScript 驱动）：{apps}\n"
                 f"- 联网：run_shell 的 curl 可以上网；搜索用 curl -sL 'https://html.duckduckgo.com/html/?q=…'"
                 f"（Google 会挡脚本），网页太长就配合 grep/sed 截取要点\n"
+                f"- AppleScript 有 30 秒硬超时，超时多半说明查询写成了全量遍历：备忘录/笔记/日历"
+                f"一律窄查——用 whose 按名称或日期过滤、第一步只取 name/日期等轻字段、"
+                f"锁定少量匹配后再读 body，绝不要 repeat 遍历所有条目\n"
                 f"- 工具域：macos（本机自动化；详细工具规格随请求附带）"
             )
         )
