@@ -1,6 +1,6 @@
 [package]
 name = "shinsekai-desktop"
-version = "2.2.0"
+version = "2.3.0"
 description = "Shinsekai desktop shell"
 authors = ["Shinsekai Contributors"]
 edition = "2021"

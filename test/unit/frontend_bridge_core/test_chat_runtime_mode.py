@@ -16,7 +16,7 @@ from frontend_bridge_core.handler import BRIDGE_AUTH_HEADER, CHAT_RUNTIME_READY_
 class _SystemConfig:
     live_room_id = ""
     voice_language = "ja"
-    chat_ui_runtime_mode = "native"
+    chat_ui_runtime_mode = "react"
     react_chat_fork_experimental_enabled = False
     react_chat_flowchart_experimental_enabled = False
 
@@ -117,10 +117,10 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(previous["sprites"], [{"id": "江之岛盾子-0", "label": "江之岛盾子", "path": "junko.png"}])
         self.assertEqual(previous["sprites"][0]["label"], "江之岛盾子")
 
-    def test_chat_runtime_mode_defaults_to_native(self):
+    def test_chat_runtime_mode_defaults_to_react(self):
         state = SimpleNamespace(config_manager=_ConfigManager())
 
-        self.assertEqual(_chat_runtime_mode(state), "native")
+        self.assertEqual(_chat_runtime_mode(state), "react")
 
     def test_chat_runtime_status_reports_idle_without_building_snapshot(self):
         state = SimpleNamespace(chat_runtime_closing=False)

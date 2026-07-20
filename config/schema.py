@@ -199,8 +199,8 @@ class SystemConfig(BaseModel):
         description="React chat stage 当前激活的主题 mod id（对应 data/chat_ui_themes/<id>/），留空则用默认主题",
     )
     chat_ui_runtime_mode: DefaultIfNone[str] = Field(
-        default="native",
-        description="聊天界面运行模式：native 使用原生 Qt 聊天窗口；react 使用流式 React chat stage",
+        default="react",
+        description="聊天界面运行模式：react 使用流式 React chat stage；native 回退到原生 Qt 聊天窗口",
     )
     react_chat_fork_experimental_enabled: DefaultIfNone[bool] = Field(
         default=False,
