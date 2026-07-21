@@ -398,6 +398,49 @@ describe("chatStageReducer", () => {
     expect(freshReply.optimisticSubmission).toBeUndefined();
   });
 
+  it("keeps the optimistic user message while a generating snapshot still shows the previous reply", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "old reply",
+        eventSeq: 3,
+        inputDraft: "hello",
+        sprites: [],
+        userDisplayName: "Aoi",
+      },
+      { source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    // Mid-generation resync: eventSeq advanced and the HTML differs from the
+    // pre-submit reply, but status is still "generating" — the new answer has not
+    // been produced yet, so it must not overwrite the user's message.
+    const generatingSnapshot = chatStageReducer(submitted, {
+      event: {
+        seq: 6,
+        snapshot: {
+          characterName: "Mio",
+          dialogHtml: "<p>old reply</p>",
+          dialogText: "old reply",
+          eventSeq: 6,
+          inputDraft: "",
+          options: [],
+          sessionId: "session-1",
+          sprites: [],
+          status: "generating",
+        },
+        ts: 6,
+        type: "snapshot",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(generatingSnapshot.characterName).toBe("Aoi");
+    expect(generatingSnapshot.dialogText).toBe("hello");
+    expect(generatingSnapshot.status).toBe("generating");
+    expect(generatingSnapshot.optimisticSubmission?.text).toBe("hello");
+  });
+
   it("accepts a newer wrapped snapshot when its payload omits eventSeq", () => {
     const submitted = chatStageReducer(
       {

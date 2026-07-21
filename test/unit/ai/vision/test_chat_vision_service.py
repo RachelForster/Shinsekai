@@ -163,6 +163,23 @@ def test_missing_default_moondream_plugin_returns_recoverable_prompt(tmp_path: P
     assert "switch to a vision-capable model" in prepared.content
 
 
+def test_installed_moondream_without_torch_returns_recoverable_prompt(tmp_path: Path, monkeypatch):
+    image = _image_attachment(tmp_path)
+    # Moondream plugin directory is present, but its PyTorch runtime dependency is
+    # not importable: report it unavailable so the user gets the guidance prompt
+    # instead of a raw missing-module crash.
+    monkeypatch.setattr("ai.vision.service.installed_moondream_directory", lambda: tmp_path)
+    monkeypatch.setattr(
+        "ai.vision.service.importlib.util.find_spec",
+        lambda name: None if name == "torch" else object(),
+    )
+
+    prepared = ChatVisionService().prepare("Inspect", [image], adapter=_TextAdapter())
+
+    assert prepared.mode == "unavailable"
+    assert "switch to a vision-capable model" in prepared.content
+
+
 def test_file_attachments_are_read_locally_and_passed_to_the_llm(tmp_path: Path):
     document = tmp_path / "facts.txt"
     document.write_text("facts", encoding="utf-8")

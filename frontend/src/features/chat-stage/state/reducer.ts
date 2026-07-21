@@ -47,15 +47,23 @@ function snapshotReplacesOptimisticPresentation(
   if (!hasDialogContent || isCommandFeedback) {
     return false;
   }
+  // While the model is still preparing the answer there is no new reply yet, so a
+  // snapshot only re-publishes the dialogue shown before this turn. Never let such
+  // a resync overwrite the optimistic user message — the real answer arrives later
+  // as a streaming update or dialog.end (which clear the optimistic state on their
+  // own). This is the primary guard and is independent of dialogue content.
+  if (snapshot.status === "generating") {
+    return false;
+  }
+  // Belt-and-braces: also treat the snapshot as stale when its dialogue still
+  // matches the reply shown before this submission. Compare on plain text +
+  // speaker only — the backend may re-serialize the HTML differently, so an exact
+  // dialogHtml match is too brittle and would let the old reply flash back.
   const previous = optimistic.previous;
+  const previousDialogText = previous.dialogText.trim();
   const sameAsPreviousReply =
-    dialogText === previous.dialogText.trim() &&
-    (dialogHtml ?? "") === (previous.dialogHtml?.trim() ?? "") &&
-    speaker === previous.characterName?.trim();
+    Boolean(previousDialogText) && dialogText === previousDialogText && speaker === previous.characterName?.trim();
   if (sameAsPreviousReply) {
-    // A snapshot that merely re-publishes the reply shown before this submission
-    // (only its eventSeq advanced) is stale — the new reply has not arrived yet.
-    // Keep the optimistic user bubble instead of flashing the previous turn's line.
     return false;
   }
   return Boolean(speaker && speaker !== userName);
