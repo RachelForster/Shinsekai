@@ -31,11 +31,24 @@ function snapshotReplacesOptimisticPresentation(
   if (!optimistic) {
     return true;
   }
-  if (snapshot.sessionClosedReason || snapshot.options.length > 0) {
+  if (snapshot.sessionClosedReason) {
     return true;
   }
   if (authoritativeEventSeq <= optimistic.eventSeq) {
     return false;
+  }
+  // Realtime (websocket) transport delivers the reply, options and closure via their
+  // own events (dialog.end / options.show / session.closed), each of which clears the
+  // optimistic submission on its own. Any snapshot that lands mid-turn is therefore
+  // only a full-state resync and must never overwrite the just-sent user message —
+  // otherwise the previous turn's reply flashes back while we wait for the answer.
+  // Only the snapshot/polling transport delivers replies via snapshots, so keep the
+  // content heuristics below for that mode alone.
+  if (state.transportMode === "websocket") {
+    return false;
+  }
+  if (snapshot.options.length > 0) {
+    return true;
   }
   const dialogText = snapshot.dialogText.trim();
   const dialogHtml = snapshot.dialogHtml?.trim();

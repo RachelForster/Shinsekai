@@ -441,6 +441,51 @@ describe("chatStageReducer", () => {
     expect(generatingSnapshot.optimisticSubmission?.text).toBe("hello");
   });
 
+  it("keeps the optimistic user message on a websocket resync snapshot mid-turn", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "old reply",
+        eventSeq: 3,
+        inputDraft: "hello",
+        sprites: [],
+        transportMode: "websocket",
+        userDisplayName: "Aoi",
+      },
+      { source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    // A websocket resync lands while the previous reply is still being spoken
+    // (status "speaking", not "generating") and its dialogue differs slightly from
+    // the pre-submit reply, so neither the status nor the content heuristic catches
+    // it. In realtime mode the answer arrives via dialog.end, so the resync must not
+    // overwrite the user's just-sent message.
+    const resync = chatStageReducer(submitted, {
+      event: {
+        seq: 7,
+        snapshot: {
+          characterName: "Mio",
+          dialogHtml: "<p>old reply revised</p>",
+          dialogText: "old reply revised",
+          eventSeq: 7,
+          inputDraft: "",
+          options: [],
+          sessionId: "session-1",
+          sprites: [],
+          status: "speaking",
+        },
+        ts: 7,
+        type: "snapshot",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(resync.characterName).toBe("Aoi");
+    expect(resync.dialogText).toBe("hello");
+    expect(resync.optimisticSubmission?.text).toBe("hello");
+  });
+
   it("accepts a newer wrapped snapshot when its payload omits eventSeq", () => {
     const submitted = chatStageReducer(
       {
