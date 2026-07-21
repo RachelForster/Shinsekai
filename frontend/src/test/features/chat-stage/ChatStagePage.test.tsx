@@ -224,6 +224,24 @@ describe("ChatStagePage", () => {
     );
   });
 
+  it("focuses the first option and submits the focused choice with Enter", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut", "Stay on the road"] }));
+    renderPage();
+
+    const firstOption = await screen.findByRole("button", { name: "Take the shortcut" });
+    expect(screen.getByRole("list", { name: "Dialogue choices" })).toContainElement(firstOption);
+    expect(firstOption).toHaveFocus();
+
+    fireEvent.keyDown(firstOption, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: "Take the shortcut",
+        type: "submit-option",
+      }),
+    );
+  });
+
   it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {
     themeContextMocks.optional = {
       style: {

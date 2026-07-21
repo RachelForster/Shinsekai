@@ -15,6 +15,7 @@
   opacity: 1;
   backdrop-filter: none;
   isolation: isolate;
+  translate: 0 -24px;
   /* Slide-only entrance (no opacity fade): the option buttons use backdrop-filter,
      and fading the group's opacity makes Chromium/Edge flash a bright bar for one
      frame while it re-composites the backdrop. */
@@ -35,12 +36,10 @@
   display: grid;
   box-sizing: border-box;
   width: 100%;
-  max-height: min(58vh, 680px);
   gap: var(--chat-options-gap);
   justify-items: stretch;
   padding: clamp(4px, 0.8vw, 10px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  overflow: visible;
 }
 
 .options-layer__item {

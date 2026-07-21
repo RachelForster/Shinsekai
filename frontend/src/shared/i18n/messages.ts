@@ -419,6 +419,7 @@ export type MessageKey =
   | "chat.actionBar.reroll"
   | "chat.actionBar.skip"
   | "chat.actionBar.title"
+  | "chat.options.label"
   | "chat.actionBar.unlock"
   | "chat.config.dialogOpacity"
   | "chat.config.dialogOpacityValue"

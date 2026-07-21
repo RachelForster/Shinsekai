@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   type CSSProperties,
+  type KeyboardEvent,
   type MouseEvent,
   type MouseEventHandler,
   type ReactNode,
@@ -326,6 +327,7 @@ export function OptionsLayer({
   onSelect: (option: string) => void;
   options: string[];
 }) {
+  const { t } = useI18n();
   if (hidden || !options.length) {
     return null;
   }
@@ -336,11 +338,23 @@ export function OptionsLayer({
       data-chat-stage-hitbox="true"
       hidden={hidden}
     >
-      <div className="options-layer__scroll">
-        {options.map((option) => (
-          <div className="options-layer__item" key={option}>
+      <div aria-label={t("chat.options.label")} className="options-layer__scroll" role="list">
+        {options.map((option, index) => (
+          <div className="options-layer__item" key={option} role="listitem">
             <ThemeFrame prefix="chat-option" />
-            <Button className="options-layer__button" onClick={() => onSelect(option)}>
+            <Button
+              autoFocus={index === 0}
+              className="options-layer__button"
+              onClick={() => onSelect(option)}
+              onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+                if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+                  return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                onSelect(option);
+              }}
+            >
               {option}
             </Button>
           </div>
