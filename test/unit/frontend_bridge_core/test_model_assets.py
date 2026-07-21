@@ -59,6 +59,33 @@ def test_resolve_faster_whisper_asset_uses_configured_default():
     assert spec.repo_id == "Systran/faster-whisper-medium"
 
 
+def test_resolve_memory_embedding_asset_uses_canonical_spec():
+    from ai.memory.config import EMBEDDING_MODEL_ASSET
+
+    spec = model_assets._resolve_model_asset(
+        _state(),
+        {"assetId": "memory.embedding"},
+    )
+
+    assert spec is EMBEDDING_MODEL_ASSET
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"configured": True},
+        {"variant": "other/model"},
+        {"modelName": "other/model"},
+    ],
+)
+def test_memory_embedding_asset_rejects_client_selected_variants(extra):
+    with pytest.raises(ValueError, match="do not accept a variant"):
+        model_assets._resolve_model_asset(
+            _state(),
+            {"assetId": "memory.embedding", **extra},
+        )
+
+
 def test_resolve_configured_custom_huggingface_repo(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     spec = model_assets._resolve_model_asset(
