@@ -47,6 +47,17 @@ function snapshotReplacesOptimisticPresentation(
   if (!hasDialogContent || isCommandFeedback) {
     return false;
   }
+  const previous = optimistic.previous;
+  const sameAsPreviousReply =
+    dialogText === previous.dialogText.trim() &&
+    (dialogHtml ?? "") === (previous.dialogHtml?.trim() ?? "") &&
+    speaker === previous.characterName?.trim();
+  if (sameAsPreviousReply) {
+    // A snapshot that merely re-publishes the reply shown before this submission
+    // (only its eventSeq advanced) is stale — the new reply has not arrived yet.
+    // Keep the optimistic user bubble instead of flashing the previous turn's line.
+    return false;
+  }
   return Boolean(speaker && speaker !== userName);
 }
 

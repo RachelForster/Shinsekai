@@ -488,6 +488,8 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.interruptHelp": "A new message cancels the current generation and queued speech before it is sent.",
   "chat.config.sectionConversation": "Conversation",
   "chat.config.sectionImmersive": "Immersive mode",
+  "chat.config.sectionWindow": "Window",
+  "chat.config.alwaysOnTop": "Always on top",
   "chat.config.sectionLayout": "Layout",
   "chat.config.sectionMenuAppearance": "Settings panel appearance",
   "chat.config.sectionSending": "Sending behavior",

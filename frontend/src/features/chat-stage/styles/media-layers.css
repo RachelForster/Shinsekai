@@ -25,6 +25,13 @@
   background: transparent;
 }
 
+/* Desktop: pressing the background (when one is shown) drags the chat window,
+   mirroring the draggable-sprite affordance. */
+.chat-stage__background[data-draggable="true"] {
+  cursor: move;
+  pointer-events: auto;
+}
+
 .chat-stage__cg {
   z-index: 1;
 }

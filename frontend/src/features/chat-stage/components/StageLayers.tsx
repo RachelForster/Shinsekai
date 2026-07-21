@@ -28,10 +28,12 @@ function closestDialogInteractiveElement(target: EventTarget | null) {
 
 export function BackgroundLayer({
   hidden,
+  onDragStart,
   path,
   transparent,
 }: {
   hidden: boolean;
+  onDragStart?: MouseEventHandler<HTMLElement>;
   path?: string;
   transparent: boolean;
 }) {
@@ -40,8 +42,11 @@ export function BackgroundLayer({
     <div
       aria-hidden={hidden}
       className={layerClassName("chat-stage__background", hidden)}
+      data-chat-stage-hitbox={onDragStart ? "true" : undefined}
+      data-draggable={onDragStart ? "true" : "false"}
       data-transparent={transparent ? "true" : "false"}
       hidden={hidden}
+      onMouseDown={onDragStart}
     >
       {transparent ? null : <div aria-hidden className="chat-stage__fallback" />}
       {src ? <img alt="" onError={hideBrokenStageAsset} src={src} /> : null}

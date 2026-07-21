@@ -327,6 +327,77 @@ describe("chatStageReducer", () => {
     expect(staleSnapshot.historyEntries).toEqual([{ id: "user-1", role: "user", text: "Aoi: hello" }]);
   });
 
+  it("keeps the optimistic user message when a seq-advanced snapshot still carries the previous reply", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "old reply",
+        eventSeq: 3,
+        inputDraft: "hello",
+        sprites: [],
+        userDisplayName: "Aoi",
+      },
+      { source: "send-message", text: "hello", type: "submitUserMessage" },
+    );
+    const withStatus = chatStageReducer(submitted, {
+      event: { seq: 4, status: "generating", ts: 4, type: "status.change", v: 1 },
+      type: "event",
+    });
+    // The reply has not been generated yet, but the backend republishes a snapshot
+    // whose eventSeq has advanced past the current state while its dialogue is still
+    // the pre-submit line. It must not flash the previous turn's reply.
+    const staleAhead = chatStageReducer(withStatus, {
+      event: {
+        seq: 7,
+        snapshot: {
+          characterName: "Mio",
+          dialogText: "old reply",
+          eventSeq: 7,
+          inputDraft: "",
+          options: [],
+          sessionId: "session-1",
+          sprites: [],
+          status: "idle",
+        },
+        ts: 7,
+        type: "snapshot",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(staleAhead.characterName).toBe("Aoi");
+    expect(staleAhead.dialogText).toBe("hello");
+    expect(staleAhead.status).toBe("generating");
+    expect(staleAhead.optimisticSubmission?.text).toBe("hello");
+
+    // Once a genuinely new reply lands, it replaces the optimistic user message.
+    const freshReply = chatStageReducer(staleAhead, {
+      event: {
+        seq: 8,
+        snapshot: {
+          characterName: "Mio",
+          dialogText: "brand new reply",
+          eventSeq: 8,
+          inputDraft: "",
+          options: [],
+          sessionId: "session-1",
+          sprites: [],
+          status: "idle",
+        },
+        ts: 8,
+        type: "snapshot",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(freshReply.characterName).toBe("Mio");
+    expect(freshReply.dialogText).toBe("brand new reply");
+    expect(freshReply.optimisticSubmission).toBeUndefined();
+  });
+
   it("accepts a newer wrapped snapshot when its payload omits eventSeq", () => {
     const submitted = chatStageReducer(
       {

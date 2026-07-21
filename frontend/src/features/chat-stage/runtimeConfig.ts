@@ -63,6 +63,7 @@ export interface ChatStageDialogFillConfig {
 }
 
 export interface ChatStageRuntimeConfig {
+  alwaysOnTop: boolean;
   auto: boolean;
   autoHideInput: boolean;
   autoHideTopTools: boolean;
@@ -92,6 +93,7 @@ interface ChatStageRuntimeConfigStorageEnvelope {
 }
 
 export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
+  alwaysOnTop: true,
   auto: false,
   autoHideInput: true,
   autoHideTopTools: true,
@@ -289,6 +291,8 @@ function unwrapRuntimeConfigStoragePayload(value: unknown): {
 export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntimeConfig {
   const { config: parsed, version } = unwrapRuntimeConfigStoragePayload(value);
   return {
+    alwaysOnTop:
+      typeof parsed.alwaysOnTop === "boolean" ? parsed.alwaysOnTop : defaultChatStageRuntimeConfig.alwaysOnTop,
     auto: typeof parsed.auto === "boolean" ? parsed.auto : defaultChatStageRuntimeConfig.auto,
     autoHideInput:
       typeof parsed.autoHideInput === "boolean" ? parsed.autoHideInput : defaultChatStageRuntimeConfig.autoHideInput,

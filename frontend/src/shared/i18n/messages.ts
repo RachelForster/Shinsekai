@@ -464,6 +464,8 @@ export type MessageKey =
   | "chat.config.interruptHelp"
   | "chat.config.sectionConversation"
   | "chat.config.sectionImmersive"
+  | "chat.config.sectionWindow"
+  | "chat.config.alwaysOnTop"
   | "chat.config.sectionLayout"
   | "chat.config.sectionMenuAppearance"
   | "chat.config.sectionSending"

@@ -381,6 +381,10 @@ export function toggleMaximizeDesktopWindow() {
   return invokeDesktop<void>("desktop_window_toggle_maximize");
 }
 
+export function setDesktopWindowAlwaysOnTop(alwaysOnTop: boolean) {
+  return invokeDesktop<void>("desktop_window_set_always_on_top", { alwaysOnTop });
+}
+
 export function startDesktopWindowDrag() {
   return invokeDesktop<void>("desktop_window_start_drag");
 }

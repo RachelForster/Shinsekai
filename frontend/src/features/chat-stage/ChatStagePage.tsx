@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { browseFiles } from "../../entities/files/repository";
-import { isTauriDesktop } from "../../shared/desktop/desktopApi";
+import { isTauriDesktop, setDesktopWindowAlwaysOnTop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
@@ -103,7 +103,7 @@ export function ChatStagePage() {
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
-  const handleSpriteDragStart = useDesktopWindowDrag(standaloneDesktopWindow);
+  const handleWindowDrag = useDesktopWindowDrag(standaloneDesktopWindow);
   const transparentBackground = !viewModel.backgroundPath;
   const statsVisible = viewModel.stats.length > 0;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
@@ -196,6 +196,15 @@ export function ChatStagePage() {
   useEffect(() => {
     writeChatStageRuntimeConfig(runtimeConfig);
   }, [runtimeConfig]);
+
+  useEffect(() => {
+    if (!standaloneDesktopWindow) {
+      return;
+    }
+    void setDesktopWindowAlwaysOnTop(runtimeConfig.alwaysOnTop).catch((error) => {
+      console.error("Desktop chat window always-on-top toggle failed", error);
+    });
+  }, [runtimeConfig.alwaysOnTop, standaloneDesktopWindow]);
 
   const submit = async (textOverride?: string) => {
     const text = (textOverride ?? viewModel.inputDraft).trim();
@@ -307,6 +316,9 @@ export function ChatStagePage() {
     void sendChatCommand({ payload: inputState, type: "chat-input-state" }).catch(() => undefined);
   }, []);
 
+  const updateRuntimeAlwaysOnTop = (alwaysOnTop: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, alwaysOnTop }));
+  };
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
@@ -464,6 +476,7 @@ export function ChatStagePage() {
         />
         <BackgroundLayer
           hidden={!viewModel.layers.background}
+          onDragStart={standaloneDesktopWindow && !transparentBackground ? handleWindowDrag : undefined}
           path={viewModel.backgroundPath}
           transparent={transparentBackground}
         />
@@ -471,7 +484,7 @@ export function ChatStagePage() {
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer
           hidden={!viewModel.layers.sprites}
-          onDragStart={standaloneDesktopWindow ? handleSpriteDragStart : undefined}
+          onDragStart={standaloneDesktopWindow ? handleWindowDrag : undefined}
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
           sprites={viewModel.sprites}
@@ -577,6 +590,7 @@ export function ChatStagePage() {
           />
         ) : null}
         <ChatConfigDialog
+          alwaysOnTop={runtimeConfig.alwaysOnTop}
           autoHideInput={runtimeConfig.autoHideInput}
           autoHideTopTools={runtimeConfig.autoHideTopTools}
           configThemeColor={runtimeConfig.configThemeColor}
@@ -592,6 +606,7 @@ export function ChatStagePage() {
           nameText={runtimeConfig.nameText}
           onClose={() => setToolbarConfigOpen(false)}
           onCommand={sendCommand}
+          onAlwaysOnTopChange={updateRuntimeAlwaysOnTop}
           onAutoHideInputChange={updateRuntimeAutoHideInput}
           onAutoHideTopToolsChange={updateRuntimeAutoHideTopTools}
           onConfigThemeColorChange={updateRuntimeConfigThemeColor}
@@ -615,6 +630,7 @@ export function ChatStagePage() {
           textSpeed={typewriterCps}
           turnOptions={state.turnOptions}
           voiceLanguage={viewModel.voiceLanguage || "ja"}
+          windowControlsAvailable={standaloneDesktopWindow}
           windowScale={runtimeConfig.windowScale}
         />
       </main>

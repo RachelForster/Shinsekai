@@ -481,6 +481,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.config.interruptHelp": "发送新消息前会取消当前生成，并清理尚未播放的语音。",
   "chat.config.sectionConversation": "对话",
   "chat.config.sectionImmersive": "沉浸模式",
+  "chat.config.sectionWindow": "窗口置顶",
+  "chat.config.alwaysOnTop": "窗口置顶",
   "chat.config.sectionLayout": "布局",
   "chat.config.sectionMenuAppearance": "设置面板外观",
   "chat.config.sectionSending": "发送行为",

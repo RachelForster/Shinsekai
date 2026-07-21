@@ -20,6 +20,7 @@ const desktopApiMocks = vi.hoisted(() => ({
   closeDesktopWindow: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn(),
+  setDesktopWindowAlwaysOnTop: vi.fn(),
   startDesktopWindowDrag: vi.fn(),
   toggleMaximizeDesktopWindow: vi.fn(),
 }));
@@ -43,6 +44,7 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
     closeDesktopWindow: () => desktopApiMocks.closeDesktopWindow(),
     isTauriDesktop: () => desktopApiMocks.isTauriDesktop(),
     minimizeDesktopWindow: () => desktopApiMocks.minimizeDesktopWindow(),
+    setDesktopWindowAlwaysOnTop: (alwaysOnTop: boolean) => desktopApiMocks.setDesktopWindowAlwaysOnTop(alwaysOnTop),
     startDesktopWindowDrag: () => desktopApiMocks.startDesktopWindowDrag(),
     toggleMaximizeDesktopWindow: () => desktopApiMocks.toggleMaximizeDesktopWindow(),
   };
@@ -93,6 +95,7 @@ describe("ChatStagePage http platform integration", () => {
     chatWindowMocks.closeChatSurface.mockResolvedValue(undefined);
     desktopApiMocks.closeDesktopWindow.mockResolvedValue(undefined);
     desktopApiMocks.minimizeDesktopWindow.mockResolvedValue(undefined);
+    desktopApiMocks.setDesktopWindowAlwaysOnTop.mockResolvedValue(undefined);
     desktopApiMocks.startDesktopWindowDrag.mockResolvedValue(undefined);
     desktopApiMocks.toggleMaximizeDesktopWindow.mockResolvedValue(undefined);
   });

@@ -494,6 +494,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.interruptHelp": "新しいメッセージを送る前に、現在の生成と未再生の音声をキャンセルします。",
   "chat.config.sectionConversation": "会話",
   "chat.config.sectionImmersive": "没入モード",
+  "chat.config.sectionWindow": "ウィンドウ",
+  "chat.config.alwaysOnTop": "常に最前面",
   "chat.config.sectionLayout": "レイアウト",
   "chat.config.sectionMenuAppearance": "設定パネルの外観",
   "chat.config.sectionSending": "送信動作",
