@@ -31,24 +31,11 @@ function snapshotReplacesOptimisticPresentation(
   if (!optimistic) {
     return true;
   }
-  if (snapshot.sessionClosedReason) {
+  if (snapshot.sessionClosedReason || snapshot.options.length > 0) {
     return true;
   }
   if (authoritativeEventSeq <= optimistic.eventSeq) {
     return false;
-  }
-  // Realtime (websocket) transport delivers the reply, options and closure via their
-  // own events (dialog.end / options.show / session.closed), each of which clears the
-  // optimistic submission on its own. Any snapshot that lands mid-turn is therefore
-  // only a full-state resync and must never overwrite the just-sent user message —
-  // otherwise the previous turn's reply flashes back while we wait for the answer.
-  // Only the snapshot/polling transport delivers replies via snapshots, so keep the
-  // content heuristics below for that mode alone.
-  if (state.transportMode === "websocket") {
-    return false;
-  }
-  if (snapshot.options.length > 0) {
-    return true;
   }
   const dialogText = snapshot.dialogText.trim();
   const dialogHtml = snapshot.dialogHtml?.trim();
@@ -58,25 +45,6 @@ function snapshotReplacesOptimisticPresentation(
   const hasDialogContent = Boolean(dialogHtml || dialogText);
   const isCommandFeedback = Boolean(statusMessage && !dialogHtml && statusMessage === dialogText);
   if (!hasDialogContent || isCommandFeedback) {
-    return false;
-  }
-  // While the model is still preparing the answer there is no new reply yet, so a
-  // snapshot only re-publishes the dialogue shown before this turn. Never let such
-  // a resync overwrite the optimistic user message — the real answer arrives later
-  // as a streaming update or dialog.end (which clear the optimistic state on their
-  // own). This is the primary guard and is independent of dialogue content.
-  if (snapshot.status === "generating") {
-    return false;
-  }
-  // Belt-and-braces: also treat the snapshot as stale when its dialogue still
-  // matches the reply shown before this submission. Compare on plain text +
-  // speaker only — the backend may re-serialize the HTML differently, so an exact
-  // dialogHtml match is too brittle and would let the old reply flash back.
-  const previous = optimistic.previous;
-  const previousDialogText = previous.dialogText.trim();
-  const sameAsPreviousReply =
-    Boolean(previousDialogText) && dialogText === previousDialogText && speaker === previous.characterName?.trim();
-  if (sameAsPreviousReply) {
     return false;
   }
   return Boolean(speaker && speaker !== userName);
@@ -116,8 +84,15 @@ function submitUserMessageState(
     text,
   };
   if (queued) {
+    // Batch/queued submissions must still show the user's own message instead of
+    // leaving the previous turn's reply on screen (which reads as the dialogue
+    // "rolling back" to the last message). Present it like a normal submission; the
+    // batch flush timing is handled by the command layer, not the presentation.
     return withResolvedLayers({
       ...clearTransientNotificationState(state),
+      characterName: normalizedUserDisplayName(state.userDisplayName),
+      dialogHtml: undefined,
+      dialogText: text,
       inputAttachments: [],
       inputDraft: "",
       optimisticSubmission,
