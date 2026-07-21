@@ -76,9 +76,12 @@
   background: var(--chat-sheen), var(--chat-option-background);
   box-shadow:
     0 14px 34px color-mix(in srgb, var(--stage-shadow) 78%, transparent),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
     var(--chat-option-box-shadow, none);
-  backdrop-filter: blur(18px) saturate(1.16);
+  /* No backdrop-filter: when the option animates in, a backdrop-filtered element
+     inside a transforming ancestor gets re-composited per frame and Chromium/Edge
+     flash a bright bar on the first frame. The tinted --chat-option-background keeps
+     the look without the flash. */
   text-align: var(--chat-option-text-align);
   text-shadow: var(--chat-option-text-shadow);
   white-space: normal;
