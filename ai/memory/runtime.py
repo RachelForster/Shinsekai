@@ -46,7 +46,7 @@ _EMBEDDING_MODEL_ALLOW_PATTERNS = [
 
 def _preload_embedding_model(*, cached: bool) -> str:
     cached_snapshot = embedding_model_snapshot_path() if cached else None
-    snapshot_path = preload_huggingface_snapshot(
+    preload_huggingface_snapshot(
         EMBEDDING_MODEL,
         cached=cached_snapshot is not None,
         update_task=set_mem0_task,
@@ -55,9 +55,11 @@ def _preload_embedding_model(*, cached: bool) -> str:
         load_message="Loading mem0 embedding model.",
         allow_patterns=_EMBEDDING_MODEL_ALLOW_PATTERNS,
     )
-    local_snapshot = snapshot_path or cached_snapshot or embedding_model_snapshot_path()
+    # Resolve again after the download. Never trust the downloader's returned
+    # directory until the complete SentenceTransformer artifact set is visible.
+    local_snapshot = embedding_model_snapshot_path()
     if local_snapshot is None:
-        raise RuntimeError("The mem0 embedding model snapshot could not be located after download.")
+        raise RuntimeError("The mem0 embedding model snapshot is incomplete or could not be located after download.")
     return str(local_snapshot)
 
 

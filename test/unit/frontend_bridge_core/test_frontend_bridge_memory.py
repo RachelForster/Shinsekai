@@ -146,6 +146,7 @@ def test_preload_embedding_model_limits_huggingface_snapshot(monkeypatch):
         return snapshot_path
 
     monkeypatch.setattr(runtime, "preload_huggingface_snapshot", _fake_preload_huggingface_snapshot)
+    monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: snapshot_path)
 
     result = runtime._preload_embedding_model(cached=False)
 
@@ -159,6 +160,22 @@ def test_preload_embedding_model_limits_huggingface_snapshot(monkeypatch):
     assert not any(pattern.startswith("openvino/") for pattern in patterns)
     assert "tf_model.h5" not in patterns
     assert "pytorch_model.bin" not in patterns
+
+
+def test_preload_embedding_model_rejects_incomplete_download(monkeypatch):
+    import pytest
+
+    from ai.memory import runtime
+
+    monkeypatch.setattr(
+        runtime,
+        "preload_huggingface_snapshot",
+        lambda *args, **kwargs: r"C:\partial-cache\snapshots\abc123",
+    )
+    monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: None)
+
+    with pytest.raises(RuntimeError, match="snapshot is incomplete"):
+        runtime._preload_embedding_model(cached=False)
 
 
 def test_create_mem0_instance_uses_local_snapshot_instead_of_repo_id(monkeypatch):

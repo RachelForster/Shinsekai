@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -10,14 +11,20 @@ from config.config_manager import ConfigManager
 
 from ai.memory.constants import EMBEDDING_DIMS, EMBEDDING_MODEL, VECTOR_COLLECTION
 
-_EMBEDDING_MODEL_CONFIG_FILES = (
-    "config.json",
-    "sentence_bert_config.json",
-    "config_sentence_transformers.json",
+_EMBEDDING_MODEL_REQUIRED_JSON_FILES = (
+    ("config.json", dict),
+    ("modules.json", list),
+    ("1_Pooling/config.json", dict),
+    ("tokenizer_config.json", dict),
 )
 _EMBEDDING_MODEL_WEIGHT_FILES = (
     "model.safetensors",
     "pytorch_model.bin",
+)
+_EMBEDDING_MODEL_TOKENIZER_FILES = (
+    "tokenizer.json",
+    "sentencepiece.bpe.model",
+    "unigram.json",
 )
 
 
@@ -126,6 +133,54 @@ def _has_complete_embedding_snapshot(snapshots_dir: Path) -> bool:
     return _complete_embedding_snapshot(snapshots_dir) is not None
 
 
+def _nonempty_file(path: Path) -> bool:
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def _read_json_file(path: Path) -> Any | None:
+    if not _nonempty_file(path):
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def is_embedding_model_snapshot_complete(snapshot: Path) -> bool:
+    """Return whether a snapshot has the artifacts required for local loading."""
+    try:
+        if not snapshot.is_dir():
+            return False
+
+        parsed_json: dict[str, Any] = {}
+        for relative_path, expected_type in _EMBEDDING_MODEL_REQUIRED_JSON_FILES:
+            value = _read_json_file(snapshot / relative_path)
+            if not isinstance(value, expected_type):
+                return False
+            parsed_json[relative_path] = value
+
+        modules = parsed_json["modules.json"]
+        if not modules:
+            return False
+        for module in modules:
+            if not isinstance(module, dict):
+                return False
+            if not all(isinstance(module.get(key), str) for key in ("name", "path", "type")):
+                return False
+            module_path = module["path"]
+            if module_path and not (snapshot / module_path).is_dir():
+                return False
+
+        has_weights = any(_nonempty_file(snapshot / name) for name in _EMBEDDING_MODEL_WEIGHT_FILES)
+        has_tokenizer = any(_nonempty_file(snapshot / name) for name in _EMBEDDING_MODEL_TOKENIZER_FILES)
+        return has_weights and has_tokenizer
+    except (OSError, TypeError, ValueError):
+        return False
+
+
 def _complete_embedding_snapshot(snapshots_dir: Path, main_ref: Path | None = None) -> Path | None:
     if not snapshots_dir.is_dir():
         return None
@@ -144,8 +199,6 @@ def _complete_embedding_snapshot(snapshots_dir: Path, main_ref: Path | None = No
         seen.add(snapshot)
         if not snapshot.is_dir():
             continue
-        has_config = any((snapshot / name).exists() for name in _EMBEDDING_MODEL_CONFIG_FILES)
-        has_weights = any((snapshot / name).exists() for name in _EMBEDDING_MODEL_WEIGHT_FILES)
-        if has_config and has_weights:
+        if is_embedding_model_snapshot_complete(snapshot):
             return snapshot
     return None
