@@ -6,6 +6,8 @@ import type { ChatTurnOptions, ChatTurnState } from "../../../shared/platform/ty
 import { IconButton, Switch } from "../../../shared/ui";
 
 export function ChatTurnSettingsPopover({
+  bgmVolume,
+  onBgmVolumeChange,
   onCancelBatch,
   onClose,
   onFlushBatch,
@@ -14,6 +16,8 @@ export function ChatTurnSettingsPopover({
   turnOptions,
   turnState,
 }: {
+  bgmVolume: number;
+  onBgmVolumeChange: (value: number) => void;
   onCancelBatch: () => void;
   onClose: () => void;
   onFlushBatch: () => void;
@@ -74,6 +78,22 @@ export function ChatTurnSettingsPopover({
         >
           {t("chat.config.interruptEnabled")}
         </Switch>
+        <label className="dialog-stage-controls__chat-setting dialog-stage-controls__chat-slider">
+          <span className="dialog-stage-controls__chat-slider-label">
+            {t("chat.config.bgmVolume")}
+            <span className="dialog-stage-controls__chat-slider-value">{Math.round(bgmVolume * 100)}%</span>
+          </span>
+          <input
+            aria-label={t("chat.config.bgmVolume")}
+            className="dialog-stage-controls__chat-slider-input"
+            max={1}
+            min={0}
+            onChange={(event) => onBgmVolumeChange(Number(event.currentTarget.value))}
+            step={0.05}
+            type="range"
+            value={bgmVolume}
+          />
+        </label>
       </div>
       {turnOptions.batchEnabled && turnState.pendingCount > 0 ? (
         <div className="dialog-stage-controls__batch-row">

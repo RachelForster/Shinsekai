@@ -457,6 +457,7 @@ export type MessageKey =
   | "chat.config.nameFontSize"
   | "chat.config.scaleValue"
   | "chat.config.batchEnabled"
+  | "chat.config.bgmVolume"
   | "chat.config.batchHelp"
   | "chat.config.batchTimeout"
   | "chat.config.batchTimeoutValue"

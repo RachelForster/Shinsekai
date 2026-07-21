@@ -487,6 +487,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.nameFontSize": "名札フォントサイズ",
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "連続メッセージをまとめる",
+  "chat.config.bgmVolume": "BGM音量",
   "chat.config.batchHelp": "連続送信を保留し、1つのターンとしてモデルへ送信します。",
   "chat.config.batchTimeout": "まとめ送信の待機時間",
   "chat.config.batchTimeoutValue": "{value}秒",

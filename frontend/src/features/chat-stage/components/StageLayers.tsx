@@ -54,9 +54,16 @@ export function BackgroundLayer({
   );
 }
 
-export function BgmLayer({ path }: { path?: string }) {
+export function BgmLayer({ path, volume = 1 }: { path?: string; volume?: number }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const src = stageAssetUrl(path);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.volume = Math.min(1, Math.max(0, volume));
+    }
+  }, [volume, src]);
 
   useEffect(() => {
     const audio = audioRef.current;

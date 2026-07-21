@@ -481,6 +481,7 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.nameFontSize": "Nameplate font size",
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "Stack consecutive messages",
+  "chat.config.bgmVolume": "BGM volume",
   "chat.config.batchHelp": "Hold consecutive sends and submit them to the model as one turn.",
   "chat.config.batchTimeout": "Stack idle timeout",
   "chat.config.batchTimeoutValue": "{value}s",

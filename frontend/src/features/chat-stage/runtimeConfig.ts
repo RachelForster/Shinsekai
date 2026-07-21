@@ -67,6 +67,7 @@ export interface ChatStageRuntimeConfig {
   auto: boolean;
   autoHideInput: boolean;
   autoHideTopTools: boolean;
+  bgmVolume: number;
   configThemeColor: string;
   configUseMainThemeColor: boolean;
   dialogFill: ChatStageDialogFillConfig;
@@ -97,6 +98,7 @@ export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   auto: false,
   autoHideInput: true,
   autoHideTopTools: true,
+  bgmVolume: 1,
   configThemeColor: DEFAULT_THEME_COLOR,
   configUseMainThemeColor: true,
   dialogText: {
@@ -300,6 +302,10 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
       typeof parsed.autoHideTopTools === "boolean"
         ? parsed.autoHideTopTools
         : defaultChatStageRuntimeConfig.autoHideTopTools,
+    bgmVolume:
+      typeof parsed.bgmVolume === "number" && Number.isFinite(parsed.bgmVolume)
+        ? Math.min(1, Math.max(0, parsed.bgmVolume))
+        : defaultChatStageRuntimeConfig.bgmVolume,
     configThemeColor: sanitizeRuntimeColor(parsed.configThemeColor, defaultChatStageRuntimeConfig.configThemeColor),
     configUseMainThemeColor:
       typeof parsed.configUseMainThemeColor === "boolean"

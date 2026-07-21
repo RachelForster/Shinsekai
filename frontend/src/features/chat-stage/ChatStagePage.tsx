@@ -319,6 +319,9 @@ export function ChatStagePage() {
   const updateRuntimeAlwaysOnTop = (alwaysOnTop: boolean) => {
     setRuntimeConfig((current) => ({ ...current, alwaysOnTop }));
   };
+  const updateRuntimeBgmVolume = (bgmVolume: number) => {
+    setRuntimeConfig((current) => ({ ...current, bgmVolume: Math.min(1, Math.max(0, bgmVolume)) }));
+  };
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
@@ -422,12 +425,14 @@ export function ChatStagePage() {
     <DialogStageControls
       asrEnabled={viewModel.asrEnabled}
       auto={runtimeConfig.auto}
+      bgmVolume={runtimeConfig.bgmVolume}
       closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
       configOpen={toolbarConfigOpen}
       hidden={!dialogSurfaceVisible}
       hideCloseButton={standaloneDesktopWindow}
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
+      onBgmVolumeChange={updateRuntimeBgmVolume}
       onCancelBatch={() => void sendCommand({ type: "cancel-input-batch" })}
       onCloseSurface={closeSurface}
       onCommand={sendCommand}
@@ -480,7 +485,7 @@ export function ChatStagePage() {
           path={viewModel.backgroundPath}
           transparent={transparentBackground}
         />
-        <BgmLayer path={viewModel.bgmPath} />
+        <BgmLayer path={viewModel.bgmPath} volume={runtimeConfig.bgmVolume} />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer
           hidden={!viewModel.layers.sprites}
