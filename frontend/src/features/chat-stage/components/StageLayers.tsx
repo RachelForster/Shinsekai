@@ -381,7 +381,15 @@ export function BusyLayer({ hidden, text }: { hidden: boolean; text?: string }) 
   );
 }
 
-export function NotificationLayer({ hidden, text }: { hidden: boolean; text?: string }) {
+export function NotificationLayer({
+  hidden,
+  spritesVisible,
+  text,
+}: {
+  hidden: boolean;
+  spritesVisible: boolean;
+  text?: string;
+}) {
   if (hidden || !text) {
     return null;
   }
@@ -390,7 +398,9 @@ export function NotificationLayer({ hidden, text }: { hidden: boolean; text?: st
       aria-hidden={hidden}
       className={layerClassName("chat-stage__notification", hidden)}
       data-chat-stage-hitbox="true"
+      data-sprites-visible={spritesVisible ? "true" : "false"}
       hidden={hidden}
+      role="status"
     >
       {text}
     </div>

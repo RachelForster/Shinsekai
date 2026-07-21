@@ -242,6 +242,22 @@ describe("ChatStagePage", () => {
     );
   });
 
+  it("exposes notifications as status updates and softens them over sprites", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        characterName: "",
+        dialogText: "",
+        notificationText: "Session paused",
+      }),
+    );
+    renderPage();
+
+    const notification = await screen.findByRole("status");
+    expect(notification).toHaveClass("chat-stage__notification");
+    expect(notification).toHaveAttribute("data-sprites-visible", "true");
+    expect(notification).toHaveTextContent("Session paused");
+  });
+
   it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {
     themeContextMocks.optional = {
       style: {

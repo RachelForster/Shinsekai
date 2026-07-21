@@ -497,7 +497,11 @@ export function ChatStagePage() {
         <StatLayer stats={viewModel.stats} />
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
-        <NotificationLayer hidden={!viewModel.layers.notification} text={viewModel.notificationText} />
+        <NotificationLayer
+          hidden={!viewModel.layers.notification}
+          spritesVisible={viewModel.layers.sprites && viewModel.sprites.length > 0}
+          text={viewModel.notificationText}
+        />
         <div
           aria-hidden={!dialogSurfaceVisible}
           className={layerClassName("dialog-stack", !dialogSurfaceVisible)}
