@@ -32,6 +32,14 @@ vi.mock("../../../entities/config/repository", () => ({
   getMemoryStatus: configRepositoryMock.getMemoryStatus,
 }));
 
+const runtimeRepositoryMock = vi.hoisted(() => ({
+  installMissingRuntimeDependency: vi.fn(),
+}));
+
+vi.mock("../../../entities/chat/repository", () => ({
+  installMissingRuntimeDependency: runtimeRepositoryMock.installMissingRuntimeDependency,
+}));
+
 function renderZh(children: ReactNode) {
   return render(
     <I18nProvider language="zh_CN">
@@ -59,6 +67,13 @@ function runningTask(): TaskSnapshot<TtsBundleDownloadResult> {
 describe("API settings sections", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    configRepositoryMock.getMemoryStatus.mockReset();
+    runtimeRepositoryMock.installMissingRuntimeDependency.mockReset();
+    runtimeRepositoryMock.installMissingRuntimeDependency.mockResolvedValue({
+      message: "installed",
+      moduleName: "mem0",
+      packageName: "mem0ai[extras]",
+    });
   });
 
   it("renders adapter extra schemas with defaults and emits only the changed field", () => {
@@ -195,9 +210,74 @@ describe("API settings sections", () => {
     expect(screen.getByRole("checkbox", { name: /Thinking/ })).toBeDisabled();
   });
 
+  it("restores the checked memory status after the section is remounted", async () => {
+    configRepositoryMock.getMemoryStatus.mockResolvedValue({
+      modelCached: true,
+      status: "ready",
+    });
+    const props = {
+      disabled: false,
+      draft: { ...sampleConfig.api_config, memory_auto_enabled: false },
+      onChange: vi.fn(),
+    };
+
+    const first = renderZh(<MemorySettingsSection {...props} />);
+
+    expect(await screen.findByText("长期记忆已就绪，模型已缓存")).toBeInTheDocument();
+    first.unmount();
+    renderZh(<MemorySettingsSection {...props} />);
+
+    expect(await screen.findByText("长期记忆已就绪，模型已缓存")).toBeInTheDocument();
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(2);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(1, { startLoading: false });
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(2, { startLoading: false });
+  });
+
+  it("installs a missing memory dependency before checking the embedding model", async () => {
+    configRepositoryMock.getMemoryStatus
+      .mockResolvedValueOnce({
+        message: "Missing Python module: mem0",
+        moduleName: "mem0",
+        packageName: "mem0ai[extras]",
+        status: "missing_dependency",
+      })
+      .mockResolvedValueOnce({
+        message: "Missing Python module: mem0",
+        moduleName: "mem0",
+        packageName: "mem0ai[extras]",
+        status: "missing_dependency",
+      })
+      .mockResolvedValueOnce({
+        modelCached: true,
+        status: "ready",
+      });
+
+    renderZh(
+      <MemorySettingsSection
+        disabled={false}
+        draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("缺少 mem0ai 依赖。")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "下载/检查模型" }));
+
+    await waitFor(() => {
+      expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenCalledWith(
+        { moduleName: "mem0" },
+        { onTaskUpdate: expect.any(Function) },
+      );
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(1, { startLoading: false });
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(2, { startLoading: true });
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(3, { startLoading: true });
+    });
+    expect(await screen.findByText("长期记忆已就绪，模型已缓存")).toBeInTheDocument();
+  });
+
   it("keeps memory disabled and does not download when the missing-model prompt is declined", async () => {
     const onChange = vi.fn();
-    configRepositoryMock.getMemoryStatus.mockResolvedValueOnce({
+    configRepositoryMock.getMemoryStatus.mockResolvedValue({
       modelCached: false,
       status: "not_started",
     });
@@ -210,6 +290,7 @@ describe("API settings sections", () => {
       />,
     );
 
+    await waitFor(() => expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("checkbox"));
 
     const dialog = await screen.findByRole("dialog", { name: "下载长期记忆模型" });
@@ -221,7 +302,7 @@ describe("API settings sections", () => {
       expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledWith({ startLoading: false });
       expect(screen.queryByRole("dialog", { name: "下载长期记忆模型" })).not.toBeInTheDocument();
     });
-    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(1);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(2);
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByRole("checkbox", { name: "启用自动长期记忆" })).not.toBeChecked();
   });
@@ -229,6 +310,10 @@ describe("API settings sections", () => {
   it("downloads a missing embedding model and enables memory after it becomes ready", async () => {
     const onChange = vi.fn();
     configRepositoryMock.getMemoryStatus
+      .mockResolvedValueOnce({
+        modelCached: false,
+        status: "not_started",
+      })
       .mockResolvedValueOnce({
         modelCached: false,
         status: "not_started",
@@ -246,6 +331,7 @@ describe("API settings sections", () => {
       />,
     );
 
+    await waitFor(() => expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("checkbox"));
 
     const dialog = await screen.findByRole("dialog", { name: "下载长期记忆模型" });
@@ -253,7 +339,8 @@ describe("API settings sections", () => {
 
     await waitFor(() => {
       expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(1, { startLoading: false });
-      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(2, { startLoading: true });
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(2, { startLoading: false });
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(3, { startLoading: true });
       expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ memory_auto_enabled: true }));
     });
     expect(screen.queryByRole("dialog", { name: "下载长期记忆模型" })).not.toBeInTheDocument();
@@ -271,6 +358,10 @@ describe("API settings sections", () => {
         modelCached: true,
         status: "not_started",
       })
+      .mockResolvedValueOnce({
+        modelCached: true,
+        status: "not_started",
+      })
       .mockReturnValueOnce(loadingResult);
 
     renderZh(
@@ -281,11 +372,13 @@ describe("API settings sections", () => {
       />,
     );
 
+    await waitFor(() => expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(1));
     fireEvent.click(screen.getByRole("checkbox"));
 
     await waitFor(() => {
       expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(1, { startLoading: false });
-      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(2, { startLoading: true });
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(2, { startLoading: false });
+      expect(configRepositoryMock.getMemoryStatus).toHaveBeenNthCalledWith(3, { startLoading: true });
     });
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByText("embedding 模型已缓存，尚未加载")).toBeInTheDocument();

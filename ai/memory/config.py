@@ -91,6 +91,11 @@ def build_mem0_config() -> dict[str, Any]:
 
 def is_embedding_model_cached() -> bool:
     """Return whether the configured HuggingFace embedding model is cached."""
+    return embedding_model_snapshot_path() is not None
+
+
+def embedding_model_snapshot_path() -> Path | None:
+    """Return a complete local snapshot for the configured embedding model."""
     try:
         model_dir_name = f"models--{EMBEDDING_MODEL.replace('/', '--')}"
         cache_roots = []
@@ -109,21 +114,38 @@ def is_embedding_model_cached() -> bool:
                 continue
             seen.add(model_dir)
             snapshots_dir = model_dir / "snapshots"
-            if _has_complete_embedding_snapshot(snapshots_dir):
-                return True
-        return False
+            snapshot = _complete_embedding_snapshot(snapshots_dir, model_dir / "refs" / "main")
+            if snapshot is not None:
+                return snapshot
+        return None
     except Exception:
-        return False
+        return None
 
 
 def _has_complete_embedding_snapshot(snapshots_dir: Path) -> bool:
+    return _complete_embedding_snapshot(snapshots_dir) is not None
+
+
+def _complete_embedding_snapshot(snapshots_dir: Path, main_ref: Path | None = None) -> Path | None:
     if not snapshots_dir.is_dir():
-        return False
-    for snapshot in snapshots_dir.iterdir():
+        return None
+
+    candidates: list[Path] = []
+    if main_ref is not None and main_ref.is_file():
+        revision = main_ref.read_text(encoding="utf-8").strip()
+        if revision:
+            candidates.append(snapshots_dir / revision)
+    candidates.extend(sorted(snapshots_dir.iterdir(), key=lambda path: path.name, reverse=True))
+
+    seen: set[Path] = set()
+    for snapshot in candidates:
+        if snapshot in seen:
+            continue
+        seen.add(snapshot)
         if not snapshot.is_dir():
             continue
         has_config = any((snapshot / name).exists() for name in _EMBEDDING_MODEL_CONFIG_FILES)
         has_weights = any((snapshot / name).exists() for name in _EMBEDDING_MODEL_WEIGHT_FILES)
         if has_config and has_weights:
-            return True
-    return False
+            return snapshot
+    return None

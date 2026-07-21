@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { DownloadCloud } from "lucide-react";
 
+import { installMissingRuntimeDependency } from "../../entities/chat/repository";
 import { getMemoryStatus } from "../../entities/config/repository";
 import type { ApiConfig } from "../../entities/config/types";
 import { useI18n } from "../../shared/i18n";
@@ -46,14 +47,62 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    const token = pollTokenRef.current + 1;
+    pollTokenRef.current = token;
+
+    const restoreStatus = async () => {
+      try {
+        let next = await getMemoryStatus({ startLoading: false });
+        while (pollTokenRef.current === token) {
+          setStatus(next);
+          setTask(next.task ?? null);
+          if (next.status !== "loading") {
+            return;
+          }
+          await new Promise((resolve) =>
+            setTimeout(resolve, next.task?.phase === "download" ? 1000 : next.modelCached ? 2000 : 3000),
+          );
+          if (pollTokenRef.current !== token) {
+            return;
+          }
+          next = await getMemoryStatus({ startLoading: false });
+        }
+      } catch {
+        // Keep the neutral "not checked" state when the passive status read fails.
+      }
+    };
+
+    void restoreStatus();
+    return () => {
       pollTokenRef.current += 1;
-    },
-    [],
-  );
+    };
+  }, []);
 
   const patch = (changes: Partial<ApiConfig>) => onChange({ ...draftRef.current, ...changes });
+
+  const installMemoryDependency = async (missing: Mem0Status, token: number): Promise<boolean> => {
+    const moduleName = missing.moduleName?.trim() || "mem0";
+    setStatus(missing);
+    setTask(missing.task ?? null);
+    await installMissingRuntimeDependency(
+      { moduleName },
+      {
+        onTaskUpdate: (dependencyTask) => {
+          if (pollTokenRef.current !== token) {
+            return;
+          }
+          setTask(dependencyTask);
+          setStatus((current) => ({ ...(current ?? missing), task: dependencyTask }));
+        },
+      },
+    );
+    if (pollTokenRef.current !== token) {
+      return false;
+    }
+    setTask(null);
+    return true;
+  };
 
   const checkMemoryStatus = async ({
     enableWhenReady = false,
@@ -66,6 +115,12 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
     }
     try {
       let next = await getMemoryStatus({ startLoading: true });
+      if (next.status === "missing_dependency") {
+        if (!(await installMemoryDependency(next, token))) {
+          return null;
+        }
+        next = await getMemoryStatus({ startLoading: true });
+      }
       while (pollTokenRef.current === token) {
         setStatus(next);
         setTask(next.task ?? null);
@@ -128,13 +183,24 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
     pollTokenRef.current = token;
     setEnableChecking(true);
     try {
-      const next = await getMemoryStatus({ startLoading: false });
+      let next = await getMemoryStatus({ startLoading: false });
       if (pollTokenRef.current !== token) {
         return;
       }
       setStatus(next);
       setTask(next.task ?? null);
-      if (next.status === "missing_dependency" || next.status === "error") {
+      if (next.status === "missing_dependency") {
+        if (!(await installMemoryDependency(next, token))) {
+          return;
+        }
+        next = await getMemoryStatus({ startLoading: false });
+        if (pollTokenRef.current !== token) {
+          return;
+        }
+        setStatus(next);
+        setTask(next.task ?? null);
+      }
+      if (next.status === "error" || next.status === "missing_dependency") {
         showToast({
           kind: "error",
           message: next.message || next.task?.errorUserMessage || t("api.memory.error"),

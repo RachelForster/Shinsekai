@@ -11,7 +11,7 @@ from core.model_assets.downloads import preload_huggingface_snapshot
 from sdk.exception.types import download_error_from_exception
 from sdk.tool_registry import ToolNotReady
 
-from ai.memory.config import build_mem0_config, is_embedding_model_cached
+from ai.memory.config import build_mem0_config, embedding_model_snapshot_path, is_embedding_model_cached
 from ai.memory.constants import EMBEDDING_MODEL
 from ai.memory.tasks import current_mem0_task, set_mem0_task
 
@@ -44,16 +44,35 @@ _EMBEDDING_MODEL_ALLOW_PATTERNS = [
 ]
 
 
-def _preload_embedding_model(*, cached: bool) -> None:
-    preload_huggingface_snapshot(
+def _preload_embedding_model(*, cached: bool) -> str:
+    cached_snapshot = embedding_model_snapshot_path() if cached else None
+    snapshot_path = preload_huggingface_snapshot(
         EMBEDDING_MODEL,
-        cached=cached,
+        cached=cached_snapshot is not None,
         update_task=set_mem0_task,
         download_message="Downloading mem0 embedding model",
         cached_message="Loading cached mem0 embedding model.",
         load_message="Loading mem0 embedding model.",
         allow_patterns=_EMBEDDING_MODEL_ALLOW_PATTERNS,
     )
+    local_snapshot = snapshot_path or cached_snapshot or embedding_model_snapshot_path()
+    if local_snapshot is None:
+        raise RuntimeError("The mem0 embedding model snapshot could not be located after download.")
+    return str(local_snapshot)
+
+
+def _create_mem0_instance(memory_type: Any, *, cached: bool) -> Any:
+    config = build_mem0_config()
+    print(f"[mem0] llm.provider={config['llm']['provider']} embedder.provider={config['embedder']['provider']}")
+    logger.info(
+        "mem0 后台初始化: llm.provider=%s embedder.provider=%s",
+        config["llm"]["provider"],
+        config["embedder"]["provider"],
+    )
+    print("[mem0] 正在初始化 Memory.from_config（首次会下载 embedding 模型）…")
+    snapshot_path = _preload_embedding_model(cached=cached)
+    config["embedder"]["config"]["model"] = snapshot_path
+    return memory_type.from_config(config)
 
 
 def _loading_status_message() -> str:
@@ -103,16 +122,7 @@ def start_mem0_loading() -> None:
             print("[mem0] 后台线程开始加载…")
             from mem0 import Memory
 
-            config = build_mem0_config()
-            print(f"[mem0] llm.provider={config['llm']['provider']} embedder.provider={config['embedder']['provider']}")
-            logger.info(
-                "mem0 后台初始化: llm.provider=%s embedder.provider=%s",
-                config["llm"]["provider"],
-                config["embedder"]["provider"],
-            )
-            print("[mem0] 正在初始化 Memory.from_config（首次会下载 embedding 模型）…")
-            _preload_embedding_model(cached=cached)
-            mem = Memory.from_config(config)
+            mem = _create_mem0_instance(Memory, cached=cached)
             with _lock:
                 _mem0 = mem
             set_mem0_task(

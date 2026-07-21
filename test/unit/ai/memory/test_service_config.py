@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+import pytest
 
 from ai.memory import config as memory_config
 
@@ -72,6 +75,47 @@ def test_embedding_model_cache_detection_uses_hub_cache_env(monkeypatch, tmp_pat
     monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
 
     assert memory_config.is_embedding_model_cached() is True
+
+
+def test_embedding_model_snapshot_path_prefers_main_ref(monkeypatch, tmp_path):
+    _isolate_embedding_cache_roots(monkeypatch, tmp_path)
+    hub_cache = tmp_path / "hub-cache"
+    model_dir = (
+        hub_cache
+        / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
+    )
+    for revision in ("old123", "current456"):
+        snapshot = model_dir / "snapshots" / revision
+        snapshot.mkdir(parents=True)
+        (snapshot / "config.json").write_text("{}", encoding="utf-8")
+        (snapshot / "model.safetensors").write_bytes(b"model")
+    refs = model_dir / "refs"
+    refs.mkdir()
+    (refs / "main").write_text("current456\n", encoding="utf-8")
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
+
+    assert memory_config.embedding_model_snapshot_path() == model_dir / "snapshots" / "current456"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows verbatim paths are Windows-specific")
+def test_embedding_model_snapshot_path_preserves_windows_verbatim_root(monkeypatch, tmp_path):
+    _isolate_embedding_cache_roots(monkeypatch, tmp_path)
+    hub_cache = Path("\\\\?\\" + str(tmp_path / ("deep-cache-" + "x" * 80)))
+    snapshot = (
+        hub_cache
+        / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
+        / "snapshots"
+        / "abc123"
+    )
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (snapshot / "model.safetensors").write_bytes(b"model")
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
+
+    result = memory_config.embedding_model_snapshot_path()
+
+    assert result == snapshot
+    assert str(result).startswith("\\\\?\\")
 
 
 def test_embedding_model_cache_detection_ignores_incomplete_cache(monkeypatch, tmp_path):

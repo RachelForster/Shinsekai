@@ -138,15 +138,18 @@ def test_preload_embedding_model_limits_huggingface_snapshot(monkeypatch):
     from ai.memory import runtime
 
     captured = {}
+    snapshot_path = r"\\?\C:\very\deep\cache\snapshots\abc123"
 
     def _fake_preload_huggingface_snapshot(repo_id, **kwargs):
         captured["repo_id"] = repo_id
         captured.update(kwargs)
+        return snapshot_path
 
     monkeypatch.setattr(runtime, "preload_huggingface_snapshot", _fake_preload_huggingface_snapshot)
 
-    runtime._preload_embedding_model(cached=False)
+    result = runtime._preload_embedding_model(cached=False)
 
+    assert result == snapshot_path
     assert captured["repo_id"] == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
     assert captured["cached"] is False
     patterns = captured["allow_patterns"]
@@ -156,3 +159,31 @@ def test_preload_embedding_model_limits_huggingface_snapshot(monkeypatch):
     assert not any(pattern.startswith("openvino/") for pattern in patterns)
     assert "tf_model.h5" not in patterns
     assert "pytorch_model.bin" not in patterns
+
+
+def test_create_mem0_instance_uses_local_snapshot_instead_of_repo_id(monkeypatch):
+    from ai.memory import runtime
+
+    snapshot_path = r"\\?\C:\very\deep\cache\snapshots\abc123"
+    config = {
+        "embedder": {
+            "provider": "huggingface",
+            "config": {"model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"},
+        },
+        "llm": {"provider": "openai", "config": {}},
+    }
+    captured = {}
+
+    class _FakeMemory:
+        @classmethod
+        def from_config(cls, value):
+            captured["config"] = value
+            return "memory-instance"
+
+    monkeypatch.setattr(runtime, "build_mem0_config", lambda: config)
+    monkeypatch.setattr(runtime, "_preload_embedding_model", lambda *, cached: snapshot_path)
+
+    result = runtime._create_mem0_instance(_FakeMemory, cached=True)
+
+    assert result == "memory-instance"
+    assert captured["config"]["embedder"]["config"]["model"] == snapshot_path
