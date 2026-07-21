@@ -213,7 +213,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-dialog-padding"]).toBe("40px");
     expect(resolved.style["--chat-dialog-toolbar-gap"]).toBe("10px");
     expect(resolved.style["--chat-dialog-toolbar-reserved-height"]).toBeUndefined();
-    expect(resolved.style["--chat-dialog-name-input-gap"]).toBe("20svh");
+    expect(resolved.style["--chat-dialog-name-input-gap"]).toBe("clamp(84px, 20svh, 180px)");
     expect(resolved.style["--chat-dialog-stack-bottom"]).toContain("--chat-dialog-name-input-gap");
     expect(resolved.style["--chat-dialog-toolbar-placement"]).toBe("dialog-top");
     expect(resolved.style["--chat-dialog-toolbar-reveal"]).toBe("hover");
