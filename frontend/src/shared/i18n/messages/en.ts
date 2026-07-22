@@ -2,6 +2,7 @@ import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
   "chat.stats.label": "Character stats",
+  "chat.options.label": "Dialogue choices",
   "api.memory.cachedNotLoaded": "Embedding model cached; not loaded",
   "api.memory.checking": "Checking",
   "api.memory.description":
@@ -481,6 +482,7 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.nameFontSize": "Nameplate font size",
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "Stack consecutive messages",
+  "chat.config.bgmVolume": "BGM volume",
   "chat.config.batchHelp": "Hold consecutive sends and submit them to the model as one turn.",
   "chat.config.batchTimeout": "Stack idle timeout",
   "chat.config.batchTimeoutValue": "{value}s",
@@ -488,6 +490,8 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.interruptHelp": "A new message cancels the current generation and queued speech before it is sent.",
   "chat.config.sectionConversation": "Conversation",
   "chat.config.sectionImmersive": "Immersive mode",
+  "chat.config.sectionWindow": "Window",
+  "chat.config.alwaysOnTop": "Always on top",
   "chat.config.sectionLayout": "Layout",
   "chat.config.sectionMenuAppearance": "Settings panel appearance",
   "chat.config.sectionSending": "Sending behavior",

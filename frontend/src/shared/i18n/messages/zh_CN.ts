@@ -2,6 +2,7 @@ import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
   "chat.stats.label": "角色状态",
+  "chat.options.label": "对话选项",
   "api.memory.cachedNotLoaded": "embedding 模型已缓存，尚未加载",
   "api.memory.enableReady": "自动长期记忆已启用。",
   "api.memory.modelMissingKeepOff": "embedding 模型尚未下载，长期记忆已保持关闭。",
@@ -474,6 +475,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.config.nameFontSize": "名牌字号",
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "堆叠连续消息",
+  "chat.config.bgmVolume": "BGM 音量",
   "chat.config.batchHelp": "暂存连续发送的消息，并合并成一个回合提交给模型。",
   "chat.config.batchTimeout": "堆叠空闲等待时间",
   "chat.config.batchTimeoutValue": "{value} 秒",
@@ -481,6 +483,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.config.interruptHelp": "发送新消息前会取消当前生成，并清理尚未播放的语音。",
   "chat.config.sectionConversation": "对话",
   "chat.config.sectionImmersive": "沉浸模式",
+  "chat.config.sectionWindow": "窗口置顶",
+  "chat.config.alwaysOnTop": "窗口置顶",
   "chat.config.sectionLayout": "布局",
   "chat.config.sectionMenuAppearance": "设置面板外观",
   "chat.config.sectionSending": "发送行为",

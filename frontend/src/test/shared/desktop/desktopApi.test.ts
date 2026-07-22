@@ -31,6 +31,7 @@ import {
   repairDesktopRuntime,
   reloadDesktopFrontend,
   selectDesktopProjectRoot,
+  setDesktopWindowAlwaysOnTop,
   startDesktopWindowDrag,
   toggleMaximizeDesktopWindow,
   closeDesktopWindow,
@@ -120,6 +121,7 @@ describe("desktop API environment detection", () => {
     await hideDesktopWindow();
     await destroyDesktopChatWindow();
     await minimizeDesktopWindow();
+    await setDesktopWindowAlwaysOnTop(false);
     await toggleMaximizeDesktopWindow();
     await startDesktopWindowDrag();
     await closeDesktopWindow();
@@ -136,6 +138,7 @@ describe("desktop API environment detection", () => {
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_hide", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_chat_window_destroy", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_minimize", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_window_set_always_on_top", { alwaysOnTop: false });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_toggle_maximize", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_start_drag", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_close", undefined);

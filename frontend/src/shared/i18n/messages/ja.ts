@@ -2,6 +2,7 @@ import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
   "chat.stats.label": "キャラクターステータス",
+  "chat.options.label": "会話の選択肢",
   "api.memory.cachedNotLoaded": "埋め込みモデルはキャッシュ済み（未読み込み）",
   "api.memory.enableReady": "自動長期記憶を有効にしました。",
   "api.memory.modelMissingKeepOff": "埋め込みモデルが未ダウンロードのため、長期記憶はオフのままです。",
@@ -487,6 +488,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.nameFontSize": "名札フォントサイズ",
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "連続メッセージをまとめる",
+  "chat.config.bgmVolume": "BGM音量",
   "chat.config.batchHelp": "連続送信を保留し、1つのターンとしてモデルへ送信します。",
   "chat.config.batchTimeout": "まとめ送信の待機時間",
   "chat.config.batchTimeoutValue": "{value}秒",
@@ -494,6 +496,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.interruptHelp": "新しいメッセージを送る前に、現在の生成と未再生の音声をキャンセルします。",
   "chat.config.sectionConversation": "会話",
   "chat.config.sectionImmersive": "没入モード",
+  "chat.config.sectionWindow": "ウィンドウ",
+  "chat.config.alwaysOnTop": "常に最前面",
   "chat.config.sectionLayout": "レイアウト",
   "chat.config.sectionMenuAppearance": "設定パネルの外観",
   "chat.config.sectionSending": "送信動作",
