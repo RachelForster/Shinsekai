@@ -17,6 +17,18 @@ from sdk.exception.types import (
     runtime_dependency_error_from_text,
 )
 _SAFE_PACKAGE_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?$")
+HUGGINGFACE_HUB_VERSION = "1.24.0"
+_PINNED_PACKAGE_SPECS = {
+    "huggingface_hub": f"huggingface-hub=={HUGGINGFACE_HUB_VERSION}",
+}
+
+
+def _runtime_package_spec(module_name: str, package_name: str) -> str:
+    top_level = module_name.split(".", 1)[0]
+    return _PINNED_PACKAGE_SPECS.get(
+        module_name,
+        _PINNED_PACKAGE_SPECS.get(top_level, package_name),
+    )
 
 
 def _runtime_pip_install_cmd(package_name: str) -> list[str]:
@@ -38,6 +50,7 @@ def install_runtime_dependency(
     package_name = package_for_module(module_name)
     if not _SAFE_PACKAGE_RE.match(package_name):
         raise ValueError(f"unsafe package name: {package_name}")
+    package_spec = _runtime_package_spec(module_name, package_name)
     if getattr(sys, "frozen", False):
         raise RuntimeError("cannot run pip from a frozen executable; install dependencies in the bundled Python runtime")
 
@@ -48,7 +61,7 @@ def install_runtime_dependency(
 
         _update_task(
             _state, _task_id,
-            message=f"正在安装 {package_name}…",
+            message=f"正在安装 {package_spec}…",
             phase="pip",
             progress=0.05,
         )
@@ -61,13 +74,13 @@ def install_runtime_dependency(
             _append_task_log(_state, _task_id, line)
             _update_task(
                 _state, _task_id,
-                message=f"正在安装 {package_name}…",
+                message=f"正在安装 {package_spec}…",
                 phase="pip",
                 progress=min(0.9, 0.05 + len(output_lines) * 0.01),
             )
 
     code, detail = _run_pip_install(
-        _runtime_pip_install_cmd(package_name),
+        _runtime_pip_install_cmd(package_spec),
         cwd=Path.cwd(),
         detail_max=4000,
         timeout_sec=900,
@@ -79,7 +92,7 @@ def install_runtime_dependency(
             _update_task(
                 _state, _task_id,
                 error=detail or output[-4000:],
-                message=f"安装 {package_name} 失败。",
+                message=f"安装 {package_spec} 失败。",
                 phase="failed",
                 status="failed",
         )
@@ -88,7 +101,7 @@ def install_runtime_dependency(
     return {
         "message": f"Installed {package_name}. Please launch chat again.",
         "moduleName": module_name,
-        "packageName": package_name,
+        "packageName": package_spec,
         "pipCode": 0,
         "pipOutput": output[-4000:],
     }

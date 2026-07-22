@@ -18,7 +18,7 @@ export const enMessages: Record<MessageKey, string> = {
   "api.memory.extractInterval": "Extract every N turns",
   "api.memory.extractIntervalHelp": "After this many user turns, recent chat is summarized into the memory queue.",
   "api.memory.installDependency": "Install dependency",
-  "api.memory.installingDependency": "Installing mem0ai...",
+  "api.memory.installingDependency": "Installing {packageName}...",
   "api.memory.loadingCached": "Loading long-term memory...",
   "api.memory.missingDependency": "{packageName} dependency is missing.",
   "api.memory.modelDownloadConfirmBody":

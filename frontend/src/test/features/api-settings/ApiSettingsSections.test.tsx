@@ -277,8 +277,20 @@ describe("API settings sections", () => {
   });
 
   it("downloads the embedding through the shared model asset service", async () => {
+    const operations: string[] = [];
     let finishDownload!: () => void;
+    runtimeRepositoryMock.installMissingRuntimeDependency.mockImplementation(async (input) => {
+      operations.push(`install:${input.moduleName}`);
+      return {
+        message: "installed",
+        moduleName: input.moduleName,
+        packageName: "huggingface-hub==1.24.0",
+        pipCode: 0,
+        pipOutput: "",
+      };
+    });
     modelAssetRepositoryMock.downloadModelAsset.mockImplementation(async (_input, options) => {
+      operations.push("download");
       options.onTaskUpdate({
         ...runningTask(),
         message: "Downloading mem0 embedding model (128.0 MB / 448.8 MB).",
@@ -317,6 +329,11 @@ describe("API settings sections", () => {
       { assetId: "memory.embedding" },
       { onTaskUpdate: expect.any(Function) },
     );
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenCalledWith(
+      { moduleName: "huggingface_hub" },
+      { onTaskUpdate: expect.any(Function) },
+    );
+    expect(operations).toEqual(["install:huggingface_hub", "download"]);
     expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(3);
     for (const [options] of configRepositoryMock.getMemoryStatus.mock.calls) {
       expect(options).toEqual({ startLoading: false });
@@ -374,7 +391,16 @@ describe("API settings sections", () => {
       .mockResolvedValueOnce({ modelCached: false, status: "not_started" })
       .mockResolvedValueOnce({ modelCached: true, status: "not_started" });
     let finishInstall!: () => void;
-    runtimeRepositoryMock.installMissingRuntimeDependency.mockImplementation(async (_input, options) => {
+    runtimeRepositoryMock.installMissingRuntimeDependency.mockImplementation(async (input, options) => {
+      if (input.moduleName === "huggingface_hub") {
+        return {
+          message: "installed",
+          moduleName: input.moduleName,
+          packageName: "huggingface-hub==1.24.0",
+          pipCode: 0,
+          pipOutput: "",
+        };
+      }
       options.onTaskUpdate({
         ...runningTask(),
         kind: "runtime-dependency-install",
@@ -398,8 +424,14 @@ describe("API settings sections", () => {
     finishInstall();
 
     expect(await screen.findByText("mem0 已就绪 · 模型已就绪")).toBeInTheDocument();
-    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenCalledWith(
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenNthCalledWith(
+      1,
       { moduleName: "mem0" },
+      { onTaskUpdate: expect.any(Function) },
+    );
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenNthCalledWith(
+      2,
+      { moduleName: "huggingface_hub" },
       { onTaskUpdate: expect.any(Function) },
     );
     expect(modelAssetRepositoryMock.downloadModelAsset).toHaveBeenCalledTimes(1);

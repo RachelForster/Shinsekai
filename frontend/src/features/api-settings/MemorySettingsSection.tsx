@@ -18,6 +18,15 @@ interface MemorySettingsSectionProps {
 }
 
 const MEMORY_EMBEDDING_ASSET = { assetId: "memory.embedding" } as const;
+const HUGGINGFACE_HUB_MODULE = "huggingface_hub";
+const HUGGINGFACE_HUB_PACKAGE = "huggingface-hub";
+
+function dependencyPackageLabel(packageName: string | undefined, fallback: string) {
+  const label = String(packageName || "")
+    .replace(/(?:\[|[<>=!~]).*$/, "")
+    .trim();
+  return label || fallback;
+}
 
 function memoryStatusLabel(status: Mem0Status | null, t: ReturnType<typeof useI18n>["t"]) {
   if (!status) {
@@ -51,10 +60,10 @@ function memoryActionLabel(status: Mem0Status | null, t: ReturnType<typeof useI1
   return t("api.memory.downloadModel");
 }
 
-function memoryTaskLabels(task: TaskSnapshot, t: ReturnType<typeof useI18n>["t"]) {
+function memoryTaskLabels(task: TaskSnapshot, t: ReturnType<typeof useI18n>["t"], dependencyPackage = "mem0ai") {
   const phase =
     task.phase === "pip"
-      ? t("api.memory.installingDependency")
+      ? t("api.memory.installingDependency", { packageName: dependencyPackage })
       : task.phase === "queued"
         ? t("api.memory.taskInProgress")
         : task.phase === "download"
@@ -77,8 +86,13 @@ function memoryTaskLabels(task: TaskSnapshot, t: ReturnType<typeof useI18n>["t"]
   return { phase, status };
 }
 
-function memoryBusyLabel(task: TaskSnapshot | null, t: ReturnType<typeof useI18n>["t"]) {
-  return task ? memoryTaskLabels(task, t).phase || t("api.memory.checking") : t("api.memory.checking");
+function memoryBusyLabel(task: TaskSnapshot | null, t: ReturnType<typeof useI18n>["t"], dependencyPackage?: string) {
+  if (!task) {
+    return dependencyPackage
+      ? t("api.memory.installingDependency", { packageName: dependencyPackage })
+      : t("api.memory.checking");
+  }
+  return memoryTaskLabels(task, t, dependencyPackage).phase || t("api.memory.checking");
 }
 
 export function MemorySettingsSection({ disabled = false, draft, id, onChange }: MemorySettingsSectionProps) {
@@ -88,6 +102,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
   const [task, setTask] = useState<TaskSnapshot | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkingEnable, setCheckingEnable] = useState(false);
+  const [installingDependencyPackage, setInstallingDependencyPackage] = useState<string>();
   const operationInFlightRef = useRef(false);
   const operationTokenRef = useRef(0);
   const draftRef = useRef(draft);
@@ -179,6 +194,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
 
       if (next.status === "missing_dependency") {
         const missing = next;
+        setInstallingDependencyPackage(dependencyPackageLabel(missing.packageName, "mem0ai"));
         await installMissingRuntimeDependency(
           { moduleName: missing.moduleName?.trim() || "mem0" },
           {
@@ -193,6 +209,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
           return;
         }
         setTask(null);
+        setInstallingDependencyPackage(undefined);
         next = await getMemoryStatus({ startLoading: false });
         if (operationTokenRef.current !== token) {
           return;
@@ -217,6 +234,23 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
       if (next.modelCached) {
         return;
       }
+
+      setInstallingDependencyPackage(HUGGINGFACE_HUB_PACKAGE);
+      await installMissingRuntimeDependency(
+        { moduleName: HUGGINGFACE_HUB_MODULE },
+        {
+          onTaskUpdate(nextTask) {
+            if (operationTokenRef.current === token) {
+              setTask(nextTask);
+            }
+          },
+        },
+      );
+      if (operationTokenRef.current !== token) {
+        return;
+      }
+      setTask(null);
+      setInstallingDependencyPackage(undefined);
 
       const result = await downloadModelAsset(MEMORY_EMBEDDING_ASSET, {
         onTaskUpdate(nextTask) {
@@ -250,6 +284,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
     } finally {
       operationInFlightRef.current = false;
       if (operationTokenRef.current === token) {
+        setInstallingDependencyPackage(undefined);
         setChecking(false);
       }
     }
@@ -265,7 +300,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
           loading={checking}
           onClick={() => void prepareMemory()}
         >
-          {checking ? memoryBusyLabel(task, t) : memoryActionLabel(status, t)}
+          {checking ? memoryBusyLabel(task, t, installingDependencyPackage) : memoryActionLabel(status, t)}
         </AsyncButton>
       </div>
       <p className="section__description">{t("api.memory.description")}</p>
@@ -331,7 +366,9 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
         <span className="field-row__label">{t("api.memory.modelStatus")}</span>
         <span className="field-row__control">
           <span className="memory-settings__status-value">{memoryStatusLabel(status, t)}</span>
-          {task ? <TaskProgress labels={memoryTaskLabels(task, t)} logLimit={0} task={task} /> : null}
+          {task ? (
+            <TaskProgress labels={memoryTaskLabels(task, t, installingDependencyPackage)} logLimit={0} task={task} />
+          ) : null}
         </span>
       </div>
     </section>

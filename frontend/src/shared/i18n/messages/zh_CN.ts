@@ -17,7 +17,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "api.memory.extractInterval": "每 N 轮抽取",
   "api.memory.extractIntervalHelp": "达到该用户轮数后，后台总结最近对话并写入记忆队列。",
   "api.memory.installDependency": "安装依赖",
-  "api.memory.installingDependency": "正在安装 mem0ai…",
+  "api.memory.installingDependency": "正在安装 {packageName}…",
   "api.memory.loadingCached": "正在加载长期记忆…",
   "api.memory.missingDependency": "缺少 {packageName} 依赖。",
   "api.memory.modelDownloadConfirmBody": "需要先下载 embedding 模型。现在下载吗？完成后会启用长期记忆。",

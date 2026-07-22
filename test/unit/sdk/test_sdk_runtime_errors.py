@@ -39,6 +39,19 @@ def test_runtime_dependency_error_maps_mem0_package():
     }
 
 
+def test_runtime_dependency_error_maps_huggingface_hub_package():
+    error = types.runtime_dependency_error_from_text(
+        "ModuleNotFoundError: No module named 'huggingface_hub'"
+    )
+
+    assert error == {
+        "kind": "missing_dependency",
+        "message": "Missing Python module: huggingface_hub",
+        "moduleName": "huggingface_hub",
+        "packageName": "huggingface-hub",
+    }
+
+
 class _FakeHttpxTimeout(Exception):
     __module__ = "httpx"
 

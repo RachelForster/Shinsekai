@@ -18,7 +18,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.memory.extractInterval": "N ターンごとに抽出",
   "api.memory.extractIntervalHelp": "指定したユーザーターン数ごとに、最近の会話を要約して記憶キューへ保存します。",
   "api.memory.installDependency": "依存関係をインストール",
-  "api.memory.installingDependency": "mem0ai をインストール中…",
+  "api.memory.installingDependency": "{packageName} をインストール中…",
   "api.memory.loadingCached": "長期記憶を読み込み中…",
   "api.memory.missingDependency": "{packageName} の依存関係が不足しています。",
   "api.memory.modelDownloadConfirmBody":
