@@ -323,7 +323,7 @@ describe("API settings sections", () => {
     }
   });
 
-  it("keeps the switch as a pure preference even when setup is missing", async () => {
+  it("keeps automatic memory disabled and points to model setup when dependencies are missing", async () => {
     const onChange = vi.fn();
     configRepositoryMock.getMemoryStatus.mockResolvedValue({
       moduleName: "mem0",
@@ -337,10 +337,29 @@ describe("API settings sections", () => {
     await screen.findByText("缺少 mem0ai 依赖。");
     fireEvent.click(screen.getByRole("checkbox", { name: "启用自动长期记忆" }));
 
-    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ memory_auto_enabled: true }));
+    expect(await screen.findByText("检测到你还没有下载长期记忆依赖，请点击右上角下载模型进行下载")).toBeInTheDocument();
+    expect(onChange).not.toHaveBeenCalled();
     expect(runtimeRepositoryMock.installMissingRuntimeDependency).not.toHaveBeenCalled();
     expect(modelAssetRepositoryMock.downloadModelAsset).not.toHaveBeenCalled();
-    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(1);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(2);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenLastCalledWith({ startLoading: false });
+  });
+
+  it("enables automatic memory after a fresh setup check succeeds", async () => {
+    const onChange = vi.fn();
+    configRepositoryMock.getMemoryStatus
+      .mockResolvedValueOnce({ modelCached: false, status: "not_started" })
+      .mockResolvedValueOnce({ modelCached: true, status: "not_started" });
+
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }} onChange={onChange} />,
+    );
+    await screen.findByText("mem0 已就绪 · 模型尚未下载");
+    fireEvent.click(screen.getByRole("checkbox", { name: "启用自动长期记忆" }));
+
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ memory_auto_enabled: true })));
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(2);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenLastCalledWith({ startLoading: false });
   });
 
   it("installs a missing mem0 dependency before downloading the embedding", async () => {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { DownloadCloud } from "lucide-react";
 
 import { installMissingRuntimeDependency } from "../../entities/chat/repository";
@@ -87,6 +87,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
   const [status, setStatus] = useState<Mem0Status | null>(null);
   const [task, setTask] = useState<TaskSnapshot | null>(null);
   const [checking, setChecking] = useState(false);
+  const [checkingEnable, setCheckingEnable] = useState(false);
   const operationInFlightRef = useRef(false);
   const operationTokenRef = useRef(0);
   const draftRef = useRef(draft);
@@ -111,6 +112,53 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
   }, []);
 
   const patch = (changes: Partial<ApiConfig>) => onChange({ ...draftRef.current, ...changes });
+
+  const handleMemoryAutoChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const enabled = event.currentTarget.checked;
+    if (!enabled) {
+      patch({ memory_auto_enabled: false });
+      return;
+    }
+    if (operationInFlightRef.current) {
+      return;
+    }
+
+    operationInFlightRef.current = true;
+    const token = operationTokenRef.current + 1;
+    operationTokenRef.current = token;
+    setCheckingEnable(true);
+    try {
+      const next = await getMemoryStatus({ startLoading: false });
+      if (operationTokenRef.current !== token) {
+        return;
+      }
+      setStatus(next);
+      setTask(next.task ?? null);
+
+      if (next.status === "error") {
+        showToast({ kind: "error", message: t("api.memory.error"), title: t("api.memory.title") });
+        return;
+      }
+      if (next.status === "missing_dependency" || !next.modelCached) {
+        showToast({
+          kind: "info",
+          message: t("api.memory.enableRequiresSetup"),
+          title: t("api.memory.title"),
+        });
+        return;
+      }
+      patch({ memory_auto_enabled: true });
+    } catch {
+      if (operationTokenRef.current === token) {
+        showToast({ kind: "error", message: t("api.memory.error"), title: t("api.memory.title") });
+      }
+    } finally {
+      operationInFlightRef.current = false;
+      if (operationTokenRef.current === token) {
+        setCheckingEnable(false);
+      }
+    }
+  };
 
   const prepareMemory = async () => {
     if (operationInFlightRef.current) {
@@ -212,7 +260,7 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
       <div className="section__header">
         <h2 className="section__title">{t("api.memory.title")}</h2>
         <AsyncButton
-          disabled={disabled}
+          disabled={disabled || checkingEnable}
           icon={<DownloadCloud aria-hidden className="button__icon" />}
           loading={checking}
           onClick={() => void prepareMemory()}
@@ -226,9 +274,10 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
         <span className="field-row__control">
           <Switch
             checked={draft.memory_auto_enabled}
-            disabled={disabled}
+            aria-busy={checkingEnable}
+            disabled={disabled || checking || checkingEnable}
             id="memory-auto-enabled"
-            onChange={(event) => patch({ memory_auto_enabled: event.currentTarget.checked })}
+            onChange={(event) => void handleMemoryAutoChange(event)}
           />
         </span>
       </label>

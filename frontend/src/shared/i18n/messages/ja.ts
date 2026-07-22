@@ -12,6 +12,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.memory.downloadModel": "モデルをダウンロード",
   "api.memory.downloading": "長期記憶モデルをダウンロード中…",
   "api.memory.enabled": "自動長期記憶を有効にする",
+  "api.memory.enableRequiresSetup":
+    "長期記憶の依存関係がまだダウンロードされていません。右上の「モデルをダウンロード」をクリックしてください。",
   "api.memory.error": "記憶システムを利用できません。",
   "api.memory.extractInterval": "N ターンごとに抽出",
   "api.memory.extractIntervalHelp": "指定したユーザーターン数ごとに、最近の会話を要約して記憶キューへ保存します。",

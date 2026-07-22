@@ -11,6 +11,8 @@ export const enMessages: Record<MessageKey, string> = {
   "api.memory.downloadModel": "Download model",
   "api.memory.downloading": "Downloading long-term memory model...",
   "api.memory.enabled": "Enable automatic long-term memory",
+  "api.memory.enableRequiresSetup":
+    "Long-term memory dependencies have not been downloaded. Click Download model in the upper-right corner.",
   "api.memory.enableReady": "Automatic long-term memory enabled.",
   "api.memory.error": "Memory system is unavailable.",
   "api.memory.extractInterval": "Extract every N turns",

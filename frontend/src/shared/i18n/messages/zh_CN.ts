@@ -12,6 +12,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "api.memory.downloadModel": "下载模型",
   "api.memory.downloading": "正在下载长期记忆模型…",
   "api.memory.enabled": "启用自动长期记忆",
+  "api.memory.enableRequiresSetup": "检测到你还没有下载长期记忆依赖，请点击右上角下载模型进行下载",
   "api.memory.error": "记忆系统不可用。",
   "api.memory.extractInterval": "每 N 轮抽取",
   "api.memory.extractIntervalHelp": "达到该用户轮数后，后台总结最近对话并写入记忆队列。",

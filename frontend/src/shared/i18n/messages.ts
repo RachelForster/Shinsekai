@@ -76,6 +76,7 @@ export type MessageKey =
   | "api.memory.downloadModel"
   | "api.memory.downloading"
   | "api.memory.enabled"
+  | "api.memory.enableRequiresSetup"
   | "api.memory.enableReady"
   | "api.memory.error"
   | "api.memory.extractInterval"
