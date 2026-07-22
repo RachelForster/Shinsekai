@@ -49,6 +49,14 @@ ALLOWED_VISUAL_PROPS = frozenset(
     }
 )
 
+BACKGROUND_LAYER_PROPS = frozenset(
+    {"background", "backgroundImage", "borderColor", "borderRadius", "boxShadow", "opacity"}
+)
+TEXT_LAYER_PROPS = frozenset(
+    {"color", "fontFamily", "opacity", "textAlign", "textShadow", "textSizePx", "textSizeVh", "textWeight"}
+)
+VISUAL_LAYER_PROPS = frozenset({"backgroundLayer", "textLayer"})
+
 #: 仅具有独立边框层的低密度外壳允许的九宫格边框字段。
 FRAME_VISUAL_PROPS = frozenset({"frameOutsetPx", "frameWidthPx"})
 FRAME_TOKEN_BLOCKS = frozenset({"dialog", "options", "input", "toolbar", "name"})
@@ -139,6 +147,7 @@ _FORBIDDEN_VALUE = re.compile(
 
 #: 数值字段的取值范围（clamp）。
 NUMERIC_BOUNDS = {
+    "opacity": (0, 1),
     "padding": (8, 72),
     "widthPct": (30, 100),
     "heightPx": (96, 260),
@@ -221,10 +230,16 @@ def _validate_visual_block(
     if not isinstance(block, dict):
         errors.append(f"tokens.{name} 必须是对象")
         return out
-    allowed_visual_props = ALLOWED_VISUAL_PROPS | FRAME_VISUAL_PROPS if allow_frame else ALLOWED_VISUAL_PROPS
+    allowed_visual_props = ALLOWED_VISUAL_PROPS | VISUAL_LAYER_PROPS
+    if allow_frame:
+        allowed_visual_props |= FRAME_VISUAL_PROPS
     for key, value in block.items():
         if key in allowed_visual_props:
-            if key in {"backgroundImage", "frameImage"}:
+            if key == "backgroundLayer":
+                out[key] = _validate_background_layer(f"tokens.{name}.backgroundLayer", value, errors)
+            elif key == "textLayer":
+                out[key] = _validate_text_layer(f"tokens.{name}.textLayer", value, errors)
+            elif key in {"backgroundImage", "frameImage"}:
                 if isinstance(value, str) and _is_safe_asset_ref(value):
                     out[key] = value
                 else:
@@ -241,6 +256,63 @@ def _validate_visual_block(
             pass  # 额外字段在下方按语义单独校验
         else:
             errors.append(f"tokens.{name}.{key} 不是规范允许的字段")
+    return out
+
+
+def _validate_background_layer(path: str, layer: Any, errors: List[str]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    if not isinstance(layer, dict):
+        errors.append(f"{path} 必须是对象")
+        return out
+    for key, value in layer.items():
+        field_path = f"{path}.{key}"
+        if key not in BACKGROUND_LAYER_PROPS:
+            errors.append(f"{field_path} 不是背景层允许的字段")
+        elif key == "backgroundImage":
+            if isinstance(value, str) and _is_safe_asset_ref(value):
+                out[key] = value
+            else:
+                errors.append(f"{field_path} 必须是主题目录内相对路径")
+        elif key == "opacity":
+            normalized = _clamp_number("opacity", value, errors, field_path)
+            if normalized is not None:
+                out[key] = normalized
+        elif isinstance(value, str) and _is_safe_css_value(value):
+            out[key] = value
+        else:
+            errors.append(f"{field_path} 值非法或包含禁用声明: {value!r}")
+    return out
+
+
+def _validate_text_layer(path: str, layer: Any, errors: List[str]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    if not isinstance(layer, dict):
+        errors.append(f"{path} 必须是对象")
+        return out
+    for key, value in layer.items():
+        field_path = f"{path}.{key}"
+        if key not in TEXT_LAYER_PROPS:
+            errors.append(f"{field_path} 不是文字层允许的字段")
+        elif key == "opacity":
+            normalized = _clamp_number("opacity", value, errors, field_path)
+            if normalized is not None:
+                out[key] = normalized
+        elif key in {"textSizePx", "textWeight"}:
+            normalized = _clamp_numeric(key, value, errors, field_path)
+            if normalized is not None:
+                out[key] = normalized
+        elif key == "textSizeVh":
+            normalized = _clamp_number(key, value, errors, field_path)
+            if normalized is not None:
+                out[key] = normalized
+        elif key == "textAlign":
+            normalized = _validate_enum(value, frozenset({"left", "center", "right"}), errors, field_path)
+            if normalized is not None:
+                out[key] = normalized
+        elif isinstance(value, str) and _is_safe_css_value(value):
+            out[key] = value
+        else:
+            errors.append(f"{field_path} 值非法或包含禁用声明: {value!r}")
     return out
 
 

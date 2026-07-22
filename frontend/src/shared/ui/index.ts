@@ -20,5 +20,6 @@ export * from "./SegmentedTabs";
 export * from "./Switch";
 export * from "./TaskProgress";
 export * from "./ModelDownloadDialog";
+export * from "./ThemeBackground";
 export * from "./ThemeFrame";
 export * from "./Toast";

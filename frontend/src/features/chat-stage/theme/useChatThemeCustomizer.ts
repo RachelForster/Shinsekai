@@ -14,7 +14,8 @@ import {
 import { useToast } from "../../../shared/ui";
 import { useOptionalChatTheme } from "./ChatThemeProvider";
 
-export type EditableThemeBlock = "dialog" | "input" | "name" | "options";
+export type EditableThemeBlock = "dialog" | "input" | "name" | "options" | "send" | "toolbar";
+export type EditableThemeLayer = "backgroundLayer" | "textLayer";
 
 const EMPTY_THEMES: ChatThemeSummary[] = [];
 const themeIdPattern = /^[a-z0-9][a-z0-9_-]{0,63}$/;
@@ -156,6 +157,42 @@ export function useChatThemeCustomizer() {
     });
   };
 
+  const patchLayer = (block: EditableThemeBlock, layer: EditableThemeLayer, patch: Record<string, unknown>) => {
+    setDraft((current) => {
+      if (!current) {
+        return current;
+      }
+      const previous = (current.tokens[block] ?? {}) as Record<string, unknown>;
+      const previousLayer = (previous[layer] ?? {}) as Record<string, unknown>;
+      const nextBlock = { ...previous };
+      const nextLayer = { ...previousLayer };
+      for (const key of Object.keys(patch)) {
+        // The edited nested layer becomes authoritative for this property. Removing
+        // its legacy flat twin avoids stale responsive text fields or old fills
+        // winning later in a component-specific resolver.
+        delete nextBlock[key];
+      }
+      if (layer === "textLayer" && "textSizePx" in patch) {
+        delete nextBlock.textSizeVh;
+        delete nextLayer.textSizeVh;
+      }
+      if (layer === "textLayer" && "textSizeVh" in patch) {
+        delete nextBlock.textSizePx;
+        delete nextLayer.textSizePx;
+      }
+      return {
+        ...current,
+        tokens: {
+          ...current.tokens,
+          [block]: {
+            ...nextBlock,
+            [layer]: { ...nextLayer, ...patch },
+          },
+        },
+      };
+    });
+  };
+
   const patchGlobal = (patch: NonNullable<ChatThemeTokens["global"]>) => {
     setDraft((current) =>
       current
@@ -236,6 +273,7 @@ export function useChatThemeCustomizer() {
     nameError,
     patchBlock,
     patchGlobal,
+    patchLayer,
     patchManifest,
     patchTypewriter,
     reset,

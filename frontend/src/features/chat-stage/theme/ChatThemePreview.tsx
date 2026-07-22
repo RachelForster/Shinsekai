@@ -3,7 +3,7 @@ import { useMemo, type CSSProperties } from "react";
 
 import { useI18n } from "../../../shared/i18n";
 import { resolveChatTheme, type ChatThemeManifest } from "../../../shared/theme/chatTheme";
-import { Button, SegmentedTabs, ThemeFrame } from "../../../shared/ui";
+import { Button, SegmentedTabs, ThemeBackground, ThemeFrame } from "../../../shared/ui";
 import { DialogLayer, OptionsLayer } from "../components/StageLayers";
 import "../chat-stage.css";
 import { chatThemeAssetUrl } from "./ChatThemeProvider";
@@ -15,6 +15,7 @@ function PreviewInput({ layout }: { layout: "default" | "pill" }) {
   const pill = layout === "pill";
   return (
     <div className="input-layer" data-layout={layout} data-visible="true">
+      <ThemeBackground prefix="chat-input" />
       <ThemeFrame prefix="chat-input" />
       {pill ? (
         <button aria-label="Mic" className="input-layer__press icon-button" type="button">
@@ -28,7 +29,12 @@ function PreviewInput({ layout }: { layout: "default" | "pill" }) {
           readOnly
         />
         {!pill ? (
-          <Button className="input-layer__send" icon={<Send aria-hidden className="button__icon" />} variant="primary">
+          <Button
+            backgroundLayer={<ThemeBackground prefix="chat-send" />}
+            className="input-layer__send"
+            icon={<Send aria-hidden className="button__icon" />}
+            variant="primary"
+          >
             {t("chat.input.send")}
           </Button>
         ) : null}
@@ -36,6 +42,7 @@ function PreviewInput({ layout }: { layout: "default" | "pill" }) {
       {pill ? (
         <div className="input-layer__pill-actions">
           <button aria-label={t("chat.input.send")} className="input-layer__quick-submit icon-button" type="button">
+            <ThemeBackground prefix="chat-send" />
             <Send aria-hidden className="icon-button__icon" />
           </button>
         </div>
@@ -90,6 +97,14 @@ export function ChatThemePreview({
         />
       </div>
       <div className="chat-theme-customizer__preview-stage chat-stage" style={resolved.style as CSSProperties}>
+        <div aria-hidden className="top-stage-tools" data-visible="true">
+          <ThemeBackground prefix="chat-toolbar" />
+          <ThemeFrame prefix="chat-toolbar" />
+          <div className="top-stage-tools__status">
+            <span className="top-stage-tools__transport">Theme</span>
+            <span className="top-stage-tools__state">UI</span>
+          </div>
+        </div>
         <div aria-hidden className="chat-theme-customizer__preview-sky">
           <span className="chat-theme-customizer__preview-moon" />
           <span className="chat-theme-customizer__preview-horizon" />

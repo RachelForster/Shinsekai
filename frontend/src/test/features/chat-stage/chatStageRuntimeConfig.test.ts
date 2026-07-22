@@ -114,4 +114,15 @@ describe("chat stage runtime config", () => {
     const overriddenStyle = chatStageRuntimeStyle(overridden, themeStyle) as unknown as Record<string, unknown>;
     expect(overriddenStyle["--chat-dialog-text-align"]).toBe("center");
   });
+
+  it("combines runtime opacity with the theme background layer without dimming text", () => {
+    const config = { ...defaultChatStageRuntimeConfig, dialogOpacity: 0.5 };
+    const runtimeStyle = chatStageRuntimeStyle(config, {
+      "--chat-dialog-background-opacity": "0.4",
+      "--chat-dialog-text-opacity": "0.95",
+    } as CSSProperties) as unknown as Record<string, unknown>;
+
+    expect(runtimeStyle["--chat-dialog-runtime-opacity"]).toBe("0.2");
+    expect(runtimeStyle["--chat-dialog-text-opacity"]).toBe("0.95");
+  });
 });

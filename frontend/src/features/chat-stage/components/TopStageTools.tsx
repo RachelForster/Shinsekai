@@ -3,7 +3,7 @@ import { Activity, Maximize2, Minus, X } from "lucide-react";
 import { minimizeDesktopWindow, toggleMaximizeDesktopWindow } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
 import type { ChatTransportMode, ChatTransportState } from "../../../shared/platform/types";
-import { IconButton, ThemeFrame } from "../../../shared/ui";
+import { IconButton, ThemeBackground, ThemeFrame } from "../../../shared/ui";
 import { transportStatusText } from "../chatStageUtils";
 import { useAutoHideRegion } from "../hooks/useAutoHideRegion";
 import { ChatThemePicker } from "../theme/ChatThemePicker";
@@ -68,6 +68,7 @@ export function TopStageTools({
       style={autoHideRegion.visible ? undefined : { pointerEvents: "none" }}
       tabIndex={0}
     >
+      <ThemeBackground prefix="chat-toolbar" />
       <ThemeFrame prefix="chat-toolbar" />
       <div className="top-stage-tools__status">
         <span className="top-stage-tools__transport">{transportText}</span>

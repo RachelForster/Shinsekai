@@ -229,8 +229,66 @@ data:image/svg+xml,...
 | `boxShadow` | string | 外阴影或内阴影。 |
 | `color` | string | 文本或图标颜色。 |
 | `padding` | number | 内边距，范围 `8–72` px。 |
+| `backgroundLayer` | object | 独立背景层；新主题推荐使用。 |
+| `textLayer` | object | 独立文字/前景层；新主题推荐使用。 |
 
 `dialog`、`options`、`input`、`toolbar`、`send`、`name` 以及多数 `logs` 子块都继承这些字段。状态块如 `options.hover`、`options.active` 也是普通 `VisualBlock`。
+
+### 6.1 背景层与文字层分离
+
+舞台主 UI 的 `dialog`、`name`、`options`、`input`、`toolbar` 和 `send` 会把背景绘制到独立的绝对定位层。背景层位于内容下方，文字和图标保持在前景层，因此降低背景透明度不会再让正文一起变淡。普通 SVG frame 仍位于两者之上。
+
+`backgroundLayer` 支持：
+
+| 字段 | 类型或范围 | 说明 |
+| --- | --- | --- |
+| `background` | string | 背景颜色或渐变。 |
+| `backgroundImage` | string | 主题目录内的背景图路径。 |
+| `borderColor` | string | 背景层边框颜色。 |
+| `borderRadius` | string | 背景层圆角。 |
+| `boxShadow` | string | 背景层阴影。 |
+| `opacity` | `0–1` | 只影响背景、边框与阴影，不影响文字。 |
+
+`textLayer` 支持：
+
+| 字段 | 类型或范围 | 说明 |
+| --- | --- | --- |
+| `color` | string | 文字或前景图标颜色。 |
+| `fontFamily` | string | 字体族。 |
+| `opacity` | `0–1` | 只影响文字或前景图标。 |
+| `textAlign` | `left \| center \| right` | 文字对齐；组件仍只消费自己支持的值。 |
+| `textShadow` | string | 文字阴影。 |
+| `textSizePx` | `12–64` | 固定字号。 |
+| `textSizeVh` | `1–4` | 响应式字号，目前用于选项。 |
+| `textWeight` | `300–900` | 字重。 |
+
+示例：
+
+```json
+{
+  "dialog": {
+    "backgroundLayer": {
+      "background": "linear-gradient(180deg, rgba(11, 34, 78, 0.96), rgba(4, 12, 31, 0.92))",
+      "backgroundImage": "assets/dialog-texture.png",
+      "borderColor": "rgba(112, 166, 255, 0.72)",
+      "borderRadius": "14px 14px 0 0",
+      "opacity": 0.78
+    },
+    "textLayer": {
+      "color": "#ffffff",
+      "fontFamily": "Source Han Sans SC",
+      "textShadow": "0 2px 4px rgba(0, 0, 0, 0.72)",
+      "textSizePx": 18,
+      "textWeight": 500,
+      "opacity": 1
+    }
+  }
+}
+```
+
+为兼容现有 `schema: 1` 主题，原来的扁平字段继续有效：`background`、`backgroundImage`、`borderColor`、`borderRadius`、`boxShadow` 会作为背景层回退；`color` 以及各组件原有的 `text*` 字段会作为文字层回退。同一属性同时出现时，嵌套层字段优先。`padding` 仍属于组件布局盒，不属于背景层或文字层。
+
+内置 Chat UI 自定义页面会用这套嵌套结构保存修改。对话框、角色名牌、输入区、选项按钮、工具栏和发送按钮都提供独立的背景/文字颜色与透明度控制；从旧主题复制时，编辑器会先读取扁平字段作为显示回退，首次修改后写入对应的 `backgroundLayer` 或 `textLayer`，不会破坏原主题兼容性。
 
 ## 7. 独立 SVG 九宫格边框
 

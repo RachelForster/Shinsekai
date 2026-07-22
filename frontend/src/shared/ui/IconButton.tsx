@@ -3,12 +3,13 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 import "./IconButton.css";
 
 interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  backgroundLayer?: ReactNode;
   children: ReactNode;
   label: string;
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { children, className = "", label, type = "button", ...props },
+  { backgroundLayer, children, className = "", label, type = "button", ...props },
   ref,
 ) {
   return (
@@ -20,6 +21,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       type={type}
       {...props}
     >
+      {backgroundLayer}
       {children}
     </button>
   );

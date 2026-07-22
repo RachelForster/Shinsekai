@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -159,6 +159,41 @@ describe("ChatThemeCustomizerPage", () => {
     expect(queryClient.getQueryData<{ system_config: { chat_ui_theme_id: string } }>(configQueryKey)).toEqual({
       system_config: { chat_ui_theme_id: "windborne-adventure-custom" },
     });
+  });
+
+  it("edits background and text layers independently for component surfaces", async () => {
+    const { container } = renderPage();
+    await screen.findByDisplayValue("windborne-adventure-custom");
+
+    const dialogSection = screen.getByText("对话框").closest("details");
+    expect(dialogSection).not.toBeNull();
+    fireEvent.change(within(dialogSection!).getByLabelText("背景透明度"), { target: { value: "0.35" } });
+    fireEvent.change(within(dialogSection!).getByLabelText("文字透明度"), { target: { value: "0.9" } });
+
+    await waitFor(() => {
+      const preview = container.querySelector<HTMLElement>(".chat-theme-customizer__preview-stage");
+      expect(preview?.style.getPropertyValue("--chat-dialog-background-opacity")).toBe("0.35");
+      expect(preview?.style.getPropertyValue("--chat-dialog-text-opacity")).toBe("0.9");
+    });
+
+    expect(screen.getByText("工具栏")).toBeInTheDocument();
+    expect(screen.getByText("发送按钮")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存并应用" }));
+
+    await waitFor(() =>
+      expect(themeContext.saveTheme).toHaveBeenCalledWith(
+        expect.objectContaining({
+          manifest: expect.objectContaining({
+            tokens: expect.objectContaining({
+              dialog: expect.objectContaining({
+                backgroundLayer: expect.objectContaining({ opacity: 0.35 }),
+                textLayer: expect.objectContaining({ opacity: 0.9 }),
+              }),
+            }),
+          }),
+        }),
+      ),
+    );
   });
 
   it("ignores an obsolete theme load and cannot save it under the newly selected source", async () => {

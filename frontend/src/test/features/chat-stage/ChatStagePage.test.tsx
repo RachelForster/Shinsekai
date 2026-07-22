@@ -213,6 +213,7 @@ describe("ChatStagePage", () => {
     expect(screen.queryByText("Ready")).not.toBeInTheDocument();
     expect(option.closest(".dialog-stack")).not.toBeNull();
     expect(document.querySelector('.options-layer > [data-theme-frame="chat-dialog"]')).not.toBeInTheDocument();
+    expect(document.querySelector('.options-layer__item > [data-theme-background="chat-option"]')).toBeInTheDocument();
     expect(document.querySelector('.options-layer__item > [data-theme-frame="chat-option"]')).toBeInTheDocument();
     expect(option.closest(".options-layer__scroll")).not.toBeNull();
     fireEvent.click(option);
@@ -331,10 +332,18 @@ describe("ChatStagePage", () => {
     renderPage();
 
     await screen.findByText("Ready");
+    expect(document.querySelector('.dialog-layer > [data-theme-background="chat-dialog"]')).toBeInTheDocument();
     expect(document.querySelector('.dialog-layer > [data-theme-frame="chat-dialog"]')).toBeInTheDocument();
+    expect(document.querySelector('.dialog-layer__name > [data-theme-background="chat-name"]')).toBeInTheDocument();
     expect(document.querySelector('.dialog-layer__name > [data-theme-frame="chat-name"]')).toBeInTheDocument();
+    expect(document.querySelector('.input-layer > [data-theme-background="chat-input"]')).toBeInTheDocument();
     expect(document.querySelector('.input-layer > [data-theme-frame="chat-input"]')).toBeInTheDocument();
+    expect(document.querySelector('.input-layer__send > [data-theme-background="chat-send"]')).toBeInTheDocument();
+    expect(document.querySelector('.top-stage-tools > [data-theme-background="chat-toolbar"]')).toBeInTheDocument();
     expect(document.querySelector('.top-stage-tools > [data-theme-frame="chat-toolbar"]')).toBeInTheDocument();
+    expect(
+      document.querySelector('.dialog-stage-controls__surface > [data-theme-background="chat-toolbar"]'),
+    ).toBeInTheDocument();
     expect(
       document.querySelector('.dialog-stage-controls__surface > [data-theme-frame="chat-toolbar"]'),
     ).toBeInTheDocument();

@@ -26,9 +26,23 @@
   min-height: var(--chat-dialog-min-height);
   padding: var(--chat-dialog-padding);
   border: var(--chat-dialog-border);
-  border-color: var(--chat-dialog-border-color);
+  border-color: transparent;
   border-radius: var(--chat-dialog-border-radius);
   color: var(--chat-dialog-color);
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+  pointer-events: auto;
+  backdrop-filter: none;
+  isolation: isolate;
+  animation: chat-stage-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dialog-layer > .theme-background[data-theme-background="chat-dialog"] {
+  inset: -1px;
+  border: var(--chat-dialog-border);
+  border-color: var(--chat-dialog-border-color);
+  border-radius: var(--chat-dialog-border-radius);
   background:
     var(--chat-sheen), var(--chat-dialog-background-image, none),
     var(--chat-dialog-runtime-background, var(--chat-dialog-background));
@@ -36,11 +50,8 @@
   background-repeat: no-repeat;
   background-size: auto, cover, auto;
   box-shadow: var(--chat-dialog-box-shadow);
-  opacity: var(--chat-dialog-runtime-opacity);
-  pointer-events: auto;
+  opacity: var(--chat-dialog-runtime-opacity, var(--chat-dialog-background-opacity, 1));
   backdrop-filter: var(--chat-dialog-backdrop-filter);
-  isolation: isolate;
-  animation: chat-stage-rise 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .dialog-layer[data-typing="true"] {
@@ -95,14 +106,12 @@
   overflow: visible;
   border: var(--chat-name-border);
   border-bottom: var(--chat-name-border-bottom);
+  border-color: transparent;
   border-radius: var(--chat-name-border-radius);
   clip-path: var(--chat-name-clip-path);
   color: var(--chat-name-runtime-color, var(--chat-name-color));
-  background: var(--chat-name-sheen), var(--chat-name-background-image), var(--chat-name-background);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: auto, cover, auto;
-  box-shadow: var(--chat-name-box-shadow);
+  background: transparent;
+  box-shadow: none;
   font-family: var(--chat-name-runtime-font-family, var(--font-chat));
   font-size: var(--chat-name-runtime-font-size, 15px);
   font-weight: var(--chat-name-runtime-font-weight, 700);
@@ -112,6 +121,21 @@
   text-align: var(--chat-name-text-align);
   transform: var(--chat-name-transform);
   white-space: nowrap;
+  isolation: isolate;
+}
+
+.dialog-layer__name > .theme-background[data-theme-background="chat-name"] {
+  inset: -1px;
+  border: var(--chat-name-border);
+  border-bottom: var(--chat-name-border-bottom);
+  border-color: var(--chat-name-border-color);
+  border-radius: var(--chat-name-border-radius);
+  background: var(--chat-name-sheen), var(--chat-name-background-image), var(--chat-name-background);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: auto, cover, auto;
+  box-shadow: var(--chat-name-box-shadow);
+  opacity: var(--chat-name-background-opacity, 1);
 }
 
 .dialog-layer__name-content {
@@ -119,6 +143,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  opacity: var(--chat-name-text-opacity, 1);
 }
 
 /* Theme-controlled name decoration: default accent edge, or drawn line/dot ornaments. */
@@ -203,6 +228,7 @@
   font-family: var(--chat-dialog-text-runtime-font-family, var(--font-chat));
   font-size: var(--chat-dialog-text-runtime-font-size, 17px);
   font-weight: var(--chat-dialog-text-runtime-font-weight, 400);
+  opacity: var(--chat-dialog-text-opacity, 1);
   line-height: 1.9;
   letter-spacing: 0.01em;
   white-space: pre-wrap;
