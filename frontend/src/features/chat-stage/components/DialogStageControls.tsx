@@ -30,12 +30,14 @@ import { ChatTurnSettingsPopover } from "./ChatTurnSettingsPopover";
 export function DialogStageControls({
   asrEnabled,
   auto,
+  bgmVolume,
   closeLabel,
   configOpen,
   hideCloseButton,
   hidden,
   locked,
   onAutoChange,
+  onBgmVolumeChange,
   onCancelBatch,
   onCloseSurface,
   onCommand,
@@ -52,12 +54,14 @@ export function DialogStageControls({
 }: {
   asrEnabled: boolean;
   auto: boolean;
+  bgmVolume: number;
   closeLabel: string;
   configOpen: boolean;
   hidden: boolean;
   hideCloseButton: boolean;
   locked: boolean;
   onAutoChange: (auto: boolean) => void;
+  onBgmVolumeChange: (value: number) => void;
   onCancelBatch: () => void;
   onCloseSurface: () => void;
   onCommand: (command: ChatCommand) => void;
@@ -231,6 +235,8 @@ export function DialogStageControls({
           <PluginSlot slot="chat-dialog-actions" />
         </div>
         <ChatTurnSettingsPopover
+          bgmVolume={bgmVolume}
+          onBgmVolumeChange={onBgmVolumeChange}
           onCancelBatch={onCancelBatch}
           onClose={closeChatSettings}
           onFlushBatch={onFlushBatch}

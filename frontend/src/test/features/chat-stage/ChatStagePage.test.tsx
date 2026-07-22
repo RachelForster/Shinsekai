@@ -73,6 +73,7 @@ const desktopApiMocks = vi.hoisted(() => ({
   getDesktopWindowCursorPosition: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn(),
+  setDesktopWindowAlwaysOnTop: vi.fn(),
   setDesktopWindowClickThrough: vi.fn(),
   startDesktopWindowDrag: vi.fn(),
   startDesktopWindowResize: vi.fn(),
@@ -93,6 +94,7 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
     getDesktopWindowCursorPosition: () => desktopApiMocks.getDesktopWindowCursorPosition(),
     isTauriDesktop: () => desktopApiMocks.isTauriDesktop(),
     minimizeDesktopWindow: () => desktopApiMocks.minimizeDesktopWindow(),
+    setDesktopWindowAlwaysOnTop: (alwaysOnTop: boolean) => desktopApiMocks.setDesktopWindowAlwaysOnTop(alwaysOnTop),
     setDesktopWindowClickThrough: (ignore: boolean) => desktopApiMocks.setDesktopWindowClickThrough(ignore),
     startDesktopWindowDrag: () => desktopApiMocks.startDesktopWindowDrag(),
     startDesktopWindowResize: (direction: string) => desktopApiMocks.startDesktopWindowResize(direction),
@@ -179,6 +181,7 @@ describe("ChatStagePage", () => {
     desktopApiMocks.isTauriDesktop.mockReturnValue(false);
     desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: 0, y: 0 });
     desktopApiMocks.minimizeDesktopWindow.mockResolvedValue(undefined);
+    desktopApiMocks.setDesktopWindowAlwaysOnTop.mockResolvedValue(undefined);
     desktopApiMocks.setDesktopWindowClickThrough.mockResolvedValue(undefined);
     mocks.sendChatCommand.mockImplementation(async (command: ChatCommand) =>
       snapshot({
@@ -219,6 +222,40 @@ describe("ChatStagePage", () => {
         type: "submit-option",
       }),
     );
+  });
+
+  it("focuses the first option and submits the focused choice with Enter", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut", "Stay on the road"] }));
+    renderPage();
+
+    const firstOption = await screen.findByRole("button", { name: "Take the shortcut" });
+    expect(screen.getByRole("list", { name: "Dialogue choices" })).toContainElement(firstOption);
+    expect(firstOption).toHaveFocus();
+
+    fireEvent.keyDown(firstOption, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: "Take the shortcut",
+        type: "submit-option",
+      }),
+    );
+  });
+
+  it("exposes notifications as status updates and softens them over sprites", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        characterName: "",
+        dialogText: "",
+        notificationText: "Session paused",
+      }),
+    );
+    renderPage();
+
+    const notification = await screen.findByRole("status");
+    expect(notification).toHaveClass("chat-stage__notification");
+    expect(notification).toHaveAttribute("data-sprites-visible", "true");
+    expect(notification).toHaveTextContent("Session paused");
   });
 
   it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {
@@ -1295,9 +1332,11 @@ describe("ChatStagePage", () => {
     });
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
       config: {
+        alwaysOnTop: true,
         auto: false,
         autoHideInput: true,
         autoHideTopTools: true,
+        bgmVolume: 1,
         configThemeColor: "#88cc44",
         configUseMainThemeColor: false,
         dialogText: {

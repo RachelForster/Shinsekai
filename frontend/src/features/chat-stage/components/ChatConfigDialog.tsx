@@ -93,6 +93,7 @@ const dialogFillGradientDirectionOptions: Array<{
 ];
 
 export function ChatConfigDialog({
+  alwaysOnTop,
   autoHideInput,
   autoHideTopTools,
   configThemeColor,
@@ -106,6 +107,7 @@ export function ChatConfigDialog({
   immersiveMode,
   mainThemeColor,
   nameText,
+  onAlwaysOnTopChange,
   onAutoHideInputChange,
   onAutoHideTopToolsChange,
   onConfigThemeColorChange,
@@ -131,8 +133,10 @@ export function ChatConfigDialog({
   textSpeed,
   turnOptions,
   voiceLanguage,
+  windowControlsAvailable,
   windowScale,
 }: {
+  alwaysOnTop: boolean;
   autoHideInput: boolean;
   autoHideTopTools: boolean;
   configThemeColor: string;
@@ -146,6 +150,7 @@ export function ChatConfigDialog({
   immersiveMode: boolean;
   mainThemeColor: string;
   nameText: ChatStageTextStyleConfig;
+  onAlwaysOnTopChange: (value: boolean) => void;
   onAutoHideInputChange: (value: boolean) => void;
   onAutoHideTopToolsChange: (value: boolean) => void;
   onConfigThemeColorChange: (value: string) => void;
@@ -171,6 +176,7 @@ export function ChatConfigDialog({
   textSpeed: number;
   turnOptions: ChatTurnOptions;
   voiceLanguage: string;
+  windowControlsAvailable: boolean;
   windowScale: number;
 }) {
   const { t } = useI18n();
@@ -271,6 +277,22 @@ export function ChatConfigDialog({
       title={t("chat.toolbar.config")}
     >
       <div className="chat-stage-modal__body chat-config-dialog__body">
+        {windowControlsAvailable ? (
+          <section className="chat-config-dialog__section">
+            <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionWindow")}</h3>
+            <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+              <label className="chat-config-dialog__label" htmlFor="chat-config-always-on-top">
+                {t("chat.config.alwaysOnTop")}
+              </label>
+              <Switch
+                checked={alwaysOnTop}
+                className="chat-config-dialog__switch"
+                id="chat-config-always-on-top"
+                onChange={(event) => onAlwaysOnTopChange(event.target.checked)}
+              />
+            </div>
+          </section>
+        ) : null}
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionMenuAppearance")}</h3>
           <label className="chat-config-dialog__row">

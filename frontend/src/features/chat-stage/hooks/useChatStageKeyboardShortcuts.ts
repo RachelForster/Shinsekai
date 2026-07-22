@@ -12,7 +12,10 @@ export function useChatStageKeyboardShortcuts({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
+      if (
+        target?.isContentEditable ||
+        target?.closest("a, button, input, textarea, select, summary, [role='button'], [role='link']")
+      ) {
         return;
       }
       if (disabled) {

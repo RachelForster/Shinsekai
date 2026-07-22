@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { browseFiles } from "../../entities/files/repository";
-import { isTauriDesktop } from "../../shared/desktop/desktopApi";
+import { isTauriDesktop, setDesktopWindowAlwaysOnTop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
@@ -103,7 +103,7 @@ export function ChatStagePage() {
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
-  const handleSpriteDragStart = useDesktopWindowDrag(standaloneDesktopWindow);
+  const handleWindowDrag = useDesktopWindowDrag(standaloneDesktopWindow);
   const transparentBackground = !viewModel.backgroundPath;
   const statsVisible = viewModel.stats.length > 0;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
@@ -196,6 +196,15 @@ export function ChatStagePage() {
   useEffect(() => {
     writeChatStageRuntimeConfig(runtimeConfig);
   }, [runtimeConfig]);
+
+  useEffect(() => {
+    if (!standaloneDesktopWindow) {
+      return;
+    }
+    void setDesktopWindowAlwaysOnTop(runtimeConfig.alwaysOnTop).catch((error) => {
+      console.error("Desktop chat window always-on-top toggle failed", error);
+    });
+  }, [runtimeConfig.alwaysOnTop, standaloneDesktopWindow]);
 
   const submit = async (textOverride?: string) => {
     const text = (textOverride ?? viewModel.inputDraft).trim();
@@ -307,6 +316,12 @@ export function ChatStagePage() {
     void sendChatCommand({ payload: inputState, type: "chat-input-state" }).catch(() => undefined);
   }, []);
 
+  const updateRuntimeAlwaysOnTop = (alwaysOnTop: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, alwaysOnTop }));
+  };
+  const updateRuntimeBgmVolume = (bgmVolume: number) => {
+    setRuntimeConfig((current) => ({ ...current, bgmVolume: Math.min(1, Math.max(0, bgmVolume)) }));
+  };
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
@@ -410,12 +425,14 @@ export function ChatStagePage() {
     <DialogStageControls
       asrEnabled={viewModel.asrEnabled}
       auto={runtimeConfig.auto}
+      bgmVolume={runtimeConfig.bgmVolume}
       closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
       configOpen={toolbarConfigOpen}
       hidden={!dialogSurfaceVisible}
       hideCloseButton={standaloneDesktopWindow}
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
+      onBgmVolumeChange={updateRuntimeBgmVolume}
       onCancelBatch={() => void sendCommand({ type: "cancel-input-batch" })}
       onCloseSurface={closeSurface}
       onCommand={sendCommand}
@@ -464,14 +481,15 @@ export function ChatStagePage() {
         />
         <BackgroundLayer
           hidden={!viewModel.layers.background}
+          onDragStart={standaloneDesktopWindow && !transparentBackground ? handleWindowDrag : undefined}
           path={viewModel.backgroundPath}
           transparent={transparentBackground}
         />
-        <BgmLayer path={viewModel.bgmPath} />
+        <BgmLayer path={viewModel.bgmPath} volume={runtimeConfig.bgmVolume} />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer
           hidden={!viewModel.layers.sprites}
-          onDragStart={standaloneDesktopWindow ? handleSpriteDragStart : undefined}
+          onDragStart={standaloneDesktopWindow ? handleWindowDrag : undefined}
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
           sprites={viewModel.sprites}
@@ -479,7 +497,11 @@ export function ChatStagePage() {
         <StatLayer stats={viewModel.stats} />
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
-        <NotificationLayer hidden={!viewModel.layers.notification} text={viewModel.notificationText} />
+        <NotificationLayer
+          hidden={!viewModel.layers.notification}
+          spritesVisible={viewModel.layers.sprites && viewModel.sprites.length > 0}
+          text={viewModel.notificationText}
+        />
         <div
           aria-hidden={!dialogSurfaceVisible}
           className={layerClassName("dialog-stack", !dialogSurfaceVisible)}
@@ -577,6 +599,7 @@ export function ChatStagePage() {
           />
         ) : null}
         <ChatConfigDialog
+          alwaysOnTop={runtimeConfig.alwaysOnTop}
           autoHideInput={runtimeConfig.autoHideInput}
           autoHideTopTools={runtimeConfig.autoHideTopTools}
           configThemeColor={runtimeConfig.configThemeColor}
@@ -592,6 +615,7 @@ export function ChatStagePage() {
           nameText={runtimeConfig.nameText}
           onClose={() => setToolbarConfigOpen(false)}
           onCommand={sendCommand}
+          onAlwaysOnTopChange={updateRuntimeAlwaysOnTop}
           onAutoHideInputChange={updateRuntimeAutoHideInput}
           onAutoHideTopToolsChange={updateRuntimeAutoHideTopTools}
           onConfigThemeColorChange={updateRuntimeConfigThemeColor}
@@ -615,6 +639,7 @@ export function ChatStagePage() {
           textSpeed={typewriterCps}
           turnOptions={state.turnOptions}
           voiceLanguage={viewModel.voiceLanguage || "ja"}
+          windowControlsAvailable={standaloneDesktopWindow}
           windowScale={runtimeConfig.windowScale}
         />
       </main>
