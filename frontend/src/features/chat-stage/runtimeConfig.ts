@@ -513,15 +513,6 @@ function themeStyleString(themeStyle: CSSProperties, name: `--${string}`) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function themeStyleNumber(themeStyle: CSSProperties, name: `--${string}`, fallback: number) {
-  const raw = themeStyleString(themeStyle, name);
-  if (!raw) {
-    return fallback;
-  }
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : fallback;
-}
-
 function runtimeThemeFontSize(themeStyle: CSSProperties, name: `--${string}`, fallback: number) {
   const value = themeStyleString(themeStyle, name);
   const match = value.match(/^(\d+(?:\.\d+)?)px$/);
@@ -591,16 +582,10 @@ export function chatStageRuntimeStyle(
     runtimeWindowScaleMin,
     runtimeWindowScaleMax,
   );
-  const dialogBackgroundOpacity = clampRuntimeNumber(
-    themeStyleNumber(themeStyle, "--chat-dialog-background-opacity", 1),
-    1,
-    0,
-    1,
-  );
   return {
     ...themeStyle,
     "--chat-config-accent": configAccent,
-    "--chat-dialog-runtime-opacity": String(Number((config.dialogOpacity * dialogBackgroundOpacity).toFixed(3))),
+    "--chat-dialog-runtime-opacity": String(config.dialogOpacity),
     ...(dialogFillBackground ? { "--chat-dialog-runtime-background": dialogFillBackground } : {}),
     "--chat-dialog-runtime-inverse-scale": String(Number((1 / dialogScale).toFixed(4))),
     "--chat-dialog-runtime-scale": String(dialogScale),

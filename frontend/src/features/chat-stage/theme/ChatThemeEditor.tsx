@@ -1,29 +1,8 @@
 import { useI18n } from "../../../shared/i18n";
-import type {
-  BackgroundLayer,
-  ChatThemeManifest,
-  ChatThemeTokens,
-  TextLayer,
-  VisualBlock,
-} from "../../../shared/theme/chatTheme";
+import type { ChatThemeManifest, ChatThemeTokens } from "../../../shared/theme/chatTheme";
 import { TextInput } from "../../../shared/ui";
 import { ColorField, RangeField, SelectField } from "./ChatThemeCustomizerFields";
-import type { EditableThemeBlock, EditableThemeLayer } from "./useChatThemeCustomizer";
-
-function resolvedBackgroundLayer(block: VisualBlock): BackgroundLayer {
-  return {
-    background: block.background,
-    backgroundImage: block.backgroundImage,
-    borderColor: block.borderColor,
-    borderRadius: block.borderRadius,
-    boxShadow: block.boxShadow,
-    ...block.backgroundLayer,
-  };
-}
-
-function resolvedTextLayer(block: VisualBlock): TextLayer {
-  return { color: block.color, ...block.textLayer };
-}
+import type { EditableThemeBlock } from "./useChatThemeCustomizer";
 
 interface ChatThemeEditorProps {
   draft: ChatThemeManifest;
@@ -33,7 +12,6 @@ interface ChatThemeEditorProps {
   nameError: string;
   onPatchBlock: (block: EditableThemeBlock, patch: Record<string, unknown>) => void;
   onPatchGlobal: (patch: NonNullable<ChatThemeTokens["global"]>) => void;
-  onPatchLayer: (block: EditableThemeBlock, layer: EditableThemeLayer, patch: Record<string, unknown>) => void;
   onPatchManifest: (patch: Partial<ChatThemeManifest>) => void;
   onPatchTypewriter: (patch: NonNullable<ChatThemeTokens["typewriter"]>) => void;
 }
@@ -46,7 +24,6 @@ export function ChatThemeEditor({
   nameError,
   onPatchBlock,
   onPatchGlobal,
-  onPatchLayer,
   onPatchManifest,
   onPatchTypewriter,
 }: ChatThemeEditorProps) {
@@ -55,42 +32,7 @@ export function ChatThemeEditor({
   const name = draft.tokens.name ?? {};
   const input = draft.tokens.input ?? {};
   const options = draft.tokens.options ?? {};
-  const toolbar = draft.tokens.toolbar ?? {};
-  const send = draft.tokens.send ?? {};
   const global = draft.tokens.global ?? {};
-  const dialogBackground = resolvedBackgroundLayer(dialog);
-  const dialogText: TextLayer = {
-    color: dialog.color,
-    textAlign: dialog.textAlign,
-    textShadow: dialog.textShadow,
-    textSizePx: dialog.textSizePx,
-    textWeight: dialog.textWeight,
-    ...dialog.textLayer,
-  };
-  const nameBackground = resolvedBackgroundLayer(name);
-  const nameText: TextLayer = {
-    color: name.color,
-    fontFamily: name.fontFamily,
-    textShadow: name.textShadow,
-    textSizePx: name.textSizePx,
-    textWeight: name.textWeight,
-    ...name.textLayer,
-  };
-  const inputBackground = resolvedBackgroundLayer(input);
-  const inputText = resolvedTextLayer(input);
-  const optionBackground = resolvedBackgroundLayer(options);
-  const optionText: TextLayer = {
-    color: options.color,
-    textShadow: options.textShadow,
-    textSizePx: options.textSizePx,
-    textSizeVh: options.textSizeVh,
-    textWeight: options.textWeight,
-    ...options.textLayer,
-  };
-  const toolbarBackground = resolvedBackgroundLayer(toolbar);
-  const toolbarText = resolvedTextLayer(toolbar);
-  const sendBackground = resolvedBackgroundLayer(send);
-  const sendText = resolvedTextLayer(send);
 
   return (
     <div className="chat-theme-customizer__editor">
@@ -159,40 +101,24 @@ export function ChatThemeEditor({
         <div className="chat-theme-customizer__field-grid">
           <ColorField
             label={t("chat.theme.customizer.background")}
-            onChange={(background) => onPatchLayer("dialog", "backgroundLayer", { background })}
-            value={dialogBackground.background}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.backgroundOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("dialog", "backgroundLayer", { opacity })}
-            step={0.05}
-            value={dialogBackground.opacity ?? 1}
+            onChange={(background) => onPatchBlock("dialog", { background })}
+            value={dialog.background}
           />
           <ColorField
             label={t("chat.theme.customizer.textColor")}
-            onChange={(color) => onPatchLayer("dialog", "textLayer", { color })}
-            value={dialogText.color}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.textOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("dialog", "textLayer", { opacity })}
-            step={0.05}
-            value={dialogText.opacity ?? 1}
+            onChange={(color) => onPatchBlock("dialog", { color })}
+            value={dialog.color}
           />
           <ColorField
             label={t("chat.theme.customizer.borderColor")}
-            onChange={(borderColor) => onPatchLayer("dialog", "backgroundLayer", { borderColor })}
-            value={dialogBackground.borderColor}
+            onChange={(borderColor) => onPatchBlock("dialog", { borderColor })}
+            value={dialog.borderColor}
           />
           <label className="chat-theme-customizer__field">
             <span>{t("chat.theme.customizer.borderRadius")}</span>
             <TextInput
-              onChange={(event) => onPatchLayer("dialog", "backgroundLayer", { borderRadius: event.target.value })}
-              value={dialogBackground.borderRadius ?? ""}
+              onChange={(event) => onPatchBlock("dialog", { borderRadius: event.target.value })}
+              value={dialog.borderRadius ?? ""}
             />
           </label>
           <SelectField
@@ -205,8 +131,8 @@ export function ChatThemeEditor({
           </SelectField>
           <SelectField
             label={t("chat.theme.customizer.align")}
-            onChange={(textAlign) => onPatchLayer("dialog", "textLayer", { textAlign })}
-            value={dialogText.textAlign ?? "left"}
+            onChange={(textAlign) => onPatchBlock("dialog", { textAlign })}
+            value={dialog.textAlign ?? "left"}
           >
             <option value="left">Left</option>
             <option value="center">Center</option>
@@ -239,17 +165,17 @@ export function ChatThemeEditor({
             label={t("chat.theme.customizer.fontSize")}
             max={64}
             min={12}
-            onChange={(textSizePx) => onPatchLayer("dialog", "textLayer", { textSizePx })}
+            onChange={(textSizePx) => onPatchBlock("dialog", { textSizePx })}
             suffix="px"
-            value={dialogText.textSizePx ?? 17}
+            value={dialog.textSizePx ?? 17}
           />
           <RangeField
             label={t("chat.theme.customizer.fontWeight")}
             max={900}
             min={300}
-            onChange={(textWeight) => onPatchLayer("dialog", "textLayer", { textWeight })}
+            onChange={(textWeight) => onPatchBlock("dialog", { textWeight })}
             step={100}
-            value={dialogText.textWeight ?? 400}
+            value={dialog.textWeight ?? 400}
           />
           <RangeField
             label={t("chat.theme.customizer.offsetY")}
@@ -267,40 +193,24 @@ export function ChatThemeEditor({
         <div className="chat-theme-customizer__field-grid">
           <ColorField
             label={t("chat.theme.customizer.background")}
-            onChange={(background) => onPatchLayer("name", "backgroundLayer", { background })}
-            value={nameBackground.background}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.backgroundOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("name", "backgroundLayer", { opacity })}
-            step={0.05}
-            value={nameBackground.opacity ?? 1}
+            onChange={(background) => onPatchBlock("name", { background })}
+            value={name.background}
           />
           <ColorField
             label={t("chat.theme.customizer.textColor")}
-            onChange={(color) => onPatchLayer("name", "textLayer", { color })}
-            value={nameText.color}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.textOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("name", "textLayer", { opacity })}
-            step={0.05}
-            value={nameText.opacity ?? 1}
+            onChange={(color) => onPatchBlock("name", { color })}
+            value={name.color}
           />
           <ColorField
             label={t("chat.theme.customizer.borderColor")}
-            onChange={(borderColor) => onPatchLayer("name", "backgroundLayer", { borderColor })}
-            value={nameBackground.borderColor}
+            onChange={(borderColor) => onPatchBlock("name", { borderColor })}
+            value={name.borderColor}
           />
           <label className="chat-theme-customizer__field">
             <span>{t("chat.theme.customizer.borderRadius")}</span>
             <TextInput
-              onChange={(event) => onPatchLayer("name", "backgroundLayer", { borderRadius: event.target.value })}
-              value={nameBackground.borderRadius ?? ""}
+              onChange={(event) => onPatchBlock("name", { borderRadius: event.target.value })}
+              value={name.borderRadius ?? ""}
             />
           </label>
           <SelectField
@@ -317,7 +227,6 @@ export function ChatThemeEditor({
             value={name.decoration ?? "accent"}
           >
             <option value="accent">Accent</option>
-            <option value="arrow-fade">Arrow fade</option>
             <option value="line-dots">Line dots</option>
           </SelectField>
           <RangeField
@@ -332,17 +241,17 @@ export function ChatThemeEditor({
             label={t("chat.theme.customizer.fontSize")}
             max={64}
             min={12}
-            onChange={(textSizePx) => onPatchLayer("name", "textLayer", { textSizePx })}
+            onChange={(textSizePx) => onPatchBlock("name", { textSizePx })}
             suffix="px"
-            value={nameText.textSizePx ?? 15}
+            value={name.textSizePx ?? 15}
           />
           <RangeField
             label={t("chat.theme.customizer.fontWeight")}
             max={900}
             min={300}
-            onChange={(textWeight) => onPatchLayer("name", "textLayer", { textWeight })}
+            onChange={(textWeight) => onPatchBlock("name", { textWeight })}
             step={100}
-            value={nameText.textWeight ?? 800}
+            value={name.textWeight ?? 800}
           />
         </div>
       </details>
@@ -360,40 +269,24 @@ export function ChatThemeEditor({
           </SelectField>
           <ColorField
             label={t("chat.theme.customizer.background")}
-            onChange={(background) => onPatchLayer("input", "backgroundLayer", { background })}
-            value={inputBackground.background}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.backgroundOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("input", "backgroundLayer", { opacity })}
-            step={0.05}
-            value={inputBackground.opacity ?? 1}
+            onChange={(background) => onPatchBlock("input", { background })}
+            value={input.background}
           />
           <ColorField
             label={t("chat.theme.customizer.textColor")}
-            onChange={(color) => onPatchLayer("input", "textLayer", { color })}
-            value={inputText.color}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.textOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("input", "textLayer", { opacity })}
-            step={0.05}
-            value={inputText.opacity ?? 1}
+            onChange={(color) => onPatchBlock("input", { color })}
+            value={input.color}
           />
           <ColorField
             label={t("chat.theme.customizer.borderColor")}
-            onChange={(borderColor) => onPatchLayer("input", "backgroundLayer", { borderColor })}
-            value={inputBackground.borderColor}
+            onChange={(borderColor) => onPatchBlock("input", { borderColor })}
+            value={input.borderColor}
           />
           <label className="chat-theme-customizer__field">
             <span>{t("chat.theme.customizer.borderRadius")}</span>
             <TextInput
-              onChange={(event) => onPatchLayer("input", "backgroundLayer", { borderRadius: event.target.value })}
-              value={inputBackground.borderRadius ?? ""}
+              onChange={(event) => onPatchBlock("input", { borderRadius: event.target.value })}
+              value={input.borderRadius ?? ""}
             />
           </label>
           <RangeField
@@ -428,40 +321,24 @@ export function ChatThemeEditor({
           </SelectField>
           <ColorField
             label={t("chat.theme.customizer.background")}
-            onChange={(background) => onPatchLayer("options", "backgroundLayer", { background })}
-            value={optionBackground.background}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.backgroundOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("options", "backgroundLayer", { opacity })}
-            step={0.05}
-            value={optionBackground.opacity ?? 1}
+            onChange={(background) => onPatchBlock("options", { background })}
+            value={options.background}
           />
           <ColorField
             label={t("chat.theme.customizer.textColor")}
-            onChange={(color) => onPatchLayer("options", "textLayer", { color })}
-            value={optionText.color}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.textOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("options", "textLayer", { opacity })}
-            step={0.05}
-            value={optionText.opacity ?? 1}
+            onChange={(color) => onPatchBlock("options", { color })}
+            value={options.color}
           />
           <ColorField
             label={t("chat.theme.customizer.borderColor")}
-            onChange={(borderColor) => onPatchLayer("options", "backgroundLayer", { borderColor })}
-            value={optionBackground.borderColor}
+            onChange={(borderColor) => onPatchBlock("options", { borderColor })}
+            value={options.borderColor}
           />
           <label className="chat-theme-customizer__field">
             <span>{t("chat.theme.customizer.borderRadius")}</span>
             <TextInput
-              onChange={(event) => onPatchLayer("options", "backgroundLayer", { borderRadius: event.target.value })}
-              value={optionBackground.borderRadius ?? ""}
+              onChange={(event) => onPatchBlock("options", { borderRadius: event.target.value })}
+              value={options.borderRadius ?? ""}
             />
           </label>
           <RangeField
@@ -476,106 +353,18 @@ export function ChatThemeEditor({
             label={t("chat.theme.customizer.fontSize")}
             max={64}
             min={12}
-            onChange={(textSizePx) => onPatchLayer("options", "textLayer", { textSizePx })}
+            onChange={(textSizePx) => onPatchBlock("options", { textSizePx })}
             suffix="px"
-            value={optionText.textSizePx ?? 18}
+            value={options.textSizePx ?? 18}
           />
           <RangeField
             label={t("chat.theme.customizer.fontWeight")}
             max={900}
             min={300}
-            onChange={(textWeight) => onPatchLayer("options", "textLayer", { textWeight })}
+            onChange={(textWeight) => onPatchBlock("options", { textWeight })}
             step={100}
-            value={optionText.textWeight ?? 600}
+            value={options.textWeight ?? 600}
           />
-        </div>
-      </details>
-
-      <details>
-        <summary>{t("chat.theme.customizer.sectionToolbar")}</summary>
-        <div className="chat-theme-customizer__field-grid">
-          <ColorField
-            label={t("chat.theme.customizer.background")}
-            onChange={(background) => onPatchLayer("toolbar", "backgroundLayer", { background })}
-            value={toolbarBackground.background}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.backgroundOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("toolbar", "backgroundLayer", { opacity })}
-            step={0.05}
-            value={toolbarBackground.opacity ?? 1}
-          />
-          <ColorField
-            label={t("chat.theme.customizer.textColor")}
-            onChange={(color) => onPatchLayer("toolbar", "textLayer", { color })}
-            value={toolbarText.color}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.textOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("toolbar", "textLayer", { opacity })}
-            step={0.05}
-            value={toolbarText.opacity ?? 1}
-          />
-          <ColorField
-            label={t("chat.theme.customizer.borderColor")}
-            onChange={(borderColor) => onPatchLayer("toolbar", "backgroundLayer", { borderColor })}
-            value={toolbarBackground.borderColor}
-          />
-          <label className="chat-theme-customizer__field">
-            <span>{t("chat.theme.customizer.borderRadius")}</span>
-            <TextInput
-              onChange={(event) => onPatchLayer("toolbar", "backgroundLayer", { borderRadius: event.target.value })}
-              value={toolbarBackground.borderRadius ?? ""}
-            />
-          </label>
-        </div>
-      </details>
-
-      <details>
-        <summary>{t("chat.theme.customizer.sectionSend")}</summary>
-        <div className="chat-theme-customizer__field-grid">
-          <ColorField
-            label={t("chat.theme.customizer.background")}
-            onChange={(background) => onPatchLayer("send", "backgroundLayer", { background })}
-            value={sendBackground.background}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.backgroundOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("send", "backgroundLayer", { opacity })}
-            step={0.05}
-            value={sendBackground.opacity ?? 1}
-          />
-          <ColorField
-            label={t("chat.theme.customizer.textColor")}
-            onChange={(color) => onPatchLayer("send", "textLayer", { color })}
-            value={sendText.color}
-          />
-          <RangeField
-            label={t("chat.theme.customizer.textOpacity")}
-            max={1}
-            min={0}
-            onChange={(opacity) => onPatchLayer("send", "textLayer", { opacity })}
-            step={0.05}
-            value={sendText.opacity ?? 1}
-          />
-          <ColorField
-            label={t("chat.theme.customizer.borderColor")}
-            onChange={(borderColor) => onPatchLayer("send", "backgroundLayer", { borderColor })}
-            value={sendBackground.borderColor}
-          />
-          <label className="chat-theme-customizer__field">
-            <span>{t("chat.theme.customizer.borderRadius")}</span>
-            <TextInput
-              onChange={(event) => onPatchLayer("send", "backgroundLayer", { borderRadius: event.target.value })}
-              value={sendBackground.borderRadius ?? ""}
-            />
-          </label>
         </div>
       </details>
 

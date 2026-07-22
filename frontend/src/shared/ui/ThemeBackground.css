@@ -1,8 +1,0 @@
-.theme-background {
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  box-sizing: border-box;
-  pointer-events: none;
-  user-select: none;
-}

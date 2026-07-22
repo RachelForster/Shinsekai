@@ -188,59 +188,6 @@ def test_validate_manifest_keeps_schema_one_legacy_frames_on_unsupported_blocks_
     assert result.normalized["tokens"]["logs"]["line"]["frameSlice"] == 16
 
 
-def test_validate_manifest_normalizes_independent_background_and_text_layers() -> None:
-    manifest = _valid_manifest()
-    manifest["tokens"] = {
-        "dialog": {
-            "background": "#111111",
-            "backgroundLayer": {
-                "background": "linear-gradient(#123456, #07111f)",
-                "backgroundImage": "assets/dialog.png",
-                "borderColor": "#abcdef",
-                "opacity": 1.4,
-            },
-            "textLayer": {
-                "color": "#ffffff",
-                "fontFamily": "Demo Sans",
-                "opacity": 0.82,
-                "textAlign": "left",
-                "textSizePx": 22,
-                "textWeight": 720,
-            },
-        }
-    }
-
-    result = validate_manifest(manifest)
-
-    assert result.ok is True
-    dialog = result.normalized["tokens"]["dialog"]
-    assert dialog["background"] == "#111111"
-    assert dialog["backgroundLayer"]["backgroundImage"] == "assets/dialog.png"
-    assert dialog["backgroundLayer"]["opacity"] == 1
-    assert dialog["textLayer"]["opacity"] == 0.82
-    assert dialog["textLayer"]["textSizePx"] == 22
-    assert dialog["textLayer"]["textWeight"] == 720
-
-
-@pytest.mark.parametrize(
-    "tokens",
-    [
-        {"dialog": {"backgroundLayer": {"color": "#ffffff"}}},
-        {"dialog": {"backgroundLayer": {"backgroundImage": "../escape.png"}}},
-        {"dialog": {"textLayer": {"background": "#000000"}}},
-        {"dialog": {"textLayer": {"opacity": "opaque"}}},
-    ],
-)
-def test_validate_manifest_rejects_invalid_layer_fields(tokens: dict) -> None:
-    manifest = _valid_manifest()
-    manifest["tokens"] = tokens
-
-    result = validate_manifest(manifest)
-
-    assert result.ok is False
-    assert result.errors
-
-
 def test_validate_theme_dir_warns_for_missing_assets_and_reports_bad_json(tmp_path: Path) -> None:
     theme_dir = _write_theme(tmp_path)
     (theme_dir / "assets" / "dialog.png").unlink()

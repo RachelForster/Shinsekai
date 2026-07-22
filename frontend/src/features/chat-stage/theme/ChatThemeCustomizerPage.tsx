@@ -92,7 +92,6 @@ export function ChatThemeCustomizerPage() {
             nameError={customizer.nameError}
             onPatchBlock={customizer.patchBlock}
             onPatchGlobal={customizer.patchGlobal}
-            onPatchLayer={customizer.patchLayer}
             onPatchManifest={customizer.patchManifest}
             onPatchTypewriter={customizer.patchTypewriter}
           />

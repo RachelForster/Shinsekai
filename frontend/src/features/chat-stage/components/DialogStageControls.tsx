@@ -23,7 +23,7 @@ import {
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
 import type { ChatCommand, ChatTurnOptions, ChatTurnState } from "../../../shared/platform/types";
-import { ThemeBackground, ThemeFrame, ToolbarButton } from "../../../shared/ui";
+import { ThemeFrame, ToolbarButton } from "../../../shared/ui";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
 import { ChatTurnSettingsPopover } from "./ChatTurnSettingsPopover";
 
@@ -115,7 +115,6 @@ export function DialogStageControls({
       ref={rootRef}
     >
       <div className="dialog-stage-controls__surface">
-        <ThemeBackground prefix="chat-toolbar" />
         <ThemeFrame prefix="chat-toolbar" />
         <div aria-label={t("chat.actionBar.title")} className="dialog-stage-controls__rail" role="toolbar">
           <ToolbarButton

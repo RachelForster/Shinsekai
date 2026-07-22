@@ -16,54 +16,28 @@ export const CHAT_THEME_SCHEMA = 1 as const;
 /** 默认内置 chat_ui 主题。 */
 export const DEFAULT_CHAT_THEME_ID = "windborne-adventure";
 
-/** 独立于内容绘制的背景层。opacity 只影响这一层，不会让文字一起变淡。 */
-export interface BackgroundLayer {
+/** 一组可视化声明（颜色 / 背景图 / 边框 / 圆角 / 阴影 / 内边距），对应一块 UI 的 --chat-<block>-* 变量。 */
+export interface VisualBlock {
   background?: string;
   /** 背景图，主题目录内相对路径（沙箱）。 */
   backgroundImage?: string;
   borderColor?: string;
   borderRadius?: string;
-  boxShadow?: string;
-  /** 0–1；只作用于背景、边框和阴影。 */
-  opacity?: number;
-}
-
-/** 独立于背景绘制的文字/内容层。各组件只消费自己支持的排版字段。 */
-export interface TextLayer {
-  color?: string;
-  fontFamily?: string;
-  /** 0–1；只作用于文字和前景图标。 */
-  opacity?: number;
-  textAlign?: "left" | "center" | "right";
-  textShadow?: string;
-  textSizePx?: number;
-  textSizeVh?: number;
-  textWeight?: number;
-}
-
-/** 一组可视化声明。扁平字段为 schema=1 兼容写法；新主题优先使用 backgroundLayer / textLayer。 */
-export interface VisualBlock {
-  background?: string;
-  backgroundImage?: string;
-  backgroundLayer?: BackgroundLayer;
-  borderColor?: string;
-  borderRadius?: string;
-  boxShadow?: string;
   color?: string;
   /** 像素值；解析时 clamp。 */
   padding?: number;
-  textLayer?: TextLayer;
+  boxShadow?: string;
 }
 
 /** 只用于具有独立边框层的低密度 UI 外壳；列表行、按钮状态等 VisualBlock 不接受这些字段。 */
 export interface FrameVisualBlock extends VisualBlock {
   /** SVG/位图九宫格边框，主题目录内相对路径（沙箱）。 */
   frameImage?: string;
-  /** 素材坐标系中的九宫格切片值（无单位），clamp 1–200，默认 32。 */
+  /** 素材坐标系中的九宫格切片值（无单位），由 backgroundImage 与 frameImage 共用，clamp 1–200，默认 32。 */
   frameSlice?: number;
-  /** 屏幕上的九宫格边框带宽（px），决定角块显示尺寸与素材缩放，clamp 0–96；省略时回退到 frameSlice。 */
+  /** 屏幕上的九宫格边缘带宽（px），决定角块显示尺寸与素材缩放，clamp 0–96；省略时回退到 frameSlice。 */
   frameWidthPx?: number;
-  /** 边框向容器外绘制的距离（px），不参与布局，clamp 0–96，默认 0。 */
+  /** 九宫格向容器外绘制的距离（px），不参与布局，clamp 0–96，默认 0。 */
   frameOutsetPx?: number;
 }
 
@@ -326,38 +300,6 @@ function setIntegerVar(
   style[name] = String(Math.round(clampNumber(value, fallback, min, max)));
 }
 
-function setOpacityVar(style: ChatStageStyle, name: `--${string}`, value: unknown) {
-  if (typeof value !== "number") {
-    return;
-  }
-  style[name] = String(Number(clampNumber(value, 1, 0, 1).toFixed(3)));
-}
-
-function setOpacityPercentVar(style: ChatStageStyle, name: `--${string}`, value: unknown) {
-  if (typeof value !== "number") {
-    return;
-  }
-  style[name] = `${Number((clampNumber(value, 1, 0, 1) * 100).toFixed(1))}%`;
-}
-
-function resolveBackgroundLayer(block: VisualBlock): BackgroundLayer {
-  return {
-    background: block.background,
-    backgroundImage: block.backgroundImage,
-    borderColor: block.borderColor,
-    borderRadius: block.borderRadius,
-    boxShadow: block.boxShadow,
-    ...block.backgroundLayer,
-  };
-}
-
-function resolveTextLayer(block: VisualBlock): TextLayer {
-  return {
-    color: block.color,
-    ...block.textLayer,
-  };
-}
-
 function applyFrameVisualBlock(
   style: ChatStageStyle,
   namespace: "chat" | "logs",
@@ -397,6 +339,16 @@ function applyFrameVisualBlock(
   }
 }
 
+function applyNineSliceBackground(style: ChatStageStyle, prefix: string, block: FrameVisualBlock) {
+  const slice = clampNumber(block.frameSlice, 32, 1, 200);
+  const width = clampNumber(block.frameWidthPx, slice, 0, 96);
+  const outset = clampNumber(block.frameOutsetPx, 0, 0, 96);
+
+  style[`--chat-${prefix}-background-slice`] = String(slice);
+  style[`--chat-${prefix}-background-width`] = `${width}px`;
+  style[`--chat-${prefix}-background-outset`] = `${outset}px`;
+}
+
 function applyVisualBlock(
   style: ChatStageStyle,
   prefix: string,
@@ -407,31 +359,24 @@ function applyVisualBlock(
   if (!block) {
     return;
   }
-  const backgroundLayer = resolveBackgroundLayer(block);
-  const textLayer = resolveTextLayer(block);
-  setStyleVar(style, `--chat-${prefix}-background`, backgroundLayer.background);
-  if (assetUrl && backgroundLayer.backgroundImage) {
-    const backgroundImage = resolveThemeAssetUrl(backgroundLayer.backgroundImage, assetUrl);
+  setStyleVar(style, `--chat-${prefix}-background`, block.background);
+  if (assetUrl && block.backgroundImage) {
+    const backgroundImage = resolveThemeAssetUrl(block.backgroundImage, assetUrl);
     if (backgroundImage) {
       style[`--chat-${prefix}-background-image`] = `url("${backgroundImage}")`;
+      if (allowFrame) {
+        applyNineSliceBackground(style, prefix, block as FrameVisualBlock);
+      }
     }
   }
   const frame = allowFrame ? (block as FrameVisualBlock) : undefined;
   if (frame) {
     applyFrameVisualBlock(style, "chat", prefix, frame, assetUrl, true);
   }
-  setStyleVar(style, `--chat-${prefix}-border-color`, backgroundLayer.borderColor);
-  setStyleVar(style, `--chat-${prefix}-border-radius`, backgroundLayer.borderRadius);
-  setStyleVar(style, `--chat-${prefix}-box-shadow`, backgroundLayer.boxShadow);
-  setOpacityVar(style, `--chat-${prefix}-background-opacity`, backgroundLayer.opacity);
-  setStyleVar(style, `--chat-${prefix}-color`, textLayer.color);
-  setStyleVar(style, `--chat-${prefix}-text-align`, textLayer.textAlign);
-  setStyleVar(style, `--chat-${prefix}-text-shadow`, textLayer.textShadow);
-  setStyleVar(style, `--chat-${prefix}-text-font-family`, textLayer.fontFamily);
-  setPxVar(style, `--chat-${prefix}-text-font-size`, textLayer.textSizePx, 16, 12, 64);
-  setIntegerVar(style, `--chat-${prefix}-text-font-weight`, textLayer.textWeight, 400, 300, 900);
-  setOpacityVar(style, `--chat-${prefix}-text-opacity`, textLayer.opacity);
-  setOpacityPercentVar(style, `--chat-${prefix}-text-opacity-percent`, textLayer.opacity);
+  setStyleVar(style, `--chat-${prefix}-border-color`, block.borderColor);
+  setStyleVar(style, `--chat-${prefix}-border-radius`, block.borderRadius);
+  setStyleVar(style, `--chat-${prefix}-color`, block.color);
+  setStyleVar(style, `--chat-${prefix}-box-shadow`, block.boxShadow);
   if (typeof block.padding === "number") {
     style[`--chat-${prefix}-padding`] = `${clampNumber(block.padding, 40, 8, 72)}px`;
   }
@@ -447,11 +392,9 @@ function applyLogsVisualBlock(
   if (!block) {
     return;
   }
-  const backgroundLayer = resolveBackgroundLayer(block);
-  const textLayer = resolveTextLayer(block);
-  setStyleVar(style, `--logs-${prefix}-background`, backgroundLayer.background);
-  if (assetUrl && backgroundLayer.backgroundImage) {
-    const backgroundImage = resolveThemeAssetUrl(backgroundLayer.backgroundImage, assetUrl);
+  setStyleVar(style, `--logs-${prefix}-background`, block.background);
+  if (assetUrl && block.backgroundImage) {
+    const backgroundImage = resolveThemeAssetUrl(block.backgroundImage, assetUrl);
     if (backgroundImage) {
       style[`--logs-${prefix}-background-image`] = `url("${backgroundImage}")`;
     }
@@ -460,12 +403,10 @@ function applyLogsVisualBlock(
   if (frame) {
     applyFrameVisualBlock(style, "logs", prefix, frame, assetUrl);
   }
-  setStyleVar(style, `--logs-${prefix}-border-color`, backgroundLayer.borderColor);
-  setStyleVar(style, `--logs-${prefix}-border-radius`, backgroundLayer.borderRadius);
-  setStyleVar(style, `--logs-${prefix}-box-shadow`, backgroundLayer.boxShadow);
-  setOpacityVar(style, `--logs-${prefix}-background-opacity`, backgroundLayer.opacity);
-  setStyleVar(style, `--logs-${prefix}-color`, textLayer.color);
-  setOpacityVar(style, `--logs-${prefix}-text-opacity`, textLayer.opacity);
+  setStyleVar(style, `--logs-${prefix}-border-color`, block.borderColor);
+  setStyleVar(style, `--logs-${prefix}-border-radius`, block.borderRadius);
+  setStyleVar(style, `--logs-${prefix}-color`, block.color);
+  setStyleVar(style, `--logs-${prefix}-box-shadow`, block.boxShadow);
   if (typeof block.padding === "number") {
     style[`--logs-${prefix}-padding`] = `${clampNumber(block.padding, 40, 8, 72)}px`;
   }
@@ -475,14 +416,7 @@ function mergeVisualBlock<T extends VisualBlock>(base?: T | null, override?: T |
   if (!base && !override) {
     return undefined;
   }
-  const merged = { ...(base ?? {}), ...(override ?? {}) } as T;
-  if (base?.backgroundLayer || override?.backgroundLayer) {
-    merged.backgroundLayer = { ...(base?.backgroundLayer ?? {}), ...(override?.backgroundLayer ?? {}) };
-  }
-  if (base?.textLayer || override?.textLayer) {
-    merged.textLayer = { ...(base?.textLayer ?? {}), ...(override?.textLayer ?? {}) };
-  }
-  return merged;
+  return { ...(base ?? {}), ...(override ?? {}) } as T;
 }
 
 function withoutFrame(block?: FrameVisualBlock | null): VisualBlock | undefined {
@@ -497,8 +431,6 @@ function withoutFrame(block?: FrameVisualBlock | null): VisualBlock | undefined 
     boxShadow: block.boxShadow,
     color: block.color,
     padding: block.padding,
-    backgroundLayer: block.backgroundLayer,
-    textLayer: block.textLayer,
   };
 }
 
@@ -507,23 +439,17 @@ function resolveLogsThemeTokens(tokens: ChatThemeTokens): LogsThemeTokens {
   const dialogFallback = withoutFrame(tokens.dialog);
   const inputFallback = withoutFrame(tokens.input);
   const toolbarFallback = withoutFrame(tokens.toolbar);
-  const dialogBackground = tokens.dialog ? resolveBackgroundLayer(tokens.dialog) : {};
-  const dialogText = tokens.dialog ? resolveTextLayer(tokens.dialog) : {};
-  const inputBackground = tokens.input ? resolveBackgroundLayer(tokens.input) : {};
-  const inputText = tokens.input ? resolveTextLayer(tokens.input) : {};
-  const nameText = tokens.name ? resolveTextLayer(tokens.name) : {};
-  const optionBackground = tokens.options ? resolveBackgroundLayer(tokens.options) : {};
-  const optionText = tokens.options ? resolveTextLayer(tokens.options) : {};
   const accentBlock: VisualBlock = {
-    backgroundLayer: optionBackground,
-    textLayer: { color: nameText.color ?? tokens.global?.themeColor },
+    background: tokens.options?.background,
+    borderColor: tokens.options?.borderColor,
+    color: tokens.name?.color ?? tokens.global?.themeColor,
   };
   const codeFallback: LogsThemeTokens["code"] = {
-    background: tokens.input?.fieldBackground ?? inputBackground.background ?? dialogBackground.background,
-    color: inputText.color ?? dialogText.color,
+    background: tokens.input?.fieldBackground ?? tokens.input?.background ?? tokens.dialog?.background,
+    color: tokens.input?.color ?? tokens.dialog?.color,
   };
   return {
-    page: mergeVisualBlock({ color: dialogText.color }, logs.page),
+    page: mergeVisualBlock({ color: tokens.dialog?.color }, logs.page),
     panel: mergeVisualBlock(toolbarFallback ?? dialogFallback, logs.panel),
     toolbar: mergeVisualBlock(toolbarFallback, logs.toolbar),
     sidebar: mergeVisualBlock(toolbarFallback ?? inputFallback, logs.sidebar),
@@ -533,7 +459,7 @@ function resolveLogsThemeTokens(tokens: ChatThemeTokens): LogsThemeTokens {
     line: logs.line,
     number: logs.number,
     detail: mergeVisualBlock(inputFallback, logs.detail),
-    badge: mergeVisualBlock({ color: optionText.color ?? dialogText.color }, logs.badge),
+    badge: mergeVisualBlock({ color: tokens.options?.color ?? tokens.dialog?.color }, logs.badge),
     event: mergeVisualBlock(accentBlock, logs.event),
     fileItem: logs.fileItem,
     levels: logs.levels,
@@ -586,14 +512,6 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   }
 
   const dialog = tokens.dialog;
-  const dialogText: TextLayer = {
-    color: dialog?.color,
-    textAlign: dialog?.textAlign,
-    textShadow: dialog?.textShadow,
-    textSizePx: dialog?.textSizePx,
-    textWeight: dialog?.textWeight,
-    ...dialog?.textLayer,
-  };
   applyVisualBlock(style, "dialog", dialog, assetUrl, true);
   if (typeof dialog?.heightPx === "number" || dialog?.chrome === "none") {
     style["--chat-dialog-height"] = `${clampNumber(dialog?.heightPx, 156, 96, 260)}px`;
@@ -627,11 +545,11 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   if (typeof dialog?.offsetY === "number") {
     style["--chat-dialog-offset-y"] = `${clampNumber(dialog.offsetY, 0, -240, 240)}px`;
   }
-  if (dialogText.textAlign === "left" || dialogText.textAlign === "center") {
-    style["--chat-dialog-text-theme-align"] = dialogText.textAlign;
+  if (dialog?.textAlign === "left" || dialog?.textAlign === "center") {
+    style["--chat-dialog-text-theme-align"] = dialog.textAlign;
   }
-  if (isSafeCssValue(dialogText.color)) {
-    style["--chat-dialog-text-theme-color"] = dialogText.color.trim();
+  if (isSafeCssValue(dialog?.color)) {
+    style["--chat-dialog-text-theme-color"] = dialog.color.trim();
   }
   if (typeof tokens.global?.fontFamily === "string") {
     const fontFamily = quotedFontFamily(tokens.global.fontFamily);
@@ -640,30 +558,16 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
       style["--chat-name-theme-font-family"] = fontFamily;
     }
   }
-  if (typeof dialogText.fontFamily === "string") {
-    const fontFamily = quotedFontFamily(dialogText.fontFamily);
-    if (fontFamily) {
-      style["--chat-dialog-text-theme-font-family"] = fontFamily;
-    }
-  }
-  setPxVar(style, "--chat-dialog-text-theme-font-size", dialogText.textSizePx, 17, 12, 64);
-  setIntegerVar(style, "--chat-dialog-text-theme-font-weight", dialogText.textWeight, 400, 300, 900);
-  setStyleVar(style, "--chat-dialog-text-shadow", dialogText.textShadow);
+  setPxVar(style, "--chat-dialog-text-theme-font-size", dialog?.textSizePx, 17, 12, 64);
+  setIntegerVar(style, "--chat-dialog-text-theme-font-weight", dialog?.textWeight, 400, 300, 900);
+  setStyleVar(style, "--chat-dialog-text-shadow", dialog?.textShadow);
 
   const options = tokens.options;
-  const optionText: TextLayer = {
-    color: options?.color,
-    textShadow: options?.textShadow,
-    textSizePx: options?.textSizePx,
-    textSizeVh: options?.textSizeVh,
-    textWeight: options?.textWeight,
-    ...options?.textLayer,
-  };
   applyVisualBlock(style, "option", options, assetUrl, true);
   applyVisualBlock(style, "option-active", options?.active, assetUrl);
   applyVisualBlock(style, "option-hover", options?.hover, assetUrl);
-  if (isSafeCssValue(optionText.color)) {
-    style["--chat-options-color"] = optionText.color;
+  if (isSafeCssValue(options?.color)) {
+    style["--chat-options-color"] = options.color;
   }
   if (typeof options?.gap === "number") {
     style["--chat-options-gap"] = `${clampNumber(options.gap, 10, 0, 36)}px`;
@@ -695,19 +599,10 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   setPxVar(style, "--chat-option-min-height", options?.minHeightPx, 46, 36, 96);
   setVhClampVar(style, "--chat-option-min-height", options?.minHeightVh, 3, 8, 36, 96);
   setVhVar(style, "--chat-options-name-clearance", options?.nameClearanceVh, 2, 12);
-  setPxVar(style, "--chat-option-font-size", optionText.textSizePx, 16, 12, 64);
-  setVhClampVar(style, "--chat-option-font-size", optionText.textSizeVh, 1, 4, 18, 32);
-  setIntegerVar(style, "--chat-option-font-weight", optionText.textWeight, 600, 300, 900);
-  setStyleVar(style, "--chat-option-text-shadow", optionText.textShadow);
-  if (typeof optionText.fontFamily === "string") {
-    const fontFamily = quotedFontFamily(optionText.fontFamily);
-    if (fontFamily) {
-      style["--chat-option-text-font-family"] = fontFamily;
-    }
-  }
-  if (optionText.textAlign === "left" || optionText.textAlign === "center" || optionText.textAlign === "right") {
-    style["--chat-option-text-align"] = optionText.textAlign;
-  }
+  setPxVar(style, "--chat-option-font-size", options?.textSizePx, 16, 12, 64);
+  setVhClampVar(style, "--chat-option-font-size", options?.textSizeVh, 1, 4, 18, 32);
+  setIntegerVar(style, "--chat-option-font-weight", options?.textWeight, 600, 300, 900);
+  setStyleVar(style, "--chat-option-text-shadow", options?.textShadow);
   if (options?.icon === "chat") {
     style["--chat-option-icon-opacity"] = "1";
     style["--chat-option-icon-size"] = "clamp(28px, 3.78svh, 38px)";
@@ -814,27 +709,19 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   }
   applyVisualBlock(style, "send", tokens.send, assetUrl);
   applyVisualBlock(style, "name", tokens.name, assetUrl, true);
-  const nameText: TextLayer = {
-    color: tokens.name?.color,
-    fontFamily: tokens.name?.fontFamily,
-    textShadow: tokens.name?.textShadow,
-    textSizePx: tokens.name?.textSizePx,
-    textWeight: tokens.name?.textWeight,
-    ...tokens.name?.textLayer,
-  };
-  if (isSafeCssValue(nameText.color)) {
-    style["--chat-name-theme-color"] = nameText.color.trim();
+  if (isSafeCssValue(tokens.name?.color)) {
+    style["--chat-name-theme-color"] = tokens.name.color.trim();
   }
-  if (typeof nameText.fontFamily === "string") {
-    const fontFamily = quotedFontFamily(nameText.fontFamily);
+  if (typeof tokens.name?.fontFamily === "string") {
+    const fontFamily = quotedFontFamily(tokens.name.fontFamily);
     if (fontFamily) {
       style["--chat-name-theme-font-family"] = fontFamily;
     }
   }
-  setPxVar(style, "--chat-name-theme-font-size", nameText.textSizePx, 15, 12, 56);
-  setIntegerVar(style, "--chat-name-theme-font-weight", nameText.textWeight, 800, 300, 900);
+  setPxVar(style, "--chat-name-theme-font-size", tokens.name?.textSizePx, 15, 12, 56);
+  setIntegerVar(style, "--chat-name-theme-font-weight", tokens.name?.textWeight, 800, 300, 900);
   setPxVar(style, "--chat-name-overlap", tokens.name?.overlapPx, 1, 0, 48);
-  setStyleVar(style, "--chat-name-text-shadow", nameText.textShadow);
+  setStyleVar(style, "--chat-name-text-shadow", tokens.name?.textShadow);
   if (tokens.name?.align === "center") {
     style["--chat-name-justify-content"] = "center";
     style["--chat-name-left"] = "50%";

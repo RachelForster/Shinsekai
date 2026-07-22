@@ -11,16 +11,21 @@
   gap: var(--chat-input-gap);
   padding: var(--chat-input-padding);
   border: var(--chat-input-border, 1px solid var(--chat-input-border-color));
-  border-color: transparent;
+  border-color: var(--chat-input-border-color);
   border-radius: var(--chat-input-border-radius, 6px);
-  color: color-mix(in srgb, var(--chat-input-color, #f7f1f0) var(--chat-input-text-opacity-percent, 100%), transparent);
-  background: transparent;
-  box-shadow: none;
-  font-family: var(--chat-input-text-font-family, var(--font-chat));
+  border-image-source: var(--chat-input-background-image, none);
+  border-image-slice: var(--chat-input-background-slice, 32) fill;
+  border-image-width: var(--chat-input-background-width, 32px);
+  border-image-outset: var(--chat-input-background-outset, 0px);
+  border-image-repeat: stretch;
+  color: var(--chat-input-color, #f7f1f0);
+  background: var(--chat-sheen), var(--chat-input-background);
+  box-shadow:
+    0 12px 38px var(--stage-shadow-heavy),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   transform: translateX(-50%) scale(var(--chat-ui-window-scale));
   transform-origin: bottom center;
-  backdrop-filter: none;
-  isolation: isolate;
+  backdrop-filter: blur(14px) saturate(1.05);
   transition:
     border-color 150ms ease,
     box-shadow 150ms ease,
@@ -28,32 +33,7 @@
     transform 160ms ease;
 }
 
-.input-layer > .theme-background[data-theme-background="chat-input"] {
-  inset: -1px;
-  border: var(--chat-input-border, 1px solid var(--chat-input-border-color));
-  border-color: var(--chat-input-border-color);
-  border-radius: var(--chat-input-border-radius, 6px);
-  background: var(--chat-sheen), var(--chat-input-background-image, none), var(--chat-input-background);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: auto, cover, auto;
-  box-shadow:
-    var(--chat-input-box-shadow, 0 12px 38px var(--stage-shadow-heavy)),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  opacity: var(--chat-input-background-opacity, 1);
-  backdrop-filter: blur(14px) saturate(1.05);
-  transition:
-    border-color 150ms ease,
-    box-shadow 150ms ease,
-    opacity 150ms ease;
-}
-
 .input-layer:focus-within {
-  border-color: transparent;
-  box-shadow: none;
-}
-
-.input-layer:focus-within > .theme-background[data-theme-background="chat-input"] {
   border-color: color-mix(in oklch, var(--stage-accent) 68%, rgba(255, 255, 255, 0.32));
   box-shadow:
     0 0 0 3px color-mix(in oklch, var(--stage-accent) 26%, transparent),
@@ -79,16 +59,7 @@
 
   align-items: center;
   grid-template-rows: minmax(0, 1fr);
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-}
-
-.input-layer[data-layout="pill"] > .theme-background[data-theme-background="chat-input"] {
-  background: var(--chat-input-background-image, none), var(--chat-input-background);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: cover, auto;
+  background: var(--chat-input-background);
   box-shadow:
     var(--chat-input-box-shadow, 0 14px 34px rgba(0, 0, 0, 0.28)),
     inset 0 1px 0 rgba(255, 255, 255, 0.16);
@@ -188,12 +159,10 @@
   border-color: transparent;
   border-radius: var(--chat-input-field-border-radius);
   padding-right: var(--chat-input-textarea-padding-right);
-  color: color-mix(in srgb, var(--chat-input-color, #f7f1f0) var(--chat-input-text-opacity-percent, 100%), transparent);
+  color: var(--chat-input-color, #f7f1f0);
   background: var(--chat-input-field-background);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   font-size: var(--chat-input-textarea-font-size);
-  font-weight: var(--chat-input-text-font-weight, inherit);
-  text-shadow: var(--chat-input-text-shadow, none);
 }
 
 .input-layer[data-layout="pill"] .input-layer__input {
@@ -205,7 +174,7 @@
   max-height: var(--chat-input-textarea-min-height);
   border: 0;
   padding: 0 var(--chat-input-text-inline-padding);
-  color: color-mix(in srgb, var(--chat-input-color, #fff) var(--chat-input-text-opacity-percent, 100%), transparent);
+  color: var(--chat-input-color, #fff);
   background: var(--chat-input-field-background, transparent);
   box-shadow: none;
   font-weight: 650;
@@ -252,47 +221,19 @@
   align-self: stretch;
   padding: var(--chat-send-padding);
   border: var(--chat-send-border);
-  border-color: transparent;
-  border-radius: var(--chat-send-border-radius, 6px);
-  color: var(--chat-send-color, #061016);
-  background: transparent;
-  box-shadow: none;
-  font-family: var(--chat-send-text-font-family, inherit);
-  font-size: var(--chat-send-text-font-size, inherit);
-  font-weight: var(--chat-send-text-font-weight, 700);
-  transform: var(--chat-send-transform);
-  isolation: isolate;
-}
-
-.input-layer .input-layer__send.button--primary > .theme-background[data-theme-background="chat-send"] {
-  inset: -1px;
-  border: var(--chat-send-border);
   border-color: var(--chat-send-border-color, rgba(255, 255, 255, 0.55));
   border-radius: var(--chat-send-border-radius, 6px);
-  background: var(--chat-send-sheen), var(--chat-send-background-image, none), var(--chat-send-background);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: auto, cover, auto;
+  color: var(--chat-send-color, #061016);
+  background: var(--chat-send-sheen), var(--chat-send-background);
   box-shadow: var(--chat-send-box-shadow);
-  opacity: var(--chat-send-background-opacity, 1);
-  transition:
-    background 150ms ease,
-    border-color 150ms ease,
-    box-shadow 150ms ease,
-    opacity 150ms ease;
+  font-weight: 700;
+  transform: var(--chat-send-transform);
 }
 
 .input-layer .input-layer__send.button--primary:hover:not(:disabled) {
-  border-color: transparent;
-  background: transparent;
-  transform: var(--chat-send-hover-transform);
-}
-
-.input-layer
-  .input-layer__send.button--primary:hover:not(:disabled)
-  > .theme-background[data-theme-background="chat-send"] {
   border-color: var(--chat-send-hover-border-color, #fff);
-  background: var(--chat-send-hover-sheen), var(--chat-send-background-image, none), var(--chat-send-background);
+  background: var(--chat-send-hover-sheen), var(--chat-send-background);
+  transform: var(--chat-send-hover-transform);
 }
 
 .input-layer .input-layer__send.button--primary:active:not(:disabled) {
@@ -302,11 +243,6 @@
 .input-layer__send .button__icon {
   width: var(--chat-send-icon-size);
   height: var(--chat-send-icon-size);
-}
-
-.input-layer__send .button__icon,
-.input-layer__send .button__label {
-  opacity: var(--chat-send-text-opacity, 1);
 }
 
 .input-layer__send .button__label {

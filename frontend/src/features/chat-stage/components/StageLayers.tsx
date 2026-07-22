@@ -14,7 +14,7 @@ import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
 import type { ChatStat } from "../../../shared/platform/types";
-import { Button, ThemeBackground, ThemeFrame } from "../../../shared/ui";
+import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
 import type { DialogHtmlNode, DialogHtmlStyleProperty } from "../dialogTypewriter";
@@ -229,11 +229,9 @@ export function DialogLayer({
       hidden={hidden}
       onClick={handleDialogClick}
     >
-      <ThemeBackground prefix="chat-dialog" />
       <ThemeFrame prefix="chat-dialog" />
       {characterName ? (
         <p className="dialog-layer__name">
-          <ThemeBackground prefix="chat-name" />
           <ThemeFrame prefix="chat-name" />
           <span className="dialog-layer__name-content">{characterName}</span>
         </p>
@@ -343,7 +341,6 @@ export function OptionsLayer({
       <div aria-label={t("chat.options.label")} className="options-layer__scroll" role="list">
         {options.map((option, index) => (
           <div className="options-layer__item" key={option} role="listitem">
-            <ThemeBackground prefix="chat-option" />
             <ThemeFrame prefix="chat-option" />
             <Button
               autoFocus={index === 0}

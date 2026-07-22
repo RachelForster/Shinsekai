@@ -21,41 +21,26 @@
     --chat-toolbar-border,
     1px solid color-mix(in oklch, var(--chat-toolbar-border-color) 72%, rgba(255, 255, 255, 0.2))
   );
-  border-color: transparent;
   border-radius: var(--chat-toolbar-border-radius, 999px);
-  background: transparent;
-  box-shadow: none;
-  font-family: var(--chat-toolbar-text-font-family, var(--font-chat));
-  text-shadow: var(--chat-toolbar-text-shadow, none);
-  backdrop-filter: none;
-  isolation: isolate;
-  pointer-events: auto;
-  transition:
-    opacity 160ms ease,
-    transform 160ms ease;
-}
-
-.top-stage-tools > .theme-background[data-theme-background="chat-toolbar"] {
-  inset: -1px;
-  border: var(
-    --chat-toolbar-border,
-    1px solid color-mix(in oklch, var(--chat-toolbar-border-color) 72%, rgba(255, 255, 255, 0.2))
-  );
-  border-color: var(--chat-toolbar-border-color);
-  border-radius: var(--chat-toolbar-border-radius, 999px);
+  border-image-source: var(--chat-toolbar-background-image, none);
+  border-image-slice: var(--chat-toolbar-background-slice, 32) fill;
+  border-image-width: var(--chat-toolbar-background-width, 32px);
+  border-image-outset: var(--chat-toolbar-background-outset, 0px);
+  border-image-repeat: stretch;
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.09), transparent 48%), var(--chat-toolbar-background-image, none),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.09), transparent 48%),
     color-mix(in oklch, var(--chat-toolbar-background) 88%, transparent);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: auto, cover, auto;
   box-shadow:
     0 14px 38px color-mix(in oklch, var(--stage-shadow) 76%, transparent),
     0 2px 10px rgba(0, 0, 0, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.12),
     var(--chat-toolbar-box-shadow, none);
-  opacity: var(--chat-toolbar-background-opacity, 1);
   backdrop-filter: blur(22px) saturate(1.22);
+  isolation: isolate;
+  pointer-events: auto;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
 }
 
 .top-stage-tools[data-auto-hide="true"][data-visible="false"] {
@@ -96,7 +81,6 @@
   gap: 2px;
   margin-right: 0;
   padding: 2px 8px 2px 18px;
-  opacity: var(--chat-toolbar-text-opacity, 1);
   transition:
     margin-right 180ms ease,
     padding-right 180ms ease;
@@ -327,52 +311,19 @@
 
 .chat-stage .input-layer__quick-submit.icon-button {
   border: 1px solid var(--chat-send-border-color, transparent);
-  border-color: transparent;
   border-radius: var(--chat-send-border-radius, 50%);
   color: var(--chat-send-color, var(--chat-input-color, #fff));
-  background: transparent;
-  box-shadow: none;
-  isolation: isolate;
-  position: relative;
-}
-
-.chat-stage .input-layer__quick-submit.icon-button > .theme-background[data-theme-background="chat-send"] {
-  inset: -1px;
-  border: 1px solid var(--chat-send-border-color, transparent);
-  border-radius: var(--chat-send-border-radius, 50%);
-  background:
-    var(--chat-send-sheen, none), var(--chat-send-background-image, none), var(--chat-send-background, transparent);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: auto, cover, auto;
+  background: var(--chat-send-sheen, none), var(--chat-send-background, transparent);
   box-shadow: var(--chat-send-box-shadow, none);
-  opacity: var(--chat-send-background-opacity, 1);
 }
 
 .chat-stage .input-layer__press.icon-button:hover:not(:disabled),
+.chat-stage .input-layer__quick-submit.icon-button:hover:not(:disabled),
 .chat-stage .input-layer__extra-toggle.icon-button:hover:not(:disabled),
 .chat-stage .input-layer__extra-toggle.icon-button[aria-expanded="true"],
 .chat-stage .input-layer__press.icon-button[data-active="true"] {
   background: rgba(255, 255, 255, 0.13);
   transform: translateY(-1px);
-}
-
-.chat-stage .input-layer__quick-submit.icon-button:hover:not(:disabled) {
-  background: transparent;
-  transform: translateY(-1px);
-}
-
-.chat-stage
-  .input-layer__quick-submit.icon-button:hover:not(:disabled)
-  > .theme-background[data-theme-background="chat-send"] {
-  border-color: var(--chat-send-hover-border-color, var(--chat-send-border-color, transparent));
-  background:
-    var(--chat-send-hover-sheen, var(--chat-send-sheen, none)), var(--chat-send-background-image, none),
-    var(--chat-send-background, transparent);
-}
-
-.chat-stage .input-layer__quick-submit.icon-button > .icon-button__icon {
-  opacity: var(--chat-send-text-opacity, 1);
 }
 
 .chat-stage .input-layer__press.icon-button:active:not(:disabled),
@@ -429,10 +380,20 @@
   min-width: 0;
   padding: 5px 6px;
   border: var(--chat-dialog-actions-border);
-  border-color: transparent;
+  border-color: color-mix(in oklch, var(--chat-dialog-actions-border-color) 72%, rgba(255, 255, 255, 0.2));
   border-radius: var(--chat-toolbar-border-radius, 999px);
-  background: transparent;
-  box-shadow: none;
+  border-image-source: var(--chat-toolbar-background-image, none);
+  border-image-slice: var(--chat-toolbar-background-slice, 32) fill;
+  border-image-width: var(--chat-toolbar-background-width, 32px);
+  border-image-outset: var(--chat-toolbar-background-outset, 0px);
+  border-image-repeat: stretch;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.09), transparent 48%),
+    color-mix(in oklch, var(--chat-dialog-actions-background) 88%, transparent);
+  box-shadow:
+    0 14px 38px color-mix(in oklch, var(--stage-shadow) 76%, transparent),
+    0 2px 10px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
   transform: translateY(0);
   transform-origin: bottom right;
   transition:
@@ -440,32 +401,8 @@
     transform 140ms ease,
     border-color 140ms ease,
     background 140ms ease;
-  backdrop-filter: none;
-  isolation: isolate;
-}
-
-.dialog-stage-controls__surface > .theme-background[data-theme-background="chat-toolbar"] {
-  inset: -1px;
-  border: var(--chat-dialog-actions-border);
-  border-color: color-mix(in oklch, var(--chat-dialog-actions-border-color) 72%, rgba(255, 255, 255, 0.2));
-  border-radius: var(--chat-toolbar-border-radius, 999px);
-  background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.09), transparent 48%), var(--chat-toolbar-background-image, none),
-    color-mix(in oklch, var(--chat-dialog-actions-background) 88%, transparent);
-  background-position: center;
-  background-repeat: no-repeat;
-  background-size: auto, cover, auto;
-  box-shadow:
-    0 14px 38px color-mix(in oklch, var(--stage-shadow) 76%, transparent),
-    0 2px 10px rgba(0, 0, 0, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    var(--chat-toolbar-box-shadow, none);
-  opacity: var(--chat-toolbar-background-opacity, 1);
   backdrop-filter: blur(22px) saturate(1.22);
-  transition:
-    background 140ms ease,
-    border-color 140ms ease,
-    opacity 140ms ease;
+  isolation: isolate;
 }
 
 /* Recessed but always present & clickable when unlocked; full strength on hover/focus. */
@@ -474,16 +411,9 @@
 }
 
 .dialog-stage-controls[data-locked="true"] .dialog-stage-controls__surface {
-  border-color: transparent;
-  background: transparent;
-}
-
-.dialog-stage-controls[data-locked="true"]
-  .dialog-stage-controls__surface
-  > .theme-background[data-theme-background="chat-toolbar"] {
   border-color: color-mix(in oklch, var(--stage-accent) 34%, var(--chat-toolbar-border-color));
   background:
-    linear-gradient(145deg, rgba(255, 255, 255, 0.11), transparent 48%), var(--chat-toolbar-background-image, none),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.11), transparent 48%),
     color-mix(in oklch, var(--chat-dialog-actions-background) 90%, var(--stage-accent) 10%);
 }
 
@@ -533,7 +463,6 @@
   justify-content: flex-end;
   gap: 4px;
   white-space: nowrap;
-  opacity: var(--chat-toolbar-text-opacity, 1);
 }
 
 .dialog-stage-controls__rail > [data-plugin-slot="chat-dialog-actions"] {

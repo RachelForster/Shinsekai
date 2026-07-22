@@ -195,6 +195,9 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--font-chat"]).toBe('"Mio Sans"');
     expect(resolved.style["--chat-dialog-background"]).toBe("rgba(20,20,28,0.86)");
     expect(resolved.style["--chat-dialog-background-image"]).toBe('url("asset://assets/dialog-frame.png")');
+    expect(resolved.style["--chat-dialog-background-slice"]).toBe("28");
+    expect(resolved.style["--chat-dialog-background-width"]).toBe("28px");
+    expect(resolved.style["--chat-dialog-background-outset"]).toBe("0px");
     expect(resolved.style["--chat-dialog-backdrop-filter"]).toBe("none");
     expect(resolved.style["--chat-dialog-actions-border"]).toBe("0 solid transparent");
     expect(resolved.style["--chat-dialog-border"]).toBe("0 solid transparent");
@@ -261,6 +264,9 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-send-color"]).toBe("#ffffff");
     expect(resolved.style["--chat-name-background"]).toBe("rgba(28,22,48,0.92)");
     expect(resolved.style["--chat-name-background-image"]).toBe('url("asset://assets/name-plate.png")');
+    expect(resolved.style["--chat-name-background-slice"]).toBe("16");
+    expect(resolved.style["--chat-name-background-width"]).toBe("16px");
+    expect(resolved.style["--chat-name-background-outset"]).toBe("0px");
     expect(resolved.style["--chat-name-frame"]).toBe('url("asset://assets/name-border.svg") 16 fill / 16px stretch');
     expect(resolved.style["--chat-name-frame-image"]).toBe('url("asset://assets/name-border.svg")');
     expect(resolved.style["--chat-name-frame-slice"]).toBe("16");
@@ -310,6 +316,35 @@ describe("chat theme runtime", () => {
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/mio.woff2")');
   });
 
+  it("uses frame geometry for a nine-slice background without requiring a frame image", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "nine-slice-background",
+        name: { en: "Nine-slice Background" },
+        tokens: {
+          dialog: {
+            backgroundImage: "assets/dialog.png",
+            frameSlice: 24,
+            frameWidthPx: 18,
+            frameOutsetPx: 2,
+          },
+          input: { backgroundImage: "assets/input.png" },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-dialog-background-image"]).toBe('url("asset://assets/dialog.png")');
+    expect(resolved.style["--chat-dialog-background-slice"]).toBe("24");
+    expect(resolved.style["--chat-dialog-background-width"]).toBe("18px");
+    expect(resolved.style["--chat-dialog-background-outset"]).toBe("2px");
+    expect(resolved.style["--chat-dialog-frame-image"]).toBeUndefined();
+    expect(resolved.style["--chat-input-background-slice"]).toBe("32");
+    expect(resolved.style["--chat-input-background-width"]).toBe("32px");
+    expect(resolved.style["--chat-input-background-outset"]).toBe("0px");
+  });
+
   it("maps the arrow-fade name decoration without adding a frame", () => {
     const resolved = resolveChatTheme(
       {
@@ -334,63 +369,6 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-name-clip-path"]).toBe("polygon(0 50%, 18px 0, 100% 0, 100% 100%, 18px 100%)");
     expect(resolved.style["--chat-name-sheen"]).toBe("none");
     expect(resolved.style["--chat-name-frame-image"]).toBeUndefined();
-  });
-
-  it("maps background and text layers independently while preserving flat-field fallbacks", () => {
-    const resolved = resolveChatTheme(
-      {
-        schema: 1,
-        id: "layered-surfaces",
-        name: { en: "Layered Surfaces" },
-        tokens: {
-          dialog: {
-            background: "#111111",
-            color: "#eeeeee",
-            textSizePx: 18,
-            backgroundLayer: {
-              background: "linear-gradient(180deg, #14295a, #081228)",
-              backgroundImage: "assets/dialog-surface.png",
-              borderColor: "#5d8de8",
-              opacity: 0.42,
-            },
-            textLayer: {
-              color: "#ffffff",
-              fontFamily: "Layer Sans",
-              opacity: 0.96,
-              textAlign: "left",
-              textShadow: "0 1px 2px #000000",
-              textSizePx: 21,
-              textWeight: 720,
-            },
-          },
-          options: {
-            backgroundLayer: { opacity: 0.7 },
-            hover: {
-              backgroundLayer: { background: "#234a86", opacity: 0.8 },
-              textLayer: { color: "#f4f8ff", opacity: 0.9 },
-            },
-          },
-        },
-      },
-      (rel) => `asset://${rel}`,
-    );
-
-    expect(resolved.style["--chat-dialog-background"]).toBe("linear-gradient(180deg, #14295a, #081228)");
-    expect(resolved.style["--chat-dialog-background-image"]).toBe('url("asset://assets/dialog-surface.png")');
-    expect(resolved.style["--chat-dialog-border-color"]).toBe("#5d8de8");
-    expect(resolved.style["--chat-dialog-background-opacity"]).toBe("0.42");
-    expect(resolved.style["--chat-dialog-color"]).toBe("#ffffff");
-    expect(resolved.style["--chat-dialog-text-opacity"]).toBe("0.96");
-    expect(resolved.style["--chat-dialog-text-theme-align"]).toBe("left");
-    expect(resolved.style["--chat-dialog-text-theme-font-family"]).toBe('"Layer Sans"');
-    expect(resolved.style["--chat-dialog-text-theme-font-size"]).toBe("21px");
-    expect(resolved.style["--chat-dialog-text-theme-font-weight"]).toBe("720");
-    expect(resolved.style["--chat-dialog-text-shadow"]).toBe("0 1px 2px #000000");
-    expect(resolved.style["--chat-option-background-opacity"]).toBe("0.7");
-    expect(resolved.style["--chat-option-hover-background"]).toBe("#234a86");
-    expect(resolved.style["--chat-option-hover-background-opacity"]).toBe("0.8");
-    expect(resolved.style["--chat-option-hover-color"]).toBe("#f4f8ff");
-    expect(resolved.style["--chat-option-hover-text-opacity"]).toBe("0.9");
   });
 
   it("maps reusable frame geometry without leaking chat frames into logs", () => {

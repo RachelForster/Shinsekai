@@ -5,7 +5,6 @@ import "./Button.css";
 type ButtonVariant = "default" | "primary" | "danger" | "ghost";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  backgroundLayer?: ReactNode;
   icon?: ReactNode;
   loading?: boolean;
   tooltip?: string;
@@ -13,7 +12,6 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 export function Button({
-  backgroundLayer,
   children,
   className = "",
   disabled,
@@ -27,7 +25,6 @@ export function Button({
   const classes = ["button", variant !== "default" ? `button--${variant}` : "", className].filter(Boolean).join(" ");
   return (
     <button className={classes} disabled={disabled || loading} title={tooltip} type={type} {...props}>
-      {backgroundLayer}
       {loading ? <LoaderCircle aria-hidden className="button__spinner" /> : icon}
       {children ? <span className="button__label">{children}</span> : null}
     </button>

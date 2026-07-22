@@ -3,7 +3,7 @@ import { FileText, ImagePlus, LoaderCircle, Mic, MicOff, Plus, Send, X } from "l
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatAttachmentInput, ChatCommand } from "../../../shared/platform/types";
-import { Button, IconButton, TextArea, TextInput, ThemeBackground, ThemeFrame } from "../../../shared/ui";
+import { Button, IconButton, TextArea, TextInput, ThemeFrame } from "../../../shared/ui";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
 import { useAutoHideRegion } from "../hooks/useAutoHideRegion";
 
@@ -169,7 +169,6 @@ export function InputLayer({
       onPointerLeave={autoHideRegion.scheduleHide}
       style={autoHideRegion.visible ? undefined : { pointerEvents: "none" }}
     >
-      <ThemeBackground prefix="chat-input" />
       <ThemeFrame prefix="chat-input" />
       {pillLayout ? (
         <IconButton
@@ -241,7 +240,6 @@ export function InputLayer({
         {!pillLayout ? (
           <Button
             aria-label={t("chat.input.send")}
-            backgroundLayer={<ThemeBackground prefix="chat-send" />}
             className="input-layer__send"
             disabled={!canSubmit}
             icon={<Send aria-hidden className="button__icon" />}
@@ -277,7 +275,6 @@ export function InputLayer({
           <div className="input-layer__pill-actions" role="group">
             <IconButton
               className="input-layer__quick-submit"
-              backgroundLayer={<ThemeBackground prefix="chat-send" />}
               disabled={!canSubmit}
               label={t("chat.input.send")}
               onClick={() => void onSubmit()}

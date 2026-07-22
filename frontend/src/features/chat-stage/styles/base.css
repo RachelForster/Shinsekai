@@ -39,7 +39,6 @@
   --stage-success: var(--color-success, #62d68e);
   --chat-dialog-background: color-mix(in oklch, var(--stage-accent) 6%, rgba(22, 18, 15, 0.86));
   --chat-dialog-background-image: none;
-  --chat-dialog-background-opacity: 1;
   --chat-dialog-border-color: color-mix(in oklch, var(--stage-accent) 22%, rgba(255, 255, 255, 0.14));
   --chat-dialog-border-radius: 10px;
   --chat-dialog-box-shadow:
@@ -67,7 +66,6 @@
   --chat-dialog-text-runtime-font-size: 17px;
   --chat-dialog-text-runtime-font-weight: 400;
   --chat-dialog-text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 0 2px rgba(0, 0, 0, 0.3);
-  --chat-dialog-text-opacity: 1;
   --chat-dialog-toolbar-padding-bottom: 0px;
   --chat-dialog-toolbar-gap: 6px;
   --chat-dialog-toolbar-input-clearance: var(--chat-dialog-toolbar-gap);
@@ -93,14 +91,12 @@
   --chat-ui-window-scale: 1;
   --chat-name-background: color-mix(in oklch, var(--stage-accent) 28%, rgba(26, 21, 17, 0.95));
   --chat-name-background-image: none;
-  --chat-name-background-opacity: 1;
   --chat-name-border: 1px solid var(--chat-name-border-color);
   --chat-name-border-bottom: none;
   --chat-name-border-color: color-mix(in oklch, var(--stage-accent) 38%, rgba(255, 255, 255, 0.2));
   --chat-name-border-radius: 7px;
   --chat-name-box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
   --chat-name-color: #fff6f4;
-  --chat-name-text-opacity: 1;
   --chat-name-clip-path: none;
   --chat-name-min-height: clamp(24px, 13%, 28px);
   --chat-name-line-offset: 15px;
@@ -108,11 +104,8 @@
   --chat-name-padding: clamp(3px, 1.6%, 5px) 16px;
   --chat-name-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02));
   --chat-input-background: color-mix(in oklch, var(--stage-accent) 6%, rgba(18, 15, 12, 0.82));
-  --chat-input-background-opacity: 1;
   --chat-input-border-color: color-mix(in oklch, var(--stage-accent) 18%, rgba(255, 255, 255, 0.14));
   --chat-input-color: #f7f1f0;
-  --chat-input-text-opacity: 1;
-  --chat-input-text-opacity-percent: 100%;
   --chat-input-field-background: color-mix(in oklch, var(--stage-accent) 5%, rgba(255, 255, 255, 0.06));
   --chat-input-field-border-radius: 5px;
   --chat-input-field-display: contents;
@@ -137,11 +130,9 @@
     color-mix(in oklch, var(--stage-accent) 12%, rgba(18, 17, 22, 0.88)),
     color-mix(in oklch, var(--stage-accent) 4%, rgba(12, 13, 18, 0.78))
   );
-  --chat-option-background-opacity: 1;
   --chat-option-border-color: color-mix(in oklch, var(--stage-accent) 22%, rgba(255, 255, 255, 0.16));
   --chat-option-border-radius: 14px;
   --chat-option-color: #f7f1f0;
-  --chat-option-text-opacity: 1;
   --chat-option-font-size: inherit;
   --chat-option-font-weight: 600;
   --chat-option-hover-background: linear-gradient(
@@ -172,7 +163,6 @@
   --chat-options-min-width: 0px;
   --chat-options-max-width: var(--chat-input-resolved-width);
   --chat-send-background: var(--stage-accent);
-  --chat-send-background-opacity: 1;
   --chat-send-active-transform: translateY(0);
   --chat-send-border: 1px solid var(--chat-send-border-color, rgba(255, 255, 255, 0.55));
   --chat-send-box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
@@ -190,12 +180,9 @@
   --chat-send-top: auto;
   --chat-send-transform: none;
   --chat-send-width: auto;
-  --chat-send-text-opacity: 1;
   --chat-toolbar-background: color-mix(in oklch, var(--stage-accent) 8%, rgba(18, 15, 12, 0.78));
-  --chat-toolbar-background-opacity: 1;
   --chat-toolbar-border-color: color-mix(in oklch, var(--stage-accent) 16%, rgba(255, 255, 255, 0.14));
   --chat-toolbar-color: #f7f1f0;
-  --chat-toolbar-text-opacity: 1;
   --chat-toolbar-runtime-scale: 1;
   --chat-dialog-actions-background: var(--chat-toolbar-background);
   --chat-dialog-actions-border: 1px solid var(--chat-dialog-actions-border-color);
