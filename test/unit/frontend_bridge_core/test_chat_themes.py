@@ -40,9 +40,13 @@ class ChatThemeBridgeTests(unittest.TestCase):
             try:
                 themes = list_chat_themes(state)
                 theme_index = {item["id"]: item for item in themes}
-                self.assertEqual(list(theme_index), ["neon-night-city", "sakura-dream", "windborne-adventure"])
+                self.assertEqual(
+                    list(theme_index),
+                    ["neon-night-city", "sakura-dream", "spiritron-command", "windborne-adventure"],
+                )
                 self.assertEqual(theme_index["neon-night-city"]["source"], "builtin")
                 self.assertEqual(theme_index["sakura-dream"]["source"], "builtin")
+                self.assertEqual(theme_index["spiritron-command"]["source"], "builtin")
                 self.assertEqual(theme_index["windborne-adventure"]["source"], "builtin")
                 self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "neon-night-city" / "theme.json").is_file()
@@ -61,6 +65,15 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 )
                 self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "sakura-dream" / "preview.png").is_file()
+                )
+                self.assertTrue(
+                    (
+                        Path(tempdir)
+                        / "data"
+                        / "chat_ui_themes"
+                        / "spiritron-command"
+                        / "preview.png"
+                    ).is_file()
                 )
                 self.assertTrue(
                     (

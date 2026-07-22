@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import neonNightCityFrameDialogUrl from "../../../../../assets/chat_ui_themes/neon-night-city/frame-dialog.svg?url";
 import neonNightCityPreviewUrl from "../../../../../assets/chat_ui_themes/neon-night-city/preview.png?url";
 import sakuraDreamPreviewUrl from "../../../../../assets/chat_ui_themes/sakura-dream/preview.png?url";
+import spiritronCommandPreviewUrl from "../../../../../assets/chat_ui_themes/spiritron-command/preview.png?url";
 import windborneAdventurePreviewUrl from "../../../../../assets/chat_ui_themes/windborne-adventure/preview.png?url";
 import { createBrowserPreviewPlatform } from "../../../shared/platform/browserPreviewPlatform";
 import { sampleConfig } from "../../../shared/platform/sampleData";
@@ -140,11 +141,17 @@ describe("browser preview platform chat themes", () => {
     await expect(platform.chat.getActiveThemeId()).resolves.toBe("windborne-adventure");
 
     const themes = await platform.chat.listThemes();
-    expect(themes.map((theme) => theme.id)).toEqual(["windborne-adventure", "neon-night-city", "sakura-dream"]);
+    expect(themes.map((theme) => theme.id)).toEqual([
+      "windborne-adventure",
+      "neon-night-city",
+      "sakura-dream",
+      "spiritron-command",
+    ]);
     expect(themes.map((theme) => theme.previewUrl)).toEqual([
       windborneAdventurePreviewUrl,
       neonNightCityPreviewUrl,
       sakuraDreamPreviewUrl,
+      spiritronCommandPreviewUrl,
     ]);
 
     const windborneManifest = await platform.chat.getThemeManifest("windborne-adventure");
@@ -184,6 +191,16 @@ describe("browser preview platform chat themes", () => {
     expect(sakuraManifest.tokens.options?.frameImage).toBe("frame-option.svg");
     await platform.chat.setActiveThemeId("sakura-dream");
     await expect(platform.chat.getTheme()).resolves.toMatchObject({ themeColor: "#d4788e" });
+
+    const spiritronManifest = await platform.chat.getThemeManifest("spiritron-command");
+    expect(spiritronManifest.name.zh_CN).toBe("灵子指令");
+    expect(spiritronManifest.tokens.global?.themeColor).toBe("#8eb9e8");
+    expect(spiritronManifest.tokens.dialog?.frameImage).toBeUndefined();
+    expect(spiritronManifest.tokens.dialog?.borderRadius).toBe("14px 14px 0 0");
+    expect(spiritronManifest.tokens.name?.decoration).toBe("arrow-fade");
+    expect(spiritronManifest.tokens.name?.frameImage).toBeUndefined();
+    await platform.chat.setActiveThemeId("spiritron-command");
+    await expect(platform.chat.getTheme()).resolves.toMatchObject({ themeColor: "#8eb9e8" });
   });
 
   it("adds uploaded preview themes as user themes and protects builtins from deletion", async () => {

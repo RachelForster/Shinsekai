@@ -433,7 +433,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | 字段 | 类型或范围 | 说明 |
 | --- | --- | --- |
 | `align` | `left \| center` | 姓名框对齐方式。 |
-| `decoration` | `accent \| line-dots` | 强调装饰或两侧线点装饰。 |
+| `decoration` | `accent \| arrow-fade \| line-dots` | 强调装饰、左箭头右渐隐装饰或两侧线点装饰。 |
 | `fontFamily` | string | 姓名单独使用的字体族，优先于 `global.fontFamily`。 |
 | `hideWhenStartOption` | boolean | 起始选项出现时隐藏姓名。 |
 | `overlapPx` | `0–48` | 姓名框向下覆盖对话框上沿的深度，单位 px；用于让姓名框及其 frame 挡住一部分对话框边框。省略时为 1 px。 |

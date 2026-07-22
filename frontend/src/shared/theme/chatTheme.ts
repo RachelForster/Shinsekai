@@ -102,7 +102,7 @@ export interface ChatThemeTokens {
   send?: VisualBlock;
   name?: FrameVisualBlock & {
     align?: "left" | "center";
-    decoration?: "accent" | "line-dots";
+    decoration?: "accent" | "arrow-fade" | "line-dots";
     fontFamily?: string;
     hideWhenStartOption?: boolean;
     overlapPx?: number;
@@ -734,6 +734,27 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-name-border"] = "0 solid transparent";
     style["--chat-name-border-bottom"] = "0 solid transparent";
     style["--chat-name-decoration-color"] = "var(--chat-name-runtime-color, var(--chat-name-color))";
+    style["--chat-name-sheen"] = "none";
+  } else if (tokens.name?.decoration === "arrow-fade") {
+    // Reserve clear space on both sides of the name: the leading spacer keeps
+    // text out of the arrow point, while the trailing spacer lets the panel's
+    // background gradient fade away after the final glyph.
+    style["--chat-name-after-background"] = "none";
+    style["--chat-name-after-content"] = '""';
+    style["--chat-name-after-display"] = "block";
+    style["--chat-name-after-height"] = "1px";
+    style["--chat-name-after-margin"] = "0";
+    style["--chat-name-after-width"] = "2.8em";
+    style["--chat-name-before-background"] = "none";
+    style["--chat-name-before-content"] = '""';
+    style["--chat-name-before-display"] = "block";
+    style["--chat-name-before-height"] = "1px";
+    style["--chat-name-before-margin"] = "0 0.2em 0 0";
+    style["--chat-name-before-position"] = "static";
+    style["--chat-name-before-width"] = "0.72em";
+    style["--chat-name-border"] = "0 solid transparent";
+    style["--chat-name-border-bottom"] = "0 solid transparent";
+    style["--chat-name-clip-path"] = "polygon(0 50%, 18px 0, 100% 0, 100% 100%, 18px 100%)";
     style["--chat-name-sheen"] = "none";
   }
   if (tokens.name?.hideWhenStartOption === true) {

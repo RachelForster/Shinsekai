@@ -96,6 +96,7 @@
   border: var(--chat-name-border);
   border-bottom: var(--chat-name-border-bottom);
   border-radius: var(--chat-name-border-radius);
+  clip-path: var(--chat-name-clip-path);
   color: var(--chat-name-runtime-color, var(--chat-name-color));
   background: var(--chat-name-sheen), var(--chat-name-background-image), var(--chat-name-background);
   background-position: center;

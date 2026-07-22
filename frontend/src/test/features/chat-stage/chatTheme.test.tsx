@@ -310,6 +310,34 @@ describe("chat theme runtime", () => {
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/mio.woff2")');
   });
 
+  it("maps the arrow-fade name decoration without adding a frame", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "arrow-fade-theme",
+        name: { en: "Arrow Fade" },
+        tokens: {
+          name: {
+            background: "linear-gradient(90deg, #174688, transparent)",
+            decoration: "arrow-fade",
+          },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-name-after-display"]).toBe("block");
+    expect(resolved.style["--chat-name-after-width"]).toBe("2.8em");
+    expect(resolved.style["--chat-name-before-position"]).toBe("static");
+    expect(resolved.style["--chat-name-before-width"]).toBe("0.72em");
+    expect(resolved.style["--chat-name-border"]).toBe("0 solid transparent");
+    expect(resolved.style["--chat-name-clip-path"]).toBe(
+      "polygon(0 50%, 18px 0, 100% 0, 100% 100%, 18px 100%)",
+    );
+    expect(resolved.style["--chat-name-sheen"]).toBe("none");
+    expect(resolved.style["--chat-name-frame-image"]).toBeUndefined();
+  });
+
   it("maps reusable frame geometry without leaking chat frames into logs", () => {
     const resolved = resolveChatTheme(
       {

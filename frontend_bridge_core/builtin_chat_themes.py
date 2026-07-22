@@ -11,6 +11,7 @@ from __future__ import annotations
 DEFAULT_BUILTIN_CHAT_THEME_ID = "windborne-adventure"
 NEON_NIGHT_CITY_THEME_ID = "neon-night-city"
 SAKURA_DREAM_THEME_ID = "sakura-dream"
+SPIRITRON_COMMAND_THEME_ID = "spiritron-command"
 
 # These themes were already built in before per-directory ownership markers
 # existed, so an unmarked directory with either ID is still managed by the
@@ -28,5 +29,6 @@ BUILTIN_THEME_IDS = frozenset(
         DEFAULT_BUILTIN_CHAT_THEME_ID,
         NEON_NIGHT_CITY_THEME_ID,
         SAKURA_DREAM_THEME_ID,
+        SPIRITRON_COMMAND_THEME_ID,
     }
 )
