@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   fetchLlmModels: vi.fn(),
   getAppConfig: vi.fn(),
   getChatSnapshot: vi.fn(),
+  getMemoryStatus: vi.fn(),
   getModelAssetStatus: vi.fn(),
   getTtsBundleRecommendation: vi.fn(),
   installMissingRuntimeDependency: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock("../../../entities/config/repository", () => ({
   downloadTtsBundle: (...args: unknown[]) => mocks.downloadTtsBundle(...args),
   fetchLlmModels: (...args: unknown[]) => mocks.fetchLlmModels(...args),
   getAppConfig: () => mocks.getAppConfig(),
+  getMemoryStatus: (...args: unknown[]) => mocks.getMemoryStatus(...args),
   getTtsBundleRecommendation: (...args: unknown[]) => mocks.getTtsBundleRecommendation(...args),
   saveApiConfig: (...args: unknown[]) => mocks.saveApiConfig(...args),
   saveSystemConfig: (...args: unknown[]) => mocks.saveSystemConfig(...args),
@@ -135,6 +137,7 @@ describe("ApiSettingsPage", () => {
       title: "Whisper ASR",
       variant: "owner/custom-whisper",
     });
+    mocks.getMemoryStatus.mockResolvedValue({ modelCached: false, status: "not_started" });
     mocks.installMissingRuntimeDependency.mockResolvedValue({ message: "installed" });
     mocks.resumeLastChat.mockResolvedValue({ sessionId: "session-1" });
     mocks.saveApiConfig.mockResolvedValue(sampleConfig.api_config);

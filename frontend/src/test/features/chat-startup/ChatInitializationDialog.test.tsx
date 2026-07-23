@@ -59,4 +59,34 @@ describe("ChatInitializationDialog", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Close" }).at(-1)!);
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("localizes memory initialization progress instead of repeating backend text", () => {
+    render(
+      <I18nProvider language="zh_CN">
+        <ChatInitializationDialog
+          onClose={vi.fn()}
+          open
+          pending
+          task={{
+            createdAt: 1,
+            id: "chat-init-memory",
+            kind: "chat-initialization",
+            logs: [],
+            message: "Initializing long-term memory.",
+            phase: "memory.initialize",
+            progress: null,
+            result: null,
+            status: "running",
+            title: "Initialize chat",
+            updatedAt: 2,
+          }}
+        />
+      </I18nProvider>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "正在准备聊天" });
+    expect(screen.getAllByText("正在加载长期记忆")).toHaveLength(1);
+    expect(dialog).toHaveTextContent("进行中");
+    expect(dialog).not.toHaveTextContent("Initializing long-term memory.");
+  });
 });

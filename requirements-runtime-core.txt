@@ -1,6 +1,7 @@
 pyyaml
 pydantic
 requests
+huggingface-hub==1.24.0
 numpy
 openai
 socksio

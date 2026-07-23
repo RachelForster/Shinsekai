@@ -82,6 +82,8 @@ export function ChatInitializationDialog({
           : null,
     [pending, phaseLabel, t, task],
   );
+  const taskLabels =
+    phaseFamily === "memory" ? { message: "", phase: "", status: t("chat.init.inProgress") } : undefined;
   const visibleError =
     error || task?.errorUserMessage || task?.error || (task?.status === "failed" ? task.message : "");
 
@@ -105,7 +107,7 @@ export function ChatInitializationDialog({
             <p>{t("chat.init.description")}</p>
           </div>
         </div>
-        {displayTask ? <TaskProgress logLimit={5} task={displayTask} /> : null}
+        {displayTask ? <TaskProgress labels={taskLabels} logLimit={5} task={displayTask} /> : null}
         {visibleError ? (
           <div className="chat-initialization-dialog__error" role="alert">
             {visibleError}
