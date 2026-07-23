@@ -189,6 +189,7 @@ fn bridge_check_uses_requested_profile() {
     assert!(report.ok, "{report:?}");
     let args = fs::read_to_string(&arg_log).unwrap();
     let lines = args.lines().collect::<Vec<_>>();
+    assert!(lines.contains(&"--requirements-only"));
     let profile_index = lines
         .iter()
         .position(|line| *line == "--profile")

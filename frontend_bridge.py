@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import importlib.metadata
 import json
 import os
 import platform
@@ -22,6 +21,12 @@ import threading
 import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+
+from core.runtime.requirements import (
+    RequirementCheck,
+    check_requirement,
+    requirement_name,
+)
 
 
 def _configure_stdio_encoding() -> None:
@@ -410,7 +415,12 @@ def check_runtime(
     requirements_file: str | None = None,
     app_root: str | None = None,
     profile: str = "desktop-core",
+    requirements_only: bool = False,
 ) -> None:
+    if requirements_only:
+        _check_runtime_requirements(_repo_root(), requirements_file, profile)
+        return
+
     repo_root, _resolved_frontend_dist, _resolved_app_root = _configure_runtime_context(
         project_root,
         frontend_dist,
@@ -425,12 +435,7 @@ def check_runtime(
 
     apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
-    requirements_file = requirements_file or _default_runtime_requirements_file(repo_root, profile)
-    if requirements_file:
-        requirements_path = Path(requirements_file).expanduser()
-        if not requirements_path.is_absolute():
-            requirements_path = repo_root / requirements_path
-        _check_required_distributions(requirements_path)
+    _check_runtime_requirements(repo_root, requirements_file, profile)
 
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
@@ -455,16 +460,28 @@ def runtime_check_report(
     requirements_file: str | None = None,
     app_root: str | None = None,
     profile: str = "desktop-core",
+    requirements_only: bool = False,
 ) -> dict[str, object]:
     try:
-        check_runtime(project_root, frontend_dist, requirements_file, app_root, profile)
+        check_runtime(
+            project_root,
+            frontend_dist,
+            requirements_file,
+            app_root,
+            profile,
+            requirements_only,
+        )
     except Exception as exc:
         message = str(exc)
         return {
             "ok": False,
             "profile": profile,
             "message": message,
-            "missingDistributions": _missing_distributions_from_message(message),
+            "missingDistributions": (
+                exc.distributions
+                if isinstance(exc, RuntimeDistributionError)
+                else _missing_distributions_from_message(message)
+            ),
         }
     return {
         "ok": True,
@@ -482,34 +499,57 @@ def _default_runtime_requirements_file(repo_root: Path, profile: str) -> str:
     return str(repo_root / "requirements.txt")
 
 
+def _check_runtime_requirements(
+    repo_root: Path,
+    requirements_file: str | None,
+    profile: str,
+) -> None:
+    requirements_file = requirements_file or _default_runtime_requirements_file(
+        repo_root, profile
+    )
+    if not requirements_file:
+        return
+    requirements_path = Path(requirements_file).expanduser()
+    if not requirements_path.is_absolute():
+        requirements_path = repo_root / requirements_path
+    _check_required_distributions(requirements_path)
+
+
+class RuntimeDistributionError(RuntimeError):
+    def __init__(self, checks: list[RequirementCheck]) -> None:
+        self.distributions = list(dict.fromkeys(check.name for check in checks))
+        detail = "; ".join(check.issue for check in checks)
+        super().__init__(f"unsatisfied Python runtime requirements: {detail}")
+
+
 def _check_required_distributions(requirements_path: Path) -> None:
     if not requirements_path.is_file():
         raise FileNotFoundError(f"requirements file not found: {requirements_path}")
 
-    missing: list[str] = []
-    for requirement in _iter_requirement_names(requirements_path):
-        try:
-            importlib.metadata.version(requirement)
-        except importlib.metadata.PackageNotFoundError:
-            missing.append(requirement)
-
-    if missing:
-        joined = ", ".join(sorted(set(missing)))
-        raise RuntimeError(f"missing Python runtime distributions: {joined}")
+    unsatisfied = [
+        check
+        for requirement in _iter_requirements(requirements_path)
+        if not (check := check_requirement(requirement)).satisfied
+    ]
+    if unsatisfied:
+        raise RuntimeDistributionError(unsatisfied)
 
 
 def _missing_distributions_from_message(message: str) -> list[str]:
-    prefix = "missing Python runtime distributions:"
-    if prefix not in message:
-        return []
-    return [
-        item.strip()
-        for item in message.split(prefix, 1)[1].split(",", maxsplit=128)
-        if item.strip()
-    ]
+    for prefix in (
+        "missing Python runtime distributions:",
+        "unsatisfied Python runtime distributions:",
+    ):
+        if prefix in message:
+            return [
+                item.strip()
+                for item in message.split(prefix, 1)[1].split(",", maxsplit=128)
+                if item.strip()
+            ]
+    return []
 
 
-def _iter_requirement_names(requirements_path: Path, seen: set[Path] | None = None):
+def _iter_requirements(requirements_path: Path, seen: set[Path] | None = None):
     requirements_path = requirements_path.resolve()
     seen = seen or set()
     if requirements_path in seen:
@@ -522,7 +562,7 @@ def _iter_requirement_names(requirements_path: Path, seen: set[Path] | None = No
 
         included_path = _included_requirements_path(requirements_path, line)
         if included_path is not None:
-            yield from _iter_requirement_names(included_path, seen)
+            yield from _iter_requirements(included_path, seen)
             continue
 
         if line.startswith(("-", "http://", "https://")):
@@ -531,9 +571,13 @@ def _iter_requirement_names(requirements_path: Path, seen: set[Path] | None = No
         requirement, marker = _split_requirement_marker(line)
         if marker and not _marker_applies(marker):
             continue
+        if requirement:
+            yield requirement
 
-        name = re.split(r"\s*(?:===|==|~=|!=|<=|>=|<|>)\s*", requirement, maxsplit=1)[0]
-        name = name.split("[", 1)[0].strip()
+
+def _iter_requirement_names(requirements_path: Path, seen: set[Path] | None = None):
+    for requirement in _iter_requirements(requirements_path, seen):
+        name = requirement_name(requirement)
         if name:
             yield name
 
@@ -636,6 +680,11 @@ def main() -> None:
         help="Runtime requirements profile used by --check-runtime.",
     )
     parser.add_argument(
+        "--requirements-only",
+        action="store_true",
+        help="Validate requirement presence and versions without initializing application state.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Emit a structured runtime check report as JSON.",
@@ -650,6 +699,7 @@ def main() -> None:
                     args.requirements_file or None,
                     args.app_root or None,
                     args.profile,
+                    args.requirements_only,
                 )
             print(json.dumps(report, ensure_ascii=True))
             if not report["ok"]:
@@ -661,6 +711,7 @@ def main() -> None:
                 args.requirements_file or None,
                 args.app_root or None,
                 args.profile,
+                args.requirements_only,
             )
             print("Shinsekai Python runtime check completed.")
         return

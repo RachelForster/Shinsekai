@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import os
 import threading
 import time
 from typing import Any
@@ -25,6 +26,16 @@ from ai.memory.constants import EMBEDDING_MODEL
 from ai.memory.tasks import current_mem0_task, set_mem0_task
 
 logger = logging.getLogger(__name__)
+
+
+def _configure_mem0_environment() -> None:
+    # mem0 otherwise starts separate hosted/OSS PostHog clients and an
+    # additional telemetry vector store. Keep desktop memory local unless the
+    # user explicitly opts in before launch.
+    os.environ.setdefault("MEM0_TELEMETRY", "False")
+
+
+_configure_mem0_environment()
 
 _mem0: Any = None
 _mem0_load_error: BaseException | None = None

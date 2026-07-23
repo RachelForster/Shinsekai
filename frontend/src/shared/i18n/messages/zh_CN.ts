@@ -9,6 +9,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "api.memory.modelMissingKeepOff": "长期记忆模型尚未下载",
   "api.memory.checking": "正在检查",
   "api.memory.description": "控制聊天时的长期记忆检索、周期抽取和 embedding 模型准备。",
+  "api.memory.dependencyInstalled": "长期记忆依赖已安装",
+  "api.memory.dependencyInstallFailed": "长期记忆依赖安装失败",
   "api.memory.downloadModel": "下载模型",
   "api.memory.downloading": "正在下载长期记忆模型…",
   "api.memory.enabled": "启用自动长期记忆",

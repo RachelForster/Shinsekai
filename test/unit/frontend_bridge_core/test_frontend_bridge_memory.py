@@ -1,9 +1,32 @@
+import pytest
+
+
 class _ImmediateThread:
     def __init__(self, *, target, **kwargs):
         self._target = target
 
     def start(self):
         self._target()
+
+
+@pytest.fixture(autouse=True)
+def _compatible_memory_runtime(monkeypatch):
+    monkeypatch.setattr(
+        "frontend_bridge_core.runtime_dependencies.runtime_dependency_error_for_module",
+        lambda _module_name: None,
+    )
+
+
+def test_mem0_telemetry_defaults_off_but_preserves_explicit_opt_in(monkeypatch):
+    from ai.memory import runtime
+
+    monkeypatch.delenv("MEM0_TELEMETRY", raising=False)
+    runtime._configure_mem0_environment()
+    assert runtime.os.environ["MEM0_TELEMETRY"] == "False"
+
+    monkeypatch.setenv("MEM0_TELEMETRY", "True")
+    runtime._configure_mem0_environment()
+    assert runtime.os.environ["MEM0_TELEMETRY"] == "True"
 
 
 def test_check_mem0_before_call_returns_none_when_mem0_importable(monkeypatch):
@@ -37,7 +60,7 @@ def test_check_mem0_before_call_returns_dep_error_when_missing(monkeypatch):
     assert isinstance(result, dict), f"expected dict, got {type(result)}"
     assert result.get("kind") == "missing_dependency"
     assert result.get("moduleName") == "mem0"
-    assert result.get("packageName") == "mem0ai[extras]"
+    assert result.get("packageName") == "mem0ai"
 
 
 def test_get_mem0_status_returns_valid_status():
@@ -91,7 +114,31 @@ def test_get_mem0_status_missing_dependency_when_not_importable(monkeypatch):
     result = _get_mem0_status()
     assert result["status"] == "missing_dependency"
     assert result["moduleName"] == "mem0"
-    assert result["packageName"] == "mem0ai[extras]"
+    assert result["packageName"] == "mem0ai"
+
+
+def test_get_mem0_status_reports_an_incompatible_memory_dependency_group(monkeypatch):
+    from frontend_bridge_core import runtime_dependencies
+    from frontend_bridge_core.memory import _get_mem0_status
+    from sdk.exception.types import runtime_dependency_error_from_module
+
+    dependency_error = runtime_dependency_error_from_module("mem0")
+    dependency_error["message"] = (
+        "Missing or incompatible Python runtime dependencies: "
+        "huggingface-hub 1.24.0 does not satisfy huggingface-hub==0.36.2"
+    )
+    monkeypatch.setattr(
+        runtime_dependencies,
+        "runtime_dependency_error_for_module",
+        lambda _module_name: dependency_error,
+    )
+
+    result = _get_mem0_status(start_loading=False)
+
+    assert result["status"] == "missing_dependency"
+    assert result["moduleName"] == "mem0"
+    assert result["packageName"] == "mem0ai"
+    assert "1.24.0" in result["message"]
 
 
 def test_check_mem0_status_includes_task_when_import_fails(monkeypatch):
