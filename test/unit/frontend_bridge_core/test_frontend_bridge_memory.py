@@ -6,6 +6,18 @@ class _ImmediateThread:
         self._target()
 
 
+def test_mem0_telemetry_defaults_off_but_preserves_explicit_opt_in(monkeypatch):
+    from ai.memory import runtime
+
+    monkeypatch.delenv("MEM0_TELEMETRY", raising=False)
+    runtime._configure_mem0_environment()
+    assert runtime.os.environ["MEM0_TELEMETRY"] == "False"
+
+    monkeypatch.setenv("MEM0_TELEMETRY", "True")
+    runtime._configure_mem0_environment()
+    assert runtime.os.environ["MEM0_TELEMETRY"] == "True"
+
+
 def test_check_mem0_before_call_returns_none_when_mem0_importable(monkeypatch):
     import importlib
 
@@ -37,7 +49,7 @@ def test_check_mem0_before_call_returns_dep_error_when_missing(monkeypatch):
     assert isinstance(result, dict), f"expected dict, got {type(result)}"
     assert result.get("kind") == "missing_dependency"
     assert result.get("moduleName") == "mem0"
-    assert result.get("packageName") == "mem0ai[extras]"
+    assert result.get("packageName") == "mem0ai"
 
 
 def test_get_mem0_status_returns_valid_status():
@@ -91,7 +103,7 @@ def test_get_mem0_status_missing_dependency_when_not_importable(monkeypatch):
     result = _get_mem0_status()
     assert result["status"] == "missing_dependency"
     assert result["moduleName"] == "mem0"
-    assert result["packageName"] == "mem0ai[extras]"
+    assert result["packageName"] == "mem0ai"
 
 
 def test_check_mem0_status_includes_task_when_import_fails(monkeypatch):

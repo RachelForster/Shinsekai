@@ -284,7 +284,7 @@ describe("API settings sections", () => {
       return {
         message: "installed",
         moduleName: input.moduleName,
-        packageName: "huggingface-hub==1.24.0",
+        packageName: "huggingface-hub==0.36.2",
         pipCode: 0,
         pipOutput: "",
       };
@@ -396,7 +396,7 @@ describe("API settings sections", () => {
         return {
           message: "installed",
           moduleName: input.moduleName,
-          packageName: "huggingface-hub==1.24.0",
+          packageName: "huggingface-hub==0.36.2",
           pipCode: 0,
           pipOutput: "",
         };

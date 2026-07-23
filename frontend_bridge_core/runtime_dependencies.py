@@ -17,23 +17,42 @@ from sdk.exception.types import (
     runtime_dependency_error_from_text,
 )
 _SAFE_PACKAGE_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?$")
-HUGGINGFACE_HUB_VERSION = "1.24.0"
-_PINNED_PACKAGE_SPECS = {
-    "huggingface_hub": f"huggingface-hub=={HUGGINGFACE_HUB_VERSION}",
+HUGGINGFACE_HUB_VERSION = "0.36.2"
+HUGGINGFACE_HUB_SPEC = f"huggingface-hub=={HUGGINGFACE_HUB_VERSION}"
+TRANSFORMERS_SPEC = "transformers>=4.51.1,<5"
+SENTENCE_TRANSFORMERS_SPEC = "sentence-transformers>=5.2,<6"
+FASTEMBED_SPEC = "fastembed"
+MEM0_SPEC = "mem0ai[nlp]"
+CLICK_SPEC = "click>=8.1,<9"
+_RUNTIME_PACKAGE_SPECS = {
+    "huggingface_hub": (HUGGINGFACE_HUB_SPEC,),
+    "mem0": (
+        MEM0_SPEC,
+        CLICK_SPEC,
+        SENTENCE_TRANSFORMERS_SPEC,
+        FASTEMBED_SPEC,
+        TRANSFORMERS_SPEC,
+        HUGGINGFACE_HUB_SPEC,
+    ),
+    "sentence_transformers": (
+        SENTENCE_TRANSFORMERS_SPEC,
+        TRANSFORMERS_SPEC,
+        HUGGINGFACE_HUB_SPEC,
+    ),
 }
 
 
-def _runtime_package_spec(module_name: str, package_name: str) -> str:
+def _runtime_package_specs(module_name: str, package_name: str) -> tuple[str, ...]:
     top_level = module_name.split(".", 1)[0]
-    return _PINNED_PACKAGE_SPECS.get(
+    return _RUNTIME_PACKAGE_SPECS.get(
         module_name,
-        _PINNED_PACKAGE_SPECS.get(top_level, package_name),
+        _RUNTIME_PACKAGE_SPECS.get(top_level, (package_name,)),
     )
 
 
-def _runtime_pip_install_cmd(package_name: str) -> list[str]:
+def _runtime_pip_install_cmd(package_specs: tuple[str, ...]) -> list[str]:
     return _apply_pip_index_and_extra_args(
-        [sys.executable, "-m", "pip", "install", package_name],
+        [sys.executable, "-m", "pip", "install", *package_specs],
         primary_flag="-i",
     )
 
@@ -50,7 +69,8 @@ def install_runtime_dependency(
     package_name = package_for_module(module_name)
     if not _SAFE_PACKAGE_RE.match(package_name):
         raise ValueError(f"unsafe package name: {package_name}")
-    package_spec = _runtime_package_spec(module_name, package_name)
+    package_specs = _runtime_package_specs(module_name, package_name)
+    package_label = package_specs[0] if len(package_specs) == 1 else package_name
     if getattr(sys, "frozen", False):
         raise RuntimeError("cannot run pip from a frozen executable; install dependencies in the bundled Python runtime")
 
@@ -61,7 +81,7 @@ def install_runtime_dependency(
 
         _update_task(
             _state, _task_id,
-            message=f"正在安装 {package_spec}…",
+            message=f"正在安装 {package_label}…",
             phase="pip",
             progress=0.05,
         )
@@ -74,13 +94,13 @@ def install_runtime_dependency(
             _append_task_log(_state, _task_id, line)
             _update_task(
                 _state, _task_id,
-                message=f"正在安装 {package_spec}…",
+                message=f"正在安装 {package_label}…",
                 phase="pip",
                 progress=min(0.9, 0.05 + len(output_lines) * 0.01),
             )
 
     code, detail = _run_pip_install(
-        _runtime_pip_install_cmd(package_spec),
+        _runtime_pip_install_cmd(package_specs),
         cwd=Path.cwd(),
         detail_max=4000,
         timeout_sec=900,
@@ -92,7 +112,7 @@ def install_runtime_dependency(
             _update_task(
                 _state, _task_id,
                 error=detail or output[-4000:],
-                message=f"安装 {package_spec} 失败。",
+                message=f"安装 {package_label} 失败。",
                 phase="failed",
                 status="failed",
         )
@@ -101,7 +121,7 @@ def install_runtime_dependency(
     return {
         "message": f"Installed {package_name}. Please launch chat again.",
         "moduleName": module_name,
-        "packageName": package_spec,
+        "packageName": package_label,
         "pipCode": 0,
         "pipOutput": output[-4000:],
     }

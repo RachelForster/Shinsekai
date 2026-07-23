@@ -60,6 +60,14 @@ class _PartialInitTqdm:
 def _install_fake_huggingface(monkeypatch, snapshot_download, tqdm_class=_PartialInitTqdm):
     monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(snapshot_download=snapshot_download))
     monkeypatch.setitem(sys.modules, "huggingface_hub.utils", types.SimpleNamespace(tqdm=tqdm_class))
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub.file_download",
+        types.SimpleNamespace(
+            are_symlinks_supported=lambda _cache_dir=None: False,
+            repo_folder_name=lambda *, repo_id, repo_type: f"{repo_type}s--{repo_id.replace('/', '--')}",
+        ),
+    )
 
 
 def _preload_with_updates(updates, **snapshot_kwargs):
@@ -101,10 +109,7 @@ def test_preload_huggingface_snapshot_reports_download_progress(monkeypatch):
             bar.update(1024)
         return "cached-model"
 
-    fake_hub = types.SimpleNamespace(snapshot_download=fake_snapshot_download)
-    fake_utils = types.SimpleNamespace(tqdm=FakeTqdm)
-    monkeypatch.setitem(sys.modules, "huggingface_hub", fake_hub)
-    monkeypatch.setitem(sys.modules, "huggingface_hub.utils", fake_utils)
+    _install_fake_huggingface(monkeypatch, fake_snapshot_download, FakeTqdm)
 
     result = downloads.preload_huggingface_snapshot(
         "owner/model",
@@ -326,6 +331,40 @@ def test_preload_huggingface_snapshot_serializes_concurrent_disabled_byte_update
         if update.get("phase") == "download" and "progress" in update
     ]
     assert download_progress[-1] == downloads.HUGGINGFACE_DOWNLOAD_PROGRESS_END
+
+
+def test_preload_huggingface_snapshot_primes_windows_symlink_support(monkeypatch):
+    events: list[tuple[str, object]] = []
+
+    def fake_are_symlinks_supported(cache_dir=None):
+        events.append(("probe", cache_dir))
+        return False
+
+    def fake_repo_folder_name(*, repo_id, repo_type):
+        assert repo_id == "owner/model"
+        assert repo_type == "model"
+        return "models--owner--model"
+
+    def fake_snapshot_download(repo_id, *, tqdm_class, **kwargs):
+        events.append(("download", kwargs.get("cache_dir")))
+        return "cached-model"
+
+    _install_fake_huggingface(monkeypatch, fake_snapshot_download)
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub.file_download",
+        types.SimpleNamespace(
+            are_symlinks_supported=fake_are_symlinks_supported,
+            repo_folder_name=fake_repo_folder_name,
+        ),
+    )
+    monkeypatch.setattr(downloads.sys, "platform", "win32")
+
+    assert _preload_with_updates([], cache_dir="C:/model-cache") == "cached-model"
+    assert events == [
+        ("probe", downloads.Path("C:/model-cache/models--owner--model")),
+        ("download", "C:/model-cache"),
+    ]
 
 
 def test_preload_huggingface_snapshot_reports_cached_model_without_download():

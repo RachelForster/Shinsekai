@@ -448,7 +448,7 @@ def test_runtime_core_requirements_include_bridge_startup_sdks():
     assert "Pillow" in names
 
 
-def test_runtime_core_pins_huggingface_hub_to_the_download_progress_version():
+def test_runtime_core_pins_huggingface_hub_to_the_shared_compatible_version():
     from frontend_bridge_core import runtime_dependencies
 
     repo_root = _repo_root()
@@ -461,6 +461,24 @@ def test_runtime_core_pins_huggingface_hub_to_the_download_progress_version():
     }
 
     assert expected in lines
+
+
+def test_runtime_requirements_keep_memory_and_moondream_dependencies_compatible():
+    from frontend_bridge_core import runtime_dependencies
+
+    repo_root = _repo_root()
+    for requirements_name in ("requirements-runtime-local-ai.txt", "requirements.txt"):
+        requirements = repo_root / requirements_name
+        lines = {
+            line.strip()
+            for line in requirements.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+
+        assert runtime_dependencies.SENTENCE_TRANSFORMERS_SPEC in lines
+        assert runtime_dependencies.TRANSFORMERS_SPEC in lines
+        assert runtime_dependencies.CLICK_SPEC in lines
+        assert "mem0ai[extras]" not in lines
 
 
 def _fake_runtime_pip_install(calls):
@@ -531,6 +549,50 @@ def test_install_runtime_dependency_pins_huggingface_hub(monkeypatch):
     expected = f"huggingface-hub=={runtime_dependencies.HUGGINGFACE_HUB_VERSION}"
     assert result["packageName"] == expected
     assert calls[0][:5] == [sys.executable, "-m", "pip", "install", expected]
+
+
+def test_install_runtime_dependency_installs_mem0_without_broad_extras(monkeypatch):
+    from frontend_bridge_core import runtime_dependencies
+
+    calls = []
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
+
+    result = runtime_dependencies.install_runtime_dependency("mem0")
+
+    assert result["packageName"] == "mem0ai"
+    assert calls[0][:10] == [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        runtime_dependencies.MEM0_SPEC,
+        runtime_dependencies.CLICK_SPEC,
+        runtime_dependencies.SENTENCE_TRANSFORMERS_SPEC,
+        runtime_dependencies.FASTEMBED_SPEC,
+        runtime_dependencies.TRANSFORMERS_SPEC,
+        runtime_dependencies.HUGGINGFACE_HUB_SPEC,
+    ]
+    assert "mem0ai[extras]" not in calls[0]
+
+
+def test_install_runtime_dependency_keeps_sentence_transformers_compatible(monkeypatch):
+    from frontend_bridge_core import runtime_dependencies
+
+    calls = []
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
+
+    result = runtime_dependencies.install_runtime_dependency("sentence_transformers")
+
+    assert result["packageName"] == "sentence-transformers"
+    assert calls[0][:7] == [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        runtime_dependencies.SENTENCE_TRANSFORMERS_SPEC,
+        runtime_dependencies.TRANSFORMERS_SPEC,
+        runtime_dependencies.HUGGINGFACE_HUB_SPEC,
+    ]
 
 
 def test_install_runtime_dependency_invalidates_import_caches_after_success(monkeypatch):
