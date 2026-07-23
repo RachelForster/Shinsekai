@@ -91,6 +91,13 @@ def _save_character(state: BridgeState, payload: dict[str, Any]) -> dict[str, An
     )
     if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
         raise RuntimeError(message)
+    # 保存 scenarios（语音触发标签），新建角色时不能丢
+    _scenarios = body.get('scenarios', []) if isinstance(body, dict) else []
+    if _scenarios:
+        try:
+            state.character_manager.save_character_scenarios(saved_name, _scenarios)
+        except Exception:
+            pass
     state.config_manager.reload()
     saved = state.config_manager.get_character_by_name(saved_name)
     return _jsonify(saved or character)

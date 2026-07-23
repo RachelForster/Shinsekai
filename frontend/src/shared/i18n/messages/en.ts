@@ -777,6 +777,7 @@ export const enMessages: Record<MessageKey, string> = {
   "character.section.voiceTags": "Voice Trigger Tags",
   "character.voiceTag.description": "Write short English tags in dialogue to trigger specific voices or switch reference timbre. e.g. [laugh], [whisper], [angry]",
   "character.voiceTag.aiTranslate": "AI Translate",
+  "character.voiceTag.aiTranslateEmpty": "No tag names to translate",
   "character.voiceTag.add": "Add tag",
   "character.voiceTag.saveAll": "Save all tags",
   "character.voiceTag.empty": "No tags configured. Click to add.",

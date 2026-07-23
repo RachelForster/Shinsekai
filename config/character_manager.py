@@ -400,9 +400,14 @@ class CharacterManager:
         # 清空角色属性
         character.sprites = []
         character.emotion_tags = ""
-        
+        # 场景语音也放在同一个 VOICE_DIR 下，目录已删，YAML 引用必须同步清空
+        if hasattr(character, 'scenarios'):
+            for _sc in (character.scenarios or []):
+                _sc.voice_path = None
+            character.scenarios = []
+
         self._config_manager.save_characters_config()
-        
+
         return f"已删除 {character_name} 的所有立绘！", [], ""
 
 
@@ -692,7 +697,10 @@ class CharacterManager:
         voice_dir = os.path.join(VOICE_DIR, character.sprite_prefix)
         Path(voice_dir).mkdir(parents=True, exist_ok=True)
         file_ext = Path(voice_file).suffix
-        voice_filename = f"scenario_{scenario_index:02d}{file_ext}"
+        # 用场景名的 hash 做文件名，避免删标签后索引复用覆盖旧音频
+        import re as _re
+        _safe = _re.sub(r'[^\w]', '_', scenario.name or f"tag{scenario_index}")[:40]
+        voice_filename = f"scenario_{_safe}{file_ext}"
         voice_path = os.path.join(voice_dir, voice_filename)
         shutil.copyfile(voice_file, voice_path)
 
@@ -717,15 +725,17 @@ class CharacterManager:
         if not character.scenarios or scenario_index < 0 or scenario_index >= len(character.scenarios):
             return "情景不存在！"
         scenario = character.scenarios[scenario_index]
-        if scenario.voice_path:
-            try:
-                os.remove(scenario.voice_path)
-            except OSError:
-                pass
+        # 先持久化清空引用，再删文件；防止中途崩溃导致 YAML 残留失效路径
+        old_voice_path = scenario.voice_path
         scenario.voice_path = None
         scenario.voice_text = None
         scenario.voice_type = None
         self._config_manager.save_characters_config()
+        if old_voice_path:
+            try:
+                os.remove(old_voice_path)
+            except OSError:
+                pass
         return "语音已删除"
 
 

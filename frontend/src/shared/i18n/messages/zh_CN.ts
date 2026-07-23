@@ -763,6 +763,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "character.section.voiceTags": "语音触发标签",
   "character.voiceTag.description": "在台词中写入英文短标签，触发指定语音，或切换到对应的参考音色。例如 [laugh]、[whisper]、[angry]，系统检测到后执行对应规则。",
   "character.voiceTag.aiTranslate": "AI 翻译",
+  "character.voiceTag.aiTranslateEmpty": "没有可翻译的标签名称",
   "character.voiceTag.add": "添加标签",
   "character.voiceTag.saveAll": "保存所有标签",
   "character.voiceTag.empty": "暂无标签，点击添加标签开始",

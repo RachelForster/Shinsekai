@@ -364,17 +364,17 @@ class TemplateGenerator:
         for char_name in selected_characters:
             char_detail = config_manager.get_character_by_name(char_name)
             scenarios = getattr(char_detail, 'scenarios', []) or []
-            names = []
+            tag_names = []
             for s in scenarios:
                 sn = s.name if hasattr(s, 'name') else s.get('name', '')
                 if sn:
-                    names.append(sn)
-            if names:
-                voice_tags.append((char_name, names))
+                    tag_names.append(sn)
+            if tag_names:
+                voice_tags.append((char_name, tag_names))
         if voice_tags:
             template += _T("voice_tags_header")
-            for char_name, names in voice_tags:
-                template += _T("voice_tags_for", name=char_name, tags=", ".join(names))
+            for char_name, tag_names in voice_tags:
+                template += _T("voice_tags_for", name=char_name, tags=", ".join(tag_names))
 
         template += _T("profile_header")
         for char_name in selected_characters:

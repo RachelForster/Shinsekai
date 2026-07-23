@@ -67,7 +67,7 @@ def _match_voice_tag(speech: str, scenarios: list):
         for s in scenarios:
             s_name = s.name if hasattr(s, 'name') else s.get('name', '')
             if s_name.lower() == tag.lower():
-                clean = re.sub(r'\s*\[\w+\]\s*', '', speech).strip()
+                clean = re.sub(r'\s*\[\w+\]\s*', ' ', speech).strip()
                 return s, clean
     return None, speech
 
@@ -176,13 +176,9 @@ class DefaultCharacterTtsHandler(MessageHandler):
         asset_id = msg.asset_id
         text_processor = rt.text_processor
         speech_text = speech
-        if translate:
-            text_processor = None
-            speech_text = rt.text_processor.remove_parentheses(translate)
-            speech_text = rt.text_processor.replace_names(speech_text)
 
         # 语音触发标签：[tagname] 匹配角色情景，触发对应语音
-        # 直接从 YAML 读取，避免跨进程缓存导致拿到旧数据
+        # 必须在翻译处理之前匹配，因为标签只存在于原始 speech 中
         _tag_ref_audio = None
         _tag_prompt = None
         _scenarios = _read_scenarios_from_yaml(name_s)
@@ -208,8 +204,13 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 _tag_ref_audio = _m_vp
                 _tag_prompt = _m_vtext or ""
 
+        if translate:
+            text_processor = None
+            speech_text = rt.text_processor.remove_parentheses(translate)
+            speech_text = rt.text_processor.replace_names(speech_text)
+
         # 剥离语音标签 [xxx]，不显示在台词中
-        speech_text = re.sub(r'\s*\[\w+\]\s*', '', speech_text).strip()
+        speech_text = re.sub(r'\s*\[\w+\]\s*', ' ', speech_text).strip()
 
         audio_path = ""
         if rt.tts_manager:

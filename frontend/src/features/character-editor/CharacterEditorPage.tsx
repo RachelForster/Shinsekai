@@ -393,7 +393,18 @@ export function CharacterEditorPage() {
       saveScenarioVoiceText({ name: currentCharacterName, ...input }),
     onSuccess(character) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, scenarios: character.scenarios }));
+      // 只合并服务器更新的字段，保留本地未保存的 name 等编辑
+      setDraft((current) => {
+        const serverScenarios = character.scenarios ?? [];
+        return {
+          ...current,
+          scenarios: (current.scenarios ?? []).map((local, i) => {
+            const server = serverScenarios[i];
+            if (!server) return local;
+            return { ...local, voice_text: server.voice_text, voice_type: server.voice_type, voice_path: server.voice_path };
+          }),
+        };
+      });
     },
   });
 
@@ -402,7 +413,18 @@ export function CharacterEditorPage() {
       saveScenarioVoiceType({ name: currentCharacterName, ...input }),
     onSuccess(character) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      setDraft((current) => ({ ...current, scenarios: character.scenarios }));
+      // 只合并服务器更新的 voice_type/voice_path，保留本地未保存的 name/voice_text
+      setDraft((current) => {
+        const serverScenarios = character.scenarios ?? [];
+        return {
+          ...current,
+          scenarios: (current.scenarios ?? []).map((local, i) => {
+            const server = serverScenarios[i];
+            if (!server) return local;
+            return { ...local, voice_type: server.voice_type, voice_path: server.voice_path };
+          }),
+        };
+      });
     },
   });
 
@@ -410,6 +432,10 @@ export function CharacterEditorPage() {
     mutationFn: async () => {
       const names = (draft.scenarios ?? []).map((s) => s.name);
       const result = await getPlatform().characters.translateScenarioNames(currentCharacterName, names);
+      // 桥接可能返回 error 字段，需要抛出让 onError 捕获
+      if (result.error) {
+        throw new Error(result.error);
+      }
       const translated = result.translated ?? {};
       const updated = (draft.scenarios ?? []).map((s, i) => {
         const t = translated[String(i)];
@@ -418,17 +444,19 @@ export function CharacterEditorPage() {
       if (Object.keys(translated).length > 0) {
         await saveCharacterScenarios(currentCharacterName, updated);
       }
-      return updated;
+      return { updated, hasTranslations: Object.keys(translated).length > 0 };
     },
     onError(error) {
       showToast({ kind: "error", message: error instanceof Error ? error.message : "", title: t("character.voiceTag.aiTranslate") });
     },
-    onSuccess(updated) {
-      if (updated) {
+    onSuccess(result) {
+      if (result?.hasTranslations) {
         queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-        setDraft((current) => ({ ...current, scenarios: updated }));
+        setDraft((current) => ({ ...current, scenarios: result.updated }));
+        showToast({ kind: "success", title: t("character.voiceTag.aiTranslate") });
+      } else {
+        showToast({ kind: "info", message: t("character.voiceTag.aiTranslateEmpty"), title: t("character.voiceTag.aiTranslate") });
       }
-      showToast({ kind: "success", title: t("character.voiceTag.aiTranslate") });
     },
   });
 

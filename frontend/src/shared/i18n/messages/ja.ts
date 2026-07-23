@@ -775,6 +775,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "character.section.voiceTags": "音声トリガータグ",
   "character.voiceTag.description": "台詞に英字の短いタグを書くと、指定の音声を再生するか、参照音色に切り替えます。例：[laugh]、[whisper]、[angry]",
   "character.voiceTag.aiTranslate": "AI 翻訳",
+  "character.voiceTag.aiTranslateEmpty": "翻訳できるタグ名がありません",
   "character.voiceTag.add": "タグを追加",
   "character.voiceTag.saveAll": "すべて保存",
   "character.voiceTag.empty": "タグが設定されていません",
