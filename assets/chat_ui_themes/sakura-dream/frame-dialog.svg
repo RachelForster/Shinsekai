@@ -3,7 +3,8 @@
   <rect x="4" y="4" width="120" height="120" rx="28" fill="none" stroke="#f4b2c4" stroke-opacity="0.72" stroke-width="1.5" />
   <path d="M4 40V28Q4 4 28 4H47M81 4H100Q124 4 124 28V42" fill="none" stroke="#ffe3ec" stroke-width="2.5" />
   <path d="M124 88V100Q124 124 100 124H82M46 124H28Q4 124 4 100V86" fill="none" stroke="#d4788e" stroke-width="2.5" />
-  <g transform="translate(104 18)" fill="#ffdbe6" stroke="#d4788e" stroke-width="0.8">
+  <!-- Keep the flower fully inside the 32 × 32 top-right corner slice. -->
+  <g transform="translate(108 18) scale(0.9)" fill="#ffdbe6" stroke="#d4788e" stroke-width="0.8">
     <ellipse cx="0" cy="-6" rx="3.2" ry="6" transform="rotate(-8)" />
     <ellipse cx="5.7" cy="-1.8" rx="3.2" ry="6" transform="rotate(64 5.7 -1.8)" />
     <ellipse cx="3.6" cy="5" rx="3.2" ry="6" transform="rotate(136 3.6 5)" />

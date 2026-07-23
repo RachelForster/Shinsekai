@@ -4,10 +4,11 @@
   <path d="M3 34V22L22 3H42M54 3H72L93 24V42" fill="none" stroke="#8ffaff" stroke-width="3" />
   <path d="M93 56V72L72 93H52M40 93H24L3 72V54" fill="none" stroke="#ff2da3" stroke-width="3" />
   <path d="M8 29V24L24 8H34M88 67V72L72 88H62" fill="none" stroke="#ff63bb" stroke-opacity="0.72" stroke-width="1.5" />
+  <!-- Edge markers live in fixed 24 px corner slices instead of stretchable edge centers. -->
   <g fill="#d9ffff">
-    <rect x="45" y="2" width="5" height="2" />
-    <rect x="46" y="92" width="5" height="2" />
-    <rect x="2" y="45" width="2" height="5" />
-    <rect x="92" y="46" width="2" height="5" />
+    <rect x="10" y="2" width="5" height="2" />
+    <rect x="81" y="92" width="5" height="2" />
+    <rect x="2" y="81" width="2" height="5" />
+    <rect x="92" y="10" width="2" height="5" />
   </g>
 </svg>

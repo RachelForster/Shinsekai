@@ -119,7 +119,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 themes = list_chat_themes(state)
 
                 theme_index = {item["id"]: item for item in themes}
-                self.assertEqual(theme_index["neon-night-city"]["version"], "1.3.2")
+                self.assertEqual(theme_index["neon-night-city"]["version"], "1.3.3")
                 self.assertTrue((target / "frame-dialog.svg").is_file())
                 self.assertTrue((target / BUILTIN_THEME_OWNER_MARKER).is_file())
             finally:

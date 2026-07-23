@@ -321,7 +321,7 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 - 线条、辉光和外伸装饰应留出安全边距，避免裁切；
 - 不同形态的组件应使用不同素材。对话框素材通常不适合直接复用于输入框或胶囊选项。
 
-当前赛博朋克主题可作为参考：
+当前内置主题已按这一规则区分九宫格背景与独立边框。霓虹夜城和樱色梦境的聊天面板通过 `backgroundImage` 引用下列素材，让装饰位于文字下方；日志面板仍通过 `frameImage` 使用独立前景描边：
 
 - [`frame-dialog.svg`](../assets/chat_ui_themes/neon-night-city/frame-dialog.svg)：`128 × 128`，`slice 28 / width 28 / outset 2`；
 - [`frame-name.svg`](../assets/chat_ui_themes/neon-night-city/frame-name.svg)：`96 × 64`，`slice 16 / width 16 / outset 2`；

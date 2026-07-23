@@ -169,7 +169,9 @@ describe("browser preview platform chat themes", () => {
     expect(neonManifest.tokens.dialog?.nameInputGapVh).toBe(20);
     expect(neonManifest.tokens.dialog?.offsetY).toBe(0);
     expect(neonManifest.tokens.dialog?.boxShadow).toContain("inset 0 1px 0");
-    expect(neonManifest.tokens.dialog?.frameImage).toBe("frame-dialog.svg");
+    expect(neonManifest.version).toBe("1.3.3");
+    expect(neonManifest.tokens.dialog?.backgroundImage).toBe("frame-dialog.svg");
+    expect(neonManifest.tokens.dialog?.frameImage).toBeUndefined();
     expect(neonManifest.tokens.dialog?.frameSlice).toBe(28);
     expect(neonManifest.tokens.input?.frameImage).toBeUndefined();
     expect(neonManifest.tokens.options?.frameImage).toBeUndefined();
@@ -187,8 +189,12 @@ describe("browser preview platform chat themes", () => {
     const sakuraManifest = await platform.chat.getThemeManifest("sakura-dream");
     expect(sakuraManifest.name.zh_CN).toBe("樱色梦境");
     expect(sakuraManifest.tokens.global?.themeColor).toBe("#d4788e");
-    expect(sakuraManifest.tokens.dialog?.frameImage).toBe("frame-dialog.svg");
-    expect(sakuraManifest.tokens.options?.frameImage).toBe("frame-option.svg");
+    expect(sakuraManifest.version).toBe("1.0.2");
+    expect(sakuraManifest.tokens.dialog?.backgroundImage).toBe("frame-dialog.svg");
+    expect(sakuraManifest.tokens.name?.backgroundImage).toBe("frame-name.svg");
+    expect(sakuraManifest.tokens.options?.backgroundImage).toBe("frame-option.svg");
+    expect(sakuraManifest.tokens.dialog?.frameImage).toBeUndefined();
+    expect(sakuraManifest.tokens.options?.frameImage).toBeUndefined();
     await platform.chat.setActiveThemeId("sakura-dream");
     await expect(platform.chat.getTheme()).resolves.toMatchObject({ themeColor: "#d4788e" });
 
