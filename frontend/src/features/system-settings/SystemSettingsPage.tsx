@@ -95,7 +95,6 @@ export function SystemSettingsPage() {
   const selectedThemeId =
     (themeOptions.some((theme) => theme.id === draft?.chat_ui_theme_id) ? draft?.chat_ui_theme_id : fallbackThemeId) ??
     "";
-  const reactStageThemeSelectable = draft?.chat_ui_runtime_mode === "react";
   const systemSectionNavItems = [
     ...(isTauriDesktop() ? [{ id: "system-runtime", label: t("system.runtime.title") }] : []),
     ...systemGeneralGroups.map((group) => ({ id: `system-${group.id}`, label: group.title })),
@@ -106,7 +105,7 @@ export function SystemSettingsPage() {
 
   useEffect(() => {
     if (data?.system_config) {
-      setDraft(data.system_config);
+      setDraft({ ...data.system_config, chat_ui_runtime_mode: "react" });
       setErrors({});
       applyThemeColor(data.system_config.theme_color);
       if (["zh_CN", "en", "ja"].includes(data.system_config.ui_language)) {
@@ -120,12 +119,7 @@ export function SystemSettingsPage() {
   }, [draft?.theme_color]);
 
   useEffect(() => {
-    if (
-      !draft ||
-      draft.chat_ui_runtime_mode !== "react" ||
-      themeOptions.length === 0 ||
-      draft.chat_ui_theme_id === selectedThemeId
-    ) {
+    if (!draft || themeOptions.length === 0 || draft.chat_ui_theme_id === selectedThemeId) {
       return;
     }
     setDraft({
@@ -136,9 +130,9 @@ export function SystemSettingsPage() {
 
   const saveMutation = useMutation({
     async mutationFn(payload: SystemConfig) {
-      const saved = await saveSystemConfig(payload);
+      const saved = await saveSystemConfig({ ...payload, chat_ui_runtime_mode: "react" });
       const themeId = (saved.chat_ui_theme_id || payload.chat_ui_theme_id || "").trim();
-      if (themeId && (saved.chat_ui_runtime_mode || payload.chat_ui_runtime_mode) === "react") {
+      if (themeId) {
         const previousThemeId = (data?.system_config.chat_ui_theme_id || "").trim();
         if (themeId !== previousThemeId) {
           if (chatTheme) {
@@ -242,6 +236,7 @@ export function SystemSettingsPage() {
               saveMutation.mutate({
                 ...draft,
                 ...buildPayloadFromSchema(systemConfigPageSchema, draft),
+                chat_ui_runtime_mode: "react",
               });
             }}
             variant="primary"
@@ -282,12 +277,7 @@ export function SystemSettingsPage() {
           <span className="field-row__control">
             <Select
               aria-describedby="chat_ui_theme_id-help"
-              disabled={
-                !reactStageThemeSelectable ||
-                saveMutation.isPending ||
-                chatThemesQuery.isLoading ||
-                themeOptions.length === 0
-              }
+              disabled={saveMutation.isPending || chatThemesQuery.isLoading || themeOptions.length === 0}
               id="chat_ui_theme_id"
               onChange={(event) => setDraft({ ...draft, chat_ui_theme_id: event.target.value })}
               value={selectedThemeId}
@@ -302,7 +292,7 @@ export function SystemSettingsPage() {
               ))}
             </Select>
             <span className="field-row__help" id="chat_ui_theme_id-help">
-              这是 React Stage 的主题，仅在聊天界面模式为 React Stage 时可选择。
+              这是 React Stage 的聊天主题。
             </span>
             {chatThemesQuery.isLoading ? <span className="field-row__help">{t("system.loading")}</span> : null}
             {!chatThemesQuery.isLoading && themeOptions.length === 0 ? (

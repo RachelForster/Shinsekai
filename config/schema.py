@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator, model_validator
+from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator, field_validator, model_validator
 from pydantic_core import PydanticUseDefault
 from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar
 from config.network_proxy import normalize_proxy_url
@@ -199,7 +199,7 @@ class SystemConfig(BaseModel):
     )
     chat_ui_runtime_mode: DefaultIfNone[str] = Field(
         default="react",
-        description="聊天界面运行模式：react 使用流式 React chat stage；native 回退到原生 Qt 聊天窗口",
+        description="聊天界面运行模式；当前固定使用流式 React chat stage",
     )
     react_chat_fork_experimental_enabled: DefaultIfNone[bool] = Field(
         default=False,
@@ -251,6 +251,12 @@ class SystemConfig(BaseModel):
         default="",
         description="SOCKS5 proxy URL, exported as ALL_PROXY/all_proxy.",
     )
+
+    @field_validator("chat_ui_runtime_mode", mode="before")
+    @classmethod
+    def _force_react_chat_ui(cls, _value: Any) -> str:
+        """Migrate legacy native-mode settings to the supported React runtime."""
+        return "react"
 
     @model_validator(mode="after")
     def _normalize_proxy_urls(self):
