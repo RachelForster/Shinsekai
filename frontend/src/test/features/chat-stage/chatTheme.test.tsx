@@ -33,6 +33,10 @@ vi.mock("../../../shared/platform/platform", () => ({
 
 import { ChatThemeProvider, useChatTheme } from "../../../features/chat-stage/theme/ChatThemeProvider";
 import { ChatThemePicker } from "../../../features/chat-stage/theme/ChatThemePicker";
+import {
+  chatStageRuntimeConfigVersion,
+  defaultChatStageRuntimeConfig,
+} from "../../../features/chat-stage/runtimeConfig";
 import { resolveChatTheme, type ChatThemeManifest } from "../../../shared/theme/chatTheme";
 
 function Probe() {
@@ -63,6 +67,7 @@ function renderThemeTree(children: React.ReactNode) {
 describe("chat theme runtime", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
     document.documentElement.removeAttribute("style");
     document.getElementById("shinsekai-chat-theme-fonts")?.remove();
     platformMocks.getPlatform.mockReturnValue({
@@ -75,6 +80,7 @@ describe("chat theme runtime", () => {
   afterEach(() => {
     document.documentElement.removeAttribute("style");
     document.getElementById("shinsekai-chat-theme-fonts")?.remove();
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
   });
 
   it("maps manifest tokens into chat stage CSS variables and font faces", () => {
@@ -750,6 +756,28 @@ describe("chat theme runtime", () => {
     });
     repoMocks.setActiveChatTheme.mockResolvedValue(undefined);
     repoMocks.deleteChatTheme.mockResolvedValue(undefined);
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({
+        config: {
+          ...defaultChatStageRuntimeConfig,
+          dialogFill: {
+            ...defaultChatStageRuntimeConfig.dialogFill,
+            color: "#112233",
+          },
+          dialogOpacity: 0.6,
+          dialogText: {
+            ...defaultChatStageRuntimeConfig.dialogText,
+            color: "#ddeeff",
+          },
+          nameText: {
+            ...defaultChatStageRuntimeConfig.nameText,
+            color: "#ffeeaa",
+          },
+        },
+        version: chatStageRuntimeConfigVersion,
+      }),
+    );
 
     renderThemeTree(<ChatThemePicker onActiveThemeChange={onActiveThemeChange} onThemesChange={onThemesChange} />);
 
@@ -762,6 +790,20 @@ describe("chat theme runtime", () => {
 
     await waitFor(() => expect(repoMocks.uploadChatTheme).toHaveBeenCalled());
     await waitFor(() => expect(repoMocks.setActiveChatTheme).toHaveBeenCalledWith("my-theme"));
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}");
+      expect(stored).toMatchObject({
+        config: {
+          configThemeColor: "#22aa88",
+          configUseMainThemeColor: false,
+          dialogFill: defaultChatStageRuntimeConfig.dialogFill,
+          dialogOpacity: 0.6,
+          dialogText: defaultChatStageRuntimeConfig.dialogText,
+          nameText: defaultChatStageRuntimeConfig.nameText,
+        },
+        version: chatStageRuntimeConfigVersion,
+      });
+    });
     expect(onThemesChange).toHaveBeenCalledTimes(1);
     expect(onActiveThemeChange).toHaveBeenCalledWith("my-theme");
     await waitFor(() =>

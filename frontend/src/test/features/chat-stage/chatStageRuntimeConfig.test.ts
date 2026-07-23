@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   chatStageRuntimeStyle,
@@ -8,7 +8,10 @@ import {
   effectiveChatStageTextStyle,
   normalizeChatStageRuntimeConfig,
   readChatStageRuntimeConfig,
+  resetChatStageRuntimeThemeAppearance,
+  resetPersistedChatStageRuntimeThemeAppearance,
   runtimeSpriteScale,
+  subscribeChatStageRuntimeConfig,
 } from "../../../features/chat-stage/runtimeConfig";
 
 describe("chat stage runtime config", () => {
@@ -59,6 +62,89 @@ describe("chat stage runtime config", () => {
       dialogScale: 1.1,
       immersiveMode: true,
     });
+  });
+
+  it("restores theme-owned appearance without clearing behavior and layout preferences", () => {
+    const customized = {
+      ...defaultChatStageRuntimeConfig,
+      configThemeColor: "#ff3355",
+      configUseMainThemeColor: true,
+      dialogFill: {
+        color: "#112233",
+        color2: "#445566",
+        gradient: true,
+        gradientDirection: "to-top" as const,
+        gradientMode: "dual" as const,
+        opacity: 0.7,
+      },
+      dialogOpacity: 0.55,
+      dialogText: {
+        align: "right" as const,
+        alignOverride: true,
+        bold: true,
+        boldOverride: true,
+        color: "#ddeeff",
+        direction: "rtl" as const,
+        fontFamily: "Verdana",
+        fontSize: 24,
+      },
+      nameText: {
+        bold: false,
+        boldOverride: true,
+        color: "#ffeeaa",
+        fontFamily: "Georgia",
+        fontSize: 20,
+      },
+      spriteScales: { Mio: 1.4 },
+      typewriterCps: 96,
+      windowScale: 1.1,
+    };
+
+    expect(resetChatStageRuntimeThemeAppearance(customized, "rgb(34, 170, 136)")).toEqual({
+      ...customized,
+      configThemeColor: "#22aa88",
+      configUseMainThemeColor: false,
+      dialogFill: defaultChatStageRuntimeConfig.dialogFill,
+      dialogText: {
+        ...defaultChatStageRuntimeConfig.dialogText,
+        direction: "rtl",
+      },
+      nameText: defaultChatStageRuntimeConfig.nameText,
+    });
+  });
+
+  it("persists and broadcasts restored theme appearance in the current window", () => {
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({
+        config: {
+          configThemeColor: "#ff3355",
+          dialogOpacity: 0.6,
+          dialogText: { color: "#112233" },
+        },
+        version: chatStageRuntimeConfigVersion,
+      }),
+    );
+    const listener = vi.fn();
+    const unsubscribe = subscribeChatStageRuntimeConfig(listener);
+
+    const next = resetPersistedChatStageRuntimeThemeAppearance("#336699");
+
+    expect(listener).toHaveBeenCalledWith(next);
+    expect(next.configThemeColor).toBe("#336699");
+    expect(next.dialogOpacity).toBe(0.6);
+    expect(next.dialogText).toEqual(defaultChatStageRuntimeConfig.dialogText);
+    expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toMatchObject({
+      config: {
+        configThemeColor: "#336699",
+        configUseMainThemeColor: false,
+        dialogOpacity: 0.6,
+      },
+      version: chatStageRuntimeConfigVersion,
+    });
+
+    unsubscribe();
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
   });
 
   it("migrates legacy sprite-id scale keys to stable character keys", () => {

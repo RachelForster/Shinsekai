@@ -468,6 +468,8 @@ export type MessageKey =
   | "chat.config.nameColor"
   | "chat.config.nameFontFamily"
   | "chat.config.nameFontSize"
+  | "chat.config.resetThemeAppearance"
+  | "chat.config.resetThemeAppearanceHelp"
   | "chat.config.scaleValue"
   | "chat.config.batchEnabled"
   | "chat.config.bgmVolume"

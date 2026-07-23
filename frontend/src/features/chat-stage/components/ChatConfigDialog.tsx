@@ -1,10 +1,10 @@
 import { useId, type ChangeEvent } from "react";
-import { Languages } from "lucide-react";
+import { Languages, RotateCcw } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot } from "../../../shared/plugin/PluginSlot";
 import type { ChatCommand, ChatTurnOptions } from "../../../shared/platform/types";
-import { Select, Switch } from "../../../shared/ui";
+import { Button, Select, Switch } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { ChatStageModal } from "./ChatStageModal";
 import {
@@ -118,6 +118,7 @@ export function ChatConfigDialog({
   onDialogFillChange,
   onDialogScaleChange,
   onImmersiveModeChange,
+  onResetThemeAppearance,
   onSpriteOffsetXChange,
   onSpriteOffsetYChange,
   onSpriteScaleChange,
@@ -161,6 +162,7 @@ export function ChatConfigDialog({
   onDialogFillChange: (patch: ChatStageDialogFillPatch) => void;
   onDialogScaleChange: (value: number) => void;
   onImmersiveModeChange: (value: boolean) => void;
+  onResetThemeAppearance: () => void;
   onSpriteOffsetXChange: (value: number) => void;
   onSpriteOffsetYChange: (value: number) => void;
   onSpriteScaleChange: (spriteKey: string, value: number) => void;
@@ -294,7 +296,18 @@ export function ChatConfigDialog({
           </section>
         ) : null}
         <section className="chat-config-dialog__section">
-          <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionMenuAppearance")}</h3>
+          <div className="chat-config-dialog__section-heading">
+            <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionMenuAppearance")}</h3>
+            <Button
+              className="chat-config-dialog__theme-reset"
+              icon={<RotateCcw aria-hidden className="button__icon" />}
+              onClick={onResetThemeAppearance}
+              variant="ghost"
+            >
+              {t("chat.config.resetThemeAppearance")}
+            </Button>
+          </div>
+          <p className="chat-config-dialog__help">{t("chat.config.resetThemeAppearanceHelp")}</p>
           <label className="chat-config-dialog__row">
             <span className="chat-config-dialog__label">{t("chat.config.menuThemeColor")}</span>
             <input

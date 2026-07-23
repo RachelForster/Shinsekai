@@ -499,6 +499,9 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.nameColor": "名札文字色",
   "chat.config.nameFontFamily": "名札フォント",
   "chat.config.nameFontSize": "名札フォントサイズ",
+  "chat.config.resetThemeAppearance": "テーマ既定に戻す",
+  "chat.config.resetThemeAppearanceHelp":
+    "設定パネル、名札、本文、ダイアログの塗りを現在のテーマの既定スタイルに戻します。",
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "連続メッセージをまとめる",
   "chat.config.bgmVolume": "BGM音量",
