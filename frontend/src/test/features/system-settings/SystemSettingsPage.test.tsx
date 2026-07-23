@@ -12,6 +12,7 @@ const mockGetAppConfig = vi.fn();
 const mockDetectNetworkProxy = vi.fn();
 const mockListChatThemes = vi.fn();
 const mockSetActiveChatTheme = vi.fn();
+const mockSaveSystemConfig = vi.fn();
 const browseFiles = vi.fn();
 const desktopApi = vi.hoisted(() => ({
   browseDesktopFiles: vi.fn(),
@@ -27,7 +28,7 @@ vi.mock("../../../entities/config/repository", () => ({
   configQueryKey: ["config"],
   detectNetworkProxy: () => mockDetectNetworkProxy(),
   getAppConfig: () => mockGetAppConfig(),
-  saveSystemConfig: vi.fn(),
+  saveSystemConfig: (config: unknown) => mockSaveSystemConfig(config),
 }));
 
 vi.mock("../../../entities/chat/repository", () => ({
@@ -145,6 +146,7 @@ describe("SystemSettingsPage", () => {
       },
     ]);
     mockSetActiveChatTheme.mockResolvedValue(undefined);
+    mockSaveSystemConfig.mockImplementation(async (config) => config);
     mockDetectNetworkProxy.mockResolvedValue({
       http_proxy_url: "",
       https_proxy_url: "",
@@ -184,7 +186,10 @@ describe("SystemSettingsPage", () => {
     expect(proxyHeading).toBeInTheDocument();
     expect(uiHeading.compareDocumentPosition(themeHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(themeHeading.compareDocumentPosition(proxyHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText("这是 React Stage 的主题，仅在聊天界面模式为 React Stage 时可选择。")).toBeInTheDocument();
+    expect(screen.getByText("这是 React Stage 的聊天主题。")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "聊天界面模式" })).not.toBeInTheDocument();
+    expect(screen.queryByText("原生窗口")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("原生聊天主题 JSON")).not.toBeInTheDocument();
     expect(screen.getByLabelText("启用代理配置")).toBeInTheDocument();
     expect(screen.getByLabelText("HTTP 代理")).toBeInTheDocument();
     expect(screen.getByLabelText("HTTPS 代理")).toBeInTheDocument();
@@ -201,7 +206,7 @@ describe("SystemSettingsPage", () => {
     expect(await screen.findByRole("heading", { name: "Theme management destination" })).toBeInTheDocument();
   });
 
-  it("disables React Stage theme selection for the native chat UI", async () => {
+  it("migrates a legacy native setting to the React chat UI", async () => {
     mockGetAppConfig.mockResolvedValue(
       mockSystemConfig({
         chat_ui_runtime_mode: "native",
@@ -211,8 +216,18 @@ describe("SystemSettingsPage", () => {
 
     const themeSelect = await screen.findByRole("combobox", { name: "聊天主题" });
 
-    expect(themeSelect).toBeDisabled();
-    expect(screen.getByText("这是 React Stage 的主题，仅在聊天界面模式为 React Stage 时可选择。")).toBeInTheDocument();
+    expect(themeSelect).toBeEnabled();
+    expect(screen.queryByRole("combobox", { name: "聊天界面模式" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(mockSaveSystemConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          chat_ui_runtime_mode: "react",
+        }),
+      ),
+    );
   });
 
   it("detects the current system proxy into the draft", async () => {

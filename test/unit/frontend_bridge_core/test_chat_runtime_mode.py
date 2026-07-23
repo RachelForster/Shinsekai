@@ -122,6 +122,12 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual(_chat_runtime_mode(state), "react")
 
+    def test_chat_runtime_mode_ignores_legacy_native_config(self):
+        state = SimpleNamespace(config_manager=_ConfigManager())
+        state.config_manager.config.system_config.chat_ui_runtime_mode = "native"
+
+        self.assertEqual(_chat_runtime_mode(state), "react")
+
     def test_chat_runtime_status_reports_idle_without_building_snapshot(self):
         state = SimpleNamespace(chat_runtime_closing=False)
 
@@ -209,10 +215,10 @@ class ChatRuntimeModeTests(unittest.TestCase):
         )
         state.config_manager.config.system_config.chat_ui_runtime_mode = "native"
 
-        snapshot = _chat_snapshot(state, "idle", "native started")
+        snapshot = _chat_snapshot(state, "idle", "react started")
 
-        self.assertEqual(snapshot["runtimeMode"], "native")
-        self.assertEqual(snapshot["dialogText"], "native started")
+        self.assertEqual(snapshot["runtimeMode"], "react")
+        self.assertEqual(snapshot["dialogText"], "react started")
 
     def test_chat_snapshot_keeps_transparent_background_empty(self):
         state = SimpleNamespace(
@@ -263,7 +269,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         with self.assertRaisesRegex(PermissionError, "request origin is not allowed"):
             handler._require_authorized_write("/api/chat/command")
 
-    def test_launch_chat_skips_stream_session_in_native_mode(self):
+    def test_launch_chat_forces_legacy_native_config_to_react(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         chat_stream = _ChatStreamStub()
         config_manager = _ConfigManager()
@@ -294,17 +300,22 @@ class ChatRuntimeModeTests(unittest.TestCase):
             with patch("frontend_bridge_core.handler._chat_process_running", return_value=False), patch(
                 "frontend_bridge_core.handler._launch_chat",
                 return_value="聊天进程已启动！PID: 12345",
-            ), patch(
+            ) as launch_chat, patch(
                 "frontend_bridge_core.handler._repair_template_parts_from_session_if_needed",
                 side_effect=lambda _state, scenario, system: (scenario, system),
             ):
                 snapshot = handler._launch_chat(body)
 
-        self.assertEqual(chat_stream.create_session_calls, [])
-        self.assertEqual(snapshot["runtimeMode"], "native")
-        self.assertFalse(snapshot.get("sessionId"))
+        self.assertEqual(len(chat_stream.create_session_calls), 1)
+        self.assertEqual(
+            launch_chat.call_args.kwargs["stream_endpoint"],
+            "ws://127.0.0.1:8788/ws?sessionId=session-1&role=producer",
+        )
+        self.assertEqual(launch_chat.call_args.kwargs["init_stream_endpoint"], "")
+        self.assertEqual(snapshot["runtimeMode"], "react")
+        self.assertEqual(snapshot["sessionId"], "session-1")
 
-    def test_native_async_init_uses_hidden_init_stream_without_exposing_session(self):
+    def test_legacy_native_async_init_uses_react_stream_session(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         chat_stream = _ChatStreamStub()
         config_manager = _ConfigManager()
@@ -344,16 +355,16 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 snapshot = handler._launch_chat(body, init_stream_info=init_stream_info)
 
         self.assertEqual(chat_stream.create_session_calls, [])
-        self.assertEqual(launch_chat.call_args.kwargs["stream_endpoint"], "")
         self.assertEqual(
-            launch_chat.call_args.kwargs["init_stream_endpoint"],
+            launch_chat.call_args.kwargs["stream_endpoint"],
             init_stream_info["producerEndpoint"],
         )
-        self.assertEqual(chat_stream.wait_calls, [])
-        self.assertEqual(snapshot["runtimeMode"], "native")
+        self.assertEqual(launch_chat.call_args.kwargs["init_stream_endpoint"], "")
+        self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
+        self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertTrue(snapshot["_chatInitStreamAttached"])
-        self.assertFalse(snapshot.get("sessionId"))
-        self.assertFalse(handler.server.state.chat_session.get("sessionId"))
+        self.assertEqual(snapshot["sessionId"], "session-1")
+        self.assertEqual(handler.server.state.chat_session["sessionId"], "session-1")
 
     def test_resume_last_chat_creates_stream_session_in_react_mode(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
