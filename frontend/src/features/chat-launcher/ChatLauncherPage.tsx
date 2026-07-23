@@ -18,6 +18,7 @@ import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDial
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
+import { synchronizeChatLaunchPayloadWithSession } from "../template-editor/templateFlow";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
@@ -212,9 +213,9 @@ export function ChatLauncherPage() {
     mutationFn: async (payload: ChatLaunchPayload) => {
       return runChatInitialization(async (options) => {
         const session = buildSession();
-        await saveTemplateSession(session);
-        queryClient.setQueryData([...templatesQueryKey, "session"], session);
-        return launchChat(payload, options);
+        const savedSession = await saveTemplateSession(session);
+        queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
+        return launchChat(synchronizeChatLaunchPayloadWithSession(payload, savedSession), options);
       });
     },
     onError(error) {

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from core.messaging.dialog_tokens import BGM, SCENE
-from llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, TemplateGenerator
+from llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, NoValidCharactersError, TemplateGenerator
 from sdk.register import PluginCapabilityRegistry
 from sdk.types import (
     ChatOutputContract,
@@ -166,6 +168,145 @@ def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
 
     assert warning == ""
     assert template.endswith("Begin the scene.\nMUST_USE_REQUIRED_JSON_FORMAT\n")
+
+
+def test_template_generator_skips_characters_missing_from_restored_selection(
+    monkeypatch,
+    caplog,
+) -> None:
+    character = SimpleNamespace(
+        name="Alice",
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+
+    monkeypatch.setattr(
+        "llm.template_generator.config_manager",
+        SimpleNamespace(
+            get_character_by_name=lambda name: character if name == "Alice" else None,
+        ),
+    )
+    monkeypatch.setattr(
+        "llm.template_generator._T",
+        lambda key, **kwargs: f"{key}:{kwargs}\n",
+    )
+
+    template, warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        selected_characters=["Deleted Character", " Alice "],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert warning == ""
+    assert "Alice" in template
+    assert "Deleted Character" not in template
+    assert "Skipping missing characters during template generation: Deleted Character" in caplog.text
+
+
+def test_template_generator_raises_domain_error_when_all_selections_are_missing(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda name: None),
+    )
+    monkeypatch.setattr(
+        "llm.template_generator._T",
+        lambda key, **kwargs: f"template_gen.{key}",
+    )
+
+    with pytest.raises(NoValidCharactersError) as error:
+        TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+            selected_characters=["Deleted Character"],
+            bg_name=None,
+            use_effect=False,
+            use_cg=False,
+            use_llm_translation=False,
+        )
+
+    assert error.value.error_code == "no_valid_characters"
+    assert str(error.value) == "template_gen.err_no_characters"
+
+
+def test_template_generator_uses_config_character_identity_for_deduplication(
+    monkeypatch,
+) -> None:
+    characters = [
+        SimpleNamespace(
+            name="Straße",
+            sprites=[],
+            emotion_tags="",
+            character_setting="",
+        ),
+        SimpleNamespace(
+            name="STRASSE",
+            sprites=[],
+            emotion_tags="",
+            character_setting="",
+        ),
+    ]
+    characters_by_key = {character.name.lower(): character for character in characters}
+    monkeypatch.setattr(
+        "llm.template_generator.config_manager",
+        SimpleNamespace(
+            get_character_by_name=lambda name: characters_by_key.get(name.lower()),
+        ),
+    )
+    monkeypatch.setattr(
+        "llm.template_generator._T",
+        lambda key, **kwargs: f"{key}:{kwargs}\n",
+    )
+
+    generator = TemplateGenerator(output_contract_patches=[])
+    resolved = generator.resolve_chat_template_characters(["Straße", "STRASSE"])
+    template, warning = generator.generate_chat_template(
+        selected_characters=["Straße", "STRASSE"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert [name for name, _character in resolved] == ["STRASSE", "Straße"]
+    assert warning == ""
+    assert "sprites_count:{'name': 'STRASSE', 'n': 0}" in template
+    assert "sprites_count:{'name': 'Straße', 'n': 0}" in template
+
+
+def test_template_generator_handles_character_with_null_sprites(monkeypatch) -> None:
+    character = SimpleNamespace(
+        name="Alice",
+        sprites=None,
+        emotion_tags="",
+        character_setting="",
+    )
+
+    monkeypatch.setattr(
+        "llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda name: character),
+    )
+    monkeypatch.setattr(
+        "llm.template_generator._T",
+        lambda key, **kwargs: (
+            f"{kwargs['name']}:{kwargs['n']}\n"
+            if key == "sprites_count"
+            else f"template_gen.{key}\n"
+        ),
+    )
+
+    template, warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert warning == ""
+    assert "Alice:0" in template
 
 
 def test_template_generator_omits_scene_and_bgm_for_transparent_background(monkeypatch) -> None:

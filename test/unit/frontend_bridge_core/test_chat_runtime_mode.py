@@ -11,6 +11,7 @@ from frontend_bridge_core.chat import (
     _chat_stream_initial_snapshot,
 )
 from frontend_bridge_core.handler import BRIDGE_AUTH_HEADER, CHAT_RUNTIME_READY_TIMEOUT_SECONDS, FrontendBridgeHandler
+from frontend_bridge_core.templates import _history_id_from_scenario
 
 
 class _SystemConfig:
@@ -43,8 +44,12 @@ class _ConfigManager:
     def __init__(self):
         self.config = _Config()
 
-    def get_character_by_name(self, _name: str):
-        return None
+    def get_character_by_name(self, name: str):
+        name_key = name.lower()
+        return next(
+            (character for character in self.config.characters if character.name.lower() == name_key),
+            None,
+        )
 
     def get_background_by_name(self, _name: str):
         for background in self.config.background_list:
@@ -304,6 +309,60 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(snapshot["runtimeMode"], "native")
         self.assertFalse(snapshot.get("sessionId"))
 
+    def test_launch_chat_normalizes_stale_characters_before_runtime_inputs(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        chat_stream = _ChatStreamStub()
+        config_manager = _ConfigManager()
+        config_manager.config.characters = [
+            SimpleNamespace(
+                name="Alice",
+                sprites=[SimpleNamespace(path="sprites/alice.png")],
+            ),
+        ]
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
+            root = Path(tmp_dir)
+            history_dir = root / "history"
+            history_dir.mkdir()
+            template_dir = root / "templates"
+            template_dir.mkdir()
+            handler.server = SimpleNamespace(
+                state=SimpleNamespace(
+                    chat_session={},
+                    chat_stream=chat_stream,
+                    config_manager=config_manager,
+                    history_dir=str(history_dir),
+                    template_dir_path=str(template_dir),
+                )
+            )
+            body = {
+                "characters": ["Deleted", " alice "],
+                "initSpritePath": "",
+                "scenario": "restored scene",
+                "system": "generated system",
+                "templateId": "restored-template",
+                "templateName": "Restored Template",
+            }
+
+            with patch("frontend_bridge_core.handler._chat_process_running", return_value=False), patch(
+                "frontend_bridge_core.handler._launch_chat",
+                return_value="聊天进程已启动！PID: 12345",
+            ) as launch_chat, patch(
+                "frontend_bridge_core.handler._repair_template_parts_from_session_if_needed",
+                side_effect=lambda _state, scenario, system: (scenario, system),
+            ):
+                snapshot = handler._launch_chat(body)
+
+        runtime_args = launch_chat.call_args.kwargs
+        self.assertEqual(runtime_args["character_names"], ["Alice"])
+        self.assertEqual(runtime_args["init_sprite_path"], "sprites/alice.png")
+        self.assertEqual(
+            Path(runtime_args["history_file"]).name,
+            _history_id_from_scenario("restored scene", ["Alice"]),
+        )
+        self.assertEqual(handler.server.state.chat_session["characterName"], "Alice")
+        self.assertEqual(snapshot["characterName"], "Alice")
+
     def test_native_async_init_uses_hidden_init_stream_without_exposing_session(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         chat_stream = _ChatStreamStub()
@@ -360,6 +419,12 @@ class ChatRuntimeModeTests(unittest.TestCase):
         chat_stream = _ChatStreamStub()
         config_manager = _ConfigManager()
         config_manager.config.system_config.chat_ui_runtime_mode = "react"
+        config_manager.config.characters = [
+            SimpleNamespace(
+                name="Alice",
+                sprites=[SimpleNamespace(path="sprites/alice.png")],
+            ),
+        ]
 
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
             root = Path(tmp_dir)
@@ -384,9 +449,10 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 return_value={
                     "background": "",
                     "historyPath": history_path.relative_to(Path.cwd()).as_posix(),
+                    "initSpritePath": "",
                     "roomId": "",
                     "scenario": "scene",
-                    "selectedCharacters": [],
+                    "selectedCharacters": ["Deleted", "Alice"],
                     "system": "system",
                     "templateFileDropdown": "resume-template",
                     "voiceLanguage": "ja",
@@ -400,7 +466,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             ), patch(
                 "frontend_bridge_core.handler._launch_chat",
                 return_value="聊天进程已启动！PID: 12345",
-            ):
+            ) as launch_chat:
                 snapshot = handler._resume_last_chat()
 
         self.assertEqual(len(chat_stream.create_session_calls), 1)
@@ -410,6 +476,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertEqual(snapshot["sessionId"], "session-1")
+        self.assertEqual(launch_chat.call_args.kwargs["character_names"], ["Alice"])
+        self.assertEqual(launch_chat.call_args.kwargs["init_sprite_path"], "sprites/alice.png")
+        self.assertEqual(handler.server.state.chat_session["characterName"], "Alice")
 
     def test_launch_chat_passes_workflow_path_to_runtime_process(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)

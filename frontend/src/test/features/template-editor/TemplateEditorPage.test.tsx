@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
 import { buildDefaultTemplateScenario } from "../../../features/template-editor/templateFlow";
 import { I18nProvider, translateMessage } from "../../../shared/i18n/I18nProvider";
+import { PlatformRequestError } from "../../../shared/platform/errors";
 import { sampleConfig } from "../../../shared/platform/sampleData";
 import type { TemplateLaunchSession } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
@@ -132,7 +133,7 @@ describe("TemplateEditorPage", () => {
       status: "idle",
     });
     mockInstallMissingRuntimeDependency.mockResolvedValue({ message: "installed" });
-    mockSaveTemplateSession.mockResolvedValue(undefined);
+    mockSaveTemplateSession.mockImplementation(async (session) => session);
     mockSaveSystemConfig.mockResolvedValue(sampleConfig.system_config);
     mockShowChatSurface.mockResolvedValue(undefined);
   });
@@ -207,6 +208,116 @@ describe("TemplateEditorPage", () => {
     await new Promise((resolve) => window.setTimeout(resolve, 260));
 
     expect(mockGenerateTemplate).toHaveBeenCalledTimes(callsAfterCharacterChange);
+  });
+
+  it("uses the server-resolved characters for the restored session and launch payload", async () => {
+    mockListCharacters.mockResolvedValue([
+      { color: "#66ccff", name: "Nanami", sprites: [{ path: "D:/sprites/nanami.png" }] },
+    ]);
+    mockGetTemplateSession.mockResolvedValue({
+      background: "默认房间",
+      effectNames: [],
+      filenameStub: "Session Draft",
+      historyPath: "",
+      initSpritePath: "D:/sprites/deleted.png",
+      maxDialogItems: 0,
+      maxSpeechChars: 0,
+      roomId: "",
+      scenario: "Restored scene",
+      selectedCharacters: ["Deleted", "Nanami"],
+      system: "Restored system",
+      templateFileDropdown: "opening",
+      useCg: false,
+      useChoice: true,
+      useCot: false,
+      useEffect: true,
+      useNarration: true,
+      useStat: true,
+      useTranslation: false,
+      voiceLanguage: "ja",
+    } satisfies TemplateLaunchSession);
+    mockGenerateTemplate.mockResolvedValueOnce({
+      ...template,
+      generationMessage: "generated",
+      name: "Session Draft",
+      resolvedCharacters: ["Nanami"],
+      scenario: "Restored scene",
+      system: "Generated system",
+    });
+    mockSaveTemplateSession.mockImplementationOnce(async (session) => ({
+      ...(session as TemplateLaunchSession),
+      initSpritePath: "D:/sprites/nanami.png",
+      selectedCharacters: ["Nanami"],
+    }));
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Restored scene")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ characters: ["Deleted", "Nanami"] })),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "System template" }));
+    expect(await screen.findByDisplayValue("Generated system")).toBeInTheDocument();
+    expect(mockGenerateTemplate).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
+    const dialog = screen.getByRole("dialog", { name: "Quick restart" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Quick restart" }));
+
+    await waitFor(() =>
+      expect(mockSaveTemplateSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initSpritePath: "",
+          selectedCharacters: ["Nanami"],
+        }),
+      ),
+    );
+    expect(mockLaunchChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        characters: ["Nanami"],
+        initSpritePath: "D:/sprites/nanami.png",
+      }),
+    );
+  });
+
+  it("preserves the restored draft when generation rejects an all-stale selection", async () => {
+    mockGetTemplateSession.mockResolvedValue({
+      background: "默认房间",
+      effectNames: [],
+      filenameStub: "Session Draft",
+      historyPath: "",
+      initSpritePath: "",
+      maxDialogItems: 0,
+      maxSpeechChars: 0,
+      roomId: "",
+      scenario: "Restored scene",
+      selectedCharacters: ["Deleted"],
+      system: "Restored system",
+      templateFileDropdown: "opening",
+      useCg: false,
+      useChoice: true,
+      useCot: false,
+      useEffect: true,
+      useNarration: true,
+      useStat: true,
+      useTranslation: false,
+      voiceLanguage: "ja",
+    } satisfies TemplateLaunchSession);
+    mockGenerateTemplate.mockRejectedValueOnce(
+      new PlatformRequestError("Select at least one character.", 422, "no_valid_characters"),
+    );
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Restored scene")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "System template" }));
+    expect(await screen.findByDisplayValue("Restored system")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    expect(await screen.findByText("Choose at least one character.")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Restored system")).toBeInTheDocument();
   });
 
   it("launches restored sessions only after quick restart confirmation", async () => {
