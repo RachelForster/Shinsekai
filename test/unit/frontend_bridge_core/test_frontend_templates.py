@@ -1,8 +1,13 @@
+from types import SimpleNamespace
+
+import pytest
+
 from frontend_bridge_core.templates import (
     MARK_SCENARIO,
     MARK_SYSTEM,
     _compose_runtime_template,
     _compose_stored_template,
+    _generate_template_summary,
     _has_untranslated_template_keys,
     _history_id_from_scenario,
     _parse_stored_template,
@@ -10,6 +15,7 @@ from frontend_bridge_core.templates import (
     _safe_session_int,
     _template_session_to_frontend,
 )
+from llm.template_generator import TemplateGenerator
 
 
 def test_stored_template_round_trips_scenario_and_system_sections():
@@ -54,6 +60,65 @@ def test_runtime_template_places_json_reminder_after_default_scenario(monkeypatc
     assert _compose_runtime_template("system rules", "") == (
         "system rules\n你扮演一个RPG系统。\n必须以规定的 JSON 格式回复。\n"
     )
+
+
+def test_generate_template_summary_returns_canonical_resolved_characters(monkeypatch):
+    character = SimpleNamespace(
+        name="Alice",
+        sprites=[],
+        emotion_tags="",
+        character_setting="",
+    )
+    monkeypatch.setattr(
+        "llm.template_generator.config_manager",
+        SimpleNamespace(
+            get_character_by_name=lambda name: character if name.lower() == "alice" else None,
+        ),
+    )
+    monkeypatch.setattr(
+        "llm.template_generator._T",
+        lambda key, **kwargs: f"{key}:{kwargs}\n",
+    )
+    state = SimpleNamespace(template_generator=TemplateGenerator(output_contract_patches=[]))
+
+    summary = _generate_template_summary(
+        state,
+        {
+            "backgroundName": "",
+            "characters": ["Deleted", " alice "],
+            "name": "restored",
+            "scenario": "Restored scenario",
+            "useTranslation": False,
+        },
+    )
+
+    assert summary["resolvedCharacters"] == ["Alice"]
+    assert "Alice" in summary["system"]
+    assert "Deleted" not in summary["system"]
+
+
+def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
+    monkeypatch.setattr(
+        "llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda _name: None),
+    )
+    monkeypatch.setattr(
+        "llm.template_generator._T",
+        lambda key, **kwargs: f"template_gen.{key}",
+    )
+    state = SimpleNamespace(template_generator=TemplateGenerator(output_contract_patches=[]))
+
+    with pytest.raises(ValueError, match="template_gen.err_no_characters"):
+        _generate_template_summary(
+            state,
+            {
+                "backgroundName": "",
+                "characters": ["Deleted"],
+                "name": "restored",
+                "scenario": "Restored scenario",
+                "useTranslation": False,
+            },
+        )
 
 
 def test_scenario_from_template_like_falls_back_only_for_none():

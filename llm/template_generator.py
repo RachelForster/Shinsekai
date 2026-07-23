@@ -5,7 +5,7 @@ from typing import Any
 
 from i18n import tr as tr_i18n
 from sdk.lang import normalize_lang
-from config.character_manager import ConfigManager
+from config.config_manager import ConfigManager, character_name_key
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
 from llm.tools.tool_manager import ToolManager
 from sdk.tool_registry import apply_registered_tools
@@ -44,6 +44,10 @@ def is_transparent_background(name: str | None) -> bool:
 
 def _T(key: str, **kwargs) -> str:
     return tr_i18n(f"template_gen.{key}", **kwargs)
+
+
+def no_valid_characters_message() -> str:
+    return _T("err_no_characters")
 
 
 def json_format_reminder() -> str:
@@ -255,6 +259,50 @@ class TemplateGenerator:
         except Exception:
             return []
 
+    def resolve_chat_template_characters(
+        self,
+        selected_characters: Any,
+    ) -> list[tuple[str, Any]]:
+        """Resolve, canonicalize, and deterministically order a character selection."""
+        requested_names: list[str] = []
+        requested_name_keys: set[str] = set()
+        for item in selected_characters or []:
+            requested_name = str(item).strip()
+            if not requested_name:
+                continue
+            requested_key = character_name_key(requested_name)
+            if requested_key in requested_name_keys:
+                continue
+            requested_name_keys.add(requested_key)
+            requested_names.append(requested_name)
+        requested_names.sort(key=lambda name: (character_name_key(name), name))
+
+        resolved_characters: list[tuple[str, Any]] = []
+        missing_characters: list[str] = []
+        resolved_name_keys: set[str] = set()
+        for requested_name in requested_names:
+            character = config_manager.get_character_by_name(requested_name)
+            if character is None:
+                missing_characters.append(requested_name)
+                continue
+            canonical_name = str(getattr(character, "name", "") or requested_name).strip()
+            canonical_key = character_name_key(canonical_name)
+            if canonical_key in resolved_name_keys:
+                continue
+            resolved_name_keys.add(canonical_key)
+            resolved_characters.append((canonical_name, character))
+
+        if missing_characters:
+            logger.warning(
+                "Skipping missing characters during template generation: %s",
+                ", ".join(missing_characters),
+                extra={
+                    "event": "template.characters.missing",
+                    "missing_characters": missing_characters,
+                },
+            )
+        return resolved_characters
+
     def generate_chat_template(
         self,
         selected_characters,
@@ -270,45 +318,14 @@ class TemplateGenerator:
         max_dialog_items: int = 0,
     ):
         if not selected_characters:
-            return _T("err_no_characters"), ""
+            return no_valid_characters_message(), ""
 
         # Resolve the persisted/UI selection once. A restored template session can
         # contain characters that were deleted or renamed after the session was
         # saved; those stale entries must not make template generation crash.
-        requested_names = sorted(
-            {
-                str(item).strip()
-                for item in selected_characters
-                if str(item).strip()
-            },
-            key=str.casefold,
-        )
-        resolved_characters: list[tuple[str, Any]] = []
-        missing_characters: list[str] = []
-        resolved_name_keys: set[str] = set()
-        for requested_name in requested_names:
-            character = config_manager.get_character_by_name(requested_name)
-            if character is None:
-                missing_characters.append(requested_name)
-                continue
-            canonical_name = str(getattr(character, "name", "") or requested_name).strip()
-            canonical_key = canonical_name.casefold()
-            if canonical_key in resolved_name_keys:
-                continue
-            resolved_name_keys.add(canonical_key)
-            resolved_characters.append((canonical_name, character))
-
-        if missing_characters:
-            logger.warning(
-                "Skipping missing characters during template generation: %s",
-                ", ".join(missing_characters),
-                extra={
-                    "event": "template.characters.missing",
-                    "missing_characters": missing_characters,
-                },
-            )
+        resolved_characters = self.resolve_chat_template_characters(selected_characters)
         if not resolved_characters:
-            return _T("err_no_characters"), ""
+            return no_valid_characters_message(), ""
 
         # 人物排序保证生成内容稳定；聊天记录默认文件名由设置页「用户情景」哈希决定。
         selected_characters = [name for name, _character in resolved_characters]

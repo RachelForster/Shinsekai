@@ -228,6 +228,51 @@ def test_template_generator_returns_no_character_message_when_all_selections_are
     assert template == "template_gen.err_no_characters"
 
 
+def test_template_generator_uses_config_character_identity_for_deduplication(
+    monkeypatch,
+) -> None:
+    characters = [
+        SimpleNamespace(
+            name="Straße",
+            sprites=[],
+            emotion_tags="",
+            character_setting="",
+        ),
+        SimpleNamespace(
+            name="STRASSE",
+            sprites=[],
+            emotion_tags="",
+            character_setting="",
+        ),
+    ]
+    characters_by_key = {character.name.lower(): character for character in characters}
+    monkeypatch.setattr(
+        "llm.template_generator.config_manager",
+        SimpleNamespace(
+            get_character_by_name=lambda name: characters_by_key.get(name.lower()),
+        ),
+    )
+    monkeypatch.setattr(
+        "llm.template_generator._T",
+        lambda key, **kwargs: f"{key}:{kwargs}\n",
+    )
+
+    generator = TemplateGenerator(output_contract_patches=[])
+    resolved = generator.resolve_chat_template_characters(["Straße", "STRASSE"])
+    template, warning = generator.generate_chat_template(
+        selected_characters=["Straße", "STRASSE"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    assert [name for name, _character in resolved] == ["STRASSE", "Straße"]
+    assert warning == ""
+    assert "sprites_count:{'name': 'STRASSE', 'n': 0}" in template
+    assert "sprites_count:{'name': 'Straße', 'n': 0}" in template
+
+
 def test_template_generator_handles_character_with_null_sprites(monkeypatch) -> None:
     character = SimpleNamespace(
         name="Alice",

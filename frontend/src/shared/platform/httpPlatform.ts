@@ -64,6 +64,7 @@ import type {
   SystemConfig,
   TaskProgressOptions,
   TaskSnapshot,
+  TemplateGenerationResult,
   TemplateLaunchSession,
   TemplateSummary,
   TtsBundleDownloadResult,
@@ -1227,7 +1228,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
     },
     templates: {
       generate: (input) =>
-        requestJson<TemplateSummary>(apiBase, "/api/templates/generate", {
+        requestJson<TemplateGenerationResult>(apiBase, "/api/templates/generate", {
           body: JSON.stringify(input),
           method: "POST",
         }),

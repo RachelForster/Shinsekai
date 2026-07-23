@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
-from llm.template_generator import json_format_reminder
+from llm.template_generator import json_format_reminder, no_valid_characters_message
 
 from .state import BridgeState
 from .security import safe_child_path, safe_filename
@@ -241,6 +241,10 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
     selected = payload.get("characters") or []
     if not isinstance(selected, list):
         raise ValueError("characters must be a list")
+    resolved_characters = state.template_generator.resolve_chat_template_characters(selected)
+    resolved_names = [name for name, _character in resolved_characters]
+    if not resolved_names:
+        raise ValueError(no_valid_characters_message())
     background = str(payload.get("backgroundName") or "")
     voice_language = str(payload.get("voiceLanguage") or "").strip()
     if voice_language:
@@ -251,7 +255,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
     max_speech_chars = max(0, int(payload.get("maxSpeechChars") or 0))
     max_dialog_items = max(0, int(payload.get("maxDialogItems") or 0))
     content, result = state.template_generator.generate_chat_template(
-        selected,
+        resolved_names,
         background,
         bool(payload.get("useEffect", True)),
         bool(payload.get("useCg", False)),
@@ -274,6 +278,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         "scenario": scenario,
         "system": content,
         "updatedAt": "",
+        "resolvedCharacters": resolved_names,
     }
     row["generationMessage"] = result
     return row
