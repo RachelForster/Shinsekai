@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping, Protocol
 
+from ai.vision.fallback_registry import active_vision_fallback
 from ai.vision.message_content import local_image_block
 from ai.vision.moondream_adapter import MoondreamPluginUnavailable, installed_moondream_directory
 from ai.vision.vision_manager import VisionManager
@@ -26,9 +28,34 @@ class PreparedChatInput:
     mode: str
 
 
-VisionManagerFactory = Callable[[], VisionManager]
+class VisionDescriber(Protocol):
+    def describe(self, image_bytes: bytes, prompt: str) -> str: ...
+
+
+VisionManagerFactory = Callable[[], VisionDescriber]
 FileReader = Callable[[str], Mapping[str, Any]]
 FallbackAvailability = Callable[[], bool]
+
+
+def _default_fallback_factory() -> VisionDescriber:
+    """Prefer a plugin-registered vision fallback, else the local Moondream plugin."""
+    preferred = active_vision_fallback()
+    if preferred is not None:
+        return preferred.factory()
+    return VisionManager("moondream")
+
+
+def _default_fallback_available() -> bool:
+    """Report whether any built-in fallback (plugin-preferred or Moondream) can run."""
+    if active_vision_fallback() is not None:
+        return True
+    if installed_moondream_directory() is None:
+        return False
+    # The built-in Moondream fallback needs PyTorch at runtime. If it is not
+    # importable, describe() would crash the chat turn, so report it unavailable
+    # and let the caller show the graceful "install a vision plugin / switch
+    # model" guidance instead of leaking a raw missing-module error.
+    return importlib.util.find_spec("torch") is not None
 
 
 class ChatVisionService:
@@ -41,9 +68,9 @@ class ChatVisionService:
         fallback_available: FallbackAvailability | None = None,
         file_reader: FileReader | None = None,
     ) -> None:
-        self._fallback_factory = fallback_factory or (lambda: VisionManager("moondream"))
+        self._fallback_factory = fallback_factory or _default_fallback_factory
         self._fallback_available = fallback_available or (
-            (lambda: installed_moondream_directory() is not None)
+            _default_fallback_available
             if fallback_factory is None
             else (lambda: True)
         )
@@ -63,9 +90,10 @@ class ChatVisionService:
         names = ", ".join(image.name for image in images)
         prompt_parts.append(
             "Image attachments could not be inspected. The current language model does not support "
-            "native image input, and the optional local Moondream fallback is not installed or available. "
-            f"Uninspected attachments: {names}. Explain this limitation to the user and ask them to install "
-            "or enable Moondream, switch to a vision-capable model, or describe the images in text."
+            "native image input, and no vision fallback is currently available. "
+            f"Uninspected attachments: {names}. Explain this to the user and offer these options: "
+            "install or enable a vision fallback plugin (for example local Moondream), "
+            "switch to a vision-capable model, or describe the images in text."
         )
         return PreparedChatInput(
             content="\n\n".join(prompt_parts),
@@ -133,15 +161,17 @@ class ChatVisionService:
 
         try:
             fallback = self._fallback_factory()
-        except MoondreamPluginUnavailable:
+            descriptions: list[str] = []
+            for image in images:
+                description = fallback.describe(image.path.read_bytes(), DEFAULT_IMAGE_PROMPT).strip()
+                descriptions.append(f"Image attachment {image.name}:\n{description or '[No description returned]'}")
+        except (MoondreamPluginUnavailable, ImportError):
+            # Fallback plugin present but not runnable (e.g. missing torch): degrade
+            # to the guidance prompt instead of crashing the chat turn.
             return self._fallback_unavailable_input(prompt_parts, images, display_text)
-        descriptions: list[str] = []
-        for image in images:
-            description = fallback.describe(image.path.read_bytes(), DEFAULT_IMAGE_PROMPT).strip()
-            descriptions.append(f"Image attachment {image.name}:\n{description or '[No description returned]'}")
         prompt_parts.append("\n\n".join(descriptions))
         return PreparedChatInput(
             content="\n\n".join(prompt_parts),
             display_text=display_text,
-            mode="moondream",
+            mode="fallback",
         )

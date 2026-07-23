@@ -54,7 +54,7 @@ def test_chat_vision_service_falls_back_to_moondream_for_text_only_adapter(tmp_p
 
     prepared = ChatVisionService(lambda: fallback).prepare("Explain", [image], adapter=_TextAdapter())
 
-    assert prepared.mode == "moondream"
+    assert prepared.mode == "fallback"
     assert "a moon over a quiet lake" in prepared.content
     assert fallback.calls[0][0] == b"image-bytes"
 
@@ -156,6 +156,23 @@ def test_unknown_vision_capability_defaults_to_safe_unavailable_fallback(tmp_pat
 def test_missing_default_moondream_plugin_returns_recoverable_prompt(tmp_path: Path, monkeypatch):
     image = _image_attachment(tmp_path)
     monkeypatch.setattr("ai.vision.service.installed_moondream_directory", lambda: None)
+
+    prepared = ChatVisionService().prepare("Inspect", [image], adapter=_TextAdapter())
+
+    assert prepared.mode == "unavailable"
+    assert "switch to a vision-capable model" in prepared.content
+
+
+def test_installed_moondream_without_torch_returns_recoverable_prompt(tmp_path: Path, monkeypatch):
+    image = _image_attachment(tmp_path)
+    # Moondream plugin directory is present, but its PyTorch runtime dependency is
+    # not importable: report it unavailable so the user gets the guidance prompt
+    # instead of a raw missing-module crash.
+    monkeypatch.setattr("ai.vision.service.installed_moondream_directory", lambda: tmp_path)
+    monkeypatch.setattr(
+        "ai.vision.service.importlib.util.find_spec",
+        lambda name: None if name == "torch" else object(),
+    )
 
     prepared = ChatVisionService().prepare("Inspect", [image], adapter=_TextAdapter())
 

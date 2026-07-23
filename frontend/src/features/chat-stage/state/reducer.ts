@@ -1,3 +1,4 @@
+import { mergeChatAttachmentInputs } from "../attachments";
 import { applyStageEvent } from "./events";
 import { clearTransientNotificationState, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
@@ -83,8 +84,15 @@ function submitUserMessageState(
     text,
   };
   if (queued) {
+    // Batch/queued submissions must still show the user's own message instead of
+    // leaving the previous turn's reply on screen (which reads as the dialogue
+    // "rolling back" to the last message). Present it like a normal submission; the
+    // batch flush timing is handled by the command layer, not the presentation.
     return withResolvedLayers({
       ...clearTransientNotificationState(state),
+      characterName: normalizedUserDisplayName(state.userDisplayName),
+      dialogHtml: undefined,
+      dialogText: text,
       inputAttachments: [],
       inputDraft: "",
       optimisticSubmission,
@@ -175,6 +183,14 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       return withResolvedLayers({
         ...state,
         historyEntries: action.historyEntries.map((entry) => ({ ...entry })),
+      });
+    case "addAttachments":
+      return withResolvedLayers({
+        ...state,
+        inputAttachments: mergeChatAttachmentInputs(state.inputAttachments, action.attachments),
+        optimisticSubmission: state.optimisticSubmission
+          ? { ...state.optimisticSubmission, attachmentsEditedAfterSubmission: true }
+          : undefined,
       });
     case "setAttachments":
       return withResolvedLayers({

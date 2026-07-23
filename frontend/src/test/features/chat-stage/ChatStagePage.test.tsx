@@ -10,7 +10,13 @@ import {
   effectiveChatStageTextStyle,
 } from "../../../features/chat-stage/runtimeConfig";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
-import type { ChatCommand, ChatHistoryEntry, ChatSnapshot, ChatStageEvent } from "../../../shared/platform/types";
+import type {
+  ChatAttachmentInput,
+  ChatCommand,
+  ChatHistoryEntry,
+  ChatSnapshot,
+  ChatStageEvent,
+} from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
 
 const mocks = {
@@ -22,6 +28,7 @@ const mocks = {
   getChatTheme: vi.fn(),
   sendChatCommand: vi.fn(),
   subscribeChatEvents: vi.fn(),
+  uploadChatAttachments: vi.fn(),
 };
 
 const themeContextMocks = vi.hoisted(() => ({
@@ -38,6 +45,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   getChatTheme: () => mocks.getChatTheme(),
   sendChatCommand: (command: ChatCommand) => mocks.sendChatCommand(command),
   subscribeChatEvents: (listener: (event: ChatStageEvent) => void) => mocks.subscribeChatEvents(listener),
+  uploadChatAttachments: (files: File[]) => mocks.uploadChatAttachments(files),
 }));
 
 vi.mock("../../../entities/config/repository", () => ({
@@ -65,6 +73,7 @@ const desktopApiMocks = vi.hoisted(() => ({
   getDesktopWindowCursorPosition: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn(),
+  setDesktopWindowAlwaysOnTop: vi.fn(),
   setDesktopWindowClickThrough: vi.fn(),
   startDesktopWindowDrag: vi.fn(),
   startDesktopWindowResize: vi.fn(),
@@ -85,6 +94,7 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
     getDesktopWindowCursorPosition: () => desktopApiMocks.getDesktopWindowCursorPosition(),
     isTauriDesktop: () => desktopApiMocks.isTauriDesktop(),
     minimizeDesktopWindow: () => desktopApiMocks.minimizeDesktopWindow(),
+    setDesktopWindowAlwaysOnTop: (alwaysOnTop: boolean) => desktopApiMocks.setDesktopWindowAlwaysOnTop(alwaysOnTop),
     setDesktopWindowClickThrough: (ignore: boolean) => desktopApiMocks.setDesktopWindowClickThrough(ignore),
     startDesktopWindowDrag: () => desktopApiMocks.startDesktopWindowDrag(),
     startDesktopWindowResize: (direction: string) => desktopApiMocks.startDesktopWindowResize(direction),
@@ -171,6 +181,7 @@ describe("ChatStagePage", () => {
     desktopApiMocks.isTauriDesktop.mockReturnValue(false);
     desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: 0, y: 0 });
     desktopApiMocks.minimizeDesktopWindow.mockResolvedValue(undefined);
+    desktopApiMocks.setDesktopWindowAlwaysOnTop.mockResolvedValue(undefined);
     desktopApiMocks.setDesktopWindowClickThrough.mockResolvedValue(undefined);
     mocks.sendChatCommand.mockImplementation(async (command: ChatCommand) =>
       snapshot({
@@ -182,6 +193,8 @@ describe("ChatStagePage", () => {
           : {}),
       }),
     );
+    mocks.uploadChatAttachments.mockReset();
+    mocks.uploadChatAttachments.mockResolvedValue({ attachments: [] });
     desktopApiMocks.startDesktopWindowDrag.mockResolvedValue(undefined);
     desktopApiMocks.startDesktopWindowResize.mockResolvedValue(undefined);
     mocks.subscribeChatEvents.mockReturnValue(vi.fn());
@@ -209,6 +222,40 @@ describe("ChatStagePage", () => {
         type: "submit-option",
       }),
     );
+  });
+
+  it("focuses the first option and submits the focused choice with Enter", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut", "Stay on the road"] }));
+    renderPage();
+
+    const firstOption = await screen.findByRole("button", { name: "Take the shortcut" });
+    expect(screen.getByRole("list", { name: "Dialogue choices" })).toContainElement(firstOption);
+    expect(firstOption).toHaveFocus();
+
+    fireEvent.keyDown(firstOption, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: "Take the shortcut",
+        type: "submit-option",
+      }),
+    );
+  });
+
+  it("exposes notifications as status updates and softens them over sprites", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        characterName: "",
+        dialogText: "",
+        notificationText: "Session paused",
+      }),
+    );
+    renderPage();
+
+    const notification = await screen.findByRole("status");
+    expect(notification).toHaveClass("chat-stage__notification");
+    expect(notification).toHaveAttribute("data-sprites-visible", "true");
+    expect(notification).toHaveTextContent("Session paused");
   });
 
   it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {
@@ -1081,6 +1128,58 @@ describe("ChatStagePage", () => {
     );
   });
 
+  it("merges mixed browser drops in one atomic attachment update", async () => {
+    const image = new File(["image"], "scene.png", { type: "image/png" });
+    const documentFile = new File(["notes"], "notes.txt", { type: "text/plain" });
+    mocks.uploadChatAttachments.mockResolvedValueOnce({
+      attachments: [
+        { kind: "image", name: "scene.png", path: "D:/staged/scene.png" },
+        { kind: "file", name: "notes.txt", path: "D:/staged/notes.txt" },
+      ],
+    });
+
+    renderPage();
+    await screen.findByText("Ready");
+    fireEvent.drop(document.querySelector(".input-layer")!, {
+      dataTransfer: { files: [image, documentFile], types: ["Files"] },
+    });
+
+    expect(await screen.findByRole("button", { name: "Remove attachment scene.png" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Remove attachment notes.txt" })).toBeInTheDocument();
+    expect(mocks.uploadChatAttachments).toHaveBeenCalledWith([image, documentFile]);
+  });
+
+  it("does not restore a removed attachment when an earlier drop finishes later", async () => {
+    const first = new File(["first"], "first.txt", { type: "text/plain" });
+    const second = new File(["second"], "second.png", { type: "image/png" });
+    let resolveSecondUpload: (value: { attachments: ChatAttachmentInput[] }) => void = () => undefined;
+    const secondUpload = new Promise<{ attachments: ChatAttachmentInput[] }>((resolve) => {
+      resolveSecondUpload = resolve;
+    });
+    mocks.uploadChatAttachments
+      .mockResolvedValueOnce({
+        attachments: [{ kind: "file", name: "first.txt", path: "D:/staged/first.txt" }],
+      })
+      .mockReturnValueOnce(secondUpload);
+
+    renderPage();
+    await screen.findByText("Ready");
+    const inputLayer = document.querySelector(".input-layer")!;
+    fireEvent.drop(inputLayer, { dataTransfer: { files: [first], types: ["Files"] } });
+    const removeFirst = await screen.findByRole("button", { name: "Remove attachment first.txt" });
+
+    fireEvent.drop(inputLayer, { dataTransfer: { files: [second], types: ["Files"] } });
+    fireEvent.click(removeFirst);
+    expect(screen.queryByRole("button", { name: "Remove attachment first.txt" })).not.toBeInTheDocument();
+
+    resolveSecondUpload({
+      attachments: [{ kind: "image", name: "second.png", path: "D:/staged/second.png" }],
+    });
+
+    expect(await screen.findByRole("button", { name: "Remove attachment second.png" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove attachment first.txt" })).not.toBeInTheDocument();
+  });
+
   it("lets the configured backend report ASR availability instead of probing Vosk in the frontend", async () => {
     mocks.browseFiles.mockResolvedValueOnce({
       cwd: "D:/models/vosk",
@@ -1233,9 +1332,11 @@ describe("ChatStagePage", () => {
     });
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
       config: {
+        alwaysOnTop: true,
         auto: false,
         autoHideInput: true,
         autoHideTopTools: true,
+        bgmVolume: 1,
         configThemeColor: "#88cc44",
         configUseMainThemeColor: false,
         dialogText: {
@@ -1268,8 +1369,8 @@ describe("ChatStagePage", () => {
           fontSize: 19,
         },
         spriteScales: {
-          mio: 1.35,
-          ren: 0.8,
+          Mio: 1.35,
+          Ren: 0.8,
         },
         spriteOffsetX: 72,
         spriteOffsetY: -48,
@@ -1569,8 +1670,8 @@ describe("ChatStagePage", () => {
         dialogOpacity: 0.65,
         dialogScale: 1.1,
         spriteScales: {
-          mio: 1.4,
-          ren: 0.75,
+          Mio: 1.4,
+          Ren: 0.75,
         },
         spriteOffsetX: 36,
         spriteOffsetY: -24,
@@ -1695,11 +1796,14 @@ describe("ChatStagePage", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Conversation history" });
     await waitFor(() => expect(within(dialog).getByText("120 / 130 shown")).toBeInTheDocument());
-    expect(within(dialog).queryByText("target ending")).not.toBeInTheDocument();
+    // The dialog opens on the newest messages, so the latest entry is visible and
+    // the oldest entries are batched out of view until "show more".
+    expect(within(dialog).getByText("target ending")).toBeInTheDocument();
+    expect(within(dialog).queryByText("filler 0")).not.toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Show 10 more" }));
     expect(within(dialog).getByText("130 / 130 shown")).toBeInTheDocument();
-    expect(within(dialog).getByText("target ending")).toBeInTheDocument();
+    expect(within(dialog).getByText("filler 0")).toBeInTheDocument();
 
     fireEvent.change(within(dialog).getByRole("searchbox", { name: "Search history" }), {
       target: { value: "target" },

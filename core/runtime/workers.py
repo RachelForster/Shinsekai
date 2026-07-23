@@ -188,6 +188,7 @@ class LLMWorker(QThreadDagNode):
                 with tracker.track("LLM chat total"):
                     chat_kwargs = {
                         "stream": is_streaming,
+                        "dialog_output_required": True,
                         "user_input_text": message.text,
                         "user_attachments": [attachment.to_payload() for attachment in attachments],
                     }
@@ -250,6 +251,16 @@ class LLMWorker(QThreadDagNode):
                         _msg += "\n" + parser.last_error
                     elif parser.unparsed_remainder:
                         _msg += "\n" + tr("desktop.llm_parse_remainder", text=parser.unparsed_remainder)
+                    logger.error(
+                        "LLM response contained no valid dialogue messages",
+                        extra={
+                            "event": "llm.dialog_format.invalid",
+                            "parse_failures": parser.parse_failures,
+                            "raw_chars": len(parser.accumulated_text),
+                            "raw_preview": parser.accumulated_text[:500],
+                            "unparsed_remainder": parser.unparsed_remainder,
+                        },
+                    )
                     self.ui_update_manager.post_busy_bar(_msg, 0.0)
                     from sdk.messages import TTSOutputMessage
                     get_app_runtime().audio_path_queue.put(TTSOutputMessage(

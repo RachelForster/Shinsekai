@@ -22,6 +22,11 @@ interface TaskProgressSnapshot {
 }
 
 interface TaskProgressProps {
+  labels?: {
+    message?: string;
+    phase?: string;
+    status?: string;
+  };
   logLimit?: number;
   task: TaskProgressSnapshot | null;
 }
@@ -106,7 +111,7 @@ function compactSha(value: string | undefined) {
   return sha.length > 16 ? `${sha.slice(0, 12)}...` : sha;
 }
 
-export function TaskProgress({ logLimit = 6, task }: TaskProgressProps) {
+export function TaskProgress({ labels, logLimit = 6, task }: TaskProgressProps) {
   if (!task) {
     return null;
   }
@@ -119,8 +124,9 @@ export function TaskProgress({ logLimit = 6, task }: TaskProgressProps) {
   const logs = logLimit > 0 ? (task.logs ?? []).slice(-logLimit) : [];
   const notice = task.notice || (task.status === "failed" ? task.errorUserMessage : "");
   const noticeKind = task.noticeKind || (task.status === "failed" ? "error" : "info");
-  const message = task.message || task.status;
-  const showMessage = message !== notice;
+  const displayPhase = labels?.phase ?? phaseLabels[task.phase] ?? task.phase;
+  const message = labels?.message ?? task.message ?? labels?.status ?? task.status;
+  const showMessage = message !== notice && message !== displayPhase;
   const sourceLabel = task.installSourceLabel || statusLabel(task.installSource, installSourceLabels);
   const packageLabel = statusLabel(task.packageStatus, packageStatusLabels);
   const dependencyLabel = statusLabel(task.dependencyInstallStatus, dependencyStatusLabels);
@@ -137,8 +143,12 @@ export function TaskProgress({ logLimit = 6, task }: TaskProgressProps) {
   return (
     <div className="task-progress" role="status" aria-live="polite">
       <div className="task-progress__meta">
-        <strong>{phaseLabels[task.phase] ?? task.phase}</strong>
-        <span>{[itemProgress, percent == null ? task.status : `${percent}%`].filter(Boolean).join(" · ")}</span>
+        {displayPhase ? <strong>{displayPhase}</strong> : null}
+        <span>
+          {[itemProgress, percent == null ? (labels?.status ?? task.status) : `${percent}%`]
+            .filter(Boolean)
+            .join(" · ")}
+        </span>
       </div>
       {percent == null ? null : (
         <div className="task-progress__track" aria-hidden>

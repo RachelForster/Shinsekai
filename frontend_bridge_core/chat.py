@@ -449,7 +449,7 @@ def _launch_chat(
         env["SHINSEKAI_PROJECT_ROOT"] = str(project_root)
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
-        attachment_root = os.environ.get(CHAT_ATTACHMENTS_ROOT_ENV, "").strip() or str(app_root)
+        attachment_root = os.environ.get(CHAT_ATTACHMENTS_ROOT_ENV, "").strip() or str(project_root)
         os.environ.setdefault(CHAT_ATTACHMENTS_ROOT_ENV, attachment_root)
         env[CHAT_ATTACHMENTS_ROOT_ENV] = attachment_root
         env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"

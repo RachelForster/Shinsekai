@@ -327,6 +327,27 @@ describe("chatStageReducer", () => {
     expect(staleSnapshot.historyEntries).toEqual([{ id: "user-1", role: "user", text: "Aoi: hello" }]);
   });
 
+  it("shows the user's own message on a queued (batch) submission", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "previous reply",
+        eventSeq: 3,
+        options: ["Left", "Right"],
+        userDisplayName: "Aoi",
+      },
+      { queued: true, source: "send-message", text: "my message", type: "submitUserMessage" },
+    );
+
+    // Batch mode must not leave the previous turn's reply on screen — the user's
+    // own message should be shown just like a non-batched submission.
+    expect(submitted.dialogText).toBe("my message");
+    expect(submitted.characterName).toBe("Aoi");
+    expect(submitted.options).toEqual([]);
+    expect(submitted.optimisticSubmission?.text).toBe("my message");
+  });
+
   it("accepts a newer wrapped snapshot when its payload omits eventSeq", () => {
     const submitted = chatStageReducer(
       {

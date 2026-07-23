@@ -64,7 +64,10 @@ describe("chat stage immersive styles", () => {
     expect(layerBlock).toContain("background: transparent;");
     expect(layerBlock).toContain("box-shadow: none;");
     expect(layerBlock).toContain("backdrop-filter: none;");
-    expect(buttonBlock).toContain("backdrop-filter: blur(18px) saturate(1.16);");
+    // The option button intentionally has no backdrop-filter blur: filtering a
+    // subtree whose ancestor animates in makes Chromium/Edge flash a bright bar for
+    // a frame. (The rule's comment still mentions the word, so assert on the value.)
+    expect(buttonBlock).not.toContain("backdrop-filter: blur");
     expect(buttonBlock).toContain("transform: none;");
     expect(optionsLayerCss).toContain(".options-layer__item:has(.options-layer__button:hover:not(:disabled))");
     expect(optionsLayerCss).toContain("@keyframes chat-option-enter");

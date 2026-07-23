@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   type CSSProperties,
+  type KeyboardEvent,
   type MouseEvent,
   type MouseEventHandler,
   type ReactNode,
@@ -28,10 +29,12 @@ function closestDialogInteractiveElement(target: EventTarget | null) {
 
 export function BackgroundLayer({
   hidden,
+  onDragStart,
   path,
   transparent,
 }: {
   hidden: boolean;
+  onDragStart?: MouseEventHandler<HTMLElement>;
   path?: string;
   transparent: boolean;
 }) {
@@ -40,8 +43,11 @@ export function BackgroundLayer({
     <div
       aria-hidden={hidden}
       className={layerClassName("chat-stage__background", hidden)}
+      data-chat-stage-hitbox={onDragStart ? "true" : undefined}
+      data-draggable={onDragStart ? "true" : "false"}
       data-transparent={transparent ? "true" : "false"}
       hidden={hidden}
+      onMouseDown={onDragStart}
     >
       {transparent ? null : <div aria-hidden className="chat-stage__fallback" />}
       {src ? <img alt="" onError={hideBrokenStageAsset} src={src} /> : null}
@@ -49,9 +55,16 @@ export function BackgroundLayer({
   );
 }
 
-export function BgmLayer({ path }: { path?: string }) {
+export function BgmLayer({ path, volume = 1 }: { path?: string; volume?: number }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const src = stageAssetUrl(path);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (audio) {
+      audio.volume = Math.min(1, Math.max(0, volume));
+    }
+  }, [volume, src]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -195,6 +208,16 @@ export function DialogLayer({
   };
   const renderedDirection = textDirection === "rtl" ? "ltr" : textDirection;
 
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    // Keep the newest content in view: follow the typewriter reveal and the
+    // growing batched-input preview by pinning the dialogue box to the bottom.
+    const body = bodyRef.current;
+    if (body) {
+      body.scrollTop = body.scrollHeight;
+    }
+  }, [htmlNodes, text]);
+
   return (
     <section
       aria-hidden={hidden}
@@ -214,14 +237,14 @@ export function DialogLayer({
         </p>
       ) : null}
       {htmlNodes !== undefined ? (
-        <div className="dialog-layer__body">
+        <div className="dialog-layer__body" ref={bodyRef}>
           <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
             <div className="dialog-layer__html">{renderDialogHtmlNodes(htmlNodes)}</div>
             {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
           </div>
         </div>
       ) : (
-        <div className="dialog-layer__body">
+        <div className="dialog-layer__body" ref={bodyRef}>
           <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
             {text}
             {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
@@ -304,6 +327,7 @@ export function OptionsLayer({
   onSelect: (option: string) => void;
   options: string[];
 }) {
+  const { t } = useI18n();
   if (hidden || !options.length) {
     return null;
   }
@@ -314,11 +338,23 @@ export function OptionsLayer({
       data-chat-stage-hitbox="true"
       hidden={hidden}
     >
-      <div className="options-layer__scroll">
-        {options.map((option) => (
-          <div className="options-layer__item" key={option}>
+      <div aria-label={t("chat.options.label")} className="options-layer__scroll" role="list">
+        {options.map((option, index) => (
+          <div className="options-layer__item" key={option} role="listitem">
             <ThemeFrame prefix="chat-option" />
-            <Button className="options-layer__button" onClick={() => onSelect(option)}>
+            <Button
+              autoFocus={index === 0}
+              className="options-layer__button"
+              onClick={() => onSelect(option)}
+              onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+                if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+                  return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                onSelect(option);
+              }}
+            >
               {option}
             </Button>
           </div>
@@ -345,7 +381,15 @@ export function BusyLayer({ hidden, text }: { hidden: boolean; text?: string }) 
   );
 }
 
-export function NotificationLayer({ hidden, text }: { hidden: boolean; text?: string }) {
+export function NotificationLayer({
+  hidden,
+  spritesVisible,
+  text,
+}: {
+  hidden: boolean;
+  spritesVisible: boolean;
+  text?: string;
+}) {
   if (hidden || !text) {
     return null;
   }
@@ -354,7 +398,9 @@ export function NotificationLayer({ hidden, text }: { hidden: boolean; text?: st
       aria-hidden={hidden}
       className={layerClassName("chat-stage__notification", hidden)}
       data-chat-stage-hitbox="true"
+      data-sprites-visible={spritesVisible ? "true" : "false"}
       hidden={hidden}
+      role="status"
     >
       {text}
     </div>

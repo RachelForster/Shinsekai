@@ -1,12 +1,5 @@
-from __future__ import annotations
+"""Backward-compatible import for the public SDK vision adapter contract."""
 
-from abc import ABC, abstractmethod
+from sdk.adapters.vision import VisionAdapter
 
-
-class VisionAdapter(ABC):
-    """Provider-neutral interface for understanding a single image."""
-
-    @abstractmethod
-    def describe(self, image_bytes: bytes, prompt: str) -> str:
-        """Return a textual answer for ``prompt`` about ``image_bytes``."""
-
+__all__ = ["VisionAdapter"]

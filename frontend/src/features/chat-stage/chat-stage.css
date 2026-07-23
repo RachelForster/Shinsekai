@@ -11,3 +11,10 @@
 @import "./styles/modal-shell.css";
 @import "./styles/responsive.css";
 @import "./styles/animations.css";
+
+/* 拖拽图片到输入区时的高亮反馈 */
+.input-layer[data-drag-active="true"] {
+  outline: 2px dashed #38bdf8;
+  outline-offset: 6px;
+  border-radius: 14px;
+}

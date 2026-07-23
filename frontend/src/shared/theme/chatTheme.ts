@@ -518,7 +518,11 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-sheen"] = "none";
   }
   if (typeof dialog?.nameInputGapVh === "number") {
-    setVhVar(style, "--chat-dialog-name-input-gap", dialog.nameInputGapVh, 12, 32);
+    // Bound the viewport-height gap with a pixel ceiling so the dialogue box does
+    // not drift far above the input bar on tall / maximized windows (the gap used
+    // to grow unbounded with svh, which read fine when windowed but far too large
+    // when maximized).
+    setVhClampVar(style, "--chat-dialog-name-input-gap", dialog.nameInputGapVh, 12, 32, 84, 180);
     style["--chat-dialog-stack-bottom"] =
       "calc(var(--stage-control-stack-height) + var(--chat-dialog-name-input-gap) - var(--chat-dialog-height) - var(--chat-name-line-offset) - var(--chat-dialog-offset-y))";
   }

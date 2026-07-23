@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { DownloadCloud } from "lucide-react";
 
+import { installMissingRuntimeDependency } from "../../entities/chat/repository";
 import { getMemoryStatus } from "../../entities/config/repository";
 import type { ApiConfig } from "../../entities/config/types";
+import { downloadModelAsset } from "../../entities/model-assets/repository";
 import { useI18n } from "../../shared/i18n";
 import type { Mem0Status, TaskSnapshot } from "../../shared/platform/types";
-import { AsyncButton, ModelDownloadDialog, NumberInput, Switch, TaskProgress, useToast } from "../../shared/ui";
+import { AsyncButton, NumberInput, Switch, TaskProgress, useToast } from "../../shared/ui";
 import { clampInt } from "./apiSettingsUtils";
 
 interface MemorySettingsSectionProps {
@@ -15,23 +17,82 @@ interface MemorySettingsSectionProps {
   onChange: (draft: ApiConfig) => void;
 }
 
+const MEMORY_EMBEDDING_ASSET = { assetId: "memory.embedding" } as const;
+const HUGGINGFACE_HUB_MODULE = "huggingface_hub";
+const HUGGINGFACE_HUB_PACKAGE = "huggingface-hub";
+
+function dependencyPackageLabel(packageName: string | undefined, fallback: string) {
+  const label = String(packageName || "")
+    .replace(/(?:\[|[<>=!~]).*$/, "")
+    .trim();
+  return label || fallback;
+}
+
 function memoryStatusLabel(status: Mem0Status | null, t: ReturnType<typeof useI18n>["t"]) {
   if (!status) {
     return t("api.memory.statusUnknown");
   }
-  if (status.status === "ready") {
-    return status.modelCached ? t("api.memory.readyCached") : t("api.memory.ready");
+  if (status.status === "missing_dependency") {
+    return t("api.memory.missingDependency", { packageName: status.packageName || "mem0ai" });
   }
-  if (status.status === "not_started") {
-    return status.modelCached ? t("api.memory.cachedNotLoaded") : t("api.memory.modelMissingKeepOff");
+  if (status.status === "error") {
+    return t("api.memory.error");
+  }
+  if (status.status === "ready") {
+    return t("api.memory.setupReady");
   }
   if (status.status === "loading") {
     return status.modelCached ? t("api.memory.loadingCached") : t("api.memory.downloading");
   }
-  if (status.status === "missing_dependency") {
-    return t("api.memory.missingDependency");
+  return status.modelCached ? t("api.memory.setupReady") : t("api.memory.setupModelMissing");
+}
+
+function memoryActionLabel(status: Mem0Status | null, t: ReturnType<typeof useI18n>["t"]) {
+  if (!status) {
+    return t("api.memory.checkModel");
   }
-  return status.message || status.task?.errorUserMessage || t("api.memory.error");
+  if (status.status === "missing_dependency") {
+    return t("api.memory.installDependency");
+  }
+  if (status.status === "error" || status.status === "loading" || status.modelCached) {
+    return t("api.memory.recheckModel");
+  }
+  return t("api.memory.downloadModel");
+}
+
+function memoryTaskLabels(task: TaskSnapshot, t: ReturnType<typeof useI18n>["t"], dependencyPackage = "mem0ai") {
+  const phase =
+    task.phase === "pip"
+      ? t("api.memory.installingDependency", { packageName: dependencyPackage })
+      : task.phase === "queued"
+        ? t("api.memory.taskInProgress")
+        : task.phase === "download"
+          ? t("api.memory.downloading")
+          : task.phase === "verify"
+            ? t("api.memory.taskVerifying")
+            : task.phase === "completed"
+              ? t("api.memory.modelCached")
+              : task.phase === "failed"
+                ? t("api.memory.modelDownloadFailed")
+                : undefined;
+  const status =
+    task.status === "running"
+      ? t("api.memory.taskInProgress")
+      : task.status === "succeeded"
+        ? t("api.memory.modelCached")
+        : task.status === "failed"
+          ? t("api.memory.modelDownloadFailed")
+          : undefined;
+  return { phase, status };
+}
+
+function memoryBusyLabel(task: TaskSnapshot | null, t: ReturnType<typeof useI18n>["t"], dependencyPackage?: string) {
+  if (!task) {
+    return dependencyPackage
+      ? t("api.memory.installingDependency", { packageName: dependencyPackage })
+      : t("api.memory.checking");
+  }
+  return memoryTaskLabels(task, t, dependencyPackage).phase || t("api.memory.checking");
 }
 
 export function MemorySettingsSection({ disabled = false, draft, id, onChange }: MemorySettingsSectionProps) {
@@ -40,140 +101,193 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
   const [status, setStatus] = useState<Mem0Status | null>(null);
   const [task, setTask] = useState<TaskSnapshot | null>(null);
   const [checking, setChecking] = useState(false);
-  const [enableChecking, setEnableChecking] = useState(false);
-  const [modelDownloadPromptOpen, setModelDownloadPromptOpen] = useState(false);
-  const pollTokenRef = useRef(0);
+  const [checkingEnable, setCheckingEnable] = useState(false);
+  const [installingDependencyPackage, setInstallingDependencyPackage] = useState<string>();
+  const operationInFlightRef = useRef(false);
+  const operationTokenRef = useRef(0);
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
-  useEffect(
-    () => () => {
-      pollTokenRef.current += 1;
-    },
-    [],
-  );
+  useEffect(() => {
+    const token = operationTokenRef.current + 1;
+    operationTokenRef.current = token;
+    void getMemoryStatus({ startLoading: false })
+      .then((next) => {
+        if (operationTokenRef.current === token) {
+          setStatus(next);
+          setTask(next.task ?? null);
+        }
+      })
+      .catch(() => {
+        // Keep the neutral "not checked" state when the passive cache read fails.
+      });
+    return () => {
+      operationTokenRef.current += 1;
+    };
+  }, []);
 
   const patch = (changes: Partial<ApiConfig>) => onChange({ ...draftRef.current, ...changes });
 
-  const checkMemoryStatus = async ({
-    enableWhenReady = false,
-  }: { enableWhenReady?: boolean } = {}): Promise<Mem0Status | null> => {
-    const token = pollTokenRef.current + 1;
-    pollTokenRef.current = token;
-    setChecking(true);
-    if (enableWhenReady) {
-      setEnableChecking(true);
-    }
-    try {
-      let next = await getMemoryStatus({ startLoading: true });
-      while (pollTokenRef.current === token) {
-        setStatus(next);
-        setTask(next.task ?? null);
-        if (next.status !== "loading" && next.status !== "not_started") {
-          break;
-        }
-        await new Promise((resolve) =>
-          setTimeout(resolve, next.task?.phase === "download" ? 1000 : next.modelCached ? 2000 : 3000),
-        );
-        if (pollTokenRef.current !== token) {
-          return null;
-        }
-        next = await getMemoryStatus({ startLoading: true });
-      }
-      if (pollTokenRef.current !== token) {
-        return null;
-      }
-      if (next.status === "ready") {
-        if (enableWhenReady) {
-          patch({ memory_auto_enabled: true });
-          showToast({ kind: "success", title: t("api.memory.enableReady") });
-        } else {
-          showToast({ kind: "success", title: t("api.memory.ready") });
-        }
-      } else if (next.status === "missing_dependency" || next.status === "error") {
-        showToast({
-          kind: "error",
-          message: next.message || next.task?.errorUserMessage || t("api.memory.error"),
-          title: t("api.memory.title"),
-        });
-      }
-      return next;
-    } catch (error) {
-      if (pollTokenRef.current === token) {
-        showToast({
-          kind: "error",
-          message: error instanceof Error ? error.message : t("api.memory.error"),
-          title: t("api.memory.title"),
-        });
-      }
-      return null;
-    } finally {
-      if (pollTokenRef.current === token) {
-        setChecking(false);
-        if (enableWhenReady) {
-          setEnableChecking(false);
-        }
-      }
-    }
-  };
-
-  const handleEnabledChange = async (enabled: boolean) => {
+  const handleMemoryAutoChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const enabled = event.currentTarget.checked;
     if (!enabled) {
-      pollTokenRef.current += 1;
-      setModelDownloadPromptOpen(false);
       patch({ memory_auto_enabled: false });
       return;
     }
-    const token = pollTokenRef.current + 1;
-    pollTokenRef.current = token;
-    setEnableChecking(true);
+    if (operationInFlightRef.current) {
+      return;
+    }
+
+    operationInFlightRef.current = true;
+    const token = operationTokenRef.current + 1;
+    operationTokenRef.current = token;
+    setCheckingEnable(true);
     try {
       const next = await getMemoryStatus({ startLoading: false });
-      if (pollTokenRef.current !== token) {
+      if (operationTokenRef.current !== token) {
         return;
       }
       setStatus(next);
       setTask(next.task ?? null);
-      if (next.status === "missing_dependency" || next.status === "error") {
+
+      if (next.status === "error") {
+        showToast({ kind: "error", message: t("api.memory.error"), title: t("api.memory.title") });
+        return;
+      }
+      if (next.status === "missing_dependency" || !next.modelCached) {
         showToast({
-          kind: "error",
-          message: next.message || next.task?.errorUserMessage || t("api.memory.error"),
+          kind: "info",
+          message: t("api.memory.enableRequiresSetup"),
           title: t("api.memory.title"),
         });
         return;
       }
-      if (next.status === "ready") {
-        patch({ memory_auto_enabled: true });
-        showToast({ kind: "success", title: t("api.memory.enableReady") });
-        return;
-      }
-      if (next.status === "loading" || next.modelCached) {
-        await checkMemoryStatus({ enableWhenReady: true });
-        return;
-      }
-      setModelDownloadPromptOpen(true);
-    } catch (error) {
-      if (pollTokenRef.current === token) {
-        showToast({
-          kind: "error",
-          message: error instanceof Error ? error.message : t("api.memory.error"),
-          title: t("api.memory.title"),
-        });
+      patch({ memory_auto_enabled: true });
+    } catch {
+      if (operationTokenRef.current === token) {
+        showToast({ kind: "error", message: t("api.memory.error"), title: t("api.memory.title") });
       }
     } finally {
-      if (pollTokenRef.current === token) {
-        setEnableChecking(false);
+      operationInFlightRef.current = false;
+      if (operationTokenRef.current === token) {
+        setCheckingEnable(false);
       }
     }
   };
 
-  const cancelModelDownload = () => {
-    setModelDownloadPromptOpen(false);
-  };
+  const prepareMemory = async () => {
+    if (operationInFlightRef.current) {
+      return;
+    }
+    operationInFlightRef.current = true;
+    const token = operationTokenRef.current + 1;
+    operationTokenRef.current = token;
+    setChecking(true);
+    setTask(null);
+    try {
+      let next = await getMemoryStatus({ startLoading: false });
+      if (operationTokenRef.current !== token) {
+        return;
+      }
+      setStatus(next);
+      setTask(next.task ?? null);
 
-  const confirmModelDownload = async () => {
-    setModelDownloadPromptOpen(false);
-    await checkMemoryStatus({ enableWhenReady: true });
+      if (next.status === "missing_dependency") {
+        const missing = next;
+        setInstallingDependencyPackage(dependencyPackageLabel(missing.packageName, "mem0ai"));
+        await installMissingRuntimeDependency(
+          { moduleName: missing.moduleName?.trim() || "mem0" },
+          {
+            onTaskUpdate(nextTask) {
+              if (operationTokenRef.current === token) {
+                setTask(nextTask);
+              }
+            },
+          },
+        );
+        if (operationTokenRef.current !== token) {
+          return;
+        }
+        setTask(null);
+        setInstallingDependencyPackage(undefined);
+        next = await getMemoryStatus({ startLoading: false });
+        if (operationTokenRef.current !== token) {
+          return;
+        }
+        setStatus(next);
+        setTask(next.task ?? null);
+      }
+
+      if (next.status === "missing_dependency" || next.status === "error" || next.status === "loading") {
+        if (next.status !== "loading") {
+          showToast({
+            kind: "error",
+            message:
+              next.status === "missing_dependency"
+                ? t("api.memory.missingDependency", { packageName: next.packageName || "mem0ai" })
+                : t("api.memory.error"),
+            title: t("api.memory.title"),
+          });
+        }
+        return;
+      }
+      if (next.modelCached) {
+        return;
+      }
+
+      setInstallingDependencyPackage(HUGGINGFACE_HUB_PACKAGE);
+      await installMissingRuntimeDependency(
+        { moduleName: HUGGINGFACE_HUB_MODULE },
+        {
+          onTaskUpdate(nextTask) {
+            if (operationTokenRef.current === token) {
+              setTask(nextTask);
+            }
+          },
+        },
+      );
+      if (operationTokenRef.current !== token) {
+        return;
+      }
+      setTask(null);
+      setInstallingDependencyPackage(undefined);
+
+      const result = await downloadModelAsset(MEMORY_EMBEDDING_ASSET, {
+        onTaskUpdate(nextTask) {
+          if (operationTokenRef.current === token) {
+            setTask(nextTask);
+          }
+        },
+      });
+      if (operationTokenRef.current !== token) {
+        return;
+      }
+      setTask(null);
+      next = await getMemoryStatus({ startLoading: false });
+      if (operationTokenRef.current !== token) {
+        return;
+      }
+      const refreshed = { ...next, modelCached: Boolean(next.modelCached || result.cached) };
+      setStatus(refreshed);
+      if (!refreshed.modelCached) {
+        throw new Error(t("api.memory.modelDownloadFailed"));
+      }
+    } catch (error) {
+      if (operationTokenRef.current === token) {
+        setTask(null);
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("api.memory.modelDownloadFailed"),
+          title: t("api.memory.title"),
+        });
+      }
+    } finally {
+      operationInFlightRef.current = false;
+      if (operationTokenRef.current === token) {
+        setInstallingDependencyPackage(undefined);
+        setChecking(false);
+      }
+    }
   };
 
   return (
@@ -181,12 +295,12 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
       <div className="section__header">
         <h2 className="section__title">{t("api.memory.title")}</h2>
         <AsyncButton
-          disabled={disabled || enableChecking || modelDownloadPromptOpen}
+          disabled={disabled || checkingEnable}
           icon={<DownloadCloud aria-hidden className="button__icon" />}
           loading={checking}
-          onClick={() => void checkMemoryStatus()}
+          onClick={() => void prepareMemory()}
         >
-          {checking ? t("api.memory.checking") : t("api.memory.downloadModel")}
+          {checking ? memoryBusyLabel(task, t, installingDependencyPackage) : memoryActionLabel(status, t)}
         </AsyncButton>
       </div>
       <p className="section__description">{t("api.memory.description")}</p>
@@ -195,9 +309,10 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
         <span className="field-row__control">
           <Switch
             checked={draft.memory_auto_enabled}
-            disabled={disabled || checking || enableChecking || modelDownloadPromptOpen}
+            aria-busy={checkingEnable}
+            disabled={disabled || checking || checkingEnable}
             id="memory-auto-enabled"
-            onChange={(event) => void handleEnabledChange(event.currentTarget.checked)}
+            onChange={(event) => void handleMemoryAutoChange(event)}
           />
         </span>
       </label>
@@ -251,20 +366,11 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
         <span className="field-row__label">{t("api.memory.modelStatus")}</span>
         <span className="field-row__control">
           <span className="memory-settings__status-value">{memoryStatusLabel(status, t)}</span>
-          {task ? <TaskProgress logLimit={0} task={task} /> : null}
+          {task ? (
+            <TaskProgress labels={memoryTaskLabels(task, t, installingDependencyPackage)} logLimit={0} task={task} />
+          ) : null}
         </span>
       </div>
-      <ModelDownloadDialog
-        cancelLabel={t("common.no")}
-        closeLabel={t("common.close")}
-        confirmLabel={t("common.yes")}
-        description={t("api.memory.modelDownloadConfirmBody")}
-        onClose={cancelModelDownload}
-        onConfirm={() => void confirmModelDownload()}
-        open={modelDownloadPromptOpen}
-        state="confirm"
-        title={t("api.memory.modelDownloadConfirmTitle")}
-      />
     </section>
   );
 }

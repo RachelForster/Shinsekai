@@ -13,16 +13,27 @@ export function mergeChatAttachments(
   kind: ChatAttachmentInput["kind"],
   paths: string[],
 ) {
+  return mergeChatAttachmentInputs(
+    current,
+    paths.map((path) => ({ kind, name: attachmentNameFromPath(path), path })),
+  );
+}
+
+export function mergeChatAttachmentInputs(current: ChatAttachmentInput[], additions: ChatAttachmentInput[]) {
   const merged = current.map((attachment) => ({ ...attachment }));
   const known = new Set(merged.map((attachment) => `${attachment.kind}\0${attachment.path}`));
-  for (const rawPath of paths) {
-    const path = rawPath.trim();
-    const key = `${kind}\0${path}`;
+  for (const addition of additions) {
+    const path = addition.path.trim();
+    const key = `${addition.kind}\0${path}`;
     if (!path || known.has(key) || merged.length >= CHAT_ATTACHMENT_LIMIT) {
       continue;
     }
     known.add(key);
-    merged.push({ kind, name: attachmentNameFromPath(path), path });
+    merged.push({
+      kind: addition.kind,
+      name: addition.name.trim() || attachmentNameFromPath(path),
+      path,
+    });
   }
   return merged;
 }

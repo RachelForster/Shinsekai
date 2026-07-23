@@ -23,6 +23,7 @@
   --stage-input-height: 76px;
   --stage-token-layer-top: calc(var(--stage-safe-top) + 48px);
   --stage-token-offset-top: calc(var(--stage-safe-top) + 168px);
+  --stage-notification-top: calc(var(--stage-safe-top) + 58px);
   --stage-control-stack-height: calc(var(--stage-safe-bottom) + var(--stage-input-height));
   /* Accent-tinted warm dark, harmonized with the main app's --theme-accent seed. */
   --stage-accent: var(--chat-theme-color, var(--color-accent-primary, #d4788e));
