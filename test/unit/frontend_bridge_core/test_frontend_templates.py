@@ -1,4 +1,5 @@
-from types import SimpleNamespace
+import sys
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -13,6 +14,7 @@ from frontend_bridge_core.templates import (
     _parse_stored_template,
     _scenario_from_template_like,
     _safe_session_int,
+    _save_template_session_payload,
     _template_session_to_frontend,
 )
 from llm.template_generator import TemplateGenerator
@@ -69,17 +71,21 @@ def test_generate_template_summary_returns_canonical_resolved_characters(monkeyp
         emotion_tags="",
         character_setting="",
     )
+    config_manager = SimpleNamespace(
+        get_character_by_name=lambda name: character if name.lower() == "alice" else None,
+    )
     monkeypatch.setattr(
         "llm.template_generator.config_manager",
-        SimpleNamespace(
-            get_character_by_name=lambda name: character if name.lower() == "alice" else None,
-        ),
+        config_manager,
     )
     monkeypatch.setattr(
         "llm.template_generator._T",
         lambda key, **kwargs: f"{key}:{kwargs}\n",
     )
-    state = SimpleNamespace(template_generator=TemplateGenerator(output_contract_patches=[]))
+    state = SimpleNamespace(
+        config_manager=config_manager,
+        template_generator=TemplateGenerator(output_contract_patches=[]),
+    )
 
     summary = _generate_template_summary(
         state,
@@ -98,15 +104,19 @@ def test_generate_template_summary_returns_canonical_resolved_characters(monkeyp
 
 
 def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
+    config_manager = SimpleNamespace(get_character_by_name=lambda _name: None)
     monkeypatch.setattr(
         "llm.template_generator.config_manager",
-        SimpleNamespace(get_character_by_name=lambda _name: None),
+        config_manager,
     )
     monkeypatch.setattr(
         "llm.template_generator._T",
         lambda key, **kwargs: f"template_gen.{key}",
     )
-    state = SimpleNamespace(template_generator=TemplateGenerator(output_contract_patches=[]))
+    state = SimpleNamespace(
+        config_manager=config_manager,
+        template_generator=TemplateGenerator(output_contract_patches=[]),
+    )
 
     with pytest.raises(ValueError, match="template_gen.err_no_characters"):
         _generate_template_summary(
@@ -119,6 +129,47 @@ def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
                 "useTranslation": False,
             },
         )
+
+
+def test_save_template_session_persists_only_resolved_characters_and_their_default_sprite(monkeypatch):
+    character = SimpleNamespace(
+        name="Alice",
+        sprites=[SimpleNamespace(path="sprites/alice.png")],
+    )
+    config_manager = SimpleNamespace(
+        config=SimpleNamespace(characters=[character]),
+        get_character_by_name=lambda name: character if name.lower() == "alice" else None,
+    )
+    saved: dict[str, object] = {}
+    settings_package = ModuleType("ui.settings_ui")
+    settings_package.__path__ = []
+    services_package = ModuleType("ui.settings_ui.services")
+    services_package.__path__ = []
+    storage_module = ModuleType("ui.settings_ui.services.template_tab_session")
+    storage_module.save_template_session = lambda _path, data: saved.update(data)
+    storage_module.load_template_session = lambda _path: dict(saved)
+    monkeypatch.setitem(sys.modules, "ui.settings_ui", settings_package)
+    monkeypatch.setitem(sys.modules, "ui.settings_ui.services", services_package)
+    monkeypatch.setitem(sys.modules, "ui.settings_ui.services.template_tab_session", storage_module)
+    state = SimpleNamespace(
+        config_manager=config_manager,
+        template_dir_path="unused",
+    )
+
+    restored = _save_template_session_payload(
+        state,
+        {
+            "initSpritePath": "",
+            "scenario": "Restored scenario",
+            "selectedCharacters": ["Deleted", " alice "],
+            "system": "Generated system",
+        },
+    )
+
+    assert saved["selected_characters"] == ["Alice"]
+    assert saved["init_sprite_path"] == "sprites/alice.png"
+    assert restored["selectedCharacters"] == ["Alice"]
+    assert restored["initSpritePath"] == "sprites/alice.png"
 
 
 def test_scenario_from_template_like_falls_back_only_for_none():

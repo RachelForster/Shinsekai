@@ -132,7 +132,7 @@ describe("TemplateEditorPage", () => {
       status: "idle",
     });
     mockInstallMissingRuntimeDependency.mockResolvedValue({ message: "installed" });
-    mockSaveTemplateSession.mockResolvedValue(undefined);
+    mockSaveTemplateSession.mockImplementation(async (session) => session);
     mockSaveSystemConfig.mockResolvedValue(sampleConfig.system_config);
     mockShowChatSurface.mockResolvedValue(undefined);
   });
@@ -210,12 +210,15 @@ describe("TemplateEditorPage", () => {
   });
 
   it("uses the server-resolved characters for the restored session and launch payload", async () => {
+    mockListCharacters.mockResolvedValue([
+      { color: "#66ccff", name: "Nanami", sprites: [{ path: "D:/sprites/nanami.png" }] },
+    ]);
     mockGetTemplateSession.mockResolvedValue({
       background: "默认房间",
       effectNames: [],
       filenameStub: "Session Draft",
       historyPath: "",
-      initSpritePath: "",
+      initSpritePath: "D:/sprites/deleted.png",
       maxDialogItems: 0,
       maxSpeechChars: 0,
       roomId: "",
@@ -240,6 +243,11 @@ describe("TemplateEditorPage", () => {
       scenario: "Restored scene",
       system: "Generated system",
     });
+    mockSaveTemplateSession.mockImplementationOnce(async (session) => ({
+      ...(session as TemplateLaunchSession),
+      initSpritePath: "D:/sprites/nanami.png",
+      selectedCharacters: ["Nanami"],
+    }));
 
     renderPage();
 
@@ -258,9 +266,19 @@ describe("TemplateEditorPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Quick restart" }));
 
     await waitFor(() =>
-      expect(mockSaveTemplateSession).toHaveBeenCalledWith(expect.objectContaining({ selectedCharacters: ["Nanami"] })),
+      expect(mockSaveTemplateSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          initSpritePath: "",
+          selectedCharacters: ["Nanami"],
+        }),
+      ),
     );
-    expect(mockLaunchChat).toHaveBeenCalledWith(expect.objectContaining({ characters: ["Nanami"] }));
+    expect(mockLaunchChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        characters: ["Nanami"],
+        initSpritePath: "D:/sprites/nanami.png",
+      }),
+    );
   });
 
   it("preserves the restored draft when generation rejects an all-stale selection", async () => {

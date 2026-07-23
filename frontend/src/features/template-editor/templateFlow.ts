@@ -176,3 +176,23 @@ export function buildChatLaunchPayload(input: {
     useCg: input.useCg,
   };
 }
+
+export function synchronizeChatLaunchPayloadWithSession(
+  payload: ChatLaunchPayload,
+  session: TemplateLaunchSession,
+): ChatLaunchPayload {
+  return {
+    ...payload,
+    backgroundName: session.background,
+    characters: session.selectedCharacters,
+    effectNames: session.effectNames.length ? session.effectNames : undefined,
+    historyPath: session.historyPath.trim(),
+    initSpritePath: session.initSpritePath.trim(),
+    roomId: session.roomId.trim(),
+    scenario: session.scenario,
+    system: session.system,
+    templateId: session.templateFileDropdown,
+    templateName: session.filenameStub,
+    useCg: session.useCg,
+  };
+}

@@ -50,6 +50,53 @@ def no_valid_characters_message() -> str:
     return _T("err_no_characters")
 
 
+def resolve_chat_template_characters(
+    selected_characters: Any,
+    manager: Any = None,
+) -> list[tuple[str, Any]]:
+    """Resolve, canonicalize, and deterministically order a character selection."""
+    if manager is None:
+        manager = config_manager
+    requested_names: list[str] = []
+    requested_name_keys: set[str] = set()
+    for item in selected_characters or []:
+        requested_name = str(item).strip()
+        if not requested_name:
+            continue
+        requested_key = character_name_key(requested_name)
+        if requested_key in requested_name_keys:
+            continue
+        requested_name_keys.add(requested_key)
+        requested_names.append(requested_name)
+    requested_names.sort(key=lambda name: (character_name_key(name), name))
+
+    resolved_characters: list[tuple[str, Any]] = []
+    missing_characters: list[str] = []
+    resolved_name_keys: set[str] = set()
+    for requested_name in requested_names:
+        character = manager.get_character_by_name(requested_name)
+        if character is None:
+            missing_characters.append(requested_name)
+            continue
+        canonical_name = str(getattr(character, "name", "") or requested_name).strip()
+        canonical_key = character_name_key(canonical_name)
+        if canonical_key in resolved_name_keys:
+            continue
+        resolved_name_keys.add(canonical_key)
+        resolved_characters.append((canonical_name, character))
+
+    if missing_characters:
+        logger.warning(
+            "Skipping missing characters during template generation: %s",
+            ", ".join(missing_characters),
+            extra={
+                "event": "template.characters.missing",
+                "missing_characters": missing_characters,
+            },
+        )
+    return resolved_characters
+
+
 def json_format_reminder() -> str:
     """Return the localized reminder that must close every runtime system prompt."""
     return _T("closing_json_reminder").strip()
@@ -263,45 +310,7 @@ class TemplateGenerator:
         self,
         selected_characters: Any,
     ) -> list[tuple[str, Any]]:
-        """Resolve, canonicalize, and deterministically order a character selection."""
-        requested_names: list[str] = []
-        requested_name_keys: set[str] = set()
-        for item in selected_characters or []:
-            requested_name = str(item).strip()
-            if not requested_name:
-                continue
-            requested_key = character_name_key(requested_name)
-            if requested_key in requested_name_keys:
-                continue
-            requested_name_keys.add(requested_key)
-            requested_names.append(requested_name)
-        requested_names.sort(key=lambda name: (character_name_key(name), name))
-
-        resolved_characters: list[tuple[str, Any]] = []
-        missing_characters: list[str] = []
-        resolved_name_keys: set[str] = set()
-        for requested_name in requested_names:
-            character = config_manager.get_character_by_name(requested_name)
-            if character is None:
-                missing_characters.append(requested_name)
-                continue
-            canonical_name = str(getattr(character, "name", "") or requested_name).strip()
-            canonical_key = character_name_key(canonical_name)
-            if canonical_key in resolved_name_keys:
-                continue
-            resolved_name_keys.add(canonical_key)
-            resolved_characters.append((canonical_name, character))
-
-        if missing_characters:
-            logger.warning(
-                "Skipping missing characters during template generation: %s",
-                ", ".join(missing_characters),
-                extra={
-                    "event": "template.characters.missing",
-                    "missing_characters": missing_characters,
-                },
-            )
-        return resolved_characters
+        return resolve_chat_template_characters(selected_characters)
 
     def generate_chat_template(
         self,

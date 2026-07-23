@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Any
 
 from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
-from llm.template_generator import json_format_reminder, no_valid_characters_message
+from core.sprite.initial_sprite import initial_sprite_path_for_characters
+from llm.template_generator import (
+    json_format_reminder,
+    no_valid_characters_message,
+    resolve_chat_template_characters,
+)
 
 from .state import BridgeState
 from .security import safe_child_path, safe_filename
@@ -239,10 +244,7 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
 
 def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     selected = payload.get("characters") or []
-    if not isinstance(selected, list):
-        raise ValueError("characters must be a list")
-    resolved_characters = state.template_generator.resolve_chat_template_characters(selected)
-    resolved_names = [name for name, _character in resolved_characters]
+    resolved_names = _resolve_template_character_names(state, selected)
     if not resolved_names:
         raise ValueError(no_valid_characters_message())
     background = str(payload.get("backgroundName") or "")
@@ -282,6 +284,17 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
     }
     row["generationMessage"] = result
     return row
+
+
+def _resolve_template_character_names(state: BridgeState, selected: Any) -> list[str]:
+    """Return the canonical valid character names used by every template-flow boundary."""
+    if not isinstance(selected, list):
+        raise ValueError("characters must be a list")
+    resolved = resolve_chat_template_characters(selected, state.config_manager)
+    resolved_names = [name for name, _character in resolved]
+    if selected and not resolved_names:
+        raise ValueError(no_valid_characters_message())
+    return resolved_names
 
 
 def _safe_session_int(value: Any, default: int = 0) -> int:
@@ -329,8 +342,17 @@ def _load_template_session_payload(state: BridgeState) -> dict[str, Any] | None:
 def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     from ui.settings_ui.services.template_tab_session import save_template_session
 
+    selected_characters = _resolve_template_character_names(
+        state,
+        payload.get("selectedCharacters") or [],
+    )
+    init_sprite_path = initial_sprite_path_for_characters(
+        state.config_manager,
+        str(payload.get("initSpritePath") or ""),
+        selected_characters,
+    )
     data = {
-        "selected_characters": payload.get("selectedCharacters") or [],
+        "selected_characters": selected_characters,
         "background": str(payload.get("background") or ""),
         "voice_lang": str(payload.get("voiceLanguage") or ""),
         "use_effect_yes": bool(payload.get("useEffect", True)),
@@ -346,7 +368,7 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         "system_template_text": str(payload.get("system") or ""),
         "filename_stub": str(payload.get("filenameStub") or ""),
         "template_file_dropdown": str(payload.get("templateFileDropdown") or ""),
-        "init_sprite_path": str(payload.get("initSpritePath") or ""),
+        "init_sprite_path": init_sprite_path,
         "history_file": str(payload.get("historyPath") or ""),
         "room_id": str(payload.get("roomId") or ""),
         "workflow_path": str(payload.get("workflowPath") or ""),

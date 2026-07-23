@@ -49,6 +49,7 @@ import {
   createTemplateDraft,
   getCharacterChipStyle,
   normalizeTemplateSummary,
+  synchronizeChatLaunchPayloadWithSession,
   templateVoiceLanguages,
 } from "./templateFlow";
 import "./TemplateEditorPage.css";
@@ -519,18 +520,21 @@ export function TemplateEditorPage() {
           selectedCharacters,
           selectedTemplateId: selectedId,
         });
-        await saveTemplateSession(session);
-        queryClient.setQueryData([...templatesQueryKey, "session"], session);
+        const savedSession = await saveTemplateSession(session);
+        queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
         const snapshot = await launchChat(
-          buildChatLaunchPayload({
-            backgroundName: selectedBackground,
-            effectNames: selectedEffects,
-            resetHistory,
-            runtime: runtimeOptionsState,
-            selectedCharacters,
-            template,
-            useCg,
-          }),
+          synchronizeChatLaunchPayloadWithSession(
+            buildChatLaunchPayload({
+              backgroundName: selectedBackground,
+              effectNames: selectedEffects,
+              resetHistory,
+              runtime: runtimeOptionsState,
+              selectedCharacters,
+              template,
+              useCg,
+            }),
+            savedSession,
+          ),
           progressOptions,
         );
         return { snapshot, template };
