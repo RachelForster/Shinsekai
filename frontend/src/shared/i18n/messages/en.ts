@@ -493,6 +493,9 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.nameColor": "Nameplate text color",
   "chat.config.nameFontFamily": "Nameplate font",
   "chat.config.nameFontSize": "Nameplate font size",
+  "chat.config.resetThemeAppearance": "Restore theme defaults",
+  "chat.config.resetThemeAppearanceHelp":
+    "Reset the settings panel, nameplate, dialog text, and dialog fill to the active theme.",
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "Stack consecutive messages",
   "chat.config.bgmVolume": "BGM volume",

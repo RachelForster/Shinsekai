@@ -71,6 +71,11 @@
   overflow: hidden;
   border-color: var(--chat-option-border-color);
   border-radius: var(--chat-option-border-radius, 6px);
+  border-image-source: var(--chat-option-background-image, none);
+  border-image-slice: var(--chat-option-background-slice, 32) fill;
+  border-image-width: var(--chat-option-background-width, 32px);
+  border-image-outset: var(--chat-option-background-outset, 0px);
+  border-image-repeat: stretch;
   color: var(--chat-option-color);
   background: var(--chat-sheen), var(--chat-option-background);
   box-shadow:

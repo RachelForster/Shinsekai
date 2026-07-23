@@ -13,6 +13,11 @@
   border: var(--chat-input-border, 1px solid var(--chat-input-border-color));
   border-color: var(--chat-input-border-color);
   border-radius: var(--chat-input-border-radius, 6px);
+  border-image-source: var(--chat-input-background-image, none);
+  border-image-slice: var(--chat-input-background-slice, 32) fill;
+  border-image-width: var(--chat-input-background-width, 32px);
+  border-image-outset: var(--chat-input-background-outset, 0px);
+  border-image-repeat: stretch;
   color: var(--chat-input-color, #f7f1f0);
   background: var(--chat-sheen), var(--chat-input-background);
   box-shadow:

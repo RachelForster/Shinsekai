@@ -546,7 +546,10 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
                 out["align"] = val
         if block_name == "name" and "decoration" in block:
             val = _validate_enum(
-                block["decoration"], frozenset({"accent", "line-dots"}), errors, "tokens.name.decoration"
+                block["decoration"],
+                frozenset({"accent", "arrow-fade", "line-dots"}),
+                errors,
+                "tokens.name.decoration",
             )
             if val is not None:
                 out["decoration"] = val

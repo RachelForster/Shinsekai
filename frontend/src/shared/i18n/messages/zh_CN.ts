@@ -484,6 +484,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.config.nameColor": "名牌文字颜色",
   "chat.config.nameFontFamily": "名牌字体",
   "chat.config.nameFontSize": "名牌字号",
+  "chat.config.resetThemeAppearance": "恢复主题默认",
+  "chat.config.resetThemeAppearanceHelp": "重置设置面板、名牌、对话文字和对话框填充，使用当前主题的默认样式。",
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "堆叠连续消息",
   "chat.config.bgmVolume": "BGM 音量",
