@@ -1,5 +1,15 @@
 import type { CSSProperties } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const desktopEventMocks = vi.hoisted(() => ({
+  emit: vi.fn(),
+  listen: vi.fn(),
+}));
+
+vi.mock("../../../shared/desktop/desktopApi", () => ({
+  emitDesktopChatStageRuntimeConfigChange: (config: unknown) => desktopEventMocks.emit(config),
+  onDesktopChatStageRuntimeConfigChange: (listener: (config: unknown) => void) => desktopEventMocks.listen(listener),
+}));
 
 import {
   chatStageRuntimeStyle,
@@ -15,6 +25,14 @@ import {
 } from "../../../features/chat-stage/runtimeConfig";
 
 describe("chat stage runtime config", () => {
+  beforeEach(() => {
+    desktopEventMocks.emit.mockReset();
+    desktopEventMocks.emit.mockResolvedValue(undefined);
+    desktopEventMocks.listen.mockReset();
+    desktopEventMocks.listen.mockResolvedValue(() => undefined);
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
+  });
+
   it("normalizes legacy unversioned persisted config", () => {
     expect(
       normalizeChatStageRuntimeConfig({
@@ -113,7 +131,7 @@ describe("chat stage runtime config", () => {
     });
   });
 
-  it("persists and broadcasts restored theme appearance in the current window", () => {
+  it("persists and broadcasts restored theme appearance in the current window and across webviews", () => {
     window.localStorage.setItem(
       "shinsekai-chat-stage-runtime-config",
       JSON.stringify({
@@ -131,6 +149,7 @@ describe("chat stage runtime config", () => {
     const next = resetPersistedChatStageRuntimeThemeAppearance("#336699");
 
     expect(listener).toHaveBeenCalledWith(next);
+    expect(desktopEventMocks.emit).toHaveBeenCalledWith(next);
     expect(next.configThemeColor).toBe("#336699");
     expect(next.dialogOpacity).toBe(0.6);
     expect(next.dialogText).toEqual(defaultChatStageRuntimeConfig.dialogText);
@@ -145,6 +164,91 @@ describe("chat stage runtime config", () => {
 
     unsubscribe();
     window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
+  });
+
+  it("applies runtime config received from another webview", async () => {
+    const listener = vi.fn();
+    let desktopListener: (config: unknown) => void = () => {
+      throw new Error("desktop listener was not registered");
+    };
+    const unlisten = vi.fn();
+    desktopEventMocks.listen.mockImplementation(async (callback: (config: unknown) => void) => {
+      desktopListener = callback;
+      return unlisten;
+    });
+    const unsubscribe = subscribeChatStageRuntimeConfig(listener);
+    await vi.waitFor(() => expect(desktopEventMocks.listen).toHaveBeenCalledTimes(1));
+
+    desktopListener({
+      configThemeColor: "#4a6cff",
+      dialogOpacity: 0.7,
+      dialogText: { color: "#abcdef" },
+    });
+
+    expect(listener).toHaveBeenCalledWith({
+      ...defaultChatStageRuntimeConfig,
+      configThemeColor: "#4a6cff",
+      dialogOpacity: 0.7,
+      dialogText: {
+        ...defaultChatStageRuntimeConfig.dialogText,
+        color: "#abcdef",
+      },
+    });
+
+    unsubscribe();
+    expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it("re-reads persisted config after the desktop listener is ready", async () => {
+    let finishDesktopSubscription: ((unlisten: () => void) => void) | undefined;
+    desktopEventMocks.listen.mockImplementation(
+      () =>
+        new Promise<() => void>((resolve) => {
+          finishDesktopSubscription = resolve;
+        }),
+    );
+    const listener = vi.fn();
+    const unsubscribe = subscribeChatStageRuntimeConfig(listener);
+    const next = {
+      ...defaultChatStageRuntimeConfig,
+      configThemeColor: "#55aacc",
+      dialogOpacity: 0.65,
+    };
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({
+        config: next,
+        version: chatStageRuntimeConfigVersion,
+      }),
+    );
+
+    finishDesktopSubscription?.(() => undefined);
+
+    await vi.waitFor(() => expect(listener).toHaveBeenCalledWith(next));
+    unsubscribe();
+  });
+
+  it("reloads runtime config when another browser context changes local storage", () => {
+    const listener = vi.fn();
+    const unsubscribe = subscribeChatStageRuntimeConfig(listener);
+    const next = {
+      ...defaultChatStageRuntimeConfig,
+      configThemeColor: "#aa44cc",
+      dialogOpacity: 0.8,
+    };
+
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "shinsekai-chat-stage-runtime-config",
+        newValue: JSON.stringify({
+          config: next,
+          version: chatStageRuntimeConfigVersion,
+        }),
+      }),
+    );
+
+    expect(listener).toHaveBeenCalledWith(next);
+    unsubscribe();
   });
 
   it("migrates legacy sprite-id scale keys to stable character keys", () => {

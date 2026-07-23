@@ -1,6 +1,10 @@
 import type { CSSProperties } from "react";
 
 import type { ChatStageSprite } from "./chatState";
+import {
+  emitDesktopChatStageRuntimeConfigChange,
+  onDesktopChatStageRuntimeConfigChange,
+} from "../../shared/desktop/desktopApi";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { DEFAULT_THEME_COLOR, normalizeThemeColor } from "../../shared/theme/appTheme";
 
@@ -429,6 +433,9 @@ export function resetPersistedChatStageRuntimeThemeAppearance(themeColor?: strin
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent(runtimeConfigChangeEventName, { detail: next }));
   }
+  void emitDesktopChatStageRuntimeConfigChange(next).catch((error: unknown) => {
+    console.error("Desktop chat runtime config broadcast failed", error);
+  });
   return next;
 }
 
@@ -436,11 +443,51 @@ export function subscribeChatStageRuntimeConfig(listener: (config: ChatStageRunt
   if (typeof window === "undefined") {
     return () => undefined;
   }
-  const handleChange = (event: Event) => {
+  const handleWindowChange = (event: Event) => {
     listener(normalizeChatStageRuntimeConfig((event as CustomEvent<unknown>).detail));
   };
-  window.addEventListener(runtimeConfigChangeEventName, handleChange);
-  return () => window.removeEventListener(runtimeConfigChangeEventName, handleChange);
+  const handleStorageChange = (event: StorageEvent) => {
+    if (event.key !== runtimeConfigStorageKey) {
+      return;
+    }
+    if (!event.newValue) {
+      listener(defaultChatStageRuntimeConfig);
+      return;
+    }
+    try {
+      listener(normalizeChatStageRuntimeConfig(JSON.parse(event.newValue)));
+    } catch {
+      listener(readChatStageRuntimeConfig());
+    }
+  };
+  let disposed = false;
+  let unlistenDesktop: (() => void) | undefined;
+
+  window.addEventListener(runtimeConfigChangeEventName, handleWindowChange);
+  window.addEventListener("storage", handleStorageChange);
+  void onDesktopChatStageRuntimeConfigChange((config) => {
+    if (!disposed) {
+      listener(normalizeChatStageRuntimeConfig(config));
+    }
+  })
+    .then((unlisten) => {
+      if (disposed) {
+        unlisten();
+      } else {
+        unlistenDesktop = unlisten;
+        listener(readChatStageRuntimeConfig());
+      }
+    })
+    .catch((error: unknown) => {
+      console.error("Desktop chat runtime config listener failed", error);
+    });
+
+  return () => {
+    disposed = true;
+    window.removeEventListener(runtimeConfigChangeEventName, handleWindowChange);
+    window.removeEventListener("storage", handleStorageChange);
+    unlistenDesktop?.();
+  };
 }
 
 export function runtimeSpriteKey(sprite: ChatStageSprite, index: number) {
