@@ -155,6 +155,7 @@ describe("browser preview platform chat themes", () => {
     ]);
 
     const windborneManifest = await platform.chat.getThemeManifest("windborne-adventure");
+    expect(windborneManifest.version).toBe("1.0.2");
     expect(windborneManifest.tokens.global?.themeColor).toBe("#f3cf57");
     expect(windborneManifest.tokens.dialog?.chrome).toBe("none");
     expect(windborneManifest.tokens.input?.borderRadius).toBe("calc(var(--stage-input-height) / 2)");
@@ -169,7 +170,7 @@ describe("browser preview platform chat themes", () => {
     expect(neonManifest.tokens.dialog?.nameInputGapVh).toBe(20);
     expect(neonManifest.tokens.dialog?.offsetY).toBe(0);
     expect(neonManifest.tokens.dialog?.boxShadow).toContain("inset 0 1px 0");
-    expect(neonManifest.version).toBe("1.3.3");
+    expect(neonManifest.version).toBe("1.3.4");
     expect(neonManifest.tokens.dialog?.backgroundImage).toBe("frame-dialog.svg");
     expect(neonManifest.tokens.dialog?.frameImage).toBeUndefined();
     expect(neonManifest.tokens.dialog?.frameSlice).toBe(28);
@@ -189,7 +190,7 @@ describe("browser preview platform chat themes", () => {
     const sakuraManifest = await platform.chat.getThemeManifest("sakura-dream");
     expect(sakuraManifest.name.zh_CN).toBe("樱色梦境");
     expect(sakuraManifest.tokens.global?.themeColor).toBe("#d4788e");
-    expect(sakuraManifest.version).toBe("1.0.2");
+    expect(sakuraManifest.version).toBe("1.0.3");
     expect(sakuraManifest.tokens.dialog?.backgroundImage).toBe("frame-dialog.svg");
     expect(sakuraManifest.tokens.name?.backgroundImage).toBe("frame-name.svg");
     expect(sakuraManifest.tokens.options?.backgroundImage).toBe("frame-option.svg");
@@ -199,6 +200,7 @@ describe("browser preview platform chat themes", () => {
     await expect(platform.chat.getTheme()).resolves.toMatchObject({ themeColor: "#d4788e" });
 
     const spiritronManifest = await platform.chat.getThemeManifest("spiritron-command");
+    expect(spiritronManifest.version).toBe("1.0.1");
     expect(spiritronManifest.name.zh_CN).toBe("灵子指令");
     expect(spiritronManifest.tokens.global?.themeColor).toBe("#8eb9e8");
     expect(spiritronManifest.tokens.dialog?.frameImage).toBeUndefined();

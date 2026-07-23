@@ -48,6 +48,15 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 self.assertEqual(theme_index["sakura-dream"]["source"], "builtin")
                 self.assertEqual(theme_index["spiritron-command"]["source"], "builtin")
                 self.assertEqual(theme_index["windborne-adventure"]["source"], "builtin")
+                self.assertEqual(
+                    {theme_id: theme["version"] for theme_id, theme in theme_index.items()},
+                    {
+                        "neon-night-city": "1.3.4",
+                        "sakura-dream": "1.0.3",
+                        "spiritron-command": "1.0.1",
+                        "windborne-adventure": "1.0.2",
+                    },
+                )
                 self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "neon-night-city" / "theme.json").is_file()
                 )
@@ -119,7 +128,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 themes = list_chat_themes(state)
 
                 theme_index = {item["id"]: item for item in themes}
-                self.assertEqual(theme_index["neon-night-city"]["version"], "1.3.3")
+                self.assertEqual(theme_index["neon-night-city"]["version"], "1.3.4")
                 self.assertTrue((target / "frame-dialog.svg").is_file())
                 self.assertTrue((target / BUILTIN_THEME_OWNER_MARKER).is_file())
             finally:
