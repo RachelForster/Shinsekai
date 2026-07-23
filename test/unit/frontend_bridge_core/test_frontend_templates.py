@@ -17,7 +17,7 @@ from frontend_bridge_core.templates import (
     _save_template_session_payload,
     _template_session_to_frontend,
 )
-from llm.template_generator import TemplateGenerator
+from llm.template_generator import NoValidCharactersError, TemplateGenerator
 
 
 def test_stored_template_round_trips_scenario_and_system_sections():
@@ -118,7 +118,7 @@ def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
         template_generator=TemplateGenerator(output_contract_patches=[]),
     )
 
-    with pytest.raises(ValueError, match="template_gen.err_no_characters"):
+    with pytest.raises(NoValidCharactersError, match="template_gen.err_no_characters"):
         _generate_template_summary(
             state,
             {

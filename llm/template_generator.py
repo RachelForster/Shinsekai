@@ -50,6 +50,15 @@ def no_valid_characters_message() -> str:
     return _T("err_no_characters")
 
 
+class NoValidCharactersError(ValueError):
+    """Raised when template generation has no resolvable character."""
+
+    error_code = "no_valid_characters"
+
+    def __init__(self) -> None:
+        super().__init__(no_valid_characters_message())
+
+
 def resolve_chat_template_characters(
     selected_characters: Any,
     manager: Any = None,
@@ -327,14 +336,14 @@ class TemplateGenerator:
         max_dialog_items: int = 0,
     ):
         if not selected_characters:
-            return no_valid_characters_message(), ""
+            raise NoValidCharactersError()
 
         # Resolve the persisted/UI selection once. A restored template session can
         # contain characters that were deleted or renamed after the session was
         # saved; those stale entries must not make template generation crash.
         resolved_characters = self.resolve_chat_template_characters(selected_characters)
         if not resolved_characters:
-            return no_valid_characters_message(), ""
+            raise NoValidCharactersError()
 
         # 人物排序保证生成内容稳定；聊天记录默认文件名由设置页「用户情景」哈希决定。
         selected_characters = [name for name, _character in resolved_characters]

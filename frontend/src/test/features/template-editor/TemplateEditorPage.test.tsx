@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
 import { buildDefaultTemplateScenario } from "../../../features/template-editor/templateFlow";
 import { I18nProvider, translateMessage } from "../../../shared/i18n/I18nProvider";
+import { PlatformRequestError } from "../../../shared/platform/errors";
 import { sampleConfig } from "../../../shared/platform/sampleData";
 import type { TemplateLaunchSession } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
@@ -304,7 +305,9 @@ describe("TemplateEditorPage", () => {
       useTranslation: false,
       voiceLanguage: "ja",
     } satisfies TemplateLaunchSession);
-    mockGenerateTemplate.mockRejectedValueOnce(new Error("No valid characters selected"));
+    mockGenerateTemplate.mockRejectedValueOnce(
+      new PlatformRequestError("Select at least one character.", 422, "no_valid_characters"),
+    );
 
     renderPage();
 
@@ -313,7 +316,7 @@ describe("TemplateEditorPage", () => {
     expect(await screen.findByDisplayValue("Restored system")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Generate" }));
 
-    expect(await screen.findByText("No valid characters selected")).toBeInTheDocument();
+    expect(await screen.findByText("Choose at least one character.")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Restored system")).toBeInTheDocument();
   });
 

@@ -24,6 +24,7 @@ import {
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
+import { platformErrorCode } from "../../shared/platform/errors";
 import type { ChatSnapshot, TemplateLaunchSession } from "../../shared/platform/types";
 import {
   AlertDialog,
@@ -418,7 +419,12 @@ export function TemplateEditorPage() {
       }
       showToast({
         kind: "error",
-        message: error instanceof Error ? error.message : t("template.error.generateFallback"),
+        message:
+          platformErrorCode(error) === "no_valid_characters"
+            ? t("template.validation.charactersRequired")
+            : error instanceof Error
+              ? error.message
+              : t("template.error.generateFallback"),
         title: t("template.error.generateFailed"),
       });
     },

@@ -1,5 +1,6 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
+import { PlatformRequestError } from "./errors";
 import {
   isTauriDesktop,
   isDesktopBridgeRestarting,
@@ -177,7 +178,8 @@ async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit)
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
-    throw new Error(message);
+    const errorCode = typeof data?.errorCode === "string" ? data.errorCode : undefined;
+    throw new PlatformRequestError(message, response.status, errorCode);
   }
   return data as T;
 }
@@ -253,7 +255,8 @@ async function requestForm<T>(baseUrl: string, path: string, formData: FormData)
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
-    throw new Error(message);
+    const errorCode = typeof data?.errorCode === "string" ? data.errorCode : undefined;
+    throw new PlatformRequestError(message, response.status, errorCode);
   }
   return data as T;
 }

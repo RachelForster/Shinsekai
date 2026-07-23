@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from core.messaging.dialog_tokens import BGM, SCENE
-from llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, TemplateGenerator
+from llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, NoValidCharactersError, TemplateGenerator
 from sdk.register import PluginCapabilityRegistry
 from sdk.types import (
     ChatOutputContract,
@@ -204,7 +206,7 @@ def test_template_generator_skips_characters_missing_from_restored_selection(
     assert "Skipping missing characters during template generation: Deleted Character" in caplog.text
 
 
-def test_template_generator_returns_no_character_message_when_all_selections_are_missing(
+def test_template_generator_raises_domain_error_when_all_selections_are_missing(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
@@ -216,16 +218,17 @@ def test_template_generator_returns_no_character_message_when_all_selections_are
         lambda key, **kwargs: f"template_gen.{key}",
     )
 
-    template, warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
-        selected_characters=["Deleted Character"],
-        bg_name=None,
-        use_effect=False,
-        use_cg=False,
-        use_llm_translation=False,
-    )
+    with pytest.raises(NoValidCharactersError) as error:
+        TemplateGenerator(output_contract_patches=[]).generate_chat_template(
+            selected_characters=["Deleted Character"],
+            bg_name=None,
+            use_effect=False,
+            use_cg=False,
+            use_llm_translation=False,
+        )
 
-    assert warning == ""
-    assert template == "template_gen.err_no_characters"
+    assert error.value.error_code == "no_valid_characters"
+    assert str(error.value) == "template_gen.err_no_characters"
 
 
 def test_template_generator_uses_config_character_identity_for_deduplication(

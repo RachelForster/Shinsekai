@@ -167,6 +167,7 @@ from frontend_bridge_core.tools import (
     _remove_sprite_background,
 )
 from frontend_bridge_core.tts import _download_tts_bundle, _tts_bundle_recommendation
+from llm.template_generator import NoValidCharactersError
 
 logger = get_logger(__name__)
 BRIDGE_AUTH_HEADER = "X-Shinsekai-Bridge-Token"
@@ -313,11 +314,26 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
 
-    def _send_error_json(self, exc: Exception, status: HTTPStatus = HTTPStatus.BAD_REQUEST) -> None:
-        self._send_json({"error": str(exc), "type": exc.__class__.__name__}, status)
+    def _send_error_json(
+        self,
+        exc: Exception,
+        status: HTTPStatus = HTTPStatus.BAD_REQUEST,
+        *,
+        error_code: str = "",
+    ) -> None:
+        payload = {"error": str(exc), "type": exc.__class__.__name__}
+        if error_code:
+            payload["errorCode"] = error_code
+        self._send_json(payload, status)
 
     def _send_exception_json(self, exc: Exception) -> None:
-        if isinstance(exc, FileExistsError):
+        if isinstance(exc, NoValidCharactersError):
+            self._send_error_json(
+                exc,
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                error_code=exc.error_code,
+            )
+        elif isinstance(exc, FileExistsError):
             self._send_error_json(exc, HTTPStatus.CONFLICT)
         elif isinstance(exc, (KeyError, FileNotFoundError)):
             self._send_error_json(exc, HTTPStatus.NOT_FOUND)

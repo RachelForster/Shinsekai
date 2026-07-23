@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from llm.template_generator import NoValidCharactersError
 from ui.webui.context import WebUIContext
 
 _main_chat_process = None
@@ -175,16 +176,18 @@ def generate_template(
     use_cg: str,
     use_cot: str,
 ):
-    template, out = ctx.template_generator.generate_chat_template(
-        selected_characters,
-        bg_name,
-        use_effect == "是",
-        use_cg == "是",
-        use_translation == "是",
-        use_cot == "是",
-        use_choice=True,
-        use_narration=True,
-        max_speech_chars=0,
-        max_dialog_items=0,
-    )
-    return template, out
+    try:
+        return ctx.template_generator.generate_chat_template(
+            selected_characters,
+            bg_name,
+            use_effect == "是",
+            use_cg == "是",
+            use_translation == "是",
+            use_cot == "是",
+            use_choice=True,
+            use_narration=True,
+            max_speech_chars=0,
+            max_dialog_items=0,
+        )
+    except NoValidCharactersError as exc:
+        return str(exc), ""

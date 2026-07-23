@@ -8,8 +8,8 @@ from typing import Any
 from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from core.sprite.initial_sprite import initial_sprite_path_for_characters
 from llm.template_generator import (
+    NoValidCharactersError,
     json_format_reminder,
-    no_valid_characters_message,
     resolve_chat_template_characters,
 )
 
@@ -246,7 +246,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
     selected = payload.get("characters") or []
     resolved_names = _resolve_template_character_names(state, selected)
     if not resolved_names:
-        raise ValueError(no_valid_characters_message())
+        raise NoValidCharactersError()
     background = str(payload.get("backgroundName") or "")
     voice_language = str(payload.get("voiceLanguage") or "").strip()
     if voice_language:
@@ -293,7 +293,7 @@ def _resolve_template_character_names(state: BridgeState, selected: Any) -> list
     resolved = resolve_chat_template_characters(selected, state.config_manager)
     resolved_names = [name for name, _character in resolved]
     if selected and not resolved_names:
-        raise ValueError(no_valid_characters_message())
+        raise NoValidCharactersError()
     return resolved_names
 
 
@@ -390,19 +390,22 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
     selected = raw.get("selected_characters") or []
     if not isinstance(selected, list) or not selected:
         return raw
-    content, _result = state.template_generator.generate_chat_template(
-        [str(item) for item in selected if str(item)],
-        str(raw.get("background") or ""),
-        bool(raw.get("use_effect_yes", True)),
-        bool(raw.get("use_cg_yes", False)),
-        bool(raw.get("use_tr_yes", True)),
-        bool(raw.get("use_cot_yes", False)),
-        bool(raw.get("use_choice_yes", True)),
-        bool(raw.get("use_narration_yes", True)),
-        bool(raw.get("use_stat_yes", True)),
-        max_speech_chars=_safe_session_int(raw.get("max_speech_chars")),
-        max_dialog_items=_safe_session_int(raw.get("max_dialog_items")),
-    )
+    try:
+        content, _result = state.template_generator.generate_chat_template(
+            [str(item) for item in selected if str(item)],
+            str(raw.get("background") or ""),
+            bool(raw.get("use_effect_yes", True)),
+            bool(raw.get("use_cg_yes", False)),
+            bool(raw.get("use_tr_yes", True)),
+            bool(raw.get("use_cot_yes", False)),
+            bool(raw.get("use_choice_yes", True)),
+            bool(raw.get("use_narration_yes", True)),
+            bool(raw.get("use_stat_yes", True)),
+            max_speech_chars=_safe_session_int(raw.get("max_speech_chars")),
+            max_dialog_items=_safe_session_int(raw.get("max_dialog_items")),
+        )
+    except NoValidCharactersError:
+        return raw
     repaired = dict(raw)
     if _has_untranslated_template_keys(repaired.get("scenario_text")):
         repaired["scenario_text"] = ""
