@@ -293,6 +293,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
         cwd=repo_root,
         text=True,
         encoding="utf-8",
+        errors="replace",
         capture_output=True,
         check=False,
     )
@@ -413,6 +414,7 @@ def test_ui_update_manager_import_does_not_require_cv2():
         cwd=repo_root,
         text=True,
         encoding="utf-8",
+        errors="replace",
         capture_output=True,
         check=False,
     )
