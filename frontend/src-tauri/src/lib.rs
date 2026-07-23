@@ -409,6 +409,7 @@ pub fn run() {
             desktop_window_hide,
             desktop_chat_window_destroy,
             desktop_window_minimize,
+            desktop_window_set_always_on_top,
             desktop_window_toggle_maximize,
             desktop_window_start_drag,
             desktop_window_start_resize,
@@ -1292,6 +1293,16 @@ fn desktop_window_minimize(window: WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn desktop_window_set_always_on_top(
+    window: WebviewWindow,
+    always_on_top: bool,
+) -> Result<(), String> {
+    window
+        .set_always_on_top(always_on_top)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 fn desktop_window_toggle_maximize(window: WebviewWindow) -> Result<(), String> {
     if window.is_maximized().map_err(|error| error.to_string())? {
         window.unmaximize().map_err(|error| error.to_string())
@@ -1424,7 +1435,11 @@ fn open_chat_window(app: &AppHandle, bridge_port: u16, auth_token: &str) -> Resu
             .transparent(true)
             .decorations(false)
             .always_on_top(true)
-            .skip_taskbar(true)
+            // Keep the chat window in the taskbar so it can be restored after
+            // minimizing (a frameless + skip_taskbar window vanishes with no way back).
+            // Disable Tauri's native drag-drop handler so HTML5 file drops reach the
+            // webview (InputLayer relies on the DOM `drop` event for attachments).
+            .disable_drag_drop_handler()
             .shadow(false)
             .center()
             .build()

@@ -1815,10 +1815,16 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     },
     modelAssets: {
       async download(input, options) {
-        const variant = String(
-          (input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small",
-        );
-        const local = Boolean(input.configured && looksLikeLocalModelReference(variant));
+        const memoryEmbedding = input.assetId === "memory.embedding";
+        const variant = memoryEmbedding
+          ? "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+          : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
+        const local = Boolean(!memoryEmbedding && input.configured && looksLikeLocalModelReference(variant));
+        const repoId = memoryEmbedding
+          ? variant
+          : variant.includes("/")
+            ? variant
+            : `Systran/faster-whisper-${variant}`;
         const key = `${input.assetId}:${variant}`;
         const taskId = `preview-model-${Date.now()}`;
         previewTask(
@@ -1840,9 +1846,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           downloadable: !local,
           downloaded: !local,
           path: local ? variant : `preview-cache/${variant}`,
-          ...(local ? {} : { repoId: variant.includes("/") ? variant : `Systran/faster-whisper-${variant}` }),
+          ...(local ? {} : { repoId }),
           source: local ? ("local" as const) : ("huggingface" as const),
-          title: "Whisper ASR",
+          title: memoryEmbedding ? "Long-term memory embedding" : "Whisper ASR",
           variant,
         };
         if (!local) {
@@ -1864,19 +1870,23 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return result;
       },
       status(input) {
-        const variant = String(
-          (input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small",
-        );
-        const local = Boolean(input.configured && looksLikeLocalModelReference(variant));
+        const memoryEmbedding = input.assetId === "memory.embedding";
+        const variant = memoryEmbedding
+          ? "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+          : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
+        const local = Boolean(!memoryEmbedding && input.configured && looksLikeLocalModelReference(variant));
+        const repoId = memoryEmbedding
+          ? variant
+          : variant.includes("/")
+            ? variant
+            : `Systran/faster-whisper-${variant}`;
         return delay({
           assetId: input.assetId,
           cached: local || cachedModelAssets.has(`${input.assetId}:${variant}`),
           downloadable: !local,
-          ...(local
-            ? { path: variant }
-            : { repoId: variant.includes("/") ? variant : `Systran/faster-whisper-${variant}` }),
+          ...(local ? { path: variant } : { repoId }),
           source: local ? ("local" as const) : ("huggingface" as const),
-          title: "Whisper ASR",
+          title: memoryEmbedding ? "Long-term memory embedding" : "Whisper ASR",
           variant,
         });
       },

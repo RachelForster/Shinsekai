@@ -1,7 +1,8 @@
 import { waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const { mockInvoke, mockListen } = vi.hoisted(() => ({
+const { mockEmit, mockInvoke, mockListen } = vi.hoisted(() => ({
+  mockEmit: vi.fn(),
   mockInvoke: vi.fn(),
   mockListen: vi.fn(),
 }));
@@ -11,12 +12,14 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
+  emit: mockEmit,
   listen: mockListen,
 }));
 
 import {
   browseDesktopFiles,
   checkDesktopUpdate,
+  emitDesktopChatStageRuntimeConfigChange,
   getDesktopProjectRootStatus,
   getDesktopRuntimeState,
   hideDesktopWindow,
@@ -26,11 +29,13 @@ import {
   isTauriDesktop,
   minimizeDesktopWindow,
   openDesktopChatWindow,
+  onDesktopChatStageRuntimeConfigChange,
   onDesktopRuntimeProgress,
   onDesktopUpdateProgress,
   repairDesktopRuntime,
   reloadDesktopFrontend,
   selectDesktopProjectRoot,
+  setDesktopWindowAlwaysOnTop,
   startDesktopWindowDrag,
   toggleMaximizeDesktopWindow,
   closeDesktopWindow,
@@ -42,6 +47,7 @@ describe("desktop API environment detection", () => {
     delete window.__SHINSEKAI_RESTARTING__;
     delete window.__SHINSEKAI_BRIDGE_RESTARTING__;
     delete window.__SHINSEKAI_BRIDGE_RESTART_EVENTS_BOUND__;
+    mockEmit.mockReset();
     mockInvoke.mockReset();
     mockListen.mockReset();
   });
@@ -120,6 +126,7 @@ describe("desktop API environment detection", () => {
     await hideDesktopWindow();
     await destroyDesktopChatWindow();
     await minimizeDesktopWindow();
+    await setDesktopWindowAlwaysOnTop(false);
     await toggleMaximizeDesktopWindow();
     await startDesktopWindowDrag();
     await closeDesktopWindow();
@@ -136,6 +143,7 @@ describe("desktop API environment detection", () => {
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_hide", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_chat_window_destroy", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_minimize", undefined);
+    expect(mockInvoke).toHaveBeenCalledWith("desktop_window_set_always_on_top", { alwaysOnTop: false });
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_toggle_maximize", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_start_drag", undefined);
     expect(mockInvoke).toHaveBeenCalledWith("desktop_window_close", undefined);
@@ -199,6 +207,37 @@ describe("desktop API environment detection", () => {
 
     expect(mockListen).toHaveBeenCalledWith("shinsekai:runtime-progress", expect.any(Function));
     expect(listener).toHaveBeenCalledWith({ message: "Scanning", phase: "probing" });
+    expect(unlisten).toHaveBeenCalledTimes(1);
+  });
+
+  it("broadcasts and subscribes to chat runtime config changes across desktop webviews", async () => {
+    const config = { configThemeColor: "#336699" };
+    const listener = vi.fn();
+    const unlisten = vi.fn();
+    const tauriInvoke = vi.fn().mockResolvedValue(undefined);
+    mockEmit.mockResolvedValue(undefined);
+    mockListen.mockImplementation(async (eventName, callback) => {
+      if (eventName === "shinsekai:chat-stage-runtime-config-change") {
+        callback({ payload: config });
+      }
+      return unlisten;
+    });
+    window.__TAURI_INTERNALS__ = { invoke: tauriInvoke };
+
+    await emitDesktopChatStageRuntimeConfigChange(config);
+    const dispose = await onDesktopChatStageRuntimeConfigChange(listener);
+    dispose();
+
+    expect(tauriInvoke).toHaveBeenCalledWith(
+      "plugin:event|emit",
+      {
+        event: "shinsekai:chat-stage-runtime-config-change",
+        payload: config,
+      },
+      undefined,
+    );
+    expect(mockListen).toHaveBeenCalledWith("shinsekai:chat-stage-runtime-config-change", expect.any(Function));
+    expect(listener).toHaveBeenCalledWith(config);
     expect(unlisten).toHaveBeenCalledTimes(1);
   });
 });

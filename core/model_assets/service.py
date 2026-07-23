@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
@@ -9,6 +11,14 @@ from .downloads import preload_huggingface_snapshot
 
 TaskUpdate = Callable[..., None]
 ModelAssetSource = Literal["huggingface", "local"]
+
+_MODEL_ASSET_DOWNLOAD_LOCKS_GUARD = threading.Lock()
+_MODEL_ASSET_DOWNLOAD_LOCKS: dict[str, threading.Lock] = {}
+
+
+def _model_asset_download_lock(task_key: str) -> threading.Lock:
+    with _MODEL_ASSET_DOWNLOAD_LOCKS_GUARD:
+        return _MODEL_ASSET_DOWNLOAD_LOCKS.setdefault(task_key, threading.Lock())
 
 
 @dataclass(frozen=True)
@@ -23,6 +33,7 @@ class ModelAssetSpec:
     local_path: Path | None = None
     allow_patterns: tuple[str, ...] = ()
     required_file_groups: tuple[tuple[str, ...], ...] = ()
+    snapshot_validator: Callable[[Path], bool] | None = None
 
     def __post_init__(self) -> None:
         if not self.asset_id.strip():
@@ -54,27 +65,78 @@ def _huggingface_cache_roots() -> tuple[Path, ...]:
     return ((hf_home / "hub").resolve(strict=False),)
 
 
+def _is_nonempty_file(path: Path) -> bool:
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
 def _matches_required_pattern(snapshot: Path, pattern: str) -> bool:
     normalized = str(pattern or "").strip().replace("\\", "/")
     if not normalized:
         return False
     if any(marker in normalized for marker in ("*", "?", "[")):
-        return any(candidate.is_file() for candidate in snapshot.glob(normalized))
-    return (snapshot / Path(*normalized.split("/"))).is_file()
+        return any(_is_nonempty_file(candidate) for candidate in snapshot.glob(normalized))
+    return _is_nonempty_file(snapshot / Path(*normalized.split("/")))
 
 
-def _snapshot_is_complete(snapshot: Path, required_file_groups: tuple[tuple[str, ...], ...]) -> bool:
+def _snapshot_is_complete(
+    snapshot: Path,
+    required_file_groups: tuple[tuple[str, ...], ...],
+    snapshot_validator: Callable[[Path], bool] | None = None,
+) -> bool:
     if not snapshot.is_dir():
         return False
-    if not required_file_groups:
+    try:
+        files_complete = (
+            all(
+                any(_matches_required_pattern(snapshot, pattern) for pattern in alternatives)
+                for alternatives in required_file_groups
+            )
+            if required_file_groups
+            else any(snapshot.iterdir())
+        )
+        return files_complete and (
+            snapshot_validator is None or bool(snapshot_validator(snapshot))
+        )
+    except Exception:
+        return False
+
+
+def _main_huggingface_snapshots(spec: ModelAssetSpec) -> tuple[Path, ...]:
+    if spec.source != "huggingface":
+        return ()
+    try:
+        from huggingface_hub.file_download import repo_folder_name
+    except ImportError:
+        return ()
+
+    snapshots: list[Path] = []
+    for root in _huggingface_cache_roots():
         try:
-            return any(snapshot.iterdir())
-        except OSError:
-            return False
-    return all(
-        any(_matches_required_pattern(snapshot, pattern) for pattern in alternatives)
-        for alternatives in required_file_groups
-    )
+            resolved_root = root.resolve(strict=False)
+            repo_dir = (
+                resolved_root
+                / repo_folder_name(repo_id=spec.repo_id, repo_type="model")
+            ).resolve(strict=False)
+            if os.path.normcase(
+                os.path.commonpath([str(resolved_root), str(repo_dir)])
+            ) != os.path.normcase(str(resolved_root)):
+                continue
+            revision = (repo_dir / "refs" / "main").read_text(encoding="utf-8").strip()
+            if not revision or revision in {".", ".."} or "/" in revision or "\\" in revision:
+                continue
+            snapshots_dir = (repo_dir / "snapshots").resolve(strict=False)
+            snapshot = snapshots_dir / revision
+            resolved_snapshot = snapshot.resolve(strict=False)
+            if os.path.normcase(
+                os.path.commonpath([str(snapshots_dir), str(resolved_snapshot)])
+            ) == os.path.normcase(str(snapshots_dir)):
+                snapshots.append(snapshot)
+        except (OSError, TypeError, ValueError):
+            continue
+    return tuple(snapshots)
 
 
 def find_cached_huggingface_snapshot(spec: ModelAssetSpec) -> Path | None:
@@ -86,37 +148,42 @@ def find_cached_huggingface_snapshot(spec: ModelAssetSpec) -> Path | None:
     load download again (or fail offline).
     """
 
-    if spec.source != "huggingface":
-        return None
-    try:
-        from huggingface_hub import scan_cache_dir
-    except ImportError:
-        return None
-
-    for root in _huggingface_cache_roots():
-        try:
-            cache_info = scan_cache_dir(root)
-        except Exception:
-            continue
-        resolved_root = root.resolve(strict=False)
-        for repo in cache_info.repos:
-            if repo.repo_type != "model" or repo.repo_id != spec.repo_id:
-                continue
-            for revision in repo.revisions:
-                if "main" not in revision.refs:
-                    continue
-                snapshot = Path(revision.snapshot_path).resolve(strict=False)
-                try:
-                    within_root = os.path.commonpath(
-                        [str(resolved_root), str(snapshot)]
-                    ) == str(resolved_root)
-                except ValueError:
-                    within_root = False
-                if within_root and _snapshot_is_complete(
-                    snapshot, spec.required_file_groups
-                ):
-                    return snapshot
+    for snapshot in _main_huggingface_snapshots(spec):
+        if _snapshot_is_complete(
+            snapshot,
+            spec.required_file_groups,
+            spec.snapshot_validator,
+        ):
+            return snapshot
     return None
+
+
+def _remove_invalid_main_snapshots(spec: ModelAssetSpec) -> bool:
+    """Remove only invalid snapshots selected by the cached ``main`` ref.
+
+    ``snapshot_download(force_download=True)`` refreshes blobs but deliberately
+    leaves an existing snapshot pointer in place.  A regular file left by an
+    interrupted or external cache write would therefore survive every retry.
+    Removing the invalid snapshot first lets Hugging Face rebuild its pointers
+    while preserving the shared blob cache.
+    """
+
+    removed = False
+    for snapshot in _main_huggingface_snapshots(spec):
+        if not snapshot.exists() or _snapshot_is_complete(
+            snapshot,
+            spec.required_file_groups,
+            spec.snapshot_validator,
+        ):
+            continue
+        if snapshot.is_symlink():
+            snapshot.unlink()
+        elif snapshot.is_dir():
+            shutil.rmtree(snapshot)
+        else:
+            snapshot.unlink()
+        removed = True
+    return removed
 
 
 def inspect_model_asset(spec: ModelAssetSpec) -> dict[str, object]:
@@ -132,7 +199,14 @@ def inspect_model_asset(spec: ModelAssetSpec) -> dict[str, object]:
     }
     if spec.source == "local":
         path = spec.local_path.resolve(strict=False) if spec.local_path else None
-        cached = bool(path and _snapshot_is_complete(path, spec.required_file_groups))
+        cached = bool(
+            path
+            and _snapshot_is_complete(
+                path,
+                spec.required_file_groups,
+                spec.snapshot_validator,
+            )
+        )
         result["cached"] = cached
         if path is not None:
             result["path"] = str(path)
@@ -146,14 +220,12 @@ def inspect_model_asset(spec: ModelAssetSpec) -> dict[str, object]:
     return result
 
 
-def download_model_asset(
+def _download_model_asset_unlocked(
     spec: ModelAssetSpec,
     *,
     update_task: TaskUpdate,
     token: str = "",
 ) -> dict[str, object]:
-    """Ensure a model asset is cached and return its resolved status."""
-
     current = inspect_model_asset(spec)
     if spec.source == "local":
         if not current["cached"]:
@@ -169,6 +241,13 @@ def download_model_asset(
         return {**current, "downloaded": False}
 
     snapshot_kwargs: dict[str, object] = {}
+    main_snapshots = _main_huggingface_snapshots(spec)
+    if main_snapshots:
+        # The active snapshot exists but failed validation. Redownload the
+        # complete allowed artifact set and rebuild its snapshot pointers so no
+        # partial or corrupt file survives.
+        _remove_invalid_main_snapshots(spec)
+        snapshot_kwargs["force_download"] = True
     if spec.allow_patterns:
         snapshot_kwargs["allow_patterns"] = list(spec.allow_patterns)
     if token.strip():
@@ -185,11 +264,19 @@ def download_model_asset(
         **snapshot_kwargs,
     )
     if not snapshot_path:
-        raise RuntimeError(f"Model download did not return a snapshot path: {spec.repo_id}")
+        raise RuntimeError(
+            f"Model download did not return a snapshot path: {spec.repo_id}"
+        )
 
     resolved = Path(snapshot_path).resolve(strict=False)
-    if not _snapshot_is_complete(resolved, spec.required_file_groups):
-        raise RuntimeError(f"Downloaded model snapshot is incomplete: {spec.repo_id}")
+    if not _snapshot_is_complete(
+        resolved,
+        spec.required_file_groups,
+        spec.snapshot_validator,
+    ):
+        raise RuntimeError(
+            f"Downloaded model snapshot is incomplete: {spec.repo_id}"
+        )
     return {
         "assetId": spec.asset_id,
         "variant": spec.variant,
@@ -201,6 +288,22 @@ def download_model_asset(
         "downloadable": True,
         "downloaded": True,
     }
+
+
+def download_model_asset(
+    spec: ModelAssetSpec,
+    *,
+    update_task: TaskUpdate,
+    token: str = "",
+) -> dict[str, object]:
+    """Ensure a model asset is cached and return its resolved status.
+
+    Calls for the same asset are serialized across UI and runtime entry points
+    so validation and cleanup cannot race an in-progress snapshot download.
+    """
+
+    with _model_asset_download_lock(spec.task_key):
+        return _download_model_asset_unlocked(spec, update_task=update_task, token=token)
 
 
 __all__ = [

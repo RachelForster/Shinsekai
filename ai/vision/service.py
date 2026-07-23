@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, Protocol
 
@@ -48,7 +49,13 @@ def _default_fallback_available() -> bool:
     """Report whether any built-in fallback (plugin-preferred or Moondream) can run."""
     if active_vision_fallback() is not None:
         return True
-    return installed_moondream_directory() is not None
+    if installed_moondream_directory() is None:
+        return False
+    # The built-in Moondream fallback needs PyTorch at runtime. If it is not
+    # importable, describe() would crash the chat turn, so report it unavailable
+    # and let the caller show the graceful "install a vision plugin / switch
+    # model" guidance instead of leaking a raw missing-module error.
+    return importlib.util.find_spec("torch") is not None
 
 
 class ChatVisionService:
@@ -154,12 +161,14 @@ class ChatVisionService:
 
         try:
             fallback = self._fallback_factory()
-        except MoondreamPluginUnavailable:
+            descriptions: list[str] = []
+            for image in images:
+                description = fallback.describe(image.path.read_bytes(), DEFAULT_IMAGE_PROMPT).strip()
+                descriptions.append(f"Image attachment {image.name}:\n{description or '[No description returned]'}")
+        except (MoondreamPluginUnavailable, ImportError):
+            # Fallback plugin present but not runnable (e.g. missing torch): degrade
+            # to the guidance prompt instead of crashing the chat turn.
             return self._fallback_unavailable_input(prompt_parts, images, display_text)
-        descriptions: list[str] = []
-        for image in images:
-            description = fallback.describe(image.path.read_bytes(), DEFAULT_IMAGE_PROMPT).strip()
-            descriptions.append(f"Image attachment {image.name}:\n{description or '[No description returned]'}")
         prompt_parts.append("\n\n".join(descriptions))
         return PreparedChatInput(
             content="\n\n".join(prompt_parts),

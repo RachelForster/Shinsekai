@@ -84,8 +84,15 @@ function submitUserMessageState(
     text,
   };
   if (queued) {
+    // Batch/queued submissions must still show the user's own message instead of
+    // leaving the previous turn's reply on screen (which reads as the dialogue
+    // "rolling back" to the last message). Present it like a normal submission; the
+    // batch flush timing is handled by the command layer, not the presentation.
     return withResolvedLayers({
       ...clearTransientNotificationState(state),
+      characterName: normalizedUserDisplayName(state.userDisplayName),
+      dialogHtml: undefined,
+      dialogText: text,
       inputAttachments: [],
       inputDraft: "",
       optimisticSubmission,

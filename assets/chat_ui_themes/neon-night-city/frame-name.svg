@@ -1,7 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64" preserveAspectRatio="none">
+  <path d="M16 2H78L94 18V62H2V16Z" fill="none" stroke="#ff2da3" stroke-opacity="0.07" stroke-width="11" />
   <path d="M16 2H78L94 18V62H2V16Z" fill="none" stroke="#ff2da3" stroke-opacity="0.2" stroke-width="6" />
   <path d="M16 2H78L94 18V62H2V16Z" fill="none" stroke="#ff2da3" stroke-width="2" />
+  <path d="M2 34V16L16 2H42M54 2H78L94 18V30" fill="none" stroke="#ff2da3" stroke-opacity="0.18" stroke-width="8" />
   <path d="M2 34V16L16 2H42M54 2H78L94 18V30" fill="none" stroke="#ff9bd3" stroke-width="3" />
+  <path d="M94 42V62H58M44 62H2V46" fill="none" stroke="#00f5ff" stroke-opacity="0.18" stroke-width="7" />
   <path d="M94 42V62H58M44 62H2V46" fill="none" stroke="#00f5ff" stroke-width="2.5" />
-  <path d="M8 20L20 8H31M88 22L76 10H66" fill="none" stroke="#8ffaff" stroke-opacity="0.72" stroke-width="1.5" />
+  <!-- Diagonal ornaments stay inside the 16 px corner slices. -->
+  <path d="M7 14L14 7H30M89 14L82 7H66" fill="none" stroke="#00f5ff" stroke-opacity="0.14" stroke-width="5" />
+  <path d="M7 14L14 7H30M89 14L82 7H66" fill="none" stroke="#8ffaff" stroke-opacity="0.72" stroke-width="1.5" />
 </svg>

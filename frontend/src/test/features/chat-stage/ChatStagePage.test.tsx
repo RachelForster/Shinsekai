@@ -73,6 +73,7 @@ const desktopApiMocks = vi.hoisted(() => ({
   getDesktopWindowCursorPosition: vi.fn(),
   isTauriDesktop: vi.fn(),
   minimizeDesktopWindow: vi.fn(),
+  setDesktopWindowAlwaysOnTop: vi.fn(),
   setDesktopWindowClickThrough: vi.fn(),
   startDesktopWindowDrag: vi.fn(),
   startDesktopWindowResize: vi.fn(),
@@ -93,6 +94,7 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
     getDesktopWindowCursorPosition: () => desktopApiMocks.getDesktopWindowCursorPosition(),
     isTauriDesktop: () => desktopApiMocks.isTauriDesktop(),
     minimizeDesktopWindow: () => desktopApiMocks.minimizeDesktopWindow(),
+    setDesktopWindowAlwaysOnTop: (alwaysOnTop: boolean) => desktopApiMocks.setDesktopWindowAlwaysOnTop(alwaysOnTop),
     setDesktopWindowClickThrough: (ignore: boolean) => desktopApiMocks.setDesktopWindowClickThrough(ignore),
     startDesktopWindowDrag: () => desktopApiMocks.startDesktopWindowDrag(),
     startDesktopWindowResize: (direction: string) => desktopApiMocks.startDesktopWindowResize(direction),
@@ -179,6 +181,7 @@ describe("ChatStagePage", () => {
     desktopApiMocks.isTauriDesktop.mockReturnValue(false);
     desktopApiMocks.getDesktopWindowCursorPosition.mockResolvedValue({ x: 0, y: 0 });
     desktopApiMocks.minimizeDesktopWindow.mockResolvedValue(undefined);
+    desktopApiMocks.setDesktopWindowAlwaysOnTop.mockResolvedValue(undefined);
     desktopApiMocks.setDesktopWindowClickThrough.mockResolvedValue(undefined);
     mocks.sendChatCommand.mockImplementation(async (command: ChatCommand) =>
       snapshot({
@@ -219,6 +222,40 @@ describe("ChatStagePage", () => {
         type: "submit-option",
       }),
     );
+  });
+
+  it("focuses the first option and submits the focused choice with Enter", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ options: ["Take the shortcut", "Stay on the road"] }));
+    renderPage();
+
+    const firstOption = await screen.findByRole("button", { name: "Take the shortcut" });
+    expect(screen.getByRole("list", { name: "Dialogue choices" })).toContainElement(firstOption);
+    expect(firstOption).toHaveFocus();
+
+    fireEvent.keyDown(firstOption, { key: "Enter" });
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: "Take the shortcut",
+        type: "submit-option",
+      }),
+    );
+  });
+
+  it("exposes notifications as status updates and softens them over sprites", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        characterName: "",
+        dialogText: "",
+        notificationText: "Session paused",
+      }),
+    );
+    renderPage();
+
+    const notification = await screen.findByRole("status");
+    expect(notification).toHaveClass("chat-stage__notification");
+    expect(notification).toHaveAttribute("data-sprites-visible", "true");
+    expect(notification).toHaveTextContent("Session paused");
   });
 
   it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {
@@ -1295,9 +1332,11 @@ describe("ChatStagePage", () => {
     });
     expect(JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}")).toEqual({
       config: {
+        alwaysOnTop: true,
         auto: false,
         autoHideInput: true,
         autoHideTopTools: true,
+        bgmVolume: 1,
         configThemeColor: "#88cc44",
         configUseMainThemeColor: false,
         dialogText: {
@@ -1339,6 +1378,105 @@ describe("ChatStagePage", () => {
         windowScale: 1.1,
       },
       version: chatStageRuntimeConfigVersion,
+    });
+  });
+
+  it("restores color and typography overrides to the active theme defaults", async () => {
+    themeContextMocks.optional = {
+      resolved: { typewriter: { cps: 42 } },
+      style: {
+        "--chat-dialog-text-theme-color": "#ddeeff",
+        "--chat-dialog-text-theme-font-family": "Theme Dialog",
+        "--chat-dialog-text-theme-font-size": "23px",
+        "--chat-dialog-text-theme-font-weight": "600",
+        "--chat-name-theme-color": "#ffccaa",
+        "--chat-name-theme-font-family": "Theme Name",
+        "--chat-name-theme-font-size": "19px",
+        "--chat-name-theme-font-weight": "800",
+        "--chat-theme-color": "#336699",
+      } as CSSProperties,
+    };
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({
+        config: {
+          configThemeColor: "#ff3355",
+          configUseMainThemeColor: false,
+          dialogFill: {
+            color: "#112233",
+            color2: "#445566",
+            gradient: true,
+            gradientDirection: "to-top",
+            gradientMode: "dual",
+            opacity: 0.7,
+          },
+          dialogOpacity: 0.55,
+          dialogText: {
+            align: "right",
+            alignOverride: true,
+            bold: true,
+            boldOverride: true,
+            color: "#112233",
+            direction: "rtl",
+            fontFamily: "Verdana",
+            fontSize: 25,
+          },
+          nameText: {
+            bold: false,
+            boldOverride: true,
+            color: "#445566",
+            fontFamily: "Georgia",
+            fontSize: 21,
+          },
+          typewriterCps: 96,
+          windowScale: 1.1,
+        },
+        version: chatStageRuntimeConfigVersion,
+      }),
+    );
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
+    fireEvent.click(within(config).getByRole("button", { name: "Restore theme defaults" }));
+
+    expect(within(config).getByLabelText("Config menu color")).toHaveValue("#336699");
+    expect(within(config).getByLabelText("Use main app color")).not.toBeChecked();
+    expect(within(config).getByLabelText("Nameplate text color")).toHaveValue("#ffccaa");
+    expect(within(config).getByLabelText("Dialog text color")).toHaveValue("#ddeeff");
+    expect(within(config).getByText("96 chars/s")).toBeInTheDocument();
+
+    await waitFor(() => {
+      const stage = document.querySelector(".chat-stage") as HTMLElement;
+      expect(stage.style.getPropertyValue("--chat-config-accent")).toBe("#336699");
+      expect(stage.style.getPropertyValue("--chat-dialog-runtime-background")).toBe("");
+      expect(stage.style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe("0.55");
+      expect(stage.style.getPropertyValue("--chat-dialog-text-runtime-color")).toBe(
+        "var(--chat-dialog-text-theme-color, #f7f1f0)",
+      );
+      expect(stage.style.getPropertyValue("--chat-name-runtime-color")).toBe("var(--chat-name-theme-color, #fff6f4)");
+    });
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}");
+      expect(stored).toMatchObject({
+        config: {
+          configThemeColor: "#336699",
+          configUseMainThemeColor: false,
+          dialogFill: defaultChatStageRuntimeConfig.dialogFill,
+          dialogOpacity: 0.55,
+          dialogText: {
+            ...defaultChatStageRuntimeConfig.dialogText,
+            direction: "rtl",
+          },
+          nameText: defaultChatStageRuntimeConfig.nameText,
+          typewriterCps: 96,
+          windowScale: 1.1,
+        },
+        version: chatStageRuntimeConfigVersion,
+      });
     });
   });
 

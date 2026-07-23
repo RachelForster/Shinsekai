@@ -14,6 +14,7 @@ from .state import BridgeState
 from .tasks import _update_task
 
 _ASR_FASTER_WHISPER_ASSET_ID = "asr.faster-whisper"
+_MEMORY_EMBEDDING_ASSET_ID = "memory.embedding"
 _ASR_ALLOW_PATTERNS = (
     "config.json",
     "preprocessor_config.json",
@@ -158,6 +159,12 @@ def _configured_asr_model(state: BridgeState) -> str:
 
 def _resolve_model_asset(state: BridgeState, payload: dict[str, Any]) -> ModelAssetSpec:
     asset_id = str(payload.get("assetId") or "").strip()
+    if asset_id == _MEMORY_EMBEDDING_ASSET_ID:
+        if "configured" in payload or "variant" in payload or "modelName" in payload:
+            raise ValueError("memory embedding model requests do not accept a variant")
+        from ai.memory.config import EMBEDDING_MODEL_ASSET
+
+        return EMBEDDING_MODEL_ASSET
     if asset_id != _ASR_FASTER_WHISPER_ASSET_ID:
         raise ValueError(f"Unsupported model asset: {asset_id or '<empty>'}")
 

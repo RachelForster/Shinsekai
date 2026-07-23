@@ -124,7 +124,7 @@
   }
 
   .chat-stage__notification {
-    top: 58px;
+    top: var(--stage-notification-top);
     bottom: auto;
     border-radius: 8px;
   }

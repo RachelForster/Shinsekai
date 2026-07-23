@@ -33,6 +33,10 @@ vi.mock("../../../shared/platform/platform", () => ({
 
 import { ChatThemeProvider, useChatTheme } from "../../../features/chat-stage/theme/ChatThemeProvider";
 import { ChatThemePicker } from "../../../features/chat-stage/theme/ChatThemePicker";
+import {
+  chatStageRuntimeConfigVersion,
+  defaultChatStageRuntimeConfig,
+} from "../../../features/chat-stage/runtimeConfig";
 import { resolveChatTheme, type ChatThemeManifest } from "../../../shared/theme/chatTheme";
 
 function Probe() {
@@ -63,6 +67,7 @@ function renderThemeTree(children: React.ReactNode) {
 describe("chat theme runtime", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
     document.documentElement.removeAttribute("style");
     document.getElementById("shinsekai-chat-theme-fonts")?.remove();
     platformMocks.getPlatform.mockReturnValue({
@@ -75,6 +80,7 @@ describe("chat theme runtime", () => {
   afterEach(() => {
     document.documentElement.removeAttribute("style");
     document.getElementById("shinsekai-chat-theme-fonts")?.remove();
+    window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
   });
 
   it("maps manifest tokens into chat stage CSS variables and font faces", () => {
@@ -195,6 +201,9 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--font-chat"]).toBe('"Mio Sans"');
     expect(resolved.style["--chat-dialog-background"]).toBe("rgba(20,20,28,0.86)");
     expect(resolved.style["--chat-dialog-background-image"]).toBe('url("asset://assets/dialog-frame.png")');
+    expect(resolved.style["--chat-dialog-background-slice"]).toBe("28");
+    expect(resolved.style["--chat-dialog-background-width"]).toBe("28px");
+    expect(resolved.style["--chat-dialog-background-outset"]).toBe("0px");
     expect(resolved.style["--chat-dialog-backdrop-filter"]).toBe("none");
     expect(resolved.style["--chat-dialog-actions-border"]).toBe("0 solid transparent");
     expect(resolved.style["--chat-dialog-border"]).toBe("0 solid transparent");
@@ -213,7 +222,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-dialog-padding"]).toBe("40px");
     expect(resolved.style["--chat-dialog-toolbar-gap"]).toBe("10px");
     expect(resolved.style["--chat-dialog-toolbar-reserved-height"]).toBeUndefined();
-    expect(resolved.style["--chat-dialog-name-input-gap"]).toBe("20svh");
+    expect(resolved.style["--chat-dialog-name-input-gap"]).toBe("clamp(84px, 20svh, 180px)");
     expect(resolved.style["--chat-dialog-stack-bottom"]).toContain("--chat-dialog-name-input-gap");
     expect(resolved.style["--chat-dialog-toolbar-placement"]).toBe("dialog-top");
     expect(resolved.style["--chat-dialog-toolbar-reveal"]).toBe("hover");
@@ -261,6 +270,9 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-send-color"]).toBe("#ffffff");
     expect(resolved.style["--chat-name-background"]).toBe("rgba(28,22,48,0.92)");
     expect(resolved.style["--chat-name-background-image"]).toBe('url("asset://assets/name-plate.png")');
+    expect(resolved.style["--chat-name-background-slice"]).toBe("16");
+    expect(resolved.style["--chat-name-background-width"]).toBe("16px");
+    expect(resolved.style["--chat-name-background-outset"]).toBe("0px");
     expect(resolved.style["--chat-name-frame"]).toBe('url("asset://assets/name-border.svg") 16 fill / 16px stretch');
     expect(resolved.style["--chat-name-frame-image"]).toBe('url("asset://assets/name-border.svg")');
     expect(resolved.style["--chat-name-frame-slice"]).toBe("16");
@@ -308,6 +320,61 @@ describe("chat theme runtime", () => {
     expect(resolved.fontFaces).toContain("@font-face");
     expect(resolved.fontFaces).toContain('font-family: "Mio Sans";');
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/mio.woff2")');
+  });
+
+  it("uses frame geometry for a nine-slice background without requiring a frame image", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "nine-slice-background",
+        name: { en: "Nine-slice Background" },
+        tokens: {
+          dialog: {
+            backgroundImage: "assets/dialog.png",
+            frameSlice: 24,
+            frameWidthPx: 18,
+            frameOutsetPx: 2,
+          },
+          input: { backgroundImage: "assets/input.png" },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-dialog-background-image"]).toBe('url("asset://assets/dialog.png")');
+    expect(resolved.style["--chat-dialog-background-slice"]).toBe("24");
+    expect(resolved.style["--chat-dialog-background-width"]).toBe("18px");
+    expect(resolved.style["--chat-dialog-background-outset"]).toBe("2px");
+    expect(resolved.style["--chat-dialog-frame-image"]).toBeUndefined();
+    expect(resolved.style["--chat-input-background-slice"]).toBe("32");
+    expect(resolved.style["--chat-input-background-width"]).toBe("32px");
+    expect(resolved.style["--chat-input-background-outset"]).toBe("0px");
+  });
+
+  it("maps the arrow-fade name decoration without adding a frame", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "arrow-fade-theme",
+        name: { en: "Arrow Fade" },
+        tokens: {
+          name: {
+            background: "linear-gradient(90deg, #174688, transparent)",
+            decoration: "arrow-fade",
+          },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-name-after-display"]).toBe("block");
+    expect(resolved.style["--chat-name-after-width"]).toBe("2.8em");
+    expect(resolved.style["--chat-name-before-position"]).toBe("static");
+    expect(resolved.style["--chat-name-before-width"]).toBe("0.72em");
+    expect(resolved.style["--chat-name-border"]).toBe("0 solid transparent");
+    expect(resolved.style["--chat-name-clip-path"]).toBe("polygon(0 50%, 18px 0, 100% 0, 100% 100%, 18px 100%)");
+    expect(resolved.style["--chat-name-sheen"]).toBe("none");
+    expect(resolved.style["--chat-name-frame-image"]).toBeUndefined();
   });
 
   it("maps reusable frame geometry without leaking chat frames into logs", () => {
@@ -689,6 +756,28 @@ describe("chat theme runtime", () => {
     });
     repoMocks.setActiveChatTheme.mockResolvedValue(undefined);
     repoMocks.deleteChatTheme.mockResolvedValue(undefined);
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({
+        config: {
+          ...defaultChatStageRuntimeConfig,
+          dialogFill: {
+            ...defaultChatStageRuntimeConfig.dialogFill,
+            color: "#112233",
+          },
+          dialogOpacity: 0.6,
+          dialogText: {
+            ...defaultChatStageRuntimeConfig.dialogText,
+            color: "#ddeeff",
+          },
+          nameText: {
+            ...defaultChatStageRuntimeConfig.nameText,
+            color: "#ffeeaa",
+          },
+        },
+        version: chatStageRuntimeConfigVersion,
+      }),
+    );
 
     renderThemeTree(<ChatThemePicker onActiveThemeChange={onActiveThemeChange} onThemesChange={onThemesChange} />);
 
@@ -701,6 +790,20 @@ describe("chat theme runtime", () => {
 
     await waitFor(() => expect(repoMocks.uploadChatTheme).toHaveBeenCalled());
     await waitFor(() => expect(repoMocks.setActiveChatTheme).toHaveBeenCalledWith("my-theme"));
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}");
+      expect(stored).toMatchObject({
+        config: {
+          configThemeColor: "#22aa88",
+          configUseMainThemeColor: false,
+          dialogFill: defaultChatStageRuntimeConfig.dialogFill,
+          dialogOpacity: 0.6,
+          dialogText: defaultChatStageRuntimeConfig.dialogText,
+          nameText: defaultChatStageRuntimeConfig.nameText,
+        },
+        version: chatStageRuntimeConfigVersion,
+      });
+    });
     expect(onThemesChange).toHaveBeenCalledTimes(1);
     expect(onActiveThemeChange).toHaveBeenCalledWith("my-theme");
     await waitFor(() =>

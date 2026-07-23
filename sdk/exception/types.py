@@ -71,6 +71,7 @@ MODULE_PACKAGE_MAP = {
     "fastembed": "fastembed",
     "google": "google-genai",
     "google.genai": "google-genai",
+    "huggingface_hub": "huggingface-hub",
     "mem0": "mem0ai[extras]",
     "numpy": "numpy",
     "openai": "openai",

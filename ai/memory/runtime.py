@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import threading
 import time
 from typing import Any
 
-from core.model_assets.downloads import preload_huggingface_snapshot
-from sdk.exception.types import download_error_from_exception
+from core.model_assets.service import download_model_asset
+from sdk.exception.types import (
+    download_error_from_exception,
+    runtime_dependency_error_from_exception,
+    runtime_dependency_error_from_module,
+)
 from sdk.tool_registry import ToolNotReady
 
-from ai.memory.config import build_mem0_config, is_embedding_model_cached
+from ai.memory.config import (
+    EMBEDDING_MODEL_ASSET,
+    build_mem0_config,
+    is_embedding_model_cached,
+)
 from ai.memory.constants import EMBEDDING_MODEL
 from ai.memory.tasks import current_mem0_task, set_mem0_task
 
@@ -29,31 +38,45 @@ _LOADING_FIRST_MSG = (
 )
 
 
-_EMBEDDING_MODEL_ALLOW_PATTERNS = [
-    "1_Pooling/config.json",
-    "config.json",
-    "config_sentence_transformers.json",
-    "model.safetensors",
-    "modules.json",
-    "sentence_bert_config.json",
-    "sentencepiece.bpe.model",
-    "special_tokens_map.json",
-    "tokenizer.json",
-    "tokenizer_config.json",
-    "unigram.json",
-]
+def _preload_embedding_model() -> str:
+    result = download_model_asset(EMBEDDING_MODEL_ASSET, update_task=set_mem0_task)
+    snapshot_path = result.get("path")
+    if not snapshot_path:
+        raise RuntimeError("The mem0 embedding model snapshot could not be located after download.")
+    return str(snapshot_path)
 
 
-def _preload_embedding_model(*, cached: bool) -> None:
-    preload_huggingface_snapshot(
-        EMBEDDING_MODEL,
-        cached=cached,
-        update_task=set_mem0_task,
-        download_message="Downloading mem0 embedding model",
-        cached_message="Loading cached mem0 embedding model.",
-        load_message="Loading mem0 embedding model.",
-        allow_patterns=_EMBEDDING_MODEL_ALLOW_PATTERNS,
+def _dependency_from_error(error: BaseException) -> dict[str, Any]:
+    return runtime_dependency_error_from_exception(error) or runtime_dependency_error_from_module("mem0")
+
+
+def _missing_dependency_status(dependency: dict[str, Any]) -> dict[str, Any]:
+    task = current_mem0_task()
+    return {
+        "status": "missing_dependency",
+        "message": dependency["message"],
+        "moduleName": dependency["moduleName"],
+        "packageName": dependency["packageName"],
+        **({"task": task} if task else {}),
+    }
+
+
+def _module_is_available(module_name: str) -> bool:
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except (AttributeError, ImportError, ValueError):
+        return False
+
+
+def _create_mem0_instance(memory_type: Any, snapshot_path: str) -> Any:
+    config = build_mem0_config()
+    logger.info(
+        "mem0 后台初始化: llm.provider=%s embedder.provider=%s",
+        config["llm"]["provider"],
+        config["embedder"]["provider"],
     )
+    config["embedder"]["config"]["model"] = snapshot_path
+    return memory_type.from_config(config)
 
 
 def _loading_status_message() -> str:
@@ -99,20 +122,20 @@ def start_mem0_loading() -> None:
 
     def _load() -> None:
         global _mem0, _mem0_loading, _mem0_load_error
+        stage = "dependency"
         try:
-            print("[mem0] 后台线程开始加载…")
             from mem0 import Memory
 
-            config = build_mem0_config()
-            print(f"[mem0] llm.provider={config['llm']['provider']} embedder.provider={config['embedder']['provider']}")
-            logger.info(
-                "mem0 后台初始化: llm.provider=%s embedder.provider=%s",
-                config["llm"]["provider"],
-                config["embedder"]["provider"],
+            stage = "download"
+            snapshot_path = _preload_embedding_model()
+            stage = "initialize"
+            set_mem0_task(
+                phase="initialize",
+                status="running",
+                message="Initializing long-term memory.",
+                progress=0.96,
             )
-            print("[mem0] 正在初始化 Memory.from_config（首次会下载 embedding 模型）…")
-            _preload_embedding_model(cached=cached)
-            mem = Memory.from_config(config)
+            mem = _create_mem0_instance(Memory, snapshot_path)
             with _lock:
                 _mem0 = mem
             set_mem0_task(
@@ -121,41 +144,51 @@ def start_mem0_loading() -> None:
                 message="mem0 embedding model is ready.",
                 progress=1,
             )
-            print("[mem0] 后台加载完成，记忆系统已就绪")
             logger.info("mem0 后台加载完成")
-        except ModuleNotFoundError:
-            print("[mem0] mem0ai 未安装！")
-            logger.exception("mem0 后台加载失败: mem0ai 未安装")
+        except ModuleNotFoundError as exc:
+            dependency = _dependency_from_error(exc)
+            package_name = str(dependency["packageName"])
+            logger.exception("mem0 后台加载失败: 缺少运行时依赖 %s", package_name)
             with _lock:
-                _mem0_load_error = ModuleNotFoundError("No module named 'mem0'")
+                _mem0_load_error = exc
+            user_message = f"长期记忆缺少 {package_name}，请先安装运行时依赖。"
             set_mem0_task(
-                error="No module named 'mem0'",
+                error=str(exc),
                 errorCode="missing_dependency",
-                errorUserMessage="长期记忆缺少 mem0ai，请先安装运行时依赖。",
-                message="mem0ai is not installed.",
-                notice="长期记忆缺少 mem0ai，请先安装运行时依赖。",
+                errorUserMessage=user_message,
+                message=str(dependency["message"]),
+                notice=user_message,
                 noticeKind="error",
                 phase="failed",
                 progress=None,
                 status="failed",
             )
         except Exception as exc:
-            print("[mem0] 后台加载失败！详见日志")
             logger.exception("mem0 后台加载失败")
-            download_error = download_error_from_exception(
-                exc,
-                source="huggingface",
-                url=EMBEDDING_MODEL,
-            )
             with _lock:
                 _mem0_load_error = exc
+            if stage == "download":
+                presented_error = download_error_from_exception(
+                    exc,
+                    source="huggingface",
+                    url=EMBEDDING_MODEL,
+                )
+                error_code = presented_error["errorType"]
+                user_message = presented_error["userMessage"]
+                notice = presented_error["message"]
+                http_status = presented_error["statusCode"]
+            else:
+                error_code = "memory_initialization_failed"
+                user_message = f"长期记忆初始化失败：{exc}"
+                notice = str(exc)
+                http_status = None
             set_mem0_task(
                 error=str(exc),
-                errorCode=download_error["errorType"],
-                errorUserMessage=download_error["userMessage"],
-                httpStatus=download_error["statusCode"],
-                message=download_error["userMessage"],
-                notice=download_error["message"],
+                errorCode=error_code,
+                errorUserMessage=user_message,
+                httpStatus=http_status,
+                message=user_message,
+                notice=notice,
                 noticeKind="error",
                 phase="failed",
                 progress=None,
@@ -172,7 +205,6 @@ def start_mem0_loading() -> None:
             with _lock:
                 _mem0_loading = False
 
-    print("[mem0] 启动后台加载线程…")
     t = threading.Thread(target=_load, name="mem0-loader", daemon=True)
     t.start()
     logger.info("mem0 后台加载线程已启动")
@@ -232,14 +264,21 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
             "modelCached": is_embedding_model_cached(),
             **({"task": task} if task else {}),
         }
-    if isinstance(_mem0_load_error, ModuleNotFoundError):
-        task = current_mem0_task()
-        return {
-            "status": "missing_dependency",
-            "moduleName": "mem0",
-            "packageName": "mem0ai",
-            **({"task": task} if task else {}),
-        }
+    load_error = _mem0_load_error
+    if isinstance(load_error, ModuleNotFoundError):
+        dependency = _dependency_from_error(load_error)
+        if not _module_is_available(str(dependency["moduleName"])):
+            return _missing_dependency_status(dependency)
+
+        # A dependency installer invalidates import caches before the next
+        # status read. Clear only the exact error we inspected so an error from
+        # a concurrent loader cannot be lost.
+        with _lock:
+            recovered = _mem0_load_error is load_error
+            if recovered:
+                _mem0_load_error = None
+        if not recovered:
+            return check_mem0_status(start_loading=start_loading)
     if _mem0_load_error is not None:
         task = current_mem0_task()
         result: dict[str, Any]
@@ -247,20 +286,22 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
             result = {"status": "error", "message": str(task["errorUserMessage"]), "task": task}
         else:
             result = {"status": "error", "message": str(_mem0_load_error), **({"task": task} if task else {})}
-        # Restart loading on status check so the next poll picks up a
-        # "loading" state and carries through to ready (or back to error).
-        if start_loading:
-            start_mem0_loading()
-        return result
+        if not start_loading:
+            return result
+        start_mem0_loading()
+        task = current_mem0_task()
+        return {
+            "status": "loading",
+            "modelCached": is_embedding_model_cached(),
+            **({"task": task} if task else {}),
+        }
     try:
         import mem0  # noqa: F401
 
         if not start_loading:
-            task = current_mem0_task()
             return {
                 "status": "not_started",
                 "modelCached": is_embedding_model_cached(),
-                **({"task": task} if task else {}),
             }
         start_mem0_loading()
         task = current_mem0_task()
@@ -269,11 +310,9 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
             "modelCached": is_embedding_model_cached(),
             **({"task": task} if task else {}),
         }
-    except ImportError:
-        task = current_mem0_task()
-        return {
-            "status": "missing_dependency",
-            "moduleName": "mem0",
-            "packageName": "mem0ai",
-            **({"task": task} if task else {}),
-        }
+    except ImportError as exc:
+        dependency = runtime_dependency_error_from_exception(exc)
+        if dependency is None:
+            task = current_mem0_task()
+            return {"status": "error", "message": str(exc), **({"task": task} if task else {})}
+        return _missing_dependency_status(dependency)

@@ -1,11 +1,16 @@
 import type { CSSProperties } from "react";
 
 import type { ChatStageSprite } from "./chatState";
+import {
+  emitDesktopChatStageRuntimeConfigChange,
+  onDesktopChatStageRuntimeConfigChange,
+} from "../../shared/desktop/desktopApi";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { DEFAULT_THEME_COLOR, normalizeThemeColor } from "../../shared/theme/appTheme";
 
 export const clickThroughGuardIntervalMs = 32;
 const runtimeConfigStorageKey = "shinsekai-chat-stage-runtime-config";
+const runtimeConfigChangeEventName = "shinsekai:chat-stage-runtime-config-change";
 export const chatStageRuntimeConfigVersion = 4;
 export const runtimeTextSpeedMin = 1;
 export const runtimeTextSpeedMax = 200;
@@ -63,9 +68,11 @@ export interface ChatStageDialogFillConfig {
 }
 
 export interface ChatStageRuntimeConfig {
+  alwaysOnTop: boolean;
   auto: boolean;
   autoHideInput: boolean;
   autoHideTopTools: boolean;
+  bgmVolume: number;
   configThemeColor: string;
   configUseMainThemeColor: boolean;
   dialogFill: ChatStageDialogFillConfig;
@@ -92,9 +99,11 @@ interface ChatStageRuntimeConfigStorageEnvelope {
 }
 
 export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
+  alwaysOnTop: true,
   auto: false,
   autoHideInput: true,
   autoHideTopTools: true,
+  bgmVolume: 1,
   configThemeColor: DEFAULT_THEME_COLOR,
   configUseMainThemeColor: true,
   dialogText: {
@@ -289,6 +298,8 @@ function unwrapRuntimeConfigStoragePayload(value: unknown): {
 export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntimeConfig {
   const { config: parsed, version } = unwrapRuntimeConfigStoragePayload(value);
   return {
+    alwaysOnTop:
+      typeof parsed.alwaysOnTop === "boolean" ? parsed.alwaysOnTop : defaultChatStageRuntimeConfig.alwaysOnTop,
     auto: typeof parsed.auto === "boolean" ? parsed.auto : defaultChatStageRuntimeConfig.auto,
     autoHideInput:
       typeof parsed.autoHideInput === "boolean" ? parsed.autoHideInput : defaultChatStageRuntimeConfig.autoHideInput,
@@ -296,6 +307,10 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
       typeof parsed.autoHideTopTools === "boolean"
         ? parsed.autoHideTopTools
         : defaultChatStageRuntimeConfig.autoHideTopTools,
+    bgmVolume:
+      typeof parsed.bgmVolume === "number" && Number.isFinite(parsed.bgmVolume)
+        ? Math.min(1, Math.max(0, parsed.bgmVolume))
+        : defaultChatStageRuntimeConfig.bgmVolume,
     configThemeColor: sanitizeRuntimeColor(parsed.configThemeColor, defaultChatStageRuntimeConfig.configThemeColor),
     configUseMainThemeColor:
       typeof parsed.configUseMainThemeColor === "boolean"
@@ -393,6 +408,86 @@ export function writeChatStageRuntimeConfig(config: ChatStageRuntimeConfig) {
   } catch {
     // localStorage may be unavailable in hardened webviews.
   }
+}
+
+export function resetChatStageRuntimeThemeAppearance(
+  config: ChatStageRuntimeConfig,
+  themeColor?: string | null,
+): ChatStageRuntimeConfig {
+  return {
+    ...config,
+    configThemeColor: normalizeThemeColor(themeColor),
+    configUseMainThemeColor: false,
+    dialogFill: { ...defaultChatStageRuntimeConfig.dialogFill },
+    dialogText: {
+      ...defaultChatStageRuntimeConfig.dialogText,
+      direction: config.dialogText.direction ?? defaultChatStageRuntimeConfig.dialogText.direction,
+    },
+    nameText: { ...defaultChatStageRuntimeConfig.nameText },
+  };
+}
+
+export function resetPersistedChatStageRuntimeThemeAppearance(themeColor?: string | null) {
+  const next = resetChatStageRuntimeThemeAppearance(readChatStageRuntimeConfig(), themeColor);
+  writeChatStageRuntimeConfig(next);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(runtimeConfigChangeEventName, { detail: next }));
+  }
+  void emitDesktopChatStageRuntimeConfigChange(next).catch((error: unknown) => {
+    console.error("Desktop chat runtime config broadcast failed", error);
+  });
+  return next;
+}
+
+export function subscribeChatStageRuntimeConfig(listener: (config: ChatStageRuntimeConfig) => void) {
+  if (typeof window === "undefined") {
+    return () => undefined;
+  }
+  const handleWindowChange = (event: Event) => {
+    listener(normalizeChatStageRuntimeConfig((event as CustomEvent<unknown>).detail));
+  };
+  const handleStorageChange = (event: StorageEvent) => {
+    if (event.key !== runtimeConfigStorageKey) {
+      return;
+    }
+    if (!event.newValue) {
+      listener(defaultChatStageRuntimeConfig);
+      return;
+    }
+    try {
+      listener(normalizeChatStageRuntimeConfig(JSON.parse(event.newValue)));
+    } catch {
+      listener(readChatStageRuntimeConfig());
+    }
+  };
+  let disposed = false;
+  let unlistenDesktop: (() => void) | undefined;
+
+  window.addEventListener(runtimeConfigChangeEventName, handleWindowChange);
+  window.addEventListener("storage", handleStorageChange);
+  void onDesktopChatStageRuntimeConfigChange((config) => {
+    if (!disposed) {
+      listener(normalizeChatStageRuntimeConfig(config));
+    }
+  })
+    .then((unlisten) => {
+      if (disposed) {
+        unlisten();
+      } else {
+        unlistenDesktop = unlisten;
+        listener(readChatStageRuntimeConfig());
+      }
+    })
+    .catch((error: unknown) => {
+      console.error("Desktop chat runtime config listener failed", error);
+    });
+
+  return () => {
+    disposed = true;
+    window.removeEventListener(runtimeConfigChangeEventName, handleWindowChange);
+    window.removeEventListener("storage", handleStorageChange);
+    unlistenDesktop?.();
+  };
 }
 
 export function runtimeSpriteKey(sprite: ChatStageSprite, index: number) {

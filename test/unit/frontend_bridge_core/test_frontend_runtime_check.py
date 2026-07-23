@@ -450,6 +450,21 @@ def test_runtime_core_requirements_include_bridge_startup_sdks():
     assert "Pillow" in names
 
 
+def test_runtime_core_pins_huggingface_hub_to_the_download_progress_version():
+    from frontend_bridge_core import runtime_dependencies
+
+    repo_root = _repo_root()
+    expected = f"huggingface-hub=={runtime_dependencies.HUGGINGFACE_HUB_VERSION}"
+    requirements = repo_root / "requirements-runtime-core.txt"
+    lines = {
+        line.strip()
+        for line in requirements.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+    assert expected in lines
+
+
 def _fake_runtime_pip_install(calls):
     def fake_run_pip_install(cmd, *, cwd, timeout_sec, detail_max=1600, on_output_line=None):
         calls.append(cmd)
@@ -505,6 +520,19 @@ def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkey
         "--trusted-host",
         "mirror.example",
     ]
+
+
+def test_install_runtime_dependency_pins_huggingface_hub(monkeypatch):
+    from frontend_bridge_core import runtime_dependencies
+
+    calls = []
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
+
+    result = runtime_dependencies.install_runtime_dependency("huggingface_hub")
+
+    expected = f"huggingface-hub=={runtime_dependencies.HUGGINGFACE_HUB_VERSION}"
+    assert result["packageName"] == expected
+    assert calls[0][:5] == [sys.executable, "-m", "pip", "install", expected]
 
 
 def test_install_runtime_dependency_invalidates_import_caches_after_success(monkeypatch):

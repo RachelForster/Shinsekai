@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const controlsCss: string = readFileSync("src/features/chat-stage/styles/controls.css", "utf8");
+const dialogLayerCss: string = readFileSync("src/features/chat-stage/styles/dialog-layer.css", "utf8");
+const inputLayerCss: string = readFileSync("src/features/chat-stage/styles/input-layer.css", "utf8");
 const mediaLayersCss: string = readFileSync("src/features/chat-stage/styles/media-layers.css", "utf8");
 const optionsLayerCss: string = readFileSync("src/features/chat-stage/styles/options-layer.css", "utf8");
 const themePickerCss: string = readFileSync("src/features/chat-stage/theme/chat-theme-picker.css", "utf8");
@@ -64,9 +66,30 @@ describe("chat stage immersive styles", () => {
     expect(layerBlock).toContain("background: transparent;");
     expect(layerBlock).toContain("box-shadow: none;");
     expect(layerBlock).toContain("backdrop-filter: none;");
-    expect(buttonBlock).toContain("backdrop-filter: blur(18px) saturate(1.16);");
+    // The option button intentionally has no backdrop-filter blur: filtering a
+    // subtree whose ancestor animates in makes Chromium/Edge flash a bright bar for
+    // a frame. (The rule's comment still mentions the word, so assert on the value.)
+    expect(buttonBlock).not.toContain("backdrop-filter: blur");
     expect(buttonBlock).toContain("transform: none;");
     expect(optionsLayerCss).toContain(".options-layer__item:has(.options-layer__button:hover:not(:disabled))");
     expect(optionsLayerCss).toContain("@keyframes chat-option-enter");
+  });
+
+  it("renders component background images as filled nine-slice surfaces", () => {
+    const dialogBlock = dialogLayerCss.split(".dialog-layer {")[1]?.split("}")[0] ?? "";
+    const nameBlock = dialogLayerCss.split(".dialog-layer__name {")[1]?.split("}")[0] ?? "";
+    const optionBlock = optionsLayerCss.split(".options-layer__button {")[1]?.split("}")[0] ?? "";
+    const inputBlock = inputLayerCss.split(".input-layer {")[1]?.split("}")[0] ?? "";
+    const toolbarBlock = controlsCss.split(".top-stage-tools {")[1]?.split("}")[0] ?? "";
+    const dialogToolbarBlock = controlsCss.split(".dialog-stage-controls__surface {")[1]?.split("}")[0] ?? "";
+
+    for (const block of [dialogBlock, nameBlock, optionBlock, inputBlock, toolbarBlock, dialogToolbarBlock]) {
+      expect(block).toContain("border-image-source:");
+      expect(block).toMatch(/border-image-slice:\s*var\([^;]+\) fill;/);
+      expect(block).toContain("border-image-repeat: stretch;");
+    }
+
+    expect(dialogBlock).not.toContain("var(--chat-dialog-background-image, none),");
+    expect(nameBlock).not.toContain("var(--chat-name-background-image)");
   });
 });

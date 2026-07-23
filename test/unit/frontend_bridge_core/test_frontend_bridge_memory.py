@@ -1,3 +1,11 @@
+class _ImmediateThread:
+    def __init__(self, *, target, **kwargs):
+        self._target = target
+
+    def start(self):
+        self._target()
+
+
 def test_check_mem0_before_call_returns_none_when_mem0_importable(monkeypatch):
     import importlib
 
@@ -35,7 +43,7 @@ def test_check_mem0_before_call_returns_dep_error_when_missing(monkeypatch):
 def test_get_mem0_status_returns_valid_status():
     from frontend_bridge_core.memory import _get_mem0_status
 
-    result = _get_mem0_status()
+    result = _get_mem0_status(start_loading=False)
     assert isinstance(result, dict)
     assert "status" in result
     valid = {"ready", "loading", "not_started", "error", "missing_dependency"}
@@ -96,7 +104,7 @@ def test_check_mem0_status_includes_task_when_import_fails(monkeypatch):
 
     def _fake_import(name, *args, **kwargs):
         if name == "mem0":
-            raise ImportError("No module named 'mem0'")
+            raise ModuleNotFoundError("No module named 'qdrant_client'", name="qdrant_client")
         return original_import(name, *args, **kwargs)
 
     monkeypatch.setattr(runtime, "_mem0", None)
@@ -109,10 +117,148 @@ def test_check_mem0_status_includes_task_when_import_fails(monkeypatch):
 
     assert result == {
         "status": "missing_dependency",
-        "moduleName": "mem0",
-        "packageName": "mem0ai",
+        "message": "Missing Python module: qdrant_client",
+        "moduleName": "qdrant_client",
+        "packageName": "qdrant_client",
         "task": task,
     }
+
+
+def test_check_mem0_status_does_not_retry_an_unresolved_dependency(monkeypatch):
+    from ai.memory import runtime
+
+    error = ModuleNotFoundError("No module named 'qdrant_client'", name="qdrant_client")
+    starts = []
+    monkeypatch.setattr(runtime, "_mem0", None)
+    monkeypatch.setattr(runtime, "_mem0_loading", False)
+    monkeypatch.setattr(runtime, "_mem0_load_error", error)
+    monkeypatch.setattr(runtime, "current_mem0_task", lambda: None)
+    monkeypatch.setattr(runtime, "_module_is_available", lambda module_name: False)
+    monkeypatch.setattr(runtime, "start_mem0_loading", lambda: starts.append(True))
+
+    result = runtime.check_mem0_status(start_loading=True)
+
+    assert result == {
+        "status": "missing_dependency",
+        "message": "Missing Python module: qdrant_client",
+        "moduleName": "qdrant_client",
+        "packageName": "qdrant_client",
+    }
+    assert starts == []
+
+
+def test_check_mem0_status_recovers_after_dependency_install(monkeypatch):
+    import sys
+    import types
+
+    from ai.memory import runtime
+
+    error = ModuleNotFoundError("No module named 'qdrant_client'", name="qdrant_client")
+    starts = []
+    monkeypatch.setitem(sys.modules, "mem0", types.ModuleType("mem0"))
+    monkeypatch.setattr(runtime, "_mem0", None)
+    monkeypatch.setattr(runtime, "_mem0_loading", False)
+    monkeypatch.setattr(runtime, "_mem0_load_error", error)
+    monkeypatch.setattr(runtime, "current_mem0_task", lambda: None)
+    monkeypatch.setattr(runtime, "_module_is_available", lambda module_name: True)
+    monkeypatch.setattr(runtime, "is_embedding_model_cached", lambda: False)
+    monkeypatch.setattr(runtime, "start_mem0_loading", lambda: starts.append(True))
+
+    assert runtime.check_mem0_status(start_loading=False) == {
+        "status": "not_started",
+        "modelCached": False,
+    }
+    assert runtime._mem0_load_error is None
+    assert starts == []
+
+    runtime._mem0_load_error = error
+    assert runtime.check_mem0_status(start_loading=True) == {
+        "status": "loading",
+        "modelCached": False,
+    }
+    assert runtime._mem0_load_error is None
+    assert starts == [True]
+
+
+def test_check_mem0_status_returns_loading_when_retrying_an_error(monkeypatch):
+    from ai.memory import runtime
+
+    task = {"id": "mem0-embedding-model", "status": "running"}
+    starts = []
+    monkeypatch.setattr(runtime, "_mem0", None)
+    monkeypatch.setattr(runtime, "_mem0_loading", False)
+    monkeypatch.setattr(runtime, "_mem0_load_error", RuntimeError("initialization failed"))
+    monkeypatch.setattr(runtime, "current_mem0_task", lambda: task)
+    monkeypatch.setattr(runtime, "is_embedding_model_cached", lambda: True)
+    monkeypatch.setattr(runtime, "start_mem0_loading", lambda: starts.append(True))
+
+    result = runtime.check_mem0_status(start_loading=True)
+
+    assert result == {"status": "loading", "modelCached": True, "task": task}
+    assert starts == [True]
+
+
+def test_start_mem0_loading_preserves_internal_missing_dependency(monkeypatch):
+    import sys
+    import types
+
+    from ai.memory import runtime
+
+    error = ModuleNotFoundError("No module named 'qdrant_client'", name="qdrant_client")
+    updates = []
+
+    def _raise_missing_dependency(*args, **kwargs):
+        raise error
+
+    mem0_module = types.ModuleType("mem0")
+    mem0_module.Memory = object
+    monkeypatch.setitem(sys.modules, "mem0", mem0_module)
+    monkeypatch.setattr(runtime, "_mem0", None)
+    monkeypatch.setattr(runtime, "_mem0_loading", False)
+    monkeypatch.setattr(runtime, "_mem0_load_error", None)
+    monkeypatch.setattr(runtime, "is_embedding_model_cached", lambda: True)
+    monkeypatch.setattr(runtime, "_preload_embedding_model", lambda: r"\\?\D:\model")
+    monkeypatch.setattr(runtime, "_create_mem0_instance", _raise_missing_dependency)
+    monkeypatch.setattr(runtime, "set_mem0_task", lambda **update: updates.append(update))
+    monkeypatch.setattr(runtime.threading, "Thread", _ImmediateThread)
+
+    runtime.start_mem0_loading()
+
+    assert runtime._mem0_load_error is error
+    assert runtime._mem0_loading is False
+    assert updates[-1]["error"] == "No module named 'qdrant_client'"
+    assert updates[-1]["message"] == "Missing Python module: qdrant_client"
+
+
+def test_start_mem0_loading_reports_post_download_failure_as_initialization(monkeypatch):
+    import sys
+    import types
+
+    from ai.memory import runtime
+
+    error = OSError(123, "invalid model path")
+    updates = []
+
+    def _raise_initialization_error(*args, **kwargs):
+        raise error
+
+    mem0_module = types.ModuleType("mem0")
+    mem0_module.Memory = object
+    monkeypatch.setitem(sys.modules, "mem0", mem0_module)
+    monkeypatch.setattr(runtime, "_mem0", None)
+    monkeypatch.setattr(runtime, "_mem0_loading", False)
+    monkeypatch.setattr(runtime, "_mem0_load_error", None)
+    monkeypatch.setattr(runtime, "is_embedding_model_cached", lambda: True)
+    monkeypatch.setattr(runtime, "_preload_embedding_model", lambda: r"\\?\D:\model")
+    monkeypatch.setattr(runtime, "_create_mem0_instance", _raise_initialization_error)
+    monkeypatch.setattr(runtime, "set_mem0_task", lambda **update: updates.append(update))
+    monkeypatch.setattr(runtime.threading, "Thread", _ImmediateThread)
+
+    runtime.start_mem0_loading()
+
+    assert runtime._mem0_load_error is error
+    assert updates[-1]["errorCode"] == "memory_initialization_failed"
+    assert updates[-1]["message"].startswith("长期记忆初始化失败：")
 
 
 def test_check_mem0_status_exposes_cache_state_while_loading(monkeypatch):
@@ -134,25 +280,60 @@ def test_check_mem0_status_exposes_cache_state_while_loading(monkeypatch):
         }
 
 
-def test_preload_embedding_model_limits_huggingface_snapshot(monkeypatch):
+def test_preload_embedding_model_uses_shared_asset_service(monkeypatch):
     from ai.memory import runtime
 
     captured = {}
+    snapshot_path = r"\\?\C:\very\deep\cache\snapshots\abc123"
 
-    def _fake_preload_huggingface_snapshot(repo_id, **kwargs):
-        captured["repo_id"] = repo_id
-        captured.update(kwargs)
+    def _fake_download_model_asset(spec, *, update_task):
+        captured["spec"] = spec
+        captured["update_task"] = update_task
+        return {"path": snapshot_path}
 
-    monkeypatch.setattr(runtime, "preload_huggingface_snapshot", _fake_preload_huggingface_snapshot)
+    monkeypatch.setattr(runtime, "download_model_asset", _fake_download_model_asset)
 
-    runtime._preload_embedding_model(cached=False)
+    result = runtime._preload_embedding_model()
 
-    assert captured["repo_id"] == "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-    assert captured["cached"] is False
-    patterns = captured["allow_patterns"]
-    assert "model.safetensors" in patterns
-    assert "tokenizer.json" in patterns
-    assert not any(pattern.startswith("onnx/") for pattern in patterns)
-    assert not any(pattern.startswith("openvino/") for pattern in patterns)
-    assert "tf_model.h5" not in patterns
-    assert "pytorch_model.bin" not in patterns
+    assert result == snapshot_path
+    assert captured == {
+        "spec": runtime.EMBEDDING_MODEL_ASSET,
+        "update_task": runtime.set_mem0_task,
+    }
+
+
+def test_preload_embedding_model_requires_a_resolved_path(monkeypatch):
+    import pytest
+
+    from ai.memory import runtime
+
+    monkeypatch.setattr(runtime, "download_model_asset", lambda *args, **kwargs: {})
+
+    with pytest.raises(RuntimeError, match="could not be located"):
+        runtime._preload_embedding_model()
+
+
+def test_create_mem0_instance_uses_local_snapshot_instead_of_repo_id(monkeypatch):
+    from ai.memory import runtime
+
+    snapshot_path = r"\\?\C:\very\deep\cache\snapshots\abc123"
+    config = {
+        "embedder": {
+            "provider": "huggingface",
+            "config": {"model": "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"},
+        },
+        "llm": {"provider": "openai", "config": {}},
+    }
+    captured = {}
+
+    class _FakeMemory:
+        @classmethod
+        def from_config(cls, value):
+            captured["config"] = value
+            return "memory-instance"
+
+    monkeypatch.setattr(runtime, "build_mem0_config", lambda: config)
+    result = runtime._create_mem0_instance(_FakeMemory, snapshot_path)
+
+    assert result == "memory-instance"
+    assert captured["config"]["embedder"]["config"]["model"] == snapshot_path
