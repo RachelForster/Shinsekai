@@ -28,6 +28,7 @@ import type {
   ResolvedChatTheme,
   SaveChatThemeInput,
 } from "../../../shared/theme/chatTheme";
+import { resetPersistedChatStageRuntimeThemeAppearance } from "../runtimeConfig";
 
 export interface ChatThemeContextValue {
   /** 可选主题列表（含内置 + 用户 mod）。 */
@@ -83,6 +84,7 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
     async (id: string) => {
       const next = await getChatThemeManifest(id);
       await setActiveChatTheme(id);
+      resetPersistedChatStageRuntimeThemeAppearance(next.tokens.global?.themeColor);
       setActiveId(id);
       applyManifest(next);
     },

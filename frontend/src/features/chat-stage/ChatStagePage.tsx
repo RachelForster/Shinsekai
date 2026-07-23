@@ -45,7 +45,9 @@ import {
   defaultChatStageRuntimeConfig,
   effectiveChatStageTextStyle,
   readChatStageRuntimeConfig,
+  resetChatStageRuntimeThemeAppearance,
   runtimeSpriteScale,
+  subscribeChatStageRuntimeConfig,
   writeChatStageRuntimeConfig,
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
@@ -196,6 +198,8 @@ export function ChatStagePage() {
   useEffect(() => {
     writeChatStageRuntimeConfig(runtimeConfig);
   }, [runtimeConfig]);
+
+  useEffect(() => subscribeChatStageRuntimeConfig(setRuntimeConfig), []);
 
   useEffect(() => {
     if (!standaloneDesktopWindow) {
@@ -374,6 +378,13 @@ export function ChatStagePage() {
 
   const updateRuntimeConfigUseMainThemeColor = (configUseMainThemeColor: boolean) => {
     setRuntimeConfig((current) => ({ ...current, configUseMainThemeColor }));
+  };
+
+  const resetRuntimeThemeAppearance = () => {
+    const themeColor = (themeStyle as Record<string, unknown>)["--chat-theme-color"];
+    setRuntimeConfig((current) =>
+      resetChatStageRuntimeThemeAppearance(current, typeof themeColor === "string" ? themeColor : mainThemeColor),
+    );
   };
 
   const updateRuntimeTextStyle: Parameters<typeof ChatConfigDialog>[0]["onTextStyleChange"] = (target, patch) => {
@@ -624,6 +635,7 @@ export function ChatStagePage() {
           onDialogOpacityChange={updateRuntimeDialogOpacity}
           onDialogScaleChange={updateRuntimeDialogScale}
           onImmersiveModeChange={updateRuntimeImmersiveMode}
+          onResetThemeAppearance={resetRuntimeThemeAppearance}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
           onSpriteScaleChange={updateRuntimeSpriteScale}

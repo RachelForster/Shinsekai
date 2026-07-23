@@ -33,11 +33,11 @@ export interface VisualBlock {
 export interface FrameVisualBlock extends VisualBlock {
   /** SVG/位图九宫格边框，主题目录内相对路径（沙箱）。 */
   frameImage?: string;
-  /** 素材坐标系中的九宫格切片值（无单位），clamp 1–200，默认 32。 */
+  /** 素材坐标系中的九宫格切片值（无单位），由 backgroundImage 与 frameImage 共用，clamp 1–200，默认 32。 */
   frameSlice?: number;
-  /** 屏幕上的九宫格边框带宽（px），决定角块显示尺寸与素材缩放，clamp 0–96；省略时回退到 frameSlice。 */
+  /** 屏幕上的九宫格边缘带宽（px），决定角块显示尺寸与素材缩放，clamp 0–96；省略时回退到 frameSlice。 */
   frameWidthPx?: number;
-  /** 边框向容器外绘制的距离（px），不参与布局，clamp 0–96，默认 0。 */
+  /** 九宫格向容器外绘制的距离（px），不参与布局，clamp 0–96，默认 0。 */
   frameOutsetPx?: number;
 }
 
@@ -102,7 +102,7 @@ export interface ChatThemeTokens {
   send?: VisualBlock;
   name?: FrameVisualBlock & {
     align?: "left" | "center";
-    decoration?: "accent" | "line-dots";
+    decoration?: "accent" | "arrow-fade" | "line-dots";
     fontFamily?: string;
     hideWhenStartOption?: boolean;
     overlapPx?: number;
@@ -339,6 +339,16 @@ function applyFrameVisualBlock(
   }
 }
 
+function applyNineSliceBackground(style: ChatStageStyle, prefix: string, block: FrameVisualBlock) {
+  const slice = clampNumber(block.frameSlice, 32, 1, 200);
+  const width = clampNumber(block.frameWidthPx, slice, 0, 96);
+  const outset = clampNumber(block.frameOutsetPx, 0, 0, 96);
+
+  style[`--chat-${prefix}-background-slice`] = String(slice);
+  style[`--chat-${prefix}-background-width`] = `${width}px`;
+  style[`--chat-${prefix}-background-outset`] = `${outset}px`;
+}
+
 function applyVisualBlock(
   style: ChatStageStyle,
   prefix: string,
@@ -354,6 +364,9 @@ function applyVisualBlock(
     const backgroundImage = resolveThemeAssetUrl(block.backgroundImage, assetUrl);
     if (backgroundImage) {
       style[`--chat-${prefix}-background-image`] = `url("${backgroundImage}")`;
+      if (allowFrame) {
+        applyNineSliceBackground(style, prefix, block as FrameVisualBlock);
+      }
     }
   }
   const frame = allowFrame ? (block as FrameVisualBlock) : undefined;
@@ -734,6 +747,27 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     style["--chat-name-border"] = "0 solid transparent";
     style["--chat-name-border-bottom"] = "0 solid transparent";
     style["--chat-name-decoration-color"] = "var(--chat-name-runtime-color, var(--chat-name-color))";
+    style["--chat-name-sheen"] = "none";
+  } else if (tokens.name?.decoration === "arrow-fade") {
+    // Reserve clear space on both sides of the name: the leading spacer keeps
+    // text out of the arrow point, while the trailing spacer lets the panel's
+    // background gradient fade away after the final glyph.
+    style["--chat-name-after-background"] = "none";
+    style["--chat-name-after-content"] = '""';
+    style["--chat-name-after-display"] = "block";
+    style["--chat-name-after-height"] = "1px";
+    style["--chat-name-after-margin"] = "0";
+    style["--chat-name-after-width"] = "2.8em";
+    style["--chat-name-before-background"] = "none";
+    style["--chat-name-before-content"] = '""';
+    style["--chat-name-before-display"] = "block";
+    style["--chat-name-before-height"] = "1px";
+    style["--chat-name-before-margin"] = "0 0.2em 0 0";
+    style["--chat-name-before-position"] = "static";
+    style["--chat-name-before-width"] = "0.72em";
+    style["--chat-name-border"] = "0 solid transparent";
+    style["--chat-name-border-bottom"] = "0 solid transparent";
+    style["--chat-name-clip-path"] = "polygon(0 50%, 18px 0, 100% 0, 100% 100%, 18px 100%)";
     style["--chat-name-sheen"] = "none";
   }
   if (tokens.name?.hideWhenStartOption === true) {

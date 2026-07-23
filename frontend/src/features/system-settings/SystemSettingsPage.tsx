@@ -13,6 +13,7 @@ import {
 import { chatThemeQueryKey, listChatThemes, setActiveChatTheme } from "../../entities/chat/repository";
 import { configQueryKey, detectNetworkProxy, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import type { SystemConfig } from "../../entities/config/types";
+import { useOptionalChatTheme } from "../chat-stage/theme/ChatThemeProvider";
 import { useAppState } from "../../shared/app-state/AppState";
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { useI18n } from "../../shared/i18n";
@@ -76,6 +77,7 @@ export function SystemSettingsPage() {
   const { showToast } = useToast();
   const { language, t } = useI18n();
   const { dispatch } = useAppState();
+  const chatTheme = useOptionalChatTheme();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const chatThemesQuery = useQuery({ queryFn: listChatThemes, queryKey: chatThemeQueryKey });
   const { data, isLoading } = configQuery;
@@ -137,7 +139,14 @@ export function SystemSettingsPage() {
       const saved = await saveSystemConfig(payload);
       const themeId = (saved.chat_ui_theme_id || payload.chat_ui_theme_id || "").trim();
       if (themeId && (saved.chat_ui_runtime_mode || payload.chat_ui_runtime_mode) === "react") {
-        await setActiveChatTheme(themeId);
+        const previousThemeId = (data?.system_config.chat_ui_theme_id || "").trim();
+        if (themeId !== previousThemeId) {
+          if (chatTheme) {
+            await chatTheme.switchTheme(themeId);
+          } else {
+            await setActiveChatTheme(themeId);
+          }
+        }
       }
       return { ...saved, chat_ui_theme_id: themeId };
     },
