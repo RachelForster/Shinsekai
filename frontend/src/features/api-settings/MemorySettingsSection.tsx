@@ -5,6 +5,7 @@ import { installMissingRuntimeDependency } from "../../entities/chat/repository"
 import { getMemoryStatus } from "../../entities/config/repository";
 import type { ApiConfig } from "../../entities/config/types";
 import { downloadModelAsset } from "../../entities/model-assets/repository";
+import { isTauriDesktop, restartDesktopBridge } from "../../shared/desktop/desktopApi";
 import { useI18n } from "../../shared/i18n";
 import type { Mem0Status, TaskSnapshot } from "../../shared/platform/types";
 import { AsyncButton, NumberInput, Switch, TaskProgress, useToast } from "../../shared/ui";
@@ -18,8 +19,6 @@ interface MemorySettingsSectionProps {
 }
 
 const MEMORY_EMBEDDING_ASSET = { assetId: "memory.embedding" } as const;
-const HUGGINGFACE_HUB_MODULE = "huggingface_hub";
-const HUGGINGFACE_HUB_PACKAGE = "huggingface-hub";
 
 function dependencyPackageLabel(packageName: string | undefined, fallback: string) {
   const label = String(packageName || "")
@@ -61,6 +60,7 @@ function memoryActionLabel(status: Mem0Status | null, t: ReturnType<typeof useI1
 }
 
 function memoryTaskLabels(task: TaskSnapshot, t: ReturnType<typeof useI18n>["t"], dependencyPackage = "mem0ai") {
+  const dependencyTask = task.kind === "runtime-dependency-install";
   const phase =
     task.phase === "pip"
       ? t("api.memory.installingDependency", { packageName: dependencyPackage })
@@ -71,17 +71,17 @@ function memoryTaskLabels(task: TaskSnapshot, t: ReturnType<typeof useI18n>["t"]
           : task.phase === "verify"
             ? t("api.memory.taskVerifying")
             : task.phase === "completed"
-              ? t("api.memory.modelCached")
+              ? t(dependencyTask ? "api.memory.dependencyInstalled" : "api.memory.modelCached")
               : task.phase === "failed"
-                ? t("api.memory.modelDownloadFailed")
+                ? t(dependencyTask ? "api.memory.dependencyInstallFailed" : "api.memory.modelDownloadFailed")
                 : undefined;
   const status =
     task.status === "running"
       ? t("api.memory.taskInProgress")
       : task.status === "succeeded"
-        ? t("api.memory.modelCached")
+        ? t(dependencyTask ? "api.memory.dependencyInstalled" : "api.memory.modelCached")
         : task.status === "failed"
-          ? t("api.memory.modelDownloadFailed")
+          ? t(dependencyTask ? "api.memory.dependencyInstallFailed" : "api.memory.modelDownloadFailed")
           : undefined;
   return { phase, status };
 }
@@ -205,6 +205,9 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
             },
           },
         );
+        if (isTauriDesktop()) {
+          await restartDesktopBridge();
+        }
         if (operationTokenRef.current !== token) {
           return;
         }
@@ -234,23 +237,6 @@ export function MemorySettingsSection({ disabled = false, draft, id, onChange }:
       if (next.modelCached) {
         return;
       }
-
-      setInstallingDependencyPackage(HUGGINGFACE_HUB_PACKAGE);
-      await installMissingRuntimeDependency(
-        { moduleName: HUGGINGFACE_HUB_MODULE },
-        {
-          onTaskUpdate(nextTask) {
-            if (operationTokenRef.current === token) {
-              setTask(nextTask);
-            }
-          },
-        },
-      );
-      if (operationTokenRef.current !== token) {
-        return;
-      }
-      setTask(null);
-      setInstallingDependencyPackage(undefined);
 
       const result = await downloadModelAsset(MEMORY_EMBEDDING_ASSET, {
         onTaskUpdate(nextTask) {

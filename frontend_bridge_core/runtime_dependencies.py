@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import re
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -10,11 +11,14 @@ from core.plugins.pip_runner import (
     apply_pip_index_and_extra_args as _apply_pip_index_and_extra_args,
     run_pip_install as _run_pip_install,
 )
+from core.runtime.requirements import RequirementCheck, unsatisfied_requirements
 from sdk.exception.types import (
     MODULE_PACKAGE_MAP,
+    RuntimeDependencyError,
     missing_module_from_text,
     package_for_module,
     runtime_dependency_error_from_text,
+    runtime_dependency_error_from_module,
 )
 _SAFE_PACKAGE_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:\[[A-Za-z0-9_,.-]+\])?$")
 HUGGINGFACE_HUB_VERSION = "0.36.2"
@@ -24,22 +28,53 @@ SENTENCE_TRANSFORMERS_SPEC = "sentence-transformers>=5.2,<6"
 FASTEMBED_SPEC = "fastembed"
 MEM0_SPEC = "mem0ai[nlp]"
 CLICK_SPEC = "click>=8.1,<9"
+SPACY_SPEC = "spacy>=3.7,<4"
+MEMORY_RUNTIME_PACKAGE_SPECS = (
+    MEM0_SPEC,
+    CLICK_SPEC,
+    SPACY_SPEC,
+    SENTENCE_TRANSFORMERS_SPEC,
+    FASTEMBED_SPEC,
+    TRANSFORMERS_SPEC,
+    HUGGINGFACE_HUB_SPEC,
+)
 _RUNTIME_PACKAGE_SPECS = {
     "huggingface_hub": (HUGGINGFACE_HUB_SPEC,),
-    "mem0": (
-        MEM0_SPEC,
-        CLICK_SPEC,
-        SENTENCE_TRANSFORMERS_SPEC,
-        FASTEMBED_SPEC,
-        TRANSFORMERS_SPEC,
-        HUGGINGFACE_HUB_SPEC,
-    ),
+    "mem0": MEMORY_RUNTIME_PACKAGE_SPECS,
     "sentence_transformers": (
         SENTENCE_TRANSFORMERS_SPEC,
         TRANSFORMERS_SPEC,
         HUGGINGFACE_HUB_SPEC,
     ),
 }
+
+
+def runtime_dependency_issues(
+    module_name: str,
+    *,
+    installed_versions: Mapping[str, str] | None = None,
+) -> tuple[RequirementCheck, ...]:
+    module_name = (module_name or "").strip()
+    if not module_name:
+        raise ValueError("moduleName is required")
+    package_name = package_for_module(module_name)
+    return unsatisfied_requirements(
+        _runtime_package_specs(module_name, package_name),
+        installed_versions,
+    )
+
+
+def runtime_dependency_error_for_module(
+    module_name: str,
+) -> RuntimeDependencyError | None:
+    issues = runtime_dependency_issues(module_name)
+    if not issues:
+        return None
+    error = runtime_dependency_error_from_module(module_name)
+    error["message"] = "Missing or incompatible Python runtime dependencies: " + "; ".join(
+        issue.issue for issue in issues
+    )
+    return error
 
 
 def _runtime_package_specs(module_name: str, package_name: str) -> tuple[str, ...]:

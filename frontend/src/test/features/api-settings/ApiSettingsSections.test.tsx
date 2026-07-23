@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -50,6 +50,17 @@ vi.mock("../../../entities/chat/repository", () => ({
   installMissingRuntimeDependency: runtimeRepositoryMock.installMissingRuntimeDependency,
 }));
 
+const desktopApiMock = vi.hoisted(() => ({
+  isTauriDesktop: vi.fn(),
+  restartDesktopBridge: vi.fn(),
+}));
+
+vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../shared/desktop/desktopApi")>()),
+  isTauriDesktop: desktopApiMock.isTauriDesktop,
+  restartDesktopBridge: desktopApiMock.restartDesktopBridge,
+}));
+
 function renderZh(children: ReactNode) {
   return render(
     <I18nProvider language="zh_CN">
@@ -77,6 +88,12 @@ function runningTask(): TaskSnapshot<TtsBundleDownloadResult> {
 describe("API settings sections", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    desktopApiMock.isTauriDesktop.mockReturnValue(false);
+    desktopApiMock.restartDesktopBridge.mockResolvedValue({
+      bridgeUrl: "http://127.0.0.1:8787",
+      candidates: [],
+      status: "ready",
+    });
     configRepositoryMock.getMemoryStatus.mockResolvedValue({ modelCached: false, status: "not_started" });
     runtimeRepositoryMock.installMissingRuntimeDependency.mockResolvedValue({
       message: "installed",
@@ -329,11 +346,8 @@ describe("API settings sections", () => {
       { assetId: "memory.embedding" },
       { onTaskUpdate: expect.any(Function) },
     );
-    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenCalledWith(
-      { moduleName: "huggingface_hub" },
-      { onTaskUpdate: expect.any(Function) },
-    );
-    expect(operations).toEqual(["install:huggingface_hub", "download"]);
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).not.toHaveBeenCalled();
+    expect(operations).toEqual(["download"]);
     expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(3);
     for (const [options] of configRepositoryMock.getMemoryStatus.mock.calls) {
       expect(options).toEqual({ startLoading: false });
@@ -390,22 +404,27 @@ describe("API settings sections", () => {
       .mockResolvedValueOnce(missingDependency)
       .mockResolvedValueOnce({ modelCached: false, status: "not_started" })
       .mockResolvedValueOnce({ modelCached: true, status: "not_started" });
+    let completeInstall!: () => void;
     let finishInstall!: () => void;
     runtimeRepositoryMock.installMissingRuntimeDependency.mockImplementation(async (input, options) => {
-      if (input.moduleName === "huggingface_hub") {
-        return {
-          message: "installed",
-          moduleName: input.moduleName,
-          packageName: "huggingface-hub==0.36.2",
-          pipCode: 0,
-          pipOutput: "",
-        };
-      }
       options.onTaskUpdate({
         ...runningTask(),
         kind: "runtime-dependency-install",
         message: "Raw pip output",
         phase: "pip",
+      });
+      await new Promise<void>((resolve) => {
+        completeInstall = () => {
+          options.onTaskUpdate({
+            ...runningTask(),
+            kind: "runtime-dependency-install",
+            message: "installed",
+            phase: "completed",
+            progress: 1,
+            status: "succeeded",
+          });
+          resolve();
+        };
       });
       await new Promise<void>((resolve) => {
         finishInstall = resolve;
@@ -421,23 +440,45 @@ describe("API settings sections", () => {
 
     expect((await screen.findAllByText("正在安装 mem0ai…")).length).toBeGreaterThan(0);
     expect(screen.getByText("Raw pip output")).toBeInTheDocument();
-    finishInstall();
+    await act(async () => completeInstall());
+    expect((await screen.findAllByText("长期记忆依赖已安装")).length).toBeGreaterThan(0);
+    await act(async () => finishInstall());
 
     expect(await screen.findByText("mem0 已就绪 · 模型已就绪")).toBeInTheDocument();
-    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenNthCalledWith(
-      1,
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenCalledWith(
       { moduleName: "mem0" },
       { onTaskUpdate: expect.any(Function) },
     );
-    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenNthCalledWith(
-      2,
-      { moduleName: "huggingface_hub" },
-      { onTaskUpdate: expect.any(Function) },
-    );
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenCalledTimes(1);
     expect(modelAssetRepositoryMock.downloadModelAsset).toHaveBeenCalledTimes(1);
     for (const [options] of configRepositoryMock.getMemoryStatus.mock.calls) {
       expect(options).toEqual({ startLoading: false });
     }
+  });
+
+  it("restarts the Tauri bridge after repairing memory dependencies before using a cached model", async () => {
+    const missingDependency = {
+      moduleName: "mem0",
+      packageName: "mem0ai",
+      status: "missing_dependency" as const,
+    };
+    desktopApiMock.isTauriDesktop.mockReturnValue(true);
+    configRepositoryMock.getMemoryStatus
+      .mockResolvedValueOnce(missingDependency)
+      .mockResolvedValueOnce(missingDependency)
+      .mockResolvedValueOnce({ modelCached: true, status: "not_started" });
+
+    renderZh(
+      <MemorySettingsSection draft={{ ...sampleConfig.api_config, memory_auto_enabled: false }} onChange={vi.fn()} />,
+    );
+    await screen.findByText("缺少 mem0ai 依赖。");
+    fireEvent.click(screen.getByRole("button", { name: "安装依赖" }));
+
+    expect(await screen.findByText("mem0 已就绪 · 模型已就绪")).toBeInTheDocument();
+    expect(runtimeRepositoryMock.installMissingRuntimeDependency).toHaveBeenCalledTimes(1);
+    expect(desktopApiMock.restartDesktopBridge).toHaveBeenCalledTimes(1);
+    expect(configRepositoryMock.getMemoryStatus).toHaveBeenCalledTimes(3);
+    expect(modelAssetRepositoryMock.downloadModelAsset).not.toHaveBeenCalled();
   });
 
   it("does not start a second model download while chat is already loading memory", async () => {

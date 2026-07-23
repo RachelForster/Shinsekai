@@ -16,6 +16,23 @@ HUGGINGFACE_PROGRESS_UPDATE_INTERVAL_SEC = 0.25
 _HUGGINGFACE_SYMLINK_PROBE_LOCK = threading.Lock()
 
 
+def _disable_huggingface_terminal_progress_without_stderr() -> None:
+    """Keep Hugging Face worker progress bars out of terminal-less processes."""
+    if callable(getattr(sys.stderr, "write", None)):
+        return
+    try:
+        from huggingface_hub.utils import disable_progress_bars
+    except (ImportError, AttributeError):
+        return
+
+    # huggingface_hub 0.x applies snapshot_download's custom tqdm class only
+    # to the outer file counter. Its worker threads still create regular tqdm
+    # bars, and under pythonw those bars can deadlock on tqdm's shared lock
+    # because sys.stderr is None. The desktop UI reports progress through
+    # update_task, so terminal bars are both unsafe and redundant here.
+    disable_progress_bars()
+
+
 def _prime_windows_huggingface_symlink_support(
     repo_id: str,
     *,
@@ -259,6 +276,7 @@ def preload_huggingface_snapshot(
         progress=HUGGINGFACE_DOWNLOAD_PROGRESS_START,
         logs=push_progress_log(download_message),
     )
+    _disable_huggingface_terminal_progress_without_stderr()
     _prime_windows_huggingface_symlink_support(
         repo_id,
         cache_dir=snapshot_kwargs.get("cache_dir"),

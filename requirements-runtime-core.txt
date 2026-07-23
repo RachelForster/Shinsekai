@@ -1,4 +1,5 @@
 pyyaml
+packaging>=24
 pydantic
 requests
 huggingface-hub==0.36.2

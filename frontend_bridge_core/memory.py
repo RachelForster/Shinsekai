@@ -5,28 +5,30 @@ from typing import Any, Sequence
 
 
 def _check_mem0_before_call() -> dict[str, Any] | None:
-    """Return a dependency error if mem0 is unavailable."""
+    """Return a dependency error if the complete mem0 runtime is unavailable."""
     import importlib.util as _importlib_util
 
+    from frontend_bridge_core.runtime_dependencies import (
+        runtime_dependency_error_for_module,
+    )
+    from sdk.exception.types import runtime_dependency_error_from_module
+
+    dependency_error = runtime_dependency_error_for_module("mem0")
+    if dependency_error is not None:
+        return dependency_error
     spec = _importlib_util.find_spec("mem0")
     if spec is not None:
         return None
-    from sdk.exception.types import runtime_dependency_error_from_module
 
     return runtime_dependency_error_from_module("mem0")
 
 
 def _get_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     """Return mem0 availability status for frontend polling."""
-    import importlib.util as _importlib_util
-
-    spec = _importlib_util.find_spec("mem0")
-    if spec is None:
-        from sdk.exception.types import runtime_dependency_error_from_module
-
-        dep = runtime_dependency_error_from_module("mem0")
-        dep["status"] = "missing_dependency"
-        return dep
+    dependency_error = _check_mem0_before_call()
+    if dependency_error is not None:
+        dependency_error["status"] = "missing_dependency"
+        return dependency_error
 
     from ai.memory.runtime import check_mem0_status
 

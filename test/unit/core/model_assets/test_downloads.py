@@ -57,9 +57,26 @@ class _PartialInitTqdm:
         self._raise_if_reenabled_after_partial_init()
 
 
-def _install_fake_huggingface(monkeypatch, snapshot_download, tqdm_class=_PartialInitTqdm):
+def _noop_disable_progress_bars():
+    return None
+
+
+def _install_fake_huggingface(
+    monkeypatch,
+    snapshot_download,
+    tqdm_class=_PartialInitTqdm,
+    *,
+    disable_progress_bars=_noop_disable_progress_bars,
+):
     monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(snapshot_download=snapshot_download))
-    monkeypatch.setitem(sys.modules, "huggingface_hub.utils", types.SimpleNamespace(tqdm=tqdm_class))
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub.utils",
+        types.SimpleNamespace(
+            disable_progress_bars=disable_progress_bars,
+            tqdm=tqdm_class,
+        ),
+    )
     monkeypatch.setitem(
         sys.modules,
         "huggingface_hub.file_download",
@@ -67,6 +84,11 @@ def _install_fake_huggingface(monkeypatch, snapshot_download, tqdm_class=_Partia
             are_symlinks_supported=lambda _cache_dir=None: False,
             repo_folder_name=lambda *, repo_id, repo_type: f"{repo_type}s--{repo_id.replace('/', '--')}",
         ),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub.constants",
+        types.SimpleNamespace(HF_HUB_CACHE="C:/fake-huggingface-cache"),
     )
 
 
@@ -199,6 +221,28 @@ def test_preload_huggingface_snapshot_falls_back_to_legacy_fetching_file_progres
     )
     assert download_progress[-1] == downloads.HUGGINGFACE_DOWNLOAD_PROGRESS_END
     assert any("4 / 4 files" in update.get("message", "") for update in updates)
+
+
+def test_preload_huggingface_snapshot_disables_terminal_bars_before_pythonw_download(monkeypatch):
+    events: list[str] = []
+    monkeypatch.setattr(downloads.sys, "stderr", None)
+
+    def disable_progress_bars():
+        events.append("disable-terminal-bars")
+
+    def fake_snapshot_download(repo_id, *, tqdm_class, **kwargs):
+        assert repo_id == "owner/model"
+        events.append("snapshot-download")
+        return "cached-model"
+
+    _install_fake_huggingface(
+        monkeypatch,
+        fake_snapshot_download,
+        disable_progress_bars=disable_progress_bars,
+    )
+
+    assert _preload_with_updates([]) == "cached-model"
+    assert events == ["disable-terminal-bars", "snapshot-download"]
 
 
 def test_preload_huggingface_snapshot_caches_progress_source_after_init(monkeypatch):
