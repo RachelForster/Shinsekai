@@ -23,6 +23,8 @@ import time
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+from frontend_bridge_core.path_utils import resolve_regular_path
+
 
 def _configure_stdio_encoding() -> None:
     for stream in (sys.stdout, sys.stderr):
@@ -31,7 +33,7 @@ def _configure_stdio_encoding() -> None:
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parent
+    return resolve_regular_path(Path(__file__).parent)
 
 
 def _restart_debug_log_path() -> Path:
@@ -106,11 +108,11 @@ def _configure_runtime_context(
         dist_path = Path(frontend_dist).expanduser()
         if not dist_path.is_absolute():
             dist_path = repo_root / dist_path
-        resolved_frontend_dist = str(dist_path.resolve())
+        resolved_frontend_dist = str(resolve_regular_path(dist_path))
 
     raw_app_root = app_root or os.environ.get("SHINSEKAI_APP_ROOT")
     if raw_app_root:
-        app_root_path = Path(raw_app_root).expanduser().resolve(strict=False)
+        app_root_path = resolve_regular_path(raw_app_root)
         if app_root_path.exists() and app_root_path.is_dir():
             resolved_app_root = str(app_root_path)
             os.environ["SHINSEKAI_APP_ROOT"] = resolved_app_root
@@ -133,7 +135,7 @@ def _configure_runtime_context(
             root = _prepare_project_root(raw_project_root, env_name)
             break
         if root is None:
-            root = Path.cwd().resolve(strict=False)
+            root = resolve_regular_path(Path.cwd())
     resolved_project_root = str(root)
     try:
         os.chdir(root)
@@ -155,7 +157,7 @@ def _prepare_project_root(raw_path: str, source: str) -> Path:
         configured = Path(raw_path).expanduser()
         if source != "--project-root" and not configured.is_absolute():
             raise ValueError("environment project roots must be absolute")
-        root = configured.resolve(strict=False)
+        root = resolve_regular_path(configured)
         root.mkdir(parents=True, exist_ok=True)
         data_root = root / "data"
         data_root.mkdir(parents=True, exist_ok=True)
@@ -205,7 +207,7 @@ def _prepare_project_root(raw_path: str, source: str) -> Path:
         )
 
     try:
-        return root.resolve(strict=True)
+        return resolve_regular_path(root, strict=True)
     except (OSError, RuntimeError, ValueError) as exc:
         raise RuntimeError(
             f"{source} project root cannot be resolved after creation: {root}: {exc}"

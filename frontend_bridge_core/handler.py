@@ -43,6 +43,7 @@ from frontend_bridge_core.effects import (
 )
 from frontend_bridge_core.chat import (
     _chat_history,
+    _chat_history_download_file,
     _close_chat,
     TRANSPARENT_BACKGROUND_NAME,
     _chat_history_path,
@@ -489,6 +490,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_chat_snapshot(self.state))
             elif path == "/api/chat/history":
                 self._send_json(_chat_history(self.state))
+            elif path == "/api/chat/history-file":
+                if not self._request_origin_allowed():
+                    raise PermissionError("request origin is not allowed")
+                query = parse_qs(parsed.query)
+                capability = str((query.get("cap") or [""])[0])
+                self._send_local_file(
+                    _chat_history_download_file(self.state, capability),
+                    attachment=True,
+                )
             elif path == "/api/chat/theme":
                 self._send_json(_chat_theme_payload(self.state))
             elif path == "/api/chat/themes":
@@ -527,7 +537,17 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(self.path)
             path = parsed.path
-            if path == "/api/download":
+            if path == "/api/chat/history-file":
+                if not self._request_origin_allowed():
+                    raise PermissionError("request origin is not allowed")
+                query = parse_qs(parsed.query)
+                capability = str((query.get("cap") or [""])[0])
+                self._send_local_file(
+                    _chat_history_download_file(self.state, capability),
+                    attachment=True,
+                    send_body=False,
+                )
+            elif path == "/api/download":
                 query = parse_qs(parsed.query)
                 target = unquote((query.get("path") or [""])[0])
                 self._send_file(target, attachment=True, send_body=False)
@@ -1371,7 +1391,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         message = _launch_chat(
             self.state,
             character_names=selected_characters if isinstance(selected_characters, list) else [],
-            history_file=history_path.resolve().as_posix(),
+            history_file=history_path.as_posix(),
             init_sprite_path=init_sprite_path,
             room_id=room_id,
             selected_bg=selected_bg,

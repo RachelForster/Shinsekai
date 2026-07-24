@@ -168,9 +168,12 @@ class HistoryManager:
             print("无法访问系统剪贴板。")
 
     def clear_chat_history(self, history_file):
-        self.chat_history.clear()
         if not history_file:
+            self.chat_history.clear()
             return
         history_file_path = Path(history_file)
-        history_file_path.unlink(missing_ok=True)
-        self.delete_tmp(history_file)
+        with self._write_lock:
+            self.delete_tmp(history_file)
+            history_file_path.parent.mkdir(parents=True, exist_ok=True)
+            history_file_path.write_text("[]", encoding="utf-8")
+            self.chat_history.clear()

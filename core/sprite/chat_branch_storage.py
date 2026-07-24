@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import json
 import re
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -53,19 +52,37 @@ def chat_history_download_path(path: str | Path) -> Path:
 
 def remove_chat_history_storage(path: str | Path) -> None:
     candidate = Path(path)
-    targets = [candidate]
     if candidate.suffix.lower() == ".json" and not _is_branch_file(candidate):
-        targets.append(candidate.with_suffix(""))
-    elif candidate.suffix.lower() != ".json":
-        targets.append(chat_history_session_dir(candidate))
-    for target in targets:
+        file_targets = [candidate, Path(str(candidate) + ".tmp")]
+        directory_targets = [candidate.with_suffix("")]
+    elif _is_branch_file(candidate):
+        file_targets = []
+        directory_targets = [candidate.parent]
+    else:
+        file_targets = []
+        directory_targets = [chat_history_session_dir(candidate)]
+
+    # A history directory is not an ownership boundary. Remove only files
+    # created by chat storage, then remove the directory if it is empty.
+    # Never recursively delete unrelated content from an external directory.
+    for directory in directory_targets:
+        for name in (
+            BRANCH_TREE_FILENAME,
+            f"{ACTIVE_HISTORY_FILENAME}.tmp",
+            ACTIVE_HISTORY_FILENAME,
+        ):
+            target = directory / name
+            target.unlink(missing_ok=True)
         try:
-            if target.is_dir():
-                shutil.rmtree(target)
-            elif target.exists():
-                target.unlink()
+            directory.rmdir()
         except OSError:
             pass
+
+    # Legacy aliases are removed last. If branch metadata is locked, the
+    # authoritative active history remains intact and the clear is reported as
+    # failed instead of leaving a partially-cleared session.
+    for target in file_targets:
+        target.unlink(missing_ok=True)
 
 
 def sanitize_branch_id(value: str) -> str:
@@ -138,6 +155,8 @@ def reconcile_active_branch_state(
     branch_state: dict[str, Any],
     loaded_messages: list[Any],
     loaded_history: list[Any],
+    *,
+    active_history_present: bool = False,
 ) -> tuple[list[Any], list[Any]]:
     """Reconcile branch metadata with the crash-recoverable active history.
 
@@ -155,7 +174,10 @@ def reconcile_active_branch_state(
     if not isinstance(active_branch, dict):
         return copy.deepcopy(loaded_messages), copy.deepcopy(loaded_history)
 
-    if loaded_messages or loaded_history:
+    # An existing empty active.json is an explicit cleared state, not a missing
+    # snapshot. This prevents stale branch metadata from resurrecting history
+    # after a clear whose metadata cleanup was interrupted.
+    if active_history_present or loaded_messages or loaded_history:
         active_branch["messages"] = copy.deepcopy(loaded_messages)
         active_branch["history"] = copy.deepcopy(loaded_history)
         return copy.deepcopy(loaded_messages), copy.deepcopy(loaded_history)
