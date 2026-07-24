@@ -12,7 +12,12 @@ from ai.vision.cloud_vision_adapter import (
 )
 
 
-def test_installed_plugin_requires_enabled_manifest_entry(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize("enabled", [False, 0, None, ""])
+def test_installed_plugin_requires_enabled_manifest_entry(
+    tmp_path: Path,
+    monkeypatch,
+    enabled,
+):
     plugin_dir = tmp_path / "plugins" / "cloud_vision"
     plugin_dir.mkdir(parents=True)
     (plugin_dir / "plugin.py").write_text("", encoding="utf-8")
@@ -22,12 +27,25 @@ def test_installed_plugin_requires_enabled_manifest_entry(tmp_path: Path, monkey
         lambda: [
             {
                 "entry": "plugins.cloud_vision.plugin:CloudVisionPlugin",
-                "enabled": False,
+                "enabled": enabled,
             }
         ],
     )
 
     assert installed_cloud_vision_directory() is None
+
+
+def test_installed_plugin_defaults_manifest_entry_to_enabled(tmp_path: Path, monkeypatch):
+    plugin_dir = tmp_path / "plugins" / "cloud_vision"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "plugin.py").write_text("", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "ai.vision.cloud_vision_adapter.read_plugin_manifest_items",
+        lambda: [{"entry": "plugins.cloud_vision.plugin:CloudVisionPlugin"}],
+    )
+
+    assert installed_cloud_vision_directory() == plugin_dir.resolve()
 
 
 def test_adapter_uses_selected_provider_and_plugin_image_helpers(tmp_path: Path, monkeypatch):

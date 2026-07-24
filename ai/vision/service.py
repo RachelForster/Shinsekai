@@ -168,10 +168,23 @@ class ChatVisionService:
             return self._fallback_unavailable_input(prompt_parts, images, display_text)
 
         try:
-            fallback = self._fallback_factory()
+            failed_over_to_moondream = False
+            try:
+                fallback = self._fallback_factory()
+            except CloudVisionPluginUnavailable:
+                fallback = VisionManager("moondream")
+                failed_over_to_moondream = True
             descriptions: list[str] = []
             for image in images:
-                description = fallback.describe(image.path.read_bytes(), DEFAULT_IMAGE_PROMPT).strip()
+                image_bytes = image.path.read_bytes()
+                try:
+                    description = fallback.describe(image_bytes, DEFAULT_IMAGE_PROMPT).strip()
+                except CloudVisionPluginUnavailable:
+                    if failed_over_to_moondream:
+                        raise
+                    fallback = VisionManager("moondream")
+                    failed_over_to_moondream = True
+                    description = fallback.describe(image_bytes, DEFAULT_IMAGE_PROMPT).strip()
                 descriptions.append(f"Image attachment {image.name}:\n{description or '[No description returned]'}")
         except (CloudVisionPluginUnavailable, MoondreamPluginUnavailable, ImportError):
             # Fallback plugin present but not runnable (e.g. missing torch): degrade

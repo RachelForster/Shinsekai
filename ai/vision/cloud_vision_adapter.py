@@ -28,7 +28,7 @@ def installed_cloud_vision_directory() -> Path | None:
     """Return the enabled legacy Cloud Vision plugin directory, if installed."""
     for item in read_plugin_manifest_items():
         entry = str(item.get("entry") or "").strip()
-        if entry != CLOUD_VISION_PLUGIN_ENTRY or item.get("enabled", True) is False:
+        if entry != CLOUD_VISION_PLUGIN_ENTRY or not bool(item.get("enabled", True)):
             continue
         directory = infer_plugin_package_directory(entry)
         if directory is not None and directory.is_dir() and (directory / "plugin.py").is_file():
