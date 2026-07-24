@@ -335,16 +335,22 @@ def _frontend_chat_ui_contributions() -> list[Any]:
     )
 
 
-def _frontend_chat_ui_action(contribution: Any) -> tuple[str, str]:
+def _frontend_chat_ui_action(contribution: Any) -> tuple[str, str, str]:
+    """Return (actionType, pageId, pageMode). pageMode is how an open-plugin-page
+    contribution presents its page: "navigate" (default) or "overlay" (a floating
+    window hosted over the chat stage)."""
     action = getattr(contribution, "action", None)
     if callable(action):
-        return "callback", ""
+        return "callback", "", "navigate"
     if isinstance(action, Mapping):
         action_type = str(action.get("type") or "").strip()
         page_id = str(action.get("page_id") or action.get("pageId") or "").strip()
         if action_type == "open-plugin-page" and page_id:
-            return action_type, page_id[:128]
-    return "none", ""
+            mode = str(action.get("mode") or "navigate").strip().lower()
+            if mode not in ("navigate", "overlay"):
+                mode = "navigate"
+            return action_type, page_id[:128], mode
+    return "none", "", "navigate"
 
 
 def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
@@ -363,7 +369,7 @@ def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
         if not plugin_id or not contribution_id or not title or slot not in allowed_slots or key in seen:
             continue
         seen.add(key)
-        action_type, page_id = _frontend_chat_ui_action(contribution)
+        action_type, page_id, page_mode = _frontend_chat_ui_action(contribution)
         icon = str(getattr(contribution, "icon", "") or "puzzle").strip()
         presentation = str(getattr(contribution, "presentation", "") or "button").strip()
         if slot == "chat-top-toolbar":
@@ -379,6 +385,7 @@ def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
                 "id": contribution_id[:128],
                 "order": float(getattr(contribution, "order", 100.0) or 100.0),
                 "pageId": page_id,
+                "pageMode": page_mode,
                 "pluginId": plugin_id[:128],
                 "pluginVersion": str(getattr(contribution, "plugin_version", "") or "")[:64],
                 "presentation": presentation if presentation in allowed_presentations else "button",

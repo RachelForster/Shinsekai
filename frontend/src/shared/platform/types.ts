@@ -186,6 +186,7 @@ export type PluginSlotId =
   | "settings-tools";
 
 export type PluginSlotContributionActionType = "callback" | "none" | "open-plugin-page";
+export type PluginSlotContributionPageMode = "navigate" | "overlay";
 export type PluginSlotContributionIcon = "info" | "play" | "puzzle" | "settings" | "smartphone" | "sparkles";
 export type PluginSlotContributionPresentation = "button" | "icon-only";
 export type PluginSlotContributionVariant = "danger" | "ghost" | "primary";
@@ -199,6 +200,7 @@ export interface PluginSlotContribution {
   id: string;
   order: number;
   pageId: string;
+  pageMode?: PluginSlotContributionPageMode;
   pluginId: string;
   pluginVersion: string;
   presentation: PluginSlotContributionPresentation;

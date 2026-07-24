@@ -18,6 +18,7 @@ import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { InputLayer } from "./components/InputLayer";
+import { PluginPageOverlay } from "./components/PluginPageOverlay";
 import {
   BackgroundLayer,
   BgmLayer,
@@ -77,6 +78,7 @@ export function ChatStagePage() {
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
   const [savingAppearance, setSavingAppearance] = useState(false);
   const [attachmentPickerKind, setAttachmentPickerKind] = useState<ChatAttachmentInput["kind"] | null>(null);
+  const [overlayTarget, setOverlayTarget] = useState<PluginPageTarget | null>(null);
   const voskModelState = useVoskModelAvailability();
   const { showToast } = useToast();
   const { t } = useI18n();
@@ -429,7 +431,11 @@ export function ChatStagePage() {
   };
 
   const openPluginPage = useCallback(
-    ({ pageId, pluginId }: PluginPageTarget) => {
+    ({ mode, pageId, pluginId }: PluginPageTarget) => {
+      if (mode === "overlay") {
+        setOverlayTarget({ pageId, pluginId });
+        return;
+      }
       navigate(
         { pathname: "/settings/plugins", search: location.search },
         {
@@ -479,6 +485,9 @@ export function ChatStagePage() {
 
   return (
     <>
+      {overlayTarget ? (
+        <PluginPageOverlay onClose={() => setOverlayTarget(null)} target={overlayTarget} />
+      ) : null}
       <main
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}
