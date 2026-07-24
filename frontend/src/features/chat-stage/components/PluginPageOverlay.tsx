@@ -51,8 +51,19 @@ function pluginPageSrc(pluginId: string, pageId: string, nonce: number, extra?: 
  * `{ __pluginOverlay: "drag", type, dx, dy }` messages using absolute screen
  * coordinates). Tapping the bottom bar (a press with no drag) collapses it.
  */
-export function PluginPageOverlay({ onClose, target }: { onClose: () => void; target: PluginPageTarget }) {
+export function PluginPageOverlay({ onClose, target }: { onClose: () => void; target: PluginPageTarget | null }) {
   const [nonce] = useState(() => Date.now());
+  // Keep-alive: once opened, stay mounted and just hide (don't destroy the iframe) so
+  // reopening restores the exact page state. `shown` is the last non-null target, so the
+  // iframe src stays stable across open/close and only changes when the page or its params
+  // actually change (an incoming call passes new call_* params → src changes → reload).
+  const [shown, setShown] = useState<PluginPageTarget | null>(target);
+  const visible = target !== null;
+  useEffect(() => {
+    if (target) {
+      setShown(target);
+    }
+  }, [target]);
   const [pos, setPos] = useState<Pos>(() => ({
     x: clamp(window.innerWidth - WIDTH - 24, 8, Math.max(8, window.innerWidth - WIDTH - 8)),
     y: 84,
@@ -126,17 +137,29 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
     return () => window.removeEventListener("message", onMessage);
   }, [onClose]);
 
+  // On each re-show, tell a cooperating page (the phone) to refresh its data in the
+  // background — it stayed mounted while hidden, so its data may be stale.
+  useEffect(() => {
+    if (visible) {
+      frameRef.current?.contentWindow?.postMessage({ __doki: "phone", type: "show" }, "*");
+    }
+  }, [visible]);
+
+  if (!shown) {
+    return null;
+  }
+
   return createPortal(
     <div
       className="plugin-overlay"
       data-chat-stage-hitbox="true"
-      style={{ height: HEIGHT, left: pos.x, top: pos.y, width: WIDTH }}
+      style={{ display: visible ? undefined : "none", height: HEIGHT, left: pos.x, top: pos.y, width: WIDTH }}
     >
       <iframe
         className="plugin-overlay__frame"
         ref={frameRef}
         sandbox="allow-forms allow-same-origin allow-scripts"
-        src={pluginPageSrc(target.pluginId, target.pageId, nonce, target.params)}
+        src={pluginPageSrc(shown.pluginId, shown.pageId, nonce, shown.params)}
         title="Plugin"
       />
       <button aria-label="Collapse" className="plugin-overlay__bar" onPointerDown={onBarPointerDown} type="button">

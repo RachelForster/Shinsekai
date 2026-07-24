@@ -506,9 +506,7 @@ export function ChatStagePage() {
 
   return (
     <>
-      {overlayTarget ? (
-        <PluginPageOverlay onClose={() => setOverlayTarget(null)} target={overlayTarget} />
-      ) : null}
+      <PluginPageOverlay onClose={() => setOverlayTarget(null)} target={overlayTarget} />
       <main
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}
