@@ -68,9 +68,28 @@ def test_unavailable_preferred_fallback_is_bypassed(tmp_path: Path, monkeypatch)
 
 def test_no_registration_falls_back_to_moondream_default(tmp_path: Path, monkeypatch):
     # With nothing registered and no Moondream, behavior is unchanged from stock 2.3.
+    monkeypatch.setattr("ai.vision.service.cloud_vision_available", lambda: False)
     monkeypatch.setattr("ai.vision.service.installed_moondream_directory", lambda: None)
 
     prepared = ChatVisionService().prepare("what's this?", [_image(tmp_path)], adapter=_TextAdapter())
 
     assert prepared.mode == "unavailable"
     assert "Moondream" in prepared.content
+
+
+def test_legacy_cloud_vision_is_preferred_over_moondream(tmp_path: Path, monkeypatch):
+    manager = _FakeManager()
+    providers: list[str] = []
+
+    def manager_factory(provider: str):
+        providers.append(provider)
+        return manager
+
+    monkeypatch.setattr("ai.vision.service.cloud_vision_available", lambda: True)
+    monkeypatch.setattr("ai.vision.service.VisionManager", manager_factory)
+
+    prepared = ChatVisionService().prepare("what's this?", [_image(tmp_path)], adapter=_TextAdapter())
+
+    assert prepared.mode == "fallback"
+    assert providers == ["cloud_vision"]
+    assert "cloud vision saw a red apple" in prepared.content

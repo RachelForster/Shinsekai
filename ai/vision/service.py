@@ -4,6 +4,10 @@ import importlib.util
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, Protocol
 
+from ai.vision.cloud_vision_adapter import (
+    CloudVisionPluginUnavailable,
+    cloud_vision_available,
+)
 from ai.vision.fallback_registry import active_vision_fallback
 from ai.vision.message_content import local_image_block
 from ai.vision.moondream_adapter import MoondreamPluginUnavailable, installed_moondream_directory
@@ -38,16 +42,20 @@ FallbackAvailability = Callable[[], bool]
 
 
 def _default_fallback_factory() -> VisionDescriber:
-    """Prefer a plugin-registered vision fallback, else the local Moondream plugin."""
+    """Prefer registered, legacy Cloud Vision, then local Moondream fallbacks."""
     preferred = active_vision_fallback()
     if preferred is not None:
         return preferred.factory()
+    if cloud_vision_available():
+        return VisionManager("cloud_vision")
     return VisionManager("moondream")
 
 
 def _default_fallback_available() -> bool:
-    """Report whether any built-in fallback (plugin-preferred or Moondream) can run."""
+    """Report whether a registered, Cloud Vision, or Moondream fallback can run."""
     if active_vision_fallback() is not None:
+        return True
+    if cloud_vision_available():
         return True
     if installed_moondream_directory() is None:
         return False
@@ -165,7 +173,7 @@ class ChatVisionService:
             for image in images:
                 description = fallback.describe(image.path.read_bytes(), DEFAULT_IMAGE_PROMPT).strip()
                 descriptions.append(f"Image attachment {image.name}:\n{description or '[No description returned]'}")
-        except (MoondreamPluginUnavailable, ImportError):
+        except (CloudVisionPluginUnavailable, MoondreamPluginUnavailable, ImportError):
             # Fallback plugin present but not runnable (e.g. missing torch): degrade
             # to the guidance prompt instead of crashing the chat turn.
             return self._fallback_unavailable_input(prompt_parts, images, display_text)

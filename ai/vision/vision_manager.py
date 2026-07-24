@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from ai.vision.cloud_vision_adapter import CloudVisionAdapter
 from ai.vision.moondream_adapter import MoondreamVisionAdapter
 from ai.vision.vision_adapter import VisionAdapter
 
@@ -13,6 +14,7 @@ class VisionManager:
     """Resolve and invoke vision providers without leaking provider details to callers."""
 
     _adapters: dict[str, VisionAdapterFactory] = {
+        "cloud_vision": CloudVisionAdapter,
         "moondream": MoondreamVisionAdapter,
     }
 
