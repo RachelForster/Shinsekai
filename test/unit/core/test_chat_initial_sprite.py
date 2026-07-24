@@ -233,10 +233,18 @@ def test_restore_session_ui_reports_restored_character_sprite(monkeypatch):
     assert output.asset_id == "1"
 
 
-def test_native_clear_targets_active_file_then_removes_full_storage(tmp_path, monkeypatch):
+def test_native_clear_removes_branch_storage_before_persisting_empty_active(tmp_path, monkeypatch):
     history = tmp_path / "external-session"
     history.mkdir()
-    calls = {}
+    calls = {"order": []}
+
+    def record_clear(**kwargs):
+        calls["order"].append("clear")
+        calls["clear"] = kwargs
+
+    def record_remove(path):
+        calls["order"].append("remove")
+        calls["remove"] = path
 
     class Context:
         def __getattr__(self, name):
@@ -247,12 +255,12 @@ def test_native_clear_targets_active_file_then_removes_full_storage(tmp_path, mo
     monkeypatch.setattr(
         chat_ui_service,
         "clear_chat_history",
-        lambda **kwargs: calls.setdefault("clear", kwargs),
+        record_clear,
     )
     monkeypatch.setattr(
         chat_ui_service,
         "remove_chat_history_storage",
-        lambda path: calls.setdefault("remove", path),
+        record_remove,
     )
     context = Context()
     chat_ui_service.wire_chat_ui_bridge(
@@ -273,3 +281,4 @@ def test_native_clear_targets_active_file_then_removes_full_storage(tmp_path, mo
 
     assert calls["clear"]["history_file"] == str(history / "active.json")
     assert calls["remove"] == str(history)
+    assert calls["order"] == ["remove", "clear"]

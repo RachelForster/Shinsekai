@@ -120,13 +120,13 @@ def wire_chat_ui_bridge(
     if audio_path_queue is not None:
         def _clear_history() -> None:
             active_history = str(chat_history_active_path(history_file)) if history_file else ""
+            if history_file:
+                remove_chat_history_storage(history_file)
             clear_chat_history(
                 history_file=active_history,
                 ui_queue=audio_path_queue,
                 llm_manager=llm_manager,
             )
-            if history_file:
-                remove_chat_history_storage(history_file)
 
         ctx.on_clear_chat_history(_clear_history)
     if ui_worker is not None and hasattr(ui_worker, "skip_speech"):

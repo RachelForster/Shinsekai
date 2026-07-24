@@ -73,9 +73,25 @@ def _absolute_history_path(raw: str) -> Path:
     return Path(value)
 
 
+def is_unc_history_path(path: str | Path) -> bool:
+    """Identify UNC paths lexically so an offline share is never probed."""
+
+    if os.name != "nt":
+        return False
+    value = str(path).replace("/", "\\")
+    upper = value.upper()
+    if upper.startswith("\\\\?\\UNC\\"):
+        return True
+    return value.startswith("\\\\") and not upper.startswith(
+        ("\\\\?\\", "\\\\.\\", "\\??\\")
+    )
+
+
 def _validate_history_storage_target(path: Path) -> Path:
     """Reject an existing unrelated file/directory as a history storage root."""
 
+    if is_unc_history_path(path):
+        return path
     if not path.exists():
         return path
     if path.is_file():

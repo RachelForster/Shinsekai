@@ -456,9 +456,18 @@ def main():
 
     with _startup_phase("template.load"):
         messages = []
+        active_history_present = False
         if args.history:
             print(tr_i18n("main.print_load_history", path=args.history))
-            messages = load_chat_history(str(chat_history_active_path(args.history)))
+            active_history_path = chat_history_active_path(args.history)
+            messages = load_chat_history(str(active_history_path))
+            try:
+                active_history_present = isinstance(
+                    json.loads(active_history_path.read_text(encoding="utf-8")),
+                    list,
+                )
+            except (OSError, json.JSONDecodeError):
+                active_history_present = False
 
         user_template = ""
         with open(
@@ -724,7 +733,12 @@ def main():
             restored = load_branch_state(args.history) if args.history else None
             if restored is None:
                 return _default_branch_state()
-            restored_messages, restored_history = reconcile_active_branch_state(restored, messages, chat_history)
+            restored_messages, restored_history = reconcile_active_branch_state(
+                restored,
+                messages,
+                chat_history,
+                active_history_present=active_history_present,
+            )
             messages[:] = restored_messages
             chat_history[:] = restored_history
             llm_manager.set_messages(restored_messages)
@@ -1118,9 +1132,9 @@ def main():
                     history_target = str(chat_history_active_path(args.history)) if args.history else str(
                         Path("data/chat_history") / "_temp.json"
                     )
-                    clear_chat_history(history_target, audio_path_queue, llm_manager)
                     if args.history:
                         remove_chat_history_storage(args.history)
+                    clear_chat_history(history_target, audio_path_queue, llm_manager)
                     _reset_branch_state()
                     _persist_branch_state()
                     stream_sink.emit({"type": "options.clear"})

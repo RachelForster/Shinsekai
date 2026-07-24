@@ -43,7 +43,7 @@ from core.sprite.chat_branch_storage import (
 from core.sprite.chat_history_text import history_payload_to_plain_text, parse_assistant_dialog_content
 from llm.tools.chat_ui_tools import sanitize_user_display_name
 
-from .history_paths import resolve_history_path_for_project
+from .history_paths import is_unc_history_path, resolve_history_path_for_project
 from .state import BridgeState
 from .runtime_dependencies import runtime_dependency_error_from_text
 from .security import reject_control_chars
@@ -422,17 +422,20 @@ def _launch_chat(
 
         template_hash = _history_id_from_scenario(user_scenario, character_names)
         history_path = Path(history_file) if history_file else Path(state.history_dir) / template_hash
-        if history_path.suffix.lower() == ".json" and history_path.exists() and history_path.is_file():
-            history_path.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            chat_history_session_dir(history_path).mkdir(parents=True, exist_ok=True)
+        history_argument = str(history_path)
+        if not is_unc_history_path(history_path):
+            if history_path.suffix.lower() == ".json" and history_path.exists() and history_path.is_file():
+                history_path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                chat_history_session_dir(history_path).mkdir(parents=True, exist_ok=True)
+            history_argument = str(history_path.resolve())
         project_root = _project_root()
         app_root = _app_root(state)
         tts_slug = str(state.config_manager.config.api_config.tts_provider or "gpt-sovits").strip() or "gpt-sovits"
         args = [
             "--template=_temp",
             f"--init_sprite_path={init_sprite_path or ''}",
-            f"--history={history_path.resolve()}",
+            f"--history={history_argument}",
             f"--bg={selected_bg}",
             f"--effect_names={effect_names}",
             f"--t2i={'ComfyUI' if use_cg else ''}",
@@ -552,7 +555,11 @@ def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: di
         path = _resolve_history_file(state, raw)
         if path.name in {ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME}:
             return _resolve_history_file(state, path.parent)
-        if path.suffix.lower() == ".json" and not path.is_file():
+        if (
+            path.suffix.lower() == ".json"
+            and not is_unc_history_path(path)
+            and not path.is_file()
+        ):
             return _resolve_history_file(state, path.with_suffix(""))
         return path
     characters = payload.get("characters")
@@ -726,7 +733,11 @@ def _chat_history_entries(state: BridgeState) -> list[dict[str, Any]]:
             entries = _history_entries_from_snapshot(snapshot)
             return entries
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    if history_raw and is_unc_history_path(history_raw):
+        return []
     history_path = _resolve_history_file(state, history_raw) if history_raw else None
+    if history_path is not None and is_unc_history_path(history_path):
+        return []
     history_file = chat_history_active_path(history_path) if history_path is not None else None
     if history_file is None or not history_file.is_file():
         return []

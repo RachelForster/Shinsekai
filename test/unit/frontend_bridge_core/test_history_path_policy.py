@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import ntpath
 import threading
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,7 @@ from core.sprite.chat_branch_storage import (
 from frontend_bridge import _prepare_project_root
 from frontend_bridge_core.chat import (
     _chat_history_download_file,
+    _chat_history_entries,
     _chat_history_path,
     _handle_chat_command,
     _issue_chat_history_download_capability,
@@ -128,6 +130,44 @@ def test_ambiguous_and_device_history_paths_are_rejected(tmp_path: Path, raw: st
 )
 def test_supported_unc_and_verbatim_namespaces_are_absolute(raw: str) -> None:
     assert _windows_history_path_kind(raw) == "absolute"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        r"\\offline-server\share\session.json",
+        r"\\?\UNC\offline-server\share\session.json",
+    ],
+)
+def test_unc_history_resolution_and_idle_snapshot_are_lexical(
+    tmp_path: Path,
+    raw: str,
+) -> None:
+    state = _state(
+        tmp_path,
+        chat_session={"historyPath": raw, "sessionId": ""},
+        chat_stream=None,
+    )
+    no_path_io = AssertionError("UNC validation must not touch the share")
+
+    with (
+        patch.object(Path, "exists", side_effect=no_path_io),
+        patch.object(Path, "is_file", side_effect=no_path_io),
+        patch.object(Path, "is_dir", side_effect=no_path_io),
+        patch.object(Path, "iterdir", side_effect=no_path_io),
+    ):
+        resolved = resolve_history_path_for_project(state, raw)
+        selected = _chat_history_path(
+            state,
+            {"historyPath": raw},
+            {"scenario": "scene", "system": "system"},
+        )
+        entries = _chat_history_entries(state)
+
+    expected = Path(ntpath.normpath(raw))
+    assert resolved == expected
+    assert selected == expected
+    assert entries == []
 
 
 def test_existing_unrelated_directory_is_not_history(tmp_path: Path) -> None:

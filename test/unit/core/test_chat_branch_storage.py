@@ -1,9 +1,11 @@
 import json
 import shutil
+import tempfile
 import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from core.sprite.chat_branch_storage import (
     ACTIVE_HISTORY_FILENAME,
@@ -66,6 +68,53 @@ class ChatBranchStorageTests(unittest.TestCase):
 
         self.assertEqual(messages, branch_messages)
         self.assertEqual(history, branch_history)
+
+    def test_reconcile_respects_an_existing_empty_active_history(self):
+        branch_state = {
+            "active": "main",
+            "branches": {
+                "main": {
+                    "id": "main",
+                    "history": ["Mio: stale"],
+                    "messages": [{"role": "assistant", "content": "stale"}],
+                }
+            },
+        }
+
+        messages, history = reconcile_active_branch_state(
+            branch_state,
+            [],
+            [],
+            active_history_present=True,
+        )
+
+        self.assertEqual(messages, [])
+        self.assertEqual(history, [])
+        self.assertEqual(branch_state["branches"]["main"]["messages"], [])
+        self.assertEqual(branch_state["branches"]["main"]["history"], [])
+
+    def test_cleanup_reports_locked_branch_metadata_without_removing_active(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "session"
+            root.mkdir()
+            active = root / ACTIVE_HISTORY_FILENAME
+            branches = root / BRANCH_TREE_FILENAME
+            active.write_text("[]", encoding="utf-8")
+            branches.write_text("{}", encoding="utf-8")
+            original_unlink = Path.unlink
+
+            def fail_locked_branches(path: Path, *args, **kwargs):
+                if path == branches:
+                    raise PermissionError("branches.json is locked")
+                return original_unlink(path, *args, **kwargs)
+
+            with patch.object(Path, "unlink", fail_locked_branches):
+                with self.assertRaisesRegex(PermissionError, "locked"):
+                    remove_chat_history_storage(root)
+
+            self.assertTrue(active.is_file())
+            self.assertTrue(branches.is_file())
+
     def test_non_existing_json_path_maps_to_session_folder(self):
         path = Path("data/chat_history/session.json")
 
