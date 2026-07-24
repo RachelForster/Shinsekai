@@ -11,7 +11,9 @@ import pytest
 
 from core.runtime.app_runtime import AppRuntime, get_app_runtime, set_app_runtime
 from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
+from llm.llm_manager import LLMManager, STREAM_DIALOG_REPAIR_KEY
 from sdk.messages import LLMDialogMessage, TTSOutputMessage, UserInputMessage
+from test.mocks import MockLLMAdapter
 
 
 pytestmark = pytest.mark.unit
@@ -81,6 +83,23 @@ def _make_app_runtime(
     return runtime
 
 
+def _run_streaming_llm_worker(llm_manager) -> tuple[AppRuntime, list[LLMDialogMessage]]:
+    user_input_queue = CountingQueue()
+    tts_queue = CountingQueue()
+    user_input_queue.put(UserInputMessage(text="hello"))
+    user_input_queue.put(None)
+    runtime = _make_app_runtime(tts_queue=tts_queue)
+    runtime.config.config.api_config.is_streaming = True
+    runtime.llm_manager = llm_manager
+
+    LLMWorker(user_input_queue, tts_queue).run()
+
+    output = []
+    while not tts_queue.empty():
+        output.append(tts_queue.get_nowait())
+    return runtime, output
+
+
 def test_workers_keep_original_queue_attributes_and_bind_ports() -> None:
     _make_app_runtime()
     user_input_queue = Queue()
@@ -140,6 +159,82 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
         user_attachments=[],
         user_input_text="hello",
     )
+
+
+def test_llm_worker_does_not_requeue_dialogue_after_stream_repair() -> None:
+    valid = (
+        '{"dialog":['
+        '{"character_name":"Alice","speech":"First","sprite":"0"},'
+        '{"character_name":"Bob","speech":"Second","sprite":"1"}'
+        "]}"
+    )
+    adapter = MockLLMAdapter(responses=[f"```json\n{valid}\n```", valid])
+    manager = LLMManager(adapter=adapter, user_template="S")
+
+    _, output = _run_streaming_llm_worker(manager)
+
+    assert [(message.name, message.text) for message in output] == [
+        ("Alice", "First"),
+        ("Bob", "Second"),
+    ]
+    assert [call["stream"] for call in adapter.call_history] == [True, False]
+    assert manager.messages[-1]["content"] == valid
+
+
+def test_llm_worker_repair_appends_missing_identical_dialogue() -> None:
+    item = '{"character_name":"Alice","speech":"Again","sprite":"0"}'
+    repaired = f'{{"dialog":[{item},{item}]}}'
+    llm_manager = MagicMock()
+    llm_manager.chat.return_value = iter(
+        [f'{{"dialog":[{item},', {STREAM_DIALOG_REPAIR_KEY: repaired}]
+    )
+
+    _, output = _run_streaming_llm_worker(llm_manager)
+
+    assert [(message.name, message.text) for message in output] == [
+        ("Alice", "Again"),
+        ("Alice", "Again"),
+    ]
+
+
+def test_llm_worker_repair_delivers_when_stream_had_no_dialogue() -> None:
+    repaired = '{"dialog":[{"character_name":"Alice","speech":"Recovered","sprite":"0"}]}'
+    llm_manager = MagicMock()
+    llm_manager.chat.return_value = iter(
+        ["plain text", {STREAM_DIALOG_REPAIR_KEY: repaired}]
+    )
+
+    _, output = _run_streaming_llm_worker(llm_manager)
+
+    assert [(message.name, message.text) for message in output] == [
+        ("Alice", "Recovered")
+    ]
+
+
+def test_llm_worker_repair_matches_non_prefix_dialogues_by_occurrence() -> None:
+    alice = '{"character_name":"Alice","speech":"First","sprite":"1"}'
+    bob = '{"character_name":"Bob","speech":"Missing","sprite":"2"}'
+    carol_streamed = '{"character_name":"Carol","speech":"Last","sprite":3}'
+    carol_repaired = '{"character_name":"Carol","speech":"Last","sprite":"3"}'
+    broken = '{"character_name":"Broken","speech":oops,"sprite":"9"}'
+    repaired = f'{{"dialog":[{alice},{bob},{carol_repaired}]}}'
+    llm_manager = MagicMock()
+    llm_manager.chat.return_value = iter(
+        [
+            f'{{"dialog":[{alice},',
+            f"{broken},",
+            f"{carol_streamed}]}}",
+            {STREAM_DIALOG_REPAIR_KEY: repaired},
+        ]
+    )
+
+    _, output = _run_streaming_llm_worker(llm_manager)
+
+    assert [(message.name, message.text) for message in output] == [
+        ("Alice", "First"),
+        ("Carol", "Last"),
+        ("Bob", "Missing"),
+    ]
 
 
 def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_path) -> None:

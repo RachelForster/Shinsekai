@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from ai.llm.dialog_repair import repair_dialog_output
-from llm.llm_manager import LLMManager
+from llm.llm_manager import LLMManager, STREAM_DIALOG_REPAIR_KEY
 from test.mocks import MockLLMAdapter
 
 VALID_DIALOG = '{"dialog":[{"character_name":"Alice","sprite":"0","speech":"Hi"}]}'
@@ -121,6 +121,27 @@ def test_manager_repairs_when_dialog_contract_is_explicitly_required() -> None:
     assert result == VALID_DIALOG
     assert len(adapter.call_history) == 2
     assert "_dialog_output_required" not in adapter.call_history[0]["kwargs"]
+
+
+def test_manager_marks_stream_repair_without_replaying_it_as_text() -> None:
+    malformed = f"```json\n{VALID_DIALOG}\n```"
+    adapter = MockLLMAdapter(responses=[malformed, VALID_DIALOG])
+    manager = LLMManager(adapter=adapter, user_template="S")
+
+    chunks = list(
+        manager.chat(
+            "hello",
+            stream=True,
+            include_local_time=False,
+            dialog_output_required=True,
+        )
+    )
+
+    assert "".join(chunk for chunk in chunks if isinstance(chunk, str)) == malformed
+    assert [chunk for chunk in chunks if isinstance(chunk, dict)] == [
+        {STREAM_DIALOG_REPAIR_KEY: VALID_DIALOG}
+    ]
+    assert manager.messages[-1]["content"] == VALID_DIALOG
 
 
 def test_manager_does_not_persist_sync_repair_cancelled_in_flight() -> None:

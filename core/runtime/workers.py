@@ -15,7 +15,7 @@ from PySide6.QtCore import QThread
 from sdk.graph import DagNode, Port
 
 # 假设以下依赖文件已在项目路径中
-from llm.llm_manager import STREAM_REASONING_DELTA_KEY
+from llm.llm_manager import STREAM_DIALOG_REPAIR_KEY, STREAM_REASONING_DELTA_KEY
 import threading
 import pygame
 import sys
@@ -34,6 +34,18 @@ from core.media.chat_attachments import resolve_chat_attachments
 from ai.vision.service import ChatVisionService
 
 logger = get_logger(__name__)
+
+
+def _dialog_delivery_key(message: LLMDialogMessage) -> tuple[str, str, str, str, str]:
+    """Normalize the downstream-visible payload for repair replay matching."""
+    return (
+        message.name,
+        message.text or "",
+        str(message.asset_id if message.asset_id is not None else "-1"),
+        message.translate or "",
+        message.effect or "",
+    )
+
 
 # --- QThread + DagNode 基类 ---
 
@@ -208,6 +220,7 @@ class LLMWorker(QThreadDagNode):
                 parser = LlmResponseStreamParser()
                 reasoning_shown = ""
                 message_count = 0
+                delivered_dialog_keys: list[tuple[str, str, str, str, str]] = []
                 raw_chunks: list = []
 
                 with tracker.track("LLM stream parse"):
@@ -221,12 +234,44 @@ class LLMWorker(QThreadDagNode):
                             bar_text = f"{label} · {preview}" if preview else label
                             self.ui_update_manager.post_busy_bar(bar_text, 0.0)
                             continue
+                        if isinstance(chunk, dict) and STREAM_DIALOG_REPAIR_KEY in chunk:
+                            repaired_parser = LlmResponseStreamParser()
+                            repaired_messages = list(
+                                repaired_parser.feed(chunk[STREAM_DIALOG_REPAIR_KEY])
+                            )
+                            delivered_before_repair = message_count
+                            unmatched_streamed = list(delivered_dialog_keys)
+                            appended_messages = 0
+                            for llm_dialog in repaired_messages:
+                                delivery_key = _dialog_delivery_key(llm_dialog)
+                                try:
+                                    unmatched_streamed.remove(delivery_key)
+                                    continue
+                                except ValueError:
+                                    pass
+                                message_count += 1
+                                appended_messages += 1
+                                delivered_dialog_keys.append(delivery_key)
+                                self.tts_queue.put(
+                                    llm_dialog.model_copy(update={"turn_id": turn.id})
+                                )
+                            logger.info(
+                                "Reconciled repaired dialogue with streamed messages",
+                                extra={
+                                    "event": "llm.dialog_format.repair_reconciled",
+                                    "streamed_messages": delivered_before_repair,
+                                    "repaired_messages": len(repaired_messages),
+                                    "appended_messages": appended_messages,
+                                },
+                            )
+                            continue
                         chunk_message = (
                             chunk if isinstance(chunk, str) else str(chunk) if chunk is not None else ""
                         )
                         raw_chunks.append(chunk_message)
                         for llm_dialog in parser.feed(chunk_message):
                             message_count += 1
+                            delivered_dialog_keys.append(_dialog_delivery_key(llm_dialog))
                             self.tts_queue.put(llm_dialog.model_copy(update={"turn_id": turn.id}))
 
                 # --- Interrupted: write committed context, discard the rest ---
