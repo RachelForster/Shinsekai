@@ -94,22 +94,40 @@ def _sprite_value(sprite_data, key: str, default=None):
     return getattr(sprite_data, key, default)
 
 
+def _resolve_sprite_voice_cfg(character_config, sprite_id: int):
+    """Return (voice_type, voice_path, voice_text) for a sprite, YAML-first.
+
+    Voice uploads are handled in a separate bridge process, so the in-process
+    ``character_config`` cache can still point at a replaced or deleted file.
+    Read characters.yaml first and fall back to the cached snapshot only when the
+    YAML has no path for this sprite.
+    """
+    yaml_voice_type, yaml_voice_path, yaml_voice_text = _read_sprite_voice_cfg(
+        character_config.name, sprite_id
+    )
+    voice_type = yaml_voice_type
+    voice_path = str(yaml_voice_path or "").strip()
+    voice_text = yaml_voice_text or ""
+    if not voice_path:
+        sprite_data = character_config.sprites[sprite_id]
+        voice_type = _sprite_value(sprite_data, "voice_type")
+        voice_path = str(_sprite_value(sprite_data, "voice_path", "") or "").strip()
+        voice_text = _sprite_value(sprite_data, "voice_text", "") or ""
+    return voice_type, voice_path, voice_text
+
+
 def _sprite_voice_audio(character_config, sprite_id: int, *allowed_types: str):
     if sprite_id < 0:
         return None, "", ""
     try:
-        yaml_voice_type, yaml_voice_path, yaml_voice_text = _read_sprite_voice_cfg(
-            character_config.name, sprite_id
+        voice_type, voice_path, voice_text = _resolve_sprite_voice_cfg(
+            character_config, sprite_id
         )
-        voice_type = yaml_voice_type
-        voice_path = str(yaml_voice_path or "").strip()
-        voice_text = yaml_voice_text or ""
-        if not voice_path:
-            sprite_data = character_config.sprites[sprite_id]
-            voice_type = _sprite_value(sprite_data, "voice_type")
-            voice_path = str(_sprite_value(sprite_data, "voice_path", "") or "").strip()
-            voice_text = _sprite_value(sprite_data, "voice_text", "") or ""
-        if voice_type in allowed_types and voice_path:
+        # Require the audio file to actually exist: both callers play this path
+        # directly, so a stale config entry whose file was deleted must fall
+        # through (return None) to synthesis / the default reference instead of
+        # playing a missing file.
+        if voice_type in allowed_types and voice_path and Path(voice_path).is_file():
             return voice_type, Path(voice_path).resolve().as_posix(), voice_text
     except Exception:
         logger.debug(
@@ -248,15 +266,26 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 try:
                     if sprite_id < 0:
                         raise IndexError("Sprite ID out of range")
-                    sprite_data = character_config.sprites[sprite_id]
-                    _voice_type = _sprite_value(sprite_data, "voice_type")
-                    _vt = _sprite_value(sprite_data, "voice_text")
-                    _vp = str(_sprite_value(sprite_data, "voice_path", "") or "").strip()
-                    if _vp and (_voice_type == "reference" or (_voice_type is None and _vt)) and _vt and (
-                        not _is_remote_gpt_sovits() or _is_remote_reference_path(_vp)
-                    ):
+                    # YAML-first (see _resolve_sprite_voice_cfg): a reference voice
+                    # replaced via the bridge writes a new content-hash path and
+                    # deletes the old one, but this process's character_config cache
+                    # still holds the old path.  Reading the snapshot here would keep
+                    # falling back to the default reference until the chat restarts.
+                    _voice_type, _vp, _vt = _resolve_sprite_voice_cfg(
+                        character_config, sprite_id
+                    )
+                    # Only use the sprite's reference voice when it is actually
+                    # available; a stale config path whose file was deleted/moved
+                    # must fall back to the character default rather than being
+                    # sent to GPT-SoVITS (which fails with HTTP 400 "not exists").
+                    _vp_available = (
+                        _is_remote_reference_path(_vp) if _is_remote_gpt_sovits() else Path(_vp).is_file()
+                    )
+                    if _vp and _vp_available and (_voice_type == "reference" or (_voice_type is None and _vt)) and _vt:
                         ref_audio_path = Path(_vp).resolve().as_posix()
                         prompt_text = _vt
+                    elif _vp and not _vp_available:
+                        print(f"参考语音文件不存在，回退默认参考合成: {_vp}")
                 except Exception:
                     print("没有立绘")
                 if text_processor:

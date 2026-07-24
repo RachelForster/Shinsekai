@@ -185,3 +185,81 @@ def test_kaggle_gpt_sovits_uses_remote_reference_audio(monkeypatch, tmp_path):
     assert post_calls[0][1]["json"]["speed_factor"] == 1.0
     assert post_calls[0][1]["json"]["parallel_infer"] is True
     assert post_calls[0][1]["json"]["split_bucket"] is True
+
+
+class _RecordingSession:
+    def __init__(self):
+        self.calls = []
+
+    def get(self, url, params=None, timeout=None):
+        self.calls.append(url)
+        return SimpleNamespace(ok=True)
+
+
+_SWITCH_MODEL_INFO = {
+    "gpt_model_path": "/models/new_gpt.ckpt",
+    "sovits_model_path": "/models/new_sovits.pth",
+}
+
+
+def _switch_model_adapter(session, server_process=None):
+    adapter = object.__new__(GPTSoVitsAdapter)
+    adapter.tts_server_url = "http://127.0.0.1:9880/"
+    adapter.gpt_model_path = "old.ckpt"
+    adapter.sovits_model_path = "old.pth"
+    adapter._session = session
+    adapter._server_process = server_process
+    return adapter
+
+
+def test_switch_model_switches_weights_after_server_recovers(monkeypatch):
+    session = _RecordingSession()
+    adapter = _switch_model_adapter(session)
+    checks = iter([False, False, True])
+    monkeypatch.setattr(adapter, "_server_is_reachable", lambda: next(checks))
+    monkeypatch.setattr("tts.tts_adapter.time.sleep", lambda _seconds: None)
+
+    adapter.switch_model(_SWITCH_MODEL_INFO)
+
+    # A transient startup race must retry, then switch both weights once ready.
+    assert any("set_gpt_weights" in url for url in session.calls)
+    assert any("set_sovits_weights" in url for url in session.calls)
+    assert adapter.gpt_model_path == "/models/new_gpt.ckpt"
+    assert adapter.sovits_model_path == "/models/new_sovits.pth"
+
+
+def test_switch_model_aborts_without_weight_calls_on_timeout(monkeypatch):
+    session = _RecordingSession()
+    adapter = _switch_model_adapter(session, server_process=None)
+    monkeypatch.setattr(adapter, "_server_is_reachable", lambda: False)
+    # switch_model hard-codes a 10s readiness timeout; drive a fake clock so the
+    # test exercises the timeout path without waiting in real time.
+    clock = {"t": 0.0}
+
+    def fake_sleep(seconds):
+        clock["t"] += max(float(seconds), 0.5)
+
+    monkeypatch.setattr("tts.tts_adapter.time.monotonic", lambda: clock["t"])
+    monkeypatch.setattr("tts.tts_adapter.time.sleep", fake_sleep)
+
+    with pytest.raises(TimeoutError):
+        adapter.switch_model(_SWITCH_MODEL_INFO)
+
+    # Never poke the weight endpoints while the server is unreachable.
+    assert session.calls == []
+    assert adapter.gpt_model_path == "old.ckpt"
+    assert adapter.sovits_model_path == "old.pth"
+
+
+def test_switch_model_aborts_without_weight_calls_when_server_exits(monkeypatch):
+    session = _RecordingSession()
+    adapter = _switch_model_adapter(session, server_process=SimpleNamespace(poll=lambda: 17))
+    monkeypatch.setattr(adapter, "_server_is_reachable", lambda: False)
+    monkeypatch.setattr("tts.tts_adapter.time.sleep", lambda _seconds: None)
+
+    with pytest.raises(RuntimeError, match=r"exited before becoming ready \(code 17\)"):
+        adapter.switch_model(_SWITCH_MODEL_INFO)
+
+    assert session.calls == []
+    assert adapter.gpt_model_path == "old.ckpt"
+    assert adapter.sovits_model_path == "old.pth"
