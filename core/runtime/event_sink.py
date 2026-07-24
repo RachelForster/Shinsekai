@@ -61,6 +61,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "dialogText": "",
         "eventSeq": 0,
         "historyEntries": [],
+        "incomingCall": None,
         "inputDraft": "",
         "options": [],
         "sprites": [],
@@ -379,6 +380,19 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "notification.change":
         next_snapshot["notificationText"] = str(event.get("text") or "")
+        return next_snapshot
+
+    if event_type == "call.incoming":
+        next_snapshot["incomingCall"] = {
+            "name": str(event.get("name") or ""),
+            "callType": "video" if str(event.get("callType") or "") == "video" else "voice",
+            "pluginId": str(event.get("pluginId") or ""),
+            "pageId": str(event.get("pageId") or ""),
+        }
+        return next_snapshot
+
+    if event_type == "call.ended":
+        next_snapshot["incomingCall"] = None
         return next_snapshot
 
     if event_type == "status.change":

@@ -27,6 +27,7 @@ export interface PluginRenderContext {
 export interface PluginPageTarget {
   mode?: PluginSlotContributionPageMode;
   pageId: string;
+  params?: Record<string, string>;
   pluginId: string;
 }
 

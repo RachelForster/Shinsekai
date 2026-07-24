@@ -14,10 +14,15 @@ const clamp = (value: number, min: number, max: number) => Math.min(Math.max(min
 // Build the plugin page URL the same way the bridge does (plugin_ui._frontend_page_payload),
 // resolve it against the bridge base if the app runs behind one, and forward the bridge token
 // so the page's RPC calls authenticate.
-function pluginPageSrc(pluginId: string, pageId: string, nonce: number): string {
-  const path =
+function pluginPageSrc(pluginId: string, pageId: string, nonce: number, extra?: Record<string, string>): string {
+  let path =
     `/api/plugins/${encodeURIComponent(pluginId)}/frontend/${encodeURIComponent(pageId)}/` +
     `?pluginId=${encodeURIComponent(pluginId)}&pageId=${encodeURIComponent(pageId)}&_n=${nonce}`;
+  if (extra) {
+    for (const [key, value] of Object.entries(extra)) {
+      path += `&${encodeURIComponent(key)}=${encodeURIComponent(value)}`;
+    }
+  }
   if (typeof window === "undefined") {
     return path;
   }
@@ -131,7 +136,7 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
         className="plugin-overlay__frame"
         ref={frameRef}
         sandbox="allow-forms allow-same-origin allow-scripts"
-        src={pluginPageSrc(target.pluginId, target.pageId, nonce)}
+        src={pluginPageSrc(target.pluginId, target.pageId, nonce, target.params)}
         title="Plugin"
       />
       <button aria-label="Collapse" className="plugin-overlay__bar" onPointerDown={onBarPointerDown} type="button">

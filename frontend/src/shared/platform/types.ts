@@ -863,6 +863,13 @@ export interface ChatStat {
   value: number;
 }
 
+export interface IncomingCall {
+  name: string;
+  callType: "voice" | "video";
+  pluginId: string;
+  pageId: string;
+}
+
 export interface ChatSnapshot {
   backgroundPath?: string;
   bgmPath?: string;
@@ -880,6 +887,7 @@ export interface ChatSnapshot {
   experimentalFeatures?: ChatExperimentalFeatures;
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
+  incomingCall?: IncomingCall | null;
   inputDraft: string;
   initTask?: TaskSnapshot;
   numericInfo?: string;
@@ -985,6 +993,8 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[] })
   | (ChatEventBase & { type: "conversation.tree"; tree: ChatConversationTree })
   | (ChatEventBase & { type: "chat.turn.state"; state: ChatTurnState; options?: ChatTurnOptions })
+  | (ChatEventBase & { type: "call.incoming"; name: string; callType: "voice" | "video"; pluginId: string; pageId: string })
+  | (ChatEventBase & { type: "call.ended" })
   | (ChatEventBase & {
       type: "sprite.show";
       characterName: string;
