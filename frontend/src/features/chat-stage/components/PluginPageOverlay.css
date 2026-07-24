@@ -1,0 +1,64 @@
+/* Floating plugin-page overlay: hosts a plugin's frontend page in a draggable
+   window over the chat stage (pageMode "overlay"). Kept plugin-neutral — the
+   frame is transparent so the plugin page owns its own background (and there is
+   no white flash before it loads). */
+.plugin-overlay {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: transparent;
+  border-radius: 28px;
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.5);
+  animation: plugin-overlay-in 0.16s ease;
+}
+
+.plugin-overlay__frame {
+  flex: 1;
+  width: 100%;
+  border: 0;
+  background: transparent;
+}
+
+/* Bottom bar: drag to move, tap (press without moving) to collapse. */
+.plugin-overlay__bar {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  background: rgba(28, 28, 32, 0.55);
+  backdrop-filter: blur(8px);
+  cursor: grab;
+  touch-action: none;
+}
+
+.plugin-overlay__bar:active {
+  cursor: grabbing;
+}
+
+.plugin-overlay__bar:active .plugin-overlay__grip {
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.plugin-overlay__grip {
+  width: 84px;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+@keyframes plugin-overlay-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

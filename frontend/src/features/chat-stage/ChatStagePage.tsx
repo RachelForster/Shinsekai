@@ -16,6 +16,7 @@ import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { InputLayer } from "./components/InputLayer";
+import { PluginPageOverlay } from "./components/PluginPageOverlay";
 import {
   BackgroundLayer,
   BgmLayer,
@@ -76,6 +77,7 @@ export function ChatStagePage() {
   const imageAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAttachmentSlotsRef = useRef(0);
+  const [overlayTarget, setOverlayTarget] = useState<PluginPageTarget | null>(null);
   const { showToast } = useToast();
   const { t } = useI18n();
   const theme = useOptionalChatTheme();
@@ -443,7 +445,11 @@ export function ChatStagePage() {
   };
 
   const openPluginPage = useCallback(
-    ({ pageId, pluginId }: PluginPageTarget) => {
+    ({ mode, pageId, pluginId }: PluginPageTarget) => {
+      if (mode === "overlay") {
+        setOverlayTarget({ pageId, pluginId });
+        return;
+      }
       navigate(
         { pathname: "/settings/plugins", search: location.search },
         {
@@ -495,6 +501,9 @@ export function ChatStagePage() {
 
   return (
     <>
+      {overlayTarget ? (
+        <PluginPageOverlay onClose={() => setOverlayTarget(null)} target={overlayTarget} />
+      ) : null}
       <main
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}
