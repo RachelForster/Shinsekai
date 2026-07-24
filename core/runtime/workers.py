@@ -240,15 +240,21 @@ class LLMWorker(QThreadDagNode):
                                 repaired_parser.feed(chunk[STREAM_DIALOG_REPAIR_KEY])
                             )
                             delivered_before_repair = message_count
-                            unmatched_streamed = list(delivered_dialog_keys)
+                            repaired_dialog_keys = [
+                                _dialog_delivery_key(message) for message in repaired_messages
+                            ]
+                            streamed_prefix_matched = (
+                                delivered_dialog_keys
+                                == repaired_dialog_keys[: len(delivered_dialog_keys)]
+                            )
+                            missing_messages = (
+                                repaired_messages[len(delivered_dialog_keys) :]
+                                if streamed_prefix_matched
+                                else []
+                            )
                             appended_messages = 0
-                            for llm_dialog in repaired_messages:
+                            for llm_dialog in missing_messages:
                                 delivery_key = _dialog_delivery_key(llm_dialog)
-                                try:
-                                    unmatched_streamed.remove(delivery_key)
-                                    continue
-                                except ValueError:
-                                    pass
                                 message_count += 1
                                 appended_messages += 1
                                 delivered_dialog_keys.append(delivery_key)
@@ -262,6 +268,7 @@ class LLMWorker(QThreadDagNode):
                                     "streamed_messages": delivered_before_repair,
                                     "repaired_messages": len(repaired_messages),
                                     "appended_messages": appended_messages,
+                                    "streamed_prefix_matched": streamed_prefix_matched,
                                 },
                             )
                             continue

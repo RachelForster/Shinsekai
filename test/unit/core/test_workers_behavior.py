@@ -182,11 +182,12 @@ def test_llm_worker_does_not_requeue_dialogue_after_stream_repair() -> None:
 
 
 def test_llm_worker_repair_appends_missing_identical_dialogue() -> None:
+    streamed_item = '{"character_name":"Alice","speech":"Again","sprite":0}'
     item = '{"character_name":"Alice","speech":"Again","sprite":"0"}'
     repaired = f'{{"dialog":[{item},{item}]}}'
     llm_manager = MagicMock()
     llm_manager.chat.return_value = iter(
-        [f'{{"dialog":[{item},', {STREAM_DIALOG_REPAIR_KEY: repaired}]
+        [f'{{"dialog":[{streamed_item},', {STREAM_DIALOG_REPAIR_KEY: repaired}]
     )
 
     _, output = _run_streaming_llm_worker(llm_manager)
@@ -211,7 +212,7 @@ def test_llm_worker_repair_delivers_when_stream_had_no_dialogue() -> None:
     ]
 
 
-def test_llm_worker_repair_matches_non_prefix_dialogues_by_occurrence() -> None:
+def test_llm_worker_repair_does_not_append_non_prefix_dialogue() -> None:
     alice = '{"character_name":"Alice","speech":"First","sprite":"1"}'
     bob = '{"character_name":"Bob","speech":"Missing","sprite":"2"}'
     carol_streamed = '{"character_name":"Carol","speech":"Last","sprite":3}'
@@ -233,7 +234,6 @@ def test_llm_worker_repair_matches_non_prefix_dialogues_by_occurrence() -> None:
     assert [(message.name, message.text) for message in output] == [
         ("Alice", "First"),
         ("Carol", "Last"),
-        ("Bob", "Missing"),
     ]
 
 
