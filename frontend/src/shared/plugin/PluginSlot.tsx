@@ -11,6 +11,7 @@ import type {
   PluginConfigGroupSchema,
   PluginSlotContribution,
   PluginSlotContributionIcon,
+  PluginSlotContributionPageMode,
   PluginSlotId,
 } from "../platform/types";
 import { Button, useToast } from "../ui";
@@ -24,7 +25,9 @@ export interface PluginRenderContext {
 }
 
 export interface PluginPageTarget {
+  mode?: PluginSlotContributionPageMode;
   pageId: string;
+  params?: Record<string, string>;
   pluginId: string;
 }
 
@@ -85,6 +88,7 @@ export function normalizeSerializablePluginContributions(
         description: item.description.trim(),
         id: item.id.trim(),
         pageId: item.pageId?.trim() ?? "",
+        pageMode: item.pageMode === "overlay" ? "overlay" : "navigate",
         pluginId: item.pluginId.trim(),
         presentation: item.presentation === "icon-only" ? "icon-only" : "button",
         title: item.title.trim(),
@@ -125,7 +129,7 @@ function SerializableContribution({
     }
     if (contribution.actionType === "open-plugin-page") {
       if (contribution.pageId && onOpenPluginPage) {
-        onOpenPluginPage({ pageId: contribution.pageId, pluginId: contribution.pluginId });
+        onOpenPluginPage({ mode: contribution.pageMode, pageId: contribution.pageId, pluginId: contribution.pluginId });
       }
       return;
     }

@@ -5,6 +5,7 @@ import type { ChatStageState } from "./types";
 export const emptyChatState: ChatStageState = {
   dialogText: "",
   eventSeq: 0,
+  incomingCall: null,
   inputAttachments: [],
   inputDraft: "",
   layers: defaultLayers(),

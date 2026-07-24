@@ -67,6 +67,22 @@ if _EARLY_INIT_STREAM_ENDPOINT:
     except Exception:
         _EARLY_INIT_STREAM_SINK = None
 
+# Live runtime stream sink, exposed so plugins (e.g. the phone detecting a CALL marker)
+# can emit call.incoming / call.ended events to the React frontend. Set to the real sink
+# once the run loop creates it; starts as the early sink.
+_STREAM_SINK = _EARLY_STREAM_SINK
+
+
+def get_stream_sink():
+    """The live runtime stream sink, or None. Used by plugins to push stream events."""
+    return _STREAM_SINK
+
+
+def _set_stream_sink(sink) -> None:
+    global _STREAM_SINK
+    if sink is not None:
+        _STREAM_SINK = sink
+
 from sdk.chat_init import ChatInitService, InitChatCancelled, InitChatContext
 
 _CHAT_INIT_SINK = _EARLY_INIT_STREAM_SINK or _EARLY_STREAM_SINK
@@ -388,6 +404,7 @@ def main():
 
             stream_sink = WSClientSink(args.stream_endpoint)
             stream_sink.emit({"type": "status.change", "status": "idle"})
+    _set_stream_sink(stream_sink)
 
     # T2I manager
     t2i_manager = None

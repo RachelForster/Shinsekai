@@ -85,6 +85,18 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         eventSeq: Math.max(state.eventSeq, event.seq),
         userDisplayName: event.name.trim() || state.userDisplayName,
       });
+    case "call.incoming":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        incomingCall: { callType: event.callType, name: event.name, pageId: event.pageId, pluginId: event.pluginId },
+      });
+    case "call.ended":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        incomingCall: null,
+      });
     case "history.replace":
       return withResolvedLayers({
         ...state,

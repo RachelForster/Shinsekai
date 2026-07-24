@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { browseFiles } from "../../entities/files/repository";
@@ -18,6 +18,7 @@ import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { InputLayer } from "./components/InputLayer";
+import { PluginPageOverlay } from "./components/PluginPageOverlay";
 import {
   BackgroundLayer,
   BgmLayer,
@@ -77,6 +78,28 @@ export function ChatStagePage() {
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
   const [savingAppearance, setSavingAppearance] = useState(false);
   const [attachmentPickerKind, setAttachmentPickerKind] = useState<ChatAttachmentInput["kind"] | null>(null);
+  const [overlayTarget, setOverlayTarget] = useState<PluginPageTarget | null>(null);
+  // Incoming call: a plugin (e.g. the phone) signalled a ring → pop its overlay page
+  // with the call params so it shows the ring screen; clear it (character hung up) →
+  // close that call overlay. Only fires on a fresh call, so it won't re-open per render.
+  const lastCallKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const call = state.incomingCall;
+    if (call && call.pluginId && call.pageId) {
+      const key = `${call.pluginId}:${call.pageId}:${call.name}:${call.callType}`;
+      if (key !== lastCallKeyRef.current) {
+        lastCallKeyRef.current = key;
+        setOverlayTarget({
+          pageId: call.pageId,
+          params: { call_dir: "incoming", call_name: call.name, call_type: call.callType },
+          pluginId: call.pluginId,
+        });
+      }
+    } else {
+      lastCallKeyRef.current = null;
+      setOverlayTarget((current) => (current?.params?.call_dir === "incoming" ? null : current));
+    }
+  }, [state.incomingCall]);
   const voskModelState = useVoskModelAvailability();
   const { showToast } = useToast();
   const { t } = useI18n();
@@ -429,7 +452,11 @@ export function ChatStagePage() {
   };
 
   const openPluginPage = useCallback(
-    ({ pageId, pluginId }: PluginPageTarget) => {
+    ({ mode, pageId, pluginId }: PluginPageTarget) => {
+      if (mode === "overlay") {
+        setOverlayTarget({ pageId, pluginId });
+        return;
+      }
       navigate(
         { pathname: "/settings/plugins", search: location.search },
         {
@@ -479,6 +506,9 @@ export function ChatStagePage() {
 
   return (
     <>
+      {overlayTarget ? (
+        <PluginPageOverlay onClose={() => setOverlayTarget(null)} target={overlayTarget} />
+      ) : null}
       <main
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}
