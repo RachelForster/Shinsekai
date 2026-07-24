@@ -3,7 +3,6 @@ from __future__ import annotations
 import copy
 import json
 import re
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -53,17 +52,40 @@ def chat_history_download_path(path: str | Path) -> Path:
 
 def remove_chat_history_storage(path: str | Path) -> None:
     candidate = Path(path)
-    targets = [candidate]
     if candidate.suffix.lower() == ".json" and not _is_branch_file(candidate):
-        targets.append(candidate.with_suffix(""))
-    elif candidate.suffix.lower() != ".json":
-        targets.append(chat_history_session_dir(candidate))
-    for target in targets:
+        file_targets = [candidate, Path(str(candidate) + ".tmp")]
+        directory_targets = [candidate.with_suffix("")]
+    elif _is_branch_file(candidate):
+        file_targets = []
+        directory_targets = [candidate.parent]
+    else:
+        file_targets = []
+        directory_targets = [chat_history_session_dir(candidate)]
+
+    for target in file_targets:
         try:
-            if target.is_dir():
-                shutil.rmtree(target)
-            elif target.exists():
+            if target.is_file() or target.is_symlink():
                 target.unlink()
+        except OSError:
+            pass
+
+    # A history directory is not an ownership boundary. Remove only files
+    # created by chat storage, then remove the directory if it is empty.
+    # Never recursively delete unrelated content from an external directory.
+    for directory in directory_targets:
+        for name in (
+            ACTIVE_HISTORY_FILENAME,
+            f"{ACTIVE_HISTORY_FILENAME}.tmp",
+            BRANCH_TREE_FILENAME,
+        ):
+            target = directory / name
+            try:
+                if target.is_file() or target.is_symlink():
+                    target.unlink()
+            except OSError:
+                pass
+        try:
+            directory.rmdir()
         except OSError:
             pass
 

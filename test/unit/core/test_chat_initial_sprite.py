@@ -231,3 +231,45 @@ def test_restore_session_ui_reports_restored_character_sprite(monkeypatch):
     output = queue.get_nowait()
     assert output.name == "七海千秋"
     assert output.asset_id == "1"
+
+
+def test_native_clear_targets_active_file_then_removes_full_storage(tmp_path, monkeypatch):
+    history = tmp_path / "external-session"
+    history.mkdir()
+    calls = {}
+
+    class Context:
+        def __getattr__(self, name):
+            if name.startswith("on_"):
+                return lambda callback: setattr(self, name, callback)
+            raise AttributeError(name)
+
+    monkeypatch.setattr(
+        chat_ui_service,
+        "clear_chat_history",
+        lambda **kwargs: calls.setdefault("clear", kwargs),
+    )
+    monkeypatch.setattr(
+        chat_ui_service,
+        "remove_chat_history_storage",
+        lambda path: calls.setdefault("remove", path),
+    )
+    context = Context()
+    chat_ui_service.wire_chat_ui_bridge(
+        context,
+        window=SimpleNamespace(open_history_dialog=lambda _history: None),
+        app=SimpleNamespace(quit=lambda: None),
+        emit_user_text=None,
+        chat_history=[],
+        history_file=str(history),
+        llm_manager=SimpleNamespace(),
+        audio_path_queue=SimpleNamespace(put=lambda _item: None),
+        tts_manager=None,
+        ui_worker=None,
+        tr_i18n=lambda key, **_kwargs: key,
+    )
+
+    context.on_clear_chat_history()
+
+    assert calls["clear"]["history_file"] == str(history / "active.json")
+    assert calls["remove"] == str(history)

@@ -8,6 +8,7 @@ from typing import Any
 
 from config.config_manager import ConfigManager
 from core.messaging.dialog_tokens import is_option_history_name
+from core.sprite.chat_branch_storage import chat_history_active_path, remove_chat_history_storage
 from core.sprite.chat_history import (
     clear_chat_history,
     copy_chat_history_to_clipboard,
@@ -117,13 +118,17 @@ def wire_chat_ui_bridge(
 
     ctx.on_close_window(_on_chat_ui_close)
     if audio_path_queue is not None:
-        ctx.on_clear_chat_history(
-            lambda: clear_chat_history(
-                history_file=history_file,
+        def _clear_history() -> None:
+            active_history = str(chat_history_active_path(history_file)) if history_file else ""
+            clear_chat_history(
+                history_file=active_history,
                 ui_queue=audio_path_queue,
                 llm_manager=llm_manager,
             )
-        )
+            if history_file:
+                remove_chat_history_storage(history_file)
+
+        ctx.on_clear_chat_history(_clear_history)
     if ui_worker is not None and hasattr(ui_worker, "skip_speech"):
         ctx.on_skip_speech_signal(lambda: ui_worker.skip_speech())
 

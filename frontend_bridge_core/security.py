@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 
+from .path_utils import strip_windows_verbatim_prefix
+
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _HOST_RE = re.compile(r"^[A-Za-z0-9.-]+$")
@@ -100,25 +102,43 @@ def validated_origin(raw_origin: str, *, allowed_ports: set[int]) -> str:
     return safe_header_value(origin)
 
 
+def _comparison_path(path: Path) -> str:
+    value = str(path)
+    if os.name == "nt":
+        value = strip_windows_verbatim_prefix(value)
+        return os.path.normcase(os.path.normpath(value))
+    return os.path.normpath(value)
+
+
+def _ensure_path_within_base(base: Path, resolved: Path, *, message: str) -> Path:
+    base_value = _comparison_path(base)
+    resolved_value = _comparison_path(resolved)
+    try:
+        common = os.path.commonpath([base_value, resolved_value])
+    except ValueError as exc:
+        raise PermissionError(f"{message} or uses a different drive") from exc
+    if common != base_value:
+        raise PermissionError(message)
+    # Comparison keys must never replace the native I/O path. In particular,
+    # keep a verbatim prefix when the caller supplied or inherited one.
+    return resolved
+
+
 def safe_project_path(raw_path: str | os.PathLike[str], root: Path | None = None) -> Path:
-    base = (root or Path.cwd()).resolve()
+    base = (root or Path.cwd()).expanduser().resolve(strict=False)
     raw = reject_control_chars(os.fspath(raw_path), field="path")
     candidate = Path(raw)
     if not candidate.is_absolute():
         candidate = base / candidate
-    resolved = candidate.resolve(strict=False)
-    if os.path.commonpath([str(base), str(resolved)]) != str(base):
-        raise PermissionError("path is outside project root")
-    return resolved
+    resolved = candidate.expanduser().resolve(strict=False)
+    return _ensure_path_within_base(base, resolved, message="path is outside project root")
 
 
 def safe_child_path(base: Path, raw_path: str | os.PathLike[str]) -> Path:
-    root = base.resolve()
+    root = base.expanduser().resolve(strict=False)
     raw = reject_control_chars(os.fspath(raw_path), field="path")
     resolved = (root / raw.lstrip("/\\")).resolve(strict=False)
-    if os.path.commonpath([str(root), str(resolved)]) != str(root):
-        raise PermissionError("path is outside base path")
-    return resolved
+    return _ensure_path_within_base(root, resolved, message="path is outside base path")
 
 
 def safe_existing_path(raw_path: str | os.PathLike[str], *, field: str = "path") -> Path:

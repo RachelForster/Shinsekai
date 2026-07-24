@@ -1,4 +1,5 @@
 import json
+import shutil
 import time
 import unittest
 from pathlib import Path
@@ -132,7 +133,7 @@ class ChatBranchStorageTests(unittest.TestCase):
 
     def test_latest_history_finds_directory_sessions_and_legacy_files(self):
         root = Path("data/chat_history/test-latest")
-        remove_chat_history_storage(root)
+        shutil.rmtree(root, ignore_errors=True)
         root.mkdir(parents=True, exist_ok=True)
         legacy = root / "legacy.json"
         session = root / "session"
@@ -145,7 +146,7 @@ class ChatBranchStorageTests(unittest.TestCase):
 
             self.assertEqual(_latest_history_json(root.as_posix()), session)
         finally:
-            remove_chat_history_storage(root)
+            shutil.rmtree(root, ignore_errors=True)
 
     def test_bridge_history_path_prefers_session_directories_for_new_paths(self):
         root = Path("data/chat_history/test-bridge-path")
