@@ -211,7 +211,7 @@ class EventSinkSnapshotTests(unittest.TestCase):
         )
         self.assertEqual(cancelled_snapshot["initTask"]["status"], "cancelled")
 
-    def test_system_dialog_end_clears_stale_character_name(self):
+    def test_named_system_dialog_end_preserves_speaker_name(self):
         snapshot = make_empty_chat_snapshot()
         snapshot["characterName"] = "Nanami"
 
@@ -230,11 +230,13 @@ class EventSinkSnapshotTests(unittest.TestCase):
         )
 
         self.assertEqual(next_snapshot["dialogText"], "旁白：新的系统消息")
-        self.assertEqual(next_snapshot.get("characterName"), "")
+        self.assertEqual(next_snapshot.get("characterName"), "旁白")
 
     def test_speakerless_system_dialog_survives_status_updates_for_reconnect(self):
+        initial_snapshot = make_empty_chat_snapshot()
+        initial_snapshot["characterName"] = "Nanami"
         snapshot = fold_event_into_snapshot(
-            make_empty_chat_snapshot(),
+            initial_snapshot,
             {
                 "seq": 1,
                 "ts": 1,
@@ -251,6 +253,7 @@ class EventSinkSnapshotTests(unittest.TestCase):
             {"seq": 2, "ts": 2, "type": "status.change", "status": "idle", "v": 1},
         )
 
+        self.assertEqual(snapshot.get("characterName"), "")
         self.assertEqual(next_snapshot.get("systemMessageText"), "Waiting for chat")
 
     def test_session_closed_clears_busy_overlay_fields_in_snapshot(self):

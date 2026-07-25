@@ -193,18 +193,17 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     if event_type == "dialog.end":
         _clear_transient_notification_state(next_snapshot)
         full_html = str(event.get("fullHtml") or "")
+        speaker = str(event.get("speaker") or "")
         next_snapshot["dialogHtml"] = full_html
         next_snapshot["dialogText"] = _plain_text(full_html)
-        is_speakerless_system = bool(event.get("isSystem")) and not str(event.get("speaker") or "").strip()
+        is_speakerless_system = bool(event.get("isSystem")) and not speaker.strip()
         if is_speakerless_system:
             next_snapshot["characterName"] = ""
             next_snapshot["systemMessageText"] = _plain_text(full_html)
         else:
-            next_snapshot["characterName"] = (
-                "" if bool(event.get("isSystem")) else str(event.get("speaker") or "")
-            )
+            next_snapshot["characterName"] = speaker
             next_snapshot["systemMessageText"] = ""
-        if str(event.get("speaker") or "").strip() or not bool(event.get("isSystem")):
+        if speaker.strip() or not bool(event.get("isSystem")):
             next_snapshot["options"] = []
         return next_snapshot
 
