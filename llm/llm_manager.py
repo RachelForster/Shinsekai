@@ -12,6 +12,10 @@ from openai import OpenAI
 
 from ai.llm.dialog_repair import repair_dialog_output
 from core.messaging.dialog_output import has_valid_dialog_output
+from core.messaging.stream_events import (
+    STREAM_DIALOG_REPAIR_KEY,
+    STREAM_REASONING_DELTA_KEY,
+)
 from core.runtime.app_runtime import try_get_app_runtime
 from i18n import tr
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
@@ -50,9 +54,6 @@ def _on_tool_ready(group: str, message: str) -> None:
 from sdk.tool_registry import set_tool_ready_callback
 set_tool_ready_callback(_on_tool_ready)
 
-
-# 流式输出中非正文的片段（供 LLMWorker 显示思考过程，且不混入 JSON 解析缓冲区）
-STREAM_REASONING_DELTA_KEY = "reasoning_delta"
 FIRST_USER_TURN_TOOL_CALL_LIMIT = 1
 
 @dataclass
@@ -1183,10 +1184,10 @@ class LLMManager:
             if self._cancel_requested:
                 return
             persisted = self._persist_plain_assistant_turn(collected_content, collected_reasoning)
-            # The original stream content has already been yielded.  Only append
-            # a second chunk when the repair actually supplied a replacement.
+            # Mark repaired content separately so the worker can append only
+            # dialogue items that were not already emitted from the live stream.
             if persisted and needs_repair and has_valid_dialog_output(collected_content):
-                yield collected_content
+                yield {STREAM_DIALOG_REPAIR_KEY: collected_content}
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
         dialog_output_required = bool(kwargs.pop("_dialog_output_required", False))

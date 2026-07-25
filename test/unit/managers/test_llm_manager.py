@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY
 from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.message_sanitizer import filter_unpaired_tool_messages_for_request
 from llm.compact_manager import CompactManager
@@ -786,6 +787,31 @@ class TestLLMManagerCompact:
         assert context.tools is tools_defs
         assert context.generation_kwargs is generation_kwargs
         assert context.stream is False
+
+
+class TestLLMManagerDialogRepair:
+    def test_manager_marks_stream_repair_without_replaying_it_as_text(self) -> None:
+        valid_dialog = (
+            '{"dialog":[{"character_name":"Alice","sprite":"0","speech":"Hi"}]}'
+        )
+        malformed = f"```json\n{valid_dialog}\n```"
+        adapter = MockLLMAdapter(responses=[malformed, valid_dialog])
+        manager = LLMManager(adapter=adapter, user_template="S")
+
+        chunks = list(
+            manager.chat(
+                "hello",
+                stream=True,
+                include_local_time=False,
+                dialog_output_required=True,
+            )
+        )
+
+        assert "".join(chunk for chunk in chunks if isinstance(chunk, str)) == malformed
+        assert [chunk for chunk in chunks if isinstance(chunk, dict)] == [
+            {STREAM_DIALOG_REPAIR_KEY: valid_dialog}
+        ]
+        assert manager.messages[-1]["content"] == valid_dialog
 
 
 class TestLLMManagerToolCalling:
