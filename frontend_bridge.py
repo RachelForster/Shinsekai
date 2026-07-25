@@ -65,6 +65,12 @@ def _set_bridge_state(state) -> None:
         _bridge_state = state
 
 
+def get_bridge_state():
+    """Return the active bridge state for trusted in-process plugin actions."""
+    with _bridge_state_lock:
+        return _bridge_state
+
+
 def _shutdown_bridge_runtime(reason: str) -> None:
     _restart_debug_log(f"bridge runtime shutdown begin reason={reason}")
     try:

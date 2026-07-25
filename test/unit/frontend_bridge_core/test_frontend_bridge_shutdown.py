@@ -16,6 +16,18 @@ class _ChatStreamStub:
         self.stopped = True
 
 
+def test_get_bridge_state_returns_active_state() -> None:
+    state = SimpleNamespace(chat_session={"sessionId": "session-1"})
+
+    frontend_bridge._set_bridge_state(state)
+    try:
+        assert frontend_bridge.get_bridge_state() is state
+    finally:
+        frontend_bridge._set_bridge_state(None)
+
+    assert frontend_bridge.get_bridge_state() is None
+
+
 def test_shutdown_bridge_runtime_stops_active_chat_and_stream(monkeypatch):
     calls = []
     stream = _ChatStreamStub()
