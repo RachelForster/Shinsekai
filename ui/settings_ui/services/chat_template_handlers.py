@@ -10,7 +10,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from llm.template_generator import TRANSPARENT_BG
+from llm.template_generator import NoValidCharactersError, TRANSPARENT_BG
 from ui.settings_ui.context import SettingsUIContext
 from ui.settings_ui.feedback import is_failure_message
 from i18n import tr as tr_i18n
@@ -389,17 +389,19 @@ def generate_template(
     max_speech_chars: int,
     max_dialog_items: int,
 ) -> tuple[str, str]:
-    template, out = ctx.template_generator.generate_chat_template(
-        selected_characters,
-        bg_name,
-        use_effect == "是",
-        use_cg == "是",
-        use_translation == "是",
-        use_cot == "是",
-        use_choice == "是",
-        use_narration == "是",
-        use_stat == "是",
-        max_speech_chars=max(0, int(max_speech_chars)),
-        max_dialog_items=max(0, int(max_dialog_items)),
-    )
-    return template, out
+    try:
+        return ctx.template_generator.generate_chat_template(
+            selected_characters,
+            bg_name,
+            use_effect == "是",
+            use_cg == "是",
+            use_translation == "是",
+            use_cot == "是",
+            use_choice == "是",
+            use_narration == "是",
+            use_stat == "是",
+            max_speech_chars=max(0, int(max_speech_chars)),
+            max_dialog_items=max(0, int(max_dialog_items)),
+        )
+    except NoValidCharactersError as exc:
+        return str(exc), ""

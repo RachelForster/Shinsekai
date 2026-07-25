@@ -1,0 +1,222 @@
+{
+  "schema": 1,
+  "id": "spiritron-command",
+  "name": {
+    "zh_CN": "灵子指令",
+    "en": "Spiritron Command",
+    "ja": "霊子コマンド"
+  },
+  "author": "Shinsekai",
+  "version": "1.0.1",
+  "description": {
+    "zh_CN": "以深蓝扫描纹理、圆润上缘和箭头渐隐姓名牌构成的视觉小说主题。",
+    "en": "A visual-novel theme with a deep-blue scanline panel, a softly rounded top edge, and an arrow-to-fade name label.",
+    "ja": "深い青の走査線パネル、丸みのある上端、矢印からフェードするネームラベルを重ねたテーマです。"
+  },
+  "preview": "preview.png",
+  "tokens": {
+    "global": {
+      "themeColor": "#8eb9e8",
+      "fontFamily": "Source Han Sans SC, Noto Sans CJK SC, Microsoft YaHei, Hiragino Sans, Yu Gothic, sans-serif"
+    },
+    "dialog": {
+      "background": "repeating-linear-gradient(180deg, rgba(158,190,238,0.07) 0 1px, transparent 1px 4px), linear-gradient(90deg, rgba(31,61,122,0.94), rgba(11,29,70,0.95) 55%, rgba(6,18,48,0.96))",
+      "borderColor": "rgba(0,0,0,0)",
+      "borderRadius": "14px 14px 0 0",
+      "boxShadow": "0 16px 38px rgba(0,7,28,0.42), inset 0 1px 0 rgba(219,239,255,0.34)",
+      "chrome": "panel",
+      "color": "#f4f8ff",
+      "heightPx": 180,
+      "nameInputGapVh": 20,
+      "offsetY": 2,
+      "padding": 28,
+      "textAlign": "left",
+      "textShadow": "0 2px 4px rgba(0,5,22,0.92), 0 0 12px rgba(117,164,224,0.18)",
+      "textSizePx": 21,
+      "textWeight": 500,
+      "widthPct": 94
+    },
+    "name": {
+      "align": "left",
+      "background": "linear-gradient(90deg, rgba(24,70,136,0.98) 0%, rgba(32,79,148,0.9) 38%, rgba(24,61,118,0.46) 72%, transparent 100%)",
+      "borderColor": "rgba(0,0,0,0)",
+      "borderRadius": "0px",
+      "boxShadow": "none",
+      "color": "#f7fbff",
+      "decoration": "arrow-fade",
+      "fontFamily": "Source Han Sans SC, Noto Sans CJK SC, Microsoft YaHei, Hiragino Sans, Yu Gothic, sans-serif",
+      "hideWhenStartOption": true,
+      "overlapPx": 13,
+      "padding": 8,
+      "textShadow": "0 2px 5px rgba(0,5,24,0.88), 0 0 9px rgba(210,235,255,0.25)",
+      "textSizePx": 19,
+      "textWeight": 700
+    },
+    "options": {
+      "background": "repeating-linear-gradient(180deg, rgba(151,187,232,0.06) 0 1px, transparent 1px 4px), linear-gradient(100deg, rgba(25,55,111,0.94), rgba(7,20,55,0.94))",
+      "borderColor": "rgba(160,197,233,0.46)",
+      "borderRadius": "5px",
+      "boxShadow": "0 13px 30px rgba(0,8,34,0.46), inset 0 1px 0 rgba(225,242,255,0.14)",
+      "color": "#eef6ff",
+      "gap": 10,
+      "active": {
+        "background": "linear-gradient(100deg, rgba(80,130,194,0.98), rgba(20,61,127,0.98))",
+        "borderColor": "#d7edff",
+        "boxShadow": "0 15px 34px rgba(0,16,56,0.52), 0 0 22px rgba(113,173,231,0.36)",
+        "color": "#ffffff"
+      },
+      "hover": {
+        "background": "linear-gradient(100deg, rgba(62,111,178,0.97), rgba(12,44,101,0.97))",
+        "borderColor": "rgba(218,239,255,0.86)",
+        "boxShadow": "0 15px 34px rgba(0,15,53,0.5), 0 0 20px rgba(111,171,230,0.28)",
+        "color": "#ffffff"
+      },
+      "icon": "none",
+      "minHeightPx": 52,
+      "nameClearanceVh": 3.6,
+      "placement": "center",
+      "textShadow": "0 2px 5px rgba(0,6,25,0.9)",
+      "textSizePx": 18,
+      "textWeight": 600,
+      "widthMode": "fixed",
+      "widthPx": 680
+    },
+    "input": {
+      "background": "linear-gradient(100deg, rgba(18,42,88,0.96), rgba(6,19,52,0.96))",
+      "borderColor": "rgba(157,196,233,0.48)",
+      "borderRadius": "999px",
+      "boxShadow": "0 16px 40px rgba(0,7,30,0.5), 0 0 20px rgba(76,130,194,0.13), inset 0 1px 0 rgba(229,244,255,0.14)",
+      "color": "#eef6ff",
+      "fieldBackground": "rgba(169,207,242,0.035)",
+      "fieldBorderRadius": "999px",
+      "layout": "pill",
+      "maxWidthPx": 700
+    },
+    "toolbar": {
+      "background": "rgba(8,24,59,0.9)",
+      "borderColor": "rgba(145,186,226,0.34)",
+      "borderRadius": "6px",
+      "boxShadow": "0 11px 28px rgba(0,7,29,0.42), inset 0 1px 0 rgba(225,241,255,0.1)",
+      "color": "#c9def2",
+      "placement": "input-top",
+      "reveal": "hover"
+    },
+    "send": {
+      "background": "linear-gradient(145deg, #82b6e6, #315d9e)",
+      "borderColor": "rgba(226,244,255,0.82)",
+      "borderRadius": "50%",
+      "boxShadow": "0 8px 22px rgba(0,18,58,0.46), 0 0 16px rgba(123,184,234,0.3)",
+      "color": "#ffffff"
+    },
+    "logs": {
+      "page": {
+        "background": "linear-gradient(145deg, #050d22, #0c1e42)",
+        "color": "#edf6ff"
+      },
+      "panel": {
+        "background": "rgba(9,27,64,0.94)",
+        "borderColor": "rgba(151,190,228,0.28)",
+        "borderRadius": "7px",
+        "boxShadow": "0 18px 44px rgba(0,7,28,0.48)",
+        "color": "#edf6ff"
+      },
+      "toolbar": {
+        "background": "rgba(14,38,79,0.94)",
+        "borderColor": "rgba(151,190,228,0.28)",
+        "color": "#cee4f6"
+      },
+      "sidebar": {
+        "background": "rgba(6,20,49,0.96)",
+        "borderColor": "rgba(151,190,228,0.18)",
+        "color": "#c7daed"
+      },
+      "source": {
+        "background": "rgba(103,158,216,0.14)",
+        "borderColor": "rgba(123,177,226,0.42)",
+        "color": "#a9d2f3"
+      },
+      "viewer": {
+        "background": "rgba(5,15,39,0.9)",
+        "borderColor": "rgba(151,190,228,0.18)",
+        "color": "#edf6ff"
+      },
+      "code": {
+        "background": "rgba(3,11,29,0.96)",
+        "color": "#d8e9f7",
+        "fontFamily": "Cascadia Mono, JetBrains Mono, Consolas, monospace"
+      },
+      "line": {
+        "borderColor": "rgba(151,190,228,0.08)",
+        "expanded": {
+          "background": "rgba(92,148,207,0.13)"
+        },
+        "hover": {
+          "background": "rgba(173,211,241,0.06)"
+        }
+      },
+      "number": {
+        "borderColor": "rgba(151,190,228,0.1)",
+        "color": "rgba(199,218,237,0.5)"
+      },
+      "detail": {
+        "background": "rgba(169,207,242,0.045)",
+        "borderColor": "rgba(151,190,228,0.16)",
+        "color": "#d8e8f5"
+      },
+      "badge": {
+        "background": "rgba(92,148,207,0.14)",
+        "borderColor": "rgba(123,177,226,0.38)",
+        "color": "#a9d2f3"
+      },
+      "event": {
+        "background": "rgba(92,148,207,0.15)",
+        "borderColor": "rgba(123,177,226,0.42)",
+        "color": "#b8dcf8"
+      },
+      "fileItem": {
+        "background": "rgba(167,207,240,0.025)",
+        "borderColor": "rgba(151,190,228,0.09)",
+        "color": "#c9dcec",
+        "active": {
+          "background": "rgba(92,148,207,0.18)",
+          "borderColor": "rgba(123,177,226,0.5)",
+          "color": "#e1f2ff"
+        },
+        "hover": {
+          "background": "rgba(173,211,241,0.06)",
+          "borderColor": "rgba(151,190,228,0.2)"
+        }
+      },
+      "levels": {
+        "debug": {
+          "background": "rgba(137,117,203,0.14)",
+          "borderColor": "rgba(165,147,224,0.38)",
+          "color": "#c8baf2"
+        },
+        "default": {
+          "background": "rgba(170,208,239,0.05)",
+          "borderColor": "rgba(151,190,228,0.13)",
+          "color": "#c9dcec"
+        },
+        "error": {
+          "background": "rgba(231,83,101,0.14)",
+          "borderColor": "rgba(231,83,101,0.42)",
+          "color": "#ff9cab"
+        },
+        "info": {
+          "background": "rgba(83,151,214,0.15)",
+          "borderColor": "rgba(102,171,226,0.44)",
+          "color": "#9ed4fa"
+        },
+        "warn": {
+          "background": "rgba(222,169,82,0.14)",
+          "borderColor": "rgba(222,169,82,0.44)",
+          "color": "#f2ca89"
+        }
+      }
+    },
+    "typewriter": {
+      "cps": 32
+    }
+  }
+}

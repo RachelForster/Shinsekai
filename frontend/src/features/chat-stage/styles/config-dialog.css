@@ -29,7 +29,23 @@
 }
 
 .chat-config-dialog__section-title {
+  margin: 0;
   color: var(--chat-config-accent-local);
+}
+
+.chat-config-dialog__section-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat-config-dialog__theme-reset {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .chat-config-dialog__help {

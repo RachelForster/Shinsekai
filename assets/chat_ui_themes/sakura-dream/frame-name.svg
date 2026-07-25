@@ -1,7 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="96" height="64" viewBox="0 0 96 64" preserveAspectRatio="none">
-  <rect x="3" y="3" width="90" height="58" rx="25" fill="none" stroke="#ffe4ed" stroke-opacity="0.22" stroke-width="5" />
-  <rect x="3" y="3" width="90" height="58" rx="25" fill="none" stroke="#ffe4ed" stroke-opacity="0.78" stroke-width="1.5" />
-  <path d="M8 24Q12 8 28 5H42M88 40Q84 56 68 59H54" fill="none" stroke="#fff5f8" stroke-width="2.2" />
+  <rect x="3" y="3" width="90" height="58" rx="18" fill="none" stroke="#ffd0df" stroke-opacity="0.08" stroke-width="9" />
+  <rect x="3" y="3" width="90" height="58" rx="18" fill="none" stroke="#ffe4ed" stroke-opacity="0.22" stroke-width="5" />
+  <rect x="3" y="3" width="90" height="58" rx="18" fill="none" stroke="#ffe4ed" stroke-opacity="0.78" stroke-width="1.5" />
+  <!-- Curves stop at the 22 px slice boundary; only straight runs enter stretchable edges. -->
+  <path d="M8 20Q12 8 18 5H42M88 44Q84 56 78 59H54" fill="none" stroke="#ffd0df" stroke-opacity="0.16" stroke-width="6" />
+  <path d="M8 20Q12 8 18 5H42M88 44Q84 56 78 59H54" fill="none" stroke="#fff5f8" stroke-width="2.2" />
+  <g fill="#ffd0df" fill-opacity="0.18">
+    <circle cx="16" cy="15" r="4.5" />
+    <circle cx="22" cy="11" r="3" />
+    <circle cx="80" cy="49" r="4.5" />
+  </g>
   <g fill="#fff5f8">
     <circle cx="16" cy="15" r="2" />
     <circle cx="22" cy="11" r="1" />

@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#030819" />
+      <stop offset="0.56" stop-color="#081735" />
+      <stop offset="1" stop-color="#132b55" />
+    </linearGradient>
+    <radialGradient id="halo">
+      <stop offset="0" stop-color="#cdeaff" stop-opacity="0.28" />
+      <stop offset="0.45" stop-color="#78aee2" stop-opacity="0.1" />
+      <stop offset="1" stop-color="#284f86" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="panel" x1="0" x2="1">
+      <stop offset="0" stop-color="#274f99" stop-opacity="0.95" />
+      <stop offset="0.5" stop-color="#102d68" stop-opacity="0.96" />
+      <stop offset="1" stop-color="#071838" stop-opacity="0.97" />
+    </linearGradient>
+    <linearGradient id="name" x1="0" x2="1">
+      <stop offset="0" stop-color="#326db4" stop-opacity="0.98" />
+      <stop offset="0.48" stop-color="#255592" stop-opacity="0.82" />
+      <stop offset="0.78" stop-color="#1c457e" stop-opacity="0.42" />
+      <stop offset="1" stop-color="#173965" stop-opacity="0" />
+    </linearGradient>
+    <pattern id="scan" width="4" height="4" patternUnits="userSpaceOnUse">
+      <path d="M0 0H4" stroke="#d8efff" stroke-opacity="0.07" />
+    </pattern>
+  </defs>
+  <rect width="960" height="540" fill="url(#sky)" />
+  <circle cx="726" cy="142" r="170" fill="url(#halo)" />
+  <circle cx="726" cy="142" r="66" fill="#cfeaff" opacity="0.82" />
+  <circle cx="706" cy="125" r="11" fill="#a8cee9" opacity="0.35" />
+  <circle cx="746" cy="163" r="16" fill="#a8cee9" opacity="0.25" />
+  <g fill="#c9e8ff">
+    <circle cx="86" cy="62" r="1.5" /><circle cx="170" cy="104" r="1" /><circle cx="282" cy="48" r="1.2" />
+    <circle cx="400" cy="82" r="1.1" /><circle cx="530" cy="47" r="1.5" /><circle cx="884" cy="92" r="1.2" />
+    <circle cx="832" cy="228" r="1" /><circle cx="116" cy="220" r="1.1" /><circle cx="332" cy="166" r="1.3" />
+  </g>
+  <path d="M0 293L106 228L190 270L290 185L382 247L474 199L579 274L694 214L795 256L884 183L960 232V385H0Z" fill="#07132b" opacity="0.94" />
+  <path d="M0 334L130 277L222 313L353 239L464 305L589 244L688 302L816 253L960 318V414H0Z" fill="#0a1c3b" opacity="0.92" />
+  <g transform="translate(596 86)" fill="#040b1c" opacity="0.9">
+    <path d="M105 30C132 30 151 51 153 82L160 184H51L58 83C60 52 78 30 105 30Z" />
+    <circle cx="105" cy="25" r="27" />
+    <path d="M79 16L52 48L84 37M131 15L158 49L126 37" />
+    <path d="M58 101L14 206H48L82 139M151 101L194 206H160L127 139" />
+  </g>
+  <text x="42" y="46" fill="#d7ecff" font-family="Segoe UI, sans-serif" font-size="18" font-weight="700" letter-spacing="3">SPIRITRON COMMAND</text>
+  <text x="42" y="70" fill="#6f9cca" font-family="Consolas, monospace" font-size="12" letter-spacing="1.5">RECORD 07 · LINK ESTABLISHED</text>
+  <g transform="translate(42 292)">
+    <path d="M14 0H904Q918 0 918 14V164H0V14Q0 0 14 0Z" fill="url(#panel)" />
+    <path d="M14 0H904Q918 0 918 14V164H0V14Q0 0 14 0Z" fill="url(#scan)" />
+    <path d="M0 14Q0 0 14 0H904Q918 0 918 14" fill="none" stroke="#d4e9fa" stroke-opacity="0.52" stroke-width="1.5" />
+    <text x="34" y="83" fill="#f3f8ff" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="23" font-weight="600">观测结果已经稳定。我们从这里继续吧。</text>
+    <text x="34" y="117" fill="#95b8d9" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="14">灵子记录同步完成 · 等待下一条指令</text>
+  </g>
+  <g transform="translate(70 267)">
+    <path d="M0 23L20 2H280V44H20Z" fill="url(#name)" />
+    <text x="29" y="31" fill="#ffffff" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="20" font-weight="700">记录者 · 星见</text>
+  </g>
+  <g transform="translate(240 486)">
+    <rect width="480" height="40" rx="20" fill="#0a2452" fill-opacity="0.95" stroke="#8ab6dd" stroke-opacity="0.65" />
+    <circle cx="25" cy="20" r="13" fill="#5e94ca" fill-opacity="0.18" />
+    <path d="M25 11V24M19 18c0 8 12 8 12 0M25 28v4M20 32h10" fill="none" stroke="#bfe2fb" stroke-linecap="round" stroke-width="1.6" />
+    <text x="49" y="25" fill="#86a9ca" font-family="Microsoft YaHei, Segoe UI, sans-serif" font-size="14">输入新的指令……</text>
+    <circle cx="454" cy="20" r="14" fill="#467fb9" />
+    <path d="M447 20h13M455 14l6 6-6 6" fill="none" stroke="#f2f9ff" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" />
+  </g>
+</svg>

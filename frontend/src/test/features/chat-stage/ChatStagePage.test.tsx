@@ -1067,59 +1067,58 @@ describe("ChatStagePage", () => {
     );
   });
 
-  it("selects image and file attachments from the default layout and sends a structured payload", async () => {
-    mocks.browseFiles.mockImplementation(async (options?: { path?: string; showHidden?: boolean }) => {
-      if (options?.path === "D:/models/vosk") {
-        return {
-          cwd: "D:/models/vosk",
-          entries: [
-            { kind: "directory", name: "am", path: "D:/models/vosk/am" },
-            { kind: "directory", name: "conf", path: "D:/models/vosk/conf" },
-            { kind: "directory", name: "graph", path: "D:/models/vosk/graph" },
-          ],
-          roots: [],
-        };
-      }
-      return {
-        cwd: "D:/attachments",
-        entries: [
-          { kind: "file", name: "scene.png", path: "D:/attachments/scene.png", size: 12 },
-          { kind: "file", name: "notes.txt", path: "D:/attachments/notes.txt", size: 24 },
-        ],
-        roots: [],
-      };
+  it("stages image and file picker selections before sending", async () => {
+    const image = new File(["image"], "scene.png", { type: "image/png" });
+    const documentFile = new File(["notes"], "notes.txt", { type: "text/plain" });
+    let resolveImageUpload: (value: { attachments: ChatAttachmentInput[] }) => void = () => undefined;
+    const imageUpload = new Promise<{ attachments: ChatAttachmentInput[] }>((resolve) => {
+      resolveImageUpload = resolve;
+    });
+    mocks.uploadChatAttachments.mockReturnValueOnce(imageUpload).mockResolvedValueOnce({
+      attachments: [{ kind: "file", name: "notes.txt", path: "D:/staged/notes.txt" }],
     });
 
     renderPage();
     await screen.findByText("Ready");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Inspect these" } });
 
+    const imageInput = screen.getByLabelText("Attach images") as HTMLInputElement;
+    const imageInputClick = vi.spyOn(imageInput, "click");
     fireEvent.click(screen.getByRole("button", { name: "Image" }));
-    const imageDialog = await screen.findByRole("dialog", { name: "Attach images" });
-    const imageEntry = await within(imageDialog).findByText("scene.png");
-    expect(within(imageDialog).getByText("notes.txt").closest("tr")).not.toHaveClass("path-picker__row--selectable");
-    fireEvent.click(imageEntry.closest("tr")!);
-    fireEvent.click(within(imageDialog).getByRole("button", { name: "Select file" }));
-
+    expect(imageInputClick).toHaveBeenCalledOnce();
+    expect(imageInput).toHaveAttribute("accept", ".png,.jpg,.jpeg,.webp,.gif");
+    fireEvent.change(imageInput, { target: { files: [image] } });
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(mocks.sendChatCommand).not.toHaveBeenCalled();
+    await act(async () => {
+      resolveImageUpload({
+        attachments: [{ kind: "image", name: "scene.png", path: "D:/staged/scene.png" }],
+      });
+      await imageUpload;
+    });
     const imageAttachment = await screen.findByRole("button", { name: "Remove attachment scene.png" });
     expect(imageAttachment).toHaveAttribute("data-kind", "image");
 
+    const fileInput = screen.getByLabelText("Attach files") as HTMLInputElement;
+    const fileInputClick = vi.spyOn(fileInput, "click");
     fireEvent.click(screen.getByRole("button", { name: "File" }));
-    const fileDialog = await screen.findByRole("dialog", { name: "Attach files" });
-    const fileEntry = await within(fileDialog).findByText("notes.txt");
-    fireEvent.click(fileEntry.closest("tr")!);
-    fireEvent.click(within(fileDialog).getByRole("button", { name: "Select file" }));
-
+    expect(fileInputClick).toHaveBeenCalledOnce();
+    expect(fileInput).not.toHaveAttribute("accept");
+    fireEvent.change(fileInput, { target: { files: [documentFile] } });
     const fileAttachment = await screen.findByRole("button", { name: "Remove attachment notes.txt" });
     expect(fileAttachment).toHaveAttribute("data-kind", "file");
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Inspect these" } });
+    expect(mocks.uploadChatAttachments).toHaveBeenNthCalledWith(1, [image]);
+    expect(mocks.uploadChatAttachments).toHaveBeenNthCalledWith(2, [documentFile]);
+
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() =>
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({
         payload: {
           attachments: [
-            { kind: "image", name: "scene.png", path: "D:/attachments/scene.png" },
-            { kind: "file", name: "notes.txt", path: "D:/attachments/notes.txt" },
+            { kind: "image", name: "scene.png", path: "D:/staged/scene.png" },
+            { kind: "file", name: "notes.txt", path: "D:/staged/notes.txt" },
           ],
           text: "Inspect these",
         },
@@ -1378,6 +1377,105 @@ describe("ChatStagePage", () => {
         windowScale: 1.1,
       },
       version: chatStageRuntimeConfigVersion,
+    });
+  });
+
+  it("restores color and typography overrides to the active theme defaults", async () => {
+    themeContextMocks.optional = {
+      resolved: { typewriter: { cps: 42 } },
+      style: {
+        "--chat-dialog-text-theme-color": "#ddeeff",
+        "--chat-dialog-text-theme-font-family": "Theme Dialog",
+        "--chat-dialog-text-theme-font-size": "23px",
+        "--chat-dialog-text-theme-font-weight": "600",
+        "--chat-name-theme-color": "#ffccaa",
+        "--chat-name-theme-font-family": "Theme Name",
+        "--chat-name-theme-font-size": "19px",
+        "--chat-name-theme-font-weight": "800",
+        "--chat-theme-color": "#336699",
+      } as CSSProperties,
+    };
+    window.localStorage.setItem(
+      "shinsekai-chat-stage-runtime-config",
+      JSON.stringify({
+        config: {
+          configThemeColor: "#ff3355",
+          configUseMainThemeColor: false,
+          dialogFill: {
+            color: "#112233",
+            color2: "#445566",
+            gradient: true,
+            gradientDirection: "to-top",
+            gradientMode: "dual",
+            opacity: 0.7,
+          },
+          dialogOpacity: 0.55,
+          dialogText: {
+            align: "right",
+            alignOverride: true,
+            bold: true,
+            boldOverride: true,
+            color: "#112233",
+            direction: "rtl",
+            fontFamily: "Verdana",
+            fontSize: 25,
+          },
+          nameText: {
+            bold: false,
+            boldOverride: true,
+            color: "#445566",
+            fontFamily: "Georgia",
+            fontSize: 21,
+          },
+          typewriterCps: 96,
+          windowScale: 1.1,
+        },
+        version: chatStageRuntimeConfigVersion,
+      }),
+    );
+
+    renderPage();
+
+    await screen.findByText("Ready");
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
+    fireEvent.click(within(config).getByRole("button", { name: "Restore theme defaults" }));
+
+    expect(within(config).getByLabelText("Config menu color")).toHaveValue("#336699");
+    expect(within(config).getByLabelText("Use main app color")).not.toBeChecked();
+    expect(within(config).getByLabelText("Nameplate text color")).toHaveValue("#ffccaa");
+    expect(within(config).getByLabelText("Dialog text color")).toHaveValue("#ddeeff");
+    expect(within(config).getByText("96 chars/s")).toBeInTheDocument();
+
+    await waitFor(() => {
+      const stage = document.querySelector(".chat-stage") as HTMLElement;
+      expect(stage.style.getPropertyValue("--chat-config-accent")).toBe("#336699");
+      expect(stage.style.getPropertyValue("--chat-dialog-runtime-background")).toBe("");
+      expect(stage.style.getPropertyValue("--chat-dialog-runtime-opacity")).toBe("0.55");
+      expect(stage.style.getPropertyValue("--chat-dialog-text-runtime-color")).toBe(
+        "var(--chat-dialog-text-theme-color, #f7f1f0)",
+      );
+      expect(stage.style.getPropertyValue("--chat-name-runtime-color")).toBe("var(--chat-name-theme-color, #fff6f4)");
+    });
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}");
+      expect(stored).toMatchObject({
+        config: {
+          configThemeColor: "#336699",
+          configUseMainThemeColor: false,
+          dialogFill: defaultChatStageRuntimeConfig.dialogFill,
+          dialogOpacity: 0.55,
+          dialogText: {
+            ...defaultChatStageRuntimeConfig.dialogText,
+            direction: "rtl",
+          },
+          nameText: defaultChatStageRuntimeConfig.nameText,
+          typewriterCps: 96,
+          windowScale: 1.1,
+        },
+        version: chatStageRuntimeConfigVersion,
+      });
     });
   });
 

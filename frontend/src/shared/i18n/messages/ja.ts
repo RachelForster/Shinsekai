@@ -9,6 +9,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.memory.modelMissingKeepOff": "長期記憶モデルは未ダウンロードです",
   "api.memory.checking": "確認中",
   "api.memory.description": "チャット時の長期記憶検索、周期抽出、埋め込みモデル準備を制御します。",
+  "api.memory.dependencyInstalled": "長期記憶の依存関係をインストールしました",
+  "api.memory.dependencyInstallFailed": "長期記憶の依存関係をインストールできませんでした",
   "api.memory.downloadModel": "モデルをダウンロード",
   "api.memory.downloading": "長期記憶モデルをダウンロード中…",
   "api.memory.enabled": "自動長期記憶を有効にする",
@@ -499,6 +501,9 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.nameColor": "名札文字色",
   "chat.config.nameFontFamily": "名札フォント",
   "chat.config.nameFontSize": "名札フォントサイズ",
+  "chat.config.resetThemeAppearance": "テーマ既定に戻す",
+  "chat.config.resetThemeAppearanceHelp":
+    "設定パネル、名札、本文、ダイアログの塗りを現在のテーマの既定スタイルに戻します。",
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "連続メッセージをまとめる",
   "chat.config.bgmVolume": "BGM音量",

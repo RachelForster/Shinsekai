@@ -5,8 +5,14 @@ import json
 from pathlib import Path
 from typing import Any
 
+from config.config_manager import character_name_key
 from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
-from llm.template_generator import json_format_reminder
+from core.sprite.initial_sprite import initial_sprite_path_for_characters
+from llm.template_generator import (
+    NoValidCharactersError,
+    json_format_reminder,
+    resolve_chat_template_characters,
+)
 
 from .state import BridgeState
 from .security import safe_child_path, safe_filename
@@ -239,8 +245,9 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
 
 def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     selected = payload.get("characters") or []
-    if not isinstance(selected, list):
-        raise ValueError("characters must be a list")
+    resolved_names = _resolve_template_character_names(state, selected)
+    if not resolved_names:
+        raise NoValidCharactersError()
     background = str(payload.get("backgroundName") or "")
     voice_language = str(payload.get("voiceLanguage") or "").strip()
     if voice_language:
@@ -251,7 +258,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
     max_speech_chars = max(0, int(payload.get("maxSpeechChars") or 0))
     max_dialog_items = max(0, int(payload.get("maxDialogItems") or 0))
     content, result = state.template_generator.generate_chat_template(
-        selected,
+        resolved_names,
         background,
         bool(payload.get("useEffect", True)),
         bool(payload.get("useCg", False)),
@@ -274,9 +281,21 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         "scenario": scenario,
         "system": content,
         "updatedAt": "",
+        "resolvedCharacters": resolved_names,
     }
     row["generationMessage"] = result
     return row
+
+
+def _resolve_template_character_names(state: BridgeState, selected: Any) -> list[str]:
+    """Return the canonical valid character names used by every template-flow boundary."""
+    if not isinstance(selected, list):
+        raise ValueError("characters must be a list")
+    resolved = resolve_chat_template_characters(selected, state.config_manager)
+    resolved_names = [name for name, _character in resolved]
+    if selected and not resolved_names:
+        raise NoValidCharactersError()
+    return resolved_names
 
 
 def _safe_session_int(value: Any, default: int = 0) -> int:
@@ -286,11 +305,18 @@ def _safe_session_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _session_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
 def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] | None:
     if not raw:
         return None
     return {
         "background": str(raw.get("background") or ""),
+        "effectNames": _session_string_list(raw.get("effect_names")),
         "filenameStub": str(raw.get("filename_stub") or ""),
         "historyPath": str(raw.get("history_file") or ""),
         "initSpritePath": str(raw.get("init_sprite_path") or ""),
@@ -298,7 +324,7 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         "maxSpeechChars": _safe_session_int(raw.get("max_speech_chars")),
         "roomId": str(raw.get("room_id") or ""),
         "scenario": str(raw.get("scenario_text") or ""),
-        "selectedCharacters": [str(item) for item in (raw.get("selected_characters") or []) if str(item)],
+        "selectedCharacters": _session_string_list(raw.get("selected_characters")),
         "system": str(raw.get("system_template_text") or ""),
         "templateFileDropdown": str(raw.get("template_file_dropdown") or ""),
         "workflowPath": str(raw.get("workflow_path") or ""),
@@ -313,10 +339,71 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
     }
 
 
+def _persist_template_session_repair(state: BridgeState, raw: dict[str, Any]) -> None:
+    from ui.settings_ui.services.template_tab_session import save_template_session
+
+    save_template_session(state.template_dir_path, raw)
+
+
+def _reconcile_template_session_characters(
+    state: BridgeState,
+    raw: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Remove stale names and canonicalize restored template selections."""
+    if not raw:
+        return raw
+    selected = _session_string_list(raw.get("selected_characters"))
+    resolved = resolve_chat_template_characters(selected, state.config_manager)
+    resolved_names = [name for name, _character in resolved]
+    if resolved_names == selected:
+        return raw
+    repaired = dict(raw)
+    repaired["selected_characters"] = resolved_names
+    repaired["init_sprite_path"] = initial_sprite_path_for_characters(
+        state.config_manager,
+        str(raw.get("init_sprite_path") or ""),
+        resolved_names,
+    )
+    try:
+        _persist_template_session_repair(state, repaired)
+    except OSError:
+        pass
+    return repaired
+
+
+def _rename_template_session_character(
+    state: BridgeState,
+    original_name: str,
+    saved_name: str,
+) -> None:
+    """Carry a character rename into the persisted template selection."""
+    original_key = character_name_key(original_name)
+    if not original_key or original_key == character_name_key(saved_name):
+        return
+    from ui.settings_ui.services.template_tab_session import load_template_session
+
+    raw = load_template_session(state.template_dir_path)
+    if not raw:
+        return
+    selected = _session_string_list(raw.get("selected_characters"))
+    renamed = [
+        saved_name if character_name_key(name) == original_key else name
+        for name in selected
+    ]
+    if renamed == selected:
+        return
+    repaired = dict(raw)
+    repaired["selected_characters"] = renamed
+    reconciled = _reconcile_template_session_characters(state, repaired)
+    if reconciled is repaired:
+        _persist_template_session_repair(state, repaired)
+
+
 def _load_template_session_payload(state: BridgeState) -> dict[str, Any] | None:
     from ui.settings_ui.services.template_tab_session import load_template_session
 
     raw = load_template_session(state.template_dir_path)
+    raw = _reconcile_template_session_characters(state, raw)
     raw = _repair_template_session_if_needed(state, raw)
     return _template_session_to_frontend(raw)
 
@@ -324,9 +411,19 @@ def _load_template_session_payload(state: BridgeState) -> dict[str, Any] | None:
 def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     from ui.settings_ui.services.template_tab_session import save_template_session
 
+    selected_characters = _resolve_template_character_names(
+        state,
+        payload.get("selectedCharacters") or [],
+    )
+    init_sprite_path = initial_sprite_path_for_characters(
+        state.config_manager,
+        str(payload.get("initSpritePath") or ""),
+        selected_characters,
+    )
     data = {
-        "selected_characters": payload.get("selectedCharacters") or [],
+        "selected_characters": selected_characters,
         "background": str(payload.get("background") or ""),
+        "effect_names": _session_string_list(payload.get("effectNames")),
         "voice_lang": str(payload.get("voiceLanguage") or ""),
         "use_effect_yes": bool(payload.get("useEffect", True)),
         "use_tr_yes": bool(payload.get("useTranslation", True)),
@@ -341,7 +438,7 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         "system_template_text": str(payload.get("system") or ""),
         "filename_stub": str(payload.get("filenameStub") or ""),
         "template_file_dropdown": str(payload.get("templateFileDropdown") or ""),
-        "init_sprite_path": str(payload.get("initSpritePath") or ""),
+        "init_sprite_path": init_sprite_path,
         "history_file": str(payload.get("historyPath") or ""),
         "room_id": str(payload.get("roomId") or ""),
         "workflow_path": str(payload.get("workflowPath") or ""),
@@ -363,19 +460,22 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
     selected = raw.get("selected_characters") or []
     if not isinstance(selected, list) or not selected:
         return raw
-    content, _result = state.template_generator.generate_chat_template(
-        [str(item) for item in selected if str(item)],
-        str(raw.get("background") or ""),
-        bool(raw.get("use_effect_yes", True)),
-        bool(raw.get("use_cg_yes", False)),
-        bool(raw.get("use_tr_yes", True)),
-        bool(raw.get("use_cot_yes", False)),
-        bool(raw.get("use_choice_yes", True)),
-        bool(raw.get("use_narration_yes", True)),
-        bool(raw.get("use_stat_yes", True)),
-        max_speech_chars=_safe_session_int(raw.get("max_speech_chars")),
-        max_dialog_items=_safe_session_int(raw.get("max_dialog_items")),
-    )
+    try:
+        content, _result = state.template_generator.generate_chat_template(
+            [str(item) for item in selected if str(item)],
+            str(raw.get("background") or ""),
+            bool(raw.get("use_effect_yes", True)),
+            bool(raw.get("use_cg_yes", False)),
+            bool(raw.get("use_tr_yes", True)),
+            bool(raw.get("use_cot_yes", False)),
+            bool(raw.get("use_choice_yes", True)),
+            bool(raw.get("use_narration_yes", True)),
+            bool(raw.get("use_stat_yes", True)),
+            max_speech_chars=_safe_session_int(raw.get("max_speech_chars")),
+            max_dialog_items=_safe_session_int(raw.get("max_dialog_items")),
+        )
+    except NoValidCharactersError:
+        return raw
     repaired = dict(raw)
     if _has_untranslated_template_keys(repaired.get("scenario_text")):
         repaired["scenario_text"] = ""

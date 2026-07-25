@@ -8,6 +8,8 @@ export const enMessages: Record<MessageKey, string> = {
   "api.memory.checking": "Checking",
   "api.memory.description":
     "Controls long-term memory retrieval, periodic extraction, and embedding model preparation for chat.",
+  "api.memory.dependencyInstalled": "Long-term memory dependencies installed",
+  "api.memory.dependencyInstallFailed": "Failed to install long-term memory dependencies",
   "api.memory.downloadModel": "Download model",
   "api.memory.downloading": "Downloading long-term memory model...",
   "api.memory.enabled": "Enable automatic long-term memory",
@@ -493,6 +495,9 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.nameColor": "Nameplate text color",
   "chat.config.nameFontFamily": "Nameplate font",
   "chat.config.nameFontSize": "Nameplate font size",
+  "chat.config.resetThemeAppearance": "Restore theme defaults",
+  "chat.config.resetThemeAppearanceHelp":
+    "Reset the settings panel, nameplate, dialog text, and dialog fill to the active theme.",
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "Stack consecutive messages",
   "chat.config.bgmVolume": "BGM volume",

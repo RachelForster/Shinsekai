@@ -16,9 +16,13 @@ vi.mock("../../../entities/files/repository", () => ({
   browseFiles: vi.fn(),
 }));
 
-vi.mock("../../../shared/theme/appTheme", () => ({
-  applyThemeColor: (color: string | null | undefined) => mockApplyThemeColor(color),
-}));
+vi.mock("../../../shared/theme/appTheme", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../shared/theme/appTheme")>();
+  return {
+    ...actual,
+    applyThemeColor: (color: string | null | undefined) => mockApplyThemeColor(color),
+  };
+});
 
 function renderRuntimeProviders() {
   const client = new QueryClient({

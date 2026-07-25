@@ -22,6 +22,11 @@
     1px solid color-mix(in oklch, var(--chat-toolbar-border-color) 72%, rgba(255, 255, 255, 0.2))
   );
   border-radius: var(--chat-toolbar-border-radius, 999px);
+  border-image-source: var(--chat-toolbar-background-image, none);
+  border-image-slice: var(--chat-toolbar-background-slice, 32) fill;
+  border-image-width: var(--chat-toolbar-background-width, 32px);
+  border-image-outset: var(--chat-toolbar-background-outset, 0px);
+  border-image-repeat: stretch;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.09), transparent 48%),
     color-mix(in oklch, var(--chat-toolbar-background) 88%, transparent);
@@ -377,6 +382,11 @@
   border: var(--chat-dialog-actions-border);
   border-color: color-mix(in oklch, var(--chat-dialog-actions-border-color) 72%, rgba(255, 255, 255, 0.2));
   border-radius: var(--chat-toolbar-border-radius, 999px);
+  border-image-source: var(--chat-toolbar-background-image, none);
+  border-image-slice: var(--chat-toolbar-background-slice, 32) fill;
+  border-image-width: var(--chat-toolbar-background-width, 32px);
+  border-image-outset: var(--chat-toolbar-background-outset, 0px);
+  border-image-repeat: stretch;
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.09), transparent 48%),
     color-mix(in oklch, var(--chat-dialog-actions-background) 88%, transparent);

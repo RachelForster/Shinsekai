@@ -223,7 +223,7 @@ data:image/svg+xml,...
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `background` | string | 背景颜色或渐变。 |
-| `backgroundImage` | string | 主题内背景图路径。 |
+| `backgroundImage` | string | 主题内背景图路径；在支持 frame 的聊天外壳上按带中心填充的九宫格渲染。 |
 | `borderColor` | string | 普通 CSS 边框颜色。 |
 | `borderRadius` | string | 普通 CSS 圆角。 |
 | `boxShadow` | string | 外阴影或内阴影。 |
@@ -232,7 +232,7 @@ data:image/svg+xml,...
 
 `dialog`、`options`、`input`、`toolbar`、`send`、`name` 以及多数 `logs` 子块都继承这些字段。状态块如 `options.hover`、`options.active` 也是普通 `VisualBlock`。
 
-## 7. 独立 SVG 九宫格边框
+## 7. 九宫格背景与独立边框
 
 ### 7.1 支持位置
 
@@ -258,16 +258,29 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 
 ### 7.2 Frame 字段
 
-支持边框层的块是 `FrameVisualBlock`，比普通视觉块多四个字段：
+支持九宫格的块是 `FrameVisualBlock`，比普通视觉块多四个几何/边框字段：
 
 | 字段 | 类型和范围 | 默认行为 |
 | --- | --- | --- |
 | `frameImage` | 相对路径 | SVG 或位图九宫格素材；省略时不显示边框层。 |
-| `frameSlice` | `1–200` | 素材坐标系中的切片值；存在图片时默认 `32`。 |
-| `frameWidthPx` | `0–96` | 屏幕上的九宫格边框带宽，决定角块显示尺寸和素材缩放；省略时回退为最终 `frameSlice`。 |
-| `frameOutsetPx` | `0–96` | 向组件外绘制的距离；默认 `0`，不参与布局。 |
+| `frameSlice` | `1–200` | `backgroundImage` 与 `frameImage` 共用的素材切片值；存在任一图片时默认 `32`。 |
+| `frameWidthPx` | `0–96` | 两种九宫格共用的屏幕边缘带宽；省略时回退为最终 `frameSlice`。 |
+| `frameOutsetPx` | `0–96` | 两种九宫格向组件外绘制的距离；默认 `0`，不参与布局。 |
 
 建议总是显式填写 `frameWidthPx`。它不是 SVG 线条的 stroke 粗细，而是九宫格角块在屏幕上的目标宽高。若希望素材按 1:1 比例显示并避免角块压缩，可让它与 `frameSlice` 使用相同数值；需要整体缩放边框时再按比例调整。
+
+聊天组件的 `backgroundImage` 直接画在组件自身的 `border-image` 背景中，并使用 `fill` 保留素材中心，浏览器会先画背景再画文字。因此不需要额外的 `backgroundLayer` / `textLayer` 配置。已有九宫格配置通常只需把 `frameImage` 改成 `backgroundImage`，并保留 `frameSlice`、`frameWidthPx` 和 `frameOutsetPx`：
+
+```json
+{
+  "backgroundImage": "assets/dialog.png",
+  "frameSlice": 28,
+  "frameWidthPx": 28,
+  "frameOutsetPx": 0
+}
+```
+
+`frameImage` 仍是覆盖在组件上的透明前景边框，适合只有轮廓、中心透明的装饰素材。两者可以同时存在：`backgroundImage` 在文字下方填充面板，`frameImage` 在文字上方描边。
 
 边框运行时是覆盖在组件上的绝对定位透明层：`inset: 0`、`pointer-events: none`、`border-image-repeat: stretch`。中间边条会拉伸到组件边缘之间，不会重复平铺装饰片段。它不会改变文本、按钮或输入框的位置。SVG 可以形成不规则的视觉轮廓，但组件的布局盒和点击区域仍是原来的矩形。`frameOutsetPx` 也不占布局空间，值过大时可能与相邻组件重叠，或被祖先容器裁切。
 
@@ -303,12 +316,12 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 - `frameSlice` 按 SVG 的 `viewBox` 坐标计算，而不是屏幕像素；
 - 切片值应小于素材宽高的一半，确保四角之间仍有可重复的边段；
 - 把关键切角和装饰放在四角切片内，把可拉伸的连续线条放在边段；
-- 中心区域不会作为面板内容填充，面板底色应写在 `background`；
+- 使用 `frameImage` 时中心区域不会填充，面板底色应写在 `background`；使用 `backgroundImage` 时中心区域会随九宫格一起填充；
 - 建议使用 `preserveAspectRatio="none"`，并在不同宽高比下预览；
 - 线条、辉光和外伸装饰应留出安全边距，避免裁切；
 - 不同形态的组件应使用不同素材。对话框素材通常不适合直接复用于输入框或胶囊选项。
 
-当前赛博朋克主题可作为参考：
+当前内置主题已按这一规则区分九宫格背景与独立边框。霓虹夜城和樱色梦境的聊天面板通过 `backgroundImage` 引用下列素材，让装饰位于文字下方；日志面板仍通过 `frameImage` 使用独立前景描边：
 
 - [`frame-dialog.svg`](../assets/chat_ui_themes/neon-night-city/frame-dialog.svg)：`128 × 128`，`slice 28 / width 28 / outset 2`；
 - [`frame-name.svg`](../assets/chat_ui_themes/neon-night-city/frame-name.svg)：`96 × 64`，`slice 16 / width 16 / outset 2`；
@@ -433,7 +446,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | 字段 | 类型或范围 | 说明 |
 | --- | --- | --- |
 | `align` | `left \| center` | 姓名框对齐方式。 |
-| `decoration` | `accent \| line-dots` | 强调装饰或两侧线点装饰。 |
+| `decoration` | `accent \| arrow-fade \| line-dots` | 强调装饰、左箭头右渐隐装饰或两侧线点装饰。 |
 | `fontFamily` | string | 姓名单独使用的字体族，优先于 `global.fontFamily`。 |
 | `hideWhenStartOption` | boolean | 起始选项出现时隐藏姓名。 |
 | `overlapPx` | `0–48` | 姓名框向下覆盖对话框上沿的深度，单位 px；用于让姓名框及其 frame 挡住一部分对话框边框。省略时为 1 px。 |
@@ -517,7 +530,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 
 - 主题可以是局部定义；省略字段时，不会自动复制另一个主题的同名字段，而是继续使用宿主基础 CSS。
 - 布局预设先应用，显式视觉字段后应用，显式字段优先。
-- 没有 `frameImage` 时，`frameSlice`、`frameWidthPx` 或 `frameOutsetPx` 单独存在也不会产生可见边框。
+- 没有 `backgroundImage` 或 `frameImage` 时，`frameSlice`、`frameWidthPx` 或 `frameOutsetPx` 单独存在不会产生可见内容。
 - 聊天组件的 frame 相互独立，不会跨组件继承。
 - 日志的普通视觉值有上一节所述回退；聊天 frame 会被移除。只有 `logs.panel.frame*` 会作为三个日志容器的公共 frame 回退。
 - 当前活动主题无法读取时，应用会尝试内置默认主题 `windborne-adventure`；仍不可用时回退到宿主基础样式。
@@ -534,6 +547,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | 选项按钮全部出现边框 | `tokens.options` 定义的是每一个选项的共同外观，这是预期行为。 |
 | 外伸装饰被裁切 | 减小 `frameOutsetPx`，或把装饰向素材内部移动。outset 不会申请额外布局空间。 |
 | `background` 中的图片被拒绝 | 不能写 `url(...)`；改用 `backgroundImage`。 |
+| 背景图被整体拉伸 | 该位置使用九宫格；设置与素材角区匹配的 `frameSlice`，不要把完整截图直接当作可切片面板素材。 |
 | 校验为 `OK` 但图片不显示 | 缺失资源当前只产生 warning。修复所有 warning 后再发布。 |
 | ZIP 提示找不到 `theme.json` | 把清单放到 ZIP 根目录，或唯一的一层顶级目录内。 |
 | 上传提示主题已存在 | 用户主题默认不覆盖同 ID 目录；先删除旧主题，或在本地开发目录中替换后刷新。 |

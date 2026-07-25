@@ -118,6 +118,7 @@ declare global {
 
 const bridgeRestartFinishedEvent = "shinsekai:bridge-restart-finished";
 const bridgeRestartStateEvent = "shinsekai:bridge-restart-state";
+const desktopChatStageRuntimeConfigChangeEvent = "shinsekai:chat-stage-runtime-config-change";
 const desktopUpdateProgressEvent = "shinsekai:update-progress";
 const desktopRuntimeProgressEvent = "shinsekai:runtime-progress";
 
@@ -223,6 +224,24 @@ export async function onDesktopRuntimeProgress(
 ): Promise<DesktopEventUnlisten> {
   const { listen } = await import("@tauri-apps/api/event");
   return listen<DesktopRuntimeProgress>(desktopRuntimeProgressEvent, (event) => listener(event.payload));
+}
+
+export async function emitDesktopChatStageRuntimeConfigChange(config: unknown) {
+  if (!isTauriDesktop()) {
+    return;
+  }
+  const { emit } = await import("@tauri-apps/api/event");
+  await emit(desktopChatStageRuntimeConfigChangeEvent, config);
+}
+
+export async function onDesktopChatStageRuntimeConfigChange(
+  listener: (config: unknown) => void,
+): Promise<DesktopEventUnlisten> {
+  if (!isTauriDesktop()) {
+    return () => undefined;
+  }
+  const { listen } = await import("@tauri-apps/api/event");
+  return listen<unknown>(desktopChatStageRuntimeConfigChangeEvent, (event) => listener(event.payload));
 }
 
 export async function restartDesktopBridge() {

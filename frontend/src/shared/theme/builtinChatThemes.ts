@@ -1,5 +1,6 @@
 import neonNightCityThemeJson from "../../../../assets/chat_ui_themes/neon-night-city/theme.json";
 import sakuraDreamThemeJson from "../../../../assets/chat_ui_themes/sakura-dream/theme.json";
+import spiritronCommandThemeJson from "../../../../assets/chat_ui_themes/spiritron-command/theme.json";
 import windborneAdventureThemeJson from "../../../../assets/chat_ui_themes/windborne-adventure/theme.json";
 
 import { CHAT_THEME_SCHEMA, type ChatThemeManifest } from "./chatTheme";
@@ -24,6 +25,7 @@ const bundledThemeManifests = [
   bundledThemeManifest(windborneAdventureThemeJson),
   bundledThemeManifest(neonNightCityThemeJson),
   bundledThemeManifest(sakuraDreamThemeJson),
+  bundledThemeManifest(spiritronCommandThemeJson),
 ];
 
 export const builtinChatThemeManifests: Record<string, ChatThemeManifest> = Object.fromEntries(
