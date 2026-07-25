@@ -1067,59 +1067,58 @@ describe("ChatStagePage", () => {
     );
   });
 
-  it("selects image and file attachments from the default layout and sends a structured payload", async () => {
-    mocks.browseFiles.mockImplementation(async (options?: { path?: string; showHidden?: boolean }) => {
-      if (options?.path === "D:/models/vosk") {
-        return {
-          cwd: "D:/models/vosk",
-          entries: [
-            { kind: "directory", name: "am", path: "D:/models/vosk/am" },
-            { kind: "directory", name: "conf", path: "D:/models/vosk/conf" },
-            { kind: "directory", name: "graph", path: "D:/models/vosk/graph" },
-          ],
-          roots: [],
-        };
-      }
-      return {
-        cwd: "D:/attachments",
-        entries: [
-          { kind: "file", name: "scene.png", path: "D:/attachments/scene.png", size: 12 },
-          { kind: "file", name: "notes.txt", path: "D:/attachments/notes.txt", size: 24 },
-        ],
-        roots: [],
-      };
+  it("stages image and file picker selections before sending", async () => {
+    const image = new File(["image"], "scene.png", { type: "image/png" });
+    const documentFile = new File(["notes"], "notes.txt", { type: "text/plain" });
+    let resolveImageUpload: (value: { attachments: ChatAttachmentInput[] }) => void = () => undefined;
+    const imageUpload = new Promise<{ attachments: ChatAttachmentInput[] }>((resolve) => {
+      resolveImageUpload = resolve;
+    });
+    mocks.uploadChatAttachments.mockReturnValueOnce(imageUpload).mockResolvedValueOnce({
+      attachments: [{ kind: "file", name: "notes.txt", path: "D:/staged/notes.txt" }],
     });
 
     renderPage();
     await screen.findByText("Ready");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Inspect these" } });
 
+    const imageInput = screen.getByLabelText("Attach images") as HTMLInputElement;
+    const imageInputClick = vi.spyOn(imageInput, "click");
     fireEvent.click(screen.getByRole("button", { name: "Image" }));
-    const imageDialog = await screen.findByRole("dialog", { name: "Attach images" });
-    const imageEntry = await within(imageDialog).findByText("scene.png");
-    expect(within(imageDialog).getByText("notes.txt").closest("tr")).not.toHaveClass("path-picker__row--selectable");
-    fireEvent.click(imageEntry.closest("tr")!);
-    fireEvent.click(within(imageDialog).getByRole("button", { name: "Select file" }));
-
+    expect(imageInputClick).toHaveBeenCalledOnce();
+    expect(imageInput).toHaveAttribute("accept", ".png,.jpg,.jpeg,.webp,.gif");
+    fireEvent.change(imageInput, { target: { files: [image] } });
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(mocks.sendChatCommand).not.toHaveBeenCalled();
+    await act(async () => {
+      resolveImageUpload({
+        attachments: [{ kind: "image", name: "scene.png", path: "D:/staged/scene.png" }],
+      });
+      await imageUpload;
+    });
     const imageAttachment = await screen.findByRole("button", { name: "Remove attachment scene.png" });
     expect(imageAttachment).toHaveAttribute("data-kind", "image");
 
+    const fileInput = screen.getByLabelText("Attach files") as HTMLInputElement;
+    const fileInputClick = vi.spyOn(fileInput, "click");
     fireEvent.click(screen.getByRole("button", { name: "File" }));
-    const fileDialog = await screen.findByRole("dialog", { name: "Attach files" });
-    const fileEntry = await within(fileDialog).findByText("notes.txt");
-    fireEvent.click(fileEntry.closest("tr")!);
-    fireEvent.click(within(fileDialog).getByRole("button", { name: "Select file" }));
-
+    expect(fileInputClick).toHaveBeenCalledOnce();
+    expect(fileInput).not.toHaveAttribute("accept");
+    fireEvent.change(fileInput, { target: { files: [documentFile] } });
     const fileAttachment = await screen.findByRole("button", { name: "Remove attachment notes.txt" });
     expect(fileAttachment).toHaveAttribute("data-kind", "file");
-    fireEvent.change(screen.getByRole("textbox"), { target: { value: "Inspect these" } });
+    expect(mocks.uploadChatAttachments).toHaveBeenNthCalledWith(1, [image]);
+    expect(mocks.uploadChatAttachments).toHaveBeenNthCalledWith(2, [documentFile]);
+
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
 
     await waitFor(() =>
       expect(mocks.sendChatCommand).toHaveBeenCalledWith({
         payload: {
           attachments: [
-            { kind: "image", name: "scene.png", path: "D:/attachments/scene.png" },
-            { kind: "file", name: "notes.txt", path: "D:/attachments/notes.txt" },
+            { kind: "image", name: "scene.png", path: "D:/staged/scene.png" },
+            { kind: "file", name: "notes.txt", path: "D:/staged/notes.txt" },
           ],
           text: "Inspect these",
         },
