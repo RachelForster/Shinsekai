@@ -24,6 +24,25 @@ function createBridgeHttpPlatform(baseUrl: string, token: string) {
   return token ? createHttpPlatform(baseUrl, token) : createHttpPlatform(baseUrl);
 }
 
+export function resolvePlatformHttpUrl(pathOrUrl: string): string {
+  if (!pathOrUrl.startsWith("/api/") || typeof window === "undefined") {
+    return pathOrUrl;
+  }
+  const desktopBridge = bridgeBaseFromUrl();
+  const httpBase = import.meta.env.VITE_SHINSEKAI_API_BASE?.trim();
+  const sameOriginBridge =
+    !import.meta.env.DEV && /^https?:$/.test(window.location.protocol) ? window.location.origin : "";
+  const baseUrl = desktopBridge || httpBase || sameOriginBridge;
+  if (!baseUrl) {
+    return pathOrUrl;
+  }
+  try {
+    return new URL(pathOrUrl, baseUrl).toString();
+  } catch {
+    return pathOrUrl;
+  }
+}
+
 export function getPlatform(): ShinsekaiPlatform {
   if (!platform) {
     const httpBase = import.meta.env.VITE_SHINSEKAI_API_BASE?.trim();

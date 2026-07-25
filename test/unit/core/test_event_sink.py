@@ -463,6 +463,49 @@ class EventSinkSnapshotTests(unittest.TestCase):
             },
         )
 
+    def test_plugin_page_presentations_are_folded_and_dismissed_for_reconnect(self):
+        presented = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "mode": "overlay",
+                "pageId": "dashboard",
+                "payload": {"kind": "reminder"},
+                "pluginId": "demo.plugin",
+                "presentationId": "notice-42",
+                "seq": 9,
+                "ts": 9,
+                "type": "plugin.page.present",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(
+            presented["pluginPagePresentations"],
+            [
+                {
+                    "mode": "overlay",
+                    "pageId": "dashboard",
+                    "payload": {"kind": "reminder"},
+                    "pluginId": "demo.plugin",
+                    "presentationId": "notice-42",
+                }
+            ],
+        )
+
+        dismissed = fold_event_into_snapshot(
+            presented,
+            {
+                "pluginId": "demo.plugin",
+                "presentationId": "notice-42",
+                "seq": 10,
+                "ts": 10,
+                "type": "plugin.page.dismiss",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(dismissed["pluginPagePresentations"], [])
+
 
 if __name__ == "__main__":
     unittest.main()

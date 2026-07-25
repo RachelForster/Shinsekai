@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Type
@@ -22,6 +22,15 @@ from sdk.adapters import (
     VisionFallbackContribution,
 )
 from sdk.chat_init import InitChatContext
+from sdk.frontend_user_input import (
+    FrontendUserInputController,
+    _controller_for_plugin as _frontend_user_input_controller_for_plugin,
+)
+from sdk.frontend_ui import (
+    MAX_FRONTEND_UI_IDENTIFIER_LENGTH,
+    FrontendUIController,
+    _controller_for_plugin,
+)
 from sdk.hooks import (
     BeforeChatContext,
     BeforeCompactContext,
@@ -34,6 +43,7 @@ if TYPE_CHECKING:
 from sdk.plugin import PluginBase
 from sdk.types import (
     ChatUIContribution,
+    FrontendChatUIContribution,
     FrontendConfigContribution,
     FrontendPageContribution,
     OutputContractPatch,
@@ -149,6 +159,7 @@ class PluginCapabilityRegistry:
         self._settings_ui_plugin_ctx: tuple[str, str] | None = None
         self._tools_tab_contributions: list[ToolsTabContribution] = []
         self._frontend_config_contributions: list[FrontendConfigContribution] = []
+        self._frontend_chat_ui_contributions: list[FrontendChatUIContribution] = []
         self._frontend_page_contributions: list[FrontendPageContribution] = []
         self._chat_ui_contributions: list[ChatUIContribution] = []
         self._workflow_contributions: list[WorkflowContribution] = []
@@ -221,6 +232,24 @@ class PluginCapabilityRegistry:
     def clear_settings_ui_plugin_context(self) -> None:
         self._settings_ui_plugin_ctx = None
 
+    def frontend_ui(self) -> FrontendUIController:
+        """Return a runtime page controller bound to the plugin being initialized."""
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is None:
+            raise RuntimeError(
+                "frontend_ui() is only available during PluginBase.initialize"
+            )
+        return _controller_for_plugin(ctx[0])
+
+    def frontend_user_input(self) -> FrontendUserInputController:
+        """Return a bridge transport for submitting user text from frontend actions."""
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is None:
+            raise RuntimeError(
+                "frontend_user_input() is only available during PluginBase.initialize"
+            )
+        return _frontend_user_input_controller_for_plugin(ctx[0])
+
     def register_settings_ui(self, contribution: SettingsUIContribution) -> None:
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
@@ -264,6 +293,45 @@ class PluginCapabilityRegistry:
                 plugin_version=contribution.plugin_version or ver,
             )
         self._frontend_page_contributions.append(contribution)
+
+    def register_frontend_chat_ui(self, contribution: FrontendChatUIContribution) -> None:
+        """Register a JSON-only Chat UI item rendered by the host application."""
+        if contribution.slot not in {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"}:
+            raise ValueError(f"Unsupported frontend chat UI slot: {contribution.slot}")
+        if not contribution.contribution_id.strip() or not contribution.title.strip():
+            raise ValueError("FrontendChatUIContribution requires a non-empty id and title")
+        if len(contribution.contribution_id.strip()) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+            raise ValueError(
+                "FrontendChatUIContribution contribution_id cannot exceed "
+                f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
+            )
+        if contribution.presentation not in {"button", "icon-only"}:
+            raise ValueError(f"Unsupported frontend chat UI presentation: {contribution.presentation}")
+        if isinstance(contribution.action, Mapping):
+            action_type = str(contribution.action.get("type") or "").strip()
+            page_id = str(contribution.action.get("page_id") or contribution.action.get("pageId") or "").strip()
+            if action_type != "open-plugin-page" or not page_id:
+                raise ValueError("FrontendChatUIContribution open-plugin-page action requires a non-empty page_id")
+            if len(page_id) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+                raise ValueError(
+                    "FrontendChatUIContribution page_id cannot exceed "
+                    f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
+                )
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is not None:
+            pid, ver = ctx
+            contribution = replace(
+                contribution,
+                plugin_id=contribution.plugin_id or pid,
+                plugin_version=contribution.plugin_version or ver,
+            )
+        plugin_id = str(contribution.plugin_id or "").strip()
+        if len(plugin_id) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+            raise ValueError(
+                "FrontendChatUIContribution plugin_id cannot exceed "
+                f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
+            )
+        self._frontend_chat_ui_contributions.append(contribution)
 
     def register_chat_ui_widget(self, contribution: ChatUIContribution) -> None:
         ctx = self._settings_ui_plugin_ctx
@@ -414,6 +482,10 @@ class PluginCapabilityRegistry:
     @property
     def frontend_page_contributions(self) -> list[FrontendPageContribution]:
         return sorted(self._frontend_page_contributions, key=lambda c: c.order)
+
+    @property
+    def frontend_chat_ui_contributions(self) -> list[FrontendChatUIContribution]:
+        return sorted(self._frontend_chat_ui_contributions, key=lambda c: c.order)
 
     @property
     def chat_ui_contributions(self) -> list[ChatUIContribution]:

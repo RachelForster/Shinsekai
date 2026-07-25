@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
-import { PluginSlot } from "../../../shared/plugin/PluginSlot";
+import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatCommand, ChatTurnOptions, ChatTurnState } from "../../../shared/platform/types";
 import { ThemeFrame, ToolbarButton } from "../../../shared/ui";
 import { useDismissableLayer } from "../hooks/useDismissableLayer";
@@ -46,6 +46,7 @@ export function DialogStageControls({
   onLockedChange,
   onOpenBranches,
   onOpenHistory,
+  onOpenPluginPage,
   onTurnOptionsChange,
   showBranches,
   showAsrControl,
@@ -70,6 +71,7 @@ export function DialogStageControls({
   onLockedChange: (locked: boolean) => void;
   onOpenBranches: () => void;
   onOpenHistory: () => void;
+  onOpenPluginPage: (target: PluginPageTarget) => void;
   onTurnOptionsChange: (options: ChatTurnOptions) => void;
   showBranches: boolean;
   showAsrControl: boolean;
@@ -232,7 +234,7 @@ export function DialogStageControls({
               {t("chat.actionBar.close")}
             </ToolbarButton>
           )}
-          <PluginSlot slot="chat-dialog-actions" />
+          <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-dialog-actions" />
         </div>
         <ChatTurnSettingsPopover
           bgmVolume={bgmVolume}

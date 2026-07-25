@@ -5,6 +5,7 @@ import { isTauriDesktop, setDesktopWindowAlwaysOnTop } from "../../shared/deskto
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
+import type { PluginPageTarget } from "../../shared/plugin/PluginSlot";
 import type { ChatAttachmentInput, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
@@ -15,6 +16,7 @@ import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
 import { HistoryDialog } from "./components/HistoryDialog";
 import { InputLayer } from "./components/InputLayer";
+import { PluginPageOverlay } from "./components/PluginPageOverlay";
 import {
   BackgroundLayer,
   BgmLayer,
@@ -57,10 +59,63 @@ import {
   mergeChatAttachmentInputs,
 } from "./attachments";
 
+interface ChatRouteInputState {
+  inputAttachments: ChatAttachmentInput[];
+  inputDraft: string;
+}
+
+function chatRouteInputState(value: unknown): ChatRouteInputState {
+  if (!value || typeof value !== "object") {
+    return { inputAttachments: [], inputDraft: "" };
+  }
+  const chatInput = (value as { chatInput?: unknown }).chatInput;
+  if (!chatInput || typeof chatInput !== "object") {
+    return { inputAttachments: [], inputDraft: "" };
+  }
+  const candidate = chatInput as { inputAttachments?: unknown; inputDraft?: unknown };
+  const inputAttachments = Array.isArray(candidate.inputAttachments)
+    ? candidate.inputAttachments
+        .filter((attachment): attachment is ChatAttachmentInput =>
+          Boolean(
+            attachment &&
+            typeof attachment === "object" &&
+            ((attachment as ChatAttachmentInput).kind === "file" ||
+              (attachment as ChatAttachmentInput).kind === "image") &&
+            typeof (attachment as ChatAttachmentInput).name === "string" &&
+            typeof (attachment as ChatAttachmentInput).path === "string",
+          ),
+        )
+        .slice(0, CHAT_ATTACHMENT_LIMIT)
+        .map((attachment) => ({ ...attachment }))
+    : [];
+  return {
+    inputAttachments,
+    inputDraft: typeof candidate.inputDraft === "string" ? candidate.inputDraft : "",
+  };
+}
+
+function initialChatStageState(routeState: unknown) {
+  return { ...emptyChatState, ...chatRouteInputState(routeState) };
+}
+
+function withChatRouteInputState(routeState: unknown, chatInput: ChatRouteInputState) {
+  const previousState =
+    routeState && typeof routeState === "object" && !Array.isArray(routeState)
+      ? (routeState as Record<string, unknown>)
+      : {};
+  return {
+    ...previousState,
+    chatInput: {
+      inputAttachments: chatInput.inputAttachments.map((attachment) => ({ ...attachment })),
+      inputDraft: chatInput.inputDraft,
+    },
+  };
+}
+
 export function ChatStagePage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [state, dispatch] = useReducer(chatStageReducer, emptyChatState);
+  const [state, dispatch] = useReducer(chatStageReducer, location.state, initialChatStageState);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
@@ -75,6 +130,8 @@ export function ChatStagePage() {
   const imageAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAttachmentSlotsRef = useRef(0);
+  const [overlayTarget, setOverlayTarget] = useState<PluginPageTarget | null>(null);
+  const locallyDismissedPresentationRef = useRef<string | null>(null);
   const { showToast } = useToast();
   const { t } = useI18n();
   const theme = useOptionalChatTheme();
@@ -110,6 +167,7 @@ export function ChatStagePage() {
   const statsVisible = viewModel.stats.length > 0;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen =
+    overlayTarget != null ||
     themePickerOpen ||
     toolbarConfigOpen ||
     branchDialogOpen ||
@@ -175,6 +233,52 @@ export function ChatStagePage() {
     loadFallbackMessage: t("chat.error.loadFallback"),
     queueAnimatedDialog,
   });
+
+  useEffect(() => {
+    const presentation = state.pluginPagePresentations?.at(-1);
+    if (!presentation) {
+      locallyDismissedPresentationRef.current = null;
+      setOverlayTarget((current) => (current?.presentationId ? null : current));
+      return;
+    }
+    const presentationKey = `${presentation.pluginId}\0${presentation.presentationId}`;
+    if (locallyDismissedPresentationRef.current === presentationKey) {
+      setOverlayTarget((current) => (current?.presentationId ? null : current));
+      return;
+    }
+    setOverlayTarget((current) => {
+      if (
+        current?.pluginId === presentation.pluginId &&
+        current.presentationId === presentation.presentationId &&
+        current.payload === presentation.payload
+      ) {
+        return current;
+      }
+      return {
+        mode: presentation.mode,
+        pageId: presentation.pageId,
+        payload: presentation.payload,
+        pluginId: presentation.pluginId,
+        presentationId: presentation.presentationId,
+      };
+    });
+  }, [state.pluginPagePresentations]);
+
+  const closePluginPageOverlay = useCallback(() => {
+    const current = overlayTarget;
+    setOverlayTarget(null);
+    if (!current?.presentationId) {
+      return;
+    }
+    locallyDismissedPresentationRef.current = `${current.pluginId}\0${current.presentationId}`;
+    void sendCommand({
+      payload: {
+        pluginId: current.pluginId,
+        presentationId: current.presentationId,
+      },
+      type: "dismiss-plugin-page",
+    });
+  }, [overlayTarget, sendCommand]);
 
   useEffect(() => {
     if (!viewModel.layers.dialog) {
@@ -441,6 +545,42 @@ export function ChatStagePage() {
     });
   };
 
+  const openPluginPage = useCallback(
+    ({ mode, pageId, pluginId }: PluginPageTarget) => {
+      if (mode === "overlay") {
+        setOverlayTarget({ mode, pageId, pluginId });
+        return;
+      }
+      navigate(
+        { pathname: "/settings/plugins", search: location.search },
+        {
+          state: {
+            pageId,
+            pluginId,
+            returnTo: {
+              hash: location.hash,
+              pathname: location.pathname,
+              search: location.search,
+              state: withChatRouteInputState(location.state, {
+                inputAttachments: state.inputAttachments,
+                inputDraft: state.inputDraft,
+              }),
+            },
+          },
+        },
+      );
+    },
+    [
+      location.hash,
+      location.pathname,
+      location.search,
+      location.state,
+      navigate,
+      state.inputAttachments,
+      state.inputDraft,
+    ],
+  );
+
   const dialogSurfaceVisible = viewModel.layers.dialog || viewModel.layers.options;
   const dialogToolbar = (
     <DialogStageControls
@@ -462,6 +602,7 @@ export function ChatStagePage() {
       onLockedChange={setDialogControlsLocked}
       onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
+      onOpenPluginPage={openPluginPage}
       onTurnOptionsChange={updateTurnOptions}
       showBranches={conversationTreeEnabled}
       showAsrControl={!viewModel.layers.input}
@@ -472,6 +613,7 @@ export function ChatStagePage() {
 
   return (
     <>
+      {overlayTarget ? <PluginPageOverlay onClose={closePluginPageOverlay} target={overlayTarget} /> : null}
       <main
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}
@@ -490,6 +632,7 @@ export function ChatStagePage() {
           autoHide={runtimeConfig.immersiveMode && runtimeConfig.autoHideTopTools}
           hidden={!viewModel.layers.toolbar}
           onCloseDesktopWindow={closeSurface}
+          onOpenPluginPage={openPluginPage}
           onThemePickerOpenChange={setThemePickerOpen}
           onTokenUsageOpenChange={setTokenUsageOpen}
           standaloneDesktopWindow={standaloneDesktopWindow}
@@ -540,6 +683,7 @@ export function ChatStagePage() {
               hidden={!viewModel.layers.dialog}
               htmlNodes={displayedDialog.nodes}
               onAdvance={advanceDialog}
+              onOpenPluginPage={openPluginPage}
               onSkip={typingDialog ? advanceDialog : undefined}
               text={typingDialog ? displayedDialog.text : viewModel.dialogText}
               textDirection={dialogTextDirection}
@@ -647,6 +791,7 @@ export function ChatStagePage() {
           onDialogScaleChange={updateRuntimeDialogScale}
           onImmersiveModeChange={updateRuntimeImmersiveMode}
           onResetThemeAppearance={resetRuntimeThemeAppearance}
+          onOpenPluginPage={openPluginPage}
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
           onSpriteScaleChange={updateRuntimeSpriteScale}

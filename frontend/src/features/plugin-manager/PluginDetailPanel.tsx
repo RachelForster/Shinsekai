@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 
@@ -11,6 +11,7 @@ import {
 } from "../../entities/plugin/repository";
 import type { PluginConfigAction, PluginManifest, PluginUIPage } from "../../entities/plugin/types";
 import { useI18n } from "../../shared/i18n";
+import { resolvePlatformHttpUrl } from "../../shared/platform/platform";
 import {
   AlertDialog,
   AsyncButton,
@@ -175,18 +176,7 @@ function PluginPagePanel({ lookupId, page }: { lookupId: string; page: PluginUIP
 }
 
 export function resolvePluginFrontendFrameSrc(frontendUrl: string) {
-  if (!frontendUrl.startsWith("/api/") || typeof window === "undefined") {
-    return frontendUrl;
-  }
-  const bridgeBase = new URLSearchParams(window.location.search).get("shinsekai_bridge")?.trim();
-  if (!bridgeBase) {
-    return frontendUrl;
-  }
-  try {
-    return new URL(frontendUrl, bridgeBase).toString();
-  } catch {
-    return frontendUrl;
-  }
+  return resolvePlatformHttpUrl(frontendUrl);
 }
 
 function pluginConfigPageStateKey(page: PluginUIPage) {
@@ -197,13 +187,15 @@ function pluginConfigPageStateKey(page: PluginUIPage) {
 
 interface PluginDetailPanelProps {
   detailPlugin: PluginManifest;
+  initialPageId?: string;
   onBack: () => void;
 }
 
-export function PluginDetailPanel({ detailPlugin, onBack }: PluginDetailPanelProps) {
+export function PluginDetailPanel({ detailPlugin, initialPageId = "", onBack }: PluginDetailPanelProps) {
   const { language, t } = useI18n();
   const detailLookupId = pluginActionId(detailPlugin);
   const [activeDetailPageId, setActiveDetailPageId] = useState("");
+  const appliedInitialPageIntentRef = useRef("");
 
   const pluginDetailQuery = useQuery({
     enabled: Boolean(detailLookupId),
@@ -222,10 +214,22 @@ export function PluginDetailPanel({ detailPlugin, onBack }: PluginDetailPanelPro
 
   useEffect(() => {
     const pageKeys = detailPages.map(pluginUiPageKey);
+    const initialPageIntent = `${detailLookupId}\0${initialPageId}`;
+    if (pluginDetailQuery.data && appliedInitialPageIntentRef.current !== initialPageIntent) {
+      appliedInitialPageIntentRef.current = initialPageIntent;
+      const preferredPage = detailPages.find(
+        (page) => page.id === initialPageId || pluginUiPageKey(page) === initialPageId,
+      );
+      const nextPageId = preferredPage ? pluginUiPageKey(preferredPage) : (pageKeys[0] ?? "");
+      if (nextPageId !== activeDetailPageId) {
+        setActiveDetailPageId(nextPageId);
+      }
+      return;
+    }
     if (pageKeys.length && !pageKeys.includes(activeDetailPageId)) {
       setActiveDetailPageId(pageKeys[0]);
     }
-  }, [activeDetailPageId, detailPageSignature, detailPages]);
+  }, [activeDetailPageId, detailLookupId, detailPageSignature, detailPages, initialPageId, pluginDetailQuery.data]);
 
   const activeDetailPage = detailPages.find((page) => pluginUiPageKey(page) === activeDetailPageId) ?? detailPages[0];
   const loaded = detailPluginRow.loaded !== false;

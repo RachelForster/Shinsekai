@@ -1,7 +1,8 @@
 """Unit tests for TTS message handlers — can_handle, dispatch routing."""
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from sdk.messages import LLMDialogMessage
 from core.handlers.handler_registry import TtsMessageDispatcher
@@ -19,6 +20,34 @@ class TestDefaultCharacterTtsHandler:
         handler = DefaultCharacterTtsHandler()
         msg = LLMDialogMessage(name="TestChar", text="Hello", asset_id="0")
         assert handler.can_handle(msg) is True
+
+    def test_none_asset_id_uses_default_sprite_and_continues_tts(
+        self, mock_app_runtime, monkeypatch
+    ):
+        runtime = mock_app_runtime
+        runtime.tts_manager = MagicMock()
+        runtime.tts_manager.generate_tts.return_value = "voice.wav"
+        monkeypatch.setattr(
+            "core.handlers.tts_message_handler._config", runtime.config
+        )
+        emit = MagicMock()
+        monkeypatch.setattr(
+            "core.handlers.tts_message_handler.tts_emit_to_ui_queue", emit
+        )
+
+        DefaultCharacterTtsHandler().handle(
+            LLMDialogMessage(name="TestChar", text="Hello", asset_id=None)
+        )
+
+        runtime.tts_manager.generate_tts.assert_called_once()
+        emit.assert_called_once_with(
+            "TestChar",
+            "Hello",
+            "-1",
+            "voice.wav",
+            is_system_message=False,
+            effect="",
+        )
 
 
 class TestSpecializedHandlers:

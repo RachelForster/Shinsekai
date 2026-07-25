@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { CSSProperties } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChatStagePage } from "../../../features/chat-stage/ChatStagePage";
@@ -38,6 +38,12 @@ const themeContextMocks = vi.hoisted(() => ({
   },
 }));
 
+const pluginSlotMocks = vi.hoisted(() => ({
+  entrySlot: "chat-top-toolbar",
+  pageMode: "navigate" as "navigate" | "overlay",
+  renderPhoneEntry: false,
+}));
+
 vi.mock("../../../entities/chat/repository", () => ({
   closeChat: () => mocks.closeChat(),
   getChatHistory: () => mocks.getChatHistory(),
@@ -61,7 +67,50 @@ vi.mock("../../../features/chat-stage/theme/ChatThemeProvider", () => ({
 }));
 
 vi.mock("../../../shared/plugin/PluginSlot", () => ({
-  PluginSlot: () => null,
+  PluginSlot: ({
+    onOpenPluginPage,
+    slot,
+  }: {
+    onOpenPluginPage?: (target: { mode?: "navigate" | "overlay"; pageId: string; pluginId: string }) => void;
+    slot: string;
+  }) =>
+    pluginSlotMocks.renderPhoneEntry && slot === pluginSlotMocks.entrySlot ? (
+      <button
+        onClick={() =>
+          onOpenPluginPage?.({
+            mode: pluginSlotMocks.pageMode,
+            pageId: "phone",
+            pluginId: "demo.plugin",
+          })
+        }
+        type="button"
+      >
+        Phone
+      </button>
+    ) : null,
+}));
+
+vi.mock("../../../features/chat-stage/components/PluginPageOverlay", () => ({
+  PluginPageOverlay: ({
+    onClose,
+    target,
+  }: {
+    onClose: () => void;
+    target: {
+      pageId: string;
+      payload?: Record<string, unknown>;
+      pluginId: string;
+      presentationId?: string;
+    };
+  }) => (
+    <section aria-label="Plugin page overlay">
+      <span>{`${target.pluginId}:${target.pageId}`}</span>
+      {target.presentationId ? <span>{`${target.presentationId}:${JSON.stringify(target.payload)}`}</span> : null}
+      <button onClick={onClose} type="button">
+        Close overlay
+      </button>
+    </section>
+  ),
 }));
 
 const chatWindowMocks = vi.hoisted(() => ({
@@ -133,12 +182,23 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
   };
 }
 
-function renderPage(initialEntries = ["/"]) {
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <output aria-label="location">{`${location.pathname}${location.search}:${JSON.stringify(location.state)}`}</output>
+  );
+}
+
+function renderPage(
+  initialEntries: Parameters<typeof MemoryRouter>[0]["initialEntries"] = ["/"],
+  includeLocationProbe = false,
+) {
   return render(
     <ToastProvider>
       <MemoryRouter initialEntries={initialEntries}>
         <I18nProvider language="en">
           <ChatStagePage />
+          {includeLocationProbe ? <LocationProbe /> : null}
         </I18nProvider>
       </MemoryRouter>
     </ToastProvider>,
@@ -156,6 +216,9 @@ describe("ChatStagePage", () => {
     vi.useRealTimers();
     window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
     themeContextMocks.optional = null;
+    pluginSlotMocks.entrySlot = "chat-top-toolbar";
+    pluginSlotMocks.pageMode = "navigate";
+    pluginSlotMocks.renderPhoneEntry = false;
     mocks.closeChat.mockResolvedValue(snapshot());
     mocks.getAppConfig.mockResolvedValue({
       api_config: {
@@ -256,6 +319,119 @@ describe("ChatStagePage", () => {
     expect(notification).toHaveClass("chat-stage__notification");
     expect(notification).toHaveAttribute("data-sprites-visible", "true");
     expect(notification).toHaveTextContent("Session paused");
+  });
+
+  it("opens a declared phone plugin page from the top toolbar and preserves the Chat return route", async () => {
+    pluginSlotMocks.renderPhoneEntry = true;
+    mocks.uploadChatAttachments.mockResolvedValueOnce({
+      attachments: [{ kind: "file", name: "notes.txt", path: "D:/staged/notes.txt" }],
+    });
+    renderPage([{ pathname: "/chat-stage", search: "?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787" }], true);
+
+    await screen.findByText("Ready");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "unsent draft" } });
+    fireEvent.change(screen.getByLabelText("Attach files"), {
+      target: { files: [new File(["notes"], "notes.txt", { type: "text/plain" })] },
+    });
+    await screen.findByRole("button", { name: "Remove attachment notes.txt" });
+    fireEvent.click(await screen.findByRole("button", { name: "Phone" }));
+
+    await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent("/settings/plugins"));
+    expect(screen.getByLabelText("location")).toHaveTextContent('"pageId":"phone"');
+    expect(screen.getByLabelText("location")).toHaveTextContent('"pluginId":"demo.plugin"');
+    expect(screen.getByLabelText("location")).toHaveTextContent('"pathname":"/chat-stage"');
+    expect(screen.getByLabelText("location")).toHaveTextContent('"inputDraft":"unsent draft"');
+    expect(screen.getByLabelText("location")).toHaveTextContent('"path":"D:/staged/notes.txt"');
+  });
+
+  it("restores unsent Chat input and attachments from the return route", async () => {
+    renderPage([
+      {
+        pathname: "/chat-stage",
+        state: {
+          chatInput: {
+            inputAttachments: [{ kind: "image", name: "scene.png", path: "D:/staged/scene.png" }],
+            inputDraft: "continue this message",
+          },
+        },
+      },
+    ]);
+
+    await screen.findByText("Ready");
+    expect(screen.getByRole("textbox")).toHaveValue("continue this message");
+    expect(screen.getByRole("button", { name: "Remove attachment scene.png" })).toBeInTheDocument();
+  });
+
+  it("opens a declared plugin page from chat output", async () => {
+    pluginSlotMocks.entrySlot = "chat-output";
+    pluginSlotMocks.renderPhoneEntry = true;
+    renderPage(["/chat-stage"], true);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Phone" }));
+
+    await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent("/settings/plugins"));
+    expect(screen.getByLabelText("location")).toHaveTextContent('"pageId":"phone"');
+    expect(screen.getByLabelText("location")).toHaveTextContent('"pluginId":"demo.plugin"');
+  });
+
+  it("opens a declared plugin page in a generic overlay without advancing or leaving Chat", async () => {
+    pluginSlotMocks.pageMode = "overlay";
+    pluginSlotMocks.renderPhoneEntry = true;
+    renderPage(["/chat-stage"], true);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Phone" }));
+
+    const overlay = await screen.findByLabelText("Plugin page overlay");
+    expect(overlay).toHaveTextContent("demo.plugin:phone");
+    expect(screen.getByLabelText("location")).toHaveTextContent("/chat-stage");
+
+    mocks.sendChatCommand.mockClear();
+    fireEvent.keyDown(overlay, { key: "Enter" });
+    expect(mocks.sendChatCommand).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close overlay" }));
+    expect(screen.queryByLabelText("Plugin page overlay")).not.toBeInTheDocument();
+  });
+
+  it("presents and dismisses a registered plugin page from generic runtime events", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((callback: (event: ChatStageEvent) => void) => {
+      listener = callback;
+      return vi.fn();
+    });
+    renderPage(["/chat-stage"]);
+    await screen.findByText("Ready");
+
+    act(() => {
+      listener?.({
+        mode: "overlay",
+        pageId: "dashboard",
+        payload: { kind: "reminder" },
+        pluginId: "demo.plugin",
+        presentationId: "notice-42",
+        seq: 1,
+        ts: 1,
+        type: "plugin.page.present",
+        v: 1,
+      });
+    });
+
+    const overlay = await screen.findByLabelText("Plugin page overlay");
+    expect(overlay).toHaveTextContent("demo.plugin:dashboard");
+    expect(overlay).toHaveTextContent('notice-42:{"kind":"reminder"}');
+
+    fireEvent.click(screen.getByRole("button", { name: "Close overlay" }));
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: {
+          pluginId: "demo.plugin",
+          presentationId: "notice-42",
+        },
+        type: "dismiss-plugin-page",
+      }),
+    );
+    expect(screen.queryByLabelText("Plugin page overlay")).not.toBeInTheDocument();
   });
 
   it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {

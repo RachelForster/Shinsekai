@@ -50,6 +50,8 @@ import type {
   PluginConfigActionResult,
   PluginConfigSaveResult,
   PluginManifest,
+  PluginSlotActionResult,
+  PluginSlotContribution,
   PluginLocalScanResult,
   PluginSubmissionClipboardResult,
   PluginSubmissionInput,
@@ -1148,6 +1150,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
       getUi: (id) => requestJson<PluginUIDetail>(apiBase, `/api/plugins/${encodePath(id)}/ui`),
       list: () => requestJson<PluginManifest[]>(apiBase, "/api/plugins"),
+      listSlotContributions: () => requestJson<PluginSlotContribution[]>(apiBase, "/api/plugins/chat-ui-contributions"),
       async repoTags(repo) {
         const result = await requestJson<{ tags: string[] }>(apiBase, "/api/plugins/repo-tags", {
           body: JSON.stringify({ repo }),
@@ -1185,6 +1188,12 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           apiBase,
           `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/actions/${encodePath(actionId)}`,
           { body: JSON.stringify({ values }), method: "POST" },
+        ),
+      runSlotContribution: (pluginId, contributionId) =>
+        requestJson<PluginSlotActionResult>(
+          apiBase,
+          `/api/plugins/${encodePath(pluginId)}/chat-ui/${encodePath(contributionId)}/run`,
+          { body: JSON.stringify({}), method: "POST" },
         ),
       saveUiConfig: (id, pageId, values) =>
         requestJson<PluginConfigSaveResult>(apiBase, `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/config`, {

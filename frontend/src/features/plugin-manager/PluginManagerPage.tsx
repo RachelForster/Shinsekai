@@ -68,11 +68,13 @@ interface PluginRouteReturnTo {
 }
 
 interface PluginRouteState {
+  pageId?: unknown;
   pluginId?: unknown;
   returnTo?: unknown;
 }
 
 interface PluginDetailState {
+  pageId: string;
   plugin: PluginManifest;
   returnTo: PluginRouteReturnTo | null;
 }
@@ -82,7 +84,12 @@ function parsePluginRouteReturnTo(value: unknown): PluginRouteReturnTo | null {
     return null;
   }
   const candidate = value as Partial<PluginRouteReturnTo>;
-  if (typeof candidate.pathname !== "string" || !candidate.pathname.startsWith("/settings")) {
+  if (
+    typeof candidate.pathname !== "string" ||
+    (!candidate.pathname.startsWith("/settings") &&
+      candidate.pathname !== "/chat" &&
+      candidate.pathname !== "/chat-stage")
+  ) {
     return null;
   }
   return {
@@ -202,8 +209,9 @@ function installedTechnicalName(plugin: PluginManifest, catalog: PluginCatalogIt
 function pluginRouteIntentKey(
   location: Pick<ReturnType<typeof useLocation>, "hash" | "key" | "pathname" | "search">,
   pluginId: string,
+  pageId = "",
 ) {
-  return `${location.key}:${location.pathname}${location.search}${location.hash}:${pluginId}`;
+  return `${location.key}:${location.pathname}${location.search}${location.hash}:${pluginId}:${pageId}`;
 }
 
 function catalogDescription(plugin: PluginCatalogItem | null | undefined) {
@@ -359,10 +367,11 @@ export function PluginManagerPage() {
   useEffect(() => {
     const state = location.state as PluginRouteState | null;
     const pluginId = typeof state?.pluginId === "string" ? state.pluginId : "";
-    if (!pluginId || !data.length || detail?.plugin.id === pluginId) {
+    const pageId = typeof state?.pageId === "string" ? state.pageId.trim() : "";
+    if (!pluginId || !data.length || (detail?.plugin.id === pluginId && detail.pageId === pageId)) {
       return;
     }
-    const intentKey = pluginRouteIntentKey(location, pluginId);
+    const intentKey = pluginRouteIntentKey(location, pluginId, pageId);
     if (consumedRouteIntentRef.current === intentKey) {
       return;
     }
@@ -371,8 +380,8 @@ export function PluginManagerPage() {
       return;
     }
     consumedRouteIntentRef.current = intentKey;
-    setDetail({ plugin, returnTo: parsePluginRouteReturnTo(state?.returnTo) });
-  }, [data, detail?.plugin.id, location, location.state]);
+    setDetail({ pageId, plugin, returnTo: parsePluginRouteReturnTo(state?.returnTo) });
+  }, [data, detail?.pageId, detail?.plugin.id, location, location.state]);
 
   const catalogQuery = useQuery({
     enabled: view !== "mcp",
@@ -571,7 +580,7 @@ export function PluginManagerPage() {
   };
 
   if (detail) {
-    return <PluginDetailPanel detailPlugin={detail.plugin} onBack={handleDetailBack} />;
+    return <PluginDetailPanel detailPlugin={detail.plugin} initialPageId={detail.pageId} onBack={handleDetailBack} />;
   }
 
   return (
@@ -809,7 +818,7 @@ export function PluginManagerPage() {
                           disabled={pluginBusy || !loaded}
                           icon={<Settings aria-hidden className="button__icon" />}
                           onClick={() => {
-                            setDetail({ plugin, returnTo: null });
+                            setDetail({ pageId: "", plugin, returnTo: null });
                           }}
                           tooltip={t("plugin.action.viewConfig")}
                           variant="ghost"

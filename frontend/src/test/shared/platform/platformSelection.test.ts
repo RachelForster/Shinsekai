@@ -18,11 +18,27 @@ describe("platform selection", () => {
 
     window.history.replaceState({}, "", "/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8793#/");
 
-    const { getPlatform } = await import("../../../shared/platform/platform");
+    const { getPlatform, resolvePlatformHttpUrl } = await import("../../../shared/platform/platform");
     const platform = getPlatform() as unknown as { baseUrl: string };
 
     expect(platform.baseUrl).toBe("http://127.0.0.1:8793");
+    expect(resolvePlatformHttpUrl("/api/plugins/demo/frontend/dashboard/")).toBe(
+      "http://127.0.0.1:8793/api/plugins/demo/frontend/dashboard/",
+    );
     expect(createHttpPlatform).toHaveBeenCalledWith("http://127.0.0.1:8793");
     expect(createBrowserPreviewPlatform).not.toHaveBeenCalled();
+  });
+
+  it("resolves plugin API URLs against the configured Vite bridge base", async () => {
+    vi.stubEnv("VITE_SHINSEKAI_API_BASE", "http://127.0.0.1:8787");
+
+    const { resolvePlatformHttpUrl } = await import("../../../shared/platform/platform");
+
+    expect(resolvePlatformHttpUrl("/api/plugins/demo/frontend/dashboard/?token=kept")).toBe(
+      "http://127.0.0.1:8787/api/plugins/demo/frontend/dashboard/?token=kept",
+    );
+    expect(resolvePlatformHttpUrl("https://plugins.example.test/dashboard/")).toBe(
+      "https://plugins.example.test/dashboard/",
+    );
   });
 });

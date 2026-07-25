@@ -204,7 +204,7 @@ class DefaultCharacterTtsHandler(MessageHandler):
             raise ValueError(f"未找到角色配置: {name_s}")
         translate = msg.translate
         speech = msg.text
-        asset_id = msg.asset_id
+        asset_id = msg.asset_id if msg.asset_id is not None else "-1"
         text_processor = rt.text_processor
         speech_text = speech
         if translate:

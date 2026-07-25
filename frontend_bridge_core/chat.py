@@ -992,6 +992,39 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         remove_chat_history_storage(history_path)
         return _chat_snapshot(state, "idle", "历史记录已经清空。", extra={"historyEntries": [], "options": []})
 
+    if command == "dismiss-plugin-page":
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("Plugin page dismissal must be an object.")
+        plugin_id = reject_control_chars(
+            str(payload.get("pluginId") or "").strip(),
+            field="pluginId",
+        )
+        presentation_id = reject_control_chars(
+            str(payload.get("presentationId") or "").strip(),
+            field="presentationId",
+        )
+        if not plugin_id or not presentation_id:
+            raise ValueError("Plugin page dismissal requires pluginId and presentationId.")
+        if len(plugin_id) > 128 or len(presentation_id) > 128:
+            raise ValueError("Plugin page dismissal identifiers are too long.")
+        body["payload"] = {
+            "pluginId": plugin_id,
+            "presentationId": presentation_id,
+        }
+        if not session_id or chat_stream is None:
+            raise RuntimeError("当前聊天会话未连接到实时流。")
+        if not chat_stream.publish_event(
+            session_id,
+            {
+                "type": "plugin.page.dismiss",
+                "pluginId": plugin_id,
+                "presentationId": presentation_id,
+            },
+        ):
+            raise RuntimeError("无法关闭插件页面展示。")
+        return _chat_snapshot(state, _current_runtime_status())
+
     if command == "update-turn-options":
         payload = body.get("payload")
         if not isinstance(payload, dict):
