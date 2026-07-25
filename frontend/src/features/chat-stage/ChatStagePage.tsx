@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { browseFiles } from "../../entities/files/repository";
 import { isTauriDesktop, setDesktopWindowAlwaysOnTop } from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
@@ -9,7 +8,7 @@ import { useI18n } from "../../shared/i18n";
 import type { ChatAttachmentInput, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
-import { AlertDialog, PathPickerDialog, useToast } from "../../shared/ui";
+import { AlertDialog, useToast } from "../../shared/ui";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
 import { ChatConfigDialog } from "./components/ChatConfigDialog";
 import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
@@ -56,7 +55,6 @@ import {
   CHAT_IMAGE_EXTENSIONS,
   chatAttachmentDisplayText,
   mergeChatAttachmentInputs,
-  mergeChatAttachments,
 } from "./attachments";
 
 export function ChatStagePage() {
@@ -69,11 +67,13 @@ export function ChatStagePage() {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
+  const [attachmentUploadPending, setAttachmentUploadPending] = useState(false);
   const mainThemeColor = useMainThemeColor();
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
-  const [attachmentPickerKind, setAttachmentPickerKind] = useState<ChatAttachmentInput["kind"] | null>(null);
+  const imageAttachmentInputRef = useRef<HTMLInputElement | null>(null);
+  const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAttachmentSlotsRef = useRef(0);
   const { showToast } = useToast();
   const { t } = useI18n();
@@ -114,7 +114,6 @@ export function ChatStagePage() {
     toolbarConfigOpen ||
     branchDialogOpen ||
     historyDialogOpen ||
-    attachmentPickerKind != null ||
     confirmClearHistory ||
     confirmRevertUserIndex != null;
   const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
@@ -211,6 +210,9 @@ export function ChatStagePage() {
   }, [runtimeConfig.alwaysOnTop, standaloneDesktopWindow]);
 
   const submit = async (textOverride?: string) => {
+    if (pendingAttachmentSlotsRef.current) {
+      return;
+    }
     const text = (textOverride ?? viewModel.inputDraft).trim();
     const attachments = viewModel.inputAttachments.map((attachment) => ({ ...attachment }));
     if (!text && !attachments.length) {
@@ -247,10 +249,6 @@ export function ChatStagePage() {
     dispatch({ attachments, type: "addAttachments" });
   };
 
-  const addAttachmentPaths = (kind: ChatAttachmentInput["kind"], paths: string[]) => {
-    addAttachments(mergeChatAttachments([], kind, paths));
-  };
-
   const handleDropFiles = async (files: File[]) => {
     if (!files.length) {
       return;
@@ -271,6 +269,7 @@ export function ChatStagePage() {
       return;
     }
     pendingAttachmentSlotsRef.current += acceptedFiles.length;
+    setAttachmentUploadPending(true);
     try {
       const { attachments } = await uploadChatAttachments(acceptedFiles);
       addAttachments(attachments);
@@ -282,7 +281,18 @@ export function ChatStagePage() {
       });
     } finally {
       pendingAttachmentSlotsRef.current = Math.max(0, pendingAttachmentSlotsRef.current - acceptedFiles.length);
+      setAttachmentUploadPending(pendingAttachmentSlotsRef.current > 0);
     }
+  };
+
+  const pickAttachments = (kind: ChatAttachmentInput["kind"]) => {
+    (kind === "image" ? imageAttachmentInputRef.current : fileAttachmentInputRef.current)?.click();
+  };
+
+  const handlePickedFiles = (input: HTMLInputElement) => {
+    const files = Array.from(input.files ?? []);
+    input.value = "";
+    void handleDropFiles(files);
   };
 
   const submitOption = (option: string) => {
@@ -566,7 +576,7 @@ export function ChatStagePage() {
           onDropFiles={handleDropFiles}
           onFlushBatch={() => sendCommand({ type: "flush-input-batch" })}
           onInputActivity={updateInputActivity}
-          onPickAttachments={setAttachmentPickerKind}
+          onPickAttachments={pickAttachments}
           onRemoveAttachment={(attachment) =>
             dispatch({
               attachments: state.inputAttachments.filter(
@@ -576,6 +586,7 @@ export function ChatStagePage() {
             })
           }
           onSubmit={submit}
+          submitDisabled={attachmentUploadPending}
           value={viewModel.inputDraft}
         />
         <HistoryDialog
@@ -655,27 +666,22 @@ export function ChatStagePage() {
           windowScale={runtimeConfig.windowScale}
         />
       </main>
-      <PathPickerDialog
-        acceptedExtensions={attachmentPickerKind === "image" ? CHAT_IMAGE_EXTENSIONS : undefined}
-        mode="file"
+      <input
+        accept={CHAT_IMAGE_EXTENSIONS.join(",")}
+        aria-label={t("chat.input.imagePickerTitle")}
+        hidden
         multiple
-        onBrowse={browseFiles}
-        onClose={() => setAttachmentPickerKind(null)}
-        onSelect={(path) => {
-          if (attachmentPickerKind) {
-            addAttachmentPaths(attachmentPickerKind, [path]);
-          }
-          setAttachmentPickerKind(null);
-        }}
-        onSelectMany={(paths) => {
-          if (attachmentPickerKind) {
-            addAttachmentPaths(attachmentPickerKind, paths);
-          }
-          setAttachmentPickerKind(null);
-        }}
-        open={attachmentPickerKind != null}
-        title={attachmentPickerKind === "image" ? t("chat.input.imagePickerTitle") : t("chat.input.filePickerTitle")}
-        value=""
+        onChange={(event) => handlePickedFiles(event.currentTarget)}
+        ref={imageAttachmentInputRef}
+        type="file"
+      />
+      <input
+        aria-label={t("chat.input.filePickerTitle")}
+        hidden
+        multiple
+        onChange={(event) => handlePickedFiles(event.currentTarget)}
+        ref={fileAttachmentInputRef}
+        type="file"
       />
       <AlertDialog
         body={t("chat.clear.confirmBody")}

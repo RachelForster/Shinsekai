@@ -1,5 +1,6 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
+import { PlatformRequestError } from "./errors";
 import {
   isTauriDesktop,
   isDesktopBridgeRestarting,
@@ -64,6 +65,7 @@ import type {
   SystemConfig,
   TaskProgressOptions,
   TaskSnapshot,
+  TemplateGenerationResult,
   TemplateLaunchSession,
   TemplateSummary,
   TtsBundleDownloadResult,
@@ -176,7 +178,8 @@ async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit)
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
-    throw new Error(message);
+    const errorCode = typeof data?.errorCode === "string" ? data.errorCode : undefined;
+    throw new PlatformRequestError(message, response.status, errorCode);
   }
   return data as T;
 }
@@ -252,7 +255,8 @@ async function requestForm<T>(baseUrl: string, path: string, formData: FormData)
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
-    throw new Error(message);
+    const errorCode = typeof data?.errorCode === "string" ? data.errorCode : undefined;
+    throw new PlatformRequestError(message, response.status, errorCode);
   }
   return data as T;
 }
@@ -1227,7 +1231,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
     },
     templates: {
       generate: (input) =>
-        requestJson<TemplateSummary>(apiBase, "/api/templates/generate", {
+        requestJson<TemplateGenerationResult>(apiBase, "/api/templates/generate", {
           body: JSON.stringify(input),
           method: "POST",
         }),
