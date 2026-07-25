@@ -124,6 +124,7 @@ class ApiConfig(BaseModel):
     memory_recent_buffer_messages: DefaultIfNone[int] = Field(default=16, ge=2, le=64, description="Recent messages used for automatic memory extraction")
 
     hugging_face_access_token: DefaultIfNone[str] = Field(default="", description="Hugging Face Access Token")
+    brave_search_api_key: DefaultIfNone[str] = Field(default="", description="Brave Search API Key（执行代理 web_search 工具用）")
 
     llm_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
         default_factory=dict,

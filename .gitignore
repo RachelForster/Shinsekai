@@ -98,3 +98,6 @@ node_modules/
 .python-version
 uv.lock
 frontend/pnpm-workspace.yaml
+
+# 本地实测脚本（真实 API/费用），不入库
+/test_local/
