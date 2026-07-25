@@ -583,7 +583,7 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     await screen.findByDisplayValue("Mika");
-    fireEvent.click(screen.getByTitle("sprite-b.png"));
+    fireEvent.click(await screen.findByTitle("sprite-b.png"));
     fireEvent.change(screen.getByLabelText("Sprite tag"), { target: { value: "unsaved second edit" } });
     fireEvent.click(screen.getByTitle("sprite-a.png"));
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
