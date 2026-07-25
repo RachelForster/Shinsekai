@@ -12,6 +12,7 @@ import { ToastProvider } from "../../../shared/ui";
 
 const themeContext = vi.hoisted(() => ({
   activeId: "windborne-adventure" as string | null,
+  exportTheme: vi.fn(),
   loading: false,
   refresh: vi.fn(),
   removeTheme: vi.fn(),
@@ -53,6 +54,7 @@ describe("ChatThemeManagementPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     themeContext.activeId = "windborne-adventure";
+    themeContext.exportTheme.mockResolvedValue("data/export/chat_ui_themes/custom-theme.zip");
     themeContext.loading = false;
     themeContext.refresh.mockResolvedValue(undefined);
     themeContext.removeTheme.mockResolvedValue(undefined);
@@ -117,6 +119,15 @@ describe("ChatThemeManagementPage", () => {
       system_config: { chat_ui_theme_id: "custom-theme" },
     });
     expect(queryClient.getQueryState(configQueryKey)?.isInvalidated).toBe(true);
+  });
+
+  it("exports a theme card as a reusable zip", async () => {
+    renderPage();
+
+    const userCard = screen.getByText("用户主题").closest("article");
+    fireEvent.click(within(userCard!).getByRole("button", { name: "导出主题" }));
+
+    await waitFor(() => expect(themeContext.exportTheme).toHaveBeenCalledWith("custom-theme"));
   });
 
   it("clears stale config and invalidates the theme list after deleting the active user theme", async () => {

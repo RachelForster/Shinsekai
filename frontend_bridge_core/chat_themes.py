@@ -28,6 +28,7 @@ from .builtin_chat_themes import (
 from sdk.chat_ui_theme import (
     MANIFEST_NAME,
     locate_manifest_root,
+    pack_theme,
     safe_extract,
     slugify_theme_id,
     validate_manifest,
@@ -46,6 +47,22 @@ RETIRED_BUILTIN_THEME_IDS = {"classic-dark", "light-paper"}
 CHAT_THEME_SCHEMA = 1
 BUILTIN_THEME_OWNER_MARKER = ".shinsekai-builtin-theme"
 _THEME_PUBLICATION_LOCK = threading.Lock()
+_THEME_ASSET_EXTENSIONS = {
+    ".gif",
+    ".jpeg",
+    ".jpg",
+    ".mp3",
+    ".ogg",
+    ".otf",
+    ".png",
+    ".svg",
+    ".ttf",
+    ".wav",
+    ".webp",
+    ".woff",
+    ".woff2",
+}
+_MAX_THEME_ASSET_BYTES = 16 * 1024 * 1024
 
 
 def _themes_root() -> Path:
@@ -391,6 +408,125 @@ def save_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str, Any]:
     if saved_manifest is None:
         raise ValueError(f"保存后的主题无效：{theme_id}")
     return _summary(target, saved_manifest)
+
+
+def _theme_asset_kind(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in {".woff", ".woff2", ".ttf", ".otf"}:
+        return "font"
+    if suffix in {".wav", ".mp3", ".ogg"}:
+        return "audio"
+    return "image"
+
+
+def _user_theme_dir(theme_id: str) -> Path:
+    safe_id = _safe_theme_id(theme_id)
+    if _is_builtin_theme_dir(safe_id):
+        raise PermissionError("内置主题资源不可修改，请先保存为用户主题")
+    target = safe_child_path(_themes_root(), safe_id)
+    if _read_manifest(target) is None:
+        raise FileNotFoundError(f"主题不存在或无效：{safe_id}")
+    return target
+
+
+def _theme_asset_row(theme_dir: Path, asset: Path) -> Dict[str, Any]:
+    relative = asset.relative_to(theme_dir).as_posix()
+    return {
+        "kind": _theme_asset_kind(asset),
+        "name": asset.name,
+        "path": relative,
+        "size": asset.stat().st_size,
+    }
+
+
+def list_chat_theme_assets(state: BridgeState, theme_id: str) -> List[Dict[str, Any]]:
+    """List safe static assets belonging to a theme without exposing host paths."""
+    del state
+    _seed_builtin_themes()
+    safe_id = _safe_theme_id(theme_id)
+    theme_dir = safe_child_path(_themes_root(), safe_id)
+    if _read_manifest(theme_dir) is None:
+        raise FileNotFoundError(f"主题不存在或无效：{safe_id}")
+    rows = []
+    for asset in theme_dir.rglob("*"):
+        if not asset.is_file() or asset.name in {MANIFEST_NAME, BUILTIN_THEME_OWNER_MARKER}:
+            continue
+        if asset.suffix.lower() not in _THEME_ASSET_EXTENSIONS:
+            continue
+        rows.append(_theme_asset_row(theme_dir, asset))
+    return sorted(rows, key=lambda row: str(row["path"]).lower())
+
+
+def upload_chat_theme_asset(state: BridgeState, theme_id: str, source_path: Path) -> Dict[str, Any]:
+    """Copy one validated static asset into a user theme's assets directory."""
+    del state
+    theme_dir = _user_theme_dir(theme_id)
+    source = safe_existing_file_path(source_path, field="theme asset path")
+    suffix = source.suffix.lower()
+    if suffix not in _THEME_ASSET_EXTENSIONS:
+        raise ValueError(f"不支持的主题资源类型：{suffix or '(无扩展名)'}")
+    size = source.stat().st_size
+    if size <= 0:
+        raise ValueError("主题资源不能为空")
+    if size > _MAX_THEME_ASSET_BYTES:
+        raise ValueError("单个主题资源不能超过 16 MiB")
+
+    assets_dir = safe_child_path(theme_dir, "assets")
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    stem = source.stem[:80] or "asset"
+    filename = f"{stem}{suffix}"
+    destination = safe_child_path(assets_dir, filename)
+    counter = 2
+    while destination.exists():
+        destination = safe_child_path(assets_dir, f"{stem}-{counter}{suffix}")
+        counter += 1
+    shutil.copy2(source, destination)
+    return _theme_asset_row(theme_dir, destination)
+
+
+def _manifest_references_asset(value: Any, asset_path: str) -> bool:
+    if isinstance(value, dict):
+        return any(_manifest_references_asset(child, asset_path) for child in value.values())
+    if isinstance(value, list):
+        return any(_manifest_references_asset(child, asset_path) for child in value)
+    return isinstance(value, str) and value.replace("\\", "/").strip() == asset_path
+
+
+def delete_chat_theme_asset(state: BridgeState, body: Dict[str, Any]) -> Dict[str, Any]:
+    del state
+    theme_id = str((body or {}).get("id") or "")
+    asset_path = str((body or {}).get("path") or "").replace("\\", "/").strip("/")
+    if not asset_path or asset_path in {MANIFEST_NAME, BUILTIN_THEME_OWNER_MARKER}:
+        raise ValueError("主题资源路径无效")
+    theme_dir = _user_theme_dir(theme_id)
+    manifest = _read_manifest(theme_dir) or {}
+    if _manifest_references_asset(manifest, asset_path):
+        raise ValueError("该资源仍被主题引用，请先清除对应字段并保存主题")
+    target = safe_child_path(theme_dir, asset_path)
+    if not target.is_file():
+        raise FileNotFoundError(f"主题资源不存在：{asset_path}")
+    target.unlink()
+    parent = target.parent
+    while parent != theme_dir and parent.is_dir() and not any(parent.iterdir()):
+        parent.rmdir()
+        parent = parent.parent
+    return {"deleted": True, "path": asset_path}
+
+
+def export_chat_theme(state: BridgeState, body: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate and package a theme for download/import round trips."""
+    del state
+    _seed_builtin_themes()
+    theme_id = _safe_theme_id(str((body or {}).get("id") or ""))
+    theme_dir = safe_child_path(_themes_root(), theme_id)
+    if _read_manifest(theme_dir) is None:
+        raise FileNotFoundError(f"主题不存在或无效：{theme_id}")
+    export_dir = Path.cwd() / "data" / "export" / "chat_ui_themes"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    output = safe_child_path(export_dir, f"{theme_id}.zip")
+    pack_theme(theme_dir, output)
+    relative = output.relative_to(Path.cwd()).as_posix()
+    return {"downloadUrl": f"/api/download?path={relative}", "path": relative}
 
 
 def delete_chat_theme(state: BridgeState, theme_id: str) -> Dict[str, Any]:

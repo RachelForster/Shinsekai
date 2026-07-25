@@ -1,5 +1,9 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
-import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
+import type {
+  ChatThemeAsset,
+  ChatThemeManifest,
+  ChatThemeSummary,
+} from "../theme/chatTheme";
 import { PlatformRequestError } from "./errors";
 import {
   isTauriDesktop,
@@ -50,6 +54,8 @@ import type {
   PluginConfigActionResult,
   PluginConfigSaveResult,
   PluginManifest,
+  PluginSlotActionResult,
+  PluginSlotContribution,
   PluginLocalScanResult,
   PluginSubmissionClipboardResult,
   PluginSubmissionInput,
@@ -618,6 +624,23 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify(input),
           method: "POST",
         }),
+      listThemeAssets: (id) => requestJson<ChatThemeAsset[]>(apiBase, `/api/chat/themes/${encodePath(id)}/assets`),
+      uploadThemeAsset: (id, file) =>
+        uploadFiles<ChatThemeAsset>(apiBase, `/api/chat/themes/${encodePath(id)}/assets/upload`, [file]),
+      deleteThemeAsset: async (id, path) => {
+        await requestJson(apiBase, "/api/chat/themes/assets/delete", {
+          body: JSON.stringify({ id, path }),
+          method: "POST",
+        });
+      },
+      exportTheme: async (id) => {
+        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/chat/themes/export", {
+          body: JSON.stringify({ id }),
+          method: "POST",
+        });
+        openBridgeWindow(apiBase, result.downloadUrl);
+        return result.path;
+      },
       deleteTheme: async (id) => {
         await requestJson(apiBase, `/api/chat/themes/${encodePath(id)}`, { method: "DELETE" });
       },
@@ -1148,6 +1171,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
       getUi: (id) => requestJson<PluginUIDetail>(apiBase, `/api/plugins/${encodePath(id)}/ui`),
       list: () => requestJson<PluginManifest[]>(apiBase, "/api/plugins"),
+      listSlotContributions: () => requestJson<PluginSlotContribution[]>(apiBase, "/api/plugins/chat-ui-contributions"),
       async repoTags(repo) {
         const result = await requestJson<{ tags: string[] }>(apiBase, "/api/plugins/repo-tags", {
           body: JSON.stringify({ repo }),
@@ -1185,6 +1209,12 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           apiBase,
           `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/actions/${encodePath(actionId)}`,
           { body: JSON.stringify({ values }), method: "POST" },
+        ),
+      runSlotContribution: (pluginId, contributionId) =>
+        requestJson<PluginSlotActionResult>(
+          apiBase,
+          `/api/plugins/${encodePath(pluginId)}/chat-ui/${encodePath(contributionId)}/run`,
+          { body: JSON.stringify({}), method: "POST" },
         ),
       saveUiConfig: (id, pageId, values) =>
         requestJson<PluginConfigSaveResult>(apiBase, `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/config`, {

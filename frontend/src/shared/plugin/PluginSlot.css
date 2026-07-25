@@ -1,0 +1,60 @@
+.plugin-slot {
+  display: contents;
+}
+
+.plugin-slot__output {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in oklch, var(--stage-accent) 22%, var(--chat-dialog-border-color));
+  border-radius: 10px;
+  color: var(--chat-dialog-color);
+  background: color-mix(in oklch, var(--stage-accent) 8%, rgba(255, 255, 255, 0.04));
+}
+
+.plugin-slot__output-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--stage-accent);
+  background: color-mix(in oklch, var(--stage-accent) 14%, transparent);
+}
+
+.plugin-slot__output-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.plugin-slot__output-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.plugin-slot__output-copy strong,
+.plugin-slot__output-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-slot__output-copy strong {
+  font-size: 11px;
+}
+
+.plugin-slot__output-copy small {
+  color: color-mix(in oklch, var(--chat-dialog-color) 62%, transparent);
+  font-size: 9px;
+}
+
+.plugin-slot__output .button {
+  min-height: 28px;
+  padding: 4px 8px;
+  font-size: 10px;
+}
