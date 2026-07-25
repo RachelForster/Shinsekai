@@ -967,9 +967,9 @@ fn start_runtime_candidate_for_state(
             false,
         ));
     }
-    let scan = runtime::install_dir_runtime_view(&state.source_root);
+    let scan = runtime::scan_runtime_view(app, &state.source_root);
     restart_debug_log(format!(
-        "start_runtime_candidate fixed runtime candidates={} selected={:?}",
+        "start_runtime_candidate validated runtime candidates={} selected={:?}",
         scan.candidates.len(),
         scan.selected_candidate_id
     ));

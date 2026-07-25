@@ -72,7 +72,7 @@ MODULE_PACKAGE_MAP = {
     "google": "google-genai",
     "google.genai": "google-genai",
     "huggingface_hub": "huggingface-hub",
-    "mem0": "mem0ai[extras]",
+    "mem0": "mem0ai",
     "numpy": "numpy",
     "openai": "openai",
     "opencc": "opencc-python-reimplemented",

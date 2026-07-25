@@ -9,6 +9,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.memory.modelMissingKeepOff": "長期記憶モデルは未ダウンロードです",
   "api.memory.checking": "確認中",
   "api.memory.description": "チャット時の長期記憶検索、周期抽出、埋め込みモデル準備を制御します。",
+  "api.memory.dependencyInstalled": "長期記憶の依存関係をインストールしました",
+  "api.memory.dependencyInstallFailed": "長期記憶の依存関係をインストールできませんでした",
   "api.memory.downloadModel": "モデルをダウンロード",
   "api.memory.downloading": "長期記憶モデルをダウンロード中…",
   "api.memory.enabled": "自動長期記憶を有効にする",
