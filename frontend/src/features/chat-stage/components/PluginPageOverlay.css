@@ -16,9 +16,22 @@
 
 .plugin-overlay__frame {
   flex: 1;
+  min-height: 0;
   width: 100%;
   border: 0;
   background: transparent;
+}
+
+.plugin-overlay__status {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+  place-items: center;
+  padding: 24px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(20, 20, 24, 0.92);
+  font-size: 13px;
+  text-align: center;
 }
 
 /* Bottom bar: drag to move, tap (press without moving) to collapse. */
@@ -45,6 +58,11 @@
   background: rgba(255, 255, 255, 0.7);
 }
 
+.plugin-overlay__bar:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.82);
+  outline-offset: -3px;
+}
+
 .plugin-overlay__grip {
   width: 84px;
   height: 6px;
@@ -60,5 +78,11 @@
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .plugin-overlay {
+    animation: none;
   }
 }

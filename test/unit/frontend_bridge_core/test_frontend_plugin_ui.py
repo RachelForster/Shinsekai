@@ -110,6 +110,7 @@ def test_frontend_chat_ui_contributions_are_serialized_without_callbacks(monkeyp
             "id": "demo.action",
             "order": 12.0,
             "pageId": "",
+            "pageMode": "navigate",
             "pluginId": "demo.plugin",
             "pluginVersion": "1.0",
             "presentation": "button",
@@ -134,7 +135,7 @@ def test_frontend_chat_ui_contribution_serializes_phone_page_navigation(monkeypa
         "_frontend_chat_ui_contributions",
         lambda: [
             SimpleNamespace(
-                action={"type": "open-plugin-page", "page_id": " phone "},
+                action={"type": "open-plugin-page", "page_id": " phone ", "mode": "overlay"},
                 contribution_id="demo.phone",
                 description="Open phone",
                 icon="smartphone",
@@ -159,6 +160,7 @@ def test_frontend_chat_ui_contribution_serializes_phone_page_navigation(monkeypa
             "id": "demo.phone",
             "order": 30.0,
             "pageId": "phone",
+            "pageMode": "overlay",
             "pluginId": "demo.plugin",
             "pluginVersion": "1.0",
             "presentation": "icon-only",

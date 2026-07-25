@@ -11,6 +11,7 @@ import {
 } from "../../entities/plugin/repository";
 import type { PluginConfigAction, PluginManifest, PluginUIPage } from "../../entities/plugin/types";
 import { useI18n } from "../../shared/i18n";
+import { resolvePlatformHttpUrl } from "../../shared/platform/platform";
 import {
   AlertDialog,
   AsyncButton,
@@ -175,18 +176,7 @@ function PluginPagePanel({ lookupId, page }: { lookupId: string; page: PluginUIP
 }
 
 export function resolvePluginFrontendFrameSrc(frontendUrl: string) {
-  if (!frontendUrl.startsWith("/api/") || typeof window === "undefined") {
-    return frontendUrl;
-  }
-  const bridgeBase = new URLSearchParams(window.location.search).get("shinsekai_bridge")?.trim();
-  if (!bridgeBase) {
-    return frontendUrl;
-  }
-  try {
-    return new URL(frontendUrl, bridgeBase).toString();
-  } catch {
-    return frontendUrl;
-  }
+  return resolvePlatformHttpUrl(frontendUrl);
 }
 
 function pluginConfigPageStateKey(page: PluginUIPage) {

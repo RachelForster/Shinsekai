@@ -113,6 +113,7 @@ export function ChatStagePage() {
   const statsVisible = viewModel.stats.length > 0;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen =
+    overlayTarget != null ||
     themePickerOpen ||
     toolbarConfigOpen ||
     branchDialogOpen ||
@@ -447,7 +448,7 @@ export function ChatStagePage() {
   const openPluginPage = useCallback(
     ({ mode, pageId, pluginId }: PluginPageTarget) => {
       if (mode === "overlay") {
-        setOverlayTarget({ pageId, pluginId });
+        setOverlayTarget({ mode, pageId, pluginId });
         return;
       }
       navigate(
@@ -501,9 +502,7 @@ export function ChatStagePage() {
 
   return (
     <>
-      {overlayTarget ? (
-        <PluginPageOverlay onClose={() => setOverlayTarget(null)} target={overlayTarget} />
-      ) : null}
+      {overlayTarget ? <PluginPageOverlay onClose={() => setOverlayTarget(null)} target={overlayTarget} /> : null}
       <main
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}

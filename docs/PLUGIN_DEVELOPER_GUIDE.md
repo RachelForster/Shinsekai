@@ -999,19 +999,19 @@ Toolbar entries can also open one of the same plugin's registered frontend pages
 ```python
 register.register_frontend_chat_ui(
     FrontendChatUIContribution(
-        contribution_id="my-plugin.phone",
+        contribution_id="my-plugin.dashboard",
         slot="chat-top-toolbar",
-        title="Phone",
-        description="Open the phone panel.",
-        icon="smartphone",
+        title="Plugin dashboard",
+        description="Open the plugin dashboard over Chat.",
+        icon="puzzle",
         presentation="icon-only",
-        action={"type": "open-plugin-page", "page_id": "phone"},
+        action={"type": "open-plugin-page", "page_id": "dashboard", "mode": "overlay"},
         order=30,
     )
 )
 ```
 
-`open-plugin-page` only accepts a `page_id`; the host supplies the current plugin ID, performs navigation, and provides a safe return route to Chat. Arbitrary URLs, HTML, JavaScript, React nodes, and CSS remain unsupported.
+`open-plugin-page` accepts a `page_id` and an optional `mode`. The default mode is `navigate`, which opens the plugin manager and provides a safe return route to Chat. `mode: "overlay"` opens the same registered page in a host-owned, draggable window over the Chat stage. Overlay mode is plugin-neutral and works from any supported Chat slot. The host resolves the page URL and current plugin ID; arbitrary URLs, HTML, JavaScript, React nodes, and CSS remain unsupported.
 
 ---
 

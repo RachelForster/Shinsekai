@@ -38,7 +38,10 @@ const themeContextMocks = vi.hoisted(() => ({
   },
 }));
 
-const pluginSlotMocks = vi.hoisted(() => ({ renderPhoneEntry: false }));
+const pluginSlotMocks = vi.hoisted(() => ({
+  pageMode: "navigate" as "navigate" | "overlay",
+  renderPhoneEntry: false,
+}));
 
 vi.mock("../../../entities/chat/repository", () => ({
   closeChat: () => mocks.closeChat(),
@@ -67,14 +70,34 @@ vi.mock("../../../shared/plugin/PluginSlot", () => ({
     onOpenPluginPage,
     slot,
   }: {
-    onOpenPluginPage?: (target: { pageId: string; pluginId: string }) => void;
+    onOpenPluginPage?: (target: { mode?: "navigate" | "overlay"; pageId: string; pluginId: string }) => void;
     slot: string;
   }) =>
     pluginSlotMocks.renderPhoneEntry && slot === "chat-top-toolbar" ? (
-      <button onClick={() => onOpenPluginPage?.({ pageId: "phone", pluginId: "demo.plugin" })} type="button">
+      <button
+        onClick={() =>
+          onOpenPluginPage?.({
+            mode: pluginSlotMocks.pageMode,
+            pageId: "phone",
+            pluginId: "demo.plugin",
+          })
+        }
+        type="button"
+      >
         Phone
       </button>
     ) : null,
+}));
+
+vi.mock("../../../features/chat-stage/components/PluginPageOverlay", () => ({
+  PluginPageOverlay: ({ onClose, target }: { onClose: () => void; target: { pageId: string; pluginId: string } }) => (
+    <section aria-label="Plugin page overlay">
+      <span>{`${target.pluginId}:${target.pageId}`}</span>
+      <button onClick={onClose} type="button">
+        Close overlay
+      </button>
+    </section>
+  ),
 }));
 
 const chatWindowMocks = vi.hoisted(() => ({
@@ -180,6 +203,7 @@ describe("ChatStagePage", () => {
     vi.useRealTimers();
     window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
     themeContextMocks.optional = null;
+    pluginSlotMocks.pageMode = "navigate";
     pluginSlotMocks.renderPhoneEntry = false;
     mocks.closeChat.mockResolvedValue(snapshot());
     mocks.getAppConfig.mockResolvedValue({
@@ -293,6 +317,25 @@ describe("ChatStagePage", () => {
     expect(screen.getByLabelText("location")).toHaveTextContent('"pageId":"phone"');
     expect(screen.getByLabelText("location")).toHaveTextContent('"pluginId":"demo.plugin"');
     expect(screen.getByLabelText("location")).toHaveTextContent('"pathname":"/chat-stage"');
+  });
+
+  it("opens a declared plugin page in a generic overlay without advancing or leaving Chat", async () => {
+    pluginSlotMocks.pageMode = "overlay";
+    pluginSlotMocks.renderPhoneEntry = true;
+    renderPage(["/chat-stage"], true);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Phone" }));
+
+    const overlay = await screen.findByLabelText("Plugin page overlay");
+    expect(overlay).toHaveTextContent("demo.plugin:phone");
+    expect(screen.getByLabelText("location")).toHaveTextContent("/chat-stage");
+
+    mocks.sendChatCommand.mockClear();
+    fireEvent.keyDown(overlay, { key: "Enter" });
+    expect(mocks.sendChatCommand).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close overlay" }));
+    expect(screen.queryByLabelText("Plugin page overlay")).not.toBeInTheDocument();
   });
 
   it("opens interrupt and stacking switches from the existing hover input toolbar", async () => {

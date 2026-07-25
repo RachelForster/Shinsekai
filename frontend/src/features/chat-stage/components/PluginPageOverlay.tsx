@@ -1,41 +1,51 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 
+import { getPluginUiDetail } from "../../../entities/plugin/repository";
+import { useI18n } from "../../../shared/i18n";
+import { resolvePlatformHttpUrl } from "../../../shared/platform/platform";
 import type { PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import "./PluginPageOverlay.css";
 
-const WIDTH = 336;
-const HEIGHT = 680;
+const DEFAULT_WIDTH = 360;
+const DEFAULT_HEIGHT = 640;
+const VIEWPORT_MARGIN = 8;
 
 type Pos = { x: number; y: number };
+type Size = { height: number; width: number };
+type PointerDrag = {
+  moved: boolean;
+  origin: Pos;
+  pointerId: number;
+  startX: number;
+  startY: number;
+};
+type OverlayPage = { src: string; title: string };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(min, value), Math.max(min, max));
 
-// Build the plugin page URL the same way the bridge does (plugin_ui._frontend_page_payload),
-// resolve it against the bridge base if the app runs behind one, and forward the bridge token
-// so the page's RPC calls authenticate.
-function pluginPageSrc(pluginId: string, pageId: string, nonce: number): string {
-  const path =
-    `/api/plugins/${encodeURIComponent(pluginId)}/frontend/${encodeURIComponent(pageId)}/` +
-    `?pluginId=${encodeURIComponent(pluginId)}&pageId=${encodeURIComponent(pageId)}&_n=${nonce}`;
-  if (typeof window === "undefined") {
-    return path;
-  }
-  const params = new URLSearchParams(window.location.search);
-  const bridgeBase = params.get("shinsekai_bridge")?.trim();
-  const token = params.get("shinsekai_bridge_token")?.trim();
-  let url = path;
-  if (bridgeBase) {
-    try {
-      url = new URL(path, bridgeBase).toString();
-    } catch {
-      url = path;
-    }
-  }
-  if (token) {
-    url += `${url.includes("?") ? "&" : "?"}shinsekai_bridge_token=${encodeURIComponent(token)}`;
-  }
-  return url;
+function viewportSize(): Size {
+  return {
+    height: Math.max(1, Math.min(DEFAULT_HEIGHT, window.innerHeight - VIEWPORT_MARGIN * 2)),
+    width: Math.max(1, Math.min(DEFAULT_WIDTH, window.innerWidth - VIEWPORT_MARGIN * 2)),
+  };
+}
+
+function clampPosition(pos: Pos, size: Size): Pos {
+  return {
+    x: clamp(pos.x, VIEWPORT_MARGIN, window.innerWidth - size.width - VIEWPORT_MARGIN),
+    y: clamp(pos.y, VIEWPORT_MARGIN, window.innerHeight - size.height - VIEWPORT_MARGIN),
+  };
+}
+
+function initialPosition(size: Size): Pos {
+  return clampPosition(
+    {
+      x: window.innerWidth - size.width - 24,
+      y: 84,
+    },
+    size,
+  );
 }
 
 /**
@@ -47,49 +57,104 @@ function pluginPageSrc(pluginId: string, pageId: string, nonce: number): string 
  * coordinates). Tapping the bottom bar (a press with no drag) collapses it.
  */
 export function PluginPageOverlay({ onClose, target }: { onClose: () => void; target: PluginPageTarget }) {
-  const [nonce] = useState(() => Date.now());
-  const [pos, setPos] = useState<Pos>(() => ({
-    x: clamp(window.innerWidth - WIDTH - 24, 8, Math.max(8, window.innerWidth - WIDTH - 8)),
-    y: 84,
-  }));
+  const { t } = useI18n();
+  const [size, setSize] = useState<Size>(viewportSize);
+  const [pos, setPos] = useState<Pos>(() => initialPosition(viewportSize()));
+  const [page, setPage] = useState<OverlayPage | null>(null);
+  const [pageError, setPageError] = useState(false);
   const posRef = useRef(pos);
   posRef.current = pos;
   const dragBase = useRef<Pos | null>(null);
+  const pointerDragRef = useRef<PointerDrag | null>(null);
+  const suppressClickRef = useRef(false);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
 
-  // Host-owned drag surface: the bottom bar. A press that never moves is a tap → close.
+  useEffect(() => {
+    let active = true;
+    setPage(null);
+    setPageError(false);
+    void getPluginUiDetail(target.pluginId)
+      .then((detail) => {
+        if (!active) {
+          return;
+        }
+        const matchedPage = detail.pages.find(
+          (item) => item.id === target.pageId && item.pluginId === target.pluginId && item.frontendUrl,
+        );
+        if (!matchedPage?.frontendUrl) {
+          setPageError(true);
+          return;
+        }
+        setPage({
+          src: resolvePlatformHttpUrl(matchedPage.frontendUrl),
+          title: matchedPage.title || target.pageId,
+        });
+      })
+      .catch(() => {
+        if (active) {
+          setPageError(true);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [target.pageId, target.pluginId]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const nextSize = viewportSize();
+      setSize(nextSize);
+      setPos((current) => clampPosition(current, nextSize));
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const onBarPointerDown = (event: ReactPointerEvent) => {
     if (event.button !== 0) {
       return;
     }
-    dragBase.current = posRef.current;
-    const startX = event.screenX;
-    const startY = event.screenY;
-    let moved = false;
-    const move = (e: PointerEvent) => {
-      if (!dragBase.current) {
-        return;
-      }
-      const dx = e.screenX - startX;
-      const dy = e.screenY - startY;
-      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
-        moved = true;
-      }
-      setPos({
-        x: clamp(dragBase.current.x + dx, 8, window.innerWidth - WIDTH - 8),
-        y: clamp(dragBase.current.y + dy, 8, window.innerHeight - 56),
-      });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    pointerDragRef.current = {
+      moved: false,
+      origin: posRef.current,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
     };
-    const up = () => {
-      dragBase.current = null;
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      if (!moved) {
-        onClose();
-      }
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
+  };
+
+  const onBarPointerMove = (event: ReactPointerEvent) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      drag.moved = true;
+    }
+    setPos(clampPosition({ x: drag.origin.x + dx, y: drag.origin.y + dy }, size));
+  };
+
+  const finishBarPointerDrag = (event: ReactPointerEvent) => {
+    const drag = pointerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+    suppressClickRef.current = drag.moved;
+    pointerDragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  const onBarClick = () => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    onClose();
   };
 
   // Optional drag from inside a cooperating iframe page (press any blank area), streamed
@@ -97,7 +162,7 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const frame = frameRef.current;
-      if (frame && event.source !== frame.contentWindow) {
+      if (!frame || event.source !== frame.contentWindow) {
         return;
       }
       const d = event.data as { __pluginOverlay?: string; dx?: number; dy?: number; type?: string } | null;
@@ -107,10 +172,17 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
       if (d.type === "start") {
         dragBase.current = posRef.current;
       } else if (d.type === "move" && dragBase.current) {
-        setPos({
-          x: clamp(dragBase.current.x + (d.dx ?? 0), 8, window.innerWidth - WIDTH - 8),
-          y: clamp(dragBase.current.y + (d.dy ?? 0), 8, window.innerHeight - 56),
-        });
+        const dx = Number.isFinite(d.dx) ? (d.dx ?? 0) : 0;
+        const dy = Number.isFinite(d.dy) ? (d.dy ?? 0) : 0;
+        setPos(
+          clampPosition(
+            {
+              x: dragBase.current.x + dx,
+              y: dragBase.current.y + dy,
+            },
+            size,
+          ),
+        );
       } else if (d.type === "end") {
         dragBase.current = null;
       } else if (d.type === "close") {
@@ -119,25 +191,43 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onClose]);
+  }, [onClose, size]);
 
   return createPortal(
-    <div
+    <section
+      aria-label={page?.title || target.pageId}
       className="plugin-overlay"
       data-chat-stage-hitbox="true"
-      style={{ height: HEIGHT, left: pos.x, top: pos.y, width: WIDTH }}
+      data-plugin-page-overlay="true"
+      role="dialog"
+      style={{ height: size.height, left: pos.x, top: pos.y, width: size.width }}
     >
-      <iframe
-        className="plugin-overlay__frame"
-        ref={frameRef}
-        sandbox="allow-forms allow-same-origin allow-scripts"
-        src={pluginPageSrc(target.pluginId, target.pageId, nonce)}
-        title="Plugin"
-      />
-      <button aria-label="Collapse" className="plugin-overlay__bar" onPointerDown={onBarPointerDown} type="button">
+      {page ? (
+        <iframe
+          className="plugin-overlay__frame"
+          ref={frameRef}
+          sandbox="allow-forms allow-same-origin allow-scripts"
+          src={page.src}
+          title={page.title}
+        />
+      ) : (
+        <div className="plugin-overlay__status" role={pageError ? "alert" : "status"}>
+          {t(pageError ? "plugin.loadError.unavailable" : "plugin.detail.loading")}
+        </div>
+      )}
+      <button
+        aria-label={t("common.close")}
+        className="plugin-overlay__bar"
+        onClick={onBarClick}
+        onPointerCancel={finishBarPointerDrag}
+        onPointerDown={onBarPointerDown}
+        onPointerMove={onBarPointerMove}
+        onPointerUp={finishBarPointerDrag}
+        type="button"
+      >
         <span aria-hidden className="plugin-overlay__grip" />
       </button>
-    </div>,
+    </section>,
     document.body,
   );
 }
