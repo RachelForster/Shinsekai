@@ -274,7 +274,17 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
             return real_import(name, globals, locals, fromlist, level)
 
         builtins.__import__ = guarded_import
-        importlib.metadata.version = lambda _name: "0.0.0"
+        compatible_versions = {{
+            "huggingface-hub": "0.36.2",
+            "mcp": "1.2.0",
+            "packaging": "24.2",
+            "pygame": "2.5.7",
+            "pygame-ce": "2.5.7",
+            "pyqt-toast-notification": "1.3.3",
+            "py7zz": "1.1.4",
+            "qtpy": "2.4.1",
+        }}
+        importlib.metadata.version = lambda name: compatible_versions.get(name.lower(), "1.0.0")
 
         from frontend_bridge import runtime_check_report
 
@@ -317,6 +327,30 @@ def test_runtime_requirements_parser_follows_recursive_includes(tmp_path):
         "pydantic",
         "fastembed",
     ]
+
+
+def test_runtime_check_rejects_installed_distributions_with_incompatible_versions(
+    tmp_path, monkeypatch
+):
+    import frontend_bridge
+    from core.runtime import requirements as runtime_requirements
+
+    requirements = tmp_path / "requirements-runtime-core.txt"
+    requirements.write_text("huggingface-hub==0.36.2\n", encoding="utf-8")
+    monkeypatch.setattr(
+        runtime_requirements.importlib_metadata,
+        "version",
+        lambda _name: "1.24.0",
+    )
+
+    report = frontend_bridge.runtime_check_report(
+        requirements_file=str(requirements),
+        requirements_only=True,
+    )
+
+    assert report["ok"] is False
+    assert report["missingDistributions"] == ["huggingface-hub"]
+    assert "1.24.0 does not satisfy" in str(report["message"])
 
 
 def test_runtime_requirements_parser_uses_pygame_ce_on_windows_arm64(tmp_path, monkeypatch):
@@ -443,12 +477,13 @@ def test_runtime_core_requirements_include_bridge_startup_sdks():
     assert "google-genai" in names
     assert "anthropic" in names
     assert "tiktoken" in names
+    assert "packaging" in names
     assert "opencc-python-reimplemented" in names
     assert "PySide6" in names
     assert "Pillow" in names
 
 
-def test_runtime_core_pins_huggingface_hub_to_the_download_progress_version():
+def test_runtime_core_pins_huggingface_hub_to_the_shared_compatible_version():
     from frontend_bridge_core import runtime_dependencies
 
     repo_root = _repo_root()
@@ -461,6 +496,25 @@ def test_runtime_core_pins_huggingface_hub_to_the_download_progress_version():
     }
 
     assert expected in lines
+
+
+def test_runtime_requirements_keep_memory_and_moondream_dependencies_compatible():
+    from frontend_bridge_core import runtime_dependencies
+
+    repo_root = _repo_root()
+    for requirements_name in ("requirements-runtime-local-ai.txt", "requirements.txt"):
+        requirements = repo_root / requirements_name
+        lines = {
+            line.strip()
+            for line in requirements.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+
+        assert runtime_dependencies.SENTENCE_TRANSFORMERS_SPEC in lines
+        assert runtime_dependencies.TRANSFORMERS_SPEC in lines
+        assert runtime_dependencies.CLICK_SPEC in lines
+        assert runtime_dependencies.SPACY_SPEC in lines
+        assert "mem0ai[extras]" not in lines
 
 
 def _fake_runtime_pip_install(calls):
@@ -531,6 +585,108 @@ def test_install_runtime_dependency_pins_huggingface_hub(monkeypatch):
     expected = f"huggingface-hub=={runtime_dependencies.HUGGINGFACE_HUB_VERSION}"
     assert result["packageName"] == expected
     assert calls[0][:5] == [sys.executable, "-m", "pip", "install", expected]
+
+
+def test_install_runtime_dependency_installs_mem0_without_broad_extras(monkeypatch):
+    from frontend_bridge_core import runtime_dependencies
+
+    calls = []
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
+
+    result = runtime_dependencies.install_runtime_dependency("mem0")
+
+    assert result["packageName"] == "mem0ai"
+    assert calls[0][:11] == [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        runtime_dependencies.MEM0_SPEC,
+        runtime_dependencies.CLICK_SPEC,
+        runtime_dependencies.SPACY_SPEC,
+        runtime_dependencies.SENTENCE_TRANSFORMERS_SPEC,
+        runtime_dependencies.FASTEMBED_SPEC,
+        runtime_dependencies.TRANSFORMERS_SPEC,
+        runtime_dependencies.HUGGINGFACE_HUB_SPEC,
+    ]
+    assert "mem0ai[extras]" not in calls[0]
+
+
+def test_memory_runtime_dependency_check_detects_an_old_huggingface_version():
+    from frontend_bridge_core import runtime_dependencies
+
+    versions = {
+        "click": "8.1.8",
+        "fastembed": "0.7.3",
+        "huggingface-hub": "1.24.0",
+        "mem0ai": "2.0.12",
+        "sentence-transformers": "5.2.2",
+        "spacy": "3.8.11",
+        "transformers": "4.57.1",
+    }
+
+    issues = runtime_dependencies.runtime_dependency_issues(
+        "mem0",
+        installed_versions=versions,
+    )
+
+    assert [issue.name for issue in issues] == ["huggingface-hub"]
+    assert issues[0].installed_version == "1.24.0"
+
+
+def test_memory_runtime_dependency_check_checks_the_complete_group():
+    from frontend_bridge_core import runtime_dependencies
+
+    issues = runtime_dependencies.runtime_dependency_issues(
+        "mem0",
+        installed_versions={"mem0ai": "2.0.12"},
+    )
+
+    assert [issue.requirement for issue in issues] == list(
+        runtime_dependencies.MEMORY_RUNTIME_PACKAGE_SPECS[1:]
+    )
+
+
+def test_memory_runtime_dependency_check_accepts_the_compatible_group():
+    from frontend_bridge_core import runtime_dependencies
+
+    versions = {
+        "click": "8.1.8",
+        "fastembed": "0.7.3",
+        "huggingface-hub": "0.36.2",
+        "mem0ai": "2.0.12",
+        "sentence-transformers": "5.2.2",
+        "spacy": "3.8.11",
+        "transformers": "4.57.1",
+    }
+
+    assert (
+        runtime_dependencies.runtime_dependency_issues(
+            "mem0",
+            installed_versions=versions,
+        )
+        == ()
+    )
+
+
+def test_install_runtime_dependency_keeps_sentence_transformers_compatible(monkeypatch):
+    from frontend_bridge_core import runtime_dependencies
+
+    calls = []
+    monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
+
+    result = runtime_dependencies.install_runtime_dependency("sentence_transformers")
+
+    assert result["packageName"] == "sentence-transformers"
+    assert calls[0][:7] == [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        runtime_dependencies.SENTENCE_TRANSFORMERS_SPEC,
+        runtime_dependencies.TRANSFORMERS_SPEC,
+        runtime_dependencies.HUGGINGFACE_HUB_SPEC,
+    ]
 
 
 def test_install_runtime_dependency_invalidates_import_caches_after_success(monkeypatch):

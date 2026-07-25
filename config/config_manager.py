@@ -26,6 +26,11 @@ from config.sprite_voice import normalize_sprite_voice_types
 import traceback
 
 
+def character_name_key(name: str) -> str:
+    """Return the case-insensitive identity key used for character lookup."""
+    return name.lower()
+
+
 def _llm_default_base_url(llm_provider: str) -> str:
     """Return the built-in base URL for a provider, accepting minor case drift."""
     provider = (llm_provider or "").strip()
@@ -390,8 +395,9 @@ class ConfigManager:
 
     def get_character_by_name(self, name: str) -> Optional[Character]:
         """根据角色名称获取角色配置实体"""
+        name_key = character_name_key(name)
         for char in self.config.characters:
-            if char.name.lower() == name.lower():
+            if character_name_key(char.name) == name_key:
                 return char
         return None
 

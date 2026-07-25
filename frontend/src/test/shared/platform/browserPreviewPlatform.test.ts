@@ -525,11 +525,15 @@ describe("browser preview platform chat themes", () => {
 
     const characters = await resolvePreview(platform.characters.list());
     const character = characters[0];
+    await resolvePreview(
+      platform.templates.saveSession(templateSession({ selectedCharacters: [character.name, "Other"] })),
+    );
     const saved = await resolvePreview(
       platform.characters.save({ ...character, color: "", name: "Mika", sprite_prefix: "" }, character.name),
     );
     expect(saved.color).toBe("#d07d7d");
     expect(saved.sprite_prefix).toBe("temp");
+    expect((await resolvePreview(platform.templates.getSession()))?.selectedCharacters).toEqual(["Mika", "Other"]);
 
     await resolvePreview(platform.characters.save({ ...saved, name: "Nana" }));
     await expect(platform.characters.save({ ...saved, name: "Mika" }, "Nana")).rejects.toThrow("名称");

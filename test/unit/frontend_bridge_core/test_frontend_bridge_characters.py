@@ -1,6 +1,8 @@
+from types import SimpleNamespace
+
 import pytest
 
-from frontend_bridge_core.characters import _validate_character_payload
+from frontend_bridge_core.characters import _save_character, _validate_character_payload
 
 
 def _character_payload(**overrides):
@@ -31,3 +33,41 @@ def test_remote_voice_paths_still_validate_model_suffixes():
             _character_payload(sovits_model_path="/kaggle/input/voice-model/model.ckpt"),
             allow_remote_voice_paths=True,
         )
+
+
+def test_character_save_propagates_rename_to_template_session(monkeypatch):
+    renamed: list[tuple[str, str]] = []
+    config_manager = SimpleNamespace(
+        config=SimpleNamespace(api_config=SimpleNamespace(tts_provider="none")),
+        get_character_by_name=lambda name: SimpleNamespace(name=name),
+        reload=lambda: None,
+    )
+    character_manager = SimpleNamespace(
+        add_character=lambda *_args, **_kwargs: ("updated", ["B", "C"]),
+    )
+    state = SimpleNamespace(
+        character_manager=character_manager,
+        config_manager=config_manager,
+    )
+    monkeypatch.setattr(
+        "frontend_bridge_core.characters._validate_character_payload",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "frontend_bridge_core.templates._rename_template_session_character",
+        lambda _state, old_name, new_name: renamed.append((old_name, new_name)),
+    )
+
+    _save_character(
+        state,
+        {
+            "character": {
+                "color": "#ffffff",
+                "name": "C",
+                "sprite_prefix": "a",
+            },
+            "originalName": "A",
+        },
+    )
+
+    assert renamed == [("A", "C")]

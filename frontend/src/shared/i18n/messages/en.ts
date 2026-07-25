@@ -8,6 +8,8 @@ export const enMessages: Record<MessageKey, string> = {
   "api.memory.checking": "Checking",
   "api.memory.description":
     "Controls long-term memory retrieval, periodic extraction, and embedding model preparation for chat.",
+  "api.memory.dependencyInstalled": "Long-term memory dependencies installed",
+  "api.memory.dependencyInstallFailed": "Failed to install long-term memory dependencies",
   "api.memory.downloadModel": "Download model",
   "api.memory.downloading": "Downloading long-term memory model...",
   "api.memory.enabled": "Enable automatic long-term memory",
