@@ -11,7 +11,8 @@ import pytest
 
 from core.runtime.app_runtime import AppRuntime, get_app_runtime, set_app_runtime
 from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
-from llm.llm_manager import LLMManager, STREAM_DIALOG_REPAIR_KEY
+from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY
+from llm.llm_manager import LLMManager
 from sdk.messages import LLMDialogMessage, TTSOutputMessage, UserInputMessage
 from test.mocks import MockLLMAdapter
 
@@ -181,60 +182,24 @@ def test_llm_worker_does_not_requeue_dialogue_after_stream_repair() -> None:
     assert manager.messages[-1]["content"] == valid
 
 
-def test_llm_worker_repair_appends_missing_identical_dialogue() -> None:
-    streamed_item = '{"character_name":"Alice","speech":"Again","sprite":0}'
-    item = '{"character_name":"Alice","speech":"Again","sprite":"0"}'
-    repaired = f'{{"dialog":[{item},{item}]}}'
+def test_llm_worker_appends_repaired_suffix_with_turn_identity() -> None:
+    alice = '{"character_name":"Alice","speech":"First","sprite":"0"}'
+    bob = '{"character_name":"Bob","speech":"Second","sprite":"1"}'
+    repaired = f'{{"dialog":[{alice},{bob}]}}'
     llm_manager = MagicMock()
     llm_manager.chat.return_value = iter(
-        [f'{{"dialog":[{streamed_item},', {STREAM_DIALOG_REPAIR_KEY: repaired}]
+        [f'{{"dialog":[{alice},', {STREAM_DIALOG_REPAIR_KEY: repaired}]
     )
 
-    _, output = _run_streaming_llm_worker(llm_manager)
-
-    assert [(message.name, message.text) for message in output] == [
-        ("Alice", "Again"),
-        ("Alice", "Again"),
-    ]
-
-
-def test_llm_worker_repair_delivers_when_stream_had_no_dialogue() -> None:
-    repaired = '{"dialog":[{"character_name":"Alice","speech":"Recovered","sprite":"0"}]}'
-    llm_manager = MagicMock()
-    llm_manager.chat.return_value = iter(
-        ["plain text", {STREAM_DIALOG_REPAIR_KEY: repaired}]
-    )
-
-    _, output = _run_streaming_llm_worker(llm_manager)
-
-    assert [(message.name, message.text) for message in output] == [
-        ("Alice", "Recovered")
-    ]
-
-
-def test_llm_worker_repair_does_not_append_non_prefix_dialogue() -> None:
-    alice = '{"character_name":"Alice","speech":"First","sprite":"1"}'
-    bob = '{"character_name":"Bob","speech":"Missing","sprite":"2"}'
-    carol_streamed = '{"character_name":"Carol","speech":"Last","sprite":3}'
-    carol_repaired = '{"character_name":"Carol","speech":"Last","sprite":"3"}'
-    broken = '{"character_name":"Broken","speech":oops,"sprite":"9"}'
-    repaired = f'{{"dialog":[{alice},{bob},{carol_repaired}]}}'
-    llm_manager = MagicMock()
-    llm_manager.chat.return_value = iter(
-        [
-            f'{{"dialog":[{alice},',
-            f"{broken},",
-            f"{carol_streamed}]}}",
-            {STREAM_DIALOG_REPAIR_KEY: repaired},
-        ]
-    )
-
-    _, output = _run_streaming_llm_worker(llm_manager)
+    runtime, output = _run_streaming_llm_worker(llm_manager)
 
     assert [(message.name, message.text) for message in output] == [
         ("Alice", "First"),
-        ("Carol", "Last"),
+        ("Bob", "Second"),
     ]
+    assert {message.turn_id for message in output} == {
+        runtime.chat_turn_service.current_turn().id
+    }
 
 
 def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_path) -> None:

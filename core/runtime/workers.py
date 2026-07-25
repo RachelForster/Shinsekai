@@ -15,7 +15,6 @@ from PySide6.QtCore import QThread
 from sdk.graph import DagNode, Port
 
 # 假设以下依赖文件已在项目路径中
-from llm.llm_manager import STREAM_DIALOG_REPAIR_KEY, STREAM_REASONING_DELTA_KEY
 import threading
 import pygame
 import sys
@@ -28,23 +27,14 @@ if str(project_root) not in sys.path:
 from config.config_manager import ConfigManager
 from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from core.runtime.app_runtime import get_app_runtime, try_get_app_runtime, tts_emit_to_ui_queue
+from core.messaging.dialog_reconciliation import reconcile_dialog_repair
+from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY, STREAM_REASONING_DELTA_KEY
 from core.messaging.stream_parser import LlmResponseStreamParser
 from core.handlers.handler_registry import default_tts_handler_chain, default_ui_output_handler_chain
 from core.media.chat_attachments import resolve_chat_attachments
 from ai.vision.service import ChatVisionService
 
 logger = get_logger(__name__)
-
-
-def _dialog_delivery_key(message: LLMDialogMessage) -> tuple[str, str, str, str, str]:
-    """Normalize the downstream-visible payload for repair replay matching."""
-    return (
-        message.name,
-        message.text or "",
-        str(message.asset_id if message.asset_id is not None else "-1"),
-        message.translate or "",
-        message.effect or "",
-    )
 
 
 # --- QThread + DagNode 基类 ---
@@ -220,7 +210,7 @@ class LLMWorker(QThreadDagNode):
                 parser = LlmResponseStreamParser()
                 reasoning_shown = ""
                 message_count = 0
-                delivered_dialog_keys: list[tuple[str, str, str, str, str]] = []
+                delivered_dialogs: list[LLMDialogMessage] = []
                 raw_chunks: list = []
 
                 with tracker.track("LLM stream parse"):
@@ -240,24 +230,15 @@ class LLMWorker(QThreadDagNode):
                                 repaired_parser.feed(chunk[STREAM_DIALOG_REPAIR_KEY])
                             )
                             delivered_before_repair = message_count
-                            repaired_dialog_keys = [
-                                _dialog_delivery_key(message) for message in repaired_messages
-                            ]
-                            streamed_prefix_matched = (
-                                delivered_dialog_keys
-                                == repaired_dialog_keys[: len(delivered_dialog_keys)]
-                            )
-                            missing_messages = (
-                                repaired_messages[len(delivered_dialog_keys) :]
-                                if streamed_prefix_matched
-                                else []
+                            reconciliation = reconcile_dialog_repair(
+                                delivered_dialogs,
+                                repaired_messages,
                             )
                             appended_messages = 0
-                            for llm_dialog in missing_messages:
-                                delivery_key = _dialog_delivery_key(llm_dialog)
+                            for llm_dialog in reconciliation.messages_to_append:
                                 message_count += 1
                                 appended_messages += 1
-                                delivered_dialog_keys.append(delivery_key)
+                                delivered_dialogs.append(llm_dialog)
                                 self.tts_queue.put(
                                     llm_dialog.model_copy(update={"turn_id": turn.id})
                                 )
@@ -268,7 +249,7 @@ class LLMWorker(QThreadDagNode):
                                     "streamed_messages": delivered_before_repair,
                                     "repaired_messages": len(repaired_messages),
                                     "appended_messages": appended_messages,
-                                    "streamed_prefix_matched": streamed_prefix_matched,
+                                    "streamed_prefix_matched": reconciliation.prefix_matched,
                                 },
                             )
                             continue
@@ -278,7 +259,7 @@ class LLMWorker(QThreadDagNode):
                         raw_chunks.append(chunk_message)
                         for llm_dialog in parser.feed(chunk_message):
                             message_count += 1
-                            delivered_dialog_keys.append(_dialog_delivery_key(llm_dialog))
+                            delivered_dialogs.append(llm_dialog)
                             self.tts_queue.put(llm_dialog.model_copy(update={"turn_id": turn.id}))
 
                 # --- Interrupted: write committed context, discard the rest ---

@@ -12,6 +12,10 @@ from openai import OpenAI
 
 from ai.llm.dialog_repair import repair_dialog_output
 from core.messaging.dialog_output import has_valid_dialog_output
+from core.messaging.stream_events import (
+    STREAM_DIALOG_REPAIR_KEY,
+    STREAM_REASONING_DELTA_KEY,
+)
 from core.runtime.app_runtime import try_get_app_runtime
 from i18n import tr
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
@@ -50,10 +54,6 @@ def _on_tool_ready(group: str, message: str) -> None:
 from sdk.tool_registry import set_tool_ready_callback
 set_tool_ready_callback(_on_tool_ready)
 
-
-# 流式输出中非正文的片段（供 LLMWorker 显示思考过程，且不混入 JSON 解析缓冲区）
-STREAM_REASONING_DELTA_KEY = "reasoning_delta"
-STREAM_DIALOG_REPAIR_KEY = "dialog_repair"
 FIRST_USER_TURN_TOOL_CALL_LIMIT = 1
 
 @dataclass
