@@ -151,6 +151,7 @@ from frontend_bridge_core.templates import (
     _latest_history_json,
     _list_templates,
     _repair_template_parts_from_session_if_needed,
+    _resolve_template_character_names,
     _resume_template_parts,
     _scenario_from_template_like,
     _save_template_session_payload,
@@ -166,6 +167,7 @@ from frontend_bridge_core.tools import (
     _remove_sprite_background,
 )
 from frontend_bridge_core.tts import _download_tts_bundle, _tts_bundle_recommendation
+from llm.template_generator import NoValidCharactersError
 
 logger = get_logger(__name__)
 BRIDGE_AUTH_HEADER = "X-Shinsekai-Bridge-Token"
@@ -312,11 +314,26 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
             return
 
-    def _send_error_json(self, exc: Exception, status: HTTPStatus = HTTPStatus.BAD_REQUEST) -> None:
-        self._send_json({"error": str(exc), "type": exc.__class__.__name__}, status)
+    def _send_error_json(
+        self,
+        exc: Exception,
+        status: HTTPStatus = HTTPStatus.BAD_REQUEST,
+        *,
+        error_code: str = "",
+    ) -> None:
+        payload = {"error": str(exc), "type": exc.__class__.__name__}
+        if error_code:
+            payload["errorCode"] = error_code
+        self._send_json(payload, status)
 
     def _send_exception_json(self, exc: Exception) -> None:
-        if isinstance(exc, FileExistsError):
+        if isinstance(exc, NoValidCharactersError):
+            self._send_error_json(
+                exc,
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                error_code=exc.error_code,
+            )
+        elif isinstance(exc, FileExistsError):
             self._send_error_json(exc, HTTPStatus.CONFLICT)
         elif isinstance(exc, (KeyError, FileNotFoundError)):
             self._send_error_json(exc, HTTPStatus.NOT_FOUND)
@@ -1185,20 +1202,22 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             }
         elif row is None:
             raise KeyError(f"template not found: {template_id}")
-        characters = body.get("characters") or []
-        first_character = ""
-        if isinstance(characters, list) and characters:
-            first_character = str(characters[0])
+        characters = _resolve_template_character_names(
+            self.state,
+            body.get("characters") or [],
+        )
+        first_character = characters[0] if characters else ""
         init_sprite_path = initial_sprite_path_for_characters(
             self.state.config_manager,
             str(body.get("initSpritePath") or ""),
-            characters if isinstance(characters, list) else [],
+            characters,
         )
         room_id = str(body.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
-        history_path = _chat_history_path(self.state, body, row)
+        normalized_history_payload = {**body, "characters": characters}
+        history_path = _chat_history_path(self.state, normalized_history_payload, row)
         default_history_path = _chat_history_path(
             self.state,
-            {"historyPath": "", "characters": characters if isinstance(characters, list) else []},
+            {"historyPath": "", "characters": characters},
             row,
         )
         reset_history = bool(body.get("resetHistory"))
@@ -1245,7 +1264,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             system_template = system_template.rstrip() + "\n\n" + effect_guide
         message = _launch_chat(
             self.state,
-            character_names=characters if isinstance(characters, list) else [],
+            character_names=characters,
             effect_names=effect_names_str,
             history_file=(default_history_path if reset_history else history_path).as_posix(),
             init_sprite_path=init_sprite_path,
@@ -1333,16 +1352,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if template_parts is None:
             raise FileNotFoundError("未找到可用模板（.txt）。请先在聊天模板页生成、保存或启动过一次。")
         scenario, system_template, template_id = template_parts
-        selected_characters = session.get("selectedCharacters") or []
-        first_character = (
-            str(selected_characters[0])
-            if isinstance(selected_characters, list) and selected_characters
-            else ""
+        selected_characters = _resolve_template_character_names(
+            self.state,
+            session.get("selectedCharacters") or [],
         )
+        first_character = selected_characters[0] if selected_characters else ""
         init_sprite_path = initial_sprite_path_for_characters(
             self.state.config_manager,
             str(session.get("initSpritePath") or ""),
-            selected_characters if isinstance(selected_characters, list) else [],
+            selected_characters,
         )
         room_id = str(session.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
         selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
@@ -1370,7 +1388,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         )
         message = _launch_chat(
             self.state,
-            character_names=selected_characters if isinstance(selected_characters, list) else [],
+            character_names=selected_characters,
             history_file=history_path.resolve().as_posix(),
             init_sprite_path=init_sprite_path,
             room_id=room_id,

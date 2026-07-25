@@ -466,6 +466,10 @@ export interface TemplateSummary {
   updatedAt: string;
 }
 
+export interface TemplateGenerationResult extends TemplateSummary {
+  resolvedCharacters: string[];
+}
+
 export interface ChatLaunchPayload {
   backgroundName: string;
   characters: string[];
@@ -1280,7 +1284,7 @@ export interface ShinsekaiPlatform {
     get: <TResult = unknown>(id: string) => Promise<TaskSnapshot<TResult>>;
   };
   templates: {
-    generate: (input: TemplateGenerateInput) => Promise<TemplateSummary>;
+    generate: (input: TemplateGenerateInput) => Promise<TemplateGenerationResult>;
     getSession: () => Promise<TemplateLaunchSession | null>;
     list: () => Promise<TemplateSummary[]>;
     save: (template: TemplateSummary) => Promise<TemplateSummary>;
