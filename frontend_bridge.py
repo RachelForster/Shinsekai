@@ -65,10 +65,30 @@ def _set_bridge_state(state) -> None:
         _bridge_state = state
 
 
-def get_bridge_state():
-    """Return the active bridge state for trusted in-process plugin actions."""
-    with _bridge_state_lock:
-        return _bridge_state
+def _bind_plugin_user_input_runtime(state, plugin_manager) -> None:
+    """Bind registered plugin triggers to the active React Chat runtime stream."""
+
+    def emit_user_text(text: str) -> None:
+        session_id = str(
+            getattr(state, "chat_session", {}).get("sessionId") or ""
+        ).strip()
+        chat_stream = getattr(state, "chat_stream", None)
+        if not session_id or chat_stream is None:
+            raise RuntimeError("No active React Chat runtime can accept plugin input")
+        command = {
+            "cmdId": secrets.token_hex(16),
+            "payload": {
+                "attachments": [],
+                "text": str(text or ""),
+            },
+            "type": "send-message",
+        }
+        if not chat_stream.send_command(session_id, command):
+            raise RuntimeError("The active React Chat runtime rejected plugin input")
+
+    # Processors run in the Chat runtime after this command crosses the stream.
+    # Supplying the raw emitter here avoids applying every processor twice.
+    plugin_manager.wire_user_input(emit_user_text, [])
 
 
 def _shutdown_bridge_runtime(reason: str) -> None:
@@ -244,7 +264,9 @@ def _start_plugin_loader(state, logger) -> None:
                 ensure_plugins_loaded,
             )
 
-            ensure_plugins_loaded(state.config_manager)
+            plugin_manager = ensure_plugins_loaded(state.config_manager)
+            if plugin_manager is not None:
+                _bind_plugin_user_input_runtime(state, plugin_manager)
 
             def emit_plugin_ui_event(event: dict[str, Any]) -> None:
                 session_id = str(

@@ -10,22 +10,40 @@ from frontend_bridge_core import chat
 
 class _ChatStreamStub:
     def __init__(self):
+        self.sent = []
         self.stopped = False
+
+    def send_command(self, session_id, command):
+        self.sent.append((session_id, command))
+        return True
 
     def stop(self):
         self.stopped = True
 
 
-def test_get_bridge_state_returns_active_state() -> None:
-    state = SimpleNamespace(chat_session={"sessionId": "session-1"})
+def test_plugin_user_input_trigger_forwards_to_active_chat_stream() -> None:
+    stream = _ChatStreamStub()
+    state = SimpleNamespace(
+        chat_session={"sessionId": "session-1"},
+        chat_stream=stream,
+    )
 
-    frontend_bridge._set_bridge_state(state)
-    try:
-        assert frontend_bridge.get_bridge_state() is state
-    finally:
-        frontend_bridge._set_bridge_state(None)
+    class PluginManager:
+        def wire_user_input(self, emit, processors):
+            assert processors == []
+            emit("[短信] 请角色回复")
 
-    assert frontend_bridge.get_bridge_state() is None
+    frontend_bridge._bind_plugin_user_input_runtime(state, PluginManager())
+
+    assert len(stream.sent) == 1
+    session_id, command = stream.sent[0]
+    assert session_id == "session-1"
+    assert command["type"] == "send-message"
+    assert command["payload"] == {
+        "attachments": [],
+        "text": "[短信] 请角色回复",
+    }
+    assert command["cmdId"]
 
 
 def test_shutdown_bridge_runtime_stops_active_chat_and_stream(monkeypatch):
