@@ -54,6 +54,7 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_tools_tab`            | Extra tab under **Settings → Tools** (PySide)              |
 | `register_frontend_config_page` | React-renderable plugin config page (schema + load/save callbacks) |
 | `register_frontend_page`        | Plugin-owned static frontend page embedded by iframe       |
+| `register_frontend_chat_ui`     | JSON-only Chat UI item rendered by the React host          |
 | `register_chat_ui_widget`       | Chat window widget + placement hint                        |
 | `register_dag_yaml`             | Workflow YAML path (convenience — delegates to `register_workflow`) |
 | `register_workflow`             | Workflow with optional output contract/schema              |
@@ -67,7 +68,7 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 **Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`,
 `clear_settings_ui_plugin_context`. The host wraps `initialize` so
 `SettingsUIContribution` / `ToolsTabContribution` / `FrontendConfigContribution` /
-`FrontendPageContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version`
+`FrontendPageContribution` / `FrontendChatUIContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version`
 when you leave those fields `None`.
 
 Adapter registration stores the **class** (not an instance); registering the same
@@ -961,6 +962,108 @@ def initialize(self, register, plugin_root: Path, host) -> None:
 This keeps downloaded plugins self-contained: after install and app restart, the host
 discovers the contribution from the plugin's Python entry point and serves the bundled
 frontend files without rebuilding the main React app.
+
+---
+
+### `register_frontend_chat_ui(contribution)`
+
+Use this for the React Chat UI. The contribution crosses the bridge as JSON metadata only; the host owns the button/card markup, icon set, styles, loading state, and toast. The optional `action` callback stays in Python and is invoked through a dedicated bridge endpoint. Plugins cannot inject HTML, JavaScript, React nodes, or arbitrary CSS through this protocol.
+
+Supported slots are `chat-dialog-actions`, `chat-output`, `chat-toolbar`, and `chat-top-toolbar`. The `chat-top-toolbar` slot is the compact toolbar beside the Chat transport status; the older `chat-toolbar` slot remains inside the Chat appearance dialog for compatibility. Supported icons are `info`, `play`, `puzzle`, `settings`, `smartphone`, and `sparkles`.
+
+```python
+from sdk.register import PluginCapabilityRegistry
+from sdk.types import FrontendChatUIContribution
+
+
+def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> None:
+    register.register_frontend_chat_ui(
+        FrontendChatUIContribution(
+            contribution_id="my-plugin.scene-hint",
+            slot="chat-dialog-actions",
+            title="Scene hint",
+            description="Generate a short prompt for the current scene.",
+            icon="sparkles",
+            variant="ghost",
+            action_label="Hint",
+            action=lambda: {"kind": "success", "message": "Hint generated."},
+            order=40,
+        )
+    )
+```
+
+An action may return a string, `None`, or a mapping with `kind` (`success`, `info`, or `error`) and `message`. Use `register_chat_ui_widget` only for the legacy PySide Chat UI where an actual `QWidget` is required.
+
+Toolbar entries can also open one of the same plugin's registered frontend pages without executing plugin JavaScript in the host. `chat-top-toolbar` is always rendered as an icon-only host button; other slots may opt into the same presentation explicitly.
+
+```python
+register.register_frontend_chat_ui(
+    FrontendChatUIContribution(
+        contribution_id="my-plugin.dashboard",
+        slot="chat-top-toolbar",
+        title="Plugin dashboard",
+        description="Open the plugin dashboard over Chat.",
+        icon="puzzle",
+        presentation="icon-only",
+        action={"type": "open-plugin-page", "page_id": "dashboard", "mode": "overlay"},
+        order=30,
+    )
+)
+```
+
+`open-plugin-page` accepts a `page_id` and an optional `mode`. The default mode is `navigate`, which opens the plugin manager and provides a safe return route to Chat. `mode: "overlay"` opens the same registered page in a host-owned, draggable window over the Chat stage. Overlay mode is plugin-neutral and works from any supported Chat slot. The host resolves the page URL and current plugin ID; arbitrary URLs, HTML, JavaScript, React nodes, and CSS remain unsupported.
+
+#### Presenting a plugin page from a runtime event
+
+Plugins that need to surface asynchronous state can retain a plugin-scoped controller during `initialize`. This is a generic page-presentation API; the host does not interpret reminder, call, approval, game, or other business-specific payloads.
+
+```python
+from pathlib import Path
+
+from sdk import FrontendPageContribution, PluginBase
+
+
+class MyPlugin(PluginBase):
+    def initialize(self, register, plugin_root, host) -> None:
+        self.frontend_ui = register.frontend_ui()
+        register.register_frontend_page(
+            FrontendPageContribution(
+                page_id="dashboard",
+                title="Plugin dashboard",
+                kind="tools",
+                entry=(Path(__file__).parent / "frontend" / "dist" / "index.html").as_posix(),
+            )
+        )
+
+    def show_reminder(self, reminder_id: str, title: str) -> None:
+        self.frontend_ui.present_page(
+            page_id="dashboard",
+            presentation_id=f"reminder:{reminder_id}",
+            payload={"view": "reminder", "title": title},
+        )
+
+    def hide_reminder(self, reminder_id: str) -> None:
+        self.frontend_ui.dismiss_page(f"reminder:{reminder_id}")
+```
+
+`present_page` can only target a `FrontendPageContribution` registered by the same plugin and currently supports `mode="overlay"`. It requires an active React Chat runtime. `presentation_id` is scoped to the plugin, and a later call with the same ID updates and reorders that presentation. Payloads must be JSON objects no larger than 16 KiB.
+
+After the registered iframe loads, the host delivers the payload with an explicit-origin-targeted message:
+
+```javascript
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (
+    event.source === window.parent &&
+    message?.__shinsekai === "plugin-page" &&
+    message.type === "present"
+  ) {
+    renderPluginView(message.payload, message.presentationId);
+  }
+});
+```
+
+The plugin page should call its own authenticated plugin backend when the user accepts, rejects, or completes an operation. That backend owns the business state and calls `dismiss_page`; the host protocol remains feature-neutral. Closing the host overlay also dismisses the matching presentation from the current Chat snapshot.
 
 ---
 

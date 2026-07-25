@@ -324,6 +324,108 @@ def _frontend_page_contributions_for(plugin_id: str) -> list[Any]:
     return sorted(out, key=lambda item: float(getattr(item, "order", 100.0) or 100.0))
 
 
+def _frontend_chat_ui_contributions() -> list[Any]:
+    try:
+        from core.plugins.plugin_host import collect_frontend_chat_ui_contributions
+    except Exception:
+        return []
+    return sorted(
+        collect_frontend_chat_ui_contributions(),
+        key=lambda item: float(getattr(item, "order", 100.0) or 100.0),
+    )
+
+
+def _frontend_chat_ui_action(contribution: Any) -> tuple[str, str, str]:
+    """Return (actionType, pageId, pageMode). pageMode is how an open-plugin-page
+    contribution presents its page: "navigate" (default) or "overlay" (a floating
+    window hosted over the chat stage)."""
+    action = getattr(contribution, "action", None)
+    if callable(action):
+        return "callback", "", "navigate"
+    if isinstance(action, Mapping):
+        action_type = str(action.get("type") or "").strip()
+        page_id = str(action.get("page_id") or action.get("pageId") or "").strip()
+        if action_type == "open-plugin-page" and page_id:
+            mode = str(action.get("mode") or "navigate").strip().lower()
+            if mode not in ("navigate", "overlay"):
+                mode = "navigate"
+            return action_type, page_id, mode
+    return "none", "", "navigate"
+
+
+def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
+    allowed_slots = {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"}
+    allowed_icons = {"info", "play", "puzzle", "settings", "smartphone", "sparkles"}
+    allowed_presentations = {"button", "icon-only"}
+    allowed_variants = {"danger", "ghost", "primary"}
+    rows: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for contribution in _frontend_chat_ui_contributions():
+        plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
+        contribution_id = str(getattr(contribution, "contribution_id", "") or "").strip()
+        title = str(getattr(contribution, "title", "") or "").strip()
+        slot = str(getattr(contribution, "slot", "") or "").strip()
+        key = (plugin_id, contribution_id)
+        if not plugin_id or not contribution_id or not title or slot not in allowed_slots or key in seen:
+            continue
+        seen.add(key)
+        action_type, page_id, page_mode = _frontend_chat_ui_action(contribution)
+        icon = str(getattr(contribution, "icon", "") or "puzzle").strip()
+        presentation = str(getattr(contribution, "presentation", "") or "button").strip()
+        if slot == "chat-top-toolbar":
+            presentation = "icon-only"
+        variant = str(getattr(contribution, "variant", "") or "ghost").strip()
+        rows.append(
+            {
+                "actionLabel": str(getattr(contribution, "action_label", "") or "").strip() or title,
+                "actionType": action_type,
+                "actionable": action_type != "none",
+                "description": str(getattr(contribution, "description", "") or "").strip()[:500],
+                "icon": icon if icon in allowed_icons else "puzzle",
+                "id": contribution_id,
+                "order": float(getattr(contribution, "order", 100.0) or 100.0),
+                "pageId": page_id,
+                "pageMode": page_mode,
+                "pluginId": plugin_id,
+                "pluginVersion": str(getattr(contribution, "plugin_version", "") or "")[:64],
+                "presentation": presentation if presentation in allowed_presentations else "button",
+                "slot": slot,
+                "title": title[:160],
+                "variant": variant if variant in allowed_variants else "ghost",
+            }
+        )
+    return rows
+
+
+def _run_frontend_chat_ui_contribution(plugin_id: str, contribution_id: str) -> dict[str, Any]:
+    lookup_plugin = plugin_id.strip()
+    lookup_contribution = contribution_id.strip()
+    for contribution in _frontend_chat_ui_contributions():
+        current_plugin = str(getattr(contribution, "plugin_id", "") or "").strip()
+        current_id = str(getattr(contribution, "contribution_id", "") or "").strip()
+        if current_plugin != lookup_plugin or current_id != lookup_contribution:
+            continue
+        action = getattr(contribution, "action", None)
+        if not callable(action):
+            raise ValueError("该插件插槽只提供状态展示，没有可执行动作。")
+        result = action()
+        if isinstance(result, Mapping):
+            message = str(result.get("message") or "").strip()
+            kind = str(result.get("kind") or "success").strip()
+        else:
+            message = str(result or "").strip()
+            kind = "success"
+        if kind not in {"error", "info", "success"}:
+            kind = "success"
+        return {
+            "id": current_id,
+            "kind": kind,
+            "message": message[:1000],
+            "pluginId": current_plugin,
+        }
+    raise KeyError(f"plugin chat UI contribution not found: {lookup_plugin}/{lookup_contribution}")
+
+
 def _frontend_page_contribution(plugin_id: str, page_id: str) -> Any | None:
     for contribution in _frontend_page_contributions_for(plugin_id):
         if str(getattr(contribution, "page_id", "") or "").strip() == page_id:

@@ -13,7 +13,12 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
 
-from core.runtime.event_sink import build_event, fold_event_into_snapshot, make_empty_chat_snapshot
+from core.runtime.event_sink import (
+    EVENT_PROTOCOL_VERSION,
+    build_event,
+    fold_event_into_snapshot,
+    make_empty_chat_snapshot,
+)
 
 
 def _external_host(bind_host: str) -> str:
@@ -264,6 +269,27 @@ class ChatStreamService:
             session.last_seq = max(session.last_seq, snapshot_seq)
             next_snapshot["eventSeq"] = session.last_seq
             session.snapshot = next_snapshot
+
+    def publish_event(self, session_id: str, event: dict[str, Any]) -> bool:
+        """Publish one trusted bridge-local event to a Chat session."""
+        loop = self._loop
+        if loop is None:
+            return False
+        with self._lock:
+            if session_id not in self._sessions:
+                return False
+        local_event = dict(event)
+        local_event["v"] = EVENT_PROTOCOL_VERSION
+        local_event["ts"] = int(time.time() * 1000)
+        future = asyncio.run_coroutine_threadsafe(
+            self._publish_event(session_id, local_event),
+            loop,
+        )
+        try:
+            future.result(timeout=1.0)
+            return True
+        except Exception:
+            return False
 
     def send_command(self, session_id: str, command: dict[str, Any]) -> bool:
         loop = self._loop

@@ -12,6 +12,7 @@ export const emptyChatState: ChatStageState = {
   inputDraft: "",
   layers: defaultLayers(),
   options: [],
+  pluginPagePresentations: [],
   sprites: [],
   stats: [],
   status: "idle",
