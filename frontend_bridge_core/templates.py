@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from config.config_manager import character_name_key
 from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from core.sprite.initial_sprite import initial_sprite_path_for_characters
 from llm.template_generator import (
@@ -304,11 +305,18 @@ def _safe_session_int(value: Any, default: int = 0) -> int:
         return default
 
 
+def _session_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
 def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] | None:
     if not raw:
         return None
     return {
         "background": str(raw.get("background") or ""),
+        "effectNames": _session_string_list(raw.get("effect_names")),
         "filenameStub": str(raw.get("filename_stub") or ""),
         "historyPath": str(raw.get("history_file") or ""),
         "initSpritePath": str(raw.get("init_sprite_path") or ""),
@@ -316,7 +324,7 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         "maxSpeechChars": _safe_session_int(raw.get("max_speech_chars")),
         "roomId": str(raw.get("room_id") or ""),
         "scenario": str(raw.get("scenario_text") or ""),
-        "selectedCharacters": [str(item) for item in (raw.get("selected_characters") or []) if str(item)],
+        "selectedCharacters": _session_string_list(raw.get("selected_characters")),
         "system": str(raw.get("system_template_text") or ""),
         "templateFileDropdown": str(raw.get("template_file_dropdown") or ""),
         "workflowPath": str(raw.get("workflow_path") or ""),
@@ -331,10 +339,71 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
     }
 
 
+def _persist_template_session_repair(state: BridgeState, raw: dict[str, Any]) -> None:
+    from ui.settings_ui.services.template_tab_session import save_template_session
+
+    save_template_session(state.template_dir_path, raw)
+
+
+def _reconcile_template_session_characters(
+    state: BridgeState,
+    raw: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Remove stale names and canonicalize restored template selections."""
+    if not raw:
+        return raw
+    selected = _session_string_list(raw.get("selected_characters"))
+    resolved = resolve_chat_template_characters(selected, state.config_manager)
+    resolved_names = [name for name, _character in resolved]
+    if resolved_names == selected:
+        return raw
+    repaired = dict(raw)
+    repaired["selected_characters"] = resolved_names
+    repaired["init_sprite_path"] = initial_sprite_path_for_characters(
+        state.config_manager,
+        str(raw.get("init_sprite_path") or ""),
+        resolved_names,
+    )
+    try:
+        _persist_template_session_repair(state, repaired)
+    except OSError:
+        pass
+    return repaired
+
+
+def _rename_template_session_character(
+    state: BridgeState,
+    original_name: str,
+    saved_name: str,
+) -> None:
+    """Carry a character rename into the persisted template selection."""
+    original_key = character_name_key(original_name)
+    if not original_key or original_key == character_name_key(saved_name):
+        return
+    from ui.settings_ui.services.template_tab_session import load_template_session
+
+    raw = load_template_session(state.template_dir_path)
+    if not raw:
+        return
+    selected = _session_string_list(raw.get("selected_characters"))
+    renamed = [
+        saved_name if character_name_key(name) == original_key else name
+        for name in selected
+    ]
+    if renamed == selected:
+        return
+    repaired = dict(raw)
+    repaired["selected_characters"] = renamed
+    reconciled = _reconcile_template_session_characters(state, repaired)
+    if reconciled is repaired:
+        _persist_template_session_repair(state, repaired)
+
+
 def _load_template_session_payload(state: BridgeState) -> dict[str, Any] | None:
     from ui.settings_ui.services.template_tab_session import load_template_session
 
     raw = load_template_session(state.template_dir_path)
+    raw = _reconcile_template_session_characters(state, raw)
     raw = _repair_template_session_if_needed(state, raw)
     return _template_session_to_frontend(raw)
 
@@ -354,6 +423,7 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
     data = {
         "selected_characters": selected_characters,
         "background": str(payload.get("background") or ""),
+        "effect_names": _session_string_list(payload.get("effectNames")),
         "voice_lang": str(payload.get("voiceLanguage") or ""),
         "use_effect_yes": bool(payload.get("useEffect", True)),
         "use_tr_yes": bool(payload.get("useTranslation", True)),

@@ -1460,6 +1460,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       async delete(name) {
         config.characters = config.characters.filter((character) => character.name !== name);
+        if (templateSession) {
+          templateSession = {
+            ...templateSession,
+            selectedCharacters: templateSession.selectedCharacters.filter((selectedName) => selectedName !== name),
+          };
+        }
       },
       async deleteMemory(name, memoryId) {
         const agentId = name || "user";
@@ -1651,6 +1657,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           config.characters[index] = savedCharacter;
         } else {
           config.characters.push(savedCharacter);
+        }
+        if (templateSession && originalName && originalName !== savedCharacter.name) {
+          templateSession = {
+            ...templateSession,
+            selectedCharacters: templateSession.selectedCharacters.map((name) =>
+              name === originalName ? savedCharacter.name : name,
+            ),
+          };
         }
         return delay(savedCharacter);
       },

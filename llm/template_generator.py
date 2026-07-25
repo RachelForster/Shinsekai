@@ -63,7 +63,7 @@ def resolve_chat_template_characters(
     selected_characters: Any,
     manager: Any = None,
 ) -> list[tuple[str, Any]]:
-    """Resolve, canonicalize, and deterministically order a character selection."""
+    """Resolve and canonicalize characters while preserving selection order."""
     if manager is None:
         manager = config_manager
     requested_names: list[str] = []
@@ -77,8 +77,6 @@ def resolve_chat_template_characters(
             continue
         requested_name_keys.add(requested_key)
         requested_names.append(requested_name)
-    requested_names.sort(key=lambda name: (character_name_key(name), name))
-
     resolved_characters: list[tuple[str, Any]] = []
     missing_characters: list[str] = []
     resolved_name_keys: set[str] = set()

@@ -11,7 +11,9 @@ from frontend_bridge_core.templates import (
     _generate_template_summary,
     _has_untranslated_template_keys,
     _history_id_from_scenario,
+    _load_template_session_payload,
     _parse_stored_template,
+    _rename_template_session_character,
     _scenario_from_template_like,
     _safe_session_int,
     _save_template_session_payload,
@@ -159,6 +161,7 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     restored = _save_template_session_payload(
         state,
         {
+            "effectNames": [" Rain ", ""],
             "initSpritePath": "",
             "scenario": "Restored scenario",
             "selectedCharacters": ["Deleted", " alice "],
@@ -167,7 +170,9 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     )
 
     assert saved["selected_characters"] == ["Alice"]
+    assert saved["effect_names"] == ["Rain"]
     assert saved["init_sprite_path"] == "sprites/alice.png"
+    assert restored["effectNames"] == ["Rain"]
     assert restored["selectedCharacters"] == ["Alice"]
     assert restored["initSpritePath"] == "sprites/alice.png"
 
@@ -183,6 +188,7 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
     assert _template_session_to_frontend(
         {
             "background": "校门",
+            "effect_names": ["Rain", "", 42],
             "filename_stub": "demo",
             "history_file": "/tmp/history.json",
             "init_sprite_path": "/tmp/sprite.png",
@@ -205,6 +211,7 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
         }
     ) == {
         "background": "校门",
+        "effectNames": ["Rain", "42"],
         "filenameStub": "demo",
         "historyPath": "/tmp/history.json",
         "initSpritePath": "/tmp/sprite.png",
@@ -225,6 +232,58 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
         "useTranslation": False,
         "voiceLanguage": "ja",
     }
+
+
+def test_character_rename_updates_persisted_template_selection(monkeypatch):
+    characters = {
+        "b": SimpleNamespace(name="B", sprites=[]),
+        "c": SimpleNamespace(name="C", sprites=[]),
+    }
+    stored = {
+        "selected_characters": ["A", "B"],
+        "init_sprite_path": "",
+        "scenario_text": "scene",
+    }
+    storage_module = ModuleType("ui.settings_ui.services.template_tab_session")
+    storage_module.load_template_session = lambda _path: dict(stored)
+    storage_module.save_template_session = lambda _path, data: stored.update(data)
+    monkeypatch.setitem(sys.modules, "ui.settings_ui.services.template_tab_session", storage_module)
+    state = SimpleNamespace(
+        config_manager=SimpleNamespace(
+            get_character_by_name=lambda name: characters.get(str(name).lower()),
+        ),
+        template_dir_path="unused",
+    )
+
+    _rename_template_session_character(state, "A", "C")
+
+    assert stored["selected_characters"] == ["C", "B"]
+
+
+def test_loading_template_session_removes_historical_stale_names(monkeypatch):
+    character = SimpleNamespace(name="B", sprites=[])
+    stored = {
+        "selected_characters": ["A", "B"],
+        "init_sprite_path": "sprites/a.png",
+        "scenario_text": "scene",
+    }
+    storage_module = ModuleType("ui.settings_ui.services.template_tab_session")
+    storage_module.load_template_session = lambda _path: dict(stored)
+    storage_module.save_template_session = lambda _path, data: stored.update(data)
+    monkeypatch.setitem(sys.modules, "ui.settings_ui.services.template_tab_session", storage_module)
+    state = SimpleNamespace(
+        config_manager=SimpleNamespace(
+            config=SimpleNamespace(characters=[character]),
+            get_character_by_name=lambda name: character if str(name).lower() == "b" else None,
+        ),
+        template_dir_path="unused",
+    )
+
+    restored = _load_template_session_payload(state)
+
+    assert stored["selected_characters"] == ["B"]
+    assert restored is not None
+    assert restored["selectedCharacters"] == ["B"]
 
 
 def test_safe_session_int_and_untranslated_key_detection():

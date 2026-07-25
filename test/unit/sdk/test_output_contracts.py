@@ -270,7 +270,7 @@ def test_template_generator_uses_config_character_identity_for_deduplication(
         use_llm_translation=False,
     )
 
-    assert [name for name, _character in resolved] == ["STRASSE", "Straße"]
+    assert [name for name, _character in resolved] == ["Straße", "STRASSE"]
     assert warning == ""
     assert "sprites_count:{'name': 'STRASSE', 'n': 0}" in template
     assert "sprites_count:{'name': 'Straße', 'n': 0}" in template

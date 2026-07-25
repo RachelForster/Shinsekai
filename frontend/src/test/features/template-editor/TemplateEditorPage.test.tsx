@@ -244,11 +244,14 @@ describe("TemplateEditorPage", () => {
       scenario: "Restored scene",
       system: "Generated system",
     });
-    mockSaveTemplateSession.mockImplementationOnce(async (session) => ({
-      ...(session as TemplateLaunchSession),
-      initSpritePath: "D:/sprites/nanami.png",
-      selectedCharacters: ["Nanami"],
-    }));
+    mockSaveTemplateSession.mockImplementationOnce(async (session) => {
+      const { effectNames: _legacyMissingEffectNames, ...legacySavedSession } = session as TemplateLaunchSession;
+      return {
+        ...legacySavedSession,
+        initSpritePath: "D:/sprites/nanami.png",
+        selectedCharacters: ["Nanami"],
+      } as TemplateLaunchSession;
+    });
 
     renderPage();
 

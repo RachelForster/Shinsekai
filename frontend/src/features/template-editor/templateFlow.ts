@@ -181,11 +181,12 @@ export function synchronizeChatLaunchPayloadWithSession(
   payload: ChatLaunchPayload,
   session: TemplateLaunchSession,
 ): ChatLaunchPayload {
+  const effectNames = Array.isArray(session.effectNames) ? session.effectNames : [];
   return {
     ...payload,
     backgroundName: session.background,
     characters: session.selectedCharacters,
-    effectNames: session.effectNames.length ? session.effectNames : undefined,
+    effectNames: effectNames.length ? effectNames : undefined,
     historyPath: session.historyPath.trim(),
     initSpritePath: session.initSpritePath.trim(),
     roomId: session.roomId.trim(),
