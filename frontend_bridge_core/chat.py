@@ -88,11 +88,9 @@ def _is_transparent_background_name(name: str | None) -> bool:
     return not value or value in {TRANSPARENT_BACKGROUND_NAME, _TRANSPARENT_BACKGROUND_ALIAS}
 
 
-def _chat_runtime_mode(state: BridgeState) -> str:
-    config_manager = getattr(state, "config_manager", None)
-    system_config = getattr(getattr(config_manager, "config", None), "system_config", None)
-    mode = str(getattr(system_config, "chat_ui_runtime_mode", "") or "").strip().lower()
-    return "native" if mode == "native" else "react"
+def _chat_runtime_mode(_state: BridgeState) -> str:
+    """Return the only supported chat UI runtime."""
+    return "react"
 
 
 def _chat_experimental_features(state: BridgeState) -> dict[str, bool]:
