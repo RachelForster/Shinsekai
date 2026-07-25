@@ -94,6 +94,39 @@ describe("http platform", () => {
     await expect(platform.config.saveApi(sampleConfig.api_config)).rejects.toThrow("保存失败");
   });
 
+  it("preserves template generation status and stable error code", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          json: () =>
+            Promise.resolve({
+              error: "Select at least one character.",
+              errorCode: "no_valid_characters",
+              type: "NoValidCharactersError",
+            }),
+          ok: false,
+          status: 422,
+          statusText: "Unprocessable Entity",
+        } as Response),
+      ),
+    );
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(
+      platform.templates.generate({
+        backgroundName: "Room",
+        characters: ["Deleted"],
+        name: "Restored",
+        scenario: "Restored scenario",
+      }),
+    ).rejects.toMatchObject({
+      errorCode: "no_valid_characters",
+      message: "Select at least one character.",
+      status: 422,
+    });
+  });
+
   it("fetches LLM model candidates through the bridge", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       mockJsonResponse([{ id: "provider-returned-model", tags: ["text"] }]),

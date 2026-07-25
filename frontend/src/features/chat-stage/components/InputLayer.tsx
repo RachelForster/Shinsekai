@@ -25,6 +25,7 @@ export function InputLayer({
   onPickAttachments,
   onRemoveAttachment,
   onSubmit,
+  submitDisabled = false,
   value,
 }: {
   asrEnabled: boolean;
@@ -44,6 +45,7 @@ export function InputLayer({
   onSubmit: (textOverride?: string) => void | Promise<void>;
   onPickAttachments: (kind: ChatAttachmentInput["kind"]) => void;
   onRemoveAttachment: (attachment: ChatAttachmentInput) => void;
+  submitDisabled?: boolean;
   value: string;
 }) {
   const { t } = useI18n();
@@ -52,7 +54,7 @@ export function InputLayer({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputActivityRef = useRef("");
   const pillLayout = inputLayout === "pill";
-  const canSubmit = Boolean(value.trim() || attachments.length) && !disabled;
+  const canSubmit = Boolean(value.trim() || attachments.length) && !disabled && !submitDisabled;
   const closePanel = useCallback(() => setPanelOpen(false), []);
   const forceVisible = Boolean(value.trim() || attachments.length) || asrEnabled || panelOpen;
   const autoHideRegion = useAutoHideRegion({ active: !hidden, enabled: autoHide, forceVisible });
@@ -107,6 +109,9 @@ export function InputLayer({
   };
 
   const submitFromKeyboard = async (flushBatch: boolean) => {
+    if (disabled || submitDisabled) {
+      return;
+    }
     await onSubmit();
     if (flushBatch && batchEnabled) {
       await onFlushBatch();
