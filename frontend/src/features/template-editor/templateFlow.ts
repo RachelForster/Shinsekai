@@ -176,3 +176,24 @@ export function buildChatLaunchPayload(input: {
     useCg: input.useCg,
   };
 }
+
+export function synchronizeChatLaunchPayloadWithSession(
+  payload: ChatLaunchPayload,
+  session: TemplateLaunchSession,
+): ChatLaunchPayload {
+  const effectNames = Array.isArray(session.effectNames) ? session.effectNames : [];
+  return {
+    ...payload,
+    backgroundName: session.background,
+    characters: session.selectedCharacters,
+    effectNames: effectNames.length ? effectNames : undefined,
+    historyPath: session.historyPath.trim(),
+    initSpritePath: session.initSpritePath.trim(),
+    roomId: session.roomId.trim(),
+    scenario: session.scenario,
+    system: session.system,
+    templateId: session.templateFileDropdown,
+    templateName: session.filenameStub,
+    useCg: session.useCg,
+  };
+}

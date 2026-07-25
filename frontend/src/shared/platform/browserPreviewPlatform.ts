@@ -40,7 +40,6 @@ import type {
   SpritePromptResult,
   TaskProgressOptions,
   TaskSnapshot,
-  TemplateSummary,
 } from "./types";
 
 const bundledChatThemeAssets = import.meta.glob<string>(
@@ -1461,6 +1460,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       async delete(name) {
         config.characters = config.characters.filter((character) => character.name !== name);
+        if (templateSession) {
+          templateSession = {
+            ...templateSession,
+            selectedCharacters: templateSession.selectedCharacters.filter((selectedName) => selectedName !== name),
+          };
+        }
       },
       async deleteMemory(name, memoryId) {
         const agentId = name || "user";
@@ -1652,6 +1657,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           config.characters[index] = savedCharacter;
         } else {
           config.characters.push(savedCharacter);
+        }
+        if (templateSession && originalName && originalName !== savedCharacter.name) {
+          templateSession = {
+            ...templateSession,
+            selectedCharacters: templateSession.selectedCharacters.map((name) =>
+              name === originalName ? savedCharacter.name : name,
+            ),
+          };
         }
         return delay(savedCharacter);
       },
@@ -2338,11 +2351,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           input.scenario ||
           `你需要模拟一个RPG剧情对话系统，出场人物有：${input.characters.join("、")} 以及其他相关人物，请根据剧情调度人物。`;
         const system = "";
-        const template: TemplateSummary = {
+        const template = {
           content: [scenario, system].filter(Boolean).join("\n\n"),
           id: "",
           name: input.name || "新模板",
           path: "",
+          resolvedCharacters: [...input.characters],
           scenario,
           system,
           updatedAt: "",
