@@ -2,6 +2,7 @@ import { Activity, Maximize2, Minus, X } from "lucide-react";
 
 import { minimizeDesktopWindow, toggleMaximizeDesktopWindow } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
+import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatTransportMode, ChatTransportState } from "../../../shared/platform/types";
 import { IconButton, ThemeFrame } from "../../../shared/ui";
 import { transportStatusText } from "../chatStageUtils";
@@ -12,6 +13,7 @@ export function TopStageTools({
   autoHide = false,
   hidden,
   onCloseDesktopWindow,
+  onOpenPluginPage,
   onThemePickerOpenChange,
   onTokenUsageOpenChange,
   standaloneDesktopWindow,
@@ -25,6 +27,7 @@ export function TopStageTools({
   autoHide?: boolean;
   hidden: boolean;
   onCloseDesktopWindow: () => Promise<void>;
+  onOpenPluginPage: (target: PluginPageTarget) => void;
   onThemePickerOpenChange: (open: boolean) => void;
   onTokenUsageOpenChange: (open: boolean) => void;
   standaloneDesktopWindow: boolean;
@@ -74,6 +77,7 @@ export function TopStageTools({
         <span className="top-stage-tools__state">{status}</span>
       </div>
       <div className="top-stage-tools__controls">
+        <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-top-toolbar" />
         <ChatThemePicker
           className="top-stage-tools__button"
           onOpenChange={onThemePickerOpenChange}

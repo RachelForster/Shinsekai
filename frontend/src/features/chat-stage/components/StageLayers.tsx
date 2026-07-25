@@ -12,7 +12,7 @@ import { Clock, Coins, Gauge, Heart, Shield, Sparkles, Star, Target, Zap, type L
 
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
-import { PluginSlot } from "../../../shared/plugin/PluginSlot";
+import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatStat } from "../../../shared/platform/types";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
@@ -177,6 +177,7 @@ export function DialogLayer({
   hidden,
   htmlNodes,
   onAdvance,
+  onOpenPluginPage,
   onSkip,
   text,
   textDirection = "ltr",
@@ -188,6 +189,7 @@ export function DialogLayer({
   hidden: boolean;
   htmlNodes?: DialogHtmlNode[];
   onAdvance?: () => void;
+  onOpenPluginPage?: (target: PluginPageTarget) => void;
   onSkip?: () => void;
   text: string;
   textDirection?: "ltr" | "rtl";
@@ -251,7 +253,7 @@ export function DialogLayer({
           </div>
         </div>
       )}
-      <PluginSlot slot="chat-output" />
+      <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-output" />
       {toolbar ? <div className="dialog-layer__toolbar">{toolbar}</div> : null}
     </section>
   );

@@ -183,11 +183,15 @@ _CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
 
 def _shutdown_plugins() -> None:
     try:
-        from core.plugins.plugin_host import get_plugin_manager
+        from core.plugins.plugin_host import (
+            bind_frontend_ui_runtime,
+            get_plugin_manager,
+        )
 
         mgr = get_plugin_manager()
         if mgr is not None:
             mgr.shutdown_all()
+        bind_frontend_ui_runtime(None)
     except Exception:
         pass
 
@@ -375,7 +379,11 @@ def main():
         init_i18n(config.config.system_config.ui_language)
 
     with _startup_phase("plugins.import"):
-        from core.plugins.plugin_host import ensure_plugins_loaded, wire_user_input_plugins
+        from core.plugins.plugin_host import (
+            bind_frontend_ui_runtime,
+            ensure_plugins_loaded,
+            wire_user_input_plugins,
+        )
 
     with _startup_phase("plugins.load"):
         plugin_manager = ensure_plugins_loaded(config)
@@ -388,6 +396,9 @@ def main():
 
             stream_sink = WSClientSink(args.stream_endpoint)
             stream_sink.emit({"type": "status.change", "status": "idle"})
+    bind_frontend_ui_runtime(
+        stream_sink.emit if plugin_manager is not None and stream_sink is not None else None
+    )
 
     # T2I manager
     t2i_manager = None

@@ -65,8 +65,40 @@ def _set_bridge_state(state) -> None:
         _bridge_state = state
 
 
+def _forward_plugin_user_input(state, event: dict) -> None:
+    """Forward one validated frontend-action input event to the Chat process."""
+    session_id = str(
+        getattr(state, "chat_session", {}).get("sessionId") or ""
+    ).strip()
+    chat_stream = getattr(state, "chat_stream", None)
+    if not session_id or chat_stream is None:
+        raise RuntimeError("No active React Chat runtime can accept plugin input")
+    command = {
+        "cmdId": secrets.token_hex(16),
+        "payload": {
+            "attachments": [],
+            "text": str(event.get("text") or ""),
+        },
+        "type": "send-message",
+    }
+    if not chat_stream.send_command(session_id, command):
+        raise RuntimeError("The active React Chat runtime rejected plugin input")
+
+
 def _shutdown_bridge_runtime(reason: str) -> None:
     _restart_debug_log(f"bridge runtime shutdown begin reason={reason}")
+    try:
+        from core.plugins.plugin_host import (
+            bind_frontend_ui_runtime,
+            bind_frontend_user_input_runtime,
+        )
+
+        bind_frontend_ui_runtime(None)
+        bind_frontend_user_input_runtime(None)
+    except Exception as exc:
+        _restart_debug_log(
+            f"bridge runtime plugin transport unbind failed reason={reason} error={exc}"
+        )
     try:
         from frontend_bridge_core.chat import shutdown_active_chat_process
 
@@ -225,9 +257,32 @@ def _start_plugin_loader(state, logger) -> None:
         set_plugin_load_status(state, "loading")
         _restart_debug_log("plugin load background start")
         try:
-            from core.plugins.plugin_host import ensure_plugins_loaded
+            from core.plugins.plugin_host import (
+                bind_frontend_ui_runtime,
+                bind_frontend_user_input_runtime,
+                ensure_plugins_loaded,
+            )
 
             ensure_plugins_loaded(state.config_manager)
+            bind_frontend_user_input_runtime(
+                lambda event: _forward_plugin_user_input(state, event)
+            )
+
+            def emit_plugin_ui_event(event: dict[str, Any]) -> None:
+                session_id = str(
+                    getattr(state, "chat_session", {}).get("sessionId") or ""
+                ).strip()
+                chat_stream = getattr(state, "chat_stream", None)
+                if (
+                    not session_id
+                    or chat_stream is None
+                    or not chat_stream.publish_event(session_id, event)
+                ):
+                    raise RuntimeError(
+                        "No active React Chat runtime can present plugin pages"
+                    )
+
+            bind_frontend_ui_runtime(emit_plugin_ui_event)
         except Exception as exc:
             set_plugin_load_status(state, "error", error=str(exc))
             _restart_debug_log(f"plugin load background failed error={exc}")

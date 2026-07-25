@@ -49,6 +49,7 @@ export function useChatStageCommands({
         const snapshot = await sendChatCommand(command);
         const commandAppliedByEventStream = [
           "cancel-input-batch",
+          "dismiss-plugin-page",
           "flush-input-batch",
           "send-message",
           "submit-option",

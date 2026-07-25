@@ -5,10 +5,12 @@ import pytest
 from frontend_bridge_core import plugin_ui
 from frontend_bridge_core.plugin_ui import (
     _frontend_config_page_payload,
+    _frontend_chat_ui_contribution_payloads,
     _frontend_page_payload,
     _plugin_config_field,
     _plugin_data_root,
     _run_plugin_ui_action,
+    _run_frontend_chat_ui_contribution,
 )
 
 
@@ -72,6 +74,132 @@ def test_plugin_config_field_omits_path_kind_when_not_set():
     """_plugin_config_field omits pathKind when not provided."""
     field = _plugin_config_field("output_dir", "Output Directory", "text")
     assert "pathKind" not in field
+
+
+def test_frontend_chat_ui_contributions_are_serialized_without_callbacks(monkeypatch):
+    action = lambda: {"kind": "info", "message": "done"}
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_chat_ui_contributions",
+        lambda: [
+            SimpleNamespace(
+                action=action,
+                action_label="Run",
+                contribution_id=" demo.action ",
+                description="Host rendered",
+                icon="sparkles",
+                order=12,
+                plugin_id="demo.plugin",
+                plugin_version="1.0",
+                slot="chat-dialog-actions",
+                title=" Demo action ",
+                variant="primary",
+            )
+        ],
+    )
+
+    payload = _frontend_chat_ui_contribution_payloads()
+
+    assert payload == [
+        {
+            "actionLabel": "Run",
+            "actionType": "callback",
+            "actionable": True,
+            "description": "Host rendered",
+            "icon": "sparkles",
+            "id": "demo.action",
+            "order": 12.0,
+            "pageId": "",
+            "pageMode": "navigate",
+            "pluginId": "demo.plugin",
+            "pluginVersion": "1.0",
+            "presentation": "button",
+            "slot": "chat-dialog-actions",
+            "title": "Demo action",
+            "variant": "primary",
+        }
+    ]
+    assert "action" not in payload[0]
+
+    assert _run_frontend_chat_ui_contribution("demo.plugin", "demo.action") == {
+        "id": "demo.action",
+        "kind": "info",
+        "message": "done",
+        "pluginId": "demo.plugin",
+    }
+
+
+def test_frontend_chat_ui_contribution_serializes_phone_page_navigation(monkeypatch):
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_chat_ui_contributions",
+        lambda: [
+            SimpleNamespace(
+                action={"type": "open-plugin-page", "page_id": " phone ", "mode": "overlay"},
+                contribution_id="demo.phone",
+                description="Open phone",
+                icon="smartphone",
+                order=30,
+                plugin_id="demo.plugin",
+                plugin_version="1.0",
+                presentation="button",
+                slot="chat-top-toolbar",
+                title="Phone",
+                variant="ghost",
+            )
+        ],
+    )
+
+    assert _frontend_chat_ui_contribution_payloads() == [
+        {
+            "actionLabel": "Phone",
+            "actionType": "open-plugin-page",
+            "actionable": True,
+            "description": "Open phone",
+            "icon": "smartphone",
+            "id": "demo.phone",
+            "order": 30.0,
+            "pageId": "phone",
+            "pageMode": "overlay",
+            "pluginId": "demo.plugin",
+            "pluginVersion": "1.0",
+            "presentation": "icon-only",
+            "slot": "chat-top-toolbar",
+            "title": "Phone",
+            "variant": "ghost",
+        }
+    ]
+
+
+def test_frontend_chat_ui_payload_does_not_truncate_lookup_identifiers(monkeypatch):
+    long_contribution_id = "c" * 129
+    long_page_id = "p" * 129
+    long_plugin_id = "g" * 129
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_chat_ui_contributions",
+        lambda: [
+            SimpleNamespace(
+                action={"type": "open-plugin-page", "page_id": long_page_id},
+                contribution_id=long_contribution_id,
+                description="",
+                icon="puzzle",
+                order=1,
+                plugin_id=long_plugin_id,
+                plugin_version="1.0",
+                presentation="button",
+                slot="chat-output",
+                title="Long identifiers",
+                variant="ghost",
+            )
+        ],
+    )
+
+    payload = _frontend_chat_ui_contribution_payloads()[0]
+
+    assert payload["id"] == long_contribution_id
+    assert payload["pageId"] == long_page_id
+    assert payload["pluginId"] == long_plugin_id
 
 
 def test_frontend_config_page_payload_normalizes_kind_and_values():
