@@ -1013,6 +1013,58 @@ register.register_frontend_chat_ui(
 
 `open-plugin-page` accepts a `page_id` and an optional `mode`. The default mode is `navigate`, which opens the plugin manager and provides a safe return route to Chat. `mode: "overlay"` opens the same registered page in a host-owned, draggable window over the Chat stage. Overlay mode is plugin-neutral and works from any supported Chat slot. The host resolves the page URL and current plugin ID; arbitrary URLs, HTML, JavaScript, React nodes, and CSS remain unsupported.
 
+#### Presenting a plugin page from a runtime event
+
+Plugins that need to surface asynchronous state can retain a plugin-scoped controller during `initialize`. This is a generic page-presentation API; the host does not interpret reminder, call, approval, game, or other business-specific payloads.
+
+```python
+from pathlib import Path
+
+from sdk import FrontendPageContribution, PluginBase
+
+
+class MyPlugin(PluginBase):
+    def initialize(self, register, plugin_root, host) -> None:
+        self.frontend_ui = register.frontend_ui()
+        register.register_frontend_page(
+            FrontendPageContribution(
+                page_id="dashboard",
+                title="Plugin dashboard",
+                kind="tools",
+                entry=(Path(__file__).parent / "frontend" / "dist" / "index.html").as_posix(),
+            )
+        )
+
+    def show_reminder(self, reminder_id: str, title: str) -> None:
+        self.frontend_ui.present_page(
+            page_id="dashboard",
+            presentation_id=f"reminder:{reminder_id}",
+            payload={"view": "reminder", "title": title},
+        )
+
+    def hide_reminder(self, reminder_id: str) -> None:
+        self.frontend_ui.dismiss_page(f"reminder:{reminder_id}")
+```
+
+`present_page` can only target a `FrontendPageContribution` registered by the same plugin and currently supports `mode="overlay"`. It requires an active React Chat runtime. `presentation_id` is scoped to the plugin, and a later call with the same ID updates and reorders that presentation. Payloads must be JSON objects no larger than 16 KiB.
+
+After the registered iframe loads, the host delivers the payload with an explicit-origin-targeted message:
+
+```javascript
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (
+    event.source === window.parent &&
+    message?.__shinsekai === "plugin-page" &&
+    message.type === "present"
+  ) {
+    renderPluginView(message.payload, message.presentationId);
+  }
+});
+```
+
+The plugin page should call its own authenticated plugin backend when the user accepts, rejects, or completes an operation. That backend owns the business state and calls `dismiss_page`; the host protocol remains feature-neutral. Closing the host overlay also dismisses the matching presentation from the current Chat snapshot.
+
 ---
 
 ### `register_chat_ui_widget(contribution)`

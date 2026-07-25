@@ -102,6 +102,39 @@ def get_plugin_output_contract_patches(
     return patches
 
 
+def bind_frontend_ui_runtime(
+    emit_event: Callable[[dict[str, Any]], None] | None,
+) -> None:
+    """Bind plugin-scoped page presentation requests to the active Chat stream."""
+    from sdk.frontend_ui import _bind_frontend_ui_dispatcher
+
+    if emit_event is None:
+        _bind_frontend_ui_dispatcher(None)
+        return
+
+    def dispatch(event: dict[str, Any]) -> None:
+        event_type = str(event.get("type") or "").strip()
+        plugin_id = str(event.get("pluginId") or "").strip()
+        if event_type == "plugin.page.present":
+            page_id = str(event.get("pageId") or "").strip()
+            registered = any(
+                str(getattr(contribution, "plugin_id", "") or "").strip()
+                == plugin_id
+                and str(getattr(contribution, "page_id", "") or "").strip()
+                == page_id
+                for contribution in collect_frontend_page_contributions()
+            )
+            if not registered:
+                raise ValueError(
+                    f"Plugin page is not registered by {plugin_id}: {page_id}"
+                )
+        elif event_type != "plugin.page.dismiss":
+            raise ValueError(f"Unsupported plugin frontend event: {event_type}")
+        emit_event(dict(event))
+
+    _bind_frontend_ui_dispatcher(dispatch)
+
+
 def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager | None:
     """
     Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge adapter

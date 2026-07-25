@@ -78,6 +78,7 @@ export function ChatStagePage() {
   const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAttachmentSlotsRef = useRef(0);
   const [overlayTarget, setOverlayTarget] = useState<PluginPageTarget | null>(null);
+  const locallyDismissedPresentationRef = useRef<string | null>(null);
   const { showToast } = useToast();
   const { t } = useI18n();
   const theme = useOptionalChatTheme();
@@ -179,6 +180,52 @@ export function ChatStagePage() {
     loadFallbackMessage: t("chat.error.loadFallback"),
     queueAnimatedDialog,
   });
+
+  useEffect(() => {
+    const presentation = state.pluginPagePresentations?.at(-1);
+    if (!presentation) {
+      locallyDismissedPresentationRef.current = null;
+      setOverlayTarget((current) => (current?.presentationId ? null : current));
+      return;
+    }
+    const presentationKey = `${presentation.pluginId}\0${presentation.presentationId}`;
+    if (locallyDismissedPresentationRef.current === presentationKey) {
+      setOverlayTarget((current) => (current?.presentationId ? null : current));
+      return;
+    }
+    setOverlayTarget((current) => {
+      if (
+        current?.pluginId === presentation.pluginId &&
+        current.presentationId === presentation.presentationId &&
+        current.payload === presentation.payload
+      ) {
+        return current;
+      }
+      return {
+        mode: presentation.mode,
+        pageId: presentation.pageId,
+        payload: presentation.payload,
+        pluginId: presentation.pluginId,
+        presentationId: presentation.presentationId,
+      };
+    });
+  }, [state.pluginPagePresentations]);
+
+  const closePluginPageOverlay = useCallback(() => {
+    const current = overlayTarget;
+    setOverlayTarget(null);
+    if (!current?.presentationId) {
+      return;
+    }
+    locallyDismissedPresentationRef.current = `${current.pluginId}\0${current.presentationId}`;
+    void sendCommand({
+      payload: {
+        pluginId: current.pluginId,
+        presentationId: current.presentationId,
+      },
+      type: "dismiss-plugin-page",
+    });
+  }, [overlayTarget, sendCommand]);
 
   useEffect(() => {
     if (!viewModel.layers.dialog) {
@@ -502,7 +549,7 @@ export function ChatStagePage() {
 
   return (
     <>
-      {overlayTarget ? <PluginPageOverlay onClose={() => setOverlayTarget(null)} target={overlayTarget} /> : null}
+      {overlayTarget ? <PluginPageOverlay onClose={closePluginPageOverlay} target={overlayTarget} /> : null}
       <main
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}

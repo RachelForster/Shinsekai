@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PluginPageOverlay } from "../../../features/chat-stage/components/PluginPageOverlay";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
+import type { PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 
 const repository = vi.hoisted(() => ({
   getUi: vi.fn(),
@@ -12,10 +13,17 @@ vi.mock("../../../entities/plugin/repository", () => ({
   getPluginUiDetail: (pluginId: string) => repository.getUi(pluginId),
 }));
 
-function renderOverlay(onClose = vi.fn()) {
+function renderOverlay(
+  onClose = vi.fn(),
+  target: PluginPageTarget = {
+    mode: "overlay",
+    pageId: "dashboard",
+    pluginId: "demo.plugin",
+  },
+) {
   render(
     <I18nProvider language="en">
-      <PluginPageOverlay onClose={onClose} target={{ mode: "overlay", pageId: "dashboard", pluginId: "demo.plugin" }} />
+      <PluginPageOverlay onClose={onClose} target={target} />
     </I18nProvider>,
   );
   return onClose;
@@ -104,5 +112,30 @@ describe("PluginPageOverlay", () => {
     });
 
     await waitFor(() => expect(overlay).toHaveStyle({ left: "8px", top: "8px" }));
+  });
+
+  it("delivers a runtime presentation payload only to the registered page origin", async () => {
+    vi.stubEnv("VITE_SHINSEKAI_API_BASE", "http://127.0.0.1:8787");
+    renderOverlay(vi.fn(), {
+      mode: "overlay",
+      pageId: "dashboard",
+      payload: { kind: "reminder", title: "Tea is ready" },
+      pluginId: "demo.plugin",
+      presentationId: "notice-42",
+    });
+    const frame = (await screen.findByTitle("Dashboard")) as HTMLIFrameElement;
+    const postMessage = vi.spyOn(frame.contentWindow!, "postMessage");
+
+    fireEvent.load(frame);
+
+    expect(postMessage).toHaveBeenLastCalledWith(
+      {
+        __shinsekai: "plugin-page",
+        payload: { kind: "reminder", title: "Tea is ready" },
+        presentationId: "notice-42",
+        type: "present",
+      },
+      "http://127.0.0.1:8787",
+    );
   });
 });

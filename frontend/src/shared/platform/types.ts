@@ -868,6 +868,14 @@ export interface ChatStat {
   value: number;
 }
 
+export interface PluginPagePresentation {
+  mode: "overlay";
+  pageId: string;
+  payload: Record<string, unknown>;
+  pluginId: string;
+  presentationId: string;
+}
+
 export interface ChatSnapshot {
   asrEnabled?: boolean;
   asrLoading?: boolean;
@@ -893,6 +901,7 @@ export interface ChatSnapshot {
   numericInfo?: string;
   notificationText?: string;
   options: string[];
+  pluginPagePresentations?: PluginPagePresentation[];
   runtimeDependencyError?: RuntimeDependencyError;
   runtimeMode?: "native" | "react";
   sessionClosedReason?: string;
@@ -939,6 +948,7 @@ export interface ChatCommand {
     | "clear-history"
     | "copy-history"
     | "dialog-advance"
+    | "dismiss-plugin-page"
     | "fork-history"
     | "flush-input-batch"
     | "open-history"
@@ -954,7 +964,9 @@ export interface ChatCommand {
     | "update-turn-options";
 }
 
-export type ChatRealtimeCommandType = Exclude<ChatCommand["type"], "copy-history" | "open-history"> | "revert-history";
+export type ChatRealtimeCommandType =
+  | Exclude<ChatCommand["type"], "copy-history" | "dismiss-plugin-page" | "open-history">
+  | "revert-history";
 
 /** 上行命令（React→server，WebSocket），沿用并扩展 ChatCommand。 */
 export interface ChatUpstreamCommand {
@@ -993,6 +1005,8 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[] })
   | (ChatEventBase & { type: "conversation.tree"; tree: ChatConversationTree })
   | (ChatEventBase & { type: "chat.turn.state"; state: ChatTurnState; options?: ChatTurnOptions })
+  | (ChatEventBase & PluginPagePresentation & { type: "plugin.page.present" })
+  | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })
   | (ChatEventBase & {
       type: "sprite.show";
       characterName: string;

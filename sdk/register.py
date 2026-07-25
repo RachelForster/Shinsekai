@@ -22,6 +22,7 @@ from sdk.adapters import (
     VisionFallbackContribution,
 )
 from sdk.chat_init import InitChatContext
+from sdk.frontend_ui import FrontendUIController, _controller_for_plugin
 from sdk.hooks import (
     BeforeChatContext,
     BeforeCompactContext,
@@ -222,6 +223,15 @@ class PluginCapabilityRegistry:
 
     def clear_settings_ui_plugin_context(self) -> None:
         self._settings_ui_plugin_ctx = None
+
+    def frontend_ui(self) -> FrontendUIController:
+        """Return a runtime page controller bound to the plugin being initialized."""
+        ctx = self._settings_ui_plugin_ctx
+        if ctx is None:
+            raise RuntimeError(
+                "frontend_ui() is only available during PluginBase.initialize"
+            )
+        return _controller_for_plugin(ctx[0])
 
     def register_settings_ui(self, contribution: SettingsUIContribution) -> None:
         ctx = self._settings_ui_plugin_ctx

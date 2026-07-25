@@ -27,7 +27,9 @@ export interface PluginRenderContext {
 export interface PluginPageTarget {
   mode?: PluginSlotContributionPageMode;
   pageId: string;
+  payload?: Record<string, unknown>;
   pluginId: string;
+  presentationId?: string;
 }
 
 /** Trusted in-process contribution kept for host-owned extensions and compatibility. */

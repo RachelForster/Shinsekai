@@ -375,7 +375,7 @@ function browserPreviewChatPayload(payload: unknown) {
 }
 
 function isPreviewRealtimeCommand(command: { type: string }) {
-  return command.type !== "copy-history" && command.type !== "open-history";
+  return command.type !== "copy-history" && command.type !== "dismiss-plugin-page" && command.type !== "open-history";
 }
 
 function themeBlockQss(block?: {
@@ -821,6 +821,18 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             notificationText: "",
             sessionClosedReason: "",
           };
+        }
+        if (command.type === "dismiss-plugin-page") {
+          const payload = command.payload as { pluginId?: unknown; presentationId?: unknown } | undefined;
+          const pluginId = String(payload?.pluginId ?? "");
+          const presentationId = String(payload?.presentationId ?? "");
+          chat = {
+            ...chat,
+            pluginPagePresentations: (chat.pluginPagePresentations ?? []).filter(
+              (item) => item.pluginId !== pluginId || item.presentationId !== presentationId,
+            ),
+          };
+          emitChat();
         }
         if (command.type === "update-turn-options") {
           const payload = command.payload as Partial<NonNullable<ChatSnapshot["turnOptions"]>> | undefined;

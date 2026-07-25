@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 
 import { getPluginUiDetail } from "../../../entities/plugin/repository";
@@ -68,9 +68,11 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
   const pointerDragRef = useRef<PointerDrag | null>(null);
   const suppressClickRef = useRef(false);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
+  const frameLoadedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
+    frameLoadedRef.current = false;
     setPage(null);
     setPageError(false);
     void getPluginUiDetail(target.pluginId)
@@ -99,6 +101,33 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
       active = false;
     };
   }, [target.pageId, target.pluginId]);
+
+  const postPresentation = useCallback(() => {
+    const frameWindow = frameRef.current?.contentWindow;
+    if (!frameWindow || !page || !target.presentationId) {
+      return;
+    }
+    try {
+      const targetOrigin = new URL(page.src, window.location.href).origin;
+      frameWindow.postMessage(
+        {
+          __shinsekai: "plugin-page",
+          payload: target.payload ?? {},
+          presentationId: target.presentationId,
+          type: "present",
+        },
+        targetOrigin,
+      );
+    } catch {
+      // A malformed page URL is handled by the iframe load/error state.
+    }
+  }, [page, target.payload, target.presentationId]);
+
+  useEffect(() => {
+    if (frameLoadedRef.current) {
+      postPresentation();
+    }
+  }, [postPresentation]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -209,6 +238,10 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
           sandbox="allow-forms allow-same-origin allow-scripts"
           src={page.src}
           title={page.title}
+          onLoad={() => {
+            frameLoadedRef.current = true;
+            postPresentation();
+          }}
         />
       ) : (
         <div className="plugin-overlay__status" role={pageError ? "alert" : "status"}>

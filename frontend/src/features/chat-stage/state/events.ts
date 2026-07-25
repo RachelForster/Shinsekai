@@ -110,6 +110,33 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
           pendingMessages: [...(event.state.pendingMessages ?? [])],
         },
       });
+    case "plugin.page.present": {
+      const presentation = {
+        mode: "overlay" as const,
+        pageId: event.pageId,
+        payload: { ...event.payload },
+        pluginId: event.pluginId,
+        presentationId: event.presentationId,
+      };
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        pluginPagePresentations: [
+          ...(state.pluginPagePresentations ?? []).filter(
+            (item) => item.pluginId !== presentation.pluginId || item.presentationId !== presentation.presentationId,
+          ),
+          presentation,
+        ].slice(-8),
+      });
+    }
+    case "plugin.page.dismiss":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        pluginPagePresentations: (state.pluginPagePresentations ?? []).filter(
+          (item) => item.pluginId !== event.pluginId || item.presentationId !== event.presentationId,
+        ),
+      });
     case "sprite.show":
       return upsertSprite(state, event);
     case "sprite.remove":
@@ -246,6 +273,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         eventSeq: Math.max(state.eventSeq, event.seq),
         notificationText: event.reason,
         options: [],
+        pluginPagePresentations: [],
         sessionClosedReason: event.reason,
         status: "idle",
         systemMessageText: undefined,

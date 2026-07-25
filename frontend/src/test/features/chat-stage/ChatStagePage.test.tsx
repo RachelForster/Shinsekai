@@ -90,9 +90,21 @@ vi.mock("../../../shared/plugin/PluginSlot", () => ({
 }));
 
 vi.mock("../../../features/chat-stage/components/PluginPageOverlay", () => ({
-  PluginPageOverlay: ({ onClose, target }: { onClose: () => void; target: { pageId: string; pluginId: string } }) => (
+  PluginPageOverlay: ({
+    onClose,
+    target,
+  }: {
+    onClose: () => void;
+    target: {
+      pageId: string;
+      payload?: Record<string, unknown>;
+      pluginId: string;
+      presentationId?: string;
+    };
+  }) => (
     <section aria-label="Plugin page overlay">
       <span>{`${target.pluginId}:${target.pageId}`}</span>
+      {target.presentationId ? <span>{`${target.presentationId}:${JSON.stringify(target.payload)}`}</span> : null}
       <button onClick={onClose} type="button">
         Close overlay
       </button>
@@ -335,6 +347,47 @@ describe("ChatStagePage", () => {
     expect(mocks.sendChatCommand).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Close overlay" }));
+    expect(screen.queryByLabelText("Plugin page overlay")).not.toBeInTheDocument();
+  });
+
+  it("presents and dismisses a registered plugin page from generic runtime events", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((callback: (event: ChatStageEvent) => void) => {
+      listener = callback;
+      return vi.fn();
+    });
+    renderPage(["/chat-stage"]);
+    await screen.findByText("Ready");
+
+    act(() => {
+      listener?.({
+        mode: "overlay",
+        pageId: "dashboard",
+        payload: { kind: "reminder" },
+        pluginId: "demo.plugin",
+        presentationId: "notice-42",
+        seq: 1,
+        ts: 1,
+        type: "plugin.page.present",
+        v: 1,
+      });
+    });
+
+    const overlay = await screen.findByLabelText("Plugin page overlay");
+    expect(overlay).toHaveTextContent("demo.plugin:dashboard");
+    expect(overlay).toHaveTextContent('notice-42:{"kind":"reminder"}');
+
+    fireEvent.click(screen.getByRole("button", { name: "Close overlay" }));
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: {
+          pluginId: "demo.plugin",
+          presentationId: "notice-42",
+        },
+        type: "dismiss-plugin-page",
+      }),
+    );
     expect(screen.queryByLabelText("Plugin page overlay")).not.toBeInTheDocument();
   });
 
