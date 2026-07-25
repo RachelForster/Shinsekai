@@ -42,6 +42,7 @@ __all__ = [
     "FrontendChatUIContribution",
     "FrontendConfigContribution",
     "FrontendPageContribution",
+    "FrontendUserInputController",
     "FrontendUIController",
     "ExceptionInfo",
     "format_llm_exception_message",
@@ -169,6 +170,10 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "FrontendChatUIContribution": ("sdk.types", "FrontendChatUIContribution"),
     "FrontendConfigContribution": ("sdk.types", "FrontendConfigContribution"),
     "FrontendPageContribution": ("sdk.types", "FrontendPageContribution"),
+    "FrontendUserInputController": (
+        "sdk.frontend_user_input",
+        "FrontendUserInputController",
+    ),
     "FrontendUIController": ("sdk.frontend_ui", "FrontendUIController"),
     "ExceptionInfo": ("sdk.exception.types", "ExceptionInfo"),
     "HTTP_REASON_UNPAIRED_TOOL_MESSAGES": ("sdk.exception.types", "HTTP_REASON_UNPAIRED_TOOL_MESSAGES"),

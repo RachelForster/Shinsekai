@@ -21,19 +21,21 @@ class _ChatStreamStub:
         self.stopped = True
 
 
-def test_plugin_user_input_trigger_forwards_to_active_chat_stream() -> None:
+def test_plugin_frontend_input_forwards_to_active_chat_stream() -> None:
     stream = _ChatStreamStub()
     state = SimpleNamespace(
         chat_session={"sessionId": "session-1"},
         chat_stream=stream,
     )
 
-    class PluginManager:
-        def wire_user_input(self, emit, processors):
-            assert processors == []
-            emit("[短信] 请角色回复")
-
-    frontend_bridge._bind_plugin_user_input_runtime(state, PluginManager())
+    frontend_bridge._forward_plugin_user_input(
+        state,
+        {
+            "pluginId": "demo.plugin",
+            "text": "[短信] 请角色回复",
+            "type": "plugin.user-input.submit",
+        },
+    )
 
     assert len(stream.sent) == 1
     session_id, command = stream.sent[0]

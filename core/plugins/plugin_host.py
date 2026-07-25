@@ -135,6 +135,28 @@ def bind_frontend_ui_runtime(
     _bind_frontend_ui_dispatcher(dispatch)
 
 
+def bind_frontend_user_input_runtime(
+    emit_event: Callable[[dict[str, Any]], None] | None,
+) -> None:
+    """Bind plugin frontend-action input requests to the active Chat transport."""
+    from sdk.frontend_user_input import _bind_frontend_user_input_dispatcher
+
+    if emit_event is None:
+        _bind_frontend_user_input_dispatcher(None)
+        return
+
+    def dispatch(event: dict[str, Any]) -> None:
+        if str(event.get("type") or "").strip() != "plugin.user-input.submit":
+            raise ValueError("Unsupported plugin frontend user-input event")
+        plugin_id = str(event.get("pluginId") or "").strip()
+        text = str(event.get("text") or "").strip()
+        if not plugin_id or not text:
+            raise ValueError("Plugin frontend user input requires pluginId and text")
+        emit_event(dict(event))
+
+    _bind_frontend_user_input_dispatcher(dispatch)
+
+
 def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager | None:
     """
     Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge adapter
