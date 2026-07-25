@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -317,6 +317,35 @@ describe("PluginManagerPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to plugins" }));
 
     await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent("/chat-stage"));
+  });
+
+  it("reapplies the requested plugin page after cold-cache fallback pages are replaced", async () => {
+    let resolveDetail!: (value: { pages: PluginUIPage[]; plugin: PluginManifest }) => void;
+    mockGetPluginUiDetail.mockReturnValue(
+      new Promise((resolve) => {
+        resolveDetail = resolve;
+      }),
+    );
+    renderPage([
+      {
+        pathname: "/settings/plugins",
+        state: {
+          pageId: "phone",
+          pluginId: "configurable",
+        },
+      },
+    ]);
+
+    await waitFor(() => expect(mockGetPluginUiDetail).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      resolveDetail({
+        pages: [{ ...detailPage, id: "settings-0", title: "Real settings" }, phonePage],
+        plugin: configurablePlugin,
+      });
+    });
+
+    expect(await screen.findByText("Phone panel")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Phone controls" })).toBeInTheDocument();
   });
 
   it("returns plugin configuration to the route it came from", async () => {

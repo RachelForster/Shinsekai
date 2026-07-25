@@ -40,6 +40,7 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
     error: undefined,
     eventSeq: nextEventSeq,
     inputAttachments: state.inputAttachments,
+    inputDraft: state.inputDraft || snapshot.inputDraft,
     pluginPagePresentations: (snapshot.pluginPagePresentations ?? []).map((presentation) => ({
       ...presentation,
       payload: { ...presentation.payload },

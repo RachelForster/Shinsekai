@@ -175,6 +175,40 @@ def test_frontend_chat_ui_contribution_gets_plugin_context_and_validates_slots()
         )
 
 
+def test_frontend_chat_ui_contribution_rejects_identifiers_over_runtime_limit() -> None:
+    registry = PluginCapabilityRegistry()
+    registry.set_settings_ui_plugin_context("demo.plugin", "1.2.3")
+
+    with pytest.raises(ValueError, match="contribution_id cannot exceed 128 characters"):
+        registry.register_frontend_chat_ui(
+            FrontendChatUIContribution(
+                contribution_id="c" * 129,
+                slot="chat-output",
+                title="Too long",
+            )
+        )
+
+    with pytest.raises(ValueError, match="page_id cannot exceed 128 characters"):
+        registry.register_frontend_chat_ui(
+            FrontendChatUIContribution(
+                contribution_id="demo.page",
+                slot="chat-top-toolbar",
+                title="Too long",
+                action={"type": "open-plugin-page", "page_id": "p" * 129},
+            )
+        )
+
+    registry.set_settings_ui_plugin_context("p" * 129, "1.2.3")
+    with pytest.raises(ValueError, match="plugin_id cannot exceed 128 characters"):
+        registry.register_frontend_chat_ui(
+            FrontendChatUIContribution(
+                contribution_id="demo.plugin",
+                slot="chat-output",
+                title="Too long",
+            )
+        )
+
+
 def test_frontend_page_contribution_gets_plugin_context() -> None:
     registry = PluginCapabilityRegistry()
     registry.set_settings_ui_plugin_context("demo.plugin", "1.2.3")

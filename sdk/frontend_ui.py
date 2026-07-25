@@ -8,9 +8,9 @@ import uuid
 from collections.abc import Callable, Mapping
 from typing import Any
 
-__all__ = ["FrontendUIController"]
+__all__ = ["FrontendUIController", "MAX_FRONTEND_UI_IDENTIFIER_LENGTH"]
 
-_MAX_IDENTIFIER_LENGTH = 128
+MAX_FRONTEND_UI_IDENTIFIER_LENGTH = 128
 _MAX_PAYLOAD_BYTES = 16 * 1024
 _dispatcher_lock = threading.RLock()
 _runtime_dispatcher: Callable[[dict[str, Any]], None] | None = None
@@ -21,8 +21,8 @@ def _clean_identifier(value: object, *, label: str) -> str:
     cleaned = str(value or "").strip()
     if not cleaned:
         raise ValueError(f"{label} cannot be empty")
-    if len(cleaned) > _MAX_IDENTIFIER_LENGTH:
-        raise ValueError(f"{label} cannot exceed {_MAX_IDENTIFIER_LENGTH} characters")
+    if len(cleaned) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+        raise ValueError(f"{label} cannot exceed {MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters")
     if any(ord(character) < 32 or ord(character) == 127 for character in cleaned):
         raise ValueError(f"{label} cannot contain control characters")
     return cleaned

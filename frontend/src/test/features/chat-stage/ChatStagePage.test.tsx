@@ -39,6 +39,7 @@ const themeContextMocks = vi.hoisted(() => ({
 }));
 
 const pluginSlotMocks = vi.hoisted(() => ({
+  entrySlot: "chat-top-toolbar",
   pageMode: "navigate" as "navigate" | "overlay",
   renderPhoneEntry: false,
 }));
@@ -73,7 +74,7 @@ vi.mock("../../../shared/plugin/PluginSlot", () => ({
     onOpenPluginPage?: (target: { mode?: "navigate" | "overlay"; pageId: string; pluginId: string }) => void;
     slot: string;
   }) =>
-    pluginSlotMocks.renderPhoneEntry && slot === "chat-top-toolbar" ? (
+    pluginSlotMocks.renderPhoneEntry && slot === pluginSlotMocks.entrySlot ? (
       <button
         onClick={() =>
           onOpenPluginPage?.({
@@ -215,6 +216,7 @@ describe("ChatStagePage", () => {
     vi.useRealTimers();
     window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
     themeContextMocks.optional = null;
+    pluginSlotMocks.entrySlot = "chat-top-toolbar";
     pluginSlotMocks.pageMode = "navigate";
     pluginSlotMocks.renderPhoneEntry = false;
     mocks.closeChat.mockResolvedValue(snapshot());
@@ -321,14 +323,55 @@ describe("ChatStagePage", () => {
 
   it("opens a declared phone plugin page from the top toolbar and preserves the Chat return route", async () => {
     pluginSlotMocks.renderPhoneEntry = true;
+    mocks.uploadChatAttachments.mockResolvedValueOnce({
+      attachments: [{ kind: "file", name: "notes.txt", path: "D:/staged/notes.txt" }],
+    });
     renderPage([{ pathname: "/chat-stage", search: "?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787" }], true);
 
+    await screen.findByText("Ready");
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "unsent draft" } });
+    fireEvent.change(screen.getByLabelText("Attach files"), {
+      target: { files: [new File(["notes"], "notes.txt", { type: "text/plain" })] },
+    });
+    await screen.findByRole("button", { name: "Remove attachment notes.txt" });
     fireEvent.click(await screen.findByRole("button", { name: "Phone" }));
 
     await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent("/settings/plugins"));
     expect(screen.getByLabelText("location")).toHaveTextContent('"pageId":"phone"');
     expect(screen.getByLabelText("location")).toHaveTextContent('"pluginId":"demo.plugin"');
     expect(screen.getByLabelText("location")).toHaveTextContent('"pathname":"/chat-stage"');
+    expect(screen.getByLabelText("location")).toHaveTextContent('"inputDraft":"unsent draft"');
+    expect(screen.getByLabelText("location")).toHaveTextContent('"path":"D:/staged/notes.txt"');
+  });
+
+  it("restores unsent Chat input and attachments from the return route", async () => {
+    renderPage([
+      {
+        pathname: "/chat-stage",
+        state: {
+          chatInput: {
+            inputAttachments: [{ kind: "image", name: "scene.png", path: "D:/staged/scene.png" }],
+            inputDraft: "continue this message",
+          },
+        },
+      },
+    ]);
+
+    await screen.findByText("Ready");
+    expect(screen.getByRole("textbox")).toHaveValue("continue this message");
+    expect(screen.getByRole("button", { name: "Remove attachment scene.png" })).toBeInTheDocument();
+  });
+
+  it("opens a declared plugin page from chat output", async () => {
+    pluginSlotMocks.entrySlot = "chat-output";
+    pluginSlotMocks.renderPhoneEntry = true;
+    renderPage(["/chat-stage"], true);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Phone" }));
+
+    await waitFor(() => expect(screen.getByLabelText("location")).toHaveTextContent("/settings/plugins"));
+    expect(screen.getByLabelText("location")).toHaveTextContent('"pageId":"phone"');
+    expect(screen.getByLabelText("location")).toHaveTextContent('"pluginId":"demo.plugin"');
   });
 
   it("opens a declared plugin page in a generic overlay without advancing or leaving Chat", async () => {

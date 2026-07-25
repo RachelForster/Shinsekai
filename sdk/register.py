@@ -26,7 +26,11 @@ from sdk.frontend_user_input import (
     FrontendUserInputController,
     _controller_for_plugin as _frontend_user_input_controller_for_plugin,
 )
-from sdk.frontend_ui import FrontendUIController, _controller_for_plugin
+from sdk.frontend_ui import (
+    MAX_FRONTEND_UI_IDENTIFIER_LENGTH,
+    FrontendUIController,
+    _controller_for_plugin,
+)
 from sdk.hooks import (
     BeforeChatContext,
     BeforeCompactContext,
@@ -296,6 +300,11 @@ class PluginCapabilityRegistry:
             raise ValueError(f"Unsupported frontend chat UI slot: {contribution.slot}")
         if not contribution.contribution_id.strip() or not contribution.title.strip():
             raise ValueError("FrontendChatUIContribution requires a non-empty id and title")
+        if len(contribution.contribution_id.strip()) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+            raise ValueError(
+                "FrontendChatUIContribution contribution_id cannot exceed "
+                f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
+            )
         if contribution.presentation not in {"button", "icon-only"}:
             raise ValueError(f"Unsupported frontend chat UI presentation: {contribution.presentation}")
         if isinstance(contribution.action, Mapping):
@@ -303,6 +312,11 @@ class PluginCapabilityRegistry:
             page_id = str(contribution.action.get("page_id") or contribution.action.get("pageId") or "").strip()
             if action_type != "open-plugin-page" or not page_id:
                 raise ValueError("FrontendChatUIContribution open-plugin-page action requires a non-empty page_id")
+            if len(page_id) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+                raise ValueError(
+                    "FrontendChatUIContribution page_id cannot exceed "
+                    f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
+                )
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
             pid, ver = ctx
@@ -310,6 +324,12 @@ class PluginCapabilityRegistry:
                 contribution,
                 plugin_id=contribution.plugin_id or pid,
                 plugin_version=contribution.plugin_version or ver,
+            )
+        plugin_id = str(contribution.plugin_id or "").strip()
+        if len(plugin_id) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+            raise ValueError(
+                "FrontendChatUIContribution plugin_id cannot exceed "
+                f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
             )
         self._frontend_chat_ui_contributions.append(contribution)
 

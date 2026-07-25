@@ -59,10 +59,63 @@ import {
   mergeChatAttachmentInputs,
 } from "./attachments";
 
+interface ChatRouteInputState {
+  inputAttachments: ChatAttachmentInput[];
+  inputDraft: string;
+}
+
+function chatRouteInputState(value: unknown): ChatRouteInputState {
+  if (!value || typeof value !== "object") {
+    return { inputAttachments: [], inputDraft: "" };
+  }
+  const chatInput = (value as { chatInput?: unknown }).chatInput;
+  if (!chatInput || typeof chatInput !== "object") {
+    return { inputAttachments: [], inputDraft: "" };
+  }
+  const candidate = chatInput as { inputAttachments?: unknown; inputDraft?: unknown };
+  const inputAttachments = Array.isArray(candidate.inputAttachments)
+    ? candidate.inputAttachments
+        .filter((attachment): attachment is ChatAttachmentInput =>
+          Boolean(
+            attachment &&
+            typeof attachment === "object" &&
+            ((attachment as ChatAttachmentInput).kind === "file" ||
+              (attachment as ChatAttachmentInput).kind === "image") &&
+            typeof (attachment as ChatAttachmentInput).name === "string" &&
+            typeof (attachment as ChatAttachmentInput).path === "string",
+          ),
+        )
+        .slice(0, CHAT_ATTACHMENT_LIMIT)
+        .map((attachment) => ({ ...attachment }))
+    : [];
+  return {
+    inputAttachments,
+    inputDraft: typeof candidate.inputDraft === "string" ? candidate.inputDraft : "",
+  };
+}
+
+function initialChatStageState(routeState: unknown) {
+  return { ...emptyChatState, ...chatRouteInputState(routeState) };
+}
+
+function withChatRouteInputState(routeState: unknown, chatInput: ChatRouteInputState) {
+  const previousState =
+    routeState && typeof routeState === "object" && !Array.isArray(routeState)
+      ? (routeState as Record<string, unknown>)
+      : {};
+  return {
+    ...previousState,
+    chatInput: {
+      inputAttachments: chatInput.inputAttachments.map((attachment) => ({ ...attachment })),
+      inputDraft: chatInput.inputDraft,
+    },
+  };
+}
+
 export function ChatStagePage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [state, dispatch] = useReducer(chatStageReducer, emptyChatState);
+  const [state, dispatch] = useReducer(chatStageReducer, location.state, initialChatStageState);
   const [confirmClearHistory, setConfirmClearHistory] = useState(false);
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
@@ -508,13 +561,24 @@ export function ChatStagePage() {
               hash: location.hash,
               pathname: location.pathname,
               search: location.search,
-              state: location.state,
+              state: withChatRouteInputState(location.state, {
+                inputAttachments: state.inputAttachments,
+                inputDraft: state.inputDraft,
+              }),
             },
           },
         },
       );
     },
-    [location.hash, location.pathname, location.search, location.state, navigate],
+    [
+      location.hash,
+      location.pathname,
+      location.search,
+      location.state,
+      navigate,
+      state.inputAttachments,
+      state.inputDraft,
+    ],
   );
 
   const dialogSurfaceVisible = viewModel.layers.dialog || viewModel.layers.options;
@@ -619,6 +683,7 @@ export function ChatStagePage() {
               hidden={!viewModel.layers.dialog}
               htmlNodes={displayedDialog.nodes}
               onAdvance={advanceDialog}
+              onOpenPluginPage={openPluginPage}
               onSkip={typingDialog ? advanceDialog : undefined}
               text={typingDialog ? displayedDialog.text : viewModel.dialogText}
               textDirection={dialogTextDirection}

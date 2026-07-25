@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 
@@ -195,6 +195,7 @@ export function PluginDetailPanel({ detailPlugin, initialPageId = "", onBack }: 
   const { language, t } = useI18n();
   const detailLookupId = pluginActionId(detailPlugin);
   const [activeDetailPageId, setActiveDetailPageId] = useState("");
+  const appliedInitialPageIntentRef = useRef("");
 
   const pluginDetailQuery = useQuery({
     enabled: Boolean(detailLookupId),
@@ -213,13 +214,22 @@ export function PluginDetailPanel({ detailPlugin, initialPageId = "", onBack }: 
 
   useEffect(() => {
     const pageKeys = detailPages.map(pluginUiPageKey);
-    if (pageKeys.length && !pageKeys.includes(activeDetailPageId)) {
+    const initialPageIntent = `${detailLookupId}\0${initialPageId}`;
+    if (pluginDetailQuery.data && appliedInitialPageIntentRef.current !== initialPageIntent) {
+      appliedInitialPageIntentRef.current = initialPageIntent;
       const preferredPage = detailPages.find(
         (page) => page.id === initialPageId || pluginUiPageKey(page) === initialPageId,
       );
-      setActiveDetailPageId(preferredPage ? pluginUiPageKey(preferredPage) : pageKeys[0]);
+      const nextPageId = preferredPage ? pluginUiPageKey(preferredPage) : (pageKeys[0] ?? "");
+      if (nextPageId !== activeDetailPageId) {
+        setActiveDetailPageId(nextPageId);
+      }
+      return;
     }
-  }, [activeDetailPageId, detailPageSignature, detailPages, initialPageId]);
+    if (pageKeys.length && !pageKeys.includes(activeDetailPageId)) {
+      setActiveDetailPageId(pageKeys[0]);
+    }
+  }, [activeDetailPageId, detailLookupId, detailPageSignature, detailPages, initialPageId, pluginDetailQuery.data]);
 
   const activeDetailPage = detailPages.find((page) => pluginUiPageKey(page) === activeDetailPageId) ?? detailPages[0];
   const loaded = detailPluginRow.loaded !== false;

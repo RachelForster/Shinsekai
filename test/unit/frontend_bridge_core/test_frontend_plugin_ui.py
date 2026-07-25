@@ -171,6 +171,37 @@ def test_frontend_chat_ui_contribution_serializes_phone_page_navigation(monkeypa
     ]
 
 
+def test_frontend_chat_ui_payload_does_not_truncate_lookup_identifiers(monkeypatch):
+    long_contribution_id = "c" * 129
+    long_page_id = "p" * 129
+    long_plugin_id = "g" * 129
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_chat_ui_contributions",
+        lambda: [
+            SimpleNamespace(
+                action={"type": "open-plugin-page", "page_id": long_page_id},
+                contribution_id=long_contribution_id,
+                description="",
+                icon="puzzle",
+                order=1,
+                plugin_id=long_plugin_id,
+                plugin_version="1.0",
+                presentation="button",
+                slot="chat-output",
+                title="Long identifiers",
+                variant="ghost",
+            )
+        ],
+    )
+
+    payload = _frontend_chat_ui_contribution_payloads()[0]
+
+    assert payload["id"] == long_contribution_id
+    assert payload["pageId"] == long_page_id
+    assert payload["pluginId"] == long_plugin_id
+
+
 def test_frontend_config_page_payload_normalizes_kind_and_values():
     contribution = SimpleNamespace(
         description="Config page",

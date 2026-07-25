@@ -349,7 +349,7 @@ def _frontend_chat_ui_action(contribution: Any) -> tuple[str, str, str]:
             mode = str(action.get("mode") or "navigate").strip().lower()
             if mode not in ("navigate", "overlay"):
                 mode = "navigate"
-            return action_type, page_id[:128], mode
+            return action_type, page_id, mode
     return "none", "", "navigate"
 
 
@@ -382,11 +382,11 @@ def _frontend_chat_ui_contribution_payloads() -> list[dict[str, Any]]:
                 "actionable": action_type != "none",
                 "description": str(getattr(contribution, "description", "") or "").strip()[:500],
                 "icon": icon if icon in allowed_icons else "puzzle",
-                "id": contribution_id[:128],
+                "id": contribution_id,
                 "order": float(getattr(contribution, "order", 100.0) or 100.0),
                 "pageId": page_id,
                 "pageMode": page_mode,
-                "pluginId": plugin_id[:128],
+                "pluginId": plugin_id,
                 "pluginVersion": str(getattr(contribution, "plugin_version", "") or "")[:64],
                 "presentation": presentation if presentation in allowed_presentations else "button",
                 "slot": slot,
