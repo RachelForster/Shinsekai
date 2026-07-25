@@ -73,6 +73,8 @@ export type MessageKey =
   | "api.memory.checking"
   | "api.memory.cachedNotLoaded"
   | "api.memory.description"
+  | "api.memory.dependencyInstalled"
+  | "api.memory.dependencyInstallFailed"
   | "api.memory.downloadModel"
   | "api.memory.downloading"
   | "api.memory.enabled"

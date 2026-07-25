@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from frontend_bridge_core.handler import FrontendBridgeHandler
+from llm.template_generator import TemplateGenerator
 
 
 def _handler() -> FrontendBridgeHandler:
@@ -48,6 +49,43 @@ def test_file_exists_errors_are_reported_as_conflicts():
     handler._send_exception_json(error)
 
     assert responses == [(error, HTTPStatus.CONFLICT)]
+
+
+def test_template_generate_all_stale_returns_stable_unprocessable_error(monkeypatch):
+    handler = _handler()
+    handler.server.state = SimpleNamespace(
+        config_manager=SimpleNamespace(get_character_by_name=lambda _name: None),
+        template_generator=TemplateGenerator(output_contract_patches=[]),
+    )
+    handler.path = "/api/templates/generate"
+    handler._require_authorized_write = lambda _path: None
+    handler._read_json = lambda: {
+        "backgroundName": "",
+        "characters": ["Deleted"],
+        "name": "restored",
+        "scenario": "Restored scenario",
+        "useTranslation": False,
+    }
+    handler._log_request_exception = lambda _error: None
+    responses: list[tuple[object, HTTPStatus]] = []
+    handler._send_json = lambda payload, status=HTTPStatus.OK: responses.append((payload, status))
+    monkeypatch.setattr(
+        "llm.template_generator._T",
+        lambda key, **kwargs: f"template_gen.{key}",
+    )
+
+    handler.do_POST()
+
+    assert responses == [
+        (
+            {
+                "error": "template_gen.err_no_characters",
+                "errorCode": "no_valid_characters",
+                "type": "NoValidCharactersError",
+            },
+            HTTPStatus.UNPROCESSABLE_ENTITY,
+        )
+    ]
 
 
 def test_start_chat_init_forwards_launch_and_resume_callbacks(monkeypatch):

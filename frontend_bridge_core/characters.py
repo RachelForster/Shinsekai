@@ -141,6 +141,13 @@ def _save_character(state: BridgeState, payload: dict[str, Any]) -> dict[str, An
     if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
         raise RuntimeError(message)
     state.config_manager.reload()
+    if original_name and original_name != saved_name:
+        from frontend_bridge_core.templates import _rename_template_session_character
+
+        try:
+            _rename_template_session_character(state, original_name, saved_name)
+        except OSError:
+            pass
     saved = state.config_manager.get_character_by_name(saved_name)
     return _jsonify(saved or character)
 

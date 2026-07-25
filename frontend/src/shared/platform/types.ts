@@ -105,7 +105,7 @@ export interface SystemConfig {
   chat_window_geometry_b64: string;
   chat_ui_theme_path: string;
   chat_ui_theme_id: string;
-  chat_ui_runtime_mode: string;
+  chat_ui_runtime_mode: "react";
   react_chat_fork_experimental_enabled: boolean;
   react_chat_flowchart_experimental_enabled: boolean;
   mirror_auto_detect_china: boolean;
@@ -464,6 +464,10 @@ export interface TemplateSummary {
   scenario?: string;
   system?: string;
   updatedAt: string;
+}
+
+export interface TemplateGenerationResult extends TemplateSummary {
+  resolvedCharacters: string[];
 }
 
 export interface ChatLaunchPayload {
@@ -1280,7 +1284,7 @@ export interface ShinsekaiPlatform {
     get: <TResult = unknown>(id: string) => Promise<TaskSnapshot<TResult>>;
   };
   templates: {
-    generate: (input: TemplateGenerateInput) => Promise<TemplateSummary>;
+    generate: (input: TemplateGenerateInput) => Promise<TemplateGenerationResult>;
     getSession: () => Promise<TemplateLaunchSession | null>;
     list: () => Promise<TemplateSummary[]>;
     save: (template: TemplateSummary) => Promise<TemplateSummary>;

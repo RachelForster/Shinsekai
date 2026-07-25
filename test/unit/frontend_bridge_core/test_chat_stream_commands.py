@@ -799,7 +799,7 @@ class ChatStreamCommandTests(unittest.TestCase):
                 snapshot = _wait_for_event(viewer, lambda event: event.get("type") == "snapshot")
                 hydrated = snapshot["snapshot"]
                 self.assertEqual(hydrated["dialogText"], "旁白：系统消息")
-                self.assertEqual(hydrated.get("characterName"), "")
+                self.assertEqual(hydrated.get("characterName"), "旁白")
                 self.assertEqual(hydrated.get("busyText"), "")
                 self.assertEqual(hydrated.get("busyDurationSeconds"), 0.0)
                 self.assertEqual(hydrated.get("sessionClosedReason"), "")
