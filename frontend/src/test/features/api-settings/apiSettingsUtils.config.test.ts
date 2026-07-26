@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   activeMapValue,
+  applyDownloadedTtsBundle,
   applyTtsProviderDefaults,
   apiSchemaWithAdapterOptions,
   catalogOptions,
   containsPathQuotes,
   DEFAULT_TTS_SERVER_URL,
+  HTTPS_DEFAULT_TTS_SERVER_URL,
   isTaskCancelledError,
   isTaskRunning,
   llmModelFetchKey,
@@ -208,6 +210,25 @@ describe("API settings utilities", () => {
         tts_provider: "gpt-sovits",
       }).gpt_sovits_url,
     ).toBe(DEFAULT_TTS_SERVER_URL);
+
+    expect(
+      applyDownloadedTtsBundle(
+        {
+          ...sampleConfig.api_config,
+          gpt_sovits_api_path: "",
+          gpt_sovits_url: HTTPS_DEFAULT_TTS_SERVER_URL,
+          tts_provider: "",
+        },
+        {
+          path: "/project/data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro",
+          provider: "gpt-sovits",
+        },
+      ),
+    ).toMatchObject({
+      gpt_sovits_api_path: "/project/data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro",
+      gpt_sovits_url: DEFAULT_TTS_SERVER_URL,
+      tts_provider: "gpt-sovits",
+    });
   });
 
   it("deduplicates model options and derives request keys", () => {
