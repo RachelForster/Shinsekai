@@ -7,6 +7,7 @@ import { CharacterEditorPage, mergeSprites } from "../../../features/character-e
 import type { Character } from "../../../entities/config/types";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import { sampleConfig } from "../../../shared/platform/sampleData";
+import type { TemplateLaunchSession } from "../../../shared/platform/types";
 import { ToastProvider } from "../../../shared/ui";
 
 const mockGetAppConfig = vi.fn();
@@ -158,11 +159,11 @@ const character: Character = {
   sprites: [{ path: "D:/sprites/mika/sprite-a.png" }],
 };
 
-function renderPage() {
-  const client = new QueryClient({
+function renderPage(
+  client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
-  });
-
+  }),
+) {
   return render(
     <QueryClientProvider client={client}>
       <ToastProvider>
@@ -328,6 +329,49 @@ describe("CharacterEditorPage", () => {
       ),
     );
     await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("Sora"));
+  });
+
+  it("updates the cached template selection when a character is renamed", async () => {
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+    });
+    const session = {
+      background: "",
+      effectNames: [],
+      filenameStub: "Session",
+      historyPath: "",
+      initSpritePath: "",
+      maxDialogItems: 0,
+      maxSpeechChars: 0,
+      roomId: "",
+      scenario: "",
+      selectedCharacters: ["Mika", "B"],
+      system: "",
+      templateFileDropdown: "",
+      useCg: false,
+      useChoice: true,
+      useCot: false,
+      useEffect: true,
+      useNarration: true,
+      useStat: true,
+      useTranslation: false,
+      voiceLanguage: "ja",
+    } satisfies TemplateLaunchSession;
+    client.setQueryData(["templates", "session"], session);
+    renderPage(client);
+
+    const nameInput = screen.getByLabelText("Character name");
+    await waitFor(() => expect(nameInput).toHaveValue("Mika"));
+    fireEvent.change(nameInput, { target: { value: "C" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(mockSaveCharacter).toHaveBeenCalledWith(expect.objectContaining({ name: "C" }), "Mika"));
+    await waitFor(() =>
+      expect(client.getQueryData<TemplateLaunchSession>(["templates", "session"])?.selectedCharacters).toEqual([
+        "C",
+        "B",
+      ]),
+    );
   });
 
   it("auto-saves a new character before uploading sprites", async () => {
@@ -539,7 +583,7 @@ describe("CharacterEditorPage", () => {
     renderPage();
 
     await screen.findByDisplayValue("Mika");
-    fireEvent.click(screen.getByTitle("sprite-b.png"));
+    fireEvent.click(await screen.findByTitle("sprite-b.png"));
     fireEvent.change(screen.getByLabelText("Sprite tag"), { target: { value: "unsaved second edit" } });
     fireEvent.click(screen.getByTitle("sprite-a.png"));
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));

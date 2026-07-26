@@ -37,6 +37,8 @@ class BridgeState:
     chat_stream: Any = None
     chat_runtime_lock: threading.Lock = field(default_factory=threading.Lock)
     chat_runtime_closing: bool = False
+    history_download_lock: threading.Lock = field(default_factory=threading.Lock)
+    history_download_capabilities: dict[str, tuple[str, float]] = field(default_factory=dict)
     chat_init_lock: threading.Lock = field(default_factory=threading.Lock)
     chat_init_task_id: str = ""
     plugin_load_lock: threading.Lock = field(default_factory=threading.Lock)

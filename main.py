@@ -183,11 +183,15 @@ _CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
 
 def _shutdown_plugins() -> None:
     try:
-        from core.plugins.plugin_host import get_plugin_manager
+        from core.plugins.plugin_host import (
+            bind_frontend_ui_runtime,
+            get_plugin_manager,
+        )
 
         mgr = get_plugin_manager()
         if mgr is not None:
             mgr.shutdown_all()
+        bind_frontend_ui_runtime(None)
     except Exception:
         pass
 
@@ -375,7 +379,11 @@ def main():
         init_i18n(config.config.system_config.ui_language)
 
     with _startup_phase("plugins.import"):
-        from core.plugins.plugin_host import ensure_plugins_loaded, wire_user_input_plugins
+        from core.plugins.plugin_host import (
+            bind_frontend_ui_runtime,
+            ensure_plugins_loaded,
+            wire_user_input_plugins,
+        )
 
     with _startup_phase("plugins.load"):
         plugin_manager = ensure_plugins_loaded(config)
@@ -388,6 +396,9 @@ def main():
 
             stream_sink = WSClientSink(args.stream_endpoint)
             stream_sink.emit({"type": "status.change", "status": "idle"})
+    bind_frontend_ui_runtime(
+        stream_sink.emit if plugin_manager is not None and stream_sink is not None else None
+    )
 
     # T2I manager
     t2i_manager = None
@@ -456,9 +467,18 @@ def main():
 
     with _startup_phase("template.load"):
         messages = []
+        active_history_present = False
         if args.history:
             print(tr_i18n("main.print_load_history", path=args.history))
-            messages = load_chat_history(str(chat_history_active_path(args.history)))
+            active_history_path = chat_history_active_path(args.history)
+            messages = load_chat_history(str(active_history_path))
+            try:
+                active_history_present = isinstance(
+                    json.loads(active_history_path.read_text(encoding="utf-8")),
+                    list,
+                )
+            except (OSError, json.JSONDecodeError):
+                active_history_present = False
 
         user_template = ""
         with open(
@@ -724,7 +744,12 @@ def main():
             restored = load_branch_state(args.history) if args.history else None
             if restored is None:
                 return _default_branch_state()
-            restored_messages, restored_history = reconcile_active_branch_state(restored, messages, chat_history)
+            restored_messages, restored_history = reconcile_active_branch_state(
+                restored,
+                messages,
+                chat_history,
+                active_history_present=active_history_present,
+            )
             messages[:] = restored_messages
             chat_history[:] = restored_history
             llm_manager.set_messages(restored_messages)
@@ -1118,9 +1143,9 @@ def main():
                     history_target = str(chat_history_active_path(args.history)) if args.history else str(
                         Path("data/chat_history") / "_temp.json"
                     )
-                    clear_chat_history(history_target, audio_path_queue, llm_manager)
                     if args.history:
                         remove_chat_history_storage(args.history)
+                    clear_chat_history(history_target, audio_path_queue, llm_manager)
                     _reset_branch_state()
                     _persist_branch_state()
                     stream_sink.emit({"type": "options.clear"})

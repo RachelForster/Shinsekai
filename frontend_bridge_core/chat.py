@@ -43,9 +43,10 @@ from core.sprite.chat_branch_storage import (
 from core.sprite.chat_history_text import history_payload_to_plain_text, parse_assistant_dialog_content
 from llm.tools.chat_ui_tools import sanitize_user_display_name
 
+from .history_paths import is_unc_history_path, resolve_history_path_for_project
 from .state import BridgeState
 from .runtime_dependencies import runtime_dependency_error_from_text
-from .security import reject_control_chars, safe_project_path
+from .security import reject_control_chars
 from .templates import (
     TEMP_SPLIT_META,
     _compose_runtime_template,
@@ -57,6 +58,7 @@ from .templates import (
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
+_HISTORY_DOWNLOAD_CAPABILITY_TTL_SECONDS = 60.0
 _RUNTIME_CHAT_COMMANDS = {
     "cancel-input-batch",
     "change-voice-language",
@@ -88,11 +90,9 @@ def _is_transparent_background_name(name: str | None) -> bool:
     return not value or value in {TRANSPARENT_BACKGROUND_NAME, _TRANSPARENT_BACKGROUND_ALIAS}
 
 
-def _chat_runtime_mode(state: BridgeState) -> str:
-    config_manager = getattr(state, "config_manager", None)
-    system_config = getattr(getattr(config_manager, "config", None), "system_config", None)
-    mode = str(getattr(system_config, "chat_ui_runtime_mode", "") or "").strip().lower()
-    return "native" if mode == "native" else "react"
+def _chat_runtime_mode(_state: BridgeState) -> str:
+    """Return the only supported chat UI runtime."""
+    return "react"
 
 
 def _chat_experimental_features(state: BridgeState) -> dict[str, bool]:
@@ -420,17 +420,20 @@ def _launch_chat(
 
         template_hash = _history_id_from_scenario(user_scenario, character_names)
         history_path = Path(history_file) if history_file else Path(state.history_dir) / template_hash
-        if history_path.suffix.lower() == ".json" and history_path.exists() and history_path.is_file():
-            history_path.parent.mkdir(parents=True, exist_ok=True)
-        else:
-            chat_history_session_dir(history_path).mkdir(parents=True, exist_ok=True)
+        history_argument = str(history_path)
+        if not is_unc_history_path(history_path):
+            if history_path.suffix.lower() == ".json" and history_path.exists() and history_path.is_file():
+                history_path.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                chat_history_session_dir(history_path).mkdir(parents=True, exist_ok=True)
+            history_argument = str(history_path.resolve())
         project_root = _project_root()
         app_root = _app_root(state)
         tts_slug = str(state.config_manager.config.api_config.tts_provider or "gpt-sovits").strip() or "gpt-sovits"
         args = [
             "--template=_temp",
             f"--init_sprite_path={init_sprite_path or ''}",
-            f"--history={history_path.resolve()}",
+            f"--history={history_argument}",
             f"--bg={selected_bg}",
             f"--effect_names={effect_names}",
             f"--t2i={'ComfyUI' if use_cg else ''}",
@@ -540,25 +543,29 @@ def _close_chat(
     return closed_snapshot
 
 
-def _resolve_project_file(raw_path: str | Path) -> Path:
-    return safe_project_path(raw_path)
+def _resolve_history_file(state: BridgeState, raw_path: str | Path) -> Path:
+    return resolve_history_path_for_project(state, raw_path)
 
 
 def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: dict[str, Any]) -> Path:
     raw = str(payload.get("historyPath") or "").strip()
     if raw:
-        path = safe_project_path(raw)
+        path = _resolve_history_file(state, raw)
         if path.name in {ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME}:
-            return path.parent
-        if path.suffix.lower() == ".json" and not path.is_file():
-            return path.with_suffix("")
+            return _resolve_history_file(state, path.parent)
+        if (
+            path.suffix.lower() == ".json"
+            and not is_unc_history_path(path)
+            and not path.is_file()
+        ):
+            return _resolve_history_file(state, path.with_suffix(""))
         return path
     characters = payload.get("characters")
     if not isinstance(characters, list):
         characters = template.get("selectedCharacters")
     scenario = _scenario_from_template_like(template)
     template_hash = _history_id_from_scenario(scenario, characters)
-    return _resolve_project_file(Path(state.history_dir) / template_hash)
+    return _resolve_history_file(state, Path(state.history_dir) / template_hash)
 
 
 def _sprite_path(sprite: Any) -> str:
@@ -724,7 +731,11 @@ def _chat_history_entries(state: BridgeState) -> list[dict[str, Any]]:
             entries = _history_entries_from_snapshot(snapshot)
             return entries
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
-    history_path = _resolve_project_file(history_raw) if history_raw else None
+    if history_raw and is_unc_history_path(history_raw):
+        return []
+    history_path = _resolve_history_file(state, history_raw) if history_raw else None
+    if history_path is not None and is_unc_history_path(history_path):
+        return []
     history_file = chat_history_active_path(history_path) if history_path is not None else None
     if history_file is None or not history_file.is_file():
         return []
@@ -828,10 +839,67 @@ def _read_history_file(path: Path) -> Any:
         return json.load(file)
 
 
+def _current_chat_history_download_file(state: BridgeState) -> Path:
+    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    if not history_raw:
+        raise FileNotFoundError("没有已关联的聊天历史文件。")
+    history_path = _resolve_history_file(state, history_raw)
+    history_file = chat_history_download_path(history_path)
+    if not history_file.is_file():
+        raise FileNotFoundError(history_file.as_posix())
+    return history_file
+
+
+def _history_download_state(state: BridgeState) -> tuple[threading.Lock, dict[str, tuple[str, float]]]:
+    lock = getattr(state, "history_download_lock", None)
+    if lock is None:
+        lock = threading.Lock()
+        setattr(state, "history_download_lock", lock)
+    capabilities = getattr(state, "history_download_capabilities", None)
+    if not isinstance(capabilities, dict):
+        capabilities = {}
+        setattr(state, "history_download_capabilities", capabilities)
+    return lock, capabilities
+
+
+def _issue_chat_history_download_capability(state: BridgeState, history_file: Path) -> str:
+    capability = uuid.uuid4().hex
+    lock, capabilities = _history_download_state(state)
+    with lock:
+        # Only the latest requested history download remains valid.
+        capabilities.clear()
+        capabilities[capability] = (
+            str(history_file),
+            time.monotonic() + _HISTORY_DOWNLOAD_CAPABILITY_TTL_SECONDS,
+        )
+    return capability
+
+
+def _chat_history_download_file(state: BridgeState, capability: str) -> Path:
+    supplied = reject_control_chars(
+        str(capability or "").strip(),
+        field="history download capability",
+    )
+    if not supplied:
+        raise PermissionError("missing chat history download capability")
+    lock, capabilities = _history_download_state(state)
+    now = time.monotonic()
+    with lock:
+        expired = [token for token, (_path, deadline) in capabilities.items() if deadline < now]
+        for token in expired:
+            capabilities.pop(token, None)
+        record = capabilities.get(supplied)
+    if record is None:
+        raise PermissionError("invalid or expired chat history download capability")
+    history_file = Path(record[0])
+    if not history_file.is_file():
+        raise FileNotFoundError(history_file.as_posix())
+    return history_file
+
+
 def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, Any]:
     command = str(body.get("type") or "").strip()
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
-    history_path = _resolve_project_file(history_raw) if history_raw else None
     session_id = str(state.chat_session.get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
 
@@ -881,10 +949,11 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
     if command == "copy-history":
         entries = _chat_history_entries(state)
         text = _plain_history_text_from_entries(entries)
-        opened_path = history_path.as_posix() if history_path is not None else str(state.chat_session.get("historyPath") or "")
+        opened_path = history_raw
         if not text:
-            if history_path is None:
+            if not history_raw:
                 raise FileNotFoundError("没有已关联的聊天历史文件。")
+            history_path = _resolve_history_file(state, history_raw)
             history_file = chat_history_active_path(history_path)
             if not history_file.exists():
                 raise FileNotFoundError(history_file.as_posix())
@@ -898,30 +967,63 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         )
 
     if command == "open-history":
-        if history_path is None:
-            raise FileNotFoundError("没有已关联的聊天历史文件。")
-        history_file = chat_history_download_path(history_path)
-        if not history_file.exists():
-            raise FileNotFoundError(history_file.as_posix())
-        rel = history_file.relative_to(Path.cwd().resolve()).as_posix()
+        history_file = _current_chat_history_download_file(state)
+        capability = _issue_chat_history_download_capability(state, history_file)
         return _chat_snapshot(
             state,
             "idle",
             "历史文件已打开。",
-            extra={"downloadUrl": f"/api/download?path={quote(rel)}", "openedPath": history_path.as_posix()},
+            extra={
+                "downloadUrl": f"/api/chat/history-file?cap={quote(capability, safe='')}",
+                "openedPath": history_file.as_posix(),
+            },
         )
 
     if command == "clear-history":
-        if history_path is None:
-            raise FileNotFoundError("没有已关联的聊天历史文件。")
         if session_id and chat_stream is not None:
             return _forward_runtime_command(
                 "idle",
                 "历史记录已经清空。",
                 snapshot_patch={"historyEntries": [], "options": []},
             )
+        if not history_raw:
+            raise FileNotFoundError("没有已关联的聊天历史文件。")
+        history_path = _resolve_history_file(state, history_raw)
         remove_chat_history_storage(history_path)
         return _chat_snapshot(state, "idle", "历史记录已经清空。", extra={"historyEntries": [], "options": []})
+
+    if command == "dismiss-plugin-page":
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("Plugin page dismissal must be an object.")
+        plugin_id = reject_control_chars(
+            str(payload.get("pluginId") or "").strip(),
+            field="pluginId",
+        )
+        presentation_id = reject_control_chars(
+            str(payload.get("presentationId") or "").strip(),
+            field="presentationId",
+        )
+        if not plugin_id or not presentation_id:
+            raise ValueError("Plugin page dismissal requires pluginId and presentationId.")
+        if len(plugin_id) > 128 or len(presentation_id) > 128:
+            raise ValueError("Plugin page dismissal identifiers are too long.")
+        body["payload"] = {
+            "pluginId": plugin_id,
+            "presentationId": presentation_id,
+        }
+        if not session_id or chat_stream is None:
+            raise RuntimeError("当前聊天会话未连接到实时流。")
+        if not chat_stream.publish_event(
+            session_id,
+            {
+                "type": "plugin.page.dismiss",
+                "pluginId": plugin_id,
+                "presentationId": presentation_id,
+            },
+        ):
+            raise RuntimeError("无法关闭插件页面展示。")
+        return _chat_snapshot(state, _current_runtime_status())
 
     if command == "update-turn-options":
         payload = body.get("payload")

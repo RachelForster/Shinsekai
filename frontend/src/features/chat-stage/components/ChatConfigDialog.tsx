@@ -2,7 +2,7 @@ import { useId, type ChangeEvent } from "react";
 import { Languages, RotateCcw } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
-import { PluginSlot } from "../../../shared/plugin/PluginSlot";
+import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatCommand, ChatTurnOptions } from "../../../shared/platform/types";
 import { Button, Select, Switch } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
@@ -119,6 +119,7 @@ export function ChatConfigDialog({
   onDialogScaleChange,
   onImmersiveModeChange,
   onResetThemeAppearance,
+  onOpenPluginPage,
   onSpriteOffsetXChange,
   onSpriteOffsetYChange,
   onSpriteScaleChange,
@@ -163,6 +164,7 @@ export function ChatConfigDialog({
   onDialogScaleChange: (value: number) => void;
   onImmersiveModeChange: (value: boolean) => void;
   onResetThemeAppearance: () => void;
+  onOpenPluginPage: (target: PluginPageTarget) => void;
   onSpriteOffsetXChange: (value: number) => void;
   onSpriteOffsetYChange: (value: number) => void;
   onSpriteScaleChange: (spriteKey: string, value: number) => void;
@@ -816,7 +818,7 @@ export function ChatConfigDialog({
           </label>
         </section>
 
-        <PluginSlot slot="chat-toolbar" />
+        <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-toolbar" />
       </div>
     </ChatStageModal>
   );

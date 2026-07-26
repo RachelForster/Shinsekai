@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import threading
 import time
+from pathlib import Path
 from typing import Any, Callable
 
 TaskUpdate = Callable[..., None]
@@ -12,6 +13,54 @@ HUGGINGFACE_DOWNLOAD_PROGRESS_END = 0.85
 HUGGINGFACE_LOAD_PROGRESS = 0.92
 HUGGINGFACE_PROGRESS_LOG_LIMIT = 20
 HUGGINGFACE_PROGRESS_UPDATE_INTERVAL_SEC = 0.25
+_HUGGINGFACE_SYMLINK_PROBE_LOCK = threading.Lock()
+
+
+def _disable_huggingface_terminal_progress_without_stderr() -> None:
+    """Keep Hugging Face worker progress bars out of terminal-less processes."""
+    if callable(getattr(sys.stderr, "write", None)):
+        return
+    try:
+        from huggingface_hub.utils import disable_progress_bars
+    except (ImportError, AttributeError):
+        return
+
+    # huggingface_hub 0.x applies snapshot_download's custom tqdm class only
+    # to the outer file counter. Its worker threads still create regular tqdm
+    # bars, and under pythonw those bars can deadlock on tqdm's shared lock
+    # because sys.stderr is None. The desktop UI reports progress through
+    # update_task, so terminal bars are both unsafe and redundant here.
+    disable_progress_bars()
+
+
+def _prime_windows_huggingface_symlink_support(
+    repo_id: str,
+    *,
+    cache_dir: Any = None,
+    repo_type: Any = None,
+) -> None:
+    """Finish Hugging Face's symlink probe before snapshot worker threads start."""
+    if sys.platform != "win32":
+        return
+    try:
+        from huggingface_hub.file_download import are_symlinks_supported, repo_folder_name
+    except ImportError:
+        return
+
+    # huggingface_hub 0.x initializes its per-cache result optimistically.
+    # Concurrent first-use downloads can observe that temporary True value
+    # before the Windows privilege probe changes it to False, then fail with
+    # WinError 1314. A single probe here makes the later worker reads stable.
+    if cache_dir is None:
+        from huggingface_hub.constants import HF_HUB_CACHE
+
+        cache_dir = HF_HUB_CACHE
+    storage_folder = Path(cache_dir) / repo_folder_name(
+        repo_id=repo_id,
+        repo_type=str(repo_type or "model"),
+    )
+    with _HUGGINGFACE_SYMLINK_PROBE_LOCK:
+        are_symlinks_supported(storage_folder)
 
 
 def preload_huggingface_snapshot(
@@ -226,6 +275,12 @@ def preload_huggingface_snapshot(
         message=download_message,
         progress=HUGGINGFACE_DOWNLOAD_PROGRESS_START,
         logs=push_progress_log(download_message),
+    )
+    _disable_huggingface_terminal_progress_without_stderr()
+    _prime_windows_huggingface_symlink_support(
+        repo_id,
+        cache_dir=snapshot_kwargs.get("cache_dir"),
+        repo_type=snapshot_kwargs.get("repo_type"),
     )
     snapshot_path = snapshot_download(
         repo_id,

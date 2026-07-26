@@ -40,7 +40,6 @@ import type {
   SpritePromptResult,
   TaskProgressOptions,
   TaskSnapshot,
-  TemplateSummary,
 } from "./types";
 
 const bundledChatThemeAssets = import.meta.glob<string>(
@@ -376,7 +375,7 @@ function browserPreviewChatPayload(payload: unknown) {
 }
 
 function isPreviewRealtimeCommand(command: { type: string }) {
-  return command.type !== "copy-history" && command.type !== "open-history";
+  return command.type !== "copy-history" && command.type !== "dismiss-plugin-page" && command.type !== "open-history";
 }
 
 function themeBlockQss(block?: {
@@ -822,6 +821,18 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             notificationText: "",
             sessionClosedReason: "",
           };
+        }
+        if (command.type === "dismiss-plugin-page") {
+          const payload = command.payload as { pluginId?: unknown; presentationId?: unknown } | undefined;
+          const pluginId = String(payload?.pluginId ?? "");
+          const presentationId = String(payload?.presentationId ?? "");
+          chat = {
+            ...chat,
+            pluginPagePresentations: (chat.pluginPagePresentations ?? []).filter(
+              (item) => item.pluginId !== pluginId || item.presentationId !== presentationId,
+            ),
+          };
+          emitChat();
         }
         if (command.type === "update-turn-options") {
           const payload = command.payload as Partial<NonNullable<ChatSnapshot["turnOptions"]>> | undefined;
@@ -1461,6 +1472,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       async delete(name) {
         config.characters = config.characters.filter((character) => character.name !== name);
+        if (templateSession) {
+          templateSession = {
+            ...templateSession,
+            selectedCharacters: templateSession.selectedCharacters.filter((selectedName) => selectedName !== name),
+          };
+        }
       },
       async deleteMemory(name, memoryId) {
         const agentId = name || "user";
@@ -1652,6 +1669,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           config.characters[index] = savedCharacter;
         } else {
           config.characters.push(savedCharacter);
+        }
+        if (templateSession && originalName && originalName !== savedCharacter.name) {
+          templateSession = {
+            ...templateSession,
+            selectedCharacters: templateSession.selectedCharacters.map((name) =>
+              name === originalName ? savedCharacter.name : name,
+            ),
+          };
         }
         return delay(savedCharacter);
       },
@@ -2146,7 +2171,37 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(plugin, 400);
       },
       list: () => delay(plugins),
+      listSlotContributions: () =>
+        delay(
+          plugins.some((plugin) => plugin.id === "core-tools" && plugin.enabled)
+            ? [
+                {
+                  actionLabel: "生成场景提示",
+                  actionType: "callback" as const,
+                  actionable: true,
+                  description: "由宿主安全渲染的浏览器预览贡献。",
+                  icon: "sparkles" as const,
+                  id: "scene-prompt",
+                  order: 100,
+                  pageId: "",
+                  pluginId: "core-tools",
+                  pluginVersion: "built-in",
+                  presentation: "button" as const,
+                  slot: "chat-output" as const,
+                  title: "场景灵感",
+                  variant: "ghost" as const,
+                },
+              ]
+            : [],
+        ),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
+      runSlotContribution: (pluginId, contributionId) =>
+        delay({
+          id: contributionId,
+          kind: "success" as const,
+          message: "浏览器预览动作已执行。",
+          pluginId,
+        }),
       scanLocal(input) {
         const baseName = input.path.split(/[\\/]/).filter(Boolean).pop() || "preview-plugin";
         return delay({
@@ -2338,11 +2393,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           input.scenario ||
           `你需要模拟一个RPG剧情对话系统，出场人物有：${input.characters.join("、")} 以及其他相关人物，请根据剧情调度人物。`;
         const system = "";
-        const template: TemplateSummary = {
+        const template = {
           content: [scenario, system].filter(Boolean).join("\n\n"),
           id: "",
           name: input.name || "新模板",
           path: "",
+          resolvedCharacters: [...input.characters],
           scenario,
           system,
           updatedAt: "",

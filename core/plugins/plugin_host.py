@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from sdk.types import (
         ChatUIContribution,
         FrontendConfigContribution,
+        FrontendChatUIContribution,
         FrontendPageContribution,
         OutputContractPatch,
         SettingsUIContribution,
@@ -99,6 +100,61 @@ def get_plugin_output_contract_patches(
     if target_contract is not None:
         patches = [p for p in patches if p.target_contract == target_contract]
     return patches
+
+
+def bind_frontend_ui_runtime(
+    emit_event: Callable[[dict[str, Any]], None] | None,
+) -> None:
+    """Bind plugin-scoped page presentation requests to the active Chat stream."""
+    from sdk.frontend_ui import _bind_frontend_ui_dispatcher
+
+    if emit_event is None:
+        _bind_frontend_ui_dispatcher(None)
+        return
+
+    def dispatch(event: dict[str, Any]) -> None:
+        event_type = str(event.get("type") or "").strip()
+        plugin_id = str(event.get("pluginId") or "").strip()
+        if event_type == "plugin.page.present":
+            page_id = str(event.get("pageId") or "").strip()
+            registered = any(
+                str(getattr(contribution, "plugin_id", "") or "").strip()
+                == plugin_id
+                and str(getattr(contribution, "page_id", "") or "").strip()
+                == page_id
+                for contribution in collect_frontend_page_contributions()
+            )
+            if not registered:
+                raise ValueError(
+                    f"Plugin page is not registered by {plugin_id}: {page_id}"
+                )
+        elif event_type != "plugin.page.dismiss":
+            raise ValueError(f"Unsupported plugin frontend event: {event_type}")
+        emit_event(dict(event))
+
+    _bind_frontend_ui_dispatcher(dispatch)
+
+
+def bind_frontend_user_input_runtime(
+    emit_event: Callable[[dict[str, Any]], None] | None,
+) -> None:
+    """Bind plugin frontend-action input requests to the active Chat transport."""
+    from sdk.frontend_user_input import _bind_frontend_user_input_dispatcher
+
+    if emit_event is None:
+        _bind_frontend_user_input_dispatcher(None)
+        return
+
+    def dispatch(event: dict[str, Any]) -> None:
+        if str(event.get("type") or "").strip() != "plugin.user-input.submit":
+            raise ValueError("Unsupported plugin frontend user-input event")
+        plugin_id = str(event.get("pluginId") or "").strip()
+        text = str(event.get("text") or "").strip()
+        if not plugin_id or not text:
+            raise ValueError("Plugin frontend user input requires pluginId and text")
+        emit_event(dict(event))
+
+    _bind_frontend_user_input_dispatcher(dispatch)
 
 
 def ensure_plugins_loaded(config: ConfigManager | None = None) -> PluginManager | None:
@@ -280,6 +336,17 @@ def collect_frontend_page_contributions() -> List["FrontendPageContribution"]:
         return mgr.collect_frontend_page_contributions()
     except Exception:
         logger.exception("collect_frontend_page_contributions failed")
+        return []
+
+
+def collect_frontend_chat_ui_contributions() -> List["FrontendChatUIContribution"]:
+    mgr = _plugin_manager
+    if mgr is None:
+        return []
+    try:
+        return mgr.collect_frontend_chat_ui_contributions()
+    except Exception:
+        logger.exception("collect_frontend_chat_ui_contributions failed")
         return []
 
 

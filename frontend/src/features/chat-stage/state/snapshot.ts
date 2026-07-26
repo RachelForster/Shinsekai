@@ -40,6 +40,11 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
     error: undefined,
     eventSeq: nextEventSeq,
     inputAttachments: state.inputAttachments,
+    inputDraft: state.inputDraft || snapshot.inputDraft,
+    pluginPagePresentations: (snapshot.pluginPagePresentations ?? []).map((presentation) => ({
+      ...presentation,
+      payload: { ...presentation.payload },
+    })),
     sprites: normalizeChatStageSprites(snapshot.sprites.map((sprite) => ({ ...sprite }))),
     stats: (snapshot.stats ?? []).map((stat) => ({ ...stat })),
     turnOptions: { ...emptyChatState.turnOptions, ...snapshot.turnOptions },

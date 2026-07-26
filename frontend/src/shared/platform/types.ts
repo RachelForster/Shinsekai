@@ -105,7 +105,7 @@ export interface SystemConfig {
   chat_window_geometry_b64: string;
   chat_ui_theme_path: string;
   chat_ui_theme_id: string;
-  chat_ui_runtime_mode: string;
+  chat_ui_runtime_mode: "react";
   react_chat_fork_experimental_enabled: boolean;
   react_chat_flowchart_experimental_enabled: boolean;
   mirror_auto_detect_china: boolean;
@@ -181,8 +181,40 @@ export type PluginSlotId =
   | "chat-dialog-actions"
   | "chat-output"
   | "chat-toolbar"
+  | "chat-top-toolbar"
   | "settings-extension"
   | "settings-tools";
+
+export type PluginSlotContributionActionType = "callback" | "none" | "open-plugin-page";
+export type PluginSlotContributionPageMode = "navigate" | "overlay";
+export type PluginSlotContributionIcon = "info" | "play" | "puzzle" | "settings" | "smartphone" | "sparkles";
+export type PluginSlotContributionPresentation = "button" | "icon-only";
+export type PluginSlotContributionVariant = "danger" | "ghost" | "primary";
+
+export interface PluginSlotContribution {
+  actionLabel: string;
+  actionType: PluginSlotContributionActionType;
+  actionable: boolean;
+  description: string;
+  icon: PluginSlotContributionIcon;
+  id: string;
+  order: number;
+  pageId: string;
+  pageMode?: PluginSlotContributionPageMode;
+  pluginId: string;
+  pluginVersion: string;
+  presentation: PluginSlotContributionPresentation;
+  slot: PluginSlotId;
+  title: string;
+  variant: PluginSlotContributionVariant;
+}
+
+export interface PluginSlotActionResult {
+  id: string;
+  kind: "error" | "info" | "success";
+  message: string;
+  pluginId: string;
+}
 
 export interface PluginManifest {
   author: string;
@@ -464,6 +496,10 @@ export interface TemplateSummary {
   scenario?: string;
   system?: string;
   updatedAt: string;
+}
+
+export interface TemplateGenerationResult extends TemplateSummary {
+  resolvedCharacters: string[];
 }
 
 export interface ChatLaunchPayload {
@@ -832,6 +868,14 @@ export interface ChatStat {
   value: number;
 }
 
+export interface PluginPagePresentation {
+  mode: "overlay";
+  pageId: string;
+  payload: Record<string, unknown>;
+  pluginId: string;
+  presentationId: string;
+}
+
 export interface ChatSnapshot {
   asrEnabled?: boolean;
   asrLoading?: boolean;
@@ -857,6 +901,7 @@ export interface ChatSnapshot {
   numericInfo?: string;
   notificationText?: string;
   options: string[];
+  pluginPagePresentations?: PluginPagePresentation[];
   runtimeDependencyError?: RuntimeDependencyError;
   runtimeMode?: "native" | "react";
   sessionClosedReason?: string;
@@ -903,6 +948,7 @@ export interface ChatCommand {
     | "clear-history"
     | "copy-history"
     | "dialog-advance"
+    | "dismiss-plugin-page"
     | "fork-history"
     | "flush-input-batch"
     | "open-history"
@@ -918,7 +964,9 @@ export interface ChatCommand {
     | "update-turn-options";
 }
 
-export type ChatRealtimeCommandType = Exclude<ChatCommand["type"], "copy-history" | "open-history"> | "revert-history";
+export type ChatRealtimeCommandType =
+  | Exclude<ChatCommand["type"], "copy-history" | "dismiss-plugin-page" | "open-history">
+  | "revert-history";
 
 /** 上行命令（React→server，WebSocket），沿用并扩展 ChatCommand。 */
 export interface ChatUpstreamCommand {
@@ -957,6 +1005,8 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[] })
   | (ChatEventBase & { type: "conversation.tree"; tree: ChatConversationTree })
   | (ChatEventBase & { type: "chat.turn.state"; state: ChatTurnState; options?: ChatTurnOptions })
+  | (ChatEventBase & PluginPagePresentation & { type: "plugin.page.present" })
+  | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })
   | (ChatEventBase & {
       type: "sprite.show";
       characterName: string;
@@ -1255,6 +1305,7 @@ export interface ShinsekaiPlatform {
     ) => Promise<PluginManifest>;
     getUi: (id: string) => Promise<PluginUIDetail>;
     list: () => Promise<PluginManifest[]>;
+    listSlotContributions: () => Promise<PluginSlotContribution[]>;
     repoTags: (repo: string) => Promise<string[]>;
     scanLocal: (input: { path: string }) => Promise<PluginLocalScanResult>;
     validateSubmission: (input: PluginSubmissionInput) => Promise<PluginSubmissionValidationResult>;
@@ -1266,6 +1317,7 @@ export interface ShinsekaiPlatform {
       actionId: string,
       values: Record<string, unknown>,
     ) => Promise<PluginConfigActionResult>;
+    runSlotContribution: (pluginId: string, contributionId: string) => Promise<PluginSlotActionResult>;
     saveUiConfig: (id: string, pageId: string, values: Record<string, unknown>) => Promise<PluginConfigSaveResult>;
     setEnabled: (id: string, enabled: boolean) => Promise<PluginManifest>;
     uninstall: (id: string) => Promise<PluginUninstallResult>;
@@ -1280,7 +1332,7 @@ export interface ShinsekaiPlatform {
     get: <TResult = unknown>(id: string) => Promise<TaskSnapshot<TResult>>;
   };
   templates: {
-    generate: (input: TemplateGenerateInput) => Promise<TemplateSummary>;
+    generate: (input: TemplateGenerateInput) => Promise<TemplateGenerationResult>;
     getSession: () => Promise<TemplateLaunchSession | null>;
     list: () => Promise<TemplateSummary[]>;
     save: (template: TemplateSummary) => Promise<TemplateSummary>;

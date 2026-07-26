@@ -1,5 +1,6 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
+import { PlatformRequestError } from "./errors";
 import {
   isTauriDesktop,
   isDesktopBridgeRestarting,
@@ -49,6 +50,8 @@ import type {
   PluginConfigActionResult,
   PluginConfigSaveResult,
   PluginManifest,
+  PluginSlotActionResult,
+  PluginSlotContribution,
   PluginLocalScanResult,
   PluginSubmissionClipboardResult,
   PluginSubmissionInput,
@@ -64,6 +67,7 @@ import type {
   SystemConfig,
   TaskProgressOptions,
   TaskSnapshot,
+  TemplateGenerationResult,
   TemplateLaunchSession,
   TemplateSummary,
   TtsBundleDownloadResult,
@@ -176,7 +180,8 @@ async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit)
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
-    throw new Error(message);
+    const errorCode = typeof data?.errorCode === "string" ? data.errorCode : undefined;
+    throw new PlatformRequestError(message, response.status, errorCode);
   }
   return data as T;
 }
@@ -252,7 +257,8 @@ async function requestForm<T>(baseUrl: string, path: string, formData: FormData)
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
-    throw new Error(message);
+    const errorCode = typeof data?.errorCode === "string" ? data.errorCode : undefined;
+    throw new PlatformRequestError(message, response.status, errorCode);
   }
   return data as T;
 }
@@ -1144,6 +1150,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
       getUi: (id) => requestJson<PluginUIDetail>(apiBase, `/api/plugins/${encodePath(id)}/ui`),
       list: () => requestJson<PluginManifest[]>(apiBase, "/api/plugins"),
+      listSlotContributions: () => requestJson<PluginSlotContribution[]>(apiBase, "/api/plugins/chat-ui-contributions"),
       async repoTags(repo) {
         const result = await requestJson<{ tags: string[] }>(apiBase, "/api/plugins/repo-tags", {
           body: JSON.stringify({ repo }),
@@ -1181,6 +1188,12 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           apiBase,
           `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/actions/${encodePath(actionId)}`,
           { body: JSON.stringify({ values }), method: "POST" },
+        ),
+      runSlotContribution: (pluginId, contributionId) =>
+        requestJson<PluginSlotActionResult>(
+          apiBase,
+          `/api/plugins/${encodePath(pluginId)}/chat-ui/${encodePath(contributionId)}/run`,
+          { body: JSON.stringify({}), method: "POST" },
         ),
       saveUiConfig: (id, pageId, values) =>
         requestJson<PluginConfigSaveResult>(apiBase, `/api/plugins/${encodePath(id)}/ui/${encodePath(pageId)}/config`, {
@@ -1227,7 +1240,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
     },
     templates: {
       generate: (input) =>
-        requestJson<TemplateSummary>(apiBase, "/api/templates/generate", {
+        requestJson<TemplateGenerationResult>(apiBase, "/api/templates/generate", {
           body: JSON.stringify(input),
           method: "POST",
         }),

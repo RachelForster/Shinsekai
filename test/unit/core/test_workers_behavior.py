@@ -11,7 +11,10 @@ import pytest
 
 from core.runtime.app_runtime import AppRuntime, get_app_runtime, set_app_runtime
 from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
+from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY
+from llm.llm_manager import LLMManager
 from sdk.messages import LLMDialogMessage, TTSOutputMessage, UserInputMessage
+from test.mocks import MockLLMAdapter
 
 
 pytestmark = pytest.mark.unit
@@ -81,6 +84,23 @@ def _make_app_runtime(
     return runtime
 
 
+def _run_streaming_llm_worker(llm_manager) -> tuple[AppRuntime, list[LLMDialogMessage]]:
+    user_input_queue = CountingQueue()
+    tts_queue = CountingQueue()
+    user_input_queue.put(UserInputMessage(text="hello"))
+    user_input_queue.put(None)
+    runtime = _make_app_runtime(tts_queue=tts_queue)
+    runtime.config.config.api_config.is_streaming = True
+    runtime.llm_manager = llm_manager
+
+    LLMWorker(user_input_queue, tts_queue).run()
+
+    output = []
+    while not tts_queue.empty():
+        output.append(tts_queue.get_nowait())
+    return runtime, output
+
+
 def test_workers_keep_original_queue_attributes_and_bind_ports() -> None:
     _make_app_runtime()
     user_input_queue = Queue()
@@ -140,6 +160,46 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
         user_attachments=[],
         user_input_text="hello",
     )
+
+
+def test_llm_worker_does_not_requeue_dialogue_after_stream_repair() -> None:
+    valid = (
+        '{"dialog":['
+        '{"character_name":"Alice","speech":"First","sprite":"0"},'
+        '{"character_name":"Bob","speech":"Second","sprite":"1"}'
+        "]}"
+    )
+    adapter = MockLLMAdapter(responses=[f"```json\n{valid}\n```", valid])
+    manager = LLMManager(adapter=adapter, user_template="S")
+
+    _, output = _run_streaming_llm_worker(manager)
+
+    assert [(message.name, message.text) for message in output] == [
+        ("Alice", "First"),
+        ("Bob", "Second"),
+    ]
+    assert [call["stream"] for call in adapter.call_history] == [True, False]
+    assert manager.messages[-1]["content"] == valid
+
+
+def test_llm_worker_appends_repaired_suffix_with_turn_identity() -> None:
+    alice = '{"character_name":"Alice","speech":"First","sprite":"0"}'
+    bob = '{"character_name":"Bob","speech":"Second","sprite":"1"}'
+    repaired = f'{{"dialog":[{alice},{bob}]}}'
+    llm_manager = MagicMock()
+    llm_manager.chat.return_value = iter(
+        [f'{{"dialog":[{alice},', {STREAM_DIALOG_REPAIR_KEY: repaired}]
+    )
+
+    runtime, output = _run_streaming_llm_worker(llm_manager)
+
+    assert [(message.name, message.text) for message in output] == [
+        ("Alice", "First"),
+        ("Bob", "Second"),
+    ]
+    assert {message.turn_id for message in output} == {
+        runtime.chat_turn_service.current_turn().id
+    }
 
 
 def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_path) -> None:

@@ -66,6 +66,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "historyEntries": [],
         "inputDraft": "",
         "options": [],
+        "pluginPagePresentations": [],
         "sprites": [],
         "stats": [],
         "status": "idle",
@@ -155,6 +156,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     next_snapshot.setdefault("historyEntries", [])
     next_snapshot.setdefault("inputDraft", "")
     next_snapshot.setdefault("options", [])
+    next_snapshot.setdefault("pluginPagePresentations", [])
     next_snapshot.setdefault("sprites", [])
     next_snapshot.setdefault("stats", [])
     next_snapshot.setdefault("status", "idle")
@@ -193,18 +195,17 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     if event_type == "dialog.end":
         _clear_transient_notification_state(next_snapshot)
         full_html = str(event.get("fullHtml") or "")
+        speaker = str(event.get("speaker") or "")
         next_snapshot["dialogHtml"] = full_html
         next_snapshot["dialogText"] = _plain_text(full_html)
-        is_speakerless_system = bool(event.get("isSystem")) and not str(event.get("speaker") or "").strip()
+        is_speakerless_system = bool(event.get("isSystem")) and not speaker.strip()
         if is_speakerless_system:
             next_snapshot["characterName"] = ""
             next_snapshot["systemMessageText"] = _plain_text(full_html)
         else:
-            next_snapshot["characterName"] = (
-                "" if bool(event.get("isSystem")) else str(event.get("speaker") or "")
-            )
+            next_snapshot["characterName"] = speaker
             next_snapshot["systemMessageText"] = ""
-        if str(event.get("speaker") or "").strip() or not bool(event.get("isSystem")):
+        if speaker.strip() or not bool(event.get("isSystem")):
             next_snapshot["options"] = []
         return next_snapshot
 
@@ -292,6 +293,51 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         tree = event.get("tree")
         if isinstance(tree, dict):
             next_snapshot["conversationTree"] = dict(tree)
+        return next_snapshot
+
+    if event_type == "plugin.page.present":
+        plugin_id = str(event.get("pluginId") or "").strip()[:128]
+        page_id = str(event.get("pageId") or "").strip()[:128]
+        presentation_id = str(event.get("presentationId") or "").strip()[:128]
+        if not plugin_id or not page_id or not presentation_id:
+            return next_snapshot
+        current = [
+            dict(item)
+            for item in (next_snapshot.get("pluginPagePresentations") or [])
+            if isinstance(item, dict)
+            and (
+                str(item.get("pluginId") or "") != plugin_id
+                or str(item.get("presentationId") or "") != presentation_id
+            )
+        ]
+        current.append(
+            {
+                "mode": "overlay",
+                "pageId": page_id,
+                "payload": (
+                    dict(event.get("payload"))
+                    if isinstance(event.get("payload"), dict)
+                    else {}
+                ),
+                "pluginId": plugin_id,
+                "presentationId": presentation_id,
+            }
+        )
+        next_snapshot["pluginPagePresentations"] = current[-8:]
+        return next_snapshot
+
+    if event_type == "plugin.page.dismiss":
+        plugin_id = str(event.get("pluginId") or "").strip()
+        presentation_id = str(event.get("presentationId") or "").strip()
+        next_snapshot["pluginPagePresentations"] = [
+            dict(item)
+            for item in (next_snapshot.get("pluginPagePresentations") or [])
+            if isinstance(item, dict)
+            and (
+                str(item.get("pluginId") or "") != plugin_id
+                or str(item.get("presentationId") or "") != presentation_id
+            )
+        ]
         return next_snapshot
 
     if event_type == "chat.turn.state":
@@ -441,6 +487,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["busyDurationSeconds"] = 0.0
         next_snapshot["notificationText"] = str(event.get("reason") or "")
         next_snapshot["options"] = []
+        next_snapshot["pluginPagePresentations"] = []
         next_snapshot["sessionClosedReason"] = str(event.get("reason") or "")
         next_snapshot["status"] = "idle"
         next_snapshot["systemMessageText"] = ""

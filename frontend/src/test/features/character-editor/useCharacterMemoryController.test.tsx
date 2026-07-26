@@ -128,13 +128,13 @@ describe("useCharacterMemoryController", () => {
     mockInstallMissingRuntimeDependency.mockResolvedValue({
       message: "installed",
       moduleName: "mem0",
-      packageName: "mem0ai[extras]",
+      packageName: "mem0ai",
     });
     const { client, Wrapper } = createWrapper();
     client.setQueryData(["character-memories", "Mika"], {
       kind: "missing_dependency",
       moduleName: "mem0",
-      packageName: "mem0ai[extras]",
+      packageName: "mem0ai",
     });
     const { result } = renderHook(() => useCharacterMemoryController({ memoryName: "Mika" }), { wrapper: Wrapper });
 

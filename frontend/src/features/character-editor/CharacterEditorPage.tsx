@@ -3,6 +3,7 @@ import type { WheelEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { configQueryKey, getAppConfig } from "../../entities/config/repository";
+import { templatesQueryKey } from "../../entities/template/repository";
 import {
   charactersQueryKey,
   autoLabelCharacterSprites,
@@ -28,7 +29,12 @@ import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
-import type { ImageAutoLabelResult, SpriteVoiceType, TaskSnapshot } from "../../shared/platform/types";
+import type {
+  ImageAutoLabelResult,
+  SpriteVoiceType,
+  TaskSnapshot,
+  TemplateLaunchSession,
+} from "../../shared/platform/types";
 import { AlertDialog, PageSectionNav, useToast } from "../../shared/ui";
 import { CharacterBasicSection } from "./CharacterBasicSection";
 import { CharacterMemoryDialogs } from "./CharacterMemoryDialogs";
@@ -163,14 +169,34 @@ export function CharacterEditorPage() {
       setSelectedName(character.name);
       setDraft(structuredClone(character));
       setPronunciationText(pronunciationMapToText(character.pronunciation_map));
+      if (variables.originalName && variables.originalName !== character.name) {
+        queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
+          current
+            ? {
+                ...current,
+                selectedCharacters: current.selectedCharacters.map((name) =>
+                  name === variables.originalName ? character.name : name,
+                ),
+              }
+            : current,
+        );
+      }
       showToast({ kind: "success", title: t("character.toast.saved") });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteCharacter,
-    onSuccess() {
+    onSuccess(_result, deletedName) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+      queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
+        current
+          ? {
+              ...current,
+              selectedCharacters: current.selectedCharacters.filter((name) => name !== deletedName),
+            }
+          : current,
+      );
       setPendingDelete(null);
       showToast({ kind: "success", title: t("character.toast.deleted") });
     },

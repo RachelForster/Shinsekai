@@ -13,13 +13,14 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 from frontend_bridge_core.chat import _handle_chat_command
 from frontend_bridge_core.chat_stream import ChatStreamService
-from core.runtime.event_sink import WSClientSink
+from core.runtime.event_sink import WSClientSink, fold_event_into_snapshot
 from config.schema import ApiConfig
 
 
 class _StubChatStream:
     def __init__(self):
         self.command = None
+        self.published_event = None
         self.snapshot = {
             "dialogText": "",
             "inputDraft": "",
@@ -37,6 +38,14 @@ class _StubChatStream:
     def update_session_snapshot(self, session_id: str, snapshot: dict):
         self.snapshot.update(snapshot)
         self.snapshot["sessionId"] = session_id
+
+    def publish_event(self, session_id: str, event: dict):
+        if session_id != "session-1":
+            return False
+        self.published_event = dict(event)
+        self.snapshot = fold_event_into_snapshot(self.snapshot, event)
+        self.snapshot["sessionId"] = session_id
+        return True
 
     def get_snapshot(self, session_id: str):
         if session_id != "session-1":
@@ -254,6 +263,57 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertEqual(command["payload"], "en")
         self.assertIsInstance(command["cmdId"], str)
         self.assertTrue(command["cmdId"])
+
+    def test_handle_chat_command_validates_and_forwards_plugin_page_dismissal(self):
+        chat_stream = _StubChatStream()
+        chat_stream.snapshot["pluginPagePresentations"] = [
+            {
+                "mode": "overlay",
+                "pageId": "dashboard",
+                "payload": {},
+                "pluginId": "demo.plugin",
+                "presentationId": "notice-42",
+            }
+        ]
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+        )
+
+        snapshot = _handle_chat_command(
+            state,
+            {
+                "payload": {
+                    "pluginId": " demo.plugin ",
+                    "presentationId": " notice-42 ",
+                },
+                "type": "dismiss-plugin-page",
+            },
+        )
+
+        self.assertEqual(snapshot["status"], "idle")
+        self.assertIsNone(chat_stream.command)
+        self.assertEqual(
+            chat_stream.published_event,
+            {
+                "pluginId": "demo.plugin",
+                "presentationId": "notice-42",
+                "type": "plugin.page.dismiss",
+            },
+        )
+        self.assertEqual(snapshot["pluginPagePresentations"], [])
+
+        with self.assertRaisesRegex(ValueError, "presentationId is required"):
+            _handle_chat_command(
+                state,
+                {
+                    "payload": {
+                        "pluginId": "demo.plugin",
+                        "presentationId": "",
+                    },
+                    "type": "dismiss-plugin-page",
+                },
+            )
 
     def test_handle_chat_command_updates_and_persists_turn_options(self):
         chat_stream = _StubChatStream()
@@ -604,6 +664,44 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertEqual(snapshot["sessionClosedReason"], "closing for test")
         self.assertEqual(snapshot["status"], "idle")
 
+    def test_chat_stream_publishes_bridge_local_plugin_page_events(self):
+        service = ChatStreamService(
+            host="127.0.0.1",
+            bridge_port=_free_bridge_port(),
+        )
+        service.start()
+        try:
+            session = service.create_session()
+
+            published = service.publish_event(
+                session["sessionId"],
+                {
+                    "mode": "overlay",
+                    "pageId": "dashboard",
+                    "payload": {"kind": "reminder"},
+                    "pluginId": "demo.plugin",
+                    "presentationId": "notice-42",
+                    "type": "plugin.page.present",
+                },
+            )
+
+            self.assertTrue(published)
+            snapshot = service.get_snapshot(session["sessionId"])
+            self.assertEqual(
+                snapshot["pluginPagePresentations"],
+                [
+                    {
+                        "mode": "overlay",
+                        "pageId": "dashboard",
+                        "payload": {"kind": "reminder"},
+                        "pluginId": "demo.plugin",
+                        "presentationId": "notice-42",
+                    }
+                ],
+            )
+        finally:
+            service.stop()
+
     def test_chat_stream_requires_auth_token_for_websocket_clients(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=_free_bridge_port(), auth_token="bridge-secret")
         service.start()
@@ -799,7 +897,7 @@ class ChatStreamCommandTests(unittest.TestCase):
                 snapshot = _wait_for_event(viewer, lambda event: event.get("type") == "snapshot")
                 hydrated = snapshot["snapshot"]
                 self.assertEqual(hydrated["dialogText"], "旁白：系统消息")
-                self.assertEqual(hydrated.get("characterName"), "")
+                self.assertEqual(hydrated.get("characterName"), "旁白")
                 self.assertEqual(hydrated.get("busyText"), "")
                 self.assertEqual(hydrated.get("busyDurationSeconds"), 0.0)
                 self.assertEqual(hydrated.get("sessionClosedReason"), "")

@@ -94,6 +94,39 @@ describe("http platform", () => {
     await expect(platform.config.saveApi(sampleConfig.api_config)).rejects.toThrow("保存失败");
   });
 
+  it("preserves template generation status and stable error code", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve({
+          json: () =>
+            Promise.resolve({
+              error: "Select at least one character.",
+              errorCode: "no_valid_characters",
+              type: "NoValidCharactersError",
+            }),
+          ok: false,
+          status: 422,
+          statusText: "Unprocessable Entity",
+        } as Response),
+      ),
+    );
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(
+      platform.templates.generate({
+        backgroundName: "Room",
+        characters: ["Deleted"],
+        name: "Restored",
+        scenario: "Restored scenario",
+      }),
+    ).rejects.toMatchObject({
+      errorCode: "no_valid_characters",
+      message: "Select at least one character.",
+      status: 422,
+    });
+  });
+
   it("fetches LLM model candidates through the bridge", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
       mockJsonResponse([{ id: "provider-returned-model", tags: ["text"] }]),
@@ -1671,6 +1704,46 @@ describe("http platform", () => {
       expect.objectContaining({
         headers: expect.objectContaining({ "Content-Type": "application/json" }),
       }),
+    );
+  });
+
+  it("lists and runs host-rendered plugin slot contributions", async () => {
+    const contribution = {
+      actionLabel: "Run",
+      actionable: true,
+      description: "Host rendered",
+      icon: "sparkles" as const,
+      id: "demo-action",
+      order: 10,
+      pluginId: "demo.plugin",
+      pluginVersion: "1.0.0",
+      slot: "chat-dialog-actions" as const,
+      title: "Demo action",
+      variant: "primary" as const,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(await mockJsonResponse([contribution]))
+      .mockResolvedValueOnce(
+        await mockJsonResponse({ id: "demo-action", kind: "success", message: "done", pluginId: "demo.plugin" }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await expect(platform.plugins.listSlotContributions()).resolves.toEqual([contribution]);
+    await expect(platform.plugins.runSlotContribution("demo.plugin", "demo-action")).resolves.toMatchObject({
+      message: "done",
+    });
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://127.0.0.1:8787/api/plugins/chat-ui-contributions",
+      expect.any(Object),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://127.0.0.1:8787/api/plugins/demo.plugin/chat-ui/demo-action/run",
+      expect.objectContaining({ body: JSON.stringify({}), method: "POST" }),
     );
   });
 
