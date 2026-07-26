@@ -227,11 +227,20 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         )
         start_time = time.perf_counter()
         audio_played = False
-        ch.current_audio_path = audio_path
+        audio_exists = bool(audio_path and Path(audio_path).exists())
+        frontend_audio = getattr(ui, "audio_playback_owner", "backend") == "frontend"
+        ch.current_audio_path = audio_path if audio_exists else None
         dc = ch.dialog_channel
         ev = ch.task_done_requested
         tts_sound = None
-        if dc and audio_path and Path(audio_path).exists():
+        if frontend_audio and audio_exists:
+            ui.post_tts_play(character_name, audio_path)
+            get_asr_log().info(
+                "CharacterDialogUiHandler: TTS delegated to frontend -> post_pause_asr (character=%s)",
+                character_name,
+            )
+            ui.post_pause_asr()
+        elif dc and audio_exists:
             try:
                 tts_sound = pygame.mixer.Sound(audio_path)
                 # Apply character volume
@@ -264,6 +273,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             remaining = min_stop_time - (end_time - start_time)
             if remaining > 0:
                 ev.wait(timeout=remaining)
+        ch.current_audio_path = None
     def post_process(self, out: TTSOutputMessage) -> None:
         if not out.is_final_segment:
             return

@@ -11,6 +11,7 @@ import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
+import { ChatSoundPlayer } from "./audio/ChatSoundPlayer";
 import { ChatConfigDialog } from "./components/ChatConfigDialog";
 import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
@@ -19,7 +20,6 @@ import { InputLayer } from "./components/InputLayer";
 import { PluginPageOverlay } from "./components/PluginPageOverlay";
 import {
   BackgroundLayer,
-  BgmLayer,
   BusyLayer,
   CgLayer,
   DialogLayer,
@@ -665,7 +665,11 @@ export function ChatStagePage() {
           path={viewModel.backgroundPath}
           transparent={transparentBackground}
         />
-        <BgmLayer path={viewModel.bgmPath} volume={runtimeConfig.bgmVolume} />
+        <ChatSoundPlayer
+          bgmPath={viewModel.bgmPath}
+          bgmVolume={runtimeConfig.bgmVolume}
+          commands={state.audioCommands}
+        />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer
           hidden={!viewModel.layers.sprites}

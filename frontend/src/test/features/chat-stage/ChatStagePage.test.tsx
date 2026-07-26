@@ -725,7 +725,10 @@ describe("ChatStagePage", () => {
 
     await screen.findByText("Ready");
     expect(container.querySelector(".chat-stage__background img")).toHaveAttribute("src", "asset://day-room.png");
-    expect(container.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute("src", "asset://day-theme.mp3");
+    expect(container.querySelector("[data-chat-stage-audio-player]")).toHaveAttribute(
+      "data-bgm-src",
+      "asset://day-theme.mp3",
+    );
     await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
 
     act(() => {
@@ -746,7 +749,10 @@ describe("ChatStagePage", () => {
     });
 
     expect(container.querySelector(".chat-stage__background img")).toHaveAttribute("src", "asset://night-room.png");
-    expect(container.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute("src", "asset://night-theme.mp3");
+    expect(container.querySelector("[data-chat-stage-audio-player]")).toHaveAttribute(
+      "data-bgm-src",
+      "asset://night-theme.mp3",
+    );
     await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
     expect(pause).toHaveBeenCalledTimes(1);
 
@@ -754,8 +760,78 @@ describe("ChatStagePage", () => {
       listener?.({ seq: 3, ts: 3, type: "bgm.change", url: "", v: 1 });
     });
 
-    expect(container.querySelector("audio[data-chat-stage-bgm]")).not.toBeInTheDocument();
+    expect(container.querySelector("[data-chat-stage-audio-player]")).toHaveAttribute("data-bgm-src", "");
     expect(pause).toHaveBeenCalledTimes(2);
+    play.mockRestore();
+    pause.mockRestore();
+  });
+
+  it("plays voice and effect events in the frontend sound player", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    const { unmount } = renderPage();
+
+    await screen.findByText("Ready");
+    act(() => {
+      listener?.({
+        characterName: "Mio",
+        seq: 1,
+        ts: 1,
+        type: "tts.play",
+        url: "asset://voice.wav",
+        v: 1,
+      });
+      listener?.({
+        seq: 2,
+        ts: 2,
+        type: "effect.play",
+        url: "asset://impact.wav",
+        v: 1,
+      });
+      listener?.({
+        key: "rain",
+        seq: 3,
+        ts: 3,
+        type: "effect.loop.start",
+        url: "asset://rain.wav",
+        v: 1,
+      });
+    });
+
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(3));
+
+    act(() => {
+      listener?.({ seq: 4, ts: 4, type: "tts.skip", v: 1 });
+      listener?.({ key: "rain", seq: 5, ts: 5, type: "effect.loop.stop", v: 1 });
+    });
+
+    await waitFor(() => expect(pause).toHaveBeenCalledTimes(2));
+    unmount();
+    play.mockRestore();
+    pause.mockRestore();
+  });
+
+  it("offers a tap-to-enable control when mobile autoplay is blocked", async () => {
+    const blocked = Object.assign(new Error("autoplay blocked"), { name: "NotAllowedError" });
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockRejectedValueOnce(blocked)
+      .mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    mocks.getChatSnapshot.mockResolvedValue(snapshot({ bgmPath: "asset://day-theme.mp3" }));
+    const { unmount } = renderPage();
+
+    const enableSound = await screen.findByRole("button", { name: "Enable sound" });
+    fireEvent.click(enableSound);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Enable sound" })).not.toBeInTheDocument());
+
+    expect(play).toHaveBeenCalledTimes(2);
+    unmount();
     play.mockRestore();
     pause.mockRestore();
   });

@@ -15,6 +15,12 @@ if TYPE_CHECKING:
 from core.messaging.stat_payload import format_stats_html, parse_stat_payload
 from application.chat.history_state import serialize_chat_history_entries
 
+SOUND_EFFECTS_PATH = {
+    "DISAPPOINTED": "./assets/system/sound/disappointed.wav",
+    "SHOCKED": "./assets/system/sound/shocked.wav",
+    "ATTENTION": "./assets/system/sound/attention.wav",
+}
+
 _config_manager = None
 
 
@@ -257,6 +263,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             normalized_slot_count = 3
         self.max_sprite_slots = max(1, normalized_slot_count)
         self._sprite_lru: OrderedDict[str, int] = OrderedDict()
+        self._looping_effects: dict[str, str] = {}
+        self.audio_playback_owner = "frontend"
 
     def _get_or_create_sprite_slot(self, character_name: str) -> int:
         """Mirror the legacy Qt SpritePanel character-to-slot LRU."""
@@ -361,16 +369,63 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._sink.emit({"type": "asr.state", "running": False})
 
     def post_tts_play(self, character_name: str, audio_path: str) -> None:
+        volume = 1.0
+        try:
+            character = get_character_by_name(character_name)
+            if character is not None:
+                volume = min(
+                    1.0,
+                    max(
+                        0.0,
+                        float(getattr(character, "speech_volume", 1.0) or 1.0),
+                    ),
+                )
+        except Exception:
+            pass
         self._sink.emit(
             {
                 "type": "tts.play",
                 "characterName": str(character_name or ""),
                 "url": self._media_url(audio_path),
+                "volume": volume,
             }
         )
 
     def post_tts_skip(self) -> None:
         self._sink.emit({"type": "tts.skip"})
+
+    def play_sound_effect(self, sound_effect_path: str) -> None:
+        path = str(sound_effect_path or "").strip()
+        if not path or not Path(path).exists():
+            return
+        self._sink.emit({"type": "effect.play", "url": self._media_url(path)})
+
+    def start_loop_effect(self, keyword: str, audio_path: str) -> None:
+        key = str(keyword or "").strip()
+        path = str(audio_path or "").strip()
+        if not key or not path or not Path(path).exists() or key in self._looping_effects:
+            return
+        self._looping_effects[key] = path
+        self._sink.emit(
+            {
+                "type": "effect.loop.start",
+                "key": key,
+                "url": self._media_url(path),
+            }
+        )
+
+    def stop_loop_effect(self, keyword: str) -> None:
+        key = str(keyword or "").strip()
+        if not key or key not in self._looping_effects:
+            return
+        self._looping_effects.pop(key, None)
+        self._sink.emit({"type": "effect.loop.stop", "key": key})
+
+    def stop_all_loop_effects(self) -> None:
+        if not self._looping_effects:
+            return
+        self._looping_effects.clear()
+        self._sink.emit({"type": "effect.loop.stop-all"})
 
     def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
         self._sink.emit({"type": "session.closed", "reason": str(reason or "聊天会话已结束。")})
@@ -475,5 +530,57 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._sink.emit({"type": "sprite.remove", "characterName": character_name})
 
     def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> None:
-        if str(effect or "").upper() == "LEAVE" and after_dialog:
+        raw = str(effect or "").strip()
+        if not raw:
+            return
+        if raw.upper() == "LEAVE" and after_dialog:
             self.remove_character_sprite(str(args.get("character_name") or ""))
+            return
+
+        mode = "once"
+        if raw.startswith("loop:"):
+            mode = "loop"
+            raw = raw[5:]
+        elif raw.startswith("stop:"):
+            mode = "stop"
+            raw = raw[5:]
+        else:
+            timing = "before"
+            if raw.startswith("before:"):
+                raw = raw[7:]
+            elif raw.startswith("after:"):
+                timing = "after"
+                raw = raw[6:]
+            if (timing == "before" and after_dialog) or (
+                timing == "after" and not after_dialog
+            ):
+                return
+
+        keyword = raw.strip()
+        if not keyword:
+            return
+        audio_path = str(SOUND_EFFECTS_PATH.get(keyword.upper()) or "").strip()
+        if not audio_path:
+            try:
+                from application.runtime.context import get_app_runtime
+
+                keyword_map = getattr(get_app_runtime(), "effect_keyword_map", {}) or {}
+                audio_path = next(
+                    (
+                        str(path or "").strip()
+                        for configured_keyword, path in keyword_map.items()
+                        if str(configured_keyword or "").strip().lower()
+                        == keyword.lower()
+                    ),
+                    "",
+                )
+            except Exception:
+                audio_path = ""
+        if mode != "stop" and not audio_path:
+            return
+        if mode == "loop":
+            self.start_loop_effect(keyword, audio_path)
+        elif mode == "stop":
+            self.stop_loop_effect(keyword)
+        else:
+            self.play_sound_effect(audio_path)

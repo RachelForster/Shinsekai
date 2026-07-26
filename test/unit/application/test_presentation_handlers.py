@@ -200,6 +200,53 @@ class TestCharacterDialogUiHandler:
         sound.set_volume.assert_called_once_with(0.8)
         assert playback.current_audio_path is None
 
+    def test_react_runtime_delegates_tts_playback_to_frontend(self, tmp_path):
+        audio_path = tmp_path / "alice.wav"
+        audio_path.write_bytes(b"wav")
+
+        ui = MagicMock()
+        ui.audio_playback_owner = "frontend"
+        playback = SimpleNamespace(
+            task_done_requested=SimpleNamespace(
+                is_set=lambda: False,
+                wait=lambda timeout=None: False,
+            ),
+            dialog_channel=None,
+            current_audio_path=None,
+        )
+        runtime = SimpleNamespace(ui_update_manager=ui, ui_playback=playback)
+
+        class _Character:
+            color = "#abcdef"
+            speech_volume = 0.8
+
+        handler = CharacterDialogUiHandler()
+        out = TTSOutputMessage(
+            audio_path=audio_path.as_posix(),
+            name="Alice",
+            text="Hello",
+            asset_id="1",
+            is_system_message=False,
+            is_final_segment=True,
+        )
+
+        with patch(
+            "application.chat.handlers.presentation.get_app_runtime",
+            return_value=runtime,
+        ), patch(
+            "application.chat.handlers.presentation.get_character_by_name",
+            return_value=_Character(),
+        ), patch("application.chat.handlers.presentation.pygame.mixer.Sound") as sound, patch(
+            "application.chat.handlers.presentation.get_asr_log",
+            return_value=MagicMock(),
+        ), patch("sdk.logging.timing.tracker.stop_cross", return_value=None):
+            handler.handle(out)
+
+        sound.assert_not_called()
+        ui.post_tts_play.assert_called_once_with("Alice", audio_path.as_posix())
+        ui.post_pause_asr.assert_called_once_with()
+        assert playback.current_audio_path is None
+
 
 class TestHandlerChainAssembly:
     def test_get_ui_output_handlers_returns_all_eight(self):

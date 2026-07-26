@@ -143,8 +143,8 @@ describe("ChatStagePage http platform integration", () => {
       "src",
       "http://127.0.0.1:8787/api/media?path=data%2Fcharacters%2Fmio.png",
     );
-    expect(document.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute(
-      "src",
+    expect(document.querySelector("[data-chat-stage-audio-player]")).toHaveAttribute(
+      "data-bgm-src",
       "http://127.0.0.1:8787/api/media?path=data%2Fbgm%2Fschool.mp3",
     );
     await waitFor(() => expect(play).toHaveBeenCalledTimes(1));

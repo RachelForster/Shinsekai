@@ -557,6 +557,10 @@ class PresentationWorker(ThreadDagNode):
         return {}
 
     def _init_channel(self):
+        if getattr(self.ui_update_manager, "audio_playback_owner", "backend") == "frontend":
+            self.dialog_channel = None
+            print("UIWorker: React runtime delegates audio playback to the frontend.")
+            return
         try:
             pygame.mixer.init()
             if pygame.mixer.get_num_channels() < self.DIALOG_CHANNEL_ID + 1:

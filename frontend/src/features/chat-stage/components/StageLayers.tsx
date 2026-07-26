@@ -55,52 +55,6 @@ export function BackgroundLayer({
   );
 }
 
-export function BgmLayer({ path, volume = 1 }: { path?: string; volume?: number }) {
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const src = stageAssetUrl(path);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (audio) {
-      audio.volume = Math.min(1, Math.max(0, volume));
-    }
-  }, [volume, src]);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio || !src) {
-      return;
-    }
-
-    let disposed = false;
-    const play = () => {
-      if (disposed) {
-        return;
-      }
-      const request = audio.play();
-      if (request) {
-        void request.catch(() => undefined);
-      }
-    };
-    const request = audio.play();
-    if (request) {
-      void request.catch(() => {
-        if (!disposed) {
-          document.addEventListener("pointerdown", play, { once: true });
-        }
-      });
-    }
-
-    return () => {
-      disposed = true;
-      document.removeEventListener("pointerdown", play);
-      audio.pause();
-    };
-  }, [src]);
-
-  return src ? <audio aria-hidden data-chat-stage-bgm loop preload="auto" ref={audioRef} src={src} /> : null;
-}
-
 export function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
   const src = stageAssetUrl(path);
   return (

@@ -493,6 +493,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "堆叠连续消息",
   "chat.config.bgmVolume": "BGM 音量",
+  "chat.audio.unlock": "启用声音",
+  "chat.audio.unlockHint": "点击后在当前设备播放语音、音效和 BGM。",
   "chat.config.batchHelp": "暂存连续发送的消息，并合并成一个回合提交给模型。",
   "chat.config.batchTimeout": "堆叠空闲等待时间",
   "chat.config.batchTimeoutValue": "{value} 秒",
