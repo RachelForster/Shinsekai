@@ -19,6 +19,8 @@ DEFAULT_HUGGINGFACE_MIRROR_URL = "https://hf-mirror.com"
 DEFAULT_GITHUB_MIRROR_URL = "https://gh-proxy.com/"
 DEFAULT_PYPI_MIRROR_URL = "https://pypi.tuna.tsinghua.edu.cn/simple/"
 DEFAULT_HUGGINGFACE_CACHE_DIR = "./data/cache/huggingface"
+OFFICIAL_HUGGINGFACE_URL = "https://huggingface.co"
+OFFICIAL_GITHUB_URL = "https://github.com"
 OFFICIAL_PYPI_INDEX_URL = "https://pypi.org/simple/"
 
 REGION_AUTO = "auto"
@@ -174,6 +176,10 @@ def system_config_payload_with_resolved_mirrors(config: Any) -> dict[str, Any]:
 
 def apply_mirror_environment(config: Any) -> MirrorValues:
     values = resolved_mirror_values(config)
+    detection_mode = "auto" if bool(getattr(config, "mirror_auto_detect_china", True)) else "manual"
+    huggingface_source = _redact_url(values.huggingface or OFFICIAL_HUGGINGFACE_URL)
+    github_source = _redact_url(values.github or OFFICIAL_GITHUB_URL)
+    pypi_source = _redact_url(values.pypi or OFFICIAL_PYPI_INDEX_URL)
     _set_or_restore_env("HF_ENDPOINT", values.huggingface)
     _set_or_restore_env("HUGGINGFACE_HUB_ENDPOINT", values.huggingface)
     _set_or_restore_env("SHINSEKAI_HUGGINGFACE_MIRROR_URL", values.huggingface)
@@ -191,10 +197,20 @@ def apply_mirror_environment(config: Any) -> MirrorValues:
     _set_or_restore_env("SHINSEKAI_PIP_INDEX_URL", values.pypi)
     _set_or_restore_env("SHINSEKAI_MIRROR_REGION", values.region)
     logger.info(
-        "Mirror environment applied",
+        "Mirror environment applied "
+        "(region=%s, mode=%s, huggingface=%s, github=%s, pypi=%s)",
+        values.region,
+        detection_mode,
+        huggingface_source,
+        github_source,
+        pypi_source,
         extra={
             "event": "mirror.env.applied",
             "region": values.region,
+            "detection_mode": detection_mode,
+            "huggingface_source": huggingface_source,
+            "github_source": github_source,
+            "pypi_source": pypi_source,
             "huggingface_mirror": _redact_url(values.huggingface),
             "huggingface_cache_dir": hf_home,
             "github_mirror": _redact_url(values.github),
