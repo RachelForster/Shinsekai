@@ -104,6 +104,10 @@ from frontend_bridge_core.model_assets import (
 from frontend_bridge_core.config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
 from frontend_bridge_core.logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
 from frontend_bridge_core.media import _media_thumbnail, _media_thumbnail_batch
+from frontend_bridge_core.media_paths import (
+    resolve_external_media_file,
+    validate_readable_media_file,
+)
 from frontend_bridge_core.image_annotations import (
     run_background_image_auto_label,
     run_character_sprite_auto_label,
@@ -295,6 +299,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if not self._request_origin_allowed():
             raise PermissionError("request origin is not allowed")
         if path.startswith("/api/") and not self._has_valid_auth_token():
+            raise PermissionError("invalid bridge auth token")
+
+    def _require_authorized_media_read(self) -> None:
+        if not self._request_origin_allowed():
+            raise PermissionError("request origin is not allowed")
+        if not self._has_valid_auth_token():
             raise PermissionError("invalid bridge auth token")
 
     def _send_cors(self) -> None:
@@ -539,9 +549,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 target = unquote((query.get("path") or [""])[0])
                 self._send_file(target, attachment=True)
             elif path == "/api/media":
+                self._require_authorized_media_read()
                 query = parse_qs(parsed.query)
                 target = unquote((query.get("path") or [""])[0])
-                self._send_file(target, attachment=False)
+                self._send_media_file(target)
             elif path == "/api/media/thumbnail":
                 query = parse_qs(parsed.query)
                 target = unquote((query.get("path") or [""])[0])
@@ -578,9 +589,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 target = unquote((query.get("path") or [""])[0])
                 self._send_file(target, attachment=True, send_body=False)
             elif path == "/api/media":
+                self._require_authorized_media_read()
                 query = parse_qs(parsed.query)
                 target = unquote((query.get("path") or [""])[0])
-                self._send_file(target, attachment=False, send_body=False)
+                self._send_media_file(target, send_body=False)
             elif path == "/api/media/thumbnail":
                 query = parse_qs(parsed.query)
                 target = unquote((query.get("path") or [""])[0])
@@ -1519,6 +1531,14 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 return path
         return first_valid if first_valid is not None else safe_project_path(raw)
 
+    def _resolve_media_path(self, raw_path: str) -> Path:
+        raw = str(raw_path or "").strip()
+        if not raw:
+            raise FileNotFoundError(raw_path)
+        if Path(raw).is_absolute():
+            return resolve_external_media_file(raw)
+        return validate_readable_media_file(self._resolve_project_path(raw))
+
     def _resolve_static_path(self, root: Path, request_path: str) -> Path:
         return safe_child_path(root, request_path)
 
@@ -1674,6 +1694,18 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self._send_local_file(
             self._resolve_project_path(relative_path),
             attachment=attachment,
+            send_body=send_body,
+        )
+
+    def _send_media_file(
+        self,
+        path: str,
+        *,
+        send_body: bool = True,
+    ) -> None:
+        self._send_local_file(
+            self._resolve_media_path(path),
+            attachment=False,
             send_body=send_body,
         )
 
