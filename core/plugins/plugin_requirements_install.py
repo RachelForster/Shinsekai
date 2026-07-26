@@ -393,7 +393,12 @@ def install_plugin_requirements_txt(
                     "https://pypi.org/simple",
                 ]
                 if plan.force_reinstall:
-                    cmd_torch.extend(["--upgrade", "--force-reinstall"])
+                    # ``--force-reinstall`` also applies to resolved transitive
+                    # dependencies unless dependency resolution is disabled.
+                    # Replace only the requested PyTorch binary stack first;
+                    # the follow-up plain install repairs missing dependencies
+                    # without forcing already-satisfied packages to reinstall.
+                    cmd_torch.extend(["--upgrade", "--force-reinstall", "--no-deps"])
                 cmd_torch.extend(["-r", str(torch_tf)])
                 code1, detail1 = _run_pip_install(
                     _apply_pip_index_and_extra_args(cmd_torch, torch_lines),
@@ -403,6 +408,24 @@ def install_plugin_requirements_txt(
                 )
                 if code1 != "pip_ok":
                     return (code1, detail1)
+                if plan.force_reinstall:
+                    cmd_torch_deps = [
+                        *_pip_base_install_cmd(py, None),
+                        "--index-url",
+                        plan.index_url,
+                        "--extra-index-url",
+                        "https://pypi.org/simple",
+                        "-r",
+                        str(torch_tf),
+                    ]
+                    code2, detail2 = _run_pip_install(
+                        _apply_pip_index_and_extra_args(cmd_torch_deps, torch_lines),
+                        cwd=root,
+                        timeout_sec=remaining_budget(),
+                        on_output_line=on_output_line,
+                    )
+                    if code2 != "pip_ok":
+                        return (code2, detail2)
 
             other_lines = install_lines if can_prune else source_other_lines
             if not _has_non_comment_requirement(other_lines):

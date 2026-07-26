@@ -72,6 +72,42 @@ fn configure_pip_install_command_adds_selected_index_url_argument() {
     );
 }
 
+#[test]
+fn pytorch_force_reinstall_command_limits_replacement_to_the_stack() {
+    let command = pytorch_install_command(
+        Path::new("python"),
+        Path::new("torch-requirements.txt"),
+        "https://download.pytorch.org/whl/cu128",
+        true,
+    );
+    let args = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    assert!(args.iter().any(|arg| arg == "--force-reinstall"));
+    assert!(args.iter().any(|arg| arg == "--upgrade"));
+    assert!(args.iter().any(|arg| arg == "--no-deps"));
+}
+
+#[test]
+fn pytorch_dependency_repair_command_does_not_force_reinstall() {
+    let command = pytorch_install_command(
+        Path::new("python"),
+        Path::new("torch-requirements.txt"),
+        "https://download.pytorch.org/whl/cu128",
+        false,
+    );
+    let args = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    assert!(!args.iter().any(|arg| arg == "--force-reinstall"));
+    assert!(!args.iter().any(|arg| arg == "--upgrade"));
+    assert!(!args.iter().any(|arg| arg == "--no-deps"));
+}
+
 #[cfg(unix)]
 #[test]
 fn ensure_python_pip_available_bootstraps_with_ensurepip() {

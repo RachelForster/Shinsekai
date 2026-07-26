@@ -407,12 +407,23 @@ def test_pytorch_cpu_build_is_force_reinstalled_from_cuda_index_without_plugin_t
     result = installer.install_plugin_requirements_txt(plugin_root)
 
     assert result == ("pip_ok", "")
-    assert len(calls) == 1
-    cmd = calls[0]["cmd"]
-    assert "--force-reinstall" in cmd
-    assert "--upgrade" in cmd
-    assert "--target" not in cmd
-    assert cmd[cmd.index("--index-url") + 1] == "https://download.pytorch.org/whl/cu128"
+    assert len(calls) == 2
+    reinstall_cmd = calls[0]["cmd"]
+    assert "--force-reinstall" in reinstall_cmd
+    assert "--upgrade" in reinstall_cmd
+    assert "--no-deps" in reinstall_cmd
+    assert "--target" not in reinstall_cmd
+    assert (
+        reinstall_cmd[reinstall_cmd.index("--index-url") + 1]
+        == "https://download.pytorch.org/whl/cu128"
+    )
+
+    dependency_repair_cmd = calls[1]["cmd"]
+    assert "--force-reinstall" not in dependency_repair_cmd
+    assert "--upgrade" not in dependency_repair_cmd
+    assert "--no-deps" not in dependency_repair_cmd
+    assert "--target" not in dependency_repair_cmd
+    assert calls[0]["requirements_text"] == calls[1]["requirements_text"]
 
 
 def test_matching_pytorch_stack_skips_pip(monkeypatch, tmp_path):

@@ -104,20 +104,30 @@ where
             write_temp_requirements(requirements_path, "shinsekai-runtime", &other_lines)?;
         let result = (|| {
             if plan.install_required {
-                let mut install_torch = pip_install_command(python, &torch_requirements, None);
-                install_torch
-                    .arg("--index-url")
-                    .arg(&plan.index_url)
-                    .arg("--extra-index-url")
-                    .arg("https://pypi.org/simple");
-                if plan.force_reinstall {
-                    install_torch.arg("--upgrade").arg("--force-reinstall");
-                }
+                let mut install_torch = pytorch_install_command(
+                    python,
+                    &torch_requirements,
+                    &plan.index_url,
+                    plan.force_reinstall,
+                );
                 run_command_with_live_log(
                     &mut install_torch,
                     "install Shinsekai PyTorch runtime dependencies",
                     &mut on_log_line,
                 )?;
+                if plan.force_reinstall {
+                    let mut repair_dependencies = pytorch_install_command(
+                        python,
+                        &torch_requirements,
+                        &plan.index_url,
+                        false,
+                    );
+                    run_command_with_live_log(
+                        &mut repair_dependencies,
+                        "repair Shinsekai PyTorch runtime dependencies",
+                        &mut on_log_line,
+                    )?;
+                }
             }
             if !has_non_comment_requirement(&other_lines) {
                 return Ok(());
@@ -217,6 +227,30 @@ fn pip_install_command(
     install.arg("-m").arg("pip").arg("install");
     configure_pip_install_command(&mut install, python, pip_index_url);
     install.arg("-r").arg(requirements_path);
+    install
+}
+
+fn pytorch_install_command(
+    python: &Path,
+    requirements_path: &Path,
+    index_url: &str,
+    force_stack_only: bool,
+) -> Command {
+    let mut install = pip_install_command(python, requirements_path, None);
+    install
+        .arg("--index-url")
+        .arg(index_url)
+        .arg("--extra-index-url")
+        .arg("https://pypi.org/simple");
+    if force_stack_only {
+        // Without --no-deps, pip applies --force-reinstall to every resolved
+        // transitive dependency. A following plain install repairs only
+        // dependencies that are missing or genuinely incompatible.
+        install
+            .arg("--upgrade")
+            .arg("--force-reinstall")
+            .arg("--no-deps");
+    }
     install
 }
 

@@ -1236,9 +1236,11 @@ or updates** the plugin (not on every launch): already-satisfied lines are skipp
 `torch`/`torchvision`/`torchaudio` are treated as one binary stack and routed to the
 PyTorch wheel index with automatic CUDA/CPU channel selection. The host checks both
 the requirement versions and the installed wheel build (`cpu` / `cuXXX`) on every
-plugin install or update; a mismatch triggers a full `--force-reinstall` of the
-requested stack. In frozen builds the PyTorch stack is installed into the bundled
-runtime itself, while ordinary plugin dependencies go to `data/plugin_site_packages`.
+plugin install or update; a mismatch triggers `--force-reinstall --no-deps` for the
+requested stack. A following normal pip pass repairs only missing or incompatible
+transitive dependencies instead of forcing every already-satisfied library to
+reinstall. In frozen builds the PyTorch stack is installed into the bundled runtime
+itself, while ordinary plugin dependencies go to `data/plugin_site_packages`.
 China-region or China-pip-index installs use the Aliyun PyTorch wheel mirror; global
 installs use the official PyTorch index. `SHINSEKAI_PYTORCH_WHEEL_BASE` can override
 that mapping explicitly. General mirror selection honours
