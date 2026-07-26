@@ -36,22 +36,11 @@ _DEFAULT_IP_REGION_URLS = (
     "https://ipapi.co/country/",
     "https://api.country.is/",
 )
-_NETWORK_PROXY_ENV_NAMES = (
-    "HTTPS_PROXY",
-    "https_proxy",
-    "HTTP_PROXY",
-    "http_proxy",
-    "ALL_PROXY",
-    "all_proxy",
-    "SOCKS_PROXY",
-    "socks_proxy",
-)
 
 _MANAGED_ENV_NAMES = (
     "HF_ENDPOINT",
     "HF_HOME",
     "HF_HUB_CACHE",
-    "HF_HUB_DISABLE_XET",
     "HUGGINGFACE_HUB_ENDPOINT",
     "HUGGINGFACE_HUB_CACHE",
     "TRANSFORMERS_CACHE",
@@ -191,18 +180,9 @@ def apply_mirror_environment(config: Any) -> MirrorValues:
     huggingface_source = _redact_url(values.huggingface or OFFICIAL_HUGGINGFACE_URL)
     github_source = _redact_url(values.github or OFFICIAL_GITHUB_URL)
     pypi_source = _redact_url(values.pypi or OFFICIAL_PYPI_INDEX_URL)
-    disable_xet_for_proxy = (
-        _uses_official_huggingface_source(values.huggingface)
-        and _has_active_network_proxy()
-    )
-    huggingface_transport = "http" if disable_xet_for_proxy else "auto"
     _set_or_restore_env("HF_ENDPOINT", values.huggingface)
     _set_or_restore_env("HUGGINGFACE_HUB_ENDPOINT", values.huggingface)
     _set_or_restore_env("SHINSEKAI_HUGGINGFACE_MIRROR_URL", values.huggingface)
-    _set_or_restore_env(
-        "HF_HUB_DISABLE_XET",
-        "1" if disable_xet_for_proxy else "",
-    )
     hf_home = _resolved_cache_path(values.huggingface_cache_dir)
     hf_hub_cache = (Path(hf_home) / "hub").as_posix()
     transformers_cache = (Path(hf_home) / "transformers").as_posix()
@@ -218,11 +198,10 @@ def apply_mirror_environment(config: Any) -> MirrorValues:
     _set_or_restore_env("SHINSEKAI_MIRROR_REGION", values.region)
     logger.info(
         "Mirror environment applied "
-        "(region=%s, mode=%s, huggingface=%s, huggingface_transport=%s, github=%s, pypi=%s)",
+        "(region=%s, mode=%s, huggingface=%s, github=%s, pypi=%s)",
         values.region,
         detection_mode,
         huggingface_source,
-        huggingface_transport,
         github_source,
         pypi_source,
         extra={
@@ -230,8 +209,6 @@ def apply_mirror_environment(config: Any) -> MirrorValues:
             "region": values.region,
             "detection_mode": detection_mode,
             "huggingface_source": huggingface_source,
-            "huggingface_transport": huggingface_transport,
-            "huggingface_xet_disabled_for_proxy": disable_xet_for_proxy,
             "github_source": github_source,
             "pypi_source": pypi_source,
             "huggingface_mirror": _redact_url(values.huggingface),
@@ -367,15 +344,6 @@ def _set_or_restore_env(name: str, value: str) -> None:
         os.environ.pop(name, None)
     else:
         os.environ[name] = original
-
-
-def _uses_official_huggingface_source(url: str) -> bool:
-    normalized = str(url or OFFICIAL_HUGGINGFACE_URL).strip().rstrip("/").casefold()
-    return normalized == OFFICIAL_HUGGINGFACE_URL.casefold()
-
-
-def _has_active_network_proxy() -> bool:
-    return any(str(os.environ.get(name, "") or "").strip() for name in _NETWORK_PROXY_ENV_NAMES)
 
 
 class _FallbackMirrorConfig:
