@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
+import { DEFAULT_TTS_SERVER_URL, HTTPS_DEFAULT_TTS_SERVER_URL } from "../../../features/api-settings/apiSettingsUtils";
 import { onboardingCopy } from "../../../features/onboarding/onboardingCopy";
 import { ApiSetupPanel } from "../../../features/onboarding/steps/ApiSetupPanel";
 import { I18nProvider } from "../../../shared/i18n";
@@ -96,8 +97,13 @@ describe("ApiSetupPanel TTS bundle flow", () => {
     expect(firstArg).toEqual({ kind: "gptso" });
   });
 
-  it("auto-fills TTS provider, URL, and path after successful bundle download", async () => {
+  it("uses API settings defaults for TTS provider, URL, and path after bundle download", async () => {
     mocks.saveApiConfig.mockImplementation(async (config: Record<string, unknown>) => config);
+    mocks.getAppConfig.mockResolvedValue(
+      appConfigForOnboarding({
+        gpt_sovits_url: HTTPS_DEFAULT_TTS_SERVER_URL,
+      }),
+    );
 
     renderPanel();
     expect(await screen.findByLabelText("基础地址")).toBeInTheDocument();
@@ -112,7 +118,7 @@ describe("ApiSetupPanel TTS bundle flow", () => {
 
     const saved = mocks.saveApiConfig.mock.calls[0][0] as Record<string, unknown>;
     expect(saved.tts_provider).toBe("gpt-sovits");
-    expect(saved.gpt_sovits_url).toBe("/project/data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro");
+    expect(saved.gpt_sovits_url).toBe(DEFAULT_TTS_SERVER_URL);
     expect(saved.gpt_sovits_api_path).toBe("/project/data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro");
   });
 
@@ -120,7 +126,7 @@ describe("ApiSetupPanel TTS bundle flow", () => {
     mocks.saveApiConfig.mockResolvedValue({
       ...appConfigForOnboarding().api_config,
       tts_provider: "gpt-sovits",
-      gpt_sovits_url: "/project/data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro",
+      gpt_sovits_url: DEFAULT_TTS_SERVER_URL,
       gpt_sovits_api_path: "/project/data/tts_bundles/installed/gpt_sovits_v2pro/GPT-SoVITS-v2pro",
     });
 

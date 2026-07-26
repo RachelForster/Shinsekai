@@ -188,6 +188,9 @@ describe("onboarding flow", () => {
     );
 
     expect(await screen.findByRole("heading", { name: "First run guide" })).toBeInTheDocument();
+    const stepNavigation = screen.getByRole("navigation", { name: "First run guide" });
+    expect(within(stepNavigation).getAllByRole("button")).toHaveLength(5);
+    expect(within(stepNavigation).queryByText(onboardingCopy.en.api.description)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Open next step" }));
 
     const apiDialog = await screen.findByRole("dialog", { name: "Confirm" });

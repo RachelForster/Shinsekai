@@ -8,7 +8,6 @@ import "./GuidedFlow.css";
 export interface GuidedFlowStep {
   accent?: "accent" | "info" | "success" | "warning";
   content: ReactNode;
-  description: string;
   icon?: ReactNode;
   id: string;
   optional?: boolean;
@@ -109,7 +108,6 @@ export function GuidedFlow({
                       {step.optional ? optionalLabel : requiredLabel}
                     </span>
                   </span>
-                  <span className="guided-flow__step-description">{step.description}</span>
                 </span>
               </button>
             );

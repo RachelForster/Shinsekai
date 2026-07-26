@@ -50,6 +50,7 @@ import { TtsBundleSection } from "./TtsBundleSection";
 import {
   activeMapValue,
   adapterSchema,
+  applyDownloadedTtsBundle,
   applyTtsProviderDefaults,
   apiSchemaWithAdapterOptions,
   asrComputeOptions,
@@ -358,15 +359,7 @@ export function ApiSettingsPage() {
     onSuccess(result) {
       setTtsBundleDialogOpen(false);
       setTtsBundleError(null);
-      setDraft((current) =>
-        current
-          ? {
-              ...current,
-              gpt_sovits_api_path: result.path,
-              tts_provider: result.provider,
-            }
-          : current,
-      );
+      setDraft((current) => (current ? applyDownloadedTtsBundle(current, result) : current));
       showToast({
         kind: "success",
         message: t("api.tts.bundleDone", { path: result.path }),
