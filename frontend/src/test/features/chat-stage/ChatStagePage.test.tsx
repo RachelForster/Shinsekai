@@ -780,6 +780,7 @@ describe("ChatStagePage", () => {
     act(() => {
       listener?.({
         characterName: "Mio",
+        playbackId: "voice-1",
         seq: 1,
         ts: 1,
         type: "tts.play",
@@ -804,9 +805,18 @@ describe("ChatStagePage", () => {
     });
 
     await waitFor(() => expect(play).toHaveBeenCalledTimes(3));
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: {
+          playbackId: "voice-1",
+          state: "started",
+        },
+        type: "audio-playback-signal",
+      }),
+    );
 
     act(() => {
-      listener?.({ seq: 4, ts: 4, type: "tts.skip", v: 1 });
+      listener?.({ playbackId: "voice-1", seq: 4, ts: 4, type: "tts.skip", v: 1 });
       listener?.({ key: "rain", seq: 5, ts: 5, type: "effect.loop.stop", v: 1 });
     });
 

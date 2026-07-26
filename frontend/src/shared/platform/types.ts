@@ -963,6 +963,7 @@ export interface ChatCommand {
   cmdId?: string;
   payload?: unknown;
   type:
+    | "audio-playback-signal"
     | "cancel-input-batch"
     | "change-voice-language"
     | "chat-input-state"
@@ -1058,8 +1059,14 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "busy.hide" })
   | (ChatEventBase & { type: "notification.change"; text: string })
   | (ChatEventBase & { type: "status.change"; status: ChatRuntimeStatus })
-  | (ChatEventBase & { type: "tts.play"; url: string; characterName: string; volume?: number })
-  | (ChatEventBase & { type: "tts.skip" })
+  | (ChatEventBase & {
+      type: "tts.play";
+      url: string;
+      characterName: string;
+      playbackId?: string;
+      volume?: number;
+    })
+  | (ChatEventBase & { type: "tts.skip"; playbackId?: string })
   | (ChatEventBase & { type: "effect.play"; url: string })
   | (ChatEventBase & { type: "effect.loop.start"; key: string; url: string })
   | (ChatEventBase & { type: "effect.loop.stop"; key: string })

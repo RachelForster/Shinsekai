@@ -30,8 +30,8 @@ export interface ChatStageSprite extends ChatSprite {
 }
 
 export type ChatAudioCommand =
-  | { kind: "voice-play"; seq: number; url: string; volume: number }
-  | { kind: "voice-stop"; seq: number }
+  | { kind: "voice-play"; playbackId: string; seq: number; url: string; volume: number }
+  | { kind: "voice-stop"; playbackId: string; seq: number }
   | { kind: "effect-play"; seq: number; url: string }
   | { key: string; kind: "effect-loop-start"; seq: number; url: string }
   | { key: string; kind: "effect-loop-stop"; seq: number }

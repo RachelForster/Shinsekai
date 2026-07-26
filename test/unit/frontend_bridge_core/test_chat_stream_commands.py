@@ -183,6 +183,49 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertIsInstance(command["cmdId"], str)
         self.assertTrue(command["cmdId"])
 
+    def test_handle_chat_command_validates_and_forwards_audio_playback_signal(self):
+        chat_stream = _StubChatStream()
+        chat_stream.snapshot["status"] = "speaking"
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+        )
+
+        snapshot = _handle_chat_command(
+            state,
+            {
+                "payload": {
+                    "playbackId": "voice-123",
+                    "state": "finished",
+                },
+                "type": "audio-playback-signal",
+            },
+        )
+
+        self.assertEqual(snapshot["status"], "speaking")
+        _session_id, command = chat_stream.command
+        self.assertEqual(command["type"], "audio-playback-signal")
+        self.assertEqual(
+            command["payload"],
+            {
+                "error": "",
+                "playbackId": "voice-123",
+                "state": "finished",
+            },
+        )
+
+        with self.assertRaisesRegex(ValueError, "invalid"):
+            _handle_chat_command(
+                state,
+                {
+                    "payload": {
+                        "playbackId": "voice-123",
+                        "state": "unknown",
+                    },
+                    "type": "audio-playback-signal",
+                },
+            )
+
     def test_handle_chat_command_wraps_dialog_advance_without_clobbering_dialog_text(self):
         chat_stream = _StubChatStream()
         chat_stream.snapshot["dialogText"] = "Current line"

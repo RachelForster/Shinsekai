@@ -5,16 +5,18 @@ import { useI18n } from "../../../shared/i18n";
 import { Button } from "../../../shared/ui";
 import { stageAssetUrl } from "../chatStageUtils";
 import type { ChatAudioCommand } from "../state/types";
-import { SoundPlayer } from "./soundPlayer";
+import { SoundPlayer, type VoicePlaybackSignal } from "./soundPlayer";
 
 export function ChatSoundPlayer({
   bgmPath,
   bgmVolume,
   commands,
+  onPlaybackSignal,
 }: {
   bgmPath?: string;
   bgmVolume: number;
   commands: ChatAudioCommand[];
+  onPlaybackSignal: (signal: VoicePlaybackSignal) => void;
 }) {
   const playerRef = useRef<SoundPlayer | null>(null);
   const processedSeqRef = useRef(0);
@@ -32,6 +34,8 @@ export function ChatSoundPlayer({
     }
     return player.subscribeLock(setLocked);
   }, []);
+
+  useEffect(() => playerRef.current?.subscribeVoiceSignal(onPlaybackSignal), [onPlaybackSignal]);
 
   useEffect(() => {
     playerRef.current?.setBgm(stageAssetUrl(bgmPath), bgmVolume);
@@ -53,10 +57,10 @@ export function ChatSoundPlayer({
       processedSeqRef.current = command.seq;
       switch (command.kind) {
         case "voice-play":
-          player.playVoice(stageAssetUrl(command.url), command.volume);
+          player.playVoice(command.playbackId, stageAssetUrl(command.url), command.volume);
           break;
         case "voice-stop":
-          player.stopVoice();
+          player.stopVoice(command.playbackId);
           break;
         case "effect-play":
           player.playEffect(stageAssetUrl(command.url));

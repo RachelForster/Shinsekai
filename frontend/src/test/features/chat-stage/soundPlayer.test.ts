@@ -6,6 +6,7 @@ class FakeAudio {
   currentTime = 0;
   loop = false;
   onended: ((this: GlobalEventHandlers, ev: Event) => unknown) | null = null;
+  onerror: OnErrorEventHandler = null;
   paused = true;
   preload = "";
   volume = 1;
@@ -37,14 +38,17 @@ function createHarness() {
 }
 
 describe("SoundPlayer", () => {
-  it("keeps BGM looping while voice and effects use independent channels", () => {
+  it("keeps BGM looping while voice and effects use independent channels", async () => {
     const { audio, player } = createHarness();
+    const signals: Array<{ playbackId: string; state: string }> = [];
+    player.subscribeVoiceSignal((signal) => signals.push(signal));
 
     player.setBgm("bgm.mp3", 0.4);
-    player.playVoice("voice-1.wav");
-    player.playVoice("voice-2.wav");
+    player.playVoice("voice-1", "voice-1.wav");
+    player.playVoice("voice-2", "voice-2.wav");
     player.playEffect("impact.wav");
     player.startLoopEffect("rain", "rain.wav");
+    await Promise.resolve();
 
     expect(audio).toHaveLength(4);
     expect(audio[0]).toMatchObject({ loop: true, src: "bgm.mp3", volume: 0.4 });
@@ -53,8 +57,11 @@ describe("SoundPlayer", () => {
     expect(audio[3]).toMatchObject({ loop: true, src: "rain.wav" });
 
     audio[1].finish();
+    await Promise.resolve();
     expect(audio).toHaveLength(5);
     expect(audio[4].src).toBe("voice-2.wav");
+    expect(signals).toContainEqual({ playbackId: "voice-1", state: "started" });
+    expect(signals).toContainEqual({ playbackId: "voice-1", state: "finished" });
 
     player.stopLoopEffect("rain");
     expect(audio[3].pause).toHaveBeenCalledOnce();
@@ -76,5 +83,25 @@ describe("SoundPlayer", () => {
     expect(lockStates.at(-1)).toBe(true);
     await player.unlock();
     expect(lockStates.at(-1)).toBe(false);
+  });
+
+  it("does not report voice start until autoplay is unlocked", async () => {
+    const signals: Array<{ playbackId: string; state: string }> = [];
+    const blocked = Object.assign(new Error("autoplay blocked"), { name: "NotAllowedError" });
+    const audio = new FakeAudio("voice.wav");
+    audio.play.mockRejectedValueOnce(blocked);
+    const player = new SoundPlayer(() => audio as unknown as HTMLAudioElement);
+    player.subscribeVoiceSignal((signal) => signals.push(signal));
+
+    player.playVoice("voice-locked", "voice.wav");
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(signals).toEqual([]);
+    await player.unlock();
+    expect(signals).toEqual([{ playbackId: "voice-locked", state: "started" }]);
+
+    audio.finish();
+    expect(signals.at(-1)).toEqual({ playbackId: "voice-locked", state: "finished" });
   });
 });

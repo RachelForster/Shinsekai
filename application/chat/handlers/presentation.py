@@ -7,12 +7,9 @@ UI worker 用 TTS 输出消息处理器（见 handler_registry.UIOutputMessageHa
 from __future__ import annotations
 
 import re
-import time
 import traceback
 from pathlib import Path
 from typing import Any, List
-
-import pygame
 
 from i18n import tr as tr_i18n
 
@@ -225,55 +222,40 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             if (_tmo is not None and _tmo > 0)
             else (max(len(speech) / 8, 0.5) if speech else 0.3)
         )
-        start_time = time.perf_counter()
-        audio_played = False
         audio_exists = bool(audio_path and Path(audio_path).exists())
-        frontend_audio = getattr(ui, "audio_playback_owner", "backend") == "frontend"
-        ch.current_audio_path = audio_path if audio_exists else None
-        dc = ch.dialog_channel
+        controller = getattr(ch, "playback_controller", None)
         ev = ch.task_done_requested
-        tts_sound = None
-        if frontend_audio and audio_exists:
-            ui.post_tts_play(character_name, audio_path)
-            get_asr_log().info(
-                "CharacterDialogUiHandler: TTS delegated to frontend -> post_pause_asr (character=%s)",
-                character_name,
-            )
-            ui.post_pause_asr()
-        elif dc and audio_exists:
-            try:
-                tts_sound = pygame.mixer.Sound(audio_path)
-                # Apply character volume
-                vol = 1.0
-                if character_config:
-                    vol = float(getattr(character_config, 'speech_volume', 1.0) or 1.0)
-                tts_sound.set_volume(vol)
-                dc.play(tts_sound)
-                audio_played = True
-                ui.post_tts_play(character_name, audio_path)
+        if audio_exists and controller is not None:
+            volume = 1.0
+            if character_config:
+                volume = float(
+                    getattr(character_config, "speech_volume", 1.0) or 1.0
+                )
+
+            def pause_asr_when_started() -> None:
                 get_asr_log().info(
-                    "CharacterDialogUiHandler: TTS playing → post_pause_asr (character=%s)",
+                    "CharacterDialogUiHandler: playback started -> post_pause_asr "
+                    "(character=%s)",
                     character_name,
                 )
                 ui.post_pause_asr()
-                while dc.get_busy() and ev and not ev.is_set():
-                    time.sleep(0.1)
-                time.sleep(0.2)
-            except Exception as e:
-                print(f"PresentationWorker: 播放音频时出错: {e}")
-            finally:
-                if audio_played and tts_sound is not None:
-                    try:
-                        pygame.mixer.Sound.stop(tts_sound)
-                    except Exception:
-                        pass
-                ch.current_audio_path = None
-        end_time = time.perf_counter()
-        if ev and not ev.is_set():
-            remaining = min_stop_time - (end_time - start_time)
-            if remaining > 0:
-                ev.wait(timeout=remaining)
-        ch.current_audio_path = None
+
+            result = controller.play_and_wait(
+                character_name=character_name,
+                audio_path=audio_path,
+                volume=volume,
+                minimum_duration_seconds=min_stop_time,
+                on_started=pause_asr_when_started,
+            )
+            if result.error:
+                print(f"UIWorker: 对话音频播放失败: {result.error}")
+        elif controller is not None:
+            controller.wait_interruptibly(min_stop_time)
+        elif ev and not ev.is_set():
+            # Compatibility fallback for isolated handler integrations that do
+            # not initialize UIWorker and therefore have no playback backend.
+            ev.wait(timeout=min_stop_time)
+
     def post_process(self, out: TTSOutputMessage) -> None:
         if not out.is_final_segment:
             return

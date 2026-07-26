@@ -249,6 +249,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         ...clearTransientNotificationState(state),
         audioCommands: appendAudioCommand(state, {
           kind: "voice-play",
+          playbackId: event.playbackId ?? "",
           seq: event.seq,
           url: event.url,
           volume:
@@ -265,6 +266,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         ...state,
         audioCommands: appendAudioCommand(state, {
           kind: "voice-stop",
+          playbackId: event.playbackId ?? "",
           seq: event.seq,
         }),
         eventSeq: Math.max(state.eventSeq, event.seq),

@@ -64,6 +64,7 @@ TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
 _HISTORY_DOWNLOAD_CAPABILITY_TTL_SECONDS = 60.0
 _RUNTIME_CHAT_COMMANDS = {
+    "audio-playback-signal",
     "cancel-input-batch",
     "change-voice-language",
     "chat-input-state",
@@ -1095,6 +1096,29 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             "action": action,
             "confirmationId": confirmation_id,
             "kind": "tool-confirmation",
+        }
+        return _forward_runtime_command(_current_runtime_status())
+
+    if command == "audio-playback-signal":
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("Audio playback signal must be an object.")
+        playback_id = reject_control_chars(
+            str(payload.get("playbackId") or "").strip(),
+            field="playbackId",
+        )
+        playback_state = str(payload.get("state") or "").strip()
+        if not playback_id or playback_state not in {
+            "started",
+            "finished",
+            "interrupted",
+            "failed",
+        }:
+            raise ValueError("Audio playback signal is invalid.")
+        body["payload"] = {
+            "playbackId": playback_id,
+            "state": playback_state,
+            "error": str(payload.get("error") or "")[:500],
         }
         return _forward_runtime_command(_current_runtime_status())
 

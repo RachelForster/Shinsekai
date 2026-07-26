@@ -22,6 +22,7 @@ class UiPlaybackBridge:
     task_done_requested: Any = None
     dialog_channel: Any = None
     current_audio_path: Any = None
+    playback_controller: Any = None
 
 
 @dataclass

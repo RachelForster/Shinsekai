@@ -55,8 +55,13 @@ def test_streaming_presenter_emits_media_and_control_events() -> None:
     presenter.post_background("room.png")
     presenter.switch_bgm("room.mp3")
     presenter.post_cg("scene.png")
-    presenter.post_tts_play("Mio", "voice.wav")
-    presenter.post_tts_skip()
+    presenter.post_tts_play(
+        "Mio",
+        "voice.wav",
+        playback_id="voice-1",
+        volume=0.75,
+    )
+    presenter.post_tts_skip(playback_id="voice-1")
 
     assert [event["type"] for event in sink.events] == [
         "background.change",
@@ -66,7 +71,17 @@ def test_streaming_presenter_emits_media_and_control_events() -> None:
         "tts.skip",
     ]
     assert sink.events[0]["url"] == "media://room.png"
-    assert sink.events[3]["volume"] == 1.0
+    assert sink.events[3] == {
+        "characterName": "Mio",
+        "playbackId": "voice-1",
+        "type": "tts.play",
+        "url": "media://voice.wav",
+        "volume": 0.75,
+    }
+    assert sink.events[4] == {
+        "playbackId": "voice-1",
+        "type": "tts.skip",
+    }
 
 
 def test_streaming_presenter_emits_frontend_effect_audio_events(tmp_path) -> None:

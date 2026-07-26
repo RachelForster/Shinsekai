@@ -48,6 +48,7 @@ export function useChatStageCommands({
       try {
         const snapshot = await sendChatCommand(command);
         const commandAppliedByEventStream = [
+          "audio-playback-signal",
           "cancel-input-batch",
           "dismiss-plugin-page",
           "flush-input-batch",
@@ -72,6 +73,9 @@ export function useChatStageCommands({
           showToast({ kind: "success", title: t("chat.toast.historyCleared") });
         }
       } catch (error) {
+        if (command.type === "audio-playback-signal") {
+          return;
+        }
         if (command.type === "send-message" || command.type === "submit-option") {
           dispatch({ source: command.type, type: "rollbackUserSubmission" });
         } else {

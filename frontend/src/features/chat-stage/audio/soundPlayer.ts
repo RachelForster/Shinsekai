@@ -1,7 +1,15 @@
 export type SoundPlayerLockListener = (locked: boolean) => void;
+export type VoicePlaybackState = "started" | "finished" | "interrupted" | "failed";
+export interface VoicePlaybackSignal {
+  error?: string;
+  playbackId: string;
+  state: VoicePlaybackState;
+}
+export type VoicePlaybackSignalListener = (signal: VoicePlaybackSignal) => void;
 
 type AudioFactory = (url: string) => HTMLAudioElement;
-type QueuedVoice = { url: string; volume: number };
+type QueuedVoice = { playbackId: string; url: string; volume: number };
+type ActiveVoice = QueuedVoice & { audio: HTMLAudioElement; started: boolean };
 
 function clampVolume(value: number) {
   return Math.min(1, Math.max(0, Number.isFinite(value) ? value : 1));
@@ -32,12 +40,13 @@ export class SoundPlayer {
   private readonly createAudio: AudioFactory;
   private bgm: HTMLAudioElement | null = null;
   private bgmUrl = "";
-  private currentVoice: HTMLAudioElement | null = null;
+  private currentVoice: ActiveVoice | null = null;
   private readonly effectPlayers = new Set<HTMLAudioElement>();
   private readonly listeners = new Set<SoundPlayerLockListener>();
   private locked = false;
   private readonly loopPlayers = new Map<string, HTMLAudioElement>();
   private readonly voiceQueue: QueuedVoice[] = [];
+  private readonly voiceSignalListeners = new Set<VoicePlaybackSignalListener>();
 
   constructor(createAudio: AudioFactory = (url) => new Audio(url)) {
     this.createAudio = createAudio;
@@ -48,6 +57,13 @@ export class SoundPlayer {
     listener(this.locked);
     return () => {
       this.listeners.delete(listener);
+    };
+  }
+
+  subscribeVoiceSignal(listener: VoicePlaybackSignalListener) {
+    this.voiceSignalListeners.add(listener);
+    return () => {
+      this.voiceSignalListeners.delete(listener);
     };
   }
 
@@ -82,21 +98,37 @@ export class SoundPlayer {
     }
   }
 
-  playVoice(url: string, volume = 1) {
+  playVoice(playbackId: string, url: string, volume = 1) {
     const nextUrl = url.trim();
     if (!nextUrl) {
       return;
     }
     if (this.currentVoice) {
-      this.voiceQueue.push({ url: nextUrl, volume: clampVolume(volume) });
+      this.voiceQueue.push({
+        playbackId: playbackId.trim(),
+        url: nextUrl,
+        volume: clampVolume(volume),
+      });
       return;
     }
-    this.startVoice(nextUrl, volume);
+    this.startVoice({
+      playbackId: playbackId.trim(),
+      url: nextUrl,
+      volume: clampVolume(volume),
+    });
   }
 
-  stopVoice() {
+  stopVoice(playbackId = "") {
+    const targetId = playbackId.trim();
+    if (targetId && this.currentVoice?.playbackId !== targetId) {
+      const queuedIndex = this.voiceQueue.findIndex((voice) => voice.playbackId === targetId);
+      if (queuedIndex >= 0) {
+        this.voiceQueue.splice(queuedIndex, 1);
+      }
+      return;
+    }
     this.voiceQueue.length = 0;
-    stopAudio(this.currentVoice);
+    stopAudio(this.currentVoice?.audio);
     this.currentVoice = null;
   }
 
@@ -155,44 +187,53 @@ export class SoundPlayer {
   }
 
   async unlock() {
-    const active = [this.bgm, this.currentVoice, ...this.effectPlayers, ...this.loopPlayers.values()].filter(
+    const active = [this.bgm, this.currentVoice?.audio, ...this.effectPlayers, ...this.loopPlayers.values()].filter(
       (audio): audio is HTMLAudioElement => Boolean(audio?.paused),
     );
-    const results = await Promise.allSettled(active.map((audio) => this.play(audio)));
+    const results = await Promise.allSettled(
+      active.map(async (audio) => {
+        await this.play(audio);
+        if (this.currentVoice?.audio === audio) {
+          this.markVoiceStarted(this.currentVoice);
+        }
+      }),
+    );
     this.setLocked(results.some((result) => result.status === "rejected" && isAutoplayBlock(result.reason)));
   }
 
   dispose() {
     this.stopAll();
     this.listeners.clear();
+    this.voiceSignalListeners.clear();
   }
 
-  private startVoice(url: string, volume: number) {
-    const audio = this.createAudio(url);
+  private startVoice(voice: QueuedVoice) {
+    const audio = this.createAudio(voice.url);
     audio.preload = "auto";
-    audio.volume = clampVolume(volume);
-    this.currentVoice = audio;
-    audio.onended = () => {
-      if (this.currentVoice === audio) {
-        this.currentVoice = null;
-      }
-      const next = this.voiceQueue.shift();
-      if (next) {
-        this.startVoice(next.url, next.volume);
-      }
-    };
-    this.requestPlay(audio);
+    audio.volume = voice.volume;
+    const activeVoice: ActiveVoice = { ...voice, audio, started: false };
+    this.currentVoice = activeVoice;
+    audio.onended = () => this.finishVoice(activeVoice, "finished");
+    audio.onerror = () => this.finishVoice(activeVoice, "failed", "audio playback failed");
+    this.requestPlay(
+      audio,
+      () => this.markVoiceStarted(activeVoice),
+      (error) => this.finishVoice(activeVoice, "failed", String(error)),
+    );
   }
 
-  private requestPlay(audio: HTMLAudioElement) {
+  private requestPlay(audio: HTMLAudioElement, onStarted?: () => void, onFailed?: (error: unknown) => void) {
     void this.play(audio)
       .then(() => {
         this.setLocked(false);
+        onStarted?.();
       })
       .catch((error) => {
         if (isAutoplayBlock(error)) {
           this.setLocked(true);
+          return;
         }
+        onFailed?.(error);
       });
   }
 
@@ -211,6 +252,40 @@ export class SoundPlayer {
     this.locked = locked;
     for (const listener of this.listeners) {
       listener(locked);
+    }
+  }
+
+  private markVoiceStarted(voice: ActiveVoice) {
+    if (this.currentVoice !== voice || voice.started) {
+      return;
+    }
+    voice.started = true;
+    this.emitVoiceSignal(voice.playbackId, "started");
+  }
+
+  private finishVoice(voice: ActiveVoice, state: "finished" | "failed", error = "") {
+    if (this.currentVoice !== voice) {
+      return;
+    }
+    this.currentVoice = null;
+    this.emitVoiceSignal(voice.playbackId, state, error);
+    const next = this.voiceQueue.shift();
+    if (next) {
+      this.startVoice(next);
+    }
+  }
+
+  private emitVoiceSignal(playbackId: string, state: VoicePlaybackState, error = "") {
+    if (!playbackId) {
+      return;
+    }
+    const signal: VoicePlaybackSignal = {
+      playbackId,
+      state,
+      ...(error ? { error } : {}),
+    };
+    for (const listener of this.voiceSignalListeners) {
+      listener(signal);
     }
   }
 }

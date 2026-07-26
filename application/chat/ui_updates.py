@@ -198,10 +198,17 @@ class HeadlessUIUpdateManager:
     def post_pause_asr(self) -> None:
         pass
 
-    def post_tts_play(self, character_name: str, audio_path: str) -> None:
+    def post_tts_play(
+        self,
+        character_name: str,
+        audio_path: str,
+        *,
+        playback_id: str = "",
+        volume: float | None = None,
+    ) -> None:
         pass
 
-    def post_tts_skip(self) -> None:
+    def post_tts_skip(self, *, playback_id: str = "") -> None:
         pass
 
     def post_session_closed(self, reason: str = "聊天会话已结束。") -> None:
@@ -368,31 +375,41 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     def post_pause_asr(self) -> None:
         self._sink.emit({"type": "asr.state", "running": False})
 
-    def post_tts_play(self, character_name: str, audio_path: str) -> None:
-        volume = 1.0
-        try:
-            character = get_character_by_name(character_name)
-            if character is not None:
-                volume = min(
-                    1.0,
-                    max(
-                        0.0,
-                        float(getattr(character, "speech_volume", 1.0) or 1.0),
-                    ),
-                )
-        except Exception:
-            pass
-        self._sink.emit(
-            {
-                "type": "tts.play",
-                "characterName": str(character_name or ""),
-                "url": self._media_url(audio_path),
-                "volume": volume,
-            }
-        )
+    def post_tts_play(
+        self,
+        character_name: str,
+        audio_path: str,
+        *,
+        playback_id: str = "",
+        volume: float | None = None,
+    ) -> None:
+        resolved_volume = volume
+        if resolved_volume is None:
+            resolved_volume = 1.0
+            try:
+                character = get_character_by_name(character_name)
+                if character is not None:
+                    resolved_volume = float(
+                        getattr(character, "speech_volume", 1.0) or 1.0
+                    )
+            except Exception:
+                pass
+        resolved_volume = min(1.0, max(0.0, float(resolved_volume)))
+        payload = {
+            "type": "tts.play",
+            "characterName": str(character_name or ""),
+            "url": self._media_url(audio_path),
+            "volume": resolved_volume,
+        }
+        if playback_id:
+            payload["playbackId"] = str(playback_id)
+        self._sink.emit(payload)
 
-    def post_tts_skip(self) -> None:
-        self._sink.emit({"type": "tts.skip"})
+    def post_tts_skip(self, *, playback_id: str = "") -> None:
+        payload = {"type": "tts.skip"}
+        if playback_id:
+            payload["playbackId"] = str(playback_id)
+        self._sink.emit(payload)
 
     def play_sound_effect(self, sound_effect_path: str) -> None:
         path = str(sound_effect_path or "").strip()

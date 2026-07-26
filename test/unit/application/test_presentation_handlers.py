@@ -152,11 +152,18 @@ class TestCharacterDialogUiHandler:
         assert h.can_handle(_tts_out("Alice", is_system=True)) is False
         assert h.can_handle(_tts_out("NARR", is_system=True)) is False
 
-    def test_emits_tts_play_when_audio_starts(self, tmp_path):
+    def test_delegates_blocking_playback_to_shared_controller(self, tmp_path):
         audio_path = tmp_path / "alice.wav"
         audio_path.write_bytes(b"wav")
 
         ui = MagicMock()
+        controller = MagicMock()
+
+        def play_and_wait(**kwargs):
+            kwargs["on_started"]()
+            return SimpleNamespace(error="")
+
+        controller.play_and_wait.side_effect = play_and_wait
         playback = SimpleNamespace(
             task_done_requested=SimpleNamespace(
                 is_set=lambda: False,
@@ -164,55 +171,7 @@ class TestCharacterDialogUiHandler:
             ),
             dialog_channel=MagicMock(),
             current_audio_path=None,
-        )
-        playback.dialog_channel.get_busy.side_effect = [True, False]
-        runtime = SimpleNamespace(ui_update_manager=ui, ui_playback=playback)
-        sound = MagicMock()
-
-        class _Character:
-            color = "#abcdef"
-            speech_volume = 0.8
-
-        handler = CharacterDialogUiHandler()
-        out = TTSOutputMessage(
-            audio_path=audio_path.as_posix(),
-            name="Alice",
-            text="Hello",
-            asset_id="1",
-            is_system_message=False,
-            is_final_segment=True,
-        )
-
-        with patch("application.chat.handlers.presentation.get_app_runtime", return_value=runtime), patch(
-            "application.chat.handlers.presentation.get_character_by_name", return_value=_Character()
-        ), patch("application.chat.handlers.presentation.time.sleep", return_value=None), patch(
-            "application.chat.handlers.presentation.pygame.mixer.Sound", return_value=sound
-        ), patch("application.chat.handlers.presentation.get_asr_log", return_value=MagicMock()), patch(
-            "sdk.logging.timing.tracker.stop_cross", return_value=None
-        ):
-            handler.handle(out)
-
-        ui.hide_busy_bar.assert_called_once_with()
-        ui.post_tts_play.assert_called_once_with("Alice", audio_path.as_posix())
-        ui.post_pause_asr.assert_called_once_with()
-        ui.post_llm_reply_finished.assert_not_called()
-        playback.dialog_channel.play.assert_called_once_with(sound)
-        sound.set_volume.assert_called_once_with(0.8)
-        assert playback.current_audio_path is None
-
-    def test_react_runtime_delegates_tts_playback_to_frontend(self, tmp_path):
-        audio_path = tmp_path / "alice.wav"
-        audio_path.write_bytes(b"wav")
-
-        ui = MagicMock()
-        ui.audio_playback_owner = "frontend"
-        playback = SimpleNamespace(
-            task_done_requested=SimpleNamespace(
-                is_set=lambda: False,
-                wait=lambda timeout=None: False,
-            ),
-            dialog_channel=None,
-            current_audio_path=None,
+            playback_controller=controller,
         )
         runtime = SimpleNamespace(ui_update_manager=ui, ui_playback=playback)
 
@@ -236,16 +195,76 @@ class TestCharacterDialogUiHandler:
         ), patch(
             "application.chat.handlers.presentation.get_character_by_name",
             return_value=_Character(),
-        ), patch("application.chat.handlers.presentation.pygame.mixer.Sound") as sound, patch(
+        ), patch(
+            "application.chat.handlers.presentation.get_asr_log",
+            return_value=MagicMock(),
+        ), patch(
+            "sdk.logging.timing.tracker.stop_cross", return_value=None
+        ):
+            handler.handle(out)
+
+        ui.hide_busy_bar.assert_called_once_with()
+        ui.post_pause_asr.assert_called_once_with()
+        ui.post_llm_reply_finished.assert_not_called()
+        controller.play_and_wait.assert_called_once()
+        playback_call = controller.play_and_wait.call_args.kwargs
+        assert playback_call["character_name"] == "Alice"
+        assert playback_call["audio_path"] == audio_path.as_posix()
+        assert playback_call["volume"] == 0.8
+        assert playback_call["minimum_duration_seconds"] == pytest.approx(0.625)
+
+    def test_react_runtime_uses_the_same_shared_playback_contract(self, tmp_path):
+        audio_path = tmp_path / "alice.wav"
+        audio_path.write_bytes(b"wav")
+
+        ui = MagicMock()
+        ui.audio_playback_owner = "frontend"
+        controller = MagicMock()
+
+        def play_and_wait(**kwargs):
+            kwargs["on_started"]()
+            return SimpleNamespace(error="")
+
+        controller.play_and_wait.side_effect = play_and_wait
+        playback = SimpleNamespace(
+            task_done_requested=SimpleNamespace(
+                is_set=lambda: False,
+                wait=lambda timeout=None: False,
+            ),
+            dialog_channel=None,
+            current_audio_path=None,
+            playback_controller=controller,
+        )
+        runtime = SimpleNamespace(ui_update_manager=ui, ui_playback=playback)
+
+        class _Character:
+            color = "#abcdef"
+            speech_volume = 0.8
+
+        handler = CharacterDialogUiHandler()
+        out = TTSOutputMessage(
+            audio_path=audio_path.as_posix(),
+            name="Alice",
+            text="Hello",
+            asset_id="1",
+            is_system_message=False,
+            is_final_segment=True,
+        )
+
+        with patch(
+            "application.chat.handlers.presentation.get_app_runtime",
+            return_value=runtime,
+        ), patch(
+            "application.chat.handlers.presentation.get_character_by_name",
+            return_value=_Character(),
+        ), patch(
             "application.chat.handlers.presentation.get_asr_log",
             return_value=MagicMock(),
         ), patch("sdk.logging.timing.tracker.stop_cross", return_value=None):
             handler.handle(out)
 
-        sound.assert_not_called()
-        ui.post_tts_play.assert_called_once_with("Alice", audio_path.as_posix())
         ui.post_pause_asr.assert_called_once_with()
-        assert playback.current_audio_path is None
+        controller.play_and_wait.assert_called_once()
 
 
 class TestHandlerChainAssembly:

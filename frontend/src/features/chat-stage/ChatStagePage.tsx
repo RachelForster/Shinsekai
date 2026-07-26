@@ -12,6 +12,7 @@ import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
 import { ChatSoundPlayer } from "./audio/ChatSoundPlayer";
+import type { VoicePlaybackSignal } from "./audio/soundPlayer";
 import { ChatConfigDialog } from "./components/ChatConfigDialog";
 import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
@@ -195,6 +196,12 @@ export function ChatStagePage() {
     showToast,
     t,
   });
+  const handlePlaybackSignal = useCallback(
+    (signal: VoicePlaybackSignal) => {
+      void sendCommand({ payload: signal, type: "audio-playback-signal" });
+    },
+    [sendCommand],
+  );
   const autoAdvanceDialog = useCallback(() => {
     void sendCommand({ type: "dialog-advance" });
   }, [sendCommand]);
@@ -669,6 +676,7 @@ export function ChatStagePage() {
           bgmPath={viewModel.bgmPath}
           bgmVolume={runtimeConfig.bgmVolume}
           commands={state.audioCommands}
+          onPlaybackSignal={handlePlaybackSignal}
         />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer
