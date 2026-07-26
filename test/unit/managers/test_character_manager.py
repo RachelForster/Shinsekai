@@ -23,6 +23,7 @@ class _FakeConfigManager:
 
     def save_characters_config(self):
         self.saved += 1
+        return True
 
 
 class _FakeAdapter:

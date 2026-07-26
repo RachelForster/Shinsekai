@@ -231,6 +231,22 @@ class GPTSoVitsAdapter(TTSAdapter):
         if self.sovits_model_path == sovits_model_path and self.gpt_model_path == gpt_model_path:
             print("No model switch needed, current models are already set.", self.gpt_model_path, self.sovits_model_path)
             return
+
+        # Wait for the local server to accept connections before switching weights,
+        # so a transient startup/restart race retries briefly instead of failing the
+        # whole TTS turn with ConnectionRefusedError.
+        if not self._server_is_reachable():
+            try:
+                _wait_for_http_service_ready(
+                    self._server_is_reachable,
+                    service_name="GPT-SoVITS",
+                    process=getattr(self, "_server_process", None),
+                    timeout_seconds=10.0,
+                    poll_interval_seconds=0.5,
+                )
+            except (TimeoutError, RuntimeError) as exc:
+                print(f"GPT-SoVITS server not ready for model switch: {exc}")
+                raise
         
         try:
             if gpt_model_path and gpt_model_path.endswith(".ckpt"):
