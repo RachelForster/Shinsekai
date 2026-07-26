@@ -105,6 +105,8 @@ from frontend_bridge_core.config import _app_config_response, _fetch_llm_models,
 from frontend_bridge_core.logs import _default_log_snapshot, _diagnostic_bundle, _log_file_list, _log_snapshot
 from frontend_bridge_core.media import _media_thumbnail, _media_thumbnail_batch
 from frontend_bridge_core.media_paths import (
+    is_absolute_local_media_path_text,
+    iter_configured_external_media_paths,
     resolve_external_media_file,
     validate_readable_media_file,
 )
@@ -1535,8 +1537,22 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         raw = str(raw_path or "").strip()
         if not raw:
             raise FileNotFoundError(raw_path)
-        if Path(raw).is_absolute():
-            return resolve_external_media_file(raw)
+        if is_absolute_local_media_path_text(raw):
+            config_manager = getattr(self.state, "config_manager", None)
+            config = getattr(config_manager, "config", None)
+            approved_paths = list(iter_configured_external_media_paths(config))
+            chat_stream = getattr(self.state, "chat_stream", None)
+            runtime_paths = getattr(
+                chat_stream,
+                "approved_external_media_paths",
+                None,
+            )
+            if callable(runtime_paths):
+                approved_paths.extend(runtime_paths())
+            return resolve_external_media_file(
+                raw,
+                approved_paths=approved_paths,
+            )
         return validate_readable_media_file(self._resolve_project_path(raw))
 
     def _resolve_static_path(self, root: Path, request_path: str) -> Path:

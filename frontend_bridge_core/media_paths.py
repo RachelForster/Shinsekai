@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import hmac
 import os
 import stat
+from collections.abc import Iterable, Iterator
 from pathlib import Path, PureWindowsPath
+from typing import Any
 
 from frontend_bridge_core.security import reject_control_chars
 
@@ -76,12 +79,71 @@ def _validate_windows_local_drive_path(raw_path: str) -> None:
         raise PermissionError("Windows alternate data streams are not allowed for media")
 
 
-def resolve_external_media_file(raw_path: str | os.PathLike[str]) -> Path:
-    raw = reject_control_chars(os.fspath(raw_path), field="media path")
-    if os.name == "nt":
-        _validate_windows_local_drive_path(raw)
+def is_supported_media_path_text(raw_path: str) -> bool:
+    value = str(raw_path or "").strip().lower()
+    return any(value.endswith(suffix) for suffix in READABLE_MEDIA_SUFFIXES)
 
-    candidate = Path(raw).expanduser()
+
+def is_absolute_local_media_path_text(raw_path: str) -> bool:
+    value = str(raw_path or "").strip()
+    if not value:
+        return False
+    if os.name == "nt":
+        normalized = value.replace("/", "\\")
+        path = PureWindowsPath(normalized)
+        return bool(
+            not normalized.startswith("\\\\")
+            and not normalized.startswith(_WINDOWS_DEVICE_PREFIXES)
+            and path.drive
+            and path.root
+        )
+    return os.path.isabs(value)
+
+
+def iter_configured_external_media_paths(value: Any) -> Iterator[str]:
+    """Yield absolute media paths from server-owned configuration values."""
+    if hasattr(value, "model_dump"):
+        value = value.model_dump(mode="python")
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from iter_configured_external_media_paths(item)
+        return
+    if isinstance(value, (list, tuple, set, frozenset)):
+        for item in value:
+            yield from iter_configured_external_media_paths(item)
+        return
+    if isinstance(value, os.PathLike):
+        value = os.fspath(value)
+    if isinstance(value, str) and is_absolute_local_media_path_text(value):
+        if is_supported_media_path_text(value):
+            yield value.strip()
+
+
+def resolve_external_media_file(
+    raw_path: str | os.PathLike[str],
+    *,
+    approved_paths: Iterable[str | os.PathLike[str]],
+) -> Path:
+    raw = reject_control_chars(os.fsdecode(os.fspath(raw_path)), field="media path")
+    approved = ""
+    for candidate in approved_paths:
+        candidate_text = reject_control_chars(
+            os.fsdecode(os.fspath(candidate)),
+            field="approved media path",
+        )
+        if hmac.compare_digest(
+            raw.encode("utf-8"),
+            candidate_text.encode("utf-8"),
+        ):
+            approved = candidate_text
+            break
+    if not approved:
+        raise PermissionError("external media path has not been approved by the runtime")
+
+    if os.name == "nt":
+        _validate_windows_local_drive_path(approved)
+
+    candidate = Path(approved).expanduser()
     if not candidate.is_absolute():
         raise PermissionError("external media path must be absolute")
     return validate_readable_media_file(candidate)

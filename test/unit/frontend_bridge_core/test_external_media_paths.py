@@ -9,14 +9,31 @@ import pytest
 from frontend_bridge_core.handler import BRIDGE_AUTH_HEADER, FrontendBridgeHandler
 from frontend_bridge_core.media_paths import (
     _validate_windows_local_drive_path,
+    iter_configured_external_media_paths,
     resolve_external_media_file,
     validate_readable_media_file,
 )
 
 
-def _handler_with_auth_token(token: str = "bridge-secret") -> FrontendBridgeHandler:
+def _handler_with_auth_token(
+    token: str = "bridge-secret",
+    *,
+    configured_paths: list[str] | None = None,
+    runtime_paths: list[str] | None = None,
+) -> FrontendBridgeHandler:
+    approved_runtime_paths = tuple(runtime_paths or ())
     handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
-    handler.server = SimpleNamespace(state=SimpleNamespace(auth_token=token))  # type: ignore[assignment]
+    handler.server = SimpleNamespace(  # type: ignore[assignment]
+        state=SimpleNamespace(
+            auth_token=token,
+            chat_stream=SimpleNamespace(
+                approved_external_media_paths=lambda: approved_runtime_paths
+            ),
+            config_manager=SimpleNamespace(
+                config={"configured_media": list(configured_paths or ())}
+            ),
+        )
+    )
     handler.headers = {}
     return handler
 
@@ -81,18 +98,58 @@ def test_media_resolver_allows_external_file_but_download_resolver_stays_project
 ):
     project_root = tmp_path / "project"
     project_root.mkdir()
-    external_media = tmp_path / "external" / "voice.wav"
+    external_media = tmp_path / "外部" / "语音.wav"
     external_media.parent.mkdir()
     external_media.write_bytes(b"media")
     monkeypatch.chdir(project_root)
 
-    handler = _handler_with_auth_token()
+    handler = _handler_with_auth_token(configured_paths=[str(external_media)])
 
     assert handler._resolve_media_path(str(external_media)) == external_media.resolve()
-    assert resolve_external_media_file(external_media) == external_media.resolve()
+    assert resolve_external_media_file(
+        external_media,
+        approved_paths=[external_media],
+    ) == external_media.resolve()
 
     with pytest.raises(PermissionError):
         handler._resolve_project_path(str(external_media))
+
+
+def test_media_resolver_allows_runtime_registered_external_file(tmp_path: Path):
+    external_media = tmp_path / "generated" / "voice.wav"
+    external_media.parent.mkdir()
+    external_media.write_bytes(b"media")
+    handler = _handler_with_auth_token(runtime_paths=[str(external_media)])
+
+    assert handler._resolve_media_path(str(external_media)) == external_media.resolve()
+
+
+def test_media_resolver_rejects_unregistered_absolute_path(tmp_path: Path):
+    external_media = tmp_path / "unregistered" / "voice.wav"
+    external_media.parent.mkdir()
+    external_media.write_bytes(b"media")
+    handler = _handler_with_auth_token()
+
+    with pytest.raises(PermissionError, match="not been approved"):
+        handler._resolve_media_path(str(external_media))
+
+
+@pytest.mark.skipif(os.name != "nt", reason="cross-drive paths are Windows-specific")
+def test_configured_media_path_discovery_preserves_other_drive_paths():
+    config = {
+        "characters": [
+            {
+                "voice": r"D:\ShinsekaiAssets\voices\line.wav",
+                "notes": r"D:\ShinsekaiAssets\notes.txt",
+            }
+        ],
+        "bgm": r"E:\Music\scene.mp3",
+    }
+
+    assert tuple(iter_configured_external_media_paths(config)) == (
+        r"D:\ShinsekaiAssets\voices\line.wav",
+        r"E:\Music\scene.mp3",
+    )
 
 
 def test_media_get_requires_valid_bridge_token():

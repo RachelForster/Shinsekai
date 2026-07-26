@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import hmac
 import json
+import secrets
 import threading
 import time
 import uuid
@@ -19,6 +20,22 @@ from core.runtime.event_sink import (
     fold_event_into_snapshot,
     make_empty_chat_snapshot,
 )
+from frontend_bridge_core.media_paths import (
+    is_absolute_local_media_path_text,
+    is_supported_media_path_text,
+)
+
+
+_MEDIA_EVENT_TYPES = {
+    "background.change",
+    "bgm.change",
+    "cg.show",
+    "effect.loop.start",
+    "effect.play",
+    "sprite.show",
+    "tts.play",
+}
+_MAX_APPROVED_EXTERNAL_MEDIA_PATHS = 2048
 
 
 def _external_host(bind_host: str) -> str:
@@ -83,6 +100,10 @@ class _ChatStreamSession:
     session_id: str
     snapshot: dict[str, Any]
     last_seq: int = 0
+    producer_token: str = field(
+        default_factory=lambda: secrets.token_urlsafe(32),
+        repr=False,
+    )
     producer: _WebSocketConnection | None = None
     producer_ready: threading.Event = field(default_factory=threading.Event, repr=False)
     viewers: set[_WebSocketConnection] = field(default_factory=set)
@@ -129,6 +150,7 @@ class ChatStreamService:
         self.ws_base = _ws_base(host, self.ws_port)
         self.auth_token = str(auth_token or "").strip()
         self._sessions: dict[str, _ChatStreamSession] = {}
+        self._approved_external_media_paths: dict[str, float] = {}
         self._lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._server: asyncio.base_events.Server | None = None
@@ -180,13 +202,18 @@ class ChatStreamService:
         except (TypeError, ValueError):
             initial_seq = 0
         snapshot["eventSeq"] = initial_seq
+        session = _ChatStreamSession(
+            session_id=session_id,
+            snapshot=snapshot,
+            last_seq=initial_seq,
+        )
         with self._lock:
-            self._sessions[session_id] = _ChatStreamSession(
-                session_id=session_id,
-                snapshot=snapshot,
-                last_seq=initial_seq,
-            )
+            self._sessions[session_id] = session
         producer_endpoint = f"{self.ws_base}?sessionId={quote(session_id)}&role=producer"
+        producer_endpoint = _append_query(
+            producer_endpoint,
+            {"shinsekai_producer_token": session.producer_token},
+        )
         if self.auth_token:
             producer_endpoint = _append_query(
                 producer_endpoint,
@@ -317,10 +344,50 @@ class ChatStreamService:
             return ""
         if _is_direct_media_path(path):
             return path
+        self.approve_external_media_path(path)
         return _append_query(
             f"{self.http_base}/api/media?path={quote(path)}",
             {"shinsekai_bridge_token": self.auth_token},
         )
+
+    def approve_external_media_path(self, raw_path: str) -> bool:
+        path = str(raw_path or "").strip()
+        if not (
+            is_absolute_local_media_path_text(path)
+            and is_supported_media_path_text(path)
+        ):
+            return False
+        with self._lock:
+            self._approved_external_media_paths[path] = time.time()
+            overflow = (
+                len(self._approved_external_media_paths)
+                - _MAX_APPROVED_EXTERNAL_MEDIA_PATHS
+            )
+            if overflow > 0:
+                oldest = sorted(
+                    self._approved_external_media_paths,
+                    key=self._approved_external_media_paths.get,
+                )[:overflow]
+                for candidate in oldest:
+                    self._approved_external_media_paths.pop(candidate, None)
+        return True
+
+    def approved_external_media_paths(self) -> tuple[str, ...]:
+        with self._lock:
+            return tuple(self._approved_external_media_paths)
+
+    def _approve_event_media_path(self, event: dict[str, Any]) -> None:
+        if str(event.get("type") or "") not in _MEDIA_EVENT_TYPES:
+            return
+        media_url = str(event.get("url") or "").strip()
+        if not media_url:
+            return
+        parsed = urlparse(media_url)
+        if parsed.path != "/api/media":
+            return
+        query = parse_qs(parsed.query)
+        raw_path = str((query.get("path") or [""])[0]).strip()
+        self.approve_external_media_path(raw_path)
 
     async def _shutdown_async(self) -> None:
         server = self._server
@@ -416,15 +483,24 @@ class ChatStreamService:
         query = parse_qs(parsed.query)
         session_id = str((query.get("sessionId") or [""])[0]).strip()
         role = str((query.get("role") or ["viewer"])[0]).strip() or "viewer"
+        if role not in {"producer", "viewer"}:
+            raise ValueError("invalid websocket role")
         auth_token = str((query.get("shinsekai_bridge_token") or query.get("token") or [""])[0]).strip()
+        producer_token = str(
+            (query.get("shinsekai_producer_token") or [""])[0]
+        ).strip()
         if not session_id:
             raise ValueError("missing sessionId")
-        if self.auth_token and not hmac.compare_digest(auth_token, self.auth_token):
-            raise ValueError("invalid websocket auth token")
         with self._lock:
             session = self._sessions.get(session_id)
             if session is None:
                 raise ValueError("unknown session")
+            expected_producer_token = session.producer_token
+        if role == "producer":
+            if not hmac.compare_digest(producer_token, expected_producer_token):
+                raise ValueError("invalid websocket producer token")
+        elif self.auth_token and not hmac.compare_digest(auth_token, self.auth_token):
+            raise ValueError("invalid websocket auth token")
         key = headers.get("sec-websocket-key", "")
         accept = base64.b64encode(
             hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("utf-8")).digest()
@@ -471,6 +547,7 @@ class ChatStreamService:
                 await self._publish_event(connection.session_id, event)
 
     async def _publish_event(self, session_id: str, event: dict[str, Any]) -> None:
+        self._approve_event_media_path(event)
         with self._lock:
             session = self._sessions.get(session_id)
             if session is None:
