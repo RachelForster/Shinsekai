@@ -1272,13 +1272,9 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         """选项按钮点击处理函数"""
         print(f"Option clicked: {text}")
         # Check for pending tool confirmation first
-        from core.runtime.app_runtime import try_get_app_runtime
-        rt = try_get_app_runtime()
-        if rt is not None and hasattr(rt, '_pending_confirm') and rt._pending_confirm:
-            confirmed = "取消" not in text and "cancel" not in text.lower()
-            for tool_name, (event, result_list) in list(rt._pending_confirm.items()):
-                result_list.append(confirmed)
-                event.set()
+        from core.runtime.app_runtime import resolve_pending_tool_confirmation
+
+        if resolve_pending_tool_confirmation(text):
             self.setOptions([])
             return
         self.option_selected.emit(text)

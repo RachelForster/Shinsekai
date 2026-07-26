@@ -56,6 +56,27 @@ def try_get_app_runtime() -> Optional[AppRuntime]:
     return _runtime
 
 
+def resolve_pending_tool_confirmation(selection: str) -> bool:
+    """Resolve pending risky-tool prompts from either native or streamed UIs."""
+    rt = try_get_app_runtime()
+    pending = getattr(rt, "_pending_confirm", None) if rt is not None else None
+    if not isinstance(pending, dict) or not pending:
+        return False
+
+    normalized = str(selection or "").strip().casefold()
+    confirmed = normalized not in {"取消", "cancel"}
+    resolved = False
+    for value in list(pending.values()):
+        try:
+            event, result_list = value
+            result_list.append(confirmed)
+            event.set()
+            resolved = True
+        except (AttributeError, TypeError, ValueError):
+            continue
+    return resolved
+
+
 def tts_emit_to_ui_queue(
     character_name: str,
     speech: str,

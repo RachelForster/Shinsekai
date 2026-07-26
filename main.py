@@ -102,7 +102,11 @@ from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor
 from core.messaging.chat_turn_wiring import create_chat_turn_service
 from core.messaging.queue import ClearableQueue
-from core.runtime.app_runtime import AppRuntime, set_app_runtime
+from core.runtime.app_runtime import (
+    AppRuntime,
+    resolve_pending_tool_confirmation,
+    set_app_runtime,
+)
 from core.runtime.launch_mode import should_init_desktop_mixer
 from core.runtime.shutdown import shutdown_chat_runtime
 from core.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
@@ -1051,6 +1055,10 @@ def main():
                     emit_ack(ok=True)
                     return
                 if command_type == "submit-option":
+                    if resolve_pending_tool_confirmation(str(payload or "")):
+                        ui_updates.post_options([])
+                        emit_ack(ok=True)
+                        return
                     runtime_asr.pause_for_turn()
                     submit_runtime_text(str(payload or ""))
                     emit_ack(ok=True)
