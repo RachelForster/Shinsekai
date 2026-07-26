@@ -8,10 +8,17 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 import sys
 
-# PySide6 is unavailable in CI — fake it before importing history_manager
-sys.modules.setdefault("PySide6", MagicMock())
-sys.modules.setdefault("PySide6.QtWidgets", MagicMock())
-sys.modules.setdefault("PySide6.QtCore", MagicMock())
+# PySide6 is unavailable in CI — fake it before importing history_manager.
+# Only fake when the real package is absent: on machines that DO have PySide6
+# installed it isn't imported yet at this point, so an unconditional setdefault()
+# would plant these Mocks into sys.modules and leak them into every other test
+# module (breaking real QtCore/QtGui imports, e.g. QThread metaclass conflicts).
+try:
+    import PySide6  # noqa: F401
+except ImportError:
+    sys.modules.setdefault("PySide6", MagicMock())
+    sys.modules.setdefault("PySide6.QtWidgets", MagicMock())
+    sys.modules.setdefault("PySide6.QtCore", MagicMock())
 
 from llm.history_manager import (
     _repair_json_string,
