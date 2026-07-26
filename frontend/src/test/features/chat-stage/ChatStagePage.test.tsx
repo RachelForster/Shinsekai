@@ -305,6 +305,39 @@ describe("ChatStagePage", () => {
     );
   });
 
+  it("renders localized correlated tool confirmation controls without submitting dialog text", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        toolConfirmation: {
+          confirmationId: "prompt-1",
+          detail: "path=D:/notes/plan.txt",
+          risk: "high",
+          toolName: "file_write",
+        },
+      }),
+    );
+    renderPage();
+
+    const cancel = await screen.findByRole("button", { name: "Cancel" });
+    expect(screen.getByRole("list", { name: "Tool confirmation" })).toContainElement(cancel);
+    expect(screen.getByRole("button", { name: /Confirm file_write/ })).toBeInTheDocument();
+    expect(cancel).toHaveFocus();
+
+    fireEvent.click(cancel);
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: {
+          action: "cancel",
+          confirmationId: "prompt-1",
+          kind: "tool-confirmation",
+        },
+        type: "submit-option",
+      }),
+    );
+    expect(screen.queryByText("Aoi: Cancel")).not.toBeInTheDocument();
+  });
+
   it("exposes notifications as status updates and softens them over sprites", async () => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({

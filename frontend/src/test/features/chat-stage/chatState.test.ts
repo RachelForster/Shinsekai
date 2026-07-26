@@ -865,6 +865,52 @@ describe("chatStageReducer", () => {
     expect(hidden.layers.busy).toBe(false);
   });
 
+  it("correlates tool confirmation events and disables free-form input", () => {
+    const prompted = chatStageReducer(emptyChatState, {
+      event: {
+        confirmationId: "prompt-1",
+        detail: "path=D:/notes/plan.txt",
+        risk: "high",
+        seq: 1,
+        toolName: "file_write",
+        ts: 1,
+        type: "tool.confirmation.show",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(prompted.toolConfirmation?.confirmationId).toBe("prompt-1");
+    expect(prompted.layers.options).toBe(true);
+    expect(buildChatStageViewModel(prompted).inputDisabled).toBe(true);
+
+    const staleClear = chatStageReducer(prompted, {
+      event: {
+        confirmationId: "prompt-old",
+        seq: 2,
+        ts: 2,
+        type: "tool.confirmation.clear",
+        v: 1,
+      },
+      type: "event",
+    });
+    expect(staleClear.toolConfirmation?.confirmationId).toBe("prompt-1");
+
+    const matchingClear = chatStageReducer(staleClear, {
+      event: {
+        confirmationId: "prompt-1",
+        seq: 3,
+        ts: 3,
+        type: "tool.confirmation.clear",
+        v: 1,
+      },
+      type: "event",
+    });
+    expect(matchingClear.toolConfirmation).toBeNull();
+    expect(matchingClear.layers.options).toBe(false);
+    expect(buildChatStageViewModel(matchingClear).inputDisabled).toBe(false);
+  });
+
   it("updates token usage text and clears sprites by character name", () => {
     const withSprite = chatStageReducer(emptyChatState, {
       event: {

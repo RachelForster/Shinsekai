@@ -392,6 +392,53 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertEqual(snapshot["dialogHtml"], "<p>Choose</p>")
         self.assertEqual(chat_stream.command[1]["type"], "submit-option")
 
+    def test_tool_confirmation_command_preserves_structured_correlation_payload(self):
+        chat_stream = _StubChatStream()
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+        )
+
+        snapshot = _handle_chat_command(
+            state,
+            {
+                "payload": {
+                    "action": "cancel",
+                    "confirmationId": "prompt-1",
+                    "kind": "tool-confirmation",
+                },
+                "type": "submit-option",
+            },
+        )
+
+        self.assertEqual(snapshot["status"], "idle")
+        self.assertEqual(
+            chat_stream.command[1]["payload"],
+            {
+                "action": "cancel",
+                "confirmationId": "prompt-1",
+                "kind": "tool-confirmation",
+            },
+        )
+
+    def test_tool_confirmation_command_rejects_invalid_or_unstructured_payload(self):
+        chat_stream = _StubChatStream()
+        state = SimpleNamespace(
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+        )
+
+        for payload in (
+            {"action": "approve", "confirmationId": "prompt-1", "kind": "tool-confirmation"},
+            {"action": "confirm", "confirmationId": "", "kind": "tool-confirmation"},
+            {"action": "confirm", "confirmationId": "prompt-1", "kind": "other"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ValueError):
+                _handle_chat_command(
+                    state,
+                    {"payload": payload, "type": "submit-option"},
+                )
+
     def test_handle_chat_command_clears_closed_session_markers_when_restarting_runtime_interaction(self):
         chat_stream = _StubChatStream()
         chat_stream.snapshot["notificationText"] = "聊天会话已结束。"
@@ -710,12 +757,22 @@ class ChatStreamCommandTests(unittest.TestCase):
             session = service.create_session()
 
             self.assertIn("shinsekai_bridge_token=bridge-secret", session["producerEndpoint"])
+            self.assertIn("shinsekai_producer_token=", session["producerEndpoint"])
             self.assertIn(
                 "shinsekai_bridge_token=bridge-secret",
                 service.media_url("data/speech/nanami/hello.wav"),
             )
             with self.assertRaises(ConnectionError):
                 _open_ws(session["wsUrl"], session_id=session["sessionId"], role="viewer")
+            with self.assertRaises(ConnectionError):
+                _open_ws(
+                    (
+                        f"{session['wsUrl']}?"
+                        "shinsekai_bridge_token=bridge-secret"
+                    ),
+                    session_id=session["sessionId"],
+                    role="producer",
+                )
 
             producer = _open_ws(session["producerEndpoint"], session_id=session["sessionId"], role="producer")
             self.assertIsNotNone(producer)
@@ -723,6 +780,22 @@ class ChatStreamCommandTests(unittest.TestCase):
             if producer is not None:
                 _close_ws(producer)
             service.stop()
+
+    def test_media_url_registers_absolute_media_path_for_later_authenticated_read(
+        self,
+    ):
+        service = ChatStreamService(
+            host="127.0.0.1",
+            bridge_port=_free_bridge_port(),
+            auth_token="bridge-secret",
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media_path = str(Path(temp_dir) / "generated" / "line.wav")
+
+            url = service.media_url(media_path)
+
+        self.assertIn("/api/media?", url)
+        self.assertIn(media_path, service.approved_external_media_paths())
 
     def test_ws_client_sink_transports_events_over_real_socket(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=_free_bridge_port())
@@ -750,7 +823,11 @@ class ChatStreamCommandTests(unittest.TestCase):
         service.start()
         try:
             session = service.create_session({"dialogText": "boot"})
-            producer = _open_ws(session["wsUrl"], session_id=session["sessionId"], role="producer")
+            producer = _open_ws(
+                session["producerEndpoint"],
+                session_id=session["sessionId"],
+                role="producer",
+            )
             viewer = _open_ws(session["wsUrl"], session_id=session["sessionId"], role="viewer")
             try:
                 snapshot_event = _wait_for_event(viewer, lambda event: event.get("type") == "snapshot")
@@ -828,7 +905,11 @@ class ChatStreamCommandTests(unittest.TestCase):
             sender.start()
             time.sleep(0.2)
 
-            producer = _open_ws(session["wsUrl"], session_id=session["sessionId"], role="producer")
+            producer = _open_ws(
+                session["producerEndpoint"],
+                session_id=session["sessionId"],
+                role="producer",
+            )
             try:
                 sender.join(timeout=5.0)
                 self.assertFalse(sender.is_alive())
@@ -914,14 +995,22 @@ class ChatStreamCommandTests(unittest.TestCase):
         service.start()
         try:
             session = service.create_session({"dialogText": "boot"})
-            producer1 = _open_ws(session["wsUrl"], session_id=session["sessionId"], role="producer")
+            producer1 = _open_ws(
+                session["producerEndpoint"],
+                session_id=session["sessionId"],
+                role="producer",
+            )
             viewer = _open_ws(session["wsUrl"], session_id=session["sessionId"], role="viewer")
             producer2 = None
             try:
                 snapshot_event = _wait_for_event(viewer, lambda event: event.get("type") == "snapshot")
                 self.assertEqual(snapshot_event["snapshot"]["dialogText"], "boot")
 
-                producer2 = _open_ws(session["wsUrl"], session_id=session["sessionId"], role="producer")
+                producer2 = _open_ws(
+                    session["producerEndpoint"],
+                    session_id=session["sessionId"],
+                    role="producer",
+                )
                 _wait_for_socket_close(producer1)
 
                 _send_json_frame(
@@ -960,7 +1049,11 @@ class ChatStreamCommandTests(unittest.TestCase):
         service.start()
         try:
             session = service.create_session({"dialogText": "recovered", "eventSeq": 9})
-            producer = _open_ws(session["wsUrl"], session_id=session["sessionId"], role="producer")
+            producer = _open_ws(
+                session["producerEndpoint"],
+                session_id=session["sessionId"],
+                role="producer",
+            )
             viewer = _open_ws(session["wsUrl"], session_id=session["sessionId"], role="viewer")
             try:
                 snapshot_event = _wait_for_event(viewer, lambda event: event.get("type") == "snapshot")

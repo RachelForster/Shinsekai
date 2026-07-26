@@ -170,12 +170,37 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         ...clearTransientNotificationState(state),
         eventSeq: Math.max(state.eventSeq, event.seq),
         options: event.options,
+        toolConfirmation: null,
       });
     case "options.clear":
       return withResolvedLayers({
         ...state,
         eventSeq: Math.max(state.eventSeq, event.seq),
         options: [],
+      });
+    case "tool.confirmation.show":
+      return withResolvedLayers({
+        ...clearTransientNotificationState(state),
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        options: [],
+        toolConfirmation: {
+          confirmationId: event.confirmationId,
+          detail: event.detail,
+          risk: event.risk,
+          toolName: event.toolName,
+        },
+      });
+    case "tool.confirmation.clear":
+      if (state.toolConfirmation && state.toolConfirmation.confirmationId !== event.confirmationId) {
+        return withResolvedLayers({
+          ...state,
+          eventSeq: Math.max(state.eventSeq, event.seq),
+        });
+      }
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        toolConfirmation: null,
       });
     case "numeric.update":
       return withResolvedLayers({
@@ -277,6 +302,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         sessionClosedReason: event.reason,
         status: "idle",
         systemMessageText: undefined,
+        toolConfirmation: null,
       });
     default:
       return state;

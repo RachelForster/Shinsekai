@@ -262,6 +262,12 @@ class EventSinkSnapshotTests(unittest.TestCase):
         snapshot["busyDurationSeconds"] = 3.0
         snapshot["options"] = ["继续"]
         snapshot["status"] = "generating"
+        snapshot["toolConfirmation"] = {
+            "confirmationId": "prompt-1",
+            "detail": "",
+            "risk": "high",
+            "toolName": "file_write",
+        }
 
         next_snapshot = fold_event_into_snapshot(
             snapshot,
@@ -280,6 +286,47 @@ class EventSinkSnapshotTests(unittest.TestCase):
         self.assertEqual(next_snapshot.get("notificationText"), "聊天会话已结束。")
         self.assertEqual(next_snapshot.get("sessionClosedReason"), "聊天会话已结束。")
         self.assertEqual(next_snapshot.get("status"), "idle")
+        self.assertIsNone(next_snapshot.get("toolConfirmation"))
+
+    def test_tool_confirmation_is_folded_and_only_matching_clear_removes_it(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "confirmationId": "prompt-1",
+                "detail": r"path=D:\notes\plan.txt",
+                "risk": "high",
+                "seq": 1,
+                "toolName": "file_write",
+                "ts": 1,
+                "type": "tool.confirmation.show",
+                "v": 1,
+            },
+        )
+
+        stale_clear = fold_event_into_snapshot(
+            snapshot,
+            {
+                "confirmationId": "prompt-old",
+                "seq": 2,
+                "ts": 2,
+                "type": "tool.confirmation.clear",
+                "v": 1,
+            },
+        )
+        matching_clear = fold_event_into_snapshot(
+            stale_clear,
+            {
+                "confirmationId": "prompt-1",
+                "seq": 3,
+                "ts": 3,
+                "type": "tool.confirmation.clear",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(snapshot["toolConfirmation"]["confirmationId"], "prompt-1")
+        self.assertEqual(stale_clear["toolConfirmation"]["confirmationId"], "prompt-1")
+        self.assertIsNone(matching_clear["toolConfirmation"])
 
     def test_asr_state_clears_stale_closed_session_reason_in_snapshot(self):
         snapshot = make_empty_chat_snapshot()

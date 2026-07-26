@@ -29,6 +29,7 @@ import {
   StatLayer,
   StandaloneDesktopResizeHandles,
   TokenUsageLayer,
+  ToolConfirmationLayer,
 } from "./components/StageLayers";
 import { TopStageTools } from "./components/TopStageTools";
 import "./chat-stage.css";
@@ -410,6 +411,21 @@ export function ChatStagePage() {
     void sendCommand({ payload: option, type: "submit-option" });
   };
 
+  const resolveToolConfirmation = (action: "confirm" | "cancel") => {
+    const confirmation = state.toolConfirmation;
+    if (!confirmation) {
+      return;
+    }
+    void sendCommand({
+      payload: {
+        action,
+        confirmationId: confirmation.confirmationId,
+        kind: "tool-confirmation",
+      },
+      type: "submit-option",
+    });
+  };
+
   const updateRuntimeTextSpeed = (typewriterCps: number) => {
     setRuntimeConfig((current) => ({ ...current, typewriterCps }));
   };
@@ -673,7 +689,11 @@ export function ChatStagePage() {
         >
           {viewModel.layers.options ? (
             <>
-              <OptionsLayer hidden={false} onSelect={submitOption} options={viewModel.options} />
+              {viewModel.toolConfirmation ? (
+                <ToolConfirmationLayer confirmation={viewModel.toolConfirmation} onResolve={resolveToolConfirmation} />
+              ) : (
+                <OptionsLayer hidden={false} onSelect={submitOption} options={viewModel.options} />
+              )}
               {!dialogToolbarDetached ? <div className="dialog-layer__toolbar">{dialogToolbar}</div> : null}
             </>
           ) : (

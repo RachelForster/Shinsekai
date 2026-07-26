@@ -3,6 +3,8 @@ import type { MessageKey } from "../messages";
 export const jaMessages: Record<MessageKey, string> = {
   "chat.stats.label": "キャラクターステータス",
   "chat.options.label": "会話の選択肢",
+  "chat.toolConfirmation.confirm": "{tool} の実行を確認",
+  "chat.toolConfirmation.label": "ツール実行の確認",
   "api.memory.checkModel": "確認",
   "api.memory.cachedNotLoaded": "長期記憶は準備完了です",
   "api.memory.enableReady": "自動長期記憶を有効にしました。",

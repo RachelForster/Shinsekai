@@ -6,6 +6,7 @@ import type {
   ChatSprite,
   ChatStat,
   ChatStageEvent,
+  ChatToolConfirmation,
   ChatTurnOptions,
   ChatTurnState,
   ChatTransportMode,
@@ -91,6 +92,7 @@ export interface ChatStageViewModel {
   status: ChatRuntimeStatus;
   statusText: string;
   tokenUsageText?: string;
+  toolConfirmation?: ChatToolConfirmation | null;
   transportMode: ChatTransportMode;
   transportState: ChatTransportState;
   userDisplayName: string;

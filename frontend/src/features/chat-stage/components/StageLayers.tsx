@@ -13,7 +13,7 @@ import { Clock, Coins, Gauge, Heart, Shield, Sparkles, Star, Target, Zap, type L
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
-import type { ChatStat } from "../../../shared/platform/types";
+import type { ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
@@ -358,6 +358,45 @@ export function OptionsLayer({
               }}
             >
               {option}
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function ToolConfirmationLayer({
+  confirmation,
+  onResolve,
+}: {
+  confirmation: ChatToolConfirmation;
+  onResolve: (action: "confirm" | "cancel") => void;
+}) {
+  const { t } = useI18n();
+  const choices = [
+    {
+      action: "cancel" as const,
+      label: t("common.cancel"),
+    },
+    {
+      action: "confirm" as const,
+      label: t("chat.toolConfirmation.confirm", {
+        tool: confirmation.toolName,
+      }),
+    },
+  ];
+  return (
+    <div className="options-layer" data-chat-stage-hitbox="true">
+      <div aria-label={t("chat.toolConfirmation.label")} className="options-layer__scroll" role="list">
+        {choices.map((choice, index) => (
+          <div className="options-layer__item" key={choice.action} role="listitem">
+            <ThemeFrame prefix="chat-option" />
+            <Button autoFocus={index === 0} className="options-layer__button" onClick={() => onResolve(choice.action)}>
+              <span>{choice.label}</span>
+              {choice.action === "confirm" && confirmation.detail ? (
+                <small className="options-layer__detail">{confirmation.detail}</small>
+              ) : null}
             </Button>
           </div>
         ))}

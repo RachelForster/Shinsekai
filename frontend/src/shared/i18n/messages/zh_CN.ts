@@ -3,6 +3,8 @@ import type { MessageKey } from "../messages";
 export const zhCNMessages: Record<MessageKey, string> = {
   "chat.stats.label": "角色状态",
   "chat.options.label": "对话选项",
+  "chat.toolConfirmation.confirm": "确认执行 {tool}",
+  "chat.toolConfirmation.label": "工具执行确认",
   "api.memory.checkModel": "检查",
   "api.memory.cachedNotLoaded": "长期记忆已就绪",
   "api.memory.enableReady": "自动长期记忆已启用。",

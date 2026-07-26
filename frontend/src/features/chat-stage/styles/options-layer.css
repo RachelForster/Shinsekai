@@ -109,6 +109,15 @@
   white-space: normal;
 }
 
+.options-layer__detail {
+  display: block;
+  margin-top: 0.35rem;
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  font-size: 0.82em;
+  font-weight: 450;
+  overflow-wrap: anywhere;
+}
+
 .options-layer__button::before {
   position: absolute;
   top: 50%;

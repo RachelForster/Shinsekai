@@ -2,7 +2,6 @@ from asyncio import Queue
 import copy
 from dataclasses import dataclass, field
 import json
-import threading
 import time
 from datetime import datetime
 from threading import Thread
@@ -16,7 +15,10 @@ from core.messaging.stream_events import (
     STREAM_DIALOG_REPAIR_KEY,
     STREAM_REASONING_DELTA_KEY,
 )
-from core.runtime.app_runtime import try_get_app_runtime
+from core.runtime.app_runtime import (
+    get_tool_confirmation_controller,
+    try_get_app_runtime,
+)
 from i18n import tr
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
 from llm.compact_manager import CompactManager
@@ -312,7 +314,6 @@ class LLMManager:
         if risk == "low":
             return True
         try:
-            from core.runtime.app_runtime import try_get_app_runtime
             rt = try_get_app_runtime()
             if rt is None:
                 return risk != "high"
@@ -332,20 +333,58 @@ class LLMManager:
                     detail = " · ".join(parts[:6])
             except Exception:
                 detail = args_str[:120] if args_str else ""
-            summary = f"{tool_name}" + (f"\n{detail}" if detail else "")
-            event = threading.Event()
-            confirm_result: list[bool] = []
-            if not hasattr(rt, '_pending_confirm'):
-                rt._pending_confirm = {}
-            rt._pending_confirm[tool_name] = (event, confirm_result)
-            warn = "⚠️" if risk == "high" else "⚡"
-            ui.post_options([f"{warn} 确认 {summary}", "取消"])
-            resolved = event.wait(timeout=30.0)
-            rt._pending_confirm.pop(tool_name, None)
+            controller = get_tool_confirmation_controller()
+            prompt = controller.create(tool_name)
+            try:
+                if hasattr(ui, "post_tool_confirmation"):
+                    ui.post_tool_confirmation(
+                        confirmation_id=prompt.confirmation_id,
+                        tool_name=tool_name,
+                        detail=detail,
+                        risk=risk,
+                    )
+                else:
+                    confirm_label = tr(
+                        "tool_confirmation.confirm",
+                        tool=tool_name,
+                    )
+                    if detail:
+                        confirm_label = f"{confirm_label}\n{detail}"
+                    ui.post_options(
+                        [
+                            {
+                                "action": "cancel",
+                                "confirmationId": prompt.confirmation_id,
+                                "kind": "tool-confirmation",
+                                "label": tr("common.cancel"),
+                            },
+                            {
+                                "action": "confirm",
+                                "confirmationId": prompt.confirmation_id,
+                                "kind": "tool-confirmation",
+                                "label": confirm_label,
+                            },
+                        ]
+                    )
+                resolved = prompt.event.wait(timeout=30.0)
+            finally:
+                controller.discard(prompt.confirmation_id)
+                try:
+                    if hasattr(ui, "clear_tool_confirmation"):
+                        ui.clear_tool_confirmation(prompt.confirmation_id)
+                    else:
+                        ui.post_options([])
+                except Exception:
+                    pass
             if not resolved:
-                ui.post_notification(f"工具 {tool_name} 超时未确认，已取消")
+                try:
+                    ui.post_notification(
+                        tr("tool_confirmation.timeout", tool=tool_name)
+                    )
+                except Exception:
+                    pass
                 return False
-            return bool(confirm_result and confirm_result[0])
+            return prompt.confirmed is True
         except Exception:
             return risk != "high"
 

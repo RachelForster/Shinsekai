@@ -1065,6 +1065,28 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
     if command in {"chat-input-state", "flush-input-batch", "cancel-input-batch"}:
         return _forward_runtime_command(_current_runtime_status())
 
+    if command == "submit-option" and isinstance(body.get("payload"), dict):
+        payload = body["payload"]
+        if payload.get("kind") != "tool-confirmation":
+            raise ValueError("Option selection must be a string.")
+        confirmation_id = reject_control_chars(
+            str(payload.get("confirmationId") or "").strip(),
+            field="confirmationId",
+        )
+        action = str(payload.get("action") or "").strip().casefold()
+        if (
+            not confirmation_id
+            or len(confirmation_id) > 128
+            or action not in {"confirm", "cancel"}
+        ):
+            raise ValueError("Tool confirmation response is invalid.")
+        body["payload"] = {
+            "action": action,
+            "confirmationId": confirmation_id,
+            "kind": "tool-confirmation",
+        }
+        return _forward_runtime_command(_current_runtime_status())
+
     if command in {"send-message", "submit-option"}:
         attachments = []
         payload = body.get("payload")

@@ -71,6 +71,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "stats": [],
         "status": "idle",
         "systemMessageText": "",
+        "toolConfirmation": None,
         "turnState": {
             "enabled": False,
             "pendingCount": 0,
@@ -277,10 +278,31 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     if event_type == "options.show":
         _clear_transient_notification_state(next_snapshot)
         next_snapshot["options"] = [str(item) for item in (event.get("options") or [])]
+        next_snapshot["toolConfirmation"] = None
         return next_snapshot
 
     if event_type == "options.clear":
         next_snapshot["options"] = []
+        return next_snapshot
+
+    if event_type == "tool.confirmation.show":
+        _clear_transient_notification_state(next_snapshot)
+        next_snapshot["options"] = []
+        next_snapshot["toolConfirmation"] = {
+            "confirmationId": str(event.get("confirmationId") or ""),
+            "detail": str(event.get("detail") or ""),
+            "risk": str(event.get("risk") or "high"),
+            "toolName": str(event.get("toolName") or ""),
+        }
+        return next_snapshot
+
+    if event_type == "tool.confirmation.clear":
+        current = next_snapshot.get("toolConfirmation")
+        confirmation_id = str(event.get("confirmationId") or "")
+        if isinstance(current, dict) and str(
+            current.get("confirmationId") or ""
+        ) == confirmation_id:
+            next_snapshot["toolConfirmation"] = None
         return next_snapshot
 
     if event_type == "history.replace":
@@ -491,6 +513,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["sessionClosedReason"] = str(event.get("reason") or "")
         next_snapshot["status"] = "idle"
         next_snapshot["systemMessageText"] = ""
+        next_snapshot["toolConfirmation"] = None
         return next_snapshot
 
     return next_snapshot
