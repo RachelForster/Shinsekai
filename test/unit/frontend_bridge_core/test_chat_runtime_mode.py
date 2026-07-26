@@ -275,6 +275,39 @@ class ChatRuntimeModeTests(unittest.TestCase):
         with self.assertRaisesRegex(PermissionError, "request origin is not allowed"):
             handler._require_authorized_write("/api/chat/command")
 
+    def test_mobile_write_requests_allow_only_the_same_http_origin(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        handler.path = "/api/chat/command"
+        handler.server = SimpleNamespace(state=SimpleNamespace(auth_token="secret"))
+        handler.headers = {
+            "Host": "192.168.1.20:8789",
+            "Origin": "http://192.168.1.20:8789",
+            BRIDGE_AUTH_HEADER: "secret",
+        }
+
+        handler._require_authorized_write("/api/chat/command")
+
+        handler.headers["Origin"] = "http://192.168.1.21:8789"
+        with self.assertRaisesRegex(PermissionError, "request origin is not allowed"):
+            handler._require_authorized_write("/api/chat/command")
+
+    def test_remote_read_requests_require_header_query_or_cookie_token(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        handler.path = "/api/chat/snapshot"
+        handler.client_address = ("192.168.1.30", 51000)
+        handler.server = SimpleNamespace(state=SimpleNamespace(auth_token="secret"))
+        handler.headers = {}
+
+        with self.assertRaisesRegex(PermissionError, "invalid bridge auth token"):
+            handler._require_authorized_read("/api/chat/snapshot")
+
+        handler.path = "/api/chat/snapshot?shinsekai_bridge_token=secret"
+        handler._require_authorized_read("/api/chat/snapshot")
+
+        handler.path = "/api/chat/snapshot"
+        handler.headers = {"Cookie": "shinsekai_bridge_token=secret"}
+        handler._require_authorized_read("/api/chat/snapshot")
+
     def test_launch_chat_forces_legacy_native_config_to_react(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         chat_stream = _ChatStreamStub()

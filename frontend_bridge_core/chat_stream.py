@@ -75,6 +75,7 @@ class _WebSocketConnection:
     writer: asyncio.StreamWriter
     role: str
     session_id: str
+    advertised_ws_url: str = ""
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def send_json(self, payload: dict[str, Any]) -> None:
@@ -154,6 +155,8 @@ class ChatStreamService:
         self._lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._server: asyncio.base_events.Server | None = None
+        self._mobile_server: asyncio.base_events.Server | None = None
+        self._mobile_ws_url = ""
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
         self._start_error: Exception | None = None
@@ -187,8 +190,37 @@ class ChatStreamService:
         self._loop = None
         self._thread = None
         self._server = None
+        self._mobile_server = None
+        self._mobile_ws_url = ""
         self._ready.clear()
         self._start_error = None
+
+    def start_mobile_listener(self, advertised_host: str, port: int) -> str:
+        loop = self._loop
+        if loop is None:
+            raise RuntimeError("chat stream service is unavailable")
+        host = str(advertised_host or "").strip()
+        if not host:
+            raise ValueError("advertised mobile host is required")
+        websocket_url = f"ws://{host}:{int(port)}/ws"
+        future = asyncio.run_coroutine_threadsafe(
+            self._start_mobile_listener_async(websocket_url, int(port)),
+            loop,
+        )
+        return str(future.result(timeout=5.0))
+
+    def stop_mobile_listener(self) -> None:
+        loop = self._loop
+        if loop is None:
+            return
+        future = asyncio.run_coroutine_threadsafe(
+            self._stop_mobile_listener_async(),
+            loop,
+        )
+        try:
+            future.result(timeout=5.0)
+        except Exception:
+            pass
 
     def create_session(self, initial_snapshot: dict[str, Any] | None = None) -> dict[str, str]:
         session_id = uuid.uuid4().hex
@@ -390,6 +422,7 @@ class ChatStreamService:
         self.approve_external_media_path(raw_path)
 
     async def _shutdown_async(self) -> None:
+        await self._stop_mobile_listener_async()
         server = self._server
         if server is not None:
             server.close()
@@ -411,6 +444,45 @@ class ChatStreamService:
                 session.viewers.clear()
                 session.producer = None
                 session.producer_ready.clear()
+
+    async def _start_mobile_listener_async(self, websocket_url: str, port: int) -> str:
+        if self._mobile_server is not None:
+            if self._mobile_ws_url == websocket_url:
+                return websocket_url
+            await self._stop_mobile_listener_async()
+
+        async def handle_mobile_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            await self._handle_client(
+                reader,
+                writer,
+                advertised_ws_url=websocket_url,
+            )
+
+        server = await asyncio.start_server(handle_mobile_client, "0.0.0.0", port)
+        self._mobile_server = server
+        self._mobile_ws_url = websocket_url
+        return websocket_url
+
+    async def _stop_mobile_listener_async(self) -> None:
+        server = self._mobile_server
+        self._mobile_server = None
+        self._mobile_ws_url = ""
+        if server is not None:
+            server.close()
+            await server.wait_closed()
+        with self._lock:
+            mobile_viewers = [
+                viewer
+                for session in self._sessions.values()
+                for viewer in session.viewers
+                if viewer.advertised_ws_url
+            ]
+        for viewer in mobile_viewers:
+            await viewer.close()
+            await self._detach(viewer)
 
     def _run_loop(self) -> None:
         loop = asyncio.new_event_loop()
@@ -434,11 +506,23 @@ class ChatStreamService:
                     loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             loop.close()
 
-    async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _handle_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        *,
+        advertised_ws_url: str = "",
+    ) -> None:
         connection: _WebSocketConnection | None = None
         try:
             request_line, headers = await self._read_handshake(reader)
-            connection = await self._accept_connection(reader, writer, request_line, headers)
+            connection = await self._accept_connection(
+                reader,
+                writer,
+                request_line,
+                headers,
+                advertised_ws_url=advertised_ws_url,
+            )
             if connection.role == "viewer":
                 await self._send_snapshot(connection)
             await self._receive_loop(connection)
@@ -474,6 +558,8 @@ class ChatStreamService:
         writer: asyncio.StreamWriter,
         request_line: str,
         headers: dict[str, str],
+        *,
+        advertised_ws_url: str = "",
     ) -> _WebSocketConnection:
         parts = request_line.split()
         if len(parts) < 2 or parts[0].upper() != "GET":
@@ -514,7 +600,13 @@ class ChatStreamService:
         ).encode("utf-8")
         writer.write(response)
         await writer.drain()
-        connection = _WebSocketConnection(reader=reader, writer=writer, role=role, session_id=session_id)
+        connection = _WebSocketConnection(
+            reader=reader,
+            writer=writer,
+            role=role,
+            session_id=session_id,
+            advertised_ws_url=advertised_ws_url,
+        )
         old_producer: _WebSocketConnection | None = None
         with self._lock:
             session = self._sessions[session_id]
@@ -581,6 +673,8 @@ class ChatStreamService:
                 return
             snapshot = dict(session.snapshot)
             seq = session.last_seq
+        if connection.advertised_ws_url:
+            snapshot["wsUrl"] = connection.advertised_ws_url
         await connection.send_json(
             {
                 "v": 1,

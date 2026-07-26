@@ -765,6 +765,14 @@ def _chat_snapshot(
         "chatRuntimeClosing": _chat_runtime_closing(state),
         "turnOptions": _chat_turn_options(state),
     }
+    mobile_access_service = getattr(state, "mobile_access_service", None)
+    mobile_access_info = (
+        mobile_access_service.snapshot()
+        if mobile_access_service is not None
+        else None
+    )
+    if mobile_access_info is not None:
+        runtime_state["mobileAccess"] = mobile_access_info.to_payload()
     if session_id and chat_stream is not None:
         snapshot = chat_stream.get_snapshot(session_id)
         if snapshot is not None:
@@ -787,6 +795,8 @@ def _chat_snapshot(
                 next_snapshot["status"] = status
                 next_snapshot["numericInfo"] = status
             next_snapshot.update(runtime_state)
+            if mobile_access_info is not None:
+                next_snapshot["wsUrl"] = mobile_access_info.websocket_url
             if extra:
                 next_snapshot.update(extra)
             return next_snapshot

@@ -798,6 +798,27 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertIn("/api/media?", url)
         self.assertIn(media_path, service.approved_external_media_paths())
 
+    def test_mobile_websocket_listener_advertises_its_reachable_url(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=_free_bridge_port())
+        service.start()
+        viewer = None
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+                probe.bind(("127.0.0.1", 0))
+                mobile_port = int(probe.getsockname()[1])
+            mobile_url = service.start_mobile_listener("127.0.0.1", mobile_port)
+            session = service.create_session({"dialogText": "mobile"})
+
+            viewer = _open_ws(mobile_url, session_id=session["sessionId"], role="viewer")
+            snapshot_event = _wait_for_event(viewer, lambda event: event.get("type") == "snapshot")
+
+            self.assertEqual(snapshot_event["snapshot"]["dialogText"], "mobile")
+            self.assertEqual(snapshot_event["snapshot"]["wsUrl"], mobile_url)
+        finally:
+            if viewer is not None:
+                _close_ws(viewer)
+            service.stop()
+
     def test_ws_client_sink_transports_events_over_real_socket(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=_free_bridge_port())
         service.start()
