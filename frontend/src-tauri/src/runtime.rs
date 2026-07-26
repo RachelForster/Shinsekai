@@ -6,6 +6,7 @@ mod managed;
 mod manifest;
 mod python_env;
 mod python_probe;
+mod pytorch;
 mod resolver;
 
 pub use resolver::{RuntimeCandidateView, RuntimeRepairActionKind, RuntimeScanView};

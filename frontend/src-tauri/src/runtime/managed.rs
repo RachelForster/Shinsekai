@@ -1,5 +1,4 @@
 use std::{
-    env,
     error::Error,
     fs::{self, OpenOptions},
     io::{BufRead, BufReader, Read, Write},
@@ -13,11 +12,10 @@ use std::{
 use serde::Serialize;
 use tauri::{Emitter, Manager, Runtime};
 
-use super::{manifest::RuntimeRequirements, python_env};
+use super::{manifest::RuntimeRequirements, python_env, pytorch};
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
-const TORCH_PROJECT_NAMES: &[&str] = &["torch", "torchvision", "torchaudio"];
 
 fn configure_pip_install_command(
     command: &mut Command,
@@ -87,30 +85,53 @@ where
         .lines()
         .map(ToString::to_string)
         .collect::<Vec<_>>();
-    let (torch_lines, other_lines) = partition_torch_requirement_lines(&requirement_lines);
+    let (torch_lines, other_lines) = pytorch::partition_requirement_lines(&requirement_lines);
     let split_torch = !torch_lines.is_empty() && !cfg!(target_os = "macos");
 
     if split_torch {
-        let (torch_index, reason) = pytorch_wheel_index_url_for_this_machine(pip_index_urls);
+        let plan = pytorch::install_plan(python, &torch_lines, pip_index_urls);
         on_log_line(&format!(
-            "Installing PyTorch packages first from {torch_index} ({reason})"
+            "PyTorch plan: index={} ({}), install={}, force_reinstall={}: {}",
+            plan.index_url,
+            plan.index_reason,
+            plan.install_required,
+            plan.force_reinstall,
+            plan.detail,
         ));
-        let torch_requirements =
-            write_temp_requirements(requirements_path, "shinsekai-torch", &torch_lines)?;
+        let torch_requirements = write_temp_requirements(
+            requirements_path,
+            "shinsekai-torch",
+            &plan.requirement_lines,
+        )?;
         let other_requirements =
             write_temp_requirements(requirements_path, "shinsekai-runtime", &other_lines)?;
         let result = (|| {
-            let mut install_torch = pip_install_command(python, &torch_requirements, None);
-            install_torch
-                .arg("--index-url")
-                .arg(&torch_index)
-                .arg("--extra-index-url")
-                .arg("https://pypi.org/simple");
-            run_command_with_live_log(
-                &mut install_torch,
-                "install Shinsekai PyTorch runtime dependencies",
-                &mut on_log_line,
-            )?;
+            if plan.install_required {
+                let mut install_torch = pytorch_install_command(
+                    python,
+                    &torch_requirements,
+                    &plan.index_url,
+                    plan.force_reinstall,
+                );
+                run_command_with_live_log(
+                    &mut install_torch,
+                    "install Shinsekai PyTorch runtime dependencies",
+                    &mut on_log_line,
+                )?;
+                if plan.force_reinstall {
+                    let mut repair_dependencies = pytorch_install_command(
+                        python,
+                        &torch_requirements,
+                        &plan.index_url,
+                        false,
+                    );
+                    run_command_with_live_log(
+                        &mut repair_dependencies,
+                        "repair Shinsekai PyTorch runtime dependencies",
+                        &mut on_log_line,
+                    )?;
+                }
+            }
             if !has_non_comment_requirement(&other_lines) {
                 return Ok(());
             }
@@ -118,6 +139,7 @@ where
                 python,
                 &other_requirements,
                 pip_index_urls,
+                Some(&torch_requirements),
                 &mut on_log_line,
             )
         })();
@@ -130,6 +152,7 @@ where
         python,
         requirements_path,
         pip_index_urls,
+        None,
         &mut on_log_line,
     )
 }
@@ -138,6 +161,7 @@ fn install_runtime_requirements_file_with_indexes<F>(
     python: &Path,
     requirements_path: &Path,
     pip_index_urls: &[String],
+    constraints_path: Option<&Path>,
     mut on_log_line: F,
 ) -> RuntimeResult<()>
 where
@@ -147,6 +171,7 @@ where
 
     if pip_index_urls.is_empty() {
         let mut install = pip_install_command(python, requirements_path, None);
+        apply_pip_constraints(&mut install, constraints_path);
         return run_command_with_live_log(
             &mut install,
             "install Shinsekai runtime dependencies",
@@ -156,6 +181,7 @@ where
 
     for pip_index_url in pip_index_urls {
         let mut install = pip_install_command(python, requirements_path, Some(pip_index_url));
+        apply_pip_constraints(&mut install, constraints_path);
         on_log_line(&format!("Using pip index: {}", pip_index_url.trim()));
         match run_command_with_live_log(
             &mut install,
@@ -200,130 +226,6 @@ fn has_non_comment_requirement(lines: &[String]) -> bool {
     })
 }
 
-fn partition_torch_requirement_lines(lines: &[String]) -> (Vec<String>, Vec<String>) {
-    let mut torch_lines = Vec::new();
-    let mut other_lines = Vec::new();
-    for line in lines {
-        let project_name = requirement_line_project_name(line);
-        if project_name
-            .as_deref()
-            .is_some_and(|name| TORCH_PROJECT_NAMES.contains(&name))
-        {
-            torch_lines.push(line.trim_end_matches(['\r', '\n']).to_string());
-        } else {
-            other_lines.push(line.trim_end_matches(['\r', '\n']).to_string());
-        }
-    }
-    (torch_lines, other_lines)
-}
-
-fn requirement_line_project_name(line: &str) -> Option<String> {
-    let mut segment = line.split('#').next()?.trim();
-    if segment.is_empty() {
-        return None;
-    }
-    let lower = segment.to_ascii_lowercase();
-    if lower.starts_with("--") || lower.starts_with("-r ") || lower.starts_with("-c ") {
-        return None;
-    }
-    if lower.starts_with("-e ") {
-        segment = segment.get(3..)?.trim();
-    }
-    let first = segment.split_whitespace().next().unwrap_or(segment);
-    if first.contains("://") || first.starts_with("git+") {
-        return None;
-    }
-    let name = first
-        .chars()
-        .take_while(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-'))
-        .collect::<String>();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name.to_ascii_lowercase().replace('_', "-"))
-    }
-}
-
-fn pytorch_wheel_index_url_for_this_machine(pip_index_urls: &[String]) -> (String, String) {
-    pytorch_wheel_index_url_for_cuda_version(
-        nvidia_smi_cuda_driver_version(),
-        pytorch_wheel_base_url(pip_index_urls),
-    )
-}
-
-fn pytorch_wheel_base_url(pip_index_urls: &[String]) -> String {
-    if let Ok(value) = env::var("SHINSEKAI_PYTORCH_WHEEL_BASE") {
-        let trimmed = value.trim().trim_end_matches('/');
-        if !trimmed.is_empty() {
-            return trimmed.to_string();
-        }
-    }
-    if pip_indexes_prefer_china(pip_index_urls) {
-        "https://mirror.sjtu.edu.cn/pytorch-wheels".to_string()
-    } else {
-        "https://download.pytorch.org/whl".to_string()
-    }
-}
-
-fn pip_indexes_prefer_china(pip_index_urls: &[String]) -> bool {
-    let Some(primary) = pip_index_urls.first() else {
-        return false;
-    };
-    let primary = primary.to_ascii_lowercase();
-    [
-        "pypi.tuna.tsinghua.edu.cn",
-        "mirrors.ustc.edu.cn",
-        "mirrors.hit.edu.cn",
-        "mirrors.aliyun.com",
-        "mirror.sjtu.edu.cn",
-    ]
-    .iter()
-    .any(|domain| primary.contains(domain))
-}
-
-fn pytorch_wheel_index_url_for_cuda_version(
-    version: Option<(u32, u32)>,
-    base_url: String,
-) -> (String, String) {
-    let Some((major, minor)) = version else {
-        return (
-            format!("{base_url}/cpu"),
-            "no_usable_nvidia_smi_cpu".to_string(),
-        );
-    };
-    let tag = if (major, minor) >= (12, 4) {
-        "cu124"
-    } else if major >= 12 {
-        "cu121"
-    } else {
-        "cu118"
-    };
-    (
-        format!("{base_url}/{tag}"),
-        format!("nvidia_driver_cuda_{major}.{minor}_{tag}"),
-    )
-}
-
-fn nvidia_smi_cuda_driver_version() -> Option<(u32, u32)> {
-    let output = Command::new("nvidia-smi").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_nvidia_smi_cuda_version(&stdout)
-}
-
-fn parse_nvidia_smi_cuda_version(output: &str) -> Option<(u32, u32)> {
-    let (_, tail) = output.split_once("CUDA Version:")?;
-    let version_text = tail
-        .trim_start()
-        .chars()
-        .take_while(|ch| ch.is_ascii_digit() || *ch == '.')
-        .collect::<String>();
-    let (major, minor) = version_text.split_once('.')?;
-    Some((major.parse().ok()?, minor.parse().ok()?))
-}
-
 fn pip_install_command(
     python: &Path,
     requirements_path: &Path,
@@ -333,6 +235,36 @@ fn pip_install_command(
     install.arg("-m").arg("pip").arg("install");
     configure_pip_install_command(&mut install, python, pip_index_url);
     install.arg("-r").arg(requirements_path);
+    install
+}
+
+fn apply_pip_constraints(command: &mut Command, constraints_path: Option<&Path>) {
+    if let Some(path) = constraints_path {
+        command.arg("-c").arg(path);
+    }
+}
+
+fn pytorch_install_command(
+    python: &Path,
+    requirements_path: &Path,
+    index_url: &str,
+    force_stack_only: bool,
+) -> Command {
+    let mut install = pip_install_command(python, requirements_path, None);
+    install
+        .arg("--index-url")
+        .arg(index_url)
+        .arg("--extra-index-url")
+        .arg("https://pypi.org/simple");
+    if force_stack_only {
+        // Without --no-deps, pip applies --force-reinstall to every resolved
+        // transitive dependency. A following plain install repairs only
+        // dependencies that are missing or genuinely incompatible.
+        install
+            .arg("--upgrade")
+            .arg("--force-reinstall")
+            .arg("--no-deps");
+    }
     install
 }
 

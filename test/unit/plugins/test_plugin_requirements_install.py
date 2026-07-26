@@ -23,6 +23,7 @@ def _capture_pip_invocation(monkeypatch, installer, result=("pip_ok", "")):
 
     def fake_run_pip_install(cmd, *, cwd, timeout_sec, on_output_line):
         req_path = Path(cmd[cmd.index("-r") + 1])
+        constraints_path = Path(cmd[cmd.index("-c") + 1]) if "-c" in cmd else None
         calls.append(
             {
                 "cmd": list(cmd),
@@ -30,6 +31,11 @@ def _capture_pip_invocation(monkeypatch, installer, result=("pip_ok", "")):
                 "timeout_sec": timeout_sec,
                 "requirements_path": req_path,
                 "requirements_text": req_path.read_text(encoding="utf-8"),
+                "constraints_text": (
+                    constraints_path.read_text(encoding="utf-8")
+                    if constraints_path is not None
+                    else None
+                ),
             }
         )
         return result
@@ -368,6 +374,152 @@ def test_install_lines_after_precheck_scans_installed_distributions_once(monkeyp
     assert can_prune is True
     assert install_lines == ["missing-package>=2"]
     assert len(calls) == 1
+
+
+def test_pytorch_cpu_build_is_force_reinstalled_from_cuda_index_without_plugin_target(
+    monkeypatch,
+    tmp_path,
+):
+    installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
+    _write_requirements(
+        plugin_root,
+        "torch==99.0.0\n",
+    )
+    monkeypatch.setattr(installer, "plugin_pip_target_directory", lambda: tmp_path / "target")
+    monkeypatch.setattr(
+        installer,
+        "_installed_distribution_versions",
+        lambda: {
+            "torch": "2.7.1+cpu",
+            "torchvision": "0.22.1+cpu",
+            "torchaudio": "2.7.1+cpu",
+        },
+    )
+
+    original_plan = installer._build_pytorch_install_plan
+
+    def cuda_plan(lines, installed_versions, *, requirement_is_satisfied):
+        return original_plan(
+            lines,
+            installed_versions,
+            requirement_is_satisfied=requirement_is_satisfied,
+            index_url="https://download.pytorch.org/whl/cu128",
+            index_reason="test_cuda",
+        )
+
+    monkeypatch.setattr(installer, "_build_pytorch_install_plan", cuda_plan)
+    calls = _capture_pip_invocation(monkeypatch, installer)
+
+    result = installer.install_plugin_requirements_txt(plugin_root)
+
+    assert result == ("pip_ok", "")
+    assert len(calls) == 2
+    reinstall_cmd = calls[0]["cmd"]
+    assert "--force-reinstall" in reinstall_cmd
+    assert "--upgrade" in reinstall_cmd
+    assert "--no-deps" in reinstall_cmd
+    assert "--target" not in reinstall_cmd
+    assert (
+        reinstall_cmd[reinstall_cmd.index("--index-url") + 1]
+        == "https://download.pytorch.org/whl/cu128"
+    )
+
+    dependency_repair_cmd = calls[1]["cmd"]
+    assert "--force-reinstall" not in dependency_repair_cmd
+    assert "--upgrade" not in dependency_repair_cmd
+    assert "--no-deps" not in dependency_repair_cmd
+    assert "--target" not in dependency_repair_cmd
+    assert calls[0]["requirements_text"] == calls[1]["requirements_text"]
+    assert calls[0]["requirements_text"] == (
+        "torch==2.7.1\n"
+        "torchvision==0.22.1\n"
+        "torchaudio==2.7.1\n"
+    )
+
+
+def test_matching_pytorch_stack_skips_pip(monkeypatch, tmp_path):
+    installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
+    _write_requirements(
+        plugin_root,
+        "torch==2.7.1\ntorchvision==0.22.1\ntorchaudio==2.7.1\n",
+    )
+    monkeypatch.setattr(
+        installer,
+        "_installed_distribution_versions",
+        lambda: {
+            "torch": "2.7.1+cu128",
+            "torchvision": "0.22.1+cu128",
+            "torchaudio": "2.7.1+cu128",
+        },
+    )
+
+    original_plan = installer._build_pytorch_install_plan
+
+    def cuda_plan(lines, installed_versions, *, requirement_is_satisfied):
+        return original_plan(
+            lines,
+            installed_versions,
+            requirement_is_satisfied=requirement_is_satisfied,
+            index_url="https://download.pytorch.org/whl/cu128",
+            index_reason="test_cuda",
+        )
+
+    monkeypatch.setattr(installer, "_build_pytorch_install_plan", cuda_plan)
+    calls = _capture_pip_invocation(monkeypatch, installer)
+
+    result = installer.install_plugin_requirements_txt(plugin_root)
+
+    assert result == ("pip_ok", "")
+    assert calls == []
+
+
+def test_plugin_pytorch_versions_are_replaced_and_transitive_torch_is_constrained(
+    monkeypatch,
+    tmp_path,
+):
+    installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
+    _write_requirements(
+        plugin_root,
+        "accelerate>=1.10.0\ntorch==99.0.0\n",
+    )
+    target = tmp_path / "target"
+    monkeypatch.setattr(installer, "plugin_pip_target_directory", lambda: target)
+    monkeypatch.setattr(
+        installer,
+        "_installed_distribution_versions",
+        lambda: {
+            "torch": "2.7.1+cu128",
+            "torchvision": "0.22.1+cu128",
+            "torchaudio": "2.7.1+cu128",
+        },
+    )
+    original_plan = installer._build_pytorch_install_plan
+
+    def cuda_plan(lines, installed_versions, *, requirement_is_satisfied):
+        return original_plan(
+            lines,
+            installed_versions,
+            requirement_is_satisfied=requirement_is_satisfied,
+            index_url="https://download.pytorch.org/whl/cu128",
+            index_reason="test_cuda",
+        )
+
+    monkeypatch.setattr(installer, "_build_pytorch_install_plan", cuda_plan)
+    calls = _capture_pip_invocation(monkeypatch, installer)
+
+    result = installer.install_plugin_requirements_txt(plugin_root)
+
+    assert result == ("pip_ok", "")
+    assert len(calls) == 1
+    cmd = calls[0]["cmd"]
+    assert "--target" not in cmd
+    assert "-c" in cmd
+    assert calls[0]["constraints_text"] == (
+        "torch==2.7.1\n"
+        "torchvision==0.22.1\n"
+        "torchaudio==2.7.1\n"
+    )
+    assert calls[0]["requirements_text"] == "accelerate>=1.10.0\n"
 
 
 def test_write_temp_requirements_removes_file_when_write_fails(monkeypatch, tmp_path):

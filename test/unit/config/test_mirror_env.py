@@ -8,6 +8,9 @@ from config.mirror_env import (
     DEFAULT_HUGGINGFACE_CACHE_DIR,
     DEFAULT_HUGGINGFACE_MIRROR_URL,
     DEFAULT_PYPI_MIRROR_URL,
+    OFFICIAL_GITHUB_URL,
+    OFFICIAL_HUGGINGFACE_URL,
+    OFFICIAL_PYPI_INDEX_URL,
     apply_mirror_environment,
     apply_mirror_environment_from_system_config,
     detect_china_network,
@@ -186,5 +189,24 @@ def test_apply_mirror_environment_logs_applied_values(monkeypatch, caplog):
     applied = [record for record in caplog.records if getattr(record, "event", "") == "mirror.env.applied"]
     assert applied
     assert applied[-1].huggingface_mirror == "https://***@hf.example"
+    assert applied[-1].huggingface_source == "https://***@hf.example"
     assert applied[-1].pypi_index == "https://pypi.example/simple"
+    assert applied[-1].pypi_source == "https://pypi.example/simple"
+    assert applied[-1].detection_mode == "manual"
     assert applied[-1].sets_standard_pip_env is False
+    assert "region=global" in applied[-1].getMessage()
+    assert "huggingface=https://***@hf.example" in applied[-1].getMessage()
+
+
+def test_apply_mirror_environment_logs_official_sources(monkeypatch, caplog):
+    _clear_mirror_env(monkeypatch)
+    caplog.set_level(logging.INFO, logger="config.mirror_env")
+
+    apply_mirror_environment(SystemConfig(mirror_auto_detect_china=False))
+
+    applied = [record for record in caplog.records if getattr(record, "event", "") == "mirror.env.applied"]
+    assert applied
+    assert applied[-1].huggingface_source == OFFICIAL_HUGGINGFACE_URL
+    assert applied[-1].github_source == OFFICIAL_GITHUB_URL
+    assert applied[-1].pypi_source == OFFICIAL_PYPI_INDEX_URL
+    assert "mode=manual" in applied[-1].getMessage()

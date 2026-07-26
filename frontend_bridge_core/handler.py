@@ -190,6 +190,15 @@ _ALLOWED_CUSTOM_ORIGIN_SCHEMES = {"shinsekai", "tauri"}
 _ALLOWED_LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "::1", "localhost", "tauri.localhost"}
 
 CHAT_RUNTIME_READY_TIMEOUT_SECONDS = 20.0
+_POLLING_PATHS = {
+    "/api/characters/memories/status",
+    "/api/health",
+    "/api/chat/runtime-status",
+    "/api/chat/snapshot",
+    "/api/memory/status",
+    "/api/model-assets/status",
+    "/api/plugins/status",
+}
 
 
 class _RangeNotSatisfiable(Exception):
@@ -208,13 +217,30 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             super().handle_one_request()
 
     def log_message(self, fmt: str, *args: Any) -> None:
-        logger.info(
+        method = getattr(self, "command", "")
+        path = urlparse(getattr(self, "path", "")).path
+        try:
+            status = int(args[1])
+        except (IndexError, TypeError, ValueError):
+            status = 0
+
+        is_polling_request = path in _POLLING_PATHS or (
+            method in {"GET", "HEAD", "OPTIONS"}
+            and path.startswith("/api/tasks/")
+            and not path.endswith("/cancel")
+        )
+        if is_polling_request and 0 < status < 400:
+            return
+
+        log = logger.error if status >= 500 else logger.warning if status >= 400 else logger.info
+        log(
             fmt,
             *args,
             extra={
                 "event": "http.request.completed",
-                "method": getattr(self, "command", ""),
-                "path": urlparse(getattr(self, "path", "")).path,
+                "method": method,
+                "path": path,
+                "status": status,
             },
         )
 

@@ -1,4 +1,6 @@
 use super::*;
+use std::collections::HashMap;
+use std::env;
 use std::ffi::OsString;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -68,6 +70,60 @@ fn configure_pip_install_command_adds_selected_index_url_argument() {
             "https://mirror.example/simple/".to_string()
         ]
     );
+}
+
+#[test]
+fn pytorch_force_reinstall_command_limits_replacement_to_the_stack() {
+    let command = pytorch_install_command(
+        Path::new("python"),
+        Path::new("torch-requirements.txt"),
+        "https://download.pytorch.org/whl/cu128",
+        true,
+    );
+    let args = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    assert!(args.iter().any(|arg| arg == "--force-reinstall"));
+    assert!(args.iter().any(|arg| arg == "--upgrade"));
+    assert!(args.iter().any(|arg| arg == "--no-deps"));
+}
+
+#[test]
+fn pytorch_dependency_repair_command_does_not_force_reinstall() {
+    let command = pytorch_install_command(
+        Path::new("python"),
+        Path::new("torch-requirements.txt"),
+        "https://download.pytorch.org/whl/cu128",
+        false,
+    );
+    let args = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    assert!(!args.iter().any(|arg| arg == "--force-reinstall"));
+    assert!(!args.iter().any(|arg| arg == "--upgrade"));
+    assert!(!args.iter().any(|arg| arg == "--no-deps"));
+}
+
+#[test]
+fn ordinary_runtime_install_is_constrained_to_the_host_pytorch_stack() {
+    let mut command = pip_install_command(
+        Path::new("python"),
+        Path::new("plugin-requirements.txt"),
+        None,
+    );
+    apply_pip_constraints(&mut command, Some(Path::new("host-pytorch.txt")));
+    let args = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    assert!(args
+        .windows(2)
+        .any(|pair| pair == ["-c", "host-pytorch.txt"]));
 }
 
 #[cfg(unix)]
@@ -213,7 +269,7 @@ fn partition_torch_requirement_lines_splits_pytorch_packages() {
         "git+https://example.invalid/package.git".to_string(),
     ];
 
-    let (torch_lines, other_lines) = partition_torch_requirement_lines(&lines);
+    let (torch_lines, other_lines) = pytorch::partition_requirement_lines(&lines);
 
     assert_eq!(
         torch_lines,
@@ -236,7 +292,23 @@ fn partition_torch_requirement_lines_splits_pytorch_packages() {
 #[test]
 fn pytorch_wheel_index_url_matches_cuda_driver_version() {
     assert_eq!(
-        pytorch_wheel_index_url_for_cuda_version(
+        pytorch::wheel_index_url_for_cuda_version(
+            Some((13, 2)),
+            "https://download.pytorch.org/whl".to_string()
+        )
+        .0,
+        "https://download.pytorch.org/whl/cu128"
+    );
+    assert_eq!(
+        pytorch::wheel_index_url_for_cuda_version(
+            Some((12, 8)),
+            "https://download.pytorch.org/whl".to_string()
+        )
+        .0,
+        "https://download.pytorch.org/whl/cu128"
+    );
+    assert_eq!(
+        pytorch::wheel_index_url_for_cuda_version(
             None,
             "https://download.pytorch.org/whl".to_string()
         )
@@ -244,23 +316,23 @@ fn pytorch_wheel_index_url_matches_cuda_driver_version() {
         "https://download.pytorch.org/whl/cpu"
     );
     assert_eq!(
-        pytorch_wheel_index_url_for_cuda_version(
+        pytorch::wheel_index_url_for_cuda_version(
             Some((12, 4)),
             "https://download.pytorch.org/whl".to_string()
         )
         .0,
-        "https://download.pytorch.org/whl/cu124"
+        "https://download.pytorch.org/whl/cpu"
     );
     assert_eq!(
-        pytorch_wheel_index_url_for_cuda_version(
+        pytorch::wheel_index_url_for_cuda_version(
             Some((12, 1)),
             "https://download.pytorch.org/whl".to_string()
         )
         .0,
-        "https://download.pytorch.org/whl/cu121"
+        "https://download.pytorch.org/whl/cpu"
     );
     assert_eq!(
-        pytorch_wheel_index_url_for_cuda_version(
+        pytorch::wheel_index_url_for_cuda_version(
             Some((11, 8)),
             "https://download.pytorch.org/whl".to_string()
         )
@@ -273,14 +345,18 @@ fn pytorch_wheel_index_url_matches_cuda_driver_version() {
 fn pytorch_wheel_base_url_follows_runtime_pip_region() {
     let _guard = PYTORCH_WHEEL_ENV_LOCK.lock().unwrap();
     let _restore = EnvRestore::capture("SHINSEKAI_PYTORCH_WHEEL_BASE");
+    let _runtime_source = EnvRestore::capture("SHINSEKAI_RUNTIME_SOURCE");
+    let _mirror_region = EnvRestore::capture("SHINSEKAI_MIRROR_REGION");
     env::remove_var("SHINSEKAI_PYTORCH_WHEEL_BASE");
+    env::remove_var("SHINSEKAI_RUNTIME_SOURCE");
+    env::remove_var("SHINSEKAI_MIRROR_REGION");
 
     assert_eq!(
-        pytorch_wheel_base_url(&["https://pypi.tuna.tsinghua.edu.cn/simple/".to_string()]),
-        "https://mirror.sjtu.edu.cn/pytorch-wheels"
+        pytorch::wheel_base_url(&["https://pypi.tuna.tsinghua.edu.cn/simple/".to_string()]),
+        "https://mirrors.aliyun.com/pytorch-wheels"
     );
     assert_eq!(
-        pytorch_wheel_base_url(&["https://pypi.org/simple/".to_string()]),
+        pytorch::wheel_base_url(&["https://pypi.org/simple/".to_string()]),
         "https://download.pytorch.org/whl"
     );
 }
@@ -289,14 +365,40 @@ fn pytorch_wheel_base_url_follows_runtime_pip_region() {
 fn pytorch_wheel_base_url_can_be_overridden() {
     let _guard = PYTORCH_WHEEL_ENV_LOCK.lock().unwrap();
     let _restore = EnvRestore::capture("SHINSEKAI_PYTORCH_WHEEL_BASE");
+    let _runtime_source = EnvRestore::capture("SHINSEKAI_RUNTIME_SOURCE");
+    let _mirror_region = EnvRestore::capture("SHINSEKAI_MIRROR_REGION");
     env::set_var(
         "SHINSEKAI_PYTORCH_WHEEL_BASE",
         "https://example.invalid/pytorch-wheels/",
     );
+    env::set_var("SHINSEKAI_RUNTIME_SOURCE", "official");
+    env::set_var("SHINSEKAI_MIRROR_REGION", "global");
 
     assert_eq!(
-        pytorch_wheel_base_url(&["https://pypi.org/simple/".to_string()]),
+        pytorch::wheel_base_url(&["https://pypi.org/simple/".to_string()]),
         "https://example.invalid/pytorch-wheels"
+    );
+}
+
+#[test]
+fn pytorch_wheel_base_explicit_region_overrides_generic_pip_index() {
+    let _guard = PYTORCH_WHEEL_ENV_LOCK.lock().unwrap();
+    let _wheel_base = EnvRestore::capture("SHINSEKAI_PYTORCH_WHEEL_BASE");
+    let _runtime_source = EnvRestore::capture("SHINSEKAI_RUNTIME_SOURCE");
+    let _mirror_region = EnvRestore::capture("SHINSEKAI_MIRROR_REGION");
+    env::remove_var("SHINSEKAI_PYTORCH_WHEEL_BASE");
+    env::remove_var("SHINSEKAI_RUNTIME_SOURCE");
+
+    env::set_var("SHINSEKAI_MIRROR_REGION", "china");
+    assert_eq!(
+        pytorch::wheel_base_url(&["https://pypi.org/simple/".to_string()]),
+        "https://mirrors.aliyun.com/pytorch-wheels"
+    );
+
+    env::set_var("SHINSEKAI_MIRROR_REGION", "global");
+    assert_eq!(
+        pytorch::wheel_base_url(&["https://pypi.tuna.tsinghua.edu.cn/simple/".to_string()]),
+        "https://download.pytorch.org/whl"
     );
 }
 
@@ -308,8 +410,64 @@ fn parse_nvidia_smi_cuda_version_reads_driver_report() {
 +-----------------------------------------------------------------------------+
 "#;
 
-    assert_eq!(parse_nvidia_smi_cuda_version(output), Some((12, 4)));
-    assert_eq!(parse_nvidia_smi_cuda_version("no cuda here"), None);
+    assert_eq!(
+        pytorch::parse_nvidia_smi_cuda_version(output),
+        Some((12, 4))
+    );
+    assert_eq!(pytorch::parse_nvidia_smi_cuda_version("no cuda here"), None);
+}
+
+#[test]
+fn pytorch_install_plan_skips_matching_exact_cuda_stack() {
+    let lines = vec!["torch==99.0.0".to_string()];
+    let installed = HashMap::from([
+        ("torch".to_string(), "2.7.1+cu128".to_string()),
+        ("torchvision".to_string(), "0.22.1+cu128".to_string()),
+        ("torchaudio".to_string(), "2.7.1+cu128".to_string()),
+    ]);
+
+    let plan = pytorch::build_install_plan(
+        &lines,
+        &installed,
+        "https://download.pytorch.org/whl/cu128".to_string(),
+        "test".to_string(),
+    );
+
+    assert!(!plan.install_required);
+    assert!(!plan.force_reinstall);
+    assert_eq!(
+        plan.requirement_lines,
+        vec![
+            "torch==2.7.1".to_string(),
+            "torchvision==0.22.1".to_string(),
+            "torchaudio==2.7.1".to_string(),
+        ]
+    );
+}
+
+#[test]
+fn pytorch_install_plan_forces_reinstall_for_cpu_or_version_mismatch() {
+    let lines = vec![
+        "torch==2.7.1".to_string(),
+        "torchvision==0.22.1".to_string(),
+        "torchaudio==2.7.1".to_string(),
+    ];
+    let installed = HashMap::from([
+        ("torch".to_string(), "2.12.1+cpu".to_string()),
+        ("torchaudio".to_string(), "2.11.0+cpu".to_string()),
+    ]);
+
+    let plan = pytorch::build_install_plan(
+        &lines,
+        &installed,
+        "https://download.pytorch.org/whl/cu128".to_string(),
+        "test".to_string(),
+    );
+
+    assert!(plan.install_required);
+    assert!(plan.force_reinstall);
+    assert!(plan.detail.contains("version mismatch"));
+    assert!(plan.detail.contains("expected cu128 wheels"));
 }
 
 #[test]
