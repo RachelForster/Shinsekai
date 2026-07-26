@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from core.plugins.pytorch_runtime import (
+    HOST_PYTORCH_REQUIREMENTS,
     build_pytorch_install_plan,
     partition_pytorch_requirement_lines,
     pytorch_wheel_base_url,
@@ -52,6 +53,26 @@ def test_cuda_12_8_and_newer_selects_cu128():
         )[0]
         == "https://download.pytorch.org/whl/cu128"
     )
+
+
+def test_host_stack_uses_only_published_cuda_channels_and_cpu_fallback():
+    base_url = "https://download.pytorch.org/whl"
+
+    assert pytorch_wheel_index_url_for_cuda_version((12, 7), base_url=base_url)[
+        0
+    ].endswith("/cu126")
+    assert pytorch_wheel_index_url_for_cuda_version((11, 8), base_url=base_url)[
+        0
+    ].endswith("/cu118")
+    assert pytorch_wheel_index_url_for_cuda_version((12, 4), base_url=base_url)[
+        0
+    ].endswith("/cpu")
+    assert pytorch_wheel_index_url_for_cuda_version((12, 1), base_url=base_url)[
+        0
+    ].endswith("/cpu")
+    assert pytorch_wheel_index_url_for_cuda_version((11, 7), base_url=base_url)[
+        0
+    ].endswith("/cpu")
 
 
 def test_pytorch_wheel_base_follows_region_and_selected_pip_index(monkeypatch):
@@ -114,6 +135,7 @@ def test_matching_versions_and_cuda_build_skip_install():
 
     assert plan.install_required is False
     assert plan.force_reinstall is False
+    assert plan.requirement_lines == HOST_PYTORCH_REQUIREMENTS
 
 
 def test_cpu_build_on_cuda_machine_forces_complete_reinstall():
@@ -140,17 +162,21 @@ def test_cpu_build_on_cuda_machine_forces_complete_reinstall():
     assert "expected cu128 wheels" in plan.detail
 
 
-def test_broad_requirement_still_rejects_wrong_wheel_channel():
+def test_plugin_requirement_version_is_ignored_in_favor_of_host_stack():
     plan = build_pytorch_install_plan(
-        ["torch>=2.1.0"],
-        {"torch": "2.12.1+cpu"},
+        ["torch==99.0.0"],
+        {
+            "torch": "2.7.1+cu128",
+            "torchvision": "0.22.1+cu128",
+            "torchaudio": "2.7.1+cu128",
+        },
         requirement_is_satisfied=_satisfied,
         index_url="https://download.pytorch.org/whl/cu128",
     )
 
-    assert plan.install_required is True
-    assert plan.force_reinstall is True
-    assert "expected cu128 wheels" in plan.detail
+    assert plan.install_required is False
+    assert plan.force_reinstall is False
+    assert plan.requirement_lines == HOST_PYTORCH_REQUIREMENTS
 
 
 def test_changed_versions_force_reinstall_even_on_matching_channel():
@@ -188,3 +214,4 @@ def test_empty_environment_uses_normal_install():
     assert plan.install_required is True
     assert plan.force_reinstall is False
     assert "missing packages" in plan.detail
+    assert plan.requirement_lines == HOST_PYTORCH_REQUIREMENTS

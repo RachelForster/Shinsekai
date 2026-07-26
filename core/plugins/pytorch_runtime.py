@@ -4,8 +4,9 @@ PyTorch packages need stricter handling than ordinary plugin dependencies:
 
 * the wheel channel (``cpu`` / ``cuXXX``) is part of runtime compatibility;
 * ``torch``, ``torchvision`` and ``torchaudio`` must be kept as one stack;
-* a broad requirement such as ``torch>=2`` must not accept an installed CPU
-  wheel when the current machine should use a CUDA wheel.
+* plugin-authored PyTorch versions are ignored so a broad requirement such as
+  ``torch>=2`` cannot silently upgrade the shared runtime to an untested stack;
+* the host-owned versions and the detected GPU channel are checked together.
 
 This module deliberately owns the policy and the pure planning logic.  The
 caller remains responsible for executing pip so its existing progress,
@@ -32,6 +33,11 @@ except Exception:  # pragma: no cover - minimal embedded runtime fallback.
 
 
 PYTORCH_PROJECT_NAMES = ("torch", "torchvision", "torchaudio")
+HOST_PYTORCH_REQUIREMENTS = (
+    "torch==2.7.1",
+    "torchvision==0.22.1",
+    "torchaudio==2.7.1",
+)
 _PYTORCH_PROJECT_NAME_SET = frozenset(PYTORCH_PROJECT_NAMES)
 _CUDA_VER_LINE_RE = re.compile(r"CUDA Version:\s*(\d+)\.(\d+)")
 _LOCAL_BUILD_RE = re.compile(r"(?:^|[.+-])(cpu|cu\d+)(?:$|[.+-])", re.IGNORECASE)
@@ -52,6 +58,7 @@ _GLOBAL_REGION_NAMES = frozenset(
 
 @dataclass(frozen=True)
 class PytorchInstallPlan:
+    requirement_lines: tuple[str, ...]
     index_url: str
     index_reason: str
     expected_build: str
@@ -181,16 +188,17 @@ def pytorch_wheel_index_url_for_cuda_version(
     if version is None:
         return f"{base}/cpu", "no_usable_nvidia_smi_cpu"
     major, minor = version
+    # The host-owned 2.7.1 stack is officially published for cu118, cu126,
+    # cu128 and CPU. Do not cross-fallback between CUDA channels: when the
+    # detected driver falls in a gap such as CUDA 12.1/12.4, use CPU wheels.
     if (major, minor) >= (12, 8):
         tag = "cu128"
     elif (major, minor) >= (12, 6):
         tag = "cu126"
-    elif (major, minor) >= (12, 4):
-        tag = "cu124"
-    elif major >= 12:
-        tag = "cu121"
-    else:
+    elif major == 11 and minor >= 8:
         tag = "cu118"
+    else:
+        return f"{base}/cpu", f"nvidia_driver_cuda_{major}.{minor}_cpu_fallback"
     return f"{base}/{tag}", f"nvidia_driver_cuda_{major}.{minor}_{tag}"
 
 
@@ -250,12 +258,13 @@ def build_pytorch_install_plan(
     index_url: str | None = None,
     index_reason: str | None = None,
 ) -> PytorchInstallPlan:
-    """Decide whether the requested PyTorch stack can be reused.
+    """Decide whether the host-owned PyTorch stack can be reused.
 
-    A missing package needs a normal install.  A version or wheel-channel
-    mismatch needs ``--force-reinstall`` so pip replaces the complete stack
-    instead of accepting a semantically compatible wheel from the wrong
-    channel.
+    Plugin-authored versions only opt into the shared stack; they never select
+    its versions. A missing package needs a normal install. A host-version or
+    wheel-channel mismatch needs ``--force-reinstall`` so pip replaces the
+    complete stack instead of accepting a semantically compatible wheel from
+    the wrong channel.
     """
     if index_url is None:
         index_url, detected_reason = pytorch_wheel_index_url_for_this_machine()
@@ -268,23 +277,23 @@ def build_pytorch_install_plan(
         canonical_distribution_name(name): version for name, version in installed_versions.items()
     }
 
-    active_lines: list[str] = []
-    requested_names: list[str] = []
+    has_active_pytorch_requirement = False
     for line in requirement_lines:
         active = _active_requirement(line)
         if active is None:
             continue
-        active_lines.append(line)
         name = (
             canonical_distribution_name(active.name)
             if Requirement is not None and hasattr(active, "name")
             else requirement_line_project_name(str(active))
         )
-        if name in _PYTORCH_PROJECT_NAME_SET and name not in requested_names:
-            requested_names.append(name)
+        if name in _PYTORCH_PROJECT_NAME_SET:
+            has_active_pytorch_requirement = True
+            break
 
-    if not active_lines:
+    if not has_active_pytorch_requirement:
         return PytorchInstallPlan(
+            requirement_lines=(),
             index_url=index_url,
             index_reason=index_reason,
             expected_build=expected_build,
@@ -293,6 +302,8 @@ def build_pytorch_install_plan(
             detail="no active PyTorch requirements",
         )
 
+    active_lines = list(HOST_PYTORCH_REQUIREMENTS)
+    requested_names = list(PYTORCH_PROJECT_NAMES)
     missing = [name for name in requested_names if name not in normalized_versions]
     unsatisfied = [
         line
@@ -304,15 +315,16 @@ def build_pytorch_install_plan(
         detail = (
             f"missing packages: {', '.join(missing)}"
             if missing and not installed_stack
-            else "installed PyTorch versions do not match current requirements"
+            else "installed PyTorch versions do not match the host stack"
         )
         return PytorchInstallPlan(
+            requirement_lines=HOST_PYTORCH_REQUIREMENTS,
             index_url=index_url,
             index_reason=index_reason,
             expected_build=expected_build,
             install_required=True,
             force_reinstall=bool(installed_stack),
-            detail=detail,
+            detail=f"{detail}; plugin versions ignored in favor of host stack",
         )
 
     wrong_build = [
@@ -323,6 +335,7 @@ def build_pytorch_install_plan(
     ]
     if wrong_build:
         return PytorchInstallPlan(
+            requirement_lines=HOST_PYTORCH_REQUIREMENTS,
             index_url=index_url,
             index_reason=index_reason,
             expected_build=expected_build,
@@ -335,10 +348,11 @@ def build_pytorch_install_plan(
         )
 
     return PytorchInstallPlan(
+        requirement_lines=HOST_PYTORCH_REQUIREMENTS,
         index_url=index_url,
         index_reason=index_reason,
         expected_build=expected_build,
         install_required=False,
         force_reinstall=False,
-        detail="installed PyTorch stack matches requirements and wheel channel",
+        detail="installed PyTorch stack matches host versions and wheel channel",
     )

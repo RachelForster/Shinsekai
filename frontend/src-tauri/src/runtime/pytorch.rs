@@ -3,9 +3,15 @@ use std::{collections::HashMap, env, path::Path, process::Command};
 use super::python_env;
 
 const PYTORCH_PROJECT_NAMES: &[&str] = &["torch", "torchvision", "torchaudio"];
+const HOST_PYTORCH_STACK: &[(&str, &str)] = &[
+    ("torch", "2.7.1"),
+    ("torchvision", "0.22.1"),
+    ("torchaudio", "2.7.1"),
+];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct PytorchInstallPlan {
+    pub requirement_lines: Vec<String>,
     pub index_url: String,
     pub index_reason: String,
     pub expected_build: String,
@@ -53,30 +59,43 @@ pub(super) fn build_install_plan(
     index_reason: String,
 ) -> PytorchInstallPlan {
     let expected_build = index_build(&index_url);
-    let requested = requirement_lines
+    let has_pytorch_requirement = requirement_lines
         .iter()
-        .filter_map(|line| {
-            requirement_line_project_name(line).map(|name| {
-                let exact_version = exact_requirement_version(line);
-                (name, exact_version)
-            })
-        })
+        .filter_map(|line| requirement_line_project_name(line))
+        .any(|name| PYTORCH_PROJECT_NAMES.contains(&name.as_str()));
+    if !has_pytorch_requirement {
+        return PytorchInstallPlan {
+            requirement_lines: Vec::new(),
+            index_url,
+            index_reason,
+            expected_build,
+            install_required: false,
+            force_reinstall: false,
+            detail: "no active PyTorch requirements".to_string(),
+        };
+    }
+
+    // Plugin/runtime requirement files only opt into PyTorch. The host owns
+    // the exact shared binary stack so a broad plugin constraint cannot select
+    // an untested latest release from the wheel index.
+    let managed_requirement_lines = HOST_PYTORCH_STACK
+        .iter()
+        .map(|(name, version)| format!("{name}=={version}"))
         .collect::<Vec<_>>();
     let installed_stack = PYTORCH_PROJECT_NAMES
         .iter()
         .filter(|name| installed_versions.contains_key(**name))
         .count();
-    let missing = requested
+    let missing = HOST_PYTORCH_STACK
         .iter()
-        .filter(|(name, _)| !installed_versions.contains_key(name))
-        .map(|(name, _)| name.clone())
+        .filter(|(name, _)| !installed_versions.contains_key(*name))
+        .map(|(name, _)| (*name).to_string())
         .collect::<Vec<_>>();
-    let version_mismatches = requested
+    let version_mismatches = HOST_PYTORCH_STACK
         .iter()
-        .filter_map(|(name, exact)| {
-            let expected = exact.as_ref()?;
-            let installed = installed_versions.get(name)?;
-            (public_version(installed) != expected)
+        .filter_map(|(name, expected)| {
+            let installed = installed_versions.get(*name)?;
+            (public_version(installed) != *expected)
                 .then(|| format!("{name}=={installed} (expected {expected})"))
         })
         .collect::<Vec<_>>();
@@ -104,6 +123,7 @@ pub(super) fn build_install_plan(
             ));
         }
         return PytorchInstallPlan {
+            requirement_lines: managed_requirement_lines,
             index_url,
             index_reason,
             expected_build,
@@ -115,6 +135,7 @@ pub(super) fn build_install_plan(
 
     if !missing.is_empty() {
         return PytorchInstallPlan {
+            requirement_lines: managed_requirement_lines,
             index_url,
             index_reason,
             expected_build,
@@ -124,21 +145,14 @@ pub(super) fn build_install_plan(
         };
     }
 
-    // Unpinned/ranged requirements are still handed to pip so pip remains the
-    // source of truth for PEP 440 range evaluation. It will not download when
-    // the installed package already satisfies the range.
-    let has_unpinned = requested.iter().any(|(_, exact)| exact.is_none());
     PytorchInstallPlan {
+        requirement_lines: managed_requirement_lines,
         index_url,
         index_reason,
         expected_build,
-        install_required: has_unpinned,
+        install_required: false,
         force_reinstall: false,
-        detail: if has_unpinned {
-            "PyTorch range requirements need pip validation".to_string()
-        } else {
-            "installed PyTorch stack matches requirements and wheel channel".to_string()
-        },
+        detail: "installed PyTorch stack matches host versions and wheel channel".to_string(),
     }
 }
 
@@ -192,22 +206,6 @@ fn requirement_line_project_name(line: &str) -> Option<String> {
 
 fn canonical_project_name(name: &str) -> String {
     name.to_ascii_lowercase().replace(['_', '.'], "-")
-}
-
-fn exact_requirement_version(line: &str) -> Option<String> {
-    let segment = line.split('#').next()?.split(';').next()?.trim();
-    let (_, version) = segment.split_once("==")?;
-    if segment.contains("===") {
-        return None;
-    }
-    let version = version
-        .split(',')
-        .next()
-        .unwrap_or(version)
-        .trim()
-        .trim_matches('"')
-        .trim_matches('\'');
-    (!version.is_empty() && !version.contains('*')).then(|| public_version(version).to_string())
 }
 
 fn public_version(version: &str) -> &str {
@@ -381,15 +379,19 @@ pub(super) fn wheel_index_url_for_cuda_version(
         );
     };
     let tag = if (major, minor) >= (12, 8) {
-        "cu128"
+        Some("cu128")
     } else if (major, minor) >= (12, 6) {
-        "cu126"
-    } else if (major, minor) >= (12, 4) {
-        "cu124"
-    } else if major >= 12 {
-        "cu121"
+        Some("cu126")
+    } else if major == 11 && minor >= 8 {
+        Some("cu118")
     } else {
-        "cu118"
+        None
+    };
+    let Some(tag) = tag else {
+        return (
+            format!("{base_url}/cpu"),
+            format!("nvidia_driver_cuda_{major}.{minor}_cpu_fallback"),
+        );
     };
     (
         format!("{base_url}/{tag}"),

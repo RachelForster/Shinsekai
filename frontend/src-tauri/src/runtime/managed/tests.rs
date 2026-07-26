@@ -108,6 +108,24 @@ fn pytorch_dependency_repair_command_does_not_force_reinstall() {
     assert!(!args.iter().any(|arg| arg == "--no-deps"));
 }
 
+#[test]
+fn ordinary_runtime_install_is_constrained_to_the_host_pytorch_stack() {
+    let mut command = pip_install_command(
+        Path::new("python"),
+        Path::new("plugin-requirements.txt"),
+        None,
+    );
+    apply_pip_constraints(&mut command, Some(Path::new("host-pytorch.txt")));
+    let args = command
+        .get_args()
+        .map(|arg| arg.to_string_lossy().to_string())
+        .collect::<Vec<_>>();
+
+    assert!(args
+        .windows(2)
+        .any(|pair| pair == ["-c", "host-pytorch.txt"]));
+}
+
 #[cfg(unix)]
 #[test]
 fn ensure_python_pip_available_bootstraps_with_ensurepip() {
@@ -303,7 +321,7 @@ fn pytorch_wheel_index_url_matches_cuda_driver_version() {
             "https://download.pytorch.org/whl".to_string()
         )
         .0,
-        "https://download.pytorch.org/whl/cu124"
+        "https://download.pytorch.org/whl/cpu"
     );
     assert_eq!(
         pytorch::wheel_index_url_for_cuda_version(
@@ -311,7 +329,7 @@ fn pytorch_wheel_index_url_matches_cuda_driver_version() {
             "https://download.pytorch.org/whl".to_string()
         )
         .0,
-        "https://download.pytorch.org/whl/cu121"
+        "https://download.pytorch.org/whl/cpu"
     );
     assert_eq!(
         pytorch::wheel_index_url_for_cuda_version(
@@ -401,11 +419,7 @@ fn parse_nvidia_smi_cuda_version_reads_driver_report() {
 
 #[test]
 fn pytorch_install_plan_skips_matching_exact_cuda_stack() {
-    let lines = vec![
-        "torch==2.7.1".to_string(),
-        "torchvision==0.22.1".to_string(),
-        "torchaudio==2.7.1".to_string(),
-    ];
+    let lines = vec!["torch==99.0.0".to_string()];
     let installed = HashMap::from([
         ("torch".to_string(), "2.7.1+cu128".to_string()),
         ("torchvision".to_string(), "0.22.1+cu128".to_string()),
@@ -421,6 +435,14 @@ fn pytorch_install_plan_skips_matching_exact_cuda_stack() {
 
     assert!(!plan.install_required);
     assert!(!plan.force_reinstall);
+    assert_eq!(
+        plan.requirement_lines,
+        vec![
+            "torch==2.7.1".to_string(),
+            "torchvision==0.22.1".to_string(),
+            "torchaudio==2.7.1".to_string(),
+        ]
+    );
 }
 
 #[test]

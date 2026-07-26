@@ -382,8 +382,15 @@ def install_plugin_requirements_txt(
                 plan.force_reinstall,
                 plan.detail,
             )
+            managed_torch_lines = list(plan.requirement_lines)
+            if managed_torch_lines:
+                torch_tf = _write_temp_requirements(
+                    "easyai_torch_req_",
+                    managed_torch_lines,
+                )
             if plan.install_required:
-                torch_tf = _write_temp_requirements("easyai_torch_req_", torch_lines)
+                if torch_tf is None:
+                    return ("pip_exception", "host PyTorch requirements are unavailable")
                 # Intentionally omit plugin ``--target`` for the PyTorch stack.
                 cmd_torch = [
                     *_pip_base_install_cmd(py, None),
@@ -401,7 +408,7 @@ def install_plugin_requirements_txt(
                     cmd_torch.extend(["--upgrade", "--force-reinstall", "--no-deps"])
                 cmd_torch.extend(["-r", str(torch_tf)])
                 code1, detail1 = _run_pip_install(
-                    _apply_pip_index_and_extra_args(cmd_torch, torch_lines),
+                    _apply_pip_index_and_extra_args(cmd_torch, managed_torch_lines),
                     cwd=root,
                     timeout_sec=remaining_budget(),
                     on_output_line=on_output_line,
@@ -419,7 +426,10 @@ def install_plugin_requirements_txt(
                         str(torch_tf),
                     ]
                     code2, detail2 = _run_pip_install(
-                        _apply_pip_index_and_extra_args(cmd_torch_deps, torch_lines),
+                        _apply_pip_index_and_extra_args(
+                            cmd_torch_deps,
+                            managed_torch_lines,
+                        ),
                         cwd=root,
                         timeout_sec=remaining_budget(),
                         on_output_line=on_output_line,
@@ -432,9 +442,17 @@ def install_plugin_requirements_txt(
                 return _finish_install_result(("pip_ok", ""), pip_target)
 
             other_tf = _write_temp_requirements("easyai_other_req_", other_lines)
-
+            # Keep PyTorch-enabled plugins in the bundled runtime environment.
+            # pip's ``--target`` resolver ignores distributions already
+            # installed in the runtime and would otherwise download a second
+            # transitive torch for packages such as accelerate. The host stack
+            # also acts as a constraint so incompatible transitive requirements
+            # fail clearly instead of silently replacing it.
+            cmd_other_base = _pip_base_install_cmd(py, None)
+            if torch_tf is not None:
+                cmd_other_base.extend(["-c", str(torch_tf)])
             cmd_other = _apply_pip_index_and_extra_args(
-                [*base_cmd, "-r", str(other_tf)],
+                [*cmd_other_base, "-r", str(other_tf)],
                 other_lines,
             )
             return _finish_install_result(
@@ -444,7 +462,7 @@ def install_plugin_requirements_txt(
                     timeout_sec=remaining_budget(),
                     on_output_line=on_output_line,
                 ),
-                pip_target,
+                None,
             )
 
         cmd = _apply_pip_index_and_extra_args(

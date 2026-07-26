@@ -1234,13 +1234,20 @@ fields.
 Ship a `requirements.txt` next to your plugin. It is installed when the user **installs
 or updates** the plugin (not on every launch): already-satisfied lines are skipped,
 `torch`/`torchvision`/`torchaudio` are treated as one binary stack and routed to the
-PyTorch wheel index with automatic CUDA/CPU channel selection. The host checks both
-the requirement versions and the installed wheel build (`cpu` / `cuXXX`) on every
-plugin install or update; a mismatch triggers `--force-reinstall --no-deps` for the
-requested stack. A following normal pip pass repairs only missing or incompatible
-transitive dependencies instead of forcing every already-satisfied library to
-reinstall. In frozen builds the PyTorch stack is installed into the bundled runtime
-itself, while ordinary plugin dependencies go to `data/plugin_site_packages`.
+PyTorch wheel index with automatic CUDA/CPU channel selection. Plugin-authored
+PyTorch versions are ignored: declaring any member opts into the host-owned
+`torch==2.7.1` / `torchvision==0.22.1` / `torchaudio==2.7.1` stack. The host checks
+both those versions and the installed wheel build (`cpu` / `cuXXX`) on every plugin
+install or update. The supported GPU channels are `cu118`, `cu126`, and `cu128`;
+driver versions without a matching published channel use CPU wheels. A mismatch
+triggers `--force-reinstall --no-deps` for the host stack. A following normal pip
+pass repairs only missing or incompatible transitive dependencies instead of forcing
+every already-satisfied library to reinstall.
+
+In frozen builds, PyTorch-enabled plugin dependencies are installed into the bundled
+runtime and constrained to the host stack. This prevents packages such as `accelerate`
+from resolving a second, newer Torch into `data/plugin_site_packages`. Ordinary
+plugins without PyTorch continue to use `data/plugin_site_packages`.
 China-region or China-pip-index installs use the Aliyun PyTorch wheel mirror; global
 installs use the official PyTorch index. `SHINSEKAI_PYTORCH_WHEEL_BASE` can override
 that mapping explicitly. General mirror selection honours

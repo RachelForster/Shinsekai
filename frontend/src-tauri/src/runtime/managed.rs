@@ -98,8 +98,11 @@ where
             plan.force_reinstall,
             plan.detail,
         ));
-        let torch_requirements =
-            write_temp_requirements(requirements_path, "shinsekai-torch", &torch_lines)?;
+        let torch_requirements = write_temp_requirements(
+            requirements_path,
+            "shinsekai-torch",
+            &plan.requirement_lines,
+        )?;
         let other_requirements =
             write_temp_requirements(requirements_path, "shinsekai-runtime", &other_lines)?;
         let result = (|| {
@@ -136,6 +139,7 @@ where
                 python,
                 &other_requirements,
                 pip_index_urls,
+                Some(&torch_requirements),
                 &mut on_log_line,
             )
         })();
@@ -148,6 +152,7 @@ where
         python,
         requirements_path,
         pip_index_urls,
+        None,
         &mut on_log_line,
     )
 }
@@ -156,6 +161,7 @@ fn install_runtime_requirements_file_with_indexes<F>(
     python: &Path,
     requirements_path: &Path,
     pip_index_urls: &[String],
+    constraints_path: Option<&Path>,
     mut on_log_line: F,
 ) -> RuntimeResult<()>
 where
@@ -165,6 +171,7 @@ where
 
     if pip_index_urls.is_empty() {
         let mut install = pip_install_command(python, requirements_path, None);
+        apply_pip_constraints(&mut install, constraints_path);
         return run_command_with_live_log(
             &mut install,
             "install Shinsekai runtime dependencies",
@@ -174,6 +181,7 @@ where
 
     for pip_index_url in pip_index_urls {
         let mut install = pip_install_command(python, requirements_path, Some(pip_index_url));
+        apply_pip_constraints(&mut install, constraints_path);
         on_log_line(&format!("Using pip index: {}", pip_index_url.trim()));
         match run_command_with_live_log(
             &mut install,
@@ -228,6 +236,12 @@ fn pip_install_command(
     configure_pip_install_command(&mut install, python, pip_index_url);
     install.arg("-r").arg(requirements_path);
     install
+}
+
+fn apply_pip_constraints(command: &mut Command, constraints_path: Option<&Path>) {
+    if let Some(path) = constraints_path {
+        command.arg("-c").arg(path);
+    }
 }
 
 fn pytorch_install_command(
