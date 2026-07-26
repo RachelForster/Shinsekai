@@ -1233,9 +1233,15 @@ fields.
 
 Ship a `requirements.txt` next to your plugin. It is installed when the user **installs
 or updates** the plugin (not on every launch): already-satisfied lines are skipped,
-`torch`/`torchvision`/`torchaudio` are routed to the PyTorch wheel index with automatic
-CUDA/CPU channel selection, and frozen (packaged) installs go to
-`data/plugin_site_packages` via the bundled runtime. Mirror selection honours
+`torch`/`torchvision`/`torchaudio` are treated as one binary stack and routed to the
+PyTorch wheel index with automatic CUDA/CPU channel selection. The host checks both
+the requirement versions and the installed wheel build (`cpu` / `cuXXX`) on every
+plugin install or update; a mismatch triggers a full `--force-reinstall` of the
+requested stack. In frozen builds the PyTorch stack is installed into the bundled
+runtime itself, while ordinary plugin dependencies go to `data/plugin_site_packages`.
+China-region or China-pip-index installs use the Aliyun PyTorch wheel mirror; global
+installs use the official PyTorch index. `SHINSEKAI_PYTORCH_WHEEL_BASE` can override
+that mapping explicitly. General mirror selection honours
 `PIP_INDEX_URL` (and friends), `SHINSEKAI_PIP_INDEX_URL(S)`, `SHINSEKAI_RUNTIME_SOURCE`,
 and `SHINSEKAI_MIRROR_REGION`; a requirements file that sets its own `-i` /
 `--index-url` is left untouched. Document download size, model caches, and hardware
