@@ -370,6 +370,87 @@ def test_install_lines_after_precheck_scans_installed_distributions_once(monkeyp
     assert len(calls) == 1
 
 
+def test_pytorch_cpu_build_is_force_reinstalled_from_cuda_index_without_plugin_target(
+    monkeypatch,
+    tmp_path,
+):
+    installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
+    _write_requirements(
+        plugin_root,
+        "torch==2.7.1\ntorchvision==0.22.1\ntorchaudio==2.7.1\n",
+    )
+    monkeypatch.setattr(installer, "plugin_pip_target_directory", lambda: tmp_path / "target")
+    monkeypatch.setattr(
+        installer,
+        "_installed_distribution_versions",
+        lambda: {
+            "torch": "2.7.1+cpu",
+            "torchvision": "0.22.1+cpu",
+            "torchaudio": "2.7.1+cpu",
+        },
+    )
+
+    original_plan = installer._build_pytorch_install_plan
+
+    def cuda_plan(lines, installed_versions, *, requirement_is_satisfied):
+        return original_plan(
+            lines,
+            installed_versions,
+            requirement_is_satisfied=requirement_is_satisfied,
+            index_url="https://download.pytorch.org/whl/cu128",
+            index_reason="test_cuda",
+        )
+
+    monkeypatch.setattr(installer, "_build_pytorch_install_plan", cuda_plan)
+    calls = _capture_pip_invocation(monkeypatch, installer)
+
+    result = installer.install_plugin_requirements_txt(plugin_root)
+
+    assert result == ("pip_ok", "")
+    assert len(calls) == 1
+    cmd = calls[0]["cmd"]
+    assert "--force-reinstall" in cmd
+    assert "--upgrade" in cmd
+    assert "--target" not in cmd
+    assert cmd[cmd.index("--index-url") + 1] == "https://download.pytorch.org/whl/cu128"
+
+
+def test_matching_pytorch_stack_skips_pip(monkeypatch, tmp_path):
+    installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
+    _write_requirements(
+        plugin_root,
+        "torch==2.7.1\ntorchvision==0.22.1\ntorchaudio==2.7.1\n",
+    )
+    monkeypatch.setattr(
+        installer,
+        "_installed_distribution_versions",
+        lambda: {
+            "torch": "2.7.1+cu128",
+            "torchvision": "0.22.1+cu128",
+            "torchaudio": "2.7.1+cu128",
+        },
+    )
+
+    original_plan = installer._build_pytorch_install_plan
+
+    def cuda_plan(lines, installed_versions, *, requirement_is_satisfied):
+        return original_plan(
+            lines,
+            installed_versions,
+            requirement_is_satisfied=requirement_is_satisfied,
+            index_url="https://download.pytorch.org/whl/cu128",
+            index_reason="test_cuda",
+        )
+
+    monkeypatch.setattr(installer, "_build_pytorch_install_plan", cuda_plan)
+    calls = _capture_pip_invocation(monkeypatch, installer)
+
+    result = installer.install_plugin_requirements_txt(plugin_root)
+
+    assert result == ("pip_ok", "")
+    assert calls == []
+
+
 def test_write_temp_requirements_removes_file_when_write_fails(monkeypatch, tmp_path):
     from core.plugins import plugin_requirements_install as installer
 

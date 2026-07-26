@@ -8,7 +8,6 @@ import importlib.metadata as importlib_metadata
 import logging
 import os
 import re
-import subprocess
 import sys
 import tempfile
 import time
@@ -19,8 +18,11 @@ from core.plugins.pip_index_config import (
 )
 from core.plugins.pip_runner import (
     apply_pip_index_and_extra_args as _apply_pip_index_and_extra_args,
-    pip_win_creationflags as _pip_win_creationflags,
     run_pip_install as _run_pip_install,
+)
+from core.plugins.pytorch_runtime import (
+    build_pytorch_install_plan as _build_pytorch_install_plan,
+    partition_pytorch_requirement_lines as _partition_torch_requirement_lines,
 )
 
 try:
@@ -30,10 +32,6 @@ except Exception:  # pragma: no cover - fallback for minimal embedded runtimes.
     Requirement = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
-
-_TORCH_PROJECT_NAMES = frozenset({"torch", "torchvision", "torchaudio"})
-_CUDA_VER_LINE_RE = re.compile(r"CUDA Version:\s*(\d+)\.(\d+)")
-
 
 def frozen_release_root() -> Path | None:
     """打包运行时返回发行根目录；开发模式返回 ``None``。"""
@@ -115,53 +113,6 @@ def ensure_plugins_namespace_on_syspath() -> None:
             logger.info("Prepended cwd for plugins namespace: %s", s)
 
 
-def _nvidia_smi_cuda_driver_version() -> tuple[int, int] | None:
-    """Parse ``CUDA Version: major.minor`` from ``nvidia-smi`` stdout; None if unavailable."""
-    pop_kw: dict[str, object] = {
-        "args": ["nvidia-smi"],
-        "capture_output": True,
-        "text": True,
-        "timeout": 20,
-    }
-    if sys.platform == "win32":
-        flags = _pip_win_creationflags()
-        if flags:
-            pop_kw["creationflags"] = flags
-    try:
-        proc = subprocess.run(**pop_kw)
-    except (OSError, subprocess.TimeoutExpired):
-        return None
-    if proc.returncode != 0 or not proc.stdout:
-        return None
-    match = _CUDA_VER_LINE_RE.search(proc.stdout)
-    if not match:
-        return None
-    return int(match.group(1)), int(match.group(2))
-
-
-def _pytorch_wheel_index_url_for_this_machine() -> tuple[str, str]:
-    """
-    Choose ``pip install --index-url`` for PyTorch official wheels (CUDA vs CPU).
-
-    Only used on Windows/Linux after splitting ``torch`` / ``torchvision`` / ``torchaudio`` lines out
-    of a plugin ``requirements.txt``.
-    """
-    ver = _nvidia_smi_cuda_driver_version()
-    if ver is None:
-        return "https://download.pytorch.org/whl/cpu", "no_usable_nvidia_smi_cpu"
-    major, minor = ver
-    if (major, minor) >= (12, 4):
-        tag = "cu124"
-    elif major >= 12:
-        tag = "cu121"
-    elif (major, minor) >= (11, 8):
-        tag = "cu118"
-    else:
-        tag = "cu118"
-    url = f"https://download.pytorch.org/whl/{tag}"
-    return url, f"nvidia_driver_cuda_{major}.{minor}_{tag}"
-
-
 def _requirement_line_project_name(line: str) -> str | None:
     """PEP 508-ish name from a single ``requirements.txt`` line, or None if not a plain package."""
     segment = line.split("#", 1)[0].strip()
@@ -180,18 +131,6 @@ def _requirement_line_project_name(line: str) -> str | None:
     if not match:
         return None
     return match.group(1).lower().replace("_", "-")
-
-
-def _partition_torch_requirement_lines(lines: list[str]) -> tuple[list[str], list[str]]:
-    torch_only: list[str] = []
-    rest: list[str] = []
-    for line in lines:
-        name = _requirement_line_project_name(line)
-        if name is not None and name in _TORCH_PROJECT_NAMES:
-            torch_only.append(line.rstrip("\r\n"))
-        else:
-            rest.append(line.rstrip("\r\n"))
-    return torch_only, rest
 
 
 def _has_non_comment_requirement(lines: list[str]) -> bool:
@@ -354,8 +293,9 @@ def install_plugin_requirements_txt(
     Run ``python -m pip install -r requirements_file`` if it exists under ``plugin_root``.
 
     冻结版使用 :func:`pip_python_executable`（默认 ``<发行根>/runtime/python.exe``）执行
-    ``pip install --target <发行根>/data/plugin_site_packages``；宿主须在启动时调用
-    :func:`ensure_plugin_site_packages_on_syspath`。
+    普通依赖使用 ``pip install --target <发行根>/data/plugin_site_packages``；PyTorch
+    二进制栈是例外，会统一安装进 bundled runtime，避免两套 ``torch`` 同时出现在
+    ``sys.path``。宿主须在启动时调用 :func:`ensure_plugin_site_packages_on_syspath`。
 
     On Windows/Linux, if the file lists ``torch``, ``torchvision``, or ``torchaudio``, those lines are
     installed first from PyTorch's wheel index (CUDA channel derived from ``nvidia-smi``, otherwise CPU).
@@ -401,10 +341,13 @@ def install_plugin_requirements_txt(
         logger.warning("Could not read %s: %s", req, exc)
         return ("pip_exception", str(exc))
 
-    # 先在本地分发信息里做预检，普通包只把“缺失或版本不满足”的行交给 pip。
-    # 这样已安装依赖不会反复下载，国内用户装插件时能少等很多。
-    can_prune, install_lines = _install_lines_after_precheck(lines)
-    if can_prune and not install_lines:
+    # PyTorch 栈始终单独检查。普通包仍只把“缺失或版本不满足”的行交给 pip；
+    # PyTorch 还会核对 CPU/CUDA wheel 标签，不能被普通的 ``>=`` 预检提前裁掉。
+    torch_lines, source_other_lines = _partition_torch_requirement_lines(lines)
+    split_torch = bool(torch_lines) and sys.platform != "darwin"
+    precheck_source_lines = source_other_lines if split_torch else lines
+    can_prune, install_lines = _install_lines_after_precheck(precheck_source_lines)
+    if can_prune and not install_lines and not split_torch:
         logger.info("Plugin pip: all requirements already satisfied, skipping install.")
         return ("pip_ok", "")
 
@@ -421,41 +364,47 @@ def install_plugin_requirements_txt(
             active_req = precheck_tf
             active_lines = install_lines
 
-        torch_lines, other_lines = _partition_torch_requirement_lines(active_lines)
-        split_torch = bool(torch_lines) and sys.platform != "darwin"
-
         if split_torch:
-            # torch/torchvision/torchaudio 不走普通 PyPI 镜像。
-            # 这里先按本机 CUDA/CPU 选择 PyTorch 官方 wheel index，再安装剩余依赖。
-            idx_url, idx_reason = _pytorch_wheel_index_url_for_this_machine()
-            logger.info(
-                "Plugin pip: PyTorch packages use index %s (%s)",
-                idx_url,
-                idx_reason,
+            # torch/torchvision/torchaudio 不走普通 PyPI 镜像，也不装进插件
+            # --target：整套二进制运行时必须由 bundled/runtime Python 统一持有。
+            installed_versions = _installed_distribution_versions()
+            plan = _build_pytorch_install_plan(
+                torch_lines,
+                installed_versions,
+                requirement_is_satisfied=_requirement_line_is_satisfied,
             )
-            torch_tf = _write_temp_requirements("easyai_torch_req_", torch_lines)
-
-            cmd_torch = [
-                *base_cmd,
-                "--index-url",
-                idx_url,
-                "--extra-index-url",
-                "https://pypi.org/simple",
-                "-r",
-                str(torch_tf),
-            ]
-            code1, detail1 = _finish_install_result(
-                _run_pip_install(
+            logger.info(
+                "Plugin pip: PyTorch plan index=%s (%s), install=%s, "
+                "force_reinstall=%s: %s",
+                plan.index_url,
+                plan.index_reason,
+                plan.install_required,
+                plan.force_reinstall,
+                plan.detail,
+            )
+            if plan.install_required:
+                torch_tf = _write_temp_requirements("easyai_torch_req_", torch_lines)
+                # Intentionally omit plugin ``--target`` for the PyTorch stack.
+                cmd_torch = [
+                    *_pip_base_install_cmd(py, None),
+                    "--index-url",
+                    plan.index_url,
+                    "--extra-index-url",
+                    "https://pypi.org/simple",
+                ]
+                if plan.force_reinstall:
+                    cmd_torch.extend(["--upgrade", "--force-reinstall"])
+                cmd_torch.extend(["-r", str(torch_tf)])
+                code1, detail1 = _run_pip_install(
                     _apply_pip_index_and_extra_args(cmd_torch, torch_lines),
                     cwd=root,
                     timeout_sec=remaining_budget(),
                     on_output_line=on_output_line,
-                ),
-                pip_target,
-            )
-            if code1 != "pip_ok":
-                return (code1, detail1)
+                )
+                if code1 != "pip_ok":
+                    return (code1, detail1)
 
+            other_lines = install_lines if can_prune else source_other_lines
             if not _has_non_comment_requirement(other_lines):
                 return _finish_install_result(("pip_ok", ""), pip_target)
 
