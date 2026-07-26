@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -320,6 +321,47 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertEqual(snapshot["sessionId"], "session-1")
 
+    @unittest.skipUnless(os.name == "nt", "Windows drive semantics")
+    def test_launch_chat_allows_history_on_a_different_drive(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        config_manager = _ConfigManager()
+        config_manager.config.system_config.chat_ui_runtime_mode = "native"
+        state = SimpleNamespace(
+            chat_session={},
+            chat_stream=None,
+            config_manager=config_manager,
+            history_dir=r"C:\project\data\chat_history",
+            project_root_dir=r"C:\project",
+            template_dir_path=r"C:\project\data\character_templates",
+        )
+        handler.server = SimpleNamespace(state=state)
+        body = {
+            "historyPath": r"D:\external-history\session.json",
+            "scenario": "scene",
+            "system": "system",
+            "templateId": "cross-drive-template",
+            "templateName": "Cross Drive",
+        }
+
+        with (
+            patch("frontend_bridge_core.handler._chat_process_running", return_value=False),
+            patch(
+                "frontend_bridge_core.handler._launch_chat",
+                return_value="聊天进程已启动！PID: 12345",
+            ) as launch_chat,
+            patch(
+                "frontend_bridge_core.handler._repair_template_parts_from_session_if_needed",
+                side_effect=lambda _state, scenario, system: (scenario, system),
+            ),
+        ):
+            snapshot = handler._launch_chat(body)
+
+        self.assertEqual(
+            launch_chat.call_args.kwargs["history_file"],
+            "D:/external-history/session",
+        )
+        self.assertEqual(snapshot["historyPath"], "D:/external-history/session")
+
     def test_launch_chat_normalizes_stale_characters_before_runtime_inputs(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         chat_stream = _ChatStreamStub()
@@ -490,6 +532,54 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(launch_chat.call_args.kwargs["character_names"], ["Alice"])
         self.assertEqual(launch_chat.call_args.kwargs["init_sprite_path"], "sprites/alice.png")
         self.assertEqual(handler.server.state.chat_session["characterName"], "Alice")
+
+    @unittest.skipUnless(os.name == "nt", "Windows drive semantics")
+    def test_resume_last_chat_allows_history_on_a_different_drive(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        config_manager = _ConfigManager()
+        config_manager.config.system_config.chat_ui_runtime_mode = "native"
+        handler.server = SimpleNamespace(
+            state=SimpleNamespace(
+                chat_session={},
+                chat_stream=None,
+                config_manager=config_manager,
+                history_dir=r"C:\project\data\chat_history",
+                project_root_dir=r"C:\project",
+                template_dir_path=r"C:\project\data\character_templates",
+            )
+        )
+
+        with (
+            patch(
+                "frontend_bridge_core.handler._load_template_session_payload",
+                return_value={
+                    "background": "",
+                    "historyPath": r"D:\external-history\resume.json",
+                    "roomId": "",
+                    "scenario": "scene",
+                    "selectedCharacters": [],
+                    "system": "system",
+                    "templateFileDropdown": "resume-template",
+                    "voiceLanguage": "ja",
+                },
+            ),
+            patch(
+                "frontend_bridge_core.handler._resume_template_parts",
+                return_value=("scene", "system", "resume-template"),
+            ),
+            patch("frontend_bridge_core.handler._chat_process_running", return_value=False),
+            patch(
+                "frontend_bridge_core.handler._launch_chat",
+                return_value="聊天进程已启动！PID: 12345",
+            ) as launch_chat,
+        ):
+            snapshot = handler._resume_last_chat()
+
+        self.assertEqual(
+            launch_chat.call_args.kwargs["history_file"],
+            "D:/external-history/resume",
+        )
+        self.assertEqual(snapshot["historyPath"], "D:/external-history/resume")
 
     def test_launch_chat_passes_workflow_path_to_runtime_process(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)

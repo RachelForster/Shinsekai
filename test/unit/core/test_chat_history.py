@@ -492,7 +492,7 @@ class TestClearChatHistory:
         self.tmp_dir = tempfile.mkdtemp()
         self.history_file = str(Path(self.tmp_dir) / "test.json")
 
-    def test_removes_json_and_tmp(self):
+    def test_persists_empty_json_and_removes_tmp(self):
         history_path = Path(self.history_file)
         tmp_path = Path(self.history_file + ".tmp")
         history_path.write_text("[]", encoding="utf-8")
@@ -502,5 +502,5 @@ class TestClearChatHistory:
         hm.clear_chat_history(self.history_file)
 
         assert hm.get_history() == []
-        assert not history_path.exists()
+        assert json.loads(history_path.read_text(encoding="utf-8")) == []
         assert not tmp_path.exists()
