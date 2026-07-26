@@ -87,9 +87,8 @@ def test_apply_mirror_environment_marks_global_pip_strategy(monkeypatch):
     assert os.environ["SHINSEKAI_MIRROR_REGION"] == "global"
 
 
-def test_apply_mirror_environment_disables_xet_for_official_hub_over_proxy(monkeypatch):
+def test_apply_mirror_environment_disables_xet_for_official_hub(monkeypatch):
     _clear_mirror_env(monkeypatch)
-    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
 
     values = apply_mirror_environment(SystemConfig(mirror_auto_detect_china=False))
 
@@ -241,7 +240,7 @@ def test_apply_mirror_environment_logs_applied_values(monkeypatch, caplog):
     assert applied[-1].pypi_source == "https://pypi.example/simple"
     assert applied[-1].detection_mode == "manual"
     assert applied[-1].huggingface_transport == "auto"
-    assert applied[-1].huggingface_xet_disabled_for_proxy is False
+    assert applied[-1].huggingface_xet_disabled is False
     assert applied[-1].sets_standard_pip_env is False
     assert "region=global" in applied[-1].getMessage()
     assert "huggingface=https://***@hf.example" in applied[-1].getMessage()
@@ -249,7 +248,6 @@ def test_apply_mirror_environment_logs_applied_values(monkeypatch, caplog):
 
 def test_apply_mirror_environment_logs_official_sources(monkeypatch, caplog):
     _clear_mirror_env(monkeypatch)
-    monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:7890")
     caplog.set_level(logging.INFO, logger="config.mirror_env")
 
     apply_mirror_environment(SystemConfig(mirror_auto_detect_china=False))
@@ -260,6 +258,6 @@ def test_apply_mirror_environment_logs_official_sources(monkeypatch, caplog):
     assert applied[-1].github_source == OFFICIAL_GITHUB_URL
     assert applied[-1].pypi_source == OFFICIAL_PYPI_INDEX_URL
     assert applied[-1].huggingface_transport == "http"
-    assert applied[-1].huggingface_xet_disabled_for_proxy is True
+    assert applied[-1].huggingface_xet_disabled is True
     assert "mode=manual" in applied[-1].getMessage()
     assert "huggingface_transport=http" in applied[-1].getMessage()
