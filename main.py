@@ -1055,10 +1055,36 @@ def main():
                     emit_ack(ok=True)
                     return
                 if command_type == "submit-option":
-                    if resolve_pending_tool_confirmation(str(payload or "")):
-                        ui_updates.post_options([])
+                    if (
+                        isinstance(payload, dict)
+                        and payload.get("kind") == "tool-confirmation"
+                    ):
+                        confirmation_id = str(
+                            payload.get("confirmationId") or ""
+                        ).strip()
+                        action = str(payload.get("action") or "").strip().casefold()
+                        if (
+                            not confirmation_id
+                            or len(confirmation_id) > 128
+                            or action not in {"confirm", "cancel"}
+                        ):
+                            raise ValueError(
+                                "Tool confirmation response is invalid."
+                            )
+                        if not resolve_pending_tool_confirmation(
+                            confirmation_id,
+                            action,
+                        ):
+                            raise ValueError(
+                                "Tool confirmation is stale or does not match "
+                                "the active prompt."
+                            )
+                        if hasattr(ui_updates, "clear_tool_confirmation"):
+                            ui_updates.clear_tool_confirmation(confirmation_id)
                         emit_ack(ok=True)
                         return
+                    if isinstance(payload, dict):
+                        raise ValueError("Option selection must be a string.")
                     runtime_asr.pause_for_turn()
                     submit_runtime_text(str(payload or ""))
                     emit_ack(ok=True)

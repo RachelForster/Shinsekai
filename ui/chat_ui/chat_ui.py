@@ -1268,15 +1268,23 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             self.skip_button.hide()
             self.display_words_changed.emit("")
     
-    def option_clicked(self, text):
+    def option_clicked(self, selection):
         """选项按钮点击处理函数"""
-        print(f"Option clicked: {text}")
-        # Check for pending tool confirmation first
-        from core.runtime.app_runtime import resolve_pending_tool_confirmation
+        if (
+            isinstance(selection, dict)
+            and selection.get("kind") == "tool-confirmation"
+        ):
+            from core.runtime.app_runtime import resolve_pending_tool_confirmation
 
-        if resolve_pending_tool_confirmation(text):
+            resolve_pending_tool_confirmation(
+                str(selection.get("confirmationId") or ""),
+                str(selection.get("action") or ""),
+            )
             self.setOptions([])
             return
+
+        text = str(selection or "")
+        print(f"Option clicked: {text}")
         self.option_selected.emit(text)
         self.input_box.setText(text) # 将内容添加到输入框
         self.setOptions([])          # 隐藏选项
@@ -1316,7 +1324,7 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
             if w is not None:
                 w.setStyleSheet(qss)
 
-    def setOptions(self, optionList: list[str]):
+    def setOptions(self, optionList: list):
         """
         在dialog label相同的地方显示一组半透明选项按钮，并隐藏dialog label。
         
@@ -1347,10 +1355,20 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
         )
 
         # 4. 添加新按钮
-        for option_text in optionList:
+        for option in optionList:
+            is_structured_option = isinstance(option, dict)
+            option_text = (
+                str(option.get("label") or "")
+                if is_structured_option
+                else str(option or "")
+            )
             option_btn = ClickableLabel()
             option_btn.setText(option_text)
-            option_btn.setTextFormat(Qt.TextFormat.RichText)
+            option_btn.setTextFormat(
+                Qt.TextFormat.PlainText
+                if is_structured_option
+                else Qt.TextFormat.RichText
+            )
             option_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             option_btn.setWordWrap(True)
             
@@ -1366,8 +1384,10 @@ class ChatUIWindow(DesktopToolbarMixin, DesktopMenuMixin, QWidget):
                 )
             )
             
-            # 连接点击事件，使用 lambda 传递选项内容
-            option_btn.clicked.connect(lambda text=option_text: self.option_clicked(text))
+            # 工具确认按钮保留结构化 payload；普通剧情选项仍传递显示文本。
+            option_btn.clicked.connect(
+                lambda selected=option: self.option_clicked(selected)
+            )
             self.options_layout.addWidget(option_btn)
 
         container_width = self.image_container.width() or self.original_width

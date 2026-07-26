@@ -23,7 +23,7 @@ export function clearTransientNotificationState(state: ChatStageState) {
 }
 
 export function withResolvedLayers(state: ChatStageState): ChatStageState {
-  const optionsVisible = state.options.length > 0;
+  const optionsVisible = state.options.length > 0 || Boolean(state.toolConfirmation);
   return {
     ...state,
     layers: {

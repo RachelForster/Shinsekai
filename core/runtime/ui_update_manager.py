@@ -63,6 +63,35 @@ def get_character_by_name(name: str):
         return None
 
 
+def _native_tool_confirmation_options(
+    *,
+    confirmation_id: str,
+    tool_name: str,
+    detail: str = "",
+) -> list[dict[str, str]]:
+    from i18n import tr
+
+    confirm_label = tr("tool_confirmation.confirm", tool=tool_name)
+    if detail:
+        confirm_label = f"{confirm_label}\n{detail}"
+    base = {
+        "confirmationId": str(confirmation_id or ""),
+        "kind": "tool-confirmation",
+    }
+    return [
+        {
+            **base,
+            "action": "cancel",
+            "label": tr("common.cancel"),
+        },
+        {
+            **base,
+            "action": "confirm",
+            "label": confirm_label,
+        },
+    ]
+
+
 def _format_token_count(value: Any) -> str:
     try:
         count = max(0, int(value or 0))
@@ -170,9 +199,30 @@ class HeadlessUIUpdateManager:
     def hide_busy_bar(self) -> None:
         pass
 
-    def post_options(self, option_list: List[str]) -> None:
+    def post_options(self, option_list: List[Any]) -> None:
         if option_list:
             print(" / ".join(str(x) for x in option_list))
+
+    def post_tool_confirmation(
+        self,
+        *,
+        confirmation_id: str,
+        tool_name: str,
+        detail: str = "",
+        risk: str = "high",
+    ) -> None:
+        del risk
+        self.post_options(
+            _native_tool_confirmation_options(
+                confirmation_id=confirmation_id,
+                tool_name=tool_name,
+                detail=detail,
+            )
+        )
+
+    def clear_tool_confirmation(self, confirmation_id: str) -> None:
+        del confirmation_id
+        self.post_options([])
 
     def post_numeric_value(self, text: str) -> None:
         if text:
@@ -280,8 +330,29 @@ class UIUpdateManager(QObject):
     def hide_busy_bar(self) -> None:
         self.update_busy_bar_signal.emit("", 0.0)
 
-    def post_options(self, option_list: List[str]) -> None:
+    def post_options(self, option_list: List[Any]) -> None:
         self.update_option_signal.emit(option_list)
+
+    def post_tool_confirmation(
+        self,
+        *,
+        confirmation_id: str,
+        tool_name: str,
+        detail: str = "",
+        risk: str = "high",
+    ) -> None:
+        del risk
+        self.post_options(
+            _native_tool_confirmation_options(
+                confirmation_id=confirmation_id,
+                tool_name=tool_name,
+                detail=detail,
+            )
+        )
+
+    def clear_tool_confirmation(self, confirmation_id: str) -> None:
+        del confirmation_id
+        self.post_options([])
 
     def post_numeric_value(self, text: str) -> None:
         stats = parse_stat_payload(text)
@@ -626,13 +697,40 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     def hide_busy_bar(self) -> None:
         self._sink.emit({"type": "busy.hide"})
 
-    def post_options(self, option_list: List[str]) -> None:
+    def post_options(self, option_list: List[Any]) -> None:
         options = [str(x) for x in (option_list or [])]
         if options:
             self._sink.emit({"type": "options.show", "options": options})
         else:
             self._sink.emit({"type": "options.clear"})
         self.sync_history_entries()
+
+    def post_tool_confirmation(
+        self,
+        *,
+        confirmation_id: str,
+        tool_name: str,
+        detail: str = "",
+        risk: str = "high",
+    ) -> None:
+        normalized_risk = "medium" if str(risk).casefold() == "medium" else "high"
+        self._sink.emit(
+            {
+                "type": "tool.confirmation.show",
+                "confirmationId": str(confirmation_id or ""),
+                "detail": str(detail or ""),
+                "risk": normalized_risk,
+                "toolName": str(tool_name or ""),
+            }
+        )
+
+    def clear_tool_confirmation(self, confirmation_id: str) -> None:
+        self._sink.emit(
+            {
+                "type": "tool.confirmation.clear",
+                "confirmationId": str(confirmation_id or ""),
+            }
+        )
 
     def post_numeric_value(self, text: str) -> None:
         stats = parse_stat_payload(text)
@@ -802,6 +900,8 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
     original_post_busy_bar = ui.post_busy_bar
     original_hide_busy_bar = ui.hide_busy_bar
     original_post_options = ui.post_options
+    original_post_tool_confirmation = getattr(ui, "post_tool_confirmation", None)
+    original_clear_tool_confirmation = getattr(ui, "clear_tool_confirmation", None)
     original_post_numeric_value = ui.post_numeric_value
     original_post_context_token_estimate = ui.post_context_token_estimate
     original_post_background = ui.post_background
@@ -859,9 +959,45 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
         original_hide_busy_bar()
         mirror.hide_busy_bar()
 
-    def post_options(option_list: List[str]) -> None:
+    def post_options(option_list: List[Any]) -> None:
         original_post_options(option_list)
         mirror.post_options(option_list)
+
+    def post_tool_confirmation(
+        *,
+        confirmation_id: str,
+        tool_name: str,
+        detail: str = "",
+        risk: str = "high",
+    ) -> None:
+        if callable(original_post_tool_confirmation):
+            original_post_tool_confirmation(
+                confirmation_id=confirmation_id,
+                tool_name=tool_name,
+                detail=detail,
+                risk=risk,
+            )
+        else:
+            original_post_options(
+                _native_tool_confirmation_options(
+                    confirmation_id=confirmation_id,
+                    tool_name=tool_name,
+                    detail=detail,
+                )
+            )
+        mirror.post_tool_confirmation(
+            confirmation_id=confirmation_id,
+            tool_name=tool_name,
+            detail=detail,
+            risk=risk,
+        )
+
+    def clear_tool_confirmation(confirmation_id: str) -> None:
+        if callable(original_clear_tool_confirmation):
+            original_clear_tool_confirmation(confirmation_id)
+        else:
+            original_post_options([])
+        mirror.clear_tool_confirmation(confirmation_id)
 
     def post_numeric_value(text: str) -> None:
         original_post_numeric_value(text)
@@ -920,6 +1056,8 @@ def connect_to_stream_sink(ui: UIUpdateManager, sink: "ChatEventSink") -> None:
     ui.post_busy_bar = post_busy_bar
     ui.hide_busy_bar = hide_busy_bar
     ui.post_options = post_options
+    ui.post_tool_confirmation = post_tool_confirmation
+    ui.clear_tool_confirmation = clear_tool_confirmation
     ui.post_numeric_value = post_numeric_value
     ui.post_context_token_estimate = post_context_token_estimate
     ui.post_background = post_background

@@ -644,10 +644,15 @@
     "yes": "是",
     "no": "否",
     "auto": "自动",
+    "cancel": "取消",
     "msg_qtmm_unavailable": "无法播放：本环境未加载 PySide6 多媒体 (QtMultimedia)。合并多包 (MERGE) 时常见。可改「分两次、不打 --merge 单独打 Settings 与主程序」整包同目录发布，或在本机用 Python 运行。",
     "ai_working_title": "AI 处理中",
     "ai_progress_write": "正在生成角色设定，请稍候…",
     "ai_progress_translate": "正在翻译，请稍候…"
+  },
+  "tool_confirmation": {
+    "confirm": "⚠️ 确认执行 {tool}",
+    "timeout": "工具 {tool} 等待确认超时，已取消。"
   },
   "template_gen": {
     "narr_token": "旁白",

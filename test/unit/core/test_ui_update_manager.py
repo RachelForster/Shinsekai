@@ -283,6 +283,35 @@ class UIUpdateManagerTests(unittest.TestCase):
             ],
         )
 
+    def test_streaming_ui_update_manager_emits_correlated_tool_confirmation(self):
+        sink = _SinkStub()
+        manager = StreamingUIUpdateManager(sink)
+
+        manager.post_tool_confirmation(
+            confirmation_id="prompt-1",
+            tool_name="file_write",
+            detail=r"path=D:\notes\plan.txt",
+            risk="unexpected",
+        )
+        manager.clear_tool_confirmation("prompt-1")
+
+        self.assertEqual(
+            sink.events,
+            [
+                {
+                    "confirmationId": "prompt-1",
+                    "detail": r"path=D:\notes\plan.txt",
+                    "risk": "high",
+                    "toolName": "file_write",
+                    "type": "tool.confirmation.show",
+                },
+                {
+                    "confirmationId": "prompt-1",
+                    "type": "tool.confirmation.clear",
+                },
+            ],
+        )
+
     def test_streaming_ui_update_manager_emits_session_closed_event(self):
         sink = _SinkStub()
         manager = StreamingUIUpdateManager(sink)

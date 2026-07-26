@@ -434,6 +434,8 @@ export type MessageKey =
   | "chat.actionBar.skip"
   | "chat.actionBar.title"
   | "chat.options.label"
+  | "chat.toolConfirmation.confirm"
+  | "chat.toolConfirmation.label"
   | "chat.actionBar.unlock"
   | "chat.config.dialogOpacity"
   | "chat.config.dialogOpacityValue"

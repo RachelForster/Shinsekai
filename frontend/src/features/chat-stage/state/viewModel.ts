@@ -43,6 +43,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     dialogText: systemPromptText ? "" : dialog.dialogText,
     inputAttachments: state.inputAttachments,
     inputDisabled:
+      Boolean(state.toolConfirmation) ||
       !state.layers.input ||
       ((state.status === "generating" || state.status === "streaming") && !state.turnOptions.interruptEnabled),
     inputDraft: state.inputDraft,
@@ -54,6 +55,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     status: state.status,
     statusText: state.status,
     tokenUsageText,
+    toolConfirmation: state.toolConfirmation,
     transportMode: state.transportMode,
     transportState: state.transportState,
     userDisplayName: normalizedUserDisplayName(state.userDisplayName),

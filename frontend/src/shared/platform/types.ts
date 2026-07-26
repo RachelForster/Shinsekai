@@ -868,6 +868,13 @@ export interface ChatStat {
   value: number;
 }
 
+export interface ChatToolConfirmation {
+  confirmationId: string;
+  detail?: string;
+  risk: "high" | "medium";
+  toolName: string;
+}
+
 export interface PluginPagePresentation {
   mode: "overlay";
   pageId: string;
@@ -911,6 +918,7 @@ export interface ChatSnapshot {
   status: ChatRuntimeStatus;
   statusMessage?: string;
   systemMessageText?: string;
+  toolConfirmation?: ChatToolConfirmation | null;
   turnOptions?: ChatTurnOptions;
   turnState?: ChatTurnState;
   userDisplayName?: string;
@@ -1023,6 +1031,14 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "cg.hide" })
   | (ChatEventBase & { type: "options.show"; options: string[] })
   | (ChatEventBase & { type: "options.clear" })
+  | (ChatEventBase & {
+      type: "tool.confirmation.show";
+      confirmationId: string;
+      detail?: string;
+      risk: "high" | "medium";
+      toolName: string;
+    })
+  | (ChatEventBase & { type: "tool.confirmation.clear"; confirmationId: string })
   | (ChatEventBase & { type: "numeric.update"; html: string })
   | (ChatEventBase & { type: "stats.update"; stats: ChatStat[] })
   | (ChatEventBase & { type: "busy.show"; text: string; durationSeconds: number })

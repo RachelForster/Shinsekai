@@ -16,6 +16,7 @@ export const emptyChatState: ChatStageState = {
   sprites: [],
   stats: [],
   status: "idle",
+  toolConfirmation: null,
   transportMode: "snapshot",
   transportState: "connecting",
   turnOptions: {

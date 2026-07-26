@@ -3,6 +3,8 @@ import type { MessageKey } from "../messages";
 export const enMessages: Record<MessageKey, string> = {
   "chat.stats.label": "Character stats",
   "chat.options.label": "Dialogue choices",
+  "chat.toolConfirmation.confirm": "Confirm {tool}",
+  "chat.toolConfirmation.label": "Tool confirmation",
   "api.memory.checkModel": "Check",
   "api.memory.cachedNotLoaded": "Long-term memory is ready",
   "api.memory.checking": "Checking",
