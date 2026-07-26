@@ -424,8 +424,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         query_token = str(
             (query.get(BRIDGE_AUTH_QUERY) or query.get("token") or [""])[0]
         ).strip()
-        required = str(getattr(self.state, "auth_token", "") or "").strip()
-        if query_token and required and hmac.compare_digest(query_token, required):
+        required = (
+            str(getattr(self.state, "auth_token", "") or "").strip()
+            if query_token
+            else ""
+        )
+        if required and hmac.compare_digest(query_token, required):
             self.send_header(
                 "Set-Cookie",
                 f"{BRIDGE_AUTH_COOKIE}={safe_header_value(query_token)}; Path=/; HttpOnly; SameSite=Strict",
