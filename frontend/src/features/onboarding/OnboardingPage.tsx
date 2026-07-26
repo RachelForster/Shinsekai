@@ -63,7 +63,6 @@ export function OnboardingPage() {
       {
         accent: "accent" as const,
         content: <ApiSetupPanel copy={copy} onSaved={() => setApiSaved(true)} />,
-        description: copy.api.description,
         icon: <Settings aria-hidden size={18} />,
         id: "api",
         title: copy.api.title,
@@ -71,7 +70,6 @@ export function OnboardingPage() {
       {
         accent: "info" as const,
         content: <PluginSetupPanel copy={copy} onInstalled={() => setPluginsInstalled(true)} />,
-        description: copy.plugins.description,
         icon: <Plug aria-hidden size={18} />,
         id: "plugins",
         optional: true,
@@ -80,7 +78,6 @@ export function OnboardingPage() {
       {
         accent: "success" as const,
         content: <CharacterSetupPanel copy={copy} />,
-        description: copy.characters.description,
         icon: <Gamepad2 aria-hidden size={18} />,
         id: "characters",
         title: copy.characters.title,
@@ -88,7 +85,6 @@ export function OnboardingPage() {
       {
         accent: "warning" as const,
         content: <BackgroundSetupPanel copy={copy} />,
-        description: copy.backgrounds.description,
         icon: <FileImage aria-hidden size={18} />,
         id: "backgrounds",
         optional: true,
@@ -97,7 +93,6 @@ export function OnboardingPage() {
       {
         accent: "accent" as const,
         content: <CompletionSetupPanel copy={copy} />,
-        description: copy.complete.description,
         icon: <CheckCircle2 aria-hidden size={18} />,
         id: "complete",
         title: copy.complete.title,

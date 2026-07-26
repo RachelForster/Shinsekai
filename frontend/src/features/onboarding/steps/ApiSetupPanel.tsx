@@ -14,6 +14,7 @@ import {
 } from "../../../entities/config/repository";
 import type { ApiConfig } from "../../../entities/config/types";
 import type { TaskSnapshot, TtsBundleDownloadResult, TtsBundleKind } from "../../../shared/platform/types";
+import { applyDownloadedTtsBundle } from "../../api-settings/apiSettingsUtils";
 import {
   AsyncButton,
   Button,
@@ -100,12 +101,7 @@ export function ApiSetupPanel({ copy, onSaved }: ApiSetupPanelProps) {
     },
     onSuccess(result) {
       if (draft) {
-        const next = {
-          ...draft,
-          gpt_sovits_api_path: result.path,
-          gpt_sovits_url: result.path,
-          tts_provider: result.provider,
-        };
+        const next = applyDownloadedTtsBundle(draft, result);
         setDraft(next);
         saveMutation.mutate(next);
       }

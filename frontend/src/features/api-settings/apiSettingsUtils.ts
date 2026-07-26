@@ -364,6 +364,17 @@ export function applyTtsProviderDefaults(config: ApiConfig, installedTtsBundlePa
   };
 }
 
+export function applyDownloadedTtsBundle(config: ApiConfig, result: { path: string; provider: string }): ApiConfig {
+  return applyTtsProviderDefaults(
+    {
+      ...config,
+      gpt_sovits_api_path: result.path,
+      tts_provider: result.provider,
+    },
+    result.path,
+  );
+}
+
 export function normalizeApiConfigForUi(config: ApiConfig, installedTtsBundlePath = ""): ApiConfig {
   const provider = (config.llm_provider || "Deepseek").trim() || "Deepseek";
   return applyTtsProviderDefaults(
