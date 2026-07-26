@@ -388,6 +388,46 @@ describe("TemplateEditorPage", () => {
     );
   });
 
+  it("shows a QR code after launching with mobile access enabled", async () => {
+    mockLaunchChat.mockResolvedValueOnce({
+      dialogText: "launched",
+      mobileAccess: {
+        enabled: true,
+        host: "192.168.1.20",
+        httpPort: 8789,
+        qrCodeDataUrl: "data:image/png;base64,dGVzdA==",
+        url: "http://192.168.1.20:8789/?shinsekai_bridge_token=test#/chat",
+        websocketPort: 8790,
+        websocketUrl: "ws://192.168.1.20:8790/ws",
+      },
+    });
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Allow mobile access"));
+    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Mobile access is ready" });
+    expect(within(dialog).getByRole("img", { name: "QR code for mobile chat access" })).toHaveAttribute(
+      "src",
+      "data:image/png;base64,dGVzdA==",
+    );
+    expect(dialog).toHaveTextContent("8789");
+    expect(dialog).toHaveTextContent("8790");
+    expect(mockSaveTemplateSession).toHaveBeenCalledWith(expect.objectContaining({ enableMobileAccess: true }));
+    expect(mockLaunchChat).toHaveBeenCalledWith(expect.objectContaining({ enableMobileAccess: true }));
+    expect(mockShowChatSurface).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Open local chat" }));
+    await waitFor(() =>
+      expect(mockShowChatSurface).toHaveBeenCalledWith(
+        expect.objectContaining({
+          snapshot: expect.objectContaining({ wsUrl: "ws://192.168.1.20:8790/ws" }),
+        }),
+      ),
+    );
+  });
+
   it("refreshes runtime status after a launch failure", async () => {
     mockLaunchChat.mockRejectedValueOnce(new Error("runtime closing"));
 

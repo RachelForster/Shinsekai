@@ -505,6 +505,7 @@ export interface TemplateGenerationResult extends TemplateSummary {
 export interface ChatLaunchPayload {
   backgroundName: string;
   characters: string[];
+  enableMobileAccess?: boolean;
   effectNames?: string[];
   historyPath: string;
   initSpritePath?: string;
@@ -537,6 +538,7 @@ export interface TemplateGenerateInput {
 
 export interface TemplateLaunchSession {
   background: string;
+  enableMobileAccess?: boolean;
   effectNames: string[];
   filenameStub: string;
   historyPath: string;
@@ -905,6 +907,7 @@ export interface ChatSnapshot {
   historyPath?: string;
   inputDraft: string;
   initTask?: TaskSnapshot;
+  mobileAccess?: MobileAccessInfo;
   numericInfo?: string;
   notificationText?: string;
   options: string[];
@@ -924,6 +927,16 @@ export interface ChatSnapshot {
   userDisplayName?: string;
   voiceLanguage?: string;
   wsUrl?: string;
+}
+
+export interface MobileAccessInfo {
+  enabled: true;
+  host: string;
+  httpPort: number;
+  qrCodeDataUrl: string;
+  url: string;
+  websocketPort: number;
+  websocketUrl: string;
 }
 
 export interface ChatCommandResult extends ChatSnapshot {

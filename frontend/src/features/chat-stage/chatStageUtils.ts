@@ -51,6 +51,23 @@ export function stageAssetUrl(path?: string) {
   if (!path) {
     return "";
   }
+  if (/^https?:\/\//i.test(path) && typeof window !== "undefined") {
+    try {
+      const assetUrl = new URL(path);
+      const pageUrl = window.location;
+      const assetIsLoopback = ["127.0.0.1", "::1", "localhost"].includes(assetUrl.hostname.toLowerCase());
+      const pageIsRemote =
+        /^https?:$/.test(pageUrl.protocol) &&
+        !["127.0.0.1", "::1", "localhost"].includes(pageUrl.hostname.toLowerCase());
+      if (assetIsLoopback && pageIsRemote) {
+        assetUrl.protocol = pageUrl.protocol;
+        assetUrl.host = pageUrl.host;
+        return assetUrl.toString();
+      }
+    } catch {
+      // Fall through to the existing path handling.
+    }
+  }
   if (/^(?:[a-z][a-z\d+.-]*:|\/assets\/)/i.test(path)) {
     return path;
   }

@@ -1122,6 +1122,15 @@ export const enMessages: Record<MessageKey, string> = {
   "system.runtime.title": "Desktop runtime",
   "system.title": "System",
   "system.toast.saved": "System settings saved",
+  "mobileAccess.copied": "Access link copied",
+  "mobileAccess.copy": "Copy link",
+  "mobileAccess.description":
+    "Connect your phone and computer to the same local network, then scan the QR code to open chat.",
+  "mobileAccess.firewall":
+    "Allow TCP ports {httpPort} and {websocketPort} when prompted by your firewall, or the phone may not connect.",
+  "mobileAccess.openLocalChat": "Open local chat",
+  "mobileAccess.qrAlt": "QR code for mobile chat access",
+  "mobileAccess.title": "Mobile access is ready",
   "template.action.launch": "Launch chat",
   "template.action.quickRestart": "Quick restart",
   "template.action.selectAllCharacters": "Select all characters",
@@ -1144,6 +1153,7 @@ export const enMessages: Record<MessageKey, string> = {
   "template.field.initSprite": "Initial sprite",
   "template.field.maxDialogItems": "Max dialog items",
   "template.field.maxSpeechChars": "Max speech chars",
+  "template.field.mobileAccess": "Allow mobile access",
   "template.field.name": "Name",
   "template.field.path": "Path",
   "template.field.scenario": "Scenario",
@@ -1159,6 +1169,7 @@ export const enMessages: Record<MessageKey, string> = {
   "template.field.voiceLanguage": "Voice target language",
   "template.optionHelp":
     "To turn off RPG choices, narration, or the stat panel in the top-left corner, disable Choice rules, Narration rules, or Stat rules here, then regenerate or save the template.",
+  "template.mobileAccessHint": "A QR code appears after launch. The link is valid only while this app is running.",
   "template.listTitle": "Templates",
   "template.loading": "Loading templates",
   "template.mode.edit": "Edit",

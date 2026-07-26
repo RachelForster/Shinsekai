@@ -341,6 +341,22 @@
   gap: 8px;
 }
 
+.template-mobile-access {
+  display: grid;
+  gap: 7px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 32%, var(--color-border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+}
+
+.template-mobile-access p {
+  margin: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
 .template-toggle-row {
   display: flex;
   min-width: 0;

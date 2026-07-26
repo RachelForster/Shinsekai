@@ -1124,6 +1124,15 @@ export const jaMessages: Record<MessageKey, string> = {
   "system.runtime.title": "デスクトップ実行環境",
   "system.title": "システム",
   "system.toast.saved": "システム設定を保存しました",
+  "mobileAccess.copied": "アクセスリンクをコピーしました",
+  "mobileAccess.copy": "リンクをコピー",
+  "mobileAccess.description":
+    "スマートフォンとパソコンを同じローカルネットワークに接続し、QR コードを読み取ってチャットを開いてください。",
+  "mobileAccess.firewall":
+    "ファイアウォールの確認画面で TCP ポート {httpPort} と {websocketPort} を許可してください。許可しない場合、接続できないことがあります。",
+  "mobileAccess.openLocalChat": "この端末でチャットを開く",
+  "mobileAccess.qrAlt": "スマートフォン用チャットアクセス QR コード",
+  "mobileAccess.title": "スマートフォンアクセスが有効です",
   "template.action.launch": "チャット開始",
   "template.action.quickRestart": "クイック再起動",
   "template.action.selectAllCharacters": "全キャラクターを選択",
@@ -1146,6 +1155,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "template.field.initSprite": "初期立ち絵",
   "template.field.maxDialogItems": "最大会話数",
   "template.field.maxSpeechChars": "最大台詞文字数",
+  "template.field.mobileAccess": "スマートフォンからのアクセスを許可",
   "template.field.name": "名前",
   "template.field.path": "パス",
   "template.field.scenario": "ユーザーシナリオ",
@@ -1161,6 +1171,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "template.field.voiceLanguage": "音声目標言語",
   "template.optionHelp":
     "RPG の選択肢、ナレーション、または左上のステータスパネルをオフにしたい場合は、ここで「選択肢ルール」「ナレーションルール」「ステータスルール」をオフにしてから、テンプレートを再生成または保存してください。",
+  "template.mobileAccessHint": "チャット開始後に QR コードを表示します。リンクはアプリの実行中のみ有効です。",
   "template.listTitle": "テンプレート",
   "template.loading": "テンプレートを読み込み中",
   "template.mode.edit": "編集",
