@@ -18,7 +18,7 @@ a security boundary.
    `priority` runs first).
 4. **Merge** everything you registered on `register` (`PluginCapabilityRegistry`, alias
    `PluginRegister`) into global factories, tool lists, and UI contribution lists — see
-   `core/plugins/plugin_host.py` and `sdk/manager.py`.
+   `plugin_system/host/service.py` and `sdk/manager.py`.
 5. **Shut down**: on host exit, `shutdown()` is called on each plugin in **reverse**
    priority order (higher `priority` first). Exceptions are logged and ignored.
 
@@ -1273,7 +1273,7 @@ Use this split:
 - **Host/plugin contract:** test it in this repository with fake plugins or fixtures
   under `test/fixtures/`, not with a real optional plugin package.
 - **SDK behavior:** test shared helpers in the main repository when the code lives in
-  `sdk/`, `core/plugins/`, or another tracked host module.
+  `sdk/`, `plugin_system/`, or another tracked host module.
 
 A plugin test suite can depend on the host SDK by installing or checking out Shinsekai
 in CI, then running the plugin's own tests:
@@ -1337,9 +1337,9 @@ downloaded, ignored, or user-local plugin directory.
 | Logging facade               | `sdk/logging/`                                               |
 | Exceptions                   | `sdk/exception/`                                             |
 | Plugin manager               | `sdk/manager.py`                                             |
-| Host wiring                  | `core/plugins/plugin_host.py`                                |
-| Requirements install         | `core/plugins/plugin_requirements_install.py`, `pip_index_config.py` |
-| Publisher metadata/validation | `core/plugins/publisher/`                                   |
+| Host wiring                  | `plugin_system/host/service.py`                              |
+| Requirements install         | `plugin_system/requirements/install.py`, `core/runtime_env/pip_index.py` |
+| Publisher metadata/validation | `plugin_system/publisher/`                                 |
 | Extra ctor kwargs            | `config/adapter_extra_kwargs.py`, `config/config_manager.py` |
 | CLI                          | `sdk/cli/`                                                   |
 

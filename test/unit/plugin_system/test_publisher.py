@@ -5,9 +5,9 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from core.plugins.publisher.metadata import scan_local_plugin
-from core.plugins.publisher.submission import build_issue_url, submission_json
-from core.plugins.publisher.validate import PluginSubmissionError, normalize_submission
+from plugin_system.publisher.metadata import scan_local_plugin
+from plugin_system.publisher.submission import build_issue_url, submission_json
+from plugin_system.publisher.validate import PluginSubmissionError, normalize_submission
 from frontend_bridge_core.plugin_publisher import (
     _build_plugin_submission_issue_url,
     _validate_plugin_submission,

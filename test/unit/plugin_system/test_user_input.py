@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from queue import Queue
 
-from core.plugins import plugin_host
+from plugin_system.host import service as plugin_host
 
 
 class _PluginManager:

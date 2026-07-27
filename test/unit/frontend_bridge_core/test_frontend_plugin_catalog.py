@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from core.plugins.registry_catalog import RegistryPluginRecord
+from plugin_system.registry.catalog import RegistryPluginRecord
 from frontend_bridge_core.plugin_catalog import (
     _display_title_for_offline_plugin_entry,
     _plugin_rows,
@@ -40,7 +40,7 @@ def test_resolve_loaded_plugin_for_manifest_entry_handles_manager_errors():
 
 
 def test_plugin_rows_include_persisted_install_metadata(monkeypatch):
-    from core.plugins import plugin_host
+    import core.plugins.plugin_host as plugin_host
 
     plugin = SimpleNamespace(
         plugin_author="Tester",
@@ -71,7 +71,7 @@ def test_plugin_rows_include_persisted_install_metadata(monkeypatch):
 
 
 def test_plugin_rows_fall_back_to_registry_author_when_manifest_author_is_missing(monkeypatch):
-    from core.plugins import plugin_host
+    import core.plugins.plugin_host as plugin_host
 
     entry = f"{DemoPlugin.__module__}:{DemoPlugin.__qualname__}"
     plugin = SimpleNamespace(
@@ -105,7 +105,10 @@ def test_plugin_rows_fall_back_to_registry_author_when_manifest_author_is_missin
         "core.plugins.registry_download.load_plugin_install_metadata",
         lambda value: {"entry": entry, "repo": "owner/demo"} if value == entry else {},
     )
-    monkeypatch.setattr("core.plugins.registry_catalog.fetch_registry_plugins", lambda **_kwargs: [record])
+    monkeypatch.setattr(
+        "core.plugins.registry_catalog.fetch_registry_plugins",
+        lambda **_kwargs: [record],
+    )
 
     rows = _plugin_rows()
 
@@ -145,8 +148,14 @@ def test_plugin_registry_rows_expose_market_metadata(monkeypatch):
         security_scan={"llm_agent": {"pass": True}},
     )
 
-    monkeypatch.setattr("core.plugins.registry_catalog.fetch_registry_plugins", lambda: [record])
-    monkeypatch.setattr("core.plugins.registry_download.load_downloaded_repos", lambda: {"owner/demo"})
+    monkeypatch.setattr(
+        "core.plugins.registry_catalog.fetch_registry_plugins",
+        lambda: [record],
+    )
+    monkeypatch.setattr(
+        "core.plugins.registry_download.load_downloaded_repos",
+        lambda: {"owner/demo"},
+    )
     monkeypatch.setattr(
         "frontend_bridge_core.plugin_catalog._plugin_rows",
         lambda: [{"entry": "plugins.demo.plugin:DemoPlugin"}],

@@ -17,8 +17,8 @@
 | `core/model_assets/` | 已落地 | 3 个 Python 文件 | 保持 |
 | `core/runtime/` | 过渡状态 | 9 个 Python 文件 | 拆为 `application/runtime/` 与 `core/runtime_env/` |
 | `core/handlers/` | 历史应用处理链 | 5 个 Python 文件 | 迁入 `application/chat/handlers/` |
-| `core/plugins/` | 待迁移 | 14 个 Python 文件 | 拆入 `plugin_system/`、`core/runtime_env/`、`core/app_update/` |
-| `plugin_system/` | 尚未建立 | 0 | 建立宿主插件平台 |
+| `core/plugins/` | O2 已迁移，仅保留兼容 import | 14 个兼容模块 | O5 删除兼容路径 |
+| `plugin_system/` | O2 已落地 | host/install/publisher/registry/requirements/update | 保持宿主插件平台边界 |
 | `frontend_bridge_core/` | 业务过重 | 34 个 Python 文件 | 收敛为 transport/routes/task |
 | `llm/asr/tts/t2i` | 旧命名空间 | 28 个 Python 文件 | 迁入 `ai/*` 并保留兼容层 |
 | `ui/`、`webui.py`、`webui_qt.py` | 已决定废弃 | 不再迁移 UI 逻辑 | O5 删除或隔离剩余运行依赖 |
@@ -27,7 +27,8 @@
 
 O1 的完整依赖矩阵精确记录 56 个历史“文件 → 顶层包”例外，分布在
 38 个文件中。`LOCKED_BASELINE_VIOLATIONS` 是永久上限；后续 Objective
-只能从活动 allowlist 删除对应项，不得新增或替换：
+只能从活动 allowlist 删除对应项，不得新增或替换。O2 已删除 8 项，
+当前活动集合剩余 48 项：
 
 | 来源 | 反向依赖 | 退出 Objective |
 | --- | --- | --- |
@@ -37,8 +38,6 @@ O1 的完整依赖矩阵精确记录 56 个历史“文件 → 顶层包”例�
 | `config/config_manager.py` | `core`、`llm`、`t2i`、`tts` | O3/O4 |
 | `core/handlers/ui_message_handler.py` | `asr` | O5 |
 | `core/media/auto_annotation.py` | `ai` | O3 |
-| `core/plugins/plugin_host.py` | `ai`、`asr`、`llm`、`t2i`、`tts`、`ui` | O2 |
-| `core/plugins/publisher/metadata.py` | `frontend_bridge_core` | O2 |
 | `core/runtime/ui_update_manager.py` | `asr` | O5 |
 | `core/runtime/workers.py` | `ai` | O5 |
 | `core/sprite/chat_history.py` | `llm` | O5 |
@@ -62,7 +61,6 @@ O1 的完整依赖矩阵精确记录 56 个历史“文件 → 顶层包”例�
 | `frontend_bridge_core/templates.py` | `core`、`llm`、`ui` | O3/O5 |
 | `frontend_bridge_core/tts.py` | `ui` | O5 |
 | `sdk/chat_ui_context.py` | `ui` | O5 |
-| `sdk/cli/registry_ops.py` | `core` | O2 |
 | `sdk/logging/configure.py` | `core` | O3 |
 | `sdk/logging/environment.py` | `ui` | O5 |
 | `sdk/manager.py` | `config`、`llm` | O4/O5 |
@@ -89,6 +87,8 @@ PR 范围：
 - 工作区全部既有测试通过。
 
 ### O2：完成插件平台独立
+
+状态：已在 O2 PR 落地，等待合并。
 
 PR 范围：
 

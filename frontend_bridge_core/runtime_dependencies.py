@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from core.plugins.pip_runner import (
+from core.runtime_env.pip_runner import (
     apply_pip_index_and_extra_args as _apply_pip_index_and_extra_args,
     run_pip_install as _run_pip_install,
 )

@@ -187,7 +187,7 @@ _CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
 
 def _shutdown_plugins() -> None:
     try:
-        from core.plugins.plugin_host import (
+        from plugin_system.host import (
             bind_frontend_ui_runtime,
             get_plugin_manager,
         )
@@ -383,14 +383,35 @@ def main():
         init_i18n(config.config.system_config.ui_language)
 
     with _startup_phase("plugins.import"):
-        from core.plugins.plugin_host import (
+        from plugin_system.host import (
             bind_frontend_ui_runtime,
             ensure_plugins_loaded,
+            PluginRuntimeBindings,
             wire_user_input_plugins,
         )
 
     with _startup_phase("plugins.load"):
-        plugin_manager = ensure_plugins_loaded(config)
+        from ai.vision.fallback_registry import configure_registered_fallbacks
+        from asr.asr_manager import ASRAdapterFactory
+        from llm.tools.tool_manager import ToolManager
+
+        def register_mcp_tools(tool_manager) -> None:
+            from llm.tools.mcp_tool_setup import register_mcp_tools_from_config
+
+            register_mcp_tools_from_config(tool_manager)
+
+        plugin_manager = ensure_plugins_loaded(
+            config,
+            runtime_bindings=PluginRuntimeBindings(
+                llm_adapters=LLMAdapterFactory._adapters,
+                tts_adapters=TTSAdapterFactory._adapters,
+                asr_adapters=ASRAdapterFactory._adapters,
+                t2i_adapters=T2IAdapterFactory._adapters,
+                create_tool_manager=ToolManager,
+                configure_vision_fallbacks=configure_registered_fallbacks,
+                register_mcp_tools=register_mcp_tools,
+            ),
+        )
     with _startup_phase("args.parse"):
         args = parse_sprite_args(tr_i18n)
     stream_sink = _EARLY_STREAM_SINK if args.stream_endpoint == _EARLY_STREAM_ENDPOINT else None

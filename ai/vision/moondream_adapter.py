@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import Any
 
 from ai.vision.vision_adapter import VisionAdapter
-from core.plugins.plugin_host import infer_plugin_package_directory, read_plugin_manifest_items
-from core.plugins.plugin_requirements_install import (
+from plugin_system.host import infer_plugin_package_directory, read_plugin_manifest_items
+from plugin_system.requirements.install import (
     ensure_plugin_site_packages_on_syspath,
     ensure_plugins_namespace_on_syspath,
 )
@@ -56,4 +56,3 @@ class MoondreamVisionAdapter(VisionAdapter):
 
     def describe(self, image_bytes: bytes, prompt: str) -> str:
         return str(self._infer(image_bytes, prompt, self._config) or "")
-

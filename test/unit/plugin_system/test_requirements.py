@@ -7,7 +7,7 @@ import pytest
 
 
 def _prepare_installer(monkeypatch, tmp_path):
-    from core.plugins import plugin_requirements_install as installer
+    from plugin_system.requirements import install as installer
 
     monkeypatch.setattr(installer, "pip_python_executable", lambda: Path("python"))
     monkeypatch.setattr(installer, "plugin_pip_target_directory", lambda: None)
@@ -51,7 +51,7 @@ def _write_requirements(plugin_root: Path, text: str) -> Path:
 
 
 def test_finish_install_result_refreshes_plugin_target_on_success(monkeypatch):
-    from core.plugins import plugin_requirements_install as installer
+    from plugin_system.requirements import install as installer
 
     calls: list[bool] = []
     monkeypatch.setattr(
@@ -67,7 +67,7 @@ def test_finish_install_result_refreshes_plugin_target_on_success(monkeypatch):
 
 
 def test_finish_install_result_does_not_refresh_on_failed_install(monkeypatch):
-    from core.plugins import plugin_requirements_install as installer
+    from plugin_system.requirements import install as installer
 
     calls: list[bool] = []
     monkeypatch.setattr(
@@ -289,7 +289,7 @@ def test_install_plugin_requirements_classifies_pip_dependency_conflicts(
 ):
     import io
 
-    from core.plugins import pip_runner
+    from core.runtime_env import pip_runner
 
     installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
     _write_requirements(plugin_root, "pkg-a==1\npkg-b==2\n")
@@ -352,7 +352,7 @@ def test_install_plugin_requirements_falls_back_to_original_file_for_unsafe_prun
 
 
 def test_install_lines_after_precheck_scans_installed_distributions_once(monkeypatch):
-    from core.plugins import plugin_requirements_install as installer
+    from plugin_system.requirements import install as installer
 
     calls: list[object] = []
 
@@ -523,7 +523,7 @@ def test_plugin_pytorch_versions_are_replaced_and_transitive_torch_is_constraine
 
 
 def test_write_temp_requirements_removes_file_when_write_fails(monkeypatch, tmp_path):
-    from core.plugins import plugin_requirements_install as installer
+    from plugin_system.requirements import install as installer
 
     created = tmp_path / "easyai_missing_req_fail.txt"
 

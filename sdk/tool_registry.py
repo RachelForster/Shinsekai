@@ -3,7 +3,7 @@ LLM 可调用工具的声明式注册（与 :class:`~llm.tools.tool_manager.Tool
 
 开发者只需 ``from sdk.tool_registry import tool`` 并对函数使用 ``@tool``（可选 ``name=`` / ``description=``）；
 所有被装饰的函数进入进程内全局列表，由宿主在启动时调用 :func:`apply_registered_tools` 一次性注册到
-单例 :class:`~llm.tools.tool_manager.ToolManager`（见 :func:`core.plugins.plugin_host.ensure_plugins_loaded`）。
+单例 :class:`~llm.tools.tool_manager.ToolManager`（见 :func:`plugin_system.host.ensure_plugins_loaded`）。
 """
 
 from __future__ import annotations

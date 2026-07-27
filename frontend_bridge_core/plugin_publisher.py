@@ -3,7 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from core.plugins.publisher.metadata import scan_local_plugin
-from core.plugins.publisher.submission import build_issue_url, default_submit_url, submission_payload
+from core.plugins.publisher.submission import (
+    build_issue_url,
+    default_submit_url,
+    submission_payload,
+)
 from core.plugins.publisher.validate import validation_errors
 
 

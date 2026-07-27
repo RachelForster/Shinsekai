@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.plugins import plugin_host
+from plugin_system.host import service as plugin_host
 from sdk.frontend_user_input import (
     FrontendUserInputController,
     _bind_frontend_user_input_dispatcher,

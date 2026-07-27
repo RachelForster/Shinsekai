@@ -57,7 +57,7 @@ class UiOutputMessageDispatcher:
 
 def default_tts_handler_chain() -> TtsMessageDispatcher:
     """插件 handler 在前，内置链在后（先匹配先处理）。"""
-    from core.plugins.plugin_host import get_plugin_tts_handlers
+    from plugin_system.host import get_plugin_tts_handlers
     from core.handlers.tts_message_handler import get_tts_handlers
 
     chain = list(get_plugin_tts_handlers()) + list(get_tts_handlers())
@@ -65,7 +65,7 @@ def default_tts_handler_chain() -> TtsMessageDispatcher:
 
 
 def default_ui_output_handler_chain() -> UiOutputMessageDispatcher:
-    from core.plugins.plugin_host import get_plugin_ui_handlers
+    from plugin_system.host import get_plugin_ui_handlers
     from core.handlers.ui_message_handler import get_ui_output_handlers
 
     chain = list(get_plugin_ui_handlers()) + list(get_ui_output_handlers())

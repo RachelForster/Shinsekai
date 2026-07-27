@@ -307,7 +307,7 @@ class TemplateGenerator:
         if self._output_contract_patches is not None:
             return list(self._output_contract_patches)
         try:
-            from core.plugins.plugin_host import get_plugin_output_contract_patches
+            from plugin_system.host import get_plugin_output_contract_patches
 
             return get_plugin_output_contract_patches(DEFAULT_DIALOG_CONTRACT_ID)
         except Exception:

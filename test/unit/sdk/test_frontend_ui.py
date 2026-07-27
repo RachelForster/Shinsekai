@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.plugins import plugin_host
+from plugin_system.host import service as plugin_host
 from sdk.frontend_ui import FrontendUIController, _bind_frontend_ui_dispatcher
 from sdk.register import PluginCapabilityRegistry
 

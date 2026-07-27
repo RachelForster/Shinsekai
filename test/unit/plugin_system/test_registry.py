@@ -1,12 +1,12 @@
 from urllib.error import URLError
 
-from core.plugins.registry_catalog import (
+from plugin_system.registry.catalog import (
     DEFAULT_REGISTRY_JSON_URL,
     LEGACY_REGISTRY_JSON_URL,
     fetch_registry_plugins,
     parse_registry_plugins,
 )
-from core.plugins.registry_download import normalize_repo_slug
+from plugin_system.registry.download import normalize_repo_slug
 
 
 def test_default_registry_url_points_to_counting_gateway():
@@ -47,7 +47,7 @@ def test_fetch_registry_plugins_falls_back_from_generated_to_legacy(monkeypatch)
             b'{"demo": {"name": "demo", "repo": "owner/demo", "entry": "demo.plugin:DemoPlugin"}}'
         )
 
-    monkeypatch.setattr("core.plugins.registry_catalog.urlopen", fake_urlopen)
+    monkeypatch.setattr("plugin_system.registry.catalog.urlopen", fake_urlopen)
 
     records = fetch_registry_plugins(timeout_sec=1)
 

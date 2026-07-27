@@ -189,7 +189,21 @@ LOCKED_BASELINE_SHA256 = "c83d2b5ca262fcfa819c41ba308004f789647ac6368d78df509963
 
 # This is the only set later Objective PRs may shrink. The locked baseline above
 # makes a newly invented exception fail even if it is added here.
-ALLOWED_VIOLATIONS = LOCKED_BASELINE_VIOLATIONS
+ALLOWED_VIOLATIONS = LOCKED_BASELINE_VIOLATIONS - frozenset(
+    {
+        ImportViolation("core/plugins/plugin_host.py", "ai"),
+        ImportViolation("core/plugins/plugin_host.py", "asr"),
+        ImportViolation("core/plugins/plugin_host.py", "llm"),
+        ImportViolation("core/plugins/plugin_host.py", "t2i"),
+        ImportViolation("core/plugins/plugin_host.py", "tts"),
+        ImportViolation("core/plugins/plugin_host.py", "ui"),
+        ImportViolation(
+            "core/plugins/publisher/metadata.py",
+            "frontend_bridge_core",
+        ),
+        ImportViolation("sdk/cli/registry_ops.py", "core"),
+    }
+)
 
 
 def _python_sources() -> list[Path]:
