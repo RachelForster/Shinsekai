@@ -1,16 +1,58 @@
-# Shinsekai 文件目录结构约定
+# Shinsekai 项目结构与依赖边界
 
-本文规定 Shinsekai 后续开发时“代码应该放在哪里”。目标不是立刻重排全部历史代码，而是先统一边界：新代码按本文放置，旧代码在改动时逐步迁移。
+> 状态：生效
+> 适用范围：仓库内新增代码、重构和模块迁移
+> 迁移状态与 OKR：见 [`PROJECT_STRUCTURE_MIGRATION.md`](PROJECT_STRUCTURE_MIGRATION.md)
 
-## 总原则
+本文只定义长期稳定的目录职责、依赖方向和代码放置规则。当前迁移进度、兼容路径和分阶段退出条件不在本文维护，避免目标架构与阶段性状态混在一起。
 
-- 按职责命名目录，而不是按历史入口或临时实现命名。
-- `frontend_bridge_core/` 只做前端到 Python 的桥接，不承载长期业务实现。
-- `config/` 保留在根目录，继续作为本地配置和用户数据读写层。
-- `sdk/` 保持干净，只放插件和外部扩展会依赖的稳定 API。
-- 新增通用能力优先放到明确子域，例如 `core/model_assets/`、`core/runtime/`、`plugin_system/`、`ai/memory/`。
+## 1. 总原则
 
-## 目标结构
+- 按职责和稳定边界组织目录，不按历史入口或临时实现命名。
+- `frontend_bridge_core/` 是接口适配层，只负责协议、安全、路由和 DTO 转换。
+- 跨领域用例和进程生命周期放在 `application/`，不写进 bridge 或通用 `core/`。
+- `sdk/` 是插件和外部扩展可依赖的公共契约，不能反向依赖宿主实现。
+- `plugins/` 保存用户插件或本地插件内容；宿主插件平台源码放在 `plugin_system/`。
+- `config/` 负责配置 schema、默认值、迁移和持久化，不依赖 AI 或界面实现。
+- 旧路径迁移必须先提供兼容导入，再更新内部引用，最后按退出条件删除。
+- Qt 设置 UI 已进入废弃流程；不得向 `ui/`、`webui.py`、`webui_qt.py` 增加新的 UI 或业务逻辑。
+
+## 2. 依赖方向
+
+```text
+frontend / CLI
+       |
+       v
+frontend_bridge_core
+       |
+       v
+application
+       |
+       +------> ai
+       +------> plugin_system
+       +------> core
+       +------> config
+                    |
+                    v
+                   sdk
+```
+
+具体约束：
+
+| 来源 | 可以依赖 | 不可以依赖 |
+| --- | --- | --- |
+| `sdk/` | 标准库、第三方库、`sdk/` 内部模块 | `application/`、`ai/`、`config/`、`core/`、`plugin_system/`、bridge、前端或 Qt UI |
+| `config/` | 标准库、第三方库、必要的 `sdk/` 契约 | AI provider、bridge、UI、插件宿主实现 |
+| `core/` | 标准库、第三方库、`config/`、`sdk/` | bridge、UI、具体 AI adapter；AI 能力由 application 注入 |
+| `ai/` | `core/`、`config/`、`sdk/` | bridge、UI、旧 `llm/tts/asr/t2i` 实现路径 |
+| `plugin_system/` | `core/`、`config/`、`sdk/` | bridge、UI、`application/` |
+| `application/` | `ai/`、`core/`、`config/`、`plugin_system/`、`sdk/` | React 或 Qt 具体控件 |
+| `frontend_bridge_core/` | `application/`、简单配置读写契约、传输层工具 | pip、下载、解压、模型加载、插件覆盖等主体业务 |
+| `frontend/` | 前端自身的 app/entities/features/shared | Python 业务实现和本地配置文件直接读写 |
+
+允许的阶段性例外必须精确记录在迁移台账和架构测试 allowlist 中。例外数量只能减少，不能新增。
+
+## 3. 目标结构
 
 ```text
 Shinsekai/
@@ -23,10 +65,17 @@ Shinsekai/
     src-tauri/
 
   frontend_bridge_core/
-    handler.py
+    transport/
+    routes/
     state.py
     tasks.py
-    routes/
+
+  application/
+    bootstrap/
+    chat/
+      handlers/
+    runtime/
+    plugins/
 
   config/
     config_manager.py
@@ -46,23 +95,24 @@ Shinsekai/
     tools/
 
   core/
+    app_update/
+    media/
     messaging/
     model_assets/
-    runtime/
-    media/
+    runtime_env/
+    security/
     sprite/
-    app_update/
 
   plugin_system/
+    contributions/
     host/
-    registry/
     install/
-    update/
     publisher/
+    registry/
     requirements/
+    update/
 
   plugins/
-
   sdk/
   tools/
   assets/
@@ -72,271 +122,189 @@ Shinsekai/
   test/
 ```
 
-这个结构是目标状态。短期内可以保留现有 `llm/`、`tts/`、`asr/`、`t2i/`、`core/plugins/`、`frontend_bridge_core/*.py`，但新增或重构时应向目标结构靠拢。
+目标结构不要求一次性搬完。迁移期间允许旧目录作为兼容层存在，但新业务实现不得继续写入旧路径。
 
-`plugins/` 保留当前语义，表示用户插件或已安装插件内容；不要把宿主内部的插件加载、安装、更新、发布代码迁进去。内部插件系统源码统一使用 `plugin_system/`。
-
-## 现有模块迁移示例
-
-下面这些映射用于说明迁移意图。迁移不是一次性要求；当对应文件被重构或大幅修改时，优先按这些方向拆分。
-
-| 当前路径 | 当前问题 | 最终位置 | 迁移说明 |
-| --- | --- | --- | --- |
-| `llm/llm_adapter.py`、`llm/llm_manager.py` | LLM 能力和旧目录名绑定 | `ai/llm/` | 保留 adapter、manager、消息参数处理等 LLM 核心逻辑。 |
-| `llm/tools/memory_tools.py` | 同时负责 mem0 runtime、embedding 配置、memory 增删查和 LLM tool 注册 | `ai/memory/` + `ai/tools/memory_tools.py` | mem0 初始化、Qdrant、embedding 配置进 `ai/memory/`；`@tool` 包装留在 `ai/tools/`。 |
-| `llm/tools/character_tools.py` | LLM tool 包装和角色业务容易混在一起 | `ai/tools/character_tools.py`，必要时调用 `config/character_manager.py` 或未来 `core/characters/` | tool 文件只保留 LLM 可调用入口，角色数据读写仍走配置/领域服务。 |
-| `core/plugins/plugin_host.py`、`core/plugins/registry_download.py` | 插件系统已经形成独立子系统 | `plugin_system/host/`、`plugin_system/registry/` | 插件加载和 registry 下载逻辑从 `core/` 中逐步独立，但不放进用户插件目录。 |
-| `core/plugins/plugin_requirements_install.py` | 插件依赖安装属于插件安装流程 | `plugin_system/requirements/` | 和插件安装、更新流程放在同一内部子系统。 |
-| `core/plugins/publisher/*` | 插件发布是完整业务域 | `plugin_system/publisher/` | 保持校验、metadata、submission 等发布逻辑集中。 |
-| `frontend_bridge_core/plugin_updates.py` | bridge 文件承载了插件安装/更新业务 | `plugin_system/update/` + `frontend_bridge_core/routes/` | bridge 只保留 API 入口和 task 更新，下载/合并/安装逻辑进 `plugin_system/update/`。 |
-| `frontend_bridge_core/runtime_dependencies.py` | bridge 文件承载 runtime 依赖安装 | `core/runtime/` + `frontend_bridge_core/routes/` | bridge 调用 runtime 服务，不直接实现安装流程。 |
-| `frontend_bridge_core/tts.py` 中的 TTS 包下载逻辑 | TTS 资源下载和任务桥接混在一起 | `core/model_assets/` 或 `ai/tts/` | 通用下载/缓存进 `core/model_assets/`；TTS 领域选择和校验进 `ai/tts/`。 |
-| `core/model_assets/downloads.py` | 新增的模型资产下载进度逻辑 | 保持在 `core/model_assets/` | 作为 HuggingFace、ModelScope 等模型源下载进度的统一入口。 |
-| `config/character_manager.py`、`config/background_manager.py` | 当前和本地配置数据交互清晰 | 保持在 `config/` | 不为了目录统一而强搬；除非未来出现非配置型复杂业务，再抽到领域服务。 |
-
-## 目录职责
+## 4. 目录职责
 
 ### `frontend/`
 
-保留现状，负责 React 前端和 Tauri 桌面壳。
+负责 React 设置中心、聊天界面和 Tauri 桌面壳。
 
 ```text
 frontend/src/app       路由、providers、应用 shell
 frontend/src/features  页面和业务功能 UI
 frontend/src/entities  前端领域类型、schema、repository
 frontend/src/shared    通用 UI、i18n、theme、platform adapter
-frontend/src-tauri     Tauri 桌面壳、打包配置、Rust 侧能力
+frontend/src-tauri     Tauri 壳、打包配置和 Rust 侧能力
 ```
 
-不要把 Python 业务逻辑、配置读写、插件安装逻辑写进前端。前端通过 platform adapter 调用 bridge。
+前端通过 platform adapter 和 bridge 协议访问 Python。不得直接实现配置文件读写、插件安装、模型下载或 Python runtime 管理。
 
 ### `frontend_bridge_core/`
 
-这是前端和 Python 后端之间的桥接层。它可以保留，但应该逐步瘦身。
+只负责：
 
-可以放：
+- HTTP/WebSocket 传输；
+- 鉴权、CORS、上传和静态资源响应；
+- request/response DTO 转换；
+- 路由分发；
+- task 创建、查询、取消和进度转发；
+- 调用 application use case。
 
-- HTTP route 分发；
-- request/response 转换；
-- task 创建、查询、取消；
-- 调用 `config/`、`core/`、`ai/`、`plugin_system/` 的薄服务函数。
+禁止直接实现：
 
-不建议放：
+- pip 和 runtime dependency 安装；
+- 插件下载、解压、覆盖、更新与发布；
+- 模型下载、缓存和 provider 选择；
+- 聊天会话、进程和 worker 的主体生命周期；
+- AI runtime 初始化。
 
-- 插件安装和更新的主体逻辑；
-- 模型下载、缓存、解压；
-- runtime 依赖安装；
-- mem0 初始化、向量库配置；
-- 角色、背景、媒体资源的复杂业务处理。
+### `application/`
 
-如果某个 bridge 文件开始包含大量业务逻辑，应把实现抽到对应领域目录，bridge 只保留入口。
+负责跨领域用例、依赖注入和宿主生命周期：
+
+```text
+application/bootstrap/       进程启动、组合根、运行模式选择
+application/chat/            聊天启动、停止、恢复和历史用例
+application/chat/handlers/   LLM 输出到 TTS/UI event 的应用处理链
+application/runtime/         app runtime、workers、workflow、shutdown
+application/plugins/         插件安装、更新、发布等用例编排
+```
+
+application 可以组合多个能力域，但不实现具体 HTTP 或 UI 控件。
 
 ### `config/`
 
-`config/` 保留在根目录，职责是本地配置和用户数据读写。
-
-可以放：
+负责：
 
 - `data/config/` 的读取和保存；
-- 系统配置 schema 和校验；
-- 角色、背景配置管理；
-- proxy、mirror、环境变量配置；
-- 配置默认值和迁移逻辑。
+- schema、默认值、校验与配置迁移；
+- 角色、背景和本地用户配置管理；
+- proxy、mirror 和环境变量配置。
 
-不建议放：
-
-- LLM/TTS/ASR/T2I 调用；
-- 插件安装；
-- 模型下载；
-- HTTP route；
-- Tauri 打包和更新逻辑。
+配置层不得导入 AI manager、bridge route、插件宿主或 UI。
 
 ### `ai/`
 
-目标目录，用来承载 AI 能力域。当前可以先逐步迁移，不要求一次完成。
-
-建议最终拆分：
+承载 AI 能力域：
 
 ```text
 ai/llm/       LLM adapter、manager、prompt 和消息处理
-ai/tts/       TTS adapter、manager
-ai/asr/       ASR adapter、manager
-ai/t2i/       文生图 adapter、manager
-ai/vision/    图片理解 adapter、manager 和 provider 实现
 ai/memory/    长期记忆、mem0 runtime、embedding/vector 配置
-ai/tools/     把 AI 能力包装成 LLM tool 的薄层
+ai/tts/       TTS adapter 和 manager
+ai/asr/       ASR adapter、manager 和 streaming controller
+ai/t2i/       文生图 adapter 和 manager
+ai/vision/    图片理解 adapter、manager 和 provider
+ai/tools/     向 LLM 暴露能力的薄 tool wrapper
 ```
 
-长期记忆最终建议拆成：
-
-```text
-ai/memory/config.py      mem0、embedding、Qdrant 配置
-ai/memory/runtime.py     mem0 初始化、后台加载、状态
-ai/memory/service.py     memory search/add/delete
-ai/tools/memory_tools.py LLM tool 注册和参数包装
-```
+`ai/tools/` 只做参数校验、权限/上下文判断和领域服务调用。通用文件、图片或音频处理放在 `core/media/` 或 `tools/`。
 
 ### `core/`
 
-`core/` 放宿主程序的通用能力。它不应该依赖 React，也不应该是插件 SDK 的公共承诺。
-
-建议子域：
+放置不依赖具体界面、传输或 AI provider 的宿主基础能力：
 
 ```text
-core/model_assets/  模型下载、缓存检测、模型源、下载进度
-core/runtime/       Python runtime、依赖检测、运行诊断
-core/messaging/     消息接入、输入批处理、会话打断和流式消息解析
-core/media/         文件、路径、安全校验、媒体资源处理
-core/sprite/        聊天记录、立绘、分支存储等角色演出数据
-core/app_update/    主程序更新、GitHub Release、updater manifest
+core/app_update/    主程序版本检查、release 和更新包处理
+core/media/         文件、附件、媒体资源和安全格式处理
+core/messaging/     消息模型、流解析和对话协议
+core/model_assets/  模型下载、缓存、来源和进度
+core/runtime_env/   Python、pip、依赖检测和运行环境诊断
+core/security/      路径、归档、下载来源等共享安全校验
+core/sprite/        聊天记录、立绘和分支存储
 ```
 
-已经新增的模型下载进度逻辑应放在：
-
-```text
-core/model_assets/downloads.py
-```
-
-未来如果增加 ModelScope 或其他模型源，可以继续放：
-
-```text
-core/model_assets/cache.py
-core/model_assets/sources.py
-core/model_assets/modelscope.py
-```
+如果代码需要同时协调 UI、AI、插件和进程生命周期，它属于 `application/`，而不是 `core/`。
 
 ### `plugin_system/`
 
-`plugin_system/` 是宿主内部的插件平台代码，最终应从 `core/plugins/` 和 `frontend_bridge_core/plugin_*.py` 中逐步整理出来。
-
-目标结构：
+宿主内部插件平台：
 
 ```text
-plugin_system/host/          插件加载、生命周期、宿主上下文
-plugin_system/registry/      插件索引、catalog、远端 registry
-plugin_system/install/       安装、覆盖、导入本地插件
-plugin_system/update/        插件更新、源码包合并
-plugin_system/publisher/     插件发布、提交校验
-plugin_system/requirements/  插件依赖安装
+plugin_system/host/           加载、生命周期和宿主上下文
+plugin_system/registry/       catalog 和远端 registry
+plugin_system/install/        安装、覆盖和本地导入
+plugin_system/update/         插件更新和源码包合并
+plugin_system/publisher/      发布、metadata 和提交校验
+plugin_system/requirements/   插件 requirements 解析和安装
+plugin_system/contributions/  前端页面、配置页、聊天 UI 等贡献解析
 ```
 
-bridge 中只保留 API 入口，前端只保留 UI。
+通用 pip、索引和 PyTorch runtime 能力放 `core/runtime_env/`；插件系统只负责插件场景的编排。
 
 ### `plugins/`
 
-`plugins/` 保留现有语义，用于用户插件、已安装插件或本地插件包内容。它不是宿主内部插件系统源码目录。
-
-可以放：
-
-- 用户安装的插件包；
-- 本地开发中的插件目录；
-- 插件自身的 assets、manifest、前后端扩展文件。
-
-不建议放：
-
-- 插件 host、registry、install、update、publisher 等宿主实现；
-- bridge route；
-- SDK 稳定接口定义；
-- 插件 marketplace 或发布流程的主程序代码。
+用于用户安装插件、本地开发插件及其 assets、manifest 和扩展文件。它不是宿主实现目录，宿主源码不得迁入此处。
 
 ### `sdk/`
 
-`sdk/` 是给插件和外部扩展使用的稳定接口，不放宿主内部实现。
-
-可以放：
+包含插件和外部扩展可依赖的稳定 API：
 
 - 插件基类和注册 API；
-- tool registry；
-- hooks；
-- 插件 UI contribution 类型；
 - adapter 抽象；
-- 日志、异常、校验等可暴露给插件的工具。
+- hooks、messages 和 tool registry；
+- UI contribution 数据类型；
+- 公共日志、异常和校验契约。
 
-不建议放：
-
-- 主程序更新；
-- 模型下载；
-- 插件安装实现；
-- bridge route；
-- 前端页面实现。
+SDK 使用协议和注入点连接宿主，不直接导入宿主 manager、Qt 控件或 bridge。
 
 ### `tools/`
 
-`tools/` 指本地资源处理工具和脚本，不是 LLM tool 注册层。
+保存本地资源处理和开发工具，例如图片裁剪、音频处理、资源转换和导入导出辅助函数。LLM tool wrapper 必须放在 `ai/tools/`。
 
-可以放：
+## 5. 源码、生成物和运行时数据
 
-- 图片裁剪、背景处理；
-- 音频处理；
-- 资源导入导出辅助工具；
-- 开发/迁移脚本中可复用的工具模块。
-
-LLM 可调用工具最终应放到 `ai/tools/` 或对应领域的 tool wrapper 中。
-
-`tools/` 和 `ai/tools/` 的区别：
-
-| 场景 | 应该放 | 不应该放 |
+| 路径 | 类型 | 规则 |
 | --- | --- | --- |
-| 裁剪图片、移除背景、处理音频、转换资源格式 | `tools/` 或对应 `core/media/` 服务 | `ai/tools/` |
-| 给开发脚本、导入导出流程复用的本地工具函数 | `tools/` | `ai/tools/` |
-| 用 `@tool` 注册，允许 LLM 在聊天中调用 | `ai/tools/` | 根目录 `tools/` |
-| LLM tool 只是调用一个已有本地处理能力 | `ai/tools/` 放薄包装，实际实现放 `tools/`、`core/` 或领域服务 | 把完整业务实现写进 `ai/tools/` |
-| 需要读取角色/背景配置后执行资源处理 | 资源处理在 `tools/` 或 `core/media/`，配置读写走 `config/` | 直接在 `ai/tools/` 里混合文件处理和配置写入 |
+| `frontend/src-tauri/resources/*` | Tauri 构建暂存物 | 由 `pnpm prepare:tauri-resources` 生成，禁止手工修改；根目录源码是唯一来源 |
+| `frontend/dist/`、`build/`、`build_exe/` | 构建产物 | 不作为源码评审对象 |
+| `data/` | 本地数据和默认资源 | 读写必须经过配置或领域服务 |
+| `plugins/` | 用户/本地插件内容 | 不放宿主插件平台源码 |
+| `cache/`、`logs/`、`output/`、`.tmp_*` | 运行时或测试产物 | 不得被源码模块依赖 |
 
-简单判断：如果它是“程序自己用的本地处理能力”，放 `tools/` 或 `core/`；如果它是“给 LLM 暴露的可调用入口”，放 `ai/tools/`。`ai/tools/` 应尽量薄，只做参数校验、权限/上下文判断和调用领域服务。
+## 6. 迁移兼容规则
 
-### `test/`
+每次命名空间迁移按以下顺序进行：
 
-测试目录应尽量跟源码职责对齐。新增测试优先按目标结构放：
+1. 在目标目录建立实现和测试。
+2. 旧模块改为只 re-export 目标 API 的兼容层。
+3. 更新仓库内部 import，并禁止新增旧路径引用。
+4. 至少保留一个发布周期，记录弃用说明。
+5. 内部引用为零、跨平台 smoke test 通过后删除旧路径。
+
+不要在同一个提交里同时移动文件、重写行为并删除兼容入口。
+
+## 7. 测试和架构守卫
+
+测试目录与目标职责对齐：
 
 ```text
-test/unit/core/model_assets/
-test/unit/core/runtime/
-test/unit/ai/memory/
-test/unit/plugin_system/
+test/unit/application/
+test/unit/ai/
+test/unit/core/
 test/unit/frontend_bridge_core/
+test/unit/plugin_system/
 test/unit/sdk/
+test/integration/
+test/e2e/
 ```
 
-历史测试不要求立即搬迁；当对应源码迁移或重构时，再同步移动测试。
+`test/unit/architecture/` 负责校验依赖方向。O1 的锁定基线是
+allowlist 的永久上限：迁移修复后只能删除过期项，任何提交都不得新增、
+替换或重新解释例外；修改本文或迁移台账也不能授权扩充基线。
 
-## 迁移优先级
+## 8. 新代码放置速查
 
-### 第一优先级：瘦身 `frontend_bridge_core/`
-
-把 bridge 中的业务实现抽出来。bridge 保留 API 和 task 生命周期，业务进入 `core/`、`ai/`、`plugin_system/`。
-
-优先候选：
-
-- 插件安装和更新；
-- runtime dependency 安装；
-- TTS 包下载；
-- 主程序更新；
-- 模型下载。
-
-### 第二优先级：拆分长期记忆
-
-`llm/tools/memory_tools.py` 当前职责较多。后续改长期记忆时，优先拆到 `ai/memory/`，LLM tool 文件只做包装。
-
-### 第三优先级：插件系统独立
-
-把 `core/plugins/` 和 `frontend_bridge_core/plugin_*.py` 中的插件业务逐步迁移到顶层 `plugin_system/`。`plugins/` 继续保留给用户插件内容。
-
-### 暂不优先迁移
-
-- `config/`：保留根目录；
-- `frontend/src`：现有 feature-sliced 结构可继续使用；
-- `sdk/`：保持稳定；
-- `assets/`、`data/`、`docs/`、`scripts/`：保持现状即可。
-
-## 新代码放置规则
-
-- 新的模型下载、缓存、来源逻辑：放 `core/model_assets/`。
-- 新的 runtime 检测和依赖安装逻辑：放 `core/runtime/`。
-- 新的消息接入、批处理和会话打断逻辑：放 `core/messaging/`。
-- 新的长期记忆业务逻辑：放 `ai/memory/`。
-- 新的 LLM tool 包装：放 `ai/tools/`，或在迁移前暂放 `llm/tools/`。
-- 新的图片理解 adapter 和 provider 调度：放 `ai/vision/`；图片文件处理与业务编排仍放 `core/media/`。
-- 新的插件安装/更新/registry 逻辑：放 `plugin_system/`。
-- 新的 HTTP API：入口放 `frontend_bridge_core/`，实现放对应领域目录。
-- 新的本地配置读写：放 `config/`。
+| 新能力 | 放置位置 |
+| --- | --- |
+| HTTP/WebSocket 路由与 DTO | `frontend_bridge_core/routes/` |
+| 跨领域用例和生命周期 | `application/` |
+| LLM/TTS/ASR/T2I/Vision 实现 | `ai/<domain>/` |
+| LLM tool wrapper | `ai/tools/` |
+| 模型下载和缓存 | `core/model_assets/` |
+| Python、pip 和依赖环境 | `core/runtime_env/` |
+| 通用路径与归档安全 | `core/security/` |
+| 插件 host/install/update/registry | `plugin_system/` |
+| 本地配置 schema 和持久化 | `config/` |
+| 插件公共契约 | `sdk/` |
+| React/Tauri UI | `frontend/` |
