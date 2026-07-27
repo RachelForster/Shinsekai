@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.plugins.pytorch_runtime import (
+from core.runtime_env.pytorch import (
     HOST_PYTORCH_REQUIREMENTS,
     build_pytorch_install_plan,
     partition_pytorch_requirement_lines,

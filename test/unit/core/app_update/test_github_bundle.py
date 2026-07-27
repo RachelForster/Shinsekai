@@ -1,7 +1,7 @@
 import os
 import time
 
-from core.plugins.github_bundle_update import mark_frontend_dist_fresh, merge_source_tree_into
+from core.app_update.github_bundle import mark_frontend_dist_fresh, merge_source_tree_into
 
 
 def test_merge_source_tree_keeps_frontend_dist_but_skips_local_artifacts(tmp_path):

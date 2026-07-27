@@ -5,7 +5,7 @@ import logging
 
 import pytest
 
-from core.plugins import pip_runner
+from core.runtime_env import pip_runner
 
 
 def _clear_index_env(monkeypatch):

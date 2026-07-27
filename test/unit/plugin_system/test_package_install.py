@@ -11,13 +11,14 @@ from urllib.error import HTTPError, URLError
 
 import pytest
 
-from core.plugins import package_download, registry_download
-from core.plugins.package_download import (
+from plugin_system.install import package as package_download
+from plugin_system.registry import download as registry_download
+from plugin_system.install.package import (
     PluginPackageNetworkError,
     PluginPackageNonFallbackError,
     install_registry_package_under_plugins,
 )
-from core.plugins.registry_catalog import RegistryPluginRecord
+from plugin_system.registry.catalog import RegistryPluginRecord
 
 
 def _zip_bytes(files: dict[str, bytes | str]) -> bytes:

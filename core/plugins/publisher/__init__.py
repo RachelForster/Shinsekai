@@ -1,1 +1,1 @@
-"""Local plugin publishing helpers."""
+"""Compatibility package for :mod:`plugin_system.publisher`."""

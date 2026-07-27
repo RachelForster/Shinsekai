@@ -22,7 +22,7 @@ class PluginPackageDependencyInstallError(RuntimeError):
 
 
 def _app_update_info() -> dict[str, Any]:
-    from core.plugins.github_bundle_update import default_app_github_repo_slug, read_local_version, resolve_project_root
+    from core.app_update.github_bundle import default_app_github_repo_slug, read_local_version, resolve_project_root
 
     return {
         "repo": default_app_github_repo_slug(),
@@ -31,7 +31,7 @@ def _app_update_info() -> dict[str, Any]:
 
 
 def _app_update_tags() -> dict[str, Any]:
-    from core.plugins.github_bundle_update import default_app_github_repo_slug, fetch_recent_tag_names
+    from core.app_update.github_bundle import default_app_github_repo_slug, fetch_recent_tag_names
 
     slug = default_app_github_repo_slug().strip()
     if not slug or slug.count("/") < 1:
@@ -40,7 +40,7 @@ def _app_update_tags() -> dict[str, Any]:
 
 
 def _repo_tags(payload: dict[str, Any]) -> dict[str, Any]:
-    from core.plugins.github_bundle_update import fetch_recent_tag_names
+    from core.app_update.github_bundle import fetch_recent_tag_names
     from core.plugins.registry_download import normalize_repo_slug
 
     slug = normalize_repo_slug(str(payload.get("repo") or ""))
@@ -50,7 +50,7 @@ def _repo_tags(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_app_update(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    from core.plugins.github_bundle_update import (
+    from core.app_update.github_bundle import (
         default_app_github_repo_slug,
         overwrite_merge_app_tree,
         read_local_version,
@@ -214,7 +214,10 @@ def _infer_plugin_entry(plugin_root: Path) -> str:
 
 
 def _plugin_result_from_manifest(entry: str) -> dict[str, Any]:
-    from core.plugins.plugin_host import append_plugin_manifest_entry_if_missing, normalize_manifest_entry
+    from core.plugins.plugin_host import (
+        append_plugin_manifest_entry_if_missing,
+        normalize_manifest_entry,
+    )
 
     append_plugin_manifest_entry_if_missing(entry, enabled=True)
     norm = normalize_manifest_entry(entry)
@@ -334,7 +337,10 @@ def _package_error_details(exc: BaseException) -> dict[str, Any]:
 
 
 def _package_error_allows_github_fallback(exc: BaseException) -> bool:
-    from core.plugins.package_download import PluginPackageNetworkError, PluginPackageNonFallbackError
+    from core.plugins.package_download import (
+        PluginPackageNetworkError,
+        PluginPackageNonFallbackError,
+    )
 
     current: BaseException | None = exc
     saw_network_error = False
@@ -373,7 +379,10 @@ def _install_registry_package_source(
     *,
     overwrite: bool = False,
 ) -> dict[str, Any]:
-    from core.plugins.package_download import install_registry_package_under_plugins, registry_package_target
+    from core.plugins.package_download import (
+        install_registry_package_under_plugins,
+        registry_package_target,
+    )
     from core.plugins.plugin_requirements_install import install_plugin_requirements_txt
     from core.plugins.registry_download import mark_repo_downloaded, normalize_repo_slug
 
@@ -593,7 +602,11 @@ def _install_github_plugin_source(
 
     from core.plugins.github_bundle_update import install_github_plugin_under_plugins
     from core.plugins.plugin_requirements_install import install_plugin_requirements_txt
-    from core.plugins.registry_download import format_download_error, mark_repo_downloaded, normalize_repo_slug
+    from core.plugins.registry_download import (
+        format_download_error,
+        mark_repo_downloaded,
+        normalize_repo_slug,
+    )
 
     repo_slug = normalize_repo_slug(_repo_slug_from_source(source))
     _update_task(

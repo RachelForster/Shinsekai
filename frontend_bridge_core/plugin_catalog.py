@@ -285,7 +285,11 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
 
 def _plugin_registry_rows() -> list[dict[str, Any]]:
     from core.plugins.registry_catalog import fetch_registry_plugins
-    from core.plugins.registry_download import load_downloaded_repos, normalize_manifest_entry, normalize_repo_slug
+    from core.plugins.registry_download import (
+        load_downloaded_repos,
+        normalize_manifest_entry,
+        normalize_repo_slug,
+    )
 
     installed_entries = {
         normalize_manifest_entry(str(row.get("entry") or row.get("id") or ""))
@@ -358,7 +362,10 @@ def _set_plugin_enabled(plugin_id: str, enabled: bool) -> dict[str, Any]:
 
 
 def _uninstall_plugin(plugin_id: str) -> dict[str, Any]:
-    from core.plugins.plugin_host import infer_plugin_package_directory, remove_plugin_manifest_entry
+    from core.plugins.plugin_host import (
+        infer_plugin_package_directory,
+        remove_plugin_manifest_entry,
+    )
     from core.plugins.registry_download import unmark_repo_for_manifest_entry
 
     entry = plugin_id.strip()

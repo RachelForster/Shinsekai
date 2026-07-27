@@ -511,7 +511,10 @@ def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
 
 def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
     try:
-        from core.plugins.plugin_host import collect_settings_contributions, collect_tools_tab_contributions
+        from core.plugins.plugin_host import (
+            collect_settings_contributions,
+            collect_tools_tab_contributions,
+        )
     except Exception:
         raise KeyError(f"plugin not found: {plugin_id_or_entry}")
 

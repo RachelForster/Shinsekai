@@ -262,9 +262,32 @@ def _start_plugin_loader(state, logger) -> None:
                 bind_frontend_ui_runtime,
                 bind_frontend_user_input_runtime,
                 ensure_plugins_loaded,
+                PluginRuntimeBindings,
             )
+            from ai.vision.fallback_registry import configure_registered_fallbacks
+            from asr.asr_manager import ASRAdapterFactory
+            from llm.llm_manager import LLMAdapterFactory
+            from llm.tools.tool_manager import ToolManager
+            from t2i.t2i_manager import T2IAdapterFactory
+            from tts.tts_manager import TTSAdapterFactory
 
-            ensure_plugins_loaded(state.config_manager)
+            def register_mcp_tools(tool_manager) -> None:
+                from llm.tools.mcp_tool_setup import register_mcp_tools_from_config
+
+                register_mcp_tools_from_config(tool_manager)
+
+            ensure_plugins_loaded(
+                state.config_manager,
+                runtime_bindings=PluginRuntimeBindings(
+                    llm_adapters=LLMAdapterFactory._adapters,
+                    tts_adapters=TTSAdapterFactory._adapters,
+                    asr_adapters=ASRAdapterFactory._adapters,
+                    t2i_adapters=T2IAdapterFactory._adapters,
+                    create_tool_manager=ToolManager,
+                    configure_vision_fallbacks=configure_registered_fallbacks,
+                    register_mcp_tools=register_mcp_tools,
+                ),
+            )
             bind_frontend_user_input_runtime(
                 lambda event: _forward_plugin_user_input(state, event)
             )

@@ -28,6 +28,7 @@ const directories = [
   "i18n",
   "live",
   "llm",
+  "plugin_system",
   "sdk",
   "t2i",
   "tools",

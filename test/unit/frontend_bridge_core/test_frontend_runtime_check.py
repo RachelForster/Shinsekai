@@ -785,7 +785,7 @@ def test_install_runtime_dependency_does_not_add_index_when_pip_args_disable_ind
 def test_install_runtime_dependency_redacts_credential_urls_from_output(monkeypatch):
     import io
 
-    from core.plugins import pip_runner
+    from core.runtime_env import pip_runner
     from frontend_bridge_core import runtime_dependencies
 
     class FakePopen:

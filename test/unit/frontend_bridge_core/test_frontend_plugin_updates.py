@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.plugins.package_download import PluginPackageNetworkError, PluginPackageNonFallbackError
-from core.plugins.registry_catalog import RegistryPluginRecord
+from plugin_system.install.package import PluginPackageNetworkError, PluginPackageNonFallbackError
+from plugin_system.registry.catalog import RegistryPluginRecord
 from frontend_bridge_core import plugin_updates
 from frontend_bridge_core.plugin_updates import (
     _infer_plugin_entry,
@@ -154,12 +154,18 @@ def _patch_manifest_and_state(monkeypatch, marks: list[dict]):
     def fake_mark_repo_downloaded(repo, **kwargs):
         marks.append({"repo": repo, **kwargs})
 
-    monkeypatch.setattr("core.plugins.registry_download.mark_repo_downloaded", fake_mark_repo_downloaded)
+    monkeypatch.setattr(
+        "core.plugins.registry_download.mark_repo_downloaded",
+        fake_mark_repo_downloaded,
+    )
 
 
 def test_lookup_registry_plugin_matches_id_and_display_name(monkeypatch):
     record = _registry_record()
-    monkeypatch.setattr("core.plugins.registry_catalog.fetch_registry_plugins", lambda timeout_sec=12: [record])
+    monkeypatch.setattr(
+        "core.plugins.registry_catalog.fetch_registry_plugins",
+        lambda timeout_sec=12: [record],
+    )
 
     assert _lookup_registry_plugin("demo-id") is record
     assert _lookup_registry_plugin("Demo Plugin") is record
@@ -187,7 +193,10 @@ def test_install_plugin_source_prefers_registry_package_over_github(tmp_path, mo
         "core.plugins.package_download.install_registry_package_under_plugins",
         fake_package_install,
     )
-    monkeypatch.setattr("core.plugins.github_bundle_update.install_github_plugin_under_plugins", fail_github)
+    monkeypatch.setattr(
+        "core.plugins.github_bundle_update.install_github_plugin_under_plugins",
+        fail_github,
+    )
     monkeypatch.setattr(
         "core.plugins.plugin_requirements_install.install_plugin_requirements_txt",
         lambda root, **_kwargs: calls.append(("pip", root)) or ("pip_ok", ""),
@@ -223,7 +232,10 @@ def test_install_plugin_source_does_not_mark_existing_directory_as_verified(tmp_
     package_root = _plugin_root(tmp_path, "package-plugin")
 
     monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
-    monkeypatch.setattr("core.plugins.package_download.registry_package_target", lambda *_args, **_kwargs: package_root)
+    monkeypatch.setattr(
+        "core.plugins.package_download.registry_package_target",
+        lambda *_args, **_kwargs: package_root,
+    )
     _patch_manifest_and_state(monkeypatch, marks)
 
     def fake_package_install(rec, **kwargs):
@@ -281,7 +293,10 @@ def test_install_plugin_source_falls_back_to_github_for_registry_package_network
         "core.plugins.package_download.install_registry_package_under_plugins",
         fail_package,
     )
-    monkeypatch.setattr("core.plugins.github_bundle_update.install_github_plugin_under_plugins", fake_github)
+    monkeypatch.setattr(
+        "core.plugins.github_bundle_update.install_github_plugin_under_plugins",
+        fake_github,
+    )
     monkeypatch.setattr(
         "core.plugins.plugin_requirements_install.install_plugin_requirements_txt",
         lambda *_args, **_kwargs: ("pip_ok", ""),
@@ -339,7 +354,10 @@ def test_install_plugin_source_does_not_fallback_to_github_for_package_safety_er
         "core.plugins.package_download.install_registry_package_under_plugins",
         fail_package,
     )
-    monkeypatch.setattr("core.plugins.github_bundle_update.install_github_plugin_under_plugins", fail_github)
+    monkeypatch.setattr(
+        "core.plugins.github_bundle_update.install_github_plugin_under_plugins",
+        fail_github,
+    )
 
     state = _state_with_task()
 
@@ -368,7 +386,10 @@ def test_install_plugin_source_does_not_fallback_to_github_when_package_dependen
     def fail_github(*_args, **_kwargs):
         raise AssertionError("dependency failures after package install must not fallback to GitHub")
 
-    monkeypatch.setattr("core.plugins.github_bundle_update.install_github_plugin_under_plugins", fail_github)
+    monkeypatch.setattr(
+        "core.plugins.github_bundle_update.install_github_plugin_under_plugins",
+        fail_github,
+    )
     monkeypatch.setattr(
         "core.plugins.plugin_requirements_install.install_plugin_requirements_txt",
         lambda *_args, **_kwargs: ("pip_failed", "dependency boom"),

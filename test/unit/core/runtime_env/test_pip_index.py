@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.plugins import pip_index_config
+from core.runtime_env import pip_index as pip_index_config
 
 
 @pytest.mark.parametrize(

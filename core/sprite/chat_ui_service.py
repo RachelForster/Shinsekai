@@ -16,7 +16,7 @@ from core.sprite.chat_history import (
     revert_chat_history,
 )
 from sdk.messages import TTSOutputMessage
-from core.plugins.plugin_host import collect_chat_ui_contributions
+from plugin_system.host import collect_chat_ui_contributions
 from llm.llm_manager import LLMManager
 from sdk.chat_ui_context import ChatUIContext, set_chat_ui_context
 
