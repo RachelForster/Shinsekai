@@ -80,12 +80,9 @@ def _apply_registry_author_fallback(rows: list[dict[str, Any]]) -> list[dict[str
 def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     try:
         from plugin_system.host import (
-            collect_chat_ui_contributions,
             collect_frontend_config_contributions,
             collect_frontend_chat_ui_contributions,
             collect_frontend_page_contributions,
-            collect_settings_contributions,
-            collect_tools_tab_contributions,
             get_plugin_manager,
             infer_plugin_package_directory,
             read_plugin_manifest_items,
@@ -95,27 +92,9 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
         return []
 
     manager = get_plugin_manager()
-    settings_by_plugin: dict[str, list[str]] = {}
-    tools_by_plugin: dict[str, list[str]] = {}
-    chat_by_plugin: dict[str, list[str]] = {}
     frontend_settings_by_plugin: dict[str, list[str]] = {}
     frontend_tools_by_plugin: dict[str, list[str]] = {}
     frontend_chat_by_plugin: dict[str, list[str]] = {}
-    for contribution in collect_settings_contributions():
-        plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
-        label = str(getattr(contribution, "nav_label", "") or "").strip()
-        if plugin_id and label:
-            settings_by_plugin.setdefault(plugin_id, []).append(label)
-    for contribution in collect_tools_tab_contributions():
-        plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
-        label = str(getattr(contribution, "title", "") or "").strip()
-        if plugin_id and label:
-            tools_by_plugin.setdefault(plugin_id, []).append(label)
-    for contribution in collect_chat_ui_contributions():
-        plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
-        placement = str(getattr(contribution, "placement", "") or "").strip()
-        if plugin_id and placement:
-            chat_by_plugin.setdefault(plugin_id, []).append(placement)
     for contribution in collect_frontend_config_contributions():
         plugin_id = str(getattr(contribution, "plugin_id", "") or "").strip()
         label = str(getattr(contribution, "title", "") or "").strip()
@@ -156,22 +135,13 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
         load_error: str = "",
         loaded: bool = True,
     ) -> dict[str, Any]:
-        settings_pages = list(dict.fromkeys([
-            *settings_by_plugin.get(plugin_id, []),
-            *frontend_settings_by_plugin.get(plugin_id, []),
-        ]))
-        tools_tabs = list(dict.fromkeys([
-            *tools_by_plugin.get(plugin_id, []),
-            *frontend_tools_by_plugin.get(plugin_id, []),
-        ]))
+        settings_pages = list(dict.fromkeys(frontend_settings_by_plugin.get(plugin_id, [])))
+        tools_tabs = list(dict.fromkeys(frontend_tools_by_plugin.get(plugin_id, [])))
         slots: set[str] = set()
         if settings_pages:
             slots.add("settings-extension")
         if tools_tabs:
             slots.add("settings-tools")
-        if chat_by_plugin.get(plugin_id):
-            slots.add("chat-dialog-actions")
-            slots.add("chat-output")
         slots.update(frontend_chat_by_plugin.get(plugin_id, []))
         if not slots:
             slots.add("settings-extension")
@@ -260,12 +230,21 @@ def _plugin_rows(plugin_load: dict[str, Any] | None = None) -> list[dict[str, An
                     version=str(plugin.plugin_version),
                 )
             )
-        for key in sorted(set(settings_by_plugin.keys()) | set(tools_by_plugin.keys()) | set(frontend_chat_by_plugin.keys())):
+        contribution_plugin_ids = (
+            set(frontend_settings_by_plugin)
+            | set(frontend_tools_by_plugin)
+            | set(frontend_chat_by_plugin)
+        )
+        for key in sorted(contribution_plugin_ids):
             if key in seen_plugin_ids:
                 continue
             label = key
             if key.startswith("_:"):
-                labels = settings_by_plugin.get(key) or tools_by_plugin.get(key) or [key]
+                labels = (
+                    frontend_settings_by_plugin.get(key)
+                    or frontend_tools_by_plugin.get(key)
+                    or [key]
+                )
                 label = labels[0]
             rows.append(
                 _row(
@@ -344,6 +323,55 @@ def _plugin_registry_rows() -> list[dict[str, Any]]:
             }
         )
     return rows
+
+
+def frontend_config_contributions_for(plugin_id: str) -> list[Any]:
+    """Return React config contributions owned by one plugin."""
+
+    try:
+        from plugin_system.host import collect_frontend_config_contributions
+    except Exception:
+        return []
+    return sorted(
+        (
+            contribution
+            for contribution in collect_frontend_config_contributions()
+            if str(getattr(contribution, "plugin_id", "") or "").strip()
+            == plugin_id
+        ),
+        key=lambda item: float(getattr(item, "order", 100.0) or 100.0),
+    )
+
+
+def frontend_page_contributions_for(plugin_id: str) -> list[Any]:
+    """Return React page contributions owned by one plugin."""
+
+    try:
+        from plugin_system.host import collect_frontend_page_contributions
+    except Exception:
+        return []
+    return sorted(
+        (
+            contribution
+            for contribution in collect_frontend_page_contributions()
+            if str(getattr(contribution, "plugin_id", "") or "").strip()
+            == plugin_id
+        ),
+        key=lambda item: float(getattr(item, "order", 100.0) or 100.0),
+    )
+
+
+def frontend_chat_ui_contributions() -> list[Any]:
+    """Return all JSON-only chat UI contributions in presentation order."""
+
+    try:
+        from plugin_system.host import collect_frontend_chat_ui_contributions
+    except Exception:
+        return []
+    return sorted(
+        collect_frontend_chat_ui_contributions(),
+        key=lambda item: float(getattr(item, "order", 100.0) or 100.0),
+    )
 
 
 def _set_plugin_enabled(plugin_id: str, enabled: bool) -> dict[str, Any]:

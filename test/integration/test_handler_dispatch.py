@@ -13,8 +13,8 @@ from sdk.messages import LLMDialogMessage, TTSOutputMessage
 from application.chat.handlers.registry import (
     TtsMessageDispatcher,
     UiOutputMessageDispatcher,
+    default_presentation_handler_chain,
     default_tts_handler_chain,
-    default_ui_output_handler_chain,
 )
 from application.chat.handlers.tts import (
     ChainOfThoughtTtsHandler,
@@ -95,7 +95,7 @@ class TestTTSHandlerChainAssembly:
 @pytest.mark.integration
 class TestUIHandlerChainAssembly:
     def test_default_chain_has_all_builtin_handlers(self):
-        chain = default_ui_output_handler_chain()
+        chain = default_presentation_handler_chain()
         types = [type(h) for h in chain._handlers]
         assert OptionsUiHandler in types
         assert NumericUiHandler in types
@@ -107,7 +107,7 @@ class TestUIHandlerChainAssembly:
         assert CharacterDialogUiHandler in types
 
     def test_specialized_before_generic(self):
-        chain = default_ui_output_handler_chain()
+        chain = default_presentation_handler_chain()
         types = [type(h) for h in chain._handlers]
         char_idx = types.index(CharacterDialogUiHandler)
         opt_idx = types.index(OptionsUiHandler)
@@ -118,7 +118,7 @@ class TestUIHandlerChainAssembly:
         assert cot_idx < char_idx
 
     def test_builtin_character_dialog_after_all_builtins(self):
-        chain = default_ui_output_handler_chain()
+        chain = default_presentation_handler_chain()
         types = [type(h) for h in chain._handlers]
         builtin_types = [
             t

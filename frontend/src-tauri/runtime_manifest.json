@@ -11,7 +11,6 @@
     "google.genai",
     "anthropic",
     "tiktoken",
-    "PySide6",
     "PIL",
     "pygame"
   ],
@@ -28,7 +27,6 @@
         "google.genai",
         "anthropic",
         "tiktoken",
-        "PySide6",
         "PIL",
         "pygame"
       ],

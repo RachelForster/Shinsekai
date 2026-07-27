@@ -16,15 +16,15 @@ from core.sprite.chat_branch_storage import (
     remove_chat_history_storage,
 )
 from frontend_bridge import _prepare_project_root
-from frontend_bridge_core.chat import (
+from application.chat.runtime_process import (
     _chat_history_download_file,
     _chat_history_entries,
     _chat_history_path,
     _handle_chat_command,
     _issue_chat_history_download_capability,
 )
-from frontend_bridge_core.handler import FrontendBridgeHandler
-from frontend_bridge_core.history_paths import (
+from frontend_bridge_core.routes.api import FrontendBridgeHandler
+from application.chat.history_paths import (
     _windows_history_path_kind,
     resolve_history_path_for_project,
 )
@@ -285,7 +285,7 @@ def test_external_history_copy_open_and_clear_commands(tmp_path: Path) -> None:
     )
 
     with patch(
-        "frontend_bridge_core.chat._chat_snapshot",
+        "application.chat.runtime_process._chat_snapshot",
         side_effect=lambda _state, _status=None, _message="", *, extra=None: extra or {},
     ):
         copied = _handle_chat_command(state, {"type": "copy-history"})
@@ -298,7 +298,7 @@ def test_external_history_copy_open_and_clear_commands(tmp_path: Path) -> None:
     unrelated = external / "important.txt"
     unrelated.write_text("keep", encoding="utf-8")
     with patch(
-        "frontend_bridge_core.chat._chat_snapshot",
+        "application.chat.runtime_process._chat_snapshot",
         side_effect=lambda _state, _status=None, _message="", *, extra=None: extra or {},
     ):
         _handle_chat_command(state, {"type": "clear-history"})
@@ -326,7 +326,7 @@ def test_non_file_runtime_command_does_not_resolve_stale_history_path() -> None:
         chat_stream=Stream(),
     )
 
-    with patch("frontend_bridge_core.chat._chat_snapshot", return_value={"ok": True}):
+    with patch("application.chat.runtime_process._chat_snapshot", return_value={"ok": True}):
         assert _handle_chat_command(state, {"type": "pause-asr"}) == {"ok": True}
 
 

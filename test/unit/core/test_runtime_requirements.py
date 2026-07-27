@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.runtime.requirements import (
+from core.runtime_env.requirements import (
     check_requirement,
     unsatisfied_requirements,
 )

@@ -252,7 +252,7 @@ def mock_app_runtime(mock_llm_adapter, sample_app_config):
     )
 
     # Minimal LLMManager using the mock adapter
-    from llm.llm_manager import LLMManager
+    from ai.llm.llm_manager import LLMManager
 
     llm_mgr = LLMManager(adapter=mock_llm_adapter, max_tokens=128000)
 

@@ -76,40 +76,6 @@ def _write_stderr(
         pass
 
 
-def _show_qt_dialog(title: str, message: str, detail: str) -> bool:
-    try:
-        from PySide6.QtWidgets import QApplication, QMessageBox
-    except Exception:
-        return False
-
-    app = QApplication.instance()
-    owns_app = False
-    if app is None:
-        try:
-            app = QApplication([])
-            owns_app = True
-        except Exception:
-            return False
-
-    try:
-        box = QMessageBox()
-        box.setIcon(QMessageBox.Icon.Critical)
-        box.setWindowTitle(title)
-        box.setText(message)
-        if detail:
-            box.setDetailedText(detail[-20000:])
-        box.exec()
-        return True
-    except Exception:
-        return False
-    finally:
-        if owns_app:
-            try:
-                app.quit()
-            except Exception:
-                pass
-
-
 def _show_windows_dialog(title: str, message: str) -> bool:
     if _dialog_suppressed():
         return False
@@ -144,7 +110,8 @@ def show_error_dialog(title: str, message: str, detail: str = "") -> bool:
     if _dialog_shown:
         return False
     _dialog_shown = True
-    return _show_qt_dialog(title, message, detail) or _show_windows_dialog(title, message)
+    del detail
+    return _show_windows_dialog(title, message)
 
 
 def _should_show_dialog(show_dialog: bool) -> bool:

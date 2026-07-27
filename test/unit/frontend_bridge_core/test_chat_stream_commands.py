@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlencode, urlparse
 
-from frontend_bridge_core.chat import _handle_chat_command
+from application.chat.runtime_process import _handle_chat_command
 from frontend_bridge_core.chat_stream import ChatStreamService
 from application.runtime.event_sink import fold_event_into_snapshot
 from frontend_bridge_core.transport.ws_client import WSClientSink

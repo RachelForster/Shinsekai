@@ -107,8 +107,8 @@ backgrounds, templates, plugin manifest toggles, and chat launch requests go
 through Python services.
 
 The Tools page is also bridge-backed: sprite prompt generation, batch sprite
-generation, crop, and background removal call the same Python modules used by
-the PySide settings window.
+generation, crop, and background removal call application services through the
+Python bridge.
 
 In browser development mode, character/background import uploads `.char`, `.cha`,
 or `.bg` packages to the bridge. Export endpoints create packages under

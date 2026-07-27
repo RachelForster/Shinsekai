@@ -162,7 +162,7 @@ export const enMessages: Record<MessageKey, string> = {
   "api.tts.bundleGpuMemoryUnknown": "VRAM unknown",
   "api.tts.bundleGptSovits": "GPT-SoVITS v2pro",
   "api.tts.bundleGptSovits50": "GPT-SoVITS v2pro for RTX 50",
-  "api.tts.bundleHint": "Downloads and extracts the same integrated TTS packages as the PySide settings window.",
+  "api.tts.bundleHint": "Downloads and extracts the integrated TTS packages used by the runtime.",
   "api.tts.bundleManualPick":
     "The recommendation is pre-selected; change it only if you know another package is needed.",
   "api.tts.bundleOpenDialog": "Choose package",
@@ -858,8 +858,7 @@ export const enMessages: Record<MessageKey, string> = {
   "tools.cropOutput": "Output folder (optional)",
   "tools.cropRatio": "Keep top fraction of height",
   "tools.cropTitle": "Batch crop sprites",
-  "tools.description":
-    "Sprite generation, crop, and background removal use the same tool flow as the PySide settings window.",
+  "tools.description": "Sprite generation, crop, and background removal run through the Python application services.",
   "tools.galleryEmpty": "No generated sprites",
   "tools.galleryLabel": "Output previews",
   "tools.gemBox": "Batch-generate sprites (requires Gemini API key)",
@@ -996,7 +995,7 @@ export const enMessages: Record<MessageKey, string> = {
   "plugin.detail.loading": "Loading plugin settings",
   "plugin.detail.noUi": "This plugin has no settings page contribution.",
   "plugin.detail.pages": "Plugin pages",
-  "plugin.detail.pyqtNotice": "This plugin still contributes a PyQt widget and does not expose a React config schema.",
+  "plugin.detail.frontendNotice": "This plugin does not expose a React config schema.",
   "plugin.detail.save": "Save settings",
   "plugin.detail.saveFailed": "Plugin settings were not saved.",
   "plugin.detail.saveSuccess": "Plugin settings saved",

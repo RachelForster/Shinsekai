@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from ai.llm.dialog_repair import repair_dialog_output
-from llm.llm_manager import LLMManager
+from ai.llm.llm_manager import LLMManager
 from test.mocks import MockLLMAdapter
 
 VALID_DIALOG = '{"dialog":[{"character_name":"Alice","sprite":"0","speech":"Hi"}]}'

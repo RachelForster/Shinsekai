@@ -54,7 +54,7 @@ def test_character_save_propagates_rename_to_template_session(monkeypatch):
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
-        "frontend_bridge_core.templates._rename_template_session_character",
+        "application.chat.templates._rename_template_session_character",
         lambda _state, old_name, new_name: renamed.append((old_name, new_name)),
     )
 

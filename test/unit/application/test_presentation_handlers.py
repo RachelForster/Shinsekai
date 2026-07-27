@@ -1,4 +1,4 @@
-"""Unit tests for UI output message handlers — can_handle routing logic."""
+"""Unit tests for framework-neutral presentation handlers."""
 
 from types import SimpleNamespace
 import pytest

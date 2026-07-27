@@ -8,11 +8,11 @@ from unittest.mock import MagicMock
 import pytest
 
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY
-from llm.llm_manager import LLMManager, LLMAdapterFactory
-from llm.message_sanitizer import filter_unpaired_tool_messages_for_request
-from llm.compact_manager import CompactManager
+from ai.llm.llm_manager import LLMManager, LLMAdapterFactory
+from ai.llm.message_sanitizer import filter_unpaired_tool_messages_for_request
+from ai.llm.compact_manager import CompactManager
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
-from llm.tools.tool_manager import ToolManager
+from ai.tools.tool_manager import ToolManager
 from sdk.register import PluginCapabilityRegistry
 from test.mocks import MockLLMAdapter
 
@@ -111,7 +111,7 @@ class TestLLMManagerMessageManagement:
         def fail_deepcopy(_value):
             raise AssertionError("deepcopy should not run without message_added hooks")
 
-        monkeypatch.setattr("llm.llm_manager.copy.deepcopy", fail_deepcopy)
+        monkeypatch.setattr("ai.llm.llm_manager.copy.deepcopy", fail_deepcopy)
 
         mgr.add_message("user", "Hello")
 
@@ -405,7 +405,7 @@ class TestLLMManagerCompact:
         def fail_deepcopy(_value):
             raise AssertionError("deepcopy should not run without before_compact hooks")
 
-        monkeypatch.setattr("llm.compact_manager.copy.deepcopy", fail_deepcopy)
+        monkeypatch.setattr("ai.llm.compact_manager.copy.deepcopy", fail_deepcopy)
         mock_llm_adapter.responses = ["A summary written without plugin hooks."]
         cm = CompactManager(
             mock_llm_adapter,
@@ -775,7 +775,7 @@ class TestLLMManagerCompact:
         def fail_deepcopy(_value):
             raise AssertionError("deepcopy should not run without before_chat hooks")
 
-        monkeypatch.setattr("llm.llm_manager.copy.deepcopy", fail_deepcopy)
+        monkeypatch.setattr("ai.llm.llm_manager.copy.deepcopy", fail_deepcopy)
 
         context = mgr._before_chat_context(
             stream=False,

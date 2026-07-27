@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from frontend_bridge_core.config import _openai_chat_endpoint
-from frontend_bridge_core.handler import FrontendBridgeHandler
+from frontend_bridge_core.routes.api import FrontendBridgeHandler
 from frontend_bridge_core.security import (
     host_matches,
     safe_content_disposition,

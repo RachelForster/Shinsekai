@@ -63,7 +63,7 @@ def pip_python_executable() -> Path:
 
 def plugin_pip_target_directory() -> Path | None:
     """
-    冻结版：pip ``--target`` 的可写目录（与 ``webui_qt`` / ``main`` 所设发行根一致）。
+    冻结版：pip ``--target`` 的可写目录（与 Tauri bridge / ``main`` 所设发行根一致）。
     开发模式返回 ``None``（依赖装入当前环境 site-packages，不使用 ``--target``）。
     """
     root = frozen_release_root()

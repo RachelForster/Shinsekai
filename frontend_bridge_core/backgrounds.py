@@ -46,7 +46,7 @@ def _numbered_background_bgm_tags(tags: list[str]) -> str:
 
 
 def _translate_background_fields(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    from ui.settings_ui.ai_field_translate import translate_background_fields
+    from application.localization.field_translation import translate_background_fields
 
     row_tag_payload = payload.get("bgmRowTags")
     if isinstance(row_tag_payload, list):

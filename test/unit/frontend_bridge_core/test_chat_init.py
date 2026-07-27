@@ -4,9 +4,9 @@ import threading
 import time
 from typing import Any
 
-from frontend_bridge_core.chat_init import start_chat_init
-from frontend_bridge_core.state import BridgeState
-from frontend_bridge_core.tasks import _get_task, _request_task_cancel
+from application.chat.initialization import start_chat_init
+from application.runtime.state import BridgeState
+from application.runtime.tasks import _get_task, _request_task_cancel
 
 
 class _ChatStreamStub:
@@ -81,10 +81,10 @@ def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
     }
     runtime = {"running": False, "closeReasons": [], "sourceSnapshot": source_snapshot}
 
-    monkeypatch.setattr("frontend_bridge_core.chat_init._chat_process_running", lambda: runtime["running"])
-    monkeypatch.setattr("frontend_bridge_core.chat_init._chat_runtime_mode", lambda _state: mode)
+    monkeypatch.setattr("application.chat.initialization._chat_process_running", lambda: runtime["running"])
+    monkeypatch.setattr("application.chat.initialization._chat_runtime_mode", lambda _state: mode)
     monkeypatch.setattr(
-        "frontend_bridge_core.chat_init._chat_snapshot",
+        "application.chat.initialization._chat_snapshot",
         lambda _state, *_args, **_kwargs: {
             **source_snapshot,
             "chatProcessRunning": runtime["running"],
@@ -98,7 +98,7 @@ def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
         runtime["closeReasons"].append(reason)
         return {"status": "idle"}
 
-    monkeypatch.setattr("frontend_bridge_core.chat_init._close_chat", close_chat)
+    monkeypatch.setattr("application.chat.initialization._close_chat", close_chat)
     return runtime
 
 

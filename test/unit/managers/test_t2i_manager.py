@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from t2i.t2i_manager import T2IManager, T2IAdapterFactory
+from ai.t2i.t2i_manager import T2IManager, T2IAdapterFactory
 from test.mocks import MockT2IAdapter
 
 

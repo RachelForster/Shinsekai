@@ -40,6 +40,18 @@ await assertExists(path.join(resourcesDir, "assets", "system", "picture", "dialo
 await assertExists(path.join(resourcesDir, "assets", "system", "sound", "switch.ogg"));
 await assertExists(path.join(resourcesDir, "assets", "chat_ui_themes", "windborne-adventure", "theme.json"));
 await assertExists(path.join(resourcesDir, "assets", "chat_ui_themes", "windborne-adventure", "preview.png"));
+for (const retiredPath of [
+  "ui",
+  "llm",
+  "asr",
+  "tts",
+  "t2i",
+  path.join("core", "runtime"),
+  path.join("core", "plugins"),
+  path.join("frontend_bridge_core", "handler.py"),
+]) {
+  await assertMissing(path.join(resourcesDir, retiredPath));
+}
 
 console.log(`Verified Tauri resources for ${runtimeMarker.target} ${runtimeMarker.triple}`);
 
@@ -57,6 +69,15 @@ async function assertExists(filePath) {
   } catch {
     throw new Error(`required Tauri resource is missing: ${path.relative(frontendDir, filePath)}`);
   }
+}
+
+async function assertMissing(filePath) {
+  try {
+    await access(filePath);
+  } catch {
+    return;
+  }
+  throw new Error(`retired Tauri resource is still staged: ${path.relative(frontendDir, filePath)}`);
 }
 
 function runtimePythonPath(marker) {

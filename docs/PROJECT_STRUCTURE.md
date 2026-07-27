@@ -14,8 +14,8 @@
 - `sdk/` 是插件和外部扩展可依赖的公共契约，不能反向依赖宿主实现。
 - `plugins/` 保存用户插件或本地插件内容；宿主插件平台源码放在 `plugin_system/`。
 - `config/` 负责配置 schema、默认值、迁移和持久化，不依赖 AI 或界面实现。
-- 旧路径迁移必须先提供兼容导入，再更新内部引用，最后按退出条件删除。
-- Qt 设置 UI 已进入废弃流程；不得向 `ui/`、`webui.py`、`webui_qt.py` 增加新的 UI 或业务逻辑。
+- 命名空间迁移先更新实现和内部引用，再按发布策略删除兼容入口。
+- 产品 UI 只由 React/Tauri 承载；Qt 设置页、Qt 聊天窗和历史 Python UI 入口已退出。
 
 ## 2. 依赖方向
 
@@ -46,11 +46,11 @@ application
 | `core/` | 标准库、第三方库、`config/`、`sdk/` | bridge、UI、具体 AI adapter；AI 能力由 application 注入 |
 | `ai/` | `core/`、`config/`、`sdk/` | bridge、UI、旧 `llm/tts/asr/t2i` 实现路径 |
 | `plugin_system/` | `core/`、`config/`、`sdk/` | bridge、UI、`application/` |
-| `application/` | `ai/`、`core/`、`config/`、`plugin_system/`、`sdk/` | React 或 Qt 具体控件 |
+| `application/` | `ai/`、`core/`、`config/`、`plugin_system/`、`sdk/` | React 具体控件或历史 Qt UI |
 | `frontend_bridge_core/` | `application/`、简单配置读写契约、传输层工具 | pip、下载、解压、模型加载、插件覆盖等主体业务 |
 | `frontend/` | 前端自身的 app/entities/features/shared | Python 业务实现和本地配置文件直接读写 |
 
-允许的阶段性例外必须精确记录在迁移台账和架构测试 allowlist 中。例外数量只能减少，不能新增。
+架构测试的依赖例外 allowlist 当前为空；新增反向依赖必须直接修正，不得增加例外。
 
 ## 3. 目标结构
 
@@ -65,10 +65,7 @@ Shinsekai/
     src-tauri/
 
   frontend_bridge_core/
-    transport/
     routes/
-    state.py
-    tasks.py
 
   application/
     bootstrap/
@@ -79,6 +76,7 @@ Shinsekai/
     model_assets/
     runtime/
     plugins/
+    localization/
 
   config/
     config_manager.py
@@ -125,7 +123,8 @@ Shinsekai/
   test/
 ```
 
-目标结构不要求一次性搬完。迁移期间允许旧目录作为兼容层存在，但新业务实现不得继续写入旧路径。
+该结构已经完成主路径切换。新业务实现不得重新引入根目录
+`llm/asr/tts/t2i`、`core/plugins`、`core/runtime` 或 `ui`。
 
 ## 4. 目录职责
 
@@ -272,17 +271,16 @@ SDK 使用协议和注入点连接宿主，不直接导入宿主 manager、Qt �
 | `plugins/` | 用户/本地插件内容 | 不放宿主插件平台源码 |
 | `cache/`、`logs/`、`output/`、`.tmp_*` | 运行时或测试产物 | 不得被源码模块依赖 |
 
-## 6. 迁移兼容规则
+## 6. 命名空间迁移规则
 
 每次命名空间迁移按以下顺序进行：
 
 1. 在目标目录建立实现和测试。
-2. 旧模块改为只 re-export 目标 API 的兼容层。
-3. 更新仓库内部 import，并禁止新增旧路径引用。
-4. 至少保留一个发布周期，记录弃用说明。
-5. 内部引用为零、跨平台 smoke test 通过后删除旧路径。
+2. 更新仓库内部 import，并用架构测试禁止新增旧路径引用。
+3. 若公开 SDK 需要兼容，兼容入口必须有明确的删除版本和测试。
+4. 内部引用为零、验证通过后删除旧路径。
 
-不要在同一个提交里同时移动文件、重写行为并删除兼容入口。
+迁移不得把宿主实现暴露为新的 SDK 契约。
 
 ## 7. 测试和架构守卫
 
@@ -299,9 +297,9 @@ test/integration/
 test/e2e/
 ```
 
-`test/unit/architecture/` 负责校验依赖方向。O1 的锁定基线是
-allowlist 的永久上限：迁移修复后只能删除过期项，任何提交都不得新增、
-替换或重新解释例外；修改本文或迁移台账也不能授权扩充基线。
+`test/unit/architecture/` 负责校验依赖方向、禁止旧命名空间回流，并保持空
+allowlist。O1 的锁定基线是永久上限；迁移完成后任何提交都不得新增、
+替换或重新解释例外，修改本文或迁移台账也不能授权扩充基线。
 
 ## 8. 新代码放置速查
 

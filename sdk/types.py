@@ -11,10 +11,7 @@ from dataclasses import dataclass, field
 from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any, Callable, Literal
 
-if TYPE_CHECKING:
-    from PySide6.QtWidgets import QWidget
-else:
-    QWidget = Any
+QWidget = Any
 
 if TYPE_CHECKING:
     from sdk.chat_ui_context import ChatUIContext
@@ -47,8 +44,7 @@ __all__ = [
 
 @dataclass(frozen=True)
 class SettingsUIContribution:
-    """
-    One extra page/section for the PySide6 settings window.
+    """Deprecated Qt contribution retained only for manifest compatibility.
 
     ``build`` receives :class:`~sdk.plugin_host_context.PluginSettingsUIContext` only
     (read-only app snapshot + paths / name lists). It does **not** receive
@@ -71,8 +67,7 @@ class SettingsUIContribution:
 
 @dataclass(frozen=True)
 class ToolsTabContribution:
-    """
-    An additional tab inside **Settings → Tools** (or host-defined tools area).
+    """Deprecated Qt tools contribution retained only for manifest compatibility.
 
     ``build`` receives :class:`~sdk.plugin_host_context.PluginSettingsUIContext` only
     (same restricted surface as settings pages). ``tab_id`` must be unique.
@@ -189,8 +184,7 @@ class FrontendChatUIContribution:
 
 @dataclass(frozen=True)
 class ChatUIContribution:
-    """
-    Extra widgets for the Chat UI window (:class:`~ui.chat_ui.chat_ui.ChatUIWindow`).
+    """Deprecated Qt chat contribution retained only for manifest compatibility.
 
     ``placement`` is a hint: e.g. ``"toolbar"``, ``"overlay"``, ``"input_row"``.
     The host decides how to interpret placements that it supports.

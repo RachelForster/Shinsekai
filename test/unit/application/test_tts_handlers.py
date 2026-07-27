@@ -1,4 +1,4 @@
-"""Unit tests for TTS message handlers — can_handle, dispatch routing."""
+"""Unit tests for the application TTS handler chain."""
 
 from unittest.mock import MagicMock
 

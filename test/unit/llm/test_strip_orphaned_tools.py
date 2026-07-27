@@ -4,7 +4,7 @@ import json
 import pytest
 
 
-from llm.message_sanitizer import strip_orphaned_tool_calls
+from ai.llm.message_sanitizer import strip_orphaned_tool_calls
 
 def _a(tc_list: list = None) -> dict:
     """Build an assistant message with tool_calls."""

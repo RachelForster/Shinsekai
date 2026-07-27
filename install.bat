@@ -61,24 +61,6 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-
-setlocal
-REM Add QT path to user environment variable
-:: Get current directory
-for /f "delims=" %%i in ('cd') do set "CURRENT_DIR=%%i"
-
-:: Set QML path
-set "QML_PATH=%CURRENT_DIR%\runtime\Lib\site-packages\PyQt5\Qt5\qml\Qt\labs\platform"
-
-:: Check if path exists
-if exist "%QML_PATH%" (
-    :: Add to user PATH
-    setx PATH "%PATH%;%QML_PATH%"
-    echo Successfully added QT path to PATH: %QML_PATH%
-) else (
-    echo QT path does not exist: %QML_PATH%
-)
-
 endlocal
 
 echo.

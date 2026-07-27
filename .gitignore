@@ -39,12 +39,8 @@
 **/*.log
 
 # ======= 运行时 & 构建产物 / Runtime & Build Output =======
-# 保留 core/runtime 核心目录 / Keep core runtime directory
-runtime/
-!core/runtime
-!core/runtime/**
-!application/runtime
-!application/runtime/**
+# Embedded Python runtime is generated only at the repository root.
+/runtime/
 !/frontend/src-tauri/src/runtime
 !/frontend/src-tauri/src/runtime/**
 /wheels

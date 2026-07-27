@@ -370,19 +370,7 @@ def test_dialog_message_formats_dependency_http_and_generic_errors():
     )
 
 
-def test_dialog_helpers_handle_import_failure_and_single_display(monkeypatch):
-    real_import = __import__
-
-    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "PySide6.QtWidgets":
-            raise ImportError("qt missing")
-        return real_import(name, globals, locals, fromlist, level)
-
-    monkeypatch.setattr("builtins.__import__", fake_import)
-    assert handler._show_qt_dialog("Title", "Message", "detail") is False
-    monkeypatch.setenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", "1")
-    assert handler._show_windows_dialog("Title", "Message") is False
-
+def test_dialog_helpers_use_the_native_windows_fallback_once(monkeypatch):
     calls = []
     monkeypatch.delenv("SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG", raising=False)
     monkeypatch.delenv("SHINSEKAI_DISABLE_MAIN_ERROR_DIALOG", raising=False)
@@ -390,67 +378,13 @@ def test_dialog_helpers_handle_import_failure_and_single_display(monkeypatch):
     monkeypatch.setattr(handler, "_dialog_shown", False)
     monkeypatch.setattr(
         handler,
-        "_show_qt_dialog",
-        lambda title, message, detail: calls.append(("qt", detail)) or False,
-    )
-    monkeypatch.setattr(
-        handler,
         "_show_windows_dialog",
-        lambda title, message: calls.append(("win", message)) or True,
+        lambda title, message: calls.append((title, message)) or True,
     )
 
     assert handler.show_error_dialog("Title", "Message", "detail") is True
     assert handler.show_error_dialog("Other", "Again", "ignored") is False
-    assert calls == [("qt", "detail"), ("win", "Message")]
-
-
-def test_qt_dialog_uses_owned_app_and_truncates_detail(monkeypatch):
-    calls = []
-
-    class FakeApp:
-        @staticmethod
-        def instance():
-            return None
-
-        def __init__(self, args):
-            calls.append(("app", args))
-
-        def quit(self):
-            calls.append(("quit", None))
-
-    class FakeBox:
-        class Icon:
-            Critical = "critical"
-
-        def setIcon(self, icon):
-            calls.append(("icon", icon))
-
-        def setWindowTitle(self, title):
-            calls.append(("title", title))
-
-        def setText(self, text):
-            calls.append(("text", text))
-
-        def setDetailedText(self, detail):
-            calls.append(("detail_len", len(detail)))
-
-        def exec(self):
-            calls.append(("exec", None))
-
-    real_import = __import__
-
-    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "PySide6.QtWidgets":
-            return SimpleNamespace(QApplication=FakeApp, QMessageBox=FakeBox)
-        return real_import(name, globals, locals, fromlist, level)
-
-    monkeypatch.setattr("builtins.__import__", fake_import)
-
-    assert handler._show_qt_dialog("Title", "Message", "x" * 25000) is True
-    assert ("app", []) in calls
-    assert ("detail_len", 20000) in calls
-    assert ("quit", None) in calls
-
+    assert calls == [("Title", "Message")]
 
 def test_report_main_exception_still_reports_when_logger_or_stderr_fail(monkeypatch, capsys):
     class FailingLogger:

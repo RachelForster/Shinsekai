@@ -4,7 +4,7 @@ import json
 import pytest
 
 from sdk.tool_registry import tool as sdk_tool, iter_registered_tools
-from llm.tools.tool_manager import ToolManager
+from ai.tools.tool_manager import ToolManager
 
 
 def _reset_tm():
@@ -19,7 +19,7 @@ def _reset_tm():
 class TestToolDecoratorGroup:
     def test_default_group_is_default(self):
         """@tool without group should get 'default'."""
-        import llm.tools.tool_search  # ensures @tool decorator fires
+        import ai.tools.tool_search  # ensures @tool decorator fires
         found = False
         for fn, nm, desc, grp, risk in iter_registered_tools():
             if (nm or fn.__name__) == "search_tools":
@@ -244,7 +244,7 @@ class TestMCPToolsGroup:
 class TestLRUGroupManagement:
     def test_initial_groups(self):
         """LLMManager starts with only default group."""
-        from llm.llm_manager import LLMManager
+        from ai.llm.llm_manager import LLMManager
         from test.mocks import MockLLMAdapter
 
         adapter = MockLLMAdapter(responses=[""])
@@ -255,7 +255,7 @@ class TestLRUGroupManagement:
 
     def test_search_tools_expands_groups(self):
         """Simulate what happens when search_tools is called in chat."""
-        from llm.llm_manager import LLMManager
+        from ai.llm.llm_manager import LLMManager
         from test.mocks import MockLLMAdapter
 
         adapter = MockLLMAdapter(responses=[""])
@@ -284,7 +284,7 @@ class TestLRUGroupManagement:
     def test_lru_promotes_existing_group(self):
         """Searching an already-active group moves it to front."""
         adapter = __import__('test.mocks', fromlist=['MockLLMAdapter']).MockLLMAdapter
-        from llm.llm_manager import LLMManager
+        from ai.llm.llm_manager import LLMManager
 
         adapter = adapter(responses=[""])
         mgr = LLMManager(adapter=adapter, max_tokens=128000)
@@ -308,7 +308,7 @@ class TestLRUGroupManagement:
 
     def test_lru_evicts_when_full(self):
         """When max groups exceeded, oldest is evicted (truncate)."""
-        from llm.llm_manager import LLMManager
+        from ai.llm.llm_manager import LLMManager
         from test.mocks import MockLLMAdapter
 
         adapter = MockLLMAdapter(responses=[""])
@@ -336,7 +336,7 @@ class TestLRUGroupManagement:
 
     def test_lru_keeps_default_group_when_limit_is_two(self):
         """Even with a tight group budget, default remains available."""
-        from llm.llm_manager import LLMManager
+        from ai.llm.llm_manager import LLMManager
         from test.mocks import MockLLMAdapter
 
         adapter = MockLLMAdapter(responses=[""])

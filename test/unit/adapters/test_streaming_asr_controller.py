@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from threading import Event, Thread
 
-from asr.streaming_controller import StreamingASRController
+from ai.asr.streaming_controller import StreamingASRController
 from sdk.adapters.asr import ASRAdapter
 
 

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from core.messaging.dialog_tokens import BGM, SCENE
-from llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, NoValidCharactersError, TemplateGenerator
+from ai.llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, NoValidCharactersError, TemplateGenerator
 from sdk.register import PluginCapabilityRegistry
 from sdk.types import (
     ChatOutputContract,
@@ -58,7 +58,7 @@ def test_template_generator_applies_speech_contract_patch(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         SimpleNamespace(get_character_by_name=lambda name: character),
     )
 
@@ -107,7 +107,7 @@ def test_template_generator_renders_added_field_aliases(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         SimpleNamespace(get_character_by_name=lambda name: character),
     )
 
@@ -144,10 +144,10 @@ def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         SimpleNamespace(get_character_by_name=lambda name: character),
     )
-    monkeypatch.setattr("llm.template_generator._format_llm_tools_block", lambda: "")
+    monkeypatch.setattr("ai.llm.template_generator._format_llm_tools_block", lambda: "")
 
     def fake_translation(key: str, **kwargs) -> str:
         if key == "closing":
@@ -156,7 +156,7 @@ def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
             return "MUST_USE_REQUIRED_JSON_FORMAT\n"
         return f"{key}\n"
 
-    monkeypatch.setattr("llm.template_generator._T", fake_translation)
+    monkeypatch.setattr("ai.llm.template_generator._T", fake_translation)
 
     template, warning = TemplateGenerator(output_contract_patches=[]).generate_chat_template(
         selected_characters=["Alice"],
@@ -182,13 +182,13 @@ def test_template_generator_skips_characters_missing_from_restored_selection(
     )
 
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         SimpleNamespace(
             get_character_by_name=lambda name: character if name == "Alice" else None,
         ),
     )
     monkeypatch.setattr(
-        "llm.template_generator._T",
+        "ai.llm.template_generator._T",
         lambda key, **kwargs: f"{key}:{kwargs}\n",
     )
 
@@ -210,11 +210,11 @@ def test_template_generator_raises_domain_error_when_all_selections_are_missing(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         SimpleNamespace(get_character_by_name=lambda name: None),
     )
     monkeypatch.setattr(
-        "llm.template_generator._T",
+        "ai.llm.template_generator._T",
         lambda key, **kwargs: f"template_gen.{key}",
     )
 
@@ -250,13 +250,13 @@ def test_template_generator_uses_config_character_identity_for_deduplication(
     ]
     characters_by_key = {character.name.lower(): character for character in characters}
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         SimpleNamespace(
             get_character_by_name=lambda name: characters_by_key.get(name.lower()),
         ),
     )
     monkeypatch.setattr(
-        "llm.template_generator._T",
+        "ai.llm.template_generator._T",
         lambda key, **kwargs: f"{key}:{kwargs}\n",
     )
 
@@ -285,11 +285,11 @@ def test_template_generator_handles_character_with_null_sprites(monkeypatch) -> 
     )
 
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         SimpleNamespace(get_character_by_name=lambda name: character),
     )
     monkeypatch.setattr(
-        "llm.template_generator._T",
+        "ai.llm.template_generator._T",
         lambda key, **kwargs: (
             f"{kwargs['name']}:{kwargs['n']}\n"
             if key == "sprites_count"
@@ -323,14 +323,14 @@ def test_template_generator_omits_scene_and_bgm_for_transparent_background(monke
     )
 
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         SimpleNamespace(
             get_background_by_name=lambda name: background,
             get_character_by_name=lambda name: character,
         ),
     )
     monkeypatch.setattr(
-        "llm.template_generator._T",
+        "ai.llm.template_generator._T",
         lambda key, **kwargs: (
             f"template_gen.{key} opt_scene={kwargs.get('opt_scene', '')} opt_bgm={kwargs.get('opt_bgm', '')}"
             if key == "r_cname"
@@ -379,7 +379,7 @@ def test_template_generator_warns_for_unknown_requirement_patch_mode(monkeypatch
     )
 
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         SimpleNamespace(get_character_by_name=lambda name: character),
     )
 

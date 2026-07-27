@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pytest
 import requests
 
-from tts.tts_adapter import GPTSoVitsAdapter, IndexTTSAdapter, KaggleGPTSoVitsAdapter
+from ai.tts.tts_adapter import GPTSoVitsAdapter, IndexTTSAdapter, KaggleGPTSoVitsAdapter
 
 
 @pytest.mark.parametrize(
@@ -16,7 +16,7 @@ def test_server_adapter_waits_until_health_probe_succeeds(monkeypatch, adapter_c
     adapter._server_process = None
     checks = iter([False, False, True])
     monkeypatch.setattr(adapter, "_server_is_reachable", lambda: next(checks))
-    monkeypatch.setattr("tts.tts_adapter.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("ai.tts.tts_adapter.time.sleep", lambda _seconds: None)
 
     adapter.wait_until_ready(timeout_seconds=1, poll_interval_seconds=0.01)
 
@@ -80,10 +80,10 @@ def test_remote_gpt_sovits_url_does_not_auto_start_local_process(monkeypatch):
     popen_calls = []
 
     monkeypatch.setattr(
-        "tts.tts_adapter.requests.Session.get",
+        "ai.tts.tts_adapter.requests.Session.get",
         lambda self, *args, **kwargs: SimpleNamespace(status_code=404),
     )
-    monkeypatch.setattr("tts.tts_adapter.subprocess.Popen", lambda *args, **kwargs: popen_calls.append((args, kwargs)))
+    monkeypatch.setattr("ai.tts.tts_adapter.subprocess.Popen", lambda *args, **kwargs: popen_calls.append((args, kwargs)))
 
     GPTSoVitsAdapter(
         tts_server_url="https://example.trycloudflare.com/",
@@ -99,9 +99,9 @@ def test_remote_index_tts_url_does_not_auto_start_local_process(monkeypatch):
     def raise_connection_error(*args, **kwargs):
         raise requests.ConnectionError("offline")
 
-    monkeypatch.setattr("tts.tts_adapter.requests.Session.get", raise_connection_error)
+    monkeypatch.setattr("ai.tts.tts_adapter.requests.Session.get", raise_connection_error)
     monkeypatch.setattr(
-        "tts.tts_adapter.subprocess.Popen",
+        "ai.tts.tts_adapter.subprocess.Popen",
         lambda *args, **kwargs: popen_calls.append((args, kwargs)),
     )
 
@@ -119,8 +119,8 @@ def test_local_unreachable_gpt_sovits_without_work_path_requires_startup_path(mo
     def raise_connection_error(*args, **kwargs):
         raise requests.ConnectionError("offline")
 
-    monkeypatch.setattr("tts.tts_adapter.requests.Session.get", raise_connection_error)
-    monkeypatch.setattr("tts.tts_adapter.subprocess.Popen", lambda *args, **kwargs: popen_calls.append((args, kwargs)))
+    monkeypatch.setattr("ai.tts.tts_adapter.requests.Session.get", raise_connection_error)
+    monkeypatch.setattr("ai.tts.tts_adapter.subprocess.Popen", lambda *args, **kwargs: popen_calls.append((args, kwargs)))
 
     with pytest.raises(RuntimeError, match="GPT-SoVITS startup path"):
         GPTSoVitsAdapter(tts_server_url="http://127.0.0.1:9880/", gpt_sovits_work_path="")
@@ -135,7 +135,7 @@ def test_kaggle_gpt_sovits_skips_local_model_switch(monkeypatch):
         get_calls.append((args, kwargs))
         return SimpleNamespace(status_code=404)
 
-    monkeypatch.setattr("tts.tts_adapter.requests.Session.get", fake_get)
+    monkeypatch.setattr("ai.tts.tts_adapter.requests.Session.get", fake_get)
 
     adapter = KaggleGPTSoVitsAdapter(
         tts_server_url="https://example.trycloudflare.com/",
@@ -154,7 +154,7 @@ def test_kaggle_gpt_sovits_uses_remote_reference_audio(monkeypatch, tmp_path):
     post_calls = []
 
     monkeypatch.setattr(
-        "tts.tts_adapter.requests.Session.get",
+        "ai.tts.tts_adapter.requests.Session.get",
         lambda self, *args, **kwargs: SimpleNamespace(status_code=200),
     )
 
@@ -162,7 +162,7 @@ def test_kaggle_gpt_sovits_uses_remote_reference_audio(monkeypatch, tmp_path):
         post_calls.append((args, kwargs))
         return SimpleNamespace(ok=True, content=b"RIFFtest", status_code=200, text="")
 
-    monkeypatch.setattr("tts.tts_adapter.requests.Session.post", fake_post)
+    monkeypatch.setattr("ai.tts.tts_adapter.requests.Session.post", fake_post)
 
     adapter = KaggleGPTSoVitsAdapter(
         tts_server_url="https://example.trycloudflare.com/",

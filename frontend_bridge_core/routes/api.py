@@ -203,7 +203,7 @@ from application.model_assets.tts_bundle import (
     _download_tts_bundle,
     _tts_bundle_recommendation,
 )
-logger = get_logger("frontend_bridge_core.handler")
+logger = get_logger("frontend_bridge_core.routes.api")
 BRIDGE_AUTH_HEADER = "X-Shinsekai-Bridge-Token"
 BRIDGE_AUTH_QUERY = "shinsekai_bridge_token"
 _ALLOWED_CUSTOM_ORIGIN_SCHEMES = {"shinsekai", "tauri"}

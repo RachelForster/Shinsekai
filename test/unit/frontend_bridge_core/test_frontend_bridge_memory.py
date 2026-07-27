@@ -12,7 +12,7 @@ class _ImmediateThread:
 @pytest.fixture(autouse=True)
 def _compatible_memory_runtime(monkeypatch):
     monkeypatch.setattr(
-        "frontend_bridge_core.runtime_dependencies.runtime_dependency_error_for_module",
+        "application.runtime.dependencies.runtime_dependency_error_for_module",
         lambda _module_name: None,
     )
 
@@ -118,7 +118,7 @@ def test_get_mem0_status_missing_dependency_when_not_importable(monkeypatch):
 
 
 def test_get_mem0_status_reports_an_incompatible_memory_dependency_group(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
     from frontend_bridge_core.memory import _get_mem0_status
     from sdk.exception.types import runtime_dependency_error_from_module
 

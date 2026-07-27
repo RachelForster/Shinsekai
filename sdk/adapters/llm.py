@@ -15,7 +15,7 @@ class LLMAdapter(ABC):
         - ``chat(..., stream=False, **kwargs)``: Sampling and similar runtime args come from
           ``LLMManager.generation_config`` and each implementation's filtering (e.g. OpenAI-compatible
           stacks often accept ``temperature``, ``presence_penalty``, ``frequency_penalty``, ``max_tokens``;
-          see ``filter_supported_chat_params`` in ``llm.llm_adapter``). Global defaults (temperature,
+          see ``filter_supported_chat_params`` in ``ai.llm.llm_adapter``). Global defaults (temperature,
           penalties, etc.) live in ``ApiConfig``, not in this schema.
     """
 

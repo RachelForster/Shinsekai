@@ -974,7 +974,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "plugin.detail.loading": "正在读取插件设置",
   "plugin.detail.noUi": "该插件没有设置页贡献。",
   "plugin.detail.pages": "插件页面",
-  "plugin.detail.pyqtNotice": "该插件仍以 PyQt Widget 形式贡献设置页，尚未暴露 React 可渲染的配置 schema。",
+  "plugin.detail.frontendNotice": "该插件尚未提供 React 可渲染的配置 schema。",
   "plugin.detail.save": "保存设置",
   "plugin.detail.saveFailed": "插件设置未保存。",
   "plugin.detail.saveSuccess": "插件设置已保存",

@@ -17,7 +17,7 @@ from core.sprite.chat_branch_storage import (
     remove_chat_history_storage,
     save_branch_state,
 )
-from frontend_bridge_core.chat import _chat_history_path
+from application.chat.runtime_process import _chat_history_path
 from application.chat.templates import _latest_history_json
 
 

@@ -39,7 +39,7 @@
 | **LLM 与工具** | **API 设定**中配置供应商、**模型 ID**、Key、Base URL；支持 **流式**输出与 **工具调用**；工具来源包括内置/插件 **`@tool`** 与 **MCP**（`data/config/mcp.yaml`）。 |
 | **文生图（T2I）** | 在 **API 设定**中配置 **ComfyUI** 等服务端地址、工作流与节点 ID；可按需接入其他 **T2I 适配器**（插件注册）。 |
 | **设置与系统集成** | **React 设置中心**通过本地 Python bridge 管理 **API**（`data/config/api.yaml`）与 **系统**（`data/config/system_config.yaml`）：界面语言、语音识别后端、主题色、字体等；配置读写仍留在 Python 层。 |
-| **插件与小工具** | `data/config/plugins.yaml` 清单加载；**插件**页发现/安装、启用禁用；**小工具**页对齐 PySide 设置窗的立绘提示词、批量生成、裁剪和抠图流程；插件可扩展 LLM/TTS/ASR/T2I、工具与 **Settings / 工具箱 / 聊天窗** 入口。 |
+| **插件与小工具** | `data/config/plugins.yaml` 清单加载；**插件**页发现/安装、启用禁用；**小工具**页提供立绘提示词、批量生成、裁剪和抠图流程；插件可扩展 LLM/TTS/ASR/T2I、工具与 React **Settings / 工具箱 / 聊天窗** 入口。 |
 | **MCP** | **插件 → MCP** 子页或 YAML 连接远端/本机 MCP Server（SSE / stdio），工具并入当前进程的 LLM 工具列表。 |
 | **视觉与其它扩展** | 视觉理解、主题编辑等能力可通过 **官方或社区插件** 启用（如仓库内 `plugins/` 示例）；具体能力以各插件说明为准。 |
 
@@ -107,7 +107,7 @@ pnpm build
 cd ..
 ```
 
-源码仓库不再提交 `frontend/dist`。`start-react.*` 发现构建产物不存在时会提示手动运行 `cd frontend && pnpm install && pnpm build`；需要自动构建时可显式传入 `--build-if-missing` 或 `--build-if-stale`。正式桌面安装包会在 release 构建流程中生成并内置前端资源。旧 PySide 设置页仍作为兼容入口保留：`python webui_qt.py`。
+源码仓库不再提交 `frontend/dist`。`start-react.*` 发现构建产物不存在时会提示手动运行 `cd frontend && pnpm install && pnpm build`；需要自动构建时可显式传入 `--build-if-missing` 或 `--build-if-stale`。正式桌面安装包会在 release 构建流程中生成并内置前端资源。Qt 设置页和 Qt 聊天窗已退出，不再提供 Python UI 兼容入口。
 
 ### Tauri 桌面端开发
 

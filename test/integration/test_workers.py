@@ -1,7 +1,7 @@
-"""Integration tests: LLMWorker / TTSWorker / UIWorker QThread lifecycle.
+"""Integration tests: LLMWorker / TTSWorker / PresentationWorker thread lifecycle.
 
-Requires pytest-qt for QApplication event loop.  All adapters are mocked;
-workers use real QThread, real queues, and the real handler dispatch chain.
+Workers use standard-library threads. All adapters are mocked;
+workers use standard threads, real queues, and the real handler dispatch chain.
 """
 
 from __future__ import annotations
@@ -16,12 +16,8 @@ import pytest
 from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from test.mocks import MockLLMAdapter
 
-# QThread workers
-from application.runtime.workers import (
-    LLMWorker,
-    PresentationWorker as UIWorker,
-    TTSWorker,
-)
+# Runtime workers
+from application.runtime.workers import LLMWorker, TTSWorker, PresentationWorker
 from application.runtime.context import AppRuntime, set_app_runtime
 
 pytestmark = pytest.mark.integration
@@ -35,7 +31,7 @@ def _make_runtime_for_workers(mock_llm_adapter=None, **overrides):
     """Build a minimal AppRuntime suitable for worker testing."""
     from config.schema import AppConfig, ApiConfig, SystemConfig, Character, Background
     from config.config_manager import ConfigManager
-    from llm.llm_manager import LLMManager
+    from ai.llm.llm_manager import LLMManager
     from test.conftest import make_app_config
 
     app_config = make_app_config()
@@ -320,13 +316,13 @@ class TestTTSWorker:
         worker.wait(3000)
 
 
-class TestUIWorker:
+class TestPresentationWorker:
     def test_worker_marks_audio_task_done_after_dispatch(self):
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
 
-        worker = UIWorker(rt.audio_path_queue)
+        worker = PresentationWorker(rt.audio_path_queue)
         worker.ui_out_dispatcher = MagicMock()
 
         out = TTSOutputMessage(
@@ -349,7 +345,7 @@ class TestUIWorker:
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
 
-        worker = UIWorker(rt.audio_path_queue)
+        worker = PresentationWorker(rt.audio_path_queue)
         worker.ui_out_dispatcher = MagicMock()
         worker.ui_out_dispatcher.dispatch.side_effect = RuntimeError("boom")
 

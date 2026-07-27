@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.plugins.publisher.metadata import scan_local_plugin
-from core.plugins.publisher.submission import (
+from application.plugins.publisher import (
+    scan_local_plugin,
     build_issue_url,
     default_submit_url,
     submission_payload,
+    validation_errors,
 )
-from core.plugins.publisher.validate import validation_errors
 
 
 def _scan_local_plugin(body: dict[str, Any]) -> dict[str, Any]:

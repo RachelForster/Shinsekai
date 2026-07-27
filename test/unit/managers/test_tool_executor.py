@@ -11,8 +11,8 @@ from sdk.tool_registry import (
     notify_tool_ready,
     set_tool_ready_callback,
 )
-from llm.tools.tool_manager import ToolManager
-from llm.tools.tool_executor import ToolExecutor
+from ai.tools.tool_manager import ToolManager
+from ai.tools.tool_executor import ToolExecutor
 
 
 def _reset_tm():

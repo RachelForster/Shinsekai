@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from frontend_bridge_core.state import BridgeState, _jsonify
+from application.runtime.state import BridgeState, _jsonify
 
 
 class ModelDumpValue:

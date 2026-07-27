@@ -5,8 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from frontend_bridge_core.handler import FrontendBridgeHandler
-from llm.template_generator import TemplateGenerator
+from frontend_bridge_core.routes.api import FrontendBridgeHandler
+from ai.llm.template_generator import TemplateGenerator
 
 
 def _handler() -> FrontendBridgeHandler:
@@ -70,7 +70,7 @@ def test_template_generate_all_stale_returns_stable_unprocessable_error(monkeypa
     responses: list[tuple[object, HTTPStatus]] = []
     handler._send_json = lambda payload, status=HTTPStatus.OK: responses.append((payload, status))
     monkeypatch.setattr(
-        "llm.template_generator._T",
+        "ai.llm.template_generator._T",
         lambda key, **kwargs: f"template_gen.{key}",
     )
 
@@ -109,7 +109,7 @@ def test_start_chat_init_forwards_launch_and_resume_callbacks(monkeypatch):
         calls.append(("coordinator", mode, result))
         return {"id": f"task-{mode}"}
 
-    monkeypatch.setattr("frontend_bridge_core.handler.start_chat_init", start_chat_init)
+    monkeypatch.setattr("frontend_bridge_core.routes.api.start_chat_init", start_chat_init)
 
     launch_task = handler._start_chat_init({"mode": "launch", "payload": {"templateId": "demo"}})
     resume_task = handler._start_chat_init({"mode": "resume-last"})

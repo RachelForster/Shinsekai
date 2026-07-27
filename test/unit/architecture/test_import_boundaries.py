@@ -11,18 +11,14 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 SOURCE_DIRECTORIES = (
     "ai",
     "application",
-    "asr",
     "config",
     "core",
     "frontend_bridge_core",
     "i18n",
     "live",
-    "llm",
     "plugin_system",
     "sdk",
-    "t2i",
     "tools",
-    "tts",
 )
 
 FORBIDDEN_IMPORTS = {
@@ -189,7 +185,7 @@ LOCKED_BASELINE_SHA256 = "c83d2b5ca262fcfa819c41ba308004f789647ac6368d78df509963
 
 # This is the only set later Objective PRs may shrink. The locked baseline above
 # makes a newly invented exception fail even if it is added here.
-ALLOWED_VIOLATIONS = LOCKED_BASELINE_VIOLATIONS - frozenset(
+_PRE_O5_MIGRATED_VIOLATIONS = frozenset(
     {
         ImportViolation("core/plugins/plugin_host.py", "ai"),
         ImportViolation("core/plugins/plugin_host.py", "asr"),
@@ -241,6 +237,10 @@ ALLOWED_VIOLATIONS = LOCKED_BASELINE_VIOLATIONS - frozenset(
         ImportViolation("sdk/tool_registry.py", "llm"),
     }
 )
+
+# O5 retires the final compatibility paths. The immutable set above remains as
+# an audit baseline, but no active dependency violation is accepted.
+ALLOWED_VIOLATIONS = frozenset()
 
 
 def _python_sources() -> list[Path]:
@@ -422,13 +422,25 @@ def test_file_tool_wrappers_do_not_implement_filesystem_operations() -> None:
     )
 
 
+def test_frontend_bridge_does_not_own_runtime_implementations() -> None:
+    bridge_root = REPO_ROOT / "frontend_bridge_core"
+    forbidden_modules = {"subprocess", "tarfile", "zipfile"}
+    offenders: list[tuple[str, str]] = []
+    for source in sorted(bridge_root.rglob("*.py")):
+        relative = source.relative_to(REPO_ROOT).as_posix()
+        for imported_root in _imported_roots(source) & forbidden_modules:
+            offenders.append((relative, imported_root))
+
+    assert not (bridge_root / "handler.py").exists()
+    assert (bridge_root / "routes" / "api.py").is_file()
+    assert not offenders, (
+        "Transport adapters must call application use cases instead of owning "
+        f"process/archive implementations: {offenders}"
+    )
+
+
 def test_active_host_code_does_not_import_legacy_ai_namespaces() -> None:
     legacy_roots = {"asr", "llm", "t2i", "tts"}
-    allowed_legacy_callers = {
-        "core/handlers/ui_message_handler.py",
-        "core/runtime/ui_update_manager.py",
-        "core/sprite/chat_ui_service.py",
-    }
     source_roots = (
         "ai",
         "application",
@@ -446,12 +458,7 @@ def test_active_host_code_does_not_import_legacy_ai_namespaces() -> None:
         sources = [root] if root.is_file() else sorted(root.rglob("*.py"))
         for source in sources:
             relative = source.relative_to(REPO_ROOT).as_posix()
-            if relative in allowed_legacy_callers:
-                continue
             for imported_root in _imported_roots(source) & legacy_roots:
                 offenders.append((relative, imported_root))
 
-    assert not offenders, (
-        "Active host code must use ai.*; only Qt retirement callers may use "
-        f"legacy AI namespaces: {offenders}"
-    )
+    assert not offenders, f"Active host code must use ai.*: {offenders}"

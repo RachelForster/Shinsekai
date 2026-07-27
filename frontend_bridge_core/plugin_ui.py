@@ -301,38 +301,21 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
 
 
 def _frontend_config_contributions_for(plugin_id: str) -> list[Any]:
-    try:
-        from core.plugins.plugin_host import collect_frontend_config_contributions
-    except Exception:
-        return []
-    out: list[Any] = []
-    for contribution in collect_frontend_config_contributions():
-        if str(getattr(contribution, "plugin_id", "") or "").strip() == plugin_id:
-            out.append(contribution)
-    return sorted(out, key=lambda item: float(getattr(item, "order", 100.0) or 100.0))
+    from application.plugins.catalog import frontend_config_contributions_for
+
+    return frontend_config_contributions_for(plugin_id)
 
 
 def _frontend_page_contributions_for(plugin_id: str) -> list[Any]:
-    try:
-        from core.plugins.plugin_host import collect_frontend_page_contributions
-    except Exception:
-        return []
-    out: list[Any] = []
-    for contribution in collect_frontend_page_contributions():
-        if str(getattr(contribution, "plugin_id", "") or "").strip() == plugin_id:
-            out.append(contribution)
-    return sorted(out, key=lambda item: float(getattr(item, "order", 100.0) or 100.0))
+    from application.plugins.catalog import frontend_page_contributions_for
+
+    return frontend_page_contributions_for(plugin_id)
 
 
 def _frontend_chat_ui_contributions() -> list[Any]:
-    try:
-        from core.plugins.plugin_host import collect_frontend_chat_ui_contributions
-    except Exception:
-        return []
-    return sorted(
-        collect_frontend_chat_ui_contributions(),
-        key=lambda item: float(getattr(item, "order", 100.0) or 100.0),
-    )
+    from application.plugins.catalog import frontend_chat_ui_contributions
+
+    return frontend_chat_ui_contributions()
 
 
 def _frontend_chat_ui_action(contribution: Any) -> tuple[str, str, str]:
@@ -510,14 +493,6 @@ def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
 
 
 def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
-    try:
-        from core.plugins.plugin_host import (
-            collect_settings_contributions,
-            collect_tools_tab_contributions,
-        )
-    except Exception:
-        raise KeyError(f"plugin not found: {plugin_id_or_entry}")
-
     lookup = plugin_id_or_entry.strip()
     plugin_row = None
     for row in _plugin_rows():
@@ -541,50 +516,6 @@ def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
         if (str(page.get("kind") or ""), str(page.get("id") or "")) in frontend_page_keys:
             continue
         frontend_page_keys.add((str(page.get("kind") or ""), str(page.get("id") or "")))
-        pages.append(page)
-
-    for contribution in collect_settings_contributions():
-        if str(getattr(contribution, "plugin_id", "") or "").strip() != plugin_id:
-            continue
-        page_id = str(getattr(contribution, "page_id", "") or "").strip()
-        if ("settings", page_id) in frontend_page_keys:
-            continue
-        title = str(getattr(contribution, "nav_label", "") or "").strip() or page_id
-        page: dict[str, Any] = {
-            "id": page_id,
-            "kind": "settings",
-            "order": float(getattr(contribution, "order", 100.0) or 100.0),
-            "pluginId": plugin_id,
-            "pluginVersion": str(getattr(contribution, "plugin_version", "") or ""),
-            "title": title,
-        }
-        builtin = _builtin_plugin_config_page(plugin_id, page_id)
-        if builtin is not None:
-            page.update(builtin)
-        else:
-            page["unavailableReason"] = "该插件设置页仍以 PyQt Widget 形式贡献，当前 React 端没有可渲染的配置 schema。"
-        pages.append(page)
-
-    for contribution in collect_tools_tab_contributions():
-        if str(getattr(contribution, "plugin_id", "") or "").strip() != plugin_id:
-            continue
-        page_id = str(getattr(contribution, "tab_id", "") or "").strip()
-        if ("tools", page_id) in frontend_page_keys:
-            continue
-        title = str(getattr(contribution, "title", "") or "").strip() or page_id
-        page = {
-            "id": page_id,
-            "kind": "tools",
-            "order": float(getattr(contribution, "order", 100.0) or 100.0),
-            "pluginId": plugin_id,
-            "pluginVersion": str(getattr(contribution, "plugin_version", "") or ""),
-            "title": title,
-        }
-        builtin = _builtin_plugin_config_page(plugin_id, page_id)
-        if builtin is not None:
-            page.update(builtin)
-        else:
-            page["unavailableReason"] = "该插件工具页仍以 PyQt Widget 形式贡献，当前 React 端没有可渲染的配置 schema。"
         pages.append(page)
 
     pages.sort(key=lambda item: (float(item.get("order") or 100.0), str(item.get("title") or "")))

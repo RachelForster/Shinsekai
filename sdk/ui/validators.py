@@ -237,7 +237,7 @@ def first_error(*checks: tuple[bool, str]) -> tuple[bool, str]:
 
 def warn_if_invalid(checks_or_ok, errors=None, *,
                     title: str = "提示", parent=None) -> bool:
-    """校验失败时弹窗警告。
+    """Return ``False`` and emit a warning when validation fails.
 
     两种用法::
 
@@ -263,14 +263,16 @@ def warn_if_invalid(checks_or_ok, errors=None, *,
     if isinstance(msgs, str):
         msgs = [msgs]
     text = "\n".join(msgs)
-    from PySide6.QtWidgets import QMessageBox
-    QMessageBox.warning(parent, title, text)
+    del parent
+    import warnings
+
+    warnings.warn(f"{title}: {text}", stacklevel=2)
     return False
 
 
 def validate_or_block(*checks: tuple[bool, str],
                       title: str = "提示", parent=None) -> bool:
-    """依次校验，遇到第一个失败就弹窗并返回 False。
+    """Return ``False`` and emit a warning for the first failed check.
 
     适合放在保存按钮逻辑开头::
 
@@ -283,8 +285,10 @@ def validate_or_block(*checks: tuple[bool, str],
     ok, err = first_error(*checks)
     if ok:
         return True
-    from PySide6.QtWidgets import QMessageBox
-    QMessageBox.warning(parent, title, err)
+    del parent
+    import warnings
+
+    warnings.warn(f"{title}: {err}", stacklevel=2)
     return False
 
 

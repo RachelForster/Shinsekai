@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.sprite import chat_ui_service
+from application.chat import session_restore
 from core.sprite.initial_sprite import (
     display_initial_sprite,
     find_character_sprite_by_path,
@@ -193,10 +193,10 @@ def test_restore_session_ui_applies_background_without_messages():
     queue = Queue()
     window = _Window()
 
-    restored = chat_ui_service.restore_session_ui(
+    restored = session_restore.restore_session_presentation(
         [],
         audio_path_queue=queue,
-        window=window,
+        presenter=window,
         config=_config(bgm_path="data/bgm/theme.ogg", background_path="data/bg/classroom.webp"),
         tr_i18n=lambda key, **kwargs: key,
     )
@@ -212,17 +212,17 @@ def test_restore_session_ui_reports_restored_character_sprite(monkeypatch):
     queue = Queue()
     window = _Window()
     monkeypatch.setattr(
-        chat_ui_service,
+        session_restore,
         "extract_valid_dialog_from_messages",
         lambda messages: [
             {"character_name": "七海千秋", "speech": "你好", "sprite": "1"},
         ],
     )
 
-    restored = chat_ui_service.restore_session_ui(
+    restored = session_restore.restore_session_presentation(
         [{"role": "assistant"}],
         audio_path_queue=queue,
-        window=window,
+        presenter=window,
         config=_config(),
         tr_i18n=lambda key, **kwargs: key,
     )
@@ -231,54 +231,3 @@ def test_restore_session_ui_reports_restored_character_sprite(monkeypatch):
     output = queue.get_nowait()
     assert output.name == "七海千秋"
     assert output.asset_id == "1"
-
-
-def test_native_clear_removes_branch_storage_before_persisting_empty_active(tmp_path, monkeypatch):
-    history = tmp_path / "external-session"
-    history.mkdir()
-    calls = {"order": []}
-
-    def record_clear(**kwargs):
-        calls["order"].append("clear")
-        calls["clear"] = kwargs
-
-    def record_remove(path):
-        calls["order"].append("remove")
-        calls["remove"] = path
-
-    class Context:
-        def __getattr__(self, name):
-            if name.startswith("on_"):
-                return lambda callback: setattr(self, name, callback)
-            raise AttributeError(name)
-
-    monkeypatch.setattr(
-        chat_ui_service,
-        "clear_chat_history",
-        record_clear,
-    )
-    monkeypatch.setattr(
-        chat_ui_service,
-        "remove_chat_history_storage",
-        record_remove,
-    )
-    context = Context()
-    chat_ui_service.wire_chat_ui_bridge(
-        context,
-        window=SimpleNamespace(open_history_dialog=lambda _history: None),
-        app=SimpleNamespace(quit=lambda: None),
-        emit_user_text=None,
-        chat_history=[],
-        history_file=str(history),
-        llm_manager=SimpleNamespace(),
-        audio_path_queue=SimpleNamespace(put=lambda _item: None),
-        tts_manager=None,
-        ui_worker=None,
-        tr_i18n=lambda key, **_kwargs: key,
-    )
-
-    context.on_clear_chat_history()
-
-    assert calls["clear"]["history_file"] == str(history / "active.json")
-    assert calls["remove"] == str(history)
-    assert calls["order"] == ["remove", "clear"]

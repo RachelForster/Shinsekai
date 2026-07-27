@@ -1,4 +1,4 @@
-from frontend_bridge_core.state import BridgeState
+from application.runtime.state import BridgeState
 from frontend_bridge_core.static import _frontend_dist_root
 
 
