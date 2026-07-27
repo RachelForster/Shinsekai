@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from application.model_assets import tts_bundle
 from frontend_bridge_core.state import BridgeState
 from frontend_bridge_core.tts import _download_tts_bundle
-from ui.settings_ui.tts import tts_bundle_manifest, tts_bundle_worker
 
 
 def test_tts_bundle_download_uses_bridge_project_root(tmp_path, monkeypatch):
@@ -16,7 +16,7 @@ def test_tts_bundle_download_uses_bridge_project_root(tmp_path, monkeypatch):
     wrong_environment_root.mkdir(parents=True)
     monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(wrong_environment_root))
     monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(wrong_environment_root))
-    monkeypatch.setattr(tts_bundle_manifest, "bundle_manifest_for_key", lambda _key: None)
+    monkeypatch.setattr(tts_bundle, "bundle_manifest_for_key", lambda _key: None)
 
     observed: dict[str, Path] = {}
 
@@ -31,8 +31,8 @@ def test_tts_bundle_download_uses_bridge_project_root(tmp_path, monkeypatch):
         (bundle / "server.py").write_text("# test\n", encoding="utf-8")
         return None
 
-    monkeypatch.setattr(tts_bundle_worker, "_download_archive", fake_download)
-    monkeypatch.setattr(tts_bundle_worker, "_extract_archive", fake_extract)
+    monkeypatch.setattr(tts_bundle, "_download_archive", fake_download)
+    monkeypatch.setattr(tts_bundle, "_extract_archive", fake_extract)
 
     state = BridgeState(
         None,
@@ -55,7 +55,7 @@ def test_tts_bundle_download_uses_bridge_project_root(tmp_path, monkeypatch):
 
 
 def test_legacy_tts_project_root_helper_prefers_runtime_environment(tmp_path, monkeypatch):
-    from ui.settings_ui.tts.tts_env_probe import get_default_project_root
+    from core.model_assets.tts_environment import get_default_project_root
 
     shinsekai_root = tmp_path / "SHINSEKAI root 空格"
     easyai_root = tmp_path / "EASYAI root"

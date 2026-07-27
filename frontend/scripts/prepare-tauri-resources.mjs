@@ -20,6 +20,7 @@ const files = [
 ];
 const directories = [
   "ai",
+  "application",
   "assets",
   "asr",
   "config",

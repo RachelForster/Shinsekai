@@ -74,6 +74,9 @@ Shinsekai/
     bootstrap/
     chat/
       handlers/
+    diagnostics/
+    media/
+    model_assets/
     runtime/
     plugins/
 
@@ -167,6 +170,9 @@ frontend/src-tauri     Tauri 壳、打包配置和 Rust 侧能力
 application/bootstrap/       进程启动、组合根、运行模式选择
 application/chat/            聊天启动、停止、恢复和历史用例
 application/chat/handlers/   LLM 输出到 TTS/UI event 的应用处理链
+application/diagnostics/     日志快照与诊断包用例
+application/media/           媒体标注等跨领域用例
+application/model_assets/    模型与 TTS 资源下载用例
 application/runtime/         app runtime、workers、workflow、shutdown
 application/plugins/         插件安装、更新、发布等用例编排
 ```

@@ -23,6 +23,8 @@ for (const requiredFile of runtimeMarker.requiredFiles ?? []) {
 await assertExists(path.join(resourcesDir, "runtime_manifest.json"));
 await assertExists(path.join(resourcesDir, "main.py"));
 await assertExists(path.join(resourcesDir, "frontend_bridge.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "runtime_process.py"));
+await assertExists(path.join(resourcesDir, "application", "runtime", "dependencies.py"));
 await assertExists(path.join(resourcesDir, "plugin_system", "host", "service.py"));
 await assertExists(path.join(resourcesDir, "requirements-runtime-core.txt"));
 await assertExists(path.join(resourcesDir, "assets", "system", "workflow", "default.yaml"));

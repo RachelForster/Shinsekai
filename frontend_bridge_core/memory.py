@@ -8,7 +8,7 @@ def _check_mem0_before_call() -> dict[str, Any] | None:
     """Return a dependency error if the complete mem0 runtime is unavailable."""
     import importlib.util as _importlib_util
 
-    from frontend_bridge_core.runtime_dependencies import (
+    from application.runtime.dependencies import (
         runtime_dependency_error_for_module,
     )
     from sdk.exception.types import runtime_dependency_error_from_module
@@ -160,7 +160,7 @@ def _run_character_memory_import(
 
     from ai.memory.extraction import create_configured_memory_adapter, configured_memory_chunk_tokens
     from ai.memory.imports import execute_memory_import
-    from frontend_bridge_core.tasks import (
+    from application.runtime.tasks import (
         TaskCancelled,
         _append_task_log,
         _is_task_cancel_requested,

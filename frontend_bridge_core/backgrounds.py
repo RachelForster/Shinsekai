@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .media_utils import _path_namespace_list, _tag_content
-from .state import BridgeState, _jsonify
+from application.runtime.state import BridgeState, _jsonify
 
 
 def _save_background(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:

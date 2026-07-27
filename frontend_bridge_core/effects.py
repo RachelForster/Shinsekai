@@ -6,7 +6,7 @@ from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from .security import safe_child_path, safe_existing_file_path
-from .state import BridgeState, _jsonify
+from application.runtime.state import BridgeState, _jsonify
 
 EFFECT_UPLOAD_DIR = "data/effects"
 

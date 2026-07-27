@@ -5,8 +5,8 @@ import webbrowser
 from pathlib import Path
 from typing import Any
 
-from .state import BridgeState
-from .tasks import _update_task
+from application.runtime.state import BridgeState
+from application.runtime.tasks import _update_task
 
 
 def _as_str_map(value: Any) -> dict[str, str]:

@@ -1,0 +1,1 @@
+"""Model asset application services."""

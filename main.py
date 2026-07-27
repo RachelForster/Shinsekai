@@ -53,7 +53,7 @@ _EARLY_STREAM_SINK = None
 _EARLY_INIT_STREAM_SINK = None
 if _EARLY_STREAM_ENDPOINT:
     try:
-        from core.runtime.event_sink import WSClientSink
+        from application.runtime.event_sink import WSClientSink
 
         _EARLY_STREAM_SINK = WSClientSink(_EARLY_STREAM_ENDPOINT)
         _EARLY_STREAM_SINK.emit({"type": "status.change", "status": "idle"})
@@ -61,7 +61,7 @@ if _EARLY_STREAM_ENDPOINT:
         _EARLY_STREAM_SINK = None
 if _EARLY_INIT_STREAM_ENDPOINT:
     try:
-        from core.runtime.event_sink import WSClientSink
+        from application.runtime.event_sink import WSClientSink
 
         _EARLY_INIT_STREAM_SINK = WSClientSink(_EARLY_INIT_STREAM_ENDPOINT)
     except Exception:
@@ -102,14 +102,14 @@ from llm.llm_manager import LLMManager, LLMAdapterFactory
 from llm.text_processor import TextProcessor
 from core.messaging.chat_turn_wiring import create_chat_turn_service
 from core.messaging.queue import ClearableQueue
-from core.runtime.app_runtime import (
+from application.runtime.context import (
     AppRuntime,
     resolve_pending_tool_confirmation,
     set_app_runtime,
 )
 from core.runtime.launch_mode import should_init_desktop_mixer
-from core.runtime.shutdown import shutdown_chat_runtime
-from core.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
+from application.runtime.shutdown import shutdown_chat_runtime
+from application.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
 from core.media.chat_attachments import resolve_chat_attachments
 from core.paths import resource_path
 from core.sprite.chat_branch_storage import (
@@ -417,7 +417,7 @@ def main():
     stream_sink = _EARLY_STREAM_SINK if args.stream_endpoint == _EARLY_STREAM_ENDPOINT else None
     if args.stream_endpoint and stream_sink is None:
         with _startup_phase("stream.sink.init"):
-            from core.runtime.event_sink import WSClientSink
+            from application.runtime.event_sink import WSClientSink
 
             stream_sink = WSClientSink(args.stream_endpoint)
             stream_sink.emit({"type": "status.change", "status": "idle"})
@@ -679,7 +679,7 @@ def main():
             from core.runtime.ui_update_manager import StreamingUIUpdateManager
 
             if stream_sink is None:
-                from core.runtime.event_sink import WSClientSink
+                from application.runtime.event_sink import WSClientSink
 
                 stream_sink = WSClientSink(args.stream_endpoint)
             ui_updates = StreamingUIUpdateManager(
@@ -1443,7 +1443,7 @@ def main():
     connect_to_desktop_window(ui_updates, window)
     mirror_stream_sink = None
     if args.mirror_stream_endpoint:
-        from core.runtime.event_sink import WSClientSink
+        from application.runtime.event_sink import WSClientSink
         from core.runtime.ui_update_manager import connect_to_stream_sink
 
         mirror_stream_sink = WSClientSink(args.mirror_stream_endpoint)

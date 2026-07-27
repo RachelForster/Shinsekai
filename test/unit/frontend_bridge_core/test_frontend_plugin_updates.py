@@ -155,7 +155,7 @@ def _patch_manifest_and_state(monkeypatch, marks: list[dict]):
         marks.append({"repo": repo, **kwargs})
 
     monkeypatch.setattr(
-        "core.plugins.registry_download.mark_repo_downloaded",
+        "plugin_system.registry.download.mark_repo_downloaded",
         fake_mark_repo_downloaded,
     )
 
@@ -163,7 +163,7 @@ def _patch_manifest_and_state(monkeypatch, marks: list[dict]):
 def test_lookup_registry_plugin_matches_id_and_display_name(monkeypatch):
     record = _registry_record()
     monkeypatch.setattr(
-        "core.plugins.registry_catalog.fetch_registry_plugins",
+        "plugin_system.registry.catalog.fetch_registry_plugins",
         lambda timeout_sec=12: [record],
     )
 
@@ -190,15 +190,15 @@ def test_install_plugin_source_prefers_registry_package_over_github(tmp_path, mo
         raise AssertionError("registry package should be used before GitHub")
 
     monkeypatch.setattr(
-        "core.plugins.package_download.install_registry_package_under_plugins",
+        "plugin_system.install.package.install_registry_package_under_plugins",
         fake_package_install,
     )
     monkeypatch.setattr(
-        "core.plugins.github_bundle_update.install_github_plugin_under_plugins",
+        "plugin_system.update.github.install_github_plugin_under_plugins",
         fail_github,
     )
     monkeypatch.setattr(
-        "core.plugins.plugin_requirements_install.install_plugin_requirements_txt",
+        "plugin_system.requirements.install.install_plugin_requirements_txt",
         lambda root, **_kwargs: calls.append(("pip", root)) or ("pip_ok", ""),
     )
 
@@ -233,7 +233,7 @@ def test_install_plugin_source_does_not_mark_existing_directory_as_verified(tmp_
 
     monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
     monkeypatch.setattr(
-        "core.plugins.package_download.registry_package_target",
+        "plugin_system.install.package.registry_package_target",
         lambda *_args, **_kwargs: package_root,
     )
     _patch_manifest_and_state(monkeypatch, marks)
@@ -244,11 +244,11 @@ def test_install_plugin_source_does_not_mark_existing_directory_as_verified(tmp_
         return package_root
 
     monkeypatch.setattr(
-        "core.plugins.package_download.install_registry_package_under_plugins",
+        "plugin_system.install.package.install_registry_package_under_plugins",
         fake_package_install,
     )
     monkeypatch.setattr(
-        "core.plugins.plugin_requirements_install.install_plugin_requirements_txt",
+        "plugin_system.requirements.install.install_plugin_requirements_txt",
         lambda root, **_kwargs: calls.append(("pip", root)) or ("pip_ok", ""),
     )
 
@@ -290,15 +290,15 @@ def test_install_plugin_source_falls_back_to_github_for_registry_package_network
         return github_root
 
     monkeypatch.setattr(
-        "core.plugins.package_download.install_registry_package_under_plugins",
+        "plugin_system.install.package.install_registry_package_under_plugins",
         fail_package,
     )
     monkeypatch.setattr(
-        "core.plugins.github_bundle_update.install_github_plugin_under_plugins",
+        "plugin_system.update.github.install_github_plugin_under_plugins",
         fake_github,
     )
     monkeypatch.setattr(
-        "core.plugins.plugin_requirements_install.install_plugin_requirements_txt",
+        "plugin_system.requirements.install.install_plugin_requirements_txt",
         lambda *_args, **_kwargs: ("pip_ok", ""),
     )
 
@@ -351,11 +351,11 @@ def test_install_plugin_source_does_not_fallback_to_github_for_package_safety_er
         raise AssertionError("checksum and package safety errors must not fallback to GitHub")
 
     monkeypatch.setattr(
-        "core.plugins.package_download.install_registry_package_under_plugins",
+        "plugin_system.install.package.install_registry_package_under_plugins",
         fail_package,
     )
     monkeypatch.setattr(
-        "core.plugins.github_bundle_update.install_github_plugin_under_plugins",
+        "plugin_system.update.github.install_github_plugin_under_plugins",
         fail_github,
     )
 
@@ -379,7 +379,7 @@ def test_install_plugin_source_does_not_fallback_to_github_when_package_dependen
     package_root = _plugin_root(tmp_path, "package-plugin")
     monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
     monkeypatch.setattr(
-        "core.plugins.package_download.install_registry_package_under_plugins",
+        "plugin_system.install.package.install_registry_package_under_plugins",
         lambda *_args, **_kwargs: package_root,
     )
 
@@ -387,11 +387,11 @@ def test_install_plugin_source_does_not_fallback_to_github_when_package_dependen
         raise AssertionError("dependency failures after package install must not fallback to GitHub")
 
     monkeypatch.setattr(
-        "core.plugins.github_bundle_update.install_github_plugin_under_plugins",
+        "plugin_system.update.github.install_github_plugin_under_plugins",
         fail_github,
     )
     monkeypatch.setattr(
-        "core.plugins.plugin_requirements_install.install_plugin_requirements_txt",
+        "plugin_system.requirements.install.install_plugin_requirements_txt",
         lambda *_args, **_kwargs: ("pip_failed", "dependency boom"),
     )
 
@@ -415,11 +415,11 @@ def test_install_plugin_source_treats_github_dependency_conflicts_as_failures(
     github_root = _plugin_root(tmp_path, "github-plugin")
     monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
     monkeypatch.setattr(
-        "core.plugins.github_bundle_update.install_github_plugin_under_plugins",
+        "plugin_system.update.github.install_github_plugin_under_plugins",
         lambda *_args, **_kwargs: github_root,
     )
     monkeypatch.setattr(
-        "core.plugins.plugin_requirements_install.install_plugin_requirements_txt",
+        "plugin_system.requirements.install.install_plugin_requirements_txt",
         lambda *_args, **_kwargs: ("pip_conflict", "dependency conflict"),
     )
 

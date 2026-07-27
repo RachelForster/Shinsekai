@@ -3,8 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from ui.settings_ui.tts import tts_bundle_worker as worker_mod
-from ui.settings_ui.tts.tts_bundle_manifest import TtsBundleManifestEntry
+from core.model_assets import tts_bundle_archive as worker_mod
+from core.model_assets.tts_bundle_manifest import TtsBundleManifestEntry
+from ui.settings_ui.tts import tts_bundle_worker as qt_worker
 
 
 class _FakeResponse:
@@ -127,7 +128,7 @@ def test_worker_reuses_verified_download_without_request(tmp_path, monkeypatch):
     archive.write_bytes(payload)
     extracted_roots: list[Path] = []
 
-    monkeypatch.setattr(worker_mod, "bundle_manifest_for_key", lambda _key: manifest)
+    monkeypatch.setattr(qt_worker, "bundle_manifest_for_key", lambda _key: manifest)
     monkeypatch.setattr(
         worker_mod.requests,
         "get",
@@ -137,7 +138,7 @@ def test_worker_reuses_verified_download_without_request(tmp_path, monkeypatch):
 
     statuses: list[str] = []
     finished: list[str] = []
-    w = worker_mod.TtsBundleDownloadWorker(
+    w = qt_worker.TtsBundleDownloadWorker(
         manifest.download_url,
         manifest.bundle_dir_key,
         tmp_path,
@@ -163,7 +164,7 @@ def test_worker_redownloads_and_verifies_invalid_cache(tmp_path, monkeypatch):
     extracted_roots: list[Path] = []
     requests_made: list[str] = []
 
-    monkeypatch.setattr(worker_mod, "bundle_manifest_for_key", lambda _key: manifest)
+    monkeypatch.setattr(qt_worker, "bundle_manifest_for_key", lambda _key: manifest)
     monkeypatch.setattr(
         worker_mod.requests,
         "get",
@@ -179,7 +180,7 @@ def test_worker_redownloads_and_verifies_invalid_cache(tmp_path, monkeypatch):
 
     statuses: list[str] = []
     finished: list[str] = []
-    w = worker_mod.TtsBundleDownloadWorker(
+    w = qt_worker.TtsBundleDownloadWorker(
         manifest.download_url,
         manifest.bundle_dir_key,
         tmp_path,

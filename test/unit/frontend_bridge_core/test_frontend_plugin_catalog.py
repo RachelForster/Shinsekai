@@ -40,7 +40,7 @@ def test_resolve_loaded_plugin_for_manifest_entry_handles_manager_errors():
 
 
 def test_plugin_rows_include_persisted_install_metadata(monkeypatch):
-    import core.plugins.plugin_host as plugin_host
+    import plugin_system.host as plugin_host
 
     plugin = SimpleNamespace(
         plugin_author="Tester",
@@ -61,7 +61,7 @@ def test_plugin_rows_include_persisted_install_metadata(monkeypatch):
     monkeypatch.setattr(plugin_host, "collect_frontend_config_contributions", lambda: [])
     monkeypatch.setattr(plugin_host, "collect_frontend_page_contributions", lambda: [])
     monkeypatch.setattr(
-        "core.plugins.registry_download.load_plugin_install_metadata",
+        "plugin_system.registry.download.load_plugin_install_metadata",
         lambda value: {"packageSha256": "abc123", "sourceLabel": "官方包体 (R2)"} if value == entry else {},
     )
 
@@ -71,7 +71,7 @@ def test_plugin_rows_include_persisted_install_metadata(monkeypatch):
 
 
 def test_plugin_rows_fall_back_to_registry_author_when_manifest_author_is_missing(monkeypatch):
-    import core.plugins.plugin_host as plugin_host
+    import plugin_system.host as plugin_host
 
     entry = f"{DemoPlugin.__module__}:{DemoPlugin.__qualname__}"
     plugin = SimpleNamespace(
@@ -102,11 +102,11 @@ def test_plugin_rows_fall_back_to_registry_author_when_manifest_author_is_missin
     monkeypatch.setattr(plugin_host, "collect_frontend_config_contributions", lambda: [])
     monkeypatch.setattr(plugin_host, "collect_frontend_page_contributions", lambda: [])
     monkeypatch.setattr(
-        "core.plugins.registry_download.load_plugin_install_metadata",
+        "plugin_system.registry.download.load_plugin_install_metadata",
         lambda value: {"entry": entry, "repo": "owner/demo"} if value == entry else {},
     )
     monkeypatch.setattr(
-        "core.plugins.registry_catalog.fetch_registry_plugins",
+        "plugin_system.registry.catalog.fetch_registry_plugins",
         lambda **_kwargs: [record],
     )
 
@@ -149,11 +149,11 @@ def test_plugin_registry_rows_expose_market_metadata(monkeypatch):
     )
 
     monkeypatch.setattr(
-        "core.plugins.registry_catalog.fetch_registry_plugins",
+        "plugin_system.registry.catalog.fetch_registry_plugins",
         lambda: [record],
     )
     monkeypatch.setattr(
-        "core.plugins.registry_download.load_downloaded_repos",
+        "plugin_system.registry.download.load_downloaded_repos",
         lambda: {"owner/demo"},
     )
     monkeypatch.setattr(

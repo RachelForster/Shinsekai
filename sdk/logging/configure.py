@@ -59,12 +59,11 @@ def _safe_name(value: str) -> str:
 
 def _read_version(project_root: Path) -> str:
     candidates = [project_root / "VERSION"]
-    try:
-        from core.paths import resource_path
-
-        candidates.append(resource_path("VERSION"))
-    except Exception:
-        pass
+    frozen_root = getattr(sys, "_MEIPASS", None)
+    if frozen_root:
+        candidates.append(Path(frozen_root) / "VERSION")
+    executable_root = Path(sys.executable).resolve(strict=False).parent
+    candidates.append(executable_root / "VERSION")
     seen: set[Path] = set()
     for candidate in candidates:
         try:

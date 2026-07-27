@@ -15,7 +15,7 @@ from core.messaging.stream_events import (
     STREAM_DIALOG_REPAIR_KEY,
     STREAM_REASONING_DELTA_KEY,
 )
-from core.runtime.app_runtime import (
+from application.runtime.context import (
     get_tool_confirmation_controller,
     try_get_app_runtime,
 )
@@ -41,7 +41,7 @@ def _on_tool_ready(group: str, message: str) -> None:
     tool_executor.clear_cooldown(group)
     if message:
         try:
-            from core.runtime.app_runtime import try_get_app_runtime, tts_emit_to_ui_queue
+            from application.runtime.context import try_get_app_runtime, tts_emit_to_ui_queue
             if try_get_app_runtime() is not None:
                 tts_emit_to_ui_queue(
                     character_name="",

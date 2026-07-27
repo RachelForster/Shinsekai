@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any
 
-from core.runtime.app_runtime import try_get_app_runtime
+from application.runtime.context import try_get_app_runtime
 from sdk.tool_registry import tool
 
 _DEFAULT_USER_DISPLAY_NAME = "你"

@@ -35,7 +35,7 @@ from sdk.chat_ui_theme import (
 )
 
 from .security import safe_child_path, safe_existing_file_path
-from .state import BridgeState
+from application.runtime.state import BridgeState
 
 #: 用户可写主题目录（相对项目根 / cwd）。
 USER_THEMES_DIR = Path("data") / "chat_ui_themes"
