@@ -209,6 +209,28 @@ def test_frontend_chat_ui_contribution_rejects_identifiers_over_runtime_limit() 
         )
 
 
+def test_frontend_chat_ui_contribution_carries_overlay_presentation_defaults() -> None:
+    default = FrontendChatUIContribution(contribution_id="demo.phone", slot="chat-output", title="Phone")
+    assert default.overlay_width is None
+    assert default.overlay_height is None
+    assert default.overlay_background is None
+    assert default.overlay_initial_mini is False
+
+    customized = FrontendChatUIContribution(
+        contribution_id="demo.phone",
+        slot="chat-output",
+        title="Phone",
+        overlay_width=400,
+        overlay_height=720,
+        overlay_background="#101014",
+        overlay_initial_mini=True,
+    )
+    assert customized.overlay_width == 400
+    assert customized.overlay_height == 720
+    assert customized.overlay_background == "#101014"
+    assert customized.overlay_initial_mini is True
+
+
 def test_frontend_page_contribution_gets_plugin_context() -> None:
     registry = PluginCapabilityRegistry()
     registry.set_settings_ui_plugin_context("demo.plugin", "1.2.3")

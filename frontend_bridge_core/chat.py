@@ -679,6 +679,8 @@ def _serialize_history_entries_from_messages(
             continue
         role = str(message.get("role") or "").strip()
         if role == "user":
+            if message.get("hidden"):
+                continue
             text = str(message.get("display_content") or message.get("content") or "").strip()
             if not text:
                 continue

@@ -820,6 +820,7 @@ class LLMManager:
             user_display_text = str(kwargs.pop("user_display_text", "") or "").strip()
             user_input_text = kwargs.pop("user_input_text", None)
             user_attachments = kwargs.pop("user_attachments", None)
+            hidden = bool(kwargs.pop("hidden", False))
             requested_tool_groups = kwargs.pop("tool_groups", ())
             if isinstance(requested_tool_groups, str):
                 requested_tool_groups = (requested_tool_groups,)
@@ -835,6 +836,8 @@ class LLMManager:
                     user_metadata["input_text"] = str(user_input_text or "")
                 if isinstance(user_attachments, list):
                     user_metadata["attachments"] = copy.deepcopy(user_attachments)
+                if hidden:
+                    user_metadata["hidden"] = True
                 self.add_message(
                     "user",
                     user_input,

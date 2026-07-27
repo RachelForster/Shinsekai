@@ -159,6 +159,7 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
         dialog_output_required=True,
         user_attachments=[],
         user_input_text="hello",
+        hidden=False,
     )
 
 
@@ -245,6 +246,27 @@ def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_
     runtime.ui_update_manager.record_user_message.assert_called_once_with(
         "Inspect these\n[image: scene.png] [file: notes.txt]"
     )
+
+
+def test_llm_worker_hidden_control_input_bypasses_visible_history() -> None:
+    user_input_queue = CountingQueue()
+    tts_queue = CountingQueue()
+    user_input_queue.put(UserInputMessage(text="/phone connect", hidden=True))
+    user_input_queue.put(None)
+
+    runtime = _make_app_runtime()
+    runtime.config.config.api_config.is_streaming = False
+    runtime.llm_manager.chat.return_value = '{"character_name":"Alice","speech":"Done","sprite":"0"}'
+    LLMWorker(user_input_queue, tts_queue).run()
+
+    # A hidden control input still reaches the model...
+    runtime.llm_manager.chat.assert_called_once()
+    # ...tagged as hidden so it is never later replayed as visible player input
+    # across persistence / fork / revert...
+    assert runtime.llm_manager.chat.call_args.kwargs.get("hidden") is True
+    # ...and it is never surfaced as visible player dialogue or a send notification.
+    runtime.ui_update_manager.record_user_message.assert_not_called()
+    runtime.ui_update_manager.post_notification.assert_not_called()
 
 
 def test_tts_worker_exception_path_uses_original_put_data_fallback(

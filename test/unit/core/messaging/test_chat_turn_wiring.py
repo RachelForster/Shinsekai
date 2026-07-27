@@ -62,6 +62,28 @@ def test_wiring_preserves_attachment_payloads() -> None:
     assert message.attachments == attachments
 
 
+def test_wiring_marks_hidden_control_input() -> None:
+    input_queue = Queue()
+    service = create_chat_turn_service(
+        config=make_config(interrupt_enabled=False),
+        user_input_queue=input_queue,
+        tts_queue=ClearableQueue(),
+        audio_queue=ClearableQueue(),
+        llm_manager=MagicMock(),
+        ui_worker=MagicMock(),
+        ui_updates=MagicMock(),
+    )
+
+    service.submit("/phone connect", hidden=True)
+    service.submit("hello there")
+
+    hidden_message = input_queue.get_nowait()
+    visible_message = input_queue.get_nowait()
+    assert hidden_message.text == "/phone connect"
+    assert hidden_message.hidden is True
+    assert visible_message.hidden is False
+
+
 def test_wiring_clears_downstream_ports_on_interrupt() -> None:
     input_queue = Queue()
     tts_queue = ClearableQueue()

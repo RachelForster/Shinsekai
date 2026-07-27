@@ -562,11 +562,12 @@ export function ChatStagePage() {
   };
 
   const openPluginPage = useCallback(
-    ({ mode, pageId, pluginId }: PluginPageTarget) => {
-      if (mode === "overlay") {
-        setOverlayTarget({ mode, pageId, pluginId });
+    (target: PluginPageTarget) => {
+      if (target.mode === "overlay") {
+        setOverlayTarget(target);
         return;
       }
+      const { pageId, pluginId } = target;
       navigate(
         { pathname: "/settings/plugins", search: location.search },
         {
@@ -629,7 +630,13 @@ export function ChatStagePage() {
 
   return (
     <>
-      {overlayTarget ? <PluginPageOverlay onClose={closePluginPageOverlay} target={overlayTarget} /> : null}
+      {overlayTarget ? (
+        <PluginPageOverlay
+          key={`${overlayTarget.pluginId}\0${overlayTarget.pageId}`}
+          onClose={closePluginPageOverlay}
+          target={overlayTarget}
+        />
+      ) : null}
       <main
         className="chat-stage"
         data-background={transparentBackground ? "transparent" : "media"}

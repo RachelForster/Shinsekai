@@ -26,6 +26,10 @@ export interface PluginRenderContext {
 
 export interface PluginPageTarget {
   mode?: PluginSlotContributionPageMode;
+  overlayBackground?: string;
+  overlayHeight?: number;
+  overlayInitialMini?: boolean;
+  overlayWidth?: number;
   pageId: string;
   payload?: Record<string, unknown>;
   pluginId: string;
@@ -130,7 +134,15 @@ function SerializableContribution({
     }
     if (contribution.actionType === "open-plugin-page") {
       if (contribution.pageId && onOpenPluginPage) {
-        onOpenPluginPage({ mode: contribution.pageMode, pageId: contribution.pageId, pluginId: contribution.pluginId });
+        onOpenPluginPage({
+          mode: contribution.pageMode,
+          overlayBackground: contribution.overlayBackground,
+          overlayHeight: contribution.overlayHeight,
+          overlayInitialMini: contribution.overlayInitialMini,
+          overlayWidth: contribution.overlayWidth,
+          pageId: contribution.pageId,
+          pluginId: contribution.pluginId,
+        });
       }
       return;
     }

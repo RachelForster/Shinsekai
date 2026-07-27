@@ -185,6 +185,10 @@ class FrontendChatUIContribution:
     variant: Literal["danger", "ghost", "primary"] = "ghost"
     plugin_id: str | None = None
     plugin_version: str | None = None
+    overlay_width: int | None = None
+    overlay_height: int | None = None
+    overlay_background: str | None = None
+    overlay_initial_mini: bool = False
 
 
 @dataclass(frozen=True)

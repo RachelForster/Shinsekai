@@ -96,7 +96,7 @@ class ChatTurnService:
         self._typing = False
         self._closed = False
 
-    def submit(self, text: str, *, attachments: list[dict[str, Any]] | None = None) -> BatchState:
+    def submit(self, text: str, *, attachments: list[dict[str, Any]] | None = None, hidden: bool = False) -> BatchState:
         """Accept one processed user message.
 
         When batching is disabled the message is delivered immediately.  In
@@ -111,8 +111,8 @@ class ChatTurnService:
         if self.options.interrupt_enabled and self.is_active():
             self.interrupt()
 
-        if not self.options.batch_enabled:
-            self._deliver(value, attachment_payloads)
+        if hidden or not self.options.batch_enabled:
+            self._deliver(value, attachment_payloads, hidden=hidden)
             return self.batch_state()
 
         with self._lock:
@@ -291,7 +291,10 @@ class ChatTurnService:
             self._closed = True
             self._cancel_batch_timer_locked()
 
-    def _deliver(self, text: str, attachments: list[dict[str, Any]]) -> None:
+    def _deliver(self, text: str, attachments: list[dict[str, Any]], *, hidden: bool = False) -> None:
+        if hidden:
+            self._sink(text, attachments=attachments, hidden=True)
+            return
         if attachments:
             self._sink(text, attachments=attachments)
         else:

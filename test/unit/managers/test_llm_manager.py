@@ -514,6 +514,24 @@ class TestLLMManagerCompact:
         assert user_message["input_text"] == "Inspect"
         assert user_message["attachments"] == attachments
 
+    def test_chat_marks_hidden_control_input_in_persisted_history(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["Response."]
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
+
+        mgr.chat("/phone connect", stream=False, include_local_time=False, hidden=True)
+
+        user_message = mgr.messages[-2]
+        assert user_message["role"] == "user"
+        assert user_message["hidden"] is True
+
+    def test_chat_omits_hidden_flag_for_normal_input(self, mock_llm_adapter):
+        mock_llm_adapter.responses = ["Response."]
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")
+
+        mgr.chat("hello", stream=False, include_local_time=False)
+
+        assert "hidden" not in mgr.messages[-2]
+
     def test_chat_activates_requested_tool_groups_inside_turn(self, mock_llm_adapter, monkeypatch):
         mock_llm_adapter.responses = ["Response."]
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="S")

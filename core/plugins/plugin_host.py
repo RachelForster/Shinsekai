@@ -269,7 +269,7 @@ def wire_user_input_plugins(
     mgr = _plugin_manager
     processors: list[Callable[[str], str | None]] = []
 
-    def emit_user_text(text: str, *, attachments: list[dict[str, Any]] | None = None) -> bool:
+    def emit_user_text(text: str, *, attachments: list[dict[str, Any]] | None = None, hidden: bool = False) -> bool:
         t = text
         for proc in processors:
             try:
@@ -282,9 +282,12 @@ def wire_user_input_plugins(
             t = out
         attachment_payloads = list(attachments or [])
         if sink is not None:
-            sink(t, attachments=attachment_payloads)
+            if hidden:
+                sink(t, attachments=attachment_payloads, hidden=True)
+            else:
+                sink(t, attachments=attachment_payloads)
         else:
-            user_input_queue.put(UserInputMessage(text=t, attachments=attachment_payloads))
+            user_input_queue.put(UserInputMessage(text=t, attachments=attachment_payloads, hidden=hidden))
         return True
 
     if mgr is not None:

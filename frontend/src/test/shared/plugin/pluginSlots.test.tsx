@@ -212,4 +212,52 @@ describe("plugin slot registry", () => {
     });
     expect(repository.run).not.toHaveBeenCalled();
   });
+
+  it("forwards declared overlay presentation hints when opening a page", async () => {
+    repository.list.mockResolvedValue([
+      {
+        actionLabel: "Dashboard",
+        actionType: "open-plugin-page",
+        actionable: true,
+        description: "Open a generic plugin dashboard",
+        icon: "puzzle",
+        id: "demo.dashboard",
+        order: 20,
+        overlayBackground: "#101014",
+        overlayHeight: 720,
+        overlayInitialMini: true,
+        overlayWidth: 400,
+        pageId: "dashboard",
+        pageMode: "overlay",
+        pluginId: "demo.plugin",
+        pluginVersion: "1.0.0",
+        presentation: "button",
+        slot: "chat-dialog-actions",
+        title: "Dashboard",
+        variant: "ghost",
+      },
+    ]);
+    const onOpenPluginPage = vi.fn();
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ToastProvider>
+          <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-dialog-actions" />
+        </ToastProvider>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Dashboard" }));
+
+    expect(onOpenPluginPage).toHaveBeenCalledWith({
+      mode: "overlay",
+      overlayBackground: "#101014",
+      overlayHeight: 720,
+      overlayInitialMini: true,
+      overlayWidth: 400,
+      pageId: "dashboard",
+      pluginId: "demo.plugin",
+    });
+    expect(repository.run).not.toHaveBeenCalled();
+  });
 });

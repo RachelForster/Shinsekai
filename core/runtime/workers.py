@@ -175,16 +175,18 @@ class LLMWorker(QThreadDagNode):
                     },
                 )
                 tracker.start_cross("e2e")
-                self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
+                if not message.hidden:
+                    self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
 
-                if hasattr(self.ui_update_manager, "record_user_message"):
-                    self.ui_update_manager.record_user_message(prepared_input.display_text)
-                else:
-                    formatted_user_message = (
-                        "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
-                        f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
-                    )
-                    self.ui_update_manager.chat_history.append(formatted_user_message)
+                if not message.hidden:
+                    if hasattr(self.ui_update_manager, "record_user_message"):
+                        self.ui_update_manager.record_user_message(prepared_input.display_text)
+                    else:
+                        formatted_user_message = (
+                            "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+                            f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
+                        )
+                        self.ui_update_manager.chat_history.append(formatted_user_message)
 
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
@@ -193,6 +195,7 @@ class LLMWorker(QThreadDagNode):
                         "dialog_output_required": True,
                         "user_input_text": message.text,
                         "user_attachments": [attachment.to_payload() for attachment in attachments],
+                        "hidden": message.hidden,
                     }
                     if attachments:
                         chat_kwargs["user_display_text"] = prepared_input.display_text
