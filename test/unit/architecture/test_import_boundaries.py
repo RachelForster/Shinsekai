@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -54,7 +55,18 @@ FORBIDDEN_IMPORTS = {
             "ui",
         }
     ),
-    "core": frozenset({"ai", "application", "frontend_bridge_core", "ui"}),
+    "core": frozenset(
+        {
+            "ai",
+            "application",
+            "asr",
+            "frontend_bridge_core",
+            "llm",
+            "t2i",
+            "tts",
+            "ui",
+        }
+    ),
     "ai": frozenset(
         {
             "asr",
@@ -66,9 +78,43 @@ FORBIDDEN_IMPORTS = {
         }
     ),
     "plugin_system": frozenset(
-        {"ai", "application", "frontend_bridge_core", "ui"}
+        {
+            "ai",
+            "application",
+            "asr",
+            "frontend_bridge_core",
+            "llm",
+            "t2i",
+            "tts",
+            "ui",
+        }
+    ),
+    "application": frozenset({"frontend_bridge_core", "ui"}),
+    "frontend_bridge_core": frozenset(
+        {
+            "ai",
+            "asr",
+            "core",
+            "llm",
+            "plugin_system",
+            "t2i",
+            "tts",
+            "ui",
+        }
     ),
 }
+
+DECLARED_LAYER_ROOTS = frozenset(
+    {
+        "sdk",
+        "config",
+        "core",
+        "ai",
+        "plugin_system",
+        "application",
+        "frontend_bridge_core",
+    }
+)
 
 
 @dataclass(frozen=True, order=True)
@@ -77,9 +123,9 @@ class ImportViolation:
     imported_root: str
 
 
-# Historical exceptions are removed by O2-O5. This allowlist is deliberately
-# path-specific so a new violation in the same package still fails the test.
-ALLOWED_VIOLATIONS = frozenset(
+# Immutable O1 baseline. Never append to or replace this set after O1; later
+# migrations may only remove entries from ALLOWED_VIOLATIONS.
+LOCKED_BASELINE_VIOLATIONS = frozenset(
     {
         ImportViolation("ai/memory/extraction.py", "llm"),
         ImportViolation("ai/vision/service.py", "llm"),
@@ -88,11 +134,45 @@ ALLOWED_VIOLATIONS = frozenset(
         ImportViolation("config/config_manager.py", "llm"),
         ImportViolation("config/config_manager.py", "t2i"),
         ImportViolation("config/config_manager.py", "tts"),
+        ImportViolation("core/handlers/ui_message_handler.py", "asr"),
         ImportViolation("core/media/auto_annotation.py", "ai"),
         ImportViolation("core/plugins/plugin_host.py", "ai"),
+        ImportViolation("core/plugins/plugin_host.py", "asr"),
+        ImportViolation("core/plugins/plugin_host.py", "llm"),
+        ImportViolation("core/plugins/plugin_host.py", "t2i"),
+        ImportViolation("core/plugins/plugin_host.py", "tts"),
         ImportViolation("core/plugins/plugin_host.py", "ui"),
         ImportViolation("core/plugins/publisher/metadata.py", "frontend_bridge_core"),
+        ImportViolation("core/runtime/ui_update_manager.py", "asr"),
         ImportViolation("core/runtime/workers.py", "ai"),
+        ImportViolation("core/sprite/chat_history.py", "llm"),
+        ImportViolation("core/sprite/chat_ui_service.py", "llm"),
+        ImportViolation("frontend_bridge_core/backgrounds.py", "ui"),
+        ImportViolation("frontend_bridge_core/characters.py", "ui"),
+        ImportViolation("frontend_bridge_core/chat.py", "core"),
+        ImportViolation("frontend_bridge_core/chat.py", "llm"),
+        ImportViolation("frontend_bridge_core/chat_stream.py", "core"),
+        ImportViolation("frontend_bridge_core/config.py", "asr"),
+        ImportViolation("frontend_bridge_core/config.py", "llm"),
+        ImportViolation("frontend_bridge_core/config.py", "t2i"),
+        ImportViolation("frontend_bridge_core/config.py", "tts"),
+        ImportViolation("frontend_bridge_core/handler.py", "core"),
+        ImportViolation("frontend_bridge_core/handler.py", "llm"),
+        ImportViolation("frontend_bridge_core/image_annotations.py", "core"),
+        ImportViolation("frontend_bridge_core/logs.py", "core"),
+        ImportViolation("frontend_bridge_core/mcp.py", "llm"),
+        ImportViolation("frontend_bridge_core/memory.py", "ai"),
+        ImportViolation("frontend_bridge_core/model_assets.py", "ai"),
+        ImportViolation("frontend_bridge_core/model_assets.py", "core"),
+        ImportViolation("frontend_bridge_core/plugin_catalog.py", "core"),
+        ImportViolation("frontend_bridge_core/plugin_publisher.py", "core"),
+        ImportViolation("frontend_bridge_core/plugin_ui.py", "core"),
+        ImportViolation("frontend_bridge_core/plugin_updates.py", "core"),
+        ImportViolation("frontend_bridge_core/runtime_dependencies.py", "core"),
+        ImportViolation("frontend_bridge_core/templates.py", "core"),
+        ImportViolation("frontend_bridge_core/templates.py", "llm"),
+        ImportViolation("frontend_bridge_core/templates.py", "ui"),
+        ImportViolation("frontend_bridge_core/tts.py", "ui"),
         ImportViolation("sdk/chat_ui_context.py", "ui"),
         ImportViolation("sdk/cli/registry_ops.py", "core"),
         ImportViolation("sdk/logging/configure.py", "core"),
@@ -105,6 +185,11 @@ ALLOWED_VIOLATIONS = frozenset(
         ImportViolation("sdk/tool_registry.py", "llm"),
     }
 )
+LOCKED_BASELINE_SHA256 = "c83d2b5ca262fcfa819c41ba308004f789647ac6368d78df5099635c5b6a3816"
+
+# This is the only set later Objective PRs may shrink. The locked baseline above
+# makes a newly invented exception fail even if it is added here.
+ALLOWED_VIOLATIONS = LOCKED_BASELINE_VIOLATIONS
 
 
 def _python_sources() -> list[Path]:
@@ -136,6 +221,28 @@ def _violations() -> frozenset[ImportViolation]:
         for imported_root in _imported_roots(source) & forbidden:
             violations.add(ImportViolation(relative, imported_root))
     return frozenset(violations)
+
+
+def test_declared_dependency_matrix_has_an_explicit_rule() -> None:
+    assert frozenset(FORBIDDEN_IMPORTS) == DECLARED_LAYER_ROOTS
+
+
+def test_migration_allowlist_never_exceeds_locked_o1_baseline() -> None:
+    serialized_baseline = "\n".join(
+        f"{violation.source}\0{violation.imported_root}"
+        for violation in sorted(LOCKED_BASELINE_VIOLATIONS)
+    )
+    assert len(LOCKED_BASELINE_VIOLATIONS) == 56
+    assert (
+        hashlib.sha256(serialized_baseline.encode()).hexdigest()
+        == LOCKED_BASELINE_SHA256
+    ), "The locked O1 baseline is immutable; restore it instead of editing it."
+
+    added = sorted(ALLOWED_VIOLATIONS - LOCKED_BASELINE_VIOLATIONS)
+    assert not added, (
+        "New import-boundary exceptions are forbidden. "
+        f"Remove the dependency instead of extending the O1 baseline: {added}"
+    )
 
 
 def test_import_boundaries_match_migration_allowlist() -> None:

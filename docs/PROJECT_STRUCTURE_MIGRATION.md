@@ -25,7 +25,9 @@
 
 ## 2. 基线依赖例外
 
-O1 的架构测试精确记录 22 个历史“文件 → 顶层包”例外。后续 Objective 必须删除对应 allowlist 项，不得新增：
+O1 的完整依赖矩阵精确记录 56 个历史“文件 → 顶层包”例外，分布在
+38 个文件中。`LOCKED_BASELINE_VIOLATIONS` 是永久上限；后续 Objective
+只能从活动 allowlist 删除对应项，不得新增或替换：
 
 | 来源 | 反向依赖 | 退出 Objective |
 | --- | --- | --- |
@@ -33,10 +35,32 @@ O1 的架构测试精确记录 22 个历史“文件 → 顶层包”例外。�
 | `ai/vision/service.py` | `llm` | O4 |
 | `config/character_manager.py` | `llm` | O4 |
 | `config/config_manager.py` | `core`、`llm`、`t2i`、`tts` | O3/O4 |
+| `core/handlers/ui_message_handler.py` | `asr` | O5 |
 | `core/media/auto_annotation.py` | `ai` | O3 |
-| `core/plugins/plugin_host.py` | `ai`、`ui` | O2/O5 |
+| `core/plugins/plugin_host.py` | `ai`、`asr`、`llm`、`t2i`、`tts`、`ui` | O2 |
 | `core/plugins/publisher/metadata.py` | `frontend_bridge_core` | O2 |
-| `core/runtime/workers.py` | `ai` | O3 |
+| `core/runtime/ui_update_manager.py` | `asr` | O5 |
+| `core/runtime/workers.py` | `ai` | O5 |
+| `core/sprite/chat_history.py` | `llm` | O5 |
+| `core/sprite/chat_ui_service.py` | `llm` | O5 |
+| `frontend_bridge_core/backgrounds.py` | `ui` | O5 |
+| `frontend_bridge_core/characters.py` | `ui` | O5 |
+| `frontend_bridge_core/chat.py` | `core`、`llm` | O3 |
+| `frontend_bridge_core/chat_stream.py` | `core` | O3 |
+| `frontend_bridge_core/config.py` | `asr`、`llm`、`t2i`、`tts` | O3/O4 |
+| `frontend_bridge_core/handler.py` | `core`、`llm` | O3 |
+| `frontend_bridge_core/image_annotations.py` | `core` | O3 |
+| `frontend_bridge_core/logs.py` | `core` | O3 |
+| `frontend_bridge_core/mcp.py` | `llm` | O3/O4 |
+| `frontend_bridge_core/memory.py` | `ai` | O3 |
+| `frontend_bridge_core/model_assets.py` | `ai`、`core` | O3 |
+| `frontend_bridge_core/plugin_catalog.py` | `core` | O3 |
+| `frontend_bridge_core/plugin_publisher.py` | `core` | O3 |
+| `frontend_bridge_core/plugin_ui.py` | `core` | O3 |
+| `frontend_bridge_core/plugin_updates.py` | `core` | O3 |
+| `frontend_bridge_core/runtime_dependencies.py` | `core` | O3 |
+| `frontend_bridge_core/templates.py` | `core`、`llm`、`ui` | O3/O5 |
+| `frontend_bridge_core/tts.py` | `ui` | O5 |
 | `sdk/chat_ui_context.py` | `ui` | O5 |
 | `sdk/cli/registry_ops.py` | `core` | O2 |
 | `sdk/logging/configure.py` | `core` | O3 |
@@ -72,23 +96,29 @@ PR 范围：
 - 将 `core/plugins/` 按职责拆入插件平台；
 - 将通用 pip、index、PyTorch runtime 移入 `core/runtime_env/`；
 - 将主程序更新逻辑移入 `core/app_update/`；
-- bridge 仅调用插件用例服务。
+- 保持 bridge 的既有 `core.plugins` 兼容入口，禁止在 O2 新增
+  bridge → `plugin_system` 依赖；
+- 将 `plugin_system/` 加入 Tauri 资源暂存，并校验代表性宿主文件存在。
 
 关键结果：
 
 - `core/plugins/` 的 14 个实现文件全部完成归位；
 - 生产代码对 `core.plugins` 的引用从 38 个文件降至 0；
-- bridge 不直接执行插件下载、解压、覆盖或 requirements 安装；
+- 插件实现进入 `plugin_system/`，bridge 到 application 的收口留给 O3；
 - host、registry、安装回滚、requirements 和 publisher 测试通过；
-- 删除 O1 allowlist 中插件相关例外。
+- 删除 O1 allowlist 中插件实现相关例外；
+- `prepare-tauri-resources` 与 `verify-tauri-resources` 覆盖 `plugin_system/`。
 
 ### O3：将 bridge 收敛为接口层
 
 PR 范围：
 
-- 建立 `application/`；
+- 建立 `application/`，包括最小 `application/plugins/` 用例门面；
 - 拆分 chat、runtime、handlers 和跨领域用例；
 - 将 handler 分发改为 routes；
+- 将插件 bridge 从 `core.plugins` 兼容入口切换到
+  `application/plugins/`，bridge 不直接依赖 `plugin_system/`；
+- 将 `application/` 加入 Tauri 资源暂存并校验代表性 use case；
 - Qt UI 不作为新 application 能力迁移，只保留 React/Tauri 所需事件契约。
 
 关键结果：
@@ -97,6 +127,7 @@ PR 范围：
 - bridge 中 pip、归档、模型下载、进程编排主体实现为 0；
 - chat、runtime dependency、TTS 下载通过 application use case 调用；
 - HTTP、task、聊天流契约测试全部通过；
+- Tauri 暂存与验证覆盖 `application/`；
 - 删除 O1 allowlist 中 runtime、media 和 logging 相关例外。
 
 ### O4：统一 AI 命名空间
@@ -122,7 +153,7 @@ PR 范围：
 
 - 删除达到退出条件的兼容模块；
 - 删除或隔离 Qt 设置 UI 与历史入口；
-- 更新构建资源清单和最终文档；
+- 从构建资源清单删除到期旧路径并更新最终文档；
 - 完成跨平台打包验证。
 
 关键结果：
@@ -155,7 +186,7 @@ PR 范围：
 | `core/runtime/requirements.py` | `core/runtime_env/requirements.py` | O3 | 环境检测 |
 | `core/handlers/*` | `application/chat/handlers/` | O3 | 不迁移 Qt 控件实现 |
 | `frontend_bridge_core/chat.py` | routes + `application/chat/` | O3 | bridge 只保留协议 |
-| `frontend_bridge_core/plugin_*.py` | routes + `application/plugins/` | O2/O3 | 插件能力先迁，路由随后收口 |
+| `frontend_bridge_core/plugin_*.py` | routes + `application/plugins/` | O2/O3 | O2 迁实现但保留 `core.plugins` 兼容调用；O3 切换到 application 门面 |
 
 ## 5. 通用退出条件
 

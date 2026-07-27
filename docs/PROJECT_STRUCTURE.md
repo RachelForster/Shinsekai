@@ -289,7 +289,9 @@ test/integration/
 test/e2e/
 ```
 
-`test/unit/architecture/` 负责校验依赖方向。迁移期间使用精确 allowlist 记录历史例外；新增例外必须先修改本文和迁移台账。
+`test/unit/architecture/` 负责校验依赖方向。O1 的锁定基线是
+allowlist 的永久上限：迁移修复后只能删除过期项，任何提交都不得新增、
+替换或重新解释例外；修改本文或迁移台账也不能授权扩充基线。
 
 ## 8. 新代码放置速查
 
