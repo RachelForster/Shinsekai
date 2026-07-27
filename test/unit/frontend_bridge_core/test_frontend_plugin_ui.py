@@ -171,6 +171,74 @@ def test_frontend_chat_ui_contribution_serializes_phone_page_navigation(monkeypa
     ]
 
 
+def test_frontend_chat_ui_contribution_bounds_overlay_presentation(monkeypatch):
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_chat_ui_contributions",
+        lambda: [
+            SimpleNamespace(
+                action={"type": "open-plugin-page", "page_id": "phone", "mode": "overlay"},
+                contribution_id="demo.phone",
+                description="Open phone",
+                icon="smartphone",
+                order=30,
+                overlay_background="  #101014  ",
+                overlay_height=100,
+                overlay_initial_mini=True,
+                overlay_width=99999,
+                plugin_id="demo.plugin",
+                plugin_version="1.0",
+                presentation="button",
+                slot="chat-top-toolbar",
+                title="Phone",
+                variant="ghost",
+            )
+        ],
+    )
+
+    payload = _frontend_chat_ui_contribution_payloads()[0]
+
+    assert payload["pageMode"] == "overlay"
+    assert payload["overlayWidth"] == 640  # clamped to the upper bound
+    assert payload["overlayHeight"] == 320  # clamped to the lower bound
+    assert payload["overlayBackground"] == "#101014"  # trimmed
+    assert payload["overlayInitialMini"] is True
+
+
+def test_frontend_chat_ui_contribution_ignores_overlay_fields_for_navigate(monkeypatch):
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_chat_ui_contributions",
+        lambda: [
+            SimpleNamespace(
+                action={"type": "open-plugin-page", "page_id": "phone", "mode": "navigate"},
+                contribution_id="demo.phone",
+                description="Open phone",
+                icon="smartphone",
+                order=30,
+                overlay_background="#101014",
+                overlay_height=700,
+                overlay_initial_mini=True,
+                overlay_width=400,
+                plugin_id="demo.plugin",
+                plugin_version="1.0",
+                presentation="button",
+                slot="chat-top-toolbar",
+                title="Phone",
+                variant="ghost",
+            )
+        ],
+    )
+
+    payload = _frontend_chat_ui_contribution_payloads()[0]
+
+    assert payload["pageMode"] == "navigate"
+    assert "overlayWidth" not in payload
+    assert "overlayHeight" not in payload
+    assert "overlayBackground" not in payload
+    assert "overlayInitialMini" not in payload
+
+
 def test_frontend_chat_ui_payload_does_not_truncate_lookup_identifiers(monkeypatch):
     long_contribution_id = "c" * 129
     long_page_id = "p" * 129

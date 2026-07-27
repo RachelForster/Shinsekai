@@ -48,6 +48,22 @@ def test_submit_preserves_attachments_for_immediate_and_batched_delivery() -> No
     assert delivered == [("inspect", [image, document])]
 
 
+def test_submit_hidden_bypasses_batching_and_flags_the_sink() -> None:
+    delivered: list[tuple[str, bool]] = []
+    service = ChatTurnService(
+        sink=lambda text, *, attachments, hidden=False: delivered.append((text, hidden)),
+        options=ChatTurnOptions(
+            interrupt_enabled=False,
+            batch_enabled=True,
+            batch_idle_seconds=30,
+        ),
+    )
+
+    service.submit("/phone connect", hidden=True)
+
+    assert delivered == [("/phone connect", True)]
+
+
 def test_submit_interrupts_active_turn_before_delivery() -> None:
     events: list[str] = []
     service = ChatTurnService(

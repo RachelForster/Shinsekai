@@ -10,6 +10,7 @@ import "./PluginPageOverlay.css";
 const DEFAULT_WIDTH = 360;
 const DEFAULT_HEIGHT = 640;
 const VIEWPORT_MARGIN = 8;
+const MINI_SCALE = 0.72;
 
 type Pos = { x: number; y: number };
 type Size = { height: number; width: number };
@@ -24,10 +25,30 @@ type OverlayPage = { src: string; title: string };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(min, value), Math.max(min, max));
 
-function viewportSize(): Size {
+function miniStorageKey(pluginId: string, pageId: string): string {
+  return `shinsekai:plugin-overlay-mini:${pluginId}:${pageId}`;
+}
+
+function readInitialMini(pluginId: string, pageId: string, fallback: boolean): boolean {
+  try {
+    const stored = window.localStorage.getItem(miniStorageKey(pluginId, pageId));
+    if (stored === "1") {
+      return true;
+    }
+    if (stored === "0") {
+      return false;
+    }
+  } catch {
+    // localStorage may be unavailable; fall back to the declared default.
+  }
+  return fallback;
+}
+
+function frameSize(baseWidth: number, baseHeight: number, mini: boolean): Size {
+  const scale = mini ? MINI_SCALE : 1;
   return {
-    height: Math.max(1, Math.min(DEFAULT_HEIGHT, window.innerHeight - VIEWPORT_MARGIN * 2)),
-    width: Math.max(1, Math.min(DEFAULT_WIDTH, window.innerWidth - VIEWPORT_MARGIN * 2)),
+    height: Math.max(1, Math.min(baseHeight * scale, window.innerHeight - VIEWPORT_MARGIN * 2)),
+    width: Math.max(1, Math.min(baseWidth * scale, window.innerWidth - VIEWPORT_MARGIN * 2)),
   };
 }
 
@@ -55,11 +76,23 @@ function initialPosition(size: Size): Pos {
  * cooperating page — from any blank area inside it (the page streams
  * `{ __pluginOverlay: "drag", type, dx, dy }` messages using absolute screen
  * coordinates). Tapping the bottom bar (a press with no drag) collapses it.
+ *
+ * A cooperating page may also stream `{ __pluginOverlay: "drag", type: "size", mini }`
+ * to toggle a scaled-down "mini" footprint, or `{ ..., type: "theme", bg }` to tint the
+ * window chrome. The declared overlay size / background / initial-mini defaults come from
+ * the contribution (see FrontendChatUIContribution.overlay_*), and the mini choice is
+ * persisted per page in localStorage.
  */
 export function PluginPageOverlay({ onClose, target }: { onClose: () => void; target: PluginPageTarget }) {
   const { t } = useI18n();
-  const [size, setSize] = useState<Size>(viewportSize);
-  const [pos, setPos] = useState<Pos>(() => initialPosition(viewportSize()));
+  const { overlayBackground, overlayHeight, overlayInitialMini, overlayWidth, pageId, pluginId } = target;
+  const baseWidth = overlayWidth ?? DEFAULT_WIDTH;
+  const baseHeight = overlayHeight ?? DEFAULT_HEIGHT;
+
+  const [mini, setMini] = useState<boolean>(() => readInitialMini(pluginId, pageId, Boolean(overlayInitialMini)));
+  const [size, setSize] = useState<Size>(() => frameSize(baseWidth, baseHeight, mini));
+  const [pos, setPos] = useState<Pos>(() => initialPosition(frameSize(baseWidth, baseHeight, mini)));
+  const [themeBg, setThemeBg] = useState<string | undefined>(overlayBackground);
   const [page, setPage] = useState<OverlayPage | null>(null);
   const [pageError, setPageError] = useState(false);
   const posRef = useRef(pos);
@@ -75,13 +108,13 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
     frameLoadedRef.current = false;
     setPage(null);
     setPageError(false);
-    void getPluginUiDetail(target.pluginId)
+    void getPluginUiDetail(pluginId)
       .then((detail) => {
         if (!active) {
           return;
         }
         const matchedPage = detail.pages.find(
-          (item) => item.id === target.pageId && item.pluginId === target.pluginId && item.frontendUrl,
+          (item) => item.id === pageId && item.pluginId === pluginId && item.frontendUrl,
         );
         if (!matchedPage?.frontendUrl) {
           setPageError(true);
@@ -89,7 +122,7 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
         }
         setPage({
           src: resolvePlatformHttpUrl(matchedPage.frontendUrl),
-          title: matchedPage.title || target.pageId,
+          title: matchedPage.title || pageId,
         });
       })
       .catch(() => {
@@ -100,7 +133,7 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
     return () => {
       active = false;
     };
-  }, [target.pageId, target.pluginId]);
+  }, [pageId, pluginId]);
 
   const postPresentation = useCallback(() => {
     const frameWindow = frameRef.current?.contentWindow;
@@ -130,14 +163,27 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
   }, [postPresentation]);
 
   useEffect(() => {
-    const handleResize = () => {
-      const nextSize = viewportSize();
+    setThemeBg(overlayBackground);
+  }, [overlayBackground]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(miniStorageKey(pluginId, pageId), mini ? "1" : "0");
+    } catch {
+      // Best-effort persistence of the mini preference.
+    }
+  }, [mini, pageId, pluginId]);
+
+  useEffect(() => {
+    const applySize = () => {
+      const nextSize = frameSize(baseWidth, baseHeight, mini);
       setSize(nextSize);
       setPos((current) => clampPosition(current, nextSize));
     };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
+    applySize();
+    window.addEventListener("resize", applySize);
+    return () => window.removeEventListener("resize", applySize);
+  }, [baseHeight, baseWidth, mini]);
 
   const onBarPointerDown = (event: ReactPointerEvent) => {
     if (event.button !== 0) {
@@ -188,13 +234,21 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
 
   // Optional drag from inside a cooperating iframe page (press any blank area), streamed
   // via postMessage as absolute screen-coordinate deltas so moving the window stays exact.
+  // The same envelope carries "size" (mini toggle) and "theme" (chrome tint) requests.
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       const frame = frameRef.current;
       if (!frame || event.source !== frame.contentWindow) {
         return;
       }
-      const d = event.data as { __pluginOverlay?: string; dx?: number; dy?: number; type?: string } | null;
+      const d = event.data as {
+        __pluginOverlay?: string;
+        bg?: string;
+        dx?: number;
+        dy?: number;
+        mini?: boolean;
+        type?: string;
+      } | null;
       if (!d || d.__pluginOverlay !== "drag") {
         return;
       }
@@ -216,6 +270,14 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
         dragBase.current = null;
       } else if (d.type === "close") {
         onClose();
+      } else if (d.type === "size") {
+        if (typeof d.mini === "boolean") {
+          setMini(d.mini);
+        }
+      } else if (d.type === "theme") {
+        if (typeof d.bg === "string" && d.bg.trim()) {
+          setThemeBg(d.bg.trim().slice(0, 120));
+        }
       }
     };
     window.addEventListener("message", onMessage);
@@ -224,12 +286,12 @@ export function PluginPageOverlay({ onClose, target }: { onClose: () => void; ta
 
   return createPortal(
     <section
-      aria-label={page?.title || target.pageId}
+      aria-label={page?.title || pageId}
       className="plugin-overlay"
       data-chat-stage-hitbox="true"
       data-plugin-page-overlay="true"
       role="dialog"
-      style={{ height: size.height, left: pos.x, top: pos.y, width: size.width }}
+      style={{ background: themeBg, height: size.height, left: pos.x, top: pos.y, width: size.width }}
     >
       {page ? (
         <iframe
