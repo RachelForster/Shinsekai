@@ -18,7 +18,12 @@ from llm.history_manager import (
     parse_assistant_dialog_content,
     HistoryManager,
 )
-from core.sprite.chat_history import canonical_user_turn_payload, pop_last_assistant_turn, pop_last_assistant_turn_payload
+from core.sprite.chat_history import (
+    canonical_user_turn_payload,
+    pop_last_assistant_turn,
+    pop_last_assistant_turn_payload,
+    revert_chat_history,
+)
 
 
 def _uh(msg: str) -> str:
@@ -504,3 +509,52 @@ class TestClearChatHistory:
         assert hm.get_history() == []
         assert json.loads(history_path.read_text(encoding="utf-8")) == []
         assert not tmp_path.exists()
+
+
+def _uhid(msg: str) -> dict:
+    return {"role": "user", "content": msg, "hidden": True}
+
+
+class _FakeLLMManager:
+    def __init__(self, messages):
+        self._messages = list(messages)
+
+    def get_messages(self):
+        return self._messages
+
+    def set_messages(self, messages):
+        self._messages = list(messages)
+
+
+class TestRevertChatHistoryHidden:
+    """Revert must count only *visible* user turns so the UI history and the LLM
+    message log stay aligned even when hidden control inputs are interleaved."""
+
+    def test_hidden_user_messages_are_not_counted_when_reverting(self):
+        # The UI history never contains hidden control turns — three visible turns.
+        hist = [
+            _uh("A"), _ah("Bot", "a1"),
+            _uh("B"), _ah("Bot", "a2"),
+            _uh("C"), _ah("Bot", "a3"),
+        ]
+        # The LLM log additionally carries a hidden "/phone connect" turn. If it
+        # were counted as a user, reverting to visible user #2 would break early
+        # and drop a whole visible turn from the LLM side (desync).
+        llm = _FakeLLMManager([
+            _uhid("/phone connect"),
+            _u("A"), _a("a1"),
+            _u("B"), _a("a2"),
+            _u("C"), _a("a3"),
+        ])
+
+        revert_chat_history(2, llm, hist, MagicMock())
+
+        # UI keeps the first two visible turns.
+        assert hist == [_uh("A"), _ah("Bot", "a1"), _uh("B"), _ah("Bot", "a2")]
+        # LLM keeps the same two visible turns AND the hidden context preceding
+        # them — counting by visible users keeps both sides aligned.
+        assert llm.get_messages() == [
+            _uhid("/phone connect"),
+            _u("A"), _a("a1"),
+            _u("B"), _a("a2"),
+        ]

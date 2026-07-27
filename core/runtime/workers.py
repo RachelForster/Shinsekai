@@ -195,6 +195,7 @@ class LLMWorker(QThreadDagNode):
                         "dialog_output_required": True,
                         "user_input_text": message.text,
                         "user_attachments": [attachment.to_payload() for attachment in attachments],
+                        "hidden": message.hidden,
                     }
                     if attachments:
                         chat_kwargs["user_display_text"] = prepared_input.display_text

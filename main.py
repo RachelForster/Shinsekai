@@ -908,7 +908,7 @@ def main():
             current_user_idx = -1
             for message in llm_manager.get_messages():
                 role = message.get("role")
-                if role == "user":
+                if role == "user" and not message.get("hidden"):
                     current_user_idx += 1
                     if current_user_idx >= user_index:
                         break
@@ -918,7 +918,7 @@ def main():
         def _user_message(user_index: int) -> dict[str, object] | None:
             current_user_idx = -1
             for message in llm_manager.get_messages():
-                if message.get("role") != "user":
+                if message.get("role") != "user" or message.get("hidden"):
                     continue
                 current_user_idx += 1
                 if current_user_idx == user_index:

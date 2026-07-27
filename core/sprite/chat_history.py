@@ -325,7 +325,7 @@ def revert_chat_history(user_index: int, llm_manager: Any, hist: list, window: A
     current_user_idx = -1
     for message in messages:
         role = message.get("role")
-        if role == "user":
+        if role == "user" and not message.get("hidden"):
             current_user_idx += 1
             if current_user_idx >= user_index:
                 break

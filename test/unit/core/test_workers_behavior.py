@@ -159,6 +159,7 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
         dialog_output_required=True,
         user_attachments=[],
         user_input_text="hello",
+        hidden=False,
     )
 
 
@@ -260,7 +261,10 @@ def test_llm_worker_hidden_control_input_bypasses_visible_history() -> None:
 
     # A hidden control input still reaches the model...
     runtime.llm_manager.chat.assert_called_once()
-    # ...but is never surfaced as visible player dialogue or a send notification.
+    # ...tagged as hidden so it is never later replayed as visible player input
+    # across persistence / fork / revert...
+    assert runtime.llm_manager.chat.call_args.kwargs.get("hidden") is True
+    # ...and it is never surfaced as visible player dialogue or a send notification.
     runtime.ui_update_manager.record_user_message.assert_not_called()
     runtime.ui_update_manager.post_notification.assert_not_called()
 
