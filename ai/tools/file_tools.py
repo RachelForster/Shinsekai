@@ -1,0 +1,320 @@
+"""Local filesystem tools — search, read, open, move, extract.
+
+All paths are resolved relative to user home or absolute.
+Destructive operations report what happened and do NOT silently delete.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import zipfile
+import tarfile
+import mimetypes
+import subprocess
+import platform
+from pathlib import Path
+from typing import Any
+
+from sdk.tool_registry import tool
+
+_FILE_SEARCH_LIMIT = 50
+
+
+def _resolve(path_str: str) -> Path:
+    p = Path(path_str)
+    if p.is_absolute():
+        return p.resolve()
+    return (Path.home() / p).resolve()
+
+
+def _safe(name: str, base: Path) -> Path | None:
+    """Resolve and check existence; return None if not found."""
+    p = _resolve(str(base / name)) if not Path(name).is_absolute() else _resolve(name)
+    if not p.exists():
+        return None
+    return p
+
+
+# ── Read-only tools ──────────────────────────────────────────────────
+
+
+@tool(name="file_search", group="file",
+      description="Search for files by name pattern or extension in a directory. "
+                  "pattern: glob like '*.py' or 'report*'. dir_path: directory to search (default home). "
+                  "Returns up to 50 matches with size and path.")
+def file_search(pattern: str, dir_path: str = "~") -> dict[str, Any]:
+    base = Path.home() if dir_path == "~" else _resolve(dir_path)
+    if not base.exists():
+        return {"error": f"Directory not found: {base}", "matches": []}
+    matches = []
+    for p in base.rglob(pattern):
+        if p.is_file():
+            matches.append({
+                "name": p.name,
+                "path": str(p),
+                "size": p.stat().st_size,
+                "size_human": _human_size(p.stat().st_size),
+            })
+        if len(matches) >= _FILE_SEARCH_LIMIT:
+            break
+    return {"pattern": pattern, "directory": str(base), "count": len(matches), "matches": matches}
+
+
+@tool(name="file_list_dir", group="file",
+      description="List contents of a directory. path: directory path (default current working dir). "
+                  "Returns files and subdirectories with sizes.")
+def file_list_dir(path: str = ".") -> dict[str, Any]:
+    p = _resolve(path)
+    if not p.exists():
+        return {"error": f"Directory not found: {p}"}
+    items = []
+    try:
+        for entry in sorted(p.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower())):
+            info = {"name": entry.name, "type": "dir" if entry.is_dir() else "file"}
+            if entry.is_file():
+                info["size"] = entry.stat().st_size
+                info["size_human"] = _human_size(entry.stat().st_size)
+            items.append(info)
+    except PermissionError:
+        return {"error": f"Permission denied: {p}", "items": []}
+    return {"path": str(p), "count": len(items), "items": items}
+
+
+@tool(name="file_read", group="file",
+      description="Read a text file and return its content. "
+                  "path: file path. max_chars: max characters to read (default 5000, for preview). "
+                  "line_start/line_end: optional line range (1-indexed).")
+def file_read(path: str, max_chars: int = 5000, line_start: int = 0, line_end: int = 0) -> dict[str, Any]:
+    p = _resolve(path)
+    if not p.is_file():
+        return {"error": f"File not found: {p}"}
+    try:
+        with open(p, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read(max_chars)
+        if line_start > 0:
+            lines = content.split("\n")
+            s = max(0, line_start - 1)
+            e = min(len(lines), line_end) if line_end > 0 else len(lines)
+            content = "\n".join(lines[s:e])
+            if len(content) > max_chars:
+                content = content[:max_chars]
+        truncated = len(content) >= max_chars
+        return {
+            "path": str(p),
+            "size": p.stat().st_size,
+            "content": content,
+            "truncated": truncated,
+        }
+    except Exception as e:
+        return {"error": str(e), "path": str(p)}
+
+
+@tool(name="file_info", group="file",
+      description="Get detailed info about a file or directory: size, modified time, type.")
+def file_info(path: str) -> dict[str, Any]:
+    p = _resolve(path)
+    if not p.exists():
+        return {"error": f"Path not found: {p}"}
+    st = p.stat()
+    mime, _ = mimetypes.guess_type(str(p)) if p.is_file() else (None, None)
+    return {
+        "name": p.name,
+        "path": str(p),
+        "type": "directory" if p.is_dir() else "file",
+        "size": st.st_size if p.is_file() else None,
+        "size_human": _human_size(st.st_size) if p.is_file() else None,
+        "mime": mime or "unknown",
+        "modified": _ts_to_str(st.st_mtime),
+        "created": _ts_to_str(st.st_ctime),
+    }
+
+
+@tool(name="file_open", group="file",
+      description="Open a file or folder with the default system application.")
+def file_open(path: str) -> dict[str, Any]:
+    p = _resolve(path)
+    if not p.exists():
+        return {"error": f"Path not found: {p}"}
+    try:
+        if platform.system() == "Windows":
+            os.startfile(str(p))
+        elif platform.system() == "Darwin":
+            subprocess.run(["open", str(p)], check=True)
+        else:
+            subprocess.run(["xdg-open", str(p)], check=True)
+        return {"opened": str(p)}
+    except Exception as e:
+        return {"error": str(e), "path": str(p)}
+
+
+@tool(name="file_search_content", group="file",
+      description="Search for text inside files. keyword: text to search. dir_path: directory. "
+                  "file_pattern: optional glob filter like '*.py'. Returns matching lines with file paths.")
+def file_search_content(keyword: str, dir_path: str = "~", file_pattern: str = "*") -> dict[str, Any]:
+    base = Path.home() if dir_path == "~" else _resolve(dir_path)
+    if not base.exists():
+        return {"error": f"Directory not found: {base}"}
+    results = []
+    count = 0
+    import fnmatch
+    for p in base.rglob(file_pattern):
+        if not p.is_file():
+            continue
+        if p.stat().st_size > 2 * 1024 * 1024:  # skip >2MB
+            continue
+        try:
+            with open(p, "r", encoding="utf-8", errors="replace") as f:
+                for i, line in enumerate(f, 1):
+                    if keyword.lower() in line.lower():
+                        results.append({
+                            "file": str(p),
+                            "line": i,
+                            "content": line.strip()[:200],
+                        })
+                        count += 1
+                        if count >= 30:
+                            break
+                if count >= 30:
+                    break
+        except Exception:
+            continue
+    return {"keyword": keyword, "directory": str(base), "count": len(results), "matches": results}
+
+
+# ── Write / destructive tools ────────────────────────────────────────
+
+
+@tool(name="file_move", group="file", risk="high",
+      description="Move or rename a file/directory. source: original path. dest: destination path.")
+def file_move(source: str, dest: str) -> dict[str, Any]:
+    src = _resolve(source)
+    dst = _resolve(dest)
+    if not src.exists():
+        return {"error": f"Source not found: {src}"}
+    try:
+        shutil.move(str(src), str(dst))
+        return {"moved": str(src), "to": str(dst)}
+    except Exception as e:
+        return {"error": str(e), "source": str(src), "dest": str(dst)}
+
+
+@tool(name="file_copy", group="file", risk="medium",
+      description="Copy a file. source: original path. dest: destination path.")
+def file_copy(source: str, dest: str) -> dict[str, Any]:
+    src = _resolve(source)
+    dst = _resolve(dest)
+    if not src.is_file():
+        return {"error": f"Source file not found: {src}"}
+    try:
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(src), str(dst))
+        return {"copied": str(src), "to": str(dst)}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@tool(name="file_delete", group="file", risk="high",
+      description="Delete a file or empty directory. WARNING: this is permanent. Returns what was deleted.")
+def file_delete(path: str) -> dict[str, Any]:
+    p = _resolve(path)
+    if not p.exists():
+        return {"error": f"Path not found: {p}"}
+    try:
+        if p.is_dir():
+            p.rmdir()
+            return {"deleted": str(p), "type": "directory"}
+        else:
+            p.unlink()
+            return {"deleted": str(p), "type": "file", "size_human": _human_size(p.stat().st_size)}
+    except Exception as e:
+        return {"error": str(e), "path": str(p)}
+
+
+@tool(name="file_extract", group="file",
+      description="Extract a zip or tar.gz archive to a directory. "
+                  "archive_path: the compressed file. extract_to: target directory (defaults to same folder).")
+def file_extract(archive_path: str, extract_to: str = "") -> dict[str, Any]:
+    p = _resolve(archive_path)
+    if not p.is_file():
+        return {"error": f"Archive not found: {p}"}
+    dest = _resolve(extract_to) if extract_to else p.parent / p.stem
+    dest.mkdir(parents=True, exist_ok=True)
+    try:
+        name_low = p.name.lower()
+        if name_low.endswith(".zip"):
+            with zipfile.ZipFile(p, "r") as zf:
+                zf.extractall(dest)
+        elif name_low.endswith((".tar.gz", ".tgz")):
+            with tarfile.open(p, "r:gz") as tf:
+                tf.extractall(dest)
+        elif name_low.endswith(".tar"):
+            with tarfile.open(p, "r:") as tf:
+                tf.extractall(dest)
+        else:
+            return {"error": f"Unsupported archive format: {p.name}"}
+        # Count extracted files
+        extracted = sum(1 for _ in dest.rglob("*"))
+        return {"extracted": str(p), "to": str(dest), "files_count": extracted}
+    except Exception as e:
+        return {"error": str(e), "archive": str(p)}
+
+
+@tool(name="file_write", group="file", risk="high",
+      description="Create a new file or overwrite an existing file with text content. "
+                  "path: file path. content: text content to write.")
+def file_write(path: str, content: str) -> dict[str, Any]:
+    p = _resolve(path)
+    existed = p.exists()
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(content)
+        return {"written": str(p), "size": p.stat().st_size, "existed": existed}
+    except Exception as e:
+        return {"error": str(e), "path": str(p)}
+
+
+@tool(name="file_append", group="file", risk="medium",
+      description="Append text to an existing file. Creates the file if it doesn't exist. "
+                  "path: file path. content: text to append.")
+def file_append(path: str, content: str) -> dict[str, Any]:
+    p = _resolve(path)
+    existed = p.exists()
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(content)
+        return {"appended": str(p), "size": p.stat().st_size, "existed": existed}
+    except Exception as e:
+        return {"error": str(e), "path": str(p)}
+
+
+@tool(name="file_mkdir", group="file", risk="medium",
+      description="Create a new directory (and any missing parent directories). "
+                  "path: directory path to create.")
+def file_mkdir(path: str) -> dict[str, Any]:
+    p = _resolve(path)
+    if p.exists():
+        return {"error": f"Path already exists: {p}"}
+    try:
+        p.mkdir(parents=True, exist_ok=False)
+        return {"created": str(p)}
+    except Exception as e:
+        return {"error": str(e), "path": str(p)}
+
+
+# ── Helpers ───────────────────────────────────────────────────────────
+
+
+def _human_size(size: int) -> str:
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024:
+            return f"{size:.1f}{unit}"
+        size /= 1024
+    return f"{size:.1f}TB"
+
+
+def _ts_to_str(ts: float) -> str:
+    from datetime import datetime
+    return datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M:%S")

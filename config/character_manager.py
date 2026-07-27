@@ -72,105 +72,11 @@ class CharacterManager:
         self._config_manager.save_characters_config()
 
     def generate_character_setting(self, name: str, setting: str) -> Tuple[str, str]:
-        """
-        使用 LLM 为角色生成详细设定。
-        
-        Args:
-            name: 角色名称。
-            setting: 用户的补充信息/初步设定。
-            
-        Returns:
-            Tuple[str, str]: (操作结果消息, 生成或当前的设定内容)
-        """
-        if not name:
-            return "请选择或输入要生成的角色的名字！", setting
-        
-        # 查找角色
-        character = self._config_manager.get_character_by_name(name)
-        
-        # 如果角色不存在，则先创建一个默认角色
-        if character is None:
-            self.add_character(name=name, color='', sprite_prefix='', gpt_model_path='', 
-                                            sovits_model_path='', refer_audio_path='', prompt_text='', prompt_lang='', character_setting=setting)
-            # 重新获取角色实例
-            character = self._config_manager.get_character_by_name(name)
-            if character is None:
-                return f"创建角色 {name} 失败。", setting
+        """Deprecated compatibility call for the retired Qt character UI."""
+        import importlib
 
-        setting = "无" if not setting else setting
-        
-        # 构造 Prompt 模板
-        template = f"""
-        你需要帮助用户写出{name}的角色设定，包括{name}的背景信息，性格特点，和语言习惯。输出plain text格式，不要使用markdown格式。
-        将{name}的背景信息，性格特点，和语言习惯分段写，并且同一段内标号，不一定是3点，有可能比3点多。
-        输出格式示例：
-        {name}的背景信息：
-        1.姓名和出处：
-        2.外表：
-        3.背景：
-        4.经历：
-
-        {name}的性格特点：
-        1.
-        2.
-        3.
-
-        {name}的语言习惯：
-        1.
-        2.
-        """
-        
-        try:
-            llm_provider, llm_model, llm_base_url, api_key = self._config_manager.get_llm_api_config()
-            
-            if not llm_provider or not api_key or not llm_model:
-                return "LLM 配置不完整，请先设定大语言模型供应商、模型和 API Key。", setting
-
-            from llm.llm_manager import LLMAdapterFactory, LLMManager
-
-            llm_factory_kwargs = self._config_manager.merged_llm_factory_kwargs(
-                llm_provider,
-                {
-                    "llm_provider": llm_provider,
-                    "api_key": api_key,
-                    "base_url": llm_base_url,
-                    "model": llm_model,
-                },
-            )
-            # 用最终传给 adapter 的参数做签名，覆盖 provider 默认值和用户在设置页的覆盖项。
-            # 这样角色页复用 CharacterManager 时，也能感知模型、API Key、Base URL 等变更。
-            llm_config_signature = tuple(
-                sorted((str(k), repr(v)) for k, v in llm_factory_kwargs.items())
-            )
-
-            # 配置没变就复用已有 LLMManager；配置变了才重建 adapter，避免继续请求旧模型。
-            if self._llm_manager is None or self._llm_config_signature != llm_config_signature:
-                llm_adapter = LLMAdapterFactory.create_adapter(
-                    **llm_factory_kwargs
-                )
-                self._llm_manager = LLMManager(adapter=llm_adapter, user_template=template)
-                self._llm_config_signature = llm_config_signature
-                
-            self._llm_manager.set_user_template(template)
-            
-            # 假设 chat 方法返回生成的文本
-            new_setting_text = self._llm_manager.chat(
-                f"补充信息：{setting},请输出结果：",
-                stream=False,
-                response_format={"type": "text"},
-                include_local_time=False,
-            )
-            
-            # 更新 Character 实例并保存
-            character.character_setting = new_setting_text
-            self._config_manager.save_characters_config() 
-            
-            return "输出成功", character.character_setting
-            
-        except ImportError:
-            return "输出失败: LLM 模块依赖未找到 (LLMAdapterFactory, LLMManager)", setting
-        except Exception as e:
-            return f"输出失败:{e}", setting
+        module = importlib.import_module("application.characters.generation")
+        return module.generate_character_setting(self, name, setting)
 
 
     def save_characters_to_file(self) -> str:

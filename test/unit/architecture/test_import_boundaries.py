@@ -222,6 +222,23 @@ ALLOWED_VIOLATIONS = LOCKED_BASELINE_VIOLATIONS - frozenset(
         ImportViolation("frontend_bridge_core/tts.py", "ui"),
         ImportViolation("sdk/cli/registry_ops.py", "core"),
         ImportViolation("sdk/logging/configure.py", "core"),
+        ImportViolation("ai/memory/extraction.py", "llm"),
+        ImportViolation("ai/vision/service.py", "llm"),
+        ImportViolation("config/character_manager.py", "llm"),
+        ImportViolation("config/config_manager.py", "core"),
+        ImportViolation("config/config_manager.py", "llm"),
+        ImportViolation("config/config_manager.py", "t2i"),
+        ImportViolation("config/config_manager.py", "tts"),
+        ImportViolation("core/sprite/chat_history.py", "llm"),
+        ImportViolation("frontend_bridge_core/config.py", "asr"),
+        ImportViolation("frontend_bridge_core/config.py", "llm"),
+        ImportViolation("frontend_bridge_core/config.py", "t2i"),
+        ImportViolation("frontend_bridge_core/config.py", "tts"),
+        ImportViolation("frontend_bridge_core/mcp.py", "llm"),
+        ImportViolation("sdk/manager.py", "config"),
+        ImportViolation("sdk/manager.py", "llm"),
+        ImportViolation("sdk/register.py", "llm"),
+        ImportViolation("sdk/tool_registry.py", "llm"),
     }
 )
 
@@ -326,4 +343,39 @@ def test_application_does_not_own_concrete_network_transport() -> None:
     assert not unexpected, (
         "Move concrete network transports to frontend_bridge_core/transport: "
         f"{unexpected}"
+    )
+
+
+def test_active_host_code_does_not_import_legacy_ai_namespaces() -> None:
+    legacy_roots = {"asr", "llm", "t2i", "tts"}
+    allowed_legacy_callers = {
+        "core/handlers/ui_message_handler.py",
+        "core/runtime/ui_update_manager.py",
+        "core/sprite/chat_ui_service.py",
+    }
+    source_roots = (
+        "ai",
+        "application",
+        "config",
+        "core",
+        "frontend_bridge_core",
+        "main.py",
+        "plugin_system",
+        "sdk",
+        "tools",
+    )
+    offenders: list[tuple[str, str]] = []
+    for relative_root in source_roots:
+        root = REPO_ROOT / relative_root
+        sources = [root] if root.is_file() else sorted(root.rglob("*.py"))
+        for source in sources:
+            relative = source.relative_to(REPO_ROOT).as_posix()
+            if relative in allowed_legacy_callers:
+                continue
+            for imported_root in _imported_roots(source) & legacy_roots:
+                offenders.append((relative, imported_root))
+
+    assert not offenders, (
+        "Active host code must use ai.*; only Qt retirement callers may use "
+        f"legacy AI namespaces: {offenders}"
     )

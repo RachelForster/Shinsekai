@@ -1,17 +1,6 @@
-"""ASR 适配器工厂；插件注册项由宿主 ``apply_asr_providers(ASRAdapterFactory._adapters)`` 合并（与 LLM/TTS 一致）。"""
+"""Compatibility alias for :mod:`ai.asr.asr_manager`."""
 
-from __future__ import annotations
+import sys
+from ai.asr import asr_manager as _module
 
-from typing import Type
-
-from sdk.adapters.asr import ASRAdapter
-
-from asr.asr_adapter import VoskAdapter
-
-
-class ASRAdapterFactory:
-    """内置 Vosk；可选 Whisper 等由插件 ``register_asr_adapter`` 写入同一字典。"""
-
-    _adapters: dict[str, Type[ASRAdapter]] = {
-        "vosk": VoskAdapter,
-    }
+sys.modules[__name__] = _module

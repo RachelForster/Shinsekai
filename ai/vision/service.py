@@ -12,7 +12,7 @@ from core.media.chat_attachments import (
     ResolvedChatAttachment,
     chat_attachment_display_text,
 )
-from llm.tools.file_tools import file_read
+from ai.tools.file_tools import file_read
 
 
 DEFAULT_IMAGE_PROMPT = (

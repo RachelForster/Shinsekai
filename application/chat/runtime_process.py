@@ -41,7 +41,7 @@ from core.sprite.chat_branch_storage import (
     remove_chat_history_storage,
 )
 from core.sprite.chat_history_text import history_payload_to_plain_text, parse_assistant_dialog_content
-from llm.tools.chat_ui_tools import sanitize_user_display_name
+from ai.tools.chat_ui_tools import sanitize_user_display_name
 
 from application.chat.history_paths import (
     is_unc_history_path,
