@@ -35,6 +35,10 @@ project_root = current_script.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
+from core.sprite.sprite_cli import load_sprite_launch_config
+
+_LAUNCH_CONFIG = load_sprite_launch_config()
+
 
 def _early_cli_option(name: str) -> str:
     args = sys.argv[1:]
@@ -44,7 +48,8 @@ def _early_cli_option(name: str) -> str:
         prefix = f"{name}="
         if arg.startswith(prefix):
             return arg[len(prefix):]
-    return ""
+    config_key = name.lstrip("-").replace("-", "_")
+    return str(_LAUNCH_CONFIG.get(config_key) or "")
 
 
 _EARLY_STREAM_ENDPOINT = _early_cli_option("--stream-endpoint")
@@ -413,7 +418,7 @@ def main():
             ),
         )
     with _startup_phase("args.parse"):
-        args = parse_sprite_args(tr_i18n)
+        args = parse_sprite_args(tr_i18n, defaults=_LAUNCH_CONFIG)
     stream_sink = _EARLY_STREAM_SINK if args.stream_endpoint == _EARLY_STREAM_ENDPOINT else None
     if args.stream_endpoint and stream_sink is None:
         with _startup_phase("stream.sink.init"):

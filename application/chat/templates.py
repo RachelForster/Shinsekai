@@ -15,7 +15,7 @@ from llm.template_generator import (
 )
 
 from application.runtime.state import BridgeState
-from core.security.paths import safe_child_path, safe_filename
+from sdk.path_utils import safe_child_path, safe_filename
 
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
 MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"

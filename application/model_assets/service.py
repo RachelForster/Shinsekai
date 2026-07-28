@@ -11,7 +11,7 @@ from core.model_assets.service import ModelAssetSpec, download_model_asset, insp
 
 from application.runtime.state import BridgeState
 from application.runtime.tasks import _update_task
-from core.security.paths import reject_control_chars
+from sdk.path_utils import reject_control_chars
 
 _ASR_FASTER_WHISPER_ASSET_ID = "asr.faster-whisper"
 _MEMORY_EMBEDDING_ASSET_ID = "memory.embedding"

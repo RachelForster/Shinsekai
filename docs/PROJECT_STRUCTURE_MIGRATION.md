@@ -114,6 +114,9 @@ PR 范围：
 - chat 进程/初始化、runtime dependency、模型资产、TTS 下载、诊断包和插件更新均通过 application use case 调用；
 - WebSocket client transport 位于 `frontend_bridge_core/transport/`，application
   只保留 event sink 契约和快照归并；
+- HTTP、application、plugin system 共用的路径校验收敛到
+  `sdk.path_utils`；旧 `core.security.paths` 与 bridge path helper 仅保留兼容导出；
+- chat 启动参数通过受控 JSON 环境配置传递，子进程 argv 只包含可信解释器和入口；
 - `application/` 禁止反向依赖 bridge 或 Qt UI；旧 AI 实现通过 `sdk.llm_runtime`
   使用宿主回调，不得反向导入 application；
 - 默认与 headless workflow 已切换到 `application.runtime.workers`，旧

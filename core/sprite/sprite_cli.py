@@ -3,8 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 from collections.abc import Callable
 from typing import Any
+
+
+CHAT_LAUNCH_CONFIG_ENV = "SHINSEKAI_CHAT_LAUNCH_CONFIG"
+_MAX_LAUNCH_CONFIG_CHARS = 64 * 1024
 
 
 def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParser:
@@ -72,5 +78,43 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
     return parser
 
 
-def parse_sprite_args(tr_i18n: Callable[..., str]) -> Any:
-    return build_sprite_arg_parser(tr_i18n).parse_args()
+def load_sprite_launch_config() -> dict[str, Any]:
+    """Load bridge-provided argument defaults without placing them in subprocess argv."""
+
+    raw = os.environ.pop(CHAT_LAUNCH_CONFIG_ENV, "").strip()
+    if not raw:
+        return {}
+    if len(raw) > _MAX_LAUNCH_CONFIG_CHARS:
+        raise ValueError("chat launch config is too large")
+    data = json.loads(raw)
+    if not isinstance(data, dict):
+        raise ValueError("chat launch config must be a JSON object")
+
+    parser = build_sprite_arg_parser(lambda key: key)
+    allowed = {action.dest for action in parser._actions if action.dest != "help"}
+    unknown = set(data) - allowed
+    if unknown:
+        raise ValueError(f"unsupported chat launch config keys: {sorted(unknown)!r}")
+
+    normalized: dict[str, Any] = {}
+    for key, value in data.items():
+        if key == "headless":
+            if not isinstance(value, bool):
+                raise ValueError("chat launch config headless must be boolean")
+            normalized[key] = value
+            continue
+        if not isinstance(value, str):
+            raise ValueError(f"chat launch config {key} must be a string")
+        normalized[key] = value
+    return normalized
+
+
+def parse_sprite_args(
+    tr_i18n: Callable[..., str],
+    *,
+    defaults: dict[str, Any] | None = None,
+) -> Any:
+    parser = build_sprite_arg_parser(tr_i18n)
+    if defaults:
+        parser.set_defaults(**defaults)
+    return parser.parse_args()

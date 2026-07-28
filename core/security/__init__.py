@@ -1,6 +1,6 @@
 """Shared host security helpers."""
 
-from core.security.paths import (
+from sdk.path_utils import (
     reject_control_chars,
     safe_child_path,
     safe_existing_dir_path,

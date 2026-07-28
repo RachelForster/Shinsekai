@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 from plugin_system.registry.catalog import RegistryPluginRecord
@@ -6,11 +7,94 @@ from application.plugins.catalog import (
     _plugin_rows,
     _plugin_registry_rows,
     _resolve_loaded_plugin_for_manifest_entry,
+    _uninstall_plugin,
 )
 
 
 class DemoPlugin:
     pass
+
+
+def test_uninstall_plugin_deletes_only_a_directory_below_plugins_root(tmp_path, monkeypatch):
+    import plugin_system.host as plugin_host
+    import plugin_system.registry.download as registry_download
+
+    plugin_dir = tmp_path / "plugins" / "demo"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "plugin.py").write_text("class Demo: pass\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("application.plugins.catalog._plugin_rows", lambda: [])
+    monkeypatch.setattr(plugin_host, "remove_plugin_manifest_entry", lambda _entry: True)
+    monkeypatch.setattr(
+        plugin_host,
+        "infer_plugin_package_directory",
+        lambda _entry: Path("plugins") / "demo",
+    )
+    monkeypatch.setattr(
+        registry_download,
+        "unmark_repo_for_manifest_entry",
+        lambda _entry: None,
+    )
+
+    result = _uninstall_plugin("plugins.demo.plugin:Demo")
+
+    assert result["folderNote"] == ""
+    assert not plugin_dir.exists()
+
+
+def test_uninstall_plugin_refuses_directory_outside_plugins_root(tmp_path, monkeypatch):
+    import plugin_system.host as plugin_host
+    import plugin_system.registry.download as registry_download
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep", encoding="utf-8")
+    (tmp_path / "plugins").mkdir()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("application.plugins.catalog._plugin_rows", lambda: [])
+    monkeypatch.setattr(plugin_host, "remove_plugin_manifest_entry", lambda _entry: True)
+    monkeypatch.setattr(
+        plugin_host,
+        "infer_plugin_package_directory",
+        lambda _entry: outside,
+    )
+    monkeypatch.setattr(
+        registry_download,
+        "unmark_repo_for_manifest_entry",
+        lambda _entry: None,
+    )
+
+    result = _uninstall_plugin("plugins.demo.plugin:Demo")
+
+    assert "outside project root" in result["folderNote"]
+    assert (outside / "keep.txt").read_text(encoding="utf-8") == "keep"
+
+
+def test_uninstall_plugin_refuses_nested_package_directory(tmp_path, monkeypatch):
+    import plugin_system.host as plugin_host
+    import plugin_system.registry.download as registry_download
+
+    nested = tmp_path / "plugins" / "owner" / "demo"
+    nested.mkdir(parents=True)
+    (nested / "keep.txt").write_text("keep", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("application.plugins.catalog._plugin_rows", lambda: [])
+    monkeypatch.setattr(plugin_host, "remove_plugin_manifest_entry", lambda _entry: True)
+    monkeypatch.setattr(
+        plugin_host,
+        "infer_plugin_package_directory",
+        lambda _entry: Path("plugins") / "owner" / "demo",
+    )
+    monkeypatch.setattr(
+        registry_download,
+        "unmark_repo_for_manifest_entry",
+        lambda _entry: None,
+    )
+
+    result = _uninstall_plugin("plugins.owner/demo.plugin:Demo")
+
+    assert "非顶层插件目录" in result["folderNote"]
+    assert (nested / "keep.txt").read_text(encoding="utf-8") == "keep"
 
 
 def test_display_title_for_offline_plugin_entry_uses_class_or_module_tail():

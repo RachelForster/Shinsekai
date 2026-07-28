@@ -1,27 +1,24 @@
 from __future__ import annotations
 
 import ipaddress
-import os
 import re
 from pathlib import Path
 from urllib.parse import quote, urlsplit, urlunsplit
 
-from .path_utils import strip_windows_verbatim_prefix
+from sdk.path_utils import (
+    reject_control_chars,
+    safe_child_path,
+    safe_existing_dir_path,
+    safe_existing_file_path,
+    safe_existing_path,
+    safe_filename,
+    safe_project_path,
+)
 
 
-_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
 _HOST_RE = re.compile(r"^[A-Za-z0-9.-]+$")
 _SAFE_COMMAND_RE = re.compile(r"^[A-Za-z0-9._+-]+$")
 _SAFE_SEARCH_RE = re.compile(r"^[\w\s.,:;!?()\[\]'\"+&/@#-]{1,200}$", re.UNICODE)
-
-
-def reject_control_chars(value: str, *, field: str = "value") -> str:
-    text = str(value or "").strip()
-    if not text:
-        raise ValueError(f"{field} is required")
-    if _CONTROL_CHARS_RE.search(text):
-        raise ValueError(f"{field} contains control characters")
-    return text
 
 
 def safe_header_value(value: str) -> str:
@@ -100,78 +97,6 @@ def validated_origin(raw_origin: str, *, allowed_ports: set[int]) -> str:
     if parsed.port not in allowed_ports:
         raise ValueError("origin port is not allowed")
     return safe_header_value(origin)
-
-
-def _comparison_path(path: Path) -> str:
-    value = str(path)
-    if os.name == "nt":
-        value = strip_windows_verbatim_prefix(value)
-        return os.path.normcase(os.path.normpath(value))
-    return os.path.normpath(value)
-
-
-def _ensure_path_within_base(base: Path, resolved: Path, *, message: str) -> Path:
-    base_value = _comparison_path(base)
-    resolved_value = _comparison_path(resolved)
-    try:
-        common = os.path.commonpath([base_value, resolved_value])
-    except ValueError as exc:
-        raise PermissionError(f"{message} or uses a different drive") from exc
-    if common != base_value:
-        raise PermissionError(message)
-    # Comparison keys must never replace the native I/O path. In particular,
-    # keep a verbatim prefix when the caller supplied or inherited one.
-    return resolved
-
-
-def safe_project_path(raw_path: str | os.PathLike[str], root: Path | None = None) -> Path:
-    base = (root or Path.cwd()).expanduser().resolve(strict=False)
-    raw = reject_control_chars(os.fspath(raw_path), field="path")
-    candidate = Path(raw)
-    if not candidate.is_absolute():
-        candidate = base / candidate
-    resolved = candidate.expanduser().resolve(strict=False)
-    return _ensure_path_within_base(base, resolved, message="path is outside project root")
-
-
-def safe_child_path(base: Path, raw_path: str | os.PathLike[str]) -> Path:
-    root = base.expanduser().resolve(strict=False)
-    raw = reject_control_chars(os.fspath(raw_path), field="path")
-    resolved = (root / raw.lstrip("/\\")).resolve(strict=False)
-    return _ensure_path_within_base(root, resolved, message="path is outside base path")
-
-
-def safe_existing_path(raw_path: str | os.PathLike[str], *, field: str = "path") -> Path:
-    raw = reject_control_chars(os.fspath(raw_path), field=field)
-    return Path(raw).expanduser().resolve(strict=True)
-
-
-def safe_existing_file_path(raw_path: str | os.PathLike[str], *, field: str = "path") -> Path:
-    path = safe_existing_path(raw_path, field=field)
-    if not path.is_file():
-        raise FileNotFoundError(path)
-    return path
-
-
-def safe_existing_dir_path(raw_path: str | os.PathLike[str], *, field: str = "path") -> Path:
-    path = safe_existing_path(raw_path, field=field)
-    if not path.is_dir():
-        raise NotADirectoryError(path)
-    return path
-
-
-def safe_filename(raw_name: str, *, default_suffix: str = "") -> str:
-    raw = reject_control_chars(raw_name, field="filename")
-    if "/" in raw or "\\" in raw:
-        raise ValueError("filename must not contain path separators")
-    name = Path(raw).name
-    if not name or name in {".", ".."}:
-        raise ValueError("filename is invalid")
-    if name != raw:
-        raise ValueError("filename must not contain path separators")
-    if default_suffix and not name.endswith(default_suffix):
-        name = f"{name}{default_suffix}"
-    return name
 
 
 def safe_executable(raw_executable: str, *, default: str) -> str:

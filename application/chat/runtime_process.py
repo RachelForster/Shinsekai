@@ -57,7 +57,8 @@ from application.chat.templates import (
 )
 from application.runtime.dependencies import runtime_dependency_error_from_text
 from application.runtime.state import BridgeState
-from core.security.paths import reject_control_chars
+from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
+from sdk.path_utils import reject_control_chars
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
@@ -189,14 +190,9 @@ def _close_chat_log_if_needed() -> None:
     _main_chat_log_file = None
 
 
-def _safe_chat_command(cmd: list[str]) -> list[str]:
-    return [reject_control_chars(item, field="command argument") for item in cmd]
-
-
 def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tuple[subprocess.Popen[bytes], Path]:
     global _main_chat_log_file
     _close_chat_log_if_needed()
-    safe_cmd = _safe_chat_command(cmd)
     log_path = _chat_log_path()
     _main_chat_log_file = log_path.open("a", encoding="utf-8", buffering=1)
     _main_chat_log_file.write(
@@ -204,13 +200,14 @@ def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tu
         + "=" * 60
         + f"\n{datetime.now().isoformat(sep=' ', timespec='seconds')}  main.py launch\n"
         + f"cwd: {cwd}\n"
-        + f"cmd: {' '.join(safe_cmd)}\n"
+        + f"cmd: {' '.join(cmd)}\n"
     )
     env = {**env, "PYTHONUNBUFFERED": "1"}
-    # safe_cmd is an argv list whose entries have passed control-character validation; shell=False is the default.
+    # The command contains only the trusted interpreter/entrypoint. Runtime
+    # options are delivered through a validated JSON environment payload.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
     process = subprocess.Popen(
-        safe_cmd,
+        cmd,
         cwd=str(cwd),
         env=env,
         stdout=_main_chat_log_file,
@@ -433,25 +430,26 @@ def _launch_chat(
         project_root = _project_root()
         app_root = _app_root(state)
         tts_slug = str(state.config_manager.config.api_config.tts_provider or "gpt-sovits").strip() or "gpt-sovits"
-        args = [
-            "--template=_temp",
-            f"--init_sprite_path={init_sprite_path or ''}",
-            f"--history={history_argument}",
-            f"--bg={selected_bg}",
-            f"--effect_names={effect_names}",
-            f"--t2i={'ComfyUI' if use_cg else ''}",
-            f"--room_id={room_id}",
-            f"--tts={tts_slug}",
-        ]
+        launch_config = {
+            "template": "_temp",
+            "init_sprite_path": init_sprite_path or "",
+            "history": history_argument,
+            "bg": selected_bg,
+            "effect_names": effect_names,
+            "t2i": "ComfyUI" if use_cg else "",
+            "room_id": room_id,
+            "tts": tts_slug,
+        }
         if character_names:
-            args.append(f"--characters={json.dumps(character_names, ensure_ascii=False)}")
+            launch_config["characters"] = json.dumps(character_names, ensure_ascii=False)
         if stream_endpoint:
-            args.append(f"--stream-endpoint={stream_endpoint}")
+            launch_config["stream_endpoint"] = stream_endpoint
         if init_stream_endpoint:
-            args.append(f"--init-stream-endpoint={init_stream_endpoint}")
+            launch_config["init_stream_endpoint"] = init_stream_endpoint
         if workflow_path:
-            args.append(f"--workflow={workflow_path}")
+            launch_config["workflow"] = workflow_path
         env = os.environ.copy()
+        env[CHAT_LAUNCH_CONFIG_ENV] = json.dumps(launch_config, ensure_ascii=False)
         env["SHINSEKAI_PROJECT_ROOT"] = str(project_root)
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
@@ -484,13 +482,13 @@ def _launch_chat(
             if exe is None:
                 checked = " 与 ".join(str(item) for item in candidates)
                 return f"启动失败: 未找到 main.exe（已检查 {checked}）。"
-            _main_chat_process, log_path = _popen_chat_process([str(exe)] + args, cwd=project_root, env=env)
+            _main_chat_process, log_path = _popen_chat_process([str(exe)], cwd=project_root, env=env)
         else:
             main_py = _main_py_path()
             if not main_py.is_file():
                 return f"启动失败: 未找到 main.py（已检查 {main_py}）。"
             _main_chat_process, log_path = _popen_chat_process(
-                [sys.executable, str(main_py)] + args,
+                [sys.executable, str(main_py)],
                 cwd=project_root,
                 env=env,
             )

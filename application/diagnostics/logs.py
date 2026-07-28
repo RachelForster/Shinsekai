@@ -9,7 +9,7 @@ from typing import Any
 from core.paths import resource_path
 from sdk.logging.environment import runtime_environment
 
-from core.security.paths import safe_child_path, safe_existing_file_path
+from sdk.path_utils import safe_child_path, safe_existing_file_path
 
 MAX_LOG_BYTES = 4 * 1024 * 1024
 MAX_LOG_FILES = 200

@@ -157,11 +157,13 @@ from application.runtime.dependencies import (
     runtime_dependency_error_from_text,
 )
 from frontend_bridge_core.security import (
+    safe_content_disposition,
+    safe_header_value,
+)
+from sdk.path_utils import (
     reject_control_chars,
     safe_child_path,
-    safe_content_disposition,
     safe_filename,
-    safe_header_value,
     safe_project_path,
 )
 from application.runtime.state import BridgeState, _jsonify, plugin_load_snapshot
@@ -217,6 +219,14 @@ _POLLING_PATHS = {
     "/api/model-assets/status",
     "/api/plugins/status",
 }
+
+
+def _safe_export_output_path(name: str, suffix: str) -> tuple[Path, str]:
+    project_root = Path.cwd().resolve(strict=False)
+    output_root = safe_project_path("output", root=project_root)
+    output_root.mkdir(parents=True, exist_ok=True)
+    output = safe_child_path(output_root, safe_filename(f"{name}{suffix}"))
+    return output, output.relative_to(project_root).as_posix()
 
 
 class _RangeNotSatisfiable(Exception):
@@ -925,12 +935,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 character = self.state.config_manager.get_character_by_name(name)
                 if character is None:
                     raise KeyError(f"character not found: {name}")
-                output = Path("output") / f"{name}.char"
-                output.parent.mkdir(parents=True, exist_ok=True)
+                output, output_relative = _safe_export_output_path(name, ".char")
                 import tools.file_util as file_util
 
                 file_util.export_character([_as_character_config(character)], output.as_posix(), open_folder=False)
-                self._send_json({"downloadUrl": f"/api/download?path={output.as_posix()}", "path": output.as_posix()})
+                self._send_json(
+                    {
+                        "downloadUrl": f"/api/download?path={output_relative}",
+                        "path": output_relative,
+                    }
+                )
             elif method == "POST" and path == "/api/backgrounds/translate":
                 self._send_json(_translate_background_fields(self.state, body))
             elif method == "POST" and path == "/api/backgrounds/images/upload":
@@ -983,11 +997,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 background = self.state.config_manager.get_background_by_name(name)
                 if background is None:
                     raise KeyError(f"background not found: {name}")
-                output = Path("output") / f"{name}.bg"
+                output, output_relative = _safe_export_output_path(name, ".bg")
                 import tools.file_util as file_util
 
                 file_util.export_background([background], output.as_posix(), open_folder=False)
-                self._send_json({"downloadUrl": f"/api/download?path={output.as_posix()}", "path": output.as_posix()})
+                self._send_json(
+                    {
+                        "downloadUrl": f"/api/download?path={output_relative}",
+                        "path": output_relative,
+                    }
+                )
             # --- effects ---
             elif method == "POST" and path == "/api/effects/audio/upload":
                 self._send_json(_upload_effect_audio(self.state, body))
@@ -1018,11 +1037,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 effect = self.state.config_manager.get_effect_by_name(name)
                 if effect is None:
                     raise KeyError(f"effect not found: {name}")
-                output = Path("output") / f"{name}.ef"
+                output, output_relative = _safe_export_output_path(name, ".ef")
                 import tools.file_util as file_util
 
                 file_util.export_effect([effect], output.as_posix(), open_folder=False)
-                self._send_json({"downloadUrl": f"/api/download?path={output.as_posix()}", "path": output.as_posix()})
+                self._send_json(
+                    {
+                        "downloadUrl": f"/api/download?path={output_relative}",
+                        "path": output_relative,
+                    }
+                )
             # --- templates ---
             elif method in {"POST", "PUT"} and path == "/api/templates":
                 self._send_json(_save_template_summary(self.state, body))

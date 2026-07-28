@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from core.security.paths import safe_existing_dir_path
+from sdk.path_utils import safe_existing_dir_path
 
 
 METADATA_NAMES = ("plugin.json", "shinsekai.plugin.json")

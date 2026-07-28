@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from core.security.paths import reject_control_chars, safe_project_path
+from sdk.path_utils import reject_control_chars, safe_project_path
 
 
 def _state_project_root(state: Any) -> Path:

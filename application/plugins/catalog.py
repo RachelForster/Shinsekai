@@ -4,7 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from core.security.paths import safe_child_path
+from sdk.path_utils import safe_project_path
 
 
 def _resolve_loaded_plugin_for_manifest_entry(entry: str, manager: Any | None) -> Any | None:
@@ -376,21 +376,20 @@ def _uninstall_plugin(plugin_id: str) -> dict[str, Any]:
 
     folder_note = ""
     directory = infer_plugin_package_directory(entry)
-    if directory is not None and directory.is_dir():
-        plugins_root = Path("plugins").resolve()
+    if directory is not None:
+        project_root = Path.cwd().resolve(strict=False)
+        plugins_root = safe_project_path("plugins", root=project_root)
         try:
-            target = directory.resolve()
-        except OSError as exc:
+            project_target = safe_project_path(directory, root=project_root)
+            target = safe_project_path(project_target, root=plugins_root)
+        except (OSError, PermissionError, ValueError) as exc:
             folder_note = str(exc)
         else:
-            try:
-                relative_target = target.relative_to(plugins_root)
-                target = safe_child_path(plugins_root, relative_target.as_posix())
-            except ValueError:
+            if target == plugins_root:
                 folder_note = f"跳过删除插件目录：{target.as_posix()}"
-            if not folder_note and target == plugins_root:
-                folder_note = f"跳过删除插件目录：{target.as_posix()}"
-            elif not folder_note:
+            elif target.parent != plugins_root:
+                folder_note = f"跳过删除非顶层插件目录：{target.as_posix()}"
+            elif target.is_dir():
                 try:
                     shutil.rmtree(target)
                 except OSError as exc:

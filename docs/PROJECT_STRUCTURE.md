@@ -218,7 +218,7 @@ core/media/         文件、附件、媒体资源和安全格式处理
 core/messaging/     消息模型、流解析和对话协议
 core/model_assets/  模型下载、缓存、来源和进度
 core/runtime_env/   Python、pip、依赖检测和运行环境诊断
-core/security/      路径、归档、下载来源等共享安全校验
+core/security/      归档、下载来源等宿主安全校验及旧路径兼容入口
 core/sprite/        聊天记录、立绘和分支存储
 ```
 
@@ -253,7 +253,8 @@ plugin_system/contributions/  前端页面、配置页、聊天 UI 等贡献解�
 - hooks、messages 和 tool registry；
 - 宿主回调和运行期注入契约；
 - UI contribution 数据类型；
-- 公共日志、异常和校验契约。
+- 公共日志、异常和校验契约；
+- 不依赖宿主实现的跨层路径校验工具。
 
 SDK 使用协议和注入点连接宿主，不直接导入宿主 manager、Qt 控件或 bridge。
 
@@ -312,7 +313,8 @@ allowlist 的永久上限：迁移修复后只能删除过期项，任何提交�
 | LLM tool wrapper | `ai/tools/` |
 | 模型下载和缓存 | `core/model_assets/` |
 | Python、pip 和依赖环境 | `core/runtime_env/` |
-| 通用路径与归档安全 | `core/security/` |
+| 跨层通用路径校验 | `sdk/path_utils.py` |
+| 归档与下载来源安全 | `core/security/` |
 | 插件 host/install/update/registry | `plugin_system/` |
 | 本地配置 schema 和持久化 | `config/` |
 | 插件公共契约 | `sdk/` |
