@@ -21,6 +21,22 @@ from sdk.types import (
 )
 
 
+def _deprecated_qt_builder_must_not_run(_context):
+    raise AssertionError("deprecated Qt contribution builder was invoked")
+
+
+def test_deprecated_qt_contribution_exports_remain_importable() -> None:
+    from sdk import (
+        ChatUIContribution as RootChatUIContribution,
+        SettingsUIContribution as RootSettingsUIContribution,
+        ToolsTabContribution as RootToolsTabContribution,
+    )
+
+    assert RootSettingsUIContribution is SettingsUIContribution
+    assert RootToolsTabContribution is ToolsTabContribution
+    assert RootChatUIContribution is ChatUIContribution
+
+
 class _BasePlugin(PluginBase):
     @property
     def plugin_id(self) -> str:
@@ -74,7 +90,7 @@ class _DemoPlugin(_BasePlugin):
             SettingsUIContribution(
                 page_id="settings",
                 nav_label="Settings",
-                build=lambda context: object(),
+                build=_deprecated_qt_builder_must_not_run,
                 order=20,
             )
         )
@@ -82,7 +98,7 @@ class _DemoPlugin(_BasePlugin):
             ToolsTabContribution(
                 tab_id="tools",
                 title="Tools",
-                build=lambda context: object(),
+                build=_deprecated_qt_builder_must_not_run,
                 order=30,
             )
         )
@@ -108,7 +124,7 @@ class _DemoPlugin(_BasePlugin):
             ChatUIContribution(
                 widget_id="chat",
                 placement="toolbar",
-                build=lambda context: object(),
+                build=_deprecated_qt_builder_must_not_run,
                 order=60,
             )
         )
@@ -176,11 +192,18 @@ def test_plugin_manager_collects_every_registered_capability(tmp_path: Path) -> 
     manager.apply_llm_tools(tools)  # type: ignore[arg-type]
     assert tools.calls == ["demo"]
 
-    assert manager.collect_settings_contributions()[0].plugin_id == "demo.lifecycle"
-    assert manager.collect_tools_tab_contributions()[0].plugin_version == "2.0.0"
+    assert manager.collect_settings_contributions() == []
+    assert manager.collect_tools_tab_contributions() == []
     assert manager.collect_frontend_config_contributions()[0].page_id == "frontend-config"
     assert manager.collect_frontend_page_contributions()[0].page_id == "frontend-page"
-    assert manager.collect_chat_ui_contributions()[0].widget_id == "chat"
+    assert manager.collect_chat_ui_contributions() == []
+
+    # Legacy Qt metadata remains registered so old plugins initialize without an
+    # SDK compatibility error, but it never enters the host rendering pipeline.
+    assert manager.capabilities is not None
+    assert manager.capabilities.settings_contributions[0].plugin_id == "demo.lifecycle"
+    assert manager.capabilities.tools_tab_contributions[0].plugin_version == "2.0.0"
+    assert manager.capabilities.chat_ui_contributions[0].widget_id == "chat"
     assert manager.collect_dag_yaml_paths() == [
         "workflows/demo.yaml",
         "workflows/other.yaml",

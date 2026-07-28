@@ -257,16 +257,18 @@ class PluginManager:
         processors.extend(plugin_processors)
 
     def collect_settings_contributions(self) -> list[SettingsUIContribution]:
+        """Return no deprecated Qt settings contributions.
+
+        Plugin initialization still accepts and records the legacy metadata,
+        but the current host must never render it.
+        """
         self._ensure_plugins_initialized()
-        if self._capabilities is None:
-            return []
-        return self._capabilities.settings_contributions
+        return []
 
     def collect_tools_tab_contributions(self) -> list[ToolsTabContribution]:
+        """Return no deprecated Qt tools contributions."""
         self._ensure_plugins_initialized()
-        if self._capabilities is None:
-            return []
-        return self._capabilities.tools_tab_contributions
+        return []
 
     def collect_frontend_config_contributions(self) -> list[FrontendConfigContribution]:
         self._ensure_plugins_initialized()
@@ -287,10 +289,9 @@ class PluginManager:
         return self._capabilities.frontend_chat_ui_contributions
 
     def collect_chat_ui_contributions(self) -> list[ChatUIContribution]:
+        """Return no deprecated Qt chat contributions."""
         self._ensure_plugins_initialized()
-        if self._capabilities is None:
-            return []
-        return self._capabilities.chat_ui_contributions
+        return []
 
     def collect_dag_yaml_paths(self) -> list[str]:
         self._ensure_plugins_initialized()

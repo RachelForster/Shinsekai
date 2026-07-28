@@ -50,12 +50,12 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_message_handler`      | Optional `MessageHandler` / `UIOutputMessageHandler`       |
 | `register_user_input_trigger`   | Hook `trigger(emit_user_text)` for alternate input sources |
 | `register_user_input_processor` | `(str) -> str \| None` filter before `UserInputMessage`    |
-| `register_settings_ui`          | Retired Qt compatibility API; do not use                   |
-| `register_tools_tab`            | Retired Qt compatibility API; do not use                   |
+| `register_settings_ui`          | Deprecated Qt compatibility metadata; accepted but never rendered |
+| `register_tools_tab`            | Deprecated Qt compatibility metadata; accepted but never rendered |
 | `register_frontend_config_page` | React-renderable plugin config page (schema + load/save callbacks) |
 | `register_frontend_page`        | Plugin-owned static frontend page embedded by iframe       |
 | `register_frontend_chat_ui`     | JSON-only Chat UI item rendered by the React host          |
-| `register_chat_ui_widget`       | Retired Qt compatibility API; do not use                   |
+| `register_chat_ui_widget`       | Deprecated Qt compatibility metadata; accepted but never rendered |
 | `register_dag_yaml`             | Workflow YAML path (convenience — delegates to `register_workflow`) |
 | `register_workflow`             | Workflow with optional output contract/schema              |
 | `register_output_contract_patch` | Patch an LLM output contract (fields, requirements, …)     |
@@ -67,6 +67,12 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 
 Frontend contributions pick up `plugin_id` / `plugin_version` from the active plugin
 when you leave those fields `None`.
+
+The legacy SDK names `SettingsUIContribution`, `ToolsTabContribution`,
+`ChatUIContribution`, `PluginSettingsUIContext`, and their three registration methods
+remain importable so existing plugins can still initialize. They are deprecated
+compatibility-only APIs: the host does not collect or render them, and it never invokes
+their `build` callbacks.
 
 Adapter registration stores the **class** (not an instance); registering the same
 provider name again overwrites the earlier one, including built-ins.
@@ -748,15 +754,17 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 
 ### `register_settings_ui(contribution)`
 
-Retired with the Qt settings UI. Existing calls are accepted only as deprecated
-metadata and are not rendered. Migrate to `register_frontend_config_page`.
+Deprecated with the Qt settings UI. The type and registration method remain available
+so old plugins still import and initialize, but the host never collects the contribution
+or invokes its `build` callback. Migrate to `register_frontend_config_page`.
 
 ---
 
 ### `register_tools_tab(contribution)`
 
-Retired with the Qt tools page. Use `register_frontend_config_page(kind="tools")` or
-`register_frontend_page`.
+Deprecated with the Qt tools page. Registration remains load-compatible, but the host
+never collects the contribution or invokes its `build` callback. Use
+`register_frontend_config_page(kind="tools")` or `register_frontend_page`.
 
 ---
 
@@ -1009,8 +1017,10 @@ The plugin page should call its own authenticated plugin backend when the user a
 
 ### `register_chat_ui_widget(contribution)`
 
-Retired with the Qt chat window. Use `register_frontend_chat_ui` for JSON-rendered
-actions or `register_frontend_page` plus `frontend_ui.present_page()` for composed UI.
+Deprecated with the Qt chat window. Registration remains load-compatible, but the host
+never collects the contribution or invokes its `build` callback. Use
+`register_frontend_chat_ui` for JSON-rendered actions or `register_frontend_page` plus
+`frontend_ui.present_page()` for composed UI.
 
 ---
 

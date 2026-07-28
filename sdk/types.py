@@ -44,7 +44,12 @@ __all__ = [
 
 @dataclass(frozen=True)
 class SettingsUIContribution:
-    """Deprecated Qt contribution retained only for manifest compatibility.
+    """Deprecated Qt contribution retained only for plugin-load compatibility.
+
+    The SDK still accepts this type so plugins written for the former Qt host
+    can be imported and initialized. The current host never calls ``build`` and
+    never renders this contribution. Use :class:`FrontendConfigContribution` or
+    :class:`FrontendPageContribution` for new or migrated plugins.
 
     ``build`` receives :class:`~sdk.plugin_host_context.PluginSettingsUIContext` only
     (read-only app snapshot + paths / name lists). It does **not** receive
@@ -67,7 +72,12 @@ class SettingsUIContribution:
 
 @dataclass(frozen=True)
 class ToolsTabContribution:
-    """Deprecated Qt tools contribution retained only for manifest compatibility.
+    """Deprecated Qt tools contribution retained only for plugin-load compatibility.
+
+    The SDK still accepts this type so plugins written for the former Qt host
+    can be imported and initialized. The current host never calls ``build`` and
+    never renders this contribution. Use :class:`FrontendConfigContribution`
+    with ``kind="tools"`` or :class:`FrontendPageContribution`.
 
     ``build`` receives :class:`~sdk.plugin_host_context.PluginSettingsUIContext` only
     (same restricted surface as settings pages). ``tab_id`` must be unique.
@@ -184,7 +194,12 @@ class FrontendChatUIContribution:
 
 @dataclass(frozen=True)
 class ChatUIContribution:
-    """Deprecated Qt chat contribution retained only for manifest compatibility.
+    """Deprecated Qt chat contribution retained only for plugin-load compatibility.
+
+    The SDK still accepts this type so plugins written for the former Qt host
+    can be imported and initialized. The current host never calls ``build`` and
+    never renders this contribution. Use :class:`FrontendChatUIContribution` or
+    :class:`FrontendPageContribution`.
 
     ``placement`` is a hint: e.g. ``"toolbar"``, ``"overlay"``, ``"input_row"``.
     The host decides how to interpret placements that it supports.

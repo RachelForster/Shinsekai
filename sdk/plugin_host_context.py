@@ -69,9 +69,10 @@ class PluginHostContext:
 
 @dataclass(frozen=True)
 class PluginSettingsUIContext:
-    """
-    What plugin-built Settings / Tools tabs may see: read-only host snapshot plus
-    a few path and listing fields. No config managers or save APIs.
+    """Deprecated context retained only for old Qt contribution imports.
+
+    The current host does not construct this context or invoke legacy Qt
+    contribution builders. It remains importable so older plugins can load.
     """
 
     host: PluginHostContext
