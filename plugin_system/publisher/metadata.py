@@ -8,7 +8,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from sdk.path_utils import safe_existing_dir_path
+from sdk.path_utils import safe_existing_dir_path, safe_existing_file_path
 
 
 METADATA_NAMES = ("plugin.json", "shinsekai.plugin.json")
@@ -110,10 +110,10 @@ def resolve_metadata_logo(root: Path, value: str) -> Path | None:
     raw = value.strip()
     if not raw:
         return None
-    candidate = Path(raw)
-    if not candidate.is_absolute():
-        candidate = root / candidate
-    return candidate.resolve() if candidate.exists() and candidate.is_file() else None
+    try:
+        return safe_existing_file_path(raw, roots=[root], field="plugin logo path")
+    except (OSError, PermissionError, ValueError):
+        return None
 
 
 def find_logo(root: Path) -> Path | None:

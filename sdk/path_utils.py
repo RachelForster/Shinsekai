@@ -39,6 +39,17 @@ def strip_windows_verbatim_prefix(value: str) -> str:
     return value
 
 
+def _has_windows_verbatim_prefix(value: str) -> bool:
+    return value.startswith(("\\\\?\\", "//?/"))
+
+
+def _windows_verbatim_path(value: str) -> str:
+    regular = strip_windows_verbatim_prefix(value)
+    if regular.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + regular[2:]
+    return "\\\\?\\" + regular
+
+
 def resolve_regular_path(
     value: str | os.PathLike[str],
     *,
@@ -60,59 +71,57 @@ def resolve_regular_path(
     return resolved
 
 
-def _comparison_path(path: str | os.PathLike[str]) -> str:
-    value = os.path.normpath(strip_windows_verbatim_prefix(os.fspath(path)))
-    return os.path.normcase(value) if os.name == "nt" else value
-
-
-def _path_prefix(base: str) -> str:
-    separator = "\\" if os.name == "nt" else "/"
-    value = _comparison_path(base)
-    return value if value.endswith(("/", "\\")) else f"{value}{separator}"
-
-
-def _resolve_path_text(value: str | os.PathLike[str]) -> str:
-    """Normalize a path as text so containment is checked before ``Path`` I/O."""
-
-    expanded = os.path.expanduser(os.fspath(value))
-    return os.path.realpath(os.path.abspath(expanded))
-
-
 def safe_project_path(
     raw_path: str | os.PathLike[str],
     root: Path | None = None,
 ) -> Path:
     """Resolve ``raw_path`` and require it to remain inside ``root``."""
 
-    base = _resolve_path_text(root or os.getcwd())
+    base_input = os.path.expanduser(os.fspath(root or os.getcwd()))
+    base_verbatim = os.name == "nt" and _has_windows_verbatim_prefix(base_input)
+    if os.name == "nt":
+        base_input = strip_windows_verbatim_prefix(base_input)
+    base = os.path.realpath(os.path.abspath(base_input))
     raw = reject_control_chars(os.fspath(raw_path), field="path")
-    expanded = os.path.expanduser(raw)
+    raw_verbatim = os.name == "nt" and _has_windows_verbatim_prefix(raw)
+    comparison_raw = strip_windows_verbatim_prefix(raw) if os.name == "nt" else raw
+    expanded = os.path.expanduser(comparison_raw)
+    raw_is_absolute = os.path.isabs(expanded)
     candidate = expanded if os.path.isabs(expanded) else os.path.join(base, expanded)
-    resolved = os.path.realpath(os.path.abspath(candidate))
-    base_value = _comparison_path(base)
-    resolved_value = _comparison_path(resolved)
-    base_drive = os.path.splitdrive(base_value)[0]
-    resolved_drive = os.path.splitdrive(resolved_value)[0]
+    # Keep the normalized value itself behind a direct ``startswith`` guard.
+    # Besides being easy to audit, this is the containment pattern understood
+    # by path-sensitive static analysis.
+    resolved = os.path.join(os.path.realpath(os.path.abspath(candidate)), "")
+    base_drive = os.path.normcase(os.path.splitdrive(base)[0])
+    resolved_drive = os.path.normcase(os.path.splitdrive(resolved)[0])
     if base_drive and resolved_drive and base_drive != resolved_drive:
         raise PermissionError("path is outside project root or uses a different drive")
-    if resolved_value != base_value and not resolved_value.startswith(_path_prefix(base)):
+    if not resolved.startswith(os.path.join(base, "")):
         raise PermissionError("path is outside project root")
+    if os.name == "nt" and (raw_verbatim or (base_verbatim and not raw_is_absolute)):
+        return Path(_windows_verbatim_path(resolved))
     return Path(resolved)
 
 
 def safe_child_path(base: Path, raw_path: str | os.PathLike[str]) -> Path:
     """Resolve a request-style child path beneath ``base``."""
 
-    root = _resolve_path_text(base)
+    base_input = os.path.expanduser(os.fspath(base))
+    base_verbatim = os.name == "nt" and _has_windows_verbatim_prefix(base_input)
+    if os.name == "nt":
+        base_input = strip_windows_verbatim_prefix(base_input)
+    root = os.path.realpath(os.path.abspath(base_input))
     raw = reject_control_chars(os.fspath(raw_path), field="path")
-    if os.path.splitdrive(raw)[0]:
+    raw_verbatim = os.name == "nt" and _has_windows_verbatim_prefix(raw)
+    comparison_raw = strip_windows_verbatim_prefix(raw) if os.name == "nt" else raw
+    if os.path.splitdrive(comparison_raw)[0]:
         raise PermissionError("path is outside base path")
-    candidate = os.path.join(root, raw.lstrip("/\\"))
-    resolved = os.path.realpath(os.path.abspath(candidate))
-    root_value = _comparison_path(root)
-    resolved_value = _comparison_path(resolved)
-    if resolved_value != root_value and not resolved_value.startswith(_path_prefix(root)):
+    candidate = os.path.join(root, comparison_raw.lstrip("/\\"))
+    resolved = os.path.join(os.path.realpath(os.path.abspath(candidate)), "")
+    if not resolved.startswith(os.path.join(root, "")):
         raise PermissionError("path is outside base path")
+    if os.name == "nt" and (raw_verbatim or base_verbatim):
+        return Path(_windows_verbatim_path(resolved))
     return Path(resolved)
 
 
@@ -141,22 +150,29 @@ def safe_existing_path(
     if not trusted_roots:
         raise ValueError("at least one trusted path root is required")
 
-    expanded = os.path.expanduser(raw)
-    first_root = _resolve_path_text(trusted_roots[0])
+    raw_verbatim = os.name == "nt" and _has_windows_verbatim_prefix(raw)
+    comparison_raw = strip_windows_verbatim_prefix(raw) if os.name == "nt" else raw
+    expanded = os.path.expanduser(comparison_raw)
+    raw_is_absolute = os.path.isabs(expanded)
+    first_root_input = os.path.expanduser(os.fspath(trusted_roots[0]))
+    first_root_verbatim = os.name == "nt" and _has_windows_verbatim_prefix(first_root_input)
+    if os.name == "nt":
+        first_root_input = strip_windows_verbatim_prefix(first_root_input)
+    first_root = os.path.realpath(os.path.abspath(first_root_input))
     candidate = expanded if os.path.isabs(expanded) else os.path.join(first_root, expanded)
-    resolved = os.path.realpath(os.path.abspath(candidate))
-    resolved_value = _comparison_path(resolved)
-    allowed = False
+    resolved = os.path.join(os.path.realpath(os.path.abspath(candidate)), "")
     for root in trusted_roots:
-        trusted_root = _resolve_path_text(root)
-        trusted_value = _comparison_path(trusted_root)
-        if resolved_value == trusted_value or resolved_value.startswith(_path_prefix(trusted_root)):
-            allowed = True
-            break
-    if not allowed:
-        raise PermissionError(f"{field} is outside the allowed roots")
-
-    return Path(resolved)
+        trusted_input = os.path.expanduser(os.fspath(root))
+        if os.name == "nt":
+            trusted_input = strip_windows_verbatim_prefix(trusted_input)
+        trusted_root = os.path.realpath(os.path.abspath(trusted_input))
+        if resolved.startswith(os.path.join(trusted_root, "")):
+            if os.name == "nt" and (
+                raw_verbatim or (first_root_verbatim and not raw_is_absolute)
+            ):
+                return Path(_windows_verbatim_path(resolved))
+            return Path(resolved)
+    raise PermissionError(f"{field} is outside the allowed roots")
 
 
 def safe_existing_file_path(

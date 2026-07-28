@@ -6,6 +6,7 @@ import pytest
 
 from sdk.path_utils import (
     safe_child_path,
+    safe_existing_dir_path,
     safe_existing_file_path,
     safe_filename,
     safe_project_path,
@@ -89,3 +90,10 @@ def test_safe_existing_file_path_requires_an_explicit_allowed_root(tmp_path):
 
     with pytest.raises(ValueError, match="trusted path root"):
         safe_existing_file_path(expected, roots=[])
+
+
+def test_safe_existing_dir_path_allows_the_exact_trusted_root(tmp_path):
+    allowed = tmp_path / "allowed"
+    allowed.mkdir()
+
+    assert safe_existing_dir_path(allowed, roots=[allowed]) == allowed.resolve()
