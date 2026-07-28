@@ -177,8 +177,13 @@ def _seed_builtin_themes() -> None:
 
 
 def _read_manifest(theme_dir: Path) -> Optional[Dict[str, Any]]:
-    manifest_path = theme_dir / "theme.json"
-    if not manifest_path.is_file():
+    try:
+        manifest_path = safe_existing_file_path(
+            theme_dir / MANIFEST_NAME,
+            roots=[_themes_root(), _builtin_themes_root()],
+            field="chat theme manifest",
+        )
+    except (OSError, PermissionError, ValueError):
         return None
     try:
         with manifest_path.open(encoding="utf-8") as file:

@@ -1,6 +1,8 @@
 import os
 from types import SimpleNamespace
 
+import pytest
+
 from frontend_bridge_core.tools import (
     _browse_local_files,
     _display_path,
@@ -91,3 +93,22 @@ def test_file_browser_relative_paths_still_resolve_from_project_root(tmp_path, m
     snapshot = _browse_local_files(SimpleNamespace(app_root_dir=str(app_root)), {"path": "data"})
 
     assert snapshot["cwd"] == _display_path(target)
+
+
+def test_file_browser_rejects_paths_outside_local_access_roots(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "Shinsekai"
+    home = tmp_path / "home"
+    outside = tmp_path / "outside"
+    for path in (project_root, app_root, home, outside):
+        path.mkdir()
+
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+
+    with pytest.raises(PermissionError, match="outside the allowed roots"):
+        _browse_local_files(
+            SimpleNamespace(app_root_dir=str(app_root)),
+            {"path": str(outside)},
+        )

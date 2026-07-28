@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from sdk.path_utils import normalize_path_identity
+
 
 def sprite_entry_path(sprite: object) -> str:
     if isinstance(sprite, dict):
@@ -23,10 +25,7 @@ def _character_sprites(character: object) -> list[Any]:
 
 
 def resolve_runtime_path(raw_path: str) -> Path:
-    path = Path(raw_path).expanduser()
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    return path.resolve(strict=False)
+    return normalize_path_identity(raw_path, field="initial sprite path")
 
 
 def _sprite_path_key(raw_path: str) -> str:

@@ -71,6 +71,22 @@ def resolve_regular_path(
     return resolved
 
 
+def normalize_path_identity(
+    value: str | os.PathLike[str],
+    *,
+    field: str = "path",
+) -> Path:
+    """Normalize path spelling without touching the filesystem.
+
+    Use this for comparisons only. Filesystem access must use one of the
+    containment-enforcing ``safe_*`` helpers below.
+    """
+
+    raw = reject_control_chars(os.fspath(value), field=field)
+    expanded = os.path.expanduser(raw)
+    return Path(os.path.abspath(os.path.normpath(expanded)))
+
+
 def safe_project_path(
     raw_path: str | os.PathLike[str],
     root: Path | None = None,
@@ -200,6 +216,7 @@ def safe_existing_dir_path(
 
 
 __all__ = [
+    "normalize_path_identity",
     "reject_control_chars",
     "resolve_regular_path",
     "safe_child_path",

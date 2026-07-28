@@ -8,15 +8,20 @@
 from __future__ import annotations
 
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
+from sdk.path_utils import reject_control_chars, safe_existing_path
 
-def _path_from_input(path: str | Path, *, label: str = "") -> Path:
-    text = str(path)
-    if any(ord(ch) < 32 or ord(ch) == 127 for ch in text):
-        raise ValueError(_msg("路径包含非法控制字符", label))
-    return Path(path)
+
+def _local_input_roots() -> tuple[Path, ...]:
+    roots = [Path.cwd(), Path(tempfile.gettempdir())]
+    try:
+        roots.append(Path.home())
+    except RuntimeError:
+        pass
+    return tuple(dict.fromkeys(roots))
 
 
 # ── 基础校验 ──────────────────────────────────────────────────────────────────
@@ -44,8 +49,12 @@ def file_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     if not path:
         return True, ""
     try:
-        p = _path_from_input(path, label=label)
-    except ValueError as exc:
+        p = safe_existing_path(
+            reject_control_chars(str(path), field=label or "path"),
+            roots=_local_input_roots(),
+            field=label or "path",
+        )
+    except (OSError, ValueError) as exc:
         return False, str(exc)
     if not p.is_file():
         return False, _msg(f"文件不存在: {p}", label)
@@ -57,8 +66,12 @@ def dir_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     if not path:
         return True, ""
     try:
-        p = _path_from_input(path, label=label)
-    except ValueError as exc:
+        p = safe_existing_path(
+            reject_control_chars(str(path), field=label or "path"),
+            roots=_local_input_roots(),
+            field=label or "path",
+        )
+    except (OSError, ValueError) as exc:
         return False, str(exc)
     if not p.is_dir():
         return False, _msg(f"目录不存在: {p}", label)
@@ -70,8 +83,12 @@ def path_exists(path: str | Path | None, label: str = "") -> tuple[bool, str]:
     if not path:
         return True, ""
     try:
-        p = _path_from_input(path, label=label)
-    except ValueError as exc:
+        p = safe_existing_path(
+            reject_control_chars(str(path), field=label or "path"),
+            roots=_local_input_roots(),
+            field=label or "path",
+        )
+    except (OSError, ValueError) as exc:
         return False, str(exc)
     if not p.exists():
         return False, _msg(f"路径不存在: {p}", label)
@@ -83,7 +100,7 @@ def path_is_absolute(path: str | Path | None, label: str = "") -> tuple[bool, st
     if not path:
         return True, ""
     try:
-        p = _path_from_input(path, label=label)
+        p = Path(reject_control_chars(str(path), field=label or "path"))
     except ValueError as exc:
         return False, str(exc)
     if not p.is_absolute():

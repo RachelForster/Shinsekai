@@ -6,8 +6,10 @@ from __future__ import annotations
 
 import inspect
 import json
+import os
 import re
 import subprocess
+import tempfile
 import time
 import unicodedata
 from dataclasses import dataclass, field
@@ -18,10 +20,10 @@ import requests
 
 from config.schema import SystemConfig
 from frontend_bridge_core.security import (
-    safe_executable,
     safe_search_query,
     validated_http_url,
 )
+from sdk.path_utils import reject_control_chars, safe_existing_file_path
 
 LogFn = Callable[[str], None]
 YOUTUBE_HOSTS = {"youtube.com", "youtu.be", "youtube-nocookie.com"}
@@ -37,7 +39,27 @@ def _slug(s: str, max_len: int = 80) -> str:
 
 def _which_yt_dlp(system_config: SystemConfig) -> str:
     exe = (system_config.music_cover_yt_dlp_exe or "").strip()
-    return safe_executable(exe, default="yt-dlp")
+    return exe or "yt-dlp"
+
+
+def _yt_dlp_environment(raw_executable: str) -> dict[str, str] | None:
+    """Resolve configured yt-dlp through PATH, keeping request data off argv."""
+
+    raw = reject_control_chars(raw_executable or "yt-dlp", field="yt-dlp executable")
+    if raw in {"yt-dlp", "yt-dlp.exe"}:
+        return None
+    executable = safe_existing_file_path(
+        raw,
+        roots=[Path.cwd(), Path.home(), Path(tempfile.gettempdir())],
+        field="yt-dlp executable",
+    )
+    if executable.name.casefold() not in {"yt-dlp", "yt-dlp.exe"}:
+        raise ValueError("configured executable must be named yt-dlp or yt-dlp.exe")
+    environment = os.environ.copy()
+    environment["PATH"] = (
+        str(executable.parent) + os.pathsep + environment.get("PATH", "")
+    )
+    return environment
 
 
 def _validated_public_media_url(raw_url: str, *, allowed_hosts: set[str] | None = None) -> str:
@@ -107,15 +129,22 @@ def bilibili_search_videos(query: str, limit: int = 8) -> List[dict]:
 def youtube_search_videos(query: str, limit: int = 8, yt_dlp: str = "yt-dlp") -> List[dict]:
     limit = max(1, min(int(limit), 20))
     query = safe_search_query(query)
-    yt_dlp = safe_executable(yt_dlp, default="yt-dlp")
     cmd = [
-        yt_dlp,
-        f"ytsearch{limit}:{query}",
+        "yt-dlp",
+        "--batch-file",
+        "-",
         "-j",
         "--flat-playlist",
         "--skip-download",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=180)
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        env=_yt_dlp_environment(yt_dlp),
+        input=f"ytsearch{limit}:{query}\n",
+        text=True,
+        timeout=180,
+    )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr or proc.stdout or "yt-dlp 搜索失败")
     out: List[dict] = []
@@ -142,11 +171,11 @@ def _run_yt_dlp_download(
     log: LogFn,
 ) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    outtmpl = str(out_dir / "%(title)s.%(ext)s")
-    yt_dlp = safe_executable(yt_dlp, default="yt-dlp")
     media_url = _validated_public_media_url(media_url)
     cmd = [
-        yt_dlp,
+        "yt-dlp",
+        "--batch-file",
+        "-",
         "-f",
         "bestaudio/best",
         "-x",
@@ -159,13 +188,19 @@ def _run_yt_dlp_download(
         "--sub-langs",
         "all",
         "-o",
-        outtmpl,
+        "%(title)s.%(ext)s",
         "--no-playlist",
-        "--",
-        media_url,
     ]
     log("执行下载: " + " ".join(cmd[:5]) + " ...")
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    proc = subprocess.run(
+        cmd,
+        capture_output=True,
+        cwd=out_dir,
+        env=_yt_dlp_environment(yt_dlp),
+        input=f"{media_url}\n",
+        text=True,
+        timeout=600,
+    )
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr or proc.stdout or "yt-dlp 下载失败")
     wavs = sorted(out_dir.glob("*.wav"), key=lambda p: p.stat().st_mtime, reverse=True)

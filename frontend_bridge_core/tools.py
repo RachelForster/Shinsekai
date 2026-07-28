@@ -9,6 +9,7 @@ from sdk.path_utils import (
     reject_control_chars,
     safe_existing_dir_path,
     safe_existing_file_path,
+    safe_existing_path,
     strip_windows_verbatim_prefix as _strip_windows_verbatim_prefix,
 )
 from application.runtime.state import BridgeState
@@ -288,11 +289,11 @@ def _browse_local_files(state: BridgeState, payload: dict[str, Any]) -> dict[str
     root_raw = os.environ.get("EASYAI_PROJECT_ROOT") or str(Path.cwd())
     project_root = _resolve_path(Path(root_raw).expanduser())
     app_root = _state_app_root(state, project_root)
-    target = Path(raw_path).expanduser() if raw_path else app_root
-    if not target.is_absolute():
-        target = project_root / target
-
-    target = _resolve_path(target)
+    target = safe_existing_path(
+        raw_path or app_root,
+        roots=_local_file_access_roots(state),
+        field="file browser path",
+    )
 
     if target.exists() and target.is_file():
         target = target.parent
