@@ -140,7 +140,9 @@ PR 范围：
 - `ui/`、`webui.py`、`webui_qt.py` 已删除，React/Tauri 成为唯一产品 UI；
 - `application/runtime/workers.py` 使用标准库线程，不再依赖 `QThread`；
 - `core/plugins`、`core/runtime`、旧 bridge alias 与根目录 AI alias 已删除；
-- PySide、QtPy 与 `pyqt-toast` 已退出运行依赖和 Tauri manifest；
+- QtPy 与 `pyqt-toast` 已退出运行依赖和 Tauri manifest；PySide6 仅保留在源码
+  `requirements.txt` 中供 `tools/migrate_helper/` 迁移入口使用，不进入 Tauri
+  desktop-core runtime；
 - O1 allowlist 清零；
 - Tauri 资源校验同时验证规范目录存在、历史目录不存在；
 - Windows 本地验证由本 PR 执行，macOS/Linux smoke test 由 CI 执行；

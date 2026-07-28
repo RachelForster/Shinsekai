@@ -15,6 +15,7 @@ pyaudio; sys_platform == "linux"
 pyaudio; sys_platform == "win32" and platform_machine != "ARM64"
 anthropic
 mcp>=1.2.0
+PySide6
 pyyaml
 vosk; sys_platform != "win32" or platform_machine != "ARM64"
 gpu-list

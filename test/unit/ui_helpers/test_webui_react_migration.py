@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -64,3 +66,36 @@ def test_main_can_force_show_migration_helper(monkeypatch: pytest.MonkeyPatch) -
     webui_react.main()
 
     assert shown == ["Opening the Shinsekai Frontend migration helper for testing."]
+
+
+def test_show_migration_dialog_opens_preserved_tools_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    class FakeApplication:
+        @classmethod
+        def instance(cls):
+            return None
+
+        def __init__(self, _args) -> None:
+            calls.append("app")
+
+    class FakeDialog:
+        def __init__(self) -> None:
+            calls.append("dialog")
+
+        def exec(self) -> int:
+            calls.append("exec")
+            return 0
+
+    helper_module = ModuleType("tools.migrate_helper.dialog")
+    helper_module.MigrationRoleDialog = FakeDialog  # type: ignore[attr-defined]
+    qtwidgets_module = ModuleType("PySide6.QtWidgets")
+    qtwidgets_module.QApplication = FakeApplication  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "tools.migrate_helper.dialog", helper_module)
+    monkeypatch.setitem(sys.modules, "PySide6.QtWidgets", qtwidgets_module)
+
+    webui_react._show_frontend_migration_dialog("migration required")
+
+    assert calls == ["app", "dialog", "exec"]

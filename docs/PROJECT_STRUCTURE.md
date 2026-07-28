@@ -259,6 +259,11 @@ SDK 使用协议和注入点连接宿主，不直接导入宿主 manager、Qt �
 
 ### `tools/`
 
+`tools/migrate_helper/` is the transitional bootstrap dialog for moving source-checkout
+users to the React frontend. It is not a product UI surface and must not grow settings
+or chat features; `webui_react.py` invokes it only when the React frontend cannot start
+or when `--show-migration-helper` is requested.
+
 保存本地资源处理和开发工具，例如图片裁剪、音频处理、资源转换和导入导出辅助函数。LLM tool wrapper 必须放在 `ai/tools/`。
 
 ## 5. 源码、生成物和运行时数据
