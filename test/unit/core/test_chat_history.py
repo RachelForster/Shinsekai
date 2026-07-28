@@ -5,13 +5,6 @@ import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
-import sys
-
-# PySide6 is unavailable in CI — fake it before importing history_manager
-sys.modules.setdefault("PySide6", MagicMock())
-sys.modules.setdefault("PySide6.QtWidgets", MagicMock())
-sys.modules.setdefault("PySide6.QtCore", MagicMock())
 
 from llm.history_manager import (
     _repair_json_string,

@@ -19,7 +19,7 @@ from config.tts_provider_config import (
 )
 from llm.claude_url import claude_messages_endpoint_url, claude_models_endpoint_url
 from .security import host_matches, validated_http_url
-from .state import BridgeState, _jsonify
+from application.runtime.state import BridgeState, _jsonify
 
 _MODEL_REQUEST_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "

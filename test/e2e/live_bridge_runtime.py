@@ -4,7 +4,7 @@ import json
 import threading
 from collections import deque
 
-from core.runtime.app_runtime import get_app_runtime
+from application.runtime.context import get_app_runtime
 from sdk.graph import DagNode, Port
 
 

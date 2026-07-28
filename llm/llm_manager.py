@@ -15,10 +15,6 @@ from core.messaging.stream_events import (
     STREAM_DIALOG_REPAIR_KEY,
     STREAM_REASONING_DELTA_KEY,
 )
-from core.runtime.app_runtime import (
-    get_tool_confirmation_controller,
-    try_get_app_runtime,
-)
 from i18n import tr
 from llm.llm_adapter import LLMAdapter, DeepSeekAdapter, OpenAIAdapter, GeminiAdapter, ClaudeAdapter
 from llm.compact_manager import CompactManager
@@ -30,6 +26,7 @@ from llm.tools.tool_manager import ToolManager
 from llm.tools.tool_executor import ToolExecutor
 from sdk.exception.types import HTTP_REASON_UNPAIRED_TOOL_MESSAGES, classify_exception
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher, PluginHookEvent
+from sdk.llm_runtime import get_llm_host_runtime
 from sdk.logging import get_logger
 
 tool_manager = ToolManager()
@@ -39,19 +36,7 @@ logger = get_logger(__name__)
 # 模型后台加载完成时：清除冷却 + 推送聊天通知
 def _on_tool_ready(group: str, message: str) -> None:
     tool_executor.clear_cooldown(group)
-    if message:
-        try:
-            from core.runtime.app_runtime import try_get_app_runtime, tts_emit_to_ui_queue
-            if try_get_app_runtime() is not None:
-                tts_emit_to_ui_queue(
-                    character_name="",
-                    speech=message,
-                    sprite="",
-                    audio_path="",
-                    is_system_message=True,
-                )
-        except Exception:
-            pass
+    get_llm_host_runtime().notify_tool_ready(group, message)
 
 from sdk.tool_registry import set_tool_ready_callback
 set_tool_ready_callback(_on_tool_ready)
@@ -110,15 +95,9 @@ def _prefix_user_text_with_local_time(text: Any) -> Any:
 
 
 def _notify_tool_call_hint(tool_name: str) -> None:
-    """桌面主程序已注册 AppRuntime 时，将当前调用的工具名显示在输入框占位提示上。"""
-    rt = try_get_app_runtime()
-    if rt is None:
-        return
+    """Ask the injected host to surface the active tool call."""
     try:
-        rt.ui_update_manager.post_busy_bar(
-            tr("main.notify_tool_calling", name=tool_name),
-            4.0
-        )
+        get_llm_host_runtime().notify_tool_call(tool_name)
     except Exception:
         pass
 
@@ -314,77 +293,11 @@ class LLMManager:
         if risk == "low":
             return True
         try:
-            rt = try_get_app_runtime()
-            if rt is None:
-                return risk != "high"
-            ui = rt.ui_update_manager
-            # Parse arguments for a readable summary
-            detail = ""
-            try:
-                args_obj = json.loads(args_str) if isinstance(args_str, str) else args_str
-                if isinstance(args_obj, dict):
-                    parts = []
-                    for k, v in args_obj.items():
-                        if k in ("content", "keyword"):
-                            s = str(v)[:60]
-                            parts.append(f"{k}={s}")
-                        else:
-                            parts.append(f"{k}={v}")
-                    detail = " · ".join(parts[:6])
-            except Exception:
-                detail = args_str[:120] if args_str else ""
-            controller = get_tool_confirmation_controller()
-            prompt = controller.create(tool_name)
-            try:
-                if hasattr(ui, "post_tool_confirmation"):
-                    ui.post_tool_confirmation(
-                        confirmation_id=prompt.confirmation_id,
-                        tool_name=tool_name,
-                        detail=detail,
-                        risk=risk,
-                    )
-                else:
-                    confirm_label = tr(
-                        "tool_confirmation.confirm",
-                        tool=tool_name,
-                    )
-                    if detail:
-                        confirm_label = f"{confirm_label}\n{detail}"
-                    ui.post_options(
-                        [
-                            {
-                                "action": "cancel",
-                                "confirmationId": prompt.confirmation_id,
-                                "kind": "tool-confirmation",
-                                "label": tr("common.cancel"),
-                            },
-                            {
-                                "action": "confirm",
-                                "confirmationId": prompt.confirmation_id,
-                                "kind": "tool-confirmation",
-                                "label": confirm_label,
-                            },
-                        ]
-                    )
-                resolved = prompt.event.wait(timeout=30.0)
-            finally:
-                controller.discard(prompt.confirmation_id)
-                try:
-                    if hasattr(ui, "clear_tool_confirmation"):
-                        ui.clear_tool_confirmation(prompt.confirmation_id)
-                    else:
-                        ui.post_options([])
-                except Exception:
-                    pass
-            if not resolved:
-                try:
-                    ui.post_notification(
-                        tr("tool_confirmation.timeout", tool=tool_name)
-                    )
-                except Exception:
-                    pass
-                return False
-            return prompt.confirmed is True
+            return get_llm_host_runtime().confirm_risky_tool(
+                tool_name,
+                risk,
+                args_str,
+            )
         except Exception:
             return risk != "high"
 
@@ -556,13 +469,8 @@ class LLMManager:
         return dict(self.last_token_estimate)
 
     def _post_context_token_estimate(self, estimate: dict[str, int]) -> None:
-        rt = try_get_app_runtime()
-        ui = getattr(rt, "ui_update_manager", None) if rt is not None else None
-        post = getattr(ui, "post_context_token_estimate", None)
-        if post is None:
-            return
         try:
-            post(estimate)
+            get_llm_host_runtime().post_context_token_estimate(estimate)
         except Exception:
             self.logger.debug("Failed to post context token estimate to UI", exc_info=True)
 

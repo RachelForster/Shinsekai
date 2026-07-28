@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
 
-from core.runtime.event_sink import (
+from application.runtime.event_sink import (
     EVENT_PROTOCOL_VERSION,
     build_event,
     fold_event_into_snapshot,

@@ -28,7 +28,7 @@
 O1 的完整依赖矩阵精确记录 56 个历史“文件 → 顶层包”例外，分布在
 38 个文件中。`LOCKED_BASELINE_VIOLATIONS` 是永久上限；后续 Objective
 只能从活动 allowlist 删除对应项，不得新增或替换。O2 已删除 8 项，
-当前活动集合剩余 48 项：
+O3 再删除 20 项，当前活动集合剩余 28 项，分布在 20 个文件中：
 
 | 来源 | 反向依赖 | 退出 Objective |
 | --- | --- | --- |
@@ -36,30 +36,16 @@ O1 的完整依赖矩阵精确记录 56 个历史“文件 → 顶层包”例�
 | `ai/vision/service.py` | `llm` | O4 |
 | `config/character_manager.py` | `llm` | O4 |
 | `config/config_manager.py` | `core`、`llm`、`t2i`、`tts` | O3/O4 |
-| `core/handlers/ui_message_handler.py` | `asr` | O5 |
-| `core/media/auto_annotation.py` | `ai` | O3 |
 | `core/runtime/ui_update_manager.py` | `asr` | O5 |
-| `core/runtime/workers.py` | `ai` | O5 |
 | `core/sprite/chat_history.py` | `llm` | O5 |
 | `core/sprite/chat_ui_service.py` | `llm` | O5 |
 | `frontend_bridge_core/backgrounds.py` | `ui` | O5 |
 | `frontend_bridge_core/characters.py` | `ui` | O5 |
-| `frontend_bridge_core/chat.py` | `core`、`llm` | O3 |
-| `frontend_bridge_core/chat_stream.py` | `core` | O3 |
 | `frontend_bridge_core/config.py` | `asr`、`llm`、`t2i`、`tts` | O3/O4 |
-| `frontend_bridge_core/handler.py` | `core`、`llm` | O3 |
-| `frontend_bridge_core/image_annotations.py` | `core` | O3 |
-| `frontend_bridge_core/logs.py` | `core` | O3 |
 | `frontend_bridge_core/mcp.py` | `llm` | O3/O4 |
 | `frontend_bridge_core/memory.py` | `ai` | O3 |
-| `frontend_bridge_core/model_assets.py` | `ai`、`core` | O3 |
-| `frontend_bridge_core/plugin_catalog.py` | `core` | O3 |
 | `frontend_bridge_core/plugin_publisher.py` | `core` | O3 |
 | `frontend_bridge_core/plugin_ui.py` | `core` | O3 |
-| `frontend_bridge_core/plugin_updates.py` | `core` | O3 |
-| `frontend_bridge_core/runtime_dependencies.py` | `core` | O3 |
-| `frontend_bridge_core/templates.py` | `core`、`llm`、`ui` | O3/O5 |
-| `frontend_bridge_core/tts.py` | `ui` | O5 |
 | `sdk/chat_ui_context.py` | `ui` | O5 |
 | `sdk/logging/configure.py` | `core` | O3 |
 | `sdk/logging/environment.py` | `ui` | O5 |
@@ -88,7 +74,7 @@ PR 范围：
 
 ### O2：完成插件平台独立
 
-状态：已在 O2 PR 落地，等待合并。
+状态：已通过 PR 286 合入 `main`。
 
 PR 范围：
 
@@ -123,12 +109,22 @@ PR 范围：
 
 关键结果：
 
-- `frontend_bridge_core/handler.py` 不超过 500 行；
-- bridge 中 pip、归档、模型下载、进程编排主体实现为 0；
-- chat、runtime dependency、TTS 下载通过 application use case 调用；
-- HTTP、task、聊天流契约测试全部通过；
-- Tauri 暂存与验证覆盖 `application/`；
-- 删除 O1 allowlist 中 runtime、media 和 logging 相关例外。
+- `frontend_bridge_core/handler.py` 从 1779 行降为 14 行兼容入口，HTTP 分发迁入 `routes/api.py`；
+- bridge 中 subprocess、归档、pip、模型下载和 TTS 包下载主体实现为 0；
+- chat 进程/初始化、runtime dependency、模型资产、TTS 下载、诊断包和插件更新均通过 application use case 调用；
+- WebSocket client transport 位于 `frontend_bridge_core/transport/`，application
+  只保留 event sink 契约和快照归并；
+- HTTP、application、plugin system 共用的路径校验收敛到
+  `sdk.path_utils`；旧 `core.security.paths` 与 bridge path helper 仅保留兼容导出；
+- chat 启动参数通过受控 JSON 环境配置传递，子进程 argv 只包含可信解释器和入口；
+- `application/` 禁止反向依赖 bridge 或 Qt UI；旧 AI 实现通过 `sdk.llm_runtime`
+  使用宿主回调，不得反向导入 application；
+- 默认与 headless workflow 已切换到 `application.runtime.workers`，旧
+  `core.runtime.workers` 和 `core.handlers` 仅保留兼容入口；
+- HTTP、task、聊天流、application 用例和兼容导入契约测试通过；
+- Tauri 资源清单已包含 application；
+- 活动 allowlist 从 48 项降至 28 项；React/Tauri workers 已迁入
+  `application/runtime/`，剩余 Qt UI manager 例外按“不迁移 Qt 控件”决策转入 O5 删除。
 
 ### O4：统一 AI 命名空间
 
@@ -186,7 +182,10 @@ PR 范围：
 | `core/runtime/requirements.py` | `core/runtime_env/requirements.py` | O3 | 环境检测 |
 | `core/handlers/*` | `application/chat/handlers/` | O3 | 不迁移 Qt 控件实现 |
 | `frontend_bridge_core/chat.py` | routes + `application/chat/` | O3 | bridge 只保留协议 |
-| `frontend_bridge_core/plugin_*.py` | routes + `application/plugins/` | O2/O3 | O2 迁实现但保留 `core.plugins` 兼容调用；O3 切换到 application 门面 |
+| `frontend_bridge_core/plugin_*.py` | routes + `application/plugins/` | O2/O3 | O2 迁实现并保留兼容调用；O3 将 catalog/updates 收口到 application 门面 |
+| `frontend_bridge_core/model_assets.py`、`tts.py` | `application/model_assets/` | O3 | bridge 只创建 task 并转发结果 |
+| `frontend_bridge_core/logs.py` | `application/diagnostics/` | O3 | 诊断归档不在传输层实现 |
+| `core/media/auto_annotation.py` | `application/media/` | O3 | AI 能力由 application 编排 |
 
 ## 5. 通用退出条件
 

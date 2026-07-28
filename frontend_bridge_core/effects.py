@@ -5,8 +5,9 @@ import shutil
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
-from .security import safe_child_path, safe_existing_file_path
-from .state import BridgeState, _jsonify
+from .tools import _local_file_access_roots
+from application.runtime.state import BridgeState, _jsonify
+from sdk.path_utils import safe_child_path, safe_existing_file_path
 
 EFFECT_UPLOAD_DIR = "data/effects"
 
@@ -50,7 +51,11 @@ def _unlink_managed_effect_file(effect_name: str, raw_path: str) -> None:
         return
     try:
         root = _effect_dir(effect_name).resolve()
-        target = safe_existing_file_path(str(raw_path), field="effect audio path")
+        target = safe_existing_file_path(
+            str(raw_path),
+            roots=[root],
+            field="effect audio path",
+        )
     except (OSError, ValueError, FileNotFoundError):
         return
     if os.path.commonpath([str(root), str(target)]) != str(root):
@@ -199,7 +204,11 @@ def _upload_effect_audio(state: BridgeState, payload: dict[str, Any]) -> dict[st
 
     for file_path in paths:
         try:
-            src = safe_existing_file_path(str(file_path), field="effect audio path")
+            src = safe_existing_file_path(
+                str(file_path),
+                roots=_local_file_access_roots(state),
+                field="effect audio path",
+            )
         except (OSError, ValueError, FileNotFoundError):
             continue
         # Copy to managed directory

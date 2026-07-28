@@ -5,12 +5,30 @@ import re
 from pathlib import Path
 from typing import Any
 
-from .path_utils import strip_windows_verbatim_prefix as _strip_windows_verbatim_prefix
-from .security import reject_control_chars, safe_existing_dir_path, safe_existing_file_path
-from .state import BridgeState
-from .tasks import _update_task
+from sdk.path_utils import (
+    reject_control_chars,
+    safe_existing_dir_path,
+    safe_existing_file_path,
+    safe_existing_path,
+    strip_windows_verbatim_prefix as _strip_windows_verbatim_prefix,
+)
+from application.runtime.state import BridgeState
+from application.runtime.tasks import _update_task
 
 MAX_FILE_BROWSER_ENTRIES = 2000
+
+
+def _local_file_access_roots(state: BridgeState) -> tuple[Path, ...]:
+    """Roots exposed to authenticated local-file tool operations."""
+
+    root_raw = os.environ.get("EASYAI_PROJECT_ROOT") or str(Path.cwd())
+    project_root = _resolve_path(Path(root_raw).expanduser())
+    app_root = _state_app_root(state, project_root)
+    roots = [project_root, app_root, Path.home()]
+    downloads_dir = _user_downloads_dir()
+    if downloads_dir is not None:
+        roots.append(downloads_dir)
+    return tuple(dict.fromkeys(_resolve_path(root) for root in roots))
 
 
 def _extract_prompt_from_line(line: str) -> str:
@@ -61,6 +79,7 @@ def _generate_sprites(state: BridgeState, task_id: str, payload: dict[str, Any])
         raise ValueError("characterName is required")
     reference = safe_existing_file_path(
         str(payload.get("referenceImage") or "").strip(),
+        roots=_local_file_access_roots(state),
         field="referenceImage",
     )
     raw_prompts = payload.get("prompts") or []
@@ -90,7 +109,11 @@ def _generate_sprites(state: BridgeState, task_id: str, payload: dict[str, Any])
 def _crop_sprites(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     from tools.crop_sprite import batch_crop_upper_half
 
-    input_dir = safe_existing_dir_path(str(payload.get("inputDir") or "").strip(), field="inputDir")
+    input_dir = safe_existing_dir_path(
+        str(payload.get("inputDir") or "").strip(),
+        roots=_local_file_access_roots(state),
+        field="inputDir",
+    )
     ratio = float(payload.get("ratio") or 1.0)
     requested_output = str(payload.get("outputDir") or "").strip()
     if requested_output:
@@ -107,7 +130,11 @@ def _crop_sprites(state: BridgeState, task_id: str, payload: dict[str, Any]) -> 
 def _remove_sprite_background(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     from tools.remove_bg import batch_remove_background
 
-    input_dir = safe_existing_dir_path(str(payload.get("inputDir") or "").strip(), field="inputDir")
+    input_dir = safe_existing_dir_path(
+        str(payload.get("inputDir") or "").strip(),
+        roots=_local_file_access_roots(state),
+        field="inputDir",
+    )
     requested_output = str(payload.get("outputDir") or "").strip()
     if requested_output:
         requested_output = reject_control_chars(requested_output, field="outputDir")
@@ -262,11 +289,11 @@ def _browse_local_files(state: BridgeState, payload: dict[str, Any]) -> dict[str
     root_raw = os.environ.get("EASYAI_PROJECT_ROOT") or str(Path.cwd())
     project_root = _resolve_path(Path(root_raw).expanduser())
     app_root = _state_app_root(state, project_root)
-    target = Path(raw_path).expanduser() if raw_path else app_root
-    if not target.is_absolute():
-        target = project_root / target
-
-    target = _resolve_path(target)
+    target = safe_existing_path(
+        raw_path or app_root,
+        roots=_local_file_access_roots(state),
+        field="file browser path",
+    )
 
     if target.exists() and target.is_file():
         target = target.parent

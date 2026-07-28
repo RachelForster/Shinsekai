@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 from config.schema import SystemConfig
 from live.music_cover_pipeline import (
     _run_yt_dlp_download,
+    _yt_dlp_environment,
     resolve_media_url,
     youtube_search_videos,
 )
@@ -102,8 +105,8 @@ def test_youtube_search_videos_clamps_limit_and_uses_sanitized_executable(monkey
         stdout = ""
         stderr = ""
 
-    def fake_run(cmd, **_kwargs):
-        calls.append(cmd)
+    def fake_run(cmd, **kwargs):
+        calls.append((cmd, kwargs))
         return Result()
 
     monkeypatch.setattr("live.music_cover_pipeline.subprocess.run", fake_run)
@@ -111,10 +114,25 @@ def test_youtube_search_videos_clamps_limit_and_uses_sanitized_executable(monkey
     youtube_search_videos("test query", limit=0, yt_dlp="yt-dlp")
     youtube_search_videos("test query", limit=999, yt_dlp="yt-dlp")
 
-    assert calls[0][0] == "yt-dlp"
-    assert calls[1][0] == "yt-dlp"
-    assert calls[0][1].startswith("ytsearch1:")
-    assert calls[1][1].startswith("ytsearch20:")
+    assert calls[0][0][0] == "yt-dlp"
+    assert calls[1][0][0] == "yt-dlp"
+    assert calls[0][1]["input"].startswith("ytsearch1:")
+    assert calls[1][1]["input"].startswith("ytsearch20:")
+    assert "test query" not in calls[0][0]
+
+
+def test_yt_dlp_environment_accepts_only_named_binary_under_trusted_root(tmp_path):
+    executable = tmp_path / ("yt-dlp.exe" if os.name == "nt" else "yt-dlp")
+    executable.write_bytes(b"binary")
+    other = tmp_path / "other-tool"
+    other.write_bytes(b"binary")
+
+    environment = _yt_dlp_environment(str(executable))
+
+    assert environment is not None
+    assert environment["PATH"].split(os.pathsep, 1)[0] == str(tmp_path)
+    with pytest.raises(ValueError, match="must be named yt-dlp"):
+        _yt_dlp_environment(str(other))
 
 
 def test_yt_dlp_download_rejects_private_media_url(tmp_path):
@@ -135,8 +153,9 @@ def test_yt_dlp_download_passes_media_url_as_literal_argument(tmp_path, monkeypa
         stdout = ""
         stderr = ""
 
-    def fake_run(cmd, **_kwargs):
+    def fake_run(cmd, **kwargs):
         captured["cmd"] = cmd
+        captured["input"] = kwargs.get("input")
         (tmp_path / "song.wav").write_text("wav", encoding="utf-8")
         return Result()
 
@@ -145,7 +164,7 @@ def test_yt_dlp_download_passes_media_url_as_literal_argument(tmp_path, monkeypa
     media_url = "https://youtu.be/abc123"
     result = _run_yt_dlp_download(media_url, tmp_path, "yt-dlp", lambda _message: None)
     cmd = captured["cmd"]
-    dashdash_index = cmd.index("--")
 
     assert result == tmp_path / "song.wav"
-    assert cmd[dashdash_index + 1] == media_url
+    assert media_url not in cmd
+    assert captured["input"] == f"{media_url}\n"

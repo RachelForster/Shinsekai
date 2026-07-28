@@ -1,1 +1,1 @@
-"""TTS and UI message handler chains and dispatcher."""
+"""Compatibility namespace for application chat handler chains."""

@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from typing import Any
 from urllib.parse import quote
 
-from .plugin_catalog import _plugin_rows
+from application.plugins.catalog import _plugin_rows
 
 
 def _plugin_data_root(plugin_id: str) -> Path:

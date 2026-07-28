@@ -18,7 +18,7 @@ from config.schema import (
     Sprite, Character, Background, ApiConfig, SystemConfig, AppConfig,
 )
 from core.messaging.stream_parser import LlmResponseStreamParser
-from core.runtime.app_runtime import AppRuntime, set_app_runtime
+from application.runtime.context import AppRuntime, set_app_runtime
 from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from test.mocks import MockLLMAdapter, MockTTSAdapter
 
@@ -318,7 +318,11 @@ class TestWorkerUIPipeline:
         from PySide6.QtWidgets import QApplication
         from ui.chat_ui.chat_ui import ChatUIWindow
         from core.runtime.ui_update_manager import UIUpdateManager, connect_to_desktop_window
-        from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
+        from application.runtime.workers import (
+            LLMWorker,
+            PresentationWorker as UIWorker,
+            TTSWorker,
+        )
 
         # LLM responds with a NARR message — avoids DefaultCharacterTtsHandler
         mock_llm = MockLLMAdapter(responses=[
@@ -352,7 +356,7 @@ class TestWorkerUIPipeline:
         text_processor.decide_language.return_value = "zh"
         text_processor.replace_names.side_effect = lambda s: s
 
-        from core.runtime.app_runtime import AppRuntime
+        from application.runtime.context import AppRuntime
         rt = AppRuntime(
             config=config_mgr,
             ui_update_manager=ui,

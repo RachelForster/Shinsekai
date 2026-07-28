@@ -34,8 +34,8 @@ from sdk.chat_ui_theme import (
     validate_theme_dir,
 )
 
-from .security import safe_child_path, safe_existing_file_path
-from .state import BridgeState
+from application.runtime.state import BridgeState
+from sdk.path_utils import safe_child_path, safe_existing_file_path
 
 #: 用户可写主题目录（相对项目根 / cwd）。
 USER_THEMES_DIR = Path("data") / "chat_ui_themes"
@@ -177,8 +177,13 @@ def _seed_builtin_themes() -> None:
 
 
 def _read_manifest(theme_dir: Path) -> Optional[Dict[str, Any]]:
-    manifest_path = theme_dir / "theme.json"
-    if not manifest_path.is_file():
+    try:
+        manifest_path = safe_existing_file_path(
+            theme_dir / MANIFEST_NAME,
+            roots=[_themes_root(), _builtin_themes_root()],
+            field="chat theme manifest",
+        )
+    except (OSError, PermissionError, ValueError):
         return None
     try:
         with manifest_path.open(encoding="utf-8") as file:
@@ -299,7 +304,14 @@ def install_theme_from_zip(
     _seed_builtin_themes()
 
     with tempfile.TemporaryDirectory(prefix="chat_theme_") as tmp:
-        extracted = safe_extract(safe_existing_file_path(zip_path, field="theme zip path"), Path(tmp))
+        extracted = safe_extract(
+            safe_existing_file_path(
+                zip_path,
+                roots=[Path(tempfile.gettempdir())],
+                field="theme zip path",
+            ),
+            Path(tmp),
+        )
         manifest_root = locate_manifest_root(extracted)
         if manifest_root is None:
             raise ValueError(f"压缩包内未找到 {MANIFEST_NAME}")

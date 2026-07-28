@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from core.runtime.app_runtime import set_app_runtime
+from application.runtime.context import set_app_runtime
 from llm.tools.chat_ui_tools import _tool_set_user_display_name, sanitize_user_display_name
 
 

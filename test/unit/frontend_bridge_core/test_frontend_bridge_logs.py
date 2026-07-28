@@ -20,7 +20,7 @@ def test_log_snapshot_parses_jsonl_entries(tmp_path):
         encoding="utf-8",
     )
 
-    snapshot = _log_snapshot(path)
+    snapshot = _log_snapshot(path, roots=(tmp_path,))
 
     assert snapshot["name"] == "run.jsonl"
     assert len(snapshot["entries"]) == 2

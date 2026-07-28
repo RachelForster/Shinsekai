@@ -1,6 +1,8 @@
+import json
 import signal
 from types import SimpleNamespace
 
+from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
 from frontend_bridge_core import chat
 from frontend_bridge_core.runtime_dependencies import runtime_dependency_error_from_text
 
@@ -158,6 +160,8 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     assert not (app_root / "data").exists()
     assert captured["env"]["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] == "1"
     assert captured["cmd"][1] != str(project_root / "main.py")
+    assert len(captured["cmd"]) == 2
+    assert json.loads(captured["env"][CHAT_LAUNCH_CONFIG_ENV])["template"] == "_temp"
 
 
 def test_launch_chat_passes_stream_endpoint(tmp_path, monkeypatch):
@@ -203,8 +207,10 @@ def test_launch_chat_passes_stream_endpoint(tmp_path, monkeypatch):
     )
 
     assert message == "聊天进程已启动！PID: 12345"
-    assert "--stream-endpoint=ws://127.0.0.1:8788/ws?sessionId=test&role=producer" in captured["cmd"]
-    assert "--init-stream-endpoint=ws://127.0.0.1:8788/ws?sessionId=init&role=producer" in captured["cmd"]
+    launch_config = json.loads(captured["env"][CHAT_LAUNCH_CONFIG_ENV])
+    assert launch_config["stream_endpoint"] == "ws://127.0.0.1:8788/ws?sessionId=test&role=producer"
+    assert launch_config["init_stream_endpoint"] == "ws://127.0.0.1:8788/ws?sessionId=init&role=producer"
+    assert len(captured["cmd"]) == 2
 
 
 def test_launch_chat_passes_memory_service_env(tmp_path, monkeypatch):
@@ -300,7 +306,9 @@ def test_launch_chat_passes_workflow_path(tmp_path, monkeypatch):
     )
 
     assert message == "聊天进程已启动！PID: 12345"
-    assert f"--workflow={workflow_path}" in captured["cmd"]
+    launch_config = json.loads(captured["env"][CHAT_LAUNCH_CONFIG_ENV])
+    assert launch_config["workflow"] == str(workflow_path)
+    assert len(captured["cmd"]) == 2
 
 
 def test_runtime_dependency_error_maps_opencc_package():

@@ -1,6 +1,6 @@
 from queue import Queue
 
-from core.runtime.workflow import build_runtime_workflow
+from application.runtime.workflow import build_runtime_workflow
 from sdk.graph import DagNode
 
 
@@ -22,7 +22,7 @@ def test_runtime_workflow_resolves_relative_resource_from_source_root(tmp_path, 
         """
 nodes:
   - name: selected
-    type: test.unit.core.test_runtime_resource_paths._ResourcePathNode
+    type: test.unit.application.test_runtime_resource_paths._ResourcePathNode
 edges: []
 exports:
   selected:

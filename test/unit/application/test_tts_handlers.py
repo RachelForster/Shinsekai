@@ -5,8 +5,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from sdk.messages import LLMDialogMessage
-from core.handlers.handler_registry import TtsMessageDispatcher
-from core.handlers.tts_message_handler import (
+from application.chat.handlers.registry import TtsMessageDispatcher
+from application.chat.handlers.tts import (
     DefaultCharacterTtsHandler,
     BgmTtsHandler,
     CgTtsHandler,
@@ -28,11 +28,11 @@ class TestDefaultCharacterTtsHandler:
         runtime.tts_manager = MagicMock()
         runtime.tts_manager.generate_tts.return_value = "voice.wav"
         monkeypatch.setattr(
-            "core.handlers.tts_message_handler._config", runtime.config
+            "application.chat.handlers.tts._config", runtime.config
         )
         emit = MagicMock()
         monkeypatch.setattr(
-            "core.handlers.tts_message_handler.tts_emit_to_ui_queue", emit
+            "application.chat.handlers.tts.tts_emit_to_ui_queue", emit
         )
 
         DefaultCharacterTtsHandler().handle(

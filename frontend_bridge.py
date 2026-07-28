@@ -23,7 +23,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 from frontend_bridge_core.path_utils import resolve_regular_path
-from core.runtime.requirements import (
+from core.runtime_env.requirements import (
     RequirementCheck,
     check_requirement,
     requirement_name,
@@ -101,7 +101,7 @@ def _shutdown_bridge_runtime(reason: str) -> None:
             f"bridge runtime plugin transport unbind failed reason={reason} error={exc}"
         )
     try:
-        from frontend_bridge_core.chat import shutdown_active_chat_process
+        from application.chat.runtime_process import shutdown_active_chat_process
 
         shutdown_active_chat_process(wait_timeout=1.5)
     except Exception as exc:
@@ -251,7 +251,7 @@ def _prepare_project_root(raw_path: str, source: str) -> Path:
 
 
 def _start_plugin_loader(state, logger) -> None:
-    from frontend_bridge_core.state import set_plugin_load_status
+    from application.runtime.state import set_plugin_load_status
 
     def load_plugins() -> None:
         time.sleep(0.05)
@@ -363,8 +363,8 @@ def run(
     from llm.template_generator import TemplateGenerator
 
     from frontend_bridge_core.chat_stream import ChatStreamService
-    from frontend_bridge_core.handler import FrontendBridgeHandler
-    from frontend_bridge_core.state import BridgeState
+    from frontend_bridge_core.routes.api import FrontendBridgeHandler
+    from application.runtime.state import BridgeState
     from frontend_bridge_core.static import _schedule_browser_open
 
     config_manager = ConfigManager()
@@ -522,8 +522,8 @@ def check_runtime(
     from i18n import init_i18n
     from llm.template_generator import TemplateGenerator
 
-    from frontend_bridge_core.handler import FrontendBridgeHandler  # noqa: F401
-    from frontend_bridge_core.state import BridgeState  # noqa: F401
+    from application.runtime.state import BridgeState  # noqa: F401
+    from frontend_bridge_core.routes.api import FrontendBridgeHandler  # noqa: F401
     from frontend_bridge_core.static import _frontend_dist_root  # noqa: F401
 
     config_manager = ConfigManager()

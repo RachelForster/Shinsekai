@@ -5,7 +5,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from frontend_bridge_core.media_utils import _optional_suffix_check, _path_namespace_list
-from frontend_bridge_core.state import BridgeState, _jsonify
+from application.runtime.state import BridgeState, _jsonify
 
 
 def _validate_reference_audio(voice_path: str) -> None:
@@ -142,7 +142,7 @@ def _save_character(state: BridgeState, payload: dict[str, Any]) -> dict[str, An
         raise RuntimeError(message)
     state.config_manager.reload()
     if original_name and original_name != saved_name:
-        from frontend_bridge_core.templates import _rename_template_session_character
+        from application.chat.templates import _rename_template_session_character
 
         try:
             _rename_template_session_character(state, original_name, saved_name)

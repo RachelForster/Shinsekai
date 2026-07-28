@@ -233,7 +233,7 @@ def sample_user_input():
 # AppRuntime fixture — for tests that need the global singleton
 # =========================================================================
 
-from core.runtime.app_runtime import AppRuntime, set_app_runtime
+from application.runtime.context import AppRuntime, set_app_runtime
 
 
 @pytest.fixture

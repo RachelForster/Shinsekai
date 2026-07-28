@@ -201,7 +201,27 @@ ALLOWED_VIOLATIONS = LOCKED_BASELINE_VIOLATIONS - frozenset(
             "core/plugins/publisher/metadata.py",
             "frontend_bridge_core",
         ),
+        ImportViolation("core/handlers/ui_message_handler.py", "asr"),
+        ImportViolation("core/media/auto_annotation.py", "ai"),
+        ImportViolation("core/runtime/workers.py", "ai"),
+        ImportViolation("frontend_bridge_core/chat.py", "core"),
+        ImportViolation("frontend_bridge_core/chat.py", "llm"),
+        ImportViolation("frontend_bridge_core/chat_stream.py", "core"),
+        ImportViolation("frontend_bridge_core/handler.py", "core"),
+        ImportViolation("frontend_bridge_core/handler.py", "llm"),
+        ImportViolation("frontend_bridge_core/image_annotations.py", "core"),
+        ImportViolation("frontend_bridge_core/logs.py", "core"),
+        ImportViolation("frontend_bridge_core/model_assets.py", "ai"),
+        ImportViolation("frontend_bridge_core/model_assets.py", "core"),
+        ImportViolation("frontend_bridge_core/plugin_catalog.py", "core"),
+        ImportViolation("frontend_bridge_core/plugin_updates.py", "core"),
+        ImportViolation("frontend_bridge_core/runtime_dependencies.py", "core"),
+        ImportViolation("frontend_bridge_core/templates.py", "core"),
+        ImportViolation("frontend_bridge_core/templates.py", "llm"),
+        ImportViolation("frontend_bridge_core/templates.py", "ui"),
+        ImportViolation("frontend_bridge_core/tts.py", "ui"),
         ImportViolation("sdk/cli/registry_ops.py", "core"),
+        ImportViolation("sdk/logging/configure.py", "core"),
     }
 )
 
@@ -269,4 +289,41 @@ def test_import_boundaries_match_migration_allowlist() -> None:
         f"Unexpected violations: {unexpected}\n"
         f"Stale allowlist entries: {stale_allowlist}\n"
         "Do not add a new exception. Remove stale entries when a migration fixes them."
+    )
+
+
+def test_legacy_ai_namespaces_do_not_depend_on_application() -> None:
+    """O4 may migrate legacy AI code into ``ai`` but must not invert the DAG."""
+
+    unexpected: list[ImportViolation] = []
+    for source in _python_sources():
+        relative = source.relative_to(REPO_ROOT).as_posix()
+        source_root = relative.partition("/")[0]
+        if source_root not in {"asr", "llm", "t2i", "tts"}:
+            continue
+        if "application" in _imported_roots(source):
+            unexpected.append(ImportViolation(relative, "application"))
+
+    assert not unexpected, (
+        "Legacy AI implementations must use sdk/core contracts instead of "
+        f"depending on application: {sorted(unexpected)}"
+    )
+
+
+def test_application_does_not_own_concrete_network_transport() -> None:
+    """Concrete HTTP/WebSocket adapters belong to frontend_bridge_core."""
+
+    forbidden_transport_roots = {"http", "socket", "websocket", "websockets"}
+    unexpected: list[ImportViolation] = []
+    application_root = REPO_ROOT / "application"
+    for source in sorted(application_root.rglob("*.py")):
+        relative = source.relative_to(REPO_ROOT).as_posix()
+        for imported_root in sorted(
+            _imported_roots(source) & forbidden_transport_roots
+        ):
+            unexpected.append(ImportViolation(relative, imported_root))
+
+    assert not unexpected, (
+        "Move concrete network transports to frontend_bridge_core/transport: "
+        f"{unexpected}"
     )

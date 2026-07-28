@@ -43,7 +43,7 @@ def test_readable_media_file_accepts_supported_regular_files(tmp_path: Path, suf
     source = tmp_path / f"asset{suffix}"
     source.write_bytes(b"media")
 
-    assert validate_readable_media_file(source) == source.resolve()
+    assert validate_readable_media_file(source, roots=[tmp_path]) == source.resolve()
 
 
 @pytest.mark.parametrize("suffix", [".txt", ".json", ".env", ".pem", ".yaml"])
@@ -52,7 +52,7 @@ def test_readable_media_file_rejects_non_media_extensions(tmp_path: Path, suffix
     source.write_text("not media", encoding="utf-8")
 
     with pytest.raises(PermissionError, match="file type"):
-        validate_readable_media_file(source)
+        validate_readable_media_file(source, roots=[tmp_path])
 
 
 def test_readable_media_file_rejects_directory_even_with_media_extension(tmp_path: Path):
@@ -60,7 +60,7 @@ def test_readable_media_file_rejects_directory_even_with_media_extension(tmp_pat
     source.mkdir()
 
     with pytest.raises(PermissionError, match="regular file"):
-        validate_readable_media_file(source)
+        validate_readable_media_file(source, roots=[tmp_path])
 
 
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="FIFO creation is unavailable")
@@ -69,7 +69,7 @@ def test_readable_media_file_rejects_fifo(tmp_path: Path):
     os.mkfifo(source)
 
     with pytest.raises(PermissionError, match="regular file"):
-        validate_readable_media_file(source)
+        validate_readable_media_file(source, roots=[tmp_path])
 
 
 def test_windows_path_policy_allows_absolute_local_drive_paths():

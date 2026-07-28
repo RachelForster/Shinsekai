@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from core.media.auto_annotation import (
+from application.media.auto_annotation import (
     AnnotationCancelled,
     auto_label_background_images,
     auto_label_character_sprites,
 )
-from frontend_bridge_core.state import BridgeState
-from frontend_bridge_core.tasks import (
+from application.runtime.state import BridgeState
+from application.runtime.tasks import (
     TaskCancelled,
     _append_task_log,
     _is_task_cancel_requested,

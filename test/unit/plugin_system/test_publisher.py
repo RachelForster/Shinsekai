@@ -5,7 +5,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 
-from plugin_system.publisher.metadata import scan_local_plugin
+from plugin_system.publisher.metadata import resolve_metadata_logo, scan_local_plugin
 from plugin_system.publisher.submission import build_issue_url, submission_json
 from plugin_system.publisher.validate import PluginSubmissionError, normalize_submission
 from frontend_bridge_core.plugin_publisher import (
@@ -104,6 +104,18 @@ def test_scan_local_plugin_normalizes_root_directory_name_to_lowercase_entry():
         result = scan_local_plugin(plugin_root)
 
     assert result["entry"] == "plugins.shinsekai_plugin_market.plugin:MarketPlugin"
+
+
+def test_resolve_metadata_logo_stays_inside_plugin_root(tmp_path):
+    plugin_root = tmp_path / "plugin"
+    plugin_root.mkdir()
+    logo = plugin_root / "logo.png"
+    logo.write_bytes(b"logo")
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"outside")
+
+    assert resolve_metadata_logo(plugin_root, "logo.png") == logo.resolve()
+    assert resolve_metadata_logo(plugin_root, str(outside)) is None
 
 
 def test_normalize_submission_normalizes_repo_url_and_serializes_contract_json():

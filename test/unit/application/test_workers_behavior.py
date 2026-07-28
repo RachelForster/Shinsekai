@@ -9,8 +9,10 @@ from unittest.mock import MagicMock
 import pytest
 
 
-from core.runtime.app_runtime import AppRuntime, get_app_runtime, set_app_runtime
-from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
+from application.runtime.context import AppRuntime, get_app_runtime, set_app_runtime
+from application.runtime.workers import LLMWorker, TTSWorker, PresentationWorker
+
+UIWorker = PresentationWorker
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY
 from llm.llm_manager import LLMManager
 from sdk.messages import LLMDialogMessage, TTSOutputMessage, UserInputMessage
@@ -280,7 +282,7 @@ def test_tts_worker_start_clears_previous_cancel_state(monkeypatch) -> None:
     starts = []
 
     monkeypatch.setattr(
-        "core.runtime.workers.QThreadDagNode.start",
+        "application.runtime.workers.ThreadDagNode.start",
         lambda self: starts.append(self),
     )
 

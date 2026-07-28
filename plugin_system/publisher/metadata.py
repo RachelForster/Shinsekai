@@ -4,10 +4,11 @@ import ast
 import configparser
 import json
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
-from core.security.paths import safe_existing_dir_path
+from sdk.path_utils import safe_existing_dir_path, safe_existing_file_path
 
 
 METADATA_NAMES = ("plugin.json", "shinsekai.plugin.json")
@@ -17,7 +18,11 @@ TAG_SPLIT_RE = re.compile(r"[,\s\uFF0C\u3001]+")
 
 
 def scan_local_plugin(path: str | Path) -> dict[str, Any]:
-    root = safe_existing_dir_path(path or ".", field="plugin path")
+    root = safe_existing_dir_path(
+        path or ".",
+        roots=[Path.cwd(), Path.home(), Path(tempfile.gettempdir())],
+        field="plugin path",
+    )
     warnings: list[str] = []
 
     readme = find_first(root, README_NAMES)
@@ -105,10 +110,10 @@ def resolve_metadata_logo(root: Path, value: str) -> Path | None:
     raw = value.strip()
     if not raw:
         return None
-    candidate = Path(raw)
-    if not candidate.is_absolute():
-        candidate = root / candidate
-    return candidate.resolve() if candidate.exists() and candidate.is_file() else None
+    try:
+        return safe_existing_file_path(raw, roots=[root], field="plugin logo path")
+    except (OSError, PermissionError, ValueError):
+        return None
 
 
 def find_logo(root: Path) -> Path | None:

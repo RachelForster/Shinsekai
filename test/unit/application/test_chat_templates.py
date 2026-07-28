@@ -3,7 +3,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from frontend_bridge_core.templates import (
+from application.chat.templates import (
     MARK_SCENARIO,
     MARK_SYSTEM,
     _compose_runtime_template,
@@ -46,7 +46,7 @@ def test_history_id_uses_effective_scenario_and_selected_characters():
 
 def test_runtime_template_places_json_reminder_after_user_scenario(monkeypatch):
     monkeypatch.setattr(
-        "frontend_bridge_core.templates.json_format_reminder",
+        "application.chat.templates.json_format_reminder",
         lambda: "必须以规定的 JSON 格式回复。",
     )
 
@@ -57,7 +57,7 @@ def test_runtime_template_places_json_reminder_after_user_scenario(monkeypatch):
 
 def test_runtime_template_places_json_reminder_after_default_scenario(monkeypatch):
     monkeypatch.setattr(
-        "frontend_bridge_core.templates.json_format_reminder",
+        "application.chat.templates.json_format_reminder",
         lambda: "必须以规定的 JSON 格式回复。",
     )
 
@@ -147,12 +147,12 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     settings_package.__path__ = []
     services_package = ModuleType("ui.settings_ui.services")
     services_package.__path__ = []
-    storage_module = ModuleType("ui.settings_ui.services.template_tab_session")
+    storage_module = ModuleType("application.chat.session_store")
     storage_module.save_template_session = lambda _path, data: saved.update(data)
     storage_module.load_template_session = lambda _path: dict(saved)
     monkeypatch.setitem(sys.modules, "ui.settings_ui", settings_package)
     monkeypatch.setitem(sys.modules, "ui.settings_ui.services", services_package)
-    monkeypatch.setitem(sys.modules, "ui.settings_ui.services.template_tab_session", storage_module)
+    monkeypatch.setitem(sys.modules, "application.chat.session_store", storage_module)
     state = SimpleNamespace(
         config_manager=config_manager,
         template_dir_path="unused",
@@ -244,10 +244,10 @@ def test_character_rename_updates_persisted_template_selection(monkeypatch):
         "init_sprite_path": "",
         "scenario_text": "scene",
     }
-    storage_module = ModuleType("ui.settings_ui.services.template_tab_session")
+    storage_module = ModuleType("application.chat.session_store")
     storage_module.load_template_session = lambda _path: dict(stored)
     storage_module.save_template_session = lambda _path, data: stored.update(data)
-    monkeypatch.setitem(sys.modules, "ui.settings_ui.services.template_tab_session", storage_module)
+    monkeypatch.setitem(sys.modules, "application.chat.session_store", storage_module)
     state = SimpleNamespace(
         config_manager=SimpleNamespace(
             get_character_by_name=lambda name: characters.get(str(name).lower()),
@@ -267,10 +267,10 @@ def test_loading_template_session_removes_historical_stale_names(monkeypatch):
         "init_sprite_path": "sprites/a.png",
         "scenario_text": "scene",
     }
-    storage_module = ModuleType("ui.settings_ui.services.template_tab_session")
+    storage_module = ModuleType("application.chat.session_store")
     storage_module.load_template_session = lambda _path: dict(stored)
     storage_module.save_template_session = lambda _path, data: stored.update(data)
-    monkeypatch.setitem(sys.modules, "ui.settings_ui.services.template_tab_session", storage_module)
+    monkeypatch.setitem(sys.modules, "application.chat.session_store", storage_module)
     state = SimpleNamespace(
         config_manager=SimpleNamespace(
             config=SimpleNamespace(characters=[character]),

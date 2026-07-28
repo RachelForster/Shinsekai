@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from sdk.messages import TTSOutputMessage
-from core.handlers.ui_message_handler import (
+from application.chat.handlers.presentation import (
     ChainOfThoughtUiHandler,
     OptionsUiHandler,
     NumericUiHandler,
@@ -183,11 +183,11 @@ class TestCharacterDialogUiHandler:
             is_final_segment=True,
         )
 
-        with patch("core.handlers.ui_message_handler.get_app_runtime", return_value=runtime), patch(
-            "core.handlers.ui_message_handler.get_character_by_name", return_value=_Character()
-        ), patch("core.handlers.ui_message_handler.time.sleep", return_value=None), patch(
-            "core.handlers.ui_message_handler.pygame.mixer.Sound", return_value=sound
-        ), patch("core.handlers.ui_message_handler.get_asr_log", return_value=MagicMock()), patch(
+        with patch("application.chat.handlers.presentation.get_app_runtime", return_value=runtime), patch(
+            "application.chat.handlers.presentation.get_character_by_name", return_value=_Character()
+        ), patch("application.chat.handlers.presentation.time.sleep", return_value=None), patch(
+            "application.chat.handlers.presentation.pygame.mixer.Sound", return_value=sound
+        ), patch("application.chat.handlers.presentation.get_asr_log", return_value=MagicMock()), patch(
             "sdk.logging.timing.tracker.stop_cross", return_value=None
         ):
             handler.handle(out)
