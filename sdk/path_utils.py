@@ -156,10 +156,7 @@ def safe_existing_path(
     if not allowed:
         raise PermissionError(f"{field} is outside the allowed roots")
 
-    path = Path(resolved)
-    if not path.exists():
-        raise FileNotFoundError(path)
-    return path
+    return Path(resolved)
 
 
 def safe_existing_file_path(

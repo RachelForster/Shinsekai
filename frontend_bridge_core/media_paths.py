@@ -7,7 +7,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
-from sdk.path_utils import reject_control_chars
+from sdk.path_utils import reject_control_chars, safe_existing_path
 
 
 IMAGE_MEDIA_SUFFIXES = frozenset(
@@ -146,11 +146,15 @@ def resolve_external_media_file(
     candidate = Path(approved).expanduser()
     if not candidate.is_absolute():
         raise PermissionError("external media path must be absolute")
-    return validate_readable_media_file(candidate)
+    return validate_readable_media_file(candidate, roots=[candidate.parent])
 
 
-def validate_readable_media_file(path: Path) -> Path:
-    resolved = path.expanduser().resolve(strict=True)
+def validate_readable_media_file(
+    path: Path,
+    *,
+    roots: Iterable[str | os.PathLike[str]],
+) -> Path:
+    resolved = safe_existing_path(path, roots=roots, field="media path")
     if resolved.suffix.lower() not in READABLE_MEDIA_SUFFIXES:
         raise PermissionError("file type is not allowed for media")
     if not stat.S_ISREG(resolved.stat().st_mode):

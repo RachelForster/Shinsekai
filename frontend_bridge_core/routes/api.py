@@ -1625,7 +1625,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 raw,
                 approved_paths=approved_paths,
             )
-        return validate_readable_media_file(self._resolve_project_path(raw))
+        return validate_readable_media_file(
+            self._resolve_project_path(raw),
+            roots=[Path.cwd()],
+        )
 
     def _resolve_static_path(self, root: Path, request_path: str) -> Path:
         return safe_child_path(root, request_path)

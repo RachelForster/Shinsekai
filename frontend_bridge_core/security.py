@@ -22,11 +22,14 @@ _SAFE_SEARCH_RE = re.compile(r"^[\w\s.,:;!?()\[\]'\"+&/@#-]{1,200}$", re.UNICODE
 
 
 def safe_header_value(value: str) -> str:
-    return reject_control_chars(value, field="header")
+    validated = reject_control_chars(value, field="header")
+    # Keep the standard-library sanitizer shape visible to CodeQL in addition
+    # to the stricter control-character validation above.
+    return validated.replace("\r", "").replace("\n", "")
 
 
 def safe_content_disposition(filename: str) -> str:
-    safe_name = Path(reject_control_chars(filename, field="filename")).name
+    safe_name = Path(safe_header_value(filename)).name
     fallback = re.sub(r"[^A-Za-z0-9._-]+", "_", safe_name).strip("._") or "download"
     encoded = quote(safe_name, safe="")
     return f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{encoded}'
