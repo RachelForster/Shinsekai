@@ -18,7 +18,7 @@ except ModuleNotFoundError:
     fake_openai.OpenAI = _OpenAI
     sys.modules["openai"] = fake_openai
 
-from llm.llm_adapter import (
+from ai.llm.llm_adapter import (
     _raise_if_http_client_error,
     SUPPORTED_CHAT_PARAMS,
     ClaudeAdapter,
@@ -26,7 +26,7 @@ from llm.llm_adapter import (
     OpenAIAdapter,
     filter_supported_chat_params,
 )
-from llm.claude_url import normalize_claude_base_url_for_sdk
+from ai.llm.claude_url import normalize_claude_base_url_for_sdk
 
 
 class TestFilterSupportedChatParams:

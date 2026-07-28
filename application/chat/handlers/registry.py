@@ -70,7 +70,3 @@ def default_presentation_handler_chain() -> UiOutputMessageDispatcher:
 
     chain = list(get_plugin_ui_handlers()) + list(get_ui_output_handlers())
     return UiOutputMessageDispatcher(chain)
-
-
-# One-release compatibility name retained for existing integrations.
-default_ui_output_handler_chain = default_presentation_handler_chain

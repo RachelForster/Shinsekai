@@ -40,7 +40,6 @@ if [[ -f .env.local ]]; then
   load_dotenv .env.local
 fi
 
-export QT_API="${QT_API:-pyside6}"
 export SDL_AUDIODRIVER="${SDL_AUDIODRIVER:-pulseaudio}"
 
 die() {
@@ -80,4 +79,4 @@ require_python310 "$PYTHON"
 
 mkdir -p data/config data/sprite data/speech data/models data/chat_history data/character_templates
 
-exec "$PYTHON" webui_qt.py
+exec "$PYTHON" webui_react.py

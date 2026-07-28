@@ -178,7 +178,7 @@ def _generate_character_setting(state: BridgeState, payload: dict[str, Any]) -> 
 
 
 def _translate_character_fields(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    from ui.settings_ui.ai_field_translate import translate_character_name_and_tags
+    from application.localization.field_translation import translate_character_name_and_tags
 
     ui_language = str(getattr(state.config_manager.config.system_config, "ui_language", "") or "")
     error, name, emotion_tags, character_setting = translate_character_name_and_tags(

@@ -1,4 +1,4 @@
-"""Integration tests: LLMWorker → TTSWorker → UIWorker pipeline with mock adapters."""
+"""Integration tests: LLMWorker → TTSWorker → PresentationWorker pipeline with mock adapters."""
 
 import json
 import time

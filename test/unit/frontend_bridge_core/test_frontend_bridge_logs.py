@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import zipfile
 
-from frontend_bridge_core.logs import _diagnostic_bundle, _log_file_list, _log_snapshot
+from application.diagnostics.logs import _diagnostic_bundle, _log_file_list, _log_snapshot
 
 
 def test_log_snapshot_parses_jsonl_entries(tmp_path):

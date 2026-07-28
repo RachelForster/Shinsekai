@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from frontend_bridge_core.handler import FrontendBridgeHandler
+from frontend_bridge_core.routes.api import FrontendBridgeHandler
 
 
 def _handler(path: str, method: str = "GET") -> FrontendBridgeHandler:
@@ -28,7 +28,7 @@ def _handler(path: str, method: str = "GET") -> FrontendBridgeHandler:
     ],
 )
 def test_successful_polling_requests_are_not_logged(path, method, caplog):
-    caplog.set_level(logging.INFO, logger="frontend_bridge_core.handler")
+    caplog.set_level(logging.INFO, logger="frontend_bridge_core.routes.api")
 
     _handler(path, method).log_message('"%s" %s %s', f"{method} {path} HTTP/1.1", "200", "-")
 
@@ -37,7 +37,7 @@ def test_successful_polling_requests_are_not_logged(path, method, caplog):
 
 
 def test_failed_polling_request_is_logged(caplog):
-    caplog.set_level(logging.WARNING, logger="frontend_bridge_core.handler")
+    caplog.set_level(logging.WARNING, logger="frontend_bridge_core.routes.api")
 
     _handler("/api/tasks/task-1").log_message(
         '"%s" %s %s',
@@ -53,7 +53,7 @@ def test_failed_polling_request_is_logged(caplog):
 
 
 def test_non_polling_request_is_still_logged(caplog):
-    caplog.set_level(logging.INFO, logger="frontend_bridge_core.handler")
+    caplog.set_level(logging.INFO, logger="frontend_bridge_core.routes.api")
 
     _handler("/api/config").log_message('"%s" %s %s', "GET /api/config HTTP/1.1", "200", "-")
 

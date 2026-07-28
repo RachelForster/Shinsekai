@@ -6,12 +6,12 @@ import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
-from llm.history_manager import (
+from ai.llm.history_manager import (
     _repair_json_string,
     parse_assistant_dialog_content,
     HistoryManager,
 )
-from core.sprite.chat_history import canonical_user_turn_payload, pop_last_assistant_turn, pop_last_assistant_turn_payload
+from application.chat.history_state import canonical_user_turn_payload, pop_last_assistant_turn, pop_last_assistant_turn_payload
 
 
 def _uh(msg: str) -> str:
@@ -451,8 +451,8 @@ class TestSaveChatHistory:
         result = hm.save_chat_history(None, [{"role": "user", "content": "x"}])
         assert result is True
 
-    def test_sprite_wrapper_returns_manager_result(self, monkeypatch):
-        from core.sprite import chat_history as chat_history_mod
+    def test_application_history_state_returns_manager_result(self, monkeypatch):
+        from application.chat import history_state as chat_history_mod
 
         monkeypatch.setattr(
             chat_history_mod,

@@ -2,8 +2,8 @@
 
 import pytest
 
-from asr.asr_manager import ASRAdapterFactory
-from asr.asr_adapter import (
+from ai.asr.asr_manager import ASRAdapterFactory
+from ai.asr.asr_adapter import (
     VoskAdapter,
     voice_ui_to_asr_lang,
     ui_lang_to_asr_lang,

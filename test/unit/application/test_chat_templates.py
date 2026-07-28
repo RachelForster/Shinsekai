@@ -19,7 +19,7 @@ from application.chat.templates import (
     _save_template_session_payload,
     _template_session_to_frontend,
 )
-from llm.template_generator import NoValidCharactersError, TemplateGenerator
+from ai.llm.template_generator import NoValidCharactersError, TemplateGenerator
 
 
 def test_stored_template_round_trips_scenario_and_system_sections():
@@ -77,11 +77,11 @@ def test_generate_template_summary_returns_canonical_resolved_characters(monkeyp
         get_character_by_name=lambda name: character if name.lower() == "alice" else None,
     )
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         config_manager,
     )
     monkeypatch.setattr(
-        "llm.template_generator._T",
+        "ai.llm.template_generator._T",
         lambda key, **kwargs: f"{key}:{kwargs}\n",
     )
     state = SimpleNamespace(
@@ -108,11 +108,11 @@ def test_generate_template_summary_returns_canonical_resolved_characters(monkeyp
 def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
     config_manager = SimpleNamespace(get_character_by_name=lambda _name: None)
     monkeypatch.setattr(
-        "llm.template_generator.config_manager",
+        "ai.llm.template_generator.config_manager",
         config_manager,
     )
     monkeypatch.setattr(
-        "llm.template_generator._T",
+        "ai.llm.template_generator._T",
         lambda key, **kwargs: f"template_gen.{key}",
     )
     state = SimpleNamespace(

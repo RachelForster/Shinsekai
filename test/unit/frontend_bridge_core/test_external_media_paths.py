@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from frontend_bridge_core.handler import BRIDGE_AUTH_HEADER, FrontendBridgeHandler
+from frontend_bridge_core.routes.api import BRIDGE_AUTH_HEADER, FrontendBridgeHandler
 from frontend_bridge_core.media_paths import (
     _validate_windows_local_drive_path,
     iter_configured_external_media_paths,

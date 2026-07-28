@@ -3,8 +3,8 @@ import signal
 from types import SimpleNamespace
 
 from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
-from frontend_bridge_core import chat
-from frontend_bridge_core.runtime_dependencies import runtime_dependency_error_from_text
+from application.chat import runtime_process as chat
+from application.runtime.dependencies import runtime_dependency_error_from_text
 
 
 class _SystemConfig:

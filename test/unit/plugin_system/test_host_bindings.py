@@ -4,6 +4,24 @@ from plugin_system.host import service
 from plugin_system.host.service import PluginRuntimeBindings
 
 
+def test_plugin_host_never_collects_deprecated_qt_contributions(monkeypatch) -> None:
+    class FailIfCollected:
+        def collect_settings_contributions(self):
+            raise AssertionError("deprecated Qt settings contribution was collected")
+
+        def collect_tools_tab_contributions(self):
+            raise AssertionError("deprecated Qt tools contribution was collected")
+
+        def collect_chat_ui_contributions(self):
+            raise AssertionError("deprecated Qt chat contribution was collected")
+
+    monkeypatch.setattr(service, "_plugin_manager", FailIfCollected())
+
+    assert service.collect_settings_contributions() == []
+    assert service.collect_tools_tab_contributions() == []
+    assert service.collect_chat_ui_contributions() == []
+
+
 def test_plugin_host_applies_application_runtime_bindings(monkeypatch, tmp_path) -> None:
     calls: dict[str, object] = {}
 

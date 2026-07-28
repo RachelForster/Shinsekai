@@ -1,5 +1,5 @@
-from frontend_bridge_core.state import BridgeState, plugin_load_snapshot, set_plugin_load_status
-from frontend_bridge_core.tasks import (
+from application.runtime.state import BridgeState, plugin_load_snapshot, set_plugin_load_status
+from application.runtime.tasks import (
     TaskCancelled,
     _append_task_log,
     _create_task,

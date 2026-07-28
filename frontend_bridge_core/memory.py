@@ -30,7 +30,7 @@ def _get_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
         dependency_error["status"] = "missing_dependency"
         return dependency_error
 
-    from ai.memory.runtime import check_mem0_status
+    from application.memory.service import check_mem0_status
 
     return check_mem0_status(start_loading=start_loading)
 
@@ -46,10 +46,10 @@ def _list_character_memories(name: str) -> dict[str, Any]:
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from ai.memory.operations import memory_list
+    from application.memory.service import list_memories
 
     try:
-        return memory_list(name)
+        return list_memories(name)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
@@ -60,10 +60,10 @@ def _memory_tool_search(query: str, character_name: str, limit: int = 10) -> dic
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from ai.memory.operations import memory_search
+    from application.memory.service import search_memories
 
     try:
-        return memory_search(query, character_name=character_name, limit=limit)
+        return search_memories(query, character_name=character_name, limit=limit)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
@@ -74,10 +74,10 @@ def _memory_tool_remember(content: str, character_name: str) -> dict[str, Any]:
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from ai.memory.operations import memory_remember
+    from application.memory.service import remember_memory
 
     try:
-        return memory_remember(content, character_name=character_name)
+        return remember_memory(content, character_name=character_name)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
@@ -88,10 +88,10 @@ def _memory_tool_forget(memory_id: str) -> dict[str, Any]:
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from ai.memory.operations import memory_forget
+    from application.memory.service import forget_memory
 
     try:
-        return memory_forget(memory_id)
+        return forget_memory(memory_id)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
@@ -102,10 +102,10 @@ def _add_character_memory(name: str, content: str) -> dict[str, Any]:
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from ai.memory.operations import memory_remember_and_list
+    from application.memory.service import remember_and_list
 
     try:
-        result = memory_remember_and_list(content, character_name=name)
+        result = remember_and_list(content, character_name=name)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
     _raise_memory_error(result)
@@ -118,10 +118,10 @@ def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from ai.memory.operations import memory_forget_and_list
+    from application.memory.service import forget_and_list
 
     try:
-        result = memory_forget_and_list(memory_id, character_name=name)
+        result = forget_and_list(memory_id, character_name=name)
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
     _raise_memory_error(result)
@@ -137,14 +137,13 @@ def _preview_character_memory_import(
 ) -> dict[str, Any]:
     """Thin bridge wrapper around the memory import preview service."""
 
-    from ai.memory.extraction import configured_memory_chunk_tokens
-    from ai.memory.imports import preview_memory_import
+    from application.memory.service import preview_import
 
-    return preview_memory_import(
+    return preview_import(
         paths,
         character_name=name,
         source_root=source_root,
-        max_chunk_tokens=configured_memory_chunk_tokens(state.config_manager),
+        config_manager=state.config_manager,
     )
 
 
@@ -158,8 +157,7 @@ def _run_character_memory_import(
 ) -> dict[str, Any]:
     """Run extraction in a handler-owned background task."""
 
-    from ai.memory.extraction import create_configured_memory_adapter, configured_memory_chunk_tokens
-    from ai.memory.imports import execute_memory_import
+    from application.memory.service import execute_import
     from application.runtime.tasks import (
         TaskCancelled,
         _append_task_log,
@@ -176,13 +174,11 @@ def _run_character_memory_import(
         if _is_task_cancel_requested(state, task_id):
             raise TaskCancelled()
 
-    adapter = create_configured_memory_adapter(state.config_manager)
-    return execute_memory_import(
+    return execute_import(
         paths,
         character_name=name,
         source_root=source_root,
-        llm_adapter=adapter,
-        max_chunk_tokens=configured_memory_chunk_tokens(state.config_manager),
+        config_manager=state.config_manager,
         progress_callback=report,
         cancel_callback=raise_if_cancelled,
     )

@@ -4,7 +4,7 @@ from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
 
-from frontend_bridge_core.handler import FrontendBridgeHandler
+from frontend_bridge_core.routes.api import FrontendBridgeHandler
 
 
 def _export_handler(name: str) -> tuple[FrontendBridgeHandler, list[tuple[object, object]]]:

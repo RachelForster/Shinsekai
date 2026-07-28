@@ -925,7 +925,7 @@ export type MessageKey =
   | "plugin.detail.loading"
   | "plugin.detail.noUi"
   | "plugin.detail.pages"
-  | "plugin.detail.pyqtNotice"
+  | "plugin.detail.frontendNotice"
   | "plugin.detail.save"
   | "plugin.detail.saveFailed"
   | "plugin.detail.saveSuccess"

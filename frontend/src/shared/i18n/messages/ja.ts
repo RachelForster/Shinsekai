@@ -994,8 +994,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "plugin.detail.loading": "プラグイン設定を読み込み中",
   "plugin.detail.noUi": "このプラグインには設定ページがありません。",
   "plugin.detail.pages": "プラグインページ",
-  "plugin.detail.pyqtNotice":
-    "このプラグインはまだ PyQt ウィジェットとして提供されており、React の設定 schema は公開されていません。",
+  "plugin.detail.frontendNotice": "このプラグインは React で表示できる設定 schema を公開していません。",
   "plugin.detail.save": "設定を保存",
   "plugin.detail.saveFailed": "プラグイン設定を保存できませんでした。",
   "plugin.detail.saveSuccess": "プラグイン設定を保存しました",

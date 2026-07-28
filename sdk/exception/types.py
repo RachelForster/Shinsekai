@@ -78,7 +78,6 @@ MODULE_PACKAGE_MAP = {
     "opencc": "opencc-python-reimplemented",
     "pandas": "pandas",
     "pygame": "pygame",
-    "PySide6": "PySide6",
     "requests": "requests",
     "sentence_transformers": "sentence-transformers",
     "socksio": "socksio",

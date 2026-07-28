@@ -305,25 +305,13 @@ def wire_user_input_plugins(
 
 
 def collect_settings_contributions() -> List["SettingsUIContribution"]:
-    mgr = _plugin_manager
-    if mgr is None:
-        return []
-    try:
-        return mgr.collect_settings_contributions()
-    except Exception:
-        logger.exception("collect_settings_contributions failed")
-        return []
+    """Deprecated compatibility endpoint; the host never loads Qt settings UI."""
+    return []
 
 
 def collect_tools_tab_contributions() -> List["ToolsTabContribution"]:
-    mgr = _plugin_manager
-    if mgr is None:
-        return []
-    try:
-        return mgr.collect_tools_tab_contributions()
-    except Exception:
-        logger.exception("collect_tools_tab_contributions failed")
-        return []
+    """Deprecated compatibility endpoint; the host never loads Qt tools UI."""
+    return []
 
 
 def collect_frontend_config_contributions() -> List["FrontendConfigContribution"]:
@@ -360,14 +348,8 @@ def collect_frontend_chat_ui_contributions() -> List["FrontendChatUIContribution
 
 
 def collect_chat_ui_contributions() -> List["ChatUIContribution"]:
-    mgr = _plugin_manager
-    if mgr is None:
-        return []
-    try:
-        return mgr.collect_chat_ui_contributions()
-    except Exception:
-        logger.exception("collect_chat_ui_contributions failed")
-        return []
+    """Deprecated compatibility endpoint; the host never loads Qt chat UI."""
+    return []
 
 
 def read_plugin_manifest_items(path: Path | None = None) -> list[dict[str, Any]]:

@@ -3,7 +3,7 @@ from __future__ import annotations
 import wave
 from pathlib import Path
 
-from PySide6.QtWidgets import QMessageBox
+import pytest
 
 from sdk.ui import validators
 
@@ -66,7 +66,7 @@ def test_audio_duration_between_reads_wav_and_rejects_invalid_audio(tmp_path: Pa
     assert validators.audio_duration_between(str(tmp_path / "broken.wav"), 0.1, 2.0)[0] is False
 
 
-def test_check_all_first_error_and_dialog_helpers(monkeypatch) -> None:
+def test_check_all_first_error_and_warning_helpers() -> None:
     ok, errors = validators.check_all(
         validators.not_empty("value", "name"),
         validators.not_none(None, "payload"),
@@ -87,16 +87,11 @@ def test_check_all_first_error_and_dialog_helpers(monkeypatch) -> None:
     assert ok is False
     assert "count" in message
 
-    warnings: list[tuple[object, str, str]] = []
-    monkeypatch.setattr(
-        QMessageBox,
-        "warning",
-        lambda parent, title, text: warnings.append((parent, title, text)),
-    )
-
     assert validators.warn_if_invalid((True, [])) is True
-    assert validators.warn_if_invalid(False, "broken", title="Title") is False
-    assert warnings[-1] == (None, "Title", "broken")
-    assert validators.validate_or_block(validators.not_empty("", "name"), title="Block") is False
-    assert warnings[-1][1] == "Block"
-    assert "name" in warnings[-1][2]
+    with pytest.warns(UserWarning, match="Title: broken"):
+        assert validators.warn_if_invalid(False, "broken", title="Title") is False
+    with pytest.warns(UserWarning, match="Block:.*name"):
+        assert validators.validate_or_block(
+            validators.not_empty("", "name"),
+            title="Block",
+        ) is False

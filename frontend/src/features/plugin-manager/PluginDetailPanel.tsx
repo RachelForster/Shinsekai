@@ -107,7 +107,7 @@ function PluginConfigPanel({ lookupId, page }: { lookupId: string; page: PluginU
             {page.kind === "tools" ? t("plugin.detail.kindTools") : t("plugin.detail.kindSettings")}
           </span>
         </div>
-        <p className="plugin-card__description">{page.unavailableReason || t("plugin.detail.pyqtNotice")}</p>
+        <p className="plugin-card__description">{page.unavailableReason || t("plugin.detail.frontendNotice")}</p>
       </section>
     );
   }
@@ -277,7 +277,7 @@ export function PluginDetailPanel({ detailPlugin, initialPageId = "", onBack }: 
         />
       ) : null}
       {!pluginDetailQuery.isLoading && !detailPages.length ? (
-        <EmptyState title={t("plugin.detail.noUi")} body={t("plugin.detail.pyqtNotice")} />
+        <EmptyState title={t("plugin.detail.noUi")} body={t("plugin.detail.frontendNotice")} />
       ) : null}
       {detailPages.length ? (
         <>

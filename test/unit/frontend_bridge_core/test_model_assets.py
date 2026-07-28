@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from frontend_bridge_core import model_assets
-from frontend_bridge_core.state import BridgeState
-from frontend_bridge_core.tasks import _create_task, _get_task, _update_task
+from application.model_assets import service as model_assets
+from application.runtime.state import BridgeState
+from application.runtime.tasks import _create_task, _get_task, _update_task
 
 
 def _state(*, model_name: str = "small", token: str = "hf-token") -> BridgeState:

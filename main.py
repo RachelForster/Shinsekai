@@ -112,7 +112,6 @@ from application.runtime.context import (
     resolve_pending_tool_confirmation,
     set_app_runtime,
 )
-from core.runtime.launch_mode import should_init_desktop_mixer
 from application.runtime.shutdown import shutdown_chat_runtime
 from application.runtime.workflow import build_runtime_workflow, get_chat_workflow_handles
 from core.media.chat_attachments import resolve_chat_attachments
@@ -127,7 +126,6 @@ from core.sprite.chat_branch_storage import (
 from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
 from config.config_manager import ConfigManager
 from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
-import pygame
 from opencc import OpenCC
 from queue import Queue
 
@@ -146,11 +144,7 @@ from application.chat.history_state import (
     save_bg,
     save_chat_history,
 )
-from core.sprite.chat_ui_service import (
-    install_chat_ui_context,
-    restore_session_ui,
-    wire_chat_ui_bridge,
-)
+from application.chat.session_restore import restore_session_presentation
 from core.sprite.initial_sprite import display_initial_sprite, find_character_sprite_by_path
 from core.sprite.sprite_cli import parse_sprite_args
 logger.info(
@@ -182,7 +176,6 @@ _CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
     "template.load": (0.46, 0.54, "Loading the chat template and history."),
     "llm.init": (0.54, 0.68, "Preparing the language model."),
     "chat.init_hooks": (0.68, 0.82, "Running chat initialization hooks."),
-    "pygame.mixer.init": (0.82, 0.84, "Preparing audio playback."),
     "workflow.build": (0.84, 0.9, "Building the chat workflow."),
     "stream.runtime.setup": (0.9, 0.93, "Connecting the chat interface."),
     "workflow.start": (0.93, 0.96, "Starting the chat workflow."),
@@ -422,6 +415,11 @@ def main():
         )
     with _startup_phase("args.parse"):
         args = parse_sprite_args(tr_i18n, defaults=_LAUNCH_CONFIG)
+    if not args.stream_endpoint and not args.headless:
+        raise SystemExit(
+            "The Qt chat window has been retired; launch chat through React/Tauri "
+            "or pass --headless."
+        )
     stream_sink = _EARLY_STREAM_SINK if args.stream_endpoint == _EARLY_STREAM_ENDPOINT else None
     if args.stream_endpoint and stream_sink is None:
         with _startup_phase("stream.sink.init"):
@@ -596,10 +594,6 @@ def main():
 
     image_queue = Queue()
     emotion_queue = Queue()
-
-    if should_init_desktop_mixer(headless=bool(args.headless), stream_endpoint=str(args.stream_endpoint or "")):
-        with _startup_phase("pygame.mixer.init"):
-            pygame.mixer.init()
 
     text_processor = TextProcessor()
 
@@ -1311,10 +1305,10 @@ def main():
 
             restored_sprite = False
             if audio_path_queue is not None:
-                restored_sprite = restore_session_ui(
+                restored_sprite = restore_session_presentation(
                     messages,
                     audio_path_queue=audio_path_queue,
-                    window=_StreamWindowProxy(ui_updates),
+                    presenter=_StreamWindowProxy(ui_updates),
                     config=config,
                     tr_i18n=tr_i18n,
                 )
@@ -1429,175 +1423,7 @@ def main():
             )
         return
 
-    from core.runtime.ui_update_manager import UIUpdateManager, connect_to_desktop_window
-    from PySide6.QtGui import QIcon
-    from PySide6.QtWidgets import QApplication
-    from ui.chat_ui.chat_ui import ChatUIWindow
-    from ui.chat_ui.chat_turn_controller import ChatTurnController
-    from ui.chat_ui.qss_fusion import ensure_fusion_style
-
-    app = QApplication([])
-    ensure_fusion_style(app)
-    from ui.event_filters import install_no_wheel_filter
-    install_no_wheel_filter(app)
-    ui_updates = UIUpdateManager(chat_history=chat_history, bg_group=bg_group or [])
-    window = ChatUIWindow(
-        image_queue,
-        emotion_queue,
-        llm_manager,
-        sprite_mode=True,
-        background_mode=(bg_group is not None),
-    )
-    connect_to_desktop_window(ui_updates, window)
-    mirror_stream_sink = None
-    if args.mirror_stream_endpoint:
-        from application.chat.ui_updates import connect_to_stream_sink
-        from frontend_bridge_core.transport.ws_client import WSClientSink
-
-        mirror_stream_sink = WSClientSink(args.mirror_stream_endpoint)
-        connect_to_stream_sink(ui_updates, mirror_stream_sink)
-
-    chat_turn_service = create_chat_turn_service(
-        config=config,
-        user_input_queue=user_input_queue,
-        tts_queue=tts_queue,
-        audio_queue=audio_path_queue,
-        llm_manager=llm_manager,
-        ui_worker=_um,
-        ui_updates=ui_updates,
-    )
-    set_app_runtime(
-        AppRuntime(
-            config=config,
-            ui_update_manager=ui_updates,
-            llm_manager=llm_manager,
-            tts_manager=tts_manager,
-            t2i_manager=t2i_manager,
-            bgm_list=bgm_list,
-            effect_keyword_map=effect_keyword_map,
-            user_input_queue=user_input_queue,
-            tts_queue=tts_queue,
-            audio_path_queue=audio_path_queue,
-            text_processor=text_processor,
-            opencc=cc,
-            chat_turn_service=chat_turn_service,
-        )
-    )
-
-    workflow.start()
-
-    init_sprite_path = args.init_sprite_path
-    print(init_sprite_path)
-    if not init_sprite_path and not is_transparent_background(args.bg):
-        init_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
-
-    if system_config_to_asr_lang(config.config.system_config) == "zh":
-        _welcome_html = tr_in_bundle("main.welcome_html", "zh_CN")
-        _option_start = tr_in_bundle("main.option_start", "zh_CN")
-    else:
-        _welcome_html = tr_i18n("main.welcome_html")
-        _option_start = tr_i18n("main.option_start")
-
-    try:
-        if not messages:
-            window.setDisplayWords(_welcome_html)
-            if len(get_history()) <= 1:
-                window.setOptions([_option_start])
-    except Exception:
-        if not messages:
-            window.setDisplayWords(_welcome_html)
-    window.setNotification(tr_i18n("main.notify_chat"))
-
-    if user_input_queue is not None:
-        emit_user_text = wire_user_input_plugins(user_input_queue, sink=chat_turn_service.submit)
-    else:
-        emit_user_text = None
-
-    window._chat_turn_controller = ChatTurnController(window, chat_turn_service, ui_updates)
-
-    sc = config.config.system_config.model_copy(deep=True)
-    if bg_group:
-        sc.bgm_path = bgm_list[0] if bgm_list else ""
-        sc.background_path = bg_group[0].get("path", "") if bg_group else ""
-    else:
-        sc.bgm_path = ""
-        sc.background_path = ""
-    config.config.system_config = sc
-    config.save_system_config()
-
-    chat_ui_ctx = install_chat_ui_context(window, emit_user_text=emit_user_text)
-
-    restored_sprite = False
-    if audio_path_queue is not None:
-        restored_sprite = restore_session_ui(
-            messages,
-            audio_path_queue=audio_path_queue,
-            window=window,
-            config=config,
-            tr_i18n=tr_i18n,
-        )
-    if not restored_sprite:
-        display_initial_sprite(
-            init_sprite_path,
-            config=config,
-            ui_updates=ui_updates,
-        )
-
-    wire_chat_ui_bridge(
-        chat_ui_ctx,
-        window=window,
-        app=app,
-        emit_user_text=emit_user_text,
-        chat_history=chat_history,
-        history_file=args.history,
-        llm_manager=llm_manager,
-        audio_path_queue=audio_path_queue,
-        tts_manager=tts_manager,
-        ui_worker=_um,
-        tr_i18n=tr_i18n,
-    )
-
-    if args.room_id:
-        print(tr_i18n("main.print_bili_start", id=args.room_id))
-        if user_input_queue is not None:
-            try:
-                start_bilibili_service(args.room_id, user_input_queue=user_input_queue)
-            except ImportError as e:
-                pass
-
-    try:
-        appIcon = QIcon(str(resource_path("assets/system/picture/Icon.png")))
-        app.setWindowIcon(appIcon)
-    except Exception as e:
-        print(tr_i18n("main.print_icon_fail", e=str(e)))
-
-    # 关闭顺序：会话关闭事件（如有）→ Worker 线程 → 插件/TTS → 保存数据
-    app.aboutToQuit.connect(
-        lambda: shutdown_chat_runtime(
-            workflow=workflow,
-            plugin_shutdown=_shutdown_plugins,
-            tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
-            save_history=lambda: _save_chat_history_and_delete_tmp(args.history, llm_manager.get_messages())
-            if args.history else None,
-            save_background=lambda: save_bg(
-                bg_path=window.current_background_path,
-                bgm_path=ui_updates.current_bgm_path,
-            ),
-            emit_session_closed=(
-                lambda: mirror_stream_sink.emit({"type": "session.closed", "reason": "聊天会话已结束。"})
-            )
-            if mirror_stream_sink is not None
-            else None,
-            close_stream_sink=mirror_stream_sink.close if mirror_stream_sink is not None else None,
-            on_error=_log_shutdown_error,
-        )
-    )
-
-    window.show()
-    _finish_chat_initialization()
-
-    app.exec()
-
+    raise SystemExit("The Qt chat window has been retired; launch chat through React/Tauri or pass --headless.")
 
 if __name__ == "__main__":
     try:

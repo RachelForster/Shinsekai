@@ -12,36 +12,25 @@
 | --- | --- | --- | --- |
 | `ai/memory/` | 已落地，正式使用 `ai.tools` | 14 个 Python 文件 | 保持 |
 | `ai/vision/` | 已落地，旧 tool 依赖已清除 | 7 个 Python 文件 | 保持 |
-| `ai/llm/` | O4 已落地 | 根目录 `llm/` 仅保留兼容入口 | 保持统一 AI 边界 |
+| `ai/llm/` | O4 已落地，O5 已删除旧入口 | 规范 AI 实现目录 | 保持统一 AI 边界 |
 | `core/messaging/` | 已落地 | 10 个 Python 文件 | 保持并清理应用层耦合 |
 | `core/model_assets/` | 已落地 | 3 个 Python 文件 | 保持 |
-| `core/runtime/` | O3 已迁移通用 runtime；Qt worker 暂留 | 5 个兼容/Qt 模块 | O5 删除 Qt runtime 与兼容入口 |
-| `core/handlers/` | O3 已迁移应用处理链 | 5 个兼容模块 | O5 删除到期兼容入口 |
-| `core/plugins/` | O2 已迁移，仅保留兼容 import | 14 个兼容模块 | O5 删除兼容路径 |
+| `application/runtime/` | O3/O5 已落地 | 通用 runtime 与标准线程 worker | 保持应用编排边界 |
+| `application/chat/handlers/` | O5 已落地 | TTS 与 presentation 处理链 | 保持框架无关 |
+| `core/runtime/`、`core/handlers/` | O5 已删除 | 0 | 禁止重新引入 |
+| `core/plugins/` | O5 已删除 | 0 | 禁止重新引入 |
 | `plugin_system/` | O2 已落地 | host/install/publisher/registry/requirements/update | 保持宿主插件平台边界 |
-| `frontend_bridge_core/` | O3 已收敛；旧模块为兼容 alias | routes + transport helpers | O5 删除到期兼容入口 |
-| `llm/asr/tts/t2i` | O4 已迁移 | 旧路径仅保留兼容入口 | O5 按退出条件删除兼容层 |
-| `ui/`、`webui.py`、`webui_qt.py` | 已决定废弃 | 不再迁移 UI 逻辑 | O5 删除或隔离剩余运行依赖 |
+| `frontend_bridge_core/` | O3/O5 已收敛 | routes + transport helpers | 只保留接口适配 |
+| `llm/asr/tts/t2i` | O5 已删除 | 0 | 统一使用 `ai/*` |
+| `ui/`、`webui.py`、`webui_qt.py` | O5 已删除 | 0 | 产品 UI 只由 React/Tauri 承载 |
 
 ## 2. 基线依赖例外
 
 O1 的完整依赖矩阵精确记录 56 个历史“文件 → 顶层包”例外，分布在
 38 个文件中。`LOCKED_BASELINE_VIOLATIONS` 是永久上限；后续 Objective
-只能从活动 allowlist 删除对应项，不得新增或替换。O2、O3 与 O4
-完成后，当前活动集合剩余 11 项；O5 必须全部删除：
-
-| 来源 | 反向依赖 | 退出 Objective |
-| --- | --- | --- |
-| `core/runtime/ui_update_manager.py` | `asr` | O5 |
-| `core/sprite/chat_ui_service.py` | `llm` | O5 |
-| `frontend_bridge_core/backgrounds.py` | `ui` | O5 |
-| `frontend_bridge_core/characters.py` | `ui` | O5 |
-| `frontend_bridge_core/memory.py` | `ai` | O5 |
-| `frontend_bridge_core/plugin_publisher.py` | `core` | O5 |
-| `frontend_bridge_core/plugin_ui.py` | `core` | O5 |
-| `sdk/chat_ui_context.py` | `ui` | O5 |
-| `sdk/logging/environment.py` | `ui` | O5 |
-| `sdk/plugin_host_context.py` | `config`、`ui` | O5 |
+只能从活动 allowlist 删除对应项，不得新增或替换。O2、O3 与 O4 完成后
+活动集合剩余 11 项，O5 已删除最后这些例外。当前 `ALLOWED_VIOLATIONS`
+为空，架构测试不再接受历史反向依赖。
 
 ## 3. Objective 与 PR 边界
 
@@ -137,32 +126,39 @@ PR 范围：
 
 ### O5：安全完成切换
 
+状态：已在 O5 PR 落地，等待合并。
+
 PR 范围：
 
 - 删除达到退出条件的兼容模块；
-- 删除或隔离 Qt 设置 UI 与历史入口；
-- 从构建资源清单删除到期旧路径并更新最终文档；
-- 完成跨平台打包验证。
+- 删除 Qt 设置 UI、Qt 聊天 UI 与历史入口；
+- 更新构建资源清单和最终文档；
+- 完成本地测试、前端测试和 Tauri 资源验证。
 
 关键结果：
 
-- `ui/`、`webui.py`、`webui_qt.py` 不再承载产品 UI 逻辑；
+- `ui/`、`webui.py`、`webui_qt.py` 已删除，React/Tauri 成为唯一产品 UI；
+- `application/runtime/workers.py` 使用标准库线程，不再依赖 `QThread`；
+- `core/plugins`、`core/runtime`、旧 bridge alias 与根目录 AI alias 已删除；
+- QtPy 与 `pyqt-toast` 已退出运行依赖和 Tauri manifest；PySide6 仅保留在源码
+  `requirements.txt` 中供 `tools/migrate_helper/` 迁移入口使用，不进入 Tauri
+  desktop-core runtime；
 - O1 allowlist 清零；
-- 连续两次完整 CI 无旧路径回归；
-- Windows、macOS、Linux Tauri smoke test 通过；
+- Tauri 资源校验同时验证规范目录存在、历史目录不存在；
+- Windows 本地验证由本 PR 执行，macOS/Linux smoke test 由 CI 执行；
 - 实际目录、测试目录和目标结构一致。
 
 ## 4. 迁移映射
 
 | 当前路径 | 目标位置 | Objective | 说明 |
 | --- | --- | --- | --- |
-| `llm/tools/memory_tools.py` | `ai/tools/memory_tools.py` | O4 | 已完成；旧路径为兼容 alias |
-| `llm/tools/file_tools.py` | `core/media/file_operations.py` + `ai/tools/file_tools.py` | O4 | 已完成；文件实现位于 core，AI 路径仅保留薄 tool wrapper |
-| `llm/tools/mcp_config_file.py` | `config/mcp_config.py` | O4 | 已完成；AI 与旧路径为兼容入口 |
-| `llm/*` | `ai/llm/` | O4 | 已完成；旧路径为兼容 alias |
-| `asr/*` | `ai/asr/` | O4 | 已完成；SDK adapter 保持稳定 |
-| `tts/*` | `ai/tts/` | O4 | 已完成；资源下载不放 adapter |
-| `t2i/*` | `ai/t2i/` | O4 | 已完成；SDK adapter 保持稳定 |
+| `llm/tools/memory_tools.py` | `ai/tools/memory_tools.py` | O4/O5 | 已完成；旧路径已删除 |
+| `llm/tools/file_tools.py` | `core/media/file_operations.py` + `ai/tools/file_tools.py` | O4/O5 | 已完成；旧路径已删除 |
+| `llm/tools/mcp_config_file.py` | `config/mcp_config.py` | O4/O5 | 已完成；旧路径已删除 |
+| `llm/*` | `ai/llm/` | O4/O5 | 已完成；旧路径已删除 |
+| `asr/*` | `ai/asr/` | O4/O5 | 已完成；SDK adapter 保持稳定 |
+| `tts/*` | `ai/tts/` | O4/O5 | 已完成；旧路径已删除 |
+| `t2i/*` | `ai/t2i/` | O4/O5 | 已完成；SDK adapter 保持稳定 |
 | `core/plugins/plugin_host.py` | `plugin_system/host/` | O2 | 加载、生命周期和 contribution 收集 |
 | `core/plugins/registry_*` | `plugin_system/registry/` | O2 | catalog、状态和远端下载 |
 | `core/plugins/package_download.py` | `plugin_system/install/` | O2 | 下载、校验、安全解压和替换 |
@@ -172,9 +168,9 @@ PR 范围：
 | `core/plugins/pip_index_config.py` | `core/runtime_env/pip_index.py` | O2 | 通用镜像和 index 配置 |
 | `core/plugins/pytorch_runtime.py` | `core/runtime_env/pytorch.py` | O2 | 通用 PyTorch runtime 选择 |
 | `core/plugins/github_bundle_update.py` | `core/app_update/` + `plugin_system/update/` | O2 | 主程序和插件更新必须拆开 |
-| `core/runtime/app_runtime.py` 等 | `application/runtime/` | O3 | 应用生命周期和 worker |
+| `core/runtime/app_runtime.py` 等 | `application/runtime/` | O3/O5 | runtime 已迁；worker 已改为标准线程 |
 | `core/runtime/requirements.py` | `core/runtime_env/requirements.py` | O3 | 环境检测 |
-| `core/handlers/*` | `application/chat/handlers/` | O3 | 不迁移 Qt 控件实现 |
+| `core/handlers/*` | `application/chat/handlers/` | O5 | 已迁移框架无关处理链，Qt 控件实现已删除 |
 | `frontend_bridge_core/chat.py` | routes + `application/chat/` | O3 | bridge 只保留协议 |
 | `frontend_bridge_core/plugin_*.py` | routes + `application/plugins/` | O2/O3 | O2 迁实现并保留兼容调用；O3 将 catalog/updates 收口到 application 门面 |
 | `frontend_bridge_core/model_assets.py`、`tts.py` | `application/model_assets/` | O3 | bridge 只创建 task 并转发结果 |
@@ -183,10 +179,14 @@ PR 范围：
 
 ## 5. 通用退出条件
 
-旧路径只有同时满足以下条件才能删除：
+旧路径通常只有同时满足以下条件才能删除：
 
 1. 仓库内部生产 import 为零；
 2. 旧模块只剩 re-export，没有独立状态或业务逻辑；
-3. 至少经过一个发布周期的弃用窗口；
+3. 已按发布策略完成弃用窗口，或由项目决策明确提前终止该能力；
 4. 单元、集成、e2e 和 Tauri 打包检查通过；
 5. 迁移台账已更新为完成。
+
+O5 根据“废弃 Qt UI 逻辑”的明确项目决策加速删除 Qt 与仅服务于该 UI
+的兼容入口；稳定插件扩展继续通过 `sdk.adapters`、frontend contribution
+和 JSON 事件契约提供。

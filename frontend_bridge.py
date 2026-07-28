@@ -89,7 +89,7 @@ def _forward_plugin_user_input(state, event: dict) -> None:
 def _shutdown_bridge_runtime(reason: str) -> None:
     _restart_debug_log(f"bridge runtime shutdown begin reason={reason}")
     try:
-        from core.plugins.plugin_host import (
+        from plugin_system.host import (
             bind_frontend_ui_runtime,
             bind_frontend_user_input_runtime,
         )
@@ -258,21 +258,21 @@ def _start_plugin_loader(state, logger) -> None:
         set_plugin_load_status(state, "loading")
         _restart_debug_log("plugin load background start")
         try:
-            from core.plugins.plugin_host import (
+            from plugin_system.host import (
                 bind_frontend_ui_runtime,
                 bind_frontend_user_input_runtime,
                 ensure_plugins_loaded,
                 PluginRuntimeBindings,
             )
             from ai.vision.fallback_registry import configure_registered_fallbacks
-            from asr.asr_manager import ASRAdapterFactory
-            from llm.llm_manager import LLMAdapterFactory
-            from llm.tools.tool_manager import ToolManager
-            from t2i.t2i_manager import T2IAdapterFactory
-            from tts.tts_manager import TTSAdapterFactory
+            from ai.asr.asr_manager import ASRAdapterFactory
+            from ai.llm.llm_manager import LLMAdapterFactory
+            from ai.tools.tool_manager import ToolManager
+            from ai.t2i.t2i_manager import T2IAdapterFactory
+            from ai.tts.tts_manager import TTSAdapterFactory
 
             def register_mcp_tools(tool_manager) -> None:
-                from llm.tools.mcp_tool_setup import register_mcp_tools_from_config
+                from ai.tools.mcp_tool_setup import register_mcp_tools_from_config
 
                 register_mcp_tools_from_config(tool_manager)
 
@@ -360,7 +360,7 @@ def run(
     from config.character_manager import CharacterManager
     from config.config_manager import ConfigManager
     from i18n import init_i18n
-    from llm.template_generator import TemplateGenerator
+    from ai.llm.template_generator import TemplateGenerator
 
     from frontend_bridge_core.chat_stream import ChatStreamService
     from frontend_bridge_core.routes.api import FrontendBridgeHandler
@@ -520,7 +520,7 @@ def check_runtime(
     from config.character_manager import CharacterManager
     from config.config_manager import ConfigManager
     from i18n import init_i18n
-    from llm.template_generator import TemplateGenerator
+    from ai.llm.template_generator import TemplateGenerator
 
     from application.runtime.state import BridgeState  # noqa: F401
     from frontend_bridge_core.routes.api import FrontendBridgeHandler  # noqa: F401

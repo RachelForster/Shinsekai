@@ -131,12 +131,13 @@ def _show_frontend_migration_dialog(message: str) -> None:
     print(message, file=sys.stderr)
     print("Opening the Shinsekai Frontend migration helper...", file=sys.stderr)
     try:
-        from ui.migrate_helper.dialog import MigrationRoleDialog
+        from tools.migrate_helper.dialog import MigrationRoleDialog
         from PySide6.QtWidgets import QApplication
     except Exception as exc:
         print(f"Could not open migration helper dialog: {exc}", file=sys.stderr)
         print(
-            "Developers: install pnpm/Corepack and run `cd frontend && pnpm install && pnpm build`.\n"
+            "Developers: install pnpm/Corepack and run "
+            "`cd frontend && pnpm install && pnpm build`.\n"
             "Users: download the latest release package from "
             "https://github.com/RachelForster/Shinsekai/releases",
             file=sys.stderr,

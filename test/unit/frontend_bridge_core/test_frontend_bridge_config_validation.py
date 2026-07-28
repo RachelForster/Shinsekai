@@ -10,7 +10,7 @@ from frontend_bridge_core.config import (
     _state_project_root,
     _validate_api_config_for_save,
 )
-from frontend_bridge_core.state import BridgeState
+from application.runtime.state import BridgeState
 
 
 def _valid_config(**overrides):

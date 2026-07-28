@@ -250,6 +250,12 @@ class PluginCapabilityRegistry:
         return _frontend_user_input_controller_for_plugin(ctx[0])
 
     def register_settings_ui(self, contribution: SettingsUIContribution) -> None:
+        """Register deprecated Qt settings metadata for load compatibility.
+
+        The current host deliberately ignores this metadata and never calls
+        ``contribution.build``. Use :meth:`register_frontend_config_page` or
+        :meth:`register_frontend_page` for rendered UI.
+        """
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
             pid, ver = ctx
@@ -261,6 +267,12 @@ class PluginCapabilityRegistry:
         self._settings_contributions.append(contribution)
 
     def register_tools_tab(self, contribution: ToolsTabContribution) -> None:
+        """Register deprecated Qt tools metadata for load compatibility.
+
+        The current host deliberately ignores this metadata and never calls
+        ``contribution.build``. Use :meth:`register_frontend_config_page` with
+        ``kind="tools"`` or :meth:`register_frontend_page`.
+        """
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
             pid, ver = ctx
@@ -333,6 +345,12 @@ class PluginCapabilityRegistry:
         self._frontend_chat_ui_contributions.append(contribution)
 
     def register_chat_ui_widget(self, contribution: ChatUIContribution) -> None:
+        """Register deprecated Qt chat metadata for load compatibility.
+
+        The current host deliberately ignores this metadata and never calls
+        ``contribution.build``. Use :meth:`register_frontend_chat_ui` or
+        :meth:`register_frontend_page` for rendered UI.
+        """
         ctx = self._settings_ui_plugin_ctx
         if ctx is not None:
             pid, ver = ctx

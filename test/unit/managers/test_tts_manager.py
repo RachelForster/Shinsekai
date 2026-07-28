@@ -6,8 +6,8 @@ from pathlib import Path
 import pytest
 import requests
 
-from tts.tts_adapter import GenieTTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter
-from tts.tts_manager import TTSManager, TTSAdapterFactory
+from ai.tts.tts_adapter import GenieTTSAdapter, GPTSoVitsAdapter, IndexTTSAdapter
+from ai.tts.tts_manager import TTSManager, TTSAdapterFactory
 from test.mocks import MockTTSAdapter
 
 
@@ -125,7 +125,7 @@ class TestTTSAdapterFactoryRegistry:
         def fake_get(*_args, **_kwargs):
             raise requests.RequestException("server down")
 
-        monkeypatch.setattr("tts.tts_adapter.requests.Session.get", fake_get)
+        monkeypatch.setattr("ai.tts.tts_adapter.requests.Session.get", fake_get)
 
         with pytest.raises(RuntimeError, match="IndexTTS startup path"):
             IndexTTSAdapter(tts_server_url="http://127.0.0.1:9880", gpt_sovits_work_path="")

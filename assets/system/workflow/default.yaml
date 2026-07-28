@@ -3,7 +3,7 @@ nodes:
     type: application.runtime.workers.LLMWorker
   - name: tts_worker
     type: application.runtime.workers.TTSWorker
-  - name: ui_worker
+  - name: presentation_worker
     type: application.runtime.workers.PresentationWorker
 edges:
   - src: llm_worker
@@ -12,7 +12,7 @@ edges:
     dst_port: llm_output
   - src: tts_worker
     src_port: tts_output
-    dst: ui_worker
+    dst: presentation_worker
     dst_port: tts_output
 exports:
   chat.input:
@@ -24,9 +24,9 @@ exports:
     port: llm_output
     direction: input
   chat.audio_output:
-    node: ui_worker
+    node: presentation_worker
     port: tts_output
     direction: input
   chat.ui_worker:
-    node: ui_worker
+    node: presentation_worker
     direction: node

@@ -333,7 +333,7 @@ def test_runtime_check_rejects_installed_distributions_with_incompatible_version
     tmp_path, monkeypatch
 ):
     import frontend_bridge
-    from core.runtime import requirements as runtime_requirements
+    from core.runtime_env import requirements as runtime_requirements
 
     requirements = tmp_path / "requirements-runtime-core.txt"
     requirements.write_text("huggingface-hub==0.36.2\n", encoding="utf-8")
@@ -435,7 +435,7 @@ def test_ui_update_manager_import_does_not_require_cv2():
 
         builtins.__import__ = guarded_import
 
-        from core.runtime.ui_update_manager import HeadlessUIUpdateManager, format_context_token_estimate
+        from application.chat.ui_updates import HeadlessUIUpdateManager, format_context_token_estimate
 
         HeadlessUIUpdateManager()
         assert format_context_token_estimate({}) == "tokens sys 0 | hist 0 | tools 0 | total 0"
@@ -479,12 +479,12 @@ def test_runtime_core_requirements_include_bridge_startup_sdks():
     assert "tiktoken" in names
     assert "packaging" in names
     assert "opencc-python-reimplemented" in names
-    assert "PySide6" in names
+    assert "PySide6" not in names
     assert "Pillow" in names
 
 
 def test_runtime_core_pins_huggingface_hub_to_the_shared_compatible_version():
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     repo_root = _repo_root()
     expected = f"huggingface-hub=={runtime_dependencies.HUGGINGFACE_HUB_VERSION}"
@@ -499,7 +499,7 @@ def test_runtime_core_pins_huggingface_hub_to_the_shared_compatible_version():
 
 
 def test_runtime_requirements_keep_memory_and_moondream_dependencies_compatible():
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     repo_root = _repo_root()
     for requirements_name in ("requirements-runtime-local-ai.txt", "requirements.txt"):
@@ -526,7 +526,7 @@ def _fake_runtime_pip_install(calls):
 
 
 def test_install_runtime_dependency_requests_long_failure_detail(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     captured: dict[str, int] = {}
 
@@ -548,7 +548,7 @@ def test_install_runtime_dependency_requests_long_failure_detail(monkeypatch):
 
 
 def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     calls = []
 
@@ -575,7 +575,7 @@ def test_install_runtime_dependency_uses_runtime_pip_index_and_extra_args(monkey
 
 
 def test_install_runtime_dependency_pins_huggingface_hub(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     calls = []
     monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
@@ -588,7 +588,7 @@ def test_install_runtime_dependency_pins_huggingface_hub(monkeypatch):
 
 
 def test_install_runtime_dependency_installs_mem0_without_broad_extras(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     calls = []
     monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
@@ -613,7 +613,7 @@ def test_install_runtime_dependency_installs_mem0_without_broad_extras(monkeypat
 
 
 def test_memory_runtime_dependency_check_detects_an_old_huggingface_version():
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     versions = {
         "click": "8.1.8",
@@ -635,7 +635,7 @@ def test_memory_runtime_dependency_check_detects_an_old_huggingface_version():
 
 
 def test_memory_runtime_dependency_check_checks_the_complete_group():
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     issues = runtime_dependencies.runtime_dependency_issues(
         "mem0",
@@ -648,7 +648,7 @@ def test_memory_runtime_dependency_check_checks_the_complete_group():
 
 
 def test_memory_runtime_dependency_check_accepts_the_compatible_group():
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     versions = {
         "click": "8.1.8",
@@ -670,7 +670,7 @@ def test_memory_runtime_dependency_check_accepts_the_compatible_group():
 
 
 def test_install_runtime_dependency_keeps_sentence_transformers_compatible(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     calls = []
     monkeypatch.setattr(runtime_dependencies, "_run_pip_install", _fake_runtime_pip_install(calls))
@@ -690,7 +690,7 @@ def test_install_runtime_dependency_keeps_sentence_transformers_compatible(monke
 
 
 def test_install_runtime_dependency_invalidates_import_caches_after_success(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     calls = []
     invalidated = []
@@ -703,7 +703,7 @@ def test_install_runtime_dependency_invalidates_import_caches_after_success(monk
 
 
 def test_install_runtime_dependency_uses_manifest_china_index_by_default(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     calls = []
 
@@ -728,7 +728,7 @@ def test_install_runtime_dependency_uses_manifest_china_index_by_default(monkeyp
 
 
 def test_install_runtime_dependency_uses_official_index_for_global_mirror_region(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     calls = []
 
@@ -751,7 +751,7 @@ def test_install_runtime_dependency_uses_official_index_for_global_mirror_region
 
 
 def test_install_runtime_dependency_does_not_add_index_when_pip_args_pick_one(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     calls = []
 
@@ -767,7 +767,7 @@ def test_install_runtime_dependency_does_not_add_index_when_pip_args_pick_one(mo
 
 
 def test_install_runtime_dependency_does_not_add_index_when_pip_args_disable_index(monkeypatch):
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     calls = []
 
@@ -786,7 +786,7 @@ def test_install_runtime_dependency_redacts_credential_urls_from_output(monkeypa
     import io
 
     from core.runtime_env import pip_runner
-    from frontend_bridge_core import runtime_dependencies
+    from application.runtime import dependencies as runtime_dependencies
 
     class FakePopen:
         def __init__(self, cmd, **kwargs):

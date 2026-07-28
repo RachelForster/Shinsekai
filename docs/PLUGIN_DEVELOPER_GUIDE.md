@@ -50,12 +50,12 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_message_handler`      | Optional `MessageHandler` / `UIOutputMessageHandler`       |
 | `register_user_input_trigger`   | Hook `trigger(emit_user_text)` for alternate input sources |
 | `register_user_input_processor` | `(str) -> str \| None` filter before `UserInputMessage`    |
-| `register_settings_ui`          | Extra Settings sidebar page (PySide)                       |
-| `register_tools_tab`            | Extra tab under **Settings → Tools** (PySide)              |
+| `register_settings_ui`          | Deprecated Qt compatibility metadata; accepted but never rendered |
+| `register_tools_tab`            | Deprecated Qt compatibility metadata; accepted but never rendered |
 | `register_frontend_config_page` | React-renderable plugin config page (schema + load/save callbacks) |
 | `register_frontend_page`        | Plugin-owned static frontend page embedded by iframe       |
 | `register_frontend_chat_ui`     | JSON-only Chat UI item rendered by the React host          |
-| `register_chat_ui_widget`       | Chat window widget + placement hint                        |
+| `register_chat_ui_widget`       | Deprecated Qt compatibility metadata; accepted but never rendered |
 | `register_dag_yaml`             | Workflow YAML path (convenience — delegates to `register_workflow`) |
 | `register_workflow`             | Workflow with optional output contract/schema              |
 | `register_output_contract_patch` | Patch an LLM output contract (fields, requirements, …)     |
@@ -65,11 +65,14 @@ You need a **full restart** after changing `plugins.yaml` (unlike MCP save-and-a
 | `register_init_chat_hook`       | One-time, progress-aware work while a chat runtime starts  |
 | `register_compact_hook`         | *Legacy* pre-compaction hook receiving the raw message list; prefer `register_before_compact_hook` |
 
-**Host-only** (do **not** call from plugins): `set_settings_ui_plugin_context`,
-`clear_settings_ui_plugin_context`. The host wraps `initialize` so
-`SettingsUIContribution` / `ToolsTabContribution` / `FrontendConfigContribution` /
-`FrontendPageContribution` / `FrontendChatUIContribution` / `ChatUIContribution` pick up `plugin_id` / `plugin_version`
+Frontend contributions pick up `plugin_id` / `plugin_version` from the active plugin
 when you leave those fields `None`.
+
+The legacy SDK names `SettingsUIContribution`, `ToolsTabContribution`,
+`ChatUIContribution`, `PluginSettingsUIContext`, and their three registration methods
+remain importable so existing plugins can still initialize. They are deprecated
+compatibility-only APIs: the host does not collect or render them, and it never invokes
+their `build` callbacks.
 
 Adapter registration stores the **class** (not an instance); registering the same
 provider name again overwrites the earlier one, including built-ins.
@@ -158,35 +161,25 @@ startup. Cancellation always stops the remaining initialization hooks.
 - A broken entry (import error, bad class) is logged and skipped; other plugins load
   normally.
 
-### UI contexts (read-only surfaces)
+### Host and frontend surfaces
 
-| Context                   | Where it appears                                              | What you get                                                                                                                                                                       |
-| ------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `PluginHostContext`       | `initialize(..., host=…)`                                     | UI language, voice language, font size, theme tint, **selected LLM/TTS labels** (no secrets), `project_data_dir`, `huggingface_cache_dir`. **No** `ConfigManager`, **no** API keys, **no** global save API. |
-| `PluginSettingsUIContext` | `SettingsUIContribution.build` / `ToolsTabContribution.build` | `host` snapshot + `template_dir_path`, `history_dir`, `character_names`, `background_names`.                                                                                       |
-| `ChatUIContext`           | `ChatUIContribution.build`                                    | Safe chat state reads, queued UI updates, `on_*` event subscriptions, `submit_user_message` when the host bound it.                                                                |
+`PluginHostContext`, passed to `initialize`, exposes UI language, voice language, font
+size, theme tint, selected LLM/TTS labels (no secrets), `project_data_dir`, and
+`huggingface_cache_dir`. It exposes no `ConfigManager`, API keys, or global save API.
 
-Prefer these over raw Qt signals on internal windows. `ChatUIContext` is also reachable
-at runtime via `sdk.chat_ui_context.try_get_chat_ui_context()` (returns `None` before
-the chat window exists) or `get_chat_ui_context()` (raises `RuntimeError` instead).
-
-`ChatUIContext` members beyond the examples below — state reads: `notification_hint()`,
-`input_draft()`, `choice_options()`, `is_dialog_visible()`, `is_choice_panel_visible()`,
-`dialog_text()`, `background_image_path()`, `base_font_size_px()`; thread-safe UI
-updates: `set_notification_hint`, `set_busy_bar(text, duration_seconds=3.0)`,
-`hide_busy_bar()`, `set_input_draft`, `clear_input_draft`, `set_choice_options`,
-`set_dialog_html`, `submit_user_message`; plus 28 `on_*` event subscriptions, each
-returning a disconnect callable.
+Use `register_frontend_config_page`, `register_frontend_page`, and
+`register_frontend_chat_ui` for presentation. Their schemas and payloads are JSON-only;
+plugins must not import React internals, Qt, or host window objects.
 
 ### Runtime workflows
 
-Runtime workflows are declared as YAML and loaded through `core.runtime.workflow`. The
+Runtime workflows are declared as YAML and loaded through `application.runtime.workflow`. The
 host runs exactly one workflow at a time:
 
 - If the user passes `--workflow path/to/workflow.yaml`, only that YAML is loaded.
 - If no workflow is selected, the host loads `assets/system/workflow/default.yaml`. In
   headless mode (`--headless`) the default is `assets/system/workflow/headless.yaml`,
-  which omits UIWorker and avoids pygame/Qt window dependencies.
+  which uses `HeadlessSinkNode` instead of the presentation worker.
 - Plugin workflow YAML files are selectable candidates; they are not merged into the
   default workflow automatically. Plugin workflow YAML files registered via
   `register_dag_yaml` or `register_workflow` are collected as `WorkflowContribution`
@@ -417,22 +410,22 @@ correlation ids; recognised context fields are `session_id`, `turn_id`, `request
 #### Where adapters show up, and who owns the parameters
 
 Registering an adapter only adds a **class** to the host factories. **Users** choose the
-backend and fill in secrets/options in the **Settings** window. Those values are **not**
+backend and fill in secrets/options in the React **Settings** UI. Those values are **not**
 stored in `plugins.yaml` or in your package tree by default.
 
 | Kind    | Where users pick it (Settings UI) | Persisted to disk (typical) | Your responsibility as the plugin author |
 | ------- | -------------------------------- | --------------------------- | ---------------------------------------- |
-| **LLM** | **API settings** tab — "LLM provider" combo (`llm_provider`). Labels are **case-sensitive** and must match your `register_llm_adapter("Exact Name", …)`. Same tab: API key, base URL, model id, streaming/sampling. | `data/config/api.yaml` (`ApiConfig`): shared LLM fields plus `llm_extra_configs[<llm_provider>]` — populated from your adapter's `get_config_schema()` via dynamic form widgets in `ui/settings_ui/tabs/api_tab.py`. | Implement `get_config_schema()` (optional) and an `__init__` that accepts kwargs the host will pass (see `ConfigManager.merged_llm_factory_kwargs`). Do **not** expect to read API keys inside `PluginBase.initialize`; they are injected only when the adapter instance is constructed at runtime. |
+| **LLM** | **API settings** — "LLM provider" (`llm_provider`). Labels are **case-sensitive** and must match your `register_llm_adapter("Exact Name", …)`. The same page owns API key, base URL, model id, streaming, and sampling. | `data/config/api.yaml` (`ApiConfig`): shared LLM fields plus `llm_extra_configs[<llm_provider>]`, populated from your adapter's `get_config_schema()` by the React settings form. | Implement `get_config_schema()` (optional) and an `__init__` that accepts kwargs the host will pass (see `ConfigManager.merged_llm_factory_kwargs`). Do **not** expect to read API keys inside `PluginBase.initialize`; they are injected only when the adapter instance is constructed at runtime. |
 | **TTS** | **API settings** tab — TTS engine combo (internal value is a **lowercase** slug, e.g. `gpt-sovits`). Shared fields (SoVITS path/URL, etc.) live on the same page. | `data/config/api.yaml`: `tts_provider` / shared TTS columns plus `tts_extra_configs[<slug>]` from `get_config_schema()`. | Register with the **same** slug the combo uses (`register_tts_adapter("my-engine", …)` → factory lowercases). Match ctor parameters to `merged_tts_factory_kwargs`. |
 | **ASR** | **System**-side provider choice (`asr_provider`: Vosk / Whisper-class plugins, etc.). Extra per-backend fields appear under **API settings** when that ASR class exposes `get_config_schema()`. | `data/config/system_config.yaml` for global mic/Whisper options (`asr_provider`, model size, device, …) + `data/config/api.yaml` → `asr_extra_configs[<normalized_slug>]` for schema-driven extras. | `register_asr_adapter` slug must match the normalized key the host uses when creating the adapter (`ai/asr/asr_adapter.py`). Base ctor signature is fixed: `__init__(self, language: str, callback: TranscriptionCallback)` where `TranscriptionCallback = Callable[[str, bool], None]`. |
-| **T2I** | **API settings** — Comfy-style URL, workflow paths, node IDs, etc. The dynamic "extra" panel is currently wired to the built-in Comfy adapter's schema in `api_tab.py`. | `data/config/api.yaml`: `t2i_*` fields plus `t2i_extra_configs` (default engine key `"comfyui"` in the UI today). | `register_t2i_adapter` keys are **lowercased**. For non-Comfy engines, users may need to edit `t2i_extra_configs[<your_engine>]` manually until the Settings UI grows a provider switch; ctor should still accept kwargs from `merged_t2i_factory_kwargs`. |
+| **T2I** | **API settings** — provider, URL, workflow paths, node IDs, and schema-driven extras. | `data/config/api.yaml`: `t2i_*` fields plus `t2i_extra_configs[<provider>]`. | `register_t2i_adapter` keys are **lowercased**; ctor parameters should accept kwargs from `merged_t2i_factory_kwargs`. |
 
 **Summary:** Adapter tuning is **centralized** in `api.yaml` / `system_config.yaml`,
 edited through **Settings** and `ConfigManager`. You expose **fields** via
 `get_config_schema()` and **parameter names** on `__init__`; you normally **do not**
 ship a parallel config format for the same secrets. Optional plugin-specific data
 (licenses, experimental flags) can still go under `plugin_root` or a page you add with
-`register_settings_ui`.
+`register_frontend_config_page`.
 
 - `get_config_schema()` — Optional classmethod; per-provider fields rendered on the API
   settings page. Metadata keys: `type` (str/int/float/bool), `label`, `default`,
@@ -761,70 +754,23 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 
 ### `register_settings_ui(contribution)`
 
-```python
-from sdk.plugin_host_context import PluginSettingsUIContext
-from sdk.register import PluginCapabilityRegistry
-from sdk.types import SettingsUIContribution
-
-
-def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> None:
-    def build_page(ctx: PluginSettingsUIContext):
-        from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
-
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.addWidget(QLabel(f"Characters loaded: {len(ctx.character_names)}"))
-        return w
-
-    register.register_settings_ui(
-        SettingsUIContribution(
-            page_id="my_plugin.settings",
-            nav_label="My plugin",
-            build=build_page,
-            order=120.0,
-        )
-    )
-```
+Deprecated with the Qt settings UI. The type and registration method remain available
+so old plugins still import and initialize, but the host never collects the contribution
+or invokes its `build` callback. Migrate to `register_frontend_config_page`.
 
 ---
 
 ### `register_tools_tab(contribution)`
 
-Same `PluginSettingsUIContext` builder as settings pages; appears under **Settings →
-Tools**.
-
-```python
-from sdk.plugin_host_context import PluginSettingsUIContext
-from sdk.register import PluginCapabilityRegistry
-from sdk.types import ToolsTabContribution
-
-
-def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> None:
-    def build_tools(ctx: PluginSettingsUIContext):
-        from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
-
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.addWidget(QLabel(f"Template dir: {ctx.template_dir_path}"))
-        return w
-
-    register.register_tools_tab(
-        ToolsTabContribution(
-            tab_id="my_plugin.tools",
-            title="My tool",
-            build=build_tools,
-            order=80.0,
-        )
-    )
-```
+Deprecated with the Qt tools page. Registration remains load-compatible, but the host
+never collects the contribution or invokes its `build` callback. Use
+`register_frontend_config_page(kind="tools")` or `register_frontend_page`.
 
 ---
 
 ### `register_frontend_config_page(contribution)`
 
-Use this when the React settings frontend should render your plugin page. Keep the
-existing Qt `register_settings_ui` / `register_tools_tab` page if you still support the
-PySide settings window.
+Use this when the React settings frontend should render your plugin page.
 
 ```python
 from dataclasses import asdict
@@ -992,7 +938,9 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
     )
 ```
 
-An action may return a string, `None`, or a mapping with `kind` (`success`, `info`, or `error`) and `message`. Use `register_chat_ui_widget` only for the legacy PySide Chat UI where an actual `QWidget` is required.
+An action may return a string, `None`, or a mapping with `kind` (`success`, `info`, or
+`error`) and `message`. Native widget contributions are retired; keep chat actions and
+payloads JSON-only.
 
 Toolbar entries can also open one of the same plugin's registered frontend pages without executing plugin JavaScript in the host. `chat-top-toolbar` is always rendered as an icon-only host button; other slots may opt into the same presentation explicitly.
 
@@ -1069,35 +1017,10 @@ The plugin page should call its own authenticated plugin backend when the user a
 
 ### `register_chat_ui_widget(contribution)`
 
-`placement` is a host-defined hint (`"toolbar"`, `"overlay"`, `"input_row"`, …).
-
-```python
-from sdk.chat_ui_context import ChatUIContext
-from sdk.register import PluginCapabilityRegistry
-from sdk.types import ChatUIContribution
-
-
-def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> None:
-    def build_widget(ctx: ChatUIContext):
-        from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
-
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        hint = QLabel(ctx.notification_hint() or "-")
-        lay.addWidget(hint)
-        _disconnect = ctx.on_notification_changed(lambda t: hint.setText(t or "-"))
-        w.destroyed.connect(_disconnect)
-        return w
-
-    register.register_chat_ui_widget(
-        ChatUIContribution(
-            widget_id="my_plugin.notify_echo",
-            placement="toolbar",
-            build=build_widget,
-            order=10.0,
-        )
-    )
-```
+Deprecated with the Qt chat window. Registration remains load-compatible, but the host
+never collects the contribution or invokes its `build` callback. Use
+`register_frontend_chat_ui` for JSON-rendered actions or `register_frontend_page` plus
+`frontend_ui.present_page()` for composed UI.
 
 ---
 
@@ -1124,10 +1047,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from sdk.plugin import PluginBase
-from sdk.plugin_host_context import PluginHostContext, PluginSettingsUIContext
+from sdk.plugin_host_context import PluginHostContext
 from sdk.register import PluginCapabilityRegistry
 from sdk.tool_registry import tool
-from sdk.types import SettingsUIContribution
+from sdk.types import FrontendConfigContribution
 
 
 @tool(name="demo_ping", description="Return a fixed ping string for testing.")
@@ -1158,22 +1081,24 @@ class ExampleDemoPlugin(PluginBase):
         plugin_root: Path,
         host: PluginHostContext,
     ) -> None:
-        _ = plugin_root
+        _ = plugin_root, host
+        values = {"enabled": True}
 
-        def build_settings(ctx: PluginSettingsUIContext):
-            from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
-
-            w = QWidget()
-            layout = QVBoxLayout(w)
-            layout.addWidget(QLabel(f"UI language: {ctx.host.ui_language}"))
-            layout.addWidget(QLabel(f"Loaded characters: {len(ctx.character_names)}"))
-            return w
-
-        register.register_settings_ui(
-            SettingsUIContribution(
+        register.register_frontend_config(
+            FrontendConfigContribution(
                 page_id="example_demo.settings",
-                nav_label="Demo plugin",
-                build=build_settings,
+                title="Demo plugin",
+                schema=[
+                    {
+                        "id": "main",
+                        "title": "Settings",
+                        "fields": [
+                            {"key": "enabled", "type": "boolean", "label": "Enabled"}
+                        ],
+                    }
+                ],
+                load_values=lambda: dict(values),
+                save_values=lambda incoming: values.update(incoming),
                 order=500.0,
             )
         )

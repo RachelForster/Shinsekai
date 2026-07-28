@@ -517,7 +517,7 @@ class LLMManager:
             self.logger.info(
                 "LLM tools disabled by first-turn tool budget",
                 extra={
-                    "event": "llm.tools.disabled",
+                    "event": "ai.tools.disabled",
                     "reason": "first_turn_tool_budget_exhausted",
                     "tool_call_attempts": state.tool_call_attempts,
                     "first_turn_tool_call_limit": state.first_turn_tool_call_limit,
@@ -541,7 +541,7 @@ class LLMManager:
             self.logger.info(
                 "Filtered tool definitions in cooldown",
                 extra={
-                    "event": "llm.tools.filtered",
+                    "event": "ai.tools.filtered",
                     "filtered_tool_count": len(filtered),
                     "filtered_groups": sorted({item["group"] for item in filtered}),
                     "filtered_tools": [item["name"] for item in filtered],

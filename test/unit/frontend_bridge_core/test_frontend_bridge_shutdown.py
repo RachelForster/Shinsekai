@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 import frontend_bridge
-from frontend_bridge_core import chat
+from application.chat import runtime_process as chat
 
 
 class _ChatStreamStub:
