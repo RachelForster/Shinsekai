@@ -36,11 +36,11 @@ from frontend_bridge_core.characters import (
     _upload_sprite_voice,
 )
 from frontend_bridge_core.memory import _add_character_memory, _delete_character_memory, _list_character_memories
-from frontend_bridge_core.security import safe_child_path, safe_existing_file_path
+from sdk.path_utils import safe_child_path, safe_existing_file_path
 
 
 def _media_thumbnail(source: Path, *, project_root: Path, size: int = 160) -> Path:
-    source = safe_existing_file_path(source, field="media source")
+    source = safe_existing_file_path(source, roots=[project_root], field="media source")
     if not source.is_file():
         raise FileNotFoundError(source.as_posix())
 

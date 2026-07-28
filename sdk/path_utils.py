@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
+from typing import Iterable
 
 
 _CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f]")
@@ -59,23 +60,22 @@ def resolve_regular_path(
     return resolved
 
 
-def _comparison_path(path: Path) -> str:
-    value = os.path.normpath(strip_windows_verbatim_prefix(str(path)))
+def _comparison_path(path: str | os.PathLike[str]) -> str:
+    value = os.path.normpath(strip_windows_verbatim_prefix(os.fspath(path)))
     return os.path.normcase(value) if os.name == "nt" else value
 
 
-def _ensure_path_within_base(base: Path, resolved: Path, *, message: str) -> Path:
-    base_value = _comparison_path(base)
-    resolved_value = _comparison_path(resolved)
-    base_drive = os.path.splitdrive(base_value)[0]
-    resolved_drive = os.path.splitdrive(resolved_value)[0]
-    if base_drive and resolved_drive and base_drive != resolved_drive:
-        raise PermissionError(f"{message} or uses a different drive")
+def _path_prefix(base: str) -> str:
     separator = "\\" if os.name == "nt" else "/"
-    base_prefix = base_value if base_value.endswith(("/", "\\")) else f"{base_value}{separator}"
-    if resolved_value != base_value and not resolved_value.startswith(base_prefix):
-        raise PermissionError(message)
-    return resolved
+    value = _comparison_path(base)
+    return value if value.endswith(("/", "\\")) else f"{value}{separator}"
+
+
+def _resolve_path_text(value: str | os.PathLike[str]) -> str:
+    """Normalize a path as text so containment is checked before ``Path`` I/O."""
+
+    expanded = os.path.expanduser(os.fspath(value))
+    return os.path.realpath(os.path.abspath(expanded))
 
 
 def safe_project_path(
@@ -84,33 +84,36 @@ def safe_project_path(
 ) -> Path:
     """Resolve ``raw_path`` and require it to remain inside ``root``."""
 
-    base = (root or Path.cwd()).expanduser().resolve(strict=False)
+    base = _resolve_path_text(root or os.getcwd())
     raw = reject_control_chars(os.fspath(raw_path), field="path")
-    candidate = Path(raw).expanduser()
-    if not candidate.is_absolute():
-        candidate = base / candidate
-    resolved = candidate.resolve(strict=False)
-    return _ensure_path_within_base(
-        base,
-        resolved,
-        message="path is outside project root",
-    )
+    expanded = os.path.expanduser(raw)
+    candidate = expanded if os.path.isabs(expanded) else os.path.join(base, expanded)
+    resolved = os.path.realpath(os.path.abspath(candidate))
+    base_value = _comparison_path(base)
+    resolved_value = _comparison_path(resolved)
+    base_drive = os.path.splitdrive(base_value)[0]
+    resolved_drive = os.path.splitdrive(resolved_value)[0]
+    if base_drive and resolved_drive and base_drive != resolved_drive:
+        raise PermissionError("path is outside project root or uses a different drive")
+    if resolved_value != base_value and not resolved_value.startswith(_path_prefix(base)):
+        raise PermissionError("path is outside project root")
+    return Path(resolved)
 
 
 def safe_child_path(base: Path, raw_path: str | os.PathLike[str]) -> Path:
     """Resolve a request-style child path beneath ``base``."""
 
-    root = base.expanduser().resolve(strict=False)
+    root = _resolve_path_text(base)
     raw = reject_control_chars(os.fspath(raw_path), field="path")
-    candidate = Path(raw)
-    if candidate.drive:
+    if os.path.splitdrive(raw)[0]:
         raise PermissionError("path is outside base path")
-    resolved = (root / raw.lstrip("/\\")).resolve(strict=False)
-    return _ensure_path_within_base(
-        root,
-        resolved,
-        message="path is outside base path",
-    )
+    candidate = os.path.join(root, raw.lstrip("/\\"))
+    resolved = os.path.realpath(os.path.abspath(candidate))
+    root_value = _comparison_path(root)
+    resolved_value = _comparison_path(resolved)
+    if resolved_value != root_value and not resolved_value.startswith(_path_prefix(root)):
+        raise PermissionError("path is outside base path")
+    return Path(resolved)
 
 
 def safe_filename(raw_name: str, *, default_suffix: str = "") -> str:
@@ -128,18 +131,44 @@ def safe_filename(raw_name: str, *, default_suffix: str = "") -> str:
 def safe_existing_path(
     raw_path: str | os.PathLike[str],
     *,
+    roots: Iterable[str | os.PathLike[str]],
     field: str = "path",
 ) -> Path:
+    """Resolve an existing path only when it is inside an explicit trusted root."""
+
     raw = reject_control_chars(os.fspath(raw_path), field=field)
-    return Path(raw).expanduser().resolve(strict=True)
+    trusted_roots = tuple(roots)
+    if not trusted_roots:
+        raise ValueError("at least one trusted path root is required")
+
+    expanded = os.path.expanduser(raw)
+    first_root = _resolve_path_text(trusted_roots[0])
+    candidate = expanded if os.path.isabs(expanded) else os.path.join(first_root, expanded)
+    resolved = os.path.realpath(os.path.abspath(candidate))
+    resolved_value = _comparison_path(resolved)
+    allowed = False
+    for root in trusted_roots:
+        trusted_root = _resolve_path_text(root)
+        trusted_value = _comparison_path(trusted_root)
+        if resolved_value == trusted_value or resolved_value.startswith(_path_prefix(trusted_root)):
+            allowed = True
+            break
+    if not allowed:
+        raise PermissionError(f"{field} is outside the allowed roots")
+
+    path = Path(resolved)
+    if not path.exists():
+        raise FileNotFoundError(path)
+    return path
 
 
 def safe_existing_file_path(
     raw_path: str | os.PathLike[str],
     *,
+    roots: Iterable[str | os.PathLike[str]],
     field: str = "path",
 ) -> Path:
-    path = safe_existing_path(raw_path, field=field)
+    path = safe_existing_path(raw_path, roots=roots, field=field)
     if not path.is_file():
         raise FileNotFoundError(path)
     return path
@@ -148,9 +177,10 @@ def safe_existing_file_path(
 def safe_existing_dir_path(
     raw_path: str | os.PathLike[str],
     *,
+    roots: Iterable[str | os.PathLike[str]],
     field: str = "path",
 ) -> Path:
-    path = safe_existing_path(raw_path, field=field)
+    path = safe_existing_path(raw_path, roots=roots, field=field)
     if not path.is_dir():
         raise NotADirectoryError(path)
     return path

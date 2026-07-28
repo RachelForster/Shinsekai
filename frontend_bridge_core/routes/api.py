@@ -743,11 +743,17 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/media/thumbnails":
                 self._send_json(self._media_thumbnail_batch_response(body))
             elif method == "POST" and path == "/api/logs/read":
-                self._send_json(_log_snapshot(self._resolve_project_path(str(body.get("path") or ""))))
+                project_root = Path.cwd().resolve()
+                self._send_json(
+                    _log_snapshot(
+                        self._resolve_project_path(str(body.get("path") or "")),
+                        roots=(project_root,),
+                    )
+                )
             elif method == "POST" and path == "/api/logs/import-upload":
                 temp_dir, paths = self._read_upload_files()
                 try:
-                    self._send_json(_log_snapshot(paths[0]))
+                    self._send_json(_log_snapshot(paths[0], roots=(temp_dir,)))
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/logs/diagnostic-bundle":

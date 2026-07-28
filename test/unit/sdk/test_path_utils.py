@@ -6,6 +6,7 @@ import pytest
 
 from sdk.path_utils import (
     safe_child_path,
+    safe_existing_file_path,
     safe_filename,
     safe_project_path,
 )
@@ -68,3 +69,23 @@ def test_safe_filename_rejects_path_components():
     for value in ("../secret", "folder/file", r"folder\file", ".", ".."):
         with pytest.raises(ValueError):
             safe_filename(value)
+
+
+def test_safe_existing_file_path_requires_an_explicit_allowed_root(tmp_path):
+    allowed = tmp_path / "allowed"
+    outside = tmp_path / "outside"
+    allowed.mkdir()
+    outside.mkdir()
+    expected = allowed / "item.txt"
+    expected.write_text("ok", encoding="utf-8")
+    secret = outside / "secret.txt"
+    secret.write_text("no", encoding="utf-8")
+
+    assert safe_existing_file_path(expected, roots=[allowed]) == expected.resolve()
+    assert safe_existing_file_path("item.txt", roots=[allowed]) == expected.resolve()
+
+    with pytest.raises(PermissionError):
+        safe_existing_file_path(secret, roots=[allowed])
+
+    with pytest.raises(ValueError, match="trusted path root"):
+        safe_existing_file_path(expected, roots=[])

@@ -4,6 +4,7 @@ import ast
 import configparser
 import json
 import re
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,11 @@ TAG_SPLIT_RE = re.compile(r"[,\s\uFF0C\u3001]+")
 
 
 def scan_local_plugin(path: str | Path) -> dict[str, Any]:
-    root = safe_existing_dir_path(path or ".", field="plugin path")
+    root = safe_existing_dir_path(
+        path or ".",
+        roots=[Path.cwd(), Path.home(), Path(tempfile.gettempdir())],
+        field="plugin path",
+    )
     warnings: list[str] = []
 
     readme = find_first(root, README_NAMES)

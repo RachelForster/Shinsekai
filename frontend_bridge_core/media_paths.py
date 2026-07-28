@@ -7,7 +7,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
-from frontend_bridge_core.security import reject_control_chars
+from sdk.path_utils import reject_control_chars
 
 
 IMAGE_MEDIA_SUFFIXES = frozenset(
