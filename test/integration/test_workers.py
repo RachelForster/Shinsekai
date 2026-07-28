@@ -17,8 +17,12 @@ from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from test.mocks import MockLLMAdapter
 
 # QThread workers
-from core.runtime.workers import LLMWorker, TTSWorker, UIWorker
-from core.runtime.app_runtime import AppRuntime, set_app_runtime
+from application.runtime.workers import (
+    LLMWorker,
+    PresentationWorker as UIWorker,
+    TTSWorker,
+)
+from application.runtime.context import AppRuntime, set_app_runtime
 
 pytestmark = pytest.mark.integration
 
@@ -79,7 +83,7 @@ def _wait_for_unfinished_tasks(q: Queue, expected: int = 0, timeout: float = 5.0
 # ---------------------------------------------------------------------------
 
 class TestLLMWorker:
-    def test_worker_creates_and_runs(self, qtbot):
+    def test_worker_creates_and_runs(self):
         """LLMWorker starts, processes a message, puts dialogs into tts_queue, then stops."""
         mock_llm = MockLLMAdapter(responses=[
             json.dumps({"character_name": "TestChar", "speech": "Hello from LLM!", "sprite": "0"})
@@ -113,7 +117,7 @@ class TestLLMWorker:
         worker.wait(3000)
         assert not worker.isRunning()
 
-    def test_worker_stops_cleanly_without_processing(self, qtbot):
+    def test_worker_stops_cleanly_without_processing(self):
         """Worker can be stopped even if no messages were processed."""
         mock_llm = MockLLMAdapter(responses=["Unused"])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm, is_streaming=False)
@@ -130,7 +134,7 @@ class TestLLMWorker:
         worker.wait(3000)
         assert not worker.isRunning()
 
-    def test_worker_handles_none_termination_signal(self, qtbot):
+    def test_worker_handles_none_termination_signal(self):
         """None in the input queue triggers worker exit."""
         mock_llm = MockLLMAdapter(responses=["Unused"])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm, is_streaming=False)
@@ -147,7 +151,7 @@ class TestLLMWorker:
         worker.wait(3000)
         assert not worker.isRunning()
 
-    def test_worker_streaming_mode(self, qtbot):
+    def test_worker_streaming_mode(self):
         """LLMWorker in streaming mode parses stream chunks correctly."""
         mock_llm = MockLLMAdapter(responses=[
             json.dumps({"character_name": "Alice", "speech": "Streamed!", "sprite": "1"})
@@ -175,7 +179,7 @@ class TestLLMWorker:
         worker.stop()
         worker.wait(3000)
 
-    def test_multiple_messages_sequential(self, qtbot):
+    def test_multiple_messages_sequential(self):
         """Worker processes multiple messages sequentially."""
         mock_llm = MockLLMAdapter(responses=[
             json.dumps({"character_name": "A", "speech": "First", "sprite": "0"}),
@@ -201,7 +205,7 @@ class TestLLMWorker:
         worker.stop()
         worker.wait(3000)
 
-    def test_worker_reports_llm_http_402_as_system_message(self, qtbot):
+    def test_worker_reports_llm_http_402_as_system_message(self):
         """LLM API 402 errors are surfaced as clear system messages."""
         error_cls = type("APIStatusError", (Exception,), {"__module__": "openai"})
 
@@ -250,7 +254,7 @@ class TestLLMWorker:
 # ---------------------------------------------------------------------------
 
 class TestTTSWorker:
-    def test_worker_starts_and_stops(self, qtbot):
+    def test_worker_starts_and_stops(self):
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
@@ -266,7 +270,7 @@ class TestTTSWorker:
         worker.wait(3000)
         assert not worker.isRunning()
 
-    def test_worker_dispatches_narr_message(self, qtbot):
+    def test_worker_dispatches_narr_message(self):
         """TTSWorker dispatches a NARR message through the handler chain."""
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
@@ -296,7 +300,7 @@ class TestTTSWorker:
         worker.stop()
         worker.wait(3000)
 
-    def test_worker_marks_tts_task_done_on_dispatch_error(self, qtbot):
+    def test_worker_marks_tts_task_done_on_dispatch_error(self):
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
@@ -317,7 +321,7 @@ class TestTTSWorker:
 
 
 class TestUIWorker:
-    def test_worker_marks_audio_task_done_after_dispatch(self, qtbot):
+    def test_worker_marks_audio_task_done_after_dispatch(self):
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
@@ -340,7 +344,7 @@ class TestUIWorker:
         worker.ui_out_dispatcher.dispatch.assert_called_once_with(out)
         assert rt.audio_path_queue.unfinished_tasks == 0
 
-    def test_worker_marks_audio_task_done_on_dispatch_error(self, qtbot):
+    def test_worker_marks_audio_task_done_on_dispatch_error(self):
         mock_llm = MockLLMAdapter(responses=[""])
         rt = _make_runtime_for_workers(mock_llm_adapter=mock_llm)
         set_app_runtime(rt)
@@ -370,7 +374,7 @@ class TestUIWorker:
 # ---------------------------------------------------------------------------
 
 class TestFullPipeline:
-    def test_user_input_to_audio_output(self, qtbot):
+    def test_user_input_to_audio_output(self):
         """End-to-end: UserInputMessage → LLMWorker → TTSWorker → audio_path_queue."""
         mock_llm = MockLLMAdapter(responses=[
             json.dumps({"character_name": "TestChar", "speech": "Pipeline works!", "sprite": "0"})

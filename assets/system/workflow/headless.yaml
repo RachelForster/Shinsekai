@@ -1,10 +1,10 @@
 nodes:
   - name: llm_worker
-    type: core.runtime.workers.LLMWorker
+    type: application.runtime.workers.LLMWorker
   - name: tts_worker
-    type: core.runtime.workers.TTSWorker
+    type: application.runtime.workers.TTSWorker
   - name: headless_sink
-    type: core.runtime.workers.HeadlessSinkNode
+    type: application.runtime.workers.HeadlessSinkNode
 edges:
   - src: llm_worker
     src_port: llm_output

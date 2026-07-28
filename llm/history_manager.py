@@ -4,7 +4,6 @@ from pathlib import Path
 import json
 import re
 import threading
-from PySide6.QtWidgets import QApplication
 
 from core.sprite.chat_history_text import _repair_json_string, parse_assistant_dialog_content
 
@@ -151,6 +150,8 @@ class HistoryManager:
         return messages
 
     def copy_chat_history_to_clipboard(self):
+        from PySide6.QtWidgets import QApplication
+
         if not self.chat_history:
             print("聊天记录为空，无需复制。")
             return

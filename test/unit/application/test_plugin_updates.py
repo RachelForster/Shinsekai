@@ -5,8 +5,8 @@ import pytest
 
 from plugin_system.install.package import PluginPackageNetworkError, PluginPackageNonFallbackError
 from plugin_system.registry.catalog import RegistryPluginRecord
-from frontend_bridge_core import plugin_updates
-from frontend_bridge_core.plugin_updates import (
+from application.plugins import updates as plugin_updates
+from application.plugins.updates import (
     _infer_plugin_entry,
     _install_plugin_source,
     _is_repo_source,
@@ -15,7 +15,7 @@ from frontend_bridge_core.plugin_updates import (
     _repo_slug_from_source,
     _synthetic_plugin_result,
 )
-from frontend_bridge_core.state import BridgeState
+from application.runtime.state import BridgeState
 
 
 def test_repo_slug_from_source_accepts_common_github_forms():

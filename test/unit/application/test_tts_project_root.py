@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from application.model_assets import tts_bundle
-from frontend_bridge_core.state import BridgeState
-from frontend_bridge_core.tts import _download_tts_bundle
+from application.model_assets.tts_bundle import _download_tts_bundle
+from application.runtime.state import BridgeState
 
 
 def test_tts_bundle_download_uses_bridge_project_root(tmp_path, monkeypatch):

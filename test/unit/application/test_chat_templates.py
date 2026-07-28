@@ -3,7 +3,7 @@ from types import ModuleType, SimpleNamespace
 
 import pytest
 
-from frontend_bridge_core.templates import (
+from application.chat.templates import (
     MARK_SCENARIO,
     MARK_SYSTEM,
     _compose_runtime_template,
@@ -46,7 +46,7 @@ def test_history_id_uses_effective_scenario_and_selected_characters():
 
 def test_runtime_template_places_json_reminder_after_user_scenario(monkeypatch):
     monkeypatch.setattr(
-        "frontend_bridge_core.templates.json_format_reminder",
+        "application.chat.templates.json_format_reminder",
         lambda: "必须以规定的 JSON 格式回复。",
     )
 
@@ -57,7 +57,7 @@ def test_runtime_template_places_json_reminder_after_user_scenario(monkeypatch):
 
 def test_runtime_template_places_json_reminder_after_default_scenario(monkeypatch):
     monkeypatch.setattr(
-        "frontend_bridge_core.templates.json_format_reminder",
+        "application.chat.templates.json_format_reminder",
         lambda: "必须以规定的 JSON 格式回复。",
     )
 

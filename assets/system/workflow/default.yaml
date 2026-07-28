@@ -1,10 +1,10 @@
 nodes:
   - name: llm_worker
-    type: core.runtime.workers.LLMWorker
+    type: application.runtime.workers.LLMWorker
   - name: tts_worker
-    type: core.runtime.workers.TTSWorker
+    type: application.runtime.workers.TTSWorker
   - name: ui_worker
-    type: core.runtime.workers.UIWorker
+    type: application.runtime.workers.PresentationWorker
 edges:
   - src: llm_worker
     src_port: llm_output

@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from core.runtime.event_sink import WSClientSink
+from frontend_bridge_core.transport.ws_client import WSClientSink
 
 pytestmark = pytest.mark.e2e
 

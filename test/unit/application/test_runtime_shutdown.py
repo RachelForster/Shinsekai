@@ -1,6 +1,6 @@
 import unittest
 
-from core.runtime.shutdown import shutdown_chat_runtime
+from application.runtime.shutdown import shutdown_chat_runtime
 from sdk.hooks import clear_shutdown_hooks, register_shutdown_hook
 
 

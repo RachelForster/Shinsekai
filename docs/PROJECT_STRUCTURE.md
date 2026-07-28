@@ -178,6 +178,8 @@ application/plugins/         插件安装、更新、发布等用例编排
 ```
 
 application 可以组合多个能力域，但不实现具体 HTTP 或 UI 控件。
+AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 application
+注入的 adapter 回调，不得反向导入 `application/`。
 
 ### `config/`
 
@@ -249,6 +251,7 @@ plugin_system/contributions/  前端页面、配置页、聊天 UI 等贡献解�
 - 插件基类和注册 API；
 - adapter 抽象；
 - hooks、messages 和 tool registry；
+- 宿主回调和运行期注入契约；
 - UI contribution 数据类型；
 - 公共日志、异常和校验契约。
 

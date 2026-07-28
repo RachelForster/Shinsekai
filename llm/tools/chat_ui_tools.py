@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Any
 
-from application.runtime.context import try_get_app_runtime
+from sdk.llm_runtime import get_llm_host_runtime
 from sdk.tool_registry import tool
 
 _DEFAULT_USER_DISPLAY_NAME = "你"
@@ -57,21 +57,12 @@ def _tool_set_user_display_name(name: str) -> dict[str, Any]:
             "error": "display name is empty, unsafe, too long, or equivalent to the default name",
         }
 
-    runtime = try_get_app_runtime()
-    if runtime is None:
+    error = get_llm_host_runtime().set_user_display_name(display_name)
+    if error is not None:
         return {
             "ok": False,
-            "error": "chat runtime is not ready",
+            "error": error,
             "userDisplayName": display_name,
         }
 
-    ui = getattr(runtime, "ui_update_manager", None)
-    if ui is None or not hasattr(ui, "set_user_display_name"):
-        return {
-            "ok": False,
-            "error": "chat UI does not support user display name updates",
-            "userDisplayName": display_name,
-        }
-
-    ui.set_user_display_name(display_name)
     return {"ok": True, "userDisplayName": display_name}

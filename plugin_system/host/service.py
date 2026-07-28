@@ -173,7 +173,7 @@ def ensure_plugins_loaded(
     """
     Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge adapter
     providers and vision fallbacks, register tools on the global ToolManager, and
-    cache message handlers for :mod:`core.handlers.handler_registry`.
+    cache message handlers for :mod:`application.chat.handlers.registry`.
     """
     global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers
     global _plugin_dag_yaml_paths

@@ -53,7 +53,7 @@ _EARLY_STREAM_SINK = None
 _EARLY_INIT_STREAM_SINK = None
 if _EARLY_STREAM_ENDPOINT:
     try:
-        from application.runtime.event_sink import WSClientSink
+        from frontend_bridge_core.transport.ws_client import WSClientSink
 
         _EARLY_STREAM_SINK = WSClientSink(_EARLY_STREAM_ENDPOINT)
         _EARLY_STREAM_SINK.emit({"type": "status.change", "status": "idle"})
@@ -61,7 +61,7 @@ if _EARLY_STREAM_ENDPOINT:
         _EARLY_STREAM_SINK = None
 if _EARLY_INIT_STREAM_ENDPOINT:
     try:
-        from application.runtime.event_sink import WSClientSink
+        from frontend_bridge_core.transport.ws_client import WSClientSink
 
         _EARLY_INIT_STREAM_SINK = WSClientSink(_EARLY_INIT_STREAM_ENDPOINT)
     except Exception:
@@ -417,7 +417,7 @@ def main():
     stream_sink = _EARLY_STREAM_SINK if args.stream_endpoint == _EARLY_STREAM_ENDPOINT else None
     if args.stream_endpoint and stream_sink is None:
         with _startup_phase("stream.sink.init"):
-            from application.runtime.event_sink import WSClientSink
+            from frontend_bridge_core.transport.ws_client import WSClientSink
 
             stream_sink = WSClientSink(args.stream_endpoint)
             stream_sink.emit({"type": "status.change", "status": "idle"})
@@ -676,10 +676,10 @@ def main():
 
     if args.stream_endpoint:
         with _startup_phase("stream.runtime.setup"):
-            from core.runtime.ui_update_manager import StreamingUIUpdateManager
+            from application.chat.ui_updates import StreamingUIUpdateManager
 
             if stream_sink is None:
-                from application.runtime.event_sink import WSClientSink
+                from frontend_bridge_core.transport.ws_client import WSClientSink
 
                 stream_sink = WSClientSink(args.stream_endpoint)
             ui_updates = StreamingUIUpdateManager(
@@ -1371,7 +1371,7 @@ def main():
         return
 
     if args.headless:
-        from core.runtime.ui_update_manager import HeadlessUIUpdateManager
+        from application.chat.ui_updates import HeadlessUIUpdateManager
 
         ui_updates = HeadlessUIUpdateManager(chat_history=chat_history)
         chat_turn_service = create_chat_turn_service(
@@ -1443,8 +1443,8 @@ def main():
     connect_to_desktop_window(ui_updates, window)
     mirror_stream_sink = None
     if args.mirror_stream_endpoint:
-        from application.runtime.event_sink import WSClientSink
-        from core.runtime.ui_update_manager import connect_to_stream_sink
+        from application.chat.ui_updates import connect_to_stream_sink
+        from frontend_bridge_core.transport.ws_client import WSClientSink
 
         mirror_stream_sink = WSClientSink(args.mirror_stream_endpoint)
         connect_to_stream_sink(ui_updates, mirror_stream_sink)

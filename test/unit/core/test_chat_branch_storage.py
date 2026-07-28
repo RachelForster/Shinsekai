@@ -18,7 +18,7 @@ from core.sprite.chat_branch_storage import (
     save_branch_state,
 )
 from frontend_bridge_core.chat import _chat_history_path
-from frontend_bridge_core.templates import _latest_history_json
+from application.chat.templates import _latest_history_json
 
 
 class ChatBranchStorageTests(unittest.TestCase):

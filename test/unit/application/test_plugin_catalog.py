@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from plugin_system.registry.catalog import RegistryPluginRecord
-from frontend_bridge_core.plugin_catalog import (
+from application.plugins.catalog import (
     _display_title_for_offline_plugin_entry,
     _plugin_rows,
     _plugin_registry_rows,
@@ -157,7 +157,7 @@ def test_plugin_registry_rows_expose_market_metadata(monkeypatch):
         lambda: {"owner/demo"},
     )
     monkeypatch.setattr(
-        "frontend_bridge_core.plugin_catalog._plugin_rows",
+        "application.plugins.catalog._plugin_rows",
         lambda: [{"entry": "plugins.demo.plugin:DemoPlugin"}],
     )
 

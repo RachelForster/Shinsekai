@@ -16,7 +16,7 @@ import pygame
 
 from i18n import tr as tr_i18n
 
-from ai.asr.asr_adapter import get_asr_log
+from asr.asr_adapter import get_asr_log
 from config.config_manager import ConfigManager
 from application.runtime.context import get_app_runtime
 from core.messaging.dialog_tokens import (

@@ -1,1 +1,0 @@
-"""Character application use cases."""

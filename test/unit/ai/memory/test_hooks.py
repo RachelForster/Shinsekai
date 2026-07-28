@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ai.memory.hooks import MemoryAutoHooks, install_memory_hooks
 from ai.memory.queue import MemoryWriteQueue
-from core.runtime.shutdown import shutdown_chat_runtime
+from application.runtime.shutdown import shutdown_chat_runtime
 from sdk.chat_init import ChatInitService, InitChatContext
 from sdk.hooks import BeforeChatContext, MessageAddedContext
 from sdk.hooks import PluginHookDispatcher, clear_shutdown_hooks

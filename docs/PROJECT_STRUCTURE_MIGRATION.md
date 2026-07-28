@@ -28,7 +28,7 @@
 O1 的完整依赖矩阵精确记录 56 个历史“文件 → 顶层包”例外，分布在
 38 个文件中。`LOCKED_BASELINE_VIOLATIONS` 是永久上限；后续 Objective
 只能从活动 allowlist 删除对应项，不得新增或替换。O2 已删除 8 项，
-O3 再删除 18 项，当前活动集合剩余 30 项，分布在 22 个文件中：
+O3 再删除 20 项，当前活动集合剩余 28 项，分布在 20 个文件中：
 
 | 来源 | 反向依赖 | 退出 Objective |
 | --- | --- | --- |
@@ -36,9 +36,7 @@ O3 再删除 18 项，当前活动集合剩余 30 项，分布在 22 个文件�
 | `ai/vision/service.py` | `llm` | O4 |
 | `config/character_manager.py` | `llm` | O4 |
 | `config/config_manager.py` | `core`、`llm`、`t2i`、`tts` | O3/O4 |
-| `core/handlers/ui_message_handler.py` | `asr` | O5 |
 | `core/runtime/ui_update_manager.py` | `asr` | O5 |
-| `core/runtime/workers.py` | `ai` | O5（随 Qt worker 删除） |
 | `core/sprite/chat_history.py` | `llm` | O5 |
 | `core/sprite/chat_ui_service.py` | `llm` | O5 |
 | `frontend_bridge_core/backgrounds.py` | `ui` | O5 |
@@ -114,9 +112,16 @@ PR 范围：
 - `frontend_bridge_core/handler.py` 从 1779 行降为 14 行兼容入口，HTTP 分发迁入 `routes/api.py`；
 - bridge 中 subprocess、归档、pip、模型下载和 TTS 包下载主体实现为 0；
 - chat 进程/初始化、runtime dependency、模型资产、TTS 下载、诊断包和插件更新均通过 application use case 调用；
-- `application/` 禁止反向依赖 bridge 或 Qt UI，Tauri 资源清单已包含 application；
-- HTTP、task、聊天流和兼容导入契约测试通过；
-- 活动 allowlist 从 48 项降至 30 项；Qt worker 的剩余 runtime 例外按“不迁移 Qt”决策转入 O5 删除。
+- WebSocket client transport 位于 `frontend_bridge_core/transport/`，application
+  只保留 event sink 契约和快照归并；
+- `application/` 禁止反向依赖 bridge 或 Qt UI；旧 AI 实现通过 `sdk.llm_runtime`
+  使用宿主回调，不得反向导入 application；
+- 默认与 headless workflow 已切换到 `application.runtime.workers`，旧
+  `core.runtime.workers` 和 `core.handlers` 仅保留兼容入口；
+- HTTP、task、聊天流、application 用例和兼容导入契约测试通过；
+- Tauri 资源清单已包含 application；
+- 活动 allowlist 从 48 项降至 28 项；React/Tauri workers 已迁入
+  `application/runtime/`，剩余 Qt UI manager 例外按“不迁移 Qt 控件”决策转入 O5 删除。
 
 ### O4：统一 AI 命名空间
 

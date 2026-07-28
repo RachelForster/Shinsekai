@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from core.runtime.app_runtime import (
+from application.runtime.context import (
     ToolConfirmationController,
     resolve_pending_tool_confirmation,
     set_app_runtime,

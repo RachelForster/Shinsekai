@@ -1,7 +1,8 @@
 """
 抽象消息处理器基类 — TTS 消费 LLMDialogMessage，UI 消费 TTSOutputMessage。
 
-具体实现见 :mod:`core.handlers.tts_message_handler` / :mod:`core.handlers.ui_message_handler`。
+具体实现见 :mod:`application.chat.handlers.tts` /
+:mod:`application.chat.handlers.presentation`。
 """
 
 from __future__ import annotations

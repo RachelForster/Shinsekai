@@ -10,20 +10,20 @@ import pytest
 from unittest.mock import MagicMock
 
 from sdk.messages import LLMDialogMessage, TTSOutputMessage
-from core.handlers.handler_registry import (
+from application.chat.handlers.registry import (
     TtsMessageDispatcher,
     UiOutputMessageDispatcher,
     default_tts_handler_chain,
     default_ui_output_handler_chain,
 )
-from core.handlers.tts_message_handler import (
+from application.chat.handlers.tts import (
     ChainOfThoughtTtsHandler,
     SystemDialogTtsHandler,
     BgmTtsHandler,
     CgTtsHandler,
     DefaultCharacterTtsHandler,
 )
-from core.handlers.ui_message_handler import (
+from application.chat.handlers.presentation import (
     OptionsUiHandler,
     NumericUiHandler,
     SceneUiHandler,
@@ -64,7 +64,11 @@ class TestTTSHandlerChainAssembly:
         types = [type(h) for h in chain._handlers]
         # Default may not be absolute last if plugins registered handlers,
         # but it's last among built-in handlers
-        builtin_types = [t for t in types if t.__module__.startswith("core.handlers.tts_message_handler")]
+        builtin_types = [
+            t
+            for t in types
+            if t.__module__.startswith("application.chat.handlers.tts")
+        ]
         assert builtin_types[-1] == DefaultCharacterTtsHandler
 
     def test_chain_raises_when_no_handler_matches(self):
@@ -116,7 +120,13 @@ class TestUIHandlerChainAssembly:
     def test_builtin_character_dialog_after_all_builtins(self):
         chain = default_ui_output_handler_chain()
         types = [type(h) for h in chain._handlers]
-        builtin_types = [t for t in types if t.__module__.startswith("core.handlers.ui_message_handler")]
+        builtin_types = [
+            t
+            for t in types
+            if t.__module__.startswith(
+                "application.chat.handlers.presentation"
+            )
+        ]
         assert builtin_types[-1] == CharacterDialogUiHandler
 
     def test_chain_raises_when_no_handler_matches(self):

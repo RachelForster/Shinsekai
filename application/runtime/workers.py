@@ -666,6 +666,10 @@ class PresentationWorker(ThreadDagNode):
         super().stop()
 
 
+# One-release compatibility name for workflow files and external imports.
+UIWorker = PresentationWorker
+
+
 class HeadlessSinkNode(ThreadDagNode):
     """Consumes TTS output messages silently; no audio, no UI, no pygame.
 

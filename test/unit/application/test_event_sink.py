@@ -1,6 +1,9 @@
 import unittest
 
-from core.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
+from application.runtime.event_sink import (
+    fold_event_into_snapshot,
+    make_empty_chat_snapshot,
+)
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
