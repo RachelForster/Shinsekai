@@ -32,3 +32,12 @@ def test_legacy_ai_modules_alias_canonical_implementations() -> None:
     assert legacy_t2i_manager is t2i_manager
     assert legacy_tts_adapter is tts_adapter
     assert legacy_tts_manager is tts_manager
+
+
+def test_mcp_config_compatibility_paths_alias_config_layer() -> None:
+    from ai.tools import mcp_config_file
+    from config import mcp_config
+    from llm.tools import mcp_config_file as legacy_mcp_config_file
+
+    assert mcp_config_file is mcp_config
+    assert legacy_mcp_config_file is mcp_config

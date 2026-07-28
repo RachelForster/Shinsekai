@@ -32,7 +32,7 @@ from PySide6.QtWidgets import (
 )
 
 from i18n import tr as tr_i18n
-from llm.tools.mcp_config_file import (
+from config.mcp_config import (
     DEFAULT_MCP_CONFIG_PATH,
     default_mcp_config,
     read_mcp_config,

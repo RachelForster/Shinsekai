@@ -263,6 +263,29 @@ def _imported_roots(source: Path) -> set[str]:
     return imported_roots
 
 
+def _dynamic_imported_roots(source: Path) -> set[str]:
+    """Return literal roots passed to ``importlib.import_module``."""
+
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    imported_roots: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        function = node.func
+        if not (
+            isinstance(function, ast.Attribute)
+            and isinstance(function.value, ast.Name)
+            and function.value.id == "importlib"
+            and function.attr == "import_module"
+            and node.args
+        ):
+            continue
+        module = node.args[0]
+        if isinstance(module, ast.Constant) and isinstance(module.value, str):
+            imported_roots.add(module.value.partition(".")[0])
+    return imported_roots
+
+
 def _violations() -> frozenset[ImportViolation]:
     violations: set[ImportViolation] = set()
     for source in _python_sources():
@@ -343,6 +366,59 @@ def test_application_does_not_own_concrete_network_transport() -> None:
     assert not unexpected, (
         "Move concrete network transports to frontend_bridge_core/transport: "
         f"{unexpected}"
+    )
+
+
+def test_config_does_not_hide_forbidden_dynamic_imports() -> None:
+    """Dynamic imports must not bypass the declared config dependency rule."""
+
+    unexpected: list[ImportViolation] = []
+    config_root = REPO_ROOT / "config"
+    forbidden = FORBIDDEN_IMPORTS["config"]
+    for source in sorted(config_root.rglob("*.py")):
+        relative = source.relative_to(REPO_ROOT).as_posix()
+        for imported_root in sorted(
+            _dynamic_imported_roots(source) & forbidden
+        ):
+            unexpected.append(ImportViolation(relative, imported_root))
+
+    assert not unexpected, (
+        "Config must not hide forbidden dependencies behind importlib: "
+        f"{unexpected}"
+    )
+
+
+def test_application_does_not_own_desktop_open_actions() -> None:
+    """Opening desktop files belongs to a bridge/platform adapter."""
+
+    unexpected: list[str] = []
+    application_root = REPO_ROOT / "application"
+    for source in sorted(application_root.rglob("*.py")):
+        if "webbrowser" in _imported_roots(source):
+            unexpected.append(source.relative_to(REPO_ROOT).as_posix())
+
+    assert not unexpected, (
+        "Move desktop open actions to frontend_bridge_core: "
+        f"{unexpected}"
+    )
+
+
+def test_file_tool_wrappers_do_not_implement_filesystem_operations() -> None:
+    """The LLM-facing file tools must delegate to the core media service."""
+
+    source = REPO_ROOT / "ai" / "tools" / "file_tools.py"
+    implementation_roots = {
+        "mimetypes",
+        "os",
+        "platform",
+        "shutil",
+        "subprocess",
+        "tarfile",
+        "zipfile",
+    }
+
+    assert not (_imported_roots(source) & implementation_roots), (
+        "Move filesystem implementations to core/media/file_operations.py"
     )
 
 

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import os
+from functools import partial
 from pathlib import Path
 
 import gradio as gr
 
 import tools.file_util as fu
+from application.characters.generation import generate_character_setting
 from config.character_config import CharacterConfig
 from ui.webui.context import WebUIContext
 
@@ -173,7 +175,7 @@ def register_character_tab(ctx: WebUIContext, character_name_list_len, selected_
         )
 
         ai_help_btn.click(
-            ctx.character_manager.generate_character_setting,
+            partial(generate_character_setting, ctx.character_manager),
             inputs=[char_name, character_setting],
             outputs=[import_output, character_setting]
         )

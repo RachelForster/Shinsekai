@@ -157,6 +157,8 @@ PR 范围：
 | 当前路径 | 目标位置 | Objective | 说明 |
 | --- | --- | --- | --- |
 | `llm/tools/memory_tools.py` | `ai/tools/memory_tools.py` | O4 | 已完成；旧路径为兼容 alias |
+| `llm/tools/file_tools.py` | `core/media/file_operations.py` + `ai/tools/file_tools.py` | O4 | 已完成；文件实现位于 core，AI 路径仅保留薄 tool wrapper |
+| `llm/tools/mcp_config_file.py` | `config/mcp_config.py` | O4 | 已完成；AI 与旧路径为兼容入口 |
 | `llm/*` | `ai/llm/` | O4 | 已完成；旧路径为兼容 alias |
 | `asr/*` | `ai/asr/` | O4 | 已完成；SDK adapter 保持稳定 |
 | `tts/*` | `ai/tts/` | O4 | 已完成；资源下载不放 adapter |

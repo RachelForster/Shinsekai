@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 )
 
 import tools.file_util as fu
+from application.characters.generation import generate_character_setting
 from config.character_config import CharacterConfig
 from i18n import tr as tr_i18n
 from ui.settings_ui.context import SettingsUIContext
@@ -1005,7 +1006,11 @@ class CharacterSettingsTab(QWidget):
         setting_text = self.character_setting.toPlainText()
 
         def work() -> tuple[str, str]:
-            return self._ctx.character_manager.generate_character_setting(name, setting_text)
+            return generate_character_setting(
+                self._ctx.character_manager,
+                name,
+                setting_text,
+            )
 
         def on_ok(res: tuple[str, str]) -> None:
             self._ai_btn.setEnabled(True)

@@ -41,21 +41,15 @@ def _is_path_inside_directory(path: str, directory: str) -> bool:
 
 class CharacterManager:
     """
-    负责角色配置、立绘、语音和 LLM 设定的管理。
+    负责角色配置、立绘和语音资源的管理。
     内部使用 ConfigManager 来持久化数据。
     """
-    
-    # 私有属性，用于缓存 LLM Manager 实例
-    _llm_manager: Optional[Any] = None 
-    # 记录当前缓存的 LLM adapter 参数；设置页改模型或 API 后用它判断是否需要重建。
-    _llm_config_signature: Optional[Tuple[Tuple[str, str], ...]] = None
+
     _config_manager: ConfigManager
     
     def __init__(self):
         """初始化 CharacterManager，获取 ConfigManager 单例。"""
         self._config_manager = ConfigManager()
-        self._llm_manager = None
-        self._llm_config_signature = None
 
     def _get_characters(self) -> List[Character]:
         """获取当前的 Character 列表"""
@@ -70,14 +64,6 @@ class CharacterManager:
     def _save_characters_config(self) -> None:
         """保存角色配置的便捷方法"""
         self._config_manager.save_characters_config()
-
-    def generate_character_setting(self, name: str, setting: str) -> Tuple[str, str]:
-        """Deprecated compatibility call for the retired Qt character UI."""
-        import importlib
-
-        module = importlib.import_module("application.characters.generation")
-        return module.generate_character_setting(self, name, setting)
-
 
     def save_characters_to_file(self) -> str:
         """

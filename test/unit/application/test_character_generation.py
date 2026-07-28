@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
-import llm.llm_manager as llm_manager_module
+from application.characters import generation
+from application.characters.generation import generate_character_setting
 from config.character_manager import CharacterManager
 from test.conftest import make_character
 
@@ -8,12 +9,20 @@ from test.conftest import make_character
 class _FakeConfigManager:
     def __init__(self):
         self.model = "model-a"
-        self.character = make_character(name="Alice", character_setting="old")
+        self.character = make_character(
+            name="Alice",
+            character_setting="old",
+        )
         self.config = SimpleNamespace(characters=[self.character])
         self.saved = 0
 
     def get_llm_api_config(self):
-        return "Deepseek", self.model, "https://example.test/v1", "sk-test"
+        return (
+            "Deepseek",
+            self.model,
+            "https://example.test/v1",
+            "sk-test",
+        )
 
     def merged_llm_factory_kwargs(self, _provider, base_kwargs):
         return dict(base_kwargs)
@@ -42,7 +51,9 @@ class _FakeLLMManager:
         return f"generated:{self.adapter.model}"
 
 
-def test_character_ai_writer_rebuilds_llm_when_model_config_changes(monkeypatch):
+def test_character_ai_writer_rebuilds_llm_when_model_config_changes(
+    monkeypatch,
+):
     created_models = []
 
     def fake_create_adapter(**kwargs):
@@ -50,28 +61,30 @@ def test_character_ai_writer_rebuilds_llm_when_model_config_changes(monkeypatch)
         return _FakeAdapter(kwargs["model"])
 
     monkeypatch.setattr(
-        llm_manager_module.LLMAdapterFactory,
+        generation.LLMAdapterFactory,
         "create_adapter",
         fake_create_adapter,
     )
-    monkeypatch.setattr(llm_manager_module, "LLMManager", _FakeLLMManager)
+    monkeypatch.setattr(
+        generation,
+        "LLMManager",
+        _FakeLLMManager,
+    )
 
     config = _FakeConfigManager()
     manager = CharacterManager()
     manager._config_manager = config
 
-    # 模拟设置页已切换模型，但角色页仍复用同一个 CharacterManager 实例。
-    status, setting = manager.generate_character_setting("Alice", "seed")
+    status, setting = generate_character_setting(manager, "Alice", "seed")
     assert status == "输出成功"
     assert setting == "generated:model-a"
 
     config.model = "model-b"
-    status, setting = manager.generate_character_setting("Alice", "seed")
+    status, setting = generate_character_setting(manager, "Alice", "seed")
     assert status == "输出成功"
     assert setting == "generated:model-b"
 
-    # 第三次配置不变时应该继续复用，防止把缓存修复成每次都重建。
-    status, setting = manager.generate_character_setting("Alice", "seed")
+    status, setting = generate_character_setting(manager, "Alice", "seed")
     assert status == "输出成功"
     assert setting == "generated:model-b"
 

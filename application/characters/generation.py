@@ -1,8 +1,27 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
+from weakref import WeakKeyDictionary
 
 from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
+
+
+@dataclass
+class _GenerationRuntime:
+    manager: Any | None = None
+    config_signature: tuple[tuple[str, str], ...] | None = None
+
+
+_RUNTIMES: WeakKeyDictionary[Any, _GenerationRuntime] = WeakKeyDictionary()
+
+
+def _runtime_for(character_manager: Any) -> _GenerationRuntime:
+    runtime = _RUNTIMES.get(character_manager)
+    if runtime is None:
+        runtime = _GenerationRuntime()
+        _RUNTIMES[character_manager] = runtime
+    return runtime
 
 
 def generate_character_setting(
@@ -76,19 +95,17 @@ def generate_character_setting(
         signature = tuple(
             sorted((str(key), repr(value)) for key, value in factory_kwargs.items())
         )
-        if (
-            character_manager._llm_manager is None
-            or character_manager._llm_config_signature != signature
-        ):
+        runtime = _runtime_for(character_manager)
+        if runtime.manager is None or runtime.config_signature != signature:
             adapter = LLMAdapterFactory.create_adapter(**factory_kwargs)
-            character_manager._llm_manager = LLMManager(
+            runtime.manager = LLMManager(
                 adapter=adapter,
                 user_template=template,
             )
-            character_manager._llm_config_signature = signature
+            runtime.config_signature = signature
 
-        character_manager._llm_manager.set_user_template(template)
-        generated = character_manager._llm_manager.chat(
+        runtime.manager.set_user_template(template)
+        generated = runtime.manager.chat(
             f"补充信息：{setting},请输出结果：",
             stream=False,
             response_format={"type": "text"},

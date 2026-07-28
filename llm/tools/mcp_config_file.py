@@ -1,6 +1,7 @@
-"""Compatibility alias for :mod:`ai.tools.mcp_config_file`."""
+"""Compatibility alias for :mod:`config.mcp_config`."""
 
 import sys
-from ai.tools import mcp_config_file as _module
+
+from config import mcp_config as _module
 
 sys.modules[__name__] = _module

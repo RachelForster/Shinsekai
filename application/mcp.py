@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import tempfile
-import webbrowser
 from pathlib import Path
 from typing import Any
 
@@ -22,7 +21,7 @@ def _as_str_list(value: Any) -> list[str]:
 
 
 def _mcp_config_response(data: dict[str, Any] | None = None) -> dict[str, Any]:
-    from ai.tools.mcp_config_file import DEFAULT_MCP_CONFIG_PATH, read_mcp_config
+    from config.mcp_config import DEFAULT_MCP_CONFIG_PATH, read_mcp_config
 
     cfg = read_mcp_config(DEFAULT_MCP_CONFIG_PATH) if data is None else data
     servers: list[dict[str, Any]] = []
@@ -134,42 +133,66 @@ def _validate_mcp_config_payload(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _preview_mcp_tools_from_payload(state: BridgeState, task_id: str, payload: dict[str, Any]) -> list[dict[str, Any]]:
-    from ai.tools.mcp_config_file import write_mcp_config
+def _preview_mcp_tools_from_payload(
+    state: BridgeState, task_id: str, payload: dict[str, Any]
+) -> list[dict[str, Any]]:
     from ai.tools.mcp_tool_setup import preview_mcp_tools_from_config
+    from config.mcp_config import write_mcp_config
 
     cfg = _validate_mcp_config_payload(payload)
-    _update_task(state, task_id, message="正在写入临时 MCP 配置。", phase="write", progress=0.2)
+    _update_task(
+        state, task_id, message="正在写入临时 MCP 配置。", phase="write", progress=0.2
+    )
     temp_path: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=".yaml", delete=False) as temp_file:
             temp_path = Path(temp_file.name)
         write_mcp_config(cfg, temp_path)
-        _update_task(state, task_id, message="正在连接 MCP 服务并枚举工具。", phase="probe", progress=0.55)
+        _update_task(
+            state,
+            task_id,
+            message="正在连接 MCP 服务并枚举工具。",
+            phase="probe",
+            progress=0.55,
+        )
         rows = preview_mcp_tools_from_config(temp_path)
         valid = [dict(item) for item in rows if isinstance(item, dict)]
-        _update_task(state, task_id, message=f"已获取 {len(valid)} 个 MCP 工具。", progress=0.92)
+        _update_task(
+            state, task_id, message=f"已获取 {len(valid)} 个 MCP 工具。", progress=0.92
+        )
         return valid
     finally:
         if temp_path is not None:
             temp_path.unlink(missing_ok=True)
 
 
-def _save_and_apply_mcp_config(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    from ai.tools.mcp_config_file import DEFAULT_MCP_CONFIG_PATH, write_mcp_config
+def _save_and_apply_mcp_config(
+    state: BridgeState, task_id: str, payload: dict[str, Any]
+) -> dict[str, Any]:
     from ai.tools.mcp_tool_setup import reload_mcp_tools_from_config
     from ai.tools.tool_manager import ToolManager
+    from config.mcp_config import DEFAULT_MCP_CONFIG_PATH, write_mcp_config
 
     cfg = _validate_mcp_config_payload(payload)
-    _update_task(state, task_id, message="正在写入 data/config/mcp.yaml。", phase="write", progress=0.35)
+    _update_task(
+        state,
+        task_id,
+        message="正在写入 data/config/mcp.yaml。",
+        phase="write",
+        progress=0.35,
+    )
     write_mcp_config(cfg, DEFAULT_MCP_CONFIG_PATH)
-    _update_task(state, task_id, message="正在重新注册 MCP 工具。", phase="reload", progress=0.72)
+    _update_task(
+        state, task_id, message="正在重新注册 MCP 工具。", phase="reload", progress=0.72
+    )
     reload_mcp_tools_from_config(ToolManager(), DEFAULT_MCP_CONFIG_PATH)
     return _mcp_config_response(cfg)
 
 
-def _open_mcp_config_file() -> dict[str, str]:
-    from ai.tools.mcp_config_file import (
+def ensure_mcp_config_file() -> Path:
+    """Create the MCP configuration when missing and return its path."""
+
+    from config.mcp_config import (
         DEFAULT_MCP_CONFIG_PATH,
         default_mcp_config,
         write_mcp_config,
@@ -178,5 +201,4 @@ def _open_mcp_config_file() -> dict[str, str]:
     path = DEFAULT_MCP_CONFIG_PATH
     if not path.is_file():
         write_mcp_config(default_mcp_config(), path)
-    webbrowser.open(path.resolve().as_uri())
-    return {"path": path.as_posix()}
+    return path
