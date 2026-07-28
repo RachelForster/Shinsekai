@@ -590,6 +590,10 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
     register.register_llm_tool(_register_extra_tools)
 ```
 
+`ToolManager.execute(name, arguments_json)` matches the host execution boundary:
+both arguments and results are JSON strings. Serialize the argument object with
+`json.dumps(...)` and decode the returned string with `json.loads(...)`.
+
 The `@tool` decorator's full parameter set:
 
 ```python
