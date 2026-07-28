@@ -38,8 +38,7 @@ from sdk.hooks import (
     PluginHookDispatcher,
 )
 
-if TYPE_CHECKING:
-    from llm.tools.tool_manager import ToolManager
+from sdk.tool_protocol import ToolManager
 from sdk.plugin import PluginBase
 from sdk.types import (
     ChatUIContribution,

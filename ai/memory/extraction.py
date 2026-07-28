@@ -222,7 +222,7 @@ def create_configured_memory_adapter(config_manager: Any) -> Any:
     if not provider or not model or not api_key:
         raise RuntimeError("LLM 配置不完整，请先设置供应商、模型和 API Key。")
 
-    from llm.llm_manager import LLMAdapterFactory
+    from ai.llm.llm_manager import LLMAdapterFactory
 
     base_kwargs = {
         "llm_provider": provider,

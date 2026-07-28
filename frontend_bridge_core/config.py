@@ -17,7 +17,12 @@ from config.tts_provider_config import (
     tts_server_url_or_default,
     uses_shared_tts_server_config,
 )
-from llm.claude_url import claude_messages_endpoint_url, claude_models_endpoint_url
+from application.model_providers import (
+    adapter_catalog as _adapter_catalog,
+    claude_messages_endpoint_url,
+    claude_models_endpoint_url,
+    normalize_t2i_provider as _normalize_t2i_provider,
+)
 from .security import host_matches, validated_http_url
 from application.runtime.state import BridgeState, _jsonify
 
@@ -36,16 +41,6 @@ _IMAGE_ONLY_MODEL_MARKERS = (
     "sdxl",
     "stable-diffusion",
 )
-_TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
-    ("genie-tts", "Genie TTS"),
-    ("kaggle-gpt-sovits", "Kaggle GPT-SoVITS"),
-    ("gpt-sovits", "GPT SoVITS"),
-    ("index-tts", "IndexTTS"),
-    ("cosyvoice", "CosyVoice"),
-)
-_PREFERRED_T2I_KEYS_LOWER: tuple[str, ...] = ("comfyui", "stable diffusion")
-
-
 class LlmModelDiscoveryHttpError(RuntimeError):
     def __init__(self, status_code: int, url: str, detail: str) -> None:
         self.status_code = status_code
@@ -81,95 +76,6 @@ def _state_project_root(state: BridgeState) -> Path:
         return Path(".")
 
 
-def _adapter_schema(adapter_class: Any | None) -> dict[str, Any]:
-    if adapter_class is None:
-        return {}
-    getter = getattr(adapter_class, "get_config_schema", None)
-    if not callable(getter):
-        return {}
-    try:
-        schema = getter()
-    except Exception:
-        return {}
-    return _jsonify(schema) if isinstance(schema, dict) else {}
-
-
-def _adapter_option(value: str, label: str, adapter_class: Any | None = None) -> dict[str, Any]:
-    return {
-        "label": str(label or value),
-        "schema": _adapter_schema(adapter_class),
-        "value": str(value),
-    }
-
-
-def _adapter_catalog() -> dict[str, list[dict[str, Any]]]:
-    """Expose the same registered adapter choices the PyQt settings tab uses."""
-    try:
-        from asr.asr_manager import ASRAdapterFactory
-        from llm.constants import LLM_BASE_URLS
-        from llm.llm_manager import LLMAdapterFactory
-        from t2i.t2i_manager import T2IAdapterFactory
-        from tts.tts_manager import TTSAdapterFactory
-    except Exception:
-        return {"asr": [], "llm": [], "t2i": [], "tts": []}
-
-    llm_adapters = dict(LLMAdapterFactory._adapters)
-    llm: list[dict[str, Any]] = []
-    for key in LLM_BASE_URLS.keys():
-        if key in llm_adapters:
-            llm.append(_adapter_option(key, key, llm_adapters[key]))
-    for key in sorted(llm_adapters.keys(), key=str.lower):
-        if key not in {item["value"] for item in llm}:
-            llm.append(_adapter_option(key, key, llm_adapters[key]))
-
-    tts_adapters = dict(TTSAdapterFactory._adapters)
-    tts: list[dict[str, Any]] = [_adapter_option("none", "不使用", None)]
-    by_lower = {key.lower(): key for key in tts_adapters}
-    seen: set[str] = set()
-    for slug, label in _TTS_LABEL_PREFS:
-        canonical = by_lower.get(slug)
-        if canonical:
-            tts.append(_adapter_option(canonical, label, tts_adapters[canonical]))
-            seen.add(canonical)
-    for key in sorted(tts_adapters.keys(), key=str.lower):
-        if key not in seen:
-            tts.append(_adapter_option(key, key.replace("-", " ").title(), tts_adapters[key]))
-
-    t2i_adapters = dict(T2IAdapterFactory._adapters)
-    t2i_by_lower = {key.lower(): key for key in t2i_adapters}
-    t2i: list[dict[str, Any]] = []
-    fixed_t2i_labels = {"comfyui": "ComfyUI", "stable diffusion": "Stable Diffusion"}
-    for preferred in _PREFERRED_T2I_KEYS_LOWER:
-        canonical = t2i_by_lower.get(preferred)
-        if canonical:
-            t2i.append(
-                _adapter_option(
-                    canonical,
-                    fixed_t2i_labels.get(canonical.lower(), canonical.replace("-", " ").title()),
-                    t2i_adapters[canonical],
-                )
-            )
-    for key in sorted(t2i_adapters.keys(), key=str.lower):
-        if key not in {item["value"] for item in t2i}:
-            t2i.append(
-                _adapter_option(
-                    key,
-                    fixed_t2i_labels.get(key.lower(), key.replace("-", " ").title()),
-                    t2i_adapters[key],
-                )
-            )
-
-    asr_adapters = dict(ASRAdapterFactory._adapters)
-    asr_labels = {"faster_whisper": "faster-whisper", "realtime_stt": "RealtimeSTT", "vosk": "Vosk"}
-    asr: list[dict[str, Any]] = []
-    if "vosk" in asr_adapters:
-        asr.append(_adapter_option("vosk", asr_labels["vosk"], asr_adapters["vosk"]))
-    for key in sorted(k for k in asr_adapters.keys() if k != "vosk"):
-        asr.append(_adapter_option(key, asr_labels.get(key, key), asr_adapters[key]))
-
-    return {"asr": asr, "llm": llm, "t2i": t2i, "tts": tts}
-
-
 def _app_config_response(state: BridgeState) -> dict[str, Any]:
     payload = _jsonify(state.config_manager.config)
     if not isinstance(payload, dict):
@@ -187,7 +93,7 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
         provider = str(api_config.get("llm_provider") or "Deepseek").strip() or "Deepseek"
         if not str(api_config.get("llm_base_url") or "").strip():
             try:
-                from llm.constants import LLM_BASE_URLS
+                from config.llm_defaults import LLM_BASE_URLS
 
                 api_config["llm_base_url"] = str(LLM_BASE_URLS.get(provider) or "")
             except Exception:
@@ -219,22 +125,6 @@ def _contains_quotes(value: str) -> bool:
 
 def _provider_map_value(mapping: dict[str, str], provider: str) -> str:
     return str((mapping or {}).get(provider, "") or "").strip()
-
-
-def _normalize_t2i_provider(value: str) -> str:
-    raw = str(value or "").strip()
-    if not raw:
-        return "comfyui"
-    try:
-        from t2i.t2i_manager import T2IAdapterFactory
-
-        low = raw.lower()
-        for key in T2IAdapterFactory._adapters:
-            if key.lower() == low:
-                return key
-    except Exception:
-        pass
-    return raw
 
 
 def _validate_api_config_for_save(config: Any) -> None:

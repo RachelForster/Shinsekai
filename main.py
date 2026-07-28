@@ -97,14 +97,14 @@ from config.network_proxy import apply_network_proxy_environment_from_system_con
 apply_network_proxy_environment_from_system_config()
 apply_mirror_environment_from_system_config()
 
-import llm.tools.character_tools
-import llm.tools.memory_tools
-import llm.tools.tool_search
-import llm.tools.file_tools
-import llm.tools.chat_ui_tools
-from llm.template_generator import is_transparent_background
-from llm.llm_manager import LLMManager, LLMAdapterFactory
-from llm.text_processor import TextProcessor
+import ai.tools.character_tools
+import ai.tools.memory_tools
+import ai.tools.tool_search
+import ai.tools.file_tools
+import ai.tools.chat_ui_tools
+from ai.llm.template_generator import is_transparent_background
+from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
+from ai.llm.text_processor import TextProcessor
 from core.messaging.chat_turn_wiring import create_chat_turn_service
 from core.messaging.queue import ClearableQueue
 from application.runtime.context import (
@@ -124,14 +124,14 @@ from core.sprite.chat_branch_storage import (
     remove_chat_history_storage,
     save_branch_state,
 )
-from tts.tts_manager import TTSManager, TTSAdapterFactory
+from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
 from config.config_manager import ConfigManager
-from t2i.t2i_manager import T2IAdapterFactory, T2IManager
+from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
 import pygame
 from opencc import OpenCC
 from queue import Queue
 
-from core.sprite.chat_history import (
+from application.chat.history_state import (
     canonical_user_turn_payload,
     chat_history,
     clear_chat_history,
@@ -216,7 +216,7 @@ def _log_shutdown_error(step: str, exc: Exception) -> None:
 def _save_chat_history_and_delete_tmp(history_arg: str, messages: list) -> bool:
     if not history_arg:
         return True
-    from llm.history_manager import HistoryManager
+    from ai.llm.history_manager import HistoryManager
 
     history_file = str(chat_history_active_path(history_arg))
     success = save_chat_history(history_file, messages)
@@ -382,7 +382,10 @@ def main():
         config = ConfigManager()
     with _startup_phase("i18n.import"):
         from i18n import init_i18n, tr as tr_i18n, tr_in_bundle
-        from asr.asr_adapter import create_default_asr_adapter, system_config_to_asr_lang
+        from ai.asr.asr_adapter import (
+            create_default_asr_adapter,
+            system_config_to_asr_lang,
+        )
 
     with _startup_phase("i18n.init"):
         init_i18n(config.config.system_config.ui_language)
@@ -397,11 +400,11 @@ def main():
 
     with _startup_phase("plugins.load"):
         from ai.vision.fallback_registry import configure_registered_fallbacks
-        from asr.asr_manager import ASRAdapterFactory
-        from llm.tools.tool_manager import ToolManager
+        from ai.asr.asr_manager import ASRAdapterFactory
+        from ai.tools.tool_manager import ToolManager
 
         def register_mcp_tools(tool_manager) -> None:
-            from llm.tools.mcp_tool_setup import register_mcp_tools_from_config
+            from ai.tools.mcp_tool_setup import register_mcp_tools_from_config
 
             register_mcp_tools_from_config(tool_manager)
 
@@ -603,7 +606,7 @@ def main():
     for _char in config.config.characters:
         _pm = getattr(_char, "pronunciation_map", None)
         if _pm:
-            from llm.text_processor import name_map
+            from ai.llm.text_processor import name_map
             name_map.update(_pm)
 
     bg_group = None
@@ -821,7 +824,7 @@ def main():
                 ui_updates.post_notification(tr_i18n(notify_key))
             return True
 
-        from asr.streaming_controller import StreamingASRController
+        from ai.asr.streaming_controller import StreamingASRController
 
         def _submit_asr_text(text: str) -> bool:
             accepted = submit_runtime_text(text, notify_key=None)

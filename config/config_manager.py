@@ -1,4 +1,5 @@
 import yaml
+import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from pydantic import ValidationError
@@ -19,7 +20,7 @@ from config.tts_provider_config import (
     tts_server_url_or_default,
     uses_shared_tts_server_config,
 )
-from llm.constants import LLM_BASE_URLS
+from config.llm_defaults import LLM_BASE_URLS
 from config.mirror_env import apply_mirror_environment
 from config.network_proxy import apply_network_proxy_environment
 from config.sprite_voice import normalize_sprite_voice_types
@@ -71,12 +72,10 @@ class ConfigManager:
     def version(self) -> str:
         """读取项目根目录 VERSION 文件，缺失时返回占位字符串。"""
         candidates = [self._VERSION_PATH]
-        try:
-            from core.paths import resource_path
-
-            candidates.append(resource_path("VERSION"))
-        except Exception:
-            pass
+        frozen_root = getattr(sys, "_MEIPASS", None)
+        if frozen_root:
+            candidates.append(Path(frozen_root) / "VERSION")
+        candidates.append(Path(sys.executable).resolve(strict=False).parent / "VERSION")
         seen: set[Path] = set()
         for candidate in candidates:
             try:
@@ -254,15 +253,9 @@ class ConfigManager:
             s = (v or "").strip()
             if not s:
                 return "comfyui"
-            try:
-                from t2i.t2i_manager import T2IAdapterFactory
-
-                lowered = s.lower()
-                for k in T2IAdapterFactory._adapters:
-                    if k.lower() == lowered:
-                        return k
-            except Exception:
-                pass
+            lowered = s.lower()
+            if lowered in {"comfyui", "stable diffusion"}:
+                return lowered
             return s
 
         current_api_config.t2i_provider = _norm_t2i_provider(t2i_provider)
@@ -463,41 +456,23 @@ class ConfigManager:
         self.config.api_config = ac
 
     def merged_llm_factory_kwargs(self, llm_provider: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        from config.adapter_extra_kwargs import filter_kwargs_for_ctor
-        from llm.llm_manager import LLMAdapterFactory
-
-        cls = LLMAdapterFactory._adapters.get(llm_provider)
         out = dict(base_kwargs)
-        if cls is None:
-            return out
         extra = self.get_adapter_extra_config("llm", llm_provider)
-        out.update(filter_kwargs_for_ctor(cls, extra))
+        out.update(extra)
         return out
 
     def merged_tts_factory_kwargs(self, adapter_name: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        from config.adapter_extra_kwargs import filter_kwargs_for_ctor
-        from tts.tts_manager import TTSAdapterFactory
-
         slug = (adapter_name or "").strip().lower()
-        cls = TTSAdapterFactory._adapters.get(slug)
         out = dict(base_kwargs)
-        if cls is None:
-            return out
         extra = self.get_adapter_extra_config("tts", slug)
-        out.update(filter_kwargs_for_ctor(cls, extra))
+        out.update(extra)
         return out
 
     def merged_t2i_factory_kwargs(self, adapter_name: str, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
-        from config.adapter_extra_kwargs import filter_kwargs_for_ctor
-        from t2i.t2i_manager import T2IAdapterFactory
-
         name = (adapter_name or "").strip().lower()
-        cls = T2IAdapterFactory._adapters.get(name)
         out = dict(base_kwargs)
-        if cls is None:
-            return out
         extra = self.get_adapter_extra_config("t2i", name)
-        out.update(filter_kwargs_for_ctor(cls, extra))
+        out.update(extra)
         return out
 
     def get_base_font_size(self) -> int:

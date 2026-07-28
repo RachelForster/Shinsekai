@@ -424,7 +424,7 @@ stored in `plugins.yaml` or in your package tree by default.
 | ------- | -------------------------------- | --------------------------- | ---------------------------------------- |
 | **LLM** | **API settings** tab — "LLM provider" combo (`llm_provider`). Labels are **case-sensitive** and must match your `register_llm_adapter("Exact Name", …)`. Same tab: API key, base URL, model id, streaming/sampling. | `data/config/api.yaml` (`ApiConfig`): shared LLM fields plus `llm_extra_configs[<llm_provider>]` — populated from your adapter's `get_config_schema()` via dynamic form widgets in `ui/settings_ui/tabs/api_tab.py`. | Implement `get_config_schema()` (optional) and an `__init__` that accepts kwargs the host will pass (see `ConfigManager.merged_llm_factory_kwargs`). Do **not** expect to read API keys inside `PluginBase.initialize`; they are injected only when the adapter instance is constructed at runtime. |
 | **TTS** | **API settings** tab — TTS engine combo (internal value is a **lowercase** slug, e.g. `gpt-sovits`). Shared fields (SoVITS path/URL, etc.) live on the same page. | `data/config/api.yaml`: `tts_provider` / shared TTS columns plus `tts_extra_configs[<slug>]` from `get_config_schema()`. | Register with the **same** slug the combo uses (`register_tts_adapter("my-engine", …)` → factory lowercases). Match ctor parameters to `merged_tts_factory_kwargs`. |
-| **ASR** | **System**-side provider choice (`asr_provider`: Vosk / Whisper-class plugins, etc.). Extra per-backend fields appear under **API settings** when that ASR class exposes `get_config_schema()`. | `data/config/system_config.yaml` for global mic/Whisper options (`asr_provider`, model size, device, …) + `data/config/api.yaml` → `asr_extra_configs[<normalized_slug>]` for schema-driven extras. | `register_asr_adapter` slug must match the normalized key the host uses when creating the adapter (`asr/asr_adapter.py`). Base ctor signature is fixed: `__init__(self, language: str, callback: TranscriptionCallback)` where `TranscriptionCallback = Callable[[str, bool], None]`. |
+| **ASR** | **System**-side provider choice (`asr_provider`: Vosk / Whisper-class plugins, etc.). Extra per-backend fields appear under **API settings** when that ASR class exposes `get_config_schema()`. | `data/config/system_config.yaml` for global mic/Whisper options (`asr_provider`, model size, device, …) + `data/config/api.yaml` → `asr_extra_configs[<normalized_slug>]` for schema-driven extras. | `register_asr_adapter` slug must match the normalized key the host uses when creating the adapter (`ai/asr/asr_adapter.py`). Base ctor signature is fixed: `__init__(self, language: str, callback: TranscriptionCallback)` where `TranscriptionCallback = Callable[[str, bool], None]`. |
 | **T2I** | **API settings** — Comfy-style URL, workflow paths, node IDs, etc. The dynamic "extra" panel is currently wired to the built-in Comfy adapter's schema in `api_tab.py`. | `data/config/api.yaml`: `t2i_*` fields plus `t2i_extra_configs` (default engine key `"comfyui"` in the UI today). | `register_t2i_adapter` keys are **lowercased**. For non-Comfy engines, users may need to edit `t2i_extra_configs[<your_engine>]` manually until the Settings UI grows a provider switch; ctor should still accept kwargs from `merged_t2i_factory_kwargs`. |
 
 **Summary:** Adapter tuning is **centralized** in `api.yaml` / `system_config.yaml`,
@@ -477,7 +477,7 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 ```
 
 Shippable adapters should honor `api_key`, `base_url`, `model`, streaming, and tool
-loops like the built-ins in `llm/llm_adapter.py`.
+loops like the built-ins in `ai/llm/llm_adapter.py`.
 
 ---
 
@@ -508,7 +508,7 @@ Align your real `__init__` signature with what `merged_tts_factory_kwargs` suppl
 
 ### `register_asr_adapter(provider_slug, adapter_cls)`
 
-**Slug** must match the normalized ASR provider in settings (`asr/asr_adapter.py`).
+**Slug** must match the normalized ASR provider in settings (`ai/asr/asr_adapter.py`).
 **Base signature:** `__init__(self, language: str, callback: TranscriptionCallback)`.
 All five abstract methods are required.
 
@@ -574,8 +574,8 @@ def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> N
 need **dynamic** registration based on `plugin_root` or config.
 
 ```python
-from llm.tools.tool_manager import ToolManager
 from sdk.register import PluginCapabilityRegistry
+from sdk.tool_protocol import ToolManager
 
 
 def _register_extra_tools(tm: ToolManager) -> None:
@@ -589,6 +589,10 @@ def _register_extra_tools(tm: ToolManager) -> None:
 def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> None:
     register.register_llm_tool(_register_extra_tools)
 ```
+
+`ToolManager.execute(name, arguments_json)` matches the host execution boundary:
+both arguments and results are JSON strings. Serialize the argument object with
+`json.dumps(...)` and decode the returned string with `json.loads(...)`.
 
 The `@tool` decorator's full parameter set:
 
@@ -658,13 +662,9 @@ from sdk.tool_registry import notify_tool_ready
 notify_tool_ready("vision", "Vision model loaded; the tool is ready.")
 ```
 
-**Customising cooldown per group:**
-
-```python
-from llm.tools.tool_executor import tool_executor
-
-tool_executor.set_group_cooldown("my_group", 180.0)  # 3 minutes
-```
+Cooldown duration is host-owned and is not part of the plugin SDK. Plugins should
+signal loading with `ToolNotReady` and completion with `notify_tool_ready`; they
+must not import the host's `ai.tools` implementation.
 
 **Tool description notes** — tell the LLM what to expect:
 

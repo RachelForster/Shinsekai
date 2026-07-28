@@ -8,7 +8,7 @@ import json
 import logging
 from collections.abc import Callable, Iterable, Iterator, MutableMapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Type
+from typing import Any, Type
 
 import yaml
 
@@ -37,9 +37,7 @@ from sdk.types import (
     WorkflowContribution,
 )
 
-if TYPE_CHECKING:
-    from config.config_manager import ConfigManager
-    from llm.tools.tool_manager import ToolManager
+from sdk.tool_protocol import ToolManager
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +158,7 @@ class PluginManager:
         )
         self._instantiated = True
 
-    def _ensure_plugins_initialized(self, app_config: ConfigManager | None = None) -> None:
+    def _ensure_plugins_initialized(self, app_config: Any | None = None) -> None:
         self._ensure_plugins_instantiated()
         if self._initialized and app_config is None:
             return
@@ -187,7 +185,7 @@ class PluginManager:
                     self._capabilities.clear_settings_ui_plugin_context()
         self._initialized = True
 
-    def load_own_config_all(self, app_config: ConfigManager | None = None) -> None:
+    def load_own_config_all(self, app_config: Any | None = None) -> None:
         """Run :meth:`~sdk.plugin.PluginBase.initialize` for every plugin instance."""
         self._ensure_plugins_initialized(app_config=app_config)
 

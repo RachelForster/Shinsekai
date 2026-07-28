@@ -10,49 +10,38 @@
 
 | 领域 | 当前状态 | 基线规模 | 目标 |
 | --- | --- | --- | --- |
-| `ai/memory/` | 已落地，旧 tool 路径兼容中 | 14 个 Python 文件 | 正式 tool 入口迁入 `ai/tools/` |
-| `ai/vision/` | 已落地 | 7 个 Python 文件 | 清除对旧 `llm.tools` 的依赖 |
-| `ai/llm/` | 部分落地 | 仅少量实现 | 合并根目录 `llm/` |
+| `ai/memory/` | 已落地，正式使用 `ai.tools` | 14 个 Python 文件 | 保持 |
+| `ai/vision/` | 已落地，旧 tool 依赖已清除 | 7 个 Python 文件 | 保持 |
+| `ai/llm/` | O4 已落地 | 根目录 `llm/` 仅保留兼容入口 | 保持统一 AI 边界 |
 | `core/messaging/` | 已落地 | 10 个 Python 文件 | 保持并清理应用层耦合 |
 | `core/model_assets/` | 已落地 | 3 个 Python 文件 | 保持 |
-| `core/runtime/` | 过渡状态 | 9 个 Python 文件 | 拆为 `application/runtime/` 与 `core/runtime_env/` |
-| `core/handlers/` | 历史应用处理链 | 5 个 Python 文件 | 迁入 `application/chat/handlers/` |
+| `core/runtime/` | O3 已迁移通用 runtime；Qt worker 暂留 | 5 个兼容/Qt 模块 | O5 删除 Qt runtime 与兼容入口 |
+| `core/handlers/` | O3 已迁移应用处理链 | 5 个兼容模块 | O5 删除到期兼容入口 |
 | `core/plugins/` | O2 已迁移，仅保留兼容 import | 14 个兼容模块 | O5 删除兼容路径 |
 | `plugin_system/` | O2 已落地 | host/install/publisher/registry/requirements/update | 保持宿主插件平台边界 |
-| `frontend_bridge_core/` | 业务过重 | 34 个 Python 文件 | 收敛为 transport/routes/task |
-| `llm/asr/tts/t2i` | 旧命名空间 | 28 个 Python 文件 | 迁入 `ai/*` 并保留兼容层 |
+| `frontend_bridge_core/` | O3 已收敛；旧模块为兼容 alias | routes + transport helpers | O5 删除到期兼容入口 |
+| `llm/asr/tts/t2i` | O4 已迁移 | 旧路径仅保留兼容入口 | O5 按退出条件删除兼容层 |
 | `ui/`、`webui.py`、`webui_qt.py` | 已决定废弃 | 不再迁移 UI 逻辑 | O5 删除或隔离剩余运行依赖 |
 
 ## 2. 基线依赖例外
 
 O1 的完整依赖矩阵精确记录 56 个历史“文件 → 顶层包”例外，分布在
 38 个文件中。`LOCKED_BASELINE_VIOLATIONS` 是永久上限；后续 Objective
-只能从活动 allowlist 删除对应项，不得新增或替换。O2 已删除 8 项，
-O3 再删除 20 项，当前活动集合剩余 28 项，分布在 20 个文件中：
+只能从活动 allowlist 删除对应项，不得新增或替换。O2、O3 与 O4
+完成后，当前活动集合剩余 11 项；O5 必须全部删除：
 
 | 来源 | 反向依赖 | 退出 Objective |
 | --- | --- | --- |
-| `ai/memory/extraction.py` | `llm` | O4 |
-| `ai/vision/service.py` | `llm` | O4 |
-| `config/character_manager.py` | `llm` | O4 |
-| `config/config_manager.py` | `core`、`llm`、`t2i`、`tts` | O3/O4 |
 | `core/runtime/ui_update_manager.py` | `asr` | O5 |
-| `core/sprite/chat_history.py` | `llm` | O5 |
 | `core/sprite/chat_ui_service.py` | `llm` | O5 |
 | `frontend_bridge_core/backgrounds.py` | `ui` | O5 |
 | `frontend_bridge_core/characters.py` | `ui` | O5 |
-| `frontend_bridge_core/config.py` | `asr`、`llm`、`t2i`、`tts` | O3/O4 |
-| `frontend_bridge_core/mcp.py` | `llm` | O3/O4 |
-| `frontend_bridge_core/memory.py` | `ai` | O3 |
-| `frontend_bridge_core/plugin_publisher.py` | `core` | O3 |
-| `frontend_bridge_core/plugin_ui.py` | `core` | O3 |
+| `frontend_bridge_core/memory.py` | `ai` | O5 |
+| `frontend_bridge_core/plugin_publisher.py` | `core` | O5 |
+| `frontend_bridge_core/plugin_ui.py` | `core` | O5 |
 | `sdk/chat_ui_context.py` | `ui` | O5 |
-| `sdk/logging/configure.py` | `core` | O3 |
 | `sdk/logging/environment.py` | `ui` | O5 |
-| `sdk/manager.py` | `config`、`llm` | O4/O5 |
-| `sdk/plugin_host_context.py` | `config`、`ui` | O2/O5 |
-| `sdk/register.py` | `llm` | O4 |
-| `sdk/tool_registry.py` | `llm` | O4 |
+| `sdk/plugin_host_context.py` | `config`、`ui` | O5 |
 
 ## 3. Objective 与 PR 边界
 
@@ -128,6 +117,8 @@ PR 范围：
 
 ### O4：统一 AI 命名空间
 
+状态：已在 O4 PR 落地，等待合并。
+
 PR 范围：
 
 - 将根目录 `llm/asr/tts/t2i` 实现迁入 `ai/*`；
@@ -137,11 +128,12 @@ PR 范围：
 
 关键结果：
 
-- 生产代码对 `llm/asr/tts/t2i` 的引用数从 55/13/10/8 降至 0；
+- 非 Qt 生产代码对 `llm/asr/tts/t2i` 的引用数从 55/13/10/8 降至 0，3 个 Qt 调用点明确转入 O5 删除；
 - `llm/tools/memory_tools.py` 成为纯兼容入口；
-- 插件和外部扩展只通过 `sdk.adapters` 使用 AI 接口；
+- 插件和外部扩展通过 `sdk.adapters` 与 `sdk.tool_protocol` 使用稳定接口，SDK 不反向依赖 AI 实现；
+- LLM、ASR、TTS、T2I 与 tool 实现统一由 `ai/*` 承载，Tauri 资源校验覆盖新的规范路径；
 - AI 相关单元与集成测试通过；
-- 删除 O1 allowlist 中 AI、config 和 tool registry 相关例外。
+- 删除 O1 allowlist 中 AI、config 和 tool registry 相关例外，活动集合剩余 11 项。
 
 ### O5：安全完成切换
 
@@ -164,11 +156,13 @@ PR 范围：
 
 | 当前路径 | 目标位置 | Objective | 说明 |
 | --- | --- | --- | --- |
-| `llm/tools/memory_tools.py` | `ai/tools/memory_tools.py` | O4 | 当前已是薄包装，最终只保留兼容 re-export |
-| `llm/*` | `ai/llm/` | O4 | 先移动实现，再更新内部 import |
-| `asr/*` | `ai/asr/` | O4 | SDK adapter 保持稳定 |
-| `tts/*` | `ai/tts/` | O4 | 资源下载不放 adapter |
-| `t2i/*` | `ai/t2i/` | O4 | SDK adapter 保持稳定 |
+| `llm/tools/memory_tools.py` | `ai/tools/memory_tools.py` | O4 | 已完成；旧路径为兼容 alias |
+| `llm/tools/file_tools.py` | `core/media/file_operations.py` + `ai/tools/file_tools.py` | O4 | 已完成；文件实现位于 core，AI 路径仅保留薄 tool wrapper |
+| `llm/tools/mcp_config_file.py` | `config/mcp_config.py` | O4 | 已完成；AI 与旧路径为兼容入口 |
+| `llm/*` | `ai/llm/` | O4 | 已完成；旧路径为兼容 alias |
+| `asr/*` | `ai/asr/` | O4 | 已完成；SDK adapter 保持稳定 |
+| `tts/*` | `ai/tts/` | O4 | 已完成；资源下载不放 adapter |
+| `t2i/*` | `ai/t2i/` | O4 | 已完成；SDK adapter 保持稳定 |
 | `core/plugins/plugin_host.py` | `plugin_system/host/` | O2 | 加载、生命周期和 contribution 收集 |
 | `core/plugins/registry_*` | `plugin_system/registry/` | O2 | catalog、状态和远端下载 |
 | `core/plugins/package_download.py` | `plugin_system/install/` | O2 | 下载、校验、安全解压和替换 |

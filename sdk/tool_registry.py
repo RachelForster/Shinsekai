@@ -1,18 +1,17 @@
 """
-LLM 可调用工具的声明式注册（与 :class:`~llm.tools.tool_manager.ToolManager` 解耦）。
+LLM 可调用工具的声明式注册（与宿主 ToolManager 实现解耦）。
 
 开发者只需 ``from sdk.tool_registry import tool`` 并对函数使用 ``@tool``（可选 ``name=`` / ``description=``）；
 所有被装饰的函数进入进程内全局列表，由宿主在启动时调用 :func:`apply_registered_tools` 一次性注册到
-单例 :class:`~llm.tools.tool_manager.ToolManager`（见 :func:`plugin_system.host.ensure_plugins_loaded`）。
+单例 ToolManager（见 :func:`plugin_system.host.ensure_plugins_loaded`）。
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Sequence
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import Any, TypeVar
 
-if TYPE_CHECKING:
-    from llm.tools.tool_manager import ToolManager
+from sdk.tool_protocol import ToolManager
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -21,7 +20,7 @@ class ToolNotReady(Exception):
     """工具所需的模型 / 资源尚未就绪，正在后台加载。
 
     工具函数直接 ``raise ToolNotReady("正在加载...")``，
-    由 :class:`~llm.tools.tool_executor.ToolExecutor` 统一捕获，
+    由宿主 ToolExecutor 统一捕获，
     转为 ``{"status":"loading","message":"..."}`` 响应并设置冷却期。
 
     用法::

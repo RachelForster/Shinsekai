@@ -165,9 +165,15 @@ def _character_json_after_reload(state: BridgeState, name: str) -> dict[str, Any
 
 
 def _generate_character_setting(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    from application.characters.generation import generate_character_setting
+
     name = str(payload.get("name") or "").strip()
     setting = str(payload.get("setting") or "")
-    message, character_setting = state.character_manager.generate_character_setting(name, setting)
+    message, character_setting = generate_character_setting(
+        state.character_manager,
+        name,
+        setting,
+    )
     return {"characterSetting": character_setting, "message": message}
 
 
