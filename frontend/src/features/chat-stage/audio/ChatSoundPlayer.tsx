@@ -3,6 +3,7 @@ import { Volume2 } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import { Button } from "../../../shared/ui";
+import { currentChatRendererId } from "../../../shared/platform/chatRenderer";
 import { stageAssetUrl } from "../chatStageUtils";
 import type { ChatAudioCommand } from "../state/types";
 import { SoundPlayer, type VoicePlaybackSignal } from "./soundPlayer";
@@ -19,7 +20,7 @@ export function ChatSoundPlayer({
   onPlaybackSignal: (signal: VoicePlaybackSignal) => void;
 }) {
   const playerRef = useRef<SoundPlayer | null>(null);
-  const processedSeqRef = useRef(0);
+  const processedCommandIdsRef = useRef(new Set<string>());
   const [locked, setLocked] = useState(false);
   const { t } = useI18n();
 
@@ -46,18 +47,30 @@ export function ChatSoundPlayer({
     if (!player) {
       return;
     }
-    if (commands.length === 0) {
-      processedSeqRef.current = 0;
-      return;
-    }
     for (const command of commands) {
-      if (command.seq <= processedSeqRef.current) {
+      const commandId =
+        command.kind === "voice-play"
+          ? `${command.kind}:${command.playbackId}:${command.rendererId ?? ""}`
+          : command.kind === "voice-stop"
+            ? `${command.kind}:${command.playbackId}:${command.seq}`
+            : "key" in command
+              ? `${command.kind}:${command.key}:${command.seq}`
+              : `${command.kind}:${command.seq}`;
+      if (processedCommandIdsRef.current.has(commandId)) {
         continue;
       }
-      processedSeqRef.current = command.seq;
+      processedCommandIdsRef.current.add(commandId);
+      if (processedCommandIdsRef.current.size > 256) {
+        const oldest = processedCommandIdsRef.current.values().next().value;
+        if (oldest) {
+          processedCommandIdsRef.current.delete(oldest);
+        }
+      }
       switch (command.kind) {
         case "voice-play":
-          player.playVoice(command.playbackId, stageAssetUrl(command.url), command.volume);
+          if (!command.rendererId || command.rendererId === currentChatRendererId()) {
+            player.playVoice(command.playbackId, stageAssetUrl(command.url), command.volume);
+          }
           break;
         case "voice-stop":
           player.stopVoice(command.playbackId);

@@ -55,8 +55,19 @@ class _StubChatStream:
 
 
 class _FakeConnection:
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        advertised_ws_url: str = "",
+        renderer_id: str = "",
+        session_id: str = "",
+    ):
+        self.advertised_ws_url = advertised_ws_url
+        self.connected_at = time.time()
         self.messages = []
+        self.renderer_id = renderer_id
+        self.role = "viewer"
+        self.session_id = session_id
 
     async def send_json(self, payload):
         self.messages.append(dict(payload))
@@ -196,6 +207,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             {
                 "payload": {
                     "playbackId": "voice-123",
+                    "rendererId": "renderer-desktop",
                     "state": "finished",
                 },
                 "type": "audio-playback-signal",
@@ -210,6 +222,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             {
                 "error": "",
                 "playbackId": "voice-123",
+                "rendererId": "renderer-desktop",
                 "state": "finished",
             },
         )
@@ -220,6 +233,7 @@ class ChatStreamCommandTests(unittest.TestCase):
                 {
                     "payload": {
                         "playbackId": "voice-123",
+                        "rendererId": "renderer-desktop",
                         "state": "unknown",
                     },
                     "type": "audio-playback-signal",
@@ -654,6 +668,142 @@ class ChatStreamCommandTests(unittest.TestCase):
         snapshot = service.get_snapshot(session["sessionId"])
         self.assertIsNotNone(snapshot)
         self.assertEqual(snapshot["sessionId"], session["sessionId"])
+
+    def test_chat_stream_assigns_voice_to_one_renderer_and_rejects_other_signals(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
+        session = service.create_session()
+        producer = _FakeConnection()
+        desktop = _FakeConnection(
+            renderer_id="renderer-desktop",
+            session_id=session["sessionId"],
+        )
+        mobile = _FakeConnection(
+            advertised_ws_url="ws://192.168.1.8:8790/ws",
+            renderer_id="renderer-mobile",
+            session_id=session["sessionId"],
+        )
+        with service._lock:
+            runtime_session = service._sessions[session["sessionId"]]
+            runtime_session.producer = producer
+            runtime_session.viewers.update({desktop, mobile})
+
+        asyncio.run(
+            service._publish_event(
+                session["sessionId"],
+                {
+                    "characterName": "Mio",
+                    "playbackId": "voice-1",
+                    "type": "tts.play",
+                    "url": "/api/media?path=voice.wav",
+                },
+            )
+        )
+
+        self.assertEqual(desktop.messages[0]["rendererId"], "renderer-desktop")
+        self.assertEqual(mobile.messages[0]["rendererId"], "renderer-desktop")
+        snapshot = service.get_snapshot(session["sessionId"])
+        self.assertEqual(snapshot["activePlayback"]["rendererId"], "renderer-desktop")
+
+        rejected = asyncio.run(
+            service._send_command(
+                session["sessionId"],
+                {
+                    "payload": {
+                        "playbackId": "voice-1",
+                        "rendererId": "renderer-mobile",
+                        "state": "finished",
+                    },
+                    "type": "audio-playback-signal",
+                },
+            )
+        )
+        self.assertFalse(rejected)
+        self.assertEqual(producer.messages, [])
+
+        accepted = asyncio.run(
+            service._send_command(
+                session["sessionId"],
+                {
+                    "payload": {
+                        "playbackId": "voice-1",
+                        "rendererId": "renderer-desktop",
+                        "state": "finished",
+                    },
+                    "type": "audio-playback-signal",
+                },
+            )
+        )
+        self.assertTrue(accepted)
+        self.assertEqual(len(producer.messages), 1)
+        self.assertIsNone(service.get_snapshot(session["sessionId"])["activePlayback"])
+
+    def test_chat_stream_transfers_active_voice_when_owner_disconnects(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
+        session = service.create_session()
+        desktop = _FakeConnection(
+            renderer_id="renderer-desktop",
+            session_id=session["sessionId"],
+        )
+        mobile = _FakeConnection(
+            advertised_ws_url="ws://192.168.1.8:8790/ws",
+            renderer_id="renderer-mobile",
+            session_id=session["sessionId"],
+        )
+        with service._lock:
+            runtime_session = service._sessions[session["sessionId"]]
+            runtime_session.viewers.update({desktop, mobile})
+
+        asyncio.run(
+            service._publish_event(
+                session["sessionId"],
+                {
+                    "characterName": "Mio",
+                    "playbackId": "voice-1",
+                    "type": "tts.play",
+                    "url": "/api/media?path=voice.wav",
+                },
+            )
+        )
+        asyncio.run(service._detach(desktop))
+
+        active = service.get_snapshot(session["sessionId"])["activePlayback"]
+        self.assertEqual(active["rendererId"], "renderer-mobile")
+        transferred_snapshot = mobile.messages[-1]
+        self.assertEqual(transferred_snapshot["type"], "snapshot")
+        self.assertEqual(
+            transferred_snapshot["snapshot"]["activePlayback"]["rendererId"],
+            "renderer-mobile",
+        )
+
+    def test_polling_snapshot_renderer_can_own_and_recover_active_voice(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
+        session = service.create_session()
+        service.get_snapshot(
+            session["sessionId"],
+            renderer_id="renderer-polling",
+        )
+
+        asyncio.run(
+            service._publish_event(
+                session["sessionId"],
+                {
+                    "characterName": "Mio",
+                    "playbackId": "voice-1",
+                    "type": "tts.play",
+                    "url": "/api/media?path=voice.wav",
+                },
+            )
+        )
+
+        recovered = service.get_snapshot(
+            session["sessionId"],
+            renderer_id="renderer-polling",
+        )
+        self.assertEqual(
+            recovered["activePlayback"]["rendererId"],
+            "renderer-polling",
+        )
+        self.assertEqual(recovered["activePlayback"]["playbackId"], "voice-1")
 
     def test_chat_stream_folds_chat_init_progress_and_terminal_events(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=8787)

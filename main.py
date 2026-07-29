@@ -1161,9 +1161,10 @@ def main():
                     if not isinstance(payload, dict):
                         raise ValueError("Audio playback signal must be an object.")
                     playback_id = str(payload.get("playbackId") or "").strip()
+                    renderer_id = str(payload.get("rendererId") or "").strip()
                     playback_state = str(payload.get("state") or "").strip()
                     error = str(payload.get("error") or "")
-                    if not playback_id or playback_state not in {
+                    if not playback_id or not renderer_id or playback_state not in {
                         "started",
                         "finished",
                         "interrupted",
@@ -1176,6 +1177,7 @@ def main():
                         playback_id,
                         playback_state,
                         error,
+                        renderer_id=renderer_id,
                     )
                     emit_ack(ok=True)
                     return

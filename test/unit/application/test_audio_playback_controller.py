@@ -168,3 +168,33 @@ def test_frontend_backend_emits_ids_and_waits_for_external_signal() -> None:
     thread.join(timeout=1)
 
     assert result["value"].state is PlaybackState.FINISHED
+
+
+def test_controller_rejects_terminal_signal_from_a_different_renderer() -> None:
+    ui_updates = SimpleNamespace(
+        post_tts_play=MagicMock(),
+        post_tts_skip=MagicMock(),
+    )
+    controller = VoicePlaybackController(FrontendVoicePlaybackBackend(ui_updates))
+    thread, result = _start_playback(controller)
+    playback_id = ui_updates.post_tts_play.call_args.kwargs["playback_id"]
+
+    assert controller.handle_signal(
+        playback_id,
+        "started",
+        renderer_id="renderer-desktop",
+    )
+    assert not controller.handle_signal(
+        playback_id,
+        "finished",
+        renderer_id="renderer-mobile",
+    )
+    assert thread.is_alive()
+    assert controller.handle_signal(
+        playback_id,
+        "finished",
+        renderer_id="renderer-desktop",
+    )
+    thread.join(timeout=1)
+
+    assert result["value"].state is PlaybackState.FINISHED

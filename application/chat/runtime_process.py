@@ -761,6 +761,7 @@ def _chat_snapshot(
     message: str = "",
     *,
     extra: dict[str, Any] | None = None,
+    renderer_id: str = "",
 ) -> dict[str, Any]:
     session_id = str(state.chat_session.get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
@@ -777,7 +778,11 @@ def _chat_snapshot(
     if mobile_access_info is not None:
         runtime_state["mobileAccess"] = mobile_access_info.to_payload()
     if session_id and chat_stream is not None:
-        snapshot = chat_stream.get_snapshot(session_id)
+        snapshot = (
+            chat_stream.get_snapshot(session_id, renderer_id=renderer_id)
+            if renderer_id
+            else chat_stream.get_snapshot(session_id)
+        )
         if snapshot is not None:
             next_snapshot = dict(snapshot)
             user_display_name = _chat_user_display_name_from_snapshot(state, next_snapshot)
@@ -1109,8 +1114,12 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             str(payload.get("playbackId") or "").strip(),
             field="playbackId",
         )
+        renderer_id = reject_control_chars(
+            str(payload.get("rendererId") or "").strip(),
+            field="rendererId",
+        )
         playback_state = str(payload.get("state") or "").strip()
-        if not playback_id or playback_state not in {
+        if not playback_id or not renderer_id or playback_state not in {
             "started",
             "finished",
             "interrupted",
@@ -1119,6 +1128,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             raise ValueError("Audio playback signal is invalid.")
         body["payload"] = {
             "playbackId": playback_id,
+            "rendererId": renderer_id[:128],
             "state": playback_state,
             "error": str(payload.get("error") or "")[:500],
         }

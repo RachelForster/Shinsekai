@@ -386,7 +386,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             return False
 
     def _require_authorized_read(self, path: str) -> None:
-        if path.startswith("/api/") and not self._is_loopback_client() and not self._has_valid_auth_token():
+        # Project-backed static roots share the same LAN authorization boundary
+        # as APIs. Protecting /assets/ also closes alternate spellings such as
+        # /assets/../data/... before path normalization reaches _send_file.
+        protected_path = path.startswith(("/api/", "/assets/", "/data/"))
+        if protected_path and not self._is_loopback_client() and not self._has_valid_auth_token():
             raise PermissionError("invalid bridge auth token")
 
     def _inject_bridge_token(self, detail: dict[str, Any]) -> dict[str, Any]:
@@ -644,7 +648,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path == "/api/chat/runtime-status":
                 self._send_json(_chat_runtime_status(self.state))
             elif path == "/api/chat/snapshot":
-                self._send_json(_chat_snapshot(self.state))
+                query = parse_qs(parsed.query)
+                renderer_id = str((query.get("rendererId") or [""])[0]).strip()[:128]
+                self._send_json(_chat_snapshot(self.state, renderer_id=renderer_id))
             elif path == "/api/chat/history":
                 self._send_json(_chat_history(self.state))
             elif path == "/api/chat/history-file":

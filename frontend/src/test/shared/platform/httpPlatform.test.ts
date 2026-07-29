@@ -2,6 +2,7 @@ import { waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpPlatform } from "../../../shared/platform/httpPlatform";
+import { currentChatRendererId } from "../../../shared/platform/chatRenderer";
 import {
   sampleConfig,
   sampleMcpConfig,
@@ -1170,7 +1171,7 @@ describe("http platform", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/chat/snapshot",
+      `http://127.0.0.1:8787/api/chat/snapshot?rendererId=${encodeURIComponent(currentChatRendererId())}`,
       expect.objectContaining({
         headers: expect.objectContaining({
           "Content-Type": "application/json",
@@ -1179,7 +1180,7 @@ describe("http platform", () => {
       }),
     );
     expect(FakeWebSocket.instances[0]?.url).toBe(
-      "ws://127.0.0.1:8788/ws?sessionId=session-1&role=viewer&shinsekai_bridge_token=bridge-secret",
+      `ws://127.0.0.1:8788/ws?sessionId=session-1&role=viewer&rendererId=${encodeURIComponent(currentChatRendererId())}&shinsekai_bridge_token=bridge-secret`,
     );
     expect(listener).toHaveBeenNthCalledWith(
       1,
@@ -1487,6 +1488,35 @@ describe("http platform", () => {
         method: "POST",
       }),
     );
+  });
+
+  it("attaches this page renderer identity to playback signals", async () => {
+    const snapshot = {
+      dialogText: "speaking",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "speaking",
+    };
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    await platform.chat.command({
+      payload: { playbackId: "voice-1", state: "finished" },
+      type: "audio-playback-signal",
+    });
+
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toEqual({
+      cmdId: expect.any(String),
+      payload: {
+        playbackId: "voice-1",
+        rendererId: currentChatRendererId(),
+        state: "finished",
+      },
+      type: "audio-playback-signal",
+    });
   });
 
   it("returns reopened chat snapshots from realtime commands after a closed session", async () => {

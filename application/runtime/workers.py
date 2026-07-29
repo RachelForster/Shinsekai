@@ -727,11 +727,18 @@ class PresentationWorker(ThreadDagNode):
         playback_id: str,
         state: PlaybackState | str,
         error: str = "",
+        *,
+        renderer_id: str = "",
     ) -> bool:
         controller = getattr(self, "playback_controller", None)
         if controller is None:
             return False
-        return controller.handle_signal(playback_id, state, error)
+        return controller.handle_signal(
+            playback_id,
+            state,
+            error,
+            renderer_id=renderer_id,
+        )
 
 
 class HeadlessSinkNode(ThreadDagNode):

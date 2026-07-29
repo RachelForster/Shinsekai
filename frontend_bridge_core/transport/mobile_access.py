@@ -203,18 +203,18 @@ class MobileAccessTransport:
             self._http_thread = None
             self._info = None
 
-        try:
-            self._stop_websocket()
-        except Exception:
-            pass
-        if http_server is not None:
             try:
-                http_server.shutdown()
+                self._stop_websocket()
             except Exception:
                 pass
-            try:
-                http_server.server_close()
-            except Exception:
-                pass
-        if http_thread is not None and http_thread is not threading.current_thread():
-            http_thread.join(timeout=2.0)
+            if http_server is not None:
+                try:
+                    http_server.shutdown()
+                except Exception:
+                    pass
+                try:
+                    http_server.server_close()
+                except Exception:
+                    pass
+            if http_thread is not None and http_thread is not threading.current_thread():
+                http_thread.join(timeout=2.0)

@@ -795,6 +795,64 @@ describe("chatStageReducer", () => {
     expect(staleSnapshot.dialogText).toBe("recovered");
   });
 
+  it("hydrates active voice and looping effects from recovery snapshots", () => {
+    const recovered = chatStageReducer(emptyChatState, {
+      snapshot: {
+        activePlayback: {
+          characterName: "Mio",
+          playbackId: "voice-1",
+          rendererId: "renderer-desktop",
+          seq: 7,
+          url: "asset://voice.wav",
+          volume: 0.6,
+        },
+        dialogText: "speaking",
+        eventSeq: 8,
+        inputDraft: "",
+        loopingEffects: [{ key: "rain", seq: 6, url: "asset://rain.wav" }],
+        options: [],
+        sprites: [],
+        status: "speaking",
+      },
+      type: "hydrate",
+    });
+
+    expect(recovered.audioCommands).toEqual([
+      {
+        kind: "voice-play",
+        playbackId: "voice-1",
+        rendererId: "renderer-desktop",
+        seq: 7,
+        url: "asset://voice.wav",
+        volume: 0.6,
+      },
+      {
+        key: "rain",
+        kind: "effect-loop-start",
+        seq: 6,
+        url: "asset://rain.wav",
+      },
+    ]);
+
+    const cleared = chatStageReducer(recovered, {
+      snapshot: {
+        activePlayback: null,
+        dialogText: "done",
+        eventSeq: 9,
+        inputDraft: "",
+        loopingEffects: [],
+        options: [],
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+    expect(cleared.audioCommands).toEqual([
+      { kind: "voice-stop", playbackId: "voice-1", seq: 9 },
+      { key: "rain", kind: "effect-loop-stop", seq: 9 },
+    ]);
+  });
+
   it("drives layer visibility from control events", () => {
     const withControls = chatStageReducer(emptyChatState, {
       event: {

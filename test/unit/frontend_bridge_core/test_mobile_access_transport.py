@@ -101,6 +101,54 @@ def test_mobile_access_transport_tries_the_next_port_pair(monkeypatch):
         transport.stop()
 
 
+def test_mobile_access_stop_serializes_with_concurrent_restart(monkeypatch):
+    websocket_starts: list[int] = []
+    stop_entered = threading.Event()
+    allow_stop = threading.Event()
+    stop_count = 0
+
+    monkeypatch.setattr(
+        "frontend_bridge_core.transport.mobile_access.generate_qr_data_url",
+        lambda _url: "data:image/png;base64,dGVzdA==",
+    )
+
+    def stop_websocket() -> None:
+        nonlocal stop_count
+        stop_count += 1
+        if stop_count == 1:
+            stop_entered.set()
+            allow_stop.wait(timeout=5.0)
+
+    transport = MobileAccessTransport(
+        advertised_host_factory=lambda: "10.0.0.8",
+        auth_token="token",
+        http_server_factory=lambda _host, _port: _FakeHttpServer(),
+        preferred_http_port=9000,
+        start_websocket=lambda host, port: (
+            websocket_starts.append(port) or f"ws://{host}:{port}/ws"
+        ),
+        stop_websocket=stop_websocket,
+    )
+    transport.start()
+
+    stop_thread = threading.Thread(target=transport.stop)
+    restart_thread = threading.Thread(target=transport.start)
+    stop_thread.start()
+    assert stop_entered.wait(timeout=2.0)
+    restart_thread.start()
+
+    assert websocket_starts == [9001]
+    allow_stop.set()
+    stop_thread.join(timeout=5.0)
+    restart_thread.join(timeout=5.0)
+
+    assert not stop_thread.is_alive()
+    assert not restart_thread.is_alive()
+    assert websocket_starts == [9001, 9001]
+    assert transport.snapshot() is not None
+    transport.stop()
+
+
 def test_generate_qr_data_url_returns_png():
     pytest.importorskip("qrcode")
 

@@ -74,6 +74,7 @@ import type {
   TtsBundleRecommendation,
   ChatAttachmentInput,
 } from "./types";
+import { currentChatRendererId } from "./chatRenderer";
 
 const bridgeAuthTokens = new Map<string, string>();
 
@@ -346,6 +347,7 @@ function buildChatViewerWebSocketUrl(wsUrl: string, sessionId: string, authToken
   const url = new URL(wsUrl);
   url.searchParams.set("sessionId", sessionId);
   url.searchParams.set("role", "viewer");
+  url.searchParams.set("rendererId", currentChatRendererId());
   if (authToken.trim()) {
     url.searchParams.set("shinsekai_bridge_token", authToken.trim());
   }
@@ -361,6 +363,10 @@ function makeChatCommandId() {
     return globalThis.crypto.randomUUID();
   }
   return `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function chatSnapshotPath() {
+  return `/api/chat/snapshot?rendererId=${encodeURIComponent(currentChatRendererId())}`;
 }
 
 const CHAT_WEBSOCKET_HANDSHAKE_TIMEOUT_MS = 1500;
@@ -539,8 +545,17 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           method: "POST",
         }),
       command: async (command: ChatCommand) => {
-        const payload =
+        let payload: ChatCommand =
           isRealtimeChatCommand(command) && !command.cmdId ? { ...command, cmdId: makeChatCommandId() } : command;
+        if (payload.type === "audio-playback-signal" && payload.payload && typeof payload.payload === "object") {
+          payload = {
+            ...payload,
+            payload: {
+              ...payload.payload,
+              rendererId: currentChatRendererId(),
+            },
+          };
+        }
         const result = await requestJson<ChatCommandResult>(apiBase, "/api/chat/command", {
           body: JSON.stringify(payload),
           method: "POST",
@@ -555,7 +570,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
       getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
       getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>(apiBase, "/api/chat/runtime-status"),
-      getSnapshot: () => requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot"),
+      getSnapshot: () => requestJson<ChatSnapshot>(apiBase, chatSnapshotPath()),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),
       async launch(payload: ChatLaunchPayload, options) {
         const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
@@ -577,7 +592,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
 
         const poll = async () => {
           try {
-            const snapshot = await requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot");
+            const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath());
             if (!stopped) {
               listener(snapshot);
             }
@@ -722,7 +737,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
               }
               if (typeof parsed.seq === "number") {
                 if (lastEventSeq > 0 && parsed.seq > lastEventSeq + 1) {
-                  void requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot")
+                  void requestJson<ChatSnapshot>(apiBase, chatSnapshotPath())
                     .then((nextSnapshot) => {
                       if (!stopped) {
                         emitSnapshot(nextSnapshot);
@@ -763,7 +778,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
 
         const poll = async () => {
           try {
-            const snapshot = await requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot");
+            const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath());
             if (!stopped) {
               emitSnapshot(snapshot);
               if (connectWebSocket(snapshot)) {
@@ -780,7 +795,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
 
         const connectFromSnapshot = async () => {
           try {
-            const snapshot = await requestJson<ChatSnapshot>(apiBase, "/api/chat/snapshot");
+            const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath());
             if (stopped) {
               return;
             }

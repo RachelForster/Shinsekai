@@ -10,6 +10,7 @@ import {
   effectiveChatStageTextStyle,
 } from "../../../features/chat-stage/runtimeConfig";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
+import { currentChatRendererId } from "../../../shared/platform/chatRenderer";
 import type {
   ChatAttachmentInput,
   ChatCommand,
@@ -824,6 +825,77 @@ describe("ChatStagePage", () => {
     unmount();
     play.mockRestore();
     pause.mockRestore();
+  });
+
+  it("replays owned voice and loop effects from a recovery snapshot", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        activePlayback: {
+          characterName: "Mio",
+          playbackId: "voice-recovered",
+          rendererId: currentChatRendererId(),
+          seq: 4,
+          url: "asset://voice-recovered.wav",
+          volume: 0.8,
+        },
+        eventSeq: 5,
+        loopingEffects: [{ key: "rain", seq: 3, url: "asset://rain.wav" }],
+        status: "speaking",
+      }),
+    );
+
+    const { unmount } = renderPage();
+
+    await screen.findByText("Ready");
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: {
+          playbackId: "voice-recovered",
+          state: "started",
+        },
+        type: "audio-playback-signal",
+      }),
+    );
+
+    unmount();
+    expect(pause).toHaveBeenCalled();
+    play.mockRestore();
+    pause.mockRestore();
+  });
+
+  it("does not play voice assigned to another renderer", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    const { unmount } = renderPage();
+
+    await screen.findByText("Ready");
+    act(() => {
+      listener?.({
+        characterName: "Mio",
+        playbackId: "voice-other",
+        rendererId: "renderer-someone-else",
+        seq: 1,
+        ts: 1,
+        type: "tts.play",
+        url: "asset://voice.wav",
+        v: 1,
+      });
+    });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(play).not.toHaveBeenCalled();
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith(expect.objectContaining({ type: "audio-playback-signal" }));
+    unmount();
+    play.mockRestore();
   });
 
   it("offers a tap-to-enable control when mobile autoplay is blocked", async () => {

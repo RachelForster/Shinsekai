@@ -886,6 +886,14 @@ export interface PluginPagePresentation {
 }
 
 export interface ChatSnapshot {
+  activePlayback?: {
+    characterName: string;
+    playbackId: string;
+    rendererId?: string;
+    seq: number;
+    url: string;
+    volume: number;
+  } | null;
   asrEnabled?: boolean;
   asrLoading?: boolean;
   asrRunning?: boolean;
@@ -907,6 +915,11 @@ export interface ChatSnapshot {
   historyPath?: string;
   inputDraft: string;
   initTask?: TaskSnapshot;
+  loopingEffects?: Array<{
+    key: string;
+    seq: number;
+    url: string;
+  }>;
   mobileAccess?: MobileAccessInfo;
   numericInfo?: string;
   notificationText?: string;
@@ -1064,6 +1077,7 @@ export type ChatStageEvent =
       url: string;
       characterName: string;
       playbackId?: string;
+      rendererId?: string;
       volume?: number;
     })
   | (ChatEventBase & { type: "tts.skip"; playbackId?: string })

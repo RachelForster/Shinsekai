@@ -62,6 +62,7 @@ class _ActivePlayback:
     on_started: Callable[[], None] | None
     state: PlaybackState = PlaybackState.STARTING
     error: str = ""
+    renderer_id: str = ""
     started_notified: bool = False
 
 
@@ -197,6 +198,8 @@ class VoicePlaybackController:
         playback_id: str,
         state: PlaybackState | str,
         error: str = "",
+        *,
+        renderer_id: str = "",
     ) -> bool:
         try:
             normalized_state = (
@@ -213,6 +216,15 @@ class VoicePlaybackController:
                 return False
             if active.state in TERMINAL_PLAYBACK_STATES:
                 return False
+            normalized_renderer_id = str(renderer_id or "").strip()
+            if normalized_renderer_id:
+                if (
+                    active.renderer_id
+                    and active.renderer_id != normalized_renderer_id
+                    and normalized_state is not PlaybackState.STARTED
+                ):
+                    return False
+                active.renderer_id = normalized_renderer_id
             if normalized_state is PlaybackState.STARTED:
                 active.state = normalized_state
                 if not active.started_notified:
