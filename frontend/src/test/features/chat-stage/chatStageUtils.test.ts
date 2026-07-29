@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { stageAssetUrl } from "../../../features/chat-stage/chatStageUtils";
+import { isRemoteMobileAccessPage, stageAssetUrl } from "../../../features/chat-stage/chatStageUtils";
 
 describe("stageAssetUrl", () => {
   afterEach(() => {
@@ -25,5 +25,12 @@ describe("stageAssetUrl", () => {
     expect(stageAssetUrl("http://127.0.0.1:8787/api/media?path=data%2Fbackground.png")).toBe(
       "http://127.0.0.1:8787/api/media?path=data%2Fbackground.png",
     );
+  });
+
+  it("identifies LAN-hosted pages as mobile access clients", () => {
+    expect(isRemoteMobileAccessPage({ hostname: "192.168.1.20", protocol: "http:" })).toBe(true);
+    expect(isRemoteMobileAccessPage({ hostname: "127.0.0.1", protocol: "http:" })).toBe(false);
+    expect(isRemoteMobileAccessPage({ hostname: "localhost", protocol: "http:" })).toBe(false);
+    expect(isRemoteMobileAccessPage({ hostname: "localhost", protocol: "tauri:" })).toBe(false);
   });
 });

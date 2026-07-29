@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
-import { chatStageSpriteAxisCenter } from "../../../features/chat-stage/state/sprites";
+import { chatStageSpriteAxisCenter, limitChatStageSpritesToSlots } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
   it("applies background and BGM changes from the runtime stream", () => {
@@ -1047,6 +1047,18 @@ describe("chatStageReducer", () => {
 
     expect(hydrated.sprites.map((sprite) => sprite.label)).toEqual(["Aoi", "Mio"]);
     expect(hydrated.sprites.map((sprite) => sprite.slot)).toEqual([2, 0]);
+  });
+
+  it("maps the latest sprite into the single mobile display slot", () => {
+    const sprites = [
+      { id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 },
+      { id: "Aoi", label: "Aoi", path: "asset://aoi.png", slot: 2 },
+    ];
+
+    expect(limitChatStageSpritesToSlots(sprites, 1)).toEqual([
+      { id: "Aoi", label: "Aoi", path: "asset://aoi.png", slot: 0 },
+    ]);
+    expect(sprites.map((sprite) => sprite.slot)).toEqual([0, 2]);
   });
 
   it("centers occupied sprite axes with the legacy Qt compensation", () => {

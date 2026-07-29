@@ -4,6 +4,23 @@ import { fileUrl } from "../../entities/files/repository";
 import type { MessageKey } from "../../shared/i18n";
 import type { ChatTransportMode, ChatTransportState } from "../../shared/platform/types";
 
+interface ChatStagePageLocation {
+  hostname: string;
+  protocol: string;
+}
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+
+function isLoopbackHost(hostname: string) {
+  return LOOPBACK_HOSTS.has(hostname.toLowerCase());
+}
+
+export function isRemoteMobileAccessPage(
+  location: ChatStagePageLocation | undefined = typeof window !== "undefined" ? window.location : undefined,
+) {
+  return Boolean(location && /^https?:$/.test(location.protocol) && !isLoopbackHost(location.hostname));
+}
+
 export function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
@@ -55,10 +72,8 @@ export function stageAssetUrl(path?: string) {
     try {
       const assetUrl = new URL(path);
       const pageUrl = window.location;
-      const assetIsLoopback = ["127.0.0.1", "::1", "localhost"].includes(assetUrl.hostname.toLowerCase());
-      const pageIsRemote =
-        /^https?:$/.test(pageUrl.protocol) &&
-        !["127.0.0.1", "::1", "localhost"].includes(pageUrl.hostname.toLowerCase());
+      const assetIsLoopback = isLoopbackHost(assetUrl.hostname);
+      const pageIsRemote = isRemoteMobileAccessPage(pageUrl);
       if (assetIsLoopback && pageIsRemote) {
         assetUrl.protocol = pageUrl.protocol;
         assetUrl.host = pageUrl.host;

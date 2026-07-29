@@ -35,7 +35,7 @@ import {
 import { TopStageTools } from "./components/TopStageTools";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
-import { layerClassName } from "./chatStageUtils";
+import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
@@ -54,6 +54,7 @@ import {
   writeChatStageRuntimeConfig,
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
+import { limitChatStageSpritesToSlots } from "./state/sprites";
 import {
   CHAT_ATTACHMENT_LIMIT,
   CHAT_IMAGE_EXTENSIONS,
@@ -163,6 +164,10 @@ export function ChatStagePage() {
     [runtimeConfig.nameText, themeStyle],
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
+  const stageSprites = useMemo(
+    () => (isRemoteMobileAccessPage() ? limitChatStageSpritesToSlots(viewModel.sprites, 1) : viewModel.sprites),
+    [viewModel.sprites],
+  );
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
   const handleWindowDrag = useDesktopWindowDrag(standaloneDesktopWindow);
   const transparentBackground = !viewModel.backgroundPath;
@@ -684,14 +689,14 @@ export function ChatStagePage() {
           onDragStart={standaloneDesktopWindow ? handleWindowDrag : undefined}
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
-          sprites={viewModel.sprites}
+          sprites={stageSprites}
         />
         <StatLayer stats={viewModel.stats} />
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
         <NotificationLayer
           hidden={!viewModel.layers.notification}
-          spritesVisible={viewModel.layers.sprites && viewModel.sprites.length > 0}
+          spritesVisible={viewModel.layers.sprites && stageSprites.length > 0}
           text={viewModel.notificationText}
         />
         <div
@@ -835,7 +840,7 @@ export function ChatStagePage() {
           spriteOffsetX={runtimeConfig.spriteOffsetX}
           spriteOffsetY={runtimeConfig.spriteOffsetY}
           spriteScales={runtimeConfig.spriteScales}
-          sprites={viewModel.sprites}
+          sprites={stageSprites}
           textSpeed={typewriterCps}
           turnOptions={state.turnOptions}
           voiceLanguage={viewModel.voiceLanguage || "ja"}
