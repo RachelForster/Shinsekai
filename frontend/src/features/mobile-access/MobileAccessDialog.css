@@ -1,5 +1,27 @@
 .mobile-access-dialog {
+  display: grid;
   width: min(92vw, 520px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.mobile-access-dialog .dialog__body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.mobile-access-dialog .dialog__footer {
+  flex-wrap: wrap;
+}
+
+.mobile-access-dialog .dialog__footer .button {
+  flex: 1 1 180px;
+}
+
+.mobile-access-dialog .dialog__footer .button__label {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .mobile-access-dialog__content {

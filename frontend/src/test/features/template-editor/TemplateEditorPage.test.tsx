@@ -418,6 +418,8 @@ describe("TemplateEditorPage", () => {
     expect(mockLaunchChat).toHaveBeenCalledWith(expect.objectContaining({ enableMobileAccess: true }));
     expect(mockShowChatSurface).not.toHaveBeenCalled();
 
+    expect(within(dialog).getByRole("button", { name: "Copy link" })).toBeVisible();
+    expect(within(dialog).getByRole("button", { name: "Open local chat" })).toBeVisible();
     fireEvent.click(within(dialog).getByRole("button", { name: "Open local chat" }));
     await waitFor(() =>
       expect(mockShowChatSurface).toHaveBeenCalledWith(
