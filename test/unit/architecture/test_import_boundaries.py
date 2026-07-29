@@ -439,6 +439,34 @@ def test_frontend_bridge_does_not_own_runtime_implementations() -> None:
     )
 
 
+def test_mobile_access_respects_application_and_transport_boundaries() -> None:
+    """Keep lifecycle in application and concrete listeners in the bridge."""
+
+    core_implementation = REPO_ROOT / "core" / "mobile_access"
+    application_use_case = (
+        REPO_ROOT / "application" / "chat" / "mobile_access.py"
+    )
+    bridge_transport = (
+        REPO_ROOT
+        / "frontend_bridge_core"
+        / "transport"
+        / "mobile_access.py"
+    )
+    route_source = (
+        REPO_ROOT / "frontend_bridge_core" / "routes" / "api.py"
+    ).read_text(encoding="utf-8")
+
+    assert not list(core_implementation.rglob("*.py")), (
+        "Mobile chat access is not a framework-neutral core capability."
+    )
+    assert application_use_case.is_file()
+    assert bridge_transport.is_file()
+    assert "mobile_access_service" not in route_source, (
+        "Routes must call the application mobile-access use case instead of "
+        "reaching through BridgeState to the transport adapter."
+    )
+
+
 def test_active_host_code_does_not_import_legacy_ai_namespaces() -> None:
     legacy_roots = {"asr", "llm", "t2i", "tts"}
     source_roots = (

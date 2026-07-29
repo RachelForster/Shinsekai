@@ -94,12 +94,6 @@ def _cleanup_chat_init(state: BridgeState, session_id: str, *, reason: str) -> N
     except Exception:
         pass
     finally:
-        mobile_access_service = getattr(state, "mobile_access_service", None)
-        if mobile_access_service is not None:
-            try:
-                mobile_access_service.stop()
-            except Exception:
-                pass
         chat_stream = getattr(state, "chat_stream", None)
         if chat_stream is not None:
             try:

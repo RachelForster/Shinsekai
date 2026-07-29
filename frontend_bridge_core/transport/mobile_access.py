@@ -1,4 +1,4 @@
-"""Lifecycle and QR-code service for temporary LAN access to the chat UI."""
+"""Concrete LAN HTTP/WebSocket transport for temporary mobile chat access."""
 
 from __future__ import annotations
 
@@ -6,10 +6,11 @@ import base64
 import ipaddress
 import socket
 import threading
-from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Callable
 from urllib.parse import quote
+
+from application.chat.mobile_access import MobileAccessInfo
 
 
 class MobileAccessError(RuntimeError):
@@ -93,33 +94,12 @@ def generate_qr_data_url(value: str) -> str:
     return f"data:image/png;base64,{encoded}"
 
 
-@dataclass(frozen=True)
-class MobileAccessInfo:
-    host: str
-    http_port: int
-    websocket_port: int
-    url: str
-    websocket_url: str
-    qr_code_data_url: str
-
-    def to_payload(self) -> dict[str, Any]:
-        return {
-            "enabled": True,
-            "host": self.host,
-            "httpPort": self.http_port,
-            "websocketPort": self.websocket_port,
-            "url": self.url,
-            "websocketUrl": self.websocket_url,
-            "qrCodeDataUrl": self.qr_code_data_url,
-        }
-
-
 HttpServerFactory = Callable[[str, int], Any]
 WebSocketStarter = Callable[[str, int], str]
 WebSocketStopper = Callable[[], None]
 
 
-class MobileAccessService:
+class MobileAccessTransport:
     """Own the temporary LAN HTTP/WebSocket listeners and their QR payload."""
 
     def __init__(

@@ -1,6 +1,7 @@
 import json
 import signal
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
 from application.chat import runtime_process as chat
@@ -325,12 +326,15 @@ def test_runtime_dependency_error_maps_opencc_package():
 def test_close_chat_requests_graceful_runtime_shutdown_and_marks_session_closed(monkeypatch):
     process = _DummyClosableProcess()
     chat_stream = _ChatStreamForClose(process)
+    mobile_access = MagicMock()
+    mobile_access.snapshot.return_value = None
     monkeypatch.setattr(chat, "_main_chat_process", process)
 
     state = SimpleNamespace(
         chat_session={"sessionId": "session-1", "voiceLanguage": "ja"},
         chat_stream=chat_stream,
         config_manager=_ConfigManager(),
+        mobile_access_service=mobile_access,
     )
 
     snapshot = chat._close_chat(state)
@@ -344,6 +348,7 @@ def test_close_chat_requests_graceful_runtime_shutdown_and_marks_session_closed(
     assert state.chat_session["sessionId"] == ""
     assert snapshot["sessionClosedReason"] == "聊天会话已结束。"
     assert snapshot["runtimeMode"] == "react"
+    mobile_access.stop.assert_called_once_with()
 
 
 def test_shutdown_active_chat_process_stops_child_without_request_state(monkeypatch):

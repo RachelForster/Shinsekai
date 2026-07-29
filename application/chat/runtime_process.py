@@ -47,6 +47,10 @@ from application.chat.history_paths import (
     is_unc_history_path,
     resolve_history_path_for_project,
 )
+from application.chat.mobile_access import (
+    get_mobile_access_info,
+    stop_mobile_access,
+)
 from application.chat.templates import (
     TEMP_SPLIT_META,
     _compose_runtime_template,
@@ -533,7 +537,10 @@ def _close_chat(
             if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
                 chat_stream.close_session(session_id, reason=reason)
     finally:
-        _set_chat_runtime_closing(state, False)
+        try:
+            stop_mobile_access(state)
+        finally:
+            _set_chat_runtime_closing(state, False)
     closed_snapshot = _chat_snapshot(state, "idle", "")
     if session_id:
         if chat_stream is not None:
@@ -766,12 +773,7 @@ def _chat_snapshot(
         "chatRuntimeClosing": _chat_runtime_closing(state),
         "turnOptions": _chat_turn_options(state),
     }
-    mobile_access_service = getattr(state, "mobile_access_service", None)
-    mobile_access_info = (
-        mobile_access_service.snapshot()
-        if mobile_access_service is not None
-        else None
-    )
+    mobile_access_info = get_mobile_access_info(state)
     if mobile_access_info is not None:
         runtime_state["mobileAccess"] = mobile_access_info.to_payload()
     if session_id and chat_stream is not None:

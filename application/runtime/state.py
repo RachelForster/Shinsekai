@@ -7,7 +7,10 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from application.chat.mobile_access import MobileAccessPort
 
 
 def _default_project_root_dir() -> str:
@@ -37,7 +40,7 @@ class BridgeState:
     auth_token: str = ""
     chat_session: dict[str, Any] = field(default_factory=dict)
     chat_stream: Any = None
-    mobile_access_service: Any = None
+    mobile_access_service: MobileAccessPort | None = None
     chat_runtime_lock: threading.Lock = field(default_factory=threading.Lock)
     chat_runtime_closing: bool = False
     history_download_lock: threading.Lock = field(default_factory=threading.Lock)

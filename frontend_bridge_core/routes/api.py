@@ -69,6 +69,7 @@ from frontend_bridge_core.chat_themes import (
     set_active_chat_theme,
 )
 from application.chat.initialization import start_chat_init
+from application.chat.mobile_access import configure_mobile_access
 from frontend_bridge_core.characters import (
     _as_character_config,
     _delete_all_character_sprites,
@@ -1285,10 +1286,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/chat/init":
                 self._send_json(self._start_chat_init(body), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/chat/close":
-                snapshot = _close_chat(self.state)
-                snapshot.pop("mobileAccess", None)
-                self._send_json(snapshot)
-                self._stop_mobile_access()
+                self._send_json(_close_chat(self.state))
             elif method == "POST" and path == "/api/chat/command":
                 self._send_json(_handle_chat_command(self.state, body))
             elif method == "POST" and path == "/api/chat/themes/active":
@@ -1371,39 +1369,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             raise ValueError("mode must be 'launch' or 'resume-last'")
         return start_chat_init(self.state, mode=mode, launch=launch)
 
-    def _configure_mobile_access(self, enabled: bool) -> dict[str, Any] | None:
-        service = getattr(self.state, "mobile_access_service", None)
-        if service is None:
-            if enabled:
-                raise RuntimeError("移动访问服务不可用。")
-            return None
-        if not enabled:
-            service.stop()
-            return None
-        info = service.start()
-        print(
-            "移动访问已启用："
-            f"{info.url}\n"
-            "请在系统防火墙中允许 TCP 端口 "
-            f"{info.http_port} 和 {info.websocket_port}。"
-        )
-        logger.info(
-            "Mobile chat access started",
-            extra={
-                "event": "mobile_access.started",
-                "host": info.host,
-                "http_port": info.http_port,
-                "websocket_port": info.websocket_port,
-            },
-        )
-        return info.to_payload()
-
-    def _stop_mobile_access(self) -> None:
-        service = getattr(self.state, "mobile_access_service", None)
-        if service is None:
-            return
-        service.stop()
-
     def _launch_chat(
         self,
         body: dict[str, Any],
@@ -1414,7 +1379,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
         mobile_access_enabled = bool(body.get("enableMobileAccess", False))
         if not mobile_access_enabled:
-            self._configure_mobile_access(False)
+            configure_mobile_access(self.state, enabled=False)
         template_id = str(body.get("templateId") or "")
         rows = _list_templates(self.state)
         row = next((item for item in rows if item["id"] == template_id), None)
@@ -1473,7 +1438,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         }
         if _chat_process_running():
             self.state.chat_session = {**self.state.chat_session, **session_base}
-            self._configure_mobile_access(mobile_access_enabled)
+            configure_mobile_access(
+                self.state,
+                enabled=mobile_access_enabled,
+            )
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
@@ -1544,7 +1512,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
-        self._configure_mobile_access(mobile_access_enabled)
+        configure_mobile_access(
+            self.state,
+            enabled=mobile_access_enabled,
+        )
         return _chat_snapshot(
             self.state,
             "idle",
@@ -1565,7 +1536,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         session = _load_template_session_payload(self.state) or {}
         mobile_access_enabled = bool(session.get("enableMobileAccess", False))
         if not mobile_access_enabled:
-            self._configure_mobile_access(False)
+            configure_mobile_access(self.state, enabled=False)
         session_history_path = str(session.get("historyPath") or "").strip()
         history_path = (
             _chat_history_path(self.state, {"historyPath": session_history_path}, session)
@@ -1611,7 +1582,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         }
         if _chat_process_running():
             self.state.chat_session = {**self.state.chat_session, **session_base}
-            self._configure_mobile_access(mobile_access_enabled)
+            configure_mobile_access(
+                self.state,
+                enabled=mobile_access_enabled,
+            )
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
@@ -1672,7 +1646,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
-        self._configure_mobile_access(mobile_access_enabled)
+        configure_mobile_access(
+            self.state,
+            enabled=mobile_access_enabled,
+        )
         return _chat_snapshot(
             self.state,
             "idle",

@@ -5,7 +5,10 @@ import threading
 
 import pytest
 
-from core.mobile_access.service import MobileAccessService, generate_qr_data_url
+from frontend_bridge_core.transport.mobile_access import (
+    MobileAccessTransport,
+    generate_qr_data_url,
+)
 
 
 class _FakeHttpServer:
@@ -23,7 +26,7 @@ class _FakeHttpServer:
         self.closed = True
 
 
-def test_mobile_access_service_starts_adjacent_ports_and_stops(monkeypatch):
+def test_mobile_access_transport_starts_adjacent_ports_and_stops(monkeypatch):
     servers: list[tuple[str, int, _FakeHttpServer]] = []
     websocket_starts: list[tuple[str, int]] = []
     websocket_stops: list[bool] = []
@@ -34,10 +37,10 @@ def test_mobile_access_service_starts_adjacent_ports_and_stops(monkeypatch):
         return server
 
     monkeypatch.setattr(
-        "core.mobile_access.service.generate_qr_data_url",
+        "frontend_bridge_core.transport.mobile_access.generate_qr_data_url",
         lambda url: f"data:image/png;base64,{base64.b64encode(url.encode()).decode()}",
     )
-    service = MobileAccessService(
+    transport = MobileAccessTransport(
         advertised_host_factory=lambda: "192.168.50.7",
         auth_token="launch-token",
         http_server_factory=make_server,
@@ -48,7 +51,7 @@ def test_mobile_access_service_starts_adjacent_ports_and_stops(monkeypatch):
         stop_websocket=lambda: websocket_stops.append(True),
     )
 
-    info = service.start()
+    info = transport.start()
 
     assert info.http_port == 8789
     assert info.websocket_port == 8790
@@ -59,16 +62,16 @@ def test_mobile_access_service_starts_adjacent_ports_and_stops(monkeypatch):
     assert info.websocket_url == "ws://192.168.50.7:8790/ws"
     assert servers[0][:2] == ("0.0.0.0", 8789)
     assert websocket_starts == [("192.168.50.7", 8790)]
-    assert service.start() is info
+    assert transport.start() is info
 
-    service.stop()
+    transport.stop()
 
     assert websocket_stops == [True]
     assert servers[0][2].closed is True
-    assert service.snapshot() is None
+    assert transport.snapshot() is None
 
 
-def test_mobile_access_service_tries_the_next_port_pair(monkeypatch):
+def test_mobile_access_transport_tries_the_next_port_pair(monkeypatch):
     attempted_ports: list[int] = []
 
     def make_server(_host: str, port: int) -> _FakeHttpServer:
@@ -78,10 +81,10 @@ def test_mobile_access_service_tries_the_next_port_pair(monkeypatch):
         return _FakeHttpServer()
 
     monkeypatch.setattr(
-        "core.mobile_access.service.generate_qr_data_url",
+        "frontend_bridge_core.transport.mobile_access.generate_qr_data_url",
         lambda _url: "data:image/png;base64,dGVzdA==",
     )
-    service = MobileAccessService(
+    transport = MobileAccessTransport(
         advertised_host_factory=lambda: "10.0.0.8",
         auth_token="token",
         http_server_factory=make_server,
@@ -90,12 +93,12 @@ def test_mobile_access_service_tries_the_next_port_pair(monkeypatch):
         stop_websocket=lambda: None,
     )
     try:
-        info = service.start()
+        info = transport.start()
         assert attempted_ports == [9000, 9002]
         assert info.http_port == 9002
         assert info.websocket_port == 9003
     finally:
-        service.stop()
+        transport.stop()
 
 
 def test_generate_qr_data_url_returns_png():

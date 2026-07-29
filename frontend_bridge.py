@@ -109,12 +109,11 @@ def _shutdown_bridge_runtime(reason: str) -> None:
 
     with _bridge_state_lock:
         state = _bridge_state
-    mobile_access_service = (
-        getattr(state, "mobile_access_service", None) if state is not None else None
-    )
-    if mobile_access_service is not None:
+    if state is not None:
         try:
-            mobile_access_service.stop()
+            from application.chat.mobile_access import stop_mobile_access
+
+            stop_mobile_access(state)
         except Exception as exc:
             _restart_debug_log(
                 f"bridge runtime mobile access stop failed reason={reason} error={exc}"
@@ -369,12 +368,12 @@ def run(
     from config.background_manager import BackgroundManager
     from config.character_manager import CharacterManager
     from config.config_manager import ConfigManager
-    from core.mobile_access import MobileAccessService
     from i18n import init_i18n
     from ai.llm.template_generator import TemplateGenerator
 
     from frontend_bridge_core.chat_stream import ChatStreamService
     from frontend_bridge_core.routes.api import FrontendBridgeHandler
+    from frontend_bridge_core.transport.mobile_access import MobileAccessTransport
     from application.runtime.state import BridgeState
     from frontend_bridge_core.static import _schedule_browser_open
 
@@ -408,7 +407,7 @@ def run(
         mobile_server.state = state  # type: ignore[attr-defined]
         return mobile_server
 
-    state.mobile_access_service = MobileAccessService(
+    state.mobile_access_service = MobileAccessTransport(
         auth_token=bridge_auth_token,
         http_server_factory=create_mobile_http_server,
         preferred_http_port=port + 2,
