@@ -36,9 +36,9 @@ describe("stageAssetUrl", () => {
       },
     });
 
-    expect(
-      stageAssetUrl("http://127.0.0.1:8787/api/media?path=data%2Fvoice.wav&shinsekai_bridge_token=secret"),
-    ).toBe("http://127.0.0.1:8787/api/media?path=data%2Fvoice.wav&shinsekai_bridge_token=secret");
+    expect(stageAssetUrl("http://127.0.0.1:8787/api/media?path=data%2Fvoice.wav&shinsekai_bridge_token=secret")).toBe(
+      "http://127.0.0.1:8787/api/media?path=data%2Fvoice.wav&shinsekai_bridge_token=secret",
+    );
   });
 
   it("identifies LAN-hosted pages as mobile access clients", () => {
