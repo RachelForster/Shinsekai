@@ -1171,8 +1171,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "template.field.useStat": "ステータスルール",
   "template.field.useTranslation": "LLM 翻訳",
   "template.field.voiceLanguage": "音声目標言語",
-  "template.optionHelp":
-    "RPG の選択肢、ナレーション、または左上のステータスパネルをオフにしたい場合は、ここで「選択肢ルール」「ナレーションルール」「ステータスルール」をオフにしてから、テンプレートを再生成または保存してください。",
+  "template.optionHelp": "ルール変更後は、再生成または保存してください。",
   "template.mobileAccessHint": "チャット開始後に QR コードを表示します。リンクはアプリの実行中のみ有効です。",
   "template.listTitle": "テンプレート",
   "template.loading": "テンプレートを読み込み中",

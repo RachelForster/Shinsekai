@@ -764,6 +764,17 @@ export function TemplateEditorPage() {
                 })}
               </div>
 
+              <div className="template-mobile-access">
+                <label className="template-toggle-row">
+                  <span>{t("template.field.mobileAccess")}</span>
+                  <Switch
+                    checked={mobileAccessEnabled}
+                    onChange={(event) => setMobileAccessEnabled(event.target.checked)}
+                  />
+                </label>
+                <p>{t("template.mobileAccessHint")}</p>
+              </div>
+
               {effects.length > 0 ? (
                 <div className="template-effect-section">
                   <span className="template-effect-section__label">{t("template.field.effectName")}</span>
@@ -880,17 +891,6 @@ export function TemplateEditorPage() {
                 <Switch checked={option.value} onChange={(e) => option.setValue(e.target.checked)} />
               </label>
             ))}
-          </div>
-
-          <div className="template-mobile-access">
-            <label className="template-toggle-row">
-              <span>{t("template.field.mobileAccess")}</span>
-              <Switch
-                checked={mobileAccessEnabled}
-                onChange={(event) => setMobileAccessEnabled(event.target.checked)}
-              />
-            </label>
-            <p>{t("template.mobileAccessHint")}</p>
           </div>
 
           <div className="template-number-grid">

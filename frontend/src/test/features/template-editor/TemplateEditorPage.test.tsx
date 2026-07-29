@@ -404,7 +404,9 @@ describe("TemplateEditorPage", () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText("Allow mobile access"));
+    const mobileAccessSwitch = screen.getByLabelText("Allow mobile access");
+    expect(mobileAccessSwitch.closest(".template-character-picker")).not.toBeNull();
+    fireEvent.click(mobileAccessSwitch);
     fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Mobile access is ready" });

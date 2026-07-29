@@ -1140,8 +1140,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "template.field.useStat": "数值状态规则",
   "template.field.useTranslation": "LLM 翻译",
   "template.field.voiceLanguage": "语音目标语言",
-  "template.optionHelp":
-    "如果你想关闭 RPG 选项、旁白，或者左上角的数值面板，请在这里关闭「选择规则」「旁白规则」「数值状态规则」，然后重新生成或保存模板。",
+  "template.optionHelp": "规则调整后，请重新生成或保存模板。",
   "template.mobileAccessHint": "启动聊天后显示二维码；链接仅在当前程序运行期间有效。",
   "template.listTitle": "模板",
   "template.loading": "正在读取模板",

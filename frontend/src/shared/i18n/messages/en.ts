@@ -1169,8 +1169,7 @@ export const enMessages: Record<MessageKey, string> = {
   "template.field.useStat": "Stat rules",
   "template.field.useTranslation": "LLM translation",
   "template.field.voiceLanguage": "Voice target language",
-  "template.optionHelp":
-    "To turn off RPG choices, narration, or the stat panel in the top-left corner, disable Choice rules, Narration rules, or Stat rules here, then regenerate or save the template.",
+  "template.optionHelp": "Regenerate or save after changing rules.",
   "template.mobileAccessHint": "A QR code appears after launch. The link is valid only while this app is running.",
   "template.listTitle": "Templates",
   "template.loading": "Loading templates",
