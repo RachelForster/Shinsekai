@@ -454,6 +454,37 @@ def test_ui_worker_does_not_finish_while_tts_work_is_still_inflight() -> None:
     ui_manager.post_llm_reply_finished.assert_not_called()
 
 
+def test_ui_worker_does_not_finish_while_shared_playback_is_active() -> None:
+    ui_manager = MagicMock()
+    runtime = _make_app_runtime(ui_manager=ui_manager)
+    turn = runtime.chat_turn_service.begin_turn()
+    runtime.chat_turn_service.mark_generation_complete(turn)
+    controller = MagicMock()
+    controller.is_active.return_value = True
+    runtime.ui_playback.playback_controller = controller
+    worker = PresentationWorker(runtime.audio_path_queue)
+    worker.ui_update_manager = ui_manager
+    worker.dialog_channel = None
+
+    assert worker._finish_turn_if_drained(turn) is False
+    assert runtime.chat_turn_service.is_active() is True
+    ui_manager.post_llm_reply_finished.assert_not_called()
+
+
+def test_ui_worker_skip_speech_interrupts_shared_playback_controller() -> None:
+    runtime = _make_app_runtime()
+    controller = MagicMock()
+    controller.is_active.return_value = True
+    runtime.ui_playback.playback_controller = controller
+    worker = PresentationWorker(runtime.audio_path_queue)
+    worker._dialog_active = False
+
+    worker.skip_speech()
+
+    controller.interrupt.assert_called_once_with()
+    runtime.ui_update_manager.post_tts_skip.assert_not_called()
+
+
 def test_ui_worker_skip_speech_stops_busy_channel_without_queued_audio() -> None:
     audio_path_queue = Queue()
     runtime = _make_app_runtime(audio_path_queue=audio_path_queue)

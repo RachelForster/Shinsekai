@@ -9,9 +9,16 @@ const stageRoot = path.join(frontendDir, "src-tauri", "resources");
 const runtimeEnv = process.env.SHINSEKAI_TAURI_RUNTIME_DIR?.trim();
 const runtimeSource = runtimeEnv ? path.resolve(runtimeEnv) : path.join(repoRoot, "runtime");
 const retiredSourceDirectories = new Set(
-  ["ui", "llm", "asr", "tts", "t2i", path.join("core", "runtime"), path.join("core", "plugins")].map((relativePath) =>
-    path.resolve(repoRoot, relativePath),
-  ),
+  [
+    "ui",
+    "llm",
+    "asr",
+    "tts",
+    "t2i",
+    path.join("core", "runtime"),
+    path.join("core", "plugins"),
+    path.join("core", "mobile_access"),
+  ].map((relativePath) => path.resolve(repoRoot, relativePath)),
 );
 
 const files = [

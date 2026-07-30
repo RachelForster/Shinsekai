@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
-import { chatStageSpriteAxisCenter } from "../../../features/chat-stage/state/sprites";
+import { chatStageSpriteAxisCenter, limitChatStageSpritesToSlots } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
   it("applies background and BGM changes from the runtime stream", () => {
@@ -795,6 +795,64 @@ describe("chatStageReducer", () => {
     expect(staleSnapshot.dialogText).toBe("recovered");
   });
 
+  it("hydrates active voice and looping effects from recovery snapshots", () => {
+    const recovered = chatStageReducer(emptyChatState, {
+      snapshot: {
+        activePlayback: {
+          characterName: "Mio",
+          playbackId: "voice-1",
+          rendererId: "renderer-desktop",
+          seq: 7,
+          url: "asset://voice.wav",
+          volume: 0.6,
+        },
+        dialogText: "speaking",
+        eventSeq: 8,
+        inputDraft: "",
+        loopingEffects: [{ key: "rain", seq: 6, url: "asset://rain.wav" }],
+        options: [],
+        sprites: [],
+        status: "speaking",
+      },
+      type: "hydrate",
+    });
+
+    expect(recovered.audioCommands).toEqual([
+      {
+        kind: "voice-play",
+        playbackId: "voice-1",
+        rendererId: "renderer-desktop",
+        seq: 7,
+        url: "asset://voice.wav",
+        volume: 0.6,
+      },
+      {
+        key: "rain",
+        kind: "effect-loop-start",
+        seq: 6,
+        url: "asset://rain.wav",
+      },
+    ]);
+
+    const cleared = chatStageReducer(recovered, {
+      snapshot: {
+        activePlayback: null,
+        dialogText: "done",
+        eventSeq: 9,
+        inputDraft: "",
+        loopingEffects: [],
+        options: [],
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+    expect(cleared.audioCommands).toEqual([
+      { kind: "voice-stop", playbackId: "voice-1", seq: 9 },
+      { key: "rain", kind: "effect-loop-stop", seq: 9 },
+    ]);
+  });
+
   it("drives layer visibility from control events", () => {
     const withControls = chatStageReducer(emptyChatState, {
       event: {
@@ -1047,6 +1105,18 @@ describe("chatStageReducer", () => {
 
     expect(hydrated.sprites.map((sprite) => sprite.label)).toEqual(["Aoi", "Mio"]);
     expect(hydrated.sprites.map((sprite) => sprite.slot)).toEqual([2, 0]);
+  });
+
+  it("maps the latest sprite into the single mobile display slot", () => {
+    const sprites = [
+      { id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 },
+      { id: "Aoi", label: "Aoi", path: "asset://aoi.png", slot: 2 },
+    ];
+
+    expect(limitChatStageSpritesToSlots(sprites, 1)).toEqual([
+      { id: "Aoi", label: "Aoi", path: "asset://aoi.png", slot: 0 },
+    ]);
+    expect(sprites.map((sprite) => sprite.slot)).toEqual([0, 2]);
   });
 
   it("centers occupied sprite axes with the legacy Qt compensation", () => {

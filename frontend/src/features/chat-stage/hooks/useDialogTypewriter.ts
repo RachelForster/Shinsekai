@@ -98,7 +98,10 @@ export function useDialogTypewriter({
     if (!dialogVisible || optionsVisible || !dialogTotalCharacters) {
       return;
     }
-    if (status === "generating" || status === "streaming") {
+    // dialog-advance is also the explicit "skip current voice" command.
+    // Never send it from the auto timer while the frontend is still playing
+    // the current TTS clip; the backend will advance after playback finishes.
+    if (status === "generating" || status === "streaming" || status === "speaking") {
       return;
     }
     const timeoutId = window.setTimeout(() => onAutoAdvanceRef.current(), AUTO_ADVANCE_DELAY_MS);

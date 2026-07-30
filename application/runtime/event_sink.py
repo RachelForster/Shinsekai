@@ -33,6 +33,7 @@ def _plain_text(value: str) -> str:
 
 def make_empty_chat_snapshot() -> Dict[str, Any]:
     return {
+        "activePlayback": None,
         "asrEnabled": False,
         "asrLoading": False,
         "asrRunning": False,
@@ -40,6 +41,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "eventSeq": 0,
         "historyEntries": [],
         "inputDraft": "",
+        "loopingEffects": [],
         "options": [],
         "pluginPagePresentations": [],
         "sprites": [],
@@ -131,6 +133,8 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     next_snapshot.setdefault("eventSeq", 0)
     next_snapshot.setdefault("historyEntries", [])
     next_snapshot.setdefault("inputDraft", "")
+    next_snapshot.setdefault("activePlayback", None)
+    next_snapshot.setdefault("loopingEffects", [])
     next_snapshot.setdefault("options", [])
     next_snapshot.setdefault("pluginPagePresentations", [])
     next_snapshot.setdefault("sprites", [])
@@ -436,11 +440,65 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         _clear_transient_notification_state(next_snapshot)
         next_snapshot["status"] = "speaking"
         next_snapshot["characterName"] = str(event.get("characterName") or "")
+        next_snapshot["activePlayback"] = {
+            "characterName": str(event.get("characterName") or ""),
+            "playbackId": str(event.get("playbackId") or ""),
+            "rendererId": str(event.get("rendererId") or ""),
+            "seq": int(event.get("seq") or 0),
+            "url": str(event.get("url") or ""),
+            "volume": (
+                max(0.0, min(1.0, float(event.get("volume"))))
+                if isinstance(event.get("volume"), (int, float))
+                and not isinstance(event.get("volume"), bool)
+                and math.isfinite(float(event.get("volume")))
+                else 1.0
+            ),
+        }
         return next_snapshot
 
     if event_type == "tts.skip":
-        if str(next_snapshot.get("status") or "") == "speaking":
-            next_snapshot["status"] = "idle"
+        active_playback = next_snapshot.get("activePlayback")
+        playback_id = str(event.get("playbackId") or "")
+        should_stop = (
+            not playback_id
+            or not isinstance(active_playback, dict)
+            or str(active_playback.get("playbackId") or "") == playback_id
+        )
+        if should_stop:
+            next_snapshot["activePlayback"] = None
+            if str(next_snapshot.get("status") or "") == "speaking":
+                next_snapshot["status"] = "idle"
+        return next_snapshot
+
+    if event_type == "effect.loop.start":
+        key = str(event.get("key") or "")
+        current = [
+            dict(item)
+            for item in (next_snapshot.get("loopingEffects") or [])
+            if isinstance(item, dict) and str(item.get("key") or "") != key
+        ]
+        if key:
+            current.append(
+                {
+                    "key": key,
+                    "seq": int(event.get("seq") or 0),
+                    "url": str(event.get("url") or ""),
+                }
+            )
+        next_snapshot["loopingEffects"] = current[-32:]
+        return next_snapshot
+
+    if event_type == "effect.loop.stop":
+        key = str(event.get("key") or "")
+        next_snapshot["loopingEffects"] = [
+            dict(item)
+            for item in (next_snapshot.get("loopingEffects") or [])
+            if isinstance(item, dict) and str(item.get("key") or "") != key
+        ]
+        return next_snapshot
+
+    if event_type == "effect.loop.stop-all":
+        next_snapshot["loopingEffects"] = []
         return next_snapshot
 
     if event_type == "asr.partial":
@@ -476,12 +534,15 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "reply.finished":
         _clear_transient_notification_state(next_snapshot)
+        next_snapshot["activePlayback"] = None
         next_snapshot["status"] = "idle"
         return next_snapshot
 
     if event_type == "session.closed":
+        next_snapshot["activePlayback"] = None
         next_snapshot["busyText"] = ""
         next_snapshot["busyDurationSeconds"] = 0.0
+        next_snapshot["loopingEffects"] = []
         next_snapshot["notificationText"] = str(event.get("reason") or "")
         next_snapshot["options"] = []
         next_snapshot["pluginPagePresentations"] = []

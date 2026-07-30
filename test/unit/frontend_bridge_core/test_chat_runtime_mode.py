@@ -67,6 +67,7 @@ class _ChatStreamStub:
         self.create_session_calls = []
         self.deleted_sessions = []
         self.snapshots = {}
+        self.snapshot_renderer_ids = []
         self.wait_calls = []
         self.wait_result = True
 
@@ -87,7 +88,8 @@ class _ChatStreamStub:
         self.deleted_sessions.append(session_id)
         self.snapshots.pop(session_id, None)
 
-    def get_snapshot(self, session_id: str):
+    def get_snapshot(self, session_id: str, *, renderer_id: str = ""):
+        self.snapshot_renderer_ids.append(renderer_id)
         return dict(self.snapshots.get(session_id, {})) if session_id in self.snapshots else None
 
     def update_session_snapshot(self, session_id: str, snapshot: dict):
@@ -103,6 +105,29 @@ class _ChatStreamStub:
 
 
 class ChatRuntimeModeTests(unittest.TestCase):
+    def test_chat_snapshot_registers_polling_renderer_with_stream(self):
+        chat_stream = _ChatStreamStub()
+        chat_stream.snapshots["session-1"] = {
+            "dialogText": "speaking",
+            "inputDraft": "",
+            "options": [],
+            "sessionId": "session-1",
+            "sprites": [],
+            "status": "speaking",
+        }
+        state = SimpleNamespace(
+            chat_runtime_closing=False,
+            chat_session={"sessionId": "session-1"},
+            chat_stream=chat_stream,
+            config_manager=_ConfigManager(),
+            mobile_access_service=None,
+        )
+
+        snapshot = _chat_snapshot(state, renderer_id="renderer-polling")
+
+        self.assertEqual(snapshot["dialogText"], "speaking")
+        self.assertEqual(chat_stream.snapshot_renderer_ids[0], "renderer-polling")
+
     def test_stream_initial_snapshot_drops_previous_session_sprites(self):
         previous = {
             "characterName": "七海千秋",
@@ -274,6 +299,59 @@ class ChatRuntimeModeTests(unittest.TestCase):
         handler.headers = {"Origin": "https://evil.example", BRIDGE_AUTH_HEADER: "secret"}
         with self.assertRaisesRegex(PermissionError, "request origin is not allowed"):
             handler._require_authorized_write("/api/chat/command")
+
+    def test_mobile_write_requests_allow_only_the_same_http_origin(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        handler.path = "/api/chat/command"
+        handler.server = SimpleNamespace(state=SimpleNamespace(auth_token="secret"))
+        handler.headers = {
+            "Host": "192.168.1.20:8789",
+            "Origin": "http://192.168.1.20:8789",
+            BRIDGE_AUTH_HEADER: "secret",
+        }
+
+        handler._require_authorized_write("/api/chat/command")
+
+        handler.headers["Origin"] = "http://192.168.1.21:8789"
+        with self.assertRaisesRegex(PermissionError, "request origin is not allowed"):
+            handler._require_authorized_write("/api/chat/command")
+
+    def test_remote_read_requests_require_header_query_or_cookie_token(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        handler.path = "/api/chat/snapshot"
+        handler.client_address = ("192.168.1.30", 51000)
+        handler.server = SimpleNamespace(state=SimpleNamespace(auth_token="secret"))
+        handler.headers = {}
+
+        with self.assertRaisesRegex(PermissionError, "invalid bridge auth token"):
+            handler._require_authorized_read("/api/chat/snapshot")
+
+        handler.path = "/api/chat/snapshot?shinsekai_bridge_token=secret"
+        handler._require_authorized_read("/api/chat/snapshot")
+
+        handler.path = "/api/chat/snapshot"
+        handler.headers = {"Cookie": "shinsekai_bridge_token=secret"}
+        handler._require_authorized_read("/api/chat/snapshot")
+
+    def test_remote_data_reads_require_bridge_auth_token(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        handler.path = "/data/config/api.yaml"
+        handler.client_address = ("192.168.1.30", 51000)
+        handler.server = SimpleNamespace(state=SimpleNamespace(auth_token="secret"))
+        handler.headers = {}
+
+        with self.assertRaisesRegex(PermissionError, "invalid bridge auth token"):
+            handler._require_authorized_read("/data/config/api.yaml")
+        with self.assertRaisesRegex(PermissionError, "invalid bridge auth token"):
+            handler._require_authorized_read("/assets/../data/config/api.yaml")
+
+        handler.path = "/data/config/api.yaml?shinsekai_bridge_token=secret"
+        handler._require_authorized_read("/data/config/api.yaml")
+
+        handler.path = "/data/config/api.yaml"
+        handler.client_address = ("127.0.0.1", 51000)
+        handler.headers = {}
+        handler._require_authorized_read("/data/config/api.yaml")
 
     def test_launch_chat_forces_legacy_native_config_to_react(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)

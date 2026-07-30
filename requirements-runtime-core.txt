@@ -12,6 +12,7 @@ anthropic
 mcp>=1.2.0
 tiktoken
 Pillow
+qrcode>=7.4,<9
 pygame-ce>=2.5.7; sys_platform == "win32" and platform_machine == "ARM64"
 pygame; sys_platform != "win32" or platform_machine != "ARM64"
 pandas

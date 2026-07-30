@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import json
 import mimetypes
 import shutil
 import tempfile
 import threading
+from http.cookies import SimpleCookie
 from email.parser import BytesParser
 from email.policy import default as default_email_policy
 from http import HTTPStatus
@@ -67,6 +69,7 @@ from frontend_bridge_core.chat_themes import (
     set_active_chat_theme,
 )
 from application.chat.initialization import start_chat_init
+from application.chat.mobile_access import configure_mobile_access
 from frontend_bridge_core.characters import (
     _as_character_config,
     _delete_all_character_sprites,
@@ -206,6 +209,7 @@ from application.model_assets.tts_bundle import (
 logger = get_logger("frontend_bridge_core.routes.api")
 BRIDGE_AUTH_HEADER = "X-Shinsekai-Bridge-Token"
 BRIDGE_AUTH_QUERY = "shinsekai_bridge_token"
+BRIDGE_AUTH_COOKIE = "shinsekai_bridge_token"
 _ALLOWED_CUSTOM_ORIGIN_SCHEMES = {"shinsekai", "tauri"}
 _ALLOWED_LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "::1", "localhost", "tauri.localhost"}
 
@@ -301,9 +305,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         parsed = urlparse(value)
         scheme = parsed.scheme.lower()
         host = (parsed.hostname or "").lower()
-        if host not in _ALLOWED_LOCAL_ORIGIN_HOSTS:
-            return None
         if scheme in _ALLOWED_CUSTOM_ORIGIN_SCHEMES:
+            if host not in _ALLOWED_LOCAL_ORIGIN_HOSTS:
+                return None
             if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
                 return None
             netloc = host
@@ -313,11 +317,30 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if scheme in {"http", "https"}:
             if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
                 return None
+            if host not in _ALLOWED_LOCAL_ORIGIN_HOSTS and not self._origin_matches_request_host(parsed):
+                return None
             netloc = host
             if parsed.port is not None:
                 netloc = f"{host}:{parsed.port}"
             return safe_header_value(urlunparse((scheme, netloc, "", "", "", "")))
         return None
+
+    def _origin_matches_request_host(self, parsed_origin) -> bool:
+        try:
+            raw_host = reject_control_chars(
+                str(self.headers.get("Host") or ""),
+                field="host",
+            )
+            request = urlparse(f"//{raw_host}")
+            request_host = str(request.hostname or "").lower()
+            origin_host = str(parsed_origin.hostname or "").lower()
+            if not request_host or request_host != origin_host:
+                return False
+            request_port = request.port or (443 if parsed_origin.scheme == "https" else 80)
+            origin_port = parsed_origin.port or (443 if parsed_origin.scheme == "https" else 80)
+            return request_port == origin_port
+        except (TypeError, ValueError):
+            return False
 
     def _request_origin_allowed(self) -> bool:
         origin = self.headers.get("Origin", "")
@@ -331,7 +354,18 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             return header_token
         parsed = urlparse(getattr(self, "path", ""))
         query = parse_qs(parsed.query)
-        return str((query.get(BRIDGE_AUTH_QUERY) or query.get("token") or [""])[0]).strip()
+        query_token = str(
+            (query.get(BRIDGE_AUTH_QUERY) or query.get("token") or [""])[0]
+        ).strip()
+        if query_token:
+            return query_token
+        cookie = SimpleCookie()
+        try:
+            cookie.load(str(self.headers.get("Cookie") or ""))
+        except Exception:
+            return ""
+        morsel = cookie.get(BRIDGE_AUTH_COOKIE)
+        return str(morsel.value if morsel is not None else "").strip()
 
     def _has_valid_auth_token(self) -> bool:
         required = str(getattr(self.state, "auth_token", "") or "").strip()
@@ -339,6 +373,25 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             return True
         supplied = self._auth_token_from_request()
         return bool(supplied) and hmac.compare_digest(supplied, required)
+
+    def _is_loopback_client(self) -> bool:
+        client_address = getattr(self, "client_address", None)
+        if not client_address:
+            # Directly constructed handlers are used by internal integrations
+            # and unit tests without a network peer.
+            return True
+        try:
+            return ipaddress.ip_address(str(client_address[0])).is_loopback
+        except (IndexError, TypeError, ValueError):
+            return False
+
+    def _require_authorized_read(self, path: str) -> None:
+        # Project-backed static roots share the same LAN authorization boundary
+        # as APIs. Protecting /assets/ also closes alternate spellings such as
+        # /assets/../data/... before path normalization reaches _send_file.
+        protected_path = path.startswith(("/api/", "/assets/", "/data/"))
+        if protected_path and not self._is_loopback_client() and not self._has_valid_auth_token():
+            raise PermissionError("invalid bridge auth token")
 
     def _inject_bridge_token(self, detail: dict[str, Any]) -> dict[str, Any]:
         token = str(getattr(self.state, "auth_token", "") or "").strip()
@@ -371,6 +424,21 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", f"Content-Type, Range, X-Task-Id, {BRIDGE_AUTH_HEADER}")
         self.send_header("Access-Control-Expose-Headers", "Accept-Ranges, Content-Length, Content-Range")
+        parsed = urlparse(getattr(self, "path", ""))
+        query = parse_qs(parsed.query)
+        query_token = str(
+            (query.get(BRIDGE_AUTH_QUERY) or query.get("token") or [""])[0]
+        ).strip()
+        required = (
+            str(getattr(self.state, "auth_token", "") or "").strip()
+            if query_token
+            else ""
+        )
+        if required and hmac.compare_digest(query_token, required):
+            self.send_header(
+                "Set-Cookie",
+                f"{BRIDGE_AUTH_COOKIE}={safe_header_value(query_token)}; Path=/; HttpOnly; SameSite=Strict",
+            )
 
     @staticmethod
     def _is_client_disconnect(exc: Exception) -> bool:
@@ -522,6 +590,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(self.path)
             path = parsed.path
+            self._require_authorized_read(path)
             if path == "/api/health":
                 self._send_json({"ok": True, "plugins": plugin_load_snapshot(self.state)})
             elif path == "/api/config":
@@ -579,7 +648,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path == "/api/chat/runtime-status":
                 self._send_json(_chat_runtime_status(self.state))
             elif path == "/api/chat/snapshot":
-                self._send_json(_chat_snapshot(self.state))
+                query = parse_qs(parsed.query)
+                renderer_id = str((query.get("rendererId") or [""])[0]).strip()[:128]
+                self._send_json(_chat_snapshot(self.state, renderer_id=renderer_id))
             elif path == "/api/chat/history":
                 self._send_json(_chat_history(self.state))
             elif path == "/api/chat/history-file":
@@ -630,6 +701,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         try:
             parsed = urlparse(self.path)
             path = parsed.path
+            self._require_authorized_read(path)
             if path == "/api/chat/history-file":
                 if not self._request_origin_allowed():
                     raise PermissionError("request origin is not allowed")
@@ -1311,6 +1383,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
     ) -> dict[str, Any]:
         if _chat_runtime_closing(self.state):
             raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
+        mobile_access_enabled = bool(body.get("enableMobileAccess", False))
+        if not mobile_access_enabled:
+            configure_mobile_access(self.state, enabled=False)
         template_id = str(body.get("templateId") or "")
         rows = _list_templates(self.state)
         row = next((item for item in rows if item["id"] == template_id), None)
@@ -1369,6 +1444,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         }
         if _chat_process_running():
             self.state.chat_session = {**self.state.chat_session, **session_base}
+            configure_mobile_access(
+                self.state,
+                enabled=mobile_access_enabled,
+            )
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
@@ -1439,6 +1518,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
+        configure_mobile_access(
+            self.state,
+            enabled=mobile_access_enabled,
+        )
         return _chat_snapshot(
             self.state,
             "idle",
@@ -1457,6 +1540,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if _chat_runtime_closing(self.state):
             raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
         session = _load_template_session_payload(self.state) or {}
+        mobile_access_enabled = bool(session.get("enableMobileAccess", False))
+        if not mobile_access_enabled:
+            configure_mobile_access(self.state, enabled=False)
         session_history_path = str(session.get("historyPath") or "").strip()
         history_path = (
             _chat_history_path(self.state, {"historyPath": session_history_path}, session)
@@ -1502,6 +1588,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         }
         if _chat_process_running():
             self.state.chat_session = {**self.state.chat_session, **session_base}
+            configure_mobile_access(
+                self.state,
+                enabled=mobile_access_enabled,
+            )
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
@@ -1562,6 +1652,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
+        configure_mobile_access(
+            self.state,
+            enabled=mobile_access_enabled,
+        )
         return _chat_snapshot(
             self.state,
             "idle",

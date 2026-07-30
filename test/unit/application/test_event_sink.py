@@ -7,6 +7,64 @@ from application.runtime.event_sink import (
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
+    def test_active_voice_and_loop_effects_are_folded_for_recovery(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "characterName": "Mio",
+                "playbackId": "voice-1",
+                "rendererId": "renderer-desktop",
+                "seq": 4,
+                "type": "tts.play",
+                "url": "/api/media?path=voice.wav",
+                "volume": 0.7,
+            },
+        )
+        snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "key": "rain",
+                "seq": 5,
+                "type": "effect.loop.start",
+                "url": "/api/media?path=rain.wav",
+            },
+        )
+        snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 6,
+                "type": "effect.play",
+                "url": "/api/media?path=impact.wav",
+            },
+        )
+
+        self.assertEqual(
+            snapshot["activePlayback"],
+            {
+                "characterName": "Mio",
+                "playbackId": "voice-1",
+                "rendererId": "renderer-desktop",
+                "seq": 4,
+                "url": "/api/media?path=voice.wav",
+                "volume": 0.7,
+            },
+        )
+        self.assertEqual(
+            snapshot["loopingEffects"],
+            [{"key": "rain", "seq": 5, "url": "/api/media?path=rain.wav"}],
+        )
+
+        stopped = fold_event_into_snapshot(
+            snapshot,
+            {"playbackId": "voice-1", "seq": 7, "type": "tts.skip"},
+        )
+        stopped = fold_event_into_snapshot(
+            stopped,
+            {"key": "rain", "seq": 8, "type": "effect.loop.stop"},
+        )
+        self.assertIsNone(stopped["activePlayback"])
+        self.assertEqual(stopped["loopingEffects"], [])
+
     def test_stats_are_folded_for_reconnect_without_replacing_token_usage(self):
         snapshot = make_empty_chat_snapshot()
         snapshot["numericInfo"] = "tokens total 42"

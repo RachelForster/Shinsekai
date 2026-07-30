@@ -76,6 +76,12 @@ export function normalizeChatStageSprites(sprites: readonly ChatStageSprite[]) {
   }, []);
 }
 
+/** Keep the most recently shown sprites and remap them into a smaller client-side slot set. */
+export function limitChatStageSpritesToSlots(sprites: readonly ChatStageSprite[], slotCount: number) {
+  const normalizedSlotCount = Math.max(1, Math.floor(slotCount));
+  return sprites.slice(-normalizedSlotCount).map((sprite, slot) => ({ ...sprite, slot }));
+}
+
 /** Reproduces the legacy Qt axis centers and whole-group centering compensation. */
 export function chatStageSpriteAxisCenter(
   sprites: readonly ChatStageSprite[],

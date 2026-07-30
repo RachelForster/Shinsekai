@@ -123,6 +123,7 @@ export function buildTemplateLaunchSession(input: {
   backgroundName: string;
   draft: TemplateSummary;
   effectNames?: string[];
+  mobileAccessEnabled: boolean;
   options: TemplateFlowOptions;
   runtime: TemplateRuntimeOptions;
   selectedCharacters: string[];
@@ -130,6 +131,7 @@ export function buildTemplateLaunchSession(input: {
 }): TemplateLaunchSession {
   return {
     background: input.backgroundName,
+    enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames ?? [],
     filenameStub: input.draft.name.trim(),
     historyPath: input.runtime.historyPath.trim(),
@@ -155,6 +157,7 @@ export function buildTemplateLaunchSession(input: {
 export function buildChatLaunchPayload(input: {
   backgroundName: string;
   effectNames?: string[];
+  mobileAccessEnabled: boolean;
   resetHistory: boolean;
   runtime: Pick<TemplateRuntimeOptions, "historyPath" | "initSpritePath" | "roomId">;
   selectedCharacters: string[];
@@ -164,6 +167,7 @@ export function buildChatLaunchPayload(input: {
   return {
     backgroundName: input.backgroundName,
     characters: input.selectedCharacters,
+    enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
     historyPath: input.runtime.historyPath.trim(),
     initSpritePath: input.runtime.initSpritePath.trim(),
@@ -186,6 +190,7 @@ export function synchronizeChatLaunchPayloadWithSession(
     ...payload,
     backgroundName: session.background,
     characters: session.selectedCharacters,
+    enableMobileAccess: session.enableMobileAccess,
     effectNames: effectNames.length ? effectNames : undefined,
     historyPath: session.historyPath.trim(),
     initSpritePath: session.initSpritePath.trim(),

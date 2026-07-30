@@ -15,6 +15,7 @@ import {
   templatesQueryKey,
 } from "../../entities/template/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
@@ -22,7 +23,12 @@ import { synchronizeChatLaunchPayloadWithSession } from "../template-editor/temp
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import type { ChatLaunchPayload, ChatSnapshot, TemplateLaunchSession } from "../../shared/platform/types";
+import type {
+  ChatLaunchPayload,
+  ChatSnapshot,
+  MobileAccessInfo,
+  TemplateLaunchSession,
+} from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
@@ -74,6 +80,7 @@ export function ChatLauncherPage() {
   const [historyPath, setHistoryPath] = useState("");
   const [initSpritePath, setInitSpritePath] = useState("");
   const [useCg, setUseCg] = useState(false);
+  const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
   const [quickRestartOpen, setQuickRestartOpen] = useState(false);
   const [sessionRestored, setSessionRestored] = useState(false);
 
@@ -156,6 +163,7 @@ export function ChatLauncherPage() {
 
   const buildSession = (): TemplateLaunchSession => ({
     background: backgroundName,
+    enableMobileAccess: launchSession?.enableMobileAccess ?? false,
     effectNames: selectedEffects,
     filenameStub: selectedTemplate?.name ?? "",
     historyPath: historyPath.trim(),
@@ -237,6 +245,10 @@ export function ChatLauncherPage() {
         message: snapshot.statusMessage || snapshot.dialogText,
         title: t("launch.toast.started"),
       });
+      if (snapshot.mobileAccess) {
+        setMobileAccessInfo(snapshot.mobileAccess);
+        return;
+      }
       void showChatSurface({ navigate, snapshot });
     },
   });
@@ -444,6 +456,18 @@ export function ChatLauncherPage() {
         open={initializationOpen}
         pending={initializationPending}
         task={initializationTask}
+      />
+      <MobileAccessDialog
+        info={mobileAccessInfo}
+        onClose={() => setMobileAccessInfo(null)}
+        onOpenLocalChat={() => {
+          const info = mobileAccessInfo;
+          setMobileAccessInfo(null);
+          return showChatSurface({
+            navigate,
+            snapshot: info ? { runtimeMode: "react", wsUrl: info.websocketUrl } : null,
+          });
+        }}
       />
     </div>
   );

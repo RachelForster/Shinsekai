@@ -23,8 +23,10 @@ for (const requiredFile of runtimeMarker.requiredFiles ?? []) {
 await assertExists(path.join(resourcesDir, "runtime_manifest.json"));
 await assertExists(path.join(resourcesDir, "main.py"));
 await assertExists(path.join(resourcesDir, "frontend_bridge.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "mobile_access.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "runtime_process.py"));
 await assertExists(path.join(resourcesDir, "application", "runtime", "dependencies.py"));
+await assertExists(path.join(resourcesDir, "frontend_bridge_core", "transport", "mobile_access.py"));
 await assertExists(path.join(resourcesDir, "ai", "llm", "llm_manager.py"));
 await assertExists(path.join(resourcesDir, "ai", "asr", "asr_adapter.py"));
 await assertExists(path.join(resourcesDir, "ai", "tts", "tts_manager.py"));
@@ -48,6 +50,7 @@ for (const retiredPath of [
   "t2i",
   path.join("core", "runtime"),
   path.join("core", "plugins"),
+  path.join("core", "mobile_access"),
   path.join("frontend_bridge_core", "handler.py"),
 ]) {
   await assertMissing(path.join(resourcesDir, retiredPath));

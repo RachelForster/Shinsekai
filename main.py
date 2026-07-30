@@ -1157,6 +1157,30 @@ def main():
                     chat_turn_service.cancel_pending_batch()
                     emit_ack(ok=True)
                     return
+                if command_type == "audio-playback-signal":
+                    if not isinstance(payload, dict):
+                        raise ValueError("Audio playback signal must be an object.")
+                    playback_id = str(payload.get("playbackId") or "").strip()
+                    renderer_id = str(payload.get("rendererId") or "").strip()
+                    playback_state = str(payload.get("state") or "").strip()
+                    error = str(payload.get("error") or "")
+                    if not playback_id or not renderer_id or playback_state not in {
+                        "started",
+                        "finished",
+                        "interrupted",
+                        "failed",
+                    }:
+                        raise ValueError("Audio playback signal is invalid.")
+                    if _um is None or not hasattr(_um, "handle_playback_signal"):
+                        raise RuntimeError("Audio playback controller is unavailable.")
+                    _um.handle_playback_signal(
+                        playback_id,
+                        playback_state,
+                        error,
+                        renderer_id=renderer_id,
+                    )
+                    emit_ack(ok=True)
+                    return
                 if command_type in {"skip-speech", "dialog-advance"}:
                     if _um is not None and hasattr(_um, "skip_speech"):
                         _um.skip_speech()

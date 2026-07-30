@@ -36,6 +36,7 @@ _MEDIA_EVENT_TYPES = {
     "tts.play",
 }
 _MAX_APPROVED_EXTERNAL_MEDIA_PATHS = 2048
+_POLLING_RENDERER_LEASE_SECONDS = 4.0
 
 
 def _external_host(bind_host: str) -> str:
@@ -75,6 +76,9 @@ class _WebSocketConnection:
     writer: asyncio.StreamWriter
     role: str
     session_id: str
+    advertised_ws_url: str = ""
+    connected_at: float = field(default_factory=time.time)
+    renderer_id: str = ""
     send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
     async def send_json(self, payload: dict[str, Any]) -> None:
@@ -106,6 +110,7 @@ class _ChatStreamSession:
     )
     producer: _WebSocketConnection | None = None
     producer_ready: threading.Event = field(default_factory=threading.Event, repr=False)
+    renderer_seen_at: dict[str, float] = field(default_factory=dict, repr=False)
     viewers: set[_WebSocketConnection] = field(default_factory=set)
     created_at: float = field(default_factory=time.time)
 
@@ -154,6 +159,8 @@ class ChatStreamService:
         self._lock = threading.Lock()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._server: asyncio.base_events.Server | None = None
+        self._mobile_server: asyncio.base_events.Server | None = None
+        self._mobile_ws_url = ""
         self._thread: threading.Thread | None = None
         self._ready = threading.Event()
         self._start_error: Exception | None = None
@@ -187,8 +194,37 @@ class ChatStreamService:
         self._loop = None
         self._thread = None
         self._server = None
+        self._mobile_server = None
+        self._mobile_ws_url = ""
         self._ready.clear()
         self._start_error = None
+
+    def start_mobile_listener(self, advertised_host: str, port: int) -> str:
+        loop = self._loop
+        if loop is None:
+            raise RuntimeError("chat stream service is unavailable")
+        host = str(advertised_host or "").strip()
+        if not host:
+            raise ValueError("advertised mobile host is required")
+        websocket_url = f"ws://{host}:{int(port)}/ws"
+        future = asyncio.run_coroutine_threadsafe(
+            self._start_mobile_listener_async(websocket_url, int(port)),
+            loop,
+        )
+        return str(future.result(timeout=5.0))
+
+    def stop_mobile_listener(self) -> None:
+        loop = self._loop
+        if loop is None:
+            return
+        future = asyncio.run_coroutine_threadsafe(
+            self._stop_mobile_listener_async(),
+            loop,
+        )
+        try:
+            future.result(timeout=5.0)
+        except Exception:
+            pass
 
     def create_session(self, initial_snapshot: dict[str, Any] | None = None) -> dict[str, str]:
         session_id = uuid.uuid4().hex
@@ -225,11 +261,18 @@ class ChatStreamService:
             "wsUrl": self.ws_base,
         }
 
-    def get_snapshot(self, session_id: str) -> dict[str, Any] | None:
+    def get_snapshot(
+        self,
+        session_id: str,
+        *,
+        renderer_id: str = "",
+    ) -> dict[str, Any] | None:
         with self._lock:
             session = self._sessions.get(session_id)
             if session is None:
                 return None
+            if renderer_id:
+                self._claim_renderer_locked(session, renderer_id)
             return dict(session.snapshot)
 
     def delete_session(self, session_id: str) -> None:
@@ -376,6 +419,86 @@ class ChatStreamService:
         with self._lock:
             return tuple(self._approved_external_media_paths)
 
+    @staticmethod
+    def _connected_renderer_ids(session: _ChatStreamSession) -> set[str]:
+        return {
+            str(getattr(viewer, "renderer_id", "") or "")
+            for viewer in session.viewers
+            if str(getattr(viewer, "renderer_id", "") or "")
+        }
+
+    def _remember_renderer_locked(
+        self,
+        session: _ChatStreamSession,
+        renderer_id: str,
+    ) -> str:
+        normalized = str(renderer_id or "").strip()[:128]
+        if not normalized:
+            return ""
+        now = time.monotonic()
+        session.renderer_seen_at[normalized] = now
+        if len(session.renderer_seen_at) > 128:
+            stale = sorted(
+                session.renderer_seen_at,
+                key=session.renderer_seen_at.get,
+            )[: len(session.renderer_seen_at) - 128]
+            for candidate in stale:
+                session.renderer_seen_at.pop(candidate, None)
+        return normalized
+
+    def _select_renderer_locked(
+        self,
+        session: _ChatStreamSession,
+        *,
+        exclude: str = "",
+    ) -> str:
+        viewers = sorted(
+            (
+                viewer
+                for viewer in session.viewers
+                if str(getattr(viewer, "renderer_id", "") or "")
+                and str(getattr(viewer, "renderer_id", "") or "") != exclude
+            ),
+            key=lambda viewer: (
+                bool(getattr(viewer, "advertised_ws_url", "")),
+                float(getattr(viewer, "connected_at", 0.0)),
+                str(getattr(viewer, "renderer_id", "") or ""),
+            ),
+        )
+        if viewers:
+            renderer_id = str(getattr(viewers[0], "renderer_id", "") or "")
+            return self._remember_renderer_locked(session, renderer_id)
+
+        cutoff = time.monotonic() - _POLLING_RENDERER_LEASE_SECONDS
+        candidates = sorted(
+            renderer_id
+            for renderer_id, seen_at in session.renderer_seen_at.items()
+            if renderer_id != exclude and seen_at >= cutoff
+        )
+        return candidates[0] if candidates else ""
+
+    def _claim_renderer_locked(
+        self,
+        session: _ChatStreamSession,
+        renderer_id: str,
+    ) -> None:
+        normalized = self._remember_renderer_locked(session, renderer_id)
+        active = session.snapshot.get("activePlayback")
+        if not normalized or not isinstance(active, dict):
+            return
+        owner = str(active.get("rendererId") or "")
+        connected = self._connected_renderer_ids(session)
+        owner_seen_at = session.renderer_seen_at.get(owner, 0.0)
+        owner_is_current = owner in connected or (
+            bool(owner)
+            and owner_seen_at >= time.monotonic() - _POLLING_RENDERER_LEASE_SECONDS
+        )
+        if owner_is_current:
+            return
+        next_active = dict(active)
+        next_active["rendererId"] = normalized
+        session.snapshot["activePlayback"] = next_active
+
     def _approve_event_media_path(self, event: dict[str, Any]) -> None:
         if str(event.get("type") or "") not in _MEDIA_EVENT_TYPES:
             return
@@ -390,6 +513,7 @@ class ChatStreamService:
         self.approve_external_media_path(raw_path)
 
     async def _shutdown_async(self) -> None:
+        await self._stop_mobile_listener_async()
         server = self._server
         if server is not None:
             server.close()
@@ -411,6 +535,45 @@ class ChatStreamService:
                 session.viewers.clear()
                 session.producer = None
                 session.producer_ready.clear()
+
+    async def _start_mobile_listener_async(self, websocket_url: str, port: int) -> str:
+        if self._mobile_server is not None:
+            if self._mobile_ws_url == websocket_url:
+                return websocket_url
+            await self._stop_mobile_listener_async()
+
+        async def handle_mobile_client(
+            reader: asyncio.StreamReader,
+            writer: asyncio.StreamWriter,
+        ) -> None:
+            await self._handle_client(
+                reader,
+                writer,
+                advertised_ws_url=websocket_url,
+            )
+
+        server = await asyncio.start_server(handle_mobile_client, "0.0.0.0", port)
+        self._mobile_server = server
+        self._mobile_ws_url = websocket_url
+        return websocket_url
+
+    async def _stop_mobile_listener_async(self) -> None:
+        server = self._mobile_server
+        self._mobile_server = None
+        self._mobile_ws_url = ""
+        if server is not None:
+            server.close()
+            await server.wait_closed()
+        with self._lock:
+            mobile_viewers = [
+                viewer
+                for session in self._sessions.values()
+                for viewer in session.viewers
+                if viewer.advertised_ws_url
+            ]
+        for viewer in mobile_viewers:
+            await viewer.close()
+            await self._detach(viewer)
 
     def _run_loop(self) -> None:
         loop = asyncio.new_event_loop()
@@ -434,11 +597,23 @@ class ChatStreamService:
                     loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             loop.close()
 
-    async def _handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _handle_client(
+        self,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        *,
+        advertised_ws_url: str = "",
+    ) -> None:
         connection: _WebSocketConnection | None = None
         try:
             request_line, headers = await self._read_handshake(reader)
-            connection = await self._accept_connection(reader, writer, request_line, headers)
+            connection = await self._accept_connection(
+                reader,
+                writer,
+                request_line,
+                headers,
+                advertised_ws_url=advertised_ws_url,
+            )
             if connection.role == "viewer":
                 await self._send_snapshot(connection)
             await self._receive_loop(connection)
@@ -474,6 +649,8 @@ class ChatStreamService:
         writer: asyncio.StreamWriter,
         request_line: str,
         headers: dict[str, str],
+        *,
+        advertised_ws_url: str = "",
     ) -> _WebSocketConnection:
         parts = request_line.split()
         if len(parts) < 2 or parts[0].upper() != "GET":
@@ -483,6 +660,7 @@ class ChatStreamService:
         query = parse_qs(parsed.query)
         session_id = str((query.get("sessionId") or [""])[0]).strip()
         role = str((query.get("role") or ["viewer"])[0]).strip() or "viewer"
+        renderer_id = str((query.get("rendererId") or [""])[0]).strip()[:128]
         if role not in {"producer", "viewer"}:
             raise ValueError("invalid websocket role")
         auth_token = str((query.get("shinsekai_bridge_token") or query.get("token") or [""])[0]).strip()
@@ -514,7 +692,14 @@ class ChatStreamService:
         ).encode("utf-8")
         writer.write(response)
         await writer.drain()
-        connection = _WebSocketConnection(reader=reader, writer=writer, role=role, session_id=session_id)
+        connection = _WebSocketConnection(
+            reader=reader,
+            writer=writer,
+            role=role,
+            session_id=session_id,
+            advertised_ws_url=advertised_ws_url,
+            renderer_id=renderer_id or (uuid.uuid4().hex if role == "viewer" else ""),
+        )
         old_producer: _WebSocketConnection | None = None
         with self._lock:
             session = self._sessions[session_id]
@@ -525,6 +710,7 @@ class ChatStreamService:
                 session.producer_ready.set()
             else:
                 session.viewers.add(connection)
+                self._remember_renderer_locked(session, connection.renderer_id)
         if old_producer is not None:
             await old_producer.close()
         return connection
@@ -560,6 +746,8 @@ class ChatStreamService:
             # newer snapshot has already been hydrated.
             normalized_event = dict(event)
             normalized_event["seq"] = session.last_seq + 1
+            if str(normalized_event.get("type") or "") == "tts.play":
+                normalized_event["rendererId"] = self._select_renderer_locked(session)
             session.last_seq = int(normalized_event["seq"])
             session.snapshot = fold_event_into_snapshot(session.snapshot, normalized_event)
             session.snapshot["sessionId"] = session_id
@@ -579,8 +767,11 @@ class ChatStreamService:
             session = self._sessions.get(connection.session_id)
             if session is None:
                 return
+            self._claim_renderer_locked(session, connection.renderer_id)
             snapshot = dict(session.snapshot)
             seq = session.last_seq
+        if connection.advertised_ws_url:
+            snapshot["wsUrl"] = connection.advertised_ws_url
         await connection.send_json(
             {
                 "v": 1,
@@ -595,6 +786,22 @@ class ChatStreamService:
         with self._lock:
             session = self._sessions.get(session_id)
             producer = session.producer if session is not None else None
+            if session is not None and str(command.get("type") or "") == "audio-playback-signal":
+                payload = command.get("payload")
+                active = session.snapshot.get("activePlayback")
+                if not isinstance(payload, dict) or not isinstance(active, dict):
+                    return False
+                renderer_id = self._remember_renderer_locked(
+                    session,
+                    str(payload.get("rendererId") or ""),
+                )
+                if (
+                    not renderer_id
+                    or renderer_id != str(active.get("rendererId") or "")
+                    or str(payload.get("playbackId") or "")
+                    != str(active.get("playbackId") or "")
+                ):
+                    return False
         if producer is None:
             return False
         await producer.send_json(
@@ -605,9 +812,26 @@ class ChatStreamService:
                 "command": command,
             }
         )
+        if str(command.get("type") or "") == "audio-playback-signal":
+            payload = command.get("payload")
+            state = str(payload.get("state") or "") if isinstance(payload, dict) else ""
+            if state in {"failed", "finished", "interrupted"}:
+                with self._lock:
+                    session = self._sessions.get(session_id)
+                    active = session.snapshot.get("activePlayback") if session is not None else None
+                    if (
+                        session is not None
+                        and isinstance(active, dict)
+                        and str(active.get("playbackId") or "")
+                        == str(payload.get("playbackId") or "")
+                        and str(active.get("rendererId") or "")
+                        == str(payload.get("rendererId") or "")
+                    ):
+                        session.snapshot["activePlayback"] = None
         return True
 
     async def _detach(self, connection: _WebSocketConnection) -> None:
+        replacement: _WebSocketConnection | None = None
         with self._lock:
             session = self._sessions.get(connection.session_id)
             if session is None:
@@ -618,3 +842,32 @@ class ChatStreamService:
                     session.producer_ready.clear()
             else:
                 session.viewers.discard(connection)
+                renderer_id = str(getattr(connection, "renderer_id", "") or "")
+                session.renderer_seen_at.pop(renderer_id, None)
+                active = session.snapshot.get("activePlayback")
+                if (
+                    renderer_id
+                    and isinstance(active, dict)
+                    and str(active.get("rendererId") or "") == renderer_id
+                ):
+                    next_renderer_id = self._select_renderer_locked(
+                        session,
+                        exclude=renderer_id,
+                    )
+                    next_active = dict(active)
+                    next_active["rendererId"] = next_renderer_id
+                    session.snapshot["activePlayback"] = next_active
+                    replacement = next(
+                        (
+                            viewer
+                            for viewer in session.viewers
+                            if str(getattr(viewer, "renderer_id", "") or "")
+                            == next_renderer_id
+                        ),
+                        None,
+                    )
+        if replacement is not None:
+            try:
+                await self._send_snapshot(replacement)
+            except Exception:
+                await self._detach(replacement)

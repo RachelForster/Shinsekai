@@ -505,6 +505,7 @@ export interface TemplateGenerationResult extends TemplateSummary {
 export interface ChatLaunchPayload {
   backgroundName: string;
   characters: string[];
+  enableMobileAccess?: boolean;
   effectNames?: string[];
   historyPath: string;
   initSpritePath?: string;
@@ -537,6 +538,7 @@ export interface TemplateGenerateInput {
 
 export interface TemplateLaunchSession {
   background: string;
+  enableMobileAccess?: boolean;
   effectNames: string[];
   filenameStub: string;
   historyPath: string;
@@ -884,6 +886,14 @@ export interface PluginPagePresentation {
 }
 
 export interface ChatSnapshot {
+  activePlayback?: {
+    characterName: string;
+    playbackId: string;
+    rendererId?: string;
+    seq: number;
+    url: string;
+    volume: number;
+  } | null;
   asrEnabled?: boolean;
   asrLoading?: boolean;
   asrRunning?: boolean;
@@ -905,6 +915,12 @@ export interface ChatSnapshot {
   historyPath?: string;
   inputDraft: string;
   initTask?: TaskSnapshot;
+  loopingEffects?: Array<{
+    key: string;
+    seq: number;
+    url: string;
+  }>;
+  mobileAccess?: MobileAccessInfo;
   numericInfo?: string;
   notificationText?: string;
   options: string[];
@@ -924,6 +940,16 @@ export interface ChatSnapshot {
   userDisplayName?: string;
   voiceLanguage?: string;
   wsUrl?: string;
+}
+
+export interface MobileAccessInfo {
+  enabled: true;
+  host: string;
+  httpPort: number;
+  qrCodeDataUrl: string;
+  url: string;
+  websocketPort: number;
+  websocketUrl: string;
 }
 
 export interface ChatCommandResult extends ChatSnapshot {
@@ -950,6 +976,7 @@ export interface ChatCommand {
   cmdId?: string;
   payload?: unknown;
   type:
+    | "audio-playback-signal"
     | "cancel-input-batch"
     | "change-voice-language"
     | "chat-input-state"
@@ -1045,8 +1072,19 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "busy.hide" })
   | (ChatEventBase & { type: "notification.change"; text: string })
   | (ChatEventBase & { type: "status.change"; status: ChatRuntimeStatus })
-  | (ChatEventBase & { type: "tts.play"; url: string; characterName: string })
-  | (ChatEventBase & { type: "tts.skip" })
+  | (ChatEventBase & {
+      type: "tts.play";
+      url: string;
+      characterName: string;
+      playbackId?: string;
+      rendererId?: string;
+      volume?: number;
+    })
+  | (ChatEventBase & { type: "tts.skip"; playbackId?: string })
+  | (ChatEventBase & { type: "effect.play"; url: string })
+  | (ChatEventBase & { type: "effect.loop.start"; key: string; url: string })
+  | (ChatEventBase & { type: "effect.loop.stop"; key: string })
+  | (ChatEventBase & { type: "effect.loop.stop-all" })
   | (ChatEventBase & { type: "asr.partial"; text: string })
   | (ChatEventBase & { type: "asr.final"; text: string })
   | (ChatEventBase & { type: "asr.state"; enabled?: boolean; loading?: boolean; running: boolean })

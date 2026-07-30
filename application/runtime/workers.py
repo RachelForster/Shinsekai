@@ -23,7 +23,18 @@ if str(project_root) not in sys.path:
 # 导入 ConfigManager 和 Pydantic 消息模型
 from config.config_manager import ConfigManager
 from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
-from application.runtime.context import get_app_runtime, try_get_app_runtime, tts_emit_to_ui_queue
+from application.runtime.audio_playback_controller import (
+    FrontendVoicePlaybackBackend,
+    PlaybackState,
+    PygameVoicePlaybackBackend,
+    UnavailableVoicePlaybackBackend,
+    VoicePlaybackController,
+)
+from application.runtime.context import (
+    get_app_runtime,
+    try_get_app_runtime,
+    tts_emit_to_ui_queue,
+)
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY, STREAM_REASONING_DELTA_KEY
 from core.messaging.stream_parser import LlmResponseStreamParser
@@ -545,8 +556,23 @@ class PresentationWorker(ThreadDagNode):
         self.audio_path_queue = self.inq(self.PORT_TTS_OUTPUT)
         self._init_channel()
         br = get_app_runtime().ui_playback
+        if getattr(self.ui_update_manager, "audio_playback_owner", "backend") == "frontend":
+            playback_backend = FrontendVoicePlaybackBackend(self.ui_update_manager)
+        elif self.dialog_channel is not None:
+            playback_backend = PygameVoicePlaybackBackend(
+                channel=self.dialog_channel,
+                sound_factory=pygame.mixer.Sound,
+                ui_updates=self.ui_update_manager,
+            )
+        else:
+            playback_backend = UnavailableVoicePlaybackBackend()
+        self.playback_controller = VoicePlaybackController(
+            playback_backend,
+            interrupt_event=self.task_done_requested,
+        )
         br.task_done_requested = self.task_done_requested
         br.dialog_channel = self.dialog_channel
+        br.playback_controller = self.playback_controller
         self.ui_out_dispatcher.init_handlers()
         self._app_inited = True
 
@@ -557,6 +583,10 @@ class PresentationWorker(ThreadDagNode):
         return {}
 
     def _init_channel(self):
+        if getattr(self.ui_update_manager, "audio_playback_owner", "backend") == "frontend":
+            self.dialog_channel = None
+            print("UIWorker: React runtime delegates audio playback to the frontend.")
+            return
         try:
             pygame.mixer.init()
             if pygame.mixer.get_num_channels() < self.DIALOG_CHANNEL_ID + 1:
@@ -570,6 +600,15 @@ class PresentationWorker(ThreadDagNode):
     def skip_speech(self):
         runtime = get_app_runtime()
         playback = runtime.ui_playback
+        controller = getattr(playback, "playback_controller", None)
+        if controller is not None:
+            active_dialog = self._dialog_active
+            if not controller.is_active() and not active_dialog:
+                return
+            controller.interrupt()
+            self.current_audio_path = None
+            playback.current_audio_path = None
+            return
         current_audio_path = self.current_audio_path or getattr(playback, "current_audio_path", None)
         dialog_channel_busy = bool(self.dialog_channel and self.dialog_channel.get_busy())
         active_dialog = self._dialog_active and not self.task_done_requested.is_set()
@@ -600,6 +639,9 @@ class PresentationWorker(ThreadDagNode):
             return False
         if not self._queue_drained(rt.tts_queue) or not self._queue_drained(rt.audio_path_queue):
             return False
+        controller = getattr(rt.ui_playback, "playback_controller", None)
+        if controller is not None and controller.is_active():
+            return False
         if self.dialog_channel is not None and self.dialog_channel.get_busy():
             return False
         if not rt.chat_turn_service.mark_idle(turn):
@@ -615,7 +657,15 @@ class PresentationWorker(ThreadDagNode):
             turn = None
             got_item = False
             try:
-                self.task_done_requested.clear()
+                controller = getattr(
+                    get_app_runtime().ui_playback,
+                    "playback_controller",
+                    None,
+                )
+                if controller is not None:
+                    controller.prepare_next()
+                else:
+                    self.task_done_requested.clear()
                 try:
                     output_data = self.audio_path_queue.get(timeout=0.4)
                     got_item = True
@@ -626,7 +676,10 @@ class PresentationWorker(ThreadDagNode):
                     if idle_count >= 1:
                         rt = get_app_runtime()
                         if rt.tts_queue.empty() and rt.audio_path_queue.empty():
-                            busy = self.dialog_channel is not None and self.dialog_channel.get_busy()
+                            controller = getattr(rt.ui_playback, "playback_controller", None)
+                            busy = bool(controller is not None and controller.is_active())
+                            if not busy:
+                                busy = self.dialog_channel is not None and self.dialog_channel.get_busy()
                             if not busy:
                                 self._finish_turn_if_drained(rt.chat_turn_service.current_turn())
                                 idle_count = 0
@@ -661,9 +714,31 @@ class PresentationWorker(ThreadDagNode):
 
     def stop(self):
         self.running = False
-        self.task_done_requested.set()
+        controller = getattr(self, "playback_controller", None)
+        if controller is not None:
+            controller.shutdown()
+        else:
+            self.task_done_requested.set()
         self.audio_path_queue.put(None)
         super().stop()
+
+    def handle_playback_signal(
+        self,
+        playback_id: str,
+        state: PlaybackState | str,
+        error: str = "",
+        *,
+        renderer_id: str = "",
+    ) -> bool:
+        controller = getattr(self, "playback_controller", None)
+        if controller is None:
+            return False
+        return controller.handle_signal(
+            playback_id,
+            state,
+            error,
+            renderer_id=renderer_id,
+        )
 
 
 class HeadlessSinkNode(ThreadDagNode):

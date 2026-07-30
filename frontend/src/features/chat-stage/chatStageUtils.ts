@@ -4,6 +4,23 @@ import { fileUrl } from "../../entities/files/repository";
 import type { MessageKey } from "../../shared/i18n";
 import type { ChatTransportMode, ChatTransportState } from "../../shared/platform/types";
 
+interface ChatStagePageLocation {
+  hostname: string;
+  protocol: string;
+}
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost", "tauri.localhost"]);
+
+function isLoopbackHost(hostname: string) {
+  return LOOPBACK_HOSTS.has(hostname.toLowerCase());
+}
+
+export function isRemoteMobileAccessPage(
+  location: ChatStagePageLocation | undefined = typeof window !== "undefined" ? window.location : undefined,
+) {
+  return Boolean(location && /^https?:$/.test(location.protocol) && !isLoopbackHost(location.hostname));
+}
+
 export function classNames(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
@@ -50,6 +67,21 @@ export function hideBrokenStageAsset(event: SyntheticEvent<HTMLImageElement>) {
 export function stageAssetUrl(path?: string) {
   if (!path) {
     return "";
+  }
+  if (/^https?:\/\//i.test(path) && typeof window !== "undefined") {
+    try {
+      const assetUrl = new URL(path);
+      const pageUrl = window.location;
+      const assetIsLoopback = isLoopbackHost(assetUrl.hostname);
+      const pageIsRemote = isRemoteMobileAccessPage(pageUrl);
+      if (assetIsLoopback && pageIsRemote) {
+        assetUrl.protocol = pageUrl.protocol;
+        assetUrl.host = pageUrl.host;
+        return assetUrl.toString();
+      }
+    } catch {
+      // Fall through to the existing path handling.
+    }
   }
   if (/^(?:[a-z][a-z\d+.-]*:|\/assets\/)/i.test(path)) {
     return path;

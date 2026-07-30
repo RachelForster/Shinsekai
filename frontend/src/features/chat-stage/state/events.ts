@@ -2,7 +2,7 @@ import type { ChatStageEvent } from "../../../shared/platform/types";
 import { clearTransientNotificationState, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
 import { htmlToText } from "./text";
-import type { ChatStageSprite, ChatStageState } from "./types";
+import type { ChatAudioCommand, ChatStageSprite, ChatStageState } from "./types";
 import { upsertChatStageSprite } from "./sprites";
 
 function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { type: "sprite.show" }>): ChatStageState {
@@ -36,6 +36,10 @@ function removeSprite(
       (sprite) => sprite.id !== event.characterName && sprite.label !== event.characterName,
     ),
   });
+}
+
+function appendAudioCommand(state: ChatStageState, command: ChatAudioCommand) {
+  return [...state.audioCommands, command].slice(-32);
 }
 
 export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): ChatStageState {
@@ -243,15 +247,91 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
     case "tts.play":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
+        activePlayback: {
+          characterName: event.characterName,
+          playbackId: event.playbackId ?? "",
+          rendererId: event.rendererId,
+          seq: event.seq,
+          url: event.url,
+          volume:
+            typeof event.volume === "number" && Number.isFinite(event.volume)
+              ? Math.min(1, Math.max(0, event.volume))
+              : 1,
+        },
+        audioCommands: appendAudioCommand(state, {
+          kind: "voice-play",
+          playbackId: event.playbackId ?? "",
+          rendererId: event.rendererId,
+          seq: event.seq,
+          url: event.url,
+          volume:
+            typeof event.volume === "number" && Number.isFinite(event.volume)
+              ? Math.min(1, Math.max(0, event.volume))
+              : 1,
+        }),
         characterName: event.characterName,
         eventSeq: Math.max(state.eventSeq, event.seq),
         status: "speaking",
       });
-    case "tts.skip":
+    case "tts.skip": {
+      const shouldStop = !event.playbackId || state.activePlayback?.playbackId === event.playbackId;
       return withResolvedLayers({
         ...state,
+        activePlayback: shouldStop ? null : state.activePlayback,
+        audioCommands: appendAudioCommand(state, {
+          kind: "voice-stop",
+          playbackId: event.playbackId ?? "",
+          seq: event.seq,
+        }),
         eventSeq: Math.max(state.eventSeq, event.seq),
-        status: state.status === "speaking" ? "idle" : state.status,
+        status: shouldStop && state.status === "speaking" ? "idle" : state.status,
+      });
+    }
+    case "effect.play":
+      return withResolvedLayers({
+        ...state,
+        audioCommands: appendAudioCommand(state, {
+          kind: "effect-play",
+          seq: event.seq,
+          url: event.url,
+        }),
+        eventSeq: Math.max(state.eventSeq, event.seq),
+      });
+    case "effect.loop.start":
+      return withResolvedLayers({
+        ...state,
+        audioCommands: appendAudioCommand(state, {
+          key: event.key,
+          kind: "effect-loop-start",
+          seq: event.seq,
+          url: event.url,
+        }),
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        loopingEffects: [
+          ...(state.loopingEffects ?? []).filter((effect) => effect.key !== event.key),
+          { key: event.key, seq: event.seq, url: event.url },
+        ].slice(-32),
+      });
+    case "effect.loop.stop":
+      return withResolvedLayers({
+        ...state,
+        audioCommands: appendAudioCommand(state, {
+          key: event.key,
+          kind: "effect-loop-stop",
+          seq: event.seq,
+        }),
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        loopingEffects: (state.loopingEffects ?? []).filter((effect) => effect.key !== event.key),
+      });
+    case "effect.loop.stop-all":
+      return withResolvedLayers({
+        ...state,
+        audioCommands: appendAudioCommand(state, {
+          kind: "effect-loop-stop-all",
+          seq: event.seq,
+        }),
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        loopingEffects: [],
       });
     case "asr.partial":
       return withResolvedLayers({
@@ -287,16 +367,23 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
     case "reply.finished":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
+        activePlayback: null,
         eventSeq: Math.max(state.eventSeq, event.seq),
         status: state.status === "generating" || state.status === "streaming" ? "idle" : state.status,
       });
     case "session.closed":
       return withResolvedLayers({
         ...state,
+        activePlayback: null,
+        audioCommands: appendAudioCommand(state, {
+          kind: "all-stop",
+          seq: event.seq,
+        }),
         busyDurationSeconds: undefined,
         busyText: undefined,
         eventSeq: Math.max(state.eventSeq, event.seq),
         notificationText: event.reason,
+        loopingEffects: [],
         options: [],
         pluginPagePresentations: [],
         sessionClosedReason: event.reason,

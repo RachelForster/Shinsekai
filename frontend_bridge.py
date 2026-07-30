@@ -109,6 +109,15 @@ def _shutdown_bridge_runtime(reason: str) -> None:
 
     with _bridge_state_lock:
         state = _bridge_state
+    if state is not None:
+        try:
+            from application.chat.mobile_access import stop_mobile_access
+
+            stop_mobile_access(state)
+        except Exception as exc:
+            _restart_debug_log(
+                f"bridge runtime mobile access stop failed reason={reason} error={exc}"
+            )
     chat_stream = getattr(state, "chat_stream", None) if state is not None else None
     if chat_stream is not None:
         try:
@@ -364,6 +373,7 @@ def run(
 
     from frontend_bridge_core.chat_stream import ChatStreamService
     from frontend_bridge_core.routes.api import FrontendBridgeHandler
+    from frontend_bridge_core.transport.mobile_access import MobileAccessTransport
     from application.runtime.state import BridgeState
     from frontend_bridge_core.static import _schedule_browser_open
 
@@ -388,6 +398,22 @@ def run(
     _set_bridge_state(state)
     state.chat_stream = ChatStreamService(host=host, bridge_port=port, auth_token=bridge_auth_token)
     state.chat_stream.start()
+
+    def create_mobile_http_server(bind_host: str, mobile_port: int) -> ThreadingHTTPServer:
+        mobile_server = ThreadingHTTPServer(
+            (bind_host, mobile_port),
+            FrontendBridgeHandler,
+        )
+        mobile_server.state = state  # type: ignore[attr-defined]
+        return mobile_server
+
+    state.mobile_access_service = MobileAccessTransport(
+        auth_token=bridge_auth_token,
+        http_server_factory=create_mobile_http_server,
+        preferred_http_port=port + 2,
+        start_websocket=state.chat_stream.start_mobile_listener,
+        stop_websocket=state.chat_stream.stop_mobile_listener,
+    )
     server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
     server.state = state  # type: ignore[attr-defined]
     _restart_debug_log(f"server listening host={host} port={port} frontend_dist={resolved_frontend_dist}")

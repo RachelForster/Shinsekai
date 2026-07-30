@@ -29,7 +29,17 @@ export interface ChatStageSprite extends ChatSprite {
   characterName?: string;
 }
 
+export type ChatAudioCommand =
+  | { kind: "voice-play"; playbackId: string; rendererId?: string; seq: number; url: string; volume: number }
+  | { kind: "voice-stop"; playbackId: string; seq: number }
+  | { kind: "effect-play"; seq: number; url: string }
+  | { key: string; kind: "effect-loop-start"; seq: number; url: string }
+  | { key: string; kind: "effect-loop-stop"; seq: number }
+  | { kind: "effect-loop-stop-all"; seq: number }
+  | { kind: "all-stop"; seq: number };
+
 export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
+  audioCommands: ChatAudioCommand[];
   asrTranscript?: string;
   busyDurationSeconds?: number;
   busyText?: string;

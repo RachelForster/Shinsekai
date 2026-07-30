@@ -317,6 +317,7 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
     return {
         "background": str(raw.get("background") or ""),
         "effectNames": _session_string_list(raw.get("effect_names")),
+        "enableMobileAccess": bool(raw.get("enable_mobile_access", False)),
         "filenameStub": str(raw.get("filename_stub") or ""),
         "historyPath": str(raw.get("history_file") or ""),
         "initSpritePath": str(raw.get("init_sprite_path") or ""),
@@ -424,6 +425,7 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         "selected_characters": selected_characters,
         "background": str(payload.get("background") or ""),
         "effect_names": _session_string_list(payload.get("effectNames")),
+        "enable_mobile_access": bool(payload.get("enableMobileAccess", False)),
         "voice_lang": str(payload.get("voiceLanguage") or ""),
         "use_effect_yes": bool(payload.get("useEffect", True)),
         "use_tr_yes": bool(payload.get("useTranslation", True)),

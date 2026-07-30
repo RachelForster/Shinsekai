@@ -117,13 +117,14 @@ describe("ChatStagePage http platform integration", () => {
     });
     const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/api/chat/snapshot")) {
+      const pathname = new URL(url).pathname;
+      if (pathname === "/api/chat/snapshot") {
         return mockJsonResponse(mediaSnapshot);
       }
-      if (url.endsWith("/api/chat/history")) {
+      if (pathname === "/api/chat/history") {
         return mockJsonResponse([]);
       }
-      if (url.endsWith("/api/chat/close")) {
+      if (pathname === "/api/chat/close") {
         return mockJsonResponse(mediaSnapshot);
       }
       throw new Error(`Unexpected fetch in ChatStagePage media test: ${url}`);
@@ -143,8 +144,8 @@ describe("ChatStagePage http platform integration", () => {
       "src",
       "http://127.0.0.1:8787/api/media?path=data%2Fcharacters%2Fmio.png",
     );
-    expect(document.querySelector("audio[data-chat-stage-bgm]")).toHaveAttribute(
-      "src",
+    expect(document.querySelector("[data-chat-stage-audio-player]")).toHaveAttribute(
+      "data-bgm-src",
       "http://127.0.0.1:8787/api/media?path=data%2Fbgm%2Fschool.mp3",
     );
     await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
@@ -174,17 +175,18 @@ describe("ChatStagePage http platform integration", () => {
     let commandIssued = false;
     const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/api/chat/command")) {
+      const pathname = new URL(url).pathname;
+      if (pathname === "/api/chat/command") {
         commandIssued = true;
         return mockJsonResponse(reopenedSnapshot);
       }
-      if (url.endsWith("/api/chat/snapshot")) {
+      if (pathname === "/api/chat/snapshot") {
         return mockJsonResponse(commandIssued ? reopenedSnapshot : closedSnapshot);
       }
-      if (url.endsWith("/api/chat/history")) {
+      if (pathname === "/api/chat/history") {
         return mockJsonResponse([]);
       }
-      if (url.endsWith("/api/chat/close")) {
+      if (pathname === "/api/chat/close") {
         return mockJsonResponse(closedSnapshot);
       }
       throw new Error(`Unexpected fetch in ChatStagePage integration test: ${url}`);

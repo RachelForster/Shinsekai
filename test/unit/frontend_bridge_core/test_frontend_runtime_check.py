@@ -282,6 +282,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
             "pygame-ce": "2.5.7",
             "pyqt-toast-notification": "1.3.3",
             "py7zz": "1.1.4",
+            "qrcode": "8.2",
             "qtpy": "2.4.1",
         }}
         importlib.metadata.version = lambda name: compatible_versions.get(name.lower(), "1.0.0")

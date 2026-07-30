@@ -11,6 +11,8 @@ import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
+import { ChatSoundPlayer } from "./audio/ChatSoundPlayer";
+import type { VoicePlaybackSignal } from "./audio/soundPlayer";
 import { ChatConfigDialog } from "./components/ChatConfigDialog";
 import { ConversationTreeDialog } from "./components/ConversationTreeDialog";
 import { DialogStageControls } from "./components/DialogStageControls";
@@ -19,7 +21,6 @@ import { InputLayer } from "./components/InputLayer";
 import { PluginPageOverlay } from "./components/PluginPageOverlay";
 import {
   BackgroundLayer,
-  BgmLayer,
   BusyLayer,
   CgLayer,
   DialogLayer,
@@ -34,7 +35,7 @@ import {
 import { TopStageTools } from "./components/TopStageTools";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
-import { layerClassName } from "./chatStageUtils";
+import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
@@ -53,6 +54,7 @@ import {
   writeChatStageRuntimeConfig,
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
+import { limitChatStageSpritesToSlots } from "./state/sprites";
 import {
   CHAT_ATTACHMENT_LIMIT,
   CHAT_IMAGE_EXTENSIONS,
@@ -162,6 +164,10 @@ export function ChatStagePage() {
     [runtimeConfig.nameText, themeStyle],
   );
   const viewModel = useMemo(() => buildChatStageViewModel(state), [state]);
+  const stageSprites = useMemo(
+    () => (isRemoteMobileAccessPage() ? limitChatStageSpritesToSlots(viewModel.sprites, 1) : viewModel.sprites),
+    [viewModel.sprites],
+  );
   const standaloneDesktopWindow = isTauriDesktop() && location.pathname === "/chat-stage";
   const handleWindowDrag = useDesktopWindowDrag(standaloneDesktopWindow);
   const transparentBackground = !viewModel.backgroundPath;
@@ -195,6 +201,12 @@ export function ChatStagePage() {
     showToast,
     t,
   });
+  const handlePlaybackSignal = useCallback(
+    (signal: VoicePlaybackSignal) => {
+      void sendCommand({ payload: signal, type: "audio-playback-signal" });
+    },
+    [sendCommand],
+  );
   const autoAdvanceDialog = useCallback(() => {
     void sendCommand({ type: "dialog-advance" });
   }, [sendCommand]);
@@ -665,21 +677,26 @@ export function ChatStagePage() {
           path={viewModel.backgroundPath}
           transparent={transparentBackground}
         />
-        <BgmLayer path={viewModel.bgmPath} volume={runtimeConfig.bgmVolume} />
+        <ChatSoundPlayer
+          bgmPath={viewModel.bgmPath}
+          bgmVolume={runtimeConfig.bgmVolume}
+          commands={state.audioCommands}
+          onPlaybackSignal={handlePlaybackSignal}
+        />
         <CgLayer hidden={!viewModel.layers.cg} path={viewModel.cgPath} />
         <SpriteLayer
           hidden={!viewModel.layers.sprites}
           onDragStart={standaloneDesktopWindow ? handleWindowDrag : undefined}
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
-          sprites={viewModel.sprites}
+          sprites={stageSprites}
         />
         <StatLayer stats={viewModel.stats} />
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
         <NotificationLayer
           hidden={!viewModel.layers.notification}
-          spritesVisible={viewModel.layers.sprites && viewModel.sprites.length > 0}
+          spritesVisible={viewModel.layers.sprites && stageSprites.length > 0}
           text={viewModel.notificationText}
         />
         <div
@@ -823,7 +840,7 @@ export function ChatStagePage() {
           spriteOffsetX={runtimeConfig.spriteOffsetX}
           spriteOffsetY={runtimeConfig.spriteOffsetY}
           spriteScales={runtimeConfig.spriteScales}
-          sprites={viewModel.sprites}
+          sprites={stageSprites}
           textSpeed={typewriterCps}
           turnOptions={state.turnOptions}
           voiceLanguage={viewModel.voiceLanguage || "ja"}

@@ -8,6 +8,7 @@ import { charactersQueryKey, listCharacters } from "../../entities/character/rep
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
 import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
@@ -25,7 +26,7 @@ import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import { platformErrorCode } from "../../shared/platform/errors";
-import type { ChatSnapshot, TemplateLaunchSession } from "../../shared/platform/types";
+import type { ChatSnapshot, MobileAccessInfo, TemplateLaunchSession } from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
@@ -104,6 +105,8 @@ export function TemplateEditorPage() {
   const [useChoice, setUseChoice] = useState(true);
   const [useNarration, setUseNarration] = useState(true);
   const [useStat, setUseStat] = useState(true);
+  const [mobileAccessEnabled, setMobileAccessEnabled] = useState(false);
+  const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
   const [maxSpeechChars, setMaxSpeechChars] = useState(0);
   const [maxDialogItems, setMaxDialogItems] = useState(0);
   const [initSpritePath, setInitSpritePath] = useState("");
@@ -223,6 +226,7 @@ export function TemplateEditorPage() {
     setUseChoice(launchSession.useChoice ?? true);
     setUseNarration(launchSession.useNarration ?? true);
     setUseStat(launchSession.useStat ?? true);
+    setMobileAccessEnabled(launchSession.enableMobileAccess ?? false);
     setMaxSpeechChars(Number(launchSession.maxSpeechChars) || 0);
     setMaxDialogItems(Number(launchSession.maxDialogItems) || 0);
     setInitSpritePath(launchSession.initSpritePath || "");
@@ -521,6 +525,7 @@ export function TemplateEditorPage() {
           backgroundName: selectedBackground,
           draft,
           effectNames: selectedEffects,
+          mobileAccessEnabled,
           options: templateOptionsState,
           runtime: runtimeOptionsState,
           selectedCharacters,
@@ -533,6 +538,7 @@ export function TemplateEditorPage() {
             buildChatLaunchPayload({
               backgroundName: selectedBackground,
               effectNames: selectedEffects,
+              mobileAccessEnabled,
               resetHistory,
               runtime: runtimeOptionsState,
               selectedCharacters,
@@ -568,6 +574,10 @@ export function TemplateEditorPage() {
         message: snapshot.statusMessage || snapshot.dialogText,
         title: t("template.toast.launched"),
       });
+      if (snapshot.mobileAccess) {
+        setMobileAccessInfo(snapshot.mobileAccess);
+        return;
+      }
       void showChatSurface({ snapshot });
     },
   });
@@ -752,6 +762,17 @@ export function TemplateEditorPage() {
                     </button>
                   );
                 })}
+              </div>
+
+              <div className="template-mobile-access">
+                <label className="template-toggle-row">
+                  <span>{t("template.field.mobileAccess")}</span>
+                  <Switch
+                    checked={mobileAccessEnabled}
+                    onChange={(event) => setMobileAccessEnabled(event.target.checked)}
+                  />
+                </label>
+                <p>{t("template.mobileAccessHint")}</p>
               </div>
 
               {effects.length > 0 ? (
@@ -954,6 +975,15 @@ export function TemplateEditorPage() {
         open={initializationOpen}
         pending={initializationPending}
         task={initializationTask}
+      />
+      <MobileAccessDialog
+        info={mobileAccessInfo}
+        onClose={() => setMobileAccessInfo(null)}
+        onOpenLocalChat={() => {
+          const info = mobileAccessInfo;
+          setMobileAccessInfo(null);
+          return showChatSurface({ snapshot: info ? { runtimeMode: "react", wsUrl: info.websocketUrl } : null });
+        }}
       />
     </div>
   );
