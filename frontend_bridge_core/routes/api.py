@@ -4,13 +4,9 @@ import hmac
 import ipaddress
 import json
 import mimetypes
-import shutil
-import tempfile
 import threading
-from http.cookies import SimpleCookie
-from email.parser import BytesParser
-from email.policy import default as default_email_policy
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable
@@ -18,11 +14,7 @@ from urllib.parse import parse_qs, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
 
-from frontend_bridge_core.effects import (
-    _build_effect_usage_guide,
-    _effect_dir,
-    _validate_effect_storage_name,
-)
+from frontend_bridge_core.effects import _build_effect_usage_guide
 from application.chat.runtime_process import (
     _chat_history,
     _chat_history_download_file,
@@ -45,18 +37,12 @@ from frontend_bridge_core.chat_themes import (
     delete_chat_theme,
     get_active_chat_theme_id,
     get_chat_theme_manifest,
-    install_theme_from_zip,
     list_chat_themes,
     save_chat_theme,
     set_active_chat_theme,
 )
 from application.chat.initialization import start_chat_init
 from application.chat.mobile_access import configure_mobile_access
-from frontend_bridge_core.characters import _as_character_config
-from frontend_bridge_core.memory import (
-    _preview_character_memory_import,
-    _run_character_memory_import,
-)
 from application.model_assets.service import (
     _download_model_asset,
     _find_running_model_asset_task,
@@ -85,7 +71,6 @@ from frontend_bridge_core.security import (
 from sdk.path_utils import (
     reject_control_chars,
     safe_child_path,
-    safe_filename,
     safe_project_path,
 )
 from application.runtime.state import BridgeState, _jsonify
@@ -108,7 +93,6 @@ from application.chat.templates import (
     _load_template_session_payload,
     initial_sprite_path_for_characters,
 )
-from application.media.attachments import stage_uploaded_chat_attachments
 from frontend_bridge_core.tools import _browse_local_files
 from frontend_bridge_core.routes.background_routes import BACKGROUND_ROUTES
 from frontend_bridge_core.routes.character_routes import CHARACTER_ROUTES
@@ -122,6 +106,8 @@ from frontend_bridge_core.routes.plugin_routes import (
 from frontend_bridge_core.routes.router import ApiRequest, BodyKind, Router, TaskResponse
 from frontend_bridge_core.routes.system_routes import SYSTEM_ROUTES
 from frontend_bridge_core.routes.template_routes import TEMPLATE_ROUTES
+from frontend_bridge_core.routes.transfer_routes import TRANSFER_ROUTES
+from frontend_bridge_core.routes.uploads import UploadedFiles, read_uploaded_files
 
 logger = get_logger("frontend_bridge_core.routes.api")
 BRIDGE_AUTH_HEADER = "X-Shinsekai-Bridge-Token"
@@ -150,16 +136,9 @@ _API_ROUTER = Router(
         *TEMPLATE_ROUTES,
         *OPERATION_ROUTES,
         *PLUGIN_ROUTES,
+        *TRANSFER_ROUTES,
     ]
 )
-
-
-def _safe_export_output_path(name: str, suffix: str) -> tuple[Path, str]:
-    project_root = Path.cwd().resolve(strict=False)
-    output_root = safe_project_path("output", root=project_root)
-    output_root.mkdir(parents=True, exist_ok=True)
-    output = safe_child_path(output_root, safe_filename(f"{name}{suffix}"))
-    return output, output.relative_to(project_root).as_posix()
 
 
 class _RangeNotSatisfiable(Exception):
@@ -444,17 +423,31 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         message: str,
         worker: Callable[[str], Any],
         task_updates: dict[str, Any] | None = None,
+        cleanup: Callable[[], None] | None = None,
     ) -> None:
-        task = _create_task(self.state, kind=kind, title=title, message=message)
-        task_id = str(task["id"])
-        if task_updates:
-            _update_task(self.state, task_id, **task_updates)
-        thread = threading.Thread(
-            target=_run_background_task,
-            args=(self.state, task_id, lambda: worker(task_id)),
-            daemon=True,
-        )
-        thread.start()
+        try:
+            task = _create_task(self.state, kind=kind, title=title, message=message)
+            task_id = str(task["id"])
+            if task_updates:
+                _update_task(self.state, task_id, **task_updates)
+
+            def run_task() -> None:
+                try:
+                    _run_background_task(
+                        self.state,
+                        task_id,
+                        lambda: worker(task_id),
+                    )
+                finally:
+                    if cleanup is not None:
+                        cleanup()
+
+            thread = threading.Thread(target=run_task, daemon=True)
+            thread.start()
+        except Exception:
+            if cleanup is not None:
+                cleanup()
+            raise
         self._send_json(_get_task(self.state, task_id), HTTPStatus.ACCEPTED)
 
     def _read_json(self) -> dict[str, Any]:
@@ -477,61 +470,53 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if matched is None:
             return False
 
-        body = self._read_json() if matched.route.body_kind is BodyKind.JSON else {}
-        request = ApiRequest(
-            state=self.state,
-            method=method,
-            path=path,
-            query=parse_qs(query_string),
-            params=matched.params,
-            body=body,
-        )
-        response = matched.route.handler(request)
-        if isinstance(response, TaskResponse):
-            self._enqueue_background_task(
-                kind=response.kind,
-                title=response.title,
-                message=response.message,
-                worker=response.worker,
-                task_updates=(
-                    dict(response.task_updates)
-                    if response.task_updates is not None
-                    else None
-                ),
+        uploads: UploadedFiles | None = None
+        try:
+            if matched.route.body_kind is BodyKind.JSON:
+                body = self._read_json()
+            else:
+                body = {}
+            if matched.route.body_kind is BodyKind.MULTIPART:
+                uploads = self._read_upload_files()
+            request = ApiRequest(
+                state=self.state,
+                method=method,
+                path=path,
+                query=parse_qs(query_string),
+                params=matched.params,
+                body=body,
+                uploads=uploads,
             )
-        else:
-            self._send_json(response.data, response.status)
+            response = matched.route.handler(request)
+            if isinstance(response, TaskResponse):
+                cleanup = (
+                    uploads.transfer_cleanup() if uploads is not None else None
+                )
+                self._enqueue_background_task(
+                    kind=response.kind,
+                    title=response.title,
+                    message=response.message,
+                    worker=response.worker,
+                    task_updates=(
+                        dict(response.task_updates)
+                        if response.task_updates is not None
+                        else None
+                    ),
+                    cleanup=cleanup,
+                )
+            else:
+                self._send_json(response.data, response.status)
+        finally:
+            if uploads is not None:
+                uploads.cleanup()
         return True
 
-    def _read_upload_files(self) -> tuple[Path, list[Path]]:
-        ctype = self.headers.get("Content-Type", "")
-        if not ctype.lower().startswith("multipart/form-data"):
-            raise ValueError("request must be multipart/form-data")
-        length = int(self.headers.get("Content-Length") or "0")
-        if length <= 0:
-            raise ValueError("request body is empty")
-        temp_dir = Path(tempfile.mkdtemp(prefix="shinsekai-frontend-upload-"))
-        body = self.rfile.read(length)
-        message = BytesParser(policy=default_email_policy).parsebytes(
-            f"Content-Type: {ctype}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + body
+    def _read_upload_files(self) -> UploadedFiles:
+        return read_uploaded_files(
+            self.headers.get("Content-Type", ""),
+            self.headers.get("Content-Length", ""),
+            self.rfile,
         )
-        paths: list[Path] = []
-        for part in message.iter_parts():
-            if part.get_content_disposition() != "form-data":
-                continue
-            if part.get_param("name", header="content-disposition") != "files":
-                continue
-            try:
-                filename = safe_filename(str(part.get_filename() or ""))
-            except ValueError:
-                continue
-            dest = safe_child_path(temp_dir, filename)
-            dest.write_bytes(part.get_payload(decode=True) or b"")
-            paths.append(dest)
-        if not paths:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise ValueError("no files uploaded")
-        return temp_dir, paths
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         if not self._request_origin_allowed():
@@ -691,16 +676,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self._require_authorized_write(path)
             if self._try_dispatch_registered_route(method, path, parsed.query):
                 return
-            is_upload = method == "POST" and path in {
-                "/api/characters/import-upload",
-                "/api/characters/memories/import-preview-upload",
-                "/api/characters/memories/import-upload",
-                "/api/backgrounds/import-upload",
-                "/api/logs/import-upload",
-                "/api/chat/themes/upload",
-                "/api/chat/attachments/upload",
-            }
-            body = {} if method == "DELETE" or is_upload else self._read_json()
+            body = {} if method == "DELETE" else self._read_json()
             if method == "POST" and path == "/api/files/browse":
                 self._send_json(_browse_local_files(self.state, body))
             elif method == "POST" and path == "/api/media/thumbnails":
@@ -713,12 +689,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                         roots=(project_root,),
                     )
                 )
-            elif method == "POST" and path == "/api/logs/import-upload":
-                temp_dir, paths = self._read_upload_files()
-                try:
-                    self._send_json(_log_snapshot(paths[0], roots=(temp_dir,)))
-                finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/logs/diagnostic-bundle":
                 self._send_json(_diagnostic_bundle(Path.cwd().resolve()))
             elif method == "POST" and path == "/api/model-assets/download":
@@ -739,141 +709,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                             },
                             worker=lambda task_id: _download_model_asset(self.state, task_id, spec),
                         )
-            elif method == "POST" and path == "/api/characters/memories/import-preview-upload":
-                temp_dir, paths = self._read_upload_files()
-                try:
-                    query = parse_qs(urlparse(self.path).query)
-                    name = str((query.get("name") or [""])[0])
-                    self._send_json(
-                        _preview_character_memory_import(
-                            self.state,
-                            name,
-                            paths,
-                            source_root=temp_dir,
-                        )
-                    )
-                finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-            elif method == "POST" and path == "/api/characters/memories/import-upload":
-                temp_dir, paths = self._read_upload_files()
-                query = parse_qs(urlparse(self.path).query)
-                name = str((query.get("name") or [""])[0]).strip()
-
-                def run_uploaded_memory_import(task_id: str) -> dict[str, Any]:
-                    try:
-                        return _run_character_memory_import(
-                            self.state,
-                            task_id,
-                            name,
-                            paths,
-                            source_root=temp_dir,
-                        )
-                    finally:
-                        shutil.rmtree(temp_dir, ignore_errors=True)
-
-                try:
-                    self._enqueue_background_task(
-                        kind="memory-import",
-                        title=f"导入 {name or '角色'} 的长期记忆",
-                        message="长期记忆导入任务已排队。",
-                        worker=run_uploaded_memory_import,
-                    )
-                except Exception:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    raise
             elif method == "DELETE" and path.startswith("/api/chat/themes/"):
                 theme_id = unquote(path[len("/api/chat/themes/"):])
                 self._send_json(delete_chat_theme(self.state, theme_id))
-            elif method == "POST" and path == "/api/characters/import":
-                paths = body.get("paths") or []
-                if not isinstance(paths, list):
-                    raise ValueError("paths must be a list")
-                import tools.file_util as file_util
-
-                imported = []
-                for item in paths:
-                    imported.extend(file_util.import_character(str(item)))
-                self.state.config_manager.reload()
-                self._send_json([item.__dict__ for item in imported])
-            elif method == "POST" and path == "/api/characters/import-upload":
-                temp_dir, paths = self._read_upload_files()
-                try:
-                    import tools.file_util as file_util
-
-                    imported = []
-                    for item in paths:
-                        imported.extend(file_util.import_character(str(item)))
-                    self.state.config_manager.reload()
-                    self._send_json([item.__dict__ for item in imported])
-                finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-            elif method == "POST" and path == "/api/characters/export":
-                name = str(body.get("name") or "")
-                character = self.state.config_manager.get_character_by_name(name)
-                if character is None:
-                    raise KeyError(f"character not found: {name}")
-                output, output_relative = _safe_export_output_path(name, ".char")
-                import tools.file_util as file_util
-
-                file_util.export_character([_as_character_config(character)], output.as_posix(), open_folder=False)
-                self._send_json(
-                    {
-                        "downloadUrl": f"/api/download?path={output_relative}",
-                        "path": output_relative,
-                    }
-                )
-            elif method == "POST" and path == "/api/backgrounds/import":
-                paths = body.get("paths") or []
-                if not isinstance(paths, list):
-                    raise ValueError("paths must be a list")
-                self._send_json(self._import_background_paths([str(item) for item in paths]))
-            elif method == "POST" and path == "/api/backgrounds/import-upload":
-                temp_dir, paths = self._read_upload_files()
-                try:
-                    self._send_json(self._import_background_paths([str(item) for item in paths]))
-                finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-            elif method == "POST" and path == "/api/backgrounds/export":
-                name = str(body.get("name") or "")
-                background = self.state.config_manager.get_background_by_name(name)
-                if background is None:
-                    raise KeyError(f"background not found: {name}")
-                output, output_relative = _safe_export_output_path(name, ".bg")
-                import tools.file_util as file_util
-
-                file_util.export_background([background], output.as_posix(), open_folder=False)
-                self._send_json(
-                    {
-                        "downloadUrl": f"/api/download?path={output_relative}",
-                        "path": output_relative,
-                    }
-                )
-            elif method == "POST" and path == "/api/effects/import":
-                paths = body.get("paths") or []
-                if not isinstance(paths, list):
-                    raise ValueError("paths must be a list")
-                self._send_json(self._import_effect_paths([str(item) for item in paths]))
-            elif method == "POST" and path == "/api/effects/import-upload":
-                temp_dir, paths = self._read_upload_files()
-                try:
-                    self._send_json(self._import_effect_paths([str(item) for item in paths]))
-                finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-            elif method == "POST" and path == "/api/effects/export":
-                name = _validate_effect_storage_name(str(body.get("name") or ""))
-                effect = self.state.config_manager.get_effect_by_name(name)
-                if effect is None:
-                    raise KeyError(f"effect not found: {name}")
-                output, output_relative = _safe_export_output_path(name, ".ef")
-                import tools.file_util as file_util
-
-                file_util.export_effect([effect], output.as_posix(), open_folder=False)
-                self._send_json(
-                    {
-                        "downloadUrl": f"/api/download?path={output_relative}",
-                        "path": output_relative,
-                    }
-                )
             elif method == "POST" and path == "/api/chat/launch":
                 self._send_json(self._launch_chat(body))
             elif method == "POST" and path == "/api/chat/resume-last":
@@ -888,20 +726,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(set_active_chat_theme(self.state, body))
             elif method == "POST" and path == "/api/chat/themes/save":
                 self._send_json(save_chat_theme(self.state, body))
-            elif method == "POST" and path == "/api/chat/themes/upload":
-                temp_dir, paths = self._read_upload_files()
-                try:
-                    if not paths:
-                        raise ValueError("未收到主题压缩包")
-                    self._send_json(install_theme_from_zip(self.state, paths[0]))
-                finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-            elif method == "POST" and path == "/api/chat/attachments/upload":
-                temp_dir, paths = self._read_upload_files()
-                try:
-                    self._send_json({"attachments": stage_uploaded_chat_attachments(paths)})
-                finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
             else:
                 self._send_error_json(FileNotFoundError(path), HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -909,39 +733,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 return
             self._log_request_exception(exc)
             self._send_exception_json(exc)
-
-    def _import_background_paths(self, paths: list[str]) -> list[dict[str, Any]]:
-        import tools.file_util as file_util
-
-        existing = self.state.config_manager.config.background_list
-        imported = []
-        for item in paths:
-            batch = file_util.import_background(str(item), existing)
-            imported.extend(batch)
-            for background in batch:
-                if background not in existing:
-                    existing.append(background)
-        self.state.config_manager.save_background_config()
-        self.state.config_manager.reload()
-        return [_jsonify(item) for item in imported]
-
-    def _import_effect_paths(self, paths: list[str]) -> list[dict[str, Any]]:
-        import tools.file_util as file_util
-
-        existing = self.state.config_manager.config.effect_list
-        imported = []
-        for item in paths:
-            batch = file_util.import_effect(str(item), existing)
-            imported.extend(batch)
-            for effect in batch:
-                if effect not in existing:
-                    existing.append(effect)
-                # Ensure managed directory exists for each imported effect
-                ef_dir = _effect_dir(effect.name)
-                ef_dir.mkdir(parents=True, exist_ok=True)
-        self.state.config_manager.save_effect_config()
-        self.state.config_manager.reload()
-        return [_jsonify(item) for item in imported]
 
     def _start_chat_init(self, body: dict[str, Any]) -> dict[str, Any]:
         mode = str(body.get("mode") or "").strip().lower()
