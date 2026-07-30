@@ -4,8 +4,10 @@ import re
 from dataclasses import dataclass, field
 from enum import Enum
 from http import HTTPStatus
-from typing import Any, Callable, Mapping, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Mapping
 from urllib.parse import unquote
+
+from frontend_bridge_core.routes.uploads import UploadedFiles
 
 if TYPE_CHECKING:
     from application.runtime.state import BridgeState
@@ -14,6 +16,7 @@ if TYPE_CHECKING:
 class BodyKind(str, Enum):
     NONE = "none"
     JSON = "json"
+    MULTIPART = "multipart"
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,6 +42,7 @@ class ApiRequest:
     query: Mapping[str, list[str]]
     params: Mapping[str, str]
     body: dict[str, Any]
+    uploads: UploadedFiles | None = None
 
 
 RouteResponse = JsonResponse | TaskResponse
