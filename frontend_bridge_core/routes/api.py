@@ -99,7 +99,6 @@ from frontend_bridge_core.model_assets import (
     model_download_progress,
     parse_model_asset_request,
 )
-from frontend_bridge_core.config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
 from application.diagnostics.logs import (
     _default_log_snapshot,
     _diagnostic_bundle,
@@ -183,7 +182,6 @@ from application.runtime.tasks import (
     _create_task,
     _get_task,
     _is_running_task,
-    _request_task_cancel,
     _run_background_task,
     _update_task,
 )
@@ -212,8 +210,10 @@ from frontend_bridge_core.tools import (
 )
 from application.model_assets.tts_bundle import (
     _download_tts_bundle,
-    _tts_bundle_recommendation,
 )
+from frontend_bridge_core.routes.router import ApiRequest, BodyKind, Router
+from frontend_bridge_core.routes.system_routes import SYSTEM_ROUTES
+
 logger = get_logger("frontend_bridge_core.routes.api")
 BRIDGE_AUTH_HEADER = "X-Shinsekai-Bridge-Token"
 BRIDGE_AUTH_QUERY = "shinsekai_bridge_token"
@@ -231,6 +231,7 @@ _POLLING_PATHS = {
     "/api/model-assets/status",
     "/api/plugins/status",
 }
+_API_ROUTER = Router(list(SYSTEM_ROUTES))
 
 
 def _safe_export_output_path(name: str, suffix: str) -> tuple[Path, str]:
@@ -554,6 +555,29 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             raise ValueError("request body must be a JSON object")
         return data
 
+    def _try_dispatch_registered_route(
+        self,
+        method: str,
+        path: str,
+        query_string: str,
+    ) -> bool:
+        matched = _API_ROUTER.match(method, path)
+        if matched is None:
+            return False
+
+        body = self._read_json() if matched.route.body_kind is BodyKind.JSON else {}
+        request = ApiRequest(
+            state=self.state,
+            method=method,
+            path=path,
+            query=parse_qs(query_string),
+            params=matched.params,
+            body=body,
+        )
+        response = matched.route.handler(request)
+        self._send_json(response.data, response.status)
+        return True
+
     def _read_upload_files(self) -> tuple[Path, list[Path]]:
         ctype = self.headers.get("Content-Type", "")
         if not ctype.lower().startswith("multipart/form-data"):
@@ -599,17 +623,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             path = parsed.path
             self._require_authorized_read(path)
-            if path == "/api/health":
-                self._send_json({"ok": True, "plugins": plugin_load_snapshot(self.state)})
-            elif path == "/api/config":
-                self._send_json(_app_config_response(self.state))
-            elif path == "/api/config/network-proxy/detect":
-                from config.network_proxy import detect_network_proxy_configuration
-
-                self._send_json(detect_network_proxy_configuration().as_payload())
-            elif path == "/api/config/tts-bundle/recommendation":
-                self._send_json(_tts_bundle_recommendation())
-            elif path == "/api/characters":
+            if self._try_dispatch_registered_route("GET", path, parsed.query):
+                return
+            if path == "/api/characters":
                 self._send_json(self.state.config_manager.config.characters)
             elif path == "/api/backgrounds":
                 self._send_json(self.state.config_manager.config.background_list)
@@ -650,9 +666,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_plugin_registry_rows())
             elif path == "/api/mcp/config":
                 self._send_json(_mcp_config_response())
-            elif path.startswith("/api/tasks/"):
-                task_id = unquote(path.rsplit("/", 1)[-1])
-                self._send_json(_get_task(self.state, task_id))
             elif path.startswith("/api/story/generation/"):
                 generation_task_id = unquote(path[len("/api/story/generation/") :])
                 self._send_json(
@@ -780,8 +793,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
 
     def _handle_write(self, method: str) -> None:
         try:
-            path = urlparse(self.path).path
+            parsed = urlparse(self.path)
+            path = parsed.path
             self._require_authorized_write(path)
+            if self._try_dispatch_registered_route(method, path, parsed.query):
+                return
             is_upload = method == "POST" and path in {
                 "/api/characters/import-upload",
                 "/api/characters/memories/import-preview-upload",
@@ -792,40 +808,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 "/api/chat/attachments/upload",
             }
             body = {} if method == "DELETE" or is_upload else self._read_json()
-            if method in {"POST", "PUT"} and path == "/api/config/api":
-                self._send_json(_save_api_config(self.state, body))
-            elif method in {"POST", "PUT"} and path == "/api/config/system":
-                from config.schema import SystemConfig
-                from config.mirror_env import REGION_AUTO
-
-                config = SystemConfig.model_validate(body)
-                config.mirror_region = REGION_AUTO
-                self.state.config_manager.config.system_config = config
-                self.state.config_manager.save_system_config()
-                try:
-                    from i18n import init_i18n
-
-                    init_i18n(config.ui_language)
-                except Exception:
-                    pass
-                self._send_json(config)
-            elif method == "POST" and path == "/api/config/llm-models":
-                try:
-                    self._send_json(_fetch_llm_models(body))
-                except Exception as exc:
-                    from sdk.exception.presenter import format_llm_exception_message
-
-                    message = format_llm_exception_message(exc, fallback_message="获取模型列表失败。")
-                    self._send_json({"error": message, "type": exc.__class__.__name__}, HTTPStatus.BAD_REQUEST)
-            elif method == "POST" and path == "/api/config/llm-connection-test":
-                try:
-                    self._send_json(_test_llm_connection(body))
-                except Exception as exc:
-                    from sdk.exception.presenter import format_llm_exception_message
-
-                    message = format_llm_exception_message(exc, fallback_message="LLM 连通检测失败。")
-                    self._send_json({"error": message, "type": exc.__class__.__name__}, HTTPStatus.BAD_REQUEST)
-            elif method == "POST" and path == "/api/files/browse":
+            if method == "POST" and path == "/api/files/browse":
                 self._send_json(_browse_local_files(self.state, body))
             elif method == "POST" and path == "/api/media/thumbnails":
                 self._send_json(self._media_thumbnail_batch_response(body))
@@ -897,9 +880,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                                 update_task=model_download_progress(self.state, task_id),
                             ),
                         )
-            elif method == "POST" and path.startswith("/api/tasks/") and path.endswith("/cancel"):
-                task_id = unquote(path[len("/api/tasks/") : -len("/cancel")])
-                self._send_json(_request_task_cancel(self.state, task_id))
             elif method in {"POST", "PUT"} and path == "/api/characters":
                 self._send_json(_execute_character_request(self.state, CharacterOperation.SAVE, body))
             elif method == "POST" and path == "/api/characters/ai-setting":
