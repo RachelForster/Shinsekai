@@ -18,27 +18,9 @@ from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
 
-from frontend_bridge_core.backgrounds import (
-    _delete_all_background_bgm,
-    _delete_all_background_images,
-    _delete_background_bgm,
-    _delete_background_image,
-    _save_background,
-    _save_background_bgm_tags,
-    _save_background_image_tags,
-    _translate_background_fields,
-    _upload_background_bgm,
-    _upload_background_images,
-)
 from frontend_bridge_core.effects import (
     _build_effect_usage_guide,
-    _delete_all_effect_audio,
-    _delete_effect,
-    _delete_effect_audio,
     _effect_dir,
-    _save_effect,
-    _save_effect_audio_tags,
-    _upload_effect_audio,
     _validate_effect_storage_name,
 )
 from application.chat.runtime_process import (
@@ -70,21 +52,7 @@ from frontend_bridge_core.chat_themes import (
 )
 from application.chat.initialization import start_chat_init
 from application.chat.mobile_access import configure_mobile_access
-from frontend_bridge_core.characters import (
-    _as_character_config,
-    _delete_all_character_sprites,
-    _delete_character_sprite,
-    _delete_sprite_voice,
-    _generate_character_setting,
-    _save_character,
-    _save_character_emotion_tags,
-    _save_sprite_scale,
-    _save_sprite_voice_text,
-    _save_sprite_voice_type,
-    _translate_character_fields,
-    _upload_character_sprites,
-    _upload_sprite_voice,
-)
+from frontend_bridge_core.characters import _as_character_config
 from frontend_bridge_core.memory import (
     _add_character_memory,
     _delete_character_memory,
@@ -203,6 +171,9 @@ from frontend_bridge_core.tools import (
 from application.model_assets.tts_bundle import (
     _download_tts_bundle,
 )
+from frontend_bridge_core.routes.background_routes import BACKGROUND_ROUTES
+from frontend_bridge_core.routes.character_routes import CHARACTER_ROUTES
+from frontend_bridge_core.routes.effect_routes import EFFECT_ROUTES
 from frontend_bridge_core.routes.router import ApiRequest, BodyKind, Router
 from frontend_bridge_core.routes.system_routes import SYSTEM_ROUTES
 
@@ -223,7 +194,14 @@ _POLLING_PATHS = {
     "/api/model-assets/status",
     "/api/plugins/status",
 }
-_API_ROUTER = Router(list(SYSTEM_ROUTES))
+_API_ROUTER = Router(
+    [
+        *SYSTEM_ROUTES,
+        *CHARACTER_ROUTES,
+        *BACKGROUND_ROUTES,
+        *EFFECT_ROUTES,
+    ]
+)
 
 
 def _safe_export_output_path(name: str, suffix: str) -> tuple[Path, str]:
@@ -617,13 +595,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self._require_authorized_read(path)
             if self._try_dispatch_registered_route("GET", path, parsed.query):
                 return
-            if path == "/api/characters":
-                self._send_json(self.state.config_manager.config.characters)
-            elif path == "/api/backgrounds":
-                self._send_json(self.state.config_manager.config.background_list)
-            elif path == "/api/effects":
-                self._send_json(self.state.config_manager.config.effect_list)
-            elif path == "/api/templates":
+            if path == "/api/templates":
                 self._send_json(_list_templates(self.state))
             elif path == "/api/templates/session":
                 self._send_json(_load_template_session_payload(self.state))
@@ -851,12 +823,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                             },
                             worker=lambda task_id: _download_model_asset(self.state, task_id, spec),
                         )
-            elif method in {"POST", "PUT"} and path == "/api/characters":
-                self._send_json(_save_character(self.state, body))
-            elif method == "POST" and path == "/api/characters/ai-setting":
-                self._send_json(_generate_character_setting(self.state, body))
-            elif method == "POST" and path == "/api/characters/translate":
-                self._send_json(_translate_character_fields(self.state, body))
             elif method == "POST" and path == "/api/characters/memories/status":
                 self._send_json(_get_mem0_status())
             elif method == "POST" and path == "/api/characters/memories/list":
@@ -930,10 +896,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 )
             elif method == "POST" and path == "/api/memory/forget":
                 self._send_json(_memory_tool_forget(str(body.get("memoryId") or body.get("memory_id") or "")))
-            elif method == "POST" and path == "/api/characters/sprite-voice/upload":
-                self._send_json(_upload_sprite_voice(self.state, body))
-            elif method == "POST" and path == "/api/characters/sprites/upload":
-                self._send_json(_upload_character_sprites(self.state, body))
             elif method == "POST" and path == "/api/characters/sprites/auto-label":
                 name = str(body.get("name") or "").strip()
                 if not name:
@@ -944,27 +906,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     message="Moondream 图片标注任务已排队。",
                     worker=lambda task_id: run_character_sprite_auto_label(self.state, task_id, name),
                 )
-            elif method == "POST" and path == "/api/characters/emotion-tags":
-                self._send_json(_save_character_emotion_tags(self.state, body))
-            elif method == "POST" and path == "/api/characters/sprites/delete":
-                self._send_json(_delete_character_sprite(self.state, body))
-            elif method == "POST" and path == "/api/characters/sprites/delete-all":
-                self._send_json(_delete_all_character_sprites(self.state, body))
-            elif method == "POST" and path == "/api/characters/sprite-scale":
-                self._send_json(_save_sprite_scale(self.state, body))
-            elif method == "POST" and path == "/api/characters/sprite-voice/text":
-                self._send_json(_save_sprite_voice_text(self.state, body))
-            elif method == "POST" and path == "/api/characters/sprite-voice/voice-type":
-                self._send_json(_save_sprite_voice_type(self.state, body))
-            elif method == "POST" and path == "/api/characters/sprite-voice/delete":
-                self._send_json(_delete_sprite_voice(self.state, body))
             elif method == "DELETE" and path.startswith("/api/chat/themes/"):
                 theme_id = unquote(path[len("/api/chat/themes/"):])
                 self._send_json(delete_chat_theme(self.state, theme_id))
-            elif method == "DELETE" and path.startswith("/api/characters/"):
-                name = unquote(path.rsplit("/", 1)[-1])
-                message, names = self.state.character_manager.delete_character(name)
-                self._send_json({"message": message, "names": names})
             elif method == "POST" and path == "/api/characters/import":
                 paths = body.get("paths") or []
                 if not isinstance(paths, list):
@@ -1003,10 +947,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                         "path": output_relative,
                     }
                 )
-            elif method == "POST" and path == "/api/backgrounds/translate":
-                self._send_json(_translate_background_fields(self.state, body))
-            elif method == "POST" and path == "/api/backgrounds/images/upload":
-                self._send_json(_upload_background_images(self.state, body))
             elif method == "POST" and path == "/api/backgrounds/images/auto-label":
                 name = str(body.get("name") or "").strip()
                 if not name:
@@ -1017,28 +957,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     message="Moondream 图片标注任务已排队。",
                     worker=lambda task_id: run_background_image_auto_label(self.state, task_id, name),
                 )
-            elif method == "POST" and path == "/api/backgrounds/bgm/upload":
-                self._send_json(_upload_background_bgm(self.state, body))
-            elif method == "POST" and path == "/api/backgrounds/images/delete":
-                self._send_json(_delete_background_image(self.state, body))
-            elif method == "POST" and path == "/api/backgrounds/images/delete-all":
-                self._send_json(_delete_all_background_images(self.state, body))
-            elif method == "POST" and path == "/api/backgrounds/bgm/delete":
-                self._send_json(_delete_background_bgm(self.state, body))
-            elif method == "POST" and path == "/api/backgrounds/bgm/delete-all":
-                self._send_json(_delete_all_background_bgm(self.state, body))
-            elif method == "POST" and path == "/api/backgrounds/tags":
-                self._send_json(_save_background_image_tags(self.state, body))
-            elif method == "POST" and path == "/api/backgrounds/bgm-tags":
-                self._send_json(_save_background_bgm_tags(self.state, body))
-            elif method in {"POST", "PUT"} and path == "/api/backgrounds":
-                self._send_json(_save_background(self.state, body))
-            elif method == "DELETE" and path.startswith("/api/backgrounds/"):
-                name = unquote(path.rsplit("/", 1)[-1])
-                message, names = self.state.background_manager.delete_background(name)
-                if message.startswith("找不到") or message.startswith("请选择") or "失败" in message:
-                    raise RuntimeError(message)
-                self._send_json({"message": message, "names": names})
             elif method == "POST" and path == "/api/backgrounds/import":
                 paths = body.get("paths") or []
                 if not isinstance(paths, list):
@@ -1065,20 +983,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                         "path": output_relative,
                     }
                 )
-            # --- effects ---
-            elif method == "POST" and path == "/api/effects/audio/upload":
-                self._send_json(_upload_effect_audio(self.state, body))
-            elif method == "POST" and path == "/api/effects/audio/delete":
-                self._send_json(_delete_effect_audio(self.state, body))
-            elif method == "POST" and path == "/api/effects/audio/delete-all":
-                self._send_json(_delete_all_effect_audio(self.state, body))
-            elif method == "POST" and path == "/api/effects/audio-tags":
-                self._send_json(_save_effect_audio_tags(self.state, body))
-            elif method in {"POST", "PUT"} and path == "/api/effects":
-                self._send_json(_save_effect(self.state, body))
-            elif method == "DELETE" and path.startswith("/api/effects/"):
-                name = unquote(path.rsplit("/", 1)[-1])
-                self._send_json(_delete_effect(self.state, name))
             elif method == "POST" and path == "/api/effects/import":
                 paths = body.get("paths") or []
                 if not isinstance(paths, list):
