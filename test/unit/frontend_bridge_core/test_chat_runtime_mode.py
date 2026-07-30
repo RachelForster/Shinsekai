@@ -11,7 +11,11 @@ from application.chat.runtime_process import (
     _chat_snapshot,
     _chat_stream_initial_snapshot,
 )
-from frontend_bridge_core.routes.api import BRIDGE_AUTH_HEADER, CHAT_RUNTIME_READY_TIMEOUT_SECONDS, FrontendBridgeHandler
+from frontend_bridge_core.routes.api import (
+    BRIDGE_AUTH_HEADER,
+    CHAT_RUNTIME_READY_TIMEOUT_SECONDS,
+    FrontendBridgeHandler,
+)
 from application.chat.templates import _history_id_from_scenario
 
 
@@ -27,8 +31,12 @@ class _SystemConfig:
         clone.live_room_id = self.live_room_id
         clone.voice_language = self.voice_language
         clone.chat_ui_runtime_mode = self.chat_ui_runtime_mode
-        clone.react_chat_fork_experimental_enabled = self.react_chat_fork_experimental_enabled
-        clone.react_chat_flowchart_experimental_enabled = self.react_chat_flowchart_experimental_enabled
+        clone.react_chat_fork_experimental_enabled = (
+            self.react_chat_fork_experimental_enabled
+        )
+        clone.react_chat_flowchart_experimental_enabled = (
+            self.react_chat_flowchart_experimental_enabled
+        )
         return clone
 
 
@@ -37,7 +45,9 @@ class _Config:
         self.system_config = _SystemConfig()
         self.characters = []
         self.background_list = [
-            SimpleNamespace(name="默认房间", sprites=[{"path": "asset://default-bg.png"}])
+            SimpleNamespace(
+                name="默认房间", sprites=[{"path": "asset://default-bg.png"}]
+            )
         ]
 
 
@@ -48,7 +58,11 @@ class _ConfigManager:
     def get_character_by_name(self, name: str):
         name_key = name.lower()
         return next(
-            (character for character in self.config.characters if character.name.lower() == name_key),
+            (
+                character
+                for character in self.config.characters
+                if character.name.lower() == name_key
+            ),
             None,
         )
 
@@ -90,7 +104,11 @@ class _ChatStreamStub:
 
     def get_snapshot(self, session_id: str, *, renderer_id: str = ""):
         self.snapshot_renderer_ids.append(renderer_id)
-        return dict(self.snapshots.get(session_id, {})) if session_id in self.snapshots else None
+        return (
+            dict(self.snapshots.get(session_id, {}))
+            if session_id in self.snapshots
+            else None
+        )
 
     def update_session_snapshot(self, session_id: str, snapshot: dict):
         current = dict(self.snapshots.get(session_id, {}))
@@ -134,7 +152,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
             "dialogText": "keep dialog",
             "inputDraft": "keep draft",
             "options": ["keep option"],
-            "sprites": [{"id": "江之岛盾子-0", "label": "江之岛盾子", "path": "junko.png"}],
+            "sprites": [
+                {"id": "江之岛盾子-0", "label": "江之岛盾子", "path": "junko.png"}
+            ],
             "status": "idle",
         }
 
@@ -145,7 +165,10 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(initial["dialogText"], "keep dialog")
         self.assertEqual(initial["inputDraft"], "keep draft")
         self.assertEqual(initial["options"], ["keep option"])
-        self.assertEqual(previous["sprites"], [{"id": "江之岛盾子-0", "label": "江之岛盾子", "path": "junko.png"}])
+        self.assertEqual(
+            previous["sprites"],
+            [{"id": "江之岛盾子-0", "label": "江之岛盾子", "path": "junko.png"}],
+        )
         self.assertEqual(previous["sprites"][0]["label"], "江之岛盾子")
 
     def test_chat_runtime_mode_defaults_to_react(self):
@@ -162,7 +185,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
     def test_chat_runtime_status_reports_idle_without_building_snapshot(self):
         state = SimpleNamespace(chat_runtime_closing=False)
 
-        with patch("application.chat.runtime_process._chat_process_running", return_value=False):
+        with patch(
+            "application.chat.runtime_process._chat_process_running", return_value=False
+        ):
             status = _chat_runtime_status(state)
 
         self.assertEqual(
@@ -177,7 +202,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
     def test_chat_runtime_status_reports_running(self):
         state = SimpleNamespace(chat_runtime_closing=False)
 
-        with patch("application.chat.runtime_process._chat_process_running", return_value=True):
+        with patch(
+            "application.chat.runtime_process._chat_process_running", return_value=True
+        ):
             status = _chat_runtime_status(state)
 
         self.assertEqual(status["state"], "running")
@@ -187,7 +214,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
     def test_chat_runtime_status_prioritizes_closing_over_running(self):
         state = SimpleNamespace(chat_runtime_closing=True)
 
-        with patch("application.chat.runtime_process._chat_process_running", return_value=True):
+        with patch(
+            "application.chat.runtime_process._chat_process_running", return_value=True
+        ):
             status = _chat_runtime_status(state)
 
         self.assertEqual(status["state"], "closing")
@@ -214,15 +243,22 @@ class ChatRuntimeModeTests(unittest.TestCase):
     def test_runtime_status_route_does_not_build_chat_snapshot(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         handler.path = "/api/chat/runtime-status"
-        handler.server = SimpleNamespace(state=SimpleNamespace(chat_runtime_closing=False))
+        handler.server = SimpleNamespace(
+            state=SimpleNamespace(chat_runtime_closing=False)
+        )
         responses = []
         handler._send_json = lambda payload, status=None: responses.append(payload)
 
         with (
-            patch("application.chat.runtime_process._chat_process_running", return_value=False),
             patch(
-                "frontend_bridge_core.routes.api._chat_snapshot",
-                side_effect=AssertionError("runtime status must not build a chat snapshot"),
+                "application.chat.runtime_process._chat_process_running",
+                return_value=False,
+            ),
+            patch(
+                "frontend_bridge_core.routes.chat_routes._chat_snapshot",
+                side_effect=AssertionError(
+                    "runtime status must not build a chat snapshot"
+                ),
             ),
         ):
             handler.do_GET()
@@ -262,7 +298,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         self.assertEqual(snapshot["backgroundPath"], "")
 
-    def test_chat_snapshot_does_not_fallback_empty_background_to_first_config_background(self):
+    def test_chat_snapshot_does_not_fallback_empty_background_to_first_config_background(
+        self,
+    ):
         state = SimpleNamespace(
             chat_session={"backgroundName": ""},
             chat_stream=None,
@@ -288,15 +326,24 @@ class ChatRuntimeModeTests(unittest.TestCase):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         handler.path = "/api/chat/command"
         handler.server = SimpleNamespace(state=SimpleNamespace(auth_token="secret"))
-        handler.headers = {"Origin": "http://localhost:5173", BRIDGE_AUTH_HEADER: "secret"}
+        handler.headers = {
+            "Origin": "http://localhost:5173",
+            BRIDGE_AUTH_HEADER: "secret",
+        }
 
         handler._require_authorized_write("/api/chat/command")
 
-        handler.headers = {"Origin": "http://localhost:5173", BRIDGE_AUTH_HEADER: "wrong"}
+        handler.headers = {
+            "Origin": "http://localhost:5173",
+            BRIDGE_AUTH_HEADER: "wrong",
+        }
         with self.assertRaisesRegex(PermissionError, "invalid bridge auth token"):
             handler._require_authorized_write("/api/chat/command")
 
-        handler.headers = {"Origin": "https://evil.example", BRIDGE_AUTH_HEADER: "secret"}
+        handler.headers = {
+            "Origin": "https://evil.example",
+            BRIDGE_AUTH_HEADER: "secret",
+        }
         with self.assertRaisesRegex(PermissionError, "request origin is not allowed"):
             handler._require_authorized_write("/api/chat/command")
 
@@ -389,12 +436,19 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 "templateName": "Native Template",
             }
 
-            with patch("frontend_bridge_core.routes.api._chat_process_running", return_value=False), patch(
-                "frontend_bridge_core.routes.api._launch_chat",
-                return_value="聊天进程已启动！PID: 12345",
-            ) as launch_chat, patch(
-                "frontend_bridge_core.routes.api._repair_template_parts_from_session_if_needed",
-                side_effect=lambda _state, scenario, system: (scenario, system),
+            with (
+                patch(
+                    "frontend_bridge_core.chat_session._chat_process_running",
+                    return_value=False,
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._launch_runtime_chat",
+                    return_value="聊天进程已启动！PID: 12345",
+                ) as launch_chat,
+                patch(
+                    "frontend_bridge_core.chat_session._repair_template_parts_from_session_if_needed",
+                    side_effect=lambda _state, scenario, system: (scenario, system),
+                ),
             ):
                 snapshot = handler._launch_chat(body)
 
@@ -437,13 +491,16 @@ class ChatRuntimeModeTests(unittest.TestCase):
         }
 
         with (
-            patch("frontend_bridge_core.routes.api._chat_process_running", return_value=False),
             patch(
-                "frontend_bridge_core.routes.api._launch_chat",
+                "frontend_bridge_core.chat_session._chat_process_running",
+                return_value=False,
+            ),
+            patch(
+                "frontend_bridge_core.chat_session._launch_runtime_chat",
                 return_value="聊天进程已启动！PID: 12345",
             ) as launch_chat,
             patch(
-                "frontend_bridge_core.routes.api._repair_template_parts_from_session_if_needed",
+                "frontend_bridge_core.chat_session._repair_template_parts_from_session_if_needed",
                 side_effect=lambda _state, scenario, system: (scenario, system),
             ),
         ):
@@ -490,12 +547,19 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 "templateName": "Restored Template",
             }
 
-            with patch("frontend_bridge_core.routes.api._chat_process_running", return_value=False), patch(
-                "frontend_bridge_core.routes.api._launch_chat",
-                return_value="聊天进程已启动！PID: 12345",
-            ) as launch_chat, patch(
-                "frontend_bridge_core.routes.api._repair_template_parts_from_session_if_needed",
-                side_effect=lambda _state, scenario, system: (scenario, system),
+            with (
+                patch(
+                    "frontend_bridge_core.chat_session._chat_process_running",
+                    return_value=False,
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._launch_runtime_chat",
+                    return_value="聊天进程已启动！PID: 12345",
+                ) as launch_chat,
+                patch(
+                    "frontend_bridge_core.chat_session._repair_template_parts_from_session_if_needed",
+                    side_effect=lambda _state, scenario, system: (scenario, system),
+                ),
             ):
                 snapshot = handler._launch_chat(body)
 
@@ -658,12 +722,19 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 "templateName": "Native Init Template",
             }
 
-            with patch("frontend_bridge_core.routes.api._chat_process_running", return_value=False), patch(
-                "frontend_bridge_core.routes.api._launch_chat",
-                return_value="chat process started; PID: 12345",
-            ) as launch_chat, patch(
-                "frontend_bridge_core.routes.api._repair_template_parts_from_session_if_needed",
-                side_effect=lambda _state, scenario, system: (scenario, system),
+            with (
+                patch(
+                    "frontend_bridge_core.chat_session._chat_process_running",
+                    return_value=False,
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._launch_runtime_chat",
+                    return_value="chat process started; PID: 12345",
+                ) as launch_chat,
+                patch(
+                    "frontend_bridge_core.chat_session._repair_template_parts_from_session_if_needed",
+                    side_effect=lambda _state, scenario, system: (scenario, system),
+                ),
             ):
                 snapshot = handler._launch_chat(body, init_stream_info=init_stream_info)
 
@@ -673,7 +744,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
             init_stream_info["producerEndpoint"],
         )
         self.assertEqual(launch_chat.call_args.kwargs["init_stream_endpoint"], "")
-        self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
+        self.assertEqual(
+            chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)]
+        )
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertTrue(snapshot["_chatInitStreamAttached"])
         self.assertEqual(snapshot["sessionId"], "session-1")
@@ -709,40 +782,49 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 )
             )
 
-            with patch(
-                "frontend_bridge_core.routes.api._load_template_session_payload",
-                return_value={
-                    "background": "",
-                    "historyPath": history_path.relative_to(Path.cwd()).as_posix(),
-                    "initSpritePath": "",
-                    "roomId": "",
-                    "scenario": "scene",
-                    "selectedCharacters": ["Deleted", "Alice"],
-                    "system": "system",
-                    "templateFileDropdown": "resume-template",
-                    "voiceLanguage": "ja",
-                },
-            ), patch(
-                "frontend_bridge_core.routes.api._resume_template_parts",
-                return_value=("scene", "system", "resume-template"),
-            ), patch(
-                "frontend_bridge_core.routes.api._chat_process_running",
-                return_value=False,
-            ), patch(
-                "frontend_bridge_core.routes.api._launch_chat",
-                return_value="聊天进程已启动！PID: 12345",
-            ) as launch_chat:
+            with (
+                patch(
+                    "frontend_bridge_core.chat_session._load_template_session_payload",
+                    return_value={
+                        "background": "",
+                        "historyPath": history_path.relative_to(Path.cwd()).as_posix(),
+                        "initSpritePath": "",
+                        "roomId": "",
+                        "scenario": "scene",
+                        "selectedCharacters": ["Deleted", "Alice"],
+                        "system": "system",
+                        "templateFileDropdown": "resume-template",
+                        "voiceLanguage": "ja",
+                    },
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._resume_template_parts",
+                    return_value=("scene", "system", "resume-template"),
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._chat_process_running",
+                    return_value=False,
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._launch_runtime_chat",
+                    return_value="聊天进程已启动！PID: 12345",
+                ) as launch_chat,
+            ):
                 snapshot = handler._resume_last_chat()
 
         self.assertEqual(len(chat_stream.create_session_calls), 1)
         self.assertEqual(chat_stream.create_session_calls[0]["sprites"], [])
         self.assertEqual(chat_stream.create_session_calls[0]["runtimeMode"], "react")
         self.assertEqual(chat_stream.create_session_calls[0]["status"], "idle")
-        self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
+        self.assertEqual(
+            chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)]
+        )
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertEqual(snapshot["sessionId"], "session-1")
         self.assertEqual(launch_chat.call_args.kwargs["character_names"], ["Alice"])
-        self.assertEqual(launch_chat.call_args.kwargs["init_sprite_path"], "sprites/alice.png")
+        self.assertEqual(
+            launch_chat.call_args.kwargs["init_sprite_path"], "sprites/alice.png"
+        )
         self.assertEqual(handler.server.state.chat_session["characterName"], "Alice")
 
     @unittest.skipUnless(os.name == "nt", "Windows drive semantics")
@@ -763,7 +845,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
         with (
             patch(
-                "frontend_bridge_core.routes.api._load_template_session_payload",
+                "frontend_bridge_core.chat_session._load_template_session_payload",
                 return_value={
                     "background": "",
                     "historyPath": r"D:\external-history\resume.json",
@@ -776,12 +858,15 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 },
             ),
             patch(
-                "frontend_bridge_core.routes.api._resume_template_parts",
+                "frontend_bridge_core.chat_session._resume_template_parts",
                 return_value=("scene", "system", "resume-template"),
             ),
-            patch("frontend_bridge_core.routes.api._chat_process_running", return_value=False),
             patch(
-                "frontend_bridge_core.routes.api._launch_chat",
+                "frontend_bridge_core.chat_session._chat_process_running",
+                return_value=False,
+            ),
+            patch(
+                "frontend_bridge_core.chat_session._launch_runtime_chat",
                 return_value="聊天进程已启动！PID: 12345",
             ) as launch_chat,
         ):
@@ -822,13 +907,20 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 "workflowPath": "test/e2e/live_bridge_runtime.yaml",
             }
 
-            with patch("frontend_bridge_core.routes.api._chat_process_running", return_value=False), patch(
-                "frontend_bridge_core.routes.api._repair_template_parts_from_session_if_needed",
-                side_effect=lambda _state, scenario, system: (scenario, system),
-            ), patch(
-                "frontend_bridge_core.routes.api._launch_chat",
-                return_value="聊天进程已启动！PID: 12345",
-            ) as launch_chat:
+            with (
+                patch(
+                    "frontend_bridge_core.chat_session._chat_process_running",
+                    return_value=False,
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._repair_template_parts_from_session_if_needed",
+                    side_effect=lambda _state, scenario, system: (scenario, system),
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._launch_runtime_chat",
+                    return_value="聊天进程已启动！PID: 12345",
+                ) as launch_chat,
+            ):
                 snapshot = handler._launch_chat(body)
 
         self.assertEqual(snapshot["runtimeMode"], "react")
@@ -836,8 +928,13 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(chat_stream.create_session_calls[0]["sprites"], [])
         self.assertEqual(chat_stream.create_session_calls[0]["runtimeMode"], "react")
         self.assertEqual(chat_stream.create_session_calls[0]["status"], "idle")
-        self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
-        self.assertEqual(launch_chat.call_args.kwargs["workflow_path"], "test/e2e/live_bridge_runtime.yaml")
+        self.assertEqual(
+            chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)]
+        )
+        self.assertEqual(
+            launch_chat.call_args.kwargs["workflow_path"],
+            "test/e2e/live_bridge_runtime.yaml",
+        )
 
     def test_launch_chat_raises_when_runtime_stream_never_becomes_ready(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
@@ -868,20 +965,30 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 "templateName": "React Timeout Template",
             }
 
-            with patch("frontend_bridge_core.routes.api._chat_process_running", return_value=False), patch(
-                "frontend_bridge_core.routes.api._repair_template_parts_from_session_if_needed",
-                side_effect=lambda _state, scenario, system: (scenario, system),
-            ), patch(
-                "frontend_bridge_core.routes.api._launch_chat",
-                return_value="聊天进程已启动！PID: 12345",
-            ), patch(
-                "frontend_bridge_core.routes.api.stop_chat",
-                return_value={"status": "idle"},
-            ) as close_chat:
+            with (
+                patch(
+                    "frontend_bridge_core.chat_session._chat_process_running",
+                    return_value=False,
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._repair_template_parts_from_session_if_needed",
+                    side_effect=lambda _state, scenario, system: (scenario, system),
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._launch_runtime_chat",
+                    return_value="聊天进程已启动！PID: 12345",
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session.stop_chat",
+                    return_value={"status": "idle"},
+                ) as close_chat,
+            ):
                 with self.assertRaisesRegex(RuntimeError, "实时聊天会话未就绪"):
                     handler._launch_chat(body)
 
-        self.assertEqual(chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)])
+        self.assertEqual(
+            chat_stream.wait_calls, [("session-1", CHAT_RUNTIME_READY_TIMEOUT_SECONDS)]
+        )
         self.assertEqual(chat_stream.deleted_sessions, ["session-1"])
         self.assertEqual(handler.server.state.chat_session.get("sessionId"), "")
         close_chat.assert_called_once()
