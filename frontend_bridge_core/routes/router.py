@@ -23,6 +23,15 @@ class JsonResponse:
 
 
 @dataclass(frozen=True, slots=True)
+class TaskResponse:
+    kind: str
+    title: str
+    message: str
+    worker: Callable[[str], Any]
+    task_updates: Mapping[str, Any] | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ApiRequest:
     state: BridgeState
     method: str
@@ -32,7 +41,8 @@ class ApiRequest:
     body: dict[str, Any]
 
 
-RouteHandler = Callable[[ApiRequest], JsonResponse]
+RouteResponse = JsonResponse | TaskResponse
+RouteHandler = Callable[[ApiRequest], RouteResponse]
 
 _PARAMETER_SEGMENT = re.compile(r"^\{([A-Za-z_][A-Za-z0-9_]*)\}$")
 _SUPPORTED_METHODS = frozenset({"DELETE", "GET", "HEAD", "POST", "PUT"})

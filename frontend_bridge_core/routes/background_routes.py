@@ -12,11 +12,13 @@ from frontend_bridge_core.backgrounds import (
     _upload_background_bgm,
     _upload_background_images,
 )
+from frontend_bridge_core.image_annotations import run_background_image_auto_label
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
     JsonResponse,
     Route,
+    TaskResponse,
 )
 
 
@@ -77,6 +79,22 @@ def _delete_background_route(request: ApiRequest) -> JsonResponse:
     return JsonResponse({"message": message, "names": names})
 
 
+def _auto_label_background_images(request: ApiRequest) -> TaskResponse:
+    name = str(request.body.get("name") or "").strip()
+    if not name:
+        raise ValueError("背景名称不能为空")
+    return TaskResponse(
+        kind="moondream-background-auto-label",
+        title=f"标注 {name} 的背景图片",
+        message="Moondream 图片标注任务已排队。",
+        worker=lambda task_id: run_background_image_auto_label(
+            request.state,
+            task_id,
+            name,
+        ),
+    )
+
+
 BACKGROUND_ROUTES = (
     Route(
         methods=frozenset({"GET"}),
@@ -96,6 +114,12 @@ BACKGROUND_ROUTES = (
         pattern="/api/backgrounds/images/upload",
         handler=_upload_background_images_route,
         name="backgrounds.images.upload",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/backgrounds/images/auto-label",
+        handler=_auto_label_background_images,
+        name="backgrounds.images.auto_label",
     ),
     Route(
         methods=frozenset({"POST"}),
