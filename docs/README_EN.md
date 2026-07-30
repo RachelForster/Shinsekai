@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/system/picture/shinsekai-github-banner.png" alt="Shinsekai GitHub Banner" width="100%">
+</p>
+
 [中文版](https://github.com/RachelForster/Shinsekai/blob/main/README.md) | [English](https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md)
 
 # Shinsekai
@@ -13,7 +17,10 @@ A desktop assistant for **visual-novel / otome / story-driven RPG** play: let a 
 - **Swap models and engines**: connect mainstream LLMs and OpenAI-compatible endpoints under **API settings**; **TTS** spans GPT-SoVITS, Genie TTS, CosyVoice, and lighter stacks without a discrete GPU; **image gen** can target ComfyUI-style backends on the same page.  
 - **Listen and speak**: optional mic **ASR** (e.g. Vosk; more via **plugins**) and line **TTS**, or turn synthesis off and rely on per-sprite bundled audio only.  
 - **More than plain chat**: built-in / plugin **LLM tools** plus **MCP** bring search, automation, and other services into the same turn.  
-- **Extensible & themeable**: the **plugin SDK** adds adapters, settings pages, and chat chrome; UI language, fonts, and chat styling can be tuned via config and plugins (e.g. `chat_ui_theme`).  
+- **Long-term memory**: store, retrieve, and manage character-scoped memories across sessions so relationships, story progress, and important events carry naturally into later conversations.
+- **Custom chat themes**: manage and visually edit chat themes, including upload, clone, switch, and customization flows for dialog frames, nameplates, fonts, colors, and stage styling.
+- **100+ character packs**: choose from more than 100 ready-to-import character packs, or create, import, and export your own `.char` packages.
+- **Plugin extensibility**: the **plugin SDK** adds adapters, settings pages, chat controls, and additional LLM, TTS, ASR, T2I, and tool capabilities.
 - **Local-first data**: defaults live under **`data/`** (`api.yaml`, `system_config.yaml`, characters, history)—easy to back up or fork for your own project.  
 - **Open source**: start from git or a [release bundle](https://github.com/RachelForster/Shinsekai/releases); optional plugins are listed in [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry).
 
