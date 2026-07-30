@@ -318,7 +318,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Create or update release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2
         with:
           tag_name: ${{ needs.tag.outputs.tag }}
           name: ${{ needs.tag.outputs.tag }}
@@ -565,7 +565,7 @@ jobs:
           done
 
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2
         with:
           tag_name: ${{ needs.tag.outputs.tag }}
           prerelease: ${{ needs.tag.outputs.prerelease == 'true' }}
@@ -625,7 +625,7 @@ jobs:
           '
 
       - name: Upload latest.json
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65  # v2
         with:
           tag_name: ${{ needs.tag.outputs.tag }}
           prerelease: false
