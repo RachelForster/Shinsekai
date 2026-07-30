@@ -14,11 +14,13 @@ from frontend_bridge_core.characters import (
     _upload_character_sprites,
     _upload_sprite_voice,
 )
+from frontend_bridge_core.image_annotations import run_character_sprite_auto_label
 from frontend_bridge_core.routes.router import (
     ApiRequest,
     BodyKind,
     JsonResponse,
     Route,
+    TaskResponse,
 )
 
 
@@ -81,6 +83,22 @@ def _delete_character_route(request: ApiRequest) -> JsonResponse:
     return JsonResponse({"message": message, "names": names})
 
 
+def _auto_label_character_sprites(request: ApiRequest) -> TaskResponse:
+    name = str(request.body.get("name") or "").strip()
+    if not name:
+        raise ValueError("角色名称不能为空")
+    return TaskResponse(
+        kind="moondream-character-auto-label",
+        title=f"标注 {name} 的角色立绘",
+        message="Moondream 图片标注任务已排队。",
+        worker=lambda task_id: run_character_sprite_auto_label(
+            request.state,
+            task_id,
+            name,
+        ),
+    )
+
+
 CHARACTER_ROUTES = (
     Route(
         methods=frozenset({"GET"}),
@@ -118,6 +136,12 @@ CHARACTER_ROUTES = (
         pattern="/api/characters/sprites/upload",
         handler=_upload_character_sprites_route,
         name="characters.sprites.upload",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/sprites/auto-label",
+        handler=_auto_label_character_sprites,
+        name="characters.sprites.auto_label",
     ),
     Route(
         methods=frozenset({"POST"}),

@@ -14,7 +14,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
+from urllib.parse import parse_qs, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
 
@@ -54,13 +54,6 @@ from application.chat.initialization import start_chat_init
 from application.chat.mobile_access import configure_mobile_access
 from frontend_bridge_core.characters import _as_character_config
 from frontend_bridge_core.memory import (
-    _add_character_memory,
-    _delete_character_memory,
-    _get_mem0_status,
-    _list_character_memories,
-    _memory_tool_forget,
-    _memory_tool_remember,
-    _memory_tool_search,
     _preview_character_memory_import,
     _run_character_memory_import,
 )
@@ -68,7 +61,6 @@ from application.model_assets.service import (
     _download_model_asset,
     _find_running_model_asset_task,
     _model_asset_enqueue_guard,
-    _model_asset_status,
     _resolve_model_asset,
 )
 from application.diagnostics.logs import (
@@ -84,48 +76,8 @@ from frontend_bridge_core.media_paths import (
     resolve_external_media_file,
     validate_readable_media_file,
 )
-from frontend_bridge_core.image_annotations import (
-    run_background_image_auto_label,
-    run_character_sprite_auto_label,
-)
-from frontend_bridge_core.mcp import (
-    _mcp_config_response,
-    _open_mcp_config_file,
-    _preview_mcp_tools_from_payload,
-    _save_and_apply_mcp_config,
-)
-from frontend_bridge_core.music import _music_cover_search, _run_music_cover, _save_music_cover_config
-from application.plugins.catalog import (
-    _plugin_registry_rows,
-    _plugin_rows,
-    _set_plugin_enabled,
-    _uninstall_plugin,
-)
-from frontend_bridge_core.plugin_publisher import (
-    _build_plugin_submission_issue_url,
-    _copy_plugin_submission_json,
-    _scan_local_plugin,
-    _validate_plugin_submission,
-)
-from frontend_bridge_core.plugin_ui import (
-    _frontend_chat_ui_contribution_payloads,
-    _plugin_ui_detail,
-    _resolve_plugin_frontend_file,
-    _run_frontend_chat_ui_contribution,
-    _run_plugin_ui_action,
-    _save_plugin_ui_config,
-)
-from application.plugins.updates import (
-    _app_update_info,
-    _app_update_tags,
-    _install_plugin_source,
-    _repo_tags,
-    _run_app_update,
-)
-from application.runtime.dependencies import (
-    install_runtime_dependency,
-    runtime_dependency_error_from_text,
-)
+from frontend_bridge_core.plugin_ui import _resolve_plugin_frontend_file
+from application.runtime.dependencies import runtime_dependency_error_from_text
 from frontend_bridge_core.security import (
     safe_content_disposition,
     safe_header_value,
@@ -136,12 +88,11 @@ from sdk.path_utils import (
     safe_filename,
     safe_project_path,
 )
-from application.runtime.state import BridgeState, _jsonify, plugin_load_snapshot
+from application.runtime.state import BridgeState, _jsonify
 from frontend_bridge_core.static import _frontend_dist_root
 from application.runtime.tasks import (
     _create_task,
     _get_task,
-    _is_running_task,
     _run_background_task,
     _update_task,
 )
@@ -154,28 +105,23 @@ from application.chat.templates import (
     _resolve_template_character_names,
     _resume_template_parts,
     _scenario_from_template_like,
-    _save_template_session_payload,
-    _save_template_summary,
-    _generate_template_summary,
     _load_template_session_payload,
     initial_sprite_path_for_characters,
 )
 from application.media.attachments import stage_uploaded_chat_attachments
-from frontend_bridge_core.tools import (
-    _browse_local_files,
-    _crop_sprites,
-    _generate_sprite_prompts,
-    _generate_sprites,
-    _remove_sprite_background,
-)
-from application.model_assets.tts_bundle import (
-    _download_tts_bundle,
-)
+from frontend_bridge_core.tools import _browse_local_files
 from frontend_bridge_core.routes.background_routes import BACKGROUND_ROUTES
 from frontend_bridge_core.routes.character_routes import CHARACTER_ROUTES
 from frontend_bridge_core.routes.effect_routes import EFFECT_ROUTES
-from frontend_bridge_core.routes.router import ApiRequest, BodyKind, Router
+from frontend_bridge_core.routes.memory_routes import MEMORY_ROUTES
+from frontend_bridge_core.routes.operation_routes import OPERATION_ROUTES
+from frontend_bridge_core.routes.plugin_routes import (
+    PLUGIN_ROUTES,
+    inject_bridge_token,
+)
+from frontend_bridge_core.routes.router import ApiRequest, BodyKind, Router, TaskResponse
 from frontend_bridge_core.routes.system_routes import SYSTEM_ROUTES
+from frontend_bridge_core.routes.template_routes import TEMPLATE_ROUTES
 
 logger = get_logger("frontend_bridge_core.routes.api")
 BRIDGE_AUTH_HEADER = "X-Shinsekai-Bridge-Token"
@@ -200,6 +146,10 @@ _API_ROUTER = Router(
         *CHARACTER_ROUTES,
         *BACKGROUND_ROUTES,
         *EFFECT_ROUTES,
+        *MEMORY_ROUTES,
+        *TEMPLATE_ROUTES,
+        *OPERATION_ROUTES,
+        *PLUGIN_ROUTES,
     ]
 )
 
@@ -373,15 +323,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             raise PermissionError("invalid bridge auth token")
 
     def _inject_bridge_token(self, detail: dict[str, Any]) -> dict[str, Any]:
-        token = str(getattr(self.state, "auth_token", "") or "").strip()
-        if not token:
-            return detail
-        for page in detail.get("pages") or []:
-            url = str(page.get("frontendUrl") or "")
-            if url.startswith("/api/") and BRIDGE_AUTH_QUERY not in url:
-                sep = "&" if "?" in url else "?"
-                page["frontendUrl"] = f"{url}{sep}{BRIDGE_AUTH_QUERY}={quote(token, safe='')}"
-        return detail
+        return inject_bridge_token(self.state, detail)
 
     def _require_authorized_write(self, path: str) -> None:
         if not self._request_origin_allowed():
@@ -545,7 +487,20 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             body=body,
         )
         response = matched.route.handler(request)
-        self._send_json(response.data, response.status)
+        if isinstance(response, TaskResponse):
+            self._enqueue_background_task(
+                kind=response.kind,
+                title=response.title,
+                message=response.message,
+                worker=response.worker,
+                task_updates=(
+                    dict(response.task_updates)
+                    if response.task_updates is not None
+                    else None
+                ),
+            )
+        else:
+            self._send_json(response.data, response.status)
         return True
 
     def _read_upload_files(self) -> tuple[Path, list[Path]]:
@@ -595,23 +550,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self._require_authorized_read(path)
             if self._try_dispatch_registered_route("GET", path, parsed.query):
                 return
-            if path == "/api/templates":
-                self._send_json(_list_templates(self.state))
-            elif path == "/api/templates/session":
-                self._send_json(_load_template_session_payload(self.state))
-            elif path == "/api/logs/default":
+            if path == "/api/logs/default":
                 self._send_json(_default_log_snapshot(Path.cwd().resolve()))
             elif path == "/api/logs":
                 self._send_json(_log_file_list(Path.cwd().resolve()))
-            elif path == "/api/plugins":
-                self._send_json(_plugin_rows(plugin_load_snapshot(self.state)))
-            elif path == "/api/plugins/chat-ui-contributions":
-                self._send_json(_frontend_chat_ui_contribution_payloads())
-            elif path == "/api/plugins/status":
-                self._send_json(plugin_load_snapshot(self.state))
-            elif path.startswith("/api/plugins/") and path.endswith("/ui"):
-                plugin_id = unquote(path[len("/api/plugins/") : -len("/ui")])
-                self._send_json(self._inject_bridge_token(_plugin_ui_detail(plugin_id)))
             elif path.startswith("/api/plugins/") and "/frontend/" in path:
                 rest = path[len("/api/plugins/") :]
                 plugin_part, _, frontend_tail = rest.partition("/frontend/")
@@ -624,12 +566,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     ),
                     send_body=True,
                 )
-            elif path == "/api/plugins/app-update/info":
-                self._send_json(_app_update_info())
-            elif path == "/api/plugins/registry":
-                self._send_json(_plugin_registry_rows())
-            elif path == "/api/mcp/config":
-                self._send_json(_mcp_config_response())
             elif path == "/api/chat/runtime-status":
                 self._send_json(_chat_runtime_status(self.state))
             elif path == "/api/chat/snapshot":
@@ -785,26 +721,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/logs/diagnostic-bundle":
                 self._send_json(_diagnostic_bundle(Path.cwd().resolve()))
-            elif method == "POST" and path == "/api/music-cover/search":
-                self._send_json(_music_cover_search(self.state, body))
-            elif method == "POST" and path == "/api/music-cover/config":
-                self._send_json(_save_music_cover_config(self.state, body))
-            elif method == "POST" and path == "/api/music-cover/run":
-                self._enqueue_background_task(
-                    kind="music-cover",
-                    title="音乐翻唱流水线",
-                    message="音乐翻唱流水线已排队。",
-                    worker=lambda task_id: _run_music_cover(self.state, task_id, body),
-                )
-            elif method == "POST" and path == "/api/config/tts-bundle/download":
-                self._enqueue_background_task(
-                    kind="tts-bundle",
-                    title="TTS 整合包下载",
-                    message="TTS 整合包下载已排队。",
-                    worker=lambda task_id: _download_tts_bundle(self.state, task_id, body),
-                )
-            elif method == "POST" and path == "/api/model-assets/status":
-                self._send_json(_model_asset_status(self.state, body))
             elif method == "POST" and path == "/api/model-assets/download":
                 spec = _resolve_model_asset(self.state, body)
                 with _model_asset_enqueue_guard():
@@ -823,16 +739,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                             },
                             worker=lambda task_id: _download_model_asset(self.state, task_id, spec),
                         )
-            elif method == "POST" and path == "/api/characters/memories/status":
-                self._send_json(_get_mem0_status())
-            elif method == "POST" and path == "/api/characters/memories/list":
-                self._send_json(_list_character_memories(str(body.get("name") or "")))
-            elif method == "POST" and path == "/api/characters/memories/add":
-                self._send_json(_add_character_memory(str(body.get("name") or ""), str(body.get("content") or "")))
-            elif method == "POST" and path == "/api/characters/memories/delete":
-                self._send_json(
-                    _delete_character_memory(str(body.get("name") or ""), str(body.get("memoryId") or ""))
-                )
             elif method == "POST" and path == "/api/characters/memories/import-preview-upload":
                 temp_dir, paths = self._read_upload_files()
                 try:
@@ -875,37 +781,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 except Exception:
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     raise
-            elif method == "POST" and path == "/api/memory/status":
-                self._send_json(_get_mem0_status(start_loading=bool(body.get("startLoading", True))))
-            elif method == "POST" and path == "/api/memory/list":
-                self._send_json(_list_character_memories(str(body.get("name") or body.get("characterName") or "")))
-            elif method == "POST" and path == "/api/memory/search":
-                self._send_json(
-                    _memory_tool_search(
-                        str(body.get("query") or ""),
-                        str(body.get("characterName") or body.get("character_name") or ""),
-                        int(body.get("limit") or 10),
-                    )
-                )
-            elif method == "POST" and path == "/api/memory/remember":
-                self._send_json(
-                    _memory_tool_remember(
-                        str(body.get("content") or ""),
-                        str(body.get("characterName") or body.get("character_name") or ""),
-                    )
-                )
-            elif method == "POST" and path == "/api/memory/forget":
-                self._send_json(_memory_tool_forget(str(body.get("memoryId") or body.get("memory_id") or "")))
-            elif method == "POST" and path == "/api/characters/sprites/auto-label":
-                name = str(body.get("name") or "").strip()
-                if not name:
-                    raise ValueError("角色名称不能为空")
-                self._enqueue_background_task(
-                    kind="moondream-character-auto-label",
-                    title=f"标注 {name} 的角色立绘",
-                    message="Moondream 图片标注任务已排队。",
-                    worker=lambda task_id: run_character_sprite_auto_label(self.state, task_id, name),
-                )
             elif method == "DELETE" and path.startswith("/api/chat/themes/"):
                 theme_id = unquote(path[len("/api/chat/themes/"):])
                 self._send_json(delete_chat_theme(self.state, theme_id))
@@ -946,16 +821,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                         "downloadUrl": f"/api/download?path={output_relative}",
                         "path": output_relative,
                     }
-                )
-            elif method == "POST" and path == "/api/backgrounds/images/auto-label":
-                name = str(body.get("name") or "").strip()
-                if not name:
-                    raise ValueError("背景名称不能为空")
-                self._enqueue_background_task(
-                    kind="moondream-background-auto-label",
-                    title=f"标注 {name} 的背景图片",
-                    message="Moondream 图片标注任务已排队。",
-                    worker=lambda task_id: run_background_image_auto_label(self.state, task_id, name),
                 )
             elif method == "POST" and path == "/api/backgrounds/import":
                 paths = body.get("paths") or []
@@ -1008,166 +873,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                         "downloadUrl": f"/api/download?path={output_relative}",
                         "path": output_relative,
                     }
-                )
-            # --- templates ---
-            elif method in {"POST", "PUT"} and path == "/api/templates":
-                self._send_json(_save_template_summary(self.state, body))
-            elif method == "POST" and path == "/api/templates/session":
-                self._send_json(_save_template_session_payload(self.state, body))
-            elif method == "POST" and path == "/api/templates/generate":
-                self._send_json(_generate_template_summary(self.state, body))
-            elif method == "POST" and path == "/api/tools/sprite-prompts":
-                self._enqueue_background_task(
-                    kind="tools-prompts",
-                    message="立绘提示词生成任务已排队。",
-                    title="生成立绘提示词",
-                    worker=lambda task_id: _generate_sprite_prompts(self.state, task_id, body),
-                )
-            elif method == "POST" and path == "/api/tools/sprites/generate":
-                self._enqueue_background_task(
-                    kind="tools-sprites",
-                    message="立绘批量生成任务已排队。",
-                    title="批量生成立绘",
-                    worker=lambda task_id: _generate_sprites(self.state, task_id, body),
-                )
-            elif method == "POST" and path == "/api/tools/sprites/crop":
-                self._enqueue_background_task(
-                    kind="tools-crop",
-                    message="立绘裁剪任务已排队。",
-                    title="批量裁剪立绘",
-                    worker=lambda task_id: _crop_sprites(self.state, task_id, body),
-                )
-            elif method == "POST" and path == "/api/tools/sprites/remove-background":
-                self._enqueue_background_task(
-                    kind="tools-rmbg",
-                    message="立绘抠图任务已排队。",
-                    title="批量抠出立绘",
-                    worker=lambda task_id: _remove_sprite_background(self.state, task_id, body),
-                )
-            elif method == "POST" and path == "/api/mcp/config/open":
-                self._send_json(_open_mcp_config_file())
-            elif method == "POST" and path == "/api/mcp/config/apply":
-                self._enqueue_background_task(
-                    kind="mcp-apply",
-                    message="MCP 保存应用任务已排队。",
-                    title="保存并应用 MCP 配置",
-                    worker=lambda task_id: _save_and_apply_mcp_config(self.state, task_id, body),
-                )
-            elif method == "POST" and path == "/api/mcp/preview":
-                self._enqueue_background_task(
-                    kind="mcp-preview",
-                    message="MCP 工具预览任务已排队。",
-                    title="刷新 MCP 工具列表",
-                    worker=lambda task_id: _preview_mcp_tools_from_payload(self.state, task_id, body),
-                )
-            elif method == "POST" and path == "/api/plugins/install":
-                plugin_id = str(body.get("source") or body.get("id") or "").strip()
-                if not plugin_id:
-                    raise ValueError("plugin id is required")
-                ref_kind = str(body.get("refKind") or "latest").strip()
-                tag_name = str(body.get("tagName") or "").strip()
-                overwrite = bool(body.get("overwrite"))
-                with self.state.task_lock:
-                    running = [
-                        dict(task)
-                        for task in self.state.tasks.values()
-                        if task.get("kind") == "plugin-install"
-                        and task.get("source") == plugin_id
-                        and _is_running_task(task)
-                    ]
-                if running:
-                    self._send_json(running[0], HTTPStatus.ACCEPTED)
-                    return
-                self._enqueue_background_task(
-                    kind="plugin-install",
-                    message="插件安装任务已排队。",
-                    title=f"安装插件 {plugin_id}",
-                    task_updates={"source": plugin_id},
-                    worker=lambda task_id: _install_plugin_source(
-                        self.state,
-                        task_id,
-                        plugin_id,
-                        ref_kind=ref_kind,
-                        tag_name=tag_name,
-                        overwrite=overwrite,
-                    ),
-                )
-            elif method == "POST" and path == "/api/plugins/repo-tags":
-                self._send_json(_repo_tags(body))
-            elif method == "POST" and path == "/api/plugins/publisher/scan":
-                self._send_json(_scan_local_plugin(body))
-            elif method == "POST" and path == "/api/plugins/publisher/validate":
-                self._send_json(_validate_plugin_submission(body))
-            elif method == "POST" and path == "/api/plugins/publisher/issue-url":
-                self._send_json(_build_plugin_submission_issue_url(body))
-            elif method == "POST" and path == "/api/plugins/publisher/copy-json":
-                self._send_json(_copy_plugin_submission_json(body))
-            elif method == "POST" and path == "/api/plugins/app-update/tags":
-                self._send_json(_app_update_tags())
-            elif method == "POST" and path == "/api/plugins/app-update/run":
-                ref_kind = str(body.get("refKind") or "latest").strip()
-                tag_name = str(body.get("tagName") or "").strip()
-                self._enqueue_background_task(
-                    kind="app-update",
-                    message="主程序更新任务已排队。",
-                    title="更新主程序",
-                    task_updates={"refKind": ref_kind, "tagName": tag_name},
-                    worker=lambda task_id: _run_app_update(self.state, task_id, body),
-                )
-            elif method == "POST" and path.startswith("/api/plugins/") and path.endswith("/enabled"):
-                plugin_id = unquote(path[len("/api/plugins/") : -len("/enabled")])
-                self._send_json(_set_plugin_enabled(plugin_id, bool(body.get("enabled"))))
-            elif method == "POST" and path.startswith("/api/plugins/") and "/chat-ui/" in path and path.endswith("/run"):
-                rest = path[len("/api/plugins/") :]
-                plugin_part, _, contribution_tail = rest.partition("/chat-ui/")
-                contribution_part = contribution_tail[: -len("/run")]
-                self._send_json(
-                    _run_frontend_chat_ui_contribution(
-                        unquote(plugin_part),
-                        unquote(contribution_part),
-                    )
-                )
-            elif method == "POST" and path.startswith("/api/plugins/") and "/ui/" in path and "/actions/" in path:
-                # /api/plugins/{plugin_id}/ui/{page_id}/actions/{action_id}
-                rest = path[len("/api/plugins/") :]
-                plugin_part, _, ui_tail = rest.partition("/ui/")
-                page_part, _, action_tail = ui_tail.partition("/actions/")
-                self._send_json(
-                    _run_plugin_ui_action(
-                        unquote(plugin_part),
-                        unquote(page_part),
-                        unquote(action_tail),
-                        body,
-                    )
-                )
-            elif method == "POST" and path.startswith("/api/plugins/") and "/ui/" in path and path.endswith("/config"):
-                rest = path[len("/api/plugins/") :]
-                plugin_part, _, page_tail = rest.partition("/ui/")
-                page_part = page_tail[: -len("/config")]
-                self._send_json(
-                    _save_plugin_ui_config(
-                        unquote(plugin_part),
-                        unquote(page_part),
-                        body,
-                    )
-                )
-            elif method == "DELETE" and path.startswith("/api/plugins/"):
-                plugin_id = unquote(path[len("/api/plugins/") :])
-                self._send_json(_uninstall_plugin(plugin_id))
-            elif method == "POST" and path == "/api/runtime/install-missing-dependency":
-                module_name = str(body.get("moduleName") or "").strip()
-                if not module_name:
-                    raise ValueError("moduleName is required")
-                self._enqueue_background_task(
-                    kind="runtime-dependency-install",
-                    message=f"Installing dependency for {module_name}",
-                    title=f"Install {module_name}",
-                    task_updates={"source": module_name, "phase": "pip", "progress": 0},
-                    worker=lambda task_id: install_runtime_dependency(
-                        module_name,
-                        _task_id=task_id,
-                        _state=self.state,
-                    ),
                 )
             elif method == "POST" and path == "/api/chat/launch":
                 self._send_json(self._launch_chat(body))
