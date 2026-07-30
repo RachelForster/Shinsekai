@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="../assets/system/picture/shinsekai-github-banner.png" alt="Shinsekai GitHub Banner" width="100%">
+</p>
+
 [中文版](https://github.com/RachelForster/Shinsekai/blob/main/README.md) | [English](https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md)
 
 # Shinsekai

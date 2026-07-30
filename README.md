@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/system/picture/shinsekai-github-banner.png" alt="Shinsekai GitHub Banner" width="100%">
+</p>
+
 [中文版](README.md) | [English Version](https://github.com/RachelForster/Shinsekai/blob/main/docs/README_EN.md)
 
 # 新世界（Shinsekai）
