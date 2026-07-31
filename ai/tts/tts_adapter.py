@@ -1,10 +1,11 @@
-"""Built-in text-to-speech adapters."""
+# tts_adapter.py
 from sdk.adapters import TTSAdapter
 import os
 import requests
 import threading
 import queue
 import base64
+import hashlib
 import math
 import wave
 import array
@@ -14,6 +15,170 @@ import sys
 import time
 from typing import Optional, Callable
 from urllib.parse import urlparse
+
+from sdk.file_transactions import (
+    atomic_binary_writer,
+    atomic_write_bytes,
+    capture_directory_identity,
+    file_snapshot_is_stable,
+    inspect_portable_directory_tree,
+    open_binary_read_without_links,
+    require_directory_identity,
+)
+from sdk.process_launch import (
+    capture_launch_directory,
+    capture_launch_file,
+    isolated_python_environment,
+    popen_with_stable_paths,
+    run_with_stable_paths,
+)
+from sdk.path_contract import (
+    managed_project_directory,
+    project_root,
+    require_directory_without_links,
+    require_regular_file_without_links,
+    require_symlink_free_absolute_path,
+    resolve_executable_file,
+    resolve_project_output_path,
+    resolve_runtime_asset_read_path,
+    safe_path_component,
+    safe_path_component_with_suffix,
+    validate_exact_path_text,
+)
+
+
+def _tts_output_path(file_path: str | os.PathLike[str] | None, prefix: str) -> Path:
+    """Resolve adapter output without consulting the process working directory."""
+
+    root = project_root()
+    raw = (
+        f"data/cache/audio/{prefix}_{os.urandom(4).hex()}.wav"
+        if file_path is None
+        else os.fspath(file_path)
+    )
+    output = resolve_project_output_path(raw, root=root)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    require_directory_without_links(
+        output.parent,
+        field="TTS output directory",
+    )
+    return output
+
+
+def _tts_work_path(value: str | os.PathLike[str] | None) -> str | None:
+    """Resolve local engine work paths without consulting process cwd."""
+
+    raw = os.fspath(value) if value is not None else ""
+    if not raw:
+        return None
+    return resolve_runtime_asset_read_path(
+        raw,
+        root=project_root(),
+        resource_prefixes=(),
+    ).as_posix()
+
+
+def _bundled_python_path(work_root: Path) -> Path | None:
+    """Locate a native bundled interpreter without assuming Windows layout."""
+
+    try:
+        root = require_directory_without_links(
+            work_root,
+            field="TTS work directory",
+        )
+    except (OSError, ValueError):
+        return None
+    if os.name == "nt":
+        relatives = (
+            Path("runtime/python.exe"),
+            Path("runtime/python3.exe"),
+            Path("runtime/bin/python.exe"),
+            Path("runtime/bin/python3.exe"),
+        )
+    else:
+        relatives = (
+            Path("runtime/bin/python3"),
+            Path("runtime/bin/python"),
+            Path("runtime/python3"),
+            Path("runtime/python"),
+        )
+    for relative in relatives:
+        candidate = root / relative
+        if os.path.lexists(candidate):
+            return resolve_executable_file(
+                candidate,
+                field="TTS Python executable",
+            )
+    return None
+
+
+def _local_python_path(work_root: Path, *, service_name: str) -> Path:
+    bundled = _bundled_python_path(work_root)
+    if bundled is not None:
+        return bundled
+    if getattr(sys, "frozen", False):
+        raise FileNotFoundError(
+            f"{service_name} bundled runtime Python not found under: {work_root}"
+        )
+    return resolve_executable_file(
+        Path(sys.executable),
+        field="host Python executable",
+    )
+
+
+def _popen_local_python_service(
+    *,
+    service_name: str,
+    work_root: Path,
+    python_path: Path,
+    script_path: Path,
+    popen_factory=None,
+):
+    work_snapshot = capture_launch_directory(
+        work_root,
+        field=f"{service_name} work directory",
+    )
+    python_snapshot = capture_launch_file(
+        python_path,
+        field=f"{service_name} Python executable",
+        executable=True,
+    )
+    script_snapshot = capture_launch_file(
+        script_path,
+        field=f"{service_name} startup script",
+    )
+    return popen_with_stable_paths(
+        [python_snapshot.path, script_snapshot.path],
+        cwd=work_snapshot,
+        executable=python_snapshot,
+        required_files=(script_snapshot,),
+        env=isolated_python_environment(),
+        popen_factory=subprocess.Popen if popen_factory is None else popen_factory,
+    )
+
+
+def _tts_service_input_path(
+    value: str | os.PathLike[str] | None,
+    *,
+    local_service: bool,
+    field: str,
+) -> str:
+    """Preserve remote path semantics while rooting local service inputs."""
+
+    raw = os.fspath(value) if value is not None else ""
+    if not raw:
+        return ""
+    if local_service:
+        return resolve_runtime_asset_read_path(
+            raw,
+            root=project_root(),
+        ).as_posix()
+    validate_exact_path_text(
+        raw,
+        field=field,
+        allow_non_native_absolute=True,
+    )
+    return raw
 
 
 def _is_local_server_url(url: str) -> bool:
@@ -64,7 +229,7 @@ class GPTSoVitsAdapter(TTSAdapter):
             self._session.trust_env = False
         self.sovits_model_path = ''
         self.gpt_model_path = ''
-        self.gpt_sovits_work_path = str(gpt_sovits_work_path or "").strip() or None
+        self.gpt_sovits_work_path = _tts_work_path(gpt_sovits_work_path)
         self._server_process = None
 
         # Consider the user's input mistake
@@ -152,16 +317,28 @@ class GPTSoVitsAdapter(TTSAdapter):
         if not self.gpt_sovits_work_path:
             raise RuntimeError("Local GPT-SoVITS server is not reachable; set the GPT-SoVITS startup path.")
 
-        os_path = Path(self.gpt_sovits_work_path)
-        api_path = os_path / "api_v2.py"
-        if not api_path.is_file():
-            raise FileNotFoundError(f"GPT-SoVITS api_v2.py not found: {api_path}")
+        os_path = require_directory_without_links(
+            self.gpt_sovits_work_path,
+            field="GPT-SoVITS work directory",
+        )
+        raw_api_path = os_path / "api_v2.py"
+        if not os.path.lexists(raw_api_path):
+            raise FileNotFoundError(
+                f"GPT-SoVITS api_v2.py not found: {raw_api_path}"
+            )
+        api_path = require_regular_file_without_links(
+            raw_api_path,
+            field="GPT-SoVITS startup script",
+        )
 
-        bundled_python = os_path / "runtime" / ("python.exe" if os.name == "nt" else "python")
-        python_path = bundled_python if bundled_python.exists() else Path(sys.executable)
-
-        # Use subprocess.Popen to start the server in the background
-        self._server_process = subprocess.Popen([str(python_path), str(api_path)], cwd=str(os_path))
+        python_path = _local_python_path(os_path, service_name="GPT-SoVITS")
+        
+        self._server_process = _popen_local_python_service(
+            service_name="GPT-SoVITS",
+            work_root=os_path,
+            python_path=python_path,
+            script_path=api_path,
+        )
         print("GPT-SoVITS server starting...")
 
     def generate_speech(self, text, file_path=None, **kwargs):
@@ -179,8 +356,13 @@ class GPTSoVitsAdapter(TTSAdapter):
         except (TypeError, ValueError):
             batch_size = 1
 
+        reference_audio = _tts_service_input_path(
+            kwargs.get("ref_audio_path"),
+            local_service=self._is_local_server_url(),
+            field="reference audio path",
+        )
         params = {
-            "ref_audio_path": kwargs.get("ref_audio_path", ""),
+            "ref_audio_path": reference_audio,
             "prompt_text": kwargs.get("prompt_text", ""),
             "prompt_lang": kwargs.get("prompt_lang", ""),
             "text": text,
@@ -206,15 +388,10 @@ class GPTSoVitsAdapter(TTSAdapter):
             if not response.ok:
                 raise RuntimeError(self._response_error_text(response, "TTS request"))
 
-            if not file_path:
-                # Logic to create a temporary file path
-                # ... (You can use the logic from the original tts_manager.py)
-                file_path = "path_to_temporary_file.wav"
+            output = _tts_output_path(file_path, "gpt_sovits")
+            atomic_write_bytes(output, response.content)
 
-            with open(file_path, 'wb') as f:
-                f.write(response.content)
-
-            return os.path.abspath(file_path)
+            return output.as_posix()
         except Exception as e:
             print(f"GPT-SoVITS TTS generation failed: {e}")
             return None
@@ -224,14 +401,23 @@ class GPTSoVitsAdapter(TTSAdapter):
         Switches the GPT-SoVITS models.
         `model_info` is expected to be a dictionary with 'gpt_model_path' and 'sovits_model_path'.
         """
-
-        gpt_model_path = model_info.get('gpt_model_path', '')
-        sovits_model_path = model_info.get('sovits_model_path', '')
-
+    
+        local_service = self._is_local_server_url()
+        gpt_model_path = _tts_service_input_path(
+            model_info.get("gpt_model_path"),
+            local_service=local_service,
+            field="GPT model path",
+        )
+        sovits_model_path = _tts_service_input_path(
+            model_info.get("sovits_model_path"),
+            local_service=local_service,
+            field="SoVITS model path",
+        )
+        
         if self.sovits_model_path == sovits_model_path and self.gpt_model_path == gpt_model_path:
             print("No model switch needed, current models are already set.", self.gpt_model_path, self.sovits_model_path)
             return
-
+        
         try:
             if gpt_model_path and gpt_model_path.endswith(".ckpt"):
                 response = self._session.get(
@@ -264,7 +450,28 @@ class GPTSoVitsAdapter(TTSAdapter):
 
 
 def _is_kaggle_path(path: str) -> bool:
-    return str(path or "").strip().startswith("/kaggle/")
+    return str(path or "").startswith("/kaggle/")
+
+
+def _optional_remote_path(value: object, *, field: str) -> str:
+    raw = str(value or "")
+    if raw and (
+        raw != raw.strip()
+        or any(
+            ord(character) < 32
+            or ord(character) == 127
+            or 0xD800 <= ord(character) <= 0xDFFF
+            for character in raw
+        )
+    ):
+        raise ValueError(f"{field} must not contain non-portable characters")
+    if raw:
+        validate_exact_path_text(
+            raw,
+            field=field,
+            allow_non_native_absolute=True,
+        )
+    return raw
 
 
 class KaggleGPTSoVitsAdapter(GPTSoVitsAdapter):
@@ -293,9 +500,18 @@ class KaggleGPTSoVitsAdapter(GPTSoVitsAdapter):
         batch_threshold: float = 0.75,
         super_sampling: bool = False,
     ):
-        self.remote_gpt_model_path = str(remote_gpt_model_path or "").strip()
-        self.remote_sovits_model_path = str(remote_sovits_model_path or "").strip()
-        self.remote_ref_audio_path = str(remote_ref_audio_path or "").strip()
+        self.remote_gpt_model_path = _optional_remote_path(
+            remote_gpt_model_path,
+            field="remote_gpt_model_path",
+        )
+        self.remote_sovits_model_path = _optional_remote_path(
+            remote_sovits_model_path,
+            field="remote_sovits_model_path",
+        )
+        self.remote_ref_audio_path = _optional_remote_path(
+            remote_ref_audio_path,
+            field="remote_ref_audio_path",
+        )
         self.switch_weights = bool(switch_weights)
         self.text_split_method = str(text_split_method or "cut5").strip() or "cut5"
         try:
@@ -396,8 +612,14 @@ class KaggleGPTSoVitsAdapter(GPTSoVitsAdapter):
             print("Kaggle GPT-SoVITS server is not reachable; start the Kaggle notebook and tunnel first.")
 
     def _configured_or_kaggle_path(self, configured: str, fallback: str) -> str:
-        configured = str(configured or "").strip()
-        fallback = str(fallback or "").strip()
+        configured = _optional_remote_path(
+            configured,
+            field="configured Kaggle path",
+        )
+        fallback = _optional_remote_path(
+            fallback,
+            field="fallback Kaggle path",
+        )
         if configured:
             return configured
         if _is_kaggle_path(fallback):
@@ -476,7 +698,9 @@ class IndexTTSAdapter(TTSAdapter):
             # Loopback services must not be routed through HTTP(S)_PROXY.
             self._session.trust_env = False
 
-        self.gpt_sovits_work_path = str(index_server_work_path or gpt_sovits_work_path or "").strip() or None
+        self.gpt_sovits_work_path = _tts_work_path(
+            index_server_work_path or gpt_sovits_work_path
+        )
 
         # Load the model and start the server process here
         self._start_server_process()
@@ -541,16 +765,32 @@ class IndexTTSAdapter(TTSAdapter):
         if not self.gpt_sovits_work_path:
             raise RuntimeError("Local IndexTTS server is not reachable; set the IndexTTS startup path.")
 
-        os_path = self.gpt_sovits_work_path
-        embeded_python_path = os.path.join(os_path, "runtime", "python.exe")
-        api_path = os.path.join(os_path, "api_v2.py")
-        if not os.path.isfile(api_path):
-            raise FileNotFoundError(f"IndexTTS api_v2.py not found: {api_path}")
-
-        # Use subprocess.Popen to start the server in the background
-        self._server_process = subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
+        os_path = require_directory_without_links(
+            self.gpt_sovits_work_path,
+            field="IndexTTS work directory",
+        )
+        embedded_python_path = _local_python_path(
+            os_path,
+            service_name="IndexTTS",
+        )
+        raw_api_path = os_path / "api_v2.py"
+        if not os.path.lexists(raw_api_path):
+            raise FileNotFoundError(
+                f"IndexTTS api_v2.py not found: {raw_api_path}"
+            )
+        api_path = require_regular_file_without_links(
+            raw_api_path,
+            field="IndexTTS startup script",
+        )
+        
+        self._server_process = _popen_local_python_service(
+            service_name="IndexTTS",
+            work_root=os_path,
+            python_path=embedded_python_path,
+            script_path=api_path,
+        )
         print("IndexTTS server starting...")
-
+    
     def generate_speech(self, text, file_path=None, **kwargs):
         """Generates speech using the Index TTS API."""
         try:
@@ -563,13 +803,10 @@ class IndexTTSAdapter(TTSAdapter):
             response = self._session.post(self.index_server_url + "generate", json=params)
             response.raise_for_status()
 
-            if not file_path:
-                file_path = "path_to_index_tts_file.wav"
+            output = _tts_output_path(file_path, "index_tts")
+            atomic_write_bytes(output, response.content)
 
-            with open(file_path, 'wb') as f:
-                f.write(response.content)
-
-            return os.path.abspath(file_path)
+            return output.as_posix()
         except Exception as e:
             print(f"Index TTS generation failed: {e}")
             return None
@@ -637,13 +874,10 @@ class CosyVoiceAdapter(TTSAdapter):
             response = requests.post(api_url, headers=headers, json=params)
             response.raise_for_status()
 
-            if not file_path:
-                file_path = "temp_cosyvoice.wav"
+            output = _tts_output_path(file_path, "cosyvoice")
+            atomic_write_bytes(output, response.content)
 
-            with open(file_path, "wb") as f:
-                f.write(response.content)
-
-            return os.path.abspath(file_path)
+            return output.as_posix()
         except Exception as e:
             print(f"CosyVoice TTS generation failed: {e}")
             return None
@@ -655,7 +889,7 @@ class CosyVoiceAdapter(TTSAdapter):
         """
         voice = model_info.get("voice")
         model = model_info.get("model")
-
+        
         if voice:
             self.current_voice = voice
             print(f"CosyVoice voice switched to: {self.current_voice}")
@@ -676,7 +910,7 @@ class GenieTTSAdapter(TTSAdapter):
     ):
         self.tts_server_url = tts_server_url.rstrip("/") + "/"
         # Keep compatibility with existing factory argument name.
-        self.tts_work_path = str(tts_work_path or gpt_sovits_work_path or "").strip() or None
+        self.tts_work_path = _tts_work_path(tts_work_path or gpt_sovits_work_path)
         self.character_name = None
         self.onnx_model_dir = None
         self.loaded_character_name = None
@@ -701,68 +935,180 @@ class GenieTTSAdapter(TTSAdapter):
         if not name:
             return ""
         # Remove '=' padding to keep folder names shorter and cleaner.
-        return base64.urlsafe_b64encode(name.encode("utf-8")).decode("ascii").rstrip("=")
+        encoded = (
+            base64.urlsafe_b64encode(name.encode("utf-8"))
+            .decode("ascii")
+            .rstrip("=")
+        )
+        try:
+            return safe_path_component(encoded, field="Genie character key")
+        except ValueError:
+            # Base64 expands arbitrary Unicode names by roughly one third. A
+            # character name that is itself a valid 255-byte component can
+            # therefore become an invalid ONNX directory/key after encoding.
+            # Preserve every existing short key and fit only the previously
+            # unusable edge case, retaining a digest so distinct long names do
+            # not collapse onto the same truncated prefix.
+            digest = hashlib.sha256(name.encode("utf-8")).hexdigest()[:24]
+            return safe_path_component_with_suffix(
+                encoded,
+                f"-{digest}",
+                field="Genie character key",
+            )
 
     def _resolve_converter_script(self):
         if not self.tts_work_path:
             return None
-        base_path = Path(self.tts_work_path)
+        base_path = require_symlink_free_absolute_path(
+            self.tts_work_path,
+            field="Genie TTS work path",
+        )
         if base_path.suffix.lower() == ".py":
-            return base_path if base_path.exists() else None
+            if not os.path.lexists(base_path):
+                return None
+            return require_regular_file_without_links(
+                base_path,
+                field="Genie TTS converter script",
+            )
+        base_path = require_directory_without_links(
+            base_path,
+            field="Genie TTS work directory",
+        )
         candidates = [base_path / "convert.py", base_path / "convery.py"]
         for script in candidates:
-            if script.exists():
-                return script
+            if os.path.lexists(script):
+                return require_regular_file_without_links(
+                    script,
+                    field="Genie TTS converter script",
+                )
         return None
 
     def _has_onnx_files(self, onnx_dir: str) -> bool:
         if not onnx_dir:
             return False
-        onnx_path = Path(onnx_dir)
-        if not onnx_path.exists() or not onnx_path.is_dir():
+        try:
+            onnx_path = require_directory_without_links(
+                onnx_dir,
+                field="Genie ONNX model directory",
+            )
+        except (FileNotFoundError, NotADirectoryError):
             return False
-        return any(p.suffix.lower() == ".onnx" for p in onnx_path.glob("*.onnx"))
+        _, files = inspect_portable_directory_tree(onnx_path)
+        return any(candidate.suffix.lower() == ".onnx" for candidate in files)
 
     def _convert_model_to_onnx(self, character_name: str, ckpt_model_path: str, pth_model_path: str, onnx_dir: str):
+        root = project_root()
+        ckpt_path = resolve_runtime_asset_read_path(ckpt_model_path, root=root)
+        pth_path = resolve_runtime_asset_read_path(pth_model_path, root=root)
+        output_dir = resolve_project_output_path(onnx_dir, root=root)
+        ckpt_snapshot = capture_launch_file(
+            ckpt_path,
+            field="Genie checkpoint input",
+        )
+        pth_snapshot = capture_launch_file(
+            pth_path,
+            field="Genie model input",
+        )
+
         converter_script = self._resolve_converter_script()
         if converter_script is None:
             raise FileNotFoundError("Cannot find convert.py/convery.py in tts_work_path.")
 
         work_path = converter_script.parent
-        embedded_python_path = work_path / "runtime" / "python.exe"
-        if not embedded_python_path.exists():
-            raise FileNotFoundError(f"Runtime python not found: {embedded_python_path}")
+        embedded_python_path = _bundled_python_path(work_path)
+        if embedded_python_path is None:
+            raise FileNotFoundError(f"Bundled runtime Python not found under: {work_path}")
+        work_snapshot = capture_launch_directory(
+            work_path,
+            field="Genie converter working directory",
+        )
+        python_snapshot = capture_launch_file(
+            embedded_python_path,
+            field="Genie converter Python executable",
+            executable=True,
+        )
+        converter_snapshot = capture_launch_file(
+            converter_script,
+            field="Genie converter script",
+        )
 
-        Path(onnx_dir).mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_dir = require_directory_without_links(
+            output_dir,
+            field="Genie ONNX output directory",
+        )
+        output_snapshot = capture_launch_directory(
+            output_dir,
+            field="Genie ONNX output directory",
+        )
         cmd = [
-            str(embedded_python_path),
-            str(converter_script),
-            "--pth", pth_model_path,
-            "--ckpt", ckpt_model_path,
-            "--out", onnx_dir
+            str(python_snapshot.path),
+            str(converter_snapshot.path),
+            "--pth", pth_snapshot.path.as_posix(),
+            "--ckpt", ckpt_snapshot.path.as_posix(),
+            "--out", output_dir.as_posix(),
         ]
         print(f"Converting ONNX for '{character_name}' ...")
-        result = subprocess.run(cmd, cwd=str(work_path), capture_output=True, text=True, timeout=600)
+        result = run_with_stable_paths(
+            cmd,
+            cwd=work_snapshot,
+            executable=python_snapshot,
+            required_directories=(output_snapshot,),
+            required_files=(
+                converter_snapshot,
+                pth_snapshot,
+                ckpt_snapshot,
+            ),
+            env=isolated_python_environment(),
+            run_factory=subprocess.run,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
         if result.returncode != 0:
             raise RuntimeError(
                 f"Convert failed (code={result.returncode}).\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"
             )
-        print(f"ONNX convert finished for '{character_name}': {onnx_dir}")
+        print(f"ONNX convert finished for '{character_name}': {output_dir}")
 
-    def _is_valid_wav_file(self, file_path: str) -> bool:
-        if not file_path or not os.path.exists(file_path):
+    def _is_valid_wav_file(
+        self,
+        file_path: str,
+        *,
+        expected_identity: os.stat_result | None = None,
+        expected_parent_identity: os.stat_result | None = None,
+    ) -> bool:
+        if not file_path:
             return False
         try:
-            with wave.open(file_path, "rb") as wav_f:
+            with (
+                open_binary_read_without_links(
+                    file_path,
+                    expected_identity=expected_identity,
+                    expected_parent_identity=expected_parent_identity,
+                ) as source,
+                wave.open(source, "rb") as wav_f,
+            ):
+                before = os.fstat(source.fileno())
                 # Trigger parsing.
                 wav_f.getnchannels()
                 wav_f.getframerate()
                 wav_f.getnframes()
+                after = os.fstat(source.fileno())
+                if not file_snapshot_is_stable(before, after):
+                    return False
             return True
         except Exception:
             return False
 
-    def _write_raw_stream_as_wav(self, raw_bytes: bytes, out_path: str, sample_rate: int = 32000) -> bool:
+    def _write_raw_stream_as_wav(
+        self,
+        raw_bytes: bytes,
+        out_path: str,
+        sample_rate: int = 32000,
+        *,
+        expected_parent_identity: os.stat_result | None = None,
+    ) -> bool:
         if not raw_bytes:
             return False
         pcm_bytes = b""
@@ -796,25 +1142,64 @@ class GenieTTSAdapter(TTSAdapter):
             return False
 
         try:
-            with wave.open(out_path, "wb") as wav_f:
-                wav_f.setnchannels(1)
-                wav_f.setsampwidth(2)
-                wav_f.setframerate(sample_rate)
-                wav_f.writeframes(pcm_bytes)
-            return self._is_valid_wav_file(out_path)
+            written_identity: os.stat_result | None = None
+            with atomic_binary_writer(
+                out_path,
+                expected_parent_identity=expected_parent_identity,
+            ) as output:
+                with wave.open(output, "wb") as wav_f:
+                    wav_f.setnchannels(1)
+                    wav_f.setsampwidth(2)
+                    wav_f.setframerate(sample_rate)
+                    wav_f.writeframes(pcm_bytes)
+                written_identity = os.fstat(output.fileno())
+            output_identity = Path(out_path).lstat()
+            if (
+                written_identity is None
+                or not os.path.samestat(written_identity, output_identity)
+            ):
+                return False
+            return self._is_valid_wav_file(
+                out_path,
+                expected_identity=written_identity,
+                expected_parent_identity=expected_parent_identity,
+            )
         except Exception:
             return False
 
-    def _write_pcm_chunks_as_wav(self, chunks, out_path: str, sample_rate: int = 32000) -> bool:
+    def _write_pcm_chunks_as_wav(
+        self,
+        chunks,
+        out_path: str,
+        sample_rate: int = 32000,
+        *,
+        expected_parent_identity: os.stat_result | None = None,
+    ) -> bool:
         try:
-            with wave.open(out_path, "wb") as wav_f:
-                wav_f.setnchannels(1)
-                wav_f.setsampwidth(2)
-                wav_f.setframerate(sample_rate)
-                for chunk in chunks:
-                    if chunk:
-                        wav_f.writeframesraw(chunk)
-            return self._is_valid_wav_file(out_path)
+            written_identity: os.stat_result | None = None
+            with atomic_binary_writer(
+                out_path,
+                expected_parent_identity=expected_parent_identity,
+            ) as output:
+                with wave.open(output, "wb") as wav_f:
+                    wav_f.setnchannels(1)
+                    wav_f.setsampwidth(2)
+                    wav_f.setframerate(sample_rate)
+                    for chunk in chunks:
+                        if chunk:
+                            wav_f.writeframesraw(chunk)
+                written_identity = os.fstat(output.fileno())
+            output_identity = Path(out_path).lstat()
+            if (
+                written_identity is None
+                or not os.path.samestat(written_identity, output_identity)
+            ):
+                return False
+            return self._is_valid_wav_file(
+                out_path,
+                expected_identity=written_identity,
+                expected_parent_identity=expected_parent_identity,
+            )
         except Exception:
             return False
 
@@ -827,21 +1212,37 @@ class GenieTTSAdapter(TTSAdapter):
         if not self.tts_work_path:
             raise RuntimeError("Local Genie TTS server is not reachable; set the Genie TTS startup path.")
 
-        os_path = self.tts_work_path
-        if os_path.endswith(".py"):
-            os_path = str(Path(os_path).parent)
+        os_path = require_symlink_free_absolute_path(
+            self.tts_work_path,
+            field="Genie TTS work path",
+        )
+        if os_path.suffix.lower() == ".py":
+            os_path = os_path.parent
+        os_path = require_directory_without_links(
+            os_path,
+            field="Genie TTS work directory",
+        )
 
-        embedded_python_path = os.path.join(os_path, "runtime", "python.exe")
-        start_script_path = os.path.join(os_path, "start.py")
+        embedded_python_path = _bundled_python_path(os_path)
+        raw_start_script_path = os_path / "start.py"
 
-        if not os.path.exists(embedded_python_path):
-            print(f"Genie TTS runtime not found: {embedded_python_path}")
+        if embedded_python_path is None:
+            print(f"Genie TTS bundled runtime Python not found under: {os_path}")
             return
-        if not os.path.exists(start_script_path):
-            print(f"Genie TTS start.py not found: {start_script_path}")
+        if not os.path.lexists(raw_start_script_path):
+            print(f"Genie TTS start.py not found: {raw_start_script_path}")
             return
+        start_script_path = require_regular_file_without_links(
+            raw_start_script_path,
+            field="Genie TTS startup script",
+        )
 
-        self._server_process = subprocess.Popen([embedded_python_path, start_script_path], cwd=os_path)
+        self._server_process = _popen_local_python_service(
+            service_name="Genie TTS",
+            work_root=os_path,
+            python_path=embedded_python_path,
+            script_path=start_script_path,
+        )
         print("Genie TTS server starting...")
         for _ in range(20):
             time.sleep(0.5)
@@ -862,6 +1263,10 @@ class GenieTTSAdapter(TTSAdapter):
         if not self.character_name or not self.onnx_model_dir:
             print("Genie TTS switch_model missing character_name/onnx_model_dir.")
             return
+        if not self._has_onnx_files(self.onnx_model_dir):
+            raise FileNotFoundError(
+                f"Genie TTS model directory has no safe ONNX files: {self.onnx_model_dir}"
+            )
         try:
             encoded_character_name = self._encode_name(self.character_name)
             payload = {
@@ -880,12 +1285,12 @@ class GenieTTSAdapter(TTSAdapter):
     def generate_speech(self, text, file_path=None, **kwargs):
         """
         Generates TTS audio using the Genie TTS engine.
-
+        
         Args:
             text (str): The text to synthesize.
             file_path (str, optional): The path to save the generated audio.
             **kwargs: Extra arguments, including 'ref_audio_path' and 'audio_text'.
-
+        
         Returns:
             str: The absolute path of the generated audio file, or None on failure.
         """
@@ -896,7 +1301,7 @@ class GenieTTSAdapter(TTSAdapter):
         if not self.character_name:
             print("Genie TTS has no active character. Call switch_model first.")
             return None
-
+        
         ref_audio_path = kwargs.get('ref_audio_path')
         audio_text = kwargs.get('prompt_text')
         audio_lang = kwargs.get('prompt_lang') or kwargs.get('text_lang') or "zh"
@@ -907,7 +1312,7 @@ class GenieTTSAdapter(TTSAdapter):
         if self.loaded_character_name != self.character_name:
             self._load_character_model(audio_lang)
 
-
+        
 
         if ref_audio_path and audio_text and self.reference_audio_key != reference_audio_key:
             try:
@@ -925,12 +1330,15 @@ class GenieTTSAdapter(TTSAdapter):
                 print(f"Failed to set Genie TTS reference audio: {e}")
 
         try:
-            if not file_path:
-                file_path = os.path.join("temp", f"genie_tts_{os.urandom(4).hex()}.wav")
-
-            abs_file_path = os.path.abspath(file_path)
+            output = _tts_output_path(file_path, "genie_tts")
+            output_parent, output_parent_identity = capture_directory_identity(
+                output.parent,
+                field="Genie TTS output directory",
+            )
+            if output.parent != output_parent:
+                raise PermissionError("Genie TTS output directory changed identity")
+            abs_file_path = output.as_posix()
             print(f"Genie TTS save path: {abs_file_path}")
-            os.makedirs(os.path.dirname(abs_file_path), exist_ok=True)
             payload = {
                 "character_name": encoded_character_name,
                 "text": text,
@@ -947,21 +1355,52 @@ class GenieTTSAdapter(TTSAdapter):
             first_bytes = chunks[0][:16]
             is_riff = first_bytes[:4] == b"RIFF"
             if is_riff:
-                with open(abs_file_path, "wb") as f:
+                written_identity: os.stat_result | None = None
+                with atomic_binary_writer(
+                    abs_file_path,
+                    expected_parent_identity=output_parent_identity,
+                ) as f:
                     for chunk in chunks:
                         f.write(chunk)
+                    written_identity = os.fstat(f.fileno())
+                output_identity = output.lstat()
+                if (
+                    written_identity is None
+                    or not os.path.samestat(written_identity, output_identity)
+                    or not self._is_valid_wav_file(
+                        abs_file_path,
+                        expected_identity=written_identity,
+                        expected_parent_identity=output_parent_identity,
+                    )
+                ):
+                    print(
+                        "Genie TTS did not create a stable valid WAV file: "
+                        f"{abs_file_path}"
+                    )
+                    return None
             else:
                 # Official sample streams raw PCM bytes to PyAudio directly.
                 # Here we encapsulate raw PCM into a standard WAV file for pygame playback.
-                if not self._write_pcm_chunks_as_wav(chunks, abs_file_path, sample_rate=32000):
+                if not self._write_pcm_chunks_as_wav(
+                    chunks,
+                    abs_file_path,
+                    sample_rate=32000,
+                    expected_parent_identity=output_parent_identity,
+                ):
                     raw_bytes = b"".join(chunks)
-                    if not self._write_raw_stream_as_wav(raw_bytes, abs_file_path, sample_rate=32000):
+                    if not self._write_raw_stream_as_wav(
+                        raw_bytes,
+                        abs_file_path,
+                        sample_rate=32000,
+                        expected_parent_identity=output_parent_identity,
+                    ):
                         print("Genie TTS output is not valid WAV and conversion failed.")
                         return None
-
-            if not os.path.exists(abs_file_path):
-                print(f"Genie TTS did not create output file: {abs_file_path}")
-                return None
+            require_directory_identity(
+                output_parent,
+                output_parent_identity,
+                field="Genie TTS output directory",
+            )
 
             print("Genie TTS audio generation complete.")
             return abs_file_path
@@ -984,7 +1423,22 @@ class GenieTTSAdapter(TTSAdapter):
         encoded_character_name = self._encode_name(new_character_name) if new_character_name else ""
 
         if not new_onnx_model_dir and encoded_character_name:
-            new_onnx_model_dir = str((Path("onnx") / encoded_character_name).resolve())
+            new_onnx_model_dir = str(
+                managed_project_directory(
+                    "onnx",
+                    encoded_character_name,
+                    root=project_root(),
+                )
+            )
+        elif new_onnx_model_dir:
+            raw_onnx_dir = str(new_onnx_model_dir)
+            new_onnx_model_dir = str(
+                resolve_runtime_asset_read_path(
+                    raw_onnx_dir,
+                    root=project_root(),
+                    resource_prefixes=(),
+                )
+            )
 
         if new_onnx_model_dir and not self._has_onnx_files(new_onnx_model_dir):
             if ckpt_model_path and pth_model_path:
@@ -996,9 +1450,16 @@ class GenieTTSAdapter(TTSAdapter):
                         onnx_dir=new_onnx_model_dir
                     )
                 except Exception as e:
-                    print(f"Auto convert ONNX failed: {e}")
+                    raise RuntimeError(f"Auto convert ONNX failed: {e}") from e
             else:
-                print("ONNX dir missing and no ckpt/pth path provided.")
+                raise FileNotFoundError(
+                    "Genie TTS model directory has no safe ONNX files and no "
+                    "ckpt/pth source paths were provided"
+                )
+            if not self._has_onnx_files(new_onnx_model_dir):
+                raise FileNotFoundError(
+                    "Genie TTS conversion completed without producing a safe ONNX file"
+                )
 
         if new_onnx_model_dir and self.onnx_model_dir != new_onnx_model_dir:
             self.onnx_model_dir = new_onnx_model_dir

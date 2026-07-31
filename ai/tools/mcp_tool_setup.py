@@ -1,6 +1,6 @@
-"""从 ``data/config/mcp.yaml`` 连接 MCP 服务，并把工具注册到 :class:`~ai.tools.tool_manager.ToolManager`。
+"""从 ``data/config/mcp.yaml`` 连接 MCP 服务，并把工具注册到 :class:`~llm.tools.tool_manager.ToolManager`。
 
-LLM 通过 :meth:`~ai.tools.tool_manager.ToolManager.execute` 同步调用工具，故在独立线程中运行
+LLM 通过 :meth:`~llm.tools.tool_manager.ToolManager.execute` 同步调用工具，故在独立线程中运行
 ``MCPBridge`` 所属的事件循环，并用 :func:`asyncio.run_coroutine_threadsafe` 转发 ``call_tool``。
 """
 
@@ -11,12 +11,23 @@ import logging
 import threading
 import concurrent.futures
 from collections.abc import Callable, Coroutine
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar
 
+from sdk.path_contract import validate_exact_path_text
+from sdk.process_launch import (
+    LaunchDirectorySnapshot,
+    LaunchFileSnapshot,
+    capture_command_executable,
+    capture_launch_directory,
+    capture_launch_file,
+    require_launch_snapshots,
+)
 from config.mcp_config import (
-    DEFAULT_MCP_CONFIG_PATH as _DEFAULT_CONFIG_PATH,
     read_mcp_config,
+    resolve_mcp_config_path,
+    resolve_mcp_stdio_working_directory,
 )
 from ai.tools.tool_manager import ToolManager
 
@@ -40,6 +51,24 @@ _mcp_owner_queue: asyncio.Queue[
 ] | None = None
 _mcp_owner_task: asyncio.Task[None] | None = None
 _owner_lock = threading.Lock()
+
+
+def _exact_mcp_text(value: Any, *, field: str, required: bool = False) -> str:
+    """Validate executable/URL/identity text without retargeting it."""
+
+    raw = str(value or "")
+    if raw != raw.strip() or any(
+        ord(character) < 32
+        or ord(character) == 127
+        or 0xD800 <= ord(character) <= 0xDFFF
+        for character in raw
+    ):
+        raise ValueError(
+            f"{field} must not contain surrounding whitespace or control characters"
+        )
+    if required and not raw:
+        raise ValueError(f"{field} is required")
+    return raw
 
 
 def _ensure_mcp_loop() -> asyncio.AbstractEventLoop:
@@ -159,6 +188,77 @@ def _normalize_env(raw: Any) -> dict[str, str] | None:
     return {str(k): str(v) for k, v in raw.items()}
 
 
+@dataclass(frozen=True)
+class _McpStdioLaunch:
+    command: LaunchFileSnapshot
+    working_directory: LaunchDirectorySnapshot
+
+
+def _capture_mcp_stdio_launch(
+    entry: dict[str, Any],
+    *,
+    project_root: str | Path,
+) -> _McpStdioLaunch:
+    """Freeze the executable and cwd identities used by one stdio server."""
+
+    cwd_text = _exact_mcp_text(
+        entry.get("cwd"),
+        field="MCP stdio working directory",
+    )
+    cwd_path = resolve_mcp_stdio_working_directory(
+        cwd_text or None,
+        project_root=project_root,
+    )
+    working_directory = capture_launch_directory(
+        cwd_path,
+        field="MCP stdio working directory",
+    )
+
+    command_text = _exact_mcp_text(
+        entry.get("command"),
+        field="MCP stdio command",
+        required=True,
+    )
+    command_path = Path(command_text)
+    environment = _normalize_env(entry.get("env"))
+    if command_path.is_absolute():
+        command = capture_command_executable(
+            command_path,
+            field="MCP stdio command",
+        )
+    elif "/" in command_text or "\\" in command_text:
+        validate_exact_path_text(
+            command_text,
+            field="MCP stdio command",
+        )
+        command = capture_launch_file(
+            working_directory.path.joinpath(
+                *command_text.replace("\\", "/").split("/")
+            ),
+            field="MCP stdio command",
+            executable=True,
+        )
+    else:
+        command = capture_command_executable(
+            command_text,
+            field="MCP stdio command",
+            search_path=(
+                environment["PATH"]
+                if environment is not None and "PATH" in environment
+                else None
+            ),
+            path_extensions=(
+                environment["PATHEXT"]
+                if environment is not None and "PATHEXT" in environment
+                else None
+            ),
+        )
+    return _McpStdioLaunch(
+        command=command,
+        working_directory=working_directory,
+    )
+
+
 async def _async_close_all_bridges() -> None:
     # 后进先关，减轻 anyio CancelScope 在首条连接 teardown 后的栈错位；中间让出事件循环。
     for b in reversed(list(_active_bridges)):
@@ -183,44 +283,70 @@ def close_all_mcp_bridges_sync(*, timeout: float = 60.0) -> None:
         logger.exception("close_all_mcp_bridges_sync")
 
 
-async def _async_probe_tools(servers: list[Any]) -> list[dict[str, Any]]:
+async def _async_probe_tools(
+    servers: list[Any],
+    *,
+    project_root: Path,
+) -> list[dict[str, Any]]:
     from ai.tools.mcp_bridge import MCPBridge
 
     out: list[dict[str, Any]] = []
     for entry in servers:
         if not isinstance(entry, dict) or entry.get("enabled") is False:
             continue
-        name_prefix = str(entry.get("name_prefix") or "").strip()
-        transport = str(entry.get("transport") or "").strip().lower()
+        transport = "<invalid>"
         bridge = None
         try:
+            name_prefix = _exact_mcp_text(
+                entry.get("name_prefix"),
+                field="MCP name prefix",
+            )
+            transport = _exact_mcp_text(
+                entry.get("transport"),
+                field="MCP transport",
+                required=True,
+            ).lower()
             if transport == "sse":
-                url = str(entry.get("url") or "").strip()
-                if not url:
-                    continue
+                url = _exact_mcp_text(
+                    entry.get("url"),
+                    field="MCP sse URL",
+                    required=True,
+                )
                 headers = entry.get("headers")
                 if headers is not None and not isinstance(headers, dict):
                     headers = None
                 bridge = MCPBridge()
                 await bridge.connect_sse(url, headers)
             elif transport == "streamable_http":
-                url = str(entry.get("url") or "").strip()
-                if not url:
-                    continue
+                url = _exact_mcp_text(
+                    entry.get("url"),
+                    field="MCP streamable_http URL",
+                    required=True,
+                )
                 headers = entry.get("headers")
                 if headers is not None and not isinstance(headers, dict):
                     headers = None
                 bridge = MCPBridge()
                 await bridge.connect_streamable_http(url, headers)
             elif transport == "stdio":
-                command = str(entry.get("command") or "").strip()
-                if not command:
-                    continue
+                launch = _capture_mcp_stdio_launch(
+                    entry,
+                    project_root=project_root,
+                )
                 args_raw = entry.get("args")
                 args = [str(x) for x in args_raw] if isinstance(args_raw, list) else []
                 env = _normalize_env(entry.get("env"))
                 bridge = MCPBridge()
-                await bridge.connect_stdio(command, args, env)
+                require_launch_snapshots(
+                    directories=(launch.working_directory,),
+                    files=(launch.command,),
+                )
+                await bridge.connect_stdio(
+                    str(launch.command.path),
+                    args,
+                    env,
+                    cwd=str(launch.working_directory.path),
+                )
             else:
                 continue
             for t in await bridge.list_tools():
@@ -229,9 +355,16 @@ async def _async_probe_tools(servers: list[Any]) -> list[dict[str, Any]]:
                 except Exception:
                     continue
                 n = d.get("name")
-                if not isinstance(n, str) or not n.strip():
+                if not isinstance(n, str):
                     continue
-                short = n.strip()
+                try:
+                    short = _exact_mcp_text(
+                        n,
+                        field="MCP tool name",
+                        required=True,
+                    )
+                except ValueError:
+                    continue
                 reg = f"{name_prefix}{short}" if name_prefix else short
                 out.append(
                     {
@@ -256,16 +389,23 @@ async def _async_probe_tools(servers: list[Any]) -> list[dict[str, Any]]:
 def preview_mcp_tools_from_config(
     path: Path | None = None,
     *,
+    project_root: str | Path | None = None,
     timeout: float = 300.0,
 ) -> list[dict[str, Any]]:
-    p = path or _DEFAULT_CONFIG_PATH
+    root = resolve_mcp_stdio_working_directory(
+        project_root=project_root,
+    )
+    p = resolve_mcp_config_path(path, project_root=root)
     cfg = read_mcp_config(p)
     if cfg.get("enabled") is False:
         return []
     servers = cfg.get("servers") or []
     if not isinstance(servers, list) or not servers:
         return []
-    return run_mcp_coro(_async_probe_tools(servers), timeout=timeout)
+    return run_mcp_coro(
+        _async_probe_tools(servers, project_root=root),
+        timeout=timeout,
+    )
 
 
 async def _register_one_server(
@@ -273,40 +413,62 @@ async def _register_one_server(
     entry: dict[str, Any],
     *,
     default_timeout: float,
+    project_root: Path,
 ) -> None:
     from ai.tools.mcp_bridge import MCPBridge
 
     if entry.get("enabled") is False:
         return
-    transport = str(entry.get("transport") or "").strip().lower()
-    name_prefix = str(entry.get("name_prefix") or "").strip()
+    transport = _exact_mcp_text(
+        entry.get("transport"),
+        field="MCP transport",
+        required=True,
+    ).lower()
+    name_prefix = _exact_mcp_text(
+        entry.get("name_prefix"),
+        field="MCP name prefix",
+    )
     timeout = float(entry.get("call_timeout", default_timeout))
 
     bridge = MCPBridge()
     if transport == "sse":
-        url = str(entry.get("url") or "").strip()
-        if not url:
-            raise ValueError("MCP sse server missing 'url'")
+        url = _exact_mcp_text(
+            entry.get("url"),
+            field="MCP sse URL",
+            required=True,
+        )
         headers = entry.get("headers")
         if headers is not None and not isinstance(headers, dict):
             headers = None
         await bridge.connect_sse(url, headers)
     elif transport == "streamable_http":
-        url = str(entry.get("url") or "").strip()
-        if not url:
-            raise ValueError("MCP streamable_http server missing 'url'")
+        url = _exact_mcp_text(
+            entry.get("url"),
+            field="MCP streamable_http URL",
+            required=True,
+        )
         headers = entry.get("headers")
         if headers is not None and not isinstance(headers, dict):
             headers = None
         await bridge.connect_streamable_http(url, headers)
     elif transport == "stdio":
-        command = str(entry.get("command") or "").strip()
-        if not command:
-            raise ValueError("MCP stdio server missing 'command'")
+        launch = _capture_mcp_stdio_launch(
+            entry,
+            project_root=project_root,
+        )
         args_raw = entry.get("args")
         args = [str(x) for x in args_raw] if isinstance(args_raw, list) else []
         env = _normalize_env(entry.get("env"))
-        await bridge.connect_stdio(command, args, env)
+        require_launch_snapshots(
+            directories=(launch.working_directory,),
+            files=(launch.command,),
+        )
+        await bridge.connect_stdio(
+            str(launch.command.path),
+            args,
+            env,
+            cwd=str(launch.working_directory.path),
+        )
     else:
         raise ValueError(f"Unknown MCP transport: {transport!r}")
 
@@ -340,7 +502,11 @@ async def _register_one_server(
             return {"error": str(exc), "tool": short}
         return {"result": text}
 
-    grp = str(entry.get("group") or "mcp").strip()
+    grp = _exact_mcp_text(
+        entry.get("group") or "mcp",
+        field="MCP group",
+        required=True,
+    )
     tm.register_mcp_tools(
         tool_dicts,
         invoke=_invoke,
@@ -349,8 +515,16 @@ async def _register_one_server(
     )
     for td in tool_dicts:
         n = td.get("name")
-        if isinstance(n, str) and n.strip():
-            _registered_mcp_full_names.append(f"{name_prefix}{n.strip()}")
+        if isinstance(n, str):
+            try:
+                exact_name = _exact_mcp_text(
+                    n,
+                    field="MCP tool name",
+                    required=True,
+                )
+            except ValueError:
+                continue
+            _registered_mcp_full_names.append(f"{name_prefix}{exact_name}")
     logger.info(
         "Registered %d MCP tools (transport=%s, prefix=%r)",
         len(tool_dicts),
@@ -362,8 +536,13 @@ async def _register_one_server(
 def register_mcp_tools_from_config(
     tm: ToolManager,
     config_path: Path | None = None,
+    *,
+    project_root: str | Path | None = None,
 ) -> None:
-    path = config_path or _DEFAULT_CONFIG_PATH
+    root = resolve_mcp_stdio_working_directory(
+        project_root=project_root,
+    )
+    path = resolve_mcp_config_path(config_path, project_root=root)
     if not path.is_file():
         logger.debug("MCP config not found: %s", path)
         return
@@ -387,7 +566,10 @@ def register_mcp_tools_from_config(
                     continue
                 try:
                     await _register_one_server(
-                        tm, entry, default_timeout=default_timeout
+                        tm,
+                        entry,
+                        default_timeout=default_timeout,
+                        project_root=root,
                     )
                 except BaseException:
                     logger.exception("MCP server #%d failed", i)
@@ -406,6 +588,8 @@ def register_mcp_tools_from_config(
 def reload_mcp_tools_from_config(
     tm: ToolManager,
     config_path: Path | None = None,
+    *,
+    project_root: str | Path | None = None,
 ) -> None:
     global _registered_mcp_full_names
     for name in list(_registered_mcp_full_names):
@@ -415,4 +599,8 @@ def reload_mcp_tools_from_config(
         close_all_mcp_bridges_sync()
     except Exception:
         logger.exception("reload_mcp_tools_from_config: bridge close")
-    register_mcp_tools_from_config(tm, config_path)
+    register_mcp_tools_from_config(
+        tm,
+        config_path,
+        project_root=project_root,
+    )

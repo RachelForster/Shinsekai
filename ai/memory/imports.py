@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
@@ -17,6 +18,16 @@ from ai.memory.extraction import (
 )
 from ai.memory.operations import memory_remember
 from ai.memory.token_estimator import estimate_text_tokens
+from core.file_transactions import (
+    capture_directory_identity,
+    open_binary_read_without_links,
+    read_bytes_without_links,
+    require_directory_identity,
+)
+from core.paths import (
+    resolve_managed_project_path,
+    resolve_project_path,
+)
 from core.sprite.chat_history_text import history_payload_to_turns
 
 MAX_IMPORT_FILES = 50
@@ -78,8 +89,15 @@ class PreparedMemoryImport:
         }
 
 
-def _read_supported_text(path: Path) -> str:
-    raw = path.read_bytes()
+def _read_supported_text(
+    path: Path,
+    *,
+    expected_identity: os.stat_result,
+) -> str:
+    raw = read_bytes_without_links(
+        path,
+        expected_identity=expected_identity,
+    )
     if len(raw) > MAX_IMPORT_FILE_BYTES:
         raise ValueError(f"文件过大（单个文件最多 16 MiB）：{path.name}")
     if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
@@ -113,36 +131,40 @@ def _normalized_paths(
     paths: Sequence[str | Path],
     *,
     source_root: str | Path,
-) -> list[Path]:
+) -> list[tuple[Path, os.stat_result]]:
     if not paths:
         raise ValueError("请至少选择一个 TXT 或 JSON 文件。")
     if len(paths) > MAX_IMPORT_FILES:
         raise ValueError(f"一次最多导入 {MAX_IMPORT_FILES} 个文件。")
 
-    root = Path(source_root).expanduser().resolve(strict=True)
-    if not root.is_dir():
-        raise NotADirectoryError(root.as_posix())
+    root, root_identity = capture_directory_identity(
+        resolve_project_path(".", root=source_root),
+        field="memory import source root",
+    )
 
-    normalized: list[Path] = []
+    normalized: list[tuple[Path, os.stat_result]] = []
     total_bytes = 0
     for raw_path in paths:
-        candidate = Path(raw_path).expanduser()
-        if not candidate.is_absolute():
-            candidate = root / candidate
-        path = candidate.resolve(strict=True)
-        if not path.is_relative_to(root):
-            raise ValueError(f"文件路径不允许：{path.name}")
+        try:
+            path = resolve_managed_project_path(raw_path, root=root)
+        except (OSError, PermissionError, ValueError) as exc:
+            raise ValueError(f"文件路径不允许：{Path(raw_path).name}") from exc
         if path.suffix.lower() not in SUPPORTED_IMPORT_SUFFIXES:
             raise ValueError(f"不支持的文件类型：{path.name}（仅支持 .txt 和 .json）")
-        if not path.is_file():
-            raise FileNotFoundError(path.as_posix())
-        size = path.stat().st_size
+        with open_binary_read_without_links(path) as source:
+            identity = os.fstat(source.fileno())
+        size = identity.st_size
         if size > MAX_IMPORT_FILE_BYTES:
             raise ValueError(f"文件过大（单个文件最多 16 MiB）：{path.name}")
         total_bytes += size
         if total_bytes > MAX_IMPORT_TOTAL_BYTES:
             raise ValueError("所选文件总大小超过 64 MiB。")
-        normalized.append(path)
+        normalized.append((path, identity))
+    require_directory_identity(
+        root,
+        root_identity,
+        field="memory import source root",
+    )
     return normalized
 
 
@@ -159,8 +181,11 @@ def prepare_memory_import(
 
     sources: list[PreparedMemorySource] = []
     estimated_input_tokens = 0
-    for path in _normalized_paths(paths, source_root=source_root):
-        text = _read_supported_text(path)
+    for path, identity in _normalized_paths(paths, source_root=source_root):
+        text = _read_supported_text(
+            path,
+            expected_identity=identity,
+        )
         turns = _source_turns(path, text)
         if not turns:
             raise ValueError(f"没有从文件中识别到可提取的对话消息：{path.name}")

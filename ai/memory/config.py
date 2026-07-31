@@ -8,6 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from config.config_manager import ConfigManager
+from core.paths import (
+    managed_project_storage,
+    project_root,
+    require_directory_without_links,
+    resolve_managed_project_path,
+    resolve_project_path,
+)
 from core.model_assets.service import ModelAssetSpec, find_cached_huggingface_snapshot
 
 from ai.memory.constants import EMBEDDING_DIMS, EMBEDDING_MODEL, VECTOR_COLLECTION
@@ -28,12 +35,94 @@ def _validate_safetensors_file(path: Path) -> bool:
         if not path.is_file() or path.stat().st_size <= 0:
             return False
         from safetensors import safe_open
-    except (ImportError, OSError):
+    except ImportError:
+        return _validate_safetensors_file_without_runtime(path)
+    except OSError:
         return False
     try:
         with safe_open(str(path), framework="numpy") as tensors:
             return bool(list(tensors.keys()))
     except Exception:
+        return False
+
+
+def _validate_safetensors_file_without_runtime(path: Path) -> bool:
+    """Validate a safetensors index when the optional runtime is not installed."""
+
+    dtype_bits = {
+        "BOOL": 8,
+        "I8": 8,
+        "U8": 8,
+        "I16": 16,
+        "U16": 16,
+        "F16": 16,
+        "BF16": 16,
+        "I32": 32,
+        "U32": 32,
+        "F32": 32,
+        "I64": 64,
+        "U64": 64,
+        "F64": 64,
+        "F8_E4M3": 8,
+        "F8_E4M3FN": 8,
+        "F8_E5M2": 8,
+    }
+    try:
+        file_size = path.stat().st_size
+        with path.open("rb") as file:
+            header_size_raw = file.read(8)
+            if len(header_size_raw) != 8:
+                return False
+            header_size = int.from_bytes(header_size_raw, "little", signed=False)
+            if header_size <= 0 or header_size > min(100_000_000, file_size - 8):
+                return False
+            header = json.loads(file.read(header_size).decode("utf-8"))
+        if not isinstance(header, dict):
+            return False
+        data_size = file_size - 8 - header_size
+        intervals: list[tuple[int, int]] = []
+        tensor_count = 0
+        for name, tensor in header.items():
+            if name == "__metadata__":
+                if not isinstance(tensor, dict) or not all(
+                    isinstance(key, str) and isinstance(value, str)
+                    for key, value in tensor.items()
+                ):
+                    return False
+                continue
+            if not isinstance(name, str) or not name or not isinstance(tensor, dict):
+                return False
+            dtype = tensor.get("dtype")
+            shape = tensor.get("shape")
+            offsets = tensor.get("data_offsets")
+            if (
+                not isinstance(dtype, str)
+                or dtype not in dtype_bits
+                or not isinstance(shape, list)
+                or not all(type(size) is int and size >= 0 for size in shape)
+                or not isinstance(offsets, list)
+                or len(offsets) != 2
+                or not all(type(offset) is int and offset >= 0 for offset in offsets)
+            ):
+                return False
+            start, end = offsets
+            element_count = 1
+            for size in shape:
+                element_count *= size
+            expected_size = (element_count * dtype_bits[dtype] + 7) // 8
+            if end < start or end - start != expected_size or end > data_size:
+                return False
+            intervals.append((start, end))
+            tensor_count += 1
+        if tensor_count == 0:
+            return False
+        cursor = 0
+        for start, end in sorted(intervals):
+            if start != cursor:
+                return False
+            cursor = end
+        return cursor == data_size
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, OverflowError):
         return False
 
 
@@ -175,9 +264,13 @@ EMBEDDING_MODEL_ASSET = ModelAssetSpec(
 )
 
 
-def build_mem0_config() -> dict[str, Any]:
+def build_mem0_config(
+    *,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
+) -> dict[str, Any]:
     """Build the mem0 config from Shinsekai's local LLM settings."""
-    cfg = ConfigManager()
+    cfg = config_manager if config_manager is not None else ConfigManager()
     provider, model, base_url, api_key = cfg.get_llm_api_config()
     provider_lower = (provider or "").strip().lower()
 
@@ -224,14 +317,26 @@ def build_mem0_config() -> dict[str, Any]:
         },
     }
 
-    qdrant_path = (Path.cwd() / "data" / "memory" / "qdrant").as_posix()
-    os.makedirs(qdrant_path, exist_ok=True)
+    active_root = (
+        project_root()
+        if root is None
+        else resolve_project_path(".", root=root)
+    )
+    qdrant_path = managed_project_storage(
+        "data/memory/qdrant",
+        root=active_root,
+    )
+    qdrant_path.mkdir(parents=True, exist_ok=True)
+    qdrant_path = require_directory_without_links(
+        qdrant_path,
+        field="memory vector-store directory",
+    )
 
     return {
         "vector_store": {
             "provider": "qdrant",
             "config": {
-                "path": qdrant_path,
+                "path": qdrant_path.as_posix(),
                 "collection_name": VECTOR_COLLECTION,
                 "embedding_model_dims": EMBEDDING_DIMS,
                 "on_disk": True,
@@ -239,15 +344,38 @@ def build_mem0_config() -> dict[str, Any]:
         },
         "llm": llm_config,
         "embedder": embedder_config,
-        "history_db_path": str(Path.cwd() / "data" / "memory" / "mem0_history.db"),
+        "history_db_path": str(
+            resolve_managed_project_path(
+                "data/memory/mem0_history.db",
+                root=active_root,
+            )
+        ),
     }
 
 
-def is_embedding_model_cached() -> bool:
+def is_embedding_model_cached(
+    *,
+    root: str | Path | None = None,
+) -> bool:
     """Return whether the configured HuggingFace embedding model is cached."""
-    return embedding_model_snapshot_path() is not None
+    return embedding_model_snapshot_path(root=root) is not None
 
 
-def embedding_model_snapshot_path() -> Path | None:
+def embedding_model_snapshot_path(
+    *,
+    root: str | Path | None = None,
+) -> Path | None:
     """Return a complete local snapshot for the configured embedding model."""
-    return find_cached_huggingface_snapshot(EMBEDDING_MODEL_ASSET)
+
+    try:
+        active_root = (
+            project_root()
+            if root is None
+            else resolve_project_path(".", root=root)
+        )
+        return find_cached_huggingface_snapshot(
+            EMBEDDING_MODEL_ASSET,
+            root=active_root,
+        )
+    except Exception:
+        return None

@@ -1,14 +1,68 @@
-"""Built-in text-to-image adapters."""
+# t2i_adapter.py (ComfyUI-specific Adapter)
 import copy
 import os
 import subprocess
 import base64
 import json
+import sys
 import time
 import requests
+from pathlib import Path
 from typing import Optional, Dict, Any
 
+from core.file_transactions import atomic_write_bytes, read_text_without_links
+from core.process_launch import (
+    capture_launch_directory,
+    capture_launch_file,
+    isolated_python_environment,
+    popen_with_stable_paths,
+)
+from core.paths import (
+    project_root,
+    require_directory_without_links,
+    require_regular_file_without_links,
+    resolve_executable_file,
+    resolve_project_output_path,
+    resolve_runtime_asset_read_path,
+)
 from sdk.adapters.t2i import T2IAdapter
+
+
+def _output_path(value: str | None, default_relative: str) -> Path:
+    raw = default_relative if value is None else value
+    output = resolve_project_output_path(raw, root=project_root())
+    output.parent.mkdir(parents=True, exist_ok=True)
+    require_directory_without_links(
+        output.parent,
+        field="T2I output directory",
+    )
+    return output
+
+
+_RESOURCE_WORKFLOW_PREFIXES = (
+    ("assets", "system", "workflow"),
+    ("assets", "workflows"),
+)
+
+
+def _configured_local_path(
+    value: str,
+    *,
+    required: bool = True,
+    resource_prefixes: tuple[tuple[str, ...], ...] = (),
+) -> str:
+    raw = str(value or "")
+    if not raw:
+        if required:
+            raise ValueError("configured local path is required")
+        return ""
+    if raw != raw.strip():
+        raise ValueError("configured local path contains surrounding whitespace")
+    return resolve_runtime_asset_read_path(
+        raw,
+        root=project_root(),
+        resource_prefixes=resource_prefixes,
+    ).as_posix()
 
 
 class StableDiffusionAdapter(T2IAdapter):
@@ -37,7 +91,7 @@ class StableDiffusionAdapter(T2IAdapter):
             "cfg_scale": kwargs.get("cfg_scale", 7),
             "seed": kwargs.get("seed", -1),
         }
-
+        
         # Add the checkpoint model if set
         if self.current_model:
             # Assuming a specific endpoint or method to switch model isn't used here,
@@ -47,25 +101,21 @@ class StableDiffusionAdapter(T2IAdapter):
         try:
             response = requests.post(self.api_url, json=payload)
             response.raise_for_status() # Raise an exception for bad status codes
-
+            
             # The response content is often a JSON object with base64 encoded images
             data = response.json()
             if not data.get("images"):
                 print("Stable Diffusion API returned no images.")
                 return None
-
+            
             # Decode the base64 image and save it
             import base64
             image_data = base64.b64decode(data['images'][0])
+            
+            output = _output_path(file_path, "data/generated/temp_t2i_sd.png")
+            atomic_write_bytes(output, image_data)
 
-            if not file_path:
-                # Placeholder for dynamic file naming
-                file_path = os.path.join(os.getcwd(), "temp_t2i_sd.png")
-
-            with open(file_path, 'wb') as f:
-                f.write(image_data)
-
-            return os.path.abspath(file_path)
+            return str(output)
         except Exception as e:
             print(f"Stable Diffusion T2I generation failed: {e}")
             return None
@@ -76,7 +126,7 @@ class StableDiffusionAdapter(T2IAdapter):
         `model_info` is expected to be a dictionary with 'model_checkpoint' key.
         """
         model_checkpoint = model_info.get('model_checkpoint', '')
-
+        
         if model_checkpoint and self.current_model != model_checkpoint:
             print(f"Switching Stable Diffusion model to: {model_checkpoint}")
             self.current_model = model_checkpoint
@@ -88,16 +138,16 @@ class ComfyUIT2IAdapter(T2IAdapter):
     Adapter for the ComfyUI Text-to-Image service API.
     It executes a predefined ComfyUI workflow by injecting the prompt.
     """
-
+    
     # ------------------ ComfyUI API Endpoints ------------------
     # NOTE: You must have a ComfyUI instance running with the API enabled.
     PROMPT_ENDPOINT = "/prompt"
     HISTORY_ENDPOINT = "/history"
     STARTUP_TIMEOUT_SECONDS = 120
     REQUEST_TIMEOUT_SECONDS = 10
-
-    def __init__(self,
-                 api_url: str = "http://127.0.0.1:8188",
+    
+    def __init__(self, 
+                 api_url: str = "http://127.0.0.1:8188", 
                  work_path: str = "",
                  workflow_path: str = "path/to/default_workflow.json",
                  prompt_node_id: str = "6", # Common ID for the CLIPTextEncode (Prompt) node in SD workflows
@@ -112,10 +162,13 @@ class ComfyUIT2IAdapter(T2IAdapter):
             output_node_id (str): 工作流 JSON 中用于保存或返回图像的节点的 ID (通常是 Save Image 节点)。
         """
         self.api_url = api_url.rstrip('/')
-        self.workflow_path = workflow_path
+        self.workflow_path = _configured_local_path(
+            workflow_path,
+            resource_prefixes=_RESOURCE_WORKFLOW_PREFIXES,
+        )
         self.prompt_node_id = prompt_node_id
         self.output_node_id = output_node_id
-        self.work_path = work_path
+        self.work_path = _configured_local_path(work_path, required=False)
         self.workflow_template = self._load_workflow_template()
         self._start_server_process()
 
@@ -145,15 +198,84 @@ class ComfyUIT2IAdapter(T2IAdapter):
 
         print("ComfyUI server not found, attempting to start...")
 
-        if self.work_path=="":
+        if self.work_path == "":
             return
 
-        os_path = self.work_path
-        embeded_python_path = os.path.join(os_path, "python_embeded", "python.exe")
-        api_path = os.path.join(os_path, "ComfyUI","main.py")
+        os_path = require_directory_without_links(
+            self.work_path,
+            field="ComfyUI work directory",
+        )
+        work_snapshot = capture_launch_directory(
+            os_path,
+            field="ComfyUI work directory",
+        )
+        script_candidates = (
+            os_path / "ComfyUI" / "main.py",
+            os_path / "main.py",
+        )
+        api_path = next(
+            (
+                require_regular_file_without_links(
+                    path,
+                    field="ComfyUI startup script",
+                )
+                for path in script_candidates
+                if os.path.lexists(path)
+            ),
+            None,
+        )
+        if api_path is None:
+            raise FileNotFoundError(f"ComfyUI main.py not found under: {os_path}")
 
-        # Use subprocess.Popen to start the server in the background
-        subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
+        if os.name == "nt":
+            python_candidates = (
+                os_path / "python_embeded" / "python.exe",
+                os_path / ".venv" / "Scripts" / "python.exe",
+                os_path / "venv" / "Scripts" / "python.exe",
+            )
+        else:
+            python_candidates = (
+                os_path / ".venv" / "bin" / "python",
+                os_path / "venv" / "bin" / "python",
+            )
+        python_path = next(
+            (
+                resolve_executable_file(
+                    path,
+                    field="ComfyUI Python executable",
+                )
+                for path in python_candidates
+                if os.path.lexists(path)
+            ),
+            None,
+        )
+        if python_path is None:
+            if getattr(sys, "frozen", False):
+                raise FileNotFoundError(
+                    f"ComfyUI Python executable not found under: {os_path}"
+                )
+            python_path = resolve_executable_file(
+                Path(sys.executable),
+                field="host Python executable",
+            )
+        
+        python_snapshot = capture_launch_file(
+            python_path,
+            field="ComfyUI Python executable",
+            executable=True,
+        )
+        script_snapshot = capture_launch_file(
+            api_path,
+            field="ComfyUI startup script",
+        )
+        popen_with_stable_paths(
+            [python_snapshot.path, script_snapshot.path],
+            cwd=work_snapshot,
+            executable=python_snapshot,
+            required_files=(script_snapshot,),
+            env=isolated_python_environment(),
+            popen_factory=subprocess.Popen,
+        )
         print("ComfyUI server starting...")
         if self._wait_for_server_ready():
             print("ComfyUI server is ready.")
@@ -163,8 +285,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
     def _load_workflow_template(self) -> Dict[str, Any]:
         """加载 ComfyUI 工作流 JSON 文件作为模板。"""
         try:
-            with open(self.workflow_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
+            return json.loads(read_text_without_links(self.workflow_path))
         except Exception as e:
             print(f"Error loading ComfyUI workflow template from {self.workflow_path}: {e}")
             raise
@@ -172,7 +293,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
     def generate_image(self, prompt: str, file_path: Optional[str] = None, **kwargs) -> Optional[str]:
         """
         生成图像。通过修改工作流中的 prompt 节点并提交执行。
-
+        
         Args:
             prompt (str): 图像生成的文本提示。
             file_path (str, optional): 图像保存路径。
@@ -186,7 +307,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
 
         # 1. 深度复制模板以避免修改原始结构
         prompt_workflow = copy.deepcopy(self.workflow_template)
-
+        
         # 2. 注入主 Prompt
         # 假设 CLIPTextEncode 节点 (ID: self.prompt_node_id) 的输入是 index 1
         if self.prompt_node_id in prompt_workflow:
@@ -220,7 +341,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
             response.raise_for_status()
             prompt_data = response.json()
             prompt_id = prompt_data.get("prompt_id")
-
+            
             if not prompt_id:
                 print("ComfyUI API failed to return a prompt_id.")
                 return None
@@ -270,7 +391,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
     def _wait_for_and_get_image(self, prompt_id: str, file_path: Optional[str]) -> Optional[str]:
         """轮询历史记录以查找生成的图像文件。"""
         # 简单轮询，最多等待 60 秒
-        for _ in range(30):
+        for _ in range(30): 
             time.sleep(2)
             try:
                 history_response = requests.get(f"{self.api_url}{self.HISTORY_ENDPOINT}/{prompt_id}")
@@ -280,35 +401,31 @@ class ComfyUIT2IAdapter(T2IAdapter):
                 if prompt_id in history_data:
                     # 查找 SaveImage 节点的输出
                     output = history_data[prompt_id]["outputs"].get(self.output_node_id)
-
+                    
                     if output and "images" in output and output["images"]:
                         image_info = output["images"][0] # 假设只生成一张图
                         filename = image_info["filename"]
                         subfolder = image_info["subfolder"]
-
+                        
                         # 构造图像下载 URL
                         image_url = (f"{self.api_url}/view?"
                                      f"filename={filename}&"
                                      f"subfolder={subfolder}&"
                                      f"type=output")
-
+                        
                         # 下载图像
                         image_response = requests.get(image_url)
                         image_response.raise_for_status()
-
-                        if not file_path:
-                            # 默认保存路径
-                            file_path = os.path.join(os.getcwd(), "temp_comfyui.png")
-
-                        with open(file_path, 'wb') as f:
-                            f.write(image_response.content)
-
-                        print(f"Image successfully generated and saved to: {os.path.abspath(file_path)}")
-                        return os.path.abspath(file_path)
+                        
+                        output = _output_path(file_path, "data/generated/temp_comfyui.png")
+                        atomic_write_bytes(output, image_response.content)
+                        
+                        print(f"Image successfully generated and saved to: {output}")
+                        return str(output)
 
             except Exception as e:
                 print(f"Error checking ComfyUI history/downloading image: {e}")
-
+                
         print("Timeout or failed to retrieve image from ComfyUI history.")
         return None
 
@@ -316,17 +433,28 @@ class ComfyUIT2IAdapter(T2IAdapter):
     def switch_model(self, model_info: Dict[str, Any]):
         """
         对于 ComfyUI Adapter，此方法可以用来切换工作流文件，从而切换模型。
-
+        
         Args:
             model_info (Dict[str, Any]): 预期包含 'workflow_path' 键。
         """
         new_workflow_path = model_info.get("workflow_path")
 
-        if new_workflow_path and self.workflow_path != new_workflow_path:
-            self.workflow_path = new_workflow_path
+        if new_workflow_path:
+            resolved_workflow_path = _configured_local_path(
+                str(new_workflow_path),
+                resource_prefixes=_RESOURCE_WORKFLOW_PREFIXES,
+            )
+        else:
+            return
+
+        if self.workflow_path != resolved_workflow_path:
+            previous_path = self.workflow_path
+            previous_template = self.workflow_template
+            self.workflow_path = resolved_workflow_path
             try:
                 self.workflow_template = self._load_workflow_template()
-                print(f"ComfyUI workflow successfully switched to: {new_workflow_path}")
+                print(f"ComfyUI workflow successfully switched to: {resolved_workflow_path}")
             except Exception:
-                self.workflow_template = None
+                self.workflow_path = previous_path
+                self.workflow_template = previous_template
                 print(f"Failed to switch ComfyUI workflow.")
