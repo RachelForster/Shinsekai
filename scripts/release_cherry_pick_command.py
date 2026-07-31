@@ -5,8 +5,19 @@ import shlex
 import subprocess
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 from urllib.parse import quote
 
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+if str(REPOSITORY_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPOSITORY_ROOT))
+
+from core.process_launch import (  # noqa: E402
+    capture_command_executable,
+    capture_launch_directory,
+    run_with_stable_paths,
+)
 
 REPO = os.environ["REPO"]
 COMMENT_BODY = os.environ.get("COMMENT_BODY") or ""
@@ -70,11 +81,23 @@ def run(
     check: bool = True,
 ) -> subprocess.CompletedProcess:
     safe_command = validate_subprocess_command(command)
+    executable = capture_command_executable(
+        safe_command[0],
+        field=f"{safe_command[0]} executable",
+    )
+    repository = capture_launch_directory(
+        REPOSITORY_ROOT,
+        field="release command repository",
+    )
+    stable_command = [str(executable.path), *safe_command[1:]]
 
     # nosemgrep justification: argv is validated against a gh/git subcommand
     # allowlist, shell is disabled, and user-controlled values stay literal args.
-    result = subprocess.run(
-        safe_command,
+    result = run_with_stable_paths(
+        stable_command,
+        cwd=repository,
+        executable=executable,
+        run_factory=subprocess.run,
         input=input_text,
         shell=False,
         text=True,
