@@ -5,12 +5,101 @@ from collections.abc import Mapping
 from typing import Any
 from urllib.parse import quote
 
+from sdk.file_transactions import ensure_portable_name_available
+from sdk.path_contract import (
+    managed_project_directory,
+    project_root as runtime_project_root,
+    require_directory_without_links,
+    require_symlink_free_absolute_path,
+    resolve_managed_project_path,
+    resolve_project_output_path,
+    resolve_project_path,
+    resolve_project_read_path,
+    safe_path_component,
+)
+
 from application.plugins.catalog import _plugin_rows
+from sdk.path_references import make_path_reference, path_reference_value
+from .security import portable_path_text, safe_child_path
 
 
-def _plugin_data_root(plugin_id: str) -> Path:
-    cleaned = plugin_id.strip().replace("/", "_") or "unknown"
-    return Path("data/plugins") / cleaned
+def _plugin_identity(value: Any, *, field: str = "plugin id") -> str:
+    return safe_path_component(str(value or ""), field=field)
+
+
+def _identity_matches(value: Any, expected: str, *, field: str) -> bool:
+    try:
+        return _plugin_identity(value, field=field) == expected
+    except ValueError:
+        return False
+
+
+def _plugin_data_root(plugin_id: str, *, project_root: Path | None = None) -> Path:
+    cleaned = safe_path_component(str(plugin_id or ""), field="plugin id")
+    root = require_directory_without_links(
+        runtime_project_root() if project_root is None else project_root,
+        field="plugin project root",
+    )
+    storage = managed_project_directory("data/plugins", cleaned, root=root)
+    ensure_portable_name_available(storage.parent, cleaned)
+    return storage
+
+
+def _plugin_config_file(
+    plugin_root: Path,
+    candidate: Path,
+    *,
+    project_root: Path | None = None,
+) -> Path:
+    """Validate a built-in plugin config leaf before third-party file I/O."""
+
+    project = (
+        runtime_project_root()
+        if project_root is None
+        else resolve_project_path(".", root=project_root)
+    )
+    exact_root = resolve_managed_project_path(plugin_root, root=project)
+    exact_file = resolve_managed_project_path(candidate, root=project)
+    if exact_file.parent != exact_root:
+        raise PermissionError("plugin config file is outside the plugin data root")
+    return exact_file
+
+
+def _stored_plugin_cache_path(
+    value: Any,
+    *,
+    project_root: Path | None = None,
+) -> str:
+    """Serialize an optional plugin cache directory without cwd ownership."""
+
+    raw = str(value or "")
+    if not raw:
+        return ""
+    root = (
+        runtime_project_root()
+        if project_root is None
+        else resolve_project_path(".", root=project_root)
+    )
+    reference = make_path_reference(
+        raw,
+        root,
+        legacy_project_prefixes=(("data", "cache"),),
+        recover_legacy_absolute=False,
+    )
+    stored = path_reference_value(reference)
+    if stored is None:
+        raise ValueError("plugin cache directory could not be classified")
+    # Revalidate the spelling at the output boundary. This rejects linked
+    # parents and ambiguous relative aliases before an optional plugin receives
+    # the persisted value.
+    stored_path = Path(stored).expanduser()
+    if stored_path.is_absolute():
+        require_symlink_free_absolute_path(
+            stored_path,
+            field="plugin cache directory",
+        )
+    resolve_project_output_path(stored, root=root)
+    return stored
 
 
 def _plugin_config_field(
@@ -53,15 +142,29 @@ def _plugin_config_field(
     return field
 
 
-def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] | None:
-    root = _plugin_data_root(plugin_id)
+def _builtin_plugin_config_page(
+    plugin_id: str,
+    page_id: str,
+    *,
+    project_root: Path | None = None,
+) -> dict[str, Any] | None:
+    root = _plugin_data_root(plugin_id, project_root=project_root)
     if plugin_id == "com.shinsekai.moondream_vision" and page_id == "moondream_vision":
         from dataclasses import asdict
 
         from plugins.moondream_vision.config_model import default_config_path, load_config
 
-        cfg = load_config(default_config_path(root))
+        config_path = _plugin_config_file(
+            root,
+            default_config_path(root),
+            project_root=project_root,
+        )
+        cfg = load_config(config_path)
         cfg.clamp()
+        cfg.cache_dir = _stored_plugin_cache_path(
+            cfg.cache_dir,
+            project_root=project_root,
+        )
         return {
             "description": (
                 "使用 mss 截屏，通过 Hugging Face Transformers 加载 Moondream2。"
@@ -99,8 +202,9 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
                         _plugin_config_field(
                             "cache_dir",
                             "缓存目录",
-                            "text",
+                            "file",
                             default="",
+                            path_kind="directory",
                             placeholder="可选；留空用系统默认 HF 缓存",
                             span="full",
                         ),
@@ -260,7 +364,12 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
 
         from plugins.playwright_browser.config_model import default_config_path, load_config
 
-        cfg = load_config(default_config_path(root))
+        config_path = _plugin_config_file(
+            root,
+            default_config_path(root),
+            project_root=project_root,
+        )
+        cfg = load_config(config_path)
         cfg.clamp()
         return {
             "description": (
@@ -303,19 +412,40 @@ def _builtin_plugin_config_page(plugin_id: str, page_id: str) -> dict[str, Any] 
 def _frontend_config_contributions_for(plugin_id: str) -> list[Any]:
     from application.plugins.catalog import frontend_config_contributions_for
 
-    return frontend_config_contributions_for(plugin_id)
+    exact_plugin_id = _plugin_identity(plugin_id)
+    out: list[Any] = []
+    for contribution in frontend_config_contributions_for(exact_plugin_id):
+        if _identity_matches(
+            getattr(contribution, "plugin_id", ""),
+            exact_plugin_id,
+            field="plugin id",
+        ):
+            out.append(contribution)
+    return sorted(out, key=lambda item: float(getattr(item, "order", 100.0) or 100.0))
 
 
 def _frontend_page_contributions_for(plugin_id: str) -> list[Any]:
     from application.plugins.catalog import frontend_page_contributions_for
 
-    return frontend_page_contributions_for(plugin_id)
+    exact_plugin_id = _plugin_identity(plugin_id)
+    out: list[Any] = []
+    for contribution in frontend_page_contributions_for(exact_plugin_id):
+        if _identity_matches(
+            getattr(contribution, "plugin_id", ""),
+            exact_plugin_id,
+            field="plugin id",
+        ):
+            out.append(contribution)
+    return sorted(out, key=lambda item: float(getattr(item, "order", 100.0) or 100.0))
 
 
 def _frontend_chat_ui_contributions() -> list[Any]:
     from application.plugins.catalog import frontend_chat_ui_contributions
 
-    return frontend_chat_ui_contributions()
+    return sorted(
+        frontend_chat_ui_contributions(),
+        key=lambda item: float(getattr(item, "order", 100.0) or 100.0),
+    )
 
 
 def _frontend_chat_ui_action(contribution: Any) -> tuple[str, str, str]:
@@ -410,14 +540,28 @@ def _run_frontend_chat_ui_contribution(plugin_id: str, contribution_id: str) -> 
 
 
 def _frontend_page_contribution(plugin_id: str, page_id: str) -> Any | None:
+    exact_page_id = _plugin_identity(page_id, field="frontend page id")
     for contribution in _frontend_page_contributions_for(plugin_id):
-        if str(getattr(contribution, "page_id", "") or "").strip() == page_id:
+        if _identity_matches(
+            getattr(contribution, "page_id", ""),
+            exact_page_id,
+            field="frontend page id",
+        ):
             return contribution
     return None
 
 
 def _frontend_config_page_payload(contribution: Any) -> dict[str, Any]:
-    page_id = str(getattr(contribution, "page_id", "") or "").strip()
+    page_id = _plugin_identity(
+        getattr(contribution, "page_id", ""),
+        field="frontend page id",
+    )
+    raw_plugin_id = getattr(contribution, "plugin_id", None)
+    plugin_id = (
+        _plugin_identity(raw_plugin_id)
+        if raw_plugin_id is not None
+        else ""
+    )
     title = str(getattr(contribution, "title", "") or "").strip() or page_id
     kind = str(getattr(contribution, "kind", "") or "settings").strip()
     if kind not in {"settings", "tools"}:
@@ -431,7 +575,7 @@ def _frontend_config_page_payload(contribution: Any) -> dict[str, Any]:
         "id": page_id,
         "kind": kind,
         "order": float(getattr(contribution, "order", 100.0) or 100.0),
-        "pluginId": str(getattr(contribution, "plugin_id", "") or ""),
+        "pluginId": plugin_id,
         "pluginVersion": str(getattr(contribution, "plugin_version", "") or ""),
         "restartHint": str(getattr(contribution, "restart_hint", "") or ""),
         "schema": list(getattr(contribution, "schema", []) or []),
@@ -445,7 +589,10 @@ def _frontend_config_page_payload(contribution: Any) -> dict[str, Any]:
                 {
                     "confirm": str(getattr(action, "confirm", "") or ""),
                     "description": str(getattr(action, "description", "") or ""),
-                    "id": str(getattr(action, "id", "") or ""),
+                    "id": _plugin_identity(
+                        getattr(action, "id", ""),
+                        field="frontend action id",
+                    ),
                     "label": str(getattr(action, "label", "") or ""),
                     "order": float(getattr(action, "order", 100.0) or 100.0),
                     "variant": str(getattr(action, "variant", "ghost") or "ghost"),
@@ -458,12 +605,15 @@ def _frontend_config_page_payload(contribution: Any) -> dict[str, Any]:
 
 
 def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
-    page_id = str(getattr(contribution, "page_id", "") or "").strip()
+    page_id = _plugin_identity(
+        getattr(contribution, "page_id", ""),
+        field="frontend page id",
+    )
     title = str(getattr(contribution, "title", "") or "").strip() or page_id
     kind = str(getattr(contribution, "kind", "") or "settings").strip()
     if kind not in {"settings", "tools"}:
         kind = "settings"
-    plugin_id = str(getattr(contribution, "plugin_id", "") or "")
+    plugin_id = _plugin_identity(getattr(contribution, "plugin_id", ""))
     page = {
         "description": str(getattr(contribution, "description", "") or ""),
         "frontendUrl": (
@@ -478,7 +628,11 @@ def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
         "title": title,
     }
     for config_contribution in _frontend_config_contributions_for(plugin_id):
-        if str(getattr(config_contribution, "page_id", "") or "").strip() != page_id:
+        if not _identity_matches(
+            getattr(config_contribution, "page_id", ""),
+            page_id,
+            field="frontend page id",
+        ):
             continue
         config_page = _frontend_config_page_payload(config_contribution)
         if str(config_page.get("kind") or "settings") != kind:
@@ -492,8 +646,15 @@ def _frontend_page_payload(contribution: Any) -> dict[str, Any]:
     return page
 
 
-def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
-    lookup = plugin_id_or_entry.strip()
+def _plugin_ui_detail(
+    plugin_id_or_entry: str,
+    *,
+    project_root: Path | None = None,
+) -> dict[str, Any]:
+    lookup = portable_path_text(
+        plugin_id_or_entry,
+        field="plugin id or manifest entry",
+    )
     plugin_row = None
     for row in _plugin_rows():
         if row.get("id") == lookup or row.get("entry") == lookup:
@@ -502,7 +663,13 @@ def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
     if plugin_row is None:
         raise KeyError(f"plugin not found: {lookup}")
 
-    plugin_id = str(plugin_row.get("id") or "").strip()
+    try:
+        plugin_id = _plugin_identity(plugin_row.get("id"))
+    except ValueError:
+        # An offline row can only expose its import entry as an identifier.
+        # It has no live contributions, but remains useful as uninstall/error
+        # metadata and must not be reinterpreted as a local storage name.
+        return {"pages": [], "plugin": plugin_row}
     pages: list[dict[str, Any]] = []
     frontend_page_keys: set[tuple[str, str]] = set()
 
@@ -522,7 +689,13 @@ def _plugin_ui_detail(plugin_id_or_entry: str) -> dict[str, Any]:
     return {"pages": pages, "plugin": plugin_row}
 
 
-def _save_builtin_plugin_config(plugin_id: str, page_id: str, values: dict[str, Any]) -> None:
+def _save_builtin_plugin_config(
+    plugin_id: str,
+    page_id: str,
+    values: dict[str, Any],
+    *,
+    project_root: Path | None = None,
+) -> None:
     def _float_value(key: str, default: float) -> float:
         raw = values.get(key, default)
         if raw is None or raw == "":
@@ -535,7 +708,7 @@ def _save_builtin_plugin_config(plugin_id: str, page_id: str, values: dict[str, 
             return default
         return int(raw)
 
-    root = _plugin_data_root(plugin_id)
+    root = _plugin_data_root(plugin_id, project_root=project_root)
     if plugin_id == "com.shinsekai.moondream_vision" and page_id == "moondream_vision":
         from plugins.moondream_vision.config_model import (
             MoondreamVisionConfig,
@@ -543,11 +716,15 @@ def _save_builtin_plugin_config(plugin_id: str, page_id: str, values: dict[str, 
             save_config,
         )
 
+        cache_dir = _stored_plugin_cache_path(
+            values.get("cache_dir"),
+            project_root=project_root,
+        )
         cfg = MoondreamVisionConfig(
             enabled=bool(values.get("enabled", False)),
             model_id=str(values.get("model_id") or "vikhyatk/moondream2").strip() or "vikhyatk/moondream2",
             revision=str(values.get("revision") or "").strip(),
-            cache_dir=str(values.get("cache_dir") or "").strip(),
+            cache_dir=cache_dir,
             device=str(values.get("device") or "auto").strip().lower(),
             quantization=str(values.get("quantization") or "none").strip().lower(),
             motion_poll_sec=_float_value("motion_poll_sec", MoondreamVisionConfig.motion_poll_sec),
@@ -563,7 +740,12 @@ def _save_builtin_plugin_config(plugin_id: str, page_id: str, values: dict[str, 
             question_foreground=str(values.get("question_foreground") or "").strip(),
             message_prefix=str(values.get("message_prefix") or MoondreamVisionConfig.message_prefix),
         )
-        save_config(default_config_path(root), cfg)
+        config_path = _plugin_config_file(
+            root,
+            default_config_path(root),
+            project_root=project_root,
+        )
+        save_config(config_path, cfg)
         return
 
     if plugin_id == "com.shinsekai.playwright_browser" and page_id == "playwright_browser":
@@ -578,17 +760,38 @@ def _save_builtin_plugin_config(plugin_id: str, page_id: str, values: dict[str, 
             browser_type=str(values.get("browser_type") or "chromium").strip().lower(),
             headless=bool(values.get("headless", True)),
         )
-        save_config(default_config_path(root), cfg)
+        config_path = _plugin_config_file(
+            root,
+            default_config_path(root),
+            project_root=project_root,
+        )
+        save_config(config_path, cfg)
         browser.set_plugin_root(str(root))
         return
 
     raise KeyError(f"plugin page config not supported: {plugin_id}/{page_id}")
 
 
-def _save_plugin_ui_config(plugin_id_or_entry: str, page_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    detail = _plugin_ui_detail(plugin_id_or_entry)
+def _detail_for_project_root(
+    plugin_id_or_entry: str,
+    project_root: Path | None,
+) -> dict[str, Any]:
+    if project_root is None:
+        return _plugin_ui_detail(plugin_id_or_entry)
+    return _plugin_ui_detail(plugin_id_or_entry, project_root=project_root)
+
+
+def _save_plugin_ui_config(
+    plugin_id_or_entry: str,
+    page_id: str,
+    payload: dict[str, Any],
+    *,
+    project_root: Path | None = None,
+) -> dict[str, Any]:
+    detail = _detail_for_project_root(plugin_id_or_entry, project_root)
     plugin = detail["plugin"]
-    plugin_id = str(plugin.get("id") or "").strip()
+    plugin_id = _plugin_identity(plugin.get("id"))
+    page_id = _plugin_identity(page_id, field="frontend page id")
     page = None
     for candidate in detail["pages"]:
         if str(candidate.get("id") or "") == page_id:
@@ -601,9 +804,13 @@ def _save_plugin_ui_config(plugin_id_or_entry: str, page_id: str, payload: dict[
         raise ValueError("values must be an object")
 
     for contribution in _frontend_config_contributions_for(plugin_id):
-        if str(getattr(contribution, "page_id", "") or "").strip() == page_id:
+        if _identity_matches(
+            getattr(contribution, "page_id", ""),
+            page_id,
+            field="frontend page id",
+        ):
             contribution.save_values(raw_values)
-            updated = _plugin_ui_detail(plugin_id)
+            updated = _detail_for_project_root(plugin_id, project_root)
             updated_page = next(
                 (candidate for candidate in updated["pages"] if candidate.get("id") == page_id),
                 page,
@@ -617,8 +824,13 @@ def _save_plugin_ui_config(plugin_id_or_entry: str, page_id: str, payload: dict[
     if "schema" not in page:
         raise KeyError(f"plugin page config not supported: {plugin_id}/{page_id}")
 
-    _save_builtin_plugin_config(plugin_id, page_id, raw_values)
-    updated = _plugin_ui_detail(plugin_id)
+    _save_builtin_plugin_config(
+        plugin_id,
+        page_id,
+        raw_values,
+        project_root=project_root,
+    )
+    updated = _detail_for_project_root(plugin_id, project_root)
     updated_page = next((candidate for candidate in updated["pages"] if candidate.get("id") == page_id), page)
     return {
         "message": "插件设置已保存。",
@@ -632,24 +844,32 @@ def _run_plugin_ui_action(
     page_id: str,
     action_id: str,
     payload: dict[str, Any],
+    *,
+    project_root: Path | None = None,
 ) -> dict[str, Any]:
     """Find the matching action on a FrontendConfigContribution and invoke its run callback."""
-    detail = _plugin_ui_detail(plugin_id_or_entry)
+    detail = _detail_for_project_root(plugin_id_or_entry, project_root)
     plugin = detail["plugin"]
-    plugin_id = str(plugin.get("id") or "").strip()
+    plugin_id = _plugin_identity(plugin.get("id"))
+    page_id = _plugin_identity(page_id, field="frontend page id")
+    action_id = _plugin_identity(action_id, field="frontend action id")
     raw_values = payload.get("values", payload)
     if not isinstance(raw_values, dict):
         raise ValueError("values must be an object")
 
     for contribution in _frontend_config_contributions_for(plugin_id):
-        if str(getattr(contribution, "page_id", "") or "").strip() != page_id:
+        if not _identity_matches(
+            getattr(contribution, "page_id", ""),
+            page_id,
+            field="frontend page id",
+        ):
             continue
         for action in getattr(contribution, "actions", None) or []:
             if str(getattr(action, "id", "") or "") == action_id:
                 result = action.run(raw_values) or {}
                 if not isinstance(result, Mapping):
                     raise ValueError(f"action {action_id!r} run must return a mapping or None")
-                updated = _plugin_ui_detail(plugin_id)
+                updated = _detail_for_project_root(plugin_id, project_root)
                 updated_page = next(
                     (candidate for candidate in updated["pages"] if candidate.get("id") == page_id),
                     None,
@@ -666,27 +886,48 @@ def _run_plugin_ui_action(
     raise KeyError(f"action not found: {plugin_id}/{page_id}/{action_id}")
 
 
-def _resolve_plugin_frontend_file(plugin_id_or_entry: str, page_id: str, asset_path: str) -> Path:
-    detail = _plugin_ui_detail(plugin_id_or_entry)
+def _resolve_plugin_frontend_file(
+    plugin_id_or_entry: str,
+    page_id: str,
+    asset_path: str,
+    *,
+    project_root: Path | None = None,
+) -> Path:
+    detail = _detail_for_project_root(plugin_id_or_entry, project_root)
     plugin = detail["plugin"]
-    plugin_id = str(plugin.get("id") or "").strip()
+    plugin_id = _plugin_identity(plugin.get("id"))
     contribution = _frontend_page_contribution(plugin_id, page_id)
     if contribution is None:
         raise KeyError(f"plugin frontend page not found: {plugin_id}/{page_id}")
-    entry = Path(str(getattr(contribution, "entry", "") or "")).expanduser()
-    if not entry.is_absolute():
-        entry = (Path.cwd() / entry).resolve()
-    else:
-        entry = entry.resolve()
+    entry_text = portable_path_text(
+        str(getattr(contribution, "entry", "") or ""),
+        field="plugin frontend entry",
+    )
+    entry = resolve_project_read_path(
+        entry_text,
+        root=(
+            runtime_project_root()
+            if project_root is None
+            else project_root
+        ),
+    )
     if not entry.is_file():
         raise FileNotFoundError(entry.as_posix())
-    root = entry.parent.resolve()
-    cleaned_asset = str(asset_path or "").replace("\\", "/").strip("/")
-    target = entry if not cleaned_asset else (root / cleaned_asset).resolve()
-    if root not in target.parents and target != root and target != entry:
-        raise PermissionError("plugin frontend asset is outside frontend root")
+    root = entry.parent
+    raw_asset = str(asset_path or "")
+    if not raw_asset:
+        target = entry
+    else:
+        cleaned_asset = portable_path_text(raw_asset, field="plugin frontend asset")
+        if "\\" in cleaned_asset or cleaned_asset.startswith("/"):
+            raise ValueError("plugin frontend asset must be an exact relative URL path")
+        parts = cleaned_asset.split("/")
+        if any(part in {"", ".", ".."} for part in parts):
+            raise ValueError("plugin frontend asset must be an exact relative URL path")
+        target = safe_child_path(root, cleaned_asset)
     if target.is_dir():
-        target = target / "index.html"
+        relative = target.relative_to(root) / "index.html"
+        target = safe_child_path(root, relative.as_posix())
     if not target.is_file():
         raise FileNotFoundError(target.as_posix())
     return target

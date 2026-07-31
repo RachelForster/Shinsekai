@@ -1,8 +1,10 @@
-"""Compatibility exports for the canonical :mod:`sdk.path_utils` helpers."""
+"""Compatibility alias for the canonical :mod:`sdk.path_references` module."""
 
 from __future__ import annotations
 
-from sdk.path_utils import resolve_regular_path, strip_windows_verbatim_prefix
+import sys
+
+from sdk import path_references as _implementation
 
 
-__all__ = ["resolve_regular_path", "strip_windows_verbatim_prefix"]
+sys.modules[__name__] = _implementation

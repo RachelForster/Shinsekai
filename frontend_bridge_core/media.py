@@ -4,10 +4,16 @@ import base64
 import hashlib
 import mimetypes
 import os
-import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+
+from sdk.file_transactions import (
+    atomic_binary_writer,
+    open_binary_read_without_links,
+    read_bytes_without_links,
+)
+from sdk.path_contract import managed_child_path, managed_project_storage
 
 from frontend_bridge_core.backgrounds import (
     _delete_all_background_bgm,
@@ -36,54 +42,53 @@ from frontend_bridge_core.characters import (
     _upload_sprite_voice,
 )
 from frontend_bridge_core.memory import _add_character_memory, _delete_character_memory, _list_character_memories
-from sdk.path_utils import safe_child_path, safe_existing_file_path
+from frontend_bridge_core.security import safe_existing_file_path
 
 
 def _media_thumbnail(source: Path, *, project_root: Path, size: int = 160) -> Path:
-    source = safe_existing_file_path(source, roots=[project_root], field="media source")
+    source = safe_existing_file_path(source, field="media source")
     if not source.is_file():
         raise FileNotFoundError(source.as_posix())
 
-    stat = source.stat()
-    target_size = max(32, min(int(size), 512))
-    digest = hashlib.sha256(
-        f"{source.resolve()}\0{stat.st_mtime_ns}\0{stat.st_size}\0{target_size}".encode(
-            "utf-8",
-            errors="surrogatepass",
-        )
-    ).hexdigest()
-    cache_root = project_root / ".cache" / "frontend-media-thumbnails"
-    cache_path = safe_child_path(cache_root, f"{digest}.png")
-    if cache_path.is_file():
-        return cache_path
-
-    from PIL import Image, ImageOps
-
-    cache_root.mkdir(parents=True, exist_ok=True)
-    with Image.open(source) as image:
-        thumbnail = ImageOps.exif_transpose(image)
-        if thumbnail.mode not in {"RGB", "RGBA"}:
-            thumbnail = thumbnail.convert(
-                "RGBA" if "A" in thumbnail.getbands() else "RGB",
+    with open_binary_read_without_links(source) as source_file:
+        metadata = os.fstat(source_file.fileno())
+        target_size = max(32, min(int(size), 512))
+        digest = hashlib.sha256(
+            (
+                f"{source}\0{metadata.st_dev}\0{metadata.st_ino}\0"
+                f"{metadata.st_size}\0{metadata.st_mtime_ns}\0"
+                f"{metadata.st_ctime_ns}\0{target_size}"
+            ).encode(
+                "utf-8",
+                errors="surrogatepass",
             )
-        resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
-        thumbnail.thumbnail((target_size, target_size), resampling)
+        ).hexdigest()
+        cache_root = managed_project_storage(
+            ".cache/frontend-media-thumbnails",
+            root=project_root,
+        )
+        cache_path = managed_child_path(
+            cache_root,
+            f"{digest}.png",
+            field="thumbnail cache filename",
+        )
+        if cache_path.is_file():
+            return cache_path
 
-        with tempfile.NamedTemporaryFile(
-            dir=cache_root,
-            prefix=f"{digest}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            tmp_path = Path(handle.name)
-        try:
-            thumbnail.save(tmp_path, format="PNG", optimize=True)
-            tmp_path.replace(cache_path)
-        finally:
-            try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
+        from PIL import Image, ImageOps
+
+        cache_root.mkdir(parents=True, exist_ok=True)
+        with Image.open(source_file) as image:
+            thumbnail = ImageOps.exif_transpose(image)
+            if thumbnail.mode not in {"RGB", "RGBA"}:
+                thumbnail = thumbnail.convert(
+                    "RGBA" if "A" in thumbnail.getbands() else "RGB",
+                )
+            resampling = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
+            thumbnail.thumbnail((target_size, target_size), resampling)
+
+            with atomic_binary_writer(cache_path) as handle:
+                thumbnail.save(handle, format="PNG", optimize=True)
 
     return cache_path
 
@@ -98,7 +103,7 @@ def _thumbnail_cache_path(thumbnail: Path, project_root: Path) -> str:
 def _media_thumbnail_data_url(source: Path, *, project_root: Path, size: int = 160) -> str:
     thumbnail = _media_thumbnail(source, project_root=project_root, size=size)
     mime_type = mimetypes.guess_type(thumbnail.name)[0] or "image/png"
-    raw = thumbnail.read_bytes()
+    raw = read_bytes_without_links(thumbnail)
     encoded = base64.b64encode(raw).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
 
@@ -133,7 +138,7 @@ def _media_thumbnail_batch(
                 "path": raw_path,
             }
             if include_data_url:
-                raw = thumbnail.read_bytes()
+                raw = read_bytes_without_links(thumbnail)
                 encoded = base64.b64encode(raw).decode("ascii")
                 payload["dataUrl"] = f"data:{payload['mimeType']};base64,{encoded}"
             return payload

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,12 +16,18 @@ from config.tts_provider_config import (
     tts_server_url_or_default,
     uses_shared_tts_server_config,
 )
+from config.api_path_validation import validate_t2i_paths_for_save
+from sdk.path_contract import (
+    project_root as configured_project_root,
+    resolve_runtime_asset_read_path,
+)
 from application.model_providers import (
-    adapter_catalog as _adapter_catalog,
+    adapter_catalog as _application_adapter_catalog,
     claude_messages_endpoint_url,
     claude_models_endpoint_url,
-    normalize_t2i_provider as _normalize_t2i_provider,
+    normalize_t2i_provider as _application_normalize_t2i_provider,
 )
+from sdk.path_references import state_project_root
 from .security import host_matches, validated_http_url
 from application.runtime.state import BridgeState, _jsonify
 
@@ -41,6 +46,16 @@ _IMAGE_ONLY_MODEL_MARKERS = (
     "sdxl",
     "stable-diffusion",
 )
+_TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
+    ("genie-tts", "Genie TTS"),
+    ("kaggle-gpt-sovits", "Kaggle GPT-SoVITS"),
+    ("gpt-sovits", "GPT SoVITS"),
+    ("index-tts", "IndexTTS"),
+    ("cosyvoice", "CosyVoice"),
+)
+_PREFERRED_T2I_KEYS_LOWER: tuple[str, ...] = ("comfyui", "stable diffusion")
+
+
 class LlmModelDiscoveryHttpError(RuntimeError):
     def __init__(self, status_code: int, url: str, detail: str) -> None:
         self.status_code = status_code
@@ -57,23 +72,33 @@ class LlmModelDiscoveryConnectionError(RuntimeError):
 
 def _state_project_root(state: BridgeState) -> Path:
     """Resolve the writable project/data root without falling back to the app install root."""
-    candidates = (
-        getattr(state, "project_root_dir", ""),
-        os.environ.get("SHINSEKAI_PROJECT_ROOT", ""),
-        os.environ.get("EASYAI_PROJECT_ROOT", ""),
-    )
-    for candidate in candidates:
-        raw = str(candidate or "").strip()
-        if not raw:
-            continue
-        try:
-            return Path(raw).expanduser().resolve(strict=False)
-        except (OSError, RuntimeError, ValueError):
-            continue
+    return state_project_root(state)
+
+
+def _adapter_schema(adapter_class: Any | None) -> dict[str, Any]:
+    if adapter_class is None:
+        return {}
+    getter = getattr(adapter_class, "get_config_schema", None)
+    if not callable(getter):
+        return {}
     try:
-        return Path.cwd().resolve(strict=False)
-    except (OSError, RuntimeError, ValueError):
-        return Path(".")
+        schema = getter()
+    except Exception:
+        return {}
+    return _jsonify(schema) if isinstance(schema, dict) else {}
+
+
+def _adapter_option(value: str, label: str, adapter_class: Any | None = None) -> dict[str, Any]:
+    return {
+        "label": str(label or value),
+        "schema": _adapter_schema(adapter_class),
+        "value": str(value),
+    }
+
+
+def _adapter_catalog() -> dict[str, list[dict[str, Any]]]:
+    """Expose registered choices without importing AI modules in the bridge."""
+    return _application_adapter_catalog()
 
 
 def _app_config_response(state: BridgeState) -> dict[str, Any]:
@@ -127,7 +152,15 @@ def _provider_map_value(mapping: dict[str, str], provider: str) -> str:
     return str((mapping or {}).get(provider, "") or "").strip()
 
 
-def _validate_api_config_for_save(config: Any) -> None:
+def _normalize_t2i_provider(value: str) -> str:
+    return _application_normalize_t2i_provider(value)
+
+
+def _validate_api_config_for_save(
+    config: Any,
+    *,
+    project_root: Path | None = None,
+) -> None:
     provider = str(config.llm_provider or "").strip()
     base_url = str(config.llm_base_url or "").strip()
     api_key = _provider_map_value(config.llm_api_key, provider)
@@ -137,12 +170,15 @@ def _validate_api_config_for_save(config: Any) -> None:
     if _contains_quotes(base_url):
         raise ValueError("LLM API 基础网址不能包含引号。")
 
+    validation_root = project_root or configured_project_root()
+    validate_t2i_paths_for_save(config, project_root=validation_root)
+
     tts_provider = normalize_tts_provider(config.tts_provider)
     if not uses_shared_tts_server_config(tts_provider):
         return
 
     tts_url = str(config.gpt_sovits_url or "").strip()
-    tts_path = str(config.gpt_sovits_api_path or "").strip()
+    tts_path = str(config.gpt_sovits_api_path or "")
     if not tts_url:
         raise ValueError("当前 TTS 引擎需要填写 URL。")
     if _contains_quotes(tts_url) or _contains_quotes(tts_path):
@@ -151,7 +187,15 @@ def _validate_api_config_for_save(config: Any) -> None:
         raise ValueError("TTS URL 必须是有效的 http(s) URL。")
     if requires_tts_work_path(tts_provider) and not tts_path:
         raise ValueError("本地 TTS 引擎需要填写服务启动路径。")
-    if tts_path and tts_provider != "kaggle-gpt-sovits" and not Path(tts_path).expanduser().is_dir():
+    if (
+        tts_path
+        and tts_provider != "kaggle-gpt-sovits"
+        and not resolve_runtime_asset_read_path(
+            tts_path,
+            root=validation_root,
+            resource_prefixes=(),
+        ).is_dir()
+    ):
         raise ValueError("TTS 服务启动路径必须是已存在的目录。")
 
 
@@ -170,9 +214,15 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
             config.gpt_sovits_api_path,
             _state_project_root(state),
         )
-    _validate_api_config_for_save(config)
+    root = _state_project_root(state)
+    _validate_api_config_for_save(config, project_root=root)
+    previous = state.config_manager.config.api_config
     state.config_manager.config.api_config = config
-    state.config_manager.save_api_config()
+    try:
+        state.config_manager.save_api_config()
+    except BaseException:
+        state.config_manager.config.api_config = previous
+        raise
     return config
 
 
