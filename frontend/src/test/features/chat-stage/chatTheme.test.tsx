@@ -351,6 +351,34 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-background-outset"]).toBe("0px");
   });
 
+  it("maps independent top, right, bottom, and left frame slices", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "asymmetric-nine-slice",
+        name: { en: "Asymmetric Nine-slice" },
+        tokens: {
+          dialog: {
+            backgroundImage: "assets/dialog.png",
+            frameSlice: [-10, 24, 250, 48],
+          },
+          name: {
+            frameImage: "assets/name.svg",
+            frameSlice: [10, 20, 30, 40],
+            frameWidthPx: 16,
+          },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-dialog-background-slice"]).toBe("1 24 200 48");
+    expect(resolved.style["--chat-dialog-background-width"]).toBe("1px 24px 200px 48px");
+    expect(resolved.style["--chat-name-frame-slice"]).toBe("10 20 30 40");
+    expect(resolved.style["--chat-name-frame-width"]).toBe("16px");
+    expect(resolved.style["--chat-name-frame"]).toBe('url("asset://assets/name.svg") 10 20 30 40 fill / 16px stretch');
+  });
+
   it("maps the arrow-fade name decoration without adding a frame", () => {
     const resolved = resolveChatTheme(
       {

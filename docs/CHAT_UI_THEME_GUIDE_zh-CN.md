@@ -263,11 +263,22 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 | 字段 | 类型和范围 | 默认行为 |
 | --- | --- | --- |
 | `frameImage` | 相对路径 | SVG 或位图九宫格素材；省略时不显示边框层。 |
-| `frameSlice` | `1–200` | `backgroundImage` 与 `frameImage` 共用的素材切片值；存在任一图片时默认 `32`。 |
+| `frameSlice` | `1–200` 或四值数组 | `backgroundImage` 与 `frameImage` 共用的素材切片值；四值依次为上、右、下、左，每项均限制为 `1–200`；存在任一图片时默认 `32`。 |
 | `frameWidthPx` | `0–96` | 两种九宫格共用的屏幕边缘带宽；省略时回退为最终 `frameSlice`。 |
 | `frameOutsetPx` | `0–96` | 两种九宫格向组件外绘制的距离；默认 `0`，不参与布局。 |
 
 建议总是显式填写 `frameWidthPx`。它不是 SVG 线条的 stroke 粗细，而是九宫格角块在屏幕上的目标宽高。若希望素材按 1:1 比例显示并避免角块压缩，可让它与 `frameSlice` 使用相同数值；需要整体缩放边框时再按比例调整。
+
+四边切片距离不相同时，把 `frameSlice` 写成 `[上, 右, 下, 左]`。例如下面的素材顶部切入 `18`、右侧切入 `28`、底部切入 `24`、左侧切入 `36` 个素材坐标单位：
+
+```json
+{
+  "frameImage": "assets/asymmetric-frame.svg",
+  "frameSlice": [18, 28, 24, 36]
+}
+```
+
+省略 `frameWidthPx` 时，屏幕上的四边带宽会分别回退为 `18px 28px 24px 36px`，保持素材各边 1:1 显示；显式填写 `frameWidthPx` 时，四边统一使用该屏幕宽度。
 
 聊天组件的 `backgroundImage` 直接画在组件自身的 `border-image` 背景中，并使用 `fill` 保留素材中心，浏览器会先画背景再画文字。因此不需要额外的 `backgroundLayer` / `textLayer` 配置。已有九宫格配置通常只需把 `frameImage` 改成 `backgroundImage`，并保留 `frameSlice`、`frameWidthPx` 和 `frameOutsetPx`：
 
@@ -513,7 +524,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | `dialog.offsetY` | `-240–240` |
 | `options.gap` | `0–36` |
 | `typewriter.cps` | `1–200` |
-| `frameSlice` | `1–200` |
+| `frameSlice` | 单值 `1–200`，或包含四个该范围数字的 `[上, 右, 下, 左]` 数组 |
 | `frameWidthPx`、`frameOutsetPx` | `0–96` |
 | `options.minHeightPx` | `36–96` |
 | `options.minHeightVh` | `3–8` |

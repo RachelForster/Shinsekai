@@ -231,7 +231,9 @@ def _validate_visual_block(
                     errors.append(f"tokens.{name}.{key} 必须是主题目录内相对路径")
             elif key == "padding":
                 out[key] = _clamp_numeric("padding", value, errors, f"tokens.{name}.padding")
-            elif key in {"frameSlice", "frameWidthPx", "frameOutsetPx"}:
+            elif key == "frameSlice":
+                out[key] = _clamp_frame_slice(value, errors, f"tokens.{name}.frameSlice")
+            elif key in {"frameWidthPx", "frameOutsetPx"}:
                 out[key] = _clamp_numeric(key, value, errors, f"tokens.{name}.{key}")
             elif isinstance(value, str) and _is_safe_css_value(value):
                 out[key] = value
@@ -323,6 +325,22 @@ def _clamp_numeric(field_name: str, value: Any, errors: List[str], path: str) ->
     if lo is not None:
         num = max(lo, min(hi, num))
     return num
+
+
+def _clamp_frame_slice(value: Any, errors: List[str], path: str) -> Optional[int | List[int]]:
+    if not isinstance(value, list):
+        return _clamp_numeric("frameSlice", value, errors, path)
+    if len(value) != 4:
+        errors.append(f"{path} 必须是数字或包含 4 个数字的数组（上、右、下、左）")
+        return None
+
+    normalized: List[int] = []
+    for index, item in enumerate(value):
+        next_value = _clamp_numeric("frameSlice", item, errors, f"{path}[{index}]")
+        if next_value is None:
+            return None
+        normalized.append(next_value)
+    return normalized
 
 
 def _clamp_number(field_name: str, value: Any, errors: List[str], path: str) -> Optional[float]:

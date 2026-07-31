@@ -188,6 +188,27 @@ def test_validate_manifest_keeps_schema_one_legacy_frames_on_unsupported_blocks_
     assert result.normalized["tokens"]["logs"]["line"]["frameSlice"] == 16
 
 
+def test_validate_manifest_normalizes_independent_frame_slices() -> None:
+    manifest = _valid_manifest()
+    manifest["tokens"]["dialog"]["frameSlice"] = [-10, 24, 250, 48]
+
+    result = validate_manifest(manifest)
+
+    assert result.ok is True
+    assert result.normalized["tokens"]["dialog"]["frameSlice"] == [1, 24, 200, 48]
+
+
+@pytest.mark.parametrize("frame_slice", [[12, 24], [12, 24, "invalid", 48]])
+def test_validate_manifest_rejects_invalid_independent_frame_slices(frame_slice: list) -> None:
+    manifest = _valid_manifest()
+    manifest["tokens"]["dialog"]["frameSlice"] = frame_slice
+
+    result = validate_manifest(manifest)
+
+    assert result.ok is False
+    assert any("frameSlice" in error for error in result.errors)
+
+
 def test_validate_theme_dir_warns_for_missing_assets_and_reports_bad_json(tmp_path: Path) -> None:
     theme_dir = _write_theme(tmp_path)
     (theme_dir / "assets" / "dialog.png").unlink()
