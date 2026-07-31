@@ -17,11 +17,34 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
+
+from sdk.archive_paths import (
+    UnsafeArchiveError,
+    extract_zip_safely,
+    write_directory_to_zip_without_links,
+)
+from sdk.file_transactions import (
+    atomic_binary_writer,
+    file_snapshot_is_stable,
+    inspect_portable_directory_tree,
+    open_binary_read_without_links,
+    read_text_snapshot_without_links,
+)
+from sdk.path_contract import (
+    path_is_within,
+    project_root,
+    require_symlink_free_absolute_path,
+    resolve_managed_project_path,
+    resolve_project_output_path,
+    safe_path_component,
+    validate_exact_path_text,
+)
 
 #: manifest schema 版本，与前端 ``CHAT_THEME_SCHEMA`` 一致。
 CHAT_THEME_SCHEMA = 1
@@ -183,21 +206,46 @@ class ThemeValidationResult:
 # --------------------------------------------------------------------------- #
 
 def slugify_theme_id(value: str) -> str:
-    """把任意字符串规整成合法主题 id。"""
+    """把任意字符串规整成可移植的合法主题目录 id。"""
     slug = re.sub(r"[^a-z0-9_-]+", "-", str(value or "").strip().lower()).strip("-")
-    return slug[:64] or "theme"
+    slug = slug[:64] or "theme"
+    try:
+        safe_path_component(slug, field="theme id")
+    except ValueError:
+        # Windows device aliases (for example CON and LPT1) satisfy the theme
+        # id grammar but cannot be directory names.  Keep slugification
+        # deterministic while moving the identifier out of that namespace.
+        slug = f"theme-{slug}"[:64]
+    return slug
 
 
 def _is_safe_asset_ref(value: str) -> bool:
     """资源引用必须是沙箱内相对路径。"""
-    if not value or not isinstance(value, str):
+    if (
+        not value
+        or not isinstance(value, str)
+        or value != value.strip()
+        or any(
+            ord(character) < 32
+            or ord(character) == 127
+            or 0xD800 <= ord(character) <= 0xDFFF
+            for character in value
+        )
+    ):
         return False
     if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*:", value):  # 含 scheme（http:/file:/data: 等）
         return False
     if value.startswith("/") or value.startswith("\\"):
         return False
-    parts = Path(value.replace("\\", "/")).parts
-    return ".." not in parts
+    parts = value.replace("\\", "/").split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return False
+    try:
+        for part in parts:
+            safe_path_component(part, field="theme asset path component")
+    except ValueError:
+        return False
+    return True
 
 
 def _is_safe_css_value(value: str) -> bool:
@@ -408,9 +456,11 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
     if schema != CHAT_THEME_SCHEMA:
         errors.append(f"schema 必须为 {CHAT_THEME_SCHEMA}，实际 {schema!r}")
 
-    theme_id = str(data.get("id") or "").strip()
+    theme_id = str(data.get("id") or "")
     if not theme_id:
         errors.append("缺少 id")
+    elif theme_id != theme_id.strip():
+        errors.append("id 首尾不能包含空白字符")
     elif not _ID_RE.match(theme_id):
         errors.append("id 仅允许小写字母/数字/-/_，且需以字母数字开头")
 
@@ -623,20 +673,42 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
     return ThemeValidationResult(ok=not errors, errors=errors, warnings=warnings, normalized=normalized)
 
 
-def validate_theme_dir(theme_dir: Path) -> ThemeValidationResult:
+def validate_theme_dir(theme_dir: str | Path) -> ThemeValidationResult:
     """读取并校验一个主题目录（含 theme.json + 引用资源是否存在）。"""
-    manifest_path = Path(theme_dir) / MANIFEST_NAME
-    if not manifest_path.is_file():
+    raw_theme_dir = validate_exact_path_text(theme_dir, field="theme directory")
+    unresolved_theme_dir = Path(raw_theme_dir).expanduser()
+    if unresolved_theme_dir.is_absolute():
+        try:
+            require_symlink_free_absolute_path(
+                unresolved_theme_dir,
+                field="theme directory",
+            )
+        except (OSError, ValueError) as exc:
+            return ThemeValidationResult(ok=False, errors=[f"主题目录扫描失败: {exc}"])
+    theme_dir = resolve_project_output_path(raw_theme_dir, root=project_root())
+    try:
+        _, files = inspect_portable_directory_tree(theme_dir)
+    except (OSError, ValueError) as exc:
+        return ThemeValidationResult(
+            ok=False,
+            errors=[f"主题目录包含符号链接或非法路径，扫描失败: {exc}"],
+        )
+    file_names = {path.as_posix() for path in files}
+    manifest_path = theme_dir / MANIFEST_NAME
+    if MANIFEST_NAME not in file_names:
         return ThemeValidationResult(ok=False, errors=[f"缺少 {MANIFEST_NAME}"])
     try:
-        data = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        manifest_text, _manifest_identity = read_text_snapshot_without_links(
+            manifest_path,
+        )
+        data = json.loads(manifest_text)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         return ThemeValidationResult(ok=False, errors=[f"{MANIFEST_NAME} 解析失败: {exc}"])
 
     result = validate_manifest(data)
     # 校验引用资源是否真实存在于目录内
     for ref in _iter_asset_refs(result.normalized):
-        if not (Path(theme_dir) / ref).is_file():
+        if ref not in file_names:
             result.warnings.append(f"引用的资源不存在: {ref}")
     return result
 
@@ -670,43 +742,87 @@ def _iter_background_image_refs(value: Any):
 # 打包 / 安全解压
 # --------------------------------------------------------------------------- #
 
-def pack_theme(theme_dir: Path, output_zip: Path) -> Path:
+def pack_theme(theme_dir: str | Path, output_zip: str | Path) -> Path:
     """把一个主题目录打成 .zip（校验通过才打包）。"""
-    theme_dir = Path(theme_dir)
+    raw_theme_dir = validate_exact_path_text(theme_dir, field="theme directory")
     result = validate_theme_dir(theme_dir)
     if not result.ok:
         raise ValueError("主题校验失败:\n" + "\n".join(result.errors))
-    output_zip = Path(output_zip)
-    output_zip.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(output_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for file in theme_dir.rglob("*"):
-            if file.is_file():
-                zf.write(file, file.relative_to(theme_dir).as_posix())
+    theme_dir = resolve_project_output_path(raw_theme_dir, root=project_root())
+    raw_output_zip = validate_exact_path_text(output_zip, field="theme package output")
+    unresolved_output_zip = Path(raw_output_zip).expanduser()
+    if unresolved_output_zip.is_absolute():
+        require_symlink_free_absolute_path(
+            unresolved_output_zip,
+            field="theme package output",
+        )
+    output_zip = resolve_project_output_path(raw_output_zip, root=project_root())
+    if output_zip == theme_dir or path_is_within(output_zip, theme_dir):
+        raise ValueError("主题包输出不能位于待打包主题目录内部")
+    with atomic_binary_writer(output_zip) as output_file:
+        with zipfile.ZipFile(output_file, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            write_directory_to_zip_without_links(zf, theme_dir)
     return output_zip
 
 
-def safe_extract(zip_path: Path, dest_dir: Path) -> Path:
+def safe_extract(zip_path: str | Path, dest_dir: str | Path) -> Path:
     """zip-slip 安全解压到 ``dest_dir``，返回解压根目录。"""
-    dest_dir = Path(dest_dir)
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    dest_root = dest_dir.resolve()
-    with zipfile.ZipFile(zip_path) as zf:
-        for member in zf.namelist():
-            target = (dest_dir / member).resolve()
-            if not str(target).startswith(str(dest_root)):
-                raise ValueError(f"非法压缩包条目（路径穿越）: {member}")
-        zf.extractall(dest_dir)
+    raw_zip_path = validate_exact_path_text(zip_path, field="theme package path")
+    unresolved_zip_path = Path(raw_zip_path).expanduser()
+    if unresolved_zip_path.is_absolute():
+        zip_path = require_symlink_free_absolute_path(
+            unresolved_zip_path,
+            field="theme package path",
+        )
+    else:
+        zip_path = resolve_managed_project_path(
+            raw_zip_path,
+            root=project_root(),
+        )
+    if not zip_path.is_file():
+        raise FileNotFoundError(zip_path)
+    raw_dest_dir = validate_exact_path_text(
+        dest_dir,
+        field="theme extraction directory",
+    )
+    unresolved_dest_dir = Path(raw_dest_dir).expanduser()
+    if unresolved_dest_dir.is_absolute():
+        require_symlink_free_absolute_path(
+            unresolved_dest_dir,
+            field="theme extraction directory",
+        )
+    dest_dir = resolve_project_output_path(raw_dest_dir, root=project_root())
+    try:
+        with open_binary_read_without_links(zip_path) as source:
+            initial_metadata = os.fstat(source.fileno())
+            with zipfile.ZipFile(source) as zf:
+                extract_zip_safely(zf, dest_dir)
+            final_metadata = os.fstat(source.fileno())
+        if not file_snapshot_is_stable(initial_metadata, final_metadata):
+            raise PermissionError(
+                f"theme package changed while it was extracted: {zip_path}"
+            )
+    except UnsafeArchiveError as exc:
+        raise ValueError(f"非法压缩包条目（路径穿越或非便携路径）: {exc}") from exc
     return dest_dir
 
 
 def locate_manifest_root(extracted: Path) -> Optional[Path]:
     """在解压结果里定位 theme.json 所在目录（支持 zip 根或单层子目录）。"""
     extracted = Path(extracted)
-    if (extracted / MANIFEST_NAME).is_file():
+    try:
+        directories, files = inspect_portable_directory_tree(extracted)
+    except (OSError, PermissionError, ValueError):
+        return None
+    file_set = set(files)
+    if Path(MANIFEST_NAME) in file_set:
         return extracted
-    subdirs = [c for c in extracted.iterdir() if c.is_dir()]
-    if len(subdirs) == 1 and (subdirs[0] / MANIFEST_NAME).is_file():
-        return subdirs[0]
+    subdirs = [path for path in directories if len(path.parts) == 1]
+    if (
+        len(subdirs) == 1
+        and subdirs[0] / MANIFEST_NAME in file_set
+    ):
+        return extracted / subdirs[0]
     return None
 
 
@@ -727,7 +843,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.cmd == "validate":
-        result = validate_theme_dir(Path(args.dir))
+        result = validate_theme_dir(args.dir)
         for e in result.errors:
             print(f"[error] {e}")
         for w in result.warnings:
@@ -735,7 +851,7 @@ def _main(argv: Optional[List[str]] = None) -> int:
         print("OK" if result.ok else "FAILED")
         return 0 if result.ok else 1
     if args.cmd == "pack":
-        out = pack_theme(Path(args.dir), Path(args.output))
+        out = pack_theme(args.dir, args.output)
         print(f"packed -> {out}")
         return 0
     return 2

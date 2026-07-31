@@ -6,11 +6,29 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Callable, Iterable, Iterator, MutableMapping, Sequence
 from pathlib import Path
 from typing import Any, Type
 
 import yaml
+
+from sdk.file_transactions import (
+    ensure_portable_name_available,
+    portable_name_key,
+    read_text_without_links,
+)
+from sdk.path_contract import (
+    managed_child_path,
+    project_root,
+    require_directory_without_links,
+    require_symlink_free_absolute_path,
+    resolve_managed_project_path,
+    resolve_project_output_path,
+    resolve_project_path,
+    resolve_project_read_path,
+    safe_path_component,
+)
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import (
@@ -68,10 +86,43 @@ class PluginManager:
         *,
         plugin_data_root: Path | None = None,
         discovery: PluginDiscoveryRegistry | None = None,
+        root: str | Path | None = None,
     ) -> None:
-        self._plugin_data_root = (
-            Path(plugin_data_root) if plugin_data_root is not None else Path("data/plugins")
+        authoritative_root = (
+            project_root()
+            if root is None
+            else resolve_project_path(".", root=root)
         )
+        configured_value = (
+            os.fspath(plugin_data_root)
+            if plugin_data_root is not None
+            else os.fspath(authoritative_root / "data" / "plugins")
+        )
+        configured_root = Path(configured_value).expanduser()
+        explicitly_absolute = configured_root.is_absolute()
+        project_owned = not explicitly_absolute
+        if explicitly_absolute:
+            try:
+                configured_root.relative_to(authoritative_root)
+                project_owned = True
+            except ValueError:
+                project_owned = False
+        if project_owned:
+            resolved_root = resolve_managed_project_path(
+                configured_value,
+                root=authoritative_root,
+            )
+        else:
+            require_symlink_free_absolute_path(
+                configured_root,
+                field="plugin data root",
+            )
+            resolved_root = resolve_project_output_path(
+                configured_value,
+                root=authoritative_root,
+            )
+        self._project_root = authoritative_root
+        self._plugin_data_root = resolved_root
         self._discovery = discovery if discovery is not None else PluginDiscoveryRegistry()
         self._hook_dispatcher = PluginHookDispatcher()
         self._capabilities: PluginCapabilityRegistry | None = None
@@ -110,13 +161,14 @@ class PluginManager:
         self._discovery.register_descriptors(descriptors)
 
     def load_manifest_file(self, path: Path) -> None:
-        text = path.read_text(encoding="utf-8")
-        if path.suffix.lower() in {".yaml", ".yml"}:
+        source = resolve_project_read_path(path, root=self._project_root)
+        text = read_text_without_links(source)
+        if source.suffix.lower() in {".yaml", ".yml"}:
             raw = yaml.safe_load(text) or []
         else:
             raw = json.loads(text)
         if not isinstance(raw, list):
-            raise ValueError(f"Plugin manifest must be a list: {path}")
+            raise ValueError(f"Plugin manifest must be a list: {source}")
         descs: list[PluginDescriptor] = []
         for item in raw:
             if not isinstance(item, dict):
@@ -124,6 +176,13 @@ class PluginManager:
             entry = item.get("entry")
             if not entry or not isinstance(entry, str):
                 raise ValueError(f"Manifest item missing string 'entry': {item!r}")
+            if entry != entry.strip() or any(
+                ord(character) < 32
+                or ord(character) == 127
+                or 0xD800 <= ord(character) <= 0xDFFF
+                for character in entry
+            ):
+                raise ValueError(f"Manifest item entry is not exact: {item!r}")
             enabled = bool(item.get("enabled", True))
             extra = {
                 k: v
@@ -131,7 +190,7 @@ class PluginManager:
                 if k not in ("entry", "enabled")
             }
             descs.append(
-                PluginDescriptor(entry=entry.strip(), enabled=enabled, extra=extra)
+                PluginDescriptor(entry=entry, enabled=enabled, extra=extra)
             )
         self.load_from_descriptors(descs)
 
@@ -163,16 +222,43 @@ class PluginManager:
         if self._initialized and app_config is None:
             return
         self._plugin_data_root.mkdir(parents=True, exist_ok=True)
+        self._plugin_data_root = require_directory_without_links(
+            self._plugin_data_root,
+            field="plugin data root",
+        )
         self._hook_dispatcher.clear()
         self._capabilities = PluginCapabilityRegistry(
             hook_dispatcher=self._hook_dispatcher,
         )
-        host = PluginHostContext.from_config_manager(app_config)
+        host = PluginHostContext.from_config_manager(
+            app_config,
+            project_data_dir=self._plugin_data_root.parent,
+        )
 
+        claimed_storage: set[str] = set()
         for plugin in self._instances:
-            root = self._plugin_data_root / plugin.plugin_id.replace("/", "_")
-            root.mkdir(parents=True, exist_ok=True)
             try:
+                storage_name = safe_path_component(
+                    str(plugin.plugin_id),
+                    field="plugin id",
+                )
+                storage_key = portable_name_key(storage_name)
+                if storage_key in claimed_storage:
+                    raise FileExistsError(
+                        f"plugin id collides with another loaded plugin: {plugin.plugin_id}"
+                    )
+                ensure_portable_name_available(self._plugin_data_root, storage_name)
+                root = managed_child_path(
+                    self._plugin_data_root,
+                    storage_name,
+                    field="plugin id",
+                )
+                root.mkdir(exist_ok=True)
+                root = require_directory_without_links(
+                    root,
+                    field="plugin data directory",
+                )
+                claimed_storage.add(storage_key)
                 assert self._capabilities is not None
                 self._capabilities.set_settings_ui_plugin_context(
                     plugin.plugin_id, plugin.plugin_version

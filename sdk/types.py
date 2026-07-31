@@ -155,9 +155,9 @@ class FrontendPageContribution:
     A plugin-owned frontend page served as static files and embedded by iframe.
 
     ``entry`` points at the page's ``index.html``. Relative paths are resolved
-    from the current working directory; plugins may pass an absolute path based
-    on ``Path(__file__).parent``. Assets are served only from the entry file's
-    containing directory.
+    from the host's authoritative project root; plugins may pass an explicit
+    absolute path based on ``Path(__file__).parent``. Assets are served only
+    from the entry file's containing directory.
     """
 
     page_id: str

@@ -7,20 +7,44 @@ import json
 import sys
 from pathlib import Path
 
+from sdk.file_transactions import atomic_write_text
+from sdk.path_contract import (
+    project_root,
+    resolve_managed_project_path,
+    resolve_project_output_path,
+    resolve_project_read_path,
+    safe_path_component,
+    validate_exact_path_text,
+)
+
 from sdk.cli.registry_ops import (
     dump_registry_json,
+    exact_registry_entry,
     load_registry_json,
     merge_registry_entry,
+    normalize_repo_slug,
     run_git_commit,
 )
 from sdk.cli.scaffold import package_to_class_suffix, validate_package_name, write_plugin_project
 
 
+def _resolve_create_root(value: str) -> Path:
+    raw = validate_exact_path_text(
+        value,
+        field="plugin scaffold root",
+        allow_dot_root=True,
+    )
+    if raw == ".":
+        return project_root()
+    return resolve_project_output_path(raw, root=project_root())
+
+
 def _cmd_create(ns: argparse.Namespace) -> int:
     package = validate_package_name(ns.package)
-    plugin_id = (ns.plugin_id or "").strip() or f"com.example.{package}"
+    plugin_id = ns.plugin_id or f"com.example.{package}"
+    safe_path_component(plugin_id, field="plugin id")
     display_name = (ns.display_name or "").strip() or package.replace("_", " ").title()
-    root = Path(ns.root).resolve()
+    root = _resolve_create_root(ns.root)
     dest = write_plugin_project(
         root=root,
         package=package,
@@ -38,12 +62,13 @@ def _cmd_create(ns: argparse.Namespace) -> int:
 
 
 def _cmd_registry_snippet(ns: argparse.Namespace) -> int:
+    repo = normalize_repo_slug(ns.repo)
     row = {
         "name": ns.name.strip(),
         "author": ns.author.strip(),
-        "repo": ns.repo.strip().strip("/"),
+        "repo": repo,
         "description": ns.description.strip(),
-        "entry": ns.entry.strip(),
+        "entry": exact_registry_entry(ns.entry),
     }
     text = json.dumps(row, ensure_ascii=False, indent=2)
     print(text)
@@ -56,8 +81,14 @@ def _cmd_registry_snippet(ns: argparse.Namespace) -> int:
 
 
 def _cmd_registry_append(ns: argparse.Namespace) -> int:
-    registry_root = Path(ns.registry).resolve()
-    json_path = Path(ns.file).resolve() if ns.file else registry_root / "plugins.json"
+    registry_root = resolve_project_read_path(ns.registry, root=project_root())
+    if not registry_root.is_dir():
+        print(f"Missing {registry_root}", file=sys.stderr)
+        return 2
+    json_path = resolve_managed_project_path(
+        "plugins.json" if ns.file is None else ns.file,
+        root=registry_root,
+    )
     if not json_path.is_file():
         print(f"Missing {json_path}", file=sys.stderr)
         return 2
@@ -79,12 +110,16 @@ def _cmd_registry_append(ns: argparse.Namespace) -> int:
         print("\n(dry-run: plugins.json not modified)", file=sys.stderr)
         return 0
 
-    json_path.write_text(body, encoding="utf-8")
+    atomic_write_text(json_path, body)
     print(f"Wrote {json_path}")
 
     if ns.commit:
         msg = ns.message.strip() or f"registry: add {ns.name.strip()}"
-        run_git_commit(registry_root, msg)
+        run_git_commit(
+            registry_root,
+            msg,
+            file_path=json_path.relative_to(registry_root).as_posix(),
+        )
         print(f"Committed in {registry_root}: {msg!r}")
         print("Push your branch and open a PR against Shinsekai-Plugin-Registry.", file=sys.stderr)
     else:
@@ -111,9 +146,8 @@ def main(argv: list[str] | None = None) -> int:
     p_c.add_argument("package", help="Snake_case package name, e.g. my_screen_tool")
     p_c.add_argument(
         "--root",
-        type=Path,
-        default=Path("."),
-        help="Assistant repo root (default: current directory)",
+        default=".",
+        help="Assistant repo root (default: active Shinsekai project root)",
     )
     p_c.add_argument("--plugin-id", dest="plugin_id", default="", help="Stable id, default com.example.<package>")
     p_c.add_argument("--display-name", dest="display_name", default="", help="Settings nav label / human title")
@@ -146,12 +180,10 @@ def main(argv: list[str] | None = None) -> int:
     p_a.add_argument(
         "--registry",
         required=True,
-        type=Path,
         help="Path to local git clone of Shinsekai-Plugin-Registry",
     )
     p_a.add_argument(
         "--file",
-        type=Path,
         default=None,
         help="Alternate plugins.json path (default: <registry>/plugins.json)",
     )
