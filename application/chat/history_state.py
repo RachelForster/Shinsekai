@@ -19,7 +19,6 @@ from core.messaging.dialog_tokens import (
     normalize_character_name,
 )
 
-CHAT_HISTORY_PATH = "./data/chat_history"
 _SYSTEM_HISTORY_NAMES = COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
 
 chat_history: list[Any] = []
