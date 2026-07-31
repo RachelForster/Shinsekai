@@ -13,6 +13,19 @@ import tempfile
 import time
 from pathlib import Path
 
+from core.paths import (
+    app_root,
+    managed_child_path,
+    managed_project_storage,
+    path_is_link_or_reparse_point,
+    project_root,
+    require_directory_without_links,
+    resolve_executable_file,
+    resolve_project_path,
+    resolve_project_read_path,
+    validate_exact_path_text,
+)
+from core.file_transactions import read_text_without_links, remove_file_without_links
 from core.runtime_env.pip_index import (
     strip_inline_requirement_comment as _strip_inline_requirement_comment,
 )
@@ -37,10 +50,7 @@ def frozen_release_root() -> Path | None:
     """打包运行时返回发行根目录；开发模式返回 ``None``。"""
     if not getattr(sys, "frozen", False):
         return None
-    er = os.environ.get("EASYAI_PROJECT_ROOT")
-    if er:
-        return Path(er).resolve()
-    return Path(sys.executable).resolve().parent.parent
+    return app_root()
 
 
 def pip_python_executable() -> Path:
@@ -53,64 +63,94 @@ def pip_python_executable() -> Path:
     if getattr(sys, "frozen", False):
         root = frozen_release_root()
         if root is not None:
-            runtime = root / "runtime"
-            for name in ("python.exe", "python3.exe"):
-                p = runtime / name
-                if p.is_file():
-                    return p.resolve()
-    return Path(sys.executable).resolve()
+            runtime_candidates = (
+                (
+                    Path("runtime/python.exe"),
+                    Path("runtime/python3.exe"),
+                    Path("runtime/bin/python.exe"),
+                    Path("runtime/bin/python3.exe"),
+                )
+                if os.name == "nt"
+                else (
+                    Path("runtime/bin/python3"),
+                    Path("runtime/bin/python"),
+                    Path("runtime/python3"),
+                    Path("runtime/python"),
+                )
+            )
+            for relative in runtime_candidates:
+                p = root / relative
+                if os.path.lexists(p):
+                    return resolve_executable_file(
+                        p,
+                        field="plugin pip Python executable",
+                    )
+    return resolve_executable_file(
+        Path(sys.executable),
+        field="host Python executable",
+    )
 
 
-def plugin_pip_target_directory() -> Path | None:
+def plugin_pip_target_directory(
+    *,
+    root: str | Path | None = None,
+) -> Path | None:
     """
-    冻结版：pip ``--target`` 的可写目录（与 Tauri bridge / ``main`` 所设发行根一致）。
+    冻结版：pip ``--target`` 的项目数据目录（由统一项目根决定）。
     开发模式返回 ``None``（依赖装入当前环境 site-packages，不使用 ``--target``）。
     """
-    root = frozen_release_root()
-    if root is None:
+    if not getattr(sys, "frozen", False):
         return None
-    return root / "data" / "plugin_site_packages"
+    if root is None:
+        return managed_project_storage("data/plugin_site_packages")
+    return managed_project_storage("data/plugin_site_packages", root=root)
 
 
-def ensure_plugin_site_packages_on_syspath() -> None:
+def ensure_plugin_site_packages_on_syspath(
+    *,
+    root: str | Path | None = None,
+) -> None:
     """若存在冻结版插件依赖目录，则插入 ``sys.path`` 首位（须在加载插件前调用）。"""
-    target = plugin_pip_target_directory()
+    target = (
+        plugin_pip_target_directory()
+        if root is None
+        else plugin_pip_target_directory(root=root)
+    )
     if target is None:
         return
     if not target.is_dir():
         return
-    s = str(target.resolve())
+    target = require_directory_without_links(
+        target,
+        field="plugin site-packages directory",
+    )
+    s = str(target)
     if s not in sys.path:
         sys.path.insert(0, s)
         logger.info("Prepended plugin site-packages to sys.path: %s", s)
 
 
-def ensure_plugins_namespace_on_syspath() -> None:
+def ensure_plugins_namespace_on_syspath(
+    *,
+    root: str | Path | None = None,
+) -> None:
     """
     将「含有 ``plugins/`` 子目录的一层级目录」置于 ``sys.path`` 首位，使 ``import plugins.xxx`` 可解析。
 
     源码运行时常已由入口脚本把项目根加入 ``sys.path``；冻结版仅有 ``_internal`` 等路径时，
-    必须加入发行根（与 ``main`` / ``SettingsUI`` 同层的目录，内含用户可写的 ``plugins/``）。
+    必须加入权威项目数据根（内含用户可写的 ``plugins/``）。
     """
-    if getattr(sys, "frozen", False):
-        root = frozen_release_root()
-        if root is None:
-            return
-        plug = root / "plugins"
-        if not plug.is_dir():
-            logger.debug("Frozen: no plugins directory at %s, skip release root on sys.path", plug)
-            return
-        s = str(root.resolve())
+    active_root = (
+        project_root()
+        if root is None
+        else resolve_project_path(".", root=root)
+    )
+    plugins_root = managed_project_storage("plugins", root=active_root)
+    if plugins_root.is_dir():
+        s = str(active_root)
         if s not in sys.path:
             sys.path.insert(0, s)
-            logger.info("Prepended release root for plugins namespace: %s", s)
-        return
-    cwd = Path.cwd().resolve()
-    if (cwd / "plugins").is_dir():
-        s = str(cwd)
-        if s not in sys.path:
-            sys.path.insert(0, s)
-            logger.info("Prepended cwd for plugins namespace: %s", s)
+            logger.info("Prepended project root for plugins namespace: %s", s)
 
 
 def _requirement_line_project_name(line: str) -> str | None:
@@ -151,10 +191,14 @@ def _pip_base_install_cmd(py: Path, pip_target: Path | None) -> list[str]:
     ]
     if pip_target is not None:
         pip_target.mkdir(parents=True, exist_ok=True)
+        pip_target = require_directory_without_links(
+            pip_target,
+            field="plugin pip target directory",
+        )
         cmd.extend(
             [
                 "--target",
-                str(pip_target.resolve()),
+                str(pip_target),
                 "--no-warn-script-location",
             ]
         )
@@ -190,12 +234,24 @@ def _requirement_line_can_be_pruned(line: str) -> bool:
     return True
 
 
-def _installed_distribution_versions() -> dict[str, str]:
+def _installed_distribution_versions(
+    *,
+    root: str | Path | None = None,
+) -> dict[str, str]:
     paths = list(sys.path)
-    target = plugin_pip_target_directory()
+    target = (
+        plugin_pip_target_directory()
+        if root is None
+        else plugin_pip_target_directory(root=root)
+    )
     if target is not None and target.is_dir():
         # 打包版插件依赖会装进 data/plugin_site_packages，先查这里再看系统路径。
-        target_s = str(target.resolve())
+        target_s = str(
+            require_directory_without_links(
+                target,
+                field="plugin site-packages directory",
+            )
+        )
         paths = [target_s, *[path for path in paths if path != target_s]]
     versions: dict[str, str] = {}
     for distribution in importlib_metadata.distributions(path=paths):
@@ -209,10 +265,16 @@ def _installed_distribution_versions() -> dict[str, str]:
 def _requirement_distribution_version(
     name: str,
     installed_versions: Mapping[str, str] | None = None,
+    *,
+    root: str | Path | None = None,
 ) -> str | None:
     canonical = _canonical_distribution_name(name)
     if installed_versions is None:
-        installed_versions = _installed_distribution_versions()
+        installed_versions = (
+            _installed_distribution_versions()
+            if root is None
+            else _installed_distribution_versions(root=root)
+        )
     return installed_versions.get(canonical)
 
 
@@ -242,12 +304,20 @@ def _requirement_line_is_satisfied(
     return True
 
 
-def _install_lines_after_precheck(lines: list[str]) -> tuple[bool, list[str]]:
+def _install_lines_after_precheck(
+    lines: list[str],
+    *,
+    root: str | Path | None = None,
+) -> tuple[bool, list[str]]:
     # requirements 里出现 -e、--find-links、direct reference 等全局/本地语义时，不做裁剪。
     # 这些行可能影响后续包解析，强行只装“缺失行”反而会破坏作者的安装意图。
     if not all(_requirement_line_can_be_pruned(line) for line in lines):
         return False, lines
-    installed_versions = _installed_distribution_versions()
+    installed_versions = (
+        _installed_distribution_versions()
+        if root is None
+        else _installed_distribution_versions(root=root)
+    )
     install_lines: list[str] = []
     for line in lines:
         stripped = _strip_inline_requirement_comment(line)
@@ -258,17 +328,35 @@ def _install_lines_after_precheck(lines: list[str]) -> tuple[bool, list[str]]:
     return True, install_lines
 
 
-def _write_temp_requirements(prefix: str, lines: list[str]) -> Path:
+def _write_temp_requirements(
+    prefix: str,
+    lines: list[str],
+) -> tuple[Path, os.stat_result]:
     fd, temp_path_str = tempfile.mkstemp(prefix=prefix, suffix=".txt")
-    path = Path(temp_path_str)
+    # ``tempfile`` may return a trusted platform alias such as macOS /var.
+    # Pin the newly created descriptor's canonical identity before passing the
+    # filename to pip or to strict cleanup helpers.
+    path = Path(temp_path_str).resolve(strict=True)
+    identity = os.fstat(fd)
     try:
-        os.close(fd)
-        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        return path
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            handle.write("\n".join(lines) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        if not os.path.samestat(identity, path.lstat()):
+            raise PermissionError("temporary requirements file changed identity")
+        return path, identity
     except BaseException:
+        if fd >= 0:
+            os.close(fd)
         try:
-            path.unlink(missing_ok=True)
-        except OSError:
+            remove_file_without_links(
+                path,
+                missing_ok=True,
+                expected_identity=identity,
+            )
+        except (OSError, ValueError):
             pass
         raise
 
@@ -276,9 +364,14 @@ def _write_temp_requirements(prefix: str, lines: list[str]) -> Path:
 def _finish_install_result(
     result: tuple[str, str],
     pip_target: Path | None,
+    *,
+    root: str | Path | None = None,
 ) -> tuple[str, str]:
     if result[0] == "pip_ok" and pip_target is not None:
-        ensure_plugin_site_packages_on_syspath()
+        if root is None:
+            ensure_plugin_site_packages_on_syspath()
+        else:
+            ensure_plugin_site_packages_on_syspath(root=root)
     return result
 
 
@@ -288,12 +381,13 @@ def install_plugin_requirements_txt(
     requirements_file: str = "requirements.txt",
     timeout_sec: float = 900.0,
     on_output_line: Callable[[str], None] | None = None,
+    root: str | Path | None = None,
 ) -> tuple[str, str]:
     """
     Run ``python -m pip install -r requirements_file`` if it exists under ``plugin_root``.
 
-    冻结版使用 :func:`pip_python_executable`（默认 ``<发行根>/runtime/python.exe``）执行
-    普通依赖使用 ``pip install --target <发行根>/data/plugin_site_packages``；PyTorch
+    冻结版使用 :func:`pip_python_executable`（默认 ``<安装根>/runtime/python.exe``）执行
+    普通依赖使用 ``pip install --target <项目数据根>/data/plugin_site_packages``；PyTorch
     二进制栈是例外，会统一安装进 bundled runtime，避免两套 ``torch`` 同时出现在
     ``sys.path``。宿主须在启动时调用 :func:`ensure_plugin_site_packages_on_syspath`。
 
@@ -315,8 +409,29 @@ def install_plugin_requirements_txt(
     If ``on_output_line`` is set, stdout/stderr lines are forwarded (stripped of trailing newline)
     as pip runs, for UI logs.
     """
-    root = plugin_root.resolve()
-    req = root / requirements_file
+    raw_root = validate_exact_path_text(plugin_root, field="plugin root")
+    unresolved_root = Path(raw_root).expanduser()
+    if (
+        unresolved_root.is_absolute()
+        and path_is_link_or_reparse_point(unresolved_root)
+    ):
+        raise PermissionError("plugin root must not be a symbolic link")
+    active_project_root = (
+        project_root()
+        if root is None
+        else resolve_project_path(".", root=root)
+    )
+    plugin_directory = resolve_project_read_path(
+        raw_root,
+        root=active_project_root,
+    )
+    if not plugin_directory.is_dir():
+        return ("pip_skip_no_requirements", "")
+    req = managed_child_path(
+        plugin_directory,
+        requirements_file,
+        field="requirements filename",
+    )
     if not req.is_file():
         return ("pip_skip_no_requirements", "")
 
@@ -327,7 +442,11 @@ def install_plugin_requirements_txt(
             "pip install may fail (use <release>/runtime/python.exe).",
         )
 
-    pip_target = plugin_pip_target_directory()
+    pip_target = (
+        plugin_pip_target_directory()
+        if root is None
+        else plugin_pip_target_directory(root=active_project_root)
+    )
     base_cmd = _pip_base_install_cmd(py, pip_target)
 
     started = time.monotonic()
@@ -336,7 +455,7 @@ def install_plugin_requirements_txt(
         return max(30.0, timeout_sec - (time.monotonic() - started))
 
     try:
-        lines = req.read_text(encoding="utf-8").splitlines()
+        lines = read_text_without_links(req).splitlines()
     except OSError as exc:
         logger.warning("Could not read %s: %s", req, exc)
         return ("pip_exception", str(exc))
@@ -346,7 +465,14 @@ def install_plugin_requirements_txt(
     torch_lines, source_other_lines = _partition_torch_requirement_lines(lines)
     split_torch = bool(torch_lines) and sys.platform != "darwin"
     precheck_source_lines = source_other_lines if split_torch else lines
-    can_prune, install_lines = _install_lines_after_precheck(precheck_source_lines)
+    can_prune, install_lines = (
+        _install_lines_after_precheck(precheck_source_lines)
+        if root is None
+        else _install_lines_after_precheck(
+            precheck_source_lines,
+            root=active_project_root,
+        )
+    )
     if can_prune and not install_lines and not split_torch:
         logger.info("Plugin pip: all requirements already satisfied, skipping install.")
         return ("pip_ok", "")
@@ -354,13 +480,19 @@ def install_plugin_requirements_txt(
     active_req = req
     active_lines = lines
     precheck_tf: Path | None = None
+    precheck_identity: os.stat_result | None = None
     torch_tf: Path | None = None
+    torch_identity: os.stat_result | None = None
     other_tf: Path | None = None
+    other_identity: os.stat_result | None = None
     try:
         if can_prune:
             # pip 仍然只认识 requirements 文件；在 finally 生效后再写临时文件，
             # 确保写入成功后任何后续异常都会清理掉它。
-            precheck_tf = _write_temp_requirements("easyai_missing_req_", install_lines)
+            precheck_tf, precheck_identity = _write_temp_requirements(
+                "easyai_missing_req_",
+                install_lines,
+            )
             active_req = precheck_tf
             active_lines = install_lines
 
@@ -384,7 +516,7 @@ def install_plugin_requirements_txt(
             )
             managed_torch_lines = list(plan.requirement_lines)
             if managed_torch_lines:
-                torch_tf = _write_temp_requirements(
+                torch_tf, torch_identity = _write_temp_requirements(
                     "easyai_torch_req_",
                     managed_torch_lines,
                 )
@@ -409,7 +541,7 @@ def install_plugin_requirements_txt(
                 cmd_torch.extend(["-r", str(torch_tf)])
                 code1, detail1 = _run_pip_install(
                     _apply_pip_index_and_extra_args(cmd_torch, managed_torch_lines),
-                    cwd=root,
+                    cwd=active_project_root,
                     timeout_sec=remaining_budget(),
                     on_output_line=on_output_line,
                 )
@@ -430,7 +562,7 @@ def install_plugin_requirements_txt(
                             cmd_torch_deps,
                             managed_torch_lines,
                         ),
-                        cwd=root,
+                        cwd=active_project_root,
                         timeout_sec=remaining_budget(),
                         on_output_line=on_output_line,
                     )
@@ -439,9 +571,17 @@ def install_plugin_requirements_txt(
 
             other_lines = install_lines if can_prune else source_other_lines
             if not _has_non_comment_requirement(other_lines):
-                return _finish_install_result(("pip_ok", ""), pip_target)
+                return _finish_install_result(
+                    ("pip_ok", ""),
+                    pip_target,
+                    root=(active_project_root if root is not None else None),
+                )
 
-            other_tf = _write_temp_requirements("easyai_other_req_", other_lines)
+            other_tf, other_identity = _write_temp_requirements(
+                "easyai_other_req_",
+                other_lines,
+            )
+
             # Keep PyTorch-enabled plugins in the bundled runtime environment.
             # pip's ``--target`` resolver ignores distributions already
             # installed in the runtime and would otherwise download a second
@@ -458,7 +598,7 @@ def install_plugin_requirements_txt(
             return _finish_install_result(
                 _run_pip_install(
                     cmd_other,
-                    cwd=root,
+                    cwd=plugin_directory,
                     timeout_sec=remaining_budget(),
                     on_output_line=on_output_line,
                 ),
@@ -472,16 +612,25 @@ def install_plugin_requirements_txt(
         return _finish_install_result(
             _run_pip_install(
                 cmd,
-                cwd=root,
+                cwd=plugin_directory,
                 timeout_sec=timeout_sec,
                 on_output_line=on_output_line,
             ),
             pip_target,
+            root=(active_project_root if root is not None else None),
         )
     finally:
-        for path in (precheck_tf, torch_tf, other_tf):
-            if path is not None:
+        for path, identity in (
+            (precheck_tf, precheck_identity),
+            (torch_tf, torch_identity),
+            (other_tf, other_identity),
+        ):
+            if path is not None and identity is not None:
                 try:
-                    path.unlink(missing_ok=True)
-                except OSError:
+                    remove_file_without_links(
+                        path,
+                        missing_ok=True,
+                        expected_identity=identity,
+                    )
+                except (OSError, ValueError):
                     pass

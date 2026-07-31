@@ -9,15 +9,26 @@ is available (``main`` entry and/or Settings UI). Safe to call multiple times (i
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Queue
+from threading import RLock
 from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import yaml
 
 from config.config_manager import ConfigManager
 from sdk.messages import UserInputMessage
+from sdk.file_transactions import atomic_write_text, read_text_without_links
+from sdk.path_contract import (
+    managed_project_directory,
+    managed_project_storage,
+    project_root,
+    resolve_managed_project_path,
+    resolve_project_path,
+    resolve_project_read_path,
+)
 from plugin_system.requirements.install import (
     ensure_plugin_site_packages_on_syspath,
     ensure_plugins_namespace_on_syspath,
@@ -42,12 +53,55 @@ logger = logging.getLogger(__name__)
 
 _MANIFEST = Path("data/config/plugins.yaml")
 _loaded: bool = False
+_loaded_project_root: Path | None = None
 _plugin_manager: PluginManager | None = None
 _plugin_tts_handlers: List["MessageHandler"] = []
 _plugin_ui_handlers: List["UIOutputMessageHandler"] = []
 _plugin_dag_yaml_paths: list[str] = []
 _plugin_workflow_contributions: list["WorkflowContribution"] = []
 _plugin_output_contract_patches: list["OutputContractPatch"] = []
+_PLUGIN_MANIFEST_LOCK = RLock()
+
+
+def _exact_manifest_entry(entry: str) -> str:
+    """Validate a plugin import entry without changing its identity."""
+
+    raw = str(entry or "")
+    if not raw:
+        return ""
+    if raw != raw.strip() or any(
+        ord(character) < 32
+        or ord(character) == 127
+        or 0xD800 <= ord(character) <= 0xDFFF
+        for character in raw
+    ):
+        raise ValueError(
+            "plugin manifest entry must not contain surrounding whitespace "
+            "or control characters"
+        )
+    return raw
+
+
+def _plugin_manifest_path(
+    path: Path | None = None,
+    *,
+    root: str | Path | None = None,
+) -> Path:
+    configured = path if path is not None else _MANIFEST
+    active_root = (
+        project_root()
+        if root is None
+        else resolve_project_path(".", root=root)
+    )
+    raw = os.fspath(configured)
+    candidate = Path(raw).expanduser()
+    if candidate.is_absolute():
+        try:
+            candidate.relative_to(active_root)
+        except ValueError:
+            return resolve_project_read_path(raw, root=active_root)
+        return resolve_managed_project_path(raw, root=active_root)
+    return resolve_managed_project_path(raw, root=active_root)
 
 
 @dataclass(frozen=True)
@@ -169,27 +223,51 @@ def ensure_plugins_loaded(
     config: ConfigManager | None = None,
     *,
     runtime_bindings: PluginRuntimeBindings | None = None,
+    root: str | Path | None = None,
 ) -> PluginManager | None:
     """
     Load ``data/config/plugins.yaml`` if present, instantiate plugins, merge adapter
     providers and vision fallbacks, register tools on the global ToolManager, and
     cache message handlers for :mod:`application.chat.handlers.registry`.
     """
-    global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers
+    global _loaded, _loaded_project_root, _plugin_manager
+    global _plugin_tts_handlers, _plugin_ui_handlers
     global _plugin_dag_yaml_paths
     global _plugin_workflow_contributions, _plugin_output_contract_patches
+    configured_root = root
+    if configured_root is None and config is not None:
+        configured_root = getattr(config, "_project_root", None)
+    active_root = (
+        project_root()
+        if configured_root is None
+        else resolve_project_path(".", root=configured_root)
+    )
     if _loaded:
+        if (
+            _loaded_project_root is not None
+            and _loaded_project_root != active_root
+        ):
+            raise RuntimeError(
+                "plugins are already loaded for a different project root"
+            )
         return _plugin_manager
 
-    ensure_plugins_namespace_on_syspath()
-    ensure_plugin_site_packages_on_syspath()
+    ensure_plugins_namespace_on_syspath(root=active_root)
+    ensure_plugin_site_packages_on_syspath(root=active_root)
 
-    mgr = PluginManager()
-    if _MANIFEST.is_file():
+    manifest = _plugin_manifest_path(root=active_root)
+    mgr = PluginManager(
+        plugin_data_root=managed_project_storage(
+            "data/plugins",
+            root=active_root,
+        ),
+        root=active_root,
+    )
+    if manifest.is_file():
         try:
-            mgr.load_manifest_file(_MANIFEST)
+            mgr.load_manifest_file(manifest)
         except Exception:
-            logger.exception("Failed to load plugin manifest %s", _MANIFEST)
+            logger.exception("Failed to load plugin manifest %s", manifest)
     mgr.instantiate_all()
     cfg = config if config is not None else ConfigManager()
     mgr.load_own_config_all(app_config=cfg)
@@ -256,6 +334,7 @@ def ensure_plugins_loaded(
         _plugin_output_contract_patches = []
 
     _plugin_manager = mgr
+    _loaded_project_root = active_root
     _loaded = True
     return _plugin_manager
 
@@ -352,19 +431,24 @@ def collect_chat_ui_contributions() -> List["ChatUIContribution"]:
     return []
 
 
-def read_plugin_manifest_items(path: Path | None = None) -> list[dict[str, Any]]:
+def read_plugin_manifest_items(
+    path: Path | None = None,
+    *,
+    root: str | Path | None = None,
+) -> list[dict[str, Any]]:
     """
     Return manifest rows as mutable dicts (shallow copy each), preserving list order.
     Only includes dict items with a non-empty string ``entry``.
     """
-    p = path if path is not None else _MANIFEST
-    if not p.is_file():
-        return []
-    try:
-        raw = yaml.safe_load(p.read_text(encoding="utf-8"))
-    except Exception:
-        logger.exception("Failed to parse plugin manifest %s", p)
-        return []
+    with _PLUGIN_MANIFEST_LOCK:
+        p = _plugin_manifest_path(path, root=root)
+        if not p.is_file():
+            return []
+        try:
+            raw = yaml.safe_load(read_text_without_links(p))
+        except Exception:
+            logger.exception("Failed to parse plugin manifest %s", p)
+            return []
     if raw is None:
         return []
     if not isinstance(raw, list):
@@ -374,42 +458,67 @@ def read_plugin_manifest_items(path: Path | None = None) -> list[dict[str, Any]]
         if not isinstance(item, dict):
             continue
         entry = item.get("entry")
-        if not isinstance(entry, str) or not entry.strip():
+        if not isinstance(entry, str):
+            continue
+        try:
+            if not _exact_manifest_entry(entry):
+                continue
+        except ValueError:
+            logger.warning("Ignoring invalid plugin manifest entry %r", entry)
             continue
         out.append(dict(item))
     return out
 
 
-def write_plugin_manifest_items(items: list[dict[str, Any]], path: Path | None = None) -> None:
+def write_plugin_manifest_items(
+    items: list[dict[str, Any]],
+    path: Path | None = None,
+    *,
+    root: str | Path | None = None,
+) -> None:
     """Overwrite manifest with ``items`` (YAML list of mappings)."""
-    p = path if path is not None else _MANIFEST
-    p.parent.mkdir(parents=True, exist_ok=True)
-    text = yaml.safe_dump(
-        items,
-        allow_unicode=True,
-        sort_keys=False,
-        default_flow_style=False,
-    )
-    p.write_text(text, encoding="utf-8")
+    with _PLUGIN_MANIFEST_LOCK:
+        for item in items:
+            entry = item.get("entry") if isinstance(item, dict) else None
+            if not isinstance(entry, str) or not _exact_manifest_entry(entry):
+                raise ValueError("plugin manifest items require an exact entry")
+        p = _plugin_manifest_path(path, root=root)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        text = yaml.safe_dump(
+            items,
+            allow_unicode=True,
+            sort_keys=False,
+            default_flow_style=False,
+        )
+        atomic_write_text(p, text)
 
 
-def set_plugin_manifest_enabled(entry: str, enabled: bool, path: Path | None = None) -> bool:
+def set_plugin_manifest_enabled(
+    entry: str,
+    enabled: bool,
+    path: Path | None = None,
+    *,
+    root: str | Path | None = None,
+) -> bool:
     """
     Set ``enabled`` on the manifest row whose ``entry`` matches (strip-wise).
     Returns True if a row was updated and the file was written.
     """
-    items = read_plugin_manifest_items(path)
-    norm = entry.strip()
-    changed = False
-    for item in items:
-        e = item.get("entry")
-        if isinstance(e, str) and e.strip() == norm:
-            item["enabled"] = bool(enabled)
-            changed = True
-            break
-    if changed:
-        write_plugin_manifest_items(items, path)
-    return changed
+    with _PLUGIN_MANIFEST_LOCK:
+        items = read_plugin_manifest_items(path, root=root)
+        norm = _exact_manifest_entry(entry)
+        if not norm:
+            return False
+        changed = False
+        for item in items:
+            e = item.get("entry")
+            if isinstance(e, str) and e == norm:
+                item["enabled"] = bool(enabled)
+                changed = True
+                break
+        if changed:
+            write_plugin_manifest_items(items, path, root=root)
+        return changed
 
 
 def normalize_manifest_entry(entry: str) -> str:
@@ -417,7 +526,7 @@ def normalize_manifest_entry(entry: str) -> str:
     Registry rows often omit the repo-local package root; downloaded plugins live under
     ``plugins/``, so ensure ``entry`` uses the ``plugins.`` module prefix when absent.
     """
-    norm = entry.strip()
+    norm = _exact_manifest_entry(entry)
     if not norm:
         return norm
     if norm.startswith("plugins."):
@@ -425,37 +534,64 @@ def normalize_manifest_entry(entry: str) -> str:
     return f"plugins.{norm}"
 
 
-def remove_plugin_manifest_entry(entry: str, path: Path | None = None) -> bool:
+def remove_plugin_manifest_entry(
+    entry: str,
+    path: Path | None = None,
+    *,
+    root: str | Path | None = None,
+) -> bool:
     """
     Remove the manifest row whose ``entry`` matches (strip-wise).
     Returns True if a row was removed and the file was written.
     """
-    norm = entry.strip()
-    items = read_plugin_manifest_items(path)
-    kept: list[dict[str, Any]] = []
-    removed = False
-    for item in items:
-        e = item.get("entry")
-        if isinstance(e, str) and e.strip() == norm:
-            removed = True
-            continue
-        kept.append(item)
-    if not removed:
-        return False
-    write_plugin_manifest_items(kept, path)
-    return True
+    with _PLUGIN_MANIFEST_LOCK:
+        norm = _exact_manifest_entry(entry)
+        if not norm:
+            return False
+        items = read_plugin_manifest_items(path, root=root)
+        kept: list[dict[str, Any]] = []
+        removed = False
+        for item in items:
+            e = item.get("entry")
+            if isinstance(e, str) and e == norm:
+                removed = True
+                continue
+            kept.append(item)
+        if not removed:
+            return False
+        write_plugin_manifest_items(kept, path, root=root)
+        return True
 
 
-def infer_plugin_package_directory(entry: str) -> Path | None:
+def infer_plugin_package_directory(
+    entry: str,
+    *,
+    root: str | Path | None = None,
+) -> Path | None:
     """
     Map manifest ``entry`` module path to ``plugins/<top-level-package>/``.
 
     Example: ``plugins.whisper_asr.plugin:WhisperAsrPlugin`` → ``plugins/whisper_asr``.
     """
-    raw = entry.strip()
+    try:
+        return managed_plugin_package_directory(entry, root=root)
+    except (OSError, PermissionError, ValueError):
+        return None
+
+
+def managed_plugin_package_directory(
+    entry: str,
+    *,
+    root: str | Path | None = None,
+) -> Path | None:
+    """Return the strict managed package directory for a manifest entry."""
+
+    raw = _exact_manifest_entry(entry)
     if not raw:
         return None
-    mod = raw.split(":", 1)[0].strip()
+    mod = raw.split(":", 1)[0]
+    if not mod or mod != mod.strip():
+        raise ValueError("plugin module entry is not exact")
     if not mod.startswith("plugins."):
         mod = normalize_manifest_entry(mod)
     if not mod.startswith("plugins."):
@@ -463,10 +599,14 @@ def infer_plugin_package_directory(entry: str) -> Path | None:
     rest = mod[len("plugins.") :]
     if not rest:
         return None
-    top = rest.split(".", 1)[0].strip()
+    top = rest.split(".", 1)[0]
     if not top:
         return None
-    return Path("plugins") / top
+    return managed_project_directory(
+        "plugins",
+        top,
+        root=project_root() if root is None else root,
+    )
 
 
 def append_plugin_manifest_entry_if_missing(
@@ -474,6 +614,7 @@ def append_plugin_manifest_entry_if_missing(
     *,
     enabled: bool = True,
     path: Path | None = None,
+    root: str | Path | None = None,
 ) -> str:
     """
     Append ``- entry: …`` row if not already present (strip-wise match on entry).
@@ -485,11 +626,12 @@ def append_plugin_manifest_entry_if_missing(
     norm = normalize_manifest_entry(entry)
     if not norm:
         return "empty"
-    items = read_plugin_manifest_items(path)
-    for item in items:
-        e = item.get("entry")
-        if isinstance(e, str) and e.strip() == norm:
-            return "exists"
-    items.append({"entry": norm, "enabled": bool(enabled)})
-    write_plugin_manifest_items(items, path)
-    return "added"
+    with _PLUGIN_MANIFEST_LOCK:
+        items = read_plugin_manifest_items(path, root=root)
+        for item in items:
+            e = item.get("entry")
+            if isinstance(e, str) and e == norm:
+                return "exists"
+        items.append({"entry": norm, "enabled": bool(enabled)})
+        write_plugin_manifest_items(items, path, root=root)
+        return "added"

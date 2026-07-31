@@ -5,23 +5,51 @@ from __future__ import annotations
 import hashlib
 import os
 import socket
-import shutil
-import tempfile
+import threading
 import uuid
 import zipfile
+from contextlib import contextmanager
+from collections.abc import Iterator
 from http.client import IncompleteRead
-from pathlib import Path, PurePosixPath
+from io import BytesIO
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from sdk.archive_paths import UnsafeArchiveError, extract_zip_safely
+from sdk.file_transactions import (
+    copy_directory_without_links,
+    create_private_temporary_directory,
+    private_sibling_path,
+    remove_directory_without_links,
+    rename_path_without_overwrite,
+    replace_directory_transactionally,
+)
 from plugin_system.registry.catalog import RegistryPluginRecord
-from plugin_system.registry.download import sanitize_plugins_directory_name
+from plugin_system.registry.download import portable_plugin_target, sanitize_plugins_directory_name
+from sdk.path_contract import (
+    path_is_link_or_reparse_point,
+    project_root,
+    require_directory_without_links,
+    require_symlink_free_absolute_path,
+    resolve_project_output_path,
+)
 
 _PACKAGE_USER_AGENT = (
     "EasyAIDesktopAssistant/1.0 (+plugin-package; https://github.com/RachelForster/Shinsekai-Plugin-Registry)"
 )
 _DEFAULT_MAX_BYTES = 16 * 1024 * 1024
+_PACKAGE_INSTALL_LOCK = threading.RLock()
+_UNSPECIFIED_IDENTITY = object()
+
+
+@contextmanager
+def registry_package_install_transaction() -> Iterator[None]:
+    """Serialize publication, dependency validation, and caller rollback."""
+
+    with _PACKAGE_INSTALL_LOCK:
+        yield
 
 
 class PluginPackageError(Exception):
@@ -100,7 +128,21 @@ def _validate_package_url(url: str) -> None:
             f"plugin package host is not allowed: {parsed.hostname}",
             code="package_host_not_allowed",
             user_message="官方包体来源不在允许列表内，已阻止安装。",
+)
+
+
+def _cleanup_private_tree(
+    path: Path,
+    *,
+    expected_identity: os.stat_result,
+) -> None:
+    try:
+        remove_directory_without_links(
+            path,
+            expected_identity=expected_identity,
         )
+    except (FileNotFoundError, OSError, ValueError):
+        pass
 
 
 def _is_transient_network_error(exc: BaseException) -> bool:
@@ -227,77 +269,71 @@ def _verify_package(body: bytes, *, expected_sha256: str, expected_size: int | N
         )
 
 
-def _safe_members(zf: zipfile.ZipFile) -> list[tuple[zipfile.ZipInfo, tuple[str, ...]]]:
-    infos = [info for info in zf.infolist() if info.filename and not info.is_dir()]
-    if not infos:
-        raise PluginPackageNonFallbackError(
-            "plugin package is empty",
-            code="package_bad_zip",
-            user_message="包体校验未通过，已阻止安装。",
-        )
-
-    roots: set[str] = set()
-    parsed: list[tuple[zipfile.ZipInfo, tuple[str, ...]]] = []
-    for info in infos:
-        path = PurePosixPath(info.filename)
-        parts = tuple(part for part in path.parts if part not in {"", "."})
-        if not parts or path.is_absolute() or any(part == ".." for part in parts):
-            raise PluginPackageNonFallbackError(
-                f"unsafe plugin package path: {info.filename}",
-                code="package_unsafe_path",
-                user_message="包体校验未通过，已阻止安装。",
-            )
-        roots.add(parts[0])
-        parsed.append((info, parts))
-
-    strip_root = len(roots) == 1
-    safe: list[tuple[zipfile.ZipInfo, tuple[str, ...]]] = []
-    for info, parts in parsed:
-        rel = parts[1:] if strip_root else parts
-        if rel:
-            safe.append((info, rel))
-    if not safe:
-        raise PluginPackageNonFallbackError(
-            "plugin package has no files after root normalization",
-            code="package_bad_zip",
-            user_message="包体校验未通过，已阻止安装。",
-        )
-    return safe
-
-
-def _extract_safe_zip(body: bytes) -> Path:
-    tmp_root = Path(tempfile.mkdtemp(prefix="shinsekai-plugin-package-"))
-    zip_path = tmp_root / "package.zip"
-    zip_path.write_bytes(body)
+def _extract_safe_zip(body: bytes) -> tuple[Path, os.stat_result, Path]:
+    tmp_root, tmp_root_identity = create_private_temporary_directory(
+        prefix="shinsekai-plugin-package-",
+    )
     try:
-        with zipfile.ZipFile(zip_path) as zf:
-            members = _safe_members(zf)
-            extract_root = (tmp_root / "extract").resolve(strict=False)
-            for info, rel_parts in members:
-                destination = (extract_root / Path(*rel_parts)).resolve(strict=False)
-                if extract_root != destination and extract_root not in destination.parents:
-                    raise PluginPackageNonFallbackError(
-                        f"unsafe plugin package path: {info.filename}",
-                        code="package_unsafe_path",
-                        user_message="包体校验未通过，已阻止安装。",
-                    )
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(info) as src, destination.open("wb") as dst:
-                    shutil.copyfileobj(src, dst)
+        # The package was already downloaded and verified as one in-memory
+        # byte string.  Decode that exact object instead of publishing a
+        # temporary pathname that could be replaced before ZipFile reopens it.
+        with zipfile.ZipFile(BytesIO(body)) as zf:
+            raw_root = tmp_root / "raw"
+            extraction = extract_zip_safely(zf, raw_root)
+        extract_root = tmp_root / "extract"
+        nested_root = raw_root / extraction.top_level if extraction.top_level else None
+        if nested_root is not None and nested_root.is_dir():
+            raw_root_identity = raw_root.lstat()
+            rename_path_without_overwrite(
+                nested_root,
+                extract_root,
+                expected_identity=nested_root.lstat(),
+            )
+            _cleanup_private_tree(
+                raw_root,
+                expected_identity=raw_root_identity,
+            )
+        else:
+            rename_path_without_overwrite(
+                raw_root,
+                extract_root,
+                expected_identity=raw_root.lstat(),
+            )
+    except UnsafeArchiveError as exc:
+        _cleanup_private_tree(
+            tmp_root,
+            expected_identity=tmp_root_identity,
+        )
+        raise PluginPackageNonFallbackError(
+            f"unsafe plugin package path: {exc}",
+            code="package_unsafe_path",
+            user_message="包体校验未通过，已阻止安装。",
+        ) from exc
     except zipfile.BadZipFile as exc:
-        shutil.rmtree(tmp_root, ignore_errors=True)
+        _cleanup_private_tree(
+            tmp_root,
+            expected_identity=tmp_root_identity,
+        )
         raise PluginPackageNonFallbackError(
             "plugin package is not a valid zip",
             code="package_bad_zip",
             user_message="包体校验未通过，已阻止安装。",
         ) from exc
     except Exception:
-        shutil.rmtree(tmp_root, ignore_errors=True)
+        _cleanup_private_tree(
+            tmp_root,
+            expected_identity=tmp_root_identity,
+        )
         raise
-    return tmp_root / "extract"
+    return tmp_root, tmp_root_identity, tmp_root / "extract"
 
 
-def registry_package_target(record: RegistryPluginRecord, *, plugins_parent: Path | None = None) -> Path:
+def registry_package_target(
+    record: RegistryPluginRecord,
+    *,
+    plugins_parent: Path | None = None,
+    root: str | Path | None = None,
+) -> Path:
     folder_name = sanitize_plugins_directory_name(record.name or record.id or record.display_name)
     if not folder_name:
         raise PluginPackageNonFallbackError(
@@ -305,28 +341,124 @@ def registry_package_target(record: RegistryPluginRecord, *, plugins_parent: Pat
             code="package_invalid_name",
             user_message="插件包体缺少安全的安装目录名，请等待维护者修复索引。",
         )
-    parent = Path(plugins_parent) if plugins_parent is not None else Path("plugins")
-    return parent / folder_name
-
-
-def _replace_directory(extracted: Path, target: Path) -> None:
-    target = target.resolve(strict=False)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    backup: Path | None = None
-    if target.exists():
-        backup = target.with_name(f".{target.name}.backup-{uuid.uuid4().hex}")
-        target.rename(backup)
+    active_root = project_root() if root is None else root
+    configured_parent = (
+        plugins_parent
+        if plugins_parent is not None
+        else Path(active_root) / "plugins"
+    )
+    unresolved_parent = Path(configured_parent)
+    if not unresolved_parent.is_absolute():
+        raise ValueError("plugins_parent must be absolute")
+    lexical_parent = require_symlink_free_absolute_path(
+        unresolved_parent,
+        field="plugins directory",
+    )
+    parent = resolve_project_output_path(
+        configured_parent,
+        root=active_root,
+    )
     try:
-        shutil.move(str(extracted), str(target))
-    except Exception:
-        if target.exists():
-            shutil.rmtree(target, ignore_errors=True)
-        if backup is not None and backup.exists():
-            backup.rename(target)
-        raise
-    else:
-        if backup is not None:
-            shutil.rmtree(backup, ignore_errors=True)
+        return portable_plugin_target(parent, folder_name)
+    except FileExistsError as exc:
+        raise PluginPackageNonFallbackError(
+            str(exc),
+            code="package_name_collision",
+            user_message="插件目录名与现有目录在其他系统上会发生冲突，已阻止安装。",
+        ) from exc
+
+
+def _replace_directory(
+    extracted: Path,
+    target: Path,
+    *,
+    overwrite: bool = True,
+    expected_target_identity: os.stat_result | None | object = (
+        _UNSPECIFIED_IDENTITY
+    ),
+    root: str | Path | None = None,
+) -> None:
+    if path_is_link_or_reparse_point(target):
+        raise PluginPackageNonFallbackError(
+            "plugin target must not be a symbolic link",
+            code="package_unsafe_target",
+            user_message="插件安装目录不安全，已阻止覆盖。",
+        )
+    try:
+        target_parent = require_symlink_free_absolute_path(
+            target.parent,
+            field="plugin target parent",
+        )
+        target_parent = resolve_project_output_path(
+            target_parent,
+            root=project_root() if root is None else root,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise PluginPackageNonFallbackError(
+            f"plugin target parent is unsafe: {exc}",
+            code="package_unsafe_target",
+            user_message="插件安装目录不安全，已阻止覆盖。",
+        ) from exc
+    target = target_parent / target.name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target_parent = require_directory_without_links(
+        target.parent,
+        field="plugin target parent",
+    )
+    target = target_parent / target.name
+    if target.exists() and not target.is_dir():
+        raise PluginPackageNonFallbackError(
+            "plugin target is not a directory",
+            code="package_unsafe_target",
+            user_message="插件安装目标不是目录，已阻止覆盖。",
+        )
+    if target.exists() and not overwrite:
+        raise FileExistsError(f"plugin target already exists: {target.name}")
+    try:
+        target_identity = target.lstat()
+    except FileNotFoundError:
+        target_identity = None
+    if expected_target_identity is not _UNSPECIFIED_IDENTITY:
+        if expected_target_identity is None:
+            if target_identity is not None:
+                raise FileExistsError(
+                    f"plugin target appeared before publication: {target.name}"
+                )
+        elif (
+            target_identity is None
+            or not os.path.samestat(expected_target_identity, target_identity)
+        ):
+            raise PermissionError(
+                f"plugin target identity changed before publication: {target}"
+            )
+    staging = private_sibling_path(
+        target,
+        f".install-{uuid.uuid4().hex}",
+        field="plugin installation staging directory",
+    )
+    staging_identity: os.stat_result | None = None
+    try:
+        # ``tempfile`` and the selected project can live on different Windows
+        # volumes.  Build a complete sibling first so publication never
+        # degrades into a partial cross-volume ``shutil.move`` copy.
+        staging = copy_directory_without_links(extracted, staging)
+        staging_identity = staging.lstat()
+        replace_directory_transactionally(
+            staging,
+            target,
+            overwrite=overwrite,
+            expected_staging_identity=staging_identity,
+            expected_destination_identity=target_identity,
+        )
+    finally:
+        if staging_identity is not None:
+            try:
+                remove_directory_without_links(
+                    staging,
+                    expected_identity=staging_identity,
+                )
+            except (OSError, ValueError):
+                pass
 
 
 def install_registry_package_under_plugins(
@@ -335,6 +467,10 @@ def install_registry_package_under_plugins(
     plugins_parent: Path | None = None,
     overwrite: bool = False,
     timeout_sec: float = 180.0,
+    expected_target_identity: os.stat_result | None | object = (
+        _UNSPECIFIED_IDENTITY
+    ),
+    root: str | Path | None = None,
 ) -> Path:
     """Download, verify, and extract an official registry package under ``plugins/``."""
     package_url = (record.package_url or record.download_url or "").strip()
@@ -346,9 +482,18 @@ def install_registry_package_under_plugins(
         )
     _validate_package_url(package_url)
 
-    target = registry_package_target(record, plugins_parent=plugins_parent)
-    if target.is_dir() and not overwrite:
-        return target.resolve(strict=False)
+    target = registry_package_target(
+        record,
+        plugins_parent=plugins_parent,
+        root=root,
+    )
+    with _PACKAGE_INSTALL_LOCK:
+        _assert_expected_plugin_target_identity(
+            target,
+            expected_target_identity,
+        )
+        if target.is_dir() and not overwrite:
+            return _verified_plugin_directory(target)
 
     download_id = str(uuid.uuid4())
     body = _read_url(
@@ -362,10 +507,69 @@ def install_registry_package_under_plugins(
         expected_sha256=(record.package_sha256 or record.sha256 or "").strip(),
         expected_size=record.package_size if record.package_size is not None else record.size,
     )
-    extracted = _extract_safe_zip(body)
-    tmp_root = extracted.parent
+    tmp_root, tmp_root_identity, extracted = _extract_safe_zip(body)
     try:
-        _replace_directory(extracted, target)
+        with _PACKAGE_INSTALL_LOCK:
+            # A peer can finish while this request is downloading.  Recheck
+            # the no-overwrite contract at publication time so a stale
+            # installer cannot replace the peer's complete tree.
+            if path_is_link_or_reparse_point(target):
+                raise PluginPackageNonFallbackError(
+                    "plugin target must not be a symbolic link",
+                    code="package_unsafe_target",
+                    user_message="插件安装目录不安全，已阻止覆盖。",
+                )
+            _assert_expected_plugin_target_identity(
+                target,
+                expected_target_identity,
+            )
+            if target.is_dir() and not overwrite:
+                return _verified_plugin_directory(target)
+            _replace_directory(
+                extracted,
+                target,
+                overwrite=overwrite,
+                expected_target_identity=expected_target_identity,
+                root=root,
+            )
     finally:
-        shutil.rmtree(tmp_root, ignore_errors=True)
-    return target.resolve(strict=False)
+        _cleanup_private_tree(
+            tmp_root,
+            expected_identity=tmp_root_identity,
+        )
+    return _verified_plugin_directory(target)
+
+
+def _assert_expected_plugin_target_identity(
+    target: Path,
+    expected_identity: os.stat_result | None | object,
+) -> None:
+    if expected_identity is _UNSPECIFIED_IDENTITY:
+        return
+    try:
+        current_identity = target.lstat()
+    except FileNotFoundError:
+        current_identity = None
+    if expected_identity is None:
+        if current_identity is not None:
+            raise FileExistsError(
+                f"plugin target appeared during installation: {target.name}"
+            )
+        return
+    if (
+        current_identity is None
+        or not os.path.samestat(expected_identity, current_identity)
+    ):
+        raise PermissionError(
+            f"plugin target identity changed during installation: {target}"
+        )
+
+
+def _verified_plugin_directory(target: Path) -> Path:
+    exact = require_symlink_free_absolute_path(
+        target,
+        field="installed plugin directory",
+    )
+    if not exact.is_dir():
+        raise NotADirectoryError(exact)
+    return exact
