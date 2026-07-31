@@ -45,6 +45,20 @@ describe("FileManager", () => {
     expect(normalizeFileManagerPath("//?/D:/")).toBe("D:/");
   });
 
+  it("does not retarget Windows device or non-filesystem namespace paths", () => {
+    expect(normalizeFileManagerPath("\\\\.\\C:\\device")).toBe("//./C:/device");
+    expect(normalizeFileManagerPath("\\??\\C:\\native-device")).toBe("/??/C:/native-device");
+    expect(normalizeFileManagerPath("\\\\?\\GLOBALROOT\\Device")).toBe("//?/GLOBALROOT/Device");
+  });
+
+  it("does not silently retarget paths with outer whitespace", () => {
+    expect(normalizeFileManagerPath(" /project/data ")).toBe(" /project/data ");
+  });
+
+  it("preserves literal backslashes in POSIX absolute filenames", () => {
+    expect(normalizeFileManagerPath("/project/literal\\name.png")).toBe("/project/literal\\name.png");
+  });
+
   it("renders Windows locations without verbatim prefixes", async () => {
     browseFiles.mockResolvedValue({
       cwd: "\\\\?\\D:\\",
@@ -88,6 +102,24 @@ describe("FileManager", () => {
     });
   });
 
+  it("keeps UNC share identity when navigating breadcrumbs", async () => {
+    browseFiles.mockResolvedValue({
+      cwd: "\\\\server\\share\\folder",
+      entries: [],
+      parent: "\\\\server\\share",
+      roots: [],
+    });
+
+    renderFileManager({});
+
+    expect(await screen.findByRole("group", { name: "//server/share/folder" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "//server/share" }));
+
+    await waitFor(() => {
+      expect(browseFiles).toHaveBeenLastCalledWith({ path: "//server/share/", showHidden: false });
+    });
+  });
+
   it("keeps directory mode selection scoped to directories", async () => {
     const onSelectionChange = vi.fn();
 
@@ -112,6 +144,23 @@ describe("FileManager", () => {
           confirmPaths: ["/project/assets"],
           cwd: "/project",
           selectedPaths: ["/project/assets"],
+        }),
+      );
+    });
+  });
+
+  it("does not submit the current directory as a file before a file is selected", async () => {
+    const onSelectionChange = vi.fn();
+
+    renderFileManager({ mode: "file", onSelectionChange });
+
+    await screen.findByText("hero.png");
+    await waitFor(() => {
+      expect(onSelectionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          confirmPaths: [],
+          cwd: "/project",
+          selectedPaths: [],
         }),
       );
     });
@@ -142,6 +191,36 @@ describe("FileManager", () => {
         expect.objectContaining({
           confirmPaths: ["/project/hero.png"],
           selectedPaths: ["/project/hero.png"],
+        }),
+      );
+    });
+  });
+
+  it("keeps path confirmation on the last validated snapshot when typed navigation is rejected", async () => {
+    const onSelectionChange = vi.fn();
+    browseFiles
+      .mockResolvedValueOnce({
+        cwd: "/project",
+        entries: [],
+        parent: "/",
+        roots: [{ label: "Shinsekai", path: "/project" }],
+      })
+      .mockRejectedValueOnce(new Error("path contains a symbolic link"));
+
+    renderFileManager({ mode: "path", onSelectionChange });
+
+    fireEvent.click(await screen.findByRole("group", { name: "/project" }));
+    const input = await screen.findByDisplayValue("/project");
+    fireEvent.change(input, { target: { value: "/project/rejected-link" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(await screen.findByText("path contains a symbolic link")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(onSelectionChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          address: "/project/rejected-link",
+          confirmPaths: ["/project"],
+          cwd: "/project",
         }),
       );
     });

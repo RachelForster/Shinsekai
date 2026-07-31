@@ -112,9 +112,9 @@ export function ToolsPanelContent({ embedded = false }: { embedded?: boolean }) 
       generateSprites(
         {
           characterName: selectedCharacter,
-          outputDir: spriteOutputDir.trim() || undefined,
+          outputDir: spriteOutputDir || undefined,
           prompts,
-          referenceImage: referenceImage.trim(),
+          referenceImage,
         },
         { onTaskUpdate: (task) => setToolTask(task) },
       ),
@@ -134,7 +134,7 @@ export function ToolsPanelContent({ embedded = false }: { embedded?: boolean }) 
   const cropMutation = useMutation({
     mutationFn: () =>
       cropSprites(
-        { inputDir: cropInputDir.trim(), outputDir: cropOutputDir.trim() || undefined, ratio: cropRatio },
+        { inputDir: cropInputDir, outputDir: cropOutputDir || undefined, ratio: cropRatio },
         { onTaskUpdate: (task) => setToolTask(task) },
       ),
     onError(error) {
@@ -151,7 +151,7 @@ export function ToolsPanelContent({ embedded = false }: { embedded?: boolean }) 
   const rmbgMutation = useMutation({
     mutationFn: () =>
       removeSpriteBackground(
-        { inputDir: rmbgInputDir.trim(), outputDir: rmbgOutputDir.trim() || undefined },
+        { inputDir: rmbgInputDir, outputDir: rmbgOutputDir || undefined },
         { onTaskUpdate: (task) => setToolTask(task) },
       ),
     onError(error) {

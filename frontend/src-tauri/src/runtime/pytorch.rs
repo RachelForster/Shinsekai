@@ -1,6 +1,7 @@
 use std::{collections::HashMap, env, path::Path, process::Command};
 
 use super::python_env;
+use crate::path_contract::ExecutableSnapshot;
 
 const PYTORCH_PROJECT_NAMES: &[&str] = &["torch", "torchvision", "torchaudio"];
 const HOST_PYTORCH_STACK: &[(&str, &str)] = &[
@@ -41,9 +42,11 @@ pub(super) fn install_plan(
     python: &Path,
     requirement_lines: &[String],
     pip_index_urls: &[String],
+    working_directory: &Path,
 ) -> PytorchInstallPlan {
-    let (index_url, index_reason) = wheel_index_url_for_this_machine(pip_index_urls);
-    let installed_versions = installed_versions(python);
+    let (index_url, index_reason) =
+        wheel_index_url_for_this_machine(pip_index_urls, working_directory);
+    let installed_versions = installed_versions(python, working_directory);
     build_install_plan(
         requirement_lines,
         &installed_versions,
@@ -156,7 +159,7 @@ pub(super) fn build_install_plan(
     }
 }
 
-fn installed_versions(python: &Path) -> HashMap<String, String> {
+fn installed_versions(python: &Path, working_directory: &Path) -> HashMap<String, String> {
     let script = r#"
 import importlib.metadata as metadata
 for name in ("torch", "torchvision", "torchaudio"):
@@ -166,8 +169,10 @@ for name in ("torch", "torchvision", "torchaudio"):
         pass
 "#;
     let mut command = Command::new(python);
-    command.arg("-c").arg(script);
-    python_env::configure_python_command(&mut command, python);
+    command.arg("-c").arg(script).current_dir(working_directory);
+    if python_env::configure_python_command(&mut command, python).is_err() {
+        return HashMap::new();
+    }
     let Ok(output) = command.output() else {
         return HashMap::new();
     };
@@ -260,9 +265,12 @@ fn build_matches(version: &str, expected_build: &str) -> bool {
     }
 }
 
-pub(super) fn wheel_index_url_for_this_machine(pip_index_urls: &[String]) -> (String, String) {
+pub(super) fn wheel_index_url_for_this_machine(
+    pip_index_urls: &[String],
+    working_directory: &Path,
+) -> (String, String) {
     wheel_index_url_for_cuda_version(
-        nvidia_smi_cuda_driver_version(),
+        nvidia_smi_cuda_driver_version(working_directory),
         wheel_base_url(pip_index_urls),
     )
 }
@@ -399,8 +407,14 @@ pub(super) fn wheel_index_url_for_cuda_version(
     )
 }
 
-fn nvidia_smi_cuda_driver_version() -> Option<(u32, u32)> {
-    let output = Command::new("nvidia-smi").output().ok()?;
+fn nvidia_smi_cuda_driver_version(working_directory: &Path) -> Option<(u32, u32)> {
+    let executable = ExecutableSnapshot::capture("nvidia-smi").ok()?;
+    executable.require_current().ok()?;
+    let output = Command::new(executable.path())
+        .current_dir(working_directory)
+        .output()
+        .ok()?;
+    executable.require_current().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -417,4 +431,15 @@ pub(super) fn parse_nvidia_smi_cuda_version(output: &str) -> Option<(u32, u32)> 
         .collect::<String>();
     let (major, minor) = version_text.split_once('.')?;
     Some((major.parse().ok()?, minor.parse().ok()?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::installed_versions;
+    use std::path::Path;
+
+    #[test]
+    fn installed_versions_never_launches_a_relative_python_from_process_cwd() {
+        assert!(installed_versions(Path::new("python"), Path::new(".")).is_empty());
+    }
 }

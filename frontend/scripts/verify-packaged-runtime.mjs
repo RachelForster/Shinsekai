@@ -1,17 +1,35 @@
 import { spawnSync } from "node:child_process";
-import { access, readFile, readdir, stat } from "node:fs/promises";
+import { link, lstat, mkdtemp, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  assertRegularFileWithoutLinks,
+  assertSafeMutableDirectory,
+  captureExecutableSnapshot,
+  readRegularFileWithoutLinks,
+  removeDirectoryWithoutLinks,
+  resolveAbsoluteEnvironmentPath,
+  resolveExactRelativePath,
+  requireExecutableSnapshot,
+  sameFilesystemIdentity,
+  sha256RegularFileWithoutLinks,
+} from "./path-contract.mjs";
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(scriptDir, "..");
-const targetDir = path.resolve(
-  process.env.SHINSEKAI_TAURI_TARGET_DIR ?? path.join(frontendDir, "src-tauri", "target", "release"),
+const targetDir = assertSafeMutableDirectory(
+  resolveAbsoluteEnvironmentPath(
+    "SHINSEKAI_TAURI_TARGET_DIR",
+    path.join(frontendDir, "src-tauri", "target", "release"),
+  ),
+  { field: "SHINSEKAI_TAURI_TARGET_DIR" },
 );
 const args = parseArgs(process.argv.slice(2));
 const expectedTarget = args.target ?? process.env.SHINSEKAI_RUNTIME_TARGET ?? null;
 const requireInstallers = args.requireInstallers;
 const installerBundles = args.installerBundles;
+const targetDirectoryIdentity = await requireDirectoryIdentity(targetDir, null, "Tauri target directory");
 
 const runtimeMarkerFile = ".shinsekai-runtime.json";
 const runtimeMarkerPaths = await findFiles(targetDir, runtimeMarkerFile);
@@ -40,12 +58,15 @@ for (const appRoot of appRoots) {
     throw new Error(`${relative(runtimeRoot)} target ${runtimeMarker.target} does not match ${expectedTarget}`);
   }
 
-  await assertExists(runtimePythonPath(runtimeRoot, runtimeMarker));
-  for (const requiredFile of runtimeMarker.requiredFiles ?? []) {
-    await assertExists(path.join(runtimeRoot, requiredFile));
+  await assertRegularFile(runtimePythonPath(runtimeRoot, runtimeMarker));
+  if (!Array.isArray(runtimeMarker.requiredFiles)) {
+    throw new Error(`${relative(runtimeRoot)} marker requiredFiles must be an array`);
   }
-  await assertExists(path.join(appRoot, "runtime_manifest.json"));
-  await assertExists(path.join(appRoot, "requirements-runtime-core.txt"));
+  for (const requiredFile of runtimeMarker.requiredFiles) {
+    await assertRegularFile(resolveExactRelativePath(runtimeRoot, requiredFile, "packaged runtime required file"));
+  }
+  await assertRegularFile(path.join(appRoot, "runtime_manifest.json"));
+  await assertRegularFile(path.join(appRoot, "requirements-runtime-core.txt"));
   packageSuffixes ??= packageRequiredSuffixes(runtimeMarker);
   verifiedRoots.push(
     `${relative(appRoot)} target=${runtimeMarker.target} triple=${runtimeMarker.triple} python=${runtimeMarker.python}`,
@@ -63,6 +84,14 @@ let installerArtifacts = [];
 if (requireInstallers) {
   installerArtifacts = await verifyInstallerArtifacts(expectedTarget, installerBundles);
 }
+const currentRuntimeMarkerPaths = await findFiles(targetDir, runtimeMarkerFile);
+if (
+  JSON.stringify(runtimeMarkerPaths.map((value) => path.resolve(value)).sort()) !==
+  JSON.stringify(currentRuntimeMarkerPaths.map((value) => path.resolve(value)).sort())
+) {
+  throw new Error("packaged runtime marker set changed during verification");
+}
+await requireDirectoryIdentity(targetDir, targetDirectoryIdentity, "Tauri target directory");
 
 for (const root of verifiedRoots) {
   console.log(`Runtime output: ${root}`);
@@ -113,22 +142,37 @@ async function findPackageFiles(root, extension) {
 }
 
 async function walk(directory, matches, basename) {
-  let entries;
+  let directoryIdentity;
   try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch {
-    return;
+    directoryIdentity = await lstat(directory, { bigint: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
   }
+  if (!directoryIdentity.isDirectory() || directoryIdentity.isSymbolicLink()) {
+    throw new Error(`package search root must be a regular non-link directory: ${directory}`);
+  }
+  const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
+    const entryPath = resolveExactRelativePath(directory, entry.name, "package search entry");
+    const entryIdentity = await lstat(entryPath, { bigint: true });
+    if (entryIdentity.isSymbolicLink()) {
+      continue;
+    }
+    if (entryIdentity.isDirectory()) {
       if (shouldSkipDirectory(entry.name)) {
         continue;
       }
       await walk(entryPath, matches, basename);
-    } else if (entry.isFile() && entry.name === basename) {
+    } else if (entryIdentity.isFile() && entry.name === basename) {
       matches.push(entryPath);
     }
+  }
+  const currentIdentity = await lstat(directory, { bigint: true });
+  if (!sameStableDirectoryState(directoryIdentity, currentIdentity)) {
+    throw new Error(`package search directory changed during traversal: ${directory}`);
   }
 }
 
@@ -137,35 +181,71 @@ function shouldSkipDirectory(name) {
 }
 
 async function walkPackageFiles(directory, matches, extension) {
-  let entries;
+  let directoryIdentity;
   try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch {
-    return;
+    directoryIdentity = await lstat(directory, { bigint: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return;
+    }
+    throw error;
   }
+  if (!directoryIdentity.isDirectory() || directoryIdentity.isSymbolicLink()) {
+    throw new Error(`installer search root must be a regular non-link directory: ${directory}`);
+  }
+  const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
+    const entryPath = resolveExactRelativePath(directory, entry.name, "installer search entry");
+    const entryIdentity = await lstat(entryPath, { bigint: true });
+    if (entryIdentity.isSymbolicLink()) {
+      continue;
+    }
+    if (entryIdentity.isDirectory()) {
       await walkPackageFiles(entryPath, matches, extension);
-    } else if (entry.isFile() && entry.name.endsWith(extension)) {
+    } else if (entryIdentity.isFile() && entry.name.endsWith(extension)) {
       matches.push(entryPath);
     }
   }
+  const currentIdentity = await lstat(directory, { bigint: true });
+  if (!sameStableDirectoryState(directoryIdentity, currentIdentity)) {
+    throw new Error(`installer search directory changed during traversal: ${directory}`);
+  }
+}
+
+function sameStableDirectoryState(left, right) {
+  return (
+    left.isDirectory() &&
+    !left.isSymbolicLink() &&
+    right.isDirectory() &&
+    !right.isSymbolicLink() &&
+    sameFilesystemIdentity(left, right) &&
+    left.mode === right.mode &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
+  );
 }
 
 async function readJson(filePath) {
   try {
-    return JSON.parse(await readFile(filePath, "utf8"));
+    return JSON.parse(
+      (
+        await readRegularFileWithoutLinks(filePath, {
+          field: "packaged runtime JSON file",
+          encoding: "utf8",
+        })
+      ).data,
+    );
   } catch (error) {
     throw new Error(`failed to read ${relative(filePath)}: ${error.message}`);
   }
 }
 
-async function assertExists(filePath) {
+async function assertRegularFile(filePath) {
   try {
-    await access(filePath);
+    assertRegularFileWithoutLinks(filePath, "required packaged runtime file");
   } catch {
-    throw new Error(`required packaged runtime file is missing: ${relative(filePath)}`);
+    throw new Error(`required packaged runtime file is missing or unsafe: ${relative(filePath)}`);
   }
 }
 
@@ -173,7 +253,7 @@ async function verifyDebPackages(requiredSuffixes) {
   const debs = await findPackageFiles(path.join(targetDir, "bundle", "deb"), ".deb");
   const inspected = [];
   for (const deb of debs) {
-    const listing = runPackageListCommand("dpkg-deb", ["-c", deb], deb);
+    const listing = await runPackageListCommand("dpkg-deb", ["-c", deb], deb);
     assertListingContains(listing, requiredSuffixes, deb);
     inspected.push(relative(deb));
   }
@@ -184,7 +264,7 @@ async function verifyRpmPackages(requiredSuffixes) {
   const rpms = await findPackageFiles(path.join(targetDir, "bundle", "rpm"), ".rpm");
   const inspected = [];
   for (const rpm of rpms) {
-    const listing = runPackageListCommand("rpm", ["-qlp", rpm], rpm);
+    const listing = await runPackageListCommand("rpm", ["-qlp", rpm], rpm);
     assertListingContains(listing, requiredSuffixes, rpm);
     inspected.push(relative(rpm));
   }
@@ -203,14 +283,48 @@ async function verifyInstallerArtifacts(targetName, requestedBundles) {
       throw new Error(`missing ${artifact.label} installer artifact for ${targetName}`);
     }
     for (const file of files) {
-      const fileStat = await stat(file);
-      if (!fileStat.isFile() || fileStat.size === 0) {
+      const artifactPin = await pinRegularFile(file, "installer artifact");
+      if (artifactPin.identity.size === 0n) {
         throw new Error(`installer artifact is empty or not a file: ${relative(file)}`);
       }
-      artifacts.push(`${relative(file)} size=${fileStat.size}`);
+      artifacts.push(`${relative(file)} size=${artifactPin.identity.size}`);
     }
   }
   return artifacts;
+}
+
+async function pinRegularFile(filePath, field) {
+  const snapshot = await sha256RegularFileWithoutLinks(filePath, {
+    field,
+  });
+  return {
+    path: filePath,
+    field,
+    identity: snapshot.identity,
+    parentIdentity: snapshot.parentIdentity,
+    sha256: snapshot.sha256,
+  };
+}
+
+async function requirePinnedFile(pin) {
+  return sha256RegularFileWithoutLinks(pin.path, {
+    field: pin.field,
+    expectedIdentity: pin.identity,
+    expectedParentIdentity: pin.parentIdentity,
+    expectedSha256: pin.sha256,
+  });
+}
+
+async function requireDirectoryIdentity(target, expectedIdentity, field) {
+  const identity = await lstat(target, { bigint: true });
+  if (
+    !identity.isDirectory() ||
+    identity.isSymbolicLink() ||
+    (expectedIdentity !== null && !sameFilesystemIdentity(expectedIdentity, identity))
+  ) {
+    throw new Error(`${field} identity changed`);
+  }
+  return identity;
 }
 
 function installerArtifactsForTarget(targetName, requestedBundles) {
@@ -245,25 +359,84 @@ function supportedInstallerArtifactsForTarget(targetName) {
   throw new Error(`unsupported runtime target for installer verification: ${targetName}`);
 }
 
-function runPackageListCommand(command, args, packagePath) {
-  const result = spawnSync(command, args, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (result.error) {
-    throw new Error(`failed to inspect ${relative(packagePath)} with ${command}: ${result.error.message}`);
+async function runPackageListCommand(command, args, packagePath) {
+  const packagePin = await pinRegularFile(packagePath, "packaged installer");
+  const packageParent = path.dirname(packagePath);
+  const verificationRoot = await mkdtemp(path.join(packageParent, ".package-list-"));
+  const verificationRootIdentity = await requireDirectoryIdentity(
+    verificationRoot,
+    null,
+    "package listing verification directory",
+  );
+  const privatePackagePath = path.join(verificationRoot, path.basename(packagePath));
+  try {
+    await link(packagePath, privatePackagePath);
+    const privateIdentity = await lstat(privatePackagePath, { bigint: true });
+    if (!sameFilesystemIdentity(packagePin.identity, privateIdentity)) {
+      throw new Error("packaged installer identity changed before inspection");
+    }
+    const privatePin = {
+      path: privatePackagePath,
+      field: "private packaged installer",
+      identity: privateIdentity,
+      parentIdentity: verificationRootIdentity,
+      sha256: packagePin.sha256,
+    };
+    await requirePinnedFile(packagePin);
+    await requirePinnedFile(privatePin);
+    const privateArgs = args.map((argument) => (argument === packagePath ? privatePackagePath : argument));
+    const executable = captureExecutableSnapshot(command, {
+      field: `package listing command ${JSON.stringify(command)}`,
+    });
+    const executablePath = requireExecutableSnapshot(executable, `package listing command ${JSON.stringify(command)}`);
+    let result;
+    try {
+      result = spawnSync(executablePath, privateArgs, {
+        cwd: verificationRoot,
+        encoding: "utf8",
+        env: sanitizedPackageListerEnvironment(command),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } finally {
+      requireExecutableSnapshot(executable, `package listing command ${JSON.stringify(command)}`);
+    }
+    await requirePinnedFile(packagePin);
+    await requirePinnedFile(privatePin);
+    if (result.error) {
+      throw new Error(`failed to inspect ${relative(packagePath)} with ${command}: ${result.error.message}`);
+    }
+    if (result.status !== 0) {
+      throw new Error(
+        `failed to inspect ${relative(packagePath)} with ${command}: ${
+          result.stderr || result.stdout || `exit ${result.status}`
+        }`,
+      );
+    }
+    return result.stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } finally {
+    await removeDirectoryWithoutLinks(verificationRoot, {
+      expectedIdentity: verificationRootIdentity,
+      expectedParentIdentity: packagePin.parentIdentity,
+      field: "package listing verification directory",
+      missingOk: true,
+    });
   }
-  if (result.status !== 0) {
-    throw new Error(
-      `failed to inspect ${relative(packagePath)} with ${command}: ${
-        result.stderr || result.stdout || `exit ${result.status}`
-      }`,
-    );
+}
+
+function sanitizedPackageListerEnvironment(command) {
+  const env = { ...process.env };
+  if (command === "rpm") {
+    delete env.RPM_CONFIGDIR;
+    delete env.RPM_MACROS;
   }
-  return result.stdout
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+  if (command === "dpkg-deb") {
+    delete env.DPKG_ADMINDIR;
+    delete env.DPKG_ROOT;
+  }
+  return env;
 }
 
 function assertListingContains(listing, requiredSuffixes, packagePath) {
@@ -292,11 +465,11 @@ function runtimePythonPath(runtimeRoot, marker) {
   if (marker.target?.startsWith("windows-")) {
     return path.join(runtimeRoot, "python.exe");
   }
-  const [major, minor] = String(marker.python ?? "").split(".");
-  if (major && minor) {
-    return path.join(runtimeRoot, "bin", `python${major}.${minor}`);
+  const version = /^([0-9]+)\.([0-9]+)(?:\.[0-9]+)?$/u.exec(String(marker.python ?? ""));
+  if (version) {
+    return path.join(runtimeRoot, "bin", `python${version[1]}.${version[2]}`);
   }
-  return path.join(runtimeRoot, "bin", "python3");
+  throw new Error(`packaged runtime marker has an invalid Python version: ${String(marker.python ?? "")}`);
 }
 
 function unique(values) {

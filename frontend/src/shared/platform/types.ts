@@ -89,6 +89,7 @@ export interface ApiConfig {
 }
 
 export interface SystemConfig {
+  path_contract_version?: number;
   base_font_size_px: number;
   ui_language: string;
   voice_language: string;
@@ -356,6 +357,7 @@ export interface McpServerEntry {
   args?: string[];
   call_timeout?: number;
   command?: string;
+  cwd?: string;
   enabled: boolean;
   env?: Record<string, string>;
   group?: string;

@@ -36,4 +36,14 @@ describe("isMoondreamInstalled", () => {
   it("does not expose the entry for unrelated plugins", () => {
     expect(isMoondreamInstalled(plugin())).toBe(false);
   });
+
+  it("does not reinterpret a literal POSIX backslash as a directory separator", () => {
+    expect(
+      isMoondreamInstalled(
+        plugin({
+          directory: "/tmp/plugins\\moondream_vision",
+        }),
+      ),
+    ).toBe(false);
+  });
 });

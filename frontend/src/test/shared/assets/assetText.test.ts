@@ -8,6 +8,7 @@ describe("asset text helpers", () => {
     expect(baseName("C:\\Users\\Myo\\Music\\theme.ogg")).toBe("theme.ogg");
     expect(baseName("readme.md")).toBe("readme.md");
     expect(baseName("/home/user/assets/")).toBe("/home/user/assets/");
+    expect(baseName(String.raw`/home/user/assets/Sprite\alternate.webp`)).toBe(String.raw`Sprite\alternate.webp`);
   });
 
   it("extracts tag content after full-width or ASCII separators", () => {

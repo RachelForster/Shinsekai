@@ -1,11 +1,32 @@
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
+const e2eDirectory = path.dirname(fileURLToPath(import.meta.url));
+const frontendRoot = path.resolve(e2eDirectory, "..");
+const repositoryRoot = path.resolve(frontendRoot, "..");
 const apiBase = process.env.SHINSEKAI_API_BASE ?? "http://127.0.0.1:8787";
-const projectRoot = process.env.SHINSEKAI_PROJECT_ROOT ?? path.resolve(process.cwd(), "..");
-const hasLiveBridge = Boolean(process.env.SHINSEKAI_API_BASE && process.env.SHINSEKAI_PROJECT_ROOT);
+const configuredProjectRoot = process.env.SHINSEKAI_PROJECT_ROOT;
+const projectRoot = configuredProjectRoot
+  ? exactAbsoluteEnvironmentPath(configuredProjectRoot, "SHINSEKAI_PROJECT_ROOT")
+  : repositoryRoot;
+const hasLiveBridge = Boolean(process.env.SHINSEKAI_API_BASE && configuredProjectRoot);
 const liveBridgeWorkflowPath = "test/e2e/live_bridge_runtime.yaml";
+
+function exactAbsoluteEnvironmentPath(value: string, field: string) {
+  if (
+    !value ||
+    value !== value.trim() ||
+    /[\u0000-\u001f\u007f\ud800-\udfff]/u.test(value) ||
+    !path.isAbsolute(value) ||
+    path.normalize(value) !== value ||
+    (process.platform !== "win32" && value.includes("\\"))
+  ) {
+    throw new Error(`${field} must be an exact native absolute path`);
+  }
+  return value;
+}
 
 declare global {
   interface Window {
@@ -800,7 +821,7 @@ test.describe.serial("live React functionality smoke", () => {
   test("tools crop action and music-cover save action call backend endpoints", async ({ page }) => {
     await page.goto("/#/settings/tools");
     await expect(page.getByRole("heading", { name: "小工具" })).toBeVisible();
-    await fieldControl(page, "输入目录", "input").fill(path.resolve(process.cwd(), "../assets/system/picture"));
+    await fieldControl(page, "输入目录", "input").fill(path.join(repositoryRoot, "assets/system/picture"));
     await fieldControl(page, "输出目录", "input").fill(path.join(projectRoot, "output/smoke-crop"));
     await fieldControl(page, "保留上半部分比例", "input").fill("0.5");
     await page.getByRole("button", { name: "确认裁剪" }).click();

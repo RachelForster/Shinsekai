@@ -1,14 +1,19 @@
-// @ts-expect-error -- Vitest runs in Node; the browser bundle intentionally omits Node types.
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-const controlsCss: string = readFileSync("src/features/chat-stage/styles/controls.css", "utf8");
-const dialogLayerCss: string = readFileSync("src/features/chat-stage/styles/dialog-layer.css", "utf8");
-const inputLayerCss: string = readFileSync("src/features/chat-stage/styles/input-layer.css", "utf8");
-const mediaLayersCss: string = readFileSync("src/features/chat-stage/styles/media-layers.css", "utf8");
-const optionsLayerCss: string = readFileSync("src/features/chat-stage/styles/options-layer.css", "utf8");
-const themePickerCss: string = readFileSync("src/features/chat-stage/theme/chat-theme-picker.css", "utf8");
+const testDirectory = dirname(fileURLToPath(import.meta.url));
+const chatStageSourceDirectory = resolve(testDirectory, "../../../features/chat-stage");
+const sourceFile = (relativePath: string) => resolve(chatStageSourceDirectory, relativePath);
+
+const controlsCss: string = readFileSync(sourceFile("styles/controls.css"), "utf8");
+const dialogLayerCss: string = readFileSync(sourceFile("styles/dialog-layer.css"), "utf8");
+const inputLayerCss: string = readFileSync(sourceFile("styles/input-layer.css"), "utf8");
+const mediaLayersCss: string = readFileSync(sourceFile("styles/media-layers.css"), "utf8");
+const optionsLayerCss: string = readFileSync(sourceFile("styles/options-layer.css"), "utf8");
+const themePickerCss: string = readFileSync(sourceFile("theme/chat-theme-picker.css"), "utf8");
 
 describe("chat stage immersive styles", () => {
   it("keeps the theme picker shell and scrollable body widths in sync", () => {

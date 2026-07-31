@@ -1,5 +1,7 @@
+import { normalizePathSeparatorsForIdentity } from "../paths/pathContract";
+
 export function baseName(path: string) {
-  return path.split(/[\\/]/).pop() || path;
+  return normalizePathSeparatorsForIdentity(path).split("/").pop() || path;
 }
 
 function extractTagContent(line: string) {

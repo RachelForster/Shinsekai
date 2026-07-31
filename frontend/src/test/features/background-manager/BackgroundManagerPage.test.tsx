@@ -204,6 +204,18 @@ describe("BackgroundManagerPage", () => {
     await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("City"));
   });
 
+  it("rejects a whitespace-retargeted resource directory", async () => {
+    renderPage();
+
+    const resourceDirectory = screen.getByLabelText("Resource directory");
+    await waitFor(() => expect(resourceDirectory).toHaveValue("school"));
+    fireEvent.change(resourceDirectory, { target: { value: " school " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("背景目录名首尾不能包含空白字符。")).toBeInTheDocument();
+    expect(mockSaveBackground).not.toHaveBeenCalled();
+  });
+
   it("shows empty and query error states for the background list", async () => {
     mockListBackgrounds.mockResolvedValueOnce([]);
     const emptyRender = renderPage();

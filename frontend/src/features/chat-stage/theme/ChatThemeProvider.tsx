@@ -20,7 +20,12 @@ import {
 import { getPlatform } from "../../../shared/platform/platform";
 import { parseChatChromeTheme } from "../../../shared/theme/chatChromeTheme";
 import type { ChatThemePayload } from "../../../shared/theme/chatChromeTheme";
-import { DEFAULT_CHAT_THEME_ID, DEFAULT_TYPEWRITER_CPS, resolveChatTheme } from "../../../shared/theme/chatTheme";
+import {
+  DEFAULT_CHAT_THEME_ID,
+  DEFAULT_TYPEWRITER_CPS,
+  normalizeThemeAssetRef,
+  resolveChatTheme,
+} from "../../../shared/theme/chatTheme";
 import type {
   ChatStageStyle,
   ChatThemeManifest,
@@ -59,9 +64,14 @@ function assetUrl(rel: string): string {
 }
 
 export function chatThemeAssetUrl(themeId: string, rel: string): string {
-  const normalizedThemeId = themeId.trim();
-  const normalizedRel = rel.replace(/^\.?\//, "").replace(/^\/+/, "");
-  return assetUrl(`data/chat_ui_themes/${normalizedThemeId}/${normalizedRel}`);
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(themeId)) {
+    return "";
+  }
+  const normalizedRel = normalizeThemeAssetRef(rel);
+  if (!normalizedRel) {
+    return "";
+  }
+  return assetUrl(`data/chat_ui_themes/${themeId}/${normalizedRel}`);
 }
 
 export function ChatThemeProvider({ children }: { children: ReactNode }) {

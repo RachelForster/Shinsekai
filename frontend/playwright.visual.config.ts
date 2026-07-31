@@ -1,7 +1,11 @@
 import { defineConfig } from "@playwright/test";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import baseConfig from "./playwright.config";
 
+const frontendRoot = path.dirname(fileURLToPath(import.meta.url));
+const viteCli = path.join(frontendRoot, "node_modules", "vite", "bin", "vite.js");
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:5174";
 const localNoProxy = "127.0.0.1,localhost,::1";
 
@@ -30,7 +34,8 @@ const managedServerConfig = process.env.PLAYWRIGHT_BASE_URL
   ? {}
   : {
       webServer: {
-        command: "pnpm dev --host 127.0.0.1 --port 5174",
+        command: `${JSON.stringify(process.execPath)} ${JSON.stringify(viteCli)} --host 127.0.0.1 --port 5174`,
+        cwd: frontendRoot,
         env: {
           ...webServerEnv,
           ALL_PROXY: "",

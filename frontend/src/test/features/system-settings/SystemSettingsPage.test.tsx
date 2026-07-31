@@ -82,7 +82,7 @@ function mockSystemConfig(systemOverrides: Record<string, unknown> = {}) {
       mirror_auto_detect_china: true,
       mirror_region: "auto",
       huggingface_mirror_url: "",
-      huggingface_cache_dir: "./data/cache/huggingface",
+      huggingface_cache_dir: "data/cache/huggingface",
       github_mirror_url: "",
       pypi_mirror_url: "",
       network_proxy_enabled: false,

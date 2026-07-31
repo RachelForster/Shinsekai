@@ -35,21 +35,27 @@ export interface FileManagerProps {
 
 function basename(path: string) {
   const normalized = normalizeFileManagerPath(path);
-  return normalized.split(/[\\/]/).filter(Boolean).pop() || normalized || path;
+  return normalized.split("/").filter(Boolean).pop() || normalized || path;
 }
 
 export function normalizeFileManagerPath(path: string) {
-  const raw = path.trim();
+  const raw = path;
   if (!raw) {
     return "";
+  }
+  // A backslash is an ordinary filename character in a POSIX absolute path.
+  // Bridge snapshots already use native absolute paths, so rewriting it here
+  // would make the displayed/selected identity differ from the host entry.
+  // Windows drive, UNC, namespace, and portable relative values still need
+  // slash normalization for stable breadcrumbs and round trips.
+  if (raw.startsWith("/") && !raw.startsWith("//")) {
+    return raw;
   }
   let normalized = raw.replace(/\\/g, "/");
   if (/^\/\/\?\/UNC\//i.test(normalized)) {
     normalized = `//${normalized.slice("//?/UNC/".length)}`;
-  } else if (normalized.startsWith("//?/")) {
+  } else if (/^\/\/\?\/[A-Za-z]:\//.test(normalized)) {
     normalized = normalized.slice("//?/".length);
-  } else if (normalized.startsWith("//./")) {
-    normalized = normalized.slice("//./".length);
   }
   if (/^[A-Za-z]:$/.test(normalized)) {
     return `${normalized}/`;
@@ -130,6 +136,19 @@ function pathBreadcrumbs(path: string) {
     return [];
   }
   const normalized = raw;
+  if (normalized.startsWith("//")) {
+    const parts = normalized.slice(2).split("/").filter(Boolean);
+    if (parts.length >= 2) {
+      let current = `//${parts[0]}/${parts[1]}/`;
+      const crumbs = [{ label: `//${parts[0]}/${parts[1]}`, path: current }];
+      for (const part of parts.slice(2)) {
+        current = `${current}${part}`;
+        crumbs.push({ label: part, path: current });
+        current = `${current}/`;
+      }
+      return crumbs;
+    }
+  }
   const drive = normalized.match(/^[A-Za-z]:/)?.[0];
   if (drive) {
     const rest = normalized.slice(drive.length).replace(/^\/+/, "");
@@ -272,12 +291,12 @@ export function FileManager({
     mode === "directory"
       ? selectedEntry?.kind === "directory"
         ? selectedEntry.path
-        : normalizeFileManagerPath(snapshot?.cwd || address)
+        : (snapshot?.cwd ?? "")
       : mode === "path"
-        ? (selectedEntry?.path ?? normalizeFileManagerPath(address))
+        ? (selectedEntry?.path ?? snapshot?.cwd ?? "")
         : selectedEntry?.kind === "file"
           ? selectedEntry.path
-          : normalizeFileManagerPath(address);
+          : "";
   const confirmPaths = multiple && mode === "file" ? selectedPaths : confirmPath ? [confirmPath] : [];
   const confirmPathsKey = confirmPaths.join("\0");
 

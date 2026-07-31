@@ -11,7 +11,8 @@ import {
   sampleTemplates,
 } from "./sampleData";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
-import { numberedTags, tagContents } from "../assets/assetText";
+import { baseName, numberedTags, tagContents } from "../assets/assetText";
+import { classifyMediaSource } from "../assets/mediaSource";
 import { runtimeStatusFromSnapshot } from "./chatRuntimeStatus";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import { DEFAULT_CHAT_THEME_ID, type ChatThemeManifest, type ChatThemeSummary } from "../theme/chatTheme";
@@ -183,7 +184,7 @@ function previewManifestKeys(plugin: PluginManifest) {
       plugin.id,
       plugin.title,
       plugin.entry,
-      plugin.directory?.split(/[\\/]/).filter(Boolean).at(-1),
+      plugin.directory ? baseName(plugin.directory) : undefined,
       plugin.install?.repo,
       plugin.install?.entry,
       previewModuleToken(plugin.entry),
@@ -548,6 +549,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     return builtinChatThemeAssetUrls[`${prefix}${assetBaseId}/${relativeAsset}`] ?? path;
   };
 
+  const resolvePreviewMediaUrl = (path: string) => {
+    const bundled = resolvePreviewThemeAssetUrl(path);
+    if (bundled !== path) {
+      return bundled;
+    }
+    return classifyMediaSource(path) === "direct" ? path : "";
+  };
+
   const listPreviewThemes = (): ChatThemeSummary[] =>
     Array.from(previewThemeManifests.values()).map((manifest) => {
       const source = previewThemeSources.get(manifest.id) ?? "user";
@@ -644,10 +653,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         return delay(background);
       },
-      export: (name) => delay(`./data/export/${name}.bg`),
+      export: (name) => delay(`data/export/${name}.bg`),
       import: async (items) => {
         const imported = items.map<Background>((item, index) => {
-          const label = item instanceof File ? item.name : item.split("/").pop() || `background-${index + 1}`;
+          const label = item instanceof File ? item.name : baseName(item) || `background-${index + 1}`;
           return {
             bg_tags: "导入预览背景",
             bgm_list: [],
@@ -749,10 +758,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         return delay(effect);
       },
-      export: (name) => delay(`./data/export/${name}.ef`),
+      export: (name) => delay(`data/export/${name}.ef`),
       import: async (items) => {
         const imported = items.map<Effect>((item, index) => {
-          const label = item instanceof File ? item.name : item.split("/").pop() || `effect-${index + 1}`;
+          const label = item instanceof File ? item.name : baseName(item) || `effect-${index + 1}`;
           return {
             name: label.replace(/\.ef$/i, ""),
             color: "#5b8def",
@@ -1181,7 +1190,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           };
         }
         if (command.type === "open-history") {
-          return { ...clone(chat), openedPath: chat.historyPath ?? "./data/chat_history/preview" };
+          return { ...clone(chat), openedPath: chat.historyPath ?? "data/chat_history/preview" };
         }
         return clone(chat);
       },
@@ -1237,7 +1246,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         await delay(null, 80);
         const character = config.characters.find((item) => payload.characters.includes(item.name));
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
-        const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
+        const historyPath = payload.historyPath || chat.historyPath || "data/chat_history/preview";
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
@@ -1299,7 +1308,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         await delay(null, 80);
         const character = config.characters.find((item) => templateSession?.selectedCharacters?.includes(item.name));
         const background = config.background_list.find((item) => item.name === templateSession?.background);
-        const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview";
+        const historyPath = templateSession?.historyPath || chat.historyPath || "data/chat_history/preview";
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
@@ -1523,7 +1532,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         character.emotion_tags = tags ? `${tags}\n` : "";
         return delay(character);
       },
-      export: (name) => delay(`./data/export/${name}.char`),
+      export: (name) => delay(`data/export/${name}.char`),
       async generateSetting(input) {
         return delay({
           characterSetting: `${input.name || "角色"}的背景信息：\n1. 浏览器预览生成的设定。\n\n语言习惯：\n1. 温和且简洁。`,
@@ -1532,7 +1541,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       import: async (items) => {
         const imported = items.map<Character>((item, index) => {
-          const label = item instanceof File ? item.name : item.split("/").pop() || `character-${index + 1}`;
+          const label = item instanceof File ? item.name : baseName(item) || `character-${index + 1}`;
           return {
             character_setting: "导入预览角色",
             color: DEFAULT_CHARACTER_COLOR,
@@ -1642,6 +1651,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(next);
       },
       async save(character, originalName) {
+        if (character.sprite_prefix && character.sprite_prefix !== character.sprite_prefix.trim()) {
+          throw new Error("立绘目录名首尾不能包含空白字符。");
+        }
         const index = originalName
           ? config.characters.findIndex((item) => item.name === originalName)
           : config.characters.findIndex((item) => item.name === character.name);
@@ -1655,12 +1667,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           ...clone(character),
           color: character.color.trim() || DEFAULT_CHARACTER_COLOR,
           emotion_tags: index >= 0 ? config.characters[index].emotion_tags : "",
-          gpt_model_path: character.gpt_model_path?.trim() || "",
+          gpt_model_path: character.gpt_model_path || "",
           prompt_lang: character.prompt_lang?.trim() || "",
           prompt_text: character.prompt_text?.trim() || "",
-          refer_audio_path: character.refer_audio_path?.trim() || "",
-          sovits_model_path: character.sovits_model_path?.trim() || "",
-          sprite_prefix: character.sprite_prefix.trim() || "temp",
+          refer_audio_path: character.refer_audio_path || "",
+          sovits_model_path: character.sovits_model_path || "",
+          sprite_prefix: character.sprite_prefix || "temp",
           sprite_scale: index >= 0 ? config.characters[index].sprite_scale : 1,
           sprites: index >= 0 ? config.characters[index].sprites : [],
           character_setting: character.character_setting.trim(),
@@ -1735,7 +1747,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         const start = character.sprites.length;
         const nextSprites = input.paths.map((path) => ({
-          path: `data/sprite/${character.sprite_prefix}/${path.split(/[\\/]/).pop() ?? path}`,
+          path: `data/sprite/${character.sprite_prefix}/${baseName(path)}`,
         }));
         character.sprites = [...character.sprites, ...nextSprites];
         const extraTags = input.paths.map((_, index) => `立绘 ${start + index + 1}：`).join("\n");
@@ -1921,13 +1933,20 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(previewFileBrowser(options?.path));
       },
       fileUrl(path) {
-        return resolvePreviewThemeAssetUrl(path);
+        return resolvePreviewMediaUrl(path);
       },
       thumbnailBatch(paths, _options) {
-        return delay(Object.fromEntries(paths.filter(Boolean).map((path) => [path, path])));
+        return delay(
+          Object.fromEntries(
+            paths
+              .filter(Boolean)
+              .map((path) => [path, resolvePreviewMediaUrl(path)])
+              .filter((entry) => entry[1]),
+          ),
+        );
       },
       thumbnailUrl(path) {
-        return path;
+        return resolvePreviewMediaUrl(path);
       },
       async openExternal(url) {
         window.open(url, "_blank", "noopener,noreferrer");
@@ -1955,10 +1974,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         return delay({
           ...previewLogSnapshot(),
-          name:
-            String(first || "preview.log")
-              .split(/[\\/]/)
-              .pop() || "preview.log",
+          name: baseName(String(first || "preview.log")) || "preview.log",
           path: String(first || "browser-preview://preview.log"),
         });
       },
@@ -2003,7 +2019,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         );
         await delay(null, 180);
         const result = {
-          audioPath: `${config.system_config.music_cover_work_dir || "./data/music_cover"}/preview/final_mix.wav`,
+          audioPath: `${config.system_config.music_cover_work_dir || "data/music_cover"}/preview/final_mix.wav`,
           log: [
             `source=${input.source}`,
             `query=${input.query || "(empty)"}`,
@@ -2039,7 +2055,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           music_cover_rvc_model_path: input.music_cover_rvc_model_path || "",
           music_cover_rvc_model_version: input.music_cover_rvc_model_version || "v2",
           music_cover_uvr_cmd_template: input.music_cover_uvr_cmd_template || "",
-          music_cover_work_dir: input.music_cover_work_dir || "./data/music_cover",
+          music_cover_work_dir: input.music_cover_work_dir || "data/music_cover",
           music_cover_yt_dlp_exe: input.music_cover_yt_dlp_exe || "",
         };
         return delay({
@@ -2203,15 +2219,15 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           pluginId,
         }),
       scanLocal(input) {
-        const baseName = input.path.split(/[\\/]/).filter(Boolean).pop() || "preview-plugin";
+        const directoryName = baseName(input.path) || "preview-plugin";
         return delay({
           author: "Shinsekai Contributors",
           desc: "从本地插件目录生成的示例提交信息。",
-          display_name: baseName.replace(/[-_]+/g, " "),
-          entry: `plugins.${baseName.replace(/[^A-Za-z0-9_]/g, "_")}.plugin:PreviewPlugin`,
+          display_name: directoryName.replace(/[-_]+/g, " "),
+          entry: `plugins.${directoryName.replace(/[^A-Za-z0-9_]/g, "_")}.plugin:PreviewPlugin`,
           logo: "logo.png",
           path: input.path,
-          repo: `https://github.com/shinsekai/${baseName}`,
+          repo: `https://github.com/shinsekai/${directoryName}`,
           requirements: "",
           social_link: "https://github.com/shinsekai",
           tags: ["preview"],
@@ -2412,7 +2428,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         const saved = {
           ...template,
           id,
-          path: template.path || `./data/character_templates/${id}`,
+          path: template.path || `data/character_templates/${id}`,
           updatedAt: template.updatedAt || "preview",
         };
         templates = templates.map((item) => (item.id === id ? clone(saved) : item));

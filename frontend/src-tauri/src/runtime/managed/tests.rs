@@ -35,13 +35,23 @@ impl Drop for EnvRestore {
 
 #[test]
 fn configure_pip_install_command_adds_selected_index_url_argument() {
-    let mut command = Command::new("python");
+    let temp_root = unique_temp_dir("configure-pip-command");
+    let python_parent = temp_root.join("bin");
+    let python = python_parent.join(if cfg!(windows) {
+        "python.exe"
+    } else {
+        "python"
+    });
+    fs::create_dir_all(&python_parent).unwrap();
+    fs::write(&python, "").unwrap();
+    let mut command = Command::new(&python);
 
     configure_pip_install_command(
         &mut command,
-        Path::new("python"),
+        &python,
         Some("https://mirror.example/simple/"),
-    );
+    )
+    .unwrap();
 
     let envs = command
         .get_envs()
@@ -70,16 +80,27 @@ fn configure_pip_install_command_adds_selected_index_url_argument() {
             "https://mirror.example/simple/".to_string()
         ]
     );
+    let _ = fs::remove_dir_all(temp_root);
 }
 
 #[test]
 fn pytorch_force_reinstall_command_limits_replacement_to_the_stack() {
+    let temp_root = unique_temp_dir("pytorch-force-command");
+    let python_parent = temp_root.join("bin");
+    let python = python_parent.join(if cfg!(windows) {
+        "python.exe"
+    } else {
+        "python"
+    });
+    fs::create_dir_all(&python_parent).unwrap();
+    fs::write(&python, "").unwrap();
     let command = pytorch_install_command(
-        Path::new("python"),
-        Path::new("torch-requirements.txt"),
+        &python,
+        &temp_root.join("torch-requirements.txt"),
         "https://download.pytorch.org/whl/cu128",
         true,
-    );
+    )
+    .unwrap();
     let args = command
         .get_args()
         .map(|arg| arg.to_string_lossy().to_string())
@@ -88,16 +109,27 @@ fn pytorch_force_reinstall_command_limits_replacement_to_the_stack() {
     assert!(args.iter().any(|arg| arg == "--force-reinstall"));
     assert!(args.iter().any(|arg| arg == "--upgrade"));
     assert!(args.iter().any(|arg| arg == "--no-deps"));
+    let _ = fs::remove_dir_all(temp_root);
 }
 
 #[test]
 fn pytorch_dependency_repair_command_does_not_force_reinstall() {
+    let temp_root = unique_temp_dir("pytorch-repair-command");
+    let python_parent = temp_root.join("bin");
+    let python = python_parent.join(if cfg!(windows) {
+        "python.exe"
+    } else {
+        "python"
+    });
+    fs::create_dir_all(&python_parent).unwrap();
+    fs::write(&python, "").unwrap();
     let command = pytorch_install_command(
-        Path::new("python"),
-        Path::new("torch-requirements.txt"),
+        &python,
+        &temp_root.join("torch-requirements.txt"),
         "https://download.pytorch.org/whl/cu128",
         false,
-    );
+    )
+    .unwrap();
     let args = command
         .get_args()
         .map(|arg| arg.to_string_lossy().to_string())
@@ -106,16 +138,24 @@ fn pytorch_dependency_repair_command_does_not_force_reinstall() {
     assert!(!args.iter().any(|arg| arg == "--force-reinstall"));
     assert!(!args.iter().any(|arg| arg == "--upgrade"));
     assert!(!args.iter().any(|arg| arg == "--no-deps"));
+    let _ = fs::remove_dir_all(temp_root);
 }
 
 #[test]
 fn ordinary_runtime_install_is_constrained_to_the_host_pytorch_stack() {
-    let mut command = pip_install_command(
-        Path::new("python"),
-        Path::new("plugin-requirements.txt"),
-        None,
-    );
-    apply_pip_constraints(&mut command, Some(Path::new("host-pytorch.txt")));
+    let temp_root = unique_temp_dir("pytorch-constraints-command");
+    let python_parent = temp_root.join("bin");
+    let python = python_parent.join(if cfg!(windows) {
+        "python.exe"
+    } else {
+        "python"
+    });
+    let requirements = temp_root.join("plugin-requirements.txt");
+    let constraints = temp_root.join("host-pytorch.txt");
+    fs::create_dir_all(&python_parent).unwrap();
+    fs::write(&python, "").unwrap();
+    let mut command = pip_install_command(&python, &requirements, None).unwrap();
+    apply_pip_constraints(&mut command, Some(&constraints));
     let args = command
         .get_args()
         .map(|arg| arg.to_string_lossy().to_string())
@@ -123,7 +163,8 @@ fn ordinary_runtime_install_is_constrained_to_the_host_pytorch_stack() {
 
     assert!(args
         .windows(2)
-        .any(|pair| pair == ["-c", "host-pytorch.txt"]));
+        .any(|pair| { pair[0] == "-c" && pair[1] == constraints.to_string_lossy().as_ref() }));
+    let _ = fs::remove_dir_all(temp_root);
 }
 
 #[cfg(unix)]
@@ -202,6 +243,7 @@ exit 11
     install_runtime_requirements(
         &fake_python,
         &requirements,
+        &temp_root,
         &[
             "https://bad.example/simple/".to_string(),
             "https://good.example/simple/".to_string(),
@@ -245,7 +287,7 @@ exit 11
     );
     let mut lines = Vec::new();
 
-    install_runtime_requirements(&fake_python, &requirements, &[], |line| {
+    install_runtime_requirements(&fake_python, &requirements, &temp_root, &[], |line| {
         lines.push(line.to_string());
     })
     .unwrap();
@@ -254,6 +296,142 @@ exit 11
     assert!(lines
         .iter()
         .any(|line| line == "Installing collected packages: pydantic"));
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn install_runtime_requirements_detects_source_replaced_while_pip_runs() {
+    let temp_root = unique_temp_dir("runtime-replaced-requirements");
+    fs::create_dir_all(&temp_root).unwrap();
+    let fake_python = temp_root.join("python");
+    let requirements = temp_root.join("requirements.txt");
+    let preserved = temp_root.join("preserved-requirements.txt");
+    fs::write(&requirements, "pydantic\n").unwrap();
+    write_executable(
+        &fake_python,
+        &format!(
+            r#"#!/bin/sh
+case "$*" in
+  *"-m pip --version"*)
+    exit 0
+    ;;
+  *"-m pip install"*)
+    mv "{requirements}" "{preserved}"
+    printf 'peer\n' > "{requirements}"
+    exit 0
+    ;;
+esac
+exit 1
+"#,
+            requirements = requirements.display(),
+            preserved = preserved.display(),
+        ),
+    );
+
+    let error = install_runtime_requirements(&fake_python, &requirements, &temp_root, &[], |_| {})
+        .unwrap_err();
+
+    assert!(error.to_string().contains("changed identity"));
+    assert_eq!(fs::read_to_string(&requirements).unwrap(), "peer\n");
+    assert_eq!(fs::read_to_string(&preserved).unwrap(), "pydantic\n");
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn install_runtime_requirements_detects_python_replaced_while_pip_runs() {
+    let temp_root = unique_temp_dir("runtime-replaced-python");
+    fs::create_dir_all(&temp_root).unwrap();
+    let fake_python = temp_root.join("python");
+    let preserved_python = temp_root.join("preserved-python");
+    let requirements = temp_root.join("requirements.txt");
+    fs::write(&requirements, "pydantic\n").unwrap();
+    write_executable(
+        &fake_python,
+        &format!(
+            r#"#!/bin/sh
+case "$*" in
+  *"-m pip --version"*)
+    exit 0
+    ;;
+  *"-m pip install"*)
+    mv "{python}" "{preserved}"
+    printf '#!/bin/sh\nexit 0\n' > "{python}"
+    chmod +x "{python}"
+    exit 0
+    ;;
+esac
+exit 1
+"#,
+            python = fake_python.display(),
+            preserved = preserved_python.display(),
+        ),
+    );
+
+    let error = install_runtime_requirements(&fake_python, &requirements, &temp_root, &[], |_| {})
+        .unwrap_err();
+
+    assert!(error
+        .to_string()
+        .contains("runtime Python changed identity"));
+    assert!(fake_python.is_file());
+    assert!(preserved_python.is_file());
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn torch_split_uses_writable_runtime_temp_and_preserves_original_requirement_base() {
+    let temp_root = unique_temp_dir("runtime-torch-temp-root");
+    let packaged_source = temp_root.join("read-only packaged resources");
+    let runtime_temp = temp_root.join("app-data").join("runtime");
+    fs::create_dir_all(&packaged_source).unwrap();
+    let fake_python = temp_root.join("python");
+    let requirements = packaged_source.join("requirements-runtime-local-ai.txt");
+    let included = packaged_source.join("requirements-runtime-core.txt");
+    let log = temp_root.join("log.txt");
+    fs::write(
+        &requirements,
+        "torch==2.4.1\n-r requirements-runtime-core.txt\n",
+    )
+    .unwrap();
+    fs::write(&included, "pydantic\n").unwrap();
+    write_executable(
+        &fake_python,
+        &format!(
+            r#"#!/bin/sh
+printf '%s\n' "$*" >> "{log}"
+previous=""
+for argument in "$@"; do
+  if [ "$previous" = "-r" ] && [ -f "$argument" ]; then
+    sed 's/^/requirements: /' "$argument" >> "{log}"
+  fi
+  previous="$argument"
+done
+exit 0
+"#,
+            log = log.display()
+        ),
+    );
+
+    install_runtime_requirements(&fake_python, &requirements, &runtime_temp, &[], |_| {}).unwrap();
+
+    let log = fs::read_to_string(log).unwrap();
+    assert!(log.contains(&runtime_temp.canonicalize().unwrap().display().to_string()));
+    assert!(log.contains(&format!(
+        "requirements: -r \"{}\"",
+        included.canonicalize().unwrap().display()
+    )));
+    assert_eq!(
+        fs::read_dir(&packaged_source)
+            .unwrap()
+            .filter_map(Result::ok)
+            .count(),
+        2
+    );
+    assert!(fs::read_dir(&runtime_temp).unwrap().next().is_none());
 
     let _ = fs::remove_dir_all(temp_root);
 }
@@ -287,6 +465,130 @@ fn partition_torch_requirement_lines_splits_pytorch_packages() {
             "git+https://example.invalid/package.git".to_string()
         ]
     );
+}
+
+#[test]
+fn temporary_requirements_use_an_explicit_writable_root_without_cwd_fallback() {
+    let error = write_temp_requirements(
+        Path::new("requirements.txt"),
+        "shinsekai-test",
+        &["pydantic".to_string()],
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("must be absolute"));
+
+    let temp_root = unique_temp_dir("runtime-temp-requirements");
+    let read_only_source = temp_root.join("packaged-resources");
+    let writable_runtime = temp_root.join("app-data").join("runtime");
+    fs::create_dir_all(&read_only_source).unwrap();
+    fs::write(read_only_source.join("requirements.txt"), "torch\n").unwrap();
+
+    let generated = write_temp_requirements(
+        &writable_runtime,
+        "shinsekai-test",
+        &["pydantic".to_string(), "requests".to_string()],
+    )
+    .unwrap();
+
+    assert_eq!(
+        generated.parent(),
+        Some(writable_runtime.canonicalize().unwrap().as_path())
+    );
+    assert_ne!(generated.parent(), Some(read_only_source.as_path()));
+    assert_eq!(
+        fs::read_to_string(&generated).unwrap(),
+        "pydantic\nrequests"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn temporary_requirements_cleanup_preserves_a_replacement_file() {
+    let temp_root = unique_temp_dir("runtime-temp-requirements-identity");
+    let runtime_root = temp_root.join("runtime");
+    let generated =
+        write_temp_requirements(&runtime_root, "shinsekai-test", &["pydantic".to_string()])
+            .unwrap();
+    let generated_path = generated.path.clone();
+    let preserved = generated_path.with_extension("preserved");
+    fs::rename(&generated_path, &preserved).unwrap();
+    fs::write(&generated_path, "peer\n").unwrap();
+
+    drop(generated);
+
+    assert_eq!(fs::read_to_string(&generated_path).unwrap(), "peer\n");
+    assert_eq!(fs::read_to_string(&preserved).unwrap(), "pydantic");
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn temporary_requirements_cleanup_preserves_replacement_parent_contents() {
+    let temp_root = unique_temp_dir("runtime-temp-requirements-parent-identity");
+    let runtime_root = temp_root.join("runtime");
+    let generated =
+        write_temp_requirements(&runtime_root, "shinsekai-test", &["pydantic".to_string()])
+            .unwrap();
+    let generated_path = generated.path.clone();
+    let generated_name = generated_path.file_name().unwrap().to_owned();
+    let preserved_runtime = temp_root.join("preserved-runtime");
+    fs::rename(&runtime_root, &preserved_runtime).unwrap();
+    fs::create_dir_all(&runtime_root).unwrap();
+    fs::write(runtime_root.join(&generated_name), "peer\n").unwrap();
+
+    drop(generated);
+
+    assert_eq!(
+        fs::read_to_string(runtime_root.join(&generated_name)).unwrap(),
+        "peer\n"
+    );
+    assert_eq!(
+        fs::read_to_string(preserved_runtime.join(&generated_name)).unwrap(),
+        "pydantic"
+    );
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn temporary_requirements_reject_a_linked_runtime_directory() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = unique_temp_dir("runtime-linked-temp-requirements");
+    let external = temp_root.join("external");
+    let alias = temp_root.join("runtime");
+    fs::create_dir_all(&external).unwrap();
+    symlink(&external, &alias).unwrap();
+
+    let error =
+        write_temp_requirements(&alias, "shinsekai-test", &["requests".to_string()]).unwrap_err();
+
+    assert!(error.to_string().contains("symbolic link"));
+    assert!(fs::read_dir(&external).unwrap().next().is_none());
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn temporary_requirements_reject_a_linked_runtime_parent() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = unique_temp_dir("runtime-linked-parent-temp-requirements");
+    let external = temp_root.join("external");
+    let alias = temp_root.join("alias");
+    fs::create_dir_all(&external).unwrap();
+    symlink(&external, &alias).unwrap();
+
+    let error = write_temp_requirements(
+        &alias.join("runtime"),
+        "shinsekai-test",
+        &["requests".to_string()],
+    )
+    .unwrap_err();
+
+    assert!(error.to_string().contains("symbolic link"));
+    assert!(!external.join("runtime").exists());
+    let _ = fs::remove_dir_all(temp_root);
 }
 
 #[test]
@@ -471,36 +773,8 @@ fn pytorch_install_plan_forces_reinstall_for_cpu_or_version_mismatch() {
 }
 
 #[test]
-fn lock_pid_parser_reads_install_lock_pid() {
-    assert_eq!(
-        lock_pid_from_text("pid=12345\ncreated_at_ms=10\n"),
-        Some(12345)
-    );
-    assert_eq!(lock_pid_from_text("created_at_ms=10\npid= 42\n"), Some(42));
-    assert_eq!(lock_pid_from_text("pid=0\n"), None);
-    assert_eq!(lock_pid_from_text("created_at_ms=10\n"), None);
-}
-
-#[test]
-fn current_process_install_lock_is_not_stale() {
-    let temp_root = unique_temp_dir("runtime-current-lock");
-    let runtime_home = temp_root.join("runtime");
-    fs::create_dir_all(&runtime_home).unwrap();
-    fs::write(
-        runtime_home.join("install.lock"),
-        format!("pid={}\ncreated_at_ms=10\n", std::process::id()),
-    )
-    .unwrap();
-
-    assert!(!is_stale_lock(&runtime_home.join("install.lock")));
-
-    let _ = fs::remove_dir_all(temp_root);
-}
-
-#[cfg(unix)]
-#[test]
-fn exited_process_install_lock_is_replaced() {
-    let temp_root = unique_temp_dir("runtime-dead-lock");
+fn install_lock_is_persistent_and_reused_after_release() {
+    let temp_root = unique_temp_dir("runtime-persistent-lock");
     let runtime_home = temp_root.join("runtime");
     fs::create_dir_all(&runtime_home).unwrap();
     fs::write(
@@ -509,13 +783,88 @@ fn exited_process_install_lock_is_replaced() {
     )
     .unwrap();
 
-    assert!(is_stale_lock(&runtime_home.join("install.lock")));
     let lock = acquire_install_lock(&runtime_home).unwrap();
     let lock_text = fs::read_to_string(runtime_home.join("install.lock")).unwrap();
     assert!(lock_text.contains(&format!("pid={}", std::process::id())));
     drop(lock);
-    assert!(!runtime_home.join("install.lock").exists());
+    assert!(runtime_home.join("install.lock").is_file());
 
+    let next_lock = acquire_install_lock(&runtime_home).unwrap();
+    drop(next_lock);
+    assert!(runtime_home.join("install.lock").is_file());
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn concurrent_install_lock_is_rejected_without_replacing_the_owner_file() {
+    let temp_root = unique_temp_dir("runtime-concurrent-lock");
+    let runtime_home = temp_root.join("runtime");
+    fs::create_dir_all(&runtime_home).unwrap();
+
+    let owner = acquire_install_lock(&runtime_home).unwrap();
+    let owner_text = fs::read_to_string(runtime_home.join("install.lock")).unwrap();
+    let error = match acquire_install_lock(&runtime_home) {
+        Ok(_) => panic!("concurrent runtime install lock was accepted"),
+        Err(error) => error,
+    };
+
+    assert!(error
+        .to_string()
+        .contains("another Shinsekai runtime install"));
+    assert_eq!(
+        fs::read_to_string(runtime_home.join("install.lock")).unwrap(),
+        owner_text
+    );
+    drop(owner);
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn install_lock_detects_a_replacement_runtime_directory() {
+    let temp_root = unique_temp_dir("runtime-replaced-lock-parent");
+    let runtime_home = temp_root.join("runtime");
+    let preserved_runtime = temp_root.join("preserved-runtime");
+    fs::create_dir_all(&runtime_home).unwrap();
+
+    let owner = acquire_install_lock(&runtime_home).unwrap();
+    fs::rename(&runtime_home, &preserved_runtime).unwrap();
+    fs::create_dir_all(&runtime_home).unwrap();
+    fs::write(runtime_home.join("install.lock"), "peer\n").unwrap();
+
+    let error = owner.require_current_identity().unwrap_err();
+
+    assert!(error.to_string().contains("changed identity"));
+    assert_eq!(
+        fs::read_to_string(runtime_home.join("install.lock")).unwrap(),
+        "peer\n"
+    );
+    assert!(preserved_runtime.join("install.lock").is_file());
+    drop(owner);
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[cfg(unix)]
+#[test]
+fn install_lock_rejects_a_link_without_touching_its_target() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = unique_temp_dir("runtime-linked-lock");
+    let runtime_home = temp_root.join("runtime");
+    let external = temp_root.join("external.lock");
+    fs::create_dir_all(&runtime_home).unwrap();
+    fs::write(&external, "pid=9999999\n").unwrap();
+    symlink(&external, runtime_home.join("install.lock")).unwrap();
+
+    let error = match acquire_install_lock(&runtime_home) {
+        Ok(_) => panic!("linked install lock was accepted"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("regular non-link"));
+    assert_eq!(fs::read_to_string(&external).unwrap(), "pid=9999999\n");
+    assert!(runtime_home.join("install.lock").symlink_metadata().is_ok());
     let _ = fs::remove_dir_all(temp_root);
 }
 
@@ -544,6 +893,56 @@ fn verify_python_imports_reports_missing_modules() {
     let _ = fs::remove_dir_all(temp_root);
 }
 
+#[cfg(unix)]
+#[test]
+fn verify_python_runtime_rejects_source_root_replaced_during_bridge_check() {
+    let temp_root = unique_temp_dir("runtime-replaced-source-root");
+    let source_root = temp_root.join("source");
+    let preserved_source = temp_root.join("preserved-source");
+    let fake_python = temp_root.join("python");
+    fs::create_dir_all(&source_root).unwrap();
+    fs::write(source_root.join("frontend_bridge.py"), "bridge\n").unwrap();
+    fs::write(
+        source_root.join("requirements-runtime-core.txt"),
+        "pydantic\n",
+    )
+    .unwrap();
+    write_executable(
+        &fake_python,
+        &format!(
+            r#"#!/bin/sh
+mv "{source}" "{preserved}"
+mkdir "{source}"
+printf 'peer bridge\n' > "{source}/frontend_bridge.py"
+printf 'peer requirements\n' > "{source}/requirements-runtime-core.txt"
+exit 0
+"#,
+            source = source_root.display(),
+            preserved = preserved_source.display(),
+        ),
+    );
+    let requirements = RuntimeRequirements {
+        imports: Vec::new(),
+        python: None,
+        requirements_file: "requirements-runtime-core.txt".to_string(),
+        bridge_check: true,
+    };
+
+    let error = verify_python_runtime(&source_root, &fake_python, "desktop-core", &requirements)
+        .unwrap_err();
+
+    assert!(error.to_string().contains("source root changed identity"));
+    assert_eq!(
+        fs::read_to_string(source_root.join("frontend_bridge.py")).unwrap(),
+        "peer bridge\n"
+    );
+    assert_eq!(
+        fs::read_to_string(preserved_source.join("frontend_bridge.py")).unwrap(),
+        "bridge\n"
+    );
+    let _ = fs::remove_dir_all(temp_root);
+}
+
 #[test]
 fn safe_component_rejects_parent_directory_components() {
     assert_eq!(safe_component(".."), "runtime");
@@ -555,7 +954,10 @@ fn unique_temp_dir(name: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("shinsekai-{name}-{nonce}"))
+    std::env::temp_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join(format!("shinsekai-{name}-{nonce}"))
 }
 
 #[cfg(unix)]

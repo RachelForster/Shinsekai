@@ -174,6 +174,18 @@ describe("TemplateEditorPage", () => {
     expect(await screen.findByDisplayValue("Generated scenario")).toBeInTheDocument();
   });
 
+  it("rejects a whitespace-retargeted template filename", async () => {
+    renderPage();
+
+    const name = await screen.findByLabelText("Template name");
+    await waitFor(() => expect(name).toHaveValue("Opening"));
+    fireEvent.change(name, { target: { value: " Opening " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("模板名称首尾不能包含空白字符。")).toBeInTheDocument();
+    expect(mockSaveTemplate).not.toHaveBeenCalled();
+  });
+
   it("auto-generates only when character selection changes and puts the default RPG brief in scenario", async () => {
     mockGenerateTemplate.mockImplementationOnce(async (input) => ({
       ...template,
@@ -324,6 +336,10 @@ describe("TemplateEditorPage", () => {
   });
 
   it("launches restored sessions only after quick restart confirmation", async () => {
+    mockLaunchChat.mockResolvedValueOnce({
+      dialogText: "launched",
+      historyPath: "data/chat_history/fresh-default",
+    });
     mockGetTemplateSession.mockResolvedValue({
       background: "默认房间",
       effectNames: [],
@@ -365,8 +381,8 @@ describe("TemplateEditorPage", () => {
       expect.objectContaining({
         background: "默认房间",
         effectNames: [],
-        historyPath: "D:/history/session.json",
-        initSpritePath: "D:/sprites/init.png",
+        historyPath: " D:/history/session.json ",
+        initSpritePath: " D:/sprites/init.png ",
         roomId: "room-9",
         selectedCharacters: ["Nanami", "Mika"],
         useCg: true,
@@ -386,6 +402,7 @@ describe("TemplateEditorPage", () => {
         useCg: true,
       }),
     );
+    await waitFor(() => expect(screen.getByLabelText("History file")).toHaveValue("data/chat_history/fresh-default"));
   });
 
   it("shows a QR code after launching with mobile access enabled", async () => {

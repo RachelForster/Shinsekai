@@ -1,13 +1,23 @@
-import { access, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { lstat, open } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  assertRegularFileWithoutLinks,
+  portableSiblingPath,
+  readRegularFileWithoutLinks,
+  removeFileWithoutLinks,
+  replaceFileTransactionally,
+  sameFilesystemIdentity,
+} from "./path-contract.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(scriptDir, "..");
 const repoRoot = path.resolve(frontendDir, "..");
 const versionPath = path.join(repoRoot, "VERSION");
 
-const version = (await readFile(versionPath, "utf8")).trim();
+const version = (await readTextFile(versionPath, "VERSION file")).text.trim();
 if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
   throw new Error(`Invalid VERSION value: ${JSON.stringify(version)}`);
 }
@@ -30,17 +40,17 @@ if (changes.length === 0) {
 }
 
 async function updateJsonVersion(filePath, nextVersion) {
-  const raw = await readFile(filePath, "utf8");
+  const { text: raw, identity, parentIdentity } = await readTextFile(filePath, "version JSON file");
   const data = JSON.parse(raw);
   if (data.version === nextVersion) {
     return;
   }
   data.version = nextVersion;
-  await writeIfChanged(filePath, `${JSON.stringify(data, null, 2)}\n`, raw);
+  await writeIfChanged(filePath, `${JSON.stringify(data, null, 2)}\n`, raw, identity, parentIdentity);
 }
 
 async function updateTomlPackageVersion(filePath, expectedName, nextVersion) {
-  const raw = await readFile(filePath, "utf8");
+  const { text: raw, identity, parentIdentity } = await readTextFile(filePath, "Cargo manifest");
   const packageHeader = raw.search(/^\[package\]\s*$/m);
   if (packageHeader < 0) {
     throw new Error(`Missing [package] section in ${path.relative(repoRoot, filePath)}`);
@@ -63,11 +73,11 @@ async function updateTomlPackageVersion(filePath, expectedName, nextVersion) {
     `version = "${nextVersion}"`,
     `Missing package version in ${path.relative(repoRoot, filePath)}`,
   );
-  await writeIfChanged(filePath, `${beforeBlock}${nextBlock}${afterBlock}`, raw);
+  await writeIfChanged(filePath, `${beforeBlock}${nextBlock}${afterBlock}`, raw, identity, parentIdentity);
 }
 
 async function updateCargoLockPackageVersion(filePath, packageName, nextVersion) {
-  const raw = await readFile(filePath, "utf8");
+  const { text: raw, identity, parentIdentity } = await readTextFile(filePath, "Cargo lockfile");
   const pattern = new RegExp(
     `(^\\[\\[package\\]\\]\\r?\\nname = "${escapeRegExp(packageName)}"\\r?\\nversion = ")[^"]+(")`,
     "m",
@@ -75,31 +85,82 @@ async function updateCargoLockPackageVersion(filePath, packageName, nextVersion)
   if (!pattern.test(raw)) {
     throw new Error(`Missing ${packageName} package in ${path.relative(repoRoot, filePath)}`);
   }
-  await writeIfChanged(filePath, raw.replace(pattern, `$1${nextVersion}$2`), raw);
+  await writeIfChanged(filePath, raw.replace(pattern, `$1${nextVersion}$2`), raw, identity, parentIdentity);
 }
 
 async function updateOptionalTextFile(filePath, nextText) {
   if (!(await pathExists(filePath))) {
     return;
   }
-  const raw = await readFile(filePath, "utf8");
-  await writeIfChanged(filePath, nextText, raw);
+  const { text: raw, identity, parentIdentity } = await readTextFile(filePath, "optional version file");
+  await writeIfChanged(filePath, nextText, raw, identity, parentIdentity);
 }
 
-async function writeIfChanged(filePath, nextText, previousText) {
+async function writeIfChanged(filePath, nextText, previousText, previousIdentity, previousParentIdentity) {
   if (nextText === previousText) {
     return;
   }
-  await writeFile(filePath, nextText, "utf8");
+  assertRegularFileWithoutLinks(filePath, "version destination file");
+  const parentIdentity = await lstat(path.dirname(filePath), { bigint: true });
+  if (!sameFilesystemIdentity(previousParentIdentity, parentIdentity)) {
+    throw new Error("version destination parent identity changed after reading");
+  }
+  const stagingPath = portableSiblingPath(filePath, `.tmp-${randomUUID()}`, "temporary version staging file");
+  let stagingHandle = null;
+  let stagingIdentity = null;
+  try {
+    stagingHandle = await open(stagingPath, "wx", 0o600);
+    stagingIdentity = await stagingHandle.stat({ bigint: true });
+    await stagingHandle.writeFile(nextText, { encoding: "utf8" });
+    await stagingHandle.sync();
+    await stagingHandle.close();
+    stagingHandle = null;
+
+    const currentStagingIdentity = await lstat(stagingPath, { bigint: true });
+    if (!sameFilesystemIdentity(stagingIdentity, currentStagingIdentity)) {
+      throw new Error("temporary version staging file identity changed");
+    }
+    await replaceFileTransactionally(stagingPath, filePath, {
+      expectedDestinationIdentity: previousIdentity,
+      expectedParentIdentity: parentIdentity,
+      expectedStagingIdentity: stagingIdentity,
+      field: "version file publication",
+    });
+  } finally {
+    await stagingHandle?.close();
+    if (stagingIdentity !== null) {
+      await removeFileWithoutLinks(stagingPath, {
+        expectedIdentity: stagingIdentity,
+        expectedParentIdentity: parentIdentity,
+        field: "temporary version staging file",
+        missingOk: true,
+      });
+    }
+  }
   changes.push(filePath);
+}
+
+async function readTextFile(filePath, field) {
+  const snapshot = await readRegularFileWithoutLinks(filePath, {
+    field,
+    encoding: "utf8",
+  });
+  return {
+    identity: snapshot.identity,
+    parentIdentity: snapshot.parentIdentity,
+    text: snapshot.data,
+  };
 }
 
 async function pathExists(filePath) {
   try {
-    await access(filePath);
+    await lstat(filePath);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return false;
+    }
+    throw error;
   }
 }
 

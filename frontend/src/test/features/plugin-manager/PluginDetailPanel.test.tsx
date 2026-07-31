@@ -259,4 +259,18 @@ describe("PluginDetailPanel", () => {
       "https://plugins.example.test/settings/",
     );
   });
+
+  it("does not reinterpret plugin iframe URLs through a non-origin bridge base", () => {
+    const frontendUrl = "/api/plugins/demo/frontend/settings/";
+    for (const bridgeBase of [
+      " http://127.0.0.1:57891 ",
+      "http://127.0.0.1:57891/prefix",
+      "http://user:password@127.0.0.1:57891",
+      "http://127.0.0.1:57891?target=other",
+      "file:///tmp/shinsekai-bridge",
+    ]) {
+      window.history.pushState({}, "", `/?shinsekai_bridge=${encodeURIComponent(bridgeBase)}`);
+      expect(resolvePluginFrontendFrameSrc(frontendUrl)).toBe(frontendUrl);
+    }
+  });
 });

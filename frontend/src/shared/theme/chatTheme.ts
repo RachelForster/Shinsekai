@@ -7,6 +7,7 @@
 // 主题只能在此契约内改外观，禁止破坏布局的声明（width/height/position/font-size 等）。
 
 import type { ChatStageStyle } from "./chatChromeTheme";
+import { containsPathControlCharacter, isPortablePathComponent } from "../paths/pathContract";
 
 export type { ChatStageStyle } from "./chatChromeTheme";
 
@@ -202,11 +203,14 @@ function isSafeCssValue(value: unknown): value is string {
   return !forbiddenCssDeclaration.test(trimmed);
 }
 
-function normalizeThemeAssetRef(value: unknown) {
+export function normalizeThemeAssetRef(value: unknown) {
   if (typeof value !== "string") {
     return "";
   }
-  const normalized = value.trim().replace(/\\/g, "/");
+  if (value !== value.trim() || containsPathControlCharacter(value)) {
+    return "";
+  }
+  const normalized = value.replace(/\\/g, "/");
   if (!normalized) {
     return "";
   }
@@ -217,10 +221,10 @@ function normalizeThemeAssetRef(value: unknown) {
     return "";
   }
   const parts = normalized.split("/");
-  if (parts.some((part) => part === "..")) {
+  if (!parts.every(isPortablePathComponent)) {
     return "";
   }
-  return parts.filter(Boolean).join("/");
+  return parts.join("/");
 }
 
 function clampNumber(value: unknown, fallback: number, min: number, max: number) {

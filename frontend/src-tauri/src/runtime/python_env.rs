@@ -1,5 +1,7 @@
 use std::{
-    env, fs,
+    env,
+    ffi::{OsStr, OsString},
+    fs, io,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -7,20 +9,79 @@ use std::{
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-pub(super) fn configure_python_command(command: &mut Command, python: &Path) {
+use crate::path_contract::{
+    canonicalize_directory_without_links, canonicalize_regular_file_following_links_stably,
+    canonicalize_regular_file_without_links, files_have_same_identity,
+    open_directory_without_links, path_has_no_link_components, path_is_filesystem_root,
+    path_text_is_portable,
+};
+
+const CERTIFICATE_FILE_ENVIRONMENTS: &[&str] =
+    &["SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"];
+const PIP_INPUT_FILE_ENVIRONMENTS: &[&str] = &[
+    "PIP_CERT",
+    "PIP_CLIENT_CERT",
+    "PIP_CONFIG_FILE",
+    "PIP_REQUIREMENT",
+    "PIP_CONSTRAINT",
+];
+const PIP_OUTPUT_PATH_ENVIRONMENTS: &[&str] = &[
+    "PIP_CACHE_DIR",
+    "PIP_SRC",
+    "PIP_TARGET",
+    "PIP_PREFIX",
+    "PIP_ROOT",
+    "PIP_BUILD_TRACKER",
+    "PIP_LOG",
+];
+
+pub(super) fn configure_python_command(command: &mut Command, python: &Path) -> io::Result<()> {
     sanitize_python_environment(command);
-    command.env("PYTHONUTF8", "1");
+    command.env("PYTHONUTF8", "1").env("PYTHONNOUSERSITE", "1");
+    configure_stable_working_directory(command, python)?;
     hide_python_child_window(command);
-    configure_certifi_bundle(command, python);
+    configure_certificate_environment(command, python)
 }
 
-pub(super) fn configure_pip_command(command: &mut Command, python: &Path) {
-    configure_python_command(command, python);
+pub(super) fn configure_pip_command(command: &mut Command, python: &Path) -> io::Result<()> {
+    configure_python_command(command, python)?;
+    configure_pip_path_environment(command)?;
     command.env("PIP_DISABLE_PIP_VERSION_CHECK", "1");
+    Ok(())
 }
 
 fn sanitize_python_environment(command: &mut Command) {
-    command.env_remove("PYTHONHOME").env_remove("PYTHONPATH");
+    command
+        .env_remove("PYTHONHOME")
+        .env_remove("PYTHONPATH")
+        .env_remove("PYTHONUSERBASE")
+        .env_remove("PYTHONPYCACHEPREFIX")
+        .env_remove("PYTHONEXECUTABLE")
+        .env_remove("__PYVENV_LAUNCHER__");
+}
+
+fn configure_stable_working_directory(command: &mut Command, python: &Path) -> io::Result<()> {
+    let requested = command
+        .get_current_dir()
+        .map(Path::to_path_buf)
+        .or_else(|| python.parent().map(Path::to_path_buf))
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Python executable has no parent working directory",
+            )
+        })?;
+    let current_directory = canonicalize_directory_without_links(&requested).map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!(
+                "Python working directory must be an absolute, existing, non-link directory ({}): {error}",
+                requested.display()
+            ),
+        )
+    })?;
+    command.current_dir(current_directory);
+    Ok(())
 }
 
 fn hide_python_child_window(command: &mut Command) {
@@ -35,24 +96,150 @@ fn hide_python_child_window(command: &mut Command) {
     }
 }
 
-fn configure_certifi_bundle(command: &mut Command, python: &Path) {
-    configure_certifi_bundle_for(
-        command,
-        python,
-        env::var_os("SSL_CERT_FILE").is_some() || env::var_os("REQUESTS_CA_BUNDLE").is_some(),
-    );
+fn configure_certificate_environment(command: &mut Command, python: &Path) -> io::Result<()> {
+    let mut explicit_bundle = false;
+    for name in CERTIFICATE_FILE_ENVIRONMENTS {
+        let Some(path) = validated_regular_file_environment_value(name, env::var_os(name))? else {
+            continue;
+        };
+        command.env(name, path);
+        explicit_bundle = true;
+    }
+    if let Some(path) =
+        validated_directory_environment_value("SSL_CERT_DIR", env::var_os("SSL_CERT_DIR"))?
+    {
+        command.env("SSL_CERT_DIR", path);
+    }
+    configure_certifi_bundle_for(command, python, explicit_bundle)
 }
 
-fn configure_certifi_bundle_for(command: &mut Command, python: &Path, already_configured: bool) {
+fn configure_certifi_bundle_for(
+    command: &mut Command,
+    python: &Path,
+    already_configured: bool,
+) -> io::Result<()> {
     if already_configured {
-        return;
+        return Ok(());
     }
     let Some(cacert) = certifi_cacert_path_for_python(python) else {
-        return;
+        return Ok(());
     };
     command
         .env("SSL_CERT_FILE", &cacert)
         .env("REQUESTS_CA_BUNDLE", cacert);
+    Ok(())
+}
+
+fn configure_pip_path_environment(command: &mut Command) -> io::Result<()> {
+    for name in PIP_INPUT_FILE_ENVIRONMENTS {
+        let value = env::var_os(name);
+        if *name == "PIP_CONFIG_FILE" && value.as_deref().is_some_and(is_platform_null_device_value)
+        {
+            command.env(name, value.expect("checked as present"));
+            continue;
+        }
+        let Some(path) = validated_regular_file_environment_value(name, value)? else {
+            continue;
+        };
+        command.env(name, path);
+    }
+    for name in PIP_OUTPUT_PATH_ENVIRONMENTS {
+        let Some(path) = validated_absolute_environment_path(name, env::var_os(name))? else {
+            continue;
+        };
+        if !path_has_no_link_components(&path) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("{name} contains a symbolic link or reparse-point component"),
+            ));
+        }
+        command.env(name, path);
+    }
+    Ok(())
+}
+
+fn validated_regular_file_environment_value(
+    name: &str,
+    value: Option<OsString>,
+) -> io::Result<Option<PathBuf>> {
+    let Some(path) = validated_absolute_environment_path(name, value)? else {
+        return Ok(None);
+    };
+    canonicalize_regular_file_following_links_stably(&path)
+        .map(Some)
+        .map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "{name} must name an existing regular non-link file ({}): {error}",
+                    path.display()
+                ),
+            )
+        })
+}
+
+fn validated_directory_environment_value(
+    name: &str,
+    value: Option<OsString>,
+) -> io::Result<Option<PathBuf>> {
+    let Some(path) = validated_absolute_environment_path(name, value)? else {
+        return Ok(None);
+    };
+    canonicalize_directory_without_links(&path)
+        .map(Some)
+        .map_err(|error| {
+            io::Error::new(
+                error.kind(),
+                format!(
+                    "{name} must name an existing non-link directory ({}): {error}",
+                    path.display()
+                ),
+            )
+        })
+}
+
+fn validated_absolute_environment_path(
+    name: &str,
+    value: Option<OsString>,
+) -> io::Result<Option<PathBuf>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{name} must not be empty"),
+        ));
+    }
+    let path = PathBuf::from(value);
+    if !path.is_absolute() || !path_text_is_portable(&path) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "{name} must be a portable absolute path and must not depend on the child working directory: {}",
+                path.display()
+            ),
+        ));
+    }
+    if path_is_filesystem_root(&path) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{name} must not be a filesystem root"),
+        ));
+    }
+    Ok(Some(path))
+}
+
+#[cfg(unix)]
+fn is_platform_null_device_value(value: &OsStr) -> bool {
+    value == OsStr::new("/dev/null")
+}
+
+#[cfg(windows)]
+fn is_platform_null_device_value(value: &OsStr) -> bool {
+    value
+        .to_str()
+        .is_some_and(|value| value.eq_ignore_ascii_case("NUL"))
 }
 
 fn certifi_cacert_path_for_python(python: &Path) -> Option<PathBuf> {
@@ -78,13 +265,16 @@ fn certifi_cacert_path_in_prefix(prefix: &Path) -> Option<PathBuf> {
             .join("cacert.pem"),
     ];
     for candidate in candidates {
-        if candidate.is_file() {
+        if let Ok(candidate) = canonicalize_regular_file_without_links(&candidate) {
             return Some(candidate);
         }
     }
 
     let lib = prefix.join("lib");
-    let Ok(entries) = fs::read_dir(lib) else {
+    let Ok(lib_identity) = open_directory_without_links(&lib) else {
+        return None;
+    };
+    let Ok(entries) = fs::read_dir(&lib) else {
         return None;
     };
     for entry in entries.filter_map(Result::ok) {
@@ -92,16 +282,26 @@ fn certifi_cacert_path_in_prefix(prefix: &Path) -> Option<PathBuf> {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if !name.starts_with("python") || !path.is_dir() {
+        if !name.starts_with("python") {
             continue;
         }
+        let Ok(path) = canonicalize_directory_without_links(&path) else {
+            continue;
+        };
         let candidate = path
             .join("site-packages")
             .join("certifi")
             .join("cacert.pem");
-        if candidate.is_file() {
-            return Some(candidate);
+        let Ok(candidate) = canonicalize_regular_file_without_links(&candidate) else {
+            continue;
+        };
+        let Ok(current_lib) = open_directory_without_links(&lib) else {
+            return None;
+        };
+        if !files_have_same_identity(&lib_identity, &current_lib).unwrap_or(false) {
+            return None;
         }
+        return Some(candidate);
     }
     None
 }
@@ -109,7 +309,7 @@ fn certifi_cacert_path_in_prefix(prefix: &Path) -> Option<PathBuf> {
 fn python_prefix_candidates(python: &Path) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
     push_python_prefix_candidate(&mut candidates, python);
-    if let Ok(canonical) = python.canonicalize() {
+    if let Ok(canonical) = canonicalize_regular_file_without_links(python) {
         push_python_prefix_candidate(&mut candidates, &canonical);
     }
     candidates
@@ -191,7 +391,7 @@ mod tests {
         let mut command = Command::new(&python);
         sanitize_python_environment(&mut command);
         command.env("PYTHONUTF8", "1");
-        configure_certifi_bundle_for(&mut command, &python, false);
+        configure_certifi_bundle_for(&mut command, &python, false).unwrap();
         let envs = command
             .get_envs()
             .map(|(key, value)| {
@@ -204,6 +404,10 @@ mod tests {
 
         assert!(envs.contains(&("PYTHONHOME".to_string(), None)));
         assert!(envs.contains(&("PYTHONPATH".to_string(), None)));
+        assert!(envs.contains(&("PYTHONUSERBASE".to_string(), None)));
+        assert!(envs.contains(&("PYTHONPYCACHEPREFIX".to_string(), None)));
+        assert!(envs.contains(&("PYTHONEXECUTABLE".to_string(), None)));
+        assert!(envs.contains(&("__PYVENV_LAUNCHER__".to_string(), None)));
         assert!(envs.contains(&("PYTHONUTF8".to_string(), Some("1".to_string()))));
         assert!(envs.contains(&(
             "SSL_CERT_FILE".to_string(),
@@ -213,6 +417,110 @@ mod tests {
             "REQUESTS_CA_BUNDLE".to_string(),
             Some(cacert.display().to_string())
         )));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn configure_python_command_uses_executable_parent_instead_of_process_cwd() {
+        let temp_root = unique_temp_dir("runtime-python-cwd");
+        let python_parent = temp_root.join("bin");
+        let python = python_parent.join(if cfg!(windows) {
+            "python.exe"
+        } else {
+            "python"
+        });
+        fs::create_dir_all(&python_parent).unwrap();
+        fs::write(&python, "").unwrap();
+
+        let mut command = Command::new(&python);
+        configure_python_command(&mut command, &python).unwrap();
+
+        assert_eq!(command.get_current_dir(), Some(python_parent.as_path()));
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn configure_python_command_preserves_explicit_project_cwd() {
+        let temp_root = unique_temp_dir("runtime-explicit-cwd");
+        let python_parent = temp_root.join("bin");
+        let project_root = temp_root.join("project");
+        let python = python_parent.join(if cfg!(windows) {
+            "python.exe"
+        } else {
+            "python"
+        });
+        fs::create_dir_all(&python_parent).unwrap();
+        fs::create_dir_all(&project_root).unwrap();
+        fs::write(&python, "").unwrap();
+
+        let mut command = Command::new(&python);
+        command.current_dir(&project_root);
+        configure_python_command(&mut command, &python).unwrap();
+
+        assert_eq!(command.get_current_dir(), Some(project_root.as_path()));
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn relative_python_path_cannot_fall_back_to_process_working_directory() {
+        let mut command = Command::new("python");
+        let error = configure_python_command(&mut command, Path::new("python")).unwrap_err();
+
+        assert!(error.to_string().contains("working directory"));
+        assert!(command.get_current_dir().is_none());
+    }
+
+    #[test]
+    fn environment_file_paths_must_be_absolute_and_existing() {
+        let relative = validated_regular_file_environment_value(
+            "SSL_CERT_FILE",
+            Some(OsString::from("certs/cacert.pem")),
+        )
+        .unwrap_err();
+        assert!(relative.to_string().contains("absolute path"));
+
+        let missing = unique_temp_dir("runtime-missing-cert").join("cacert.pem");
+        let error = validated_regular_file_environment_value(
+            "SSL_CERT_FILE",
+            Some(missing.into_os_string()),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("existing regular non-link file"));
+    }
+
+    #[test]
+    fn pip_output_paths_must_not_depend_on_child_working_directory() {
+        let error = validated_absolute_environment_path(
+            "PIP_CACHE_DIR",
+            Some(OsString::from(".pip-cache")),
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("child working directory"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn certifi_path_does_not_cross_a_symbolic_link() {
+        use std::os::unix::fs::symlink;
+
+        let temp_root = unique_temp_dir("runtime-certifi-link");
+        let python = temp_root.join("bin").join("python3.10");
+        let external = temp_root.join("external");
+        let linked_python_dir = temp_root.join("lib").join("python3.10");
+        let cacert = external
+            .join("site-packages")
+            .join("certifi")
+            .join("cacert.pem");
+        fs::create_dir_all(python.parent().unwrap()).unwrap();
+        fs::create_dir_all(cacert.parent().unwrap()).unwrap();
+        fs::write(&python, "").unwrap();
+        fs::write(&cacert, "").unwrap();
+        fs::create_dir_all(linked_python_dir.parent().unwrap()).unwrap();
+        symlink(&external, &linked_python_dir).unwrap();
+
+        assert_eq!(certifi_cacert_path_for_python(&python), None);
 
         let _ = fs::remove_dir_all(temp_root);
     }

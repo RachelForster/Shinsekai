@@ -206,6 +206,77 @@ describe("entity repositories", () => {
     expect(platform.files.thumbnailBatch.mock.calls.map(([batch]) => batch.length)).toEqual([128, 2]);
   });
 
+  it("uses one thumbnail identity for Windows separator aliases while preserving requested keys", async () => {
+    const windowsPath = "C:\\Shinsekai\\thumbnail-alias-a.png";
+    const slashAlias = "C:/Shinsekai/thumbnail-alias-a.png";
+    const platform = {
+      files: {
+        browse: vi.fn().mockResolvedValue({ cwd: "C:/Shinsekai", entries: [], roots: [] }),
+        fileUrl: vi.fn((path: string) => `file://${path}`),
+        thumbnailBatch: vi.fn((batch: string[]) =>
+          Promise.resolve(
+            Object.fromEntries(
+              batch.map((path) => {
+                const normalizedPath = path.replaceAll("\\", "/");
+                return [normalizedPath, `batch://${normalizedPath}`];
+              }),
+            ),
+          ),
+        ),
+        thumbnailUrl: vi.fn((path: string) => `thumb://${path}`),
+        openExternal: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+    const { files } = await loadRepositories(platform);
+    const onBatch = vi.fn();
+
+    const firstResult = await files.fileThumbnailBatch([windowsPath, slashAlias], 163, { onBatch });
+    const secondResult = await files.fileThumbnailBatch([slashAlias], 163);
+
+    expect(firstResult).toEqual({
+      [windowsPath]: `batch://${slashAlias}`,
+      [slashAlias]: `batch://${slashAlias}`,
+    });
+    expect(secondResult).toEqual({ [slashAlias]: `batch://${slashAlias}` });
+    expect(platform.files.thumbnailBatch).toHaveBeenCalledTimes(1);
+    expect(platform.files.thumbnailBatch).toHaveBeenCalledWith([windowsPath], {
+      delivery: "url",
+      size: 163,
+    });
+    expect(onBatch).toHaveBeenCalledWith({
+      [windowsPath]: `batch://${slashAlias}`,
+      [slashAlias]: `batch://${slashAlias}`,
+    });
+  });
+
+  it("keeps POSIX literal backslashes distinct from directory separators in thumbnail identities", async () => {
+    const literalBackslashPath = "/tmp/thumbnail-literal\\name.png";
+    const nestedPath = "/tmp/thumbnail-literal/name.png";
+    const platform = {
+      files: {
+        browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
+        fileUrl: vi.fn((path: string) => `file://${path}`),
+        thumbnailBatch: vi.fn((batch: string[]) =>
+          Promise.resolve(Object.fromEntries(batch.map((path) => [path, `batch://${path}`]))),
+        ),
+        thumbnailUrl: vi.fn((path: string) => `thumb://${path}`),
+        openExternal: vi.fn().mockResolvedValue(undefined),
+      },
+    };
+    const { files } = await loadRepositories(platform);
+
+    const result = await files.fileThumbnailBatch([literalBackslashPath, nestedPath], 167);
+
+    expect(result).toEqual({
+      [literalBackslashPath]: `batch://${literalBackslashPath}`,
+      [nestedPath]: `batch://${nestedPath}`,
+    });
+    expect(platform.files.thumbnailBatch).toHaveBeenCalledWith([literalBackslashPath, nestedPath], {
+      delivery: "url",
+      size: 167,
+    });
+  });
+
   it("reports thumbnail batch chunks as they resolve", async () => {
     const paths = ["/tmp/background-a.png", "/tmp/background-b.png"];
     const platform = {

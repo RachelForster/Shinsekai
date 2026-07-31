@@ -166,8 +166,8 @@ export function ChatLauncherPage() {
     enableMobileAccess: launchSession?.enableMobileAccess ?? false,
     effectNames: selectedEffects,
     filenameStub: selectedTemplate?.name ?? "",
-    historyPath: historyPath.trim(),
-    initSpritePath: initSpritePath.trim(),
+    historyPath,
+    initSpritePath,
     maxDialogItems: launchSession?.maxDialogItems ?? 0,
     maxSpeechChars: launchSession?.maxSpeechChars ?? 0,
     roomId: launchSession?.roomId ?? "",
@@ -236,6 +236,13 @@ export function ChatLauncherPage() {
     },
     onSuccess(snapshot) {
       void updateRuntimeStatusFromSnapshot(snapshot);
+      const launchedHistoryPath = snapshot.historyPath;
+      if (launchedHistoryPath) {
+        setHistoryPath(launchedHistoryPath);
+        queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
+          current ? { ...current, historyPath: launchedHistoryPath } : current,
+        );
+      }
       if (snapshot.runtimeDependencyError) {
         void handleRuntimeDependencyError(snapshot);
         return;
@@ -266,8 +273,8 @@ export function ChatLauncherPage() {
       backgroundName,
       characters: selectedCharacters,
       effectNames: selectedEffects.length ? selectedEffects : undefined,
-      historyPath: historyPath.trim(),
-      initSpritePath: initSpritePath.trim(),
+      historyPath,
+      initSpritePath,
       resetHistory,
       roomId: launchSession?.roomId ?? "",
       scenario: selectedTemplate.scenario ?? "",

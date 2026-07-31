@@ -7,7 +7,7 @@ test.describe("CUJ: music cover pipeline", () => {
     await gotoAndExpectPage(page, "/#/settings/music-cover", ".music-cover-page");
 
     const settings = page.locator(".settings-grid");
-    await fillInput(settings.locator("input").first(), "./data/music_cover_cuj");
+    await fillInput(settings.locator("input").first(), "data/music_cover_cuj");
     await fillInput(settings.locator("input").nth(5), "cuda:0");
     await selectCustomValue(settings.locator(".custom-select").first(), "v2");
     await selectCustomValue(settings.locator(".custom-select").nth(1), "rmvpe");

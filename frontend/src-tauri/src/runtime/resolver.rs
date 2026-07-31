@@ -2,6 +2,12 @@ use std::{path::Path, process::Command};
 
 use serde::{Deserialize, Serialize};
 
+#[cfg(target_os = "macos")]
+use crate::path_contract::ExecutableSnapshot;
+use crate::path_contract::{
+    files_have_same_identity, open_directory_without_links, open_regular_file_without_links,
+};
+
 use super::{
     manifest::{current_arch, runtime_requirements, RuntimeManifest},
     python_env,
@@ -84,7 +90,10 @@ pub fn scan_runtime_candidates<R: tauri::Runtime>(
     manifest: Option<&RuntimeManifest>,
     profile: &str,
 ) -> RuntimeScanView {
-    let requirements = runtime_requirements(source_root, manifest, profile);
+    let requirements = match runtime_requirements(source_root, manifest, profile) {
+        Ok(requirements) => requirements,
+        Err(error) => return runtime_configuration_error_view(error.to_string()),
+    };
     let installs = scan_python_installs(app, source_root);
     let mut candidates = installs
         .iter()
@@ -112,6 +121,15 @@ pub fn scan_runtime_candidates<R: tauri::Runtime>(
         recommended_action,
         candidates,
         message,
+    }
+}
+
+pub(super) fn runtime_configuration_error_view(message: impl Into<String>) -> RuntimeScanView {
+    RuntimeScanView {
+        selected_candidate_id: None,
+        recommended_action: None,
+        candidates: Vec::new(),
+        message: Some(format!("runtime configuration error: {}", message.into())),
     }
 }
 
@@ -304,6 +322,19 @@ fn check_python_imports(python: &Path, imports: &[String]) -> RuntimeCheckReport
     if imports.is_empty() {
         return RuntimeCheckReport::ok();
     }
+    let python_identity = match open_regular_file_without_links(python) {
+        Ok(identity) => identity,
+        Err(error) => {
+            return RuntimeCheckReport::failure(
+                format!(
+                    "runtime Python is missing, linked, or changed ({}): {error}",
+                    python.display()
+                ),
+                false,
+                false,
+            )
+        }
+    };
     let script = format!(
         "{}\nIMPORTS = {:?}\n{}",
         "import importlib, json",
@@ -321,8 +352,34 @@ raise SystemExit(1 if missing else 0)
     );
     let mut command = Command::new(python);
     command.arg("-c").arg(script);
-    python_env::configure_python_command(&mut command, python);
+    if let Err(error) = python_env::configure_python_command(&mut command, python) {
+        return RuntimeCheckReport::failure(
+            format!("Python launch path configuration failed: {error}"),
+            false,
+            false,
+        );
+    }
+    if !path_refers_to_open_file(python, &python_identity) {
+        return RuntimeCheckReport::failure(
+            format!(
+                "runtime Python changed before import checks: {}",
+                python.display()
+            ),
+            false,
+            false,
+        );
+    }
     let output = command.output();
+    if !path_refers_to_open_file(python, &python_identity) {
+        return RuntimeCheckReport::failure(
+            format!(
+                "runtime Python changed during import checks: {}",
+                python.display()
+            ),
+            false,
+            false,
+        );
+    }
     match output {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -364,30 +421,58 @@ fn check_bridge_runtime(
 ) -> RuntimeCheckReport {
     let bridge = source_root.join("frontend_bridge.py");
     let requirements = source_root.join(requirements_file);
-    if !bridge.is_file() {
-        return RuntimeCheckReport {
-            ok: false,
-            python_ok: true,
-            bridge_ok: false,
-            missing_imports: Vec::new(),
-            missing_distributions: Vec::new(),
-            stderr: String::new(),
-            stdout: String::new(),
-            message: format!("frontend_bridge.py not found at {}", bridge.display()),
-        };
-    }
-    if !requirements.is_file() {
-        return RuntimeCheckReport {
-            ok: false,
-            python_ok: true,
-            bridge_ok: false,
-            missing_imports: Vec::new(),
-            missing_distributions: Vec::new(),
-            stderr: String::new(),
-            stdout: String::new(),
-            message: format!("requirements file not found: {}", requirements.display()),
-        };
-    }
+    let source_root_identity = match open_directory_without_links(source_root) {
+        Ok(identity) => identity,
+        Err(error) => {
+            return RuntimeCheckReport::failure(
+                format!(
+                    "source root is missing, linked, or changed ({}): {error}",
+                    source_root.display()
+                ),
+                true,
+                false,
+            )
+        }
+    };
+    let python_identity = match open_regular_file_without_links(python) {
+        Ok(identity) => identity,
+        Err(error) => {
+            return RuntimeCheckReport::failure(
+                format!(
+                    "runtime Python is missing, linked, or changed ({}): {error}",
+                    python.display()
+                ),
+                false,
+                false,
+            )
+        }
+    };
+    let bridge_identity = match open_regular_file_without_links(&bridge) {
+        Ok(identity) => identity,
+        Err(error) => {
+            return RuntimeCheckReport::failure(
+                format!(
+                    "frontend_bridge.py is missing, linked, or changed ({}): {error}",
+                    bridge.display()
+                ),
+                true,
+                false,
+            )
+        }
+    };
+    let requirements_identity = match open_regular_file_without_links(&requirements) {
+        Ok(identity) => identity,
+        Err(error) => {
+            return RuntimeCheckReport::failure(
+                format!(
+                    "requirements file is missing, linked, or changed ({}): {error}",
+                    requirements.display()
+                ),
+                true,
+                false,
+            )
+        }
+    };
 
     let mut command = Command::new(python);
     command
@@ -402,8 +487,46 @@ fn check_bridge_runtime(
         .arg("--requirements-file")
         .arg(&requirements)
         .current_dir(source_root);
-    python_env::configure_python_command(&mut command, python);
+    if let Err(error) = python_env::configure_python_command(&mut command, python) {
+        return RuntimeCheckReport::failure(
+            format!("Python launch path configuration failed: {error}"),
+            false,
+            false,
+        );
+    }
+    if !runtime_check_paths_are_current(
+        source_root,
+        &source_root_identity,
+        python,
+        &python_identity,
+        &bridge,
+        &bridge_identity,
+        &requirements,
+        &requirements_identity,
+    ) {
+        return RuntimeCheckReport::failure(
+            "runtime check paths changed before launching the bridge probe",
+            false,
+            false,
+        );
+    }
     let output = command.output();
+    if !runtime_check_paths_are_current(
+        source_root,
+        &source_root_identity,
+        python,
+        &python_identity,
+        &bridge,
+        &bridge_identity,
+        &requirements,
+        &requirements_identity,
+    ) {
+        return RuntimeCheckReport::failure(
+            "runtime check paths changed while the bridge probe was running",
+            false,
+            false,
+        );
+    }
     match output {
         Ok(output) => {
             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
@@ -617,11 +740,21 @@ fn macos_rosetta_warning_for(
 
 #[cfg(target_os = "macos")]
 fn macos_process_translated() -> bool {
-    Command::new("sysctl")
+    let Ok(executable) = ExecutableSnapshot::capture("sysctl") else {
+        return false;
+    };
+    if executable.require_current().is_err() {
+        return false;
+    }
+    let output = Command::new(executable.path())
         .arg("-in")
         .arg("sysctl.proc_translated")
         .output()
-        .ok()
+        .ok();
+    if executable.require_current().is_err() {
+        return false;
+    }
+    output
         .filter(|output| output.status.success())
         .map(|output| String::from_utf8_lossy(&output.stdout).trim() == "1")
         .unwrap_or(false)
@@ -689,6 +822,35 @@ fn shorten(value: &str, limit: usize) -> String {
     format!("{}...", &trimmed[..limit])
 }
 
+fn path_refers_to_open_file(path: &Path, expected: &std::fs::File) -> bool {
+    open_regular_file_without_links(path)
+        .and_then(|current| files_have_same_identity(expected, &current))
+        .unwrap_or(false)
+}
+
+fn path_refers_to_open_directory(path: &Path, expected: &std::fs::File) -> bool {
+    open_directory_without_links(path)
+        .and_then(|current| files_have_same_identity(expected, &current))
+        .unwrap_or(false)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn runtime_check_paths_are_current(
+    source_root: &Path,
+    source_root_identity: &std::fs::File,
+    python: &Path,
+    python_identity: &std::fs::File,
+    bridge: &Path,
+    bridge_identity: &std::fs::File,
+    requirements: &Path,
+    requirements_identity: &std::fs::File,
+) -> bool {
+    path_refers_to_open_directory(source_root, source_root_identity)
+        && path_refers_to_open_file(python, python_identity)
+        && path_refers_to_open_file(bridge, bridge_identity)
+        && path_refers_to_open_file(requirements, requirements_identity)
+}
+
 impl RuntimeCheckReport {
     fn ok() -> Self {
         Self {
@@ -700,6 +862,20 @@ impl RuntimeCheckReport {
             stderr: String::new(),
             stdout: String::new(),
             message: String::new(),
+        }
+    }
+
+    fn failure(message: impl Into<String>, python_ok: bool, bridge_ok: bool) -> Self {
+        let message = message.into();
+        Self {
+            ok: false,
+            python_ok,
+            bridge_ok,
+            missing_imports: Vec::new(),
+            missing_distributions: Vec::new(),
+            stderr: message.clone(),
+            stdout: String::new(),
+            message,
         }
     }
 }

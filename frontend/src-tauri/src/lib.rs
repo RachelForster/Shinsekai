@@ -13,6 +13,12 @@ use std::{
 };
 
 use desktop_files::{browse_desktop_files, DesktopFileBrowserSnapshot};
+use path_contract::{
+    canonicalize_directory_following_links_stably, canonicalize_directory_without_links,
+    canonicalize_regular_file_without_links, files_have_same_identity, metadata_is_link,
+    open_directory_without_links, open_regular_file_without_links, path_has_no_link_components,
+    path_is_filesystem_root, path_text_is_portable, ExecutableSnapshot,
+};
 use serde::Serialize;
 use tauri::{
     http::{header, Response, StatusCode},
@@ -24,11 +30,12 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use tauri_runtime::ResizeDirection;
 
 #[cfg(unix)]
-use std::os::unix::process::CommandExt;
+use std::os::unix::{fs::OpenOptionsExt, process::CommandExt};
 #[cfg(windows)]
-use std::os::windows::process::CommandExt;
+use std::os::windows::{fs::OpenOptionsExt, process::CommandExt};
 
 mod desktop_files;
+mod path_contract;
 mod project_root;
 mod runtime;
 
@@ -44,9 +51,12 @@ const FRONTEND_DIST_RELEASES: &str = ".dist-releases";
 const UPDATE_PROGRESS_EVENT: &str = "shinsekai:update-progress";
 const BRIDGE_RESTART_STATE_EVENT: &str = "shinsekai:bridge-restart-state";
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
+#[cfg(windows)]
 const SHOW_BACKEND_CONSOLE_ENV: &str = "SHINSEKAI_SHOW_BACKEND_CONSOLE";
 const BRIDGE_STOP_TIMEOUT: Duration = Duration::from_secs(5);
 const BRIDGE_CHAT_CLOSE_TIMEOUT: Duration = Duration::from_secs(3);
+#[cfg(windows)]
+const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
 
 #[cfg(unix)]
 unsafe extern "C" {
@@ -526,10 +536,37 @@ fn project_root_setup_log_event(project_root_requires_selection: bool) -> &'stat
     }
 }
 
-fn restart_debug_log_path() -> PathBuf {
-    env::var_os("SHINSEKAI_RESTART_LOG")
+fn restart_debug_log_path() -> Option<PathBuf> {
+    restart_debug_log_path_value(
+        env::var_os("SHINSEKAI_RESTART_LOG"),
+        env::temp_dir(),
+        env::current_exe().ok().as_deref(),
+    )
+}
+
+fn restart_debug_log_path_value(
+    value: Option<OsString>,
+    temp_dir: PathBuf,
+    executable: Option<&Path>,
+) -> Option<PathBuf> {
+    if let Some(path) = value
+        .filter(|value| !value.is_empty())
         .map(PathBuf::from)
-        .unwrap_or_else(|| env::temp_dir().join(RESTART_DEBUG_LOG_FILE))
+        .filter(|path| restart_debug_log_path_is_valid(path))
+    {
+        return Some(path);
+    }
+    if restart_debug_log_path_is_valid(&temp_dir) {
+        return Some(temp_dir.join(RESTART_DEBUG_LOG_FILE));
+    }
+    executable
+        .filter(|path| restart_debug_log_path_is_valid(path))
+        .and_then(Path::parent)
+        .map(|parent| parent.join(RESTART_DEBUG_LOG_FILE))
+}
+
+fn restart_debug_log_path_is_valid(path: &Path) -> bool {
+    path.is_absolute() && path_text_is_portable(path) && path_has_no_link_components(path)
 }
 
 fn restart_debug_log(message: impl AsRef<str>) {
@@ -545,13 +582,60 @@ fn restart_debug_log(message: impl AsRef<str>) {
         message
     );
     eprint!("[restart-debug] {}", line);
-    if let Ok(mut file) = OpenOptions::new()
-        .append(true)
-        .create(true)
-        .open(restart_debug_log_path())
-    {
-        let _ = file.write_all(line.as_bytes());
+    let Some(log_path) = restart_debug_log_path() else {
+        return;
+    };
+    let _ = append_restart_debug_log(&log_path, line.as_bytes());
+}
+
+fn append_restart_debug_log(log_path: &Path, line: &[u8]) -> std::io::Result<()> {
+    if !path_has_no_link_components(log_path) {
+        return Err(std::io::Error::other(
+            "restart log must not contain symbolic links or reparse points",
+        ));
     }
+    let parent_path = log_path.parent().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "restart log has no parent directory",
+        )
+    })?;
+    let parent_identity = open_directory_without_links(parent_path)?;
+    let mut options = OpenOptions::new();
+    options.append(true).create(true);
+    #[cfg(unix)]
+    options.custom_flags(libc::O_NOFOLLOW);
+    #[cfg(windows)]
+    options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    let mut file = options.open(log_path)?;
+    let path_metadata = fs::symlink_metadata(log_path)?;
+    if metadata_is_link(&path_metadata)
+        || !file.metadata()?.is_file()
+        || !path_has_no_link_components(log_path)
+    {
+        return Err(std::io::Error::other(
+            "restart log changed to a non-regular or linked file",
+        ));
+    }
+    let current_parent = open_directory_without_links(parent_path)?;
+    if !files_have_same_identity(&parent_identity, &current_parent)? {
+        return Err(std::io::Error::other(
+            "restart log parent directory changed identity",
+        ));
+    }
+    let verification = open_regular_file_without_links(log_path)?;
+    if !files_have_same_identity(&file, &verification)? {
+        return Err(std::io::Error::other(
+            "restart log changed to a different regular file",
+        ));
+    }
+    let final_parent = open_directory_without_links(parent_path)?;
+    if !files_have_same_identity(&parent_identity, &final_parent)? {
+        return Err(std::io::Error::other(
+            "restart log parent directory changed identity",
+        ));
+    }
+    file.write_all(line)
 }
 
 fn sanitize_restart_debug_log_message(message: &str) -> String {
@@ -1071,14 +1155,22 @@ fn set_runtime_error_state(
 fn restart_desktop_app(app: &AppHandle, state: &DesktopState) -> Result<(), String> {
     let env = app.env();
     let exe = tauri::process::current_binary(&env).map_err(|error| error.to_string())?;
+    let working_directory = restart_working_directory(&exe)?;
     let args = env.args_os.iter().skip(1).cloned().collect::<Vec<_>>();
     restart_debug_log(format!(
-        "restart begin exe={} args_count={} bridge_port={}",
+        "restart begin exe={} working_directory={} args_count={} bridge_port={}",
         exe.display(),
+        working_directory.display(),
         args.len(),
         state.bridge_port
     ));
-    spawn_delayed_restart(&exe, &args, std::process::id(), state.bridge_port)?;
+    spawn_delayed_restart(
+        &exe,
+        &args,
+        &working_directory,
+        std::process::id(),
+        state.bridge_port,
+    )?;
     restart_debug_log("restart helper spawned; hiding and destroying main window");
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.hide();
@@ -1091,6 +1183,33 @@ fn restart_desktop_app(app: &AppHandle, state: &DesktopState) -> Result<(), Stri
     restart_debug_log("restart requested app.exit(0)");
     app.exit(0);
     Ok(())
+}
+
+fn restart_working_directory(exe: &Path) -> Result<PathBuf, String> {
+    if !exe.is_absolute() {
+        return Err(format!(
+            "desktop restart executable must be absolute: {}",
+            exe.display()
+        ));
+    }
+    let executable = canonicalize_regular_file_without_links(exe).map_err(|error| {
+        format!(
+            "desktop restart executable is missing, linked, or changed ({}): {error}",
+            exe.display()
+        )
+    })?;
+    let parent = executable.parent().ok_or_else(|| {
+        format!(
+            "desktop restart executable has no parent directory: {}",
+            executable.display()
+        )
+    })?;
+    canonicalize_directory_without_links(parent).map_err(|error| {
+        format!(
+            "desktop restart working directory is missing, linked, or changed ({}): {error}",
+            parent.display()
+        )
+    })
 }
 
 fn shutdown_desktop_app(app: &AppHandle, state: &DesktopState, reason: &str) {
@@ -1155,30 +1274,84 @@ fn send_bridge_chat_close(port: u16, auth_token: &str) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "windows"))]
+const POSIX_RESTART_HELPER_SCRIPT: &str = r#"while kill -0 "$1" 2>/dev/null; do sleep 0.1; done; sleep 0.8; exe="$2"; shift 2; "$exe" "$@" >/dev/null 2>&1 & child=$!; sleep 0.2; if kill -0 "$child" 2>/dev/null; then exit 0; fi; wait "$child"; exit "$?""#;
+
+#[cfg(target_os = "windows")]
+const WINDOWS_RESTART_HELPER_SCRIPT: &str = r#"
+$parentProcessId = [int]$args[0]
+$exe = $args[1]
+$argv = @()
+if ($args.Length -gt 2) {
+  $argv = $args[2..($args.Length - 1)]
+}
+try { Wait-Process -Id $parentProcessId -ErrorAction SilentlyContinue } catch {}
+Start-Sleep -Milliseconds 800
+Start-Process -FilePath $exe -ArgumentList $argv
+"#;
+
+fn require_restart_launch_paths(
+    target: &ExecutableSnapshot,
+    working_directory: &Path,
+    working_directory_identity: &fs::File,
+    helper: &ExecutableSnapshot,
+) -> Result<(), String> {
+    target
+        .require_current()
+        .map_err(|error| format!("desktop restart executable changed: {error}"))?;
+    helper
+        .require_current()
+        .map_err(|error| format!("desktop restart helper changed: {error}"))?;
+    let current_directory = open_directory_without_links(working_directory).map_err(|error| {
+        format!(
+            "desktop restart working directory changed ({}): {error}",
+            working_directory.display()
+        )
+    })?;
+    if !files_have_same_identity(working_directory_identity, &current_directory)
+        .map_err(|error| error.to_string())?
+    {
+        return Err("desktop restart working directory changed identity".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "windows"))]
 fn spawn_delayed_restart(
     exe: &Path,
     args: &[OsString],
+    working_directory: &Path,
     pid: u32,
     _port: u16,
 ) -> Result<(), String> {
-    let log_path = restart_debug_log_path();
     restart_debug_log(format!(
-        "spawn_delayed_restart posix exe={} parent_pid={} port={} log={}",
+        "spawn_delayed_restart posix exe={} working_directory={} parent_pid={} port={}",
         exe.display(),
+        working_directory.display(),
         pid,
-        _port,
-        log_path.display()
+        _port
     ));
-    let mut command = Command::new("sh");
+    let target = ExecutableSnapshot::capture(
+        exe.to_str()
+            .ok_or_else(|| "desktop restart executable is not UTF-8".to_string())?,
+    )
+    .map_err(|error| format!("desktop restart executable is invalid: {error}"))?;
+    let helper = ExecutableSnapshot::capture("sh")
+        .map_err(|error| format!("desktop restart shell is unavailable: {error}"))?;
+    let working_directory_identity = open_directory_without_links(working_directory)
+        .map_err(|error| format!("desktop restart working directory is invalid: {error}"))?;
+    require_restart_launch_paths(
+        &target,
+        working_directory,
+        &working_directory_identity,
+        &helper,
+    )?;
+    let mut command = Command::new(helper.path());
     command
         .arg("-c")
-        .arg(
-            r#"log="$3"; log_line() { printf 'ts=%s pid=%s component=restart-helper %s\n' "$(date +%s.%3N)" "$$" "$1" >> "$log"; }; log_line "waiting parent=$1 exe=$2"; while kill -0 "$1" 2>/dev/null; do sleep 0.1; done; log_line "parent exited; sleeping before relaunch"; sleep 0.8; exe="$2"; shift 3; log_line "launch exe=$exe cwd=$(pwd) args=$*"; "$exe" "$@" >> "$log" 2>&1 & child=$!; log_line "launched child_pid=$child"; sleep 0.2; if kill -0 "$child" 2>/dev/null; then log_line "relaunch child alive; helper exiting"; exit 0; fi; wait "$child"; status=$?; log_line "relaunch child exited early status=$status"; exit "$status""#,
-        )
+        .arg(POSIX_RESTART_HELPER_SCRIPT)
         .arg("shinsekai-restart")
         .arg(pid.to_string())
-        .arg(exe)
-        .arg(log_path)
+        .arg(target.path())
         .args(args);
     #[cfg(unix)]
     unsafe {
@@ -1190,11 +1363,19 @@ fn spawn_delayed_restart(
             }
         });
     }
-    if let Ok(cwd) = env::current_dir() {
-        command.current_dir(cwd);
-    }
+    command.current_dir(working_directory);
     match command.spawn() {
-        Ok(child) => {
+        Ok(mut child) => {
+            if let Err(error) = require_restart_launch_paths(
+                &target,
+                working_directory,
+                &working_directory_identity,
+                &helper,
+            ) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error);
+            }
             restart_debug_log(format!(
                 "spawn_delayed_restart posix spawned helper_pid={}",
                 child.id()
@@ -1212,53 +1393,56 @@ fn spawn_delayed_restart(
 fn spawn_delayed_restart(
     exe: &Path,
     args: &[OsString],
+    working_directory: &Path,
     pid: u32,
     _port: u16,
 ) -> Result<(), String> {
-    let log_path = restart_debug_log_path();
     restart_debug_log(format!(
-        "spawn_delayed_restart windows exe={} parent_pid={} port={} log={}",
+        "spawn_delayed_restart windows exe={} working_directory={} parent_pid={} port={}",
         exe.display(),
+        working_directory.display(),
         pid,
-        _port,
-        log_path.display()
+        _port
     ));
-    let script = r#"
-$parentProcessId = [int]$args[0]
-$exe = $args[1]
-$log = $args[2]
-$argv = @()
-function Write-RestartLog([string]$Message) {
-  $ts = [DateTimeOffset]::Now.ToUnixTimeMilliseconds()
-  Add-Content -Path $log -Value "ts=$ts pid=$PID component=restart-helper $Message"
-}
-Write-RestartLog "waiting parent=$parentProcessId exe=$exe"
-if ($args.Length -gt 3) {
-  $argv = $args[3..($args.Length - 1)]
-}
-try { Wait-Process -Id $parentProcessId -ErrorAction SilentlyContinue } catch {}
-Write-RestartLog "parent exited; sleeping before relaunch"
-Start-Sleep -Milliseconds 800
-Write-RestartLog "start-process exe=$exe args=$($argv -join ' ')"
-Start-Process -FilePath $exe -ArgumentList $argv
-"#;
-    let mut command = Command::new("powershell");
+    let target = ExecutableSnapshot::capture(
+        exe.to_str()
+            .ok_or_else(|| "desktop restart executable is not UTF-8".to_string())?,
+    )
+    .map_err(|error| format!("desktop restart executable is invalid: {error}"))?;
+    let helper = ExecutableSnapshot::capture("powershell")
+        .map_err(|error| format!("desktop restart PowerShell is unavailable: {error}"))?;
+    let working_directory_identity = open_directory_without_links(working_directory)
+        .map_err(|error| format!("desktop restart working directory is invalid: {error}"))?;
+    require_restart_launch_paths(
+        &target,
+        working_directory,
+        &working_directory_identity,
+        &helper,
+    )?;
+    let mut command = Command::new(helper.path());
     command
         .arg("-NoProfile")
         .arg("-WindowStyle")
         .arg("Hidden")
         .arg("-Command")
-        .arg(script)
+        .arg(WINDOWS_RESTART_HELPER_SCRIPT)
         .arg(pid.to_string())
-        .arg(exe)
-        .arg(log_path)
+        .arg(target.path())
         .args(args);
     command.creation_flags(0x0000_0008 | 0x0000_0200 | 0x0800_0000);
-    if let Ok(cwd) = env::current_dir() {
-        command.current_dir(cwd);
-    }
+    command.current_dir(working_directory);
     match command.spawn() {
-        Ok(child) => {
+        Ok(mut child) => {
+            if let Err(error) = require_restart_launch_paths(
+                &target,
+                working_directory,
+                &working_directory_identity,
+                &helper,
+            ) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error);
+            }
             restart_debug_log(format!(
                 "spawn_delayed_restart windows spawned helper_pid={}",
                 child.id()
@@ -1491,40 +1675,74 @@ fn chat_window_open_plan_for_windows(is_windows: bool) -> ChatWindowOpenPlan {
 
 #[tauri::command]
 fn desktop_open_external_url(url: String) -> Result<(), String> {
-    let url = url.trim();
-    if !(url.starts_with("https://") || url.starts_with("http://")) {
-        return Err("only http(s) URLs can be opened externally".to_string());
+    let url = validated_external_url(&url)?;
+    open_external_url(&url)
+}
+
+fn validated_external_url(raw: &str) -> Result<String, String> {
+    if raw.is_empty()
+        || raw != raw.trim()
+        || raw.contains('\\')
+        || raw.chars().any(char::is_control)
+    {
+        return Err("external URL contains non-portable characters".to_string());
     }
-    open_external_url(url)
+    let parsed = Url::parse(raw).map_err(|_| "external URL is invalid".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+    {
+        return Err("only credential-free http(s) URLs can be opened externally".to_string());
+    }
+    Ok(parsed.to_string())
+}
+
+fn spawn_with_executable_snapshot(
+    mut command: Command,
+    executable: &ExecutableSnapshot,
+) -> Result<(), String> {
+    executable
+        .require_current()
+        .map_err(|error| format!("system launcher changed before spawn: {error}"))?;
+    if let Some(parent) = executable.path().parent() {
+        command.current_dir(parent);
+    }
+    let mut child = command.spawn().map_err(|error| error.to_string())?;
+    if let Err(error) = executable.require_current() {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(format!("system launcher changed during spawn: {error}"));
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
 fn open_external_url(url: &str) -> Result<(), String> {
-    Command::new("open")
-        .arg(url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+    let executable = ExecutableSnapshot::capture("open")
+        .map_err(|error| format!("macOS URL launcher is unavailable: {error}"))?;
+    let mut command = Command::new(executable.path());
+    command.arg(url);
+    spawn_with_executable_snapshot(command, &executable)
 }
 
 #[cfg(target_os = "windows")]
 fn open_external_url(url: &str) -> Result<(), String> {
-    let mut command = Command::new("rundll32");
+    let executable = ExecutableSnapshot::capture("rundll32")
+        .map_err(|error| format!("Windows URL launcher is unavailable: {error}"))?;
+    let mut command = Command::new(executable.path());
     command.args(["url.dll,FileProtocolHandler", url]);
     command.creation_flags(0x0800_0000);
-    command
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+    spawn_with_executable_snapshot(command, &executable)
 }
 
 #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
 fn open_external_url(url: &str) -> Result<(), String> {
-    Command::new("xdg-open")
-        .arg(url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| error.to_string())
+    let executable = ExecutableSnapshot::capture("xdg-open")
+        .map_err(|error| format!("desktop URL launcher is unavailable: {error}"))?;
+    let mut command = Command::new(executable.path());
+    command.arg(url);
+    spawn_with_executable_snapshot(command, &executable)
 }
 
 fn bootstrap_runtime(app: AppHandle) {
@@ -1665,7 +1883,7 @@ fn serve_live_frontend_protocol(
     };
     let current_dist = resolve_published_frontend_dist(&raw_dist);
     let index_path = current_dist.join("index.html");
-    if !index_path.is_file() {
+    if open_regular_file_without_links(&index_path).is_err() {
         return protocol_text_response(StatusCode::NOT_FOUND, "frontend index.html not found");
     }
 
@@ -1675,7 +1893,7 @@ fn serve_live_frontend_protocol(
 
     for root in frontend_dist_roots(&raw_dist) {
         if let Some(candidate) = resolve_static_request_path(&root, request_path) {
-            if candidate.is_file() {
+            if open_regular_file_without_links(&candidate).is_ok() {
                 return protocol_file_response(&candidate);
             }
         }
@@ -1688,19 +1906,39 @@ fn serve_live_frontend_protocol(
 }
 
 fn resolve_published_frontend_dist(raw_dist: &Path) -> PathBuf {
+    if !path_has_no_link_components(raw_dist) {
+        return raw_dist.to_path_buf();
+    }
     let Some(frontend_dir) = raw_dist.parent() else {
         return raw_dist.to_path_buf();
     };
-    let marker = frontend_dir.join(FRONTEND_DIST_MARKER);
-    let Ok(marker_text) = fs::read_to_string(marker) else {
+    let Ok(frontend_directory) = open_directory_without_links(frontend_dir) else {
         return raw_dist.to_path_buf();
     };
-    let trimmed = marker_text.trim();
-    if trimmed.is_empty() {
+    let marker = frontend_dir.join(FRONTEND_DIST_MARKER);
+    let Ok(mut marker_file) = open_regular_file_without_links(&marker) else {
+        return raw_dist.to_path_buf();
+    };
+    let mut marker_text = String::new();
+    if marker_file.read_to_string(&mut marker_text).is_err() {
         return raw_dist.to_path_buf();
     }
-    let relative = Path::new(trimmed);
+    let marker_value = marker_text
+        .strip_suffix('\n')
+        .and_then(|value| value.strip_suffix('\r').or(Some(value)))
+        .unwrap_or(&marker_text);
+    if marker_value.is_empty()
+        || marker_value != marker_value.trim()
+        || marker_value.contains('\\')
+        || marker_value
+            .split('/')
+            .any(|component| component.is_empty() || matches!(component, "." | ".."))
+    {
+        return raw_dist.to_path_buf();
+    }
+    let relative = Path::new(marker_value);
     if relative.is_absolute()
+        || !path_text_is_portable(relative)
         || !relative
             .components()
             .all(|component| matches!(component, Component::Normal(_)))
@@ -1708,13 +1946,35 @@ fn resolve_published_frontend_dist(raw_dist: &Path) -> PathBuf {
         return raw_dist.to_path_buf();
     }
 
-    let frontend_root = frontend_dir
-        .canonicalize()
-        .unwrap_or_else(|_| frontend_dir.to_path_buf());
-    let Ok(target) = frontend_root.join(relative).canonicalize() else {
+    let Ok(frontend_root) = canonicalize_directory_without_links(frontend_dir) else {
         return raw_dist.to_path_buf();
     };
-    if !target.starts_with(&frontend_root) || !target.join("index.html").is_file() {
+    let selected_target = frontend_root.join(relative);
+    let Ok(target) = canonicalize_directory_without_links(&selected_target) else {
+        return raw_dist.to_path_buf();
+    };
+    if !target.starts_with(&frontend_root)
+        || open_regular_file_without_links(&target.join("index.html")).is_err()
+    {
+        return raw_dist.to_path_buf();
+    }
+    let Ok(current_frontend_directory) = open_directory_without_links(frontend_dir) else {
+        return raw_dist.to_path_buf();
+    };
+    let Ok(mut current_marker_file) = open_regular_file_without_links(&marker) else {
+        return raw_dist.to_path_buf();
+    };
+    let mut current_marker_text = String::new();
+    if current_marker_file
+        .read_to_string(&mut current_marker_text)
+        .is_err()
+        || current_marker_text != marker_text
+    {
+        return raw_dist.to_path_buf();
+    }
+    if !files_have_same_identity(&frontend_directory, &current_frontend_directory).unwrap_or(false)
+        || !files_have_same_identity(&marker_file, &current_marker_file).unwrap_or(false)
+    {
         return raw_dist.to_path_buf();
     }
     target
@@ -1727,12 +1987,40 @@ fn frontend_dist_roots(raw_dist: &Path) -> Vec<PathBuf> {
 
     if let Some(frontend_dir) = raw_dist.parent() {
         let releases_dir = frontend_dir.join(FRONTEND_DIST_RELEASES);
-        if let Ok(entries) = fs::read_dir(releases_dir) {
+        let frontend_root = canonicalize_directory_without_links(frontend_dir).ok();
+        let releases_root = canonicalize_directory_without_links(&releases_dir)
+            .ok()
+            .filter(|releases_root| {
+                frontend_root
+                    .as_ref()
+                    .is_some_and(|frontend_root| releases_root.starts_with(frontend_root))
+            });
+        if let Some(releases_root) = releases_root {
+            let Ok(releases_directory) = open_directory_without_links(&releases_root) else {
+                return roots;
+            };
+            let Ok(entries) = fs::read_dir(&releases_root) else {
+                return roots;
+            };
             let mut release_dirs = entries
                 .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .filter(|path| path.is_dir())
+                .filter(|entry| {
+                    let path = entry.path();
+                    path_has_no_link_components(&path)
+                        && entry.file_type().is_ok_and(|file_type| file_type.is_dir())
+                })
+                .filter_map(|entry| canonicalize_directory_without_links(&entry.path()).ok())
+                .filter(|path| path.starts_with(&releases_root))
                 .collect::<Vec<_>>();
+            let Ok(current_releases_directory) = open_directory_without_links(&releases_root)
+            else {
+                return roots;
+            };
+            if !files_have_same_identity(&releases_directory, &current_releases_directory)
+                .unwrap_or(false)
+            {
+                return roots;
+            }
             release_dirs.sort_by_key(|path| {
                 fs::metadata(path)
                     .and_then(|metadata| metadata.modified())
@@ -1751,10 +2039,12 @@ fn frontend_dist_roots(raw_dist: &Path) -> Vec<PathBuf> {
 }
 
 fn push_frontend_dist_root(roots: &mut Vec<PathBuf>, root: PathBuf) {
-    if !root.join("index.html").is_file() {
+    let Ok(resolved) = canonicalize_directory_without_links(&root) else {
+        return;
+    };
+    if open_regular_file_without_links(&resolved.join("index.html")).is_err() {
         return;
     }
-    let resolved = root.canonicalize().unwrap_or(root);
     if !roots.iter().any(|candidate| candidate == &resolved) {
         roots.push(resolved);
     }
@@ -1762,17 +2052,27 @@ fn push_frontend_dist_root(roots: &mut Vec<PathBuf>, root: PathBuf) {
 
 fn resolve_static_request_path(root: &Path, request_path: &str) -> Option<PathBuf> {
     let decoded = percent_decode_path(request_path)?;
-    let mut target = root.to_path_buf();
-    for part in decoded.trim_start_matches('/').split('/') {
-        if part.is_empty() || part == "." {
-            continue;
-        }
-        if part == ".." || part.contains('\\') {
+    if !decoded.starts_with('/') || decoded.starts_with("//") {
+        return None;
+    }
+    let relative = Path::new(&decoded[1..]);
+    if !path_text_is_portable(relative) {
+        return None;
+    }
+    let root = canonicalize_directory_without_links(root).ok()?;
+    let mut target = root.clone();
+    for part in decoded[1..].split('/') {
+        if part.is_empty() || matches!(part, "." | "..") || part.contains('\\') {
             return None;
         }
         target.push(part);
     }
-    Some(target)
+    if !target.starts_with(&root) {
+        return None;
+    }
+    (open_regular_file_without_links(&target).is_ok()
+        || open_directory_without_links(&target).is_ok())
+    .then_some(target)
 }
 
 fn percent_decode_path(path: &str) -> Option<String> {
@@ -1806,9 +2106,27 @@ fn hex_value(byte: u8) -> Option<u8> {
 }
 
 fn protocol_file_response(path: &Path) -> Response<Vec<u8>> {
-    let Ok(body) = fs::read(path) else {
+    let Ok(mut file) = open_regular_file_without_links(path) else {
         return protocol_text_response(StatusCode::NOT_FOUND, "frontend file not found");
     };
+    let mut body = Vec::new();
+    if file.read_to_end(&mut body).is_err() {
+        return protocol_text_response(StatusCode::NOT_FOUND, "frontend file not found");
+    }
+    let Ok(mut verification_file) = open_regular_file_without_links(path) else {
+        return protocol_text_response(StatusCode::NOT_FOUND, "frontend file not found");
+    };
+    if !files_have_same_identity(&file, &verification_file).unwrap_or(false) {
+        return protocol_text_response(StatusCode::NOT_FOUND, "frontend file changed");
+    }
+    let mut verification_body = Vec::new();
+    if verification_file
+        .read_to_end(&mut verification_body)
+        .is_err()
+        || verification_body != body
+    {
+        return protocol_text_response(StatusCode::NOT_FOUND, "frontend file changed");
+    }
     let cache_control = if path.file_name().and_then(|name| name.to_str()) == Some("index.html") {
         "no-cache"
     } else {
@@ -1882,6 +2200,37 @@ mod tests {
     }
 
     #[test]
+    fn external_urls_use_one_parsed_http_identity() {
+        assert_eq!(
+            validated_external_url("https://example.com/docs?q=path#section").unwrap(),
+            "https://example.com/docs?q=path#section"
+        );
+        assert_eq!(
+            validated_external_url("http://127.0.0.1:8787").unwrap(),
+            "http://127.0.0.1:8787/"
+        );
+    }
+
+    #[test]
+    fn external_urls_reject_ambiguous_or_non_http_values() {
+        for value in [
+            "",
+            " https://example.com",
+            "https://example.com ",
+            "https://example.com\\@attacker.test",
+            "https://example.com/\nnext",
+            "https://user:secret@example.com/",
+            "file:///tmp/example",
+            "https://",
+        ] {
+            assert!(
+                validated_external_url(value).is_err(),
+                "expected {value:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
     fn resolve_published_frontend_dist_uses_current_marker() {
         let root = temp_test_dir("published-dist");
         let raw_dist = root.join("frontend").join("dist");
@@ -1907,15 +2256,275 @@ mod tests {
     }
 
     #[test]
+    fn resolve_published_frontend_dist_rejects_nonportable_marker_components() {
+        let root = temp_test_dir("published-dist-nonportable-marker");
+        let frontend = root.join("frontend");
+        let raw_dist = frontend.join("dist");
+        fs::create_dir_all(&raw_dist).unwrap();
+        fs::write(raw_dist.join("index.html"), "current").unwrap();
+
+        for marker in [
+            ".dist-releases/name:stream",
+            ".dist-releases/CON",
+            ".dist-releases/release ",
+        ] {
+            fs::write(frontend.join(FRONTEND_DIST_MARKER), marker).unwrap();
+            assert_eq!(resolve_published_frontend_dist(&raw_dist), raw_dist);
+        }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn frontend_dist_candidate_rejects_a_linked_root() {
+        let root = temp_test_dir("linked-frontend-dist-root");
+        let real_dist = root.join("real-dist");
+        let linked_dist = root.join("dist");
+        fs::create_dir_all(&real_dist).unwrap();
+        fs::write(real_dist.join("index.html"), "linked").unwrap();
+        std::os::unix::fs::symlink(&real_dist, &linked_dist).unwrap();
+
+        assert!(frontend_dist_with_index(&linked_dist).is_none());
+        let error = explicit_env_path_without_leaf_alias(
+            "SHINSEKAI_FRONTEND_DIST",
+            Some(linked_dist.into_os_string()),
+        )
+        .unwrap_err();
+        assert!(error.contains("symbolic link"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn frontend_dist_environment_rejects_a_linked_parent() {
+        let root = temp_test_dir("linked-frontend-dist-parent");
+        let real_parent = root.join("real-parent");
+        let linked_parent = root.join("linked-parent");
+        let dist = real_parent.join("dist");
+        fs::create_dir_all(&dist).unwrap();
+        fs::write(dist.join("index.html"), "linked parent").unwrap();
+        std::os::unix::fs::symlink(&real_parent, &linked_parent).unwrap();
+
+        let error = explicit_env_path_without_leaf_alias(
+            "SHINSEKAI_FRONTEND_DIST",
+            Some(linked_parent.join("dist").into_os_string()),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("symbolic link"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_published_frontend_dist_rejects_a_linked_marker() {
+        let root = temp_test_dir("published-dist-linked-marker");
+        let frontend = root.join("frontend");
+        let raw_dist = frontend.join("dist");
+        let release = frontend.join(FRONTEND_DIST_RELEASES).join("v2");
+        let external_marker = root.join("external-marker");
+        fs::create_dir_all(&raw_dist).unwrap();
+        fs::create_dir_all(&release).unwrap();
+        fs::write(raw_dist.join("index.html"), "old").unwrap();
+        fs::write(release.join("index.html"), "new").unwrap();
+        fs::write(&external_marker, format!("{FRONTEND_DIST_RELEASES}/v2\n")).unwrap();
+        std::os::unix::fs::symlink(&external_marker, frontend.join(FRONTEND_DIST_MARKER)).unwrap();
+
+        assert_eq!(resolve_published_frontend_dist(&raw_dist), raw_dist);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_published_frontend_dist_rejects_a_linked_release_path() {
+        let root = temp_test_dir("published-dist-linked-release");
+        let frontend = root.join("frontend");
+        let raw_dist = frontend.join("dist");
+        let releases = frontend.join(FRONTEND_DIST_RELEASES);
+        let real_release = releases.join("real-v2");
+        let linked_release = releases.join("current-v2");
+        fs::create_dir_all(&raw_dist).unwrap();
+        fs::create_dir_all(&real_release).unwrap();
+        fs::write(raw_dist.join("index.html"), "old").unwrap();
+        fs::write(real_release.join("index.html"), "new").unwrap();
+        std::os::unix::fs::symlink(&real_release, &linked_release).unwrap();
+        fs::write(
+            frontend.join(FRONTEND_DIST_MARKER),
+            format!("{FRONTEND_DIST_RELEASES}/current-v2\n"),
+        )
+        .unwrap();
+
+        assert_eq!(resolve_published_frontend_dist(&raw_dist), raw_dist);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn frontend_dist_roots_reject_a_linked_releases_root() {
+        let root = temp_test_dir("published-dist-linked-releases-root");
+        let frontend = root.join("frontend");
+        let raw_dist = frontend.join("dist");
+        let real_releases = frontend.join("real-releases");
+        let release = real_releases.join("v2");
+        fs::create_dir_all(&raw_dist).unwrap();
+        fs::create_dir_all(&release).unwrap();
+        fs::write(raw_dist.join("index.html"), "current").unwrap();
+        fs::write(release.join("index.html"), "linked").unwrap();
+        std::os::unix::fs::symlink(&real_releases, frontend.join(FRONTEND_DIST_RELEASES)).unwrap();
+
+        assert_eq!(
+            frontend_dist_roots(&raw_dist),
+            vec![raw_dist.canonicalize().unwrap()]
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn frontend_dist_roots_ignore_symlinked_release_directories() {
+        let root = temp_test_dir("published-dist-symlink");
+        let raw_dist = root.join("frontend").join("dist");
+        let releases = root.join("frontend").join(FRONTEND_DIST_RELEASES);
+        let outside = root.join("outside-release");
+        fs::create_dir_all(&raw_dist).unwrap();
+        fs::create_dir_all(&releases).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(raw_dist.join("index.html"), "current").unwrap();
+        fs::write(outside.join("index.html"), "outside").unwrap();
+        std::os::unix::fs::symlink(&outside, releases.join("outside")).unwrap();
+
+        assert_eq!(
+            frontend_dist_roots(&raw_dist),
+            vec![raw_dist.canonicalize().unwrap()]
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn resolve_static_request_path_rejects_parent_and_backslash_segments() {
-        let root = PathBuf::from("/tmp/frontend-dist");
+        let test_root = temp_test_dir("static-request-path");
+        let root = test_root.join("frontend-dist");
+        let asset = root.join("web-assets").join("app.js");
+        fs::create_dir_all(asset.parent().unwrap()).unwrap();
+        fs::write(&asset, "asset").unwrap();
 
         assert_eq!(
             resolve_static_request_path(&root, "/web-assets/app.js").unwrap(),
-            root.join("web-assets").join("app.js")
+            asset.canonicalize().unwrap()
         );
         assert!(resolve_static_request_path(&root, "/../secret").is_none());
         assert!(resolve_static_request_path(&root, "/web-assets\\secret.js").is_none());
+        assert!(resolve_static_request_path(&root, "/web-assets//app.js").is_none());
+        assert!(resolve_static_request_path(&root, "/web-assets/./app.js").is_none());
+        assert!(resolve_static_request_path(&root, "//web-assets/app.js").is_none());
+        assert!(resolve_static_request_path(&root, "/web-assets/name:stream").is_none());
+        assert!(resolve_static_request_path(&root, "/web-assets/CON").is_none());
+        assert!(resolve_static_request_path(&root, "/web-assets/app.js%20").is_none());
+        let _ = fs::remove_dir_all(test_root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_static_request_path_rejects_symlinks_outside_frontend_root() {
+        let test_root = temp_test_dir("static-request-symlink");
+        let root = test_root.join("frontend-dist");
+        let outside = test_root.join("outside.txt");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&outside, "secret").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("asset.js")).unwrap();
+
+        assert!(resolve_static_request_path(&root, "/asset.js").is_none());
+        let _ = fs::remove_dir_all(test_root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bridge_launch_snapshot_rejects_replaced_directories_and_files() {
+        let root = temp_test_dir("bridge-launch-path-replacement");
+        let directory = root.join("source");
+        let moved_directory = root.join("moved-source");
+        let bridge = root.join("frontend_bridge.py");
+        let moved_bridge = root.join("moved-frontend_bridge.py");
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(&bridge, "captured").unwrap();
+        let directories = [("source root", directory.clone())];
+        let files = [("frontend bridge", bridge.clone())];
+
+        let (directory_identities, file_identities) =
+            capture_bridge_launch_path_identities(&directories, &files).unwrap();
+        fs::rename(&directory, &moved_directory).unwrap();
+        fs::create_dir(&directory).unwrap();
+        let error = revalidate_bridge_launch_path_identities(
+            &directories,
+            &directory_identities,
+            &files,
+            &file_identities,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("source root changed"));
+
+        fs::remove_dir(&directory).unwrap();
+        fs::rename(&moved_directory, &directory).unwrap();
+        let (directory_identities, file_identities) =
+            capture_bridge_launch_path_identities(&directories, &files).unwrap();
+        fs::rename(&bridge, &moved_bridge).unwrap();
+        fs::write(&bridge, "replacement").unwrap();
+        let error = revalidate_bridge_launch_path_identities(
+            &directories,
+            &directory_identities,
+            &files,
+            &file_identities,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("frontend bridge changed"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_static_request_path_rejects_internal_symlink_aliases() {
+        let test_root = temp_test_dir("static-request-internal-symlink");
+        let root = test_root.join("frontend-dist");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("real.js"), "asset").unwrap();
+        std::os::unix::fs::symlink(root.join("real.js"), root.join("asset.js")).unwrap();
+
+        assert!(resolve_static_request_path(&root, "/asset.js").is_none());
+        let _ = fs::remove_dir_all(test_root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolve_static_request_path_rejects_a_linked_root() {
+        let test_root = temp_test_dir("static-request-linked-root");
+        let real_root = test_root.join("real-frontend-dist");
+        let linked_root = test_root.join("frontend-dist");
+        fs::create_dir_all(&real_root).unwrap();
+        fs::write(real_root.join("asset.js"), "asset").unwrap();
+        std::os::unix::fs::symlink(&real_root, &linked_root).unwrap();
+
+        assert!(resolve_static_request_path(&linked_root, "/asset.js").is_none());
+        let _ = fs::remove_dir_all(test_root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn live_frontend_protocol_rejects_a_linked_index() {
+        let test_root = temp_test_dir("static-linked-index");
+        let root = test_root.join("frontend-dist");
+        let outside = test_root.join("outside.html");
+        fs::create_dir_all(&root).unwrap();
+        fs::write(&outside, "secret").unwrap();
+        std::os::unix::fs::symlink(&outside, root.join("index.html")).unwrap();
+        let frontend_dist = Arc::new(Mutex::new(Some(root)));
+
+        let response = serve_live_frontend_protocol(&frontend_dist, "/");
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_ne!(response.body(), b"secret");
+        let _ = fs::remove_dir_all(test_root);
     }
 
     #[test]
@@ -1939,6 +2548,126 @@ mod tests {
     }
 
     #[test]
+    fn canonical_existing_app_root_rejects_nonportable_resolved_paths() {
+        let root = temp_test_dir("canonical-app-root");
+        let target = root.join("target:with-colon");
+        fs::create_dir_all(&target).unwrap();
+
+        assert!(canonical_existing_app_root(&target).is_none());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn explicit_runtime_roots_reject_relative_environment_values() {
+        let error = explicit_env_path_value(
+            "SHINSEKAI_APP_ROOT",
+            Some(OsString::from("relative-app-root")),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("SHINSEKAI_APP_ROOT must be an absolute path"));
+    }
+
+    #[test]
+    fn explicit_runtime_roots_reject_user_home_aliases() {
+        let error =
+            explicit_env_path_value("SHINSEKAI_APP_ROOT", Some(OsString::from("~/application")))
+                .unwrap_err();
+
+        assert!(error.contains("SHINSEKAI_APP_ROOT must be an absolute path"));
+    }
+
+    #[test]
+    fn explicit_runtime_roots_reject_present_but_empty_environment_values() {
+        let error =
+            explicit_env_path_value("SHINSEKAI_APP_ROOT", Some(OsString::new())).unwrap_err();
+
+        assert!(error.contains("SHINSEKAI_APP_ROOT must not be empty"));
+    }
+
+    #[test]
+    fn explicit_runtime_roots_reject_filesystem_root() {
+        let current = std::env::current_dir().unwrap();
+        let filesystem_root = current.ancestors().last().unwrap().to_path_buf();
+
+        let error = explicit_env_path_value(
+            "SHINSEKAI_APP_ROOT",
+            Some(filesystem_root.clone().into_os_string()),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("must not be a filesystem root"));
+        assert!(app_root_from_executable(&filesystem_root.join("shinsekai")).is_none());
+    }
+
+    #[test]
+    fn explicit_runtime_roots_preserve_absolute_nonexistent_paths() {
+        let root = temp_test_dir("absolute-env-root");
+        let candidate = root.join("not-created-yet");
+
+        assert_eq!(
+            explicit_env_path_value(
+                "SHINSEKAI_FRONTEND_DIST",
+                Some(candidate.clone().into_os_string()),
+            )
+            .unwrap(),
+            Some(candidate)
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn explicit_runtime_roots_reject_nonportable_environment_values() {
+        let root = temp_test_dir("nonportable-env-root");
+        let candidate = root.join("bad\nroot");
+
+        let error = explicit_env_path_value("SHINSEKAI_APP_ROOT", Some(candidate.into_os_string()))
+            .unwrap_err();
+
+        assert!(error.contains("non-portable path characters"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn explicit_runtime_roots_reject_lexical_aliases() {
+        let root = temp_test_dir("aliased-env-root");
+        let candidate = OsString::from(format!("{}/./app", root.display()));
+
+        let error = explicit_env_path_value("SHINSEKAI_APP_ROOT", Some(candidate)).unwrap_err();
+
+        assert!(error.contains("non-portable path characters"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_runtime_roots_reject_nonportable_canonical_targets() {
+        let root = temp_test_dir("nonportable-canonical-env-root");
+        let target = root.join("target:with-colon");
+        fs::create_dir_all(&target).unwrap();
+        let alias = root.join("portable-alias");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+
+        let error = explicit_env_path_value("SHINSEKAI_APP_ROOT", Some(alias.into_os_string()))
+            .unwrap_err();
+
+        assert!(error.contains("resolves to a path containing non-portable characters"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_runtime_roots_reject_non_utf8_environment_values() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let value = OsString::from_vec(vec![b'/', b't', b'm', b'p', b'/', 0xff]);
+        let error = explicit_env_path_value("SHINSEKAI_APP_ROOT", Some(value)).unwrap_err();
+
+        assert!(error.contains("non-portable path characters"));
+    }
+
+    #[test]
     fn project_root_conflict_defers_runtime_bootstrap() {
         assert!(!should_bootstrap_runtime(true));
         assert!(should_bootstrap_runtime(false));
@@ -1959,6 +2688,145 @@ mod tests {
             sanitize_restart_debug_log_message("safe\r\nsetup resolved injected\0"),
             "safe\\r\\nsetup resolved injected\\0"
         );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn delayed_restart_helper_never_reopens_the_restart_log_by_path() {
+        assert!(!POSIX_RESTART_HELPER_SCRIPT.contains("restart-helper"));
+        assert!(!POSIX_RESTART_HELPER_SCRIPT.contains(">>"));
+        assert!(POSIX_RESTART_HELPER_SCRIPT.contains("shift 2"));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn delayed_restart_helper_never_reopens_the_restart_log_by_path() {
+        assert!(!WINDOWS_RESTART_HELPER_SCRIPT.contains("Add-Content"));
+        assert!(!WINDOWS_RESTART_HELPER_SCRIPT.contains("$log"));
+        assert!(WINDOWS_RESTART_HELPER_SCRIPT.contains("$args[2.."));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restart_debug_log_append_does_not_follow_a_symbolic_link() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_test_dir("restart-log-link");
+        fs::create_dir_all(&root).unwrap();
+        let target = root.join("target.log");
+        let link = root.join("restart.log");
+        fs::write(&target, "keep\n").unwrap();
+        symlink(&target, &link).unwrap();
+
+        assert!(append_restart_debug_log(&link, b"blocked\n").is_err());
+        assert_eq!(fs::read_to_string(target).unwrap(), "keep\n");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restart_debug_log_append_rejects_an_intermediate_symbolic_link() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_test_dir("restart-log-parent-link");
+        let external = root.join("external");
+        let alias = root.join("alias");
+        fs::create_dir_all(&external).unwrap();
+        symlink(&external, &alias).unwrap();
+
+        assert!(append_restart_debug_log(&alias.join("restart.log"), b"blocked\n").is_err());
+        assert!(!external.join("restart.log").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restart_debug_log_contract_rejects_an_intermediate_symbolic_link() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_test_dir("restart-log-contract-parent-link");
+        let external = root.join("external");
+        let alias = root.join("alias");
+        fs::create_dir_all(&external).unwrap();
+        symlink(&external, &alias).unwrap();
+
+        assert!(!restart_debug_log_path_is_valid(&alias.join("restart.log")));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn restart_debug_log_ignores_relative_environment_path() {
+        let temp_dir = temp_test_dir("restart-log-temp");
+        let executable = temp_test_dir("restart-log-exe").join("shinsekai");
+
+        assert_eq!(
+            restart_debug_log_path_value(
+                Some(OsString::from("relative.log")),
+                temp_dir.clone(),
+                Some(&executable),
+            ),
+            Some(temp_dir.join(RESTART_DEBUG_LOG_FILE))
+        );
+    }
+
+    #[test]
+    fn restart_debug_log_does_not_expand_user_home_alias() {
+        let temp_dir = temp_test_dir("restart-log-home-alias-temp");
+        let executable = temp_test_dir("restart-log-home-alias-exe").join("shinsekai");
+
+        assert_eq!(
+            restart_debug_log_path_value(
+                Some(OsString::from("~/restart.log")),
+                temp_dir.clone(),
+                Some(&executable),
+            ),
+            Some(temp_dir.join(RESTART_DEBUG_LOG_FILE))
+        );
+    }
+
+    #[test]
+    fn restart_debug_log_ignores_nonportable_environment_path() {
+        let temp_dir = temp_test_dir("restart-log-portable-temp");
+        let executable = temp_test_dir("restart-log-portable-exe").join("shinsekai");
+        let invalid = temp_dir.join("bad\nrestart.log");
+
+        assert_eq!(
+            restart_debug_log_path_value(
+                Some(invalid.into_os_string()),
+                temp_dir.clone(),
+                Some(&executable),
+            ),
+            Some(temp_dir.join(RESTART_DEBUG_LOG_FILE))
+        );
+    }
+
+    #[test]
+    fn restart_debug_log_never_falls_back_to_process_cwd() {
+        assert_eq!(
+            restart_debug_log_path_value(
+                Some(OsString::from("relative.log")),
+                PathBuf::from("relative-temp"),
+                Some(Path::new("relative-executable")),
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn restart_working_directory_comes_from_executable_not_process_cwd() {
+        let root = temp_test_dir("restart-working-directory");
+        let bin = root.join("bin");
+        let executable = bin.join("shinsekai");
+        fs::create_dir_all(&bin).unwrap();
+        fs::write(&executable, "").unwrap();
+
+        assert_eq!(
+            restart_working_directory(&executable).unwrap(),
+            bin.canonicalize().unwrap()
+        );
+        assert!(restart_working_directory(Path::new("relative/shinsekai")).is_err());
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -2137,6 +3005,24 @@ fn spawn_bridge(
     auth_token: &str,
     runtime: runtime::PythonRuntime,
 ) -> DesktopResult<BridgeLaunch> {
+    let bridge = source_root.join("frontend_bridge.py");
+    let project_data = project_root.join("data");
+    let frontend_index = frontend_dist.join("index.html");
+    let runtime_program = PathBuf::from(runtime.command.get_program());
+    let directory_paths = [
+        ("source root", source_root.to_path_buf()),
+        ("project root", project_root.to_path_buf()),
+        ("project data root", project_data),
+        ("application root", app_root.to_path_buf()),
+        ("frontend dist", frontend_dist.to_path_buf()),
+    ];
+    let file_paths = [
+        ("Python runtime", runtime_program),
+        ("frontend bridge", bridge.clone()),
+        ("frontend index", frontend_index),
+    ];
+    let (directory_identities, file_identities) =
+        capture_bridge_launch_path_identities(&directory_paths, &file_paths)?;
     println!("Using Shinsekai Python runtime: {}", runtime.description);
     restart_debug_log(format!(
         "spawn_bridge runtime={} candidate_id={} source_root={} project_root={} app_root={} frontend_dist={} port={} parent_pid={}",
@@ -2152,9 +3038,11 @@ fn spawn_bridge(
     let mut command = runtime.command;
     sanitize_python_environment(&mut command);
 
+    if let Some(log_path) = restart_debug_log_path() {
+        command.env("SHINSEKAI_RESTART_LOG", log_path);
+    }
     command
-        .env("SHINSEKAI_RESTART_LOG", restart_debug_log_path())
-        .arg(source_root.join("frontend_bridge.py"))
+        .arg(&bridge)
         .arg("--host")
         .arg(BRIDGE_HOST)
         .arg("--port")
@@ -2170,6 +3058,13 @@ fn spawn_bridge(
         .arg("--frontend-dist")
         .arg(&frontend_dist)
         .current_dir(&source_root);
+
+    revalidate_bridge_launch_path_identities(
+        &directory_paths,
+        &directory_identities,
+        &file_paths,
+        &file_identities,
+    )?;
 
     #[cfg(windows)]
     {
@@ -2190,8 +3085,28 @@ fn spawn_bridge(
         )
     })?;
     restart_debug_log(format!("spawn_bridge child_pid={}", child.id()));
+    if let Err(error) = revalidate_bridge_launch_path_identities(
+        &directory_paths,
+        &directory_identities,
+        &file_paths,
+        &file_identities,
+    ) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
+    }
 
     wait_for_bridge(&mut child, port)?;
+    if let Err(error) = revalidate_bridge_launch_path_identities(
+        &directory_paths,
+        &directory_identities,
+        &file_paths,
+        &file_identities,
+    ) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(error);
+    }
     restart_debug_log(format!(
         "spawn_bridge health ready child_pid={} port={}",
         child.id(),
@@ -2200,12 +3115,83 @@ fn spawn_bridge(
     Ok(BridgeLaunch { child })
 }
 
-pub(crate) fn show_backend_console() -> bool {
+fn capture_bridge_launch_path_identities(
+    directories: &[(&str, PathBuf)],
+    files: &[(&str, PathBuf)],
+) -> DesktopResult<(Vec<fs::File>, Vec<fs::File>)> {
+    let mut directory_identities = Vec::with_capacity(directories.len());
+    for (field, path) in directories {
+        let identity = open_directory_without_links(path).map_err(|error| {
+            format!(
+                "cannot start the Python bridge because {field} is not a stable real directory ({}): {error}",
+                path.display()
+            )
+        })?;
+        directory_identities.push(identity);
+    }
+    let mut file_identities = Vec::with_capacity(files.len());
+    for (field, path) in files {
+        let identity = open_regular_file_without_links(path).map_err(|error| {
+            format!(
+                "cannot start the Python bridge because {field} is not a stable regular file ({}): {error}",
+                path.display()
+            )
+        })?;
+        file_identities.push(identity);
+    }
+    Ok((directory_identities, file_identities))
+}
+
+fn revalidate_bridge_launch_path_identities(
+    directories: &[(&str, PathBuf)],
+    directory_identities: &[fs::File],
+    files: &[(&str, PathBuf)],
+    file_identities: &[fs::File],
+) -> DesktopResult<()> {
+    if directories.len() != directory_identities.len() || files.len() != file_identities.len() {
+        return Err("Python bridge launch path snapshot is incomplete".into());
+    }
+    for ((field, path), expected) in directories.iter().zip(directory_identities) {
+        let current = open_directory_without_links(path).map_err(|error| {
+            format!(
+                "cannot start the Python bridge because {field} changed before launch ({}): {error}",
+                path.display()
+            )
+        })?;
+        if !files_have_same_identity(expected, &current)? {
+            return Err(format!(
+                "cannot start the Python bridge because {field} changed before launch: {}",
+                path.display()
+            )
+            .into());
+        }
+    }
+    for ((field, path), expected) in files.iter().zip(file_identities) {
+        let current = open_regular_file_without_links(path).map_err(|error| {
+            format!(
+                "cannot start the Python bridge because {field} changed before launch ({}): {error}",
+                path.display()
+            )
+        })?;
+        if !files_have_same_identity(expected, &current)? {
+            return Err(format!(
+                "cannot start the Python bridge because {field} changed before launch: {}",
+                path.display()
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn show_backend_console() -> bool {
     env::var(SHOW_BACKEND_CONSOLE_ENV)
         .map(|value| is_truthy_env_value(&value))
         .unwrap_or(false)
 }
 
+#[cfg(any(windows, test))]
 fn is_truthy_env_value(value: &str) -> bool {
     matches!(
         value.to_ascii_lowercase().as_str(),
@@ -2214,8 +3200,8 @@ fn is_truthy_env_value(value: &str) -> bool {
 }
 
 fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {
-    if let Some(root) = env_path("SHINSEKAI_SOURCE_ROOT") {
-        if has_bridge(&root) {
+    if let Some(root) = explicit_env_path("SHINSEKAI_SOURCE_ROOT")? {
+        if let Some(root) = source_root_with_bridge(&root) {
             return Ok(root);
         }
         return Err(format!(
@@ -2227,19 +3213,13 @@ fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {
 
     #[cfg(debug_assertions)]
     if let Some(root) = dev_project_root() {
-        if has_bridge(&root) {
+        if let Some(root) = source_root_with_bridge(&root) {
             return Ok(root);
         }
     }
 
     if let Ok(resource_dir) = app.path().resource_dir() {
-        if has_bridge(&resource_dir) {
-            return Ok(resource_dir);
-        }
-    }
-
-    if let Some(root) = dev_project_root() {
-        if has_bridge(&root) {
+        if let Some(root) = source_root_with_bridge(&resource_dir) {
             return Ok(root);
         }
     }
@@ -2248,7 +3228,7 @@ fn resolve_source_root(app: &tauri::App) -> DesktopResult<PathBuf> {
         .ok()
         .and_then(|path| path.parent().map(Path::to_path_buf));
     if let Some(root) = exe_dir {
-        if has_bridge(&root) {
+        if let Some(root) = source_root_with_bridge(&root) {
             return Ok(root);
         }
     }
@@ -2267,25 +3247,23 @@ fn resolve_project_root(
     let data_dir = app.path().data_dir()?;
     let locator_path = app_config_dir.join(project_root::PROJECT_ROOT_LOCATOR_FILE);
 
-    let expanded_env = |name: &str| {
-        env::var_os(name)
-            .filter(|value| !value.is_empty())
-            .map(PathBuf::from)
-            .map(ExpandHome::expand_home)
-            .map(PathBuf::into_os_string)
-    };
+    let raw_env = |name: &str| env::var_os(name);
     let explicit_root = project_root::preferred_environment_root(
-        expanded_env("SHINSEKAI_PROJECT_ROOT"),
-        expanded_env("EASYAI_PROJECT_ROOT"),
+        raw_env("SHINSEKAI_PROJECT_ROOT"),
+        raw_env("EASYAI_PROJECT_ROOT"),
     );
 
     let legacy_config_dir = config_dir.join(project_root::LEGACY_APP_IDENTIFIER);
     let legacy_data_dir = data_dir.join(project_root::LEGACY_APP_IDENTIFIER);
     let current_data_dir = data_dir.join(project_root::CURRENT_APP_IDENTIFIER);
-    let mut restart_log_paths = vec![env::temp_dir().join(RESTART_DEBUG_LOG_FILE)];
+    let default_restart_log =
+        restart_debug_log_path_value(None, env::temp_dir(), env::current_exe().ok().as_deref());
+    let mut restart_log_paths: Vec<PathBuf> = default_restart_log.iter().cloned().collect();
     if let Some(custom_log) = env::var_os("SHINSEKAI_RESTART_LOG")
         .filter(|value| !value.is_empty())
         .map(PathBuf::from)
+        .filter(|path| restart_debug_log_path_is_valid(path))
+        .filter(|path| default_restart_log.as_ref() != Some(path))
     {
         restart_log_paths.insert(0, custom_log);
     }
@@ -2311,7 +3289,7 @@ fn resolve_project_root(
 }
 
 fn resolve_app_root(app: &tauri::App, source_root: &Path) -> DesktopResult<PathBuf> {
-    if let Some(root) = env_path("SHINSEKAI_APP_ROOT") {
+    if let Some(root) = explicit_env_path("SHINSEKAI_APP_ROOT")? {
         if root.is_dir() {
             return Ok(root);
         }
@@ -2326,12 +3304,16 @@ fn resolve_app_root(app: &tauri::App, source_root: &Path) -> DesktopResult<PathB
         return Ok(source_root.to_path_buf());
     }
 
-    if let Some(root) = app_root_from_current_exe() {
+    if let Some(root) =
+        app_root_from_current_exe().and_then(|root| canonical_existing_app_root(&root))
+    {
         return Ok(root);
     }
 
     if let Ok(resource_dir) = app.path().resource_dir() {
-        if let Some(root) = app_root_from_resource_dir(&resource_dir) {
+        if let Some(root) = app_root_from_resource_dir(&resource_dir)
+            .and_then(|root| canonical_existing_app_root(&root))
+        {
             return Ok(root);
         }
     }
@@ -2340,9 +3322,25 @@ fn resolve_app_root(app: &tauri::App, source_root: &Path) -> DesktopResult<PathB
 }
 
 fn appimage_app_root() -> Option<PathBuf> {
-    env_path("APPIMAGE")
+    env::var_os("APPIMAGE")
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute() && path_text_is_portable(path))
+        .and_then(|path| canonicalize_regular_file_without_links(&path).ok())
         .and_then(|path| path.parent().map(Path::to_path_buf))
-        .filter(|path| path.is_dir())
+        .and_then(|path| canonical_existing_app_root(&path))
+}
+
+fn canonical_existing_app_root(path: &Path) -> Option<PathBuf> {
+    if !path.is_absolute()
+        || path_is_filesystem_root(path)
+        || !path_text_is_portable(path)
+        || !path.is_dir()
+    {
+        return None;
+    }
+    let canonical = canonicalize_directory_following_links_stably(path).ok()?;
+    (!path_is_filesystem_root(&canonical) && path_text_is_portable(&canonical)).then_some(canonical)
 }
 
 fn app_root_from_current_exe() -> Option<PathBuf> {
@@ -2360,11 +3358,17 @@ fn app_root_from_executable(executable: &Path) -> Option<PathBuf> {
                 .and_then(|extension| extension.to_str())
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
         }) {
-            return app_bundle.parent().map(Path::to_path_buf);
+            return app_bundle
+                .parent()
+                .filter(|path| !path_is_filesystem_root(path))
+                .map(Path::to_path_buf);
         }
     }
 
-    executable.parent().map(Path::to_path_buf)
+    executable
+        .parent()
+        .filter(|path| !path_is_filesystem_root(path))
+        .map(Path::to_path_buf)
 }
 
 fn app_root_from_resource_dir(resource_dir: &Path) -> Option<PathBuf> {
@@ -2376,28 +3380,47 @@ fn app_root_from_resource_dir(resource_dir: &Path) -> Option<PathBuf> {
                 .and_then(|extension| extension.to_str())
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("app"))
         }) {
-            return app_bundle.parent().map(Path::to_path_buf);
+            return app_bundle
+                .parent()
+                .filter(|path| !path_is_filesystem_root(path))
+                .map(Path::to_path_buf);
         }
     }
 
     if resource_dir.file_name().and_then(|name| name.to_str()) == Some("resources") {
-        return resource_dir.parent().map(Path::to_path_buf);
+        return resource_dir
+            .parent()
+            .filter(|path| !path_is_filesystem_root(path))
+            .map(Path::to_path_buf);
     }
-    Some(resource_dir.to_path_buf())
+    (!path_is_filesystem_root(resource_dir)).then(|| resource_dir.to_path_buf())
 }
 
 fn dev_project_root() -> Option<PathBuf> {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir.parent()?.parent().map(Path::to_path_buf)
+    let root = manifest_dir.parent()?.parent()?;
+    Some(canonicalize_directory_following_links_stably(root).unwrap_or_else(|_| root.to_path_buf()))
 }
 
-fn has_bridge(root: &Path) -> bool {
-    root.join("frontend_bridge.py").is_file()
+fn source_root_with_bridge(root: &Path) -> Option<PathBuf> {
+    if !root.is_absolute() || path_is_filesystem_root(root) || !path_text_is_portable(root) {
+        return None;
+    }
+    let resolved = canonicalize_directory_following_links_stably(root).ok()?;
+    if path_is_filesystem_root(&resolved) || !path_text_is_portable(&resolved) {
+        return None;
+    }
+    open_regular_file_without_links(&resolved.join("frontend_bridge.py"))
+        .is_ok()
+        .then_some(resolved)
 }
 
-fn resolve_frontend_dist(project_root: &Path) -> DesktopResult<PathBuf> {
-    if let Some(dist) = env_path("SHINSEKAI_FRONTEND_DIST") {
-        if dist.join("index.html").is_file() {
+fn resolve_frontend_dist(source_root: &Path) -> DesktopResult<PathBuf> {
+    if let Some(dist) = explicit_env_path_without_leaf_alias(
+        "SHINSEKAI_FRONTEND_DIST",
+        env::var_os("SHINSEKAI_FRONTEND_DIST"),
+    )? {
+        if let Some(dist) = frontend_dist_with_index(&dist) {
             return Ok(dist);
         }
         return Err(format!(
@@ -2407,9 +3430,14 @@ fn resolve_frontend_dist(project_root: &Path) -> DesktopResult<PathBuf> {
         .into());
     }
 
-    let dist = project_root.join("frontend").join("dist");
-    if dist.join("index.html").is_file() {
-        return Ok(dist);
+    let dist = source_root.join("frontend").join("dist");
+    if let (Ok(source_root), Some(dist)) = (
+        canonicalize_directory_without_links(source_root),
+        frontend_dist_with_index(&dist),
+    ) {
+        if dist.starts_with(&source_root) {
+            return Ok(dist);
+        }
     }
 
     Err(format!(
@@ -2419,11 +3447,101 @@ fn resolve_frontend_dist(project_root: &Path) -> DesktopResult<PathBuf> {
     .into())
 }
 
-fn env_path(name: &str) -> Option<PathBuf> {
-    env::var_os(name)
-        .map(PathBuf::from)
-        .map(|path| path.expand_home())
-        .map(|path| path.canonicalize().unwrap_or(path))
+fn frontend_dist_with_index(dist: &Path) -> Option<PathBuf> {
+    let canonical = canonicalize_directory_without_links(dist).ok()?;
+    open_regular_file_without_links(&canonical.join("index.html"))
+        .is_ok()
+        .then_some(canonical)
+}
+
+fn explicit_env_path(name: &str) -> DesktopResult<Option<PathBuf>> {
+    explicit_env_path_value(name, env::var_os(name)).map_err(Into::into)
+}
+
+fn explicit_env_path_value(name: &str, value: Option<OsString>) -> Result<Option<PathBuf>, String> {
+    let Some(path) = validated_explicit_env_path_value(name, value)? else {
+        return Ok(None);
+    };
+    let canonical = if path.exists() {
+        match canonicalize_directory_following_links_stably(&path) {
+            Ok(canonical) => canonical,
+            Err(error) => {
+                // The strict opener intentionally rejects a non-portable
+                // canonical target.  Preserve that precise configuration
+                // diagnosis without relaxing the identity-bound open used
+                // for any accepted directory.
+                if let Ok(resolved) = path.canonicalize() {
+                    if !path_text_is_portable(&resolved) {
+                        return Err(format!(
+                            "{name} resolves to a path containing non-portable characters: {}",
+                            resolved.display()
+                        ));
+                    }
+                }
+                return Err(format!(
+                    "{name} could not stably resolve its directory path ({}): {error}",
+                    path.display()
+                ));
+            }
+        }
+    } else {
+        path
+    };
+    if path_is_filesystem_root(&canonical) {
+        return Err(format!("{name} must not resolve to a filesystem root"));
+    }
+    if !path_text_is_portable(&canonical) {
+        return Err(format!(
+            "{name} resolves to a path containing non-portable characters: {}",
+            canonical.display()
+        ));
+    }
+    Ok(Some(canonical))
+}
+
+fn explicit_env_path_without_leaf_alias(
+    name: &str,
+    value: Option<OsString>,
+) -> Result<Option<PathBuf>, String> {
+    let Some(path) = validated_explicit_env_path_value(name, value)? else {
+        return Ok(None);
+    };
+    if !path_has_no_link_components(&path) {
+        return Err(format!(
+            "{name} contains a symbolic link or reparse-point component: {}",
+            path.display()
+        ));
+    }
+    Ok(Some(path))
+}
+
+fn validated_explicit_env_path_value(
+    name: &str,
+    value: Option<OsString>,
+) -> Result<Option<PathBuf>, String> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_empty() {
+        return Err(format!("{name} must not be empty"));
+    }
+    let path = PathBuf::from(value);
+    if !path_text_is_portable(&path) {
+        return Err(format!(
+            "{name} contains non-portable path characters: {}",
+            path.display()
+        ));
+    }
+    if !path.is_absolute() {
+        return Err(format!(
+            "{name} must be an absolute path: {}",
+            path.display()
+        ));
+    }
+    if path_is_filesystem_root(&path) {
+        return Err(format!("{name} must not be a filesystem root"));
+    }
+    Ok(Some(path))
 }
 
 fn sanitize_python_environment(command: &mut Command) {
@@ -2512,34 +3630,4 @@ fn bridge_health_ok(addr: &SocketAddr) -> bool {
         return false;
     }
     response.starts_with("HTTP/1.1 200") || response.starts_with("HTTP/1.0 200")
-}
-
-trait ExpandHome {
-    fn expand_home(self) -> Self;
-}
-
-impl ExpandHome for PathBuf {
-    fn expand_home(self) -> Self {
-        let raw = self.as_os_str().to_string_lossy();
-        if raw == "~" {
-            return home_dir().unwrap_or(self);
-        }
-        if let Some(rest) = raw.strip_prefix("~/") {
-            if let Some(home) = home_dir() {
-                return home.join(rest);
-            }
-        }
-        self
-    }
-}
-
-fn home_dir() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        env::var_os("USERPROFILE").map(PathBuf::from)
-    }
-    #[cfg(not(windows))]
-    {
-        env::var_os("HOME").map(PathBuf::from)
-    }
 }

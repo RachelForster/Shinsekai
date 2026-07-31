@@ -29,6 +29,7 @@ import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
+import { normalizePathSeparatorsForIdentity } from "../../shared/paths/pathContract";
 import type {
   ImageAutoLabelResult,
   SpriteVoiceType,
@@ -61,12 +62,15 @@ import "./CharacterEditorPage.css";
 
 export function mergeSprites(serverSprites: Sprite[], current: Character) {
   const currentSpritesByPath = new Map(
-    current.sprites.filter((sprite) => sprite.path).map((sprite) => [sprite.path, sprite]),
+    current.sprites
+      .filter((sprite) => sprite.path)
+      .map((sprite) => [normalizePathSeparatorsForIdentity(sprite.path), sprite]),
   );
   const canFallbackToIndex = serverSprites.length === current.sprites.length;
   return serverSprites.map((sprite, index) => {
     const currentSprite =
-      currentSpritesByPath.get(sprite.path) ?? (canFallbackToIndex ? current.sprites[index] : undefined);
+      currentSpritesByPath.get(normalizePathSeparatorsForIdentity(sprite.path)) ??
+      (canFallbackToIndex ? current.sprites[index] : undefined);
     return {
       ...sprite,
       voice_type: sprite.voice_type ?? currentSprite?.voice_type,
@@ -559,8 +563,10 @@ export function CharacterEditorPage() {
     });
   };
 
+  const isExactNonBlankPath = (value: string | undefined) => Boolean(value && value === value.trim());
+
   const characterHasGptSovitsModel = (character: Character) =>
-    Boolean(character.gpt_model_path?.trim() && character.sovits_model_path?.trim());
+    isExactNonBlankPath(character.gpt_model_path) && isExactNonBlankPath(character.sovits_model_path);
 
   const spriteHasReferenceVoiceText = (sprite: Sprite | undefined) => Boolean(sprite?.voice_text?.trim());
 
@@ -601,20 +607,22 @@ export function CharacterEditorPage() {
       });
       return null;
     }
-    const spritePrefix = draft.sprite_prefix.trim();
+    const spritePrefix = draft.sprite_prefix;
     const pathFields = [draft.gpt_model_path, draft.sovits_model_path, draft.refer_audio_path]
       .filter(Boolean)
       .map(String);
     const validationMessages = [
       !spritePrefix ? t("character.validation.spritePrefixRequired") : "",
+      spritePrefix !== spritePrefix.trim() ? "立绘目录名首尾不能包含空白字符。" : "",
       spritePrefix && !/^[\x00-\x7F]+$/.test(spritePrefix) ? t("character.validation.spritePrefixAscii") : "",
       pathFields.some((path) => path.trim().startsWith('"') || path.trim().endsWith('"'))
         ? t("character.validation.noQuotedPaths")
         : "",
-      draft.gpt_model_path?.trim() && !draft.gpt_model_path.trim().toLowerCase().endsWith(".ckpt")
+      pathFields.some((path) => path !== path.trim()) ? "路径首尾不能包含空白字符。" : "",
+      draft.gpt_model_path && !draft.gpt_model_path.toLowerCase().endsWith(".ckpt")
         ? t("character.validation.gptModelExt")
         : "",
-      draft.sovits_model_path?.trim() && !draft.sovits_model_path.trim().toLowerCase().endsWith(".pth")
+      draft.sovits_model_path && !draft.sovits_model_path.toLowerCase().endsWith(".pth")
         ? t("character.validation.sovitsModelExt")
         : "",
     ].filter(Boolean);
@@ -631,13 +639,13 @@ export function CharacterEditorPage() {
         ...draft,
         character_setting: draft.character_setting.trim(),
         color: draft.color.trim() || DEFAULT_CHARACTER_COLOR,
-        gpt_model_path: draft.gpt_model_path?.trim() || "",
+        gpt_model_path: draft.gpt_model_path || "",
         name: draft.name.trim(),
         prompt_lang: draft.prompt_lang?.trim() || "",
         prompt_text: draft.prompt_text?.trim() || "",
         pronunciation_map: pronunciationTextToMap(pronunciationText),
-        refer_audio_path: draft.refer_audio_path?.trim() || "",
-        sovits_model_path: draft.sovits_model_path?.trim() || "",
+        refer_audio_path: draft.refer_audio_path || "",
+        sovits_model_path: draft.sovits_model_path || "",
         sprite_prefix: spritePrefix,
       },
       originalName: isSavedCharacter ? selectedName : undefined,
@@ -874,7 +882,7 @@ export function CharacterEditorPage() {
   };
 
   const uploadSelectedSpriteVoice = () => {
-    const voicePath = pendingVoicePaths[selectedSpriteIndex]?.trim() ?? "";
+    const voicePath = pendingVoicePaths[selectedSpriteIndex] ?? "";
     if (!isSavedCharacter) {
       showToast({
         kind: "error",

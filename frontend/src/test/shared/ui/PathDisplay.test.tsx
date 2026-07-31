@@ -41,6 +41,23 @@ describe("PathDisplay", () => {
     expect(name?.textContent).toBe("scene.png");
   });
 
+  it("splits mixed-separator UNC paths without treating them as POSIX names", () => {
+    const path = String.raw`//server/share/folder\scene.png`;
+    const { container } = render(<PathDisplay path={path} />);
+
+    expect(container.querySelector(".path-display__prefix")?.textContent).toBe("//server/share/folder\\");
+    expect(container.querySelector(".path-display__name")?.textContent).toBe("scene.png");
+  });
+
+  it("keeps a literal POSIX backslash in the filename identity", () => {
+    const { container } = render(<PathDisplay path={String.raw`/tmp/uploads/voice\alternate.wav`} />);
+    const prefix = container.querySelector(".path-display__prefix");
+    const name = container.querySelector(".path-display__name");
+
+    expect(prefix?.textContent).toBe("/tmp/uploads/");
+    expect(name?.textContent).toBe(String.raw`voice\alternate.wav`);
+  });
+
   it("sets title attribute to full path", () => {
     const path = "/home/user/file.txt";
     render(<PathDisplay path={path} />);

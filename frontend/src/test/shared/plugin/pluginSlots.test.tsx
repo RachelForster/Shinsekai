@@ -35,10 +35,12 @@ describe("plugin slot registry", () => {
       pluginId: "demo.plugin",
     });
   });
-  it("keeps only declared, unique plugin contributions", () => {
+
+  it("rejects inexact declarations and keeps the first unique valid contribution", () => {
     const normalized = normalizePluginContributions([
       { ...validContribution, id: " demo.output ", title: " Demo Output " },
       { ...validContribution, id: "demo.output", title: "Duplicate" },
+      { ...validContribution, id: "demo.output", title: "Later Duplicate" },
       { ...validContribution, id: "", title: "Missing ID" },
       { ...validContribution, id: "missing.title", title: "" },
     ]);
@@ -47,7 +49,7 @@ describe("plugin slot registry", () => {
     expect(normalized[0]).toMatchObject({
       id: "demo.output",
       permissions: ["chat:read"],
-      title: "Demo Output",
+      title: "Duplicate",
     });
   });
 

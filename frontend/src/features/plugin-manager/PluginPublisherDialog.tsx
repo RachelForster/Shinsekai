@@ -116,13 +116,13 @@ export function PluginPublisherDialog({ onClose, open }: PluginPublisherDialogPr
   };
 
   const handleScan = async () => {
-    if (!localPath.trim()) {
+    if (!localPath) {
       setServerErrors([t("plugin.publisher.localPathRequired")]);
       return;
     }
     setBusyAction("scan");
     try {
-      const result = await scanLocalPlugin(localPath.trim());
+      const result = await scanLocalPlugin(localPath);
       setScanResult(result);
       setServerErrors([]);
       setPayloadPreview("");

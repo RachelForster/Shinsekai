@@ -265,7 +265,7 @@ export function EffectManagerPage() {
 
   const update = useCallback(<K extends keyof Effect>(name: K, value: Effect[K]) => {
     setDraft((current) => ({ ...current, [name]: value }));
-    if (name === "name" && String(value).trim()) {
+    if (name === "name" && String(value) && String(value) === String(value).trim()) {
       setNameError("");
     }
   }, []);
@@ -318,8 +318,7 @@ export function EffectManagerPage() {
 
   const saveDraft = useCallback(
     (forceNew = false) => {
-      const trimmed = draft.name.trim();
-      if (!trimmed) {
+      if (!draft.name.trim()) {
         setNameError(t("effect.validation.nameRequired"));
         showToast({
           kind: "error",
@@ -328,8 +327,17 @@ export function EffectManagerPage() {
         });
         return;
       }
+      if (draft.name !== draft.name.trim()) {
+        setNameError("特效方案名称首尾不能包含空白字符。");
+        showToast({
+          kind: "error",
+          message: t("common.fixInvalidFields"),
+          title: t("common.validationFailed"),
+        });
+        return;
+      }
       saveMutation.mutate({
-        effect: { ...draft, name: trimmed },
+        effect: draft,
         originalName: forceNew || isCreating ? undefined : selectedName,
       });
     },
@@ -338,9 +346,17 @@ export function EffectManagerPage() {
 
   /* 上传音频：如果方案尚未保存，先自动保存再打开文件选择器 */
   const handleUploadAudio = useCallback(() => {
-    const trimmed = draft.name.trim();
-    if (!trimmed) {
+    if (!draft.name.trim()) {
       setNameError(t("effect.validation.nameRequired"));
+      showToast({
+        kind: "error",
+        message: t("common.fixInvalidFields"),
+        title: t("effect.asset.uploadAudio"),
+      });
+      return;
+    }
+    if (draft.name !== draft.name.trim()) {
+      setNameError("特效方案名称首尾不能包含空白字符。");
       showToast({
         kind: "error",
         message: t("common.fixInvalidFields"),
@@ -350,7 +366,7 @@ export function EffectManagerPage() {
     }
     if (!currentEffectName) {
       saveMutation.mutate(
-        { effect: { ...draft, name: trimmed }, originalName: undefined },
+        { effect: draft, originalName: undefined },
         {
           onSuccess: () => {
             setAudioUploadPickerOpen(true);
