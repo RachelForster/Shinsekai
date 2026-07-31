@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
+from sdk.path_contract import require_regular_file_without_links
+
+from sdk.path_references import state_project_root
 from application.runtime.state import BridgeState, _jsonify
 from application.runtime.tasks import _append_task_log, _update_task
 
@@ -26,7 +28,12 @@ def _music_cover_search(state: BridgeState, payload: dict[str, Any]) -> dict[str
 
     source = _music_cover_source(payload)
     query = str(payload.get("query") or "").strip()
-    log = search_preview(state.config_manager.config.system_config, source, query)
+    log = search_preview(
+        state.config_manager.config.system_config,
+        source,
+        query,
+        root=state_project_root(state),
+    )
     return {"log": str(log or "")}
 
 
@@ -51,13 +58,19 @@ def _run_music_cover(state: BridgeState, task_id: str, payload: dict[str, Any]) 
         query=query,
         pick_index=pick_index,
         skip_rvc=skip_rvc,
+        root=state_project_root(state),
     )
     log = str(format_pipeline_log(result) or "")
     final_mix = getattr(result, "final_mix", None)
-    audio_path = str(final_mix) if final_mix is not None and Path(final_mix).exists() else ""
+    if final_mix is None:
+        raise FileNotFoundError("Music cover pipeline did not produce a final mix")
+    audio_path = require_regular_file_without_links(
+        final_mix,
+        field="music cover final mix",
+    )
     if log:
         _append_task_log(state, task_id, log)
-    return {"audioPath": audio_path, "log": log}
+    return {"audioPath": str(audio_path), "log": log}
 
 
 def _save_music_cover_config(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:

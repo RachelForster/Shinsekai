@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+from frontend_bridge_core.security import portable_path_text
+
 
 def _optional_suffix_check(value: str, suffix: str, label: str) -> tuple[bool, str]:
     if not value:
@@ -17,8 +19,9 @@ def _path_namespace_list(paths: Any) -> list[Any]:
         raise ValueError("paths must be a list")
     out = []
     for item in paths:
-        path = str(item or "").strip()
+        path = str(item or "")
         if path:
+            path = portable_path_text(path, field="path")
             out.append(SimpleNamespace(name=path))
     if not out:
         raise ValueError("at least one path is required")

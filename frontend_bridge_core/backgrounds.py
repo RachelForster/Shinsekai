@@ -11,7 +11,7 @@ def _save_background(state: BridgeState, payload: dict[str, Any]) -> dict[str, A
     if not isinstance(body, dict):
         raise ValueError("background payload must be an object")
     name = str(body.get("name") or "").strip()
-    prefix = str(body.get("sprite_prefix") or "temp").strip() or "temp"
+    prefix = str(body.get("sprite_prefix") or "temp")
     original_name = str(payload.get("originalName") or "").strip()
     message, _names = state.background_manager.add_background(
         name,
@@ -20,7 +20,13 @@ def _save_background(state: BridgeState, payload: dict[str, Any]) -> dict[str, A
         bg_tags=str(body.get("bg_tags") or ""),
         bgm_tags=str(body.get("bgm_tags") or ""),
     )
-    if message.startswith("名称") or "重复" in message or message.startswith("找不到"):
+    if (
+        message.startswith("名称")
+        or "重复" in message
+        or "目录名" in message
+        or "已被背景组" in message
+        or message.startswith("找不到")
+    ):
         raise RuntimeError(message)
     state.config_manager.reload()
     saved = state.config_manager.get_background_by_name(name)
@@ -83,9 +89,11 @@ def _upload_background_bgm(state: BridgeState, payload: dict[str, Any]) -> dict[
     name = str(payload.get("name") or "").strip()
     files = _path_namespace_list(payload.get("paths") or [])
     background = _background_by_name(state, name)
-    background.bgm_tags = str(payload.get("bgmTags") or background.bgm_tags or "")
-    state.config_manager.save_background_config()
-    message, _df, _tags = state.background_manager.upload_bgms(name, files)
+    message, _df, _tags = state.background_manager.upload_bgms(
+        name,
+        files,
+        bgm_tags=str(payload.get("bgmTags") or background.bgm_tags or ""),
+    )
     if message.startswith("找不到") or message.startswith("请选择") or message.startswith("请先"):
         raise RuntimeError(message)
     return _background_json_after_reload(state, name)
