@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
 from datetime import datetime
-from pathlib import Path
+
+from core.file_transactions import open_text_append_without_links
+from core.paths import (
+    managed_child_path,
+    managed_project_storage,
+    project_root,
+    safe_path_component_with_suffix,
+)
 
 
 def _should_redirect_stdio_to_file() -> bool:
@@ -23,6 +29,22 @@ def _should_redirect_stdio_to_file() -> bool:
         return True
 
 
+def _frozen_log_filename(log_name: str) -> str:
+    safe = "".join(c for c in log_name if c.isalnum() or c in "._-") or "app"
+    try:
+        return safe_path_component_with_suffix(
+            safe,
+            ".log",
+            field="frozen log filename",
+        )
+    except ValueError:
+        return safe_path_component_with_suffix(
+            f"app-{safe}",
+            ".log",
+            field="frozen log filename",
+        )
+
+
 def init_frozen_stdio(log_name: str) -> None:
     """
     在 sys.frozen 为 True 且当前 stdout 非 TTY 时，把 stdout/stderr 指到
@@ -35,15 +57,15 @@ def init_frozen_stdio(log_name: str) -> None:
         or not log_name
     ):
         return
-    safe = "".join(c for c in log_name if c.isalnum() or c in "._-")
-    if not safe:
-        safe = "app"
-    rel = os.environ.get("EASYAI_PROJECT_ROOT")
-    root = Path(rel).resolve() if rel else Path(sys.executable).resolve().parent.parent
-    d = root / "logs"
+    root = project_root()
+    d = managed_project_storage("logs", root=root)
     d.mkdir(parents=True, exist_ok=True)
-    path = d / f"{safe}.log"
-    f = path.open("a", encoding="utf-8", buffering=1)
+    path = managed_child_path(
+        d,
+        _frozen_log_filename(log_name),
+        field="frozen log filename",
+    )
+    f = open_text_append_without_links(path)
     f.write(
         f"\n{'=' * 60}\n{datetime.now().isoformat(sep=' ', timespec='seconds')}  {log_name}  \n"
     )
