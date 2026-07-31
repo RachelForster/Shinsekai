@@ -5,12 +5,19 @@ from __future__ import annotations
 import logging
 import os
 import platform as platform_module
-import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+
+from sdk.file_transactions import read_text_without_links
+from sdk.process_launch import (
+    capture_command_executable,
+    capture_launch_directory,
+    run_with_stable_paths,
+)
+from sdk.path_contract import resolve_project_read_path, user_home_directory
 
 logger = logging.getLogger(__name__)
 
@@ -101,15 +108,15 @@ def apply_network_proxy_environment(config: Any) -> NetworkProxyValues:
 
 def apply_network_proxy_environment_from_system_config(path: str | Path | None = None) -> NetworkProxyValues:
     """Apply proxy env early without constructing the full ConfigManager."""
+    config_path = resolve_project_read_path(
+        "data/config/system_config.yaml" if path is None else path
+    )
     try:
         import yaml
         from config.schema import SystemConfig
 
-        config_path = Path(path or "data/config/system_config.yaml")
-        raw = {}
-        if config_path.is_file():
-            loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-            raw = loaded if isinstance(loaded, dict) else {}
+        loaded = yaml.safe_load(read_text_without_links(config_path))
+        raw = loaded if isinstance(loaded, dict) else {}
         return apply_network_proxy_environment(SystemConfig.model_validate(raw))
     except Exception as exc:
         logger.warning(
@@ -294,8 +301,6 @@ def _parse_windows_proxy_server(value: str) -> NetworkProxyDetection:
 
 
 def _detect_macos_proxy() -> NetworkProxyDetection:
-    if not shutil.which("scutil"):
-        return NetworkProxyDetection("", "", "", "macos")
     output = _run_text_command(["scutil", "--proxy"])
     values = _parse_scutil_proxy_output(output)
     return NetworkProxyDetection(
@@ -331,8 +336,6 @@ def _parse_scutil_proxy_output(output: str) -> dict[str, str]:
 
 
 def _detect_gnome_proxy() -> NetworkProxyDetection:
-    if not shutil.which("gsettings"):
-        return NetworkProxyDetection("", "", "", "gnome")
     mode = _strip_command_value(_run_text_command(["gsettings", "get", "org.gnome.system.proxy", "mode"]))
     if mode != "manual":
         return NetworkProxyDetection("", "", "", "gnome")
@@ -357,15 +360,16 @@ def _detect_gnome_proxy() -> NetworkProxyDetection:
 
 
 def _detect_kde_proxy() -> NetworkProxyDetection:
-    config_path = Path.home() / ".config" / "kioslaverc"
-    if not config_path.is_file():
+    try:
+        config_path = user_home_directory() / ".config" / "kioslaverc"
+    except (KeyError, OSError, RuntimeError, ValueError):
         return NetworkProxyDetection("", "", "", "kde")
     try:
         import configparser
 
         parser = configparser.ConfigParser()
         parser.optionxform = str  # preserve KDE key casing
-        parser.read(config_path, encoding="utf-8")
+        parser.read_string(read_text_without_links(config_path))
         section = parser["Proxy Settings"]
         if str(section.get("ProxyType", "")).strip() != "1":
             return NetworkProxyDetection("", "", "", "kde")
@@ -380,8 +384,21 @@ def _detect_kde_proxy() -> NetworkProxyDetection:
 
 
 def _run_text_command(command: list[str]) -> str:
-    completed = subprocess.run(
-        command,
+    if not command:
+        raise ValueError("proxy probe command is empty")
+    executable = capture_command_executable(
+        command[0],
+        field="proxy probe executable",
+    )
+    cwd = capture_launch_directory(
+        user_home_directory(),
+        field="proxy probe working directory",
+    )
+    completed = run_with_stable_paths(
+        [executable.path, *command[1:]],
+        cwd=cwd,
+        executable=executable,
+        run_factory=subprocess.run,
         capture_output=True,
         check=False,
         text=True,
