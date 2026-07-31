@@ -1,6 +1,8 @@
 import yaml
 
 from config.sprite_voice import normalize_sprite_voice_types
+from sdk.file_transactions import read_text_without_links
+from sdk.path_contract import project_root, resolve_project_read_path
 
 
 class CharacterConfig:
@@ -36,8 +38,8 @@ class CharacterConfig:
         Returns:
             list[CharacterConfig]: 包含所有角色配置的列表
         """
-        with open(path, 'r', encoding='utf-8') as file:
-            config_data = yaml.safe_load(file)
+        resolved_path = resolve_project_read_path(path, root=project_root())
+        config_data = yaml.safe_load(read_text_without_links(resolved_path))
         
         characters = []
         for char_data in config_data:

@@ -18,8 +18,8 @@ def normalize_sprite_voice_types(character_data: MutableMapping[str, Any]) -> Mu
         if voice_type in VALID_SPRITE_VOICE_TYPES:
             sprite["voice_type"] = voice_type
             continue
-        voice_path = str(sprite.get("voice_path") or "").strip()
-        if not voice_path:
+        voice_path = str(sprite.get("voice_path") or "")
+        if not voice_path or voice_path != voice_path.strip():
             continue
         voice_text = str(sprite.get("voice_text") or "").strip()
         sprite["voice_type"] = "reference" if voice_text else "fallback"

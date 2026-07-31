@@ -35,9 +35,14 @@ def clamp_compact_target_ratio(compact_threshold: float, compact_target_ratio: f
 
 # Character Config Models
 class Sprite(BaseModel):
-    """角色的单个立绘/语音配置"""
-    path: FilePath = Field(..., description="立绘图片的文件路径")
-    voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
+    """角色的单个立绘/语音引用。
+
+    配置解析不能访问文件系统来决定整份配置是否有效。项目迁移、离线盘符
+    或单个素材缺失时仍需允许应用启动，由实际读取/上传边界报告并修复素材。
+    """
+
+    path: str = Field(..., description="立绘图片的文件路径")
+    voice_path: Optional[str] = Field(None, description="对应的语音文件的路径 (可选)")
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
     voice_type: Optional[str] = Field(None, description="语音类型: fallback、preset 或 reference")
 
@@ -153,6 +158,10 @@ class ApiConfig(BaseModel):
 # System Config Model
 class SystemConfig(BaseModel):
     """系统相关的通用配置"""
+    path_contract_version: DefaultIfNone[int] = Field(
+        default=1,
+        description="持久化路径契约版本（内部迁移标记）",
+    )
     # 应用 DefaultIfNone
     base_font_size_px: DefaultIfNone[int] = Field(default=56, description="基础字体大小 (像素)")
     ui_language: DefaultIfNone[str] = Field(
@@ -278,7 +287,7 @@ class SystemConfig(BaseModel):
         return self
 
     music_cover_work_dir: DefaultIfNone[str] = Field(
-        default="./data/music_cover",
+        default="data/music_cover",
         description="翻唱流水线工作目录（下载、分离、中间文件与成品）",
     )
     music_cover_yt_dlp_exe: DefaultIfNone[str] = Field(

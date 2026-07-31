@@ -13,12 +13,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from sdk.file_transactions import read_text_without_links
+from sdk.path_contract import (
+    project_root,
+    require_directory_without_links,
+    resolve_project_output_path,
+    resolve_project_path,
+    resolve_project_read_path,
+)
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_HUGGINGFACE_MIRROR_URL = "https://hf-mirror.com"
 DEFAULT_GITHUB_MIRROR_URL = "https://gh-proxy.com/"
 DEFAULT_PYPI_MIRROR_URL = "https://pypi.tuna.tsinghua.edu.cn/simple/"
-DEFAULT_HUGGINGFACE_CACHE_DIR = "./data/cache/huggingface"
+DEFAULT_HUGGINGFACE_CACHE_DIR = "data/cache/huggingface"
 OFFICIAL_HUGGINGFACE_URL = "https://huggingface.co"
 OFFICIAL_GITHUB_URL = "https://github.com"
 OFFICIAL_PYPI_INDEX_URL = "https://pypi.org/simple/"
@@ -140,7 +149,7 @@ def resolved_mirror_values(config: Any) -> MirrorValues:
         region = REGION_GLOBAL
 
     huggingface = str(getattr(config, "huggingface_mirror_url", "") or "").strip()
-    huggingface_cache_dir = str(getattr(config, "huggingface_cache_dir", "") or "").strip()
+    huggingface_cache_dir = str(getattr(config, "huggingface_cache_dir", "") or "")
     github = str(getattr(config, "github_mirror_url", "") or "").strip()
     pypi = str(getattr(config, "pypi_mirror_url", "") or "").strip()
     if use_china_defaults:
@@ -174,7 +183,11 @@ def system_config_payload_with_resolved_mirrors(config: Any) -> dict[str, Any]:
     return payload
 
 
-def apply_mirror_environment(config: Any) -> MirrorValues:
+def apply_mirror_environment(
+    config: Any,
+    *,
+    root: str | Path | None = None,
+) -> MirrorValues:
     values = resolved_mirror_values(config)
     detection_mode = "auto" if bool(getattr(config, "mirror_auto_detect_china", True)) else "manual"
     huggingface_source = _redact_url(values.huggingface or OFFICIAL_HUGGINGFACE_URL)
@@ -183,10 +196,31 @@ def apply_mirror_environment(config: Any) -> MirrorValues:
     _set_or_restore_env("HF_ENDPOINT", values.huggingface)
     _set_or_restore_env("HUGGINGFACE_HUB_ENDPOINT", values.huggingface)
     _set_or_restore_env("SHINSEKAI_HUGGINGFACE_MIRROR_URL", values.huggingface)
-    hf_home = _resolved_cache_path(values.huggingface_cache_dir)
-    hf_hub_cache = (Path(hf_home) / "hub").as_posix()
-    transformers_cache = (Path(hf_home) / "transformers").as_posix()
-    _ensure_cache_dirs(hf_home, hf_hub_cache, transformers_cache)
+    cache_project_root = (
+        project_root()
+        if root is None
+        else resolve_project_path(".", root=root)
+    )
+    hf_home_path = resolve_project_output_path(
+        values.huggingface_cache_dir or DEFAULT_HUGGINGFACE_CACHE_DIR,
+        root=cache_project_root,
+    )
+    hf_hub_cache_path = resolve_project_output_path(
+        hf_home_path / "hub",
+        root=cache_project_root,
+    )
+    transformers_cache_path = resolve_project_output_path(
+        hf_home_path / "transformers",
+        root=cache_project_root,
+    )
+    _ensure_cache_dirs(
+        hf_home_path,
+        hf_hub_cache_path,
+        transformers_cache_path,
+    )
+    hf_home = hf_home_path.as_posix()
+    hf_hub_cache = hf_hub_cache_path.as_posix()
+    transformers_cache = transformers_cache_path.as_posix()
     _set_or_restore_env("HF_HOME", hf_home)
     _set_or_restore_env("HF_HUB_CACHE", hf_hub_cache)
     _set_or_restore_env("HUGGINGFACE_HUB_CACHE", hf_hub_cache)
@@ -221,25 +255,43 @@ def apply_mirror_environment(config: Any) -> MirrorValues:
     return values
 
 
-def apply_mirror_environment_from_system_config(path: str | Path | None = None) -> MirrorValues:
+def apply_mirror_environment_from_system_config(
+    path: str | Path | None = None,
+    *,
+    root: str | Path | None = None,
+) -> MirrorValues:
     """Apply mirror env early without constructing the full ConfigManager."""
+    config_project_root = (
+        project_root()
+        if root is None
+        else resolve_project_path(".", root=root)
+    )
+    config_path = resolve_project_read_path(
+        "data/config/system_config.yaml" if path is None else path,
+        root=config_project_root,
+    )
     try:
         import yaml
         from config.schema import SystemConfig
 
-        config_path = Path(path or "data/config/system_config.yaml")
         raw = {}
         if config_path.is_file():
-            loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            loaded = yaml.safe_load(read_text_without_links(config_path))
             raw = loaded if isinstance(loaded, dict) else {}
-        return apply_mirror_environment(SystemConfig.model_validate(raw))
+        return apply_mirror_environment(
+            SystemConfig.model_validate(raw),
+            root=config_project_root,
+        )
     except Exception as exc:
         logger.warning(
             "Falling back to default mirror configuration after config read failed: %s",
             exc,
             extra={"event": "mirror.env.fallback"},
         )
-        return apply_mirror_environment(_FallbackMirrorConfig())
+        return apply_mirror_environment(
+            _FallbackMirrorConfig(),
+            root=config_project_root,
+        )
 
 
 def mirror_github_url(url: str) -> str:
@@ -354,25 +406,25 @@ class _FallbackMirrorConfig:
     pypi_mirror_url = ""
 
 
-def _resolved_cache_path(raw: str) -> str:
-    path = Path(raw or DEFAULT_HUGGINGFACE_CACHE_DIR).expanduser()
-    if not path.is_absolute():
-        path = Path.cwd() / path
-    return path.resolve(strict=False).as_posix()
-
-
-def _ensure_cache_dirs(*paths: str) -> None:
-    for raw in paths:
+def _ensure_cache_dirs(*paths: Path) -> None:
+    for path in paths:
         try:
-            Path(raw).mkdir(parents=True, exist_ok=True)
+            path.mkdir(parents=True, exist_ok=True)
         except OSError as exc:
             logger.warning(
                 "Could not create HuggingFace cache directory %s: %s",
-                raw,
+                path,
                 exc,
-                extra={"event": "mirror.cache.mkdir.failed", "path": raw},
+                extra={"event": "mirror.cache.mkdir.failed", "path": str(path)},
             )
-            pass
+            continue
+        # Do not downgrade an ownership/link violation to a warning. A path can
+        # be replaced between output resolution and mkdir; exporting that alias
+        # would let model downloads escape the selected project root.
+        require_directory_without_links(
+            path,
+            field="HuggingFace cache directory",
+        )
 
 
 def _redact_url(url: str) -> str:
