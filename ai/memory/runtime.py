@@ -7,9 +7,11 @@ import logging
 import os
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from core.model_assets.service import download_model_asset
+from core.paths import project_root, resolve_project_path
 from sdk.exception.types import (
     download_error_from_exception,
     runtime_dependency_error_from_exception,
@@ -40,6 +42,7 @@ _configure_mem0_environment()
 _mem0: Any = None
 _mem0_load_error: BaseException | None = None
 _mem0_loading = False
+_mem0_project_root: Path | None = None
 _loading_started_at: float = 0.0
 _lock = threading.Lock()
 
@@ -49,12 +52,22 @@ _LOADING_FIRST_MSG = (
 )
 
 
-def _preload_embedding_model() -> str:
-    result = download_model_asset(EMBEDDING_MODEL_ASSET, update_task=set_mem0_task)
-    snapshot_path = result.get("path")
-    if not snapshot_path:
-        raise RuntimeError("The mem0 embedding model snapshot could not be located after download.")
-    return str(snapshot_path)
+def _selected_project_root(root: str | Path | None) -> Path:
+    return (
+        project_root()
+        if root is None
+        else resolve_project_path(".", root=root)
+    )
+
+
+def _require_matching_runtime_root(active_root: Path) -> None:
+    if (
+        _mem0_project_root is not None
+        and _mem0_project_root != active_root
+    ):
+        raise RuntimeError(
+            "memory runtime is already bound to a different project root"
+        )
 
 
 def _dependency_from_error(error: BaseException) -> dict[str, Any]:
@@ -79,8 +92,31 @@ def _module_is_available(module_name: str) -> bool:
         return False
 
 
-def _create_mem0_instance(memory_type: Any, snapshot_path: str) -> Any:
-    config = build_mem0_config()
+def _preload_embedding_model(*, root: Path) -> str:
+    result = download_model_asset(
+        EMBEDDING_MODEL_ASSET,
+        update_task=set_mem0_task,
+        root=root,
+    )
+    snapshot_path = result.get("path")
+    if not snapshot_path:
+        raise RuntimeError(
+            "The mem0 embedding model snapshot could not be located after download."
+        )
+    return str(snapshot_path)
+
+
+def _create_mem0_instance(
+    memory_type: Any,
+    snapshot_path: str,
+    *,
+    root: Path,
+    config_manager: Any | None,
+) -> Any:
+    config = build_mem0_config(
+        root=root,
+        config_manager=config_manager,
+    )
     logger.info(
         "mem0 后台初始化: llm.provider=%s embedder.provider=%s",
         config["llm"]["provider"],
@@ -107,17 +143,25 @@ def _loading_status_message() -> str:
     return _LOADING_FIRST_MSG
 
 
-def start_mem0_loading() -> None:
+def start_mem0_loading(
+    *,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
+) -> None:
     """Start mem0 initialization in a background thread."""
-    global _mem0_loading, _loading_started_at, _mem0_load_error
+    global _mem0_loading, _mem0_project_root
+    global _loading_started_at, _mem0_load_error
+    active_root = _selected_project_root(root)
     with _lock:
+        _require_matching_runtime_root(active_root)
         if _mem0 is not None or _mem0_loading:
             return
+        _mem0_project_root = active_root
         _mem0_loading = True
         _mem0_load_error = None
         _loading_started_at = time.time()
 
-    cached = is_embedding_model_cached()
+    cached = is_embedding_model_cached(root=active_root)
     set_mem0_task(
         error="",
         errorCode="",
@@ -138,7 +182,7 @@ def start_mem0_loading() -> None:
             from mem0 import Memory
 
             stage = "download"
-            snapshot_path = _preload_embedding_model()
+            snapshot_path = _preload_embedding_model(root=active_root)
             stage = "initialize"
             set_mem0_task(
                 phase="initialize",
@@ -146,7 +190,12 @@ def start_mem0_loading() -> None:
                 message="Initializing long-term memory.",
                 progress=0.96,
             )
-            mem = _create_mem0_instance(Memory, snapshot_path)
+            mem = _create_mem0_instance(
+                Memory,
+                snapshot_path,
+                root=active_root,
+                config_manager=config_manager,
+            )
             with _lock:
                 _mem0 = mem
             set_mem0_task(
@@ -224,7 +273,11 @@ def start_mem0_loading() -> None:
 _GET_MEM0_TIMEOUT_SEC = 600  # 10 minutes — covers worst-case first-time model download
 
 
-def get_mem0() -> Any:
+def get_mem0(
+    *,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
+) -> Any:
     """Return the mem0 instance, waiting for background initialization.
 
     Blocks until mem0 is ready or a fatal error occurs, with a timeout
@@ -232,10 +285,16 @@ def get_mem0() -> Any:
     Prefer :func:`ensure_mem0` for non-blocking callers.
     """
     global _mem0, _mem0_load_error
-    if _mem0 is not None:
-        return _mem0
+    active_root = _selected_project_root(root)
+    with _lock:
+        _require_matching_runtime_root(active_root)
+        if _mem0 is not None:
+            return _mem0
 
-    start_mem0_loading()
+    start_mem0_loading(
+        root=active_root,
+        config_manager=config_manager,
+    )
 
     waited = 0.0
     while _mem0 is None and _mem0_loading:
@@ -254,17 +313,35 @@ def get_mem0() -> Any:
     return _mem0
 
 
-def ensure_mem0() -> Any:
+def ensure_mem0(
+    *,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
+) -> Any:
     """Return mem0 if ready; otherwise start loading and raise ToolNotReady."""
-    if _mem0 is not None:
-        return _mem0
-    start_mem0_loading()
+    active_root = _selected_project_root(root)
+    with _lock:
+        _require_matching_runtime_root(active_root)
+        if _mem0 is not None:
+            return _mem0
+    start_mem0_loading(
+        root=active_root,
+        config_manager=config_manager,
+    )
     raise ToolNotReady(_loading_status_message())
 
 
-def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
+def check_mem0_status(
+    *,
+    start_loading: bool = True,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
+) -> dict[str, Any]:
     """Return the current mem0 availability and model loading status."""
     global _mem0, _mem0_loading, _mem0_load_error
+    active_root = _selected_project_root(root)
+    with _lock:
+        _require_matching_runtime_root(active_root)
     if _mem0 is not None:
         task = current_mem0_task()
         return {"status": "ready", "modelCached": True, **({"task": task} if task else {})}
@@ -272,7 +349,7 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
         task = current_mem0_task()
         return {
             "status": "loading",
-            "modelCached": is_embedding_model_cached(),
+            "modelCached": is_embedding_model_cached(root=active_root),
             **({"task": task} if task else {}),
         }
     load_error = _mem0_load_error
@@ -289,7 +366,11 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
             if recovered:
                 _mem0_load_error = None
         if not recovered:
-            return check_mem0_status(start_loading=start_loading)
+            return check_mem0_status(
+                start_loading=start_loading,
+                root=active_root,
+                config_manager=config_manager,
+            )
     if _mem0_load_error is not None:
         task = current_mem0_task()
         result: dict[str, Any]
@@ -299,26 +380,34 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
             result = {"status": "error", "message": str(_mem0_load_error), **({"task": task} if task else {})}
         if not start_loading:
             return result
-        start_mem0_loading()
+        start_mem0_loading(
+            root=active_root,
+            config_manager=config_manager,
+        )
         task = current_mem0_task()
         return {
             "status": "loading",
-            "modelCached": is_embedding_model_cached(),
+            "modelCached": is_embedding_model_cached(root=active_root),
             **({"task": task} if task else {}),
         }
     try:
         import mem0  # noqa: F401
 
         if not start_loading:
+            task = current_mem0_task()
             return {
                 "status": "not_started",
-                "modelCached": is_embedding_model_cached(),
+                "modelCached": is_embedding_model_cached(root=active_root),
+                **({"task": task} if task else {}),
             }
-        start_mem0_loading()
+        start_mem0_loading(
+            root=active_root,
+            config_manager=config_manager,
+        )
         task = current_mem0_task()
         return {
             "status": "loading",
-            "modelCached": is_embedding_model_cached(),
+            "modelCached": is_embedding_model_cached(root=active_root),
             **({"task": task} if task else {}),
         }
     except ImportError as exc:

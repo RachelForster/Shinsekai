@@ -6,6 +6,7 @@ import json
 import logging
 from asyncio.exceptions import CancelledError
 from contextlib import AsyncExitStack
+from pathlib import Path
 from typing import Any
 
 from mcp import ClientSession
@@ -76,12 +77,25 @@ class MCPBridge:
         command: str,
         args: list[str] | None = None,
         env: dict[str, str] | None = None,
+        cwd: str | Path | None = None,
     ) -> None:
         """连接本地子进程 stdio MCP 服务。"""
         stack = await self._ensure_fresh_stack()
         try:
+            fields = getattr(
+                StdioServerParameters,
+                "model_fields",
+                getattr(StdioServerParameters, "__fields__", {}),
+            )
+            if cwd is not None and "cwd" not in fields:
+                raise RuntimeError(
+                    "MCP stdio working directories require mcp>=1.5.0"
+                )
             params = StdioServerParameters(
-                command=command, args=list(args or []), env=env
+                command=command,
+                args=list(args or []),
+                env=env,
+                cwd=cwd,
             )
             transport = stdio_client(params)
             read, write = await stack.enter_async_context(transport)

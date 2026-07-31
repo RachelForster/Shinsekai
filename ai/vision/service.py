@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
+import io
+import os
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, Protocol
 
@@ -8,13 +10,15 @@ from ai.vision.fallback_registry import active_vision_fallback
 from ai.vision.message_content import local_image_block
 from ai.vision.moondream_adapter import MoondreamPluginUnavailable, installed_moondream_directory
 from ai.vision.vision_manager import VisionManager
+from sdk.file_transactions import (
+    file_snapshot_is_stable,
+    open_binary_read_without_links,
+    read_bytes_without_links,
+)
 from core.media.chat_attachments import (
     ResolvedChatAttachment,
     chat_attachment_display_text,
 )
-from ai.tools.file_tools import file_read
-
-
 DEFAULT_IMAGE_PROMPT = (
     "Describe this image accurately for another language model. Include visible text, "
     "important objects, people, layout, and details relevant to the user's request."
@@ -35,6 +39,40 @@ class VisionDescriber(Protocol):
 VisionManagerFactory = Callable[[], VisionDescriber]
 FileReader = Callable[[str], Mapping[str, Any]]
 FallbackAvailability = Callable[[], bool]
+
+
+def _read_attachment_text(
+    attachment: ResolvedChatAttachment,
+    *,
+    max_chars: int = 5000,
+) -> dict[str, Any]:
+    """Read the exact file snapshot whose size and type were approved."""
+
+    try:
+        with open_binary_read_without_links(
+            attachment.path,
+            expected_identity=attachment.identity,
+        ) as source:
+            before = os.fstat(source.fileno())
+            with io.TextIOWrapper(
+                source,
+                encoding="utf-8",
+                errors="replace",
+            ) as text:
+                content = text.read(max_chars)
+                after = os.fstat(text.buffer.fileno())
+        if not file_snapshot_is_stable(before, after):
+            raise PermissionError(
+                f"Attachment changed while it was being read: {attachment.path}"
+            )
+        return {
+            "content": content,
+            "path": str(attachment.path),
+            "size": before.st_size,
+            "truncated": len(content) >= max_chars,
+        }
+    except Exception as exc:
+        return {"error": str(exc), "path": str(attachment.path)}
 
 
 def _default_fallback_factory() -> VisionDescriber:
@@ -74,7 +112,7 @@ class ChatVisionService:
             if fallback_factory is None
             else (lambda: True)
         )
-        self._file_reader = file_reader or file_read
+        self._file_reader = file_reader
 
     @staticmethod
     def supports_native_images(adapter: Any) -> bool:
@@ -108,7 +146,11 @@ class ChatVisionService:
 
         rows = ["Local file attachments (already read by the application):"]
         for attachment in files:
-            result = self._file_reader(str(attachment.path))
+            result = (
+                self._file_reader(str(attachment.path))
+                if self._file_reader is not None
+                else _read_attachment_text(attachment)
+            )
             rows.append(f"--- BEGIN ATTACHED FILE: {attachment.name} ---")
             if result.get("error"):
                 rows.append(f"[Unable to read file: {result['error']}]")
@@ -163,7 +205,13 @@ class ChatVisionService:
             fallback = self._fallback_factory()
             descriptions: list[str] = []
             for image in images:
-                description = fallback.describe(image.path.read_bytes(), DEFAULT_IMAGE_PROMPT).strip()
+                description = fallback.describe(
+                    read_bytes_without_links(
+                        image.path,
+                        expected_identity=image.identity,
+                    ),
+                    DEFAULT_IMAGE_PROMPT,
+                ).strip()
                 descriptions.append(f"Image attachment {image.name}:\n{description or '[No description returned]'}")
         except (MoondreamPluginUnavailable, ImportError):
             # Fallback plugin present but not runnable (e.g. missing torch): degrade

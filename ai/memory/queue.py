@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import threading
 import time
 import uuid
@@ -13,6 +12,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ai.memory.operations import memory_remember
+from core.file_transactions import atomic_write_text, read_text_without_links
+from core.paths import (
+    project_root,
+    require_symlink_free_absolute_path,
+    resolve_project_output_path,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +26,16 @@ class QueuePersistenceError(RuntimeError):
     """Raised when the memory write queue cannot be persisted."""
 
 
-def _default_queue_path() -> Path:
-    return Path.cwd() / "data" / "memory" / "pending_queue.json"
+def _queue_path(path: str | Path | None) -> Path:
+    raw = path if path is not None else "data/memory/pending_queue.json"
+    root = project_root()
+    candidate = Path(raw).expanduser()
+    if candidate.is_absolute():
+        require_symlink_free_absolute_path(
+            candidate,
+            field="memory queue path",
+        )
+    return resolve_project_output_path(raw, root=root)
 
 
 def _clean_text(value: Any) -> str:
@@ -88,7 +101,7 @@ class MemoryWriteQueue:
         path: str | Path | None = None,
         remember_func: Callable[[str, str | None], dict[str, Any]] | None = None,
     ) -> None:
-        self.path = Path(path) if path is not None else _default_queue_path()
+        self.path = _queue_path(path)
         self._remember = remember_func or memory_remember
         self._lock = threading.RLock()
         self._items: list[MemoryQueueItem] = []
@@ -179,7 +192,7 @@ class MemoryWriteQueue:
             if not self.path.is_file():
                 return
             try:
-                raw = json.loads(self.path.read_text(encoding="utf-8"))
+                raw = json.loads(read_text_without_links(self.path))
             except (OSError, json.JSONDecodeError):
                 logger.exception("failed to load memory queue")
                 return
@@ -202,20 +215,11 @@ class MemoryWriteQueue:
     def _save_locked(self) -> None:
         payload = {"items": [asdict(item) for item in self._items]}
         data = json.dumps(payload, ensure_ascii=False, indent=2)
-        tmp_path = self.path.with_name(f"{self.path.name}.{uuid.uuid4().hex}.tmp")
         try:
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path.write_text(data, encoding="utf-8")
-            os.replace(tmp_path, self.path)
+            atomic_write_text(self.path, data)
         except OSError as exc:
             logger.error("failed to persist memory queue to %s", self.path, exc_info=True)
             raise QueuePersistenceError(f"failed to persist memory queue to {self.path}") from exc
-        finally:
-            try:
-                if tmp_path.exists():
-                    tmp_path.unlink()
-            except OSError:
-                logger.debug("failed to remove memory queue temp file %s", tmp_path, exc_info=True)
 
     @staticmethod
     def _dedupe_key(character_name: str, memory: str) -> str:

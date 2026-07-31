@@ -2,13 +2,42 @@ import traceback
 from typing import Any, Optional
 from pathlib import Path
 import json
+import os
 import re
 import threading
 
+from core.file_transactions import (
+    atomic_write_text,
+    open_binary_read_without_links,
+    open_text_append_without_links,
+    read_text_without_links,
+    remove_file_without_links,
+)
+from core.paths import managed_project_storage, path_is_link_or_reparse_point
+from core.sprite.chat_branch_storage import validate_chat_history_removal_target
 from core.sprite.chat_history_text import _repair_json_string, parse_assistant_dialog_content
 
 # 模块级写锁，保证临时文件写入的线程安全
 _tmp_write_lock = threading.Lock()
+
+
+def _write_json_atomic(path: Path, payload: Any) -> None:
+    atomic_write_text(
+        path,
+        json.dumps(payload, ensure_ascii=False, indent=4) + "\n",
+    )
+
+
+def _managed_history_file_path(history_file: str | os.PathLike[str]) -> Path:
+    """Resolve one JSON history file inside the authoritative history store."""
+
+    history_root = managed_project_storage("data/chat_history")
+    candidate = validate_chat_history_removal_target(history_file, history_root)
+    if candidate.suffix.lower() != ".json":
+        raise ValueError("chat history path must identify a JSON file")
+    if path_is_link_or_reparse_point(candidate):
+        raise PermissionError("chat history file must not be a symbolic link")
+    return candidate
 
 
 class HistoryManager:
@@ -22,7 +51,8 @@ class HistoryManager:
 
     def __init__(self, chat_history):
         self.chat_history = chat_history
-        self._write_lock = threading.Lock()
+        if not hasattr(self, "_write_lock"):
+            self._write_lock = threading.Lock()
 
     @staticmethod
     def _tmp_path(history_file: str) -> Path:
@@ -34,13 +64,16 @@ class HistoryManager:
         """增量追加单条消息到临时文件，线程安全。"""
         if not history_file:
             return
-        tmp = HistoryManager._tmp_path(history_file)
         try:
+            history_path = _managed_history_file_path(history_file)
+            tmp = HistoryManager._tmp_path(history_path)
             tmp.parent.mkdir(parents=True, exist_ok=True)
             line = json.dumps(message, ensure_ascii=False) + ",\n"
             with _tmp_write_lock:
-                with open(tmp, "a", encoding="utf-8") as f:
+                with open_text_append_without_links(tmp, encoding="utf-8") as f:
                     f.write(line)
+                    f.flush()
+                    os.fsync(f.fileno())
         except Exception:
             pass  # 增量保存失败不应影响聊天
 
@@ -55,11 +88,11 @@ class HistoryManager:
         if not file_path:
             print("没有提供历史文件名，跳过保存。")
             return True
-        history_path = Path(file_path)
         try:
-            history_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(history_path, 'w', encoding='utf-8') as f:
-                json.dump(history, f, ensure_ascii=False, indent=4)
+            history_path = _managed_history_file_path(file_path)
+            with self._write_lock:
+                history_path.parent.mkdir(parents=True, exist_ok=True)
+                _write_json_atomic(history_path, history)
             print(f"聊天记录已保存到 {history_path}")
             return True
         except Exception as e:
@@ -71,8 +104,50 @@ class HistoryManager:
         """正常关闭成功后删除临时文件。"""
         if not history_file:
             return
-        tmp = HistoryManager._tmp_path(history_file)
-        tmp.unlink(missing_ok=True)
+        history_path = _managed_history_file_path(history_file)
+        tmp = HistoryManager._tmp_path(history_path)
+        with _tmp_write_lock:
+            remove_file_without_links(tmp, missing_ok=True)
+
+    def _load_and_merge_history(self, history_path: Path, tmp: Path) -> list[Any]:
+        messages: list[Any] = []
+        with self._write_lock:
+            if history_path.exists():
+                try:
+                    loaded = json.loads(read_text_without_links(history_path))
+                    messages = loaded if isinstance(loaded, list) else []
+                    print(f"聊天记录已从 {history_path} 加载。")
+                except Exception as exc:
+                    print(f"加载正式聊天记录失败: {exc}")
+
+            with _tmp_write_lock:
+                if not tmp.exists() or path_is_link_or_reparse_point(tmp):
+                    return messages
+                print("检测到未保存的临时聊天记录，正在合并...")
+                try:
+                    with open_binary_read_without_links(tmp) as temp_file:
+                        tmp_identity = os.fstat(temp_file.fileno())
+                        if tmp_identity.st_size <= 0:
+                            return messages
+                        raw = temp_file.read().decode("utf-8").strip()
+                    if raw:
+                        raw = raw.rstrip(",\n\r")
+                        tmp_messages = json.loads("[" + raw + "]")
+                        if messages and tmp_messages and messages[-1] == tmp_messages[0]:
+                            tmp_messages = tmp_messages[1:]
+                        if tmp_messages:
+                            messages.extend(tmp_messages)
+                            history_path.parent.mkdir(parents=True, exist_ok=True)
+                            _write_json_atomic(history_path, messages)
+                            print(f"临时记录已合并保存到 {history_path}")
+                    remove_file_without_links(
+                        tmp,
+                        missing_ok=True,
+                        expected_identity=tmp_identity,
+                    )
+                except Exception as exc:
+                    print(f"合并临时聊天记录失败: {exc}")
+        return messages
 
     def load_chat_history(self, file_path):
         """
@@ -83,44 +158,9 @@ class HistoryManager:
             print("没有提供历史文件名，跳过加载。")
             return []
 
-        messages = []
-        history_path = Path(file_path)
-        tmp = self._tmp_path(file_path)
-
-        # 1. 先加载正式 .json（完整历史）
-        if history_path.exists():
-            try:
-                with open(history_path, 'r', encoding='utf-8') as f:
-                    messages = json.load(f)
-                print(f"聊天记录已从 {history_path} 加载。")
-            except Exception as e:
-                print(f"加载正式聊天记录失败: {e}")
-                messages = []
-
-        # 2. 如果有 .tmp，合并其中未保存的消息
-        if tmp.exists() and tmp.stat().st_size > 0:
-            print("检测到未保存的临时聊天记录，正在合并...")
-            try:
-                with open(tmp, 'r', encoding='utf-8') as f:
-                    raw = f.read().strip()
-                if raw:
-                    raw = raw.rstrip(",\n\r")
-                    tmp_messages = json.loads("[" + raw + "]")
-                    # 简单去重：如果 messages 最后一条与 tmp_messages 第一条相同，跳过 tmp 的第一条
-                    if messages and tmp_messages:
-                        if messages[-1] == tmp_messages[0]:
-                            tmp_messages = tmp_messages[1:]
-                    if tmp_messages:
-                        messages.extend(tmp_messages)
-                        # 写回 .json 完成保存
-                        history_path.parent.mkdir(parents=True, exist_ok=True)
-                        with open(history_path, 'w', encoding='utf-8') as f:
-                            json.dump(messages, f, ensure_ascii=False, indent=4)
-                        print(f"临时记录已合并保存到 {history_path}")
-                    # 删除 .tmp
-                    tmp.unlink(missing_ok=True)
-            except Exception as e:
-                print(f"合并临时聊天记录失败: {e}")
+        history_path = _managed_history_file_path(file_path)
+        tmp = self._tmp_path(history_path)
+        messages = self._load_and_merge_history(history_path, tmp)
 
         # 3. 重建 UI 聊天历史
         self.chat_history.clear()
@@ -161,9 +201,8 @@ class HistoryManager:
         if not history_file:
             self.chat_history.clear()
             return
-        history_file_path = Path(history_file)
+        history_file_path = _managed_history_file_path(history_file)
         with self._write_lock:
             self.delete_tmp(history_file)
-            history_file_path.parent.mkdir(parents=True, exist_ok=True)
-            history_file_path.write_text("[]", encoding="utf-8")
+            _write_json_atomic(history_file_path, [])
             self.chat_history.clear()
