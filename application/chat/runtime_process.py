@@ -14,6 +14,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
+from sdk.file_transactions import (
+    capture_directory_identity,
+    open_binary_read_without_links,
+    open_text_append_without_links,
+    read_text_without_links,
+    require_directory_identity,
+)
 from core.messaging.dialog_tokens import (
     BGM_ALIASES,
     CG_ALIASES,
@@ -24,10 +31,21 @@ from core.messaging.dialog_tokens import (
     is_option_history_name,
     normalize_character_name,
 )
-from core.paths import app_root as runtime_app_root
-from core.paths import project_root as runtime_project_root
-from core.paths import source_root as runtime_source_root
+from sdk.path_contract import app_root as runtime_app_root
+from sdk.path_contract import (
+    managed_child_path,
+    managed_project_storage,
+    require_directory_without_links,
+    require_regular_file_without_links,
+    resolve_executable_file,
+    resolve_runtime_asset_read_path,
+)
+from sdk.path_contract import project_root as runtime_project_root
+from sdk.path_contract import source_root as runtime_source_root
+from sdk.process_launch import isolated_python_environment
+from application.runtime.restart_debug import write_restart_debug_log
 from core.media.chat_attachments import (
+    CHAT_ATTACHMENT_STAGE_SUBDIR,
     CHAT_ATTACHMENTS_ROOT_ENV,
     chat_attachment_display_text,
     resolve_chat_attachments,
@@ -41,28 +59,37 @@ from core.sprite.chat_branch_storage import (
     remove_chat_history_storage,
 )
 from core.sprite.chat_history_text import history_payload_to_plain_text, parse_assistant_dialog_content
+from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
 from ai.tools.chat_ui_tools import sanitize_user_display_name
 
-from application.chat.history_paths import (
+from .history_paths import (
+    history_root_for_state,
     is_unc_history_path,
+    prepare_history_reference_for_launch,
     resolve_history_path_for_project,
 )
 from application.chat.mobile_access import (
     get_mobile_access_info,
     stop_mobile_access,
 )
-from application.chat.templates import (
+from sdk.path_references import (
+    resolve_from_root,
+    resolved_path_is_within,
+    state_project_root,
+)
+from application.runtime.dependencies import runtime_dependency_error_from_text
+from sdk.path_references import portable_path_text
+from sdk.path_utils import reject_control_chars, safe_child_path
+from application.runtime.state import BridgeState
+from .templates import (
     TEMP_SPLIT_META,
     _compose_runtime_template,
     _effective_user_scenario,
     _history_id_from_scenario,
     _scenario_from_template_like,
     _template_dir,
+    _write_runtime_template_files,
 )
-from application.runtime.dependencies import runtime_dependency_error_from_text
-from application.runtime.state import BridgeState
-from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
-from sdk.path_utils import reject_control_chars
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
@@ -90,8 +117,13 @@ _RUNTIME_CHAT_COMMANDS = {
 _main_chat_process: subprocess.Popen[bytes] | None = None
 _main_chat_process_lock = threading.Lock()
 _main_chat_log_file: Any = None
+_chat_transition_lock_creation = threading.Lock()
 _SYSTEM_HISTORY_NAMES = COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
 _DEFAULT_USER_DISPLAY_NAME = "你"
+
+
+def _chat_debug_log(message: str) -> None:
+    write_restart_debug_log("chat_launch", message)
 
 
 def _is_transparent_background_name(name: str | None) -> bool:
@@ -125,16 +157,43 @@ def _chat_turn_options(state: BridgeState) -> dict[str, Any]:
 
 def _hidden_subprocess_kwargs() -> dict[str, Any]:
     if os.name != "nt":
+        _chat_debug_log("subprocess_kwargs platform=posix start_new_session=true")
         return {"start_new_session": True}
-    return {
-        "creationflags": getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
-        | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
-    }
+    flags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) | getattr(
+        subprocess,
+        "CREATE_NEW_PROCESS_GROUP",
+        0x00000200,
+    )
+    _chat_debug_log(f"subprocess_kwargs platform=windows creationflags={flags}")
+    return {"creationflags": flags}
 
 
 def _chat_process_running() -> bool:
     with _main_chat_process_lock:
         return _main_chat_process is not None and _main_chat_process.poll() is None
+
+
+def _chat_transition_lock(state: BridgeState) -> threading.RLock:
+    """Serialize launch, resume, and close as one state/storage transition."""
+
+    lock = getattr(state, "chat_transition_lock", None)
+    if lock is not None:
+        return lock
+    # SimpleNamespace-based integrations predate the BridgeState field.  Make
+    # lazy initialization race-free so they receive the same invariant.
+    with _chat_transition_lock_creation:
+        lock = getattr(state, "chat_transition_lock", None)
+        if lock is None:
+            lock = threading.RLock()
+            state.chat_transition_lock = lock
+    return lock
+
+
+def _process_return_code(process: subprocess.Popen[bytes]) -> int | None:
+    return_code = getattr(process, "returncode", None)
+    if return_code is not None:
+        return return_code
+    return process.poll()
 
 
 def _chat_runtime_closing(state: BridgeState) -> bool:
@@ -168,15 +227,16 @@ def _set_chat_runtime_closing(state: BridgeState, closing: bool) -> None:
         state.chat_runtime_closing = closing
 
 
-def _chat_log_path() -> Path:
-    log_dir = _project_root() / "logs"
+def _chat_log_path(project_root: Path | None = None) -> Path:
+    root = _project_root() if project_root is None else project_root
+    log_dir = managed_project_storage("logs", root=root)
     log_dir.mkdir(parents=True, exist_ok=True)
-    return log_dir / "main.log"
+    return managed_child_path(log_dir, "main.log", field="chat log filename")
 
 
 def _tail_text(path: Path, max_chars: int = 2400) -> str:
     try:
-        text = path.read_text(encoding="utf-8", errors="replace")
+        text = read_text_without_links(path, errors="replace")
     except OSError:
         return ""
     if len(text) <= max_chars:
@@ -195,30 +255,145 @@ def _close_chat_log_if_needed() -> None:
     _main_chat_log_file = None
 
 
-def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tuple[subprocess.Popen[bytes], Path]:
+def _safe_chat_command(cmd: list[str]) -> list[str]:
+    return [portable_path_text(item, field="command argument") for item in cmd]
+
+
+def _require_launch_file_snapshot(
+    path: Path,
+    identity: os.stat_result,
+) -> None:
+    with open_binary_read_without_links(
+        path,
+        expected_identity=identity,
+    ):
+        pass
+
+
+def _terminate_invalid_launch(process: subprocess.Popen[bytes]) -> None:
+    try:
+        process.terminate()
+        process.wait(timeout=2)
+    except Exception:
+        try:
+            process.kill()
+        except Exception:
+            pass
+
+
+def _popen_chat_process(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    env: dict[str, str],
+    required_files: tuple[tuple[Path, os.stat_result], ...] = (),
+    required_directories: tuple[tuple[Path, os.stat_result], ...] = (),
+) -> tuple[subprocess.Popen[bytes], Path]:
     global _main_chat_log_file
     _close_chat_log_if_needed()
-    log_path = _chat_log_path()
-    _main_chat_log_file = log_path.open("a", encoding="utf-8", buffering=1)
+    safe_cmd = _safe_chat_command(cmd)
+    cwd, cwd_identity = capture_directory_identity(
+        cwd,
+        field="chat launch working directory",
+    )
+    for path, identity in required_directories:
+        require_directory_identity(
+            path,
+            identity,
+            field="chat launch directory",
+        )
+    for path, identity in required_files:
+        _require_launch_file_snapshot(path, identity)
+    log_path = _chat_log_path(cwd)
+    log_directory, log_directory_identity = capture_directory_identity(
+        log_path.parent,
+        field="chat log directory",
+    )
+    require_directory_identity(
+        cwd,
+        cwd_identity,
+        field="chat launch working directory",
+    )
+    for path, identity in required_directories:
+        require_directory_identity(
+            path,
+            identity,
+            field="chat launch directory",
+        )
+    for path, identity in required_files:
+        _require_launch_file_snapshot(path, identity)
+    _main_chat_log_file = open_text_append_without_links(
+        log_path,
+        expected_parent_identity=log_directory_identity,
+    )
     _main_chat_log_file.write(
         "\n"
         + "=" * 60
         + f"\n{datetime.now().isoformat(sep=' ', timespec='seconds')}  main.py launch\n"
         + f"cwd: {cwd}\n"
-        + f"cmd: {' '.join(cmd)}\n"
+        + f"cmd: {' '.join(safe_cmd)}\n"
     )
-    env = {**env, "PYTHONUNBUFFERED": "1"}
-    # The command contains only the trusted interpreter/entrypoint. Runtime
-    # options are delivered through a validated JSON environment payload.
+    env = isolated_python_environment(env)
+    env["PYTHONUNBUFFERED"] = "1"
+    _chat_debug_log(
+        f"subprocess_launch cwd={cwd} executable={safe_cmd[0] if safe_cmd else ''} args_count={max(len(safe_cmd) - 1, 0)} log_path={log_path}"
+    )
+    require_directory_identity(
+        cwd,
+        cwd_identity,
+        field="chat launch working directory",
+    )
+    for path, identity in required_directories:
+        require_directory_identity(
+            path,
+            identity,
+            field="chat launch directory",
+        )
+    require_directory_identity(
+        log_directory,
+        log_directory_identity,
+        field="chat log directory",
+    )
+    for path, identity in required_files:
+        _require_launch_file_snapshot(path, identity)
+    # safe_cmd is an argv list whose entries have passed control-character validation; shell=False is the default.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
-    process = subprocess.Popen(
-        cmd,
-        cwd=str(cwd),
-        env=env,
-        stdout=_main_chat_log_file,
-        stderr=subprocess.STDOUT,
-        **_hidden_subprocess_kwargs(),
-    )
+    try:
+        process = subprocess.Popen(
+            safe_cmd,
+            cwd=str(cwd),
+            env=env,
+            stdout=_main_chat_log_file,
+            stderr=subprocess.STDOUT,
+            **_hidden_subprocess_kwargs(),
+        )
+    except BaseException:
+        _close_chat_log_if_needed()
+        raise
+    try:
+        require_directory_identity(
+            cwd,
+            cwd_identity,
+            field="chat launch working directory",
+        )
+        for path, identity in required_directories:
+            require_directory_identity(
+                path,
+                identity,
+                field="chat launch directory",
+            )
+        require_directory_identity(
+            log_directory,
+            log_directory_identity,
+            field="chat log directory",
+        )
+        for path, identity in required_files:
+            _require_launch_file_snapshot(path, identity)
+    except BaseException:
+        _terminate_invalid_launch(process)
+        _close_chat_log_if_needed()
+        raise
+    _chat_debug_log(f"subprocess_started pid={process.pid} log_path={log_path}")
     return process, log_path
 
 
@@ -265,8 +440,12 @@ def _wait_process_exit(process: subprocess.Popen[bytes], timeout: float) -> bool
 
 def _stop_chat_process(process: subprocess.Popen[bytes], *, wait_timeout: float) -> None:
     if process.poll() is not None:
+        _chat_debug_log(
+            f"stop_process skipped pid={process.pid} reason=already_exited code={_process_return_code(process)}"
+        )
         return
 
+    _chat_debug_log(f"stop_process start pid={process.pid} wait_timeout={wait_timeout}")
     deadline = time.monotonic() + max(wait_timeout, 0.15)
     graceful_timeout = max(0.45, wait_timeout - 0.7)
     steps: list[tuple[int | str, float]] = [
@@ -295,7 +474,11 @@ def _stop_chat_process(process: subprocess.Popen[bytes], *, wait_timeout: float)
                 _signal_process_tree(process, int(action))
         remaining = max(0.05, min(step_timeout, deadline - time.monotonic()))
         if _wait_process_exit(process, remaining):
+            _chat_debug_log(
+                f"stop_process completed pid={process.pid} action={action} code={_process_return_code(process)}"
+            )
             return
+    _chat_debug_log(f"stop_process timeout pid={process.pid} code={process.poll()}")
 
 
 def shutdown_active_chat_process(*, wait_timeout: float = 1.2, wait_before_signal: float = 0.0) -> None:
@@ -348,15 +531,20 @@ def _source_root() -> Path:
 
 
 def _app_root(state: BridgeState) -> Path:
-    for raw in (
-        str(getattr(state, "app_root_dir", "") or "").strip(),
-        os.environ.get("SHINSEKAI_APP_ROOT", "").strip(),
-    ):
-        if not raw:
-            continue
-        path = Path(raw).expanduser().resolve(strict=False)
-        if path.exists() and path.is_dir():
-            return path
+    source = "state.app_root_dir"
+    raw = str(getattr(state, "app_root_dir", "") or "")
+    if raw:
+        validated = reject_control_chars(raw, field="app root")
+        if validated != raw:
+            raise ValueError(f"invalid app root from {source}: non-portable characters")
+        try:
+            path = require_directory_without_links(
+                raw,
+                field="chat application root",
+            )
+        except (NotADirectoryError, ValueError) as exc:
+            raise ValueError(f"invalid app root from {source}: must be absolute") from exc
+        return path
     return runtime_app_root()
 
 
@@ -364,12 +552,11 @@ def _unique_paths(paths: list[Path]) -> list[Path]:
     result: list[Path] = []
     seen: set[str] = set()
     for path in paths:
-        resolved = path.resolve(strict=False)
-        key = os.path.normcase(str(resolved))
+        key = os.path.normcase(os.path.normpath(str(path)))
         if key in seen:
             continue
         seen.add(key)
-        result.append(resolved)
+        result.append(path)
     return result
 
 
@@ -382,6 +569,77 @@ def _main_exe_candidates(state: BridgeState) -> list[Path]:
 
 def _main_py_path() -> Path:
     return _source_root() / "main.py"
+
+
+def _launch_file(path: Path) -> Path | None:
+    snapshot = _launch_file_snapshot(path)
+    return snapshot[0] if snapshot is not None else None
+
+
+def _launch_file_snapshot(
+    path: Path,
+) -> tuple[Path, os.stat_result] | None:
+    try:
+        launch_path = require_regular_file_without_links(
+            path,
+            field="chat launch file",
+        )
+        with open_binary_read_without_links(launch_path) as source:
+            identity = os.fstat(source.fileno())
+        return launch_path, identity
+    except (FileNotFoundError, OSError, PermissionError, ValueError):
+        return None
+
+
+def _resolve_chat_launch_asset(
+    state: BridgeState,
+    raw_path: str,
+    *,
+    field: str,
+) -> str:
+    """Resolve one optional launch-time asset to an existing stable path."""
+
+    if not raw_path:
+        return ""
+    exact = portable_path_text(raw_path, field=field)
+    resolved = resolve_runtime_asset_read_path(
+        exact,
+        root=state_project_root(state),
+    )
+    return str(
+        require_regular_file_without_links(
+            resolved,
+            field=field,
+        )
+    )
+
+
+def _history_launch_snapshots(
+    history_path: Path,
+) -> tuple[
+    tuple[tuple[Path, os.stat_result], ...],
+    tuple[tuple[Path, os.stat_result], ...],
+]:
+    """Capture the exact mutable history container handed to the child."""
+
+    if history_path.suffix.lower() == ".json" and os.path.lexists(history_path):
+        file_snapshot = _launch_file_snapshot(history_path)
+        if file_snapshot is None:
+            raise FileNotFoundError(
+                f"chat history file is unavailable: {history_path}"
+            )
+        parent, parent_identity = capture_directory_identity(
+            history_path.parent,
+            field="chat history directory",
+        )
+        return (file_snapshot,), ((parent, parent_identity),)
+
+    session_dir = chat_history_session_dir(history_path)
+    session_dir, session_identity = capture_directory_identity(
+        session_dir,
+        field="chat history session directory",
+    )
+    return (), ((session_dir, session_identity),)
 
 
 def _launch_chat(
@@ -403,37 +661,111 @@ def _launch_chat(
     global _main_chat_process
 
     with _main_chat_process_lock:
+        _chat_debug_log(
+            f"launch_chat start runtime_mode={_chat_runtime_mode(state)} has_stream_endpoint={bool(stream_endpoint)} history_file={history_file or ''} workflow_path={workflow_path or ''}"
+        )
         if _main_chat_process is not None and _main_chat_process.poll() is not None:
+            _chat_debug_log(
+                f"launch_chat previous_process_exited pid={_main_chat_process.pid} code={_process_return_code(_main_chat_process)}"
+            )
             _close_chat_log_if_needed()
         if _main_chat_process is not None and _main_chat_process.poll() is None:
+            _chat_debug_log(f"launch_chat skipped reason=already_running pid={_main_chat_process.pid}")
             return f"进程已经在运行中！PID: {_main_chat_process.pid}"
+
+        init_sprite_path = _resolve_chat_launch_asset(
+            state,
+            init_sprite_path,
+            field="initial sprite file",
+        )
+        workflow_path = _resolve_chat_launch_asset(
+            state,
+            workflow_path,
+            field="chat workflow file",
+        )
+        launch_asset_snapshots: list[tuple[Path, os.stat_result]] = []
+        for asset_path in (init_sprite_path, workflow_path):
+            if not asset_path:
+                continue
+            asset_file = Path(asset_path)
+            with open_binary_read_without_links(asset_file) as source:
+                launch_asset_snapshots.append(
+                    (asset_file, os.fstat(source.fileno()))
+                )
 
         # 把用户情景放在系统模板末尾（紧跟 closing 提示后）
         effective_user_scenario = _effective_user_scenario(user_scenario)
         template = _compose_runtime_template(system_template, effective_user_scenario)
         template_dir = _template_dir(state)
-        (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
-        (template_dir / TEMP_SPLIT_META).write_text(
-            json.dumps({"scenario": effective_user_scenario, "system": system_template}, ensure_ascii=False, indent=2),
-            encoding="utf-8",
+        _write_runtime_template_files(
+            template_dir,
+            template,
+            effective_user_scenario,
+            system_template,
         )
 
-        sc = state.config_manager.config.system_config.model_copy(deep=True)
+        previous_system_config = state.config_manager.config.system_config
+        sc = previous_system_config.model_copy(deep=True)
         sc.live_room_id = room_id
         state.config_manager.config.system_config = sc
-        state.config_manager.save_system_config()
+        try:
+            state.config_manager.save_system_config()
+        except BaseException:
+            state.config_manager.config.system_config = previous_system_config
+            raise
 
         template_hash = _history_id_from_scenario(user_scenario, character_names)
-        history_path = Path(history_file) if history_file else Path(state.history_dir) / template_hash
+        history_path = resolve_history_path_for_project(
+            state,
+            history_file if history_file else history_root_for_state(state) / template_hash,
+        )
         history_argument = str(history_path)
-        if not is_unc_history_path(history_path):
-            if history_path.suffix.lower() == ".json" and history_path.exists() and history_path.is_file():
-                history_path.parent.mkdir(parents=True, exist_ok=True)
+        if is_unc_history_path(history_path):
+            # Never probe or canonicalize an offline UNC share during launch.
+            # The child receives the exact lexical network path selected by
+            # the user and owns the eventual connection attempt.
+            history_file_snapshots = ()
+            history_directory_snapshots = ()
+        else:
+            history_root = history_root_for_state(state)
+            if resolved_path_is_within(history_path, history_root):
+                history_path = prepare_history_reference_for_launch(
+                    state,
+                    history_path,
+                )
+            elif history_path.suffix.lower() == ".json" and history_path.is_file():
+                # Existing legacy files remain external and are never copied
+                # into or deleted with project-managed storage.
+                pass
             else:
-                chat_history_session_dir(history_path).mkdir(parents=True, exist_ok=True)
-            history_argument = str(history_path.resolve())
-        project_root = _project_root()
-        app_root = _app_root(state)
+                chat_history_session_dir(history_path).mkdir(
+                    parents=True,
+                    exist_ok=True,
+                )
+            history_argument = str(history_path)
+            history_file_snapshots, history_directory_snapshots = (
+                _history_launch_snapshots(history_path)
+            )
+        template_dir, template_dir_identity = capture_directory_identity(
+            template_dir,
+            field="runtime template directory",
+        )
+        runtime_template_snapshots: list[tuple[Path, os.stat_result]] = []
+        for filename in ("_temp.txt", "_temp_split.json"):
+            snapshot = _launch_file_snapshot(template_dir / filename)
+            if snapshot is None:
+                raise FileNotFoundError(
+                    f"runtime template file is unavailable: {template_dir / filename}"
+                )
+            runtime_template_snapshots.append(snapshot)
+        project_root, project_root_identity = capture_directory_identity(
+            state_project_root(state),
+            field="chat project root",
+        )
+        app_root, app_root_identity = capture_directory_identity(
+            _app_root(state),
+            field="chat application root",
+        )
         tts_slug = str(state.config_manager.config.api_config.tts_provider or "gpt-sovits").strip() or "gpt-sovits"
         launch_config = {
             "template": "_temp",
@@ -445,22 +777,54 @@ def _launch_chat(
             "room_id": room_id,
             "tts": tts_slug,
         }
+        args = [
+            "--template=_temp",
+            f"--init_sprite_path={init_sprite_path or ''}",
+            f"--history={history_argument}",
+            f"--bg={selected_bg}",
+            f"--effect_names={effect_names}",
+            f"--t2i={'ComfyUI' if use_cg else ''}",
+            f"--room_id={room_id}",
+            f"--tts={tts_slug}",
+        ]
         if character_names:
-            launch_config["characters"] = json.dumps(character_names, ensure_ascii=False)
+            characters_json = json.dumps(character_names, ensure_ascii=False)
+            launch_config["characters"] = characters_json
+            args.append(f"--characters={characters_json}")
         if stream_endpoint:
             launch_config["stream_endpoint"] = stream_endpoint
+            args.append(f"--stream-endpoint={stream_endpoint}")
         if init_stream_endpoint:
             launch_config["init_stream_endpoint"] = init_stream_endpoint
+            args.append(f"--init-stream-endpoint={init_stream_endpoint}")
         if workflow_path:
             launch_config["workflow"] = workflow_path
+            args.append(f"--workflow={workflow_path}")
         env = os.environ.copy()
-        env[CHAT_LAUNCH_CONFIG_ENV] = json.dumps(launch_config, ensure_ascii=False)
+        env[CHAT_LAUNCH_CONFIG_ENV] = json.dumps(
+            launch_config,
+            ensure_ascii=False,
+        )
         env["SHINSEKAI_PROJECT_ROOT"] = str(project_root)
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
         env["SHINSEKAI_APP_ROOT"] = str(app_root)
-        attachment_root = os.environ.get(CHAT_ATTACHMENTS_ROOT_ENV, "").strip() or str(project_root)
-        os.environ.setdefault(CHAT_ATTACHMENTS_ROOT_ENV, attachment_root)
-        env[CHAT_ATTACHMENTS_ROOT_ENV] = attachment_root
+        # Only bridge-staged uploads are valid attachment inputs. Giving the
+        # subprocess the whole project root would let a forged payload read
+        # unrelated project configuration or history files.
+        attachment_root = managed_project_storage(
+            Path(*CHAT_ATTACHMENT_STAGE_SUBDIR),
+            root=project_root,
+        )
+        attachment_root.mkdir(parents=True, exist_ok=True)
+        attachment_root = require_directory_without_links(
+            attachment_root,
+            field="chat attachment root",
+        )
+        attachment_root, attachment_root_identity = capture_directory_identity(
+            attachment_root,
+            field="chat attachment root",
+        )
+        env[CHAT_ATTACHMENTS_ROOT_ENV] = str(attachment_root)
         env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"
         api_config = state.config_manager.config.api_config
         env["SHINSEKAI_MEMORY_AUTO_ENABLED"] = "1" if bool(getattr(api_config, "memory_auto_enabled", False)) else "0"
@@ -483,25 +847,80 @@ def _launch_chat(
 
         if getattr(sys, "frozen", False):
             candidates = _main_exe_candidates(state)
-            exe = next((item for item in candidates if item.is_file()), None)
-            if exe is None:
+            executable_snapshot = next(
+                (
+                    validated
+                    for item in candidates
+                    if (validated := _launch_file_snapshot(item)) is not None
+                ),
+                None,
+            )
+            if executable_snapshot is None:
                 checked = " 与 ".join(str(item) for item in candidates)
+                _chat_debug_log(f"launch_chat failed reason=main_exe_missing checked={checked}")
                 return f"启动失败: 未找到 main.exe（已检查 {checked}）。"
-            _main_chat_process, log_path = _popen_chat_process([str(exe)], cwd=project_root, env=env)
-        else:
-            main_py = _main_py_path()
-            if not main_py.is_file():
-                return f"启动失败: 未找到 main.py（已检查 {main_py}）。"
+            exe, exe_identity = executable_snapshot
             _main_chat_process, log_path = _popen_chat_process(
-                [sys.executable, str(main_py)],
+                [str(exe)] + args,
                 cwd=project_root,
                 env=env,
+                required_files=(
+                    (exe, exe_identity),
+                    *launch_asset_snapshots,
+                    *runtime_template_snapshots,
+                    *history_file_snapshots,
+                ),
+                required_directories=(
+                    (project_root, project_root_identity),
+                    (app_root, app_root_identity),
+                    (attachment_root, attachment_root_identity),
+                    (template_dir, template_dir_identity),
+                    *history_directory_snapshots,
+                ),
+            )
+        else:
+            main_py_candidate = _main_py_path()
+            main_py_snapshot = _launch_file_snapshot(main_py_candidate)
+            if main_py_snapshot is None:
+                _chat_debug_log(
+                    f"launch_chat failed reason=main_py_missing checked={main_py_candidate}"
+                )
+                return f"启动失败: 未找到 main.py（已检查 {main_py_candidate}）。"
+            main_py, main_py_identity = main_py_snapshot
+            python_path = resolve_executable_file(
+                sys.executable,
+                field="chat Python executable",
+            )
+            python_snapshot = _launch_file_snapshot(python_path)
+            if python_snapshot is None:
+                return f"启动失败: Python 解释器不可用：{python_path}。"
+            python_path, python_identity = python_snapshot
+            _main_chat_process, log_path = _popen_chat_process(
+                [str(python_path), str(main_py)] + args,
+                cwd=project_root,
+                env=env,
+                required_files=(
+                    (python_path, python_identity),
+                    (main_py, main_py_identity),
+                    *launch_asset_snapshots,
+                    *runtime_template_snapshots,
+                    *history_file_snapshots,
+                ),
+                required_directories=(
+                    (project_root, project_root_identity),
+                    (app_root, app_root_identity),
+                    (attachment_root, attachment_root_identity),
+                    (template_dir, template_dir_identity),
+                    *history_directory_snapshots,
+                ),
             )
         try:
             exit_code = _main_chat_process.wait(timeout=1.2)
         except subprocess.TimeoutExpired:
+            _chat_debug_log(f"launch_chat running pid={_main_chat_process.pid}")
             return _chat_process_started_message(_main_chat_process)
         _close_chat_log_if_needed()
+        _chat_debug_log(f"launch_chat exited_early pid={_main_chat_process.pid} code={exit_code} log_path={log_path}")
         return _failed_launch_message(exit_code, log_path)
 
 
@@ -511,12 +930,27 @@ def _close_chat(
     reason: str = "聊天会话已结束。",
     wait_timeout: float = 4.0,
 ) -> dict[str, Any]:
+    with _chat_transition_lock(state):
+        return _close_chat_locked(
+            state,
+            reason=reason,
+            wait_timeout=wait_timeout,
+        )
+
+
+def _close_chat_locked(
+    state: BridgeState,
+    *,
+    reason: str,
+    wait_timeout: float,
+) -> dict[str, Any]:
     global _main_chat_process
 
     session_id = str(state.chat_session.get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
     _set_chat_runtime_closing(state, True)
     try:
+        _chat_debug_log(f"close_chat start session={session_id} reason={reason} wait_timeout={wait_timeout}")
         graceful_shutdown_requested = False
         if session_id and chat_stream is not None:
             try:
@@ -536,6 +970,7 @@ def _close_chat(
             snapshot = chat_stream.get_snapshot(session_id)
             if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
                 chat_stream.close_session(session_id, reason=reason)
+        _chat_debug_log(f"close_chat completed session={session_id}")
     finally:
         try:
             stop_mobile_access(state)
@@ -557,7 +992,7 @@ def _resolve_history_file(state: BridgeState, raw_path: str | Path) -> Path:
 
 
 def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: dict[str, Any]) -> Path:
-    raw = str(payload.get("historyPath") or "").strip()
+    raw = str(payload.get("historyPath") or "")
     if raw:
         path = _resolve_history_file(state, raw)
         if path.name in {ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME}:
@@ -574,7 +1009,7 @@ def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: di
         characters = template.get("selectedCharacters")
     scenario = _scenario_from_template_like(template)
     template_hash = _history_id_from_scenario(scenario, characters)
-    return _resolve_history_file(state, Path(state.history_dir) / template_hash)
+    return history_root_for_state(state) / template_hash
 
 
 def _sprite_path(sprite: Any) -> str:
@@ -739,10 +1174,19 @@ def _chat_history_entries(state: BridgeState) -> list[dict[str, Any]]:
         if isinstance(snapshot, dict) and "historyEntries" in snapshot:
             entries = _history_entries_from_snapshot(snapshot)
             return entries
-    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    history_raw = str(state.chat_session.get("historyPath") or "")
     if history_raw and is_unc_history_path(history_raw):
         return []
-    history_path = _resolve_history_file(state, history_raw) if history_raw else None
+    if history_raw:
+        try:
+            history_path = _resolve_history_file(state, history_raw)
+        except (FileNotFoundError, OSError, PermissionError, ValueError):
+            # A stale/corrupt persisted reference must not make the whole chat
+            # snapshot unavailable.  Destructive commands resolve separately
+            # and still fail closed instead of acting on a guessed path.
+            history_path = None
+    else:
+        history_path = None
     if history_path is not None and is_unc_history_path(history_path):
         return []
     history_file = chat_history_active_path(history_path) if history_path is not None else None
@@ -854,12 +1298,11 @@ def _plain_history_text_from_entries(entries: list[dict[str, Any]]) -> str:
 def _read_history_file(path: Path) -> Any:
     if not path.is_file():
         return []
-    with path.open(encoding="utf-8") as file:
-        return json.load(file)
+    return json.loads(read_text_without_links(path))
 
 
 def _current_chat_history_download_file(state: BridgeState) -> Path:
-    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    history_raw = str(state.chat_session.get("historyPath") or "")
     if not history_raw:
         raise FileNotFoundError("没有已关联的聊天历史文件。")
     history_path = _resolve_history_file(state, history_raw)
@@ -918,7 +1361,7 @@ def _chat_history_download_file(state: BridgeState, capability: str) -> Path:
 
 def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, Any]:
     command = str(body.get("type") or "").strip()
-    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    history_raw = str(state.chat_session.get("historyPath") or "")
     session_id = str(state.chat_session.get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
 
@@ -1008,7 +1451,20 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         if not history_raw:
             raise FileNotFoundError("没有已关联的聊天历史文件。")
         history_path = _resolve_history_file(state, history_raw)
-        remove_chat_history_storage(history_path)
+        try:
+            history_root = history_root_for_state(state)
+        except (OSError, PermissionError, RuntimeError, ValueError):
+            history_root = None
+        if (
+            history_root is not None
+            and resolved_path_is_within(history_path, history_root)
+        ):
+            remove_chat_history_storage(history_path, root=history_root)
+        else:
+            # Explicit external sessions are cleared in place, but the
+            # storage helper removes only Shinsekai's reserved files and
+            # preserves unrelated content.
+            remove_chat_history_storage(history_path)
         return _chat_snapshot(state, "idle", "历史记录已经清空。", extra={"historyEntries": [], "options": []})
 
     if command == "dismiss-plugin-page":
@@ -1140,7 +1596,15 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         if command == "send-message" and isinstance(payload, dict):
             submitted_text = str(payload.get("text") or "").strip()
             raw_attachments = payload.get("attachments")
-            attachments = resolve_chat_attachments(raw_attachments if isinstance(raw_attachments, list) else [])
+            if isinstance(raw_attachments, list) and raw_attachments:
+                attachment_root = managed_project_storage(
+                    Path(*CHAT_ATTACHMENT_STAGE_SUBDIR),
+                    root=state_project_root(state),
+                )
+                attachments = resolve_chat_attachments(
+                    raw_attachments,
+                    root=attachment_root,
+                )
             body["payload"] = {
                 "attachments": [attachment.to_payload() for attachment in attachments],
                 "text": submitted_text,
@@ -1231,14 +1695,14 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
 
 def _chat_theme_payload(state: BridgeState) -> dict[str, Any]:
     system_config = state.config_manager.config.system_config
-    raw_path = str(system_config.chat_ui_theme_path or "").strip()
-    path = Path(raw_path) if raw_path else Path("data") / "chat_ui_theme.json"
-    if not path.is_absolute():
-        path = Path.cwd() / path
+    raw_path = str(system_config.chat_ui_theme_path or "")
+    path = resolve_from_root(
+        raw_path or "data/chat_ui_theme.json",
+        state_project_root(state),
+    )
     data: Any = {}
     if path.is_file():
-        with path.open(encoding="utf-8") as file:
-            parsed = json.load(file)
+        parsed = json.loads(read_text_without_links(path))
         if isinstance(parsed, dict):
             data = parsed
     return {

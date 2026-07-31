@@ -14,15 +14,36 @@ if TYPE_CHECKING:
 
 
 def _default_project_root_dir() -> str:
-    raw = (
-        os.environ.get("SHINSEKAI_PROJECT_ROOT", "").strip()
-        or os.environ.get("EASYAI_PROJECT_ROOT", "").strip()
-    )
+    # Presence, not a trimmed interpretation, determines precedence.  An
+    # explicitly configured but invalid current root must fail closed instead
+    # of silently reviving a different legacy project.
+    if "SHINSEKAI_PROJECT_ROOT" in os.environ:
+        raw: str | None = os.environ["SHINSEKAI_PROJECT_ROOT"]
+    elif "EASYAI_PROJECT_ROOT" in os.environ:
+        raw = os.environ["EASYAI_PROJECT_ROOT"]
+    else:
+        raw = None
     try:
-        candidate = Path(raw).expanduser() if raw else Path.cwd()
-        return str(candidate.resolve(strict=False))
-    except (OSError, RuntimeError, ValueError):
-        return raw or "."
+        if raw is not None:
+            if raw != raw.strip() or any(
+                ord(character) < 32
+                or ord(character) == 127
+                or 0xD800 <= ord(character) <= 0xDFFF
+                for character in raw
+            ):
+                raise ValueError("configured project root contains non-portable characters")
+            from core.paths import resolve_project_path
+
+            candidate = resolve_project_path(".", root=raw)
+        else:
+            from core.paths import project_root
+
+            candidate = project_root()
+        return str(candidate)
+    except (OSError, RuntimeError, ValueError) as exc:
+        if raw is not None:
+            raise ValueError("configured project root is invalid") from exc
+        raise RuntimeError("stable project root is unavailable") from exc
 
 
 @dataclass
@@ -33,8 +54,8 @@ class BridgeState:
     template_generator: Any
     task_lock: threading.Lock = field(default_factory=threading.Lock)
     tasks: dict[str, dict[str, Any]] = field(default_factory=dict)
-    template_dir_path: str = "./data/character_templates"
-    history_dir: str = "./data/chat_history"
+    template_dir_path: str = "data/character_templates"
+    history_dir: str = "data/chat_history"
     frontend_dist_dir: str = ""
     app_root_dir: str = ""
     auth_token: str = ""
@@ -47,6 +68,7 @@ class BridgeState:
     history_download_capabilities: dict[str, tuple[str, float]] = field(default_factory=dict)
     chat_init_lock: threading.Lock = field(default_factory=threading.Lock)
     chat_init_task_id: str = ""
+    chat_transition_lock: threading.RLock = field(default_factory=threading.RLock)
     plugin_load_lock: threading.Lock = field(default_factory=threading.Lock)
     plugin_load_status: str = "idle"
     plugin_load_error: str = ""

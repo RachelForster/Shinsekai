@@ -8,10 +8,12 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from core.model_assets.service import ModelAssetSpec, download_model_asset, inspect_model_asset
+from sdk.path_contract import resolve_managed_project_path, resolve_project_path
 
+from sdk.path_references import is_absolute_path_text, state_project_root
+from sdk.path_utils import reject_control_chars
 from application.runtime.state import BridgeState
 from application.runtime.tasks import _update_task
-from sdk.path_utils import reject_control_chars
 
 _ASR_FASTER_WHISPER_ASSET_ID = "asr.faster-whisper"
 _MEMORY_EMBEDDING_ASSET_ID = "memory.embedding"
@@ -61,7 +63,10 @@ _MODEL_ASSET_ENQUEUE_LOCK = threading.Lock()
 
 
 def _validated_model_reference(value: str) -> str:
-    raw = reject_control_chars(str(value or ""), field="model reference")
+    supplied = str(value or "")
+    raw = reject_control_chars(supplied, field="model reference")
+    if raw != supplied:
+        raise ValueError("model reference must not contain surrounding whitespace")
     if len(raw) > _MAX_MODEL_REFERENCE_LENGTH:
         raise ValueError("model reference is too long")
     return raw
@@ -92,13 +97,15 @@ def _looks_like_local_model_reference(value: str) -> bool:
     )
 
 
-def _configured_local_model_path(value: str) -> Path:
+def _configured_local_model_path(value: str, *, project_root: Path) -> Path:
     raw = _validated_model_reference(value)
-    normalized = raw.replace("\\", "/")
     if _URI_SCHEME_RE.match(raw):
         raise ValueError("model paths must not use URI schemes")
+    portable = raw.replace("\\", "/")
+    if any(component in {".", ".."} for component in portable.split("/")):
+        raise ValueError("model path contains lexical path aliases")
     if os.name == "nt":
-        if normalized.startswith("//") or normalized.startswith("/??/"):
+        if portable.startswith("//") or portable.startswith("/??/"):
             raise ValueError("network and device model paths are not allowed")
         if raw.startswith(("/", "\\")):
             raise ValueError("drive-rooted model paths must include a drive letter")
@@ -107,14 +114,9 @@ def _configured_local_model_path(value: str) -> Path:
         drive_absolute = bool(_WINDOWS_DRIVE_ABSOLUTE_RE.match(raw))
         if ":" in raw and (not drive_absolute or ":" in raw[2:]):
             raise ValueError("model path contains an unsupported colon")
-
-    component_separator = r"[\\/]+" if os.name == "nt" else r"/+"
-    for component in re.split(component_separator, raw):
-        if component in {"", "."}:
-            continue
-        if component == "..":
-            raise ValueError("model path traversal is not allowed")
-        if os.name == "nt":
+        for component in re.split(r"[\\/]+", raw):
+            if not component or (drive_absolute and component == raw[:2]):
+                continue
             if component.endswith((" ", ".")):
                 raise ValueError(
                     "model path components must not end with spaces or dots"
@@ -122,24 +124,13 @@ def _configured_local_model_path(value: str) -> Path:
             device_name = component.split(".", 1)[0].rstrip(" .")
             if _WINDOWS_RESERVED_DEVICE_RE.fullmatch(device_name):
                 raise ValueError("Windows device names are not allowed in model paths")
-
-    candidate = Path(raw).expanduser()
-    if candidate.is_absolute():
-        return candidate.resolve(strict=False)
-
-    root = Path.cwd().resolve(strict=False)
-    resolved = (root / candidate).resolve(strict=False)
-    try:
-        within_root = os.path.commonpath([str(root), str(resolved)]) == str(root)
-    except ValueError:
-        within_root = False
-    if not within_root:
-        raise PermissionError("relative model path is outside the project root")
-    return resolved
+    if is_absolute_path_text(raw) or portable.split("/", 1)[0].startswith("~"):
+        return resolve_project_path(raw, root=project_root)
+    return resolve_managed_project_path(raw, root=project_root)
 
 
 def _faster_whisper_repo_id(model_name: str) -> str:
-    model = _validated_model_reference(str(model_name or "small").strip() or "small")
+    model = _validated_model_reference(str(model_name or "small"))
     if model in _ASR_MODEL_REPOS:
         return _ASR_MODEL_REPOS[model]
     if _is_huggingface_repo_id(model):
@@ -154,7 +145,7 @@ def _configured_asr_model(state: BridgeState) -> str:
     config_manager = getattr(state, "config_manager", None)
     config = getattr(config_manager, "config", None)
     system_config = getattr(config, "system_config", None)
-    return str(getattr(system_config, "asr_whisper_model_size", "") or "small").strip() or "small"
+    return str(getattr(system_config, "asr_whisper_model_size", "") or "small")
 
 
 def _resolve_model_asset(state: BridgeState, payload: dict[str, Any]) -> ModelAssetSpec:
@@ -202,14 +193,15 @@ def _resolve_model_asset(state: BridgeState, payload: dict[str, Any]) -> ModelAs
 
     title = f"faster-whisper {variant}"
     local_path: Path | None = None
+    project_root = state_project_root(state)
     if _looks_like_local_model_reference(variant):
-        local_path = _configured_local_model_path(variant)
+        local_path = _configured_local_model_path(variant, project_root=project_root)
     elif variant not in _ASR_MODEL_REPOS:
         # Preserve legacy relative local model configs without letting an HTTP
         # request value reach the filesystem. Explicit aliases always remain
         # Hugging Face models; ambiguous custom values are local only when the
         # validated configured path already exists.
-        configured_path = _configured_local_model_path(variant)
+        configured_path = _configured_local_model_path(variant, project_root=project_root)
         if configured_path.exists():
             local_path = configured_path
     if local_path is not None:
@@ -232,7 +224,11 @@ def _resolve_model_asset(state: BridgeState, payload: dict[str, Any]) -> ModelAs
 
 
 def _model_asset_status(state: BridgeState, payload: dict[str, Any]) -> dict[str, object]:
-    return inspect_model_asset(_resolve_model_asset(state, payload))
+    root = state_project_root(state)
+    return inspect_model_asset(
+        _resolve_model_asset(state, payload),
+        root=root,
+    )
 
 
 def _huggingface_token(state: BridgeState) -> str:
@@ -250,6 +246,7 @@ def _download_model_asset(state: BridgeState, task_id: str, spec: ModelAssetSpec
         spec,
         update_task=update_task,
         token=_huggingface_token(state),
+        root=state_project_root(state),
     )
 
 

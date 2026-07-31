@@ -1,5 +1,3 @@
-"""Image auto-annotation application use cases."""
-
 from __future__ import annotations
 
 import os
@@ -8,7 +6,17 @@ from pathlib import Path
 from typing import Any
 
 from ai.vision import VisionManager
+from sdk.file_transactions import (
+    open_binary_read_without_links,
+    read_bytes_without_links,
+)
 from core.media.asset_tags import normalize_generated_tags, numbered_tags, tag_contents
+from sdk.path_contract import (
+    relative_path_has_prefix,
+    resolve_managed_project_path,
+    resolve_project_path,
+    resolve_runtime_asset_read_path,
+)
 
 
 ProgressCallback = Callable[[int, int, str, str], None]
@@ -38,19 +46,44 @@ def _sprite_path(sprite: object) -> str:
     return str(getattr(sprite, "path", "") or "")
 
 
-def _safe_asset_file(raw_path: str, project_root: Path) -> Path:
-    if not raw_path.strip() or any(ord(char) < 32 for char in raw_path):
+def _safe_asset_file(
+    raw_path: str,
+    project_root: Path,
+) -> tuple[Path, os.stat_result]:
+    if (
+        not raw_path
+        or raw_path != raw_path.strip()
+        or any(
+            ord(char) < 32
+            or ord(char) == 127
+            or 0xD800 <= ord(char) <= 0xDFFF
+            for char in raw_path
+        )
+    ):
         raise ValueError("图片路径无效")
-    root = project_root.resolve()
-    candidate = Path(raw_path).expanduser()
-    if not candidate.is_absolute():
-        candidate = root / candidate
-    resolved = candidate.resolve(strict=True)
-    if os.path.commonpath([str(root), str(resolved)]) != str(root):
-        raise PermissionError("图片路径超出项目目录")
+    root = resolve_project_path(".", root=project_root)
+    try:
+        if (
+            not Path(raw_path).expanduser().is_absolute()
+            and relative_path_has_prefix(
+                raw_path,
+                (("assets",),),
+                field="image path",
+            )
+        ):
+            resolved = resolve_runtime_asset_read_path(
+                raw_path,
+                root=root,
+            )
+        else:
+            resolved = resolve_managed_project_path(raw_path, root=root)
+    except PermissionError as exc:
+        raise PermissionError("图片路径超出项目目录") from exc
     if not resolved.is_file() or resolved.suffix.lower() not in _IMAGE_SUFFIXES:
         raise ValueError("不是受支持的图片文件")
-    return resolved
+    with open_binary_read_without_links(resolved) as source:
+        identity = os.fstat(source.fileno())
+    return resolved, identity
 
 
 def annotate_unlabelled_images(
@@ -74,10 +107,16 @@ def annotate_unlabelled_images(
         if is_cancelled and is_cancelled():
             raise AnnotationCancelled("图片自动标注已取消")
         try:
-            image_path = _safe_asset_file(_sprite_path(sprites[index]), project_root)
+            image_path, image_identity = _safe_asset_file(
+                _sprite_path(sprites[index]),
+                project_root,
+            )
             first_inference = runner is None or completed == 0
             if runner is None:
-                runner = VisionManager("moondream").describe
+                runner = VisionManager(
+                    "moondream",
+                    root=project_root,
+                ).describe
             if on_progress:
                 if first_inference:
                     on_progress(
@@ -93,7 +132,15 @@ def annotate_unlabelled_images(
                         f"正在标注第 {completed + 1}/{len(missing_indexes)} 张图片…",
                         "annotating",
                     )
-            generated = normalize_generated_tags(runner(image_path.read_bytes(), prompt))
+            generated = normalize_generated_tags(
+                runner(
+                    read_bytes_without_links(
+                        image_path,
+                        expected_identity=image_identity,
+                    ),
+                    prompt,
+                )
+            )
             if not generated:
                 raise ValueError("Moondream 未返回标签")
             tags[index] = generated
