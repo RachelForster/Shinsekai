@@ -190,6 +190,31 @@ def test_apply_network_proxy_environment_from_system_config_reads_yaml(monkeypat
     assert os.environ["ALL_PROXY"] == "socks5h://127.0.0.1:7891"
 
 
+def test_network_proxy_config_reader_does_not_follow_symlink(monkeypatch, tmp_path):
+    _clear_proxy_env(monkeypatch)
+    config_path = tmp_path / "system_config.yaml"
+    config_path.write_text(
+        "network_proxy_enabled: true\n"
+        "http_proxy_url: http://127.0.0.1:7890\n",
+        encoding="utf-8",
+    )
+    alias = tmp_path / "system_config_alias.yaml"
+    try:
+        alias.symlink_to(config_path)
+    except (NotImplementedError, OSError):
+        pytest.skip("file symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        apply_network_proxy_environment_from_system_config(alias)
+
+
+def test_explicit_empty_network_proxy_config_path_does_not_fall_back(monkeypatch):
+    _clear_proxy_env(monkeypatch)
+
+    with pytest.raises(ValueError, match="path is empty"):
+        apply_network_proxy_environment_from_system_config("")
+
+
 def test_detect_network_proxy_configuration_prefers_original_environment(monkeypatch):
     _clear_proxy_env(monkeypatch)
     monkeypatch.setattr(network_proxy.platform_module, "system", lambda: "UnknownOS")

@@ -44,10 +44,11 @@ class FakeConfigManager:
         pass
 
 
-def make_state(character):
+def make_state(character, project_root):
     return SimpleNamespace(
         character_manager=FakeCharacterManager(character),
         config_manager=FakeConfigManager(character),
+        project_root_dir=project_root,
     )
 
 
@@ -65,7 +66,7 @@ def make_character(**sprite_fields):
 def test_upload_sprite_voice_rejects_invalid_voice_type(tmp_path):
     voice = tmp_path / "voice.mp3"
     voice.write_bytes(b"not really audio")
-    state = make_state(make_character())
+    state = make_state(make_character(), tmp_path.as_posix())
 
     with pytest.raises(ValueError, match="voice type"):
         _upload_sprite_voice(
@@ -84,7 +85,7 @@ def test_upload_sprite_voice_defaults_to_fallback_without_gpt_sovits_model(tmp_p
     voice = tmp_path / "voice.mp3"
     voice.write_bytes(b"not really audio")
     character = make_character()
-    state = make_state(character)
+    state = make_state(character, tmp_path.as_posix())
 
     _upload_sprite_voice(
         state,
@@ -96,7 +97,7 @@ def test_upload_sprite_voice_defaults_to_fallback_without_gpt_sovits_model(tmp_p
         },
     )
 
-    assert character.sprites[0]["voice_type"] == "fallback"
+    assert character.sprites[0].voice_type == "fallback"
 
 
 def test_upload_sprite_voice_defaults_to_reference_with_gpt_sovits_model(tmp_path, monkeypatch):
@@ -105,7 +106,7 @@ def test_upload_sprite_voice_defaults_to_reference_with_gpt_sovits_model(tmp_pat
     voice = tmp_path / "voice.wav"
     voice.write_bytes(b"not really audio")
     character = make_character(gpt_model_path="model.ckpt", sovits_model_path="model.pth")
-    state = make_state(character)
+    state = make_state(character, tmp_path.as_posix())
     monkeypatch.setattr(characters, "_validate_reference_audio", lambda _path: None)
 
     _upload_sprite_voice(
@@ -118,27 +119,56 @@ def test_upload_sprite_voice_defaults_to_reference_with_gpt_sovits_model(tmp_pat
         },
     )
 
-    assert character.sprites[0]["voice_type"] == "reference"
+    assert character.sprites[0].voice_type == "reference"
 
 
-def test_save_sprite_voice_type_rejects_invalid_voice_type():
-    state = make_state(make_character())
+def test_save_sprite_voice_type_rejects_invalid_voice_type(tmp_path):
+    state = make_state(make_character(), tmp_path.as_posix())
 
     with pytest.raises(ValueError, match="voice type"):
         _save_sprite_voice_type(state, {"name": "Mika", "spriteIndex": 0, "voiceType": "bad"})
 
 
-def test_save_sprite_voice_type_accepts_fallback():
+def test_save_sprite_voice_type_accepts_fallback(tmp_path):
     character = make_character()
-    state = make_state(character)
+    state = make_state(character, tmp_path.as_posix())
 
     _save_sprite_voice_type(state, {"name": "Mika", "spriteIndex": 0, "voiceType": "fallback"})
 
-    assert character.sprites[0]["voice_type"] == "fallback"
+    assert character.sprites[0].voice_type == "fallback"
 
 
-def test_save_sprite_voice_type_rejects_missing_reference_audio():
-    state = make_state(make_character(voice_path="missing.wav"))
+def test_save_sprite_voice_type_rejects_missing_reference_audio(tmp_path):
+    state = make_state(
+        make_character(voice_path="missing.wav"),
+        tmp_path.as_posix(),
+    )
 
     with pytest.raises(ValueError, match="does not exist"):
         _save_sprite_voice_type(state, {"name": "Mika", "spriteIndex": 0, "voiceType": "reference"})
+
+
+def test_save_sprite_voice_type_resolves_project_relative_audio_after_cwd_drift(
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "project"
+    unrelated = tmp_path / "unrelated"
+    voice = project / "data/speech/mika/voice.wav"
+    voice.parent.mkdir(parents=True)
+    voice.write_bytes(b"audio")
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+    monkeypatch.setattr(
+        "frontend_bridge_core.characters._validate_reference_audio",
+        lambda path: path == voice.as_posix() or pytest.fail(path),
+    )
+    character = make_character(voice_path="data/speech/mika/voice.wav")
+    state = make_state(character, project.as_posix())
+
+    _save_sprite_voice_type(
+        state,
+        {"name": "Mika", "spriteIndex": 0, "voiceType": "reference"},
+    )
+
+    assert character.sprites[0].voice_type == "reference"

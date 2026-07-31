@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import logging
 
+import pytest
+
 from config.mirror_env import (
     DEFAULT_GITHUB_MIRROR_URL,
     DEFAULT_HUGGINGFACE_CACHE_DIR,
@@ -105,6 +107,97 @@ def test_apply_mirror_environment_manual_values_override_region(monkeypatch, tmp
     )
 
 
+def test_apply_mirror_environment_uses_explicit_config_owner_root(
+    monkeypatch,
+    tmp_path,
+):
+    _clear_mirror_env(monkeypatch)
+    ambient_root = tmp_path / "ambient-project"
+    config_root = tmp_path / "selected-project"
+    ambient_root.mkdir()
+    config_root.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", ambient_root.as_posix())
+
+    apply_mirror_environment(
+        SystemConfig(
+            huggingface_cache_dir="data/cache/huggingface",
+            mirror_auto_detect_china=False,
+        ),
+        root=config_root,
+    )
+
+    assert os.environ["HF_HOME"] == (
+        config_root / "data/cache/huggingface"
+    ).as_posix()
+    assert not (ambient_root / "data/cache/huggingface").exists()
+
+
+def test_relative_huggingface_cache_cannot_escape_project_root(monkeypatch, tmp_path):
+    _clear_mirror_env(monkeypatch)
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+
+    with pytest.raises(PermissionError, match="escapes project root"):
+        apply_mirror_environment(
+            SystemConfig(
+                huggingface_cache_dir="../external-cache",
+                mirror_auto_detect_china=False,
+            )
+        )
+
+
+def test_absolute_project_cache_path_rejects_internal_symlink_alias(monkeypatch, tmp_path):
+    _clear_mirror_env(monkeypatch)
+    project = tmp_path / "project"
+    data = project / "data"
+    alternate = project / "alternate-cache"
+    data.mkdir(parents=True)
+    alternate.mkdir()
+    try:
+        (data / "cache").symlink_to(alternate, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("symbolic links are unavailable")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        apply_mirror_environment(
+            SystemConfig(
+                huggingface_cache_dir=(data / "cache/huggingface").as_posix(),
+                mirror_auto_detect_china=False,
+            )
+        )
+
+    assert list(alternate.iterdir()) == []
+
+
+def test_project_cache_rejects_linked_hub_child_before_exporting_environment(
+    monkeypatch,
+    tmp_path,
+):
+    _clear_mirror_env(monkeypatch)
+    project = tmp_path / "project"
+    cache = project / "data" / "cache" / "huggingface"
+    external = tmp_path / "external-hub"
+    cache.mkdir(parents=True)
+    external.mkdir()
+    try:
+        (cache / "hub").symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        apply_mirror_environment(
+            SystemConfig(
+                huggingface_cache_dir="data/cache/huggingface",
+                mirror_auto_detect_china=False,
+            )
+        )
+
+    assert list(external.iterdir()) == []
+
+
 def test_apply_mirror_environment_from_system_config_reads_yaml(monkeypatch, tmp_path):
     _clear_mirror_env(monkeypatch)
     config_path = tmp_path / "system_config.yaml"
@@ -129,6 +222,56 @@ def test_apply_mirror_environment_from_system_config_reads_yaml(monkeypatch, tmp
     assert os.environ["HF_HOME"] == cache_dir.as_posix()
     assert os.environ["SHINSEKAI_GITHUB_MIRROR_URL"] == "https://mirror.example/{url}"
     assert os.environ["SHINSEKAI_PIP_INDEX_URL"] == "https://pypi.example/simple"
+
+
+def test_config_reader_anchors_relative_cache_to_explicit_project_root(
+    monkeypatch,
+    tmp_path,
+):
+    _clear_mirror_env(monkeypatch)
+    ambient_root = tmp_path / "ambient-project"
+    selected_root = tmp_path / "selected-project"
+    config_path = selected_root / "data/config/system_config.yaml"
+    ambient_root.mkdir()
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text(
+        "mirror_auto_detect_china: false\n"
+        "huggingface_cache_dir: data/cache/huggingface\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", ambient_root.as_posix())
+
+    apply_mirror_environment_from_system_config(root=selected_root)
+
+    assert os.environ["HF_HOME"] == (
+        selected_root / "data/cache/huggingface"
+    ).as_posix()
+    assert not (ambient_root / "data/cache/huggingface").exists()
+
+
+def test_mirror_config_reader_does_not_follow_symlink(monkeypatch, tmp_path):
+    _clear_mirror_env(monkeypatch)
+    config_path = tmp_path / "system_config.yaml"
+    config_path.write_text(
+        "mirror_auto_detect_china: false\n"
+        "huggingface_mirror_url: https://hf.example\n",
+        encoding="utf-8",
+    )
+    alias = tmp_path / "system_config_alias.yaml"
+    try:
+        alias.symlink_to(config_path)
+    except (NotImplementedError, OSError):
+        pytest.skip("file symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        apply_mirror_environment_from_system_config(alias)
+
+
+def test_explicit_empty_mirror_config_path_does_not_fall_back(monkeypatch):
+    _clear_mirror_env(monkeypatch)
+
+    with pytest.raises(ValueError, match="path is empty"):
+        apply_mirror_environment_from_system_config("")
 
 
 def test_apply_mirror_environment_does_not_override_standard_pip_env(monkeypatch):

@@ -5,8 +5,18 @@ import json
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import MagicMock
+import sys
+
+import pytest
+
+# PySide6 is unavailable in CI — fake it before importing history_manager
+sys.modules.setdefault("PySide6", MagicMock())
+sys.modules.setdefault("PySide6.QtWidgets", MagicMock())
+sys.modules.setdefault("PySide6.QtCore", MagicMock())
 
 from ai.llm.history_manager import (
+    _managed_history_file_path,
     _repair_json_string,
     parse_assistant_dialog_content,
     HistoryManager,
@@ -290,6 +300,22 @@ class TestRepairJsonString:
 
 # ====================== 新增：HistoryManager 增量保存与恢复测试 ======================
 
+
+class _ManagedHistoryCase:
+    def setup_method(self):
+        self.tmp_dir = tempfile.mkdtemp()
+        self.project_root = Path(self.tmp_dir) / "project"
+        self.history_dir = self.project_root / "data/chat_history"
+        self.history_dir.mkdir(parents=True)
+        self.history_file = str(self.history_dir / "test.json")
+        self._environment = pytest.MonkeyPatch()
+        self._environment.setenv("SHINSEKAI_PROJECT_ROOT", self.project_root.as_posix())
+        self._environment.setenv("EASYAI_PROJECT_ROOT", self.project_root.as_posix())
+
+    def teardown_method(self):
+        self._environment.undo()
+
+
 class TestTmpPath:
     """_tmp_path 静态方法"""
 
@@ -302,12 +328,8 @@ class TestTmpPath:
         assert str(path).endswith(".json.tmp")
 
 
-class TestAppendMessageToTmp:
+class TestAppendMessageToTmp(_ManagedHistoryCase):
     """append_message_to_tmp 静态方法"""
-
-    def setup_method(self):
-        self.tmp_dir = tempfile.mkdtemp()
-        self.history_file = str(Path(self.tmp_dir) / "test.json")
 
     def test_creates_tmp_file_and_writes_line(self):
         msg = {"role": "user", "content": "hello"}
@@ -329,7 +351,7 @@ class TestAppendMessageToTmp:
         assert len(lines) == 2
 
     def test_creates_parent_dirs(self):
-        deep_file = str(Path(self.tmp_dir) / "sub" / "deep" / "test.json")
+        deep_file = str(self.history_dir / "sub" / "deep" / "test.json")
         HistoryManager.append_message_to_tmp(deep_file, {"role": "user", "content": "x"})
         assert Path(deep_file + ".tmp").exists()
 
@@ -339,13 +361,25 @@ class TestAppendMessageToTmp:
     def test_does_not_raise_on_empty_path(self):
         HistoryManager.append_message_to_tmp("", {"role": "user", "content": "x"})
 
+    def test_symlinked_tmp_never_appends_to_external_file(self):
+        external = Path(self.tmp_dir) / "external.txt"
+        external.write_text("keep", encoding="utf-8")
+        tmp_path = Path(self.history_file + ".tmp")
+        try:
+            tmp_path.symlink_to(external)
+        except (OSError, NotImplementedError):
+            return
 
-class TestLoadChatHistoryRecovery:
+        HistoryManager.append_message_to_tmp(
+            self.history_file,
+            {"role": "user", "content": "secret"},
+        )
+
+        assert external.read_text(encoding="utf-8") == "keep"
+
+
+class TestLoadChatHistoryRecovery(_ManagedHistoryCase):
     """load_chat_history 崩溃恢复逻辑"""
-
-    def setup_method(self):
-        self.tmp_dir = tempfile.mkdtemp()
-        self.history_file = str(Path(self.tmp_dir) / "test.json")
 
     def _make_history_manager(self):
         return HistoryManager([])
@@ -430,12 +464,8 @@ class TestLoadChatHistoryRecovery:
         assert result[0]["content"] == "fallback"
 
 
-class TestSaveChatHistory:
+class TestSaveChatHistory(_ManagedHistoryCase):
     """save_chat_history 返回 bool，tmp 由 delete_tmp 独立删除"""
-
-    def setup_method(self):
-        self.tmp_dir = tempfile.mkdtemp()
-        self.history_file = str(Path(self.tmp_dir) / "test.json")
 
     def _make_history_manager(self):
         return HistoryManager([])
@@ -451,7 +481,25 @@ class TestSaveChatHistory:
         result = hm.save_chat_history(None, [{"role": "user", "content": "x"}])
         assert result is True
 
-    def test_application_history_state_returns_manager_result(self, monkeypatch):
+    def test_publish_failure_preserves_previous_history(self, monkeypatch):
+        history_path = Path(self.history_file)
+        history_path.write_text('[{"content":"old"}]', encoding="utf-8")
+
+        def fail_write(_path, _text):
+            raise OSError("disk full")
+
+        monkeypatch.setattr("ai.llm.history_manager.atomic_write_text", fail_write)
+        hm = self._make_history_manager()
+
+        result = hm.save_chat_history(
+            self.history_file,
+            [{"role": "user", "content": "new"}],
+        )
+
+        assert result is False
+        assert json.loads(history_path.read_text(encoding="utf-8")) == [{"content": "old"}]
+
+    def test_sprite_wrapper_returns_manager_result(self, monkeypatch):
         from application.chat import history_state as chat_history_mod
 
         monkeypatch.setattr(
@@ -478,12 +526,8 @@ class TestSaveChatHistory:
         assert not tmp_path.exists()
 
 
-class TestClearChatHistory:
+class TestClearChatHistory(_ManagedHistoryCase):
     """clear_chat_history 清理正式历史和增量 tmp。"""
-
-    def setup_method(self):
-        self.tmp_dir = tempfile.mkdtemp()
-        self.history_file = str(Path(self.tmp_dir) / "test.json")
 
     def test_persists_empty_json_and_removes_tmp(self):
         history_path = Path(self.history_file)
@@ -497,3 +541,26 @@ class TestClearChatHistory:
         assert hm.get_history() == []
         assert json.loads(history_path.read_text(encoding="utf-8")) == []
         assert not tmp_path.exists()
+
+
+@pytest.mark.parametrize(
+    "alias",
+    (
+        "data/chat_history/./test.json",
+        "data/chat_history//test.json",
+        "data/chat_history/session/../test.json",
+    ),
+)
+def test_history_io_boundary_rejects_lexical_aliases(tmp_path, monkeypatch, alias):
+    project = tmp_path / "project"
+    history_dir = project / "data/chat_history"
+    history_dir.mkdir(parents=True)
+    marker = history_dir / "test.json"
+    marker.write_text("keep", encoding="utf-8")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", project.as_posix())
+
+    with pytest.raises((PermissionError, ValueError), match="resolved|exact|escapes"):
+        _managed_history_file_path(alias)
+
+    assert marker.read_text(encoding="utf-8") == "keep"

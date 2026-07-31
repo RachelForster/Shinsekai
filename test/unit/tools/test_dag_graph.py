@@ -363,6 +363,77 @@ class TestDagSerialization:
         assert "A" in content
         assert "EchoNode" in content
 
+    @pytest.mark.parametrize("alias", ("./graph.yaml", "nested//graph.yaml", "nested/../graph.yaml"))
+    def test_to_yaml_rejects_lexical_output_aliases(self, tmp_path, alias, monkeypatch):
+        monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(tmp_path))
+        builder = DagBuilder()
+
+        with pytest.raises((PermissionError, ValueError), match="exact|alias|escapes"):
+            builder.to_yaml(alias)
+
+        assert not (tmp_path / "graph.yaml").exists()
+        assert not (tmp_path / "nested" / "graph.yaml").exists()
+
+    def test_to_yaml_rejects_explicit_empty_output(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(tmp_path))
+        builder = DagBuilder()
+
+        with pytest.raises(ValueError, match="empty"):
+            builder.to_yaml("")
+
+    def test_load_yaml_rejects_an_existing_file_alias(self, tmp_path):
+        yaml_path = tmp_path / "workflow.yaml"
+        yaml_path.write_text("nodes: []\nedges: []\n", encoding="utf-8")
+        alias = f"{tmp_path.as_posix()}/./workflow.yaml"
+        builder = DagBuilder()
+
+        with pytest.raises(ValueError, match="alias"):
+            builder.load_yaml(alias)
+
+    def test_load_yaml_rejects_symlinked_workflow(self, tmp_path):
+        workflow = tmp_path / "workflow.yaml"
+        alias = tmp_path / "workflow-alias.yaml"
+        workflow.write_text("nodes: []\nedges: []\n", encoding="utf-8")
+        try:
+            alias.symlink_to(workflow)
+        except (OSError, NotImplementedError):
+            pytest.skip("symlinks are unavailable")
+
+        with pytest.raises(PermissionError, match="symbolic link"):
+            DagBuilder().load_yaml(alias.as_posix())
+
+    def test_load_yaml_resolves_relative_file_from_project_not_cwd(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        project = tmp_path / "project"
+        unrelated = tmp_path / "launcher"
+        workflow = project / "workflows/workflow.yaml"
+        workflow.parent.mkdir(parents=True)
+        unrelated.mkdir()
+        workflow.write_text("nodes: []\nedges: []\n", encoding="utf-8")
+        monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+        monkeypatch.chdir(unrelated)
+        builder = DagBuilder()
+
+        builder.load_yaml("workflows/workflow.yaml")
+
+        assert builder._nodes == {}
+        assert builder._edges == []
+
+    def test_load_yaml_reports_missing_declared_path(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", tmp_path.as_posix())
+
+        with pytest.raises(FileNotFoundError) as exc_info:
+            DagBuilder().load_yaml("workflows/missing.yaml")
+
+        assert exc_info.value.filename == (tmp_path / "workflows/missing.yaml").as_posix()
+
     def test_from_yaml_round_trip(self, tmp_path):
         """Export to YAML, re-import, verify nodes exist."""
         a = EchoNode("src")

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
-from types import ModuleType
+from types import SimpleNamespace
 
 import pytest
 
@@ -26,12 +27,86 @@ def test_build_frontend_requests_migration_when_pnpm_is_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    from core import process_launch
+
     frontend = _frontend_root(tmp_path)
     (frontend / "node_modules").mkdir()
-    monkeypatch.setattr(webui_react.shutil, "which", lambda name: None)
+
+    def missing_pnpm(*_args, **_kwargs):
+        raise FileNotFoundError("pnpm")
+
+    monkeypatch.setattr(
+        process_launch,
+        "capture_command_executable",
+        missing_pnpm,
+    )
 
     with pytest.raises(webui_react.FrontendMigrationNeeded, match="pnpm"):
         webui_react._build_frontend(tmp_path, frontend / "dist", "not found")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink semantics")
+def test_build_frontend_rejects_linked_dependency_root(
+    tmp_path: Path,
+) -> None:
+    frontend = _frontend_root(tmp_path)
+    external_modules = tmp_path / "external-modules"
+    external_modules.mkdir()
+    (frontend / "node_modules").symlink_to(
+        external_modules,
+        target_is_directory=True,
+    )
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        webui_react._build_frontend(tmp_path, frontend / "dist", "not found")
+
+
+def test_build_frontend_rejects_source_changed_during_build(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from core import process_launch
+
+    frontend = _frontend_root(tmp_path)
+    package = frontend / "package.json"
+    package.write_text('{"name":"before"}', encoding="utf-8")
+    (frontend / "node_modules").mkdir()
+
+    def python_executable(*_args, **_kwargs):
+        return process_launch.capture_launch_file(
+            sys.executable,
+            field="test Python executable",
+            executable=True,
+        )
+
+    monkeypatch.setattr(
+        process_launch,
+        "capture_command_executable",
+        python_executable,
+    )
+
+    def change_source_during_build(*_args, **_kwargs):
+        package.write_text(
+            '{"name":"replacement-is-longer"}',
+            encoding="utf-8",
+        )
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(
+        webui_react.subprocess,
+        "run",
+        change_source_during_build,
+    )
+
+    with pytest.raises(
+        webui_react.FrontendMigrationNeeded,
+        match="changed while",
+    ):
+        webui_react._build_frontend(
+            tmp_path,
+            frontend / "dist",
+            "not found",
+        )
 
 
 def test_main_opens_migration_dialog_for_missing_frontend_environment(
@@ -66,36 +141,3 @@ def test_main_can_force_show_migration_helper(monkeypatch: pytest.MonkeyPatch) -
     webui_react.main()
 
     assert shown == ["Opening the Shinsekai Frontend migration helper for testing."]
-
-
-def test_show_migration_dialog_opens_preserved_tools_helper(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    calls: list[str] = []
-
-    class FakeApplication:
-        @classmethod
-        def instance(cls):
-            return None
-
-        def __init__(self, _args) -> None:
-            calls.append("app")
-
-    class FakeDialog:
-        def __init__(self) -> None:
-            calls.append("dialog")
-
-        def exec(self) -> int:
-            calls.append("exec")
-            return 0
-
-    helper_module = ModuleType("tools.migrate_helper.dialog")
-    helper_module.MigrationRoleDialog = FakeDialog  # type: ignore[attr-defined]
-    qtwidgets_module = ModuleType("PySide6.QtWidgets")
-    qtwidgets_module.QApplication = FakeApplication  # type: ignore[attr-defined]
-    monkeypatch.setitem(sys.modules, "tools.migrate_helper.dialog", helper_module)
-    monkeypatch.setitem(sys.modules, "PySide6.QtWidgets", qtwidgets_module)
-
-    webui_react._show_frontend_migration_dialog("migration required")
-
-    assert calls == ["app", "dialog", "exec"]

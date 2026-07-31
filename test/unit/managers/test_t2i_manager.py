@@ -29,6 +29,11 @@ class TestT2IAdapterFactoryRegistry:
 
 
 class TestT2IManagerWithMock:
+    @pytest.fixture(autouse=True)
+    def _isolated_project_root(self, monkeypatch, tmp_path):
+        self.project_root = tmp_path
+        monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", tmp_path.as_posix())
+
     def test_init_starts_worker(self, mock_t2i_adapter):
         mgr = T2IManager(t2i_adapter=mock_t2i_adapter)
         assert mgr.worker_thread.is_alive()
@@ -83,8 +88,44 @@ class TestT2IManagerWithMock:
 
     def test_init_creates_cache_dir(self, mock_t2i_adapter):
         mgr = T2IManager(t2i_adapter=mock_t2i_adapter)
+        assert mgr.image_cache_dir == self.project_root / "data/cache/images"
         assert mgr.image_cache_dir.exists()
         mgr.shutdown()
+
+    def test_cache_root_does_not_follow_process_cwd(self, mock_t2i_adapter, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        unrelated = tmp_path / "unrelated"
+        project.mkdir()
+        unrelated.mkdir()
+        monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+        monkeypatch.chdir(unrelated)
+
+        mgr = T2IManager(t2i_adapter=mock_t2i_adapter)
+
+        assert mgr.image_cache_dir == project / "data/cache/images"
+        assert not (unrelated / "data/cache/images").exists()
+        mgr.shutdown()
+
+    def test_relative_cache_path_cannot_escape_project(self, mock_t2i_adapter):
+        with pytest.raises(PermissionError, match="escapes project root"):
+            T2IManager(t2i_adapter=mock_t2i_adapter, image_cache_dir="../outside")
+
+    def test_explicit_empty_cache_path_does_not_fall_back_to_default(
+        self,
+        mock_t2i_adapter,
+    ):
+        with pytest.raises(ValueError, match="path is empty"):
+            T2IManager(t2i_adapter=mock_t2i_adapter, image_cache_dir="")
+
+    def test_explicit_project_root_rejects_outer_whitespace(
+        self,
+        mock_t2i_adapter,
+    ):
+        with pytest.raises(ValueError, match="project root"):
+            T2IManager(
+                t2i_adapter=mock_t2i_adapter,
+                project_root=f" {self.project_root}",
+            )
 
     def test_queue_generation_processes_via_t2i(self, mock_t2i_adapter):
         """queue_generation puts a task; the worker calls t2i() to handle it."""

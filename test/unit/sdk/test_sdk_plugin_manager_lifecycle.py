@@ -270,6 +270,123 @@ def test_plugin_manager_isolates_plugin_failures(tmp_path: Path, caplog) -> None
     assert "shutdown failed for demo.broken-shutdown" in caplog.text
 
 
+def test_plugin_manager_rejects_escaping_plugin_id_without_blocking_good_plugins(
+    tmp_path: Path,
+    caplog,
+) -> None:
+    class EscapingPlugin(_BasePlugin):
+        @property
+        def plugin_id(self) -> str:
+            return ".."
+
+        def initialize(
+            self,
+            register: PluginCapabilityRegistry,
+            plugin_root: Path,
+            host: PluginHostContext,
+        ) -> None:
+            _ = register, host
+            (plugin_root / "escaped.txt").write_text("bad", encoding="utf-8")
+
+    class GoodPlugin(_BasePlugin):
+        @property
+        def plugin_id(self) -> str:
+            return "demo.safe"
+
+        def initialize(
+            self,
+            register: PluginCapabilityRegistry,
+            plugin_root: Path,
+            host: PluginHostContext,
+        ) -> None:
+            _ = plugin_root, host
+            register.register_llm_adapter("safe", object)  # type: ignore[arg-type]
+
+    plugin_root = tmp_path / "plugins"
+    manager = PluginManager(plugin_data_root=plugin_root)
+    manager.register_plugin_class(EscapingPlugin)
+    manager.register_plugin_class(GoodPlugin)
+
+    with caplog.at_level(logging.ERROR):
+        target: dict[str, object] = {}
+        manager.apply_llm_providers(target)
+
+    assert target == {"safe": object}
+    assert not (tmp_path / "escaped.txt").exists()
+    assert "initialize failed for .." in caplog.text
+
+
+def test_plugin_manager_rejects_lexical_plugin_data_root_alias(tmp_path: Path) -> None:
+    plugins = tmp_path / "plugins"
+    plugins.mkdir()
+
+    with pytest.raises(ValueError, match="lexical path aliases"):
+        PluginManager(plugin_data_root=f"{tmp_path.as_posix()}/./plugins")
+
+
+def test_plugin_manager_rejects_symlinked_external_data_root(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    external = tmp_path / "external"
+    alias = tmp_path / "plugin-data-alias"
+    project.mkdir()
+    external.mkdir()
+    try:
+        alias.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        PluginManager(plugin_data_root=alias)
+
+
+def test_plugin_manager_revalidates_data_root_before_initialization(tmp_path: Path) -> None:
+    external = tmp_path / "external"
+    alias = tmp_path / "plugin-data"
+    external.mkdir()
+    manager = PluginManager(plugin_data_root=alias)
+    try:
+        alias.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        manager.load_own_config_all()
+
+    assert list(external.iterdir()) == []
+
+
+def test_plugin_manager_rejects_case_only_storage_collision(tmp_path: Path, caplog) -> None:
+    initialized: list[str] = []
+
+    class UpperPlugin(_BasePlugin):
+        @property
+        def plugin_id(self) -> str:
+            return "Demo.Plugin"
+
+        def initialize(self, register, plugin_root, host) -> None:
+            _ = register, plugin_root, host
+            initialized.append(self.plugin_id)
+
+    class LowerPlugin(_BasePlugin):
+        @property
+        def plugin_id(self) -> str:
+            return "demo.plugin"
+
+        def initialize(self, register, plugin_root, host) -> None:
+            _ = register, plugin_root, host
+            initialized.append(self.plugin_id)
+
+    manager = PluginManager(plugin_data_root=tmp_path / "plugins")
+    manager.register_plugin_class(UpperPlugin)
+    manager.register_plugin_class(LowerPlugin)
+
+    with caplog.at_level(logging.ERROR):
+        manager.load_own_config_all()
+
+    assert len(initialized) == 1
+    assert "initialize failed for" in caplog.text
+
+
 def test_apply_llm_tools_logs_registrar_failures(tmp_path: Path, caplog) -> None:
     class ToolPlugin(_BasePlugin):
         def initialize(
@@ -318,6 +435,57 @@ def test_load_manifest_file_accepts_json_and_yaml(tmp_path: Path) -> None:
     assert list(manager.iter_plugin_ids()) == []
 
 
+def test_load_manifest_file_resolves_relative_path_from_project_not_cwd(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project = tmp_path / "project"
+    unrelated = tmp_path / "launcher"
+    manifest = project / "data/config/plugins.yaml"
+    manifest.parent.mkdir(parents=True)
+    unrelated.mkdir()
+    manifest.write_text(
+        "- entry: sdk.plugin:PluginBase\n  enabled: false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+    monkeypatch.chdir(unrelated)
+    manager = PluginManager(plugin_data_root=project / "data/plugins")
+
+    manager.load_manifest_file(Path("data/config/plugins.yaml"))
+
+    assert list(manager.iter_plugin_ids()) == []
+
+
+def test_plugin_manager_prefers_explicit_root_over_ambient_root(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    ambient = tmp_path / "ambient"
+    selected = tmp_path / "selected"
+    launcher = tmp_path / "launcher"
+    manifest = selected / "data/config/plugins.yaml"
+    ambient.mkdir()
+    launcher.mkdir()
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text(
+        "- entry: sdk.plugin:PluginBase\n  enabled: false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", ambient.as_posix())
+    monkeypatch.chdir(launcher)
+    manager = PluginManager(
+        plugin_data_root=selected / "data/plugins",
+        root=selected,
+    )
+
+    manager.load_manifest_file(Path("data/config/plugins.yaml"))
+
+    assert manager._project_root == selected
+    assert manager._plugin_data_root == selected / "data/plugins"
+    assert list(manager.iter_plugin_ids()) == []
+
+
 @pytest.mark.parametrize(
     ("content", "message"),
     [
@@ -354,3 +522,45 @@ def test_discovery_registry_validates_entries_and_deduplicates(caplog) -> None:
         registry.register_class(object)  # type: ignore[arg-type]
     with pytest.raises(ValueError):
         registry.register_entry("   ")
+    with pytest.raises(ValueError, match="non-portable"):
+        registry.register_entry(" missing.module:Plugin")
+
+
+def test_plugin_capability_registry_rejects_identity_aliases() -> None:
+    registry = PluginCapabilityRegistry()
+
+    with pytest.raises(ValueError, match="portable path component"):
+        registry.set_settings_ui_plugin_context(" demo.plugin", "1.0")
+    with pytest.raises(ValueError, match="portable path component"):
+        registry.register_frontend_page(
+            FrontendPageContribution(
+                page_id=" page ",
+                title="Page",
+                entry="plugin/index.html",
+                plugin_id="demo.plugin",
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "entry",
+    (
+        "./plugin/index.html",
+        "plugin//index.html",
+        "plugin/../index.html",
+    ),
+)
+def test_plugin_capability_registry_rejects_frontend_entry_path_aliases(
+    entry: str,
+) -> None:
+    registry = PluginCapabilityRegistry()
+
+    with pytest.raises((PermissionError, ValueError)):
+        registry.register_frontend_page(
+            FrontendPageContribution(
+                page_id="page",
+                title="Page",
+                entry=entry,
+                plugin_id="demo.plugin",
+            )
+        )

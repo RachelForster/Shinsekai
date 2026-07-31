@@ -35,6 +35,19 @@ class TestSprite:
         with pytest.raises(ValidationError):
             Sprite()
 
+    def test_missing_asset_references_do_not_invalidate_the_config(self, tmp_path, monkeypatch):
+        unrelated = tmp_path / "unrelated-cwd"
+        unrelated.mkdir()
+        monkeypatch.chdir(unrelated)
+
+        sprite = Sprite(
+            path="data/sprite/offline/idle.png",
+            voice_path="data/speech/offline/idle.wav",
+        )
+
+        assert sprite.path == "data/sprite/offline/idle.png"
+        assert sprite.voice_path == "data/speech/offline/idle.wav"
+
 
 class TestCharacter:
     def test_minimal_character(self):

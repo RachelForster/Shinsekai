@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import stat
 import zipfile
 from pathlib import Path
 
 import pytest
 
+import sdk.chat_ui_theme as chat_ui_theme
 from sdk.chat_ui_theme import (
     MANIFEST_NAME,
     _main,
@@ -107,6 +109,8 @@ def _write_theme(root: Path, manifest: dict | None = None) -> Path:
 def test_slugify_and_validate_manifest_normalizes_rich_theme() -> None:
     assert slugify_theme_id(" Demo Theme! ") == "demo-theme"
     assert slugify_theme_id("!!!") == "theme"
+    assert slugify_theme_id("CON") == "theme-con"
+    assert slugify_theme_id("LPT1") == "theme-lpt1"
 
     result = validate_manifest(_valid_manifest())
 
@@ -123,6 +127,17 @@ def test_slugify_and_validate_manifest_normalizes_rich_theme() -> None:
     assert result.normalized["tokens"]["logs"]["levels"]["warn"]["color"] == "#ffee88"
     assert result.normalized["tokens"]["logs"]["panel"]["frameSlice"] == 24
     assert result.normalized["tokens"]["typewriter"]["sound"] == "assets/type.wav"
+
+
+def test_validate_manifest_rejects_theme_id_outer_whitespace_without_retargeting() -> None:
+    manifest = _valid_manifest()
+    manifest["id"] = " demo-theme "
+
+    result = validate_manifest(manifest)
+
+    assert result.ok is False
+    assert result.normalized["id"] == " demo-theme "
+    assert any("首尾" in error for error in result.errors)
 
 
 @pytest.mark.parametrize(
@@ -153,6 +168,28 @@ def test_validate_manifest_rejects_invalid_shapes(manifest) -> None:
 
     assert result.ok is False
     assert result.errors
+
+
+@pytest.mark.parametrize(
+    "asset_ref",
+    [
+        " assets/preview.png",
+        "assets/preview.png ",
+        "assets/bad\nname.png",
+        "./assets/preview.png",
+        "assets//preview.png",
+        "assets/../preview.png",
+        "assets/preview.png/",
+    ],
+)
+def test_validate_manifest_rejects_nonportable_asset_reference_text(asset_ref: str) -> None:
+    manifest = _valid_manifest()
+    manifest["preview"] = asset_ref
+
+    result = validate_manifest(manifest)
+
+    assert result.ok is False
+    assert any("preview" in error for error in result.errors)
 
 
 @pytest.mark.parametrize(
@@ -223,13 +260,119 @@ def test_pack_theme_extracts_safely_and_locates_manifest_root(tmp_path: Path) ->
     assert locate_manifest_root(tmp_path / "dist") is None
 
 
-def test_safe_extract_rejects_zip_slip_entries(tmp_path: Path) -> None:
+def test_theme_sdk_rejects_source_and_output_path_aliases(tmp_path: Path) -> None:
+    theme_dir = _write_theme(tmp_path)
+    source_alias = f"{tmp_path.as_posix()}/./theme"
+    output_alias = f"{tmp_path.as_posix()}/dist/../theme.zip"
+
+    with pytest.raises(ValueError, match="lexical path aliases"):
+        validate_theme_dir(source_alias)
+    with pytest.raises(ValueError, match="lexical path aliases"):
+        pack_theme(theme_dir, output_alias)
+
+    assert not (tmp_path / "theme.zip").exists()
+
+
+def test_theme_sdk_rejects_extraction_target_alias_before_writing(tmp_path: Path) -> None:
+    zip_path = tmp_path / "theme.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("theme.json", "{}")
+    output_alias = f"{tmp_path.as_posix()}/./out"
+
+    with pytest.raises(ValueError, match="lexical path aliases"):
+        safe_extract(zip_path, output_alias)
+
+    assert not (tmp_path / "out").exists()
+
+
+def test_theme_sdk_rejects_linked_external_output_parent(tmp_path: Path) -> None:
+    theme_dir = _write_theme(tmp_path)
+    external = tmp_path / "external"
+    alias = tmp_path / "alias"
+    external.mkdir()
+    try:
+        alias.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        pack_theme(theme_dir, alias / "theme.zip")
+
+    assert list(external.iterdir()) == []
+
+
+def test_theme_sdk_rejects_linked_external_extraction_parent(tmp_path: Path) -> None:
+    zip_path = tmp_path / "theme.zip"
+    external = tmp_path / "external"
+    alias = tmp_path / "alias"
+    external.mkdir()
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("theme.json", "{}")
+    try:
+        alias.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        safe_extract(zip_path, alias / "theme")
+
+    assert list(external.iterdir()) == []
+
+
+@pytest.mark.parametrize("member", ["../escape.txt", r"..\escape.txt"])
+def test_safe_extract_rejects_zip_slip_entries(tmp_path: Path, member: str) -> None:
     zip_path = tmp_path / "bad.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
-        zf.writestr("../escape.txt", "bad")
+        zf.writestr(member, "bad")
 
     with pytest.raises(ValueError, match="路径穿越"):
         safe_extract(zip_path, tmp_path / "out")
+
+
+def test_safe_extract_rejects_link_entries_before_writing(tmp_path: Path) -> None:
+    zip_path = tmp_path / "link.zip"
+    link = zipfile.ZipInfo("assets/link")
+    link.create_system = 3
+    link.external_attr = (stat.S_IFLNK | 0o777) << 16
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("theme.json", "{}")
+        zf.writestr(link, "../../outside")
+
+    output = tmp_path / "out"
+    with pytest.raises(ValueError, match="非便携路径"):
+        safe_extract(zip_path, output)
+
+    assert not output.exists()
+
+
+def test_safe_extract_rejects_symlinked_archive_path(tmp_path: Path) -> None:
+    archive = tmp_path / "theme.zip"
+    alias = tmp_path / "theme-alias.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("theme.json", "{}")
+    try:
+        alias.symlink_to(archive)
+    except (NotImplementedError, OSError):
+        pytest.skip("symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        safe_extract(alias, tmp_path / "out")
+
+    assert not (tmp_path / "out").exists()
+
+
+def test_locate_manifest_root_rejects_symlinked_nested_theme(tmp_path: Path) -> None:
+    extracted = tmp_path / "extracted"
+    external = tmp_path / "external-theme"
+    extracted.mkdir()
+    external.mkdir()
+    (external / MANIFEST_NAME).write_text("{}", encoding="utf-8")
+    try:
+        (extracted / "theme").symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+
+    assert locate_manifest_root(extracted) is None
 
 
 def test_pack_theme_rejects_invalid_manifest(tmp_path: Path) -> None:
@@ -240,6 +383,69 @@ def test_pack_theme_rejects_invalid_manifest(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="主题校验失败"):
         pack_theme(theme_dir, tmp_path / "bad.zip")
+
+
+def test_theme_validation_and_pack_reject_symlinked_resources(tmp_path: Path) -> None:
+    theme_dir = _write_theme(tmp_path)
+    external = tmp_path / "external.txt"
+    external.write_text("secret", encoding="utf-8")
+    try:
+        (theme_dir / "linked.txt").symlink_to(external)
+    except (NotImplementedError, OSError):
+        pytest.skip("symbolic links are unavailable")
+
+    result = validate_theme_dir(theme_dir)
+    assert result.ok is False
+    assert any("符号链接" in error for error in result.errors)
+    with pytest.raises(ValueError, match="主题校验失败"):
+        pack_theme(theme_dir, tmp_path / "linked.zip")
+
+
+def test_pack_theme_rejects_output_inside_source_tree(tmp_path: Path) -> None:
+    theme_dir = _write_theme(tmp_path)
+    output = theme_dir / "theme.zip"
+
+    with pytest.raises(ValueError, match="主题目录内部"):
+        pack_theme(theme_dir, output)
+
+    assert not output.exists()
+
+
+def test_pack_theme_preserves_previous_output_when_source_changes_after_validation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    theme_dir = _write_theme(tmp_path)
+    candidate = theme_dir / "assets" / "preview.png"
+    external = tmp_path / "external.png"
+    external.write_bytes(b"secret")
+    output = tmp_path / "theme.zip"
+    output.write_bytes(b"previous package")
+    try:
+        probe = tmp_path / "probe"
+        probe.symlink_to(external)
+        probe.unlink()
+    except (NotImplementedError, OSError):
+        pytest.skip("symbolic links are unavailable")
+
+    real_validate = chat_ui_theme.validate_theme_dir
+
+    def validate_then_replace(path):
+        result = real_validate(path)
+        candidate.unlink()
+        candidate.symlink_to(external)
+        return result
+
+    monkeypatch.setattr(
+        chat_ui_theme,
+        "validate_theme_dir",
+        validate_then_replace,
+    )
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        pack_theme(theme_dir, output)
+
+    assert output.read_bytes() == b"previous package"
 
 
 def test_cli_validate_and_pack_return_codes(tmp_path: Path, capsys) -> None:

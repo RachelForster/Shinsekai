@@ -103,6 +103,8 @@ def test_existing_relative_configured_local_models_remain_supported(
     tmp_path, monkeypatch, relative_path
 ):
     monkeypatch.chdir(tmp_path)
+    state = _state(model_name=relative_path)
+    state.project_root_dir = tmp_path.as_posix()
     model_dir = tmp_path.joinpath(*relative_path.split("/"))
     model_dir.mkdir(parents=True)
     (model_dir / "config.json").write_text("{}", encoding="utf-8")
@@ -110,12 +112,34 @@ def test_existing_relative_configured_local_models_remain_supported(
     (model_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
 
     status = model_assets._model_asset_status(
-        _state(model_name=relative_path),
+        state,
         {"assetId": "asr.faster-whisper", "configured": True},
     )
 
     assert status["source"] == "local"
     assert status["cached"] is True
+    assert Path(str(status["path"])) == model_dir.resolve()
+
+
+def test_relative_configured_model_uses_state_root_when_cwd_changes(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    model_dir = project_root / "models" / "whisper"
+    model_dir.mkdir(parents=True)
+    (model_dir / "config.json").write_text("{}", encoding="utf-8")
+    (model_dir / "model.bin").write_bytes(b"model")
+    (model_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
+    unrelated_cwd = tmp_path / "unrelated"
+    unrelated_cwd.mkdir()
+    state = _state(model_name="models/whisper")
+    state.project_root_dir = project_root.as_posix()
+    monkeypatch.chdir(unrelated_cwd)
+
+    status = model_assets._model_asset_status(
+        state,
+        {"assetId": "asr.faster-whisper", "configured": True},
+    )
+
+    assert status["source"] == "local"
     assert Path(str(status["path"])) == model_dir.resolve()
 
 
@@ -202,7 +226,36 @@ def test_download_model_asset_uses_configured_huggingface_token(monkeypatch):
 
     assert result == {"assetId": "asr.faster-whisper", "cached": True}
     assert calls[0][1]["token"] == "hf-secret"
+    assert calls[0][1]["root"] == Path(state.project_root_dir)
     assert _get_task(state, str(task["id"]))["progress"] == 0.5
+
+
+def test_model_asset_status_uses_state_root_for_cache_inspection(
+    tmp_path,
+    monkeypatch,
+):
+    ambient = tmp_path / "ambient"
+    selected = tmp_path / "selected"
+    ambient.mkdir()
+    selected.mkdir()
+    state = _state()
+    state.project_root_dir = selected.as_posix()
+    observed = []
+
+    def fake_inspect(spec, **kwargs):
+        observed.append((spec, kwargs))
+        return {"assetId": spec.asset_id, "cached": False}
+
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", ambient.as_posix())
+    monkeypatch.setattr(model_assets, "inspect_model_asset", fake_inspect)
+
+    status = model_assets._model_asset_status(
+        state,
+        {"assetId": "asr.faster-whisper", "variant": "small"},
+    )
+
+    assert status == {"assetId": "asr.faster-whisper", "cached": False}
+    assert observed[0][1]["root"] == selected
 
 
 def test_running_model_asset_task_is_reused_by_task_key():
@@ -259,6 +312,7 @@ def test_request_local_paths_are_rejected_before_path_access(monkeypatch, varian
     [
         "../outside/model",
         "./model/../outside",
+        " small ",
         "file:///tmp/model",
         "bad\x00model",
     ],
@@ -316,22 +370,19 @@ def test_unsafe_windows_configured_paths_are_rejected_before_path_access(
         )
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX permits these path components")
-def test_posix_specific_local_path_components_remain_supported(tmp_path):
+@pytest.mark.skipif(os.name == "nt", reason="Windows cannot create these path components")
+def test_posix_specific_local_path_components_are_rejected_as_non_portable(tmp_path):
     model_dir = tmp_path / "NUL" / "model:version " / "with\\backslash" / "trailing."
     model_dir.mkdir(parents=True)
     (model_dir / "config.json").write_text("{}", encoding="utf-8")
     (model_dir / "model.bin").write_bytes(b"model")
     (model_dir / "tokenizer.json").write_text("{}", encoding="utf-8")
 
-    status = model_assets._model_asset_status(
-        _state(model_name=str(model_dir)),
-        {"assetId": "asr.faster-whisper", "configured": True},
-    )
-
-    assert status["source"] == "local"
-    assert status["cached"] is True
-    assert Path(str(status["path"])) == model_dir.resolve()
+    with pytest.raises(ValueError, match="non-portable path component"):
+        model_assets._model_asset_status(
+            _state(model_name=str(model_dir)),
+            {"assetId": "asr.faster-whisper", "configured": True},
+        )
 
 
 def test_configured_requests_reject_variant_override():

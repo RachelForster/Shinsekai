@@ -7,17 +7,262 @@ from frontend_bridge_core.plugin_ui import (
     _frontend_config_page_payload,
     _frontend_chat_ui_contribution_payloads,
     _frontend_page_payload,
+    _plugin_config_file,
     _plugin_config_field,
     _plugin_data_root,
-    _run_plugin_ui_action,
+    _resolve_plugin_frontend_file,
     _run_frontend_chat_ui_contribution,
+    _run_plugin_ui_action,
+    _stored_plugin_cache_path,
 )
 
 
-def test_plugin_data_root_sanitizes_plugin_ids():
-    assert _plugin_data_root(" com.example/demo ") == _plugin_data_root("com.example_demo")
-    assert _plugin_data_root(" / ").as_posix() == "data/plugins/_"
-    assert _plugin_data_root("  ").as_posix() == "data/plugins/unknown"
+def test_plugin_data_root_preserves_exact_safe_ids_and_rejects_aliases(tmp_path):
+    assert _plugin_data_root("com.example_demo", project_root=tmp_path) == (
+        tmp_path / "data" / "plugins" / "com.example_demo"
+    )
+    for plugin_id in (" com.example ", "com.example/demo", "com.example\\demo", ""):
+        with pytest.raises(ValueError):
+            _plugin_data_root(plugin_id, project_root=tmp_path)
+
+
+def test_plugin_data_root_uses_explicit_project_root_when_cwd_changes(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    unrelated = tmp_path / "unrelated"
+    project_root.mkdir()
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    path = _plugin_data_root("demo.plugin", project_root=project_root)
+
+    assert path == project_root / "data" / "plugins" / "demo.plugin"
+
+
+def test_plugin_data_root_rejects_symlinked_project_root(tmp_path):
+    project = tmp_path / "project"
+    alias = tmp_path / "project-alias"
+    project.mkdir()
+    try:
+        alias.symlink_to(project, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        _plugin_data_root("demo.plugin", project_root=alias)
+
+
+def test_plugin_data_root_rejects_portable_collision_and_symlink_storage(tmp_path):
+    plugins = tmp_path / "data" / "plugins"
+    plugins.mkdir(parents=True)
+    (plugins / "Demo.Plugin").mkdir()
+
+    with pytest.raises(FileExistsError, match="portable filename collision"):
+        _plugin_data_root("demo.plugin", project_root=tmp_path)
+
+    symlink_project = tmp_path / "symlink-project"
+    symlink_data = symlink_project / "data"
+    symlink_data.mkdir(parents=True)
+    external = tmp_path / "other-storage"
+    external.mkdir()
+    try:
+        (symlink_data / "plugins").symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        _plugin_data_root("safe.plugin", project_root=symlink_project)
+
+
+def test_plugin_config_file_is_a_direct_managed_leaf(tmp_path):
+    project = tmp_path / "project"
+    root = project / "data" / "plugins" / "demo.plugin"
+    root.mkdir(parents=True)
+
+    assert _plugin_config_file(
+        root,
+        root / "config.json",
+        project_root=project,
+    ) == root / "config.json"
+
+    with pytest.raises(PermissionError, match="outside the plugin data root"):
+        _plugin_config_file(
+            root,
+            project / "data" / "plugins" / "other" / "config.json",
+            project_root=project,
+        )
+
+
+def test_plugin_config_file_rejects_a_linked_leaf(tmp_path):
+    project = tmp_path / "project"
+    root = project / "data" / "plugins" / "demo.plugin"
+    external = tmp_path / "external.json"
+    root.mkdir(parents=True)
+    external.write_text("{}", encoding="utf-8")
+    try:
+        (root / "config.json").symlink_to(external)
+    except (NotImplementedError, OSError):
+        pytest.skip("file symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        _plugin_config_file(
+            root,
+            root / "config.json",
+            project_root=project,
+        )
+
+
+def test_plugin_cache_path_does_not_repeat_legacy_recovery_and_ignores_cwd(
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "current-project"
+    unrelated = tmp_path / "launcher"
+    project.mkdir()
+    unrelated.mkdir()
+    stale = tmp_path / "old-project" / "data" / "cache" / "moondream"
+    monkeypatch.chdir(unrelated)
+
+    assert _stored_plugin_cache_path(
+        stale.as_posix(),
+        project_root=project,
+    ) == stale.as_posix()
+    assert _stored_plugin_cache_path(
+        r"data\cache\moondream",
+        project_root=project,
+    ) == "data/cache/moondream"
+
+
+def test_plugin_cache_path_preserves_existing_external_storage_and_rejects_aliases(
+    tmp_path,
+):
+    project = tmp_path / "project"
+    external = tmp_path / "external-cache"
+    project.mkdir()
+    external.mkdir()
+
+    assert _stored_plugin_cache_path(
+        external.as_posix(),
+        project_root=project,
+    ) == external.as_posix()
+    for invalid in (" data/cache/moondream", "data/cache/../outside"):
+        with pytest.raises(ValueError):
+            _stored_plugin_cache_path(invalid, project_root=project)
+
+
+def test_plugin_cache_path_rejects_linked_external_parent(tmp_path):
+    project = tmp_path / "project"
+    external = tmp_path / "external"
+    alias = tmp_path / "alias"
+    project.mkdir()
+    external.mkdir()
+    try:
+        alias.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        _stored_plugin_cache_path(
+            (alias / "moondream").as_posix(),
+            project_root=project,
+        )
+
+
+def test_plugin_frontend_relative_entry_cannot_escape_project_root(tmp_path, monkeypatch):
+    contribution = SimpleNamespace(entry="../external/index.html")
+    monkeypatch.setattr(
+        plugin_ui,
+        "_detail_for_project_root",
+        lambda *_args: {"plugin": {"id": "demo.plugin"}, "pages": []},
+    )
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_page_contribution",
+        lambda *_args: contribution,
+    )
+
+    with pytest.raises(PermissionError, match="escapes project root"):
+        _resolve_plugin_frontend_file(
+            "demo.plugin",
+            "page",
+            "",
+            project_root=tmp_path,
+        )
+
+
+def test_plugin_frontend_asset_path_is_exact_and_relative(tmp_path, monkeypatch):
+    frontend = tmp_path / "plugins/demo/frontend"
+    frontend.mkdir(parents=True)
+    entry = frontend / "index.html"
+    asset = frontend / "assets/app.js"
+    asset.parent.mkdir()
+    entry.write_text("index", encoding="utf-8")
+    asset.write_text("app", encoding="utf-8")
+    contribution = SimpleNamespace(entry=entry.as_posix())
+    monkeypatch.setattr(
+        plugin_ui,
+        "_detail_for_project_root",
+        lambda *_args: {"plugin": {"id": "demo.plugin"}, "pages": []},
+    )
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_page_contribution",
+        lambda *_args: contribution,
+    )
+
+    assert _resolve_plugin_frontend_file(
+        "demo.plugin",
+        "page",
+        "assets/app.js",
+        project_root=tmp_path,
+    ) == asset
+    for raw in (
+        " assets/app.js",
+        "assets/app.js ",
+        "/assets/app.js",
+        "assets\\app.js",
+        "assets/./app.js",
+        "assets//app.js",
+        "assets/../index.html",
+    ):
+        with pytest.raises((PermissionError, ValueError)):
+            _resolve_plugin_frontend_file(
+                "demo.plugin",
+                "page",
+                raw,
+                project_root=tmp_path,
+            )
+
+
+def test_plugin_frontend_does_not_serve_symlinked_asset(tmp_path, monkeypatch):
+    frontend = tmp_path / "plugins/demo/frontend"
+    external = tmp_path / "secret.js"
+    frontend.mkdir(parents=True)
+    entry = frontend / "index.html"
+    entry.write_text("index", encoding="utf-8")
+    external.write_text("secret", encoding="utf-8")
+    try:
+        (frontend / "app.js").symlink_to(external)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable")
+    contribution = SimpleNamespace(entry=entry.as_posix())
+    monkeypatch.setattr(
+        plugin_ui,
+        "_detail_for_project_root",
+        lambda *_args: {"plugin": {"id": "demo.plugin"}, "pages": []},
+    )
+    monkeypatch.setattr(
+        plugin_ui,
+        "_frontend_page_contribution",
+        lambda *_args: contribution,
+    )
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        _resolve_plugin_frontend_file(
+            "demo.plugin",
+            "page",
+            "app.js",
+            project_root=tmp_path,
+        )
 
 
 def test_plugin_config_field_omits_empty_optional_metadata():
@@ -202,14 +447,14 @@ def test_frontend_chat_ui_payload_does_not_truncate_lookup_identifiers(monkeypat
     assert payload["pluginId"] == long_plugin_id
 
 
-def test_frontend_config_page_payload_normalizes_kind_and_values():
+def test_frontend_config_page_payload_preserves_exact_ids_and_normalizes_kind():
     contribution = SimpleNamespace(
         description="Config page",
         kind="invalid",
         load_values=lambda: {"enabled": True},
         order=12.5,
-        page_id=" settings ",
-        plugin_id="demo/plugin",
+        page_id="settings",
+        plugin_id="demo.plugin",
         plugin_version="1.0",
         restart_hint="Restart required",
         schema=[{"id": "main", "fields": []}],
@@ -224,13 +469,26 @@ def test_frontend_config_page_payload_normalizes_kind_and_values():
         "i18n": {},
         "kind": "settings",
         "order": 12.5,
-        "pluginId": "demo/plugin",
+        "pluginId": "demo.plugin",
         "pluginVersion": "1.0",
         "restartHint": "Restart required",
         "schema": [{"id": "main", "fields": []}],
         "title": "settings",
         "values": {"enabled": True},
     }
+
+
+def test_frontend_config_page_payload_rejects_whitespace_retargeted_id():
+    contribution = SimpleNamespace(
+        kind="settings",
+        load_values=lambda: {},
+        page_id=" settings ",
+        plugin_id="demo.plugin",
+        title="Settings",
+    )
+
+    with pytest.raises(ValueError, match="portable path component"):
+        _frontend_config_page_payload(contribution)
 
 
 def test_frontend_config_page_payload_requires_mapping_values():
@@ -252,7 +510,7 @@ def test_frontend_page_payload_builds_encoded_url_and_merges_matching_config(mon
         load_values=lambda: {"headless": False},
         order=8,
         page_id="browser page",
-        plugin_id="demo/plugin",
+        plugin_id="demo.plugin",
         plugin_version="2.0",
         restart_hint="Restart browser",
         schema=[{"id": "browser", "fields": []}],
@@ -266,14 +524,14 @@ def test_frontend_page_payload_builds_encoded_url_and_merges_matching_config(mon
             kind="tools",
             order=8,
             page_id="browser page",
-            plugin_id="demo/plugin",
+            plugin_id="demo.plugin",
             plugin_version="2.0",
             title="Browser",
         )
     )
 
     assert payload["frontendUrl"] == (
-        "/api/plugins/demo%2Fplugin/frontend/browser%20page/?pluginId=demo%2Fplugin&pageId=browser%20page"
+        "/api/plugins/demo.plugin/frontend/browser%20page/?pluginId=demo.plugin&pageId=browser%20page"
     )
     assert payload["description"] == "Config description"
     assert payload["restartHint"] == "Restart browser"

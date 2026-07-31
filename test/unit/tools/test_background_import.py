@@ -7,6 +7,8 @@ import yaml
 from config.schema import Background
 from tools import file_util
 
+_OPEN_EXPORT_FOLDER = file_util._open_export_folder
+
 
 @pytest.fixture(autouse=True)
 def _prevent_export_folder_open(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -71,6 +73,28 @@ def test_export_background_accepts_open_folder_false(tmp_path, monkeypatch):
     file_util.export_background([Background(name="Room", sprite_prefix="scene")], str(output), open_folder=False)
 
     assert output.is_file()
+
+
+def test_open_export_folder_does_not_follow_a_late_directory_alias(tmp_path, monkeypatch):
+    external = tmp_path / "external"
+    external.mkdir()
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(external, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+
+    opened: list[list[str]] = []
+    monkeypatch.setattr(file_util.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(
+        file_util.subprocess,
+        "Popen",
+        lambda args: opened.append(list(args)),
+    )
+
+    _OPEN_EXPORT_FOLDER(alias / "background.bg")
+
+    assert opened == []
 
 
 def test_import_background_accepts_legacy_export_with_absolute_asset_paths(tmp_path, monkeypatch):
@@ -138,3 +162,72 @@ def test_import_background_rejects_unsafe_zip_members(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError):
         file_util.import_background(str(package), [])
+
+
+def test_background_import_uses_explicit_project_root_after_cwd_drift(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    package = tmp_path / "scene.bg"
+    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "background.yaml",
+            yaml.safe_dump(
+                [{"name": "Scene", "sprite_prefix": "scene", "sprites": [{"path": "room.png"}]}],
+                allow_unicode=True,
+            ),
+        )
+        zf.writestr("sprites/scene/room.png", "png")
+    monkeypatch.chdir(unrelated)
+
+    result = file_util.import_background(str(package), [], project_root=project.resolve())
+
+    assert _sprite_path(result[0].sprites[0]) == "data/backgrounds/scene/room.png"
+    assert (project / "data/backgrounds/scene/room.png").is_file()
+    assert not (unrelated / "data").exists()
+
+
+def test_failed_background_validation_rolls_back_copied_assets(tmp_path):
+    project = tmp_path / "project"
+    package = tmp_path / "invalid.bg"
+    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "background.yaml",
+            yaml.safe_dump(
+                [{"name": "Invalid", "sprite_prefix": "invalid", "sprites": "not-a-list"}],
+                allow_unicode=True,
+            ),
+        )
+        zf.writestr("sprites/invalid/room.png", "png")
+
+    with pytest.raises(Exception):
+        file_util.import_background(str(package), [], project_root=project.resolve())
+
+    assert not (project / "data/backgrounds/invalid").exists()
+
+
+def test_background_import_transaction_rolls_back_after_config_save_failure(tmp_path):
+    project = tmp_path / "project"
+    package = tmp_path / "scene.bg"
+    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "background.yaml",
+            yaml.safe_dump(
+                [{"name": "Scene", "sprite_prefix": "scene", "sprites": [{"path": "room.png"}]}],
+                allow_unicode=True,
+            ),
+        )
+        zf.writestr("sprites/scene/room.png", "png")
+
+    with pytest.raises(OSError, match="disk full"):
+        with file_util.package_import_transaction() as transaction_paths:
+            imported = file_util.import_background(
+                str(package),
+                [],
+                project_root=project.resolve(),
+                transaction_paths=transaction_paths,
+            )
+            assert imported
+            raise OSError("disk full")
+
+    assert not (project / "data/backgrounds/scene").exists()

@@ -419,6 +419,13 @@ def test_windows_ci_renders_custom_nsis_and_runs_project_root_tests() -> None:
     assert "[IO.File]::WriteAllBytes($partialPath, $downloadBytes)" in migration_script
     assert '"legacy-msi-updated="' in migration_script
     assert '"$DestinationPath.partial.$PID"' in migration_script
+    assert "function Test-WindowsAbsolutePath" in migration_script
+    assert "function Resolve-RepositoryInputPath" in migration_script
+    assert "IsPathRooted" not in migration_script
+    assert "rooted but not a fully qualified Windows path" in migration_script
+    assert "escapes the repository root" in migration_script
+    assert "GITHUB_OUTPUT must be an absolute path" in migration_script
+    assert "[IO.Path]::GetPathRoot($normalized)" in migration_script
     partial_hash = migration_script.index(
         "Get-FileHash -LiteralPath $partialPath -Algorithm SHA256"
     )

@@ -426,6 +426,22 @@ def test_save_effect_rejects_path_traversal_name(tmp_path, monkeypatch):
     assert not (tmp_path / "outside").exists()
 
 
+def test_save_effect_rejects_outer_whitespace_without_retargeting(tmp_path):
+    """An effect directory name must never be silently trimmed."""
+    from frontend_bridge_core.effects import _save_effect
+
+    state = make_state([make_effect("Spark")])
+    state.project_root_dir = tmp_path.as_posix()
+
+    with pytest.raises(ValueError, match="portable path component"):
+        _save_effect(state, {"name": " Spark ", "color": "#ffffff"})
+
+    assert [effect.name for effect in state.config_manager.config.effect_list] == [
+        "Spark"
+    ]
+    assert not state.config_manager.saved
+
+
 def test_delete_effect_removes_from_list():
     """Delete removes the correct effect."""
     effect_list = [make_effect("A"), make_effect("B"), make_effect("C")]
@@ -512,6 +528,284 @@ def test_delete_effect_audio_does_not_unlink_external_file(tmp_path, monkeypatch
     assert state.config_manager.saved
 
 
+def test_delete_effect_audio_does_not_retarget_missing_external_path(tmp_path):
+    from frontend_bridge_core.effects import _delete_effect_audio
+
+    project = tmp_path / "project"
+    managed_peer = project / "data/effects/rain/drop.wav"
+    managed_peer.parent.mkdir(parents=True)
+    managed_peer.write_bytes(b"managed peer")
+    missing_external = tmp_path / "offline-disk/data/effects/rain/drop.wav"
+    effect = make_effect(
+        "rain",
+        audio_list=[missing_external.as_posix()],
+        audio_tags="Effect 1: external\n",
+    )
+    state = make_state([effect])
+    state.project_root_dir = project.as_posix()
+
+    _delete_effect_audio(state, {"name": "rain", "index": 0})
+
+    assert managed_peer.read_bytes() == b"managed peer"
+    assert effect.audio_list == []
+    assert state.config_manager.saved
+
+
+def test_effect_upload_uses_state_root_and_persists_portable_path(tmp_path, monkeypatch):
+    from frontend_bridge_core.effects import _upload_effect_audio
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    source = tmp_path / "source.wav"
+    source.write_bytes(b"audio")
+    effect = make_effect("rain")
+    state = make_state([effect])
+    state.project_root_dir = project_root.as_posix()
+    monkeypatch.chdir(unrelated)
+
+    _upload_effect_audio(state, {"name": "rain", "paths": [source.as_posix()]})
+
+    assert effect.audio_list == ["data/effects/rain/source.wav"]
+    assert (project_root / effect.audio_list[0]).read_bytes() == b"audio"
+    assert not (unrelated / "data").exists()
+
+
+def test_effect_upload_never_overwrites_same_named_audio(tmp_path):
+    from frontend_bridge_core.effects import _upload_effect_audio
+
+    project = tmp_path / "project"
+    existing = project / "data/effects/rain/drop.wav"
+    existing.parent.mkdir(parents=True)
+    existing.write_bytes(b"old")
+    source = tmp_path / "incoming/drop.wav"
+    source.parent.mkdir()
+    source.write_bytes(b"new")
+    effect = make_effect("rain", audio_list=["data/effects/rain/drop.wav"])
+    state = make_state([effect])
+    state.project_root_dir = project.as_posix()
+
+    _upload_effect_audio(state, {"name": "rain", "paths": [source.as_posix()]})
+
+    assert existing.read_bytes() == b"old"
+    assert effect.audio_list == [
+        "data/effects/rain/drop.wav",
+        "data/effects/rain/drop_1.wav",
+    ]
+    assert (project / effect.audio_list[1]).read_bytes() == b"new"
+
+
+def test_effect_upload_does_not_follow_linked_source_directory(tmp_path):
+    from frontend_bridge_core.effects import _upload_effect_audio
+
+    project = tmp_path / "project"
+    external = tmp_path / "incoming"
+    (project / "data").mkdir(parents=True)
+    external.mkdir()
+    (external / "drop.wav").write_bytes(b"external")
+    try:
+        (project / "data/incoming").symlink_to(
+            external,
+            target_is_directory=True,
+        )
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+    effect = make_effect("rain")
+    state = make_state([effect])
+    state.project_root_dir = project.as_posix()
+
+    _upload_effect_audio(
+        state,
+        {"name": "rain", "paths": ["data/incoming/drop.wav"]},
+    )
+
+    assert effect.audio_list == []
+    assert not (project / "data/effects/rain/drop.wav").exists()
+
+
+def test_effect_upload_save_failure_restores_memory_and_files(tmp_path):
+    from frontend_bridge_core.effects import _upload_effect_audio
+
+    project = tmp_path / "project"
+    source = tmp_path / "incoming/drop.wav"
+    source.parent.mkdir()
+    source.write_bytes(b"new")
+    effect = make_effect("rain")
+    state = make_state([effect])
+    state.project_root_dir = project.as_posix()
+    state.config_manager.save_effect_config = lambda: (_ for _ in ()).throw(
+        OSError("disk full")
+    )
+
+    with pytest.raises(OSError, match="disk full"):
+        _upload_effect_audio(state, {"name": "rain", "paths": [source.as_posix()]})
+
+    assert effect.audio_list == []
+    assert effect.audio_tags == ""
+    assert not (project / "data/effects/rain").exists()
+
+
+def test_effect_delete_audio_save_failure_keeps_reference_and_file(tmp_path):
+    from frontend_bridge_core.effects import _delete_effect_audio
+
+    project = tmp_path / "project"
+    audio = project / "data/effects/rain/drop.wav"
+    audio.parent.mkdir(parents=True)
+    audio.write_bytes(b"audio")
+    effect = make_effect(
+        "rain",
+        audio_list=["data/effects/rain/drop.wav"],
+        audio_tags="特效 1：drop\n",
+    )
+    state = make_state([effect])
+    state.project_root_dir = project.as_posix()
+    state.config_manager.save_effect_config = lambda: (_ for _ in ()).throw(
+        OSError("read only")
+    )
+
+    with pytest.raises(OSError, match="read only"):
+        _delete_effect_audio(state, {"name": "rain", "index": 0})
+
+    assert audio.read_bytes() == b"audio"
+    assert effect.audio_list == ["data/effects/rain/drop.wav"]
+    assert effect.audio_tags == "特效 1：drop\n"
+
+
+def test_effect_delete_audio_preserves_replacement_created_during_save(tmp_path):
+    from frontend_bridge_core.effects import _delete_effect_audio
+
+    project = tmp_path / "project"
+    audio = project / "data/effects/rain/drop.wav"
+    preserved = project / "data/effects/rain/original-drop.wav"
+    audio.parent.mkdir(parents=True)
+    audio.write_bytes(b"original")
+    effect = make_effect(
+        "rain",
+        audio_list=["data/effects/rain/drop.wav"],
+        audio_tags="特效 1：drop\n",
+    )
+    state = make_state([effect])
+    state.project_root_dir = project.as_posix()
+
+    def replace_during_save():
+        audio.rename(preserved)
+        audio.write_bytes(b"peer")
+
+    state.config_manager.save_effect_config = replace_during_save
+
+    _delete_effect_audio(state, {"name": "rain", "index": 0})
+
+    assert audio.read_bytes() == b"peer"
+    assert preserved.read_bytes() == b"original"
+    assert effect.audio_list == []
+
+
+def test_effect_delete_audio_never_follows_alias_below_effect_directory(tmp_path):
+    from frontend_bridge_core.effects import _delete_effect_audio
+
+    project = tmp_path / "project"
+    real = project / "data/effects/rain/real"
+    real.mkdir(parents=True)
+    audio = real / "drop.wav"
+    audio.write_bytes(b"keep")
+    try:
+        (real.parent / "alias").symlink_to(real, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are unavailable")
+    effect = make_effect(
+        "rain",
+        audio_list=["data/effects/rain/alias/drop.wav"],
+        audio_tags="特效 1：drop\n",
+    )
+    state = make_state([effect])
+    state.project_root_dir = project.as_posix()
+
+    _delete_effect_audio(state, {"name": "rain", "index": 0})
+
+    assert audio.read_bytes() == b"keep"
+    assert effect.audio_list == []
+
+
+def test_effect_rename_save_failure_restores_original_directory(tmp_path):
+    from frontend_bridge_core.effects import _save_effect
+
+    project = tmp_path / "project"
+    old_audio = project / "data/effects/rain/drop.wav"
+    old_audio.parent.mkdir(parents=True)
+    old_audio.write_bytes(b"audio")
+    effect = make_effect(
+        "rain",
+        audio_list=["data/effects/rain/drop.wav"],
+        audio_tags="特效 1：drop\n",
+    )
+    state = make_state([effect])
+    state.project_root_dir = project.as_posix()
+    state.config_manager.save_effect_config = lambda: (_ for _ in ()).throw(
+        OSError("disk full")
+    )
+
+    with pytest.raises(OSError, match="disk full"):
+        _save_effect(
+            state,
+            {
+                "originalName": "rain",
+                "effect": {
+                    "name": "storm",
+                    "audio_list": ["data/effects/rain/drop.wav"],
+                    "audio_tags": "特效 1：drop\n",
+                },
+            },
+        )
+
+    assert state.config_manager.config.effect_list == [effect]
+    assert old_audio.read_bytes() == b"audio"
+    assert not (project / "data/effects/storm").exists()
+
+
+def test_effect_paths_from_old_project_root_are_rebased_before_launch(tmp_path):
+    from frontend_bridge_core.effects import _build_effect_usage_guide
+
+    project_root = tmp_path / "project"
+    managed = project_root / "data" / "effects" / "rain" / "drop.wav"
+    managed.parent.mkdir(parents=True)
+    managed.write_bytes(b"audio")
+    effect = make_effect(
+        "rain",
+        audio_list=[r"D:\old-project\data\effects\rain\drop.wav"],
+        audio_tags="Effect 1: drop\n",
+    )
+    state = make_state([effect])
+    state.project_root_dir = project_root.as_posix()
+
+    _build_effect_usage_guide(state, ["rain"])
+
+    assert effect.audio_list == ["data/effects/rain/drop.wav"]
+    assert state.config_manager.saved
+
+
+def test_effect_paths_keep_existing_external_audio_before_launch(tmp_path):
+    from frontend_bridge_core.effects import _build_effect_usage_guide
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    external = tmp_path / "external" / "data" / "effects" / "rain" / "drop.wav"
+    external.parent.mkdir(parents=True)
+    external.write_bytes(b"external audio")
+    effect = make_effect(
+        "rain",
+        audio_list=[external.as_posix()],
+        audio_tags="Effect 1: drop\n",
+    )
+    state = make_state([effect])
+    state.project_root_dir = project_root.as_posix()
+
+    _build_effect_usage_guide(state, ["rain"])
+
+    assert effect.audio_list == [external.as_posix()]
+    assert not state.config_manager.saved
+
+
 def test_import_effect_rejects_path_traversal_name(tmp_path, monkeypatch):
     """Effect packages must not create managed directories outside data/effects."""
     from tools.file_util import import_effect
@@ -525,6 +819,75 @@ def test_import_effect_rejects_path_traversal_name(tmp_path, monkeypatch):
         import_effect(str(package), [])
 
     assert not (tmp_path / "outside").exists()
+
+
+def test_failed_effect_validation_rolls_back_copied_audio(tmp_path):
+    from tools.file_util import import_effect
+
+    project = tmp_path / "project"
+    package = tmp_path / "invalid.ef"
+    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "effect.yaml",
+            yaml.safe_dump(
+                [{"name": "invalid", "audio_list": ["sound.wav"], "audio_tags": []}],
+                allow_unicode=True,
+            ),
+        )
+        zf.writestr("audio/sound.wav", b"audio")
+
+    with pytest.raises(Exception):
+        import_effect(str(package), [], project_root=project.resolve())
+
+    assert not (project / "data/effects/invalid").exists()
+
+
+def test_effect_import_uses_project_root_instead_of_cwd(tmp_path, monkeypatch):
+    from tools.file_util import import_effect
+
+    project = tmp_path / "project"
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    package = tmp_path / "rain.ef"
+    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "effect.yaml",
+            yaml.safe_dump([{"name": "rain", "audio_list": ["drop.wav"]}], allow_unicode=True),
+        )
+        zf.writestr("audio/drop.wav", b"audio")
+    monkeypatch.chdir(unrelated)
+
+    result = import_effect(str(package), [], project_root=project.resolve())
+
+    assert result[0].audio_list == ["data/effects/rain/drop.wav"]
+    assert (project / result[0].audio_list[0]).is_file()
+    assert not (unrelated / "data").exists()
+
+
+def test_effect_import_transaction_rolls_back_after_config_save_failure(tmp_path):
+    from tools.file_util import import_effect, package_import_transaction
+
+    project = tmp_path / "project"
+    package = tmp_path / "rain.ef"
+    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "effect.yaml",
+            yaml.safe_dump([{"name": "rain", "audio_list": ["drop.wav"]}], allow_unicode=True),
+        )
+        zf.writestr("audio/drop.wav", b"audio")
+
+    with pytest.raises(OSError, match="disk full"):
+        with package_import_transaction() as transaction_paths:
+            imported = import_effect(
+                str(package),
+                [],
+                project_root=project.resolve(),
+                transaction_paths=transaction_paths,
+            )
+            assert imported
+            raise OSError("disk full")
+
+    assert not (project / "data/effects/rain").exists()
 
 
 # ── Keyword parsing from main.py ───────────────────────────────
