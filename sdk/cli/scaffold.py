@@ -5,16 +5,23 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from sdk.file_transactions import atomic_write_text
+from sdk.path_contract import (
+    managed_child_path,
+    require_directory_without_links,
+    require_symlink_free_absolute_path,
+)
+
 _PACKAGE_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def validate_package_name(name: str) -> str:
-    if not _PACKAGE_RE.fullmatch(name.strip()):
+    if name != name.strip() or not _PACKAGE_RE.fullmatch(name):
         raise ValueError(
             "package must be snake_case: ^[a-z][a-z0-9_]*$ "
             "(example: my_screen_tool)"
         )
-    return name.strip()
+    return name
 
 
 def package_to_class_suffix(package: str) -> str:
@@ -29,8 +36,21 @@ def write_plugin_project(
     display_name: str,
     include_settings_ui: bool,
 ) -> Path:
-    plugins_dir = root / "plugins"
-    dest = plugins_dir / package
+    package = validate_package_name(package)
+    safe_root = require_symlink_free_absolute_path(
+        root,
+        field="plugin scaffold root",
+    )
+    plugins_dir = managed_child_path(
+        safe_root,
+        "plugins",
+        field="plugin scaffold directory",
+    )
+    dest = managed_child_path(
+        plugins_dir,
+        package,
+        field="plugin package name",
+    )
     if dest.exists():
         raise FileNotFoundError(f"already exists: {dest}")
 
@@ -39,11 +59,19 @@ def write_plugin_project(
     entry = f"plugins.{package}.plugin:{class_name}"
 
     plugins_dir.mkdir(parents=True, exist_ok=True)
+    plugins_dir = require_directory_without_links(
+        plugins_dir,
+        field="plugin scaffold directory",
+    )
     dest.mkdir(parents=False)
+    dest = require_directory_without_links(
+        dest,
+        field="plugin package directory",
+    )
 
-    (dest / "__init__.py").write_text(
+    atomic_write_text(
+        managed_child_path(dest, "__init__.py", field="plugin scaffold filename"),
         f'"""Plugin package ``{package}`` (Easy AI Desktop Assistant)."""\n',
-        encoding="utf-8",
     )
 
     if include_settings_ui:
@@ -62,7 +90,10 @@ def write_plugin_project(
             priority=100,
         )
 
-    (dest / "plugin.py").write_text(plugin_body, encoding="utf-8")
+    atomic_write_text(
+        managed_child_path(dest, "plugin.py", field="plugin scaffold filename"),
+        plugin_body,
+    )
 
     readme = _README.format(
         package=package,
@@ -71,7 +102,10 @@ def write_plugin_project(
         plugin_id=plugin_id,
         display_name=display_name,
     )
-    (dest / "README.md").write_text(readme, encoding="utf-8")
+    atomic_write_text(
+        managed_child_path(dest, "README.md", field="plugin scaffold filename"),
+        readme,
+    )
 
     return dest
 

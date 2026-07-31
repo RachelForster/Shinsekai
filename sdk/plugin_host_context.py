@@ -10,8 +10,16 @@ saving YAML, and accessing every manager.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 from typing import Any
+
+from sdk.path_contract import (
+    project_root,
+    resolve_managed_project_path,
+    resolve_project_output_path,
+    validate_exact_path_text,
+)
 
 
 @dataclass(frozen=True)
@@ -34,7 +42,28 @@ class PluginHostContext:
     huggingface_cache_dir: Path
 
     @classmethod
-    def from_config_manager(cls, cm: Any | None) -> PluginHostContext:
+    def from_config_manager(
+        cls,
+        cm: Any | None,
+        *,
+        project_data_dir: str | os.PathLike[str] | None = None,
+    ) -> PluginHostContext:
+        configured_value = os.fspath(
+            project_root() / "data"
+            if project_data_dir is None
+            else project_data_dir
+        )
+        validate_exact_path_text(
+            configured_value,
+            field="project_data_dir",
+        )
+        configured_data_dir = Path(configured_value)
+        if not configured_data_dir.is_absolute():
+            raise ValueError("project_data_dir must be absolute")
+        data_dir = resolve_managed_project_path(
+            configured_value,
+            root=configured_data_dir.parent,
+        )
         if cm is None:
             return cls(
                 ui_language="zh_CN",
@@ -44,16 +73,23 @@ class PluginHostContext:
                 selected_llm_provider="",
                 tts_provider="",
                 live_room_id="",
-                project_data_dir=Path("data"),
-                huggingface_cache_dir=(Path.cwd() / "data/cache/huggingface").resolve(strict=False),
+                project_data_dir=data_dir,
+                huggingface_cache_dir=resolve_managed_project_path(
+                    data_dir / "cache" / "huggingface",
+                    root=data_dir.parent,
+                ),
             )
         cfg = cm.config
         sys = cfg.system_config
         api = cfg.api_config
-        raw_hf_cache = str(getattr(sys, "huggingface_cache_dir", "") or "./data/cache/huggingface")
-        hf_cache = Path(raw_hf_cache).expanduser()
-        if not hf_cache.is_absolute():
-            hf_cache = Path.cwd() / hf_cache
+        raw_hf_cache = str(
+            getattr(sys, "huggingface_cache_dir", "")
+            or "data/cache/huggingface"
+        )
+        hf_cache = resolve_project_output_path(
+            raw_hf_cache,
+            root=data_dir.parent,
+        )
         return cls(
             ui_language=str(sys.ui_language),
             voice_language=str(sys.voice_language),
@@ -62,8 +98,8 @@ class PluginHostContext:
             selected_llm_provider=str(api.llm_provider),
             tts_provider=str(api.tts_provider),
             live_room_id=str(sys.live_room_id),
-            project_data_dir=Path("data"),
-            huggingface_cache_dir=hf_cache.resolve(strict=False),
+            project_data_dir=data_dir,
+            huggingface_cache_dir=hf_cache,
         )
 
 
