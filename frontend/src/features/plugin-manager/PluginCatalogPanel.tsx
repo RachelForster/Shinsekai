@@ -32,7 +32,7 @@ import type {
   PluginInstallInput,
   PluginManifest,
 } from "../../entities/plugin/types";
-import { openExternal } from "../../entities/files/repository";
+import { fileUrl, openExternal } from "../../entities/files/repository";
 import {
   checkDesktopUpdate,
   desktopRestartErrorMessage,
@@ -255,6 +255,7 @@ export function PluginCatalogInstallDialog({
   const installDone = Boolean(plugin) && installMutation.isSuccess && !installMutation.isPending;
   const installNotice = catalogTrustNotice(plugin, t);
   const installAsUpdate = Boolean(plugin?.downloaded || plugin?.installed);
+  const pluginLogoUrl = fileUrl(plugin?.logo ?? "");
   const catalogTagsQuery = useQuery({
     enabled: Boolean(plugin?.repo) && !officialPackage,
     queryFn: () => listRepoTags(plugin?.repo ?? ""),
@@ -334,8 +335,8 @@ export function PluginCatalogInstallDialog({
           <div className="plugin-market-install-summary">
             <div className="plugin-market-card__header">
               <div className="plugin-market-card__logo" aria-hidden="true">
-                {plugin.logo ? (
-                  <img alt="" src={plugin.logo} />
+                {pluginLogoUrl ? (
+                  <img alt="" src={pluginLogoUrl} />
                 ) : (
                   <img alt="" className="plugin-default-logo" src={defaultPluginLogoUrl} />
                 )}
@@ -633,13 +634,14 @@ export function PluginCatalogPanel({
       installed: installState.installed,
     };
     const scanPassed = securityScanPassed(plugin);
+    const pluginLogoUrl = fileUrl(plugin.logo ?? "");
 
     return (
       <article className="plugin-market-card" key={catalogKey(plugin)}>
         <div className="plugin-market-card__header">
           <div className="plugin-market-card__logo" aria-hidden="true">
-            {plugin.logo ? (
-              <img alt="" src={plugin.logo} />
+            {pluginLogoUrl ? (
+              <img alt="" src={pluginLogoUrl} />
             ) : (
               <img alt="" className="plugin-default-logo" src={defaultPluginLogoUrl} />
             )}

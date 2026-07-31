@@ -85,7 +85,7 @@ The checked-in baselines live under `e2e/visual.spec.ts-snapshots/`; transient
 Terminal 1:
 
 ```bash
-conda run -n shinsekai python frontend_bridge.py --host 127.0.0.1 --port 8787 --project-root .
+conda run -n shinsekai python frontend_bridge.py --host 127.0.0.1 --port 8787
 ```
 
 Terminal 2:

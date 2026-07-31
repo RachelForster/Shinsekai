@@ -1,4 +1,5 @@
 import { createBrowserPreviewPlatform } from "./browserPreviewPlatform";
+import { resolveBridgeEndpoint } from "./bridgeUrlContract";
 import { createHttpPlatform } from "./httpPlatform";
 import type { ShinsekaiPlatform } from "./types";
 
@@ -11,7 +12,7 @@ declare global {
 let platform: ShinsekaiPlatform | null = null;
 
 function bridgeBaseFromUrl() {
-  const value = new URLSearchParams(window.location.search).get("shinsekai_bridge")?.trim();
+  const value = new URLSearchParams(window.location.search).get("shinsekai_bridge");
   return value ?? "";
 }
 
@@ -29,7 +30,7 @@ export function resolvePlatformHttpUrl(pathOrUrl: string): string {
     return pathOrUrl;
   }
   const desktopBridge = bridgeBaseFromUrl();
-  const httpBase = import.meta.env.VITE_SHINSEKAI_API_BASE?.trim();
+  const httpBase = import.meta.env.VITE_SHINSEKAI_API_BASE;
   const sameOriginBridge =
     !import.meta.env.DEV && /^https?:$/.test(window.location.protocol) ? window.location.origin : "";
   const baseUrl = desktopBridge || httpBase || sameOriginBridge;
@@ -37,7 +38,7 @@ export function resolvePlatformHttpUrl(pathOrUrl: string): string {
     return pathOrUrl;
   }
   try {
-    return new URL(pathOrUrl, baseUrl).toString();
+    return resolveBridgeEndpoint(baseUrl, pathOrUrl).toString();
   } catch {
     return pathOrUrl;
   }
@@ -45,7 +46,7 @@ export function resolvePlatformHttpUrl(pathOrUrl: string): string {
 
 export function getPlatform(): ShinsekaiPlatform {
   if (!platform) {
-    const httpBase = import.meta.env.VITE_SHINSEKAI_API_BASE?.trim();
+    const httpBase = import.meta.env.VITE_SHINSEKAI_API_BASE;
     const httpToken = import.meta.env.VITE_SHINSEKAI_BRIDGE_TOKEN?.trim() ?? "";
     const desktopBridge = bridgeBaseFromUrl();
     const desktopBridgeToken = bridgeTokenFromUrl();

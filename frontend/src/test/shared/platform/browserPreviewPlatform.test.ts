@@ -73,7 +73,9 @@ describe("browser preview platform chat themes", () => {
     expect(platform.files.fileUrl("data/chat_ui_themes/neon-night-city/frame-dialog.svg")).toBe(
       neonNightCityFrameDialogUrl,
     );
-    expect(platform.files.fileUrl("data/backgrounds/preview.png")).toBe("data/backgrounds/preview.png");
+    expect(platform.files.fileUrl("data/backgrounds/preview.png")).toBe("");
+    expect(platform.files.fileUrl("file:///tmp/preview.png")).toBe("");
+    expect(platform.files.fileUrl("/assets/system/picture/shinsekai.png")).toBe("/assets/system/picture/shinsekai.png");
   });
 
   it("resolves bundled assets through a saved clone's base theme", async () => {
@@ -678,10 +680,10 @@ describe("browser preview platform chat themes", () => {
     expect(root.entries.map((entry) => entry.name)).toContain("home");
     const fallback = await resolvePreview(platform.files.browse({ path: "/does/not/exist" }));
     expect(fallback.cwd).toBe("/home/shinsekai/project");
-    expect(await resolvePreview(platform.files.thumbnailBatch!(["/tmp/a.png", ""], {}))).toEqual({
-      "/tmp/a.png": "/tmp/a.png",
+    expect(await resolvePreview(platform.files.thumbnailBatch!(["/tmp/a.png", "/assets/a.png", ""], {}))).toEqual({
+      "/assets/a.png": "/assets/a.png",
     });
-    expect(platform.files.thumbnailUrl("/tmp/a.png")).toBe("/tmp/a.png");
+    expect(platform.files.thumbnailUrl("/tmp/a.png")).toBe("");
     await resolvePreview(platform.files.openExternal("https://example.test"));
     expect(window.open).toHaveBeenCalledWith("https://example.test", "_blank", "noopener,noreferrer");
 

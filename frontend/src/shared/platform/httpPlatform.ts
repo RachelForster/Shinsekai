@@ -75,16 +75,14 @@ import type {
   ChatAttachmentInput,
 } from "./types";
 import { currentChatRendererId } from "./chatRenderer";
+import { classifyMediaSource } from "../assets/mediaSource";
+import { normalizeBridgeOrigin, resolveBridgeEndpoint, resolveBridgeWebSocketEndpoint } from "./bridgeUrlContract";
 
 const bridgeAuthTokens = new Map<string, string>();
 
-function normalizedBaseUrl(baseUrl: string) {
-  return baseUrl.replace(/\/$/, "");
-}
-
 function rememberBridgeAuthToken(baseUrl: string, authToken?: string) {
   const token = authToken?.trim() ?? "";
-  const key = normalizedBaseUrl(baseUrl);
+  const key = normalizeBridgeOrigin(baseUrl);
   if (token) {
     bridgeAuthTokens.set(key, token);
   } else {
@@ -93,7 +91,7 @@ function rememberBridgeAuthToken(baseUrl: string, authToken?: string) {
 }
 
 function bridgeAuthToken(baseUrl: string) {
-  return bridgeAuthTokens.get(normalizedBaseUrl(baseUrl)) ?? "";
+  return bridgeAuthTokens.get(normalizeBridgeOrigin(baseUrl)) ?? "";
 }
 
 function bridgeAuthHeaders(baseUrl: string): Record<string, string> {
@@ -118,20 +116,11 @@ function headersRecord(headers?: HeadersInit): Record<string, string> {
   return { ...(headers as Record<string, string>) };
 }
 
-function appendBridgeAuthQuery(baseUrl: string, pathOrUrl: string) {
+export function bridgeUrl(baseUrl: string, path: string) {
+  const url = resolveBridgeEndpoint(baseUrl, path);
   const token = bridgeAuthToken(baseUrl);
-  if (!token) {
-    return pathOrUrl;
-  }
-  const separator = pathOrUrl.includes("?") ? "&" : "?";
-  return `${pathOrUrl}${separator}shinsekai_bridge_token=${encodeURIComponent(token)}`;
-}
-
-function bridgeUrl(baseUrl: string, path: string) {
-  const base = new URL(baseUrl);
-  const url = new URL(appendBridgeAuthQuery(baseUrl, path), base);
-  if (url.origin !== base.origin) {
-    throw new Error("Bridge URL must stay on the active bridge origin");
+  if (token) {
+    url.searchParams.set("shinsekai_bridge_token", token);
   }
   return url.toString();
 }
@@ -177,7 +166,7 @@ async function requestJson<T>(baseUrl: string, path: string, init?: RequestInit)
     ...init,
     headers: requestHeaders,
   };
-  const response = await fetchWithStartupRetry(`${baseUrl}${path}`, requestInit);
+  const response = await fetchWithStartupRetry(resolveBridgeEndpoint(baseUrl, path).toString(), requestInit);
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const message = typeof data?.error === "string" ? data.error : `${response.status} ${response.statusText}`;
@@ -234,7 +223,7 @@ function isTransientBridgeError(error: unknown) {
 }
 
 async function requestForm<T>(baseUrl: string, path: string, formData: FormData): Promise<T> {
-  const url = `${baseUrl}${path}`;
+  const url = resolveBridgeEndpoint(baseUrl, path).toString();
   const headers = bridgeAuthHeaders(baseUrl);
   const init: RequestInit = {
     body: formData,
@@ -278,10 +267,6 @@ function uploadFiles<T>(apiBase: string, path: string, files: File[]): Promise<T
     formData.append("files", file, file.name);
   }
   return requestForm<T>(apiBase, path, formData);
-}
-
-function openDownload(apiBase: string, path: string) {
-  openBridgeWindow(apiBase, `/api/download?path=${encodeURIComponent(path)}`);
 }
 
 function delay(ms: number) {
@@ -343,8 +328,30 @@ function sanitizeRestartLogUrl(url: string) {
   }
 }
 
-function buildChatViewerWebSocketUrl(wsUrl: string, sessionId: string, authToken = "") {
-  const url = new URL(wsUrl);
+function sanitizeChatStageWebSocketUrl(url: string) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return url.split("?", 1)[0] ?? url;
+  }
+}
+
+function logChatStageTransport(message: string, data?: Record<string, unknown>) {
+  if (data) {
+    console.log(`[ChatStage] ${message}`, data);
+  } else {
+    console.log(`[ChatStage] ${message}`);
+  }
+  const suffix = data ? ` ${JSON.stringify(data)}` : "";
+  void writeDesktopRestartDebugLog(`ChatStageTransport ${message}${suffix}`);
+}
+
+function buildChatViewerWebSocketUrl(apiBase: string, wsUrl: string, sessionId: string, authToken = "") {
+  if (!sessionId || sessionId !== sessionId.trim() || /[\u0000-\u001f\u007f]/.test(sessionId)) {
+    throw new Error("Chat session ID must be exact");
+  }
+  const url = resolveBridgeWebSocketEndpoint(apiBase, wsUrl);
   url.searchParams.set("sessionId", sessionId);
   url.searchParams.set("role", "viewer");
   url.searchParams.set("rendererId", currentChatRendererId());
@@ -404,7 +411,7 @@ async function waitForTask<TResult>(
 }
 
 export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPlatform {
-  const apiBase = normalizedBaseUrl(baseUrl);
+  const apiBase = normalizeBridgeOrigin(baseUrl);
   rememberBridgeAuthToken(apiBase, authToken);
 
   return {
@@ -445,7 +452,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ name }),
           method: "POST",
         });
-        openDownload(apiBase, result.path);
+        openBridgeWindow(apiBase, result.downloadUrl);
         return result.path;
       },
       import: (items) => {
@@ -508,7 +515,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ name }),
           method: "POST",
         });
-        openDownload(apiBase, result.path);
+        openBridgeWindow(apiBase, result.downloadUrl);
         return result.path;
       },
       import: (items) => {
@@ -646,6 +653,8 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         let socket: WebSocket | null = null;
         let lastEventSeq = 0;
 
+        logChatStageTransport("subscribe_events_start");
+
         const emitSnapshot = (snapshot: ChatSnapshot) => {
           const snapshotSeq =
             typeof snapshot.eventSeq === "number" && Number.isFinite(snapshot.eventSeq) ? snapshot.eventSeq : 0;
@@ -658,6 +667,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           };
           lastEventSeq = Math.max(lastEventSeq, snapshotSeq);
           seq = Math.max(seq, event.seq);
+          logChatStageTransport("snapshot_emitted", {
+            eventSeq: snapshotSeq,
+            hasSessionId: Boolean(snapshot.sessionId),
+            hasWsUrl: Boolean(snapshot.wsUrl),
+          });
           listener(event);
         };
 
@@ -667,6 +681,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         ) => {
           const nextSeq = Math.max(seq, lastEventSeq);
           seq = Math.max(seq, nextSeq);
+          logChatStageTransport("transport_state", { state, transport });
           listener({
             seq: nextSeq,
             state,
@@ -683,6 +698,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           if (!socket) {
             return;
           }
+          logChatStageTransport("websocket_closing");
           socket.onclose = null;
           socket.onerror = null;
           socket.onmessage = null;
@@ -697,19 +713,42 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         const connectWebSocket = (snapshot: ChatSnapshot) => {
           const WebSocketCtor = globalThis.WebSocket;
           if (!snapshot.wsUrl || !snapshot.sessionId || typeof WebSocketCtor === "undefined") {
+            logChatStageTransport("polling_started", {
+              reason: typeof WebSocketCtor === "undefined" ? "missing_websocket" : "missing_session",
+            });
             emitTransportState("polling", "snapshot");
             return false;
           }
           closeSocket();
           let websocketConnected = false;
-          const ws = new WebSocketCtor(
-            buildChatViewerWebSocketUrl(snapshot.wsUrl, snapshot.sessionId, bridgeAuthToken(apiBase)),
-          );
+          let viewerWsUrl: string;
+          let ws: WebSocket;
+          try {
+            viewerWsUrl = buildChatViewerWebSocketUrl(
+              apiBase,
+              snapshot.wsUrl,
+              snapshot.sessionId,
+              bridgeAuthToken(apiBase),
+            );
+            ws = new WebSocketCtor(viewerWsUrl);
+          } catch (error) {
+            logChatStageTransport("websocket_endpoint_rejected", {
+              reason: errorMessage(error),
+              sessionId: snapshot.sessionId,
+            });
+            emitTransportState("polling", "snapshot");
+            return false;
+          }
+          logChatStageTransport("websocket_connecting", {
+            sessionId: snapshot.sessionId,
+            wsUrl: sanitizeChatStageWebSocketUrl(viewerWsUrl),
+          });
           socket = ws;
           connectTimeoutId = window.setTimeout(() => {
             if (stopped || socket !== ws || websocketConnected) {
               return;
             }
+            logChatStageTransport("websocket_handshake_timeout", { sessionId: snapshot.sessionId });
             closeSocket();
             emitTransportState("polling", "snapshot");
             timeoutId = window.setTimeout(poll, 0);
@@ -721,6 +760,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
             websocketConnected = true;
             window.clearTimeout(connectTimeoutId);
             connectTimeoutId = 0;
+            logChatStageTransport("websocket_connected", { sessionId: snapshot.sessionId });
             emitTransportState("connected", "websocket");
           };
           ws.onmessage = (message) => {
@@ -729,14 +769,23 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
                 websocketConnected = true;
                 window.clearTimeout(connectTimeoutId);
                 connectTimeoutId = 0;
+                logChatStageTransport("websocket_connected", { sessionId: snapshot.sessionId, source: "message" });
                 emitTransportState("connected", "websocket");
               }
               const parsed = JSON.parse(String(message.data ?? ""));
               if (!parsed || typeof parsed !== "object" || typeof parsed.type !== "string") {
                 return;
               }
+              logChatStageTransport("websocket_message", {
+                seq: typeof parsed.seq === "number" ? parsed.seq : 0,
+                type: parsed.type,
+              });
               if (typeof parsed.seq === "number") {
                 if (lastEventSeq > 0 && parsed.seq > lastEventSeq + 1) {
+                  logChatStageTransport("websocket_gap_detected", {
+                    lastEventSeq,
+                    nextSeq: parsed.seq,
+                  });
                   void requestJson<ChatSnapshot>(apiBase, chatSnapshotPath())
                     .then((nextSnapshot) => {
                       if (!stopped) {
@@ -745,6 +794,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
                     })
                     .catch(() => {
                       // ignore gap recovery failure; normal reconnect path will retry
+                      logChatStageTransport("websocket_gap_recovery_failed");
                     });
                 }
                 lastEventSeq = Math.max(lastEventSeq, parsed.seq);
@@ -752,9 +802,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
               listener(parsed as ChatStageEvent);
             } catch {
               // ignore malformed websocket payloads
+              logChatStageTransport("websocket_message_malformed");
             }
           };
           ws.onerror = () => {
+            logChatStageTransport("websocket_error", { sessionId: snapshot.sessionId });
             try {
               ws.close();
             } catch {
@@ -768,6 +820,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
             websocketConnected = false;
             window.clearTimeout(connectTimeoutId);
             connectTimeoutId = 0;
+            logChatStageTransport("websocket_closed", { sessionId: snapshot.sessionId });
             if (!stopped) {
               emitTransportState("reconnecting", "websocket");
               timeoutId = window.setTimeout(connectFromSnapshot, 800);
@@ -778,6 +831,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
 
         const poll = async () => {
           try {
+            logChatStageTransport("polling_snapshot_request");
             const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath());
             if (!stopped) {
               emitSnapshot(snapshot);
@@ -795,6 +849,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
 
         const connectFromSnapshot = async () => {
           try {
+            logChatStageTransport("connect_from_snapshot_request");
             const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath());
             if (stopped) {
               return;
@@ -805,6 +860,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
             }
           } catch {
             if (!stopped) {
+              logChatStageTransport("connect_from_snapshot_failed");
               emitTransportState("polling", "snapshot");
               timeoutId = window.setTimeout(poll, 1400);
             }
@@ -814,6 +870,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         void connectFromSnapshot();
         return () => {
           stopped = true;
+          logChatStageTransport("subscribe_events_stop");
           window.clearTimeout(timeoutId);
           window.clearTimeout(connectTimeoutId);
           closeSocket();
@@ -857,7 +914,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ name }),
           method: "POST",
         });
-        openDownload(apiBase, result.path);
+        openBridgeWindow(apiBase, result.downloadUrl);
         return result.path;
       },
       generateSetting: (input) =>
@@ -1021,21 +1078,26 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         });
       },
       fileUrl(path) {
-        if (!path) {
-          return "";
+        switch (classifyMediaSource(path)) {
+          case "direct":
+            return path;
+          case "local":
+            return bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(path)}`);
+          case "empty":
+          case "unsupported":
+            return "";
         }
-        if (/^(?:https?:|blob:|data:|\/assets\/)/.test(path)) {
-          return path;
-        }
-        return bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(path)}`);
       },
       async thumbnailBatch(paths, options) {
-        const localPaths = paths.filter((path) => path && !/^(?:https?:|blob:|data:|\/assets\/)/.test(path));
+        const localPaths = paths.filter((path) => classifyMediaSource(path) === "local");
         const directEntries = paths
-          .filter((path) => /^(?:https?:|blob:|data:|\/assets\/)/.test(path))
+          .filter((path) => classifyMediaSource(path) === "direct")
           .map((path) => [path, path] as const);
+        const unsupportedEntries = paths
+          .filter((path) => classifyMediaSource(path) === "unsupported")
+          .map((path) => [path, ""] as const);
         if (!localPaths.length) {
-          return Object.fromEntries(directEntries);
+          return Object.fromEntries([...directEntries, ...unsupportedEntries]);
         }
         const response = await requestJson<{
           items: Array<{ cachePath?: string; dataUrl?: string; path: string }>;
@@ -1050,6 +1112,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         const preferDataUrl = options?.delivery === "data";
         return {
           ...Object.fromEntries(directEntries),
+          ...Object.fromEntries(unsupportedEntries),
           ...Object.fromEntries(
             response.items
               .map((item) => {
@@ -1072,11 +1135,14 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         };
       },
       thumbnailUrl(path, options) {
-        if (!path) {
-          return "";
-        }
-        if (/^(?:https?:|blob:|data:|\/assets\/)/.test(path)) {
-          return path;
+        switch (classifyMediaSource(path)) {
+          case "direct":
+            return path;
+          case "empty":
+          case "unsupported":
+            return "";
+          case "local":
+            break;
         }
         const params = new URLSearchParams({ path });
         if (options?.size) {
@@ -1093,8 +1159,15 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     logs: {
-      exportDiagnostics: () =>
-        requestJson<DiagnosticBundleResult>(apiBase, "/api/logs/diagnostic-bundle", { method: "POST" }),
+      async exportDiagnostics() {
+        const result = await requestJson<DiagnosticBundleResult>(apiBase, "/api/logs/diagnostic-bundle", {
+          method: "POST",
+        });
+        return {
+          ...result,
+          downloadUrl: bridgeUrl(apiBase, result.downloadUrl),
+        };
+      },
       getDefault: () => requestJson<LogSnapshot>(apiBase, "/api/logs/default"),
       import: (items) => {
         if (isFileList(items)) {

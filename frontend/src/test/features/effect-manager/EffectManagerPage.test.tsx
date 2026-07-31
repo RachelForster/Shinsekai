@@ -187,6 +187,18 @@ describe("EffectManagerPage", () => {
     );
   });
 
+  it("rejects a whitespace-retargeted effect directory name", async () => {
+    renderPage();
+
+    const name = screen.getByLabelText("Scheme name");
+    await waitFor(() => expect(name).toHaveValue("Spark"));
+    fireEvent.change(name, { target: { value: " Spark " } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("特效方案名称首尾不能包含空白字符。")).toBeInTheDocument();
+    expect(mockSaveEffect).not.toHaveBeenCalled();
+  });
+
   it("blocks invalid unsaved effect actions before calling repositories", async () => {
     mockListEffects.mockResolvedValue([]);
     renderPage();

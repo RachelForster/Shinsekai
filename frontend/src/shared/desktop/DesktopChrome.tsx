@@ -24,6 +24,7 @@ import {
 import { RuntimeProgressPanel } from "./RuntimeProgressPanel";
 import { ProjectRootGate } from "./ProjectRootGate";
 import { appendRuntimeProgressLog } from "./runtimeProgressLog";
+import { resolveBridgeEndpoint } from "../platform/bridgeUrlContract";
 
 function DesktopTitleBar() {
   const { t } = useI18n();
@@ -90,7 +91,9 @@ async function bridgeHealthReady(bridgeUrl: string) {
     return false;
   }
   try {
-    const response = await fetch(`${bridgeUrl.replace(/\/$/, "")}/api/health`, { cache: "no-store" });
+    const response = await fetch(resolveBridgeEndpoint(bridgeUrl, "/api/health").toString(), {
+      cache: "no-store",
+    });
     if (!response.ok) {
       return false;
     }

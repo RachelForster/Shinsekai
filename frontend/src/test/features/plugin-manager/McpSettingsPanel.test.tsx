@@ -59,6 +59,7 @@ describe("McpSettingsPanel", () => {
             alpha: {
               args: ["server.py"],
               command: "python",
+              cwd: "servers/alpha",
               env: { TOKEN: "secret" },
               type: "stdio",
             },
@@ -76,7 +77,12 @@ describe("McpSettingsPanel", () => {
         expect.objectContaining({
           servers: expect.arrayContaining([
             expect.objectContaining({ name_prefix: "demo_", transport: "sse" }),
-            expect.objectContaining({ command: "python", name_prefix: "alpha_", transport: "stdio" }),
+            expect.objectContaining({
+              command: "python",
+              cwd: "servers/alpha",
+              name_prefix: "alpha_",
+              transport: "stdio",
+            }),
           ]),
         }),
         expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
@@ -169,6 +175,24 @@ describe("McpSettingsPanel", () => {
 
     expect(await screen.findByText("node_")).toBeInTheDocument();
     expect(screen.getByText("node server.js")).toBeInTheDocument();
+  });
+
+  it("rejects a whitespace-retargeted stdio command path", async () => {
+    renderPanel();
+
+    await screen.findByText("demo_");
+    fireEvent.click(screen.getByRole("button", { name: "Add" }));
+    const dialog = screen.getByRole("dialog", { name: "Add MCP server" });
+    fireEvent.click(within(dialog).getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "stdio" }));
+    fireEvent.change(within(dialog).getByLabelText("Command"), {
+      target: { value: " /opt/mcp-server" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save server" }));
+
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "MCP values must not contain surrounding whitespace.",
+    );
   });
 
   it("removes a server from the draft before saving", async () => {

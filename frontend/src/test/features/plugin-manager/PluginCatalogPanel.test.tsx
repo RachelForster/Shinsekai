@@ -39,6 +39,7 @@ vi.mock("../../../entities/plugin/repository", () => ({
 }));
 
 vi.mock("../../../entities/files/repository", () => ({
+  fileUrl: (path: string) => (/^https?:\/\//u.test(path) ? path : ""),
   openExternal: (url: string) => fileMocks.openExternal(url),
 }));
 

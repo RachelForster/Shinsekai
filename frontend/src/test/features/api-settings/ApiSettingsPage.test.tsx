@@ -164,6 +164,20 @@ describe("ApiSettingsPage", () => {
     await waitFor(() => expect(mocks.saveApiConfig).not.toHaveBeenCalled());
   });
 
+  it("rejects a whitespace-retargeted local TTS startup path", async () => {
+    mocks.getAppConfig.mockResolvedValue(appConfigForTts("gpt-sovits"));
+    renderPage();
+
+    const field = await screen.findByLabelText("GPT-SoVITS 服务启动路径");
+    fireEvent.change(field, { target: { value: " /project/GPT-SoVITS " } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(
+      await screen.findByText("TTS 服务启动路径首尾不能包含空白字符。", { selector: ".field-error" }),
+    ).toBeInTheDocument();
+    expect(mocks.saveApiConfig).not.toHaveBeenCalled();
+  });
+
   it("prefills local TTS startup path from the installed bundle directory", async () => {
     mocks.getAppConfig.mockResolvedValue({
       ...appConfigForTts("genie-tts"),

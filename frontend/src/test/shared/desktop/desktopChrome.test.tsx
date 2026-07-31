@@ -143,6 +143,9 @@ describe("DesktopChrome", () => {
     expect(await screen.findByText("Shinsekai")).toBeInTheDocument();
     expect(await screen.findByText("App content")).toBeInTheDocument();
     expect(desktopApi.getDesktopRuntimeState).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith("http://127.0.0.1:8787/api/health", {
+      cache: "no-store",
+    });
   });
 
   it("blocks the runtime gate and child providers until a project root is selected", async () => {

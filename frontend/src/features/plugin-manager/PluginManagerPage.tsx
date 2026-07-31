@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUpCircle, BookOpen, Power, RotateCcw, Send, Settings, Trash2 } from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { openExternal } from "../../entities/files/repository";
+import { fileUrl, openExternal } from "../../entities/files/repository";
 import {
   installPlugin,
   listPluginCatalog,
@@ -26,6 +26,7 @@ import {
   isTauriDesktop,
   writeDesktopRestartDebugLog,
 } from "../../shared/desktop/desktopApi";
+import { baseName } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
 import type { TaskSnapshot } from "../../shared/platform/types";
 import {
@@ -127,7 +128,7 @@ function installedPluginKeys(plugin: PluginManifest) {
     [
       plugin.id,
       plugin.title,
-      plugin.directory?.split(/[\\/]/).filter(Boolean).at(-1),
+      plugin.directory ? baseName(plugin.directory) : undefined,
       moduleToken(plugin.entry),
       plugin.install?.sourceLabel,
       plugin.install?.repo,
@@ -713,12 +714,13 @@ export function PluginManagerPage() {
                   : loaded
                     ? t("plugin.status.enabled")
                     : t("plugin.status.unavailable");
+                const pluginLogoUrl = fileUrl(catalog?.logo ?? "");
                 return (
                   <article className="plugin-card" key={plugin.id}>
                     <div className="plugin-card__header">
                       <div className="plugin-card__logo" aria-hidden="true">
-                        {catalog?.logo ? (
-                          <img alt="" src={catalog.logo} />
+                        {pluginLogoUrl ? (
+                          <img alt="" src={pluginLogoUrl} />
                         ) : (
                           <img alt="" className="plugin-default-logo" src={defaultPluginLogoUrl} />
                         )}

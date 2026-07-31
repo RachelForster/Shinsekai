@@ -45,6 +45,22 @@ describe("http platform", () => {
     );
   });
 
+  it("rejects bridge bases whose path, query, fragment, credentials, or whitespace changes the root", () => {
+    for (const baseUrl of [
+      " http://127.0.0.1:8787",
+      "http://127.0.0.1:8787 ",
+      "http://127.0.0.1:8787/prefix",
+      "http://127.0.0.1:8787/?mode=desktop",
+      "http://127.0.0.1:8787/#desktop",
+      "http://user:password@127.0.0.1:8787",
+      "http://127.0.0.1:\\8787",
+      "http://127.0.0.1:87\t87",
+      "file:///tmp/bridge",
+    ]) {
+      expect(() => createHttpPlatform(baseUrl)).toThrow("Bridge base URL must be an exact HTTP(S) origin");
+    }
+  });
+
   it("sends bridge auth token on requests and generated media URLs", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(sampleConfig));
     vi.stubGlobal("fetch", fetchMock);
@@ -370,7 +386,7 @@ describe("http platform", () => {
       music_cover_rvc_resample_sr: 0,
       music_cover_rvc_rms_mix_rate: 0.25,
       music_cover_uvr_cmd_template: "",
-      music_cover_work_dir: "./data/music_cover",
+      music_cover_work_dir: "data/music_cover",
       music_cover_yt_dlp_exe: "",
     });
     const run = await platform.musicCover.run({ pickIndex: 2, query: "song", skipRvc: true, source: "youtube" });
@@ -442,21 +458,43 @@ describe("http platform", () => {
 
   it("opens bridge downloads after exports", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
-      mockJsonResponse({ downloadUrl: "/api/download?path=output/Nanami.char", path: "output/Nanami.char" }),
+      mockJsonResponse({
+        downloadUrl: "/api/download?path=server-selected%2FNanami.char&shinsekai_bridge_token=stale#download",
+        path: "output/Nanami.char",
+      }),
     );
     const openMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("open", openMock);
 
-    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "bridge-secret");
     const path = await platform.characters.export("Nanami");
 
     expect(path).toBe("output/Nanami.char");
     expect(openMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8787/api/download?path=output%2FNanami.char",
+      "http://127.0.0.1:8787/api/download?path=server-selected%2FNanami.char&shinsekai_bridge_token=bridge-secret#download",
       "_blank",
       "noopener,noreferrer",
     );
+  });
+
+  it("rejects an export URL that leaves the active bridge origin", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) =>
+      mockJsonResponse({
+        downloadUrl: "https://example.test/api/download?path=output%2FNanami.char",
+        path: "output/Nanami.char",
+      }),
+    );
+    const openMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("open", openMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "bridge-secret");
+
+    await expect(platform.characters.export("Nanami")).rejects.toThrow(
+      "Bridge URL must stay on the active bridge origin",
+    );
+    expect(openMock).not.toHaveBeenCalled();
   });
 
   it("calls background translate and upload endpoints", async () => {
@@ -1250,6 +1288,50 @@ describe("http platform", () => {
 
     unsubscribe();
     expect(FakeWebSocket.instances[0]?.close).toHaveBeenCalled();
+  });
+
+  it("does not send the bridge token to a mismatched websocket endpoint", async () => {
+    const snapshot = {
+      dialogText: "聊天已连接。",
+      historyPath: "data/chat_history/default.json",
+      inputDraft: "",
+      options: [],
+      sessionId: "session-1",
+      sprites: [],
+      status: "idle",
+      wsUrl: "ws://example.test:8788/ws",
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(snapshot)),
+    );
+
+    class FakeWebSocket {
+      static instances: FakeWebSocket[] = [];
+
+      constructor(_url: string) {
+        FakeWebSocket.instances.push(this);
+      }
+    }
+
+    vi.stubGlobal("WebSocket", FakeWebSocket as unknown as typeof WebSocket);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "bridge-secret");
+    const listener = vi.fn();
+    const unsubscribe = platform.chat.subscribeEvents(listener);
+
+    await waitFor(() =>
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({
+          state: "polling",
+          transport: "snapshot",
+          type: "transport.state",
+        }),
+      ),
+    );
+
+    expect(FakeWebSocket.instances).toHaveLength(0);
+    unsubscribe();
   });
 
   it("recovers by reloading snapshot when websocket event seq has a gap", async () => {
@@ -2193,7 +2275,10 @@ describe("http platform", () => {
         return mockJsonResponse(sampleConfig.effect_list);
       }
       if (url.endsWith("/api/effects/export")) {
-        return mockJsonResponse({ downloadUrl: "/api/download?path=output/Fx.effect", path: "output/Fx.effect" });
+        return mockJsonResponse({
+          downloadUrl: "/api/download?path=output%2FFx.effect",
+          path: "output/Fx.effect",
+        });
       }
       if (url.endsWith("/api/effects/import")) {
         return mockJsonResponse(sampleConfig.effect_list);
@@ -2247,7 +2332,10 @@ describe("http platform", () => {
         return mockJsonResponse(sampleConfig.background_list);
       }
       if (url.endsWith("/api/backgrounds/export")) {
-        return mockJsonResponse({ downloadUrl: "/api/download?path=output/Room.bg", path: "output/Room.bg" });
+        return mockJsonResponse({
+          downloadUrl: "/api/download?path=output%2FRoom.bg",
+          path: "output/Room.bg",
+        });
       }
       if (url.endsWith("/api/backgrounds/import")) {
         return mockJsonResponse(sampleConfig.background_list);
@@ -2290,7 +2378,10 @@ describe("http platform", () => {
         return mockJsonResponse({ files: [{ label: "app.log", path: "/tmp/app.log" }] });
       }
       if (url.endsWith("/api/logs/diagnostic-bundle")) {
-        return mockJsonResponse({ path: "output/diagnostics.zip" });
+        return mockJsonResponse({
+          downloadUrl: "/api/download?path=output%2Fdiagnostics%20%26%20logs.zip",
+          path: "output/diagnostics & logs.zip",
+        });
       }
       return mockJsonResponse({ content: "line", path: "/tmp/app.log" });
     });
@@ -2300,7 +2391,7 @@ describe("http platform", () => {
     await platform.logs.list();
     await platform.logs.getDefault();
     await platform.logs.import(["/tmp/app.log"]);
-    await platform.logs.exportDiagnostics();
+    const diagnostics = await platform.logs.exportDiagnostics();
     await platform.logs.import([new File(["line"], "app.log")]);
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
@@ -2316,6 +2407,9 @@ describe("http platform", () => {
         headers: { "X-Shinsekai-Bridge-Token": "bridge-secret" },
         method: "POST",
       }),
+    );
+    expect(diagnostics.downloadUrl).toBe(
+      "http://127.0.0.1:8787/api/download?path=output%2Fdiagnostics+%26+logs.zip&shinsekai_bridge_token=bridge-secret",
     );
   });
 

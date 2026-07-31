@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import { fileURLToPath } from "node:url";
 
 declare const process: {
   env: {
@@ -9,11 +10,12 @@ declare const process: {
 
 const coverageThreshold = Number(process.env.FRONTEND_COVERAGE_THRESHOLD ?? 85);
 
-function modulePath(path: string) {
-  return new URL(path, import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1");
+function modulePath(relativePath: string) {
+  return fileURLToPath(new URL(relativePath, import.meta.url));
 }
 
 export default defineConfig({
+  root: modulePath("."),
   plugins: [react()],
   resolve: {
     alias: {

@@ -608,11 +608,19 @@ export function BackgroundManagerPage() {
       });
       return null;
     }
+    if (nextDraft.sprite_prefix && nextDraft.sprite_prefix !== nextDraft.sprite_prefix.trim()) {
+      showToast({
+        kind: "error",
+        message: "背景目录名首尾不能包含空白字符。",
+        title: t("common.validationFailed"),
+      });
+      return null;
+    }
     return {
       background: {
         ...nextDraft,
         name: nextDraft.name.trim(),
-        sprite_prefix: nextDraft.sprite_prefix.trim() || "temp",
+        sprite_prefix: nextDraft.sprite_prefix || "temp",
       },
       originalName: isSavedBackground ? currentBackgroundName : undefined,
     };

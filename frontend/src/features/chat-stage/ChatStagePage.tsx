@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { isTauriDesktop, setDesktopWindowAlwaysOnTop } from "../../shared/desktop/desktopApi";
+import {
+  installMissingRuntimeDependency,
+  sendChatCommand,
+  uploadChatAttachments,
+} from "../../entities/chat/repository";
+import {
+  isTauriDesktop,
+  setDesktopWindowAlwaysOnTop,
+  supportsTransparentDesktopClickThrough,
+  writeDesktopRestartDebugLog,
+} from "../../shared/desktop/desktopApi";
 import { closeChatSurface } from "../../shared/desktop/chatWindow";
-import { sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
 import type { PluginPageTarget } from "../../shared/plugin/PluginSlot";
 import type { ChatAttachmentInput, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
@@ -59,8 +68,19 @@ import {
   CHAT_ATTACHMENT_LIMIT,
   CHAT_IMAGE_EXTENSIONS,
   chatAttachmentDisplayText,
+  chatAttachmentIdentityKey,
   mergeChatAttachmentInputs,
 } from "./attachments";
+
+function logChatStage(message: string, data?: Record<string, unknown>) {
+  if (data) {
+    console.log(`[ChatStage] ${message}`, data);
+  } else {
+    console.log(`[ChatStage] ${message}`);
+  }
+  const suffix = data ? ` ${JSON.stringify(data)}` : "";
+  void writeDesktopRestartDebugLog(`ChatStage ${message}${suffix}`);
+}
 
 interface ChatRouteInputState {
   inputAttachments: ChatAttachmentInput[];
@@ -130,6 +150,7 @@ export function ChatStagePage() {
   const [themePickerOpen, setThemePickerOpen] = useState(false);
   const [tokenUsageOpen, setTokenUsageOpen] = useState(false);
   const [toolbarConfigOpen, setToolbarConfigOpen] = useState(false);
+  const runtimeDependencyPromptRef = useRef("");
   const imageAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const fileAttachmentInputRef = useRef<HTMLInputElement | null>(null);
   const pendingAttachmentSlotsRef = useRef(0);
@@ -181,7 +202,8 @@ export function ChatStagePage() {
     historyDialogOpen ||
     confirmClearHistory ||
     confirmRevertUserIndex != null;
-  const clickThroughEnabled = standaloneDesktopWindow && transparentBackground && !modalOpen;
+  const clickThroughEnabled =
+    standaloneDesktopWindow && supportsTransparentDesktopClickThrough() && transparentBackground && !modalOpen;
   const dialogToolbarPlacement =
     typeof themeStyle["--chat-dialog-toolbar-placement"] === "string"
       ? themeStyle["--chat-dialog-toolbar-placement"]
@@ -246,6 +268,24 @@ export function ChatStagePage() {
     loadFallbackMessage: t("chat.error.loadFallback"),
     queueAnimatedDialog,
   });
+
+  useEffect(() => {
+    logChatStage("mounted", {
+      pathname: location.pathname,
+      standaloneDesktopWindow,
+    });
+    return () => logChatStage("unmounted", { pathname: location.pathname });
+  }, [location.pathname, standaloneDesktopWindow]);
+
+  useEffect(() => {
+    logChatStage("session_state", {
+      hasSessionId: Boolean(state.sessionId),
+      hasWsUrl: Boolean(state.wsUrl),
+      status: state.status,
+      transportMode: state.transportMode ?? "",
+      transportState: state.transportState ?? "",
+    });
+  }, [state.sessionId, state.status, state.transportMode, state.transportState, state.wsUrl]);
 
   useEffect(() => {
     const presentation = state.pluginPagePresentations?.at(-1);
@@ -318,6 +358,49 @@ export function ChatStagePage() {
   useEffect(() => subscribeChatStageRuntimeConfig(setRuntimeConfig), []);
 
   useEffect(() => {
+    const dependencyError = state.runtimeDependencyError;
+    if (!dependencyError) {
+      return;
+    }
+    const promptKey = [dependencyError.moduleName, dependencyError.packageName, dependencyError.logPath ?? ""].join(
+      "\n",
+    );
+    if (runtimeDependencyPromptRef.current === promptKey) {
+      return;
+    }
+    runtimeDependencyPromptRef.current = promptKey;
+    const shouldInstall = window.confirm(
+      t("runtimeDeps.installConfirm", {
+        module: dependencyError.moduleName,
+        package: dependencyError.packageName,
+      }),
+    );
+    if (!shouldInstall) {
+      showToast({
+        kind: "error",
+        message: state.dialogText || dependencyError.message,
+        title: t("runtimeDeps.installTitle"),
+      });
+      return;
+    }
+    void installMissingRuntimeDependency({ moduleName: dependencyError.moduleName })
+      .then((result) => {
+        showToast({
+          kind: "success",
+          message: result.message || t("runtimeDeps.installSucceeded"),
+          title: t("runtimeDeps.installTitle"),
+        });
+      })
+      .catch((error) => {
+        showToast({
+          kind: "error",
+          message: error instanceof Error ? error.message : t("runtimeDeps.installFailed"),
+          title: t("runtimeDeps.installFailed"),
+        });
+      });
+  }, [showToast, state.dialogText, state.runtimeDependencyError, t]);
+
+  useEffect(() => {
     if (!standaloneDesktopWindow) {
       return;
     }
@@ -349,11 +432,11 @@ export function ChatStagePage() {
 
   const addAttachments = (attachments: ChatAttachmentInput[]) => {
     const next = mergeChatAttachmentInputs(state.inputAttachments, attachments);
-    const existing = new Set(state.inputAttachments.map((attachment) => `${attachment.kind}\0${attachment.path}`));
+    const existing = new Set(state.inputAttachments.map(chatAttachmentIdentityKey));
     const requested = new Set(
       attachments
-        .map((attachment) => `${attachment.kind}\0${attachment.path.trim()}`)
-        .filter((key) => !key.endsWith("\0"))
+        .filter((attachment) => attachment.path)
+        .map(chatAttachmentIdentityKey)
         .filter((key) => !existing.has(key)),
     );
     if (next.length - state.inputAttachments.length < requested.size) {
@@ -554,23 +637,24 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));
   }, []);
 
+  const closeSurface = useCallback(() => {
+    return closeChatSurface({
+      closeRuntime: closeChatRuntime,
+      navigate,
+      snapshot: state,
+    });
+  }, [navigate, state]);
+
   useChatStageKeyboardShortcuts({
     disabled: modalOpen,
     onAdvance: advanceDialog,
+    onClose: closeSurface,
     onToggleAuto: toggleAuto,
   });
 
   const openHistoryDialog = () => {
     setHistoryDialogOpen(true);
     void refreshHistory();
-  };
-
-  const closeSurface = () => {
-    return closeChatSurface({
-      closeRuntime: closeChatRuntime,
-      navigate,
-      snapshot: state,
-    });
   };
 
   const openPluginPage = useCallback(

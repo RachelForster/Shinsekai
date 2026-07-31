@@ -1,4 +1,5 @@
 import { restartDesktopBridge } from "../../shared/desktop/desktopApi";
+import { resolveBridgeEndpoint } from "../../shared/platform/bridgeUrlContract";
 
 export async function reloadPluginService() {
   await waitForReloadAnimationFrame();
@@ -22,8 +23,7 @@ async function waitForPluginBridgeReady(bridgeUrl: string, timeoutMs = 15000) {
   if (!bridgeUrl) {
     return;
   }
-  const baseUrl = bridgeUrl.replace(/\/$/, "");
-  const url = `${baseUrl}/api/health`;
+  const url = resolveBridgeEndpoint(bridgeUrl, "/api/health").toString();
   const started = Date.now();
   let lastError: unknown;
 
@@ -32,7 +32,7 @@ async function waitForPluginBridgeReady(bridgeUrl: string, timeoutMs = 15000) {
       const response = await fetch(url, { cache: "no-store" });
       const payload = await response.json().catch(() => null);
       if (response.ok && payload?.ok === true) {
-        const status = normalizePluginLoadStatus(payload?.plugins) ?? (await fetchPluginLoadStatus(baseUrl));
+        const status = normalizePluginLoadStatus(payload?.plugins) ?? (await fetchPluginLoadStatus(bridgeUrl));
         if (!status || status.status === "ready") {
           return;
         }
@@ -64,7 +64,9 @@ type PluginLoadStatus = {
 
 async function fetchPluginLoadStatus(baseUrl: string): Promise<PluginLoadStatus | null> {
   try {
-    const response = await fetch(`${baseUrl}/api/plugins/status`, { cache: "no-store" });
+    const response = await fetch(resolveBridgeEndpoint(baseUrl, "/api/plugins/status").toString(), {
+      cache: "no-store",
+    });
     if (response.status === 404) {
       return null;
     }

@@ -57,6 +57,15 @@ fn display_path_strips_windows_verbatim_prefixes() {
         display_path_text("//?/UNC/server/share/runtime"),
         "//server/share/runtime"
     );
+    assert_eq!(display_path_text(r"\\.\C:\device"), r"\\.\C:\device");
+    assert_eq!(
+        display_path_text(r"\\?\GLOBALROOT\Device\HarddiskVolume1"),
+        r"\\?\GLOBALROOT\Device\HarddiskVolume1"
+    );
+    assert_eq!(
+        display_path_text(r" C:\Shinsekai\python.exe "),
+        r" C:\Shinsekai\python.exe "
+    );
 }
 
 #[test]
@@ -112,10 +121,39 @@ fn python_in_prefix_accepts_versioned_pbs_binary() {
     let _ = fs::remove_dir_all(temp_root);
 }
 
+#[cfg(unix)]
+#[test]
+fn python_in_prefix_rejects_linked_runtime_components() {
+    use std::os::unix::fs::symlink;
+
+    let temp_root = unique_temp_dir("runtime-linked-python");
+    let external = temp_root.join("external");
+    let runtime = temp_root.join("runtime");
+    let external_python = external.join("python3");
+    fs::create_dir_all(&external).unwrap();
+    fs::create_dir_all(runtime.join("bin")).unwrap();
+    fs::write(&external_python, "").unwrap();
+    symlink(&external_python, runtime.join("bin").join("python3")).unwrap();
+
+    assert_eq!(python_in_prefix(&runtime), None);
+
+    let real_runtime = temp_root.join("real-runtime");
+    fs::create_dir_all(real_runtime.join("bin")).unwrap();
+    fs::write(real_runtime.join("bin").join("python3"), "").unwrap();
+    let runtime_alias = temp_root.join("runtime-alias");
+    symlink(&real_runtime, &runtime_alias).unwrap();
+    assert_eq!(python_in_prefix(&runtime_alias), None);
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
 fn unique_temp_dir(name: &str) -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("shinsekai-{name}-{nonce}"))
+    std::env::temp_dir()
+        .canonicalize()
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join(format!("shinsekai-{name}-{nonce}"))
 }

@@ -54,9 +54,16 @@ export function normalizePluginContributions(contributions: PluginUIContribution
   const normalized: PluginUIContribution[] = [];
 
   for (const contribution of contributions) {
-    const id = contribution.id.trim();
-    const title = contribution.title.trim();
-    if (!id || !title || !isPluginSlotId(contribution.slot) || seen.has(id)) {
+    const id = contribution.id;
+    const title = contribution.title;
+    if (
+      !id ||
+      id !== id.trim() ||
+      !title ||
+      title !== title.trim() ||
+      !isPluginSlotId(contribution.slot) ||
+      seen.has(id)
+    ) {
       continue;
     }
     seen.add(id);

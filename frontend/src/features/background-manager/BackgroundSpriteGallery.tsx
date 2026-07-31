@@ -3,6 +3,7 @@ import { Image as ImageIcon, Save, Sparkles, Tags, Trash2, Upload } from "lucide
 
 import type { Background } from "../../entities/config/types";
 import { fileThumbnailBatch, fileThumbnailUrl, fileUrl } from "../../entities/files/repository";
+import { baseName } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
 import {
@@ -158,7 +159,7 @@ export function BackgroundSpriteGallery({
       ? (thumbnailSources[sprite.path] ?? (thumbnailBatchReady ? fileThumbnailUrl(sprite.path, 160) : ""))
       : "",
     meta: imageRowTags[index] || "",
-    title: sprite.path ? sprite.path.split(/[\\/]/).pop() || `${index + 1}` : `${index + 1}`,
+    title: sprite.path ? baseName(sprite.path) || `${index + 1}` : `${index + 1}`,
   }));
 
   return (

@@ -70,10 +70,16 @@ function parseArrayJson(text: string, message: string): string[] {
   return parsed.map(String);
 }
 
+function exactImportedMcpText(value: unknown, field: string) {
+  const raw = String(value ?? "");
+  if (raw !== raw.trim() || /[\u0000-\u001f\u007f\ud800-\udfff]/u.test(raw)) {
+    throw new Error(`${field} contains surrounding whitespace or control characters`);
+  }
+  return raw;
+}
+
 function normalizeTransport(value: unknown): McpTransport {
-  const raw = String(value || "sse")
-    .trim()
-    .toLowerCase();
+  const raw = exactImportedMcpText(value || "sse", "MCP transport").toLowerCase();
   if (raw === "stdio") {
     return "stdio";
   }
@@ -103,30 +109,40 @@ function importMcpServers(rawText: string): McpServerEntry[] {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       return [];
     }
+    const exactName = exactImportedMcpText(name, "MCP server name");
+    if (!exactName) {
+      throw new Error("MCP server name is required");
+    }
     const source = value as Record<string, unknown>;
     const transport = normalizeTransport(source.type ?? source.transport);
     const entry: McpServerEntry = {
       enabled: true,
-      name_prefix: `${name}_`,
+      name_prefix: `${exactName}_`,
       transport,
     };
-    if (typeof source.group === "string" && source.group.trim()) {
-      entry.group = source.group.trim();
+    if (typeof source.group === "string") {
+      const group = exactImportedMcpText(source.group, "MCP group");
+      if (group) {
+        entry.group = group;
+      }
     }
     const timeout = Number(source.call_timeout ?? source.timeout);
     if (Number.isFinite(timeout) && timeout > 0) {
       entry.call_timeout = timeout;
     }
     if (transport === "stdio") {
-      entry.command = String(source.command ?? "");
+      entry.command = exactImportedMcpText(source.command, "MCP command");
       entry.args = Array.isArray(source.args) ? source.args.map(String) : [];
       entry.env =
         source.env && typeof source.env === "object" && !Array.isArray(source.env)
           ? Object.fromEntries(Object.entries(source.env).map(([key, item]) => [key, String(item)]))
           : {};
+      if (source.cwd != null && source.cwd !== "") {
+        entry.cwd = exactImportedMcpText(source.cwd, "MCP working directory");
+      }
       return [entry];
     }
-    entry.url = String(source.url ?? "");
+    entry.url = exactImportedMcpText(source.url, "MCP URL");
     entry.headers =
       source.headers && typeof source.headers === "object" && !Array.isArray(source.headers)
         ? Object.fromEntries(Object.entries(source.headers).map(([key, item]) => [key, String(item)]))
@@ -172,9 +188,23 @@ function McpServerDialog({
 
   const handleSave = () => {
     try {
+      const exactOptional = (value: string | undefined) => {
+        const raw = value ?? "";
+        if (raw !== raw.trim()) {
+          throw new Error(t("mcp.validation.surroundingWhitespace"));
+        }
+        return raw;
+      };
+      const exactRequired = (value: string | undefined, requiredMessage: string) => {
+        const raw = exactOptional(value);
+        if (!raw) {
+          throw new Error(requiredMessage);
+        }
+        return raw;
+      };
       const next: McpServerEntry = {
         enabled: server.enabled,
-        name_prefix: server.name_prefix.trim(),
+        name_prefix: exactOptional(server.name_prefix),
         transport: server.transport,
       };
       const timeout = callTimeoutText.trim() ? Number(callTimeoutText) : null;
@@ -186,21 +216,20 @@ function McpServerDialog({
           next.call_timeout = timeout;
         }
       }
-      if (server.group?.trim()) {
-        next.group = server.group.trim();
+      const group = exactOptional(server.group);
+      if (group) {
+        next.group = group;
       }
       if (server.transport === "stdio") {
-        if (!server.command?.trim()) {
-          throw new Error(t("mcp.validation.needCommand"));
-        }
-        next.command = server.command.trim();
+        next.command = exactRequired(server.command, t("mcp.validation.needCommand"));
         next.args = parseArrayJson(argsText, t("mcp.validation.argsArray"));
         next.env = parseObjectJson(envText, t("mcp.validation.envObject"));
-      } else {
-        if (!server.url?.trim()) {
-          throw new Error(t("mcp.validation.needUrl"));
+        const cwd = exactOptional(server.cwd);
+        if (cwd) {
+          next.cwd = cwd;
         }
-        next.url = server.url.trim();
+      } else {
+        next.url = exactRequired(server.url, t("mcp.validation.needUrl"));
         next.headers = parseObjectJson(headersText, t("mcp.validation.headersObject"));
       }
       onSave(next);
@@ -273,6 +302,16 @@ function McpServerDialog({
               <span className="field-row__label">{t("mcp.field.command")}</span>
               <span className="field-row__control">
                 <TextInput onChange={(event) => update({ command: event.target.value })} value={server.command ?? ""} />
+              </span>
+            </label>
+            <label className="field-row">
+              <span className="field-row__label">{t("mcp.field.cwd")}</span>
+              <span className="field-row__control">
+                <TextInput
+                  onChange={(event) => update({ cwd: event.target.value })}
+                  placeholder="."
+                  value={server.cwd ?? ""}
+                />
               </span>
             </label>
             <label className="field-row">

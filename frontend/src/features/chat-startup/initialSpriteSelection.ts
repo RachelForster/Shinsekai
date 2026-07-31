@@ -1,4 +1,5 @@
 import type { Character } from "../../shared/platform/types";
+import { normalizePathSeparatorsForIdentity } from "../../shared/paths/pathContract";
 
 function browserHostPlatform() {
   if (typeof navigator === "undefined") {
@@ -13,7 +14,7 @@ export function spritePathsAreCaseSensitive(platform = browserHostPlatform()) {
 }
 
 function normalizedSpritePath(path: string, caseSensitive: boolean) {
-  const normalized = path.trim().replaceAll("\\", "/");
+  const normalized = normalizePathSeparatorsForIdentity(path);
   return caseSensitive ? normalized : normalized.toLowerCase();
 }
 
@@ -47,7 +48,7 @@ export function compatibleInitialSpritePath({
   preserveUnknown?: boolean;
   selectedCharacters: string[];
 }) {
-  const candidate = path.trim();
+  const candidate = path;
   if (!candidate) {
     return "";
   }
