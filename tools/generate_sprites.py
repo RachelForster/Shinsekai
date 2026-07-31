@@ -2,23 +2,88 @@ from google import genai
 from google.genai import types
 from PIL import Image
 from io import BytesIO
+import os
 import sys
 from typing import Union, List, Dict, Any
 import json
 from pathlib import Path
-from PIL import Image
 # 获取当前脚本的绝对路径
 current_script = Path(__file__).resolve()
-project_root = current_script.parent.parent
-if str(project_root) not in sys.path:
-    sys.path.append(str(project_root))
+source_root = current_script.parent.parent
+if str(source_root) not in sys.path:
+    sys.path.append(str(source_root))
 
 from config.config_manager import ConfigManager
+from core.file_transactions import (
+    atomic_binary_writer,
+    capture_directory_identity,
+    file_snapshot_is_stable,
+    open_binary_read_without_links,
+)
+from core.paths import (
+    project_root as runtime_project_root,
+    require_directory_without_links,
+    resolve_project_output_path,
+    resolve_runtime_asset_read_path,
+)
 
 config = ConfigManager()
 IMAGE_MODEL = 'gemini-2.5-flash-image'
 PROMPT_GENERATION_MODEL = "gemini-2.5-flash" 
 # 或者 "gemini-2.5-flash"
+
+
+def _existing_input_image(value: Union[str, Path]) -> Path:
+    path = resolve_runtime_asset_read_path(
+        os.fspath(value),
+        root=runtime_project_root(),
+    )
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    return path
+
+
+def _writable_output_file(value: Union[str, Path]) -> Path:
+    path = resolve_project_output_path(os.fspath(value), root=runtime_project_root())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    require_directory_without_links(
+        path.parent,
+        field="generated image output directory",
+    )
+    return path
+
+
+def _writable_output_directory(value: Union[str, Path]) -> Path:
+    path = resolve_project_output_path(os.fspath(value), root=runtime_project_root())
+    path.mkdir(parents=True, exist_ok=True)
+    return require_directory_without_links(
+        path,
+        field="generated sprite output directory",
+    )
+
+
+def _output_parent_identity(path: Path) -> os.stat_result:
+    parent, identity = capture_directory_identity(
+        path.parent,
+        field="generated image output directory",
+    )
+    if path.parent != parent:
+        raise PermissionError("generated image output directory changed identity")
+    return identity
+
+
+def _publish_generated_image(
+    output_path: Path,
+    payload: bytes,
+    *,
+    expected_parent_identity: os.stat_result,
+) -> None:
+    with atomic_binary_writer(
+        output_path,
+        expected_parent_identity=expected_parent_identity,
+    ) as output:
+        output.write(payload)
+
 
 class ImageGenerator:
     def __init__(self):
@@ -122,10 +187,24 @@ class ImageGenerator:
             prompt: 用于指导模型如何使用参考图片生成立绘的文本描述（例如：“Keep the character’s face and outfit from the reference image, but change the background to a sci-fi city.”）。
             output_file: 图片保存路径和文件名。
         """
+        image_path = _existing_input_image(image_path)
+        output_path = _writable_output_file(output_file)
+        output_parent_identity = _output_parent_identity(output_path)
         try:
             # 1. 加载参考图片
             print(f"-> 正在加载参考图片: {image_path}")
-            ref_image = Image.open(image_path)
+            with (
+                open_binary_read_without_links(image_path) as source,
+                Image.open(source) as opened_image,
+            ):
+                before = os.fstat(source.fileno())
+                opened_image.load()
+                ref_image = opened_image.copy()
+                after = os.fstat(source.fileno())
+                if not file_snapshot_is_stable(before, after):
+                    raise PermissionError(
+                        f"reference image changed while it was read: {image_path}"
+                    )
 
             # 2. 构造 contents 列表：同时包含文本和图片
             # 传入的 contents 列表中可以包含多个 Part，其中一个是图片，一个是文本
@@ -158,14 +237,22 @@ class ImageGenerator:
                     image_bytes = generated_image_part.inline_data.data
                     
                     # 将字节数据写入文件
-                    output_path = Path(output_file)
-                    output_path.parent.mkdir(parents=True, exist_ok=True) # 确保目录存在
-                    
                     # 使用 BytesIO 和 PIL Image 来保存，确保格式正确
                     output_image = Image.open(BytesIO(image_bytes))
-                    output_image.save(output_path)
+                    image_format = (
+                        Image.registered_extensions().get(output_path.suffix.lower())
+                        or output_image.format
+                        or "PNG"
+                    )
+                    with BytesIO() as encoded:
+                        output_image.save(encoded, format=image_format)
+                        _publish_generated_image(
+                            output_path,
+                            encoded.getvalue(),
+                            expected_parent_identity=output_parent_identity,
+                        )
 
-                    print(f"-> 成功生成并保存图片至: {output_path.resolve()}")
+                    print(f"-> 成功生成并保存图片至: {output_path}")
                     return output_path
                 else:
                     print("-> 警告：模型未在响应中返回图片。")
@@ -195,6 +282,8 @@ class ImageGenerator:
                         父目录必须存在。
         """
         print(f"-> 正在为 prompt: '{prompt[:50]}...' 生成图片...")
+        output_path = _writable_output_file(output_file)
+        output_parent_identity = _output_parent_identity(output_path)
         try:
             # 调用模型生成图片
             result = self.client.models.generate_images(
@@ -212,12 +301,13 @@ class ImageGenerator:
                 image_bytes = result.generated_images[0].image.image_bytes
 
                 # 将字节数据写入文件
-                output_path = Path(output_file)
-                output_path.parent.mkdir(parents=True, exist_ok=True) # 确保目录存在
-                with open(output_path, "wb") as f:
-                    f.write(image_bytes)
+                _publish_generated_image(
+                    output_path,
+                    image_bytes,
+                    expected_parent_identity=output_parent_identity,
+                )
 
-                print(f"-> 成功生成并保存图片至: {output_path.resolve()}")
+                print(f"-> 成功生成并保存图片至: {output_path}")
                 return output_path
             else:
                 print("-> 警告：模型未返回任何图片。")
@@ -242,9 +332,9 @@ class ImageGenerator:
             prompt_list: 包含所有立绘描述的列表。
             output_dir: 批量图片保存的目录。
         """
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-        print(f"--- 开始批量生成立绘到目录: {output_path.resolve()} ---")
+        image_path = _existing_input_image(image_path)
+        output_path = _writable_output_directory(output_dir)
+        print(f"--- 开始批量生成立绘到目录: {output_path} ---")
 
         generated_files = []
         for i, prompt in enumerate(prompt_list):
