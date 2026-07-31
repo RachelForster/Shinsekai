@@ -112,6 +112,72 @@ def test_inspect_local_model_reports_existing_and_missing_directories(tmp_path):
     assert missing["downloadable"] is False
 
 
+def test_snapshot_readiness_allows_only_bounded_huggingface_file_links(tmp_path):
+    cache_root = tmp_path / "hub"
+    snapshot = cache_root / "models--owner--model" / "snapshots" / "revision"
+    blobs = cache_root / "blobs"
+    snapshot.mkdir(parents=True)
+    blobs.mkdir(parents=True)
+    for name in ("config.json", "model.bin", "tokenizer.json"):
+        target = blobs / name
+        target.write_text(name, encoding="utf-8")
+        try:
+            (snapshot / name).symlink_to(target)
+        except (OSError, NotImplementedError):
+            pytest.skip("symbolic links are unavailable")
+
+    assert service._snapshot_is_complete(
+        snapshot,
+        _spec().required_file_groups,
+        allowed_link_root=cache_root,
+    )
+
+    outside = tmp_path / "outside-model.bin"
+    outside.write_bytes(b"outside")
+    (snapshot / "model.bin").unlink()
+    (snapshot / "model.bin").symlink_to(outside)
+
+    assert not service._snapshot_is_complete(
+        snapshot,
+        _spec().required_file_groups,
+        allowed_link_root=cache_root,
+    )
+
+
+def test_snapshot_readiness_rejects_replaced_directory(
+    tmp_path,
+    monkeypatch,
+):
+    snapshot = tmp_path / "snapshot"
+    preserved = tmp_path / "snapshot-preserved"
+    _write_complete_snapshot(snapshot)
+    real_snapshot = service.snapshot_directory_entries_without_links
+    replaced = False
+
+    def replace_after_inventory(path, **kwargs):
+        nonlocal replaced
+        result = real_snapshot(path, **kwargs)
+        if Path(path) == snapshot and not replaced:
+            replaced = True
+            snapshot.rename(preserved)
+            _write_complete_snapshot(snapshot)
+        return result
+
+    monkeypatch.setattr(
+        service,
+        "snapshot_directory_entries_without_links",
+        replace_after_inventory,
+    )
+
+    assert not service._snapshot_is_complete(
+        snapshot,
+        _spec().required_file_groups,
+        allowed_link_root=tmp_path,
+    )
+    assert (snapshot / "model.bin").is_file()
+    assert (preserved / "model.bin").is_file()
+
+
 def test_snapshot_validator_can_reject_structurally_invalid_assets(tmp_path, monkeypatch):
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
     model_dir = tmp_path / "models--owner--model"
@@ -128,9 +194,10 @@ def test_snapshot_validator_can_reject_structurally_invalid_assets(tmp_path, mon
 
 
 def test_download_model_asset_uses_shared_progress_downloader_and_token(tmp_path, monkeypatch):
-    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "empty-cache"))
+    cache_root = tmp_path / "active-cache"
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache_root))
     monkeypatch.setenv("HF_HOME", str(tmp_path / "unused-home"))
-    snapshot = tmp_path / "downloaded"
+    snapshot = cache_root / "models--owner--model" / "snapshots" / "downloaded"
     calls = []
 
     def fake_preload(repo_id, **kwargs):
@@ -154,7 +221,30 @@ def test_download_model_asset_uses_shared_progress_downloader_and_token(tmp_path
     assert calls[0][1]["token"] == "hf-secret"
     assert calls[0][1]["post_download_phase"] == "verify"
     assert calls[0][1]["allow_patterns"] == ["config.json", "model.bin", "tokenizer.json"]
+    assert calls[0][1]["cache_dir"] == str(cache_root)
     assert updates[-1]["progress"] == 0.5
+
+
+def test_download_model_asset_rejects_downloader_snapshot_outside_active_cache(
+    tmp_path,
+    monkeypatch,
+):
+    cache_root = tmp_path / "active-cache"
+    outside = tmp_path / "outside-snapshot"
+    monkeypatch.setenv("HF_HUB_CACHE", str(cache_root))
+    monkeypatch.setattr(
+        service,
+        "preload_huggingface_snapshot",
+        lambda *_args, **_kwargs: (
+            _write_complete_snapshot(outside) or outside.as_posix()
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="outside the active cache root"):
+        service.download_model_asset(
+            _spec(),
+            update_task=lambda **_changes: None,
+        )
 
 
 def test_download_model_asset_forces_refresh_of_incomplete_main_snapshot(tmp_path, monkeypatch):
@@ -256,10 +346,10 @@ def test_invalid_snapshot_cleanup_failure_stops_before_download(tmp_path, monkey
         lambda *_args, **_kwargs: preload_calls.append(True),
     )
 
-    def fail_remove(_path):
+    def fail_remove(_path, **_kwargs):
         raise OSError("locked")
 
-    monkeypatch.setattr(service.shutil, "rmtree", fail_remove)
+    monkeypatch.setattr(service, "remove_directory_without_links", fail_remove)
 
     with pytest.raises(OSError, match="locked"):
         service.download_model_asset(_spec(), update_task=lambda **_changes: None)
@@ -291,3 +381,146 @@ def test_download_model_asset_rejects_missing_local_directory(tmp_path):
 
     with pytest.raises(ValueError, match="Local model directory does not exist"):
         service.download_model_asset(spec, update_task=lambda **_changes: None)
+
+
+def test_relative_huggingface_cache_is_project_rooted_not_cwd(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    unrelated = tmp_path / "unrelated"
+    project.mkdir()
+    unrelated.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project))
+    monkeypatch.setenv("HF_HUB_CACHE", "data/cache/huggingface/hub")
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+    monkeypatch.chdir(unrelated)
+
+    assert service._huggingface_cache_roots() == (
+        project / "data/cache/huggingface/hub",
+    )
+
+
+def test_relative_huggingface_cache_prefers_explicit_root_over_ambient_root(
+    tmp_path,
+    monkeypatch,
+):
+    ambient = tmp_path / "ambient"
+    selected = tmp_path / "selected"
+    unrelated = tmp_path / "unrelated"
+    ambient.mkdir()
+    selected.mkdir()
+    unrelated.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(ambient))
+    monkeypatch.setenv("HF_HUB_CACHE", "data/cache/huggingface/hub")
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+    monkeypatch.chdir(unrelated)
+
+    assert service._huggingface_cache_roots(root=selected) == (
+        selected / "data/cache/huggingface/hub",
+    )
+
+
+def test_download_model_asset_uses_explicit_root_for_relative_cache(
+    tmp_path,
+    monkeypatch,
+):
+    ambient = tmp_path / "ambient"
+    selected = tmp_path / "selected"
+    ambient.mkdir()
+    selected.mkdir()
+    cache_root = selected / "data/cache/huggingface/hub"
+    snapshot = cache_root / "models--owner--model" / "snapshots" / "downloaded"
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(ambient))
+    monkeypatch.setenv("HF_HUB_CACHE", "data/cache/huggingface/hub")
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+    calls = []
+
+    def fake_preload(repo_id, **kwargs):
+        calls.append((repo_id, kwargs))
+        _write_complete_snapshot(snapshot)
+        return str(snapshot)
+
+    monkeypatch.setattr(service, "preload_huggingface_snapshot", fake_preload)
+
+    result = service.download_model_asset(
+        _spec(),
+        update_task=lambda **_changes: None,
+        root=selected,
+    )
+
+    assert result["path"] == str(snapshot.resolve())
+    assert calls[0][1]["cache_dir"] == str(cache_root)
+
+
+def test_empty_current_huggingface_cache_does_not_fall_back_to_legacy(
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project))
+    monkeypatch.setenv("HF_HUB_CACHE", "")
+    monkeypatch.setenv(
+        "HUGGINGFACE_HUB_CACHE",
+        str(tmp_path / "legacy-cache"),
+    )
+
+    with pytest.raises(ValueError, match="HF_HUB_CACHE"):
+        service.active_huggingface_hub_cache_root()
+
+
+def test_relative_huggingface_cache_rejects_symlinked_project_storage(
+    tmp_path, monkeypatch
+):
+    project = tmp_path / "project"
+    external = tmp_path / "external"
+    (project / "data").mkdir(parents=True)
+    external.mkdir()
+    try:
+        (project / "data/cache").symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are unavailable")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project))
+    monkeypatch.setenv("HF_HUB_CACHE", "data/cache/huggingface/hub")
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        service._huggingface_cache_roots()
+
+
+def test_project_owned_hf_home_rejects_symlinked_hub_child(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    hf_home = project / "data/cache/huggingface"
+    external = tmp_path / "external"
+    hf_home.mkdir(parents=True)
+    external.mkdir()
+    try:
+        (hf_home / "hub").symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project))
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+    monkeypatch.setenv("HF_HOME", "data/cache/huggingface")
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        service._huggingface_cache_roots()
+
+
+def test_invalid_user_home_falls_back_to_project_model_cache(
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    invalid_home = Path(f"{tmp_path / 'home'} ")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+    monkeypatch.delenv("HF_HOME", raising=False)
+    monkeypatch.setattr(
+        Path,
+        "home",
+        classmethod(lambda _cls: invalid_home),
+    )
+
+    assert service._huggingface_cache_roots() == (
+        project / "data/cache/huggingface/hub",
+    )

@@ -9,6 +9,8 @@ from ai.asr.asr_adapter import (
     ui_lang_to_asr_lang,
     system_config_to_asr_lang,
     normalize_asr_provider_storage_key,
+    _resolve_vosk_model_path,
+    _resolve_whisper_model_reference,
     _whisper_triplet_from_sys,
 )
 from sdk.adapters.asr import ASRAdapter
@@ -39,6 +41,70 @@ def test_vosk_start_raises_when_model_failed_to_load() -> None:
 
     with pytest.raises(RuntimeError, match="Vosk model is unavailable"):
         adapter.start()
+
+
+def test_relative_vosk_model_uses_project_root_after_cwd_changes(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    unrelated = tmp_path / "unrelated"
+    project.mkdir()
+    unrelated.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+    monkeypatch.chdir(unrelated)
+
+    assert _resolve_vosk_model_path("data/models/vosk") == (
+        project / "data/models/vosk"
+    ).as_posix()
+
+
+def test_vosk_model_path_rejects_outer_whitespace(tmp_path, monkeypatch):
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", tmp_path.as_posix())
+
+    with pytest.raises(ValueError, match="surrounding whitespace"):
+        _resolve_vosk_model_path(" data/models/vosk")
+
+
+def test_vosk_model_path_rejects_project_symlink_escape(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    external = tmp_path / "external"
+    project.mkdir()
+    external.mkdir()
+    try:
+        (project / "models").symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are unavailable")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        _resolve_vosk_model_path("models/vosk")
+
+
+def test_builtin_vosk_model_uses_application_resource_not_project_shadow(
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "source"
+    project = tmp_path / "project"
+    source_model = source / "assets/system/models/vosk-model"
+    project_model = project / "assets/system/models/vosk-model"
+    source_model.mkdir(parents=True)
+    project_model.mkdir(parents=True)
+    monkeypatch.setenv("SHINSEKAI_SOURCE_ROOT", source.as_posix())
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", source.as_posix())
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+
+    assert _resolve_vosk_model_path("assets/system/models/vosk-model") == (
+        source_model.as_posix()
+    )
+
+
+def test_vosk_model_path_rejects_legacy_dot_alias_after_config_migration(
+    tmp_path,
+    monkeypatch,
+):
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", tmp_path.as_posix())
+
+    with pytest.raises(ValueError, match="exact relative components"):
+        _resolve_vosk_model_path("./assets/system/models/vosk-model")
 
 
 class TestMockASRAdapter:
@@ -162,3 +228,47 @@ class TestWhisperTriplet:
         assert sz == "large-v3"
         assert dev == "cuda"
         assert ct == "float16"
+
+    def test_local_model_uses_project_root_after_cwd_changes(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        unrelated = tmp_path / "unrelated"
+        project.mkdir()
+        unrelated.mkdir()
+        monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+        monkeypatch.chdir(unrelated)
+
+        assert _resolve_whisper_model_reference("data/models/whisper") == (
+            project / "data/models/whisper"
+        ).as_posix()
+
+    def test_huggingface_model_id_is_not_reinterpreted_as_a_local_path(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", tmp_path.as_posix())
+
+        assert (
+            _resolve_whisper_model_reference("Systran/faster-whisper-small")
+            == "Systran/faster-whisper-small"
+        )
+
+    def test_local_model_rejects_linked_project_parent(self, tmp_path, monkeypatch):
+        project = tmp_path / "project"
+        external = tmp_path / "external"
+        project.mkdir()
+        external.mkdir()
+        try:
+            (project / "data").symlink_to(external, target_is_directory=True)
+        except (NotImplementedError, OSError):
+            pytest.skip("directory symlinks are unavailable")
+        monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+
+        with pytest.raises(PermissionError, match="symbolic link"):
+            _resolve_whisper_model_reference("data/models/whisper")
+
+    def test_model_reference_does_not_silently_trim(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", tmp_path.as_posix())
+
+        with pytest.raises(ValueError, match="surrounding whitespace"):
+            _resolve_whisper_model_reference(" small")

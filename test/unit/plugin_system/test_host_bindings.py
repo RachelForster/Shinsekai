@@ -78,11 +78,20 @@ def test_plugin_host_applies_application_runtime_bindings(monkeypatch, tmp_path)
     }
 
     monkeypatch.setattr(service, "_loaded", False)
+    monkeypatch.setattr(service, "_loaded_project_root", None)
     monkeypatch.setattr(service, "_plugin_manager", None)
     monkeypatch.setattr(service, "_MANIFEST", tmp_path / "missing.yaml")
-    monkeypatch.setattr(service, "PluginManager", lambda: manager)
-    monkeypatch.setattr(service, "ensure_plugins_namespace_on_syspath", lambda: None)
-    monkeypatch.setattr(service, "ensure_plugin_site_packages_on_syspath", lambda: None)
+    monkeypatch.setattr(service, "PluginManager", lambda **_kwargs: manager)
+    monkeypatch.setattr(
+        service,
+        "ensure_plugins_namespace_on_syspath",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        service,
+        "ensure_plugin_site_packages_on_syspath",
+        lambda **_kwargs: None,
+    )
     monkeypatch.setattr("sdk.tool_registry.apply_registered_tools", lambda value: calls.setdefault("sdk_tools", value))
 
     bindings = PluginRuntimeBindings(

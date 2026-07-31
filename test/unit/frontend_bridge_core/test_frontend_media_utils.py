@@ -19,11 +19,13 @@ def test_optional_suffix_check_reports_mismatched_suffix():
     )
 
 
-def test_path_namespace_list_trims_items_and_rejects_empty_input():
-    paths = _path_namespace_list([" /tmp/a.png ", "", None, "/tmp/b.png"])
+def test_path_namespace_list_preserves_exact_items_and_rejects_ambiguous_input():
+    paths = _path_namespace_list(["/tmp/a.png", "", None, "/tmp/b.png"])
 
     assert [item.name for item in paths] == ["/tmp/a.png", "/tmp/b.png"]
 
+    with pytest.raises(ValueError, match="surrounding whitespace"):
+        _path_namespace_list([" /tmp/a.png "])
     with pytest.raises(ValueError, match="paths must be a list"):
         _path_namespace_list("not-a-list")
     with pytest.raises(ValueError, match="at least one path is required"):

@@ -6,10 +6,154 @@ from pathlib import Path
 import pytest
 
 
+def test_frozen_plugin_paths_keep_app_runtime_and_project_data_separate(tmp_path, monkeypatch):
+    from plugin_system.requirements import install as installer
+
+    app_root = tmp_path / "app"
+    project_root = tmp_path / "project"
+    app_root.mkdir()
+    (project_root / "plugins").mkdir(parents=True)
+    monkeypatch.setattr(installer.sys, "frozen", True, raising=False)
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", app_root.as_posix())
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project_root.as_posix())
+    monkeypatch.setattr(installer.sys, "path", list(installer.sys.path))
+
+    installer.ensure_plugins_namespace_on_syspath()
+
+    assert installer.frozen_release_root() == app_root.resolve()
+    assert installer.plugin_pip_target_directory() == (
+        project_root / "data" / "plugin_site_packages"
+    )
+    assert installer.sys.path[0] == project_root.as_posix()
+
+
+def test_frozen_plugin_target_prefers_explicit_root_over_ambient_root(
+    tmp_path,
+    monkeypatch,
+):
+    from plugin_system.requirements import install as installer
+
+    ambient = tmp_path / "ambient"
+    selected = tmp_path / "selected"
+    ambient.mkdir()
+    selected.mkdir()
+    monkeypatch.setattr(installer.sys, "frozen", True, raising=False)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", ambient.as_posix())
+
+    assert installer.plugin_pip_target_directory(root=selected) == (
+        selected / "data/plugin_site_packages"
+    )
+
+
+def test_frozen_plugin_pip_uses_the_native_runtime_layout(tmp_path, monkeypatch):
+    from plugin_system.requirements import install as installer
+
+    app_root = tmp_path / "app"
+    runtime_python = (
+        app_root / "runtime/python.exe"
+        if os.name == "nt"
+        else app_root / "runtime/bin/python3"
+    )
+    runtime_python.parent.mkdir(parents=True)
+    runtime_python.write_bytes(b"python")
+    runtime_python.chmod(runtime_python.stat().st_mode | 0o100)
+    monkeypatch.setattr(installer.sys, "frozen", True, raising=False)
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", app_root.as_posix())
+
+    assert installer.pip_python_executable() == runtime_python
+
+
+def test_frozen_plugin_target_rejects_project_directory_alias(tmp_path, monkeypatch):
+    from plugin_system.requirements import install as installer
+
+    project_root = tmp_path / "project"
+    external_target = tmp_path / "external-plugin-site-packages"
+    (project_root / "data").mkdir(parents=True)
+    external_target.mkdir()
+    try:
+        (project_root / "data" / "plugin_site_packages").symlink_to(
+            external_target,
+            target_is_directory=True,
+        )
+    except OSError as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+
+    monkeypatch.setattr(installer.sys, "frozen", True, raising=False)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project_root.as_posix())
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        installer.plugin_pip_target_directory()
+
+
+def test_plugin_site_packages_rejects_alias_at_syspath_boundary(tmp_path, monkeypatch):
+    from plugin_system.requirements import install as installer
+
+    external_target = tmp_path / "external-plugin-site-packages"
+    external_target.mkdir()
+    alias = tmp_path / "plugin-site-packages"
+    try:
+        alias.symlink_to(external_target, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+
+    original_path = list(installer.sys.path)
+    monkeypatch.setattr(installer.sys, "path", original_path.copy())
+    monkeypatch.setattr(installer, "plugin_pip_target_directory", lambda: alias)
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        installer.ensure_plugin_site_packages_on_syspath()
+
+    assert installer.sys.path == original_path
+
+
+def test_plugin_pip_command_rejects_alias_at_subprocess_boundary(tmp_path):
+    from plugin_system.requirements import install as installer
+
+    external_target = tmp_path / "external-plugin-site-packages"
+    external_target.mkdir()
+    alias = tmp_path / "plugin-site-packages"
+    try:
+        alias.symlink_to(external_target, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        installer._pip_base_install_cmd(Path("python"), alias)
+
+
+def test_plugins_namespace_rejects_external_directory_alias(tmp_path, monkeypatch):
+    from plugin_system.requirements import install as installer
+
+    project_root = tmp_path / "project"
+    external_plugins = tmp_path / "external-plugins"
+    project_root.mkdir()
+    external_plugins.mkdir()
+    try:
+        (project_root / "plugins").symlink_to(external_plugins, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+
+    original_path = list(installer.sys.path)
+    monkeypatch.setattr(installer.sys, "path", original_path.copy())
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project_root.as_posix())
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        installer.ensure_plugins_namespace_on_syspath()
+
+    assert installer.sys.path == original_path
+
+
 def _prepare_installer(monkeypatch, tmp_path):
     from plugin_system.requirements import install as installer
 
-    monkeypatch.setattr(installer, "pip_python_executable", lambda: Path("python"))
+    python_executable = tmp_path / "python"
+    python_executable.write_bytes(b"python")
+    python_executable.chmod(python_executable.stat().st_mode | 0o100)
+    monkeypatch.setattr(
+        installer,
+        "pip_python_executable",
+        lambda: python_executable,
+    )
     monkeypatch.setattr(installer, "plugin_pip_target_directory", lambda: None)
     monkeypatch.setattr(installer.sys, "platform", "linux")
 
@@ -48,6 +192,58 @@ def _write_requirements(plugin_root: Path, text: str) -> Path:
     req = plugin_root / "requirements.txt"
     req.write_text(text, encoding="utf-8")
     return req
+
+
+def test_installer_resolves_relative_plugin_root_from_project_not_cwd(
+    monkeypatch,
+    tmp_path,
+):
+    installer, _unused = _prepare_installer(monkeypatch, tmp_path)
+    project = tmp_path / "project"
+    plugin_root = project / "plugins/demo"
+    unrelated = tmp_path / "launcher"
+    plugin_root.mkdir(parents=True)
+    unrelated.mkdir()
+    _write_requirements(plugin_root, "missing-package>=2\n")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+    monkeypatch.chdir(unrelated)
+    calls = _capture_pip_invocation(monkeypatch, installer)
+
+    result = installer.install_plugin_requirements_txt(Path("plugins/demo"))
+
+    assert result == ("pip_ok", "")
+    assert calls[0]["cwd"] == plugin_root
+
+
+def test_installer_rejects_symlinked_plugin_root(monkeypatch, tmp_path):
+    from plugin_system.requirements import install as installer
+
+    project = tmp_path / "project"
+    external = tmp_path / "external-plugin"
+    alias = project / "plugins/demo"
+    alias.parent.mkdir(parents=True)
+    external.mkdir()
+    (external / "requirements.txt").write_text("requests\n", encoding="utf-8")
+    try:
+        alias.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unavailable")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        installer.install_plugin_requirements_txt(alias)
+
+
+def test_installer_rejects_requirements_filename_traversal(monkeypatch, tmp_path):
+    installer, plugin_root = _prepare_installer(monkeypatch, tmp_path)
+    outside = tmp_path / "outside.txt"
+    outside.write_text("must-not-run\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="portable path component"):
+        installer.install_plugin_requirements_txt(
+            plugin_root,
+            requirements_file="../outside.txt",
+        )
 
 
 def test_finish_install_result_refreshes_plugin_target_on_success(monkeypatch):
@@ -531,17 +727,61 @@ def test_write_temp_requirements_removes_file_when_write_fails(monkeypatch, tmp_
         fd = os.open(str(created), os.O_CREAT | os.O_TRUNC | os.O_RDWR)
         return fd, str(created)
 
-    original_write_text = Path.write_text
+    real_fdopen = os.fdopen
 
-    def fail_write_text(self, *args, **kwargs):
-        if self == created:
+    class FailingWriter:
+        def __init__(self, handle):
+            self.handle = handle
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            self.handle.close()
+
+        def write(self, _text):
             raise OSError("disk full")
-        return original_write_text(self, *args, **kwargs)
+
+    def fail_fdopen(fd, *args, **kwargs):
+        return FailingWriter(real_fdopen(fd, *args, **kwargs))
 
     monkeypatch.setattr(installer.tempfile, "mkstemp", fake_mkstemp)
-    monkeypatch.setattr(Path, "write_text", fail_write_text)
+    monkeypatch.setattr(installer.os, "fdopen", fail_fdopen)
 
     with pytest.raises(OSError, match="disk full"):
         installer._write_temp_requirements("easyai_missing_req_", ["missing-package>=2"])
 
     assert not created.exists()
+
+
+def test_write_temp_requirements_pins_a_platform_temp_alias(
+    monkeypatch,
+    tmp_path,
+):
+    from plugin_system.requirements import install as installer
+
+    external = tmp_path / "platform-temp"
+    alias = tmp_path / "platform-temp-alias"
+    external.mkdir()
+    try:
+        alias.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+    created_through_alias = alias / "easyai_missing_req.txt"
+
+    def fake_mkstemp(prefix, suffix):
+        fd = os.open(
+            str(created_through_alias),
+            os.O_CREAT | os.O_EXCL | os.O_RDWR,
+        )
+        return fd, str(created_through_alias)
+
+    monkeypatch.setattr(installer.tempfile, "mkstemp", fake_mkstemp)
+
+    result, identity = installer._write_temp_requirements(
+        "easyai_missing_req_",
+        ["missing-package>=2"],
+    )
+
+    assert result == external / created_through_alias.name
+    installer.remove_file_without_links(result, expected_identity=identity)

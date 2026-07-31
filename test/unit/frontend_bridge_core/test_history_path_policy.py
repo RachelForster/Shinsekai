@@ -99,6 +99,11 @@ def test_relative_history_is_project_managed_and_cannot_escape(tmp_path: Path) -
     assert resolve_history_path_for_project(
         state, "data/chat_history/session.json"
     ) == (tmp_path / "data" / "chat_history" / "session.json").resolve(strict=False)
+    assert resolve_history_path_for_project(
+        state, "session.json"
+    ) == (tmp_path / "data" / "chat_history" / "session.json").resolve(strict=False)
+    with pytest.raises(PermissionError, match="history directory"):
+        resolve_history_path_for_project(state, "data/config/session.json")
     with pytest.raises(PermissionError):
         resolve_history_path_for_project(state, "../outside/session.json")
 

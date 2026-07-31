@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import logging
+import os
+import sys
 
 import pytest
 
@@ -48,7 +50,7 @@ def test_apply_pip_index_and_extra_args_uses_primary_flag(monkeypatch):
     monkeypatch.setenv("SHINSEKAI_PIP_INDEX_URL", "https://mirror.example/simple")
 
     cmd = pip_runner.apply_pip_index_and_extra_args(
-        ["python", "-m", "pip", "install", "demo"],
+        [sys.executable, "-m", "pip", "install", "demo"],
         primary_flag="-i",
     )
 
@@ -124,6 +126,64 @@ def test_pip_subprocess_env_keeps_user_values(monkeypatch):
     assert pip_runner.pip_subprocess_env()["PYTHONUTF8"] == "0"
 
 
+def test_pip_subprocess_env_removes_ambient_python_path_overrides(monkeypatch):
+    for name in (
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONUSERBASE",
+        "PYTHONPYCACHEPREFIX",
+        "PYTHONEXECUTABLE",
+        "__PYVENV_LAUNCHER__",
+    ):
+        monkeypatch.setenv(name, f"/ambient/{name.lower()}")
+
+    env = pip_runner.pip_subprocess_env()
+
+    assert all(name not in env for name in (
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONUSERBASE",
+        "PYTHONPYCACHEPREFIX",
+        "PYTHONEXECUTABLE",
+        "__PYVENV_LAUNCHER__",
+    ))
+    assert env["PYTHONNOUSERSITE"] == "1"
+
+
+def test_pip_environment_file_alias_is_replaced_with_canonical_path(tmp_path):
+    certificate = tmp_path / "certificate.pem"
+    alias = tmp_path / "certificate-alias.pem"
+    certificate.write_text("certificate", encoding="utf-8")
+    alias.symlink_to(certificate)
+    env = {"SSL_CERT_FILE": os.fspath(alias)}
+
+    files, directories = pip_runner._capture_pip_environment_paths(env)
+
+    assert env["SSL_CERT_FILE"] == os.fspath(certificate.resolve())
+    assert [snapshot.path for snapshot in files] == [certificate.resolve()]
+    assert directories == ()
+
+
+def test_pip_environment_paths_reject_relative_child_cwd_dependencies():
+    with pytest.raises(ValueError, match="pip working directory"):
+        pip_runner._capture_pip_environment_paths(
+            {"SSL_CERT_FILE": "certificates/ca.pem"}
+        )
+
+    with pytest.raises(ValueError, match="must be an absolute path"):
+        pip_runner._capture_pip_environment_paths({"PIP_CACHE_DIR": ".pip-cache"})
+
+
+def test_pip_config_file_allows_the_platform_null_device():
+    env = {"PIP_CONFIG_FILE": os.devnull}
+
+    files, directories = pip_runner._capture_pip_environment_paths(env)
+
+    assert env["PIP_CONFIG_FILE"] == os.devnull
+    assert files == ()
+    assert directories == ()
+
+
 class _FakePopen:
     def __init__(self, stdout_text: str, returncode: int):
         self.stdout = io.StringIO(stdout_text)
@@ -154,7 +214,7 @@ def test_run_pip_install_redacts_relayed_lines(monkeypatch, tmp_path):
     lines: list[str] = []
 
     code, detail = pip_runner.run_pip_install(
-        ["python", "-m", "pip", "install", "demo"],
+        [sys.executable, "-m", "pip", "install", "demo"],
         cwd=tmp_path,
         timeout_sec=30,
         on_output_line=lines.append,
@@ -168,7 +228,7 @@ def test_run_pip_install_classifies_conflicts(monkeypatch, tmp_path):
     _patch_popen(monkeypatch, "ERROR: ResolutionImpossible: for help visit pip docs\n", 1)
 
     code, detail = pip_runner.run_pip_install(
-        ["python", "-m", "pip", "install", "demo"],
+        [sys.executable, "-m", "pip", "install", "demo"],
         cwd=tmp_path,
         timeout_sec=30,
     )
@@ -185,7 +245,7 @@ def test_run_pip_install_reports_redacted_failure_tail(monkeypatch, tmp_path):
     )
 
     code, detail = pip_runner.run_pip_install(
-        ["python", "-m", "pip", "install", "demo"],
+        [sys.executable, "-m", "pip", "install", "demo"],
         cwd=tmp_path,
         timeout_sec=30,
     )
@@ -200,7 +260,7 @@ def test_run_pip_install_allows_longer_failure_detail(monkeypatch, tmp_path):
     _patch_popen(monkeypatch, output, 1)
 
     code, detail = pip_runner.run_pip_install(
-        ["python", "-m", "pip", "install", "demo"],
+        [sys.executable, "-m", "pip", "install", "demo"],
         cwd=tmp_path,
         timeout_sec=30,
         detail_max=4000,
@@ -209,3 +269,43 @@ def test_run_pip_install_allows_longer_failure_detail(monkeypatch, tmp_path):
     assert code == "pip_failed"
     assert "KEEP-ME" in detail
     assert len(detail) > 1600
+
+
+def test_run_pip_install_rejects_nested_requirements_changed_during_spawn(
+    monkeypatch,
+    tmp_path,
+):
+    requirements = tmp_path / "requirements.txt"
+    nested = tmp_path / "nested.txt"
+    requirements.write_text("-r nested.txt\n", encoding="utf-8")
+    nested.write_text("demo==1\n", encoding="utf-8")
+
+    class Process:
+        stopped = False
+
+        def terminate(self):
+            self.stopped = True
+
+        def wait(self, timeout=None):
+            return 0
+
+        def kill(self):
+            self.stopped = True
+
+    process = Process()
+
+    def replace_during_spawn(*_args, **_kwargs):
+        nested.write_text("replacement-package==2\n", encoding="utf-8")
+        return process
+
+    monkeypatch.setattr(pip_runner.subprocess, "Popen", replace_during_spawn)
+
+    code, detail = pip_runner.run_pip_install(
+        [sys.executable, "-m", "pip", "install", "-r", str(requirements)],
+        cwd=tmp_path,
+        timeout_sec=30,
+    )
+
+    assert code == "pip_exception"
+    assert "identity changed" in detail
+    assert process.stopped is True

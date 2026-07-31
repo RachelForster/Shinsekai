@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.media import auto_annotation
 from core.media.asset_tags import normalize_generated_tags, tag_contents
 from core.media.auto_annotation import auto_label_background_images, auto_label_character_sprites
 
@@ -90,6 +91,41 @@ def test_background_auto_label_reports_invalid_asset_without_overwriting(tmp_pat
     assert background.bg_tags == ""
 
 
+def test_default_vision_runtime_receives_annotation_project_root(
+    tmp_path: Path,
+    monkeypatch,
+):
+    character = SimpleNamespace(
+        name="Nanami",
+        sprites=[SimpleNamespace(path=_image(tmp_path, "one.png"))],
+        emotion_tags="",
+    )
+    config = FakeConfigManager(character=character)
+    captured = {}
+
+    class FakeVisionManager:
+        def __init__(self, provider, *, root):
+            captured["provider"] = provider
+            captured["root"] = root
+
+        def describe(self, _image, _prompt):
+            return "smiling"
+
+    monkeypatch.setattr(auto_annotation, "VisionManager", FakeVisionManager)
+
+    result = auto_label_character_sprites(
+        config,
+        "Nanami",
+        project_root=tmp_path,
+    )
+
+    assert result["annotatedCount"] == 1
+    assert captured == {
+        "provider": "moondream",
+        "root": tmp_path,
+    }
+
+
 def test_inference_runtime_errors_abort_without_saving(tmp_path: Path):
     character = SimpleNamespace(
         name="Nanami",
@@ -125,6 +161,160 @@ def test_asset_paths_cannot_escape_the_project_root(tmp_path: Path):
     assert result["failedCount"] == 1
     assert "项目目录" in result["failures"][0]["message"]
     assert config.character_saves == 0
+
+
+def test_immutable_application_asset_can_be_annotated(
+    tmp_path: Path,
+    monkeypatch,
+):
+    source = tmp_path / "source"
+    project = tmp_path / "project"
+    image = source / "assets" / "present_example.png"
+    image.parent.mkdir(parents=True)
+    project.mkdir()
+    image.write_bytes(b"image")
+    monkeypatch.setenv("SHINSEKAI_SOURCE_ROOT", source.as_posix())
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", source.as_posix())
+    character = SimpleNamespace(
+        name="Example",
+        sprites=[SimpleNamespace(path="assets/present_example.png")],
+        emotion_tags="",
+    )
+    config = FakeConfigManager(character=character)
+
+    result = auto_label_character_sprites(
+        config,
+        "Example",
+        project_root=project,
+        infer=lambda payload, _prompt: "example" if payload == b"image" else "",
+    )
+
+    assert result["annotatedCount"] == 1
+    assert config.character_saves == 1
+
+
+def test_immutable_application_asset_does_not_follow_symlink(
+    tmp_path: Path,
+    monkeypatch,
+):
+    source = tmp_path / "source"
+    project = tmp_path / "project"
+    external = tmp_path / "external"
+    (source / "assets").mkdir(parents=True)
+    project.mkdir()
+    external.mkdir()
+    (external / "present.png").write_bytes(b"image")
+    try:
+        (source / "assets/linked").symlink_to(
+            external,
+            target_is_directory=True,
+        )
+    except (OSError, NotImplementedError):
+        pytest.skip("directory symlinks are unavailable")
+    monkeypatch.setenv("SHINSEKAI_SOURCE_ROOT", source.as_posix())
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", source.as_posix())
+    character = SimpleNamespace(
+        name="Example",
+        sprites=[SimpleNamespace(path="assets/linked/present.png")],
+        emotion_tags="",
+    )
+    config = FakeConfigManager(character=character)
+
+    result = auto_label_character_sprites(
+        config,
+        "Example",
+        project_root=project,
+        infer=lambda _payload, _prompt: pytest.fail("linked resource must not be read"),
+    )
+
+    assert result["annotatedCount"] == 0
+    assert result["failedCount"] == 1
+    assert config.character_saves == 0
+
+
+def test_asset_paths_are_not_silently_trimmed(tmp_path: Path):
+    image = _image(tmp_path, "one.png")
+    character = SimpleNamespace(
+        name="Nanami",
+        sprites=[SimpleNamespace(path=f" {image}")],
+        emotion_tags="",
+    )
+    config = FakeConfigManager(character=character)
+
+    result = auto_label_character_sprites(
+        config,
+        "Nanami",
+        project_root=tmp_path,
+        infer=lambda _image, _prompt: pytest.fail("ambiguous path must not be read"),
+    )
+
+    assert result["failedCount"] == 1
+    assert "路径无效" in result["failures"][0]["message"]
+
+
+def test_asset_paths_cannot_read_through_project_symlinks(tmp_path: Path):
+    external = tmp_path.parent / f"external-{tmp_path.name}"
+    external.mkdir()
+    (external / "one.png").write_bytes(b"image")
+    try:
+        (tmp_path / "alias").symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are unavailable")
+    character = SimpleNamespace(
+        name="Nanami",
+        sprites=[SimpleNamespace(path="alias/one.png")],
+        emotion_tags="",
+    )
+    config = FakeConfigManager(character=character)
+
+    result = auto_label_character_sprites(
+        config,
+        "Nanami",
+        project_root=tmp_path,
+        infer=lambda _image, _prompt: pytest.fail("linked image must not be read"),
+    )
+
+    assert result["failedCount"] == 1
+    assert "项目目录" in result["failures"][0]["message"]
+
+
+def test_auto_annotation_rejects_image_changed_after_path_validation(
+    tmp_path: Path,
+    monkeypatch,
+):
+    image_path = tmp_path / "one.png"
+    image_path.write_bytes(b"approved")
+    character = SimpleNamespace(
+        name="Nanami",
+        sprites=[SimpleNamespace(path=image_path.name)],
+        emotion_tags="",
+    )
+    config = FakeConfigManager(character=character)
+    real_safe_asset = auto_annotation._safe_asset_file
+
+    def resolve_then_change(*args, **kwargs):
+        resolved = real_safe_asset(*args, **kwargs)
+        image_path.write_bytes(b"replacement-is-longer")
+        return resolved
+
+    monkeypatch.setattr(
+        auto_annotation,
+        "_safe_asset_file",
+        resolve_then_change,
+    )
+
+    result = auto_label_character_sprites(
+        config,
+        "Nanami",
+        project_root=tmp_path,
+        infer=lambda _payload, _prompt: pytest.fail(
+            "changed image must not reach inference"
+        ),
+    )
+
+    assert result["annotatedCount"] == 0
+    assert result["failedCount"] == 1
+    assert "identity changed" in result["failures"][0]["message"]
 
 
 def test_normalize_generated_tags_removes_wrappers():

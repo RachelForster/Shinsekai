@@ -13,6 +13,7 @@ from application.plugins.updates import (
     _lookup_registry_plugin,
     _plugin_class_from_file,
     _repo_slug_from_source,
+    _restore_package_target,
     _synthetic_plugin_result,
 )
 from application.runtime.state import BridgeState
@@ -21,9 +22,10 @@ from application.runtime.state import BridgeState
 def test_repo_slug_from_source_accepts_common_github_forms():
     assert _repo_slug_from_source("owner/repo") == "owner/repo"
     assert _repo_slug_from_source("https://github.com/owner/repo.git") == "owner/repo"
-    assert _repo_slug_from_source("github.com/owner/repo/tree/main") == "owner/repo"
+    assert _repo_slug_from_source("github.com/owner/repo") == "owner/repo"
     assert _repo_slug_from_source("git@github.com:owner/repo.git") == "owner/repo"
-    assert _repo_slug_from_source("http://github.com/owner/repo/tree/main?x=1#readme") == "owner/repo"
+    assert _repo_slug_from_source("github.com/owner/repo/tree/main") == ""
+    assert _repo_slug_from_source("http://github.com/owner/repo/tree/main?x=1#readme") == ""
     assert _repo_slug_from_source("owner") == ""
 
 
@@ -33,6 +35,21 @@ def test_repo_source_rejects_manifest_entries():
     assert _is_repo_source("git@github.com:owner/repo.git") is True
     assert _is_repo_source("plugins.demo.plugin:DemoPlugin") is False
     assert _is_repo_source("not-enough") is False
+    assert _is_repo_source(" owner/repo") is False
+
+
+def test_install_plugin_source_rejects_whitespace_alias_before_lookup():
+    with pytest.raises(ValueError, match="surrounding whitespace"):
+        _install_plugin_source(_state_with_task(), "task", " owner/demo")
+
+    with pytest.raises(ValueError, match="surrounding whitespace"):
+        _install_plugin_source(
+            _state_with_task(),
+            "task",
+            "owner/demo",
+            ref_kind="tag",
+            tag_name=" v1.0",
+        )
 
 
 def test_plugin_class_from_file_detects_pluginbase_subclasses(tmp_path):
@@ -68,6 +85,49 @@ def test_infer_plugin_entry_uses_top_level_or_nested_plugin_file(tmp_path):
     (nested / "plugin.py").write_text("class NestedPlugin(shin.PluginBase):\n    pass\n", encoding="utf-8")
 
     assert _infer_plugin_entry(nested_root) == "plugins.nested_plugin.package.plugin:NestedPlugin"
+
+
+def test_infer_plugin_entry_rejects_replaced_plugin_directory(
+    tmp_path,
+    monkeypatch,
+):
+    plugin_root = tmp_path / "demo_plugin"
+    preserved = tmp_path / "demo_plugin-preserved"
+    plugin_root.mkdir()
+    (plugin_root / "plugin.py").write_text(
+        "class OriginalPlugin(PluginBase):\n    pass\n",
+        encoding="utf-8",
+    )
+    real_read = plugin_updates.read_text_without_links
+    replaced = False
+
+    def replace_before_read(*args, **kwargs):
+        nonlocal replaced
+        if not replaced:
+            replaced = True
+            plugin_root.rename(preserved)
+            plugin_root.mkdir()
+            (plugin_root / "plugin.py").write_text(
+                "class PeerPlugin(PluginBase):\n    pass\n",
+                encoding="utf-8",
+            )
+        return real_read(*args, **kwargs)
+
+    monkeypatch.setattr(
+        plugin_updates,
+        "read_text_without_links",
+        replace_before_read,
+    )
+
+    with pytest.raises(PermissionError, match="identity changed"):
+        _infer_plugin_entry(plugin_root)
+
+    assert (plugin_root / "plugin.py").read_text(encoding="utf-8").startswith(
+        "class PeerPlugin"
+    )
+    assert (preserved / "plugin.py").read_text(encoding="utf-8").startswith(
+        "class OriginalPlugin"
+    )
 
 
 def test_synthetic_plugin_result_uses_safe_defaults():
@@ -148,24 +208,18 @@ def _patch_manifest_and_state(monkeypatch, marks: list[dict]):
     monkeypatch.setattr(
         plugin_updates,
         "_plugin_result_from_manifest",
-        lambda entry: {"entry": entry, "enabled": True},
+        lambda entry, **_kwargs: {"entry": entry, "enabled": True},
     )
 
     def fake_mark_repo_downloaded(repo, **kwargs):
         marks.append({"repo": repo, **kwargs})
 
-    monkeypatch.setattr(
-        "plugin_system.registry.download.mark_repo_downloaded",
-        fake_mark_repo_downloaded,
-    )
+    monkeypatch.setattr("plugin_system.registry.download.mark_repo_downloaded", fake_mark_repo_downloaded)
 
 
 def test_lookup_registry_plugin_matches_id_and_display_name(monkeypatch):
     record = _registry_record()
-    monkeypatch.setattr(
-        "plugin_system.registry.catalog.fetch_registry_plugins",
-        lambda timeout_sec=12: [record],
-    )
+    monkeypatch.setattr("plugin_system.registry.catalog.fetch_registry_plugins", lambda timeout_sec=12: [record])
 
     assert _lookup_registry_plugin("demo-id") is record
     assert _lookup_registry_plugin("Demo Plugin") is record
@@ -179,11 +233,12 @@ def test_install_plugin_source_prefers_registry_package_over_github(tmp_path, mo
 
     monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
     _patch_manifest_and_state(monkeypatch, marks)
+    state = _state_with_task()
 
     def fake_package_install(rec, **kwargs):
         calls.append(("package", kwargs.get("overwrite")))
         assert rec is record
-        assert kwargs.get("plugins_parent") == Path("plugins")
+        assert kwargs.get("plugins_parent") == Path(state.project_root_dir) / "plugins"
         return package_root
 
     def fail_github(*_args, **_kwargs):
@@ -193,16 +248,13 @@ def test_install_plugin_source_prefers_registry_package_over_github(tmp_path, mo
         "plugin_system.install.package.install_registry_package_under_plugins",
         fake_package_install,
     )
-    monkeypatch.setattr(
-        "plugin_system.update.github.install_github_plugin_under_plugins",
-        fail_github,
-    )
+    monkeypatch.setattr("plugin_system.update.github.install_github_plugin_under_plugins", fail_github)
     monkeypatch.setattr(
         "plugin_system.requirements.install.install_plugin_requirements_txt",
-        lambda root, **_kwargs: calls.append(("pip", root)) or ("pip_ok", ""),
+        lambda plugin_root, **_kwargs: calls.append(("pip", plugin_root)) or ("pip_ok", ""),
     )
 
-    result = _install_plugin_source(_state_with_task(), "task", "owner/demo", overwrite=True)
+    result = _install_plugin_source(state, "task", "owner/demo", overwrite=True)
 
     assert result["entry"] == "plugins.demo.plugin:DemoPlugin"
     assert result["enabled"] is True
@@ -223,6 +275,7 @@ def test_install_plugin_source_prefers_registry_package_over_github(tmp_path, mo
     assert marks[0]["repo"] == "owner/demo"
     assert marks[0]["manifest_entry"] == "plugins.demo.plugin:DemoPlugin"
     assert marks[0]["install_metadata"] == result["install"]
+    assert marks[0]["root"] == Path(state.project_root_dir)
 
 
 def test_install_plugin_source_does_not_mark_existing_directory_as_verified(tmp_path, monkeypatch):
@@ -232,10 +285,7 @@ def test_install_plugin_source_does_not_mark_existing_directory_as_verified(tmp_
     package_root = _plugin_root(tmp_path, "package-plugin")
 
     monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
-    monkeypatch.setattr(
-        "plugin_system.install.package.registry_package_target",
-        lambda *_args, **_kwargs: package_root,
-    )
+    monkeypatch.setattr("plugin_system.install.package.registry_package_target", lambda *_args, **_kwargs: package_root)
     _patch_manifest_and_state(monkeypatch, marks)
 
     def fake_package_install(rec, **kwargs):
@@ -249,7 +299,7 @@ def test_install_plugin_source_does_not_mark_existing_directory_as_verified(tmp_
     )
     monkeypatch.setattr(
         "plugin_system.requirements.install.install_plugin_requirements_txt",
-        lambda root, **_kwargs: calls.append(("pip", root)) or ("pip_ok", ""),
+        lambda plugin_root, **_kwargs: calls.append(("pip", plugin_root)) or ("pip_ok", ""),
     )
 
     result = _install_plugin_source(_state_with_task(), "task", "owner/demo", overwrite=False)
@@ -293,10 +343,7 @@ def test_install_plugin_source_falls_back_to_github_for_registry_package_network
         "plugin_system.install.package.install_registry_package_under_plugins",
         fail_package,
     )
-    monkeypatch.setattr(
-        "plugin_system.update.github.install_github_plugin_under_plugins",
-        fake_github,
-    )
+    monkeypatch.setattr("plugin_system.update.github.install_github_plugin_under_plugins", fake_github)
     monkeypatch.setattr(
         "plugin_system.requirements.install.install_plugin_requirements_txt",
         lambda *_args, **_kwargs: ("pip_ok", ""),
@@ -354,10 +401,7 @@ def test_install_plugin_source_does_not_fallback_to_github_for_package_safety_er
         "plugin_system.install.package.install_registry_package_under_plugins",
         fail_package,
     )
-    monkeypatch.setattr(
-        "plugin_system.update.github.install_github_plugin_under_plugins",
-        fail_github,
-    )
+    monkeypatch.setattr("plugin_system.update.github.install_github_plugin_under_plugins", fail_github)
 
     state = _state_with_task()
 
@@ -386,10 +430,7 @@ def test_install_plugin_source_does_not_fallback_to_github_when_package_dependen
     def fail_github(*_args, **_kwargs):
         raise AssertionError("dependency failures after package install must not fallback to GitHub")
 
-    monkeypatch.setattr(
-        "plugin_system.update.github.install_github_plugin_under_plugins",
-        fail_github,
-    )
+    monkeypatch.setattr("plugin_system.update.github.install_github_plugin_under_plugins", fail_github)
     monkeypatch.setattr(
         "plugin_system.requirements.install.install_plugin_requirements_txt",
         lambda *_args, **_kwargs: ("pip_failed", "dependency boom"),
@@ -425,3 +466,33 @@ def test_install_plugin_source_treats_github_dependency_conflicts_as_failures(
 
     with pytest.raises(RuntimeError, match="dependency conflict"):
         _install_plugin_source(_state_with_task(), "task", "owner/demo")
+
+
+def test_package_target_restore_atomically_reinstates_backup(tmp_path):
+    target = _plugin_root(tmp_path, "demo-plugin")
+    (target / "plugin.py").write_text("new\n", encoding="utf-8")
+    backup = _plugin_root(tmp_path, ".demo-plugin.backup-test")
+    (backup / "plugin.py").write_text("old\n", encoding="utf-8")
+
+    _restore_package_target(target, backup, remove_new_target=True)
+
+    assert (target / "plugin.py").read_text(encoding="utf-8") == "old\n"
+    assert not backup.exists()
+
+
+@pytest.mark.skipif(not hasattr(Path, "symlink_to"), reason="symbolic links unavailable")
+def test_package_target_restore_refuses_link_without_touching_external_tree(tmp_path):
+    external = _plugin_root(tmp_path, "external")
+    marker = external / "plugin.py"
+    target = tmp_path / "demo-plugin"
+    backup = _plugin_root(tmp_path, ".demo-plugin.backup-test")
+    try:
+        target.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symbolic links are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        _restore_package_target(target, backup, remove_new_target=True)
+
+    assert marker.read_text(encoding="utf-8").startswith("class DemoPlugin")
+    assert backup.is_dir()

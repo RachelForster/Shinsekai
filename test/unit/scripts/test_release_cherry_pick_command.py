@@ -123,6 +123,22 @@ def test_run_rejects_unsupported_subcommand(monkeypatch):
         module.run(["git", "remote", "-v"])
 
 
+def test_run_binds_git_commands_to_the_script_repository(monkeypatch, tmp_path):
+    module = load_module(monkeypatch)
+    observed = {}
+
+    def fake_run(command, **kwargs):
+        observed.update(kwargs)
+        return module.subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+
+    module.run(["git", "rev-parse", "HEAD"])
+
+    assert observed["cwd"] == str(module.REPOSITORY_ROOT)
+
+
 def test_cherry_pick_command_keeps_regular_commit_simple(monkeypatch):
     module = load_module(monkeypatch)
 

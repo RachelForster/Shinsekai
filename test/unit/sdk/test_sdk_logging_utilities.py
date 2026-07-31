@@ -112,14 +112,24 @@ def test_timing_tracker_tracks_local_cross_thread_and_reports(monkeypatch, capsy
 def test_logging_configuration_helpers_cover_common_paths(monkeypatch, tmp_path):
     assert logging_config._safe_name(" Shinsekai/App ") == "Shinsekai-App"
     assert logging_config._safe_name("!!!") == "app"
+    assert logging_config._safe_name("CON.txt") == "app-CON.txt"
+    assert logging_config._safe_name("logger.") == "logger"
+    assert logging_config._safe_name("a" * 300) == "a" * 255
 
-    (tmp_path / "VERSION").write_text("1.2.3\n", encoding="utf-8")
-    assert logging_config._read_version(tmp_path) == "1.2.3"
+    source_root = tmp_path / "source"
+    project_root = tmp_path / "project"
+    source_root.mkdir()
+    project_root.mkdir()
+    (source_root / "VERSION").write_text("1.2.3\n", encoding="utf-8")
+    (project_root / "VERSION").write_text("spoofed-project-version\n", encoding="utf-8")
+    monkeypatch.setenv("SHINSEKAI_SOURCE_ROOT", source_root.as_posix())
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", source_root.as_posix())
+    assert logging_config._read_version(project_root) == "1.2.3"
 
     real_import = __import__
 
     def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
-        if name == "core.paths":
+        if name == "sdk.path_contract":
             raise ImportError("resource path unavailable")
         return real_import(name, globals, locals, fromlist, level)
 
@@ -170,6 +180,60 @@ def test_configure_logging_handles_null_handler_existing_listener_and_file_error
 
         assert first_path is None
         assert second_path is None
+    finally:
+        logging_config.shutdown_logging()
+
+
+def test_path_safe_log_rotation_preserves_regular_file_identities(tmp_path):
+    path = tmp_path / "session.jsonl"
+    handler = logging_config._PathSafeRotatingFileHandler(
+        path,
+        maxBytes=8,
+        backupCount=2,
+        encoding="utf-8",
+    )
+    try:
+        handler.emit(logging.LogRecord("test", logging.INFO, "", 0, "first line", (), None))
+        handler.emit(logging.LogRecord("test", logging.INFO, "", 0, "second line", (), None))
+    finally:
+        handler.close()
+
+    assert path.is_file()
+    assert (tmp_path / "session.jsonl.1").is_file()
+    assert not path.is_symlink()
+    assert not (tmp_path / "session.jsonl.1").is_symlink()
+
+
+def test_configure_logging_rejects_lexical_path_aliases(tmp_path):
+    logging_config.shutdown_logging()
+    project = tmp_path / "project"
+    project.mkdir()
+
+    try:
+        with pytest.raises(ValueError, match="lexical path aliases"):
+            logging_config.configure_logging(
+                "test",
+                project_root=f"{tmp_path.as_posix()}/./project",
+                console=False,
+                file=False,
+                install_exception_hooks=False,
+            )
+        with pytest.raises(ValueError, match="exact relative components"):
+            logging_config.configure_logging(
+                "test",
+                project_root=project,
+                log_dir="logs//test",
+                console=False,
+                install_exception_hooks=False,
+            )
+        with pytest.raises(ValueError, match="output path is empty"):
+            logging_config.configure_logging(
+                "test",
+                project_root=project,
+                log_dir="",
+                console=False,
+                install_exception_hooks=False,
+            )
     finally:
         logging_config.shutdown_logging()
 

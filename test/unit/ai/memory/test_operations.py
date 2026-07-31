@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import urllib.error
+from pathlib import Path
 
 from ai.memory import operations
 
@@ -115,6 +116,35 @@ def test_memory_list_uses_top_k_with_new_mem0_versions(monkeypatch):
 
     assert memory.requested_top_k == 200
     assert result["count"] == 200
+
+
+def test_local_memory_operation_passes_explicit_project_context(
+    tmp_path,
+    monkeypatch,
+):
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    config_manager = object()
+    captured = {}
+
+    def fake_ensure_mem0(**kwargs):
+        captured.update(kwargs)
+        return _FakeMemory()
+
+    monkeypatch.delenv("SHINSEKAI_MEMORY_SERVICE_URL", raising=False)
+    monkeypatch.setattr(operations, "ensure_mem0", fake_ensure_mem0)
+
+    result = operations.memory_list(
+        "Alice",
+        root=selected,
+        config_manager=config_manager,
+    )
+
+    assert result["count"] == 3
+    assert captured == {
+        "root": Path(selected),
+        "config_manager": config_manager,
+    }
 
 
 def test_local_memory_operations_are_serialized(monkeypatch):
