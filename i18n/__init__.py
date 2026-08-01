@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from core.file_transactions import read_text_without_links
+from sdk.file_transactions import read_text_without_links
 from sdk.lang import SUPPORTED_LANGS, normalize_lang
 
 __all__ = [
