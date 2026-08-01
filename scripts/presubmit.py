@@ -15,11 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.file_transactions import (  # noqa: E402
+from sdk.file_transactions import (  # noqa: E402
     read_bytes_without_links,
     read_text_without_links,
 )
-from core.process_launch import (  # noqa: E402
+from sdk.process_launch import (  # noqa: E402
     capture_command_executable,
     capture_launch_directory,
     run_with_stable_paths,
