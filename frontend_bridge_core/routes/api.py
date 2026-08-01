@@ -50,7 +50,7 @@ from frontend_bridge_core.backgrounds import (
     _upload_background_bgm,
     _upload_background_images,
 )
-from frontend_bridge_core.effects import (
+from application.media.effects import (
     _build_effect_usage_guide,
     _delete_all_effect_audio,
     _delete_effect,
@@ -79,7 +79,7 @@ from application.chat.runtime_process import (
     remove_chat_history_storage,
     _sanitize_user_display_name,
 )
-from frontend_bridge_core.chat_themes import (
+from application.chat.themes import (
     delete_chat_theme,
     get_active_chat_theme_id,
     get_chat_theme_manifest,
@@ -160,7 +160,7 @@ from frontend_bridge_core.plugin_publisher import (
     _scan_local_plugin,
     _validate_plugin_submission,
 )
-from frontend_bridge_core.plugin_ui import (
+from application.plugins.ui import (
     _frontend_chat_ui_contribution_payloads,
     _plugin_ui_detail,
     _resolve_plugin_frontend_file,
@@ -1441,7 +1441,14 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/chat/attachments/upload":
                 temp_dir, temp_dir_identity, paths = self._read_upload_files()
                 try:
-                    self._send_json({"attachments": stage_uploaded_chat_attachments(paths)})
+                    self._send_json(
+                        {
+                            "attachments": stage_uploaded_chat_attachments(
+                                paths,
+                                project_root=state_project_root(self.state),
+                            )
+                        }
+                    )
                 finally:
                     _cleanup_upload_directory(temp_dir, temp_dir_identity)
             else:
