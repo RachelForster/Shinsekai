@@ -544,7 +544,7 @@ def _watch_windows_parent(parent_pid: int) -> None:
 
 def check_runtime(
     project_root: str | None = None,
-    frontend_dist: str | None = "frontend/dist",
+    frontend_dist: str | None = None,
     requirements_file: str | None = None,
     app_root: str | None = None,
     profile: str = "desktop-core",
@@ -589,7 +589,7 @@ def check_runtime(
 
 def runtime_check_report(
     project_root: str | None = None,
-    frontend_dist: str | None = "frontend/dist",
+    frontend_dist: str | None = None,
     requirements_file: str | None = None,
     app_root: str | None = None,
     profile: str = "desktop-core",
@@ -809,8 +809,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--frontend-dist",
-        default="frontend/dist",
-        help="Built frontend directory to serve. Relative paths resolve from the repository root.",
+        default=None,
+        help=(
+            "Built frontend directory to serve or explicitly validate. "
+            "Serving defaults to frontend/dist; runtime checks omit frontend validation "
+            "unless this option is provided. Relative paths resolve from the repository root."
+        ),
     )
     parser.add_argument(
         "--open-browser",
@@ -859,7 +863,7 @@ def main() -> None:
             with contextlib.redirect_stdout(sys.stderr):
                 report = runtime_check_report(
                     args.project_root or None,
-                    args.frontend_dist or None,
+                    args.frontend_dist,
                     args.requirements_file or None,
                     args.app_root or None,
                     args.profile,
@@ -871,7 +875,7 @@ def main() -> None:
         else:
             check_runtime(
                 args.project_root or None,
-                args.frontend_dist or None,
+                args.frontend_dist,
                 args.requirements_file or None,
                 args.app_root or None,
                 args.profile,
@@ -884,7 +888,9 @@ def main() -> None:
         host=args.host,
         port=args.port,
         project_root=args.project_root or None,
-        frontend_dist=args.frontend_dist or None,
+        frontend_dist=(
+            "frontend/dist" if args.frontend_dist is None else args.frontend_dist
+        ),
         open_browser=args.open_browser,
         parent_pid=args.parent_pid or None,
         app_root=args.app_root or None,
