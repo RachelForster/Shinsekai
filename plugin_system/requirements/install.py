@@ -25,7 +25,7 @@ from core.paths import (
     resolve_project_read_path,
     validate_exact_path_text,
 )
-from core.file_transactions import read_text_without_links, remove_file_without_links
+from sdk.file_transactions import read_text_without_links, remove_file_without_links
 from core.runtime_env.pip_index import (
     strip_inline_requirement_comment as _strip_inline_requirement_comment,
 )

@@ -16,8 +16,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 from config.mirror_env import mirror_github_url
-from core.archive_paths import extract_zip_safely
-from core.file_transactions import (
+from sdk.archive_paths import extract_zip_safely
+from sdk.file_transactions import (
     atomic_write_text,
     copy_directory_without_links,
     create_private_temporary_directory,
