@@ -37,7 +37,7 @@ import {
   chatStageRuntimeConfigVersion,
   defaultChatStageRuntimeConfig,
 } from "../../../features/chat-stage/runtimeConfig";
-import { resolveChatTheme, type ChatThemeManifest } from "../../../shared/theme/chatTheme";
+import { resolveChatTheme, type ChatThemeManifest, type FrameVisualBlock } from "../../../shared/theme/chatTheme";
 
 function Probe() {
   const theme = useChatTheme();
@@ -100,6 +100,7 @@ describe("chat theme runtime", () => {
             boxShadow: "0 16px 44px rgba(0,0,0,0.5)",
             chrome: "none",
             color: "#ffffff",
+            backgroundSlice: 28,
             frameImage: "assets/dialog-border.svg",
             frameSlice: 28,
             heightPx: 166,
@@ -128,6 +129,7 @@ describe("chat theme runtime", () => {
             borderRadius: "6px",
             boxShadow: "0 12px 28px rgba(0,0,0,0.36)",
             color: "#9c8cff",
+            backgroundSlice: 16,
             frameImage: "assets/name-border.svg",
             frameSlice: 16,
             align: "center",
@@ -322,7 +324,7 @@ describe("chat theme runtime", () => {
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/mio.woff2")');
   });
 
-  it("uses frame geometry for a nine-slice background without requiring a frame image", () => {
+  it("falls back to an asymmetric frameSlice for a nine-slice background", () => {
     const resolved = resolveChatTheme(
       {
         schema: 1,
@@ -331,8 +333,7 @@ describe("chat theme runtime", () => {
         tokens: {
           dialog: {
             backgroundImage: "assets/dialog.png",
-            frameSlice: 24,
-            frameWidthPx: 18,
+            frameSlice: [12, 24, 36, 48],
             frameOutsetPx: 2,
           },
           input: { backgroundImage: "assets/input.png" },
@@ -342,13 +343,40 @@ describe("chat theme runtime", () => {
     );
 
     expect(resolved.style["--chat-dialog-background-image"]).toBe('url("asset://assets/dialog.png")');
-    expect(resolved.style["--chat-dialog-background-slice"]).toBe("24");
-    expect(resolved.style["--chat-dialog-background-width"]).toBe("18px");
+    expect(resolved.style["--chat-dialog-background-slice"]).toBe("12 24 36 48");
+    expect(resolved.style["--chat-dialog-background-width"]).toBe("12px 24px 36px 48px");
     expect(resolved.style["--chat-dialog-background-outset"]).toBe("2px");
     expect(resolved.style["--chat-dialog-frame-image"]).toBeUndefined();
     expect(resolved.style["--chat-input-background-slice"]).toBe("32");
     expect(resolved.style["--chat-input-background-width"]).toBe("32px");
     expect(resolved.style["--chat-input-background-outset"]).toBe("0px");
+  });
+
+  it("maps independent background and overlay frame slices", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "asymmetric-nine-slice",
+        name: { en: "Asymmetric Nine-slice" },
+        tokens: {
+          dialog: {
+            backgroundImage: "assets/dialog.png",
+            backgroundSlice: [-10, 24, 250, 48],
+            frameImage: "assets/dialog.svg",
+            frameSlice: [10, 20, 30, 40],
+          },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-dialog-background-slice"]).toBe("1 24 200 48");
+    expect(resolved.style["--chat-dialog-background-width"]).toBe("1px 24px 200px 48px");
+    expect(resolved.style["--chat-dialog-frame-slice"]).toBe("10 20 30 40");
+    expect(resolved.style["--chat-dialog-frame-width"]).toBe("10px 20px 30px 40px");
+    expect(resolved.style["--chat-dialog-frame"]).toBe(
+      'url("asset://assets/dialog.svg") 10 20 30 40 fill / 10px 20px 30px 40px stretch',
+    );
   });
 
   it("maps the arrow-fade name decoration without adding a frame", () => {
@@ -377,7 +405,13 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-name-frame-image"]).toBeUndefined();
   });
 
-  it("maps reusable frame geometry without leaking chat frames into logs", () => {
+  it("maps chat frame geometry without applying theme frames to the logs settings page", () => {
+    const legacyLogsPanel: FrameVisualBlock = {
+      frameImage: "assets/logs.svg",
+      frameOutsetPx: 4,
+      frameSlice: 24,
+      frameWidthPx: 8,
+    };
     const resolved = resolveChatTheme(
       {
         schema: 1,
@@ -391,15 +425,7 @@ describe("chat theme runtime", () => {
             frameWidthPx: 12,
           },
           logs: {
-            panel: {
-              frameImage: "assets/logs.svg",
-              frameOutsetPx: 4,
-              frameSlice: 24,
-              frameWidthPx: 8,
-            },
-            toolbar: {
-              frameWidthPx: 0,
-            },
+            panel: legacyLogsPanel,
           },
         },
       },
@@ -410,12 +436,12 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-dialog-frame-slice"]).toBe("40");
     expect(resolved.style["--chat-dialog-frame-width"]).toBe("12px");
     expect(resolved.style["--chat-dialog-frame-outset"]).toBe("6px");
-    expect(resolved.style["--logs-panel-frame-image"]).toBe('url("asset://assets/logs.svg")');
-    expect(resolved.style["--logs-panel-frame-slice"]).toBe("24");
-    expect(resolved.style["--logs-panel-frame-width"]).toBe("8px");
-    expect(resolved.style["--logs-panel-frame-outset"]).toBe("4px");
+    expect(resolved.style["--logs-panel-frame-image"]).toBeUndefined();
+    expect(resolved.style["--logs-panel-frame-slice"]).toBeUndefined();
+    expect(resolved.style["--logs-panel-frame-width"]).toBeUndefined();
+    expect(resolved.style["--logs-panel-frame-outset"]).toBeUndefined();
     expect(resolved.style["--logs-toolbar-frame-image"]).toBeUndefined();
-    expect(resolved.style["--logs-toolbar-frame-width"]).toBe("0px");
+    expect(resolved.style["--logs-toolbar-frame-width"]).toBeUndefined();
     expect(resolved.style["--logs-viewer-frame-image"]).toBeUndefined();
   });
 

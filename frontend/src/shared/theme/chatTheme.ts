@@ -29,13 +29,18 @@ export interface VisualBlock {
   boxShadow?: string;
 }
 
+/** 九宫格素材切片值：单值应用于四边；四值依次为上、右、下、左。 */
+export type NineSlice = number | [top: number, right: number, bottom: number, left: number];
+
 /** 只用于具有独立边框层的低密度 UI 外壳；列表行、按钮状态等 VisualBlock 不接受这些字段。 */
 export interface FrameVisualBlock extends VisualBlock {
+  /** backgroundImage 的九宫格切片值，支持单值或 [上, 右, 下, 左]，每项 clamp 1–200。 */
+  backgroundSlice?: NineSlice;
   /** SVG/位图九宫格边框，主题目录内相对路径（沙箱）。 */
   frameImage?: string;
-  /** 素材坐标系中的九宫格切片值（无单位），由 backgroundImage 与 frameImage 共用，clamp 1–200，默认 32。 */
-  frameSlice?: number;
-  /** 屏幕上的九宫格边缘带宽（px），决定角块显示尺寸与素材缩放，clamp 0–96；省略时回退到 frameSlice。 */
+  /** frameImage 的九宫格切片值，支持单值或 [上, 右, 下, 左]；也作为 backgroundSlice 的兼容回退。 */
+  frameSlice?: NineSlice;
+  /** 屏幕上的九宫格边缘带宽（px），决定角块显示尺寸与素材缩放，clamp 0–96；省略时回退到对应图片的切片值。 */
   frameWidthPx?: number;
   /** 九宫格向容器外绘制的距离（px），不参与布局，clamp 0–96，默认 0。 */
   frameOutsetPx?: number;
@@ -127,11 +132,11 @@ export interface LogsThemeTokens {
   line?: VisualBlock & { expanded?: VisualBlock; hover?: VisualBlock };
   number?: VisualBlock;
   page?: VisualBlock;
-  panel?: FrameVisualBlock;
-  sidebar?: FrameVisualBlock;
+  panel?: VisualBlock;
+  sidebar?: VisualBlock;
   source?: VisualBlock;
-  toolbar?: FrameVisualBlock;
-  viewer?: FrameVisualBlock;
+  toolbar?: VisualBlock;
+  viewer?: VisualBlock;
 }
 
 /** 完整主题清单（theme.json）。 */
@@ -226,6 +231,23 @@ function clampNumber(value: unknown, fallback: number, min: number, max: number)
   return Math.min(max, Math.max(min, next));
 }
 
+function normalizeNineSlice(value: unknown, fallback = 32): NineSlice {
+  if (Array.isArray(value)) {
+    return value.length === 4
+      ? (value.map((item) => clampNumber(item, fallback, 1, 200)) as [number, number, number, number])
+      : fallback;
+  }
+  return clampNumber(value, fallback, 1, 200);
+}
+
+function nineSliceCssValue(slice: NineSlice) {
+  return Array.isArray(slice) ? slice.join(" ") : String(slice);
+}
+
+function nineSliceWidthCssValue(slice: NineSlice) {
+  return Array.isArray(slice) ? slice.map((value) => `${value}px`).join(" ") : `${slice}px`;
+}
+
 function setStyleVar(style: ChatStageStyle, name: `--${string}`, value: unknown) {
   if (!isSafeCssValue(value)) {
     return;
@@ -309,14 +331,13 @@ function applyFrameVisualBlock(
   legacyShorthand = false,
 ) {
   const frameImage = assetUrl && frame.frameImage ? resolveThemeAssetUrl(frame.frameImage, assetUrl) : "";
-  const slice =
-    frame.frameSlice === undefined ? (frameImage ? 32 : undefined) : clampNumber(frame.frameSlice, 32, 1, 200);
+  const slice = frame.frameSlice === undefined ? (frameImage ? 32 : undefined) : normalizeNineSlice(frame.frameSlice);
   const width =
     frame.frameWidthPx === undefined
       ? frameImage
-        ? (slice ?? 32)
+        ? nineSliceWidthCssValue(slice ?? 32)
         : undefined
-      : clampNumber(frame.frameWidthPx, slice ?? 32, 0, 96);
+      : `${clampNumber(frame.frameWidthPx, 32, 0, 96)}px`;
   const outset =
     frame.frameOutsetPx === undefined ? (frameImage ? 0 : undefined) : clampNumber(frame.frameOutsetPx, 0, 0, 96);
 
@@ -324,10 +345,10 @@ function applyFrameVisualBlock(
     style[`--${namespace}-${prefix}-frame-image`] = `url("${frameImage}")`;
   }
   if (slice !== undefined) {
-    style[`--${namespace}-${prefix}-frame-slice`] = String(slice);
+    style[`--${namespace}-${prefix}-frame-slice`] = nineSliceCssValue(slice);
   }
   if (width !== undefined) {
-    style[`--${namespace}-${prefix}-frame-width`] = `${width}px`;
+    style[`--${namespace}-${prefix}-frame-width`] = width;
   }
   if (outset !== undefined) {
     style[`--${namespace}-${prefix}-frame-outset`] = `${outset}px`;
@@ -335,17 +356,21 @@ function applyFrameVisualBlock(
   if (legacyShorthand && frameImage) {
     const legacySlice = slice ?? 32;
     // Deprecated shorthand retained for themes or extensions that still consume it directly.
-    style[`--chat-${prefix}-frame`] = `url("${frameImage}") ${legacySlice} fill / ${legacySlice}px stretch`;
+    style[`--chat-${prefix}-frame`] =
+      `url("${frameImage}") ${nineSliceCssValue(legacySlice)} fill / ${width ?? nineSliceWidthCssValue(legacySlice)} stretch`;
   }
 }
 
 function applyNineSliceBackground(style: ChatStageStyle, prefix: string, block: FrameVisualBlock) {
-  const slice = clampNumber(block.frameSlice, 32, 1, 200);
-  const width = clampNumber(block.frameWidthPx, slice, 0, 96);
+  const slice = normalizeNineSlice(block.backgroundSlice ?? block.frameSlice);
+  const width =
+    block.frameWidthPx === undefined
+      ? nineSliceWidthCssValue(slice)
+      : `${clampNumber(block.frameWidthPx, 32, 0, 96)}px`;
   const outset = clampNumber(block.frameOutsetPx, 0, 0, 96);
 
-  style[`--chat-${prefix}-background-slice`] = String(slice);
-  style[`--chat-${prefix}-background-width`] = `${width}px`;
+  style[`--chat-${prefix}-background-slice`] = nineSliceCssValue(slice);
+  style[`--chat-${prefix}-background-width`] = width;
   style[`--chat-${prefix}-background-outset`] = `${outset}px`;
 }
 
@@ -387,7 +412,6 @@ function applyLogsVisualBlock(
   prefix: string,
   block?: VisualBlock | null,
   assetUrl?: (rel: string) => string,
-  allowFrame = false,
 ) {
   if (!block) {
     return;
@@ -398,10 +422,6 @@ function applyLogsVisualBlock(
     if (backgroundImage) {
       style[`--logs-${prefix}-background-image`] = `url("${backgroundImage}")`;
     }
-  }
-  const frame = allowFrame ? (block as FrameVisualBlock) : undefined;
-  if (frame) {
-    applyFrameVisualBlock(style, "logs", prefix, frame, assetUrl);
   }
   setStyleVar(style, `--logs-${prefix}-border-color`, block.borderColor);
   setStyleVar(style, `--logs-${prefix}-border-radius`, block.borderRadius);
@@ -776,11 +796,11 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
 
   const logs = resolveLogsThemeTokens(tokens);
   applyLogsVisualBlock(style, "page", logs?.page, assetUrl);
-  applyLogsVisualBlock(style, "panel", logs?.panel, assetUrl, true);
-  applyLogsVisualBlock(style, "toolbar", logs?.toolbar, assetUrl, true);
-  applyLogsVisualBlock(style, "sidebar", logs?.sidebar, assetUrl, true);
+  applyLogsVisualBlock(style, "panel", logs?.panel, assetUrl);
+  applyLogsVisualBlock(style, "toolbar", logs?.toolbar, assetUrl);
+  applyLogsVisualBlock(style, "sidebar", logs?.sidebar, assetUrl);
   applyLogsVisualBlock(style, "source", logs?.source, assetUrl);
-  applyLogsVisualBlock(style, "viewer", logs?.viewer, assetUrl, true);
+  applyLogsVisualBlock(style, "viewer", logs?.viewer, assetUrl);
   applyLogsVisualBlock(style, "code", logs?.code, assetUrl);
   applyLogsVisualBlock(style, "line", logs?.line, assetUrl);
   applyLogsVisualBlock(style, "line-hover", logs?.line?.hover, assetUrl);

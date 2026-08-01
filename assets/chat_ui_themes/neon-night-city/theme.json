@@ -28,7 +28,7 @@
       "color": "#e9fbff",
       "backgroundImage": "frame-dialog.svg",
       "frameOutsetPx": 2,
-      "frameSlice": 28,
+      "backgroundSlice": 28,
       "frameWidthPx": 28,
       "heightPx": 184,
       "nameInputGapVh": 20,
@@ -105,7 +105,7 @@
       "fontFamily": "Cascadia Mono, JetBrains Mono, Consolas, monospace",
       "backgroundImage": "frame-name.svg",
       "frameOutsetPx": 2,
-      "frameSlice": 16,
+      "backgroundSlice": 16,
       "frameWidthPx": 16,
       "hideWhenStartOption": true,
       "overlapPx": 14,
@@ -124,11 +124,7 @@
         "borderColor": "rgba(0,245,255,0.42)",
         "borderRadius": "6px",
         "boxShadow": "0 0 24px rgba(0,245,255,0.12)",
-        "color": "#dffcff",
-        "frameImage": "frame-panel.svg",
-        "frameOutsetPx": 2,
-        "frameSlice": 24,
-        "frameWidthPx": 24
+        "color": "#dffcff"
       },
       "toolbar": {
         "background": "rgba(10,4,24,0.94)",

@@ -135,8 +135,8 @@
 .logs-toolbar,
 .logs-sidebar,
 .logs-viewer {
-  border: 1px solid var(--logs-panel-border-color, var(--logs-gal-border));
-  border-radius: var(--logs-panel-border-radius, var(--logs-radius));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
   color: var(--logs-panel-color, var(--logs-gal-text));
   background: var(--logs-panel-background-image, none), var(--logs-gal-panel);
   background-position: center;
@@ -169,9 +169,17 @@
 }
 
 .logs-page .button--primary {
-  border-color: var(--logs-event-border-color, var(--logs-gal-accent));
-  color: var(--chat-send-color, #ffffff);
-  background: var(--chat-send-background, var(--logs-gal-accent));
+  border-color: var(--color-accent-border-strong);
+  border-radius: var(--radius-control);
+  color: var(--color-accent-primary);
+  background: var(--color-accent-bg-hover);
+  box-shadow: none;
+}
+
+.logs-page .button--primary:hover:not(:disabled) {
+  border-color: var(--color-accent-border-strong);
+  color: var(--color-accent-primary);
+  background: var(--color-accent-bg-intense);
 }
 
 .logs-page .button--ghost {
@@ -260,7 +268,7 @@
   min-height: 58px;
   margin: calc(-1 * var(--logs-page-gutter)) calc(-1 * var(--logs-page-gutter)) 0;
   padding: 10px var(--logs-page-gutter) 12px;
-  border-bottom: 1px solid var(--logs-toolbar-border-color, var(--logs-gal-border));
+  border-bottom: 1px solid var(--color-border);
   color: var(--logs-toolbar-color, var(--logs-gal-text));
   background:
     var(--logs-toolbar-background-image, var(--logs-panel-background-image, none)),
@@ -337,7 +345,6 @@
   align-items: center;
   gap: var(--logs-space-2);
   padding: var(--logs-toolbar-padding, var(--logs-space-4));
-  border-color: var(--logs-toolbar-border-color, var(--logs-panel-border-color, var(--logs-gal-border)));
   color: var(--logs-toolbar-color, var(--logs-panel-color, var(--logs-gal-text)));
   background:
     var(--logs-toolbar-background-image, var(--logs-panel-background-image, none)),
@@ -388,7 +395,6 @@
   display: grid;
   gap: var(--logs-space-4);
   padding: var(--logs-sidebar-padding, var(--logs-space-4));
-  border-color: var(--logs-sidebar-border-color, var(--logs-panel-border-color, var(--logs-gal-border)));
   color: var(--logs-sidebar-color, var(--logs-panel-color, var(--logs-gal-text)));
   background:
     var(--logs-sidebar-background-image, var(--logs-panel-background-image, none)),
@@ -668,7 +674,7 @@
   font-size: 12px;
 }
 
-.logs-viewer-frame-host {
+.logs-viewer-host {
   position: relative;
   min-width: 0;
   isolation: isolate;
@@ -677,7 +683,6 @@
 .logs-viewer {
   min-height: 540px;
   padding: var(--logs-viewer-padding, 0);
-  border-color: var(--logs-viewer-border-color, var(--logs-panel-border-color, var(--logs-gal-border)));
   color: var(--logs-viewer-color, var(--logs-panel-color, var(--logs-gal-text)));
   background:
     var(--logs-viewer-background-image, var(--logs-panel-background-image, none)),
@@ -958,8 +963,8 @@
 .logs-code__detail-grid dd,
 .logs-code__raw {
   padding: var(--logs-detail-padding, 5px 7px);
-  border: 1px solid var(--logs-detail-border-color, var(--logs-gal-border));
-  border-radius: var(--logs-detail-border-radius, var(--logs-radius));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   color: var(--logs-detail-color, var(--logs-code-color, var(--logs-gal-text)));
   background:
     var(--logs-detail-background-image, none),
@@ -967,7 +972,7 @@
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover, auto;
-  box-shadow: var(--logs-detail-box-shadow, none);
+  box-shadow: none;
 }
 
 .logs-code__detail-grid dd {
@@ -982,7 +987,7 @@
 
 .logs-hidden-count {
   padding: var(--logs-space-3) var(--logs-space-4);
-  border-top: 1px solid var(--logs-viewer-border-color, var(--logs-gal-border));
+  border-top: 1px solid var(--color-border);
   background:
     var(--logs-viewer-background-image, var(--logs-panel-background-image, none)),
     var(--logs-viewer-background, var(--logs-gal-panel));

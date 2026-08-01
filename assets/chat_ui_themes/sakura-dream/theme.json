@@ -28,7 +28,7 @@
       "color": "#fff8fb",
       "backgroundImage": "frame-dialog.svg",
       "frameOutsetPx": 3,
-      "frameSlice": 32,
+      "backgroundSlice": 32,
       "frameWidthPx": 24,
       "heightPx": 178,
       "nameInputGapVh": 20,
@@ -51,7 +51,7 @@
       "fontFamily": "Noto Serif SC, Source Han Serif SC, Microsoft YaHei, Yu Mincho, Georgia, serif",
       "backgroundImage": "frame-name.svg",
       "frameOutsetPx": 2,
-      "frameSlice": 22,
+      "backgroundSlice": 22,
       "frameWidthPx": 14,
       "hideWhenStartOption": true,
       "overlapPx": 14,
@@ -68,7 +68,7 @@
       "color": "#fff8fb",
       "backgroundImage": "frame-option.svg",
       "frameOutsetPx": 2,
-      "frameSlice": 20,
+      "backgroundSlice": 20,
       "frameWidthPx": 12,
       "gap": 12,
       "active": {
@@ -130,11 +130,7 @@
         "borderColor": "rgba(255,205,222,0.24)",
         "borderRadius": "16px",
         "boxShadow": "0 18px 44px rgba(20,7,15,0.34)",
-        "color": "#fff5f8",
-        "frameImage": "frame-dialog.svg",
-        "frameOutsetPx": 2,
-        "frameSlice": 32,
-        "frameWidthPx": 18
+        "color": "#fff5f8"
       },
       "toolbar": {
         "background": "rgba(54,23,41,0.9)",
