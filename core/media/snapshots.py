@@ -12,7 +12,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from core.file_transactions import (
+from sdk.file_transactions import (
     capture_directory_identity,
     file_snapshot_is_stable,
     read_bytes_snapshot_without_links,

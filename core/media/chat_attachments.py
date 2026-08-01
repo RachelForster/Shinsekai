@@ -9,7 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
-from core.file_transactions import (
+from sdk.file_transactions import (
     copy_file_exclusive_with_identity,
     open_binary_read_without_links,
     remove_directory_without_links,

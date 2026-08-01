@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
 
-from core.file_transactions import (
+from sdk.file_transactions import (
     read_text_without_links,
     remove_directory_without_links,
     remove_file_without_links,

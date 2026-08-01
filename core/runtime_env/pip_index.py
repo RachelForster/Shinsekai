@@ -8,7 +8,7 @@ import re
 import shlex
 from pathlib import Path
 
-from core.file_transactions import read_text_without_links
+from sdk.file_transactions import read_text_without_links
 from core.paths import (
     resolve_project_path,
     source_root as runtime_source_root,

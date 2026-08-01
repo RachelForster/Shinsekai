@@ -6,7 +6,7 @@ import logging
 import sys
 from datetime import datetime
 
-from core.file_transactions import open_text_append_without_links
+from sdk.file_transactions import open_text_append_without_links
 from core.paths import (
     managed_child_path,
     managed_project_storage,

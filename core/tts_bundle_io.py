@@ -16,8 +16,8 @@ from urllib.parse import unquote_to_bytes, urlsplit
 
 import requests
 
-from core.archive_paths import validate_archive_member_names
-from core.file_transactions import (
+from sdk.archive_paths import validate_archive_member_names
+from sdk.file_transactions import (
     atomic_binary_writer,
     capture_directory_identity,
     clear_directory_without_links,
@@ -38,7 +38,7 @@ from core.paths import (
     safe_path_component,
     source_root,
 )
-from core.process_launch import (
+from sdk.process_launch import (
     LaunchDirectorySnapshot,
     LaunchFileSnapshot,
     capture_command_executable,

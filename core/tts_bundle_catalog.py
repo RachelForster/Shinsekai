@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from core.file_transactions import (
+from sdk.file_transactions import (
     portable_name_key,
     read_text_snapshot_without_links,
 )
@@ -21,7 +21,7 @@ from core.paths import (
     resource_path,
     safe_path_component,
 )
-from core.process_launch import (
+from sdk.process_launch import (
     capture_command_executable,
     run_with_stable_paths,
 )
