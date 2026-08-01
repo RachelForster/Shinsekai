@@ -1,7 +1,7 @@
 # Path-safety SDK ownership decision
 
-> Status: accepted  
-> Date: 2026-08-01  
+> Status: accepted
+> Date: 2026-08-01
 > Applies from: 2.3.1
 
 ## Context
