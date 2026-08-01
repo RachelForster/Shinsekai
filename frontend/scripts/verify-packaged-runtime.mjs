@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { link, lstat, mkdtemp, readdir } from "node:fs/promises";
+import { lstat, mkdtemp, readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,6 +7,7 @@ import {
   assertRegularFileWithoutLinks,
   assertSafeMutableDirectory,
   captureExecutableSnapshot,
+  copyRegularFileExclusiveWithoutLinks,
   readRegularFileWithoutLinks,
   removeDirectoryWithoutLinks,
   resolveAbsoluteEnvironmentPath,
@@ -370,17 +371,19 @@ async function runPackageListCommand(command, args, packagePath) {
   );
   const privatePackagePath = path.join(verificationRoot, path.basename(packagePath));
   try {
-    await link(packagePath, privatePackagePath);
-    const privateIdentity = await lstat(privatePackagePath, { bigint: true });
-    if (!sameFilesystemIdentity(packagePin.identity, privateIdentity)) {
-      throw new Error("packaged installer identity changed before inspection");
-    }
+    const privateSnapshot = await copyRegularFileExclusiveWithoutLinks(packagePath, privatePackagePath, {
+      field: "private packaged installer",
+      expectedSourceIdentity: packagePin.identity,
+      expectedSourceParentIdentity: packagePin.parentIdentity,
+      expectedDestinationParentIdentity: verificationRootIdentity,
+      expectedSha256: packagePin.sha256,
+    });
     const privatePin = {
       path: privatePackagePath,
       field: "private packaged installer",
-      identity: privateIdentity,
-      parentIdentity: verificationRootIdentity,
-      sha256: packagePin.sha256,
+      identity: privateSnapshot.destinationIdentity,
+      parentIdentity: privateSnapshot.destinationParentIdentity,
+      sha256: privateSnapshot.sha256,
     };
     await requirePinnedFile(packagePin);
     await requirePinnedFile(privatePin);

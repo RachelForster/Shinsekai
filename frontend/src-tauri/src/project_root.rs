@@ -2261,9 +2261,14 @@ mod tests {
     }
 
     #[test]
-    fn locator_with_nonportable_project_path_is_malformed_even_when_directory_exists() {
+    fn locator_with_nonportable_project_path_is_malformed() {
         let root = temp_dir("nonportable-locator");
+        #[cfg(not(windows))]
         let selected = data_root(&root, "bad\nproject");
+        // Windows cannot create a path containing this control character. The
+        // locator parser must reject it before attempting any filesystem I/O.
+        #[cfg(windows)]
+        let selected = root.join("bad\nproject");
         let locator = root.join("config").join(PROJECT_ROOT_LOCATOR_FILE);
         fs::create_dir_all(locator.parent().unwrap()).unwrap();
         fs::write(
@@ -3108,6 +3113,7 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    #[cfg(unix)]
     #[test]
     fn write_probe_rejects_a_replacement_parent_before_cleanup() {
         let root = temp_dir("probe-parent-replacement");
@@ -3127,6 +3133,30 @@ mod tests {
             fs::read(preserved_candidate.join("write-probe")).unwrap(),
             b"ok"
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn write_probe_pins_its_parent_against_replacement_before_cleanup() {
+        let root = temp_dir("probe-parent-pinned");
+        let candidate = root.join("candidate");
+        let preserved_candidate = root.join("preserved-candidate");
+        fs::create_dir_all(&candidate).unwrap();
+        let probe = candidate.join("write-probe");
+        let mut rename_error = None;
+
+        assert!(write_and_remove_owned_probe_after_write(&probe, || {
+            rename_error = Some(fs::rename(&candidate, &preserved_candidate).unwrap_err());
+        }));
+
+        assert_eq!(
+            rename_error.unwrap().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        assert!(candidate.is_dir());
+        assert!(!probe.exists());
+        assert!(!preserved_candidate.exists());
         let _ = fs::remove_dir_all(root);
     }
 

@@ -14,8 +14,14 @@ Do not assume a Linux-tested Tauri/WebView feature is safe on Windows. In partic
 
 If a failure is not caused by platform compatibility, record the invariant that was violated here before implementing new features. Prefer a single source of truth for rendered UI state, enabled/disabled controls, saved config, and submitted runtime payloads.
 
+Package inspection must never mutate metadata on the pinned installer it is validating. Inspect an identity- and digest-bound private copy, and retain stable identity checks including metadata timestamps on the source.
+
+Environment directory aliases may use platform-managed symbolic links only when they resolve stably to a canonical non-link directory. Tests involving open directory handles must assert the platform's safe invariant: Unix can detect a replacement after rename, while Windows must prevent that rename until the handle is released.
+
 ## Runtime Dependency Failures
 
 When Windows diagnostics show React stage launching but freezing or becoming inert, inspect `logs/main.log` and `logs/chat/*.jsonl` before assuming a frontend bug. A launch that returns 200 can still fail immediately if `main.py` exits during import, for example `ModuleNotFoundError: No module named 'opencc'`.
 
 Treat the managed runtime as ready only when required distributions and imports from `requirements-runtime-core.txt` and `runtime_manifest.json` both pass in the same Python executable that will run chat. Surface `runtimeDependencyError` wherever the user can land, including React stage, and keep an install or repair action visible instead of leaving the stage in an idle/error-looking state.
+
+Python runtime readiness must not depend on whether frontend assets have already been built. Validate `frontend/dist` at the bridge-serving boundary (or when explicitly requested), while runtime checks derive readiness only from the selected Python executable, its requirements, and imports.

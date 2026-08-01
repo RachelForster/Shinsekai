@@ -305,6 +305,13 @@ check(
   "prepare-runtime must extract an identity-bound private archive through a relative path",
 );
 check(
+  verifyPackagedRuntimeScript.includes("copyRegularFileExclusiveWithoutLinks(packagePath, privatePackagePath") &&
+    verifyPackagedRuntimeScript.includes("expectedSourceIdentity: packagePin.identity") &&
+    verifyPackagedRuntimeScript.includes("expectedSha256: packagePin.sha256") &&
+    !verifyPackagedRuntimeScript.includes("await link(packagePath, privatePackagePath)"),
+  "package inspection must use an identity-bound private copy without mutating the pinned installer metadata",
+);
+check(
   prepareRuntimeScript.includes("preflightTarArchive(tarArchivePathArg, extractionRoot, target.asset, target)") &&
     prepareRuntimeScript.indexOf("preflightTarArchive(tarArchivePathArg, extractionRoot, target.asset, target)") <
       prepareRuntimeScript.indexOf('spawnWithCapturedExecutable("tar", ["-xzf", tarArchivePathArg]'),

@@ -10,10 +10,10 @@ use std::{
 use std::os::windows::process::CommandExt;
 
 use crate::path_contract::{
-    canonicalize_directory_without_links, canonicalize_regular_file_following_links_stably,
-    canonicalize_regular_file_without_links, files_have_same_identity,
-    open_directory_without_links, path_has_no_link_components, path_is_filesystem_root,
-    path_text_is_portable,
+    canonicalize_directory_following_links_stably, canonicalize_directory_without_links,
+    canonicalize_regular_file_following_links_stably, canonicalize_regular_file_without_links,
+    files_have_same_identity, open_directory_without_links, path_has_no_link_components,
+    path_is_filesystem_root, path_text_is_portable,
 };
 
 const CERTIFICATE_FILE_ENVIRONMENTS: &[&str] =
@@ -185,13 +185,13 @@ fn validated_directory_environment_value(
     let Some(path) = validated_absolute_environment_path(name, value)? else {
         return Ok(None);
     };
-    canonicalize_directory_without_links(&path)
+    canonicalize_directory_following_links_stably(&path)
         .map(Some)
         .map_err(|error| {
             io::Error::new(
                 error.kind(),
                 format!(
-                    "{name} must name an existing non-link directory ({}): {error}",
+                    "{name} must resolve stably to an existing non-link directory ({}): {error}",
                     path.display()
                 ),
             )
@@ -487,6 +487,26 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.to_string().contains("existing regular non-link file"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn environment_directory_aliases_resolve_to_a_stable_non_link_target() {
+        use std::os::unix::fs::symlink;
+
+        let temp_root = unique_temp_dir("runtime-directory-environment-link");
+        let real = temp_root.join("real-certs");
+        let alias = temp_root.join("certs");
+        fs::create_dir_all(&real).unwrap();
+        symlink(&real, &alias).unwrap();
+
+        assert_eq!(
+            validated_directory_environment_value("SSL_CERT_DIR", Some(alias.into_os_string()))
+                .unwrap(),
+            Some(real.canonicalize().unwrap())
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
     }
 
     #[test]

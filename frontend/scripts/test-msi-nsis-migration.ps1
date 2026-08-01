@@ -386,6 +386,32 @@ function Wait-ForCondition {
   throw "Timed out waiting for $Description"
 }
 
+function Wait-ForNsisRemoval {
+  param(
+    [Parameter(Mandatory)][string]$InstallDir,
+    [int]$TimeoutSeconds = 180
+  )
+
+  # NSIS may self-copy to a temporary process before removing its own files.
+  # The process we launch can therefore exit before uninstall is externally
+  # complete; the ARP entry and install directory are the shared readiness
+  # invariant for both the test and subsequent installer operations.
+  try {
+    Wait-ForCondition -Description "the NSIS installation and ARP entry to be removed" -TimeoutSeconds $TimeoutSeconds -Condition {
+      $remainingNsisEntries = @(
+        Get-ShinsekaiEntries | Where-Object { -not (Test-MsiEntry -Entry $_) }
+      )
+      return $remainingNsisEntries.Count -eq 0 -and -not (Test-Path -LiteralPath $InstallDir)
+    }
+  } catch {
+    $remainingNsisEntries = @(
+      Get-ShinsekaiEntries | Where-Object { -not (Test-MsiEntry -Entry $_) }
+    )
+    $installDirectoryExists = Test-Path -LiteralPath $InstallDir
+    throw "Timed out waiting for NSIS removal: remaining ARP entries=$($remainingNsisEntries.Count), install directory exists=$installDirectoryExists"
+  }
+}
+
 function Get-MigrationHint {
   if (-not (Test-Path -LiteralPath $MigrationRegistryPath)) {
     return $null
@@ -587,12 +613,7 @@ try {
 
   Write-Step "Uninstalling the migrated current-user NSIS installation"
   [void](Invoke-CheckedProcess -FilePath $newUninstaller -ArgumentList @("/S") -AllowedExitCodes @(0) -TimeoutSeconds 180)
-  Wait-ForCondition -Description "the NSIS installation and ARP entry to be removed" -Condition {
-    $remainingNsisEntries = @(
-      Get-ShinsekaiEntries | Where-Object { -not (Test-MsiEntry -Entry $_) }
-    )
-    return $remainingNsisEntries.Count -eq 0 -and -not (Test-Path -LiteralPath $ExpectedNsisInstallDir)
-  }
+  Wait-ForNsisRemoval -InstallDir $ExpectedNsisInstallDir
   Assert-Condition (Test-Path -LiteralPath $SeedFile -PathType Leaf) "uninstalling the new NSIS unexpectedly removed legacy project data"
   Write-Step "Real v2.1.0 MSI-to-current-NSIS migration passed"
 } catch {
@@ -611,6 +632,7 @@ try {
       $uninstaller = Join-Path $ExpectedNsisInstallDir "uninstall.exe"
       if (Test-Path -LiteralPath $uninstaller -PathType Leaf) {
         [void](Invoke-CheckedProcess -FilePath $uninstaller -ArgumentList @("/S") -AllowedExitCodes @(0) -TimeoutSeconds 180)
+        Wait-ForNsisRemoval -InstallDir $ExpectedNsisInstallDir
       }
     }
 
