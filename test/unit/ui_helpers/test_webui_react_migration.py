@@ -27,7 +27,7 @@ def test_build_frontend_requests_migration_when_pnpm_is_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from core import process_launch
+    from sdk import process_launch
 
     frontend = _frontend_root(tmp_path)
     (frontend / "node_modules").mkdir()
@@ -65,7 +65,7 @@ def test_build_frontend_rejects_source_changed_during_build(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    from core import process_launch
+    from sdk import process_launch
 
     frontend = _frontend_root(tmp_path)
     package = frontend / "package.json"

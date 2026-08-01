@@ -162,7 +162,7 @@ def test_runtime_context_rejects_symlinked_project_data_directory(tmp_path, monk
 
 
 def test_project_root_probe_rejects_replaced_data_directory(tmp_path, monkeypatch):
-    from core import file_transactions
+    from sdk import file_transactions
     from frontend_bridge import _prepare_project_root
 
     project_root = tmp_path / "project"

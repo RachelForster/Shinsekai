@@ -135,7 +135,7 @@ def test_frontend_config_contribution_gets_plugin_context() -> None:
 
 
 def test_frontend_config_contribution_keeps_i18n_payload() -> None:
-    from frontend_bridge_core.plugin_ui import _frontend_config_page_payload
+    from application.plugins.ui import _frontend_config_page_payload
 
     contribution = FrontendConfigContribution(
         page_id="demo",

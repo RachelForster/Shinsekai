@@ -305,7 +305,7 @@ def test_exact_match():
 
 
 def test_guide_empty_effect_names():
-    from frontend_bridge_core.effects import _build_effect_usage_guide
+    from application.media.effects import _build_effect_usage_guide
 
     class FakeState:
         config_manager = None
@@ -315,7 +315,7 @@ def test_guide_empty_effect_names():
 
 
 def test_guide_with_keywords():
-    from frontend_bridge_core.effects import _build_effect_usage_guide
+    from application.media.effects import _build_effect_usage_guide
 
     class FakeCM:
         def get_effect_by_name(self, name):
@@ -343,7 +343,7 @@ def test_guide_with_keywords():
 
 
 def test_guide_nonexistent_effect_skipped():
-    from frontend_bridge_core.effects import _build_effect_usage_guide
+    from application.media.effects import _build_effect_usage_guide
 
     class FakeCM:
         def get_effect_by_name(self, name):
@@ -359,7 +359,7 @@ def test_guide_nonexistent_effect_skipped():
 
 
 def test_guide_effect_without_keywords():
-    from frontend_bridge_core.effects import _build_effect_usage_guide
+    from application.media.effects import _build_effect_usage_guide
 
     class FakeCM:
         def get_effect_by_name(self, name):
@@ -413,7 +413,7 @@ def test_save_effect_overwrite_existing():
 
 def test_save_effect_rejects_path_traversal_name(tmp_path, monkeypatch):
     """Effect names must not create directories outside data/effects."""
-    from frontend_bridge_core.effects import _save_effect
+    from application.media.effects import _save_effect
 
     monkeypatch.chdir(tmp_path)
     state = make_state([])
@@ -428,7 +428,7 @@ def test_save_effect_rejects_path_traversal_name(tmp_path, monkeypatch):
 
 def test_save_effect_rejects_outer_whitespace_without_retargeting(tmp_path):
     """An effect directory name must never be silently trimmed."""
-    from frontend_bridge_core.effects import _save_effect
+    from application.media.effects import _save_effect
 
     state = make_state([make_effect("Spark")])
     state.project_root_dir = tmp_path.as_posix()
@@ -456,7 +456,7 @@ def test_delete_effect_removes_from_list():
 
 def test_delete_effect_rejects_path_traversal_name(tmp_path, monkeypatch):
     """Deleting an effect must not remove a directory outside managed storage."""
-    from frontend_bridge_core.effects import _delete_effect
+    from application.media.effects import _delete_effect
 
     monkeypatch.chdir(tmp_path)
     outside = tmp_path / "outside"
@@ -513,7 +513,7 @@ def test_audio_delete_index_boundary():
 
 def test_delete_effect_audio_does_not_unlink_external_file(tmp_path, monkeypatch):
     """Config paths outside the managed effect directory are removed from config only."""
-    from frontend_bridge_core.effects import _delete_effect_audio
+    from application.media.effects import _delete_effect_audio
 
     monkeypatch.chdir(tmp_path)
     external = tmp_path / "external.wav"
@@ -529,7 +529,7 @@ def test_delete_effect_audio_does_not_unlink_external_file(tmp_path, monkeypatch
 
 
 def test_delete_effect_audio_does_not_retarget_missing_external_path(tmp_path):
-    from frontend_bridge_core.effects import _delete_effect_audio
+    from application.media.effects import _delete_effect_audio
 
     project = tmp_path / "project"
     managed_peer = project / "data/effects/rain/drop.wav"
@@ -552,7 +552,7 @@ def test_delete_effect_audio_does_not_retarget_missing_external_path(tmp_path):
 
 
 def test_effect_upload_uses_state_root_and_persists_portable_path(tmp_path, monkeypatch):
-    from frontend_bridge_core.effects import _upload_effect_audio
+    from application.media.effects import _upload_effect_audio
 
     project_root = tmp_path / "project"
     project_root.mkdir()
@@ -573,7 +573,7 @@ def test_effect_upload_uses_state_root_and_persists_portable_path(tmp_path, monk
 
 
 def test_effect_upload_never_overwrites_same_named_audio(tmp_path):
-    from frontend_bridge_core.effects import _upload_effect_audio
+    from application.media.effects import _upload_effect_audio
 
     project = tmp_path / "project"
     existing = project / "data/effects/rain/drop.wav"
@@ -597,7 +597,7 @@ def test_effect_upload_never_overwrites_same_named_audio(tmp_path):
 
 
 def test_effect_upload_does_not_follow_linked_source_directory(tmp_path):
-    from frontend_bridge_core.effects import _upload_effect_audio
+    from application.media.effects import _upload_effect_audio
 
     project = tmp_path / "project"
     external = tmp_path / "incoming"
@@ -625,7 +625,7 @@ def test_effect_upload_does_not_follow_linked_source_directory(tmp_path):
 
 
 def test_effect_upload_save_failure_restores_memory_and_files(tmp_path):
-    from frontend_bridge_core.effects import _upload_effect_audio
+    from application.media.effects import _upload_effect_audio
 
     project = tmp_path / "project"
     source = tmp_path / "incoming/drop.wav"
@@ -647,7 +647,7 @@ def test_effect_upload_save_failure_restores_memory_and_files(tmp_path):
 
 
 def test_effect_delete_audio_save_failure_keeps_reference_and_file(tmp_path):
-    from frontend_bridge_core.effects import _delete_effect_audio
+    from application.media.effects import _delete_effect_audio
 
     project = tmp_path / "project"
     audio = project / "data/effects/rain/drop.wav"
@@ -673,7 +673,7 @@ def test_effect_delete_audio_save_failure_keeps_reference_and_file(tmp_path):
 
 
 def test_effect_delete_audio_preserves_replacement_created_during_save(tmp_path):
-    from frontend_bridge_core.effects import _delete_effect_audio
+    from application.media.effects import _delete_effect_audio
 
     project = tmp_path / "project"
     audio = project / "data/effects/rain/drop.wav"
@@ -702,7 +702,7 @@ def test_effect_delete_audio_preserves_replacement_created_during_save(tmp_path)
 
 
 def test_effect_delete_audio_never_follows_alias_below_effect_directory(tmp_path):
-    from frontend_bridge_core.effects import _delete_effect_audio
+    from application.media.effects import _delete_effect_audio
 
     project = tmp_path / "project"
     real = project / "data/effects/rain/real"
@@ -728,7 +728,7 @@ def test_effect_delete_audio_never_follows_alias_below_effect_directory(tmp_path
 
 
 def test_effect_rename_save_failure_restores_original_directory(tmp_path):
-    from frontend_bridge_core.effects import _save_effect
+    from application.media.effects import _save_effect
 
     project = tmp_path / "project"
     old_audio = project / "data/effects/rain/drop.wav"
@@ -764,7 +764,7 @@ def test_effect_rename_save_failure_restores_original_directory(tmp_path):
 
 
 def test_effect_paths_from_old_project_root_are_rebased_before_launch(tmp_path):
-    from frontend_bridge_core.effects import _build_effect_usage_guide
+    from application.media.effects import _build_effect_usage_guide
 
     project_root = tmp_path / "project"
     managed = project_root / "data" / "effects" / "rain" / "drop.wav"
@@ -785,7 +785,7 @@ def test_effect_paths_from_old_project_root_are_rebased_before_launch(tmp_path):
 
 
 def test_effect_paths_keep_existing_external_audio_before_launch(tmp_path):
-    from frontend_bridge_core.effects import _build_effect_usage_guide
+    from application.media.effects import _build_effect_usage_guide
 
     project_root = tmp_path / "project"
     project_root.mkdir()

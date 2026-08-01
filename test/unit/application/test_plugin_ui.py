@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from frontend_bridge_core import plugin_ui
-from frontend_bridge_core.plugin_ui import (
+from application.plugins import ui as plugin_ui
+from application.plugins.ui import (
     _frontend_config_page_payload,
     _frontend_chat_ui_contribution_payloads,
     _frontend_page_payload,

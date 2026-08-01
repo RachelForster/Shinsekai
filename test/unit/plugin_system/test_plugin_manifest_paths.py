@@ -92,7 +92,7 @@ def test_manifest_publish_failure_preserves_previous_yaml(tmp_path, monkeypatch)
         raise OSError("publish failed")
 
     monkeypatch.setattr(
-        "core.file_transactions.replace_file_transactionally",
+        "sdk.file_transactions.replace_file_transactionally",
         fail_replace,
     )
 

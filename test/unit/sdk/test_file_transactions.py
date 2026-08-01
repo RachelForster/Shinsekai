@@ -7,8 +7,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import core.file_transactions as file_transactions
-from core.file_transactions import (
+import sdk.file_transactions as file_transactions
+from sdk.file_transactions import (
     atomic_binary_writer,
     atomic_write_bytes,
     atomic_write_text,
@@ -53,7 +53,7 @@ def test_atomic_write_text_preserves_previous_file_when_publish_fails(tmp_path, 
         )
 
     monkeypatch.setattr(
-        "core.file_transactions.rename_path_without_overwrite",
+        "sdk.file_transactions.rename_path_without_overwrite",
         fail_replace,
     )
 
@@ -620,7 +620,7 @@ def test_replace_file_transactionally_preserves_target_on_publish_failure(
         )
 
     monkeypatch.setattr(
-        "core.file_transactions.rename_path_without_overwrite",
+        "sdk.file_transactions.rename_path_without_overwrite",
         fail_replace,
     )
 
@@ -781,7 +781,7 @@ def test_replace_file_transactionally_rejects_replaced_staging_identity(
             staging.rename(preserved_original)
             replacement.rename(staging)
 
-    monkeypatch.setattr("core.file_transactions.os.fsync", replace_after_sync)
+    monkeypatch.setattr("sdk.file_transactions.os.fsync", replace_after_sync)
 
     with pytest.raises(PermissionError, match="identity changed"):
         replace_file_transactionally(staging, target)
@@ -817,7 +817,7 @@ def test_copy_file_transactionally_preserves_target_when_copy_fails(
         output_file.write(input_file.read(2))
         raise OSError("copy failed")
 
-    monkeypatch.setattr("core.file_transactions.shutil.copyfileobj", fail_copy)
+    monkeypatch.setattr("sdk.file_transactions.shutil.copyfileobj", fail_copy)
 
     with pytest.raises(OSError, match="copy failed"):
         copy_file_transactionally(source, target)
@@ -841,7 +841,7 @@ def test_copy_file_transactionally_rejects_in_place_source_mutation(
         source.write_bytes(b"changed")
 
     monkeypatch.setattr(
-        "core.file_transactions.shutil.copyfileobj",
+        "sdk.file_transactions.shutil.copyfileobj",
         copy_then_mutate_source,
     )
 
@@ -876,7 +876,7 @@ def test_copy_file_transactionally_never_changes_replacement_staging_metadata(
         replacement_path.chmod(0o600)
 
     monkeypatch.setattr(
-        "core.file_transactions.shutil.copyfileobj",
+        "sdk.file_transactions.shutil.copyfileobj",
         replace_staging_after_copy,
     )
 
@@ -1264,7 +1264,7 @@ def test_copy_directory_without_links_rejects_windows_reparse_entry_metadata(
             return FakeScanner()
         return real_scandir(path)
 
-    monkeypatch.setattr("core.file_transactions.os.scandir", fake_scandir)
+    monkeypatch.setattr("sdk.file_transactions.os.scandir", fake_scandir)
     monkeypatch.setattr(file_transactions.os, "supports_fd", set())
 
     with pytest.raises(PermissionError, match="reparse point"):
@@ -1444,7 +1444,7 @@ def test_remove_file_without_links_restores_a_concurrent_replacement(
         )
 
     monkeypatch.setattr(
-        "core.file_transactions.rename_path_without_overwrite",
+        "sdk.file_transactions.rename_path_without_overwrite",
         replace_before_rename,
     )
 
@@ -1584,7 +1584,7 @@ def test_remove_directory_without_links_restores_name_when_cleanup_fails(
     def fail_remove(_path):
         raise OSError("cleanup failed")
 
-    monkeypatch.setattr("core.file_transactions.shutil.rmtree", fail_remove)
+    monkeypatch.setattr("sdk.file_transactions.shutil.rmtree", fail_remove)
 
     with pytest.raises(OSError, match="cleanup failed"):
         remove_directory_without_links(target)
@@ -1620,7 +1620,7 @@ def test_remove_directory_without_links_restores_a_concurrent_replacement(
         )
 
     monkeypatch.setattr(
-        "core.file_transactions.rename_path_without_overwrite",
+        "sdk.file_transactions.rename_path_without_overwrite",
         replace_before_rename,
     )
 
@@ -1671,7 +1671,7 @@ def test_replace_directory_transactionally_restores_previous_tree_on_publish_fai
         )
 
     monkeypatch.setattr(
-        "core.file_transactions.rename_path_without_overwrite",
+        "sdk.file_transactions.rename_path_without_overwrite",
         fail_staging_publish,
     )
 
@@ -1710,7 +1710,7 @@ def test_replace_directory_transactionally_rejects_replaced_staging_identity(
         return result
 
     monkeypatch.setattr(
-        "core.file_transactions.inspect_portable_directory_tree",
+        "sdk.file_transactions.inspect_portable_directory_tree",
         inspect_then_replace,
     )
 
@@ -1806,7 +1806,7 @@ def test_replace_directory_transactionally_preserves_replaced_destination(
         )
 
     monkeypatch.setattr(
-        "core.file_transactions.rename_path_without_overwrite",
+        "sdk.file_transactions.rename_path_without_overwrite",
         replace_before_backup,
     )
 

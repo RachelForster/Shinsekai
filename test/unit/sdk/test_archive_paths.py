@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.archive_paths import (
+from sdk.archive_paths import (
     UnsafeArchiveError,
     extract_tar_safely,
     extract_zip_safely,
@@ -149,7 +149,7 @@ def test_safe_extraction_rejects_target_directory_replaced_after_preflight(
     target = tmp_path / "extract"
     target.mkdir()
     preserved = tmp_path / "preserved-extract"
-    import core.archive_paths as archive_paths
+    import sdk.archive_paths as archive_paths
 
     real_preflight = archive_paths._preflight_destinations
 
@@ -581,7 +581,7 @@ def test_directory_zip_writer_rejects_file_replaced_by_symlink_after_inventory(
     except (OSError, NotImplementedError):
         pytest.skip("symbolic links are unavailable")
 
-    import core.archive_paths as archive_paths
+    import sdk.archive_paths as archive_paths
 
     real_inventory = archive_paths.inspect_portable_directory_tree_with_metadata
 
@@ -616,7 +616,7 @@ def test_directory_zip_writer_rejects_regular_file_replaced_after_inventory(
     candidate = source / "asset.txt"
     preserved = source / "preserved.txt"
     candidate.write_text("safe", encoding="utf-8")
-    import core.archive_paths as archive_paths
+    import sdk.archive_paths as archive_paths
 
     real_inventory = archive_paths.inspect_portable_directory_tree_with_metadata
 
@@ -651,7 +651,7 @@ def test_zip_writer_rejects_in_place_source_mutation_before_member_publish(
     source = tmp_path / "asset.txt"
     source.write_text("safe", encoding="utf-8")
     archive_path = tmp_path / "bundle.zip"
-    import core.archive_paths as archive_paths
+    import sdk.archive_paths as archive_paths
 
     real_copy = archive_paths.shutil.copyfileobj
     calls = 0

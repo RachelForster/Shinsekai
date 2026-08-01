@@ -1,5 +1,6 @@
 import json
 import signal
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -347,6 +348,58 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     assert captured["env"]["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] == "1"
     assert captured["cmd"][1] != str(project_root / "main.py")
     assert json.loads(captured["env"][CHAT_LAUNCH_CONFIG_ENV])["template"] == "_temp"
+
+
+def test_launch_chat_imports_external_json_before_starting_child(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "Shinsekai"
+    template_dir = project_root / "data" / "character_templates"
+    history_dir = project_root / "data" / "chat_history"
+    external_history = tmp_path / "external" / "session.json"
+    app_root.mkdir()
+    template_dir.mkdir(parents=True)
+    history_dir.mkdir(parents=True)
+    external_history.parent.mkdir()
+    external_payload = '[{"role":"user","content":"import me"}]'
+    external_history.write_text(external_payload, encoding="utf-8")
+    captured = {}
+
+    def fake_popen(cmd, *, cwd, env, **kwargs):
+        captured["cmd"] = cmd
+        captured["env"] = env
+        return _DummyProcess()
+
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setattr(chat.sys, "frozen", False, raising=False)
+    monkeypatch.setattr(chat.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(chat, "_main_chat_process", None)
+
+    state = SimpleNamespace(
+        app_root_dir=str(app_root),
+        config_manager=_ConfigManager(),
+        history_dir=str(history_dir),
+        template_dir_path=str(template_dir),
+    )
+
+    message = chat._launch_chat(
+        state,
+        history_file=str(external_history),
+        init_sprite_path="",
+        room_id="",
+        selected_bg="",
+        system_template="system",
+        use_cg=False,
+        user_scenario="scenario",
+    )
+
+    assert message == "聊天进程已启动！PID: 12345"
+    launch_config = json.loads(captured["env"][CHAT_LAUNCH_CONFIG_ENV])
+    managed_history = Path(launch_config["history"])
+    assert managed_history.is_dir()
+    assert managed_history.is_relative_to(history_dir)
+    assert (managed_history / "active.json").read_text(encoding="utf-8") == external_payload
+    assert external_history.read_text(encoding="utf-8") == external_payload
+    assert f"--history={managed_history}" in captured["cmd"]
 
 
 def test_launch_chat_stops_child_when_runtime_template_changes_during_spawn(

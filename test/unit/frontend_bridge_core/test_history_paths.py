@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from core.file_transactions import rename_path_without_overwrite
+from sdk.file_transactions import rename_path_without_overwrite
 from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from application.chat.runtime_process import (
     _chat_history_path,

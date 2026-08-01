@@ -116,7 +116,7 @@ def test_windows_launchers_bind_path_commands_to_checked_absolute_executables():
     for launcher in WINDOWS_COMMAND_LAUNCHERS:
         content = _text(launcher)
         assert ":resolve_command" in content
-        assert r"%PROJECT_ROOT%scripts\resolve-command.ps1" in content
+        assert r"%PROJECT_ROOT%tools\launcher\resolve-command.ps1" in content
         assert (
             r"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
             in content
@@ -137,7 +137,7 @@ def test_windows_launchers_bind_path_commands_to_checked_absolute_executables():
     assert 'call "%PNPM_CMD%" tauri build --no-bundle' in tauri
     assert "call pnpm " not in tauri
 
-    resolver = _text("scripts/resolve-command.ps1")
+    resolver = _text("tools/launcher/resolve-command.ps1")
     assert '$env:PATH.Split(";")' in resolver
     assert "Test-PortableComponent" in resolver
     assert "Test-ExactAbsolutePath" in resolver
@@ -189,7 +189,7 @@ def test_posix_path_contract_validates_portable_conda_environment_names(
             "-c",
             'source "$1"; shinsekai_portable_environment_name "$2"',
             "path-contract-test",
-            str(REPO_ROOT / "scripts" / "shell-path-contract.sh"),
+            str(REPO_ROOT / "tools" / "launcher" / "shell-path-contract.sh"),
             name,
         ],
         check=False,
@@ -263,7 +263,7 @@ def test_unix_launchers_use_the_shared_link_free_path_contract():
     )
     for launcher in launchers:
         content = _text(launcher)
-        assert 'PATH_CONTRACT="$PROJECT_ROOT/scripts/shell-path-contract.sh"' in content
+        assert 'PATH_CONTRACT="$PROJECT_ROOT/tools/launcher/shell-path-contract.sh"' in content
         assert 'source "$PATH_CONTRACT"' in content
         assert "shinsekai_project_file_is_real" in content
 
@@ -271,10 +271,10 @@ def test_unix_launchers_use_the_shared_link_free_path_contract():
     assert "shinsekai_find_embedded_python" in _text("scripts/start.sh")
     assert "shinsekai_find_embedded_python" in _text("scripts/install.sh")
     assert "shinsekai_absolute_path_has_no_links" in _text(
-        "scripts/shell-path-contract.sh"
+        "tools/launcher/shell-path-contract.sh"
     )
     assert "shinsekai_resolve_executable" in _text(
-        "scripts/shell-path-contract.sh"
+        "tools/launcher/shell-path-contract.sh"
     )
     for launcher in ("start-react.sh", "scripts/start.sh", "scripts/install.sh"):
         content = _text(launcher)
@@ -287,7 +287,7 @@ def test_unix_launchers_use_the_shared_link_free_path_contract():
         assert "shinsekai_resolve_conda_python" in content
         assert 'run --cwd / -n "$CONDA_ENV_NAME" "$CONDA_PYTHON"' in content
         assert 'run -n "$CONDA_ENV_NAME" python' not in content
-    shell_contract = _text("scripts/shell-path-contract.sh")
+    shell_contract = _text("tools/launcher/shell-path-contract.sh")
     assert 'IFS=":" read -r -a search_directories' in shell_contract
     assert "command -v --" not in shell_contract
     assert "__SHINSEKAI_CONDA_PREFIX__=" in shell_contract
@@ -368,7 +368,7 @@ def _run_shell_contract(project_root: Path, body: str) -> subprocess.CompletedPr
             'set -euo pipefail; PROJECT_ROOT="$1"; source "$2"; shift 2; ' + body,
             "path-contract-test",
             str(project_root),
-            str(REPO_ROOT / "scripts" / "shell-path-contract.sh"),
+            str(REPO_ROOT / "tools" / "launcher" / "shell-path-contract.sh"),
         ],
         capture_output=True,
         check=False,

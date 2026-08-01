@@ -4,8 +4,8 @@ import os
 
 import pytest
 
-from core import process_launch
-from core.process_launch import (
+from sdk import process_launch
+from sdk.process_launch import (
     capture_command_executable,
     capture_launch_directory,
     capture_launch_file,

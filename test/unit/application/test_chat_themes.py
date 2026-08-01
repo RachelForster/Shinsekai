@@ -8,9 +8,9 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-import frontend_bridge_core.chat_themes as chat_themes_module
-from core.file_transactions import rename_path_without_overwrite
-from frontend_bridge_core.chat_themes import (
+import application.chat.themes as chat_themes_module
+from sdk.file_transactions import rename_path_without_overwrite
+from application.chat.themes import (
     BUILTIN_THEME_OWNER_MARKER,
     _builtin_themes_root,
     _copy_theme_source,
@@ -25,7 +25,7 @@ from frontend_bridge_core.chat_themes import (
 )
 
 
-class ChatThemeBridgeTests(unittest.TestCase):
+class ChatThemeApplicationTests(unittest.TestCase):
     def _make_state(self):
         self.saved = 0
 
@@ -225,7 +225,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
                     )
 
                 with patch(
-                    "core.file_transactions.rename_path_without_overwrite",
+                    "sdk.file_transactions.rename_path_without_overwrite",
                     new=fail_seed_publish,
                 ):
                     with self.assertRaisesRegex(OSError, "seed publish failed"):
@@ -245,7 +245,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
             os.chdir(tempdir)
             state.project_root_dir = tempdir
             try:
-                with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=Path(tempdir) / "missing"):
+                with patch("application.chat.themes._builtin_themes_root", return_value=Path(tempdir) / "missing"):
                     themes = list_chat_themes(state)
                     self.assertEqual(themes, [])
                     with self.assertRaises(FileNotFoundError):
@@ -336,7 +336,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
             os.chdir(tempdir)
             state.project_root_dir = tempdir
             try:
-                with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=builtin_root):
+                with patch("application.chat.themes._builtin_themes_root", return_value=builtin_root):
                     themes = list_chat_themes(state)
                     self.assertEqual([theme["id"] for theme in themes], ["windborne-adventure"])
 
@@ -453,7 +453,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
                     )
 
                 with patch(
-                    "core.file_transactions.rename_path_without_overwrite",
+                    "sdk.file_transactions.rename_path_without_overwrite",
                     new=fail_staging_publish,
                 ):
                     with self.assertRaisesRegex(OSError, "publish failed"):
@@ -674,7 +674,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
                     )
 
                 with patch(
-                    "frontend_bridge_core.chat_themes._atomic_write_manifest",
+                    "application.chat.themes._atomic_write_manifest",
                     new=replace_before_write,
                 ):
                     with self.assertRaisesRegex(PermissionError, "身份已变化"):
@@ -736,7 +736,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
                     )
 
                 with patch(
-                    "core.file_transactions.rename_path_without_overwrite",
+                    "sdk.file_transactions.rename_path_without_overwrite",
                     new=fail_new_theme_publish,
                 ):
                     with self.assertRaisesRegex(OSError, "publish interrupted"):

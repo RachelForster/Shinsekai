@@ -1,4 +1,5 @@
 from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
 
@@ -72,3 +73,43 @@ def test_upload_cleanup_preserves_a_replacement_directory(tmp_path):
 
     assert replacement.read_bytes() == b"replacement"
     assert (preserved / "owned.bin").read_bytes() == b"owned"
+
+
+def test_attachment_upload_passes_bridge_project_root_to_staging(tmp_path, monkeypatch):
+    project_root = tmp_path / "selected-project"
+    project_root.mkdir()
+    upload_dir = tmp_path / "upload-staging"
+    upload_dir.mkdir()
+    upload = upload_dir / "attachment.txt"
+    upload.write_text("payload", encoding="utf-8")
+    captured = {}
+
+    handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+    handler.server = SimpleNamespace(
+        state=SimpleNamespace(project_root_dir=project_root.as_posix())
+    )
+    handler.path = "/api/chat/attachments/upload"
+    handler._require_authorized_write = lambda _path: None
+    handler._read_upload_files = lambda: (upload_dir, upload_dir.lstat(), [upload])
+    handler._send_json = lambda payload, *_args, **_kwargs: captured.setdefault(
+        "response", payload
+    )
+    handler._is_client_disconnect = lambda _exc: False
+    handler._log_request_exception = lambda _exc: None
+    handler._send_exception_json = lambda exc: pytest.fail(str(exc))
+
+    staged = [{"kind": "file", "name": upload.name, "path": upload.name, "size": 7}]
+
+    def fake_stage(paths, *, project_root):
+        captured["paths"] = list(paths)
+        captured["project_root"] = project_root
+        return staged
+
+    monkeypatch.setattr(handler_module, "stage_uploaded_chat_attachments", fake_stage)
+    monkeypatch.setattr(handler_module, "_cleanup_upload_directory", lambda *_args: None)
+
+    handler._handle_write("POST")
+
+    assert captured["paths"] == [upload]
+    assert captured["project_root"] == project_root.resolve()
+    assert captured["response"] == {"attachments": staged}
