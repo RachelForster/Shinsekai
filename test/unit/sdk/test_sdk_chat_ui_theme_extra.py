@@ -158,6 +158,7 @@ def test_validate_manifest_rejects_invalid_shapes(manifest) -> None:
 @pytest.mark.parametrize(
     "tokens",
     [
+        {"send": {"backgroundSlice": [12, 24, 36, 48]}},
         {"send": {"frameOutsetPx": 2}},
         {"options": {"hover": {"frameWidthPx": 8}}},
         {"logs": {"line": {"frameWidthPx": 8}}},
@@ -188,20 +189,30 @@ def test_validate_manifest_keeps_schema_one_legacy_frames_on_unsupported_blocks_
     assert result.normalized["tokens"]["logs"]["line"]["frameSlice"] == 16
 
 
-def test_validate_manifest_normalizes_independent_frame_slices() -> None:
+def test_validate_manifest_normalizes_independent_background_slices() -> None:
     manifest = _valid_manifest()
-    manifest["tokens"]["dialog"]["frameSlice"] = [-10, 24, 250, 48]
+    manifest["tokens"]["dialog"]["backgroundSlice"] = [-10, 24, 250, 48]
 
     result = validate_manifest(manifest)
 
     assert result.ok is True
-    assert result.normalized["tokens"]["dialog"]["frameSlice"] == [1, 24, 200, 48]
+    assert result.normalized["tokens"]["dialog"]["backgroundSlice"] == [1, 24, 200, 48]
 
 
-@pytest.mark.parametrize("frame_slice", [[12, 24], [12, 24, "invalid", 48]])
-def test_validate_manifest_rejects_invalid_independent_frame_slices(frame_slice: list) -> None:
+@pytest.mark.parametrize("background_slice", [[12, 24], [12, 24, "invalid", 48]])
+def test_validate_manifest_rejects_invalid_independent_background_slices(background_slice: list) -> None:
     manifest = _valid_manifest()
-    manifest["tokens"]["dialog"]["frameSlice"] = frame_slice
+    manifest["tokens"]["dialog"]["backgroundSlice"] = background_slice
+
+    result = validate_manifest(manifest)
+
+    assert result.ok is False
+    assert any("backgroundSlice" in error for error in result.errors)
+
+
+def test_validate_manifest_rejects_array_frame_slice() -> None:
+    manifest = _valid_manifest()
+    manifest["tokens"]["dialog"]["frameSlice"] = [12, 24, 36, 48]
 
     result = validate_manifest(manifest)
 

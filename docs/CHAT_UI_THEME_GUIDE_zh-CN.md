@@ -258,34 +258,35 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 
 ### 7.2 Frame 字段
 
-支持九宫格的块是 `FrameVisualBlock`，比普通视觉块多四个几何/边框字段：
+支持九宫格的块是 `FrameVisualBlock`，比普通视觉块多五个几何/边框字段：
 
 | 字段 | 类型和范围 | 默认行为 |
 | --- | --- | --- |
+| `backgroundSlice` | `1–200` 或四值数组 | 仅控制 `backgroundImage` 的素材切片值；四值依次为上、右、下、左，每项均限制为 `1–200`；默认 `32`。 |
 | `frameImage` | 相对路径 | SVG 或位图九宫格素材；省略时不显示边框层。 |
-| `frameSlice` | `1–200` 或四值数组 | `backgroundImage` 与 `frameImage` 共用的素材切片值；四值依次为上、右、下、左，每项均限制为 `1–200`；存在任一图片时默认 `32`。 |
-| `frameWidthPx` | `0–96` | 两种九宫格共用的屏幕边缘带宽；省略时回退为最终 `frameSlice`。 |
+| `frameSlice` | `1–200` | 仅控制 `frameImage` 的素材切片值；默认 `32`。 |
+| `frameWidthPx` | `0–96` | 两种九宫格共用的屏幕边缘带宽；省略时分别回退为 `backgroundSlice` 或 `frameSlice`。 |
 | `frameOutsetPx` | `0–96` | 两种九宫格向组件外绘制的距离；默认 `0`，不参与布局。 |
 
-建议总是显式填写 `frameWidthPx`。它不是 SVG 线条的 stroke 粗细，而是九宫格角块在屏幕上的目标宽高。若希望素材按 1:1 比例显示并避免角块压缩，可让它与 `frameSlice` 使用相同数值；需要整体缩放边框时再按比例调整。
+建议总是显式填写 `frameWidthPx`。它不是 SVG 线条的 stroke 粗细，而是九宫格角块在屏幕上的目标宽高。若希望素材按 1:1 比例显示并避免角块压缩，背景应让它与 `backgroundSlice` 对应，前景 frame 应让它与 `frameSlice` 相同；需要整体缩放时再按比例调整。
 
-四边切片距离不相同时，把 `frameSlice` 写成 `[上, 右, 下, 左]`。例如下面的素材顶部切入 `18`、右侧切入 `28`、底部切入 `24`、左侧切入 `36` 个素材坐标单位：
+背景四边切片距离不相同时，把 `backgroundSlice` 写成 `[上, 右, 下, 左]`。例如下面的素材顶部切入 `18`、右侧切入 `28`、底部切入 `24`、左侧切入 `36` 个素材坐标单位：
 
 ```json
 {
-  "frameImage": "assets/asymmetric-frame.svg",
-  "frameSlice": [18, 28, 24, 36]
+  "backgroundImage": "assets/asymmetric-panel.svg",
+  "backgroundSlice": [18, 28, 24, 36]
 }
 ```
 
 省略 `frameWidthPx` 时，屏幕上的四边带宽会分别回退为 `18px 28px 24px 36px`，保持素材各边 1:1 显示；显式填写 `frameWidthPx` 时，四边统一使用该屏幕宽度。
 
-聊天组件的 `backgroundImage` 直接画在组件自身的 `border-image` 背景中，并使用 `fill` 保留素材中心，浏览器会先画背景再画文字。因此不需要额外的 `backgroundLayer` / `textLayer` 配置。已有九宫格配置通常只需把 `frameImage` 改成 `backgroundImage`，并保留 `frameSlice`、`frameWidthPx` 和 `frameOutsetPx`：
+聊天组件的 `backgroundImage` 直接画在组件自身的 `border-image` 背景中，并使用 `fill` 保留素材中心，浏览器会先画背景再画文字。因此不需要额外的 `backgroundLayer` / `textLayer` 配置。把前景九宫格改成背景九宫格时，应将 `frameImage` 改为 `backgroundImage`、`frameSlice` 改为 `backgroundSlice`，并保留 `frameWidthPx` 和 `frameOutsetPx`；两个 slice 字段不会互相回退：
 
 ```json
 {
   "backgroundImage": "assets/dialog.png",
-  "frameSlice": 28,
+  "backgroundSlice": 28,
   "frameWidthPx": 28,
   "frameOutsetPx": 0
 }
@@ -324,7 +325,7 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 
 制作时注意：
 
-- `frameSlice` 按 SVG 的 `viewBox` 坐标计算，而不是屏幕像素；
+- `backgroundSlice` 和 `frameSlice` 按 SVG 的 `viewBox` 坐标计算，而不是屏幕像素；
 - 切片值应小于素材宽高的一半，确保四角之间仍有可重复的边段；
 - 把关键切角和装饰放在四角切片内，把可拉伸的连续线条放在边段；
 - 使用 `frameImage` 时中心区域不会填充，面板底色应写在 `background`；使用 `backgroundImage` 时中心区域会随九宫格一起填充；
@@ -524,7 +525,8 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | `dialog.offsetY` | `-240–240` |
 | `options.gap` | `0–36` |
 | `typewriter.cps` | `1–200` |
-| `frameSlice` | 单值 `1–200`，或包含四个该范围数字的 `[上, 右, 下, 左]` 数组 |
+| `backgroundSlice` | 单值 `1–200`，或包含四个该范围数字的 `[上, 右, 下, 左]` 数组 |
+| `frameSlice` | `1–200` |
 | `frameWidthPx`、`frameOutsetPx` | `0–96` |
 | `options.minHeightPx` | `36–96` |
 | `options.minHeightVh` | `3–8` |
@@ -541,7 +543,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 
 - 主题可以是局部定义；省略字段时，不会自动复制另一个主题的同名字段，而是继续使用宿主基础 CSS。
 - 布局预设先应用，显式视觉字段后应用，显式字段优先。
-- 没有 `backgroundImage` 或 `frameImage` 时，`frameSlice`、`frameWidthPx` 或 `frameOutsetPx` 单独存在不会产生可见内容。
+- 没有 `backgroundImage` 或 `frameImage` 时，`backgroundSlice`、`frameSlice`、`frameWidthPx` 或 `frameOutsetPx` 单独存在不会产生可见内容。
 - 聊天组件的 frame 相互独立，不会跨组件继承。
 - 日志的普通视觉值有上一节所述回退；聊天 frame 会被移除。只有 `logs.panel.frame*` 会作为三个日志容器的公共 frame 回退。
 - 当前活动主题无法读取时，应用会尝试内置默认主题 `windborne-adventure`；仍不可用时回退到宿主基础样式。
@@ -551,14 +553,14 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | 现象 | 原因与处理 |
 | --- | --- |
 | 所有框都变成同一个形状 | 在多个块中重复填写了同一个 `frameImage`。只在需要的组件上配置，或分别提供素材。 |
-| 边框整体过大或过小 | `frameWidthPx` 与期望的素材显示比例不匹配。1:1 显示时让它与 `frameSlice` 相同，再按比例微调。 |
+| 边框整体过大或过小 | `frameWidthPx` 与期望的素材显示比例不匹配。背景参考 `backgroundSlice`，前景 frame 参考 `frameSlice`，再按比例微调。 |
 | 边线分成重复小节 | 使用了会平铺边段的旧版 `round` 渲染。升级到使用 `stretch` 的版本，并确保边段只包含可连续拉伸的线条。 |
-| 四角被拉扯或边线错位 | `frameSlice` 与素材 `viewBox` 不匹配。根据角区实际尺寸调整，并保证切片小于宽高的一半。 |
+| 四角被拉扯或边线错位 | `backgroundSlice` 或 `frameSlice` 与对应素材的 `viewBox` 不匹配。根据角区实际尺寸调整，并保证切片小于宽高的一半。 |
 | SVG 没显示 | 检查相对路径、文件是否存在、配置块是否支持 frame，以及 `frameWidthPx` 是否为 0。 |
 | 选项按钮全部出现边框 | `tokens.options` 定义的是每一个选项的共同外观，这是预期行为。 |
 | 外伸装饰被裁切 | 减小 `frameOutsetPx`，或把装饰向素材内部移动。outset 不会申请额外布局空间。 |
 | `background` 中的图片被拒绝 | 不能写 `url(...)`；改用 `backgroundImage`。 |
-| 背景图被整体拉伸 | 该位置使用九宫格；设置与素材角区匹配的 `frameSlice`，不要把完整截图直接当作可切片面板素材。 |
+| 背景图被整体拉伸 | 该位置使用九宫格；设置与素材角区匹配的 `backgroundSlice`，不要把完整截图直接当作可切片面板素材。 |
 | 校验为 `OK` 但图片不显示 | 缺失资源当前只产生 warning。修复所有 warning 后再发布。 |
 | ZIP 提示找不到 `theme.json` | 把清单放到 ZIP 根目录，或唯一的一层顶级目录内。 |
 | 上传提示主题已存在 | 用户主题默认不覆盖同 ID 目录；先删除旧主题，或在本地开发目录中替换后刷新。 |

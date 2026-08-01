@@ -173,7 +173,7 @@ describe("browser preview platform chat themes", () => {
     expect(neonManifest.version).toBe("1.3.4");
     expect(neonManifest.tokens.dialog?.backgroundImage).toBe("frame-dialog.svg");
     expect(neonManifest.tokens.dialog?.frameImage).toBeUndefined();
-    expect(neonManifest.tokens.dialog?.frameSlice).toBe(28);
+    expect(neonManifest.tokens.dialog?.backgroundSlice).toBe(28);
     expect(neonManifest.tokens.input?.frameImage).toBeUndefined();
     expect(neonManifest.tokens.options?.frameImage).toBeUndefined();
     expect(neonManifest.tokens.toolbar?.frameImage).toBeUndefined();

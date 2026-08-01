@@ -100,6 +100,7 @@ describe("chat theme runtime", () => {
             boxShadow: "0 16px 44px rgba(0,0,0,0.5)",
             chrome: "none",
             color: "#ffffff",
+            backgroundSlice: 28,
             frameImage: "assets/dialog-border.svg",
             frameSlice: 28,
             heightPx: 166,
@@ -128,6 +129,7 @@ describe("chat theme runtime", () => {
             borderRadius: "6px",
             boxShadow: "0 12px 28px rgba(0,0,0,0.36)",
             color: "#9c8cff",
+            backgroundSlice: 16,
             frameImage: "assets/name-border.svg",
             frameSlice: 16,
             align: "center",
@@ -331,7 +333,7 @@ describe("chat theme runtime", () => {
         tokens: {
           dialog: {
             backgroundImage: "assets/dialog.png",
-            frameSlice: 24,
+            backgroundSlice: 24,
             frameWidthPx: 18,
             frameOutsetPx: 2,
           },
@@ -351,7 +353,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-background-outset"]).toBe("0px");
   });
 
-  it("maps independent top, right, bottom, and left frame slices", () => {
+  it("maps independent background slices without changing the overlay frame slice", () => {
     const resolved = resolveChatTheme(
       {
         schema: 1,
@@ -360,12 +362,9 @@ describe("chat theme runtime", () => {
         tokens: {
           dialog: {
             backgroundImage: "assets/dialog.png",
-            frameSlice: [-10, 24, 250, 48],
-          },
-          name: {
-            frameImage: "assets/name.svg",
-            frameSlice: [10, 20, 30, 40],
-            frameWidthPx: 16,
+            backgroundSlice: [-10, 24, 250, 48],
+            frameImage: "assets/dialog.svg",
+            frameSlice: 16,
           },
         },
       },
@@ -374,9 +373,9 @@ describe("chat theme runtime", () => {
 
     expect(resolved.style["--chat-dialog-background-slice"]).toBe("1 24 200 48");
     expect(resolved.style["--chat-dialog-background-width"]).toBe("1px 24px 200px 48px");
-    expect(resolved.style["--chat-name-frame-slice"]).toBe("10 20 30 40");
-    expect(resolved.style["--chat-name-frame-width"]).toBe("16px");
-    expect(resolved.style["--chat-name-frame"]).toBe('url("asset://assets/name.svg") 10 20 30 40 fill / 16px stretch');
+    expect(resolved.style["--chat-dialog-frame-slice"]).toBe("16");
+    expect(resolved.style["--chat-dialog-frame-width"]).toBe("16px");
+    expect(resolved.style["--chat-dialog-frame"]).toBe('url("asset://assets/dialog.svg") 16 fill / 16px stretch');
   });
 
   it("maps the arrow-fade name decoration without adding a frame", () => {

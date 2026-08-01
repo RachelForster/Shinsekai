@@ -50,7 +50,7 @@ ALLOWED_VISUAL_PROPS = frozenset(
 )
 
 #: 仅具有独立边框层的低密度外壳允许的九宫格边框字段。
-FRAME_VISUAL_PROPS = frozenset({"frameOutsetPx", "frameWidthPx"})
+FRAME_VISUAL_PROPS = frozenset({"backgroundSlice", "frameOutsetPx", "frameWidthPx"})
 FRAME_TOKEN_BLOCKS = frozenset({"dialog", "options", "input", "toolbar", "name"})
 LOG_FRAME_VISUAL_BLOCKS = frozenset({"panel", "sidebar", "toolbar", "viewer"})
 
@@ -146,6 +146,7 @@ NUMERIC_BOUNDS = {
     "offsetY": (-240, 240),
     "gap": (0, 36),
     "cps": (1, 200),
+    "backgroundSlice": (1, 200),
     "frameSlice": (1, 200),
     "frameWidthPx": (0, 96),
     "frameOutsetPx": (0, 96),
@@ -231,9 +232,9 @@ def _validate_visual_block(
                     errors.append(f"tokens.{name}.{key} 必须是主题目录内相对路径")
             elif key == "padding":
                 out[key] = _clamp_numeric("padding", value, errors, f"tokens.{name}.padding")
-            elif key == "frameSlice":
-                out[key] = _clamp_frame_slice(value, errors, f"tokens.{name}.frameSlice")
-            elif key in {"frameWidthPx", "frameOutsetPx"}:
+            elif key == "backgroundSlice":
+                out[key] = _clamp_background_slice(value, errors, f"tokens.{name}.backgroundSlice")
+            elif key in {"frameSlice", "frameWidthPx", "frameOutsetPx"}:
                 out[key] = _clamp_numeric(key, value, errors, f"tokens.{name}.{key}")
             elif isinstance(value, str) and _is_safe_css_value(value):
                 out[key] = value
@@ -327,16 +328,16 @@ def _clamp_numeric(field_name: str, value: Any, errors: List[str], path: str) ->
     return num
 
 
-def _clamp_frame_slice(value: Any, errors: List[str], path: str) -> Optional[int | List[int]]:
+def _clamp_background_slice(value: Any, errors: List[str], path: str) -> Optional[int | List[int]]:
     if not isinstance(value, list):
-        return _clamp_numeric("frameSlice", value, errors, path)
+        return _clamp_numeric("backgroundSlice", value, errors, path)
     if len(value) != 4:
         errors.append(f"{path} 必须是数字或包含 4 个数字的数组（上、右、下、左）")
         return None
 
     normalized: List[int] = []
     for index, item in enumerate(value):
-        next_value = _clamp_numeric("frameSlice", item, errors, f"{path}[{index}]")
+        next_value = _clamp_numeric("backgroundSlice", item, errors, f"{path}[{index}]")
         if next_value is None:
             return None
         normalized.append(next_value)
