@@ -210,9 +210,19 @@ def test_validate_manifest_rejects_invalid_independent_background_slices(backgro
     assert any("backgroundSlice" in error for error in result.errors)
 
 
-def test_validate_manifest_rejects_array_frame_slice() -> None:
+def test_validate_manifest_normalizes_independent_frame_slices() -> None:
     manifest = _valid_manifest()
-    manifest["tokens"]["dialog"]["frameSlice"] = [12, 24, 36, 48]
+    manifest["tokens"]["dialog"]["frameSlice"] = [-10, 24, 250, 48]
+
+    result = validate_manifest(manifest)
+
+    assert result.ok is True
+    assert result.normalized["tokens"]["dialog"]["frameSlice"] == [1, 24, 200, 48]
+
+
+def test_validate_manifest_rejects_invalid_frame_slice_array() -> None:
+    manifest = _valid_manifest()
+    manifest["tokens"]["dialog"]["frameSlice"] = [12, 24]
 
     result = validate_manifest(manifest)
 

@@ -262,9 +262,9 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 
 | 字段 | 类型和范围 | 默认行为 |
 | --- | --- | --- |
-| `backgroundSlice` | `1–200` 或四值数组 | 仅控制 `backgroundImage` 的素材切片值；四值依次为上、右、下、左，每项均限制为 `1–200`；默认 `32`。 |
+| `backgroundSlice` | `1–200` 或四值数组 | 优先控制 `backgroundImage` 的素材切片值；四值依次为上、右、下、左，每项均限制为 `1–200`；省略时兼容回退到 `frameSlice`，最终默认 `32`。 |
 | `frameImage` | 相对路径 | SVG 或位图九宫格素材；省略时不显示边框层。 |
-| `frameSlice` | `1–200` | 仅控制 `frameImage` 的素材切片值；默认 `32`。 |
+| `frameSlice` | `1–200` 或四值数组 | 控制 `frameImage` 的素材切片值，并兼容作为 `backgroundImage` 的回退；同样支持上、右、下、左四值；默认 `32`。 |
 | `frameWidthPx` | `0–96` | 两种九宫格共用的屏幕边缘带宽；省略时分别回退为 `backgroundSlice` 或 `frameSlice`。 |
 | `frameOutsetPx` | `0–96` | 两种九宫格向组件外绘制的距离；默认 `0`，不参与布局。 |
 
@@ -281,7 +281,7 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 
 省略 `frameWidthPx` 时，屏幕上的四边带宽会分别回退为 `18px 28px 24px 36px`，保持素材各边 1:1 显示；显式填写 `frameWidthPx` 时，四边统一使用该屏幕宽度。
 
-聊天组件的 `backgroundImage` 直接画在组件自身的 `border-image` 背景中，并使用 `fill` 保留素材中心，浏览器会先画背景再画文字。因此不需要额外的 `backgroundLayer` / `textLayer` 配置。把前景九宫格改成背景九宫格时，应将 `frameImage` 改为 `backgroundImage`、`frameSlice` 改为 `backgroundSlice`，并保留 `frameWidthPx` 和 `frameOutsetPx`；两个 slice 字段不会互相回退：
+聊天组件的 `backgroundImage` 直接画在组件自身的 `border-image` 背景中，并使用 `fill` 保留素材中心，浏览器会先画背景再画文字。因此不需要额外的 `backgroundLayer` / `textLayer` 配置。把前景九宫格改成背景九宫格时，可将 `frameImage` 改为 `backgroundImage`、`frameSlice` 改为 `backgroundSlice`，并保留 `frameWidthPx` 和 `frameOutsetPx`。为兼容旧主题，省略 `backgroundSlice` 时背景仍读取 `frameSlice`；同时填写时则可分别控制背景与前景：
 
 ```json
 {
@@ -526,7 +526,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | `options.gap` | `0–36` |
 | `typewriter.cps` | `1–200` |
 | `backgroundSlice` | 单值 `1–200`，或包含四个该范围数字的 `[上, 右, 下, 左]` 数组 |
-| `frameSlice` | `1–200` |
+| `frameSlice` | 单值 `1–200`，或包含四个该范围数字的 `[上, 右, 下, 左]` 数组 |
 | `frameWidthPx`、`frameOutsetPx` | `0–96` |
 | `options.minHeightPx` | `36–96` |
 | `options.minHeightVh` | `3–8` |

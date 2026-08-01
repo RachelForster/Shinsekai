@@ -324,7 +324,7 @@ describe("chat theme runtime", () => {
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/mio.woff2")');
   });
 
-  it("uses frame geometry for a nine-slice background without requiring a frame image", () => {
+  it("falls back to an asymmetric frameSlice for a nine-slice background", () => {
     const resolved = resolveChatTheme(
       {
         schema: 1,
@@ -333,8 +333,7 @@ describe("chat theme runtime", () => {
         tokens: {
           dialog: {
             backgroundImage: "assets/dialog.png",
-            backgroundSlice: 24,
-            frameWidthPx: 18,
+            frameSlice: [12, 24, 36, 48],
             frameOutsetPx: 2,
           },
           input: { backgroundImage: "assets/input.png" },
@@ -344,8 +343,8 @@ describe("chat theme runtime", () => {
     );
 
     expect(resolved.style["--chat-dialog-background-image"]).toBe('url("asset://assets/dialog.png")');
-    expect(resolved.style["--chat-dialog-background-slice"]).toBe("24");
-    expect(resolved.style["--chat-dialog-background-width"]).toBe("18px");
+    expect(resolved.style["--chat-dialog-background-slice"]).toBe("12 24 36 48");
+    expect(resolved.style["--chat-dialog-background-width"]).toBe("12px 24px 36px 48px");
     expect(resolved.style["--chat-dialog-background-outset"]).toBe("2px");
     expect(resolved.style["--chat-dialog-frame-image"]).toBeUndefined();
     expect(resolved.style["--chat-input-background-slice"]).toBe("32");
@@ -353,7 +352,7 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-input-background-outset"]).toBe("0px");
   });
 
-  it("maps independent background slices without changing the overlay frame slice", () => {
+  it("maps independent background and overlay frame slices", () => {
     const resolved = resolveChatTheme(
       {
         schema: 1,
@@ -364,7 +363,7 @@ describe("chat theme runtime", () => {
             backgroundImage: "assets/dialog.png",
             backgroundSlice: [-10, 24, 250, 48],
             frameImage: "assets/dialog.svg",
-            frameSlice: 16,
+            frameSlice: [10, 20, 30, 40],
           },
         },
       },
@@ -373,9 +372,11 @@ describe("chat theme runtime", () => {
 
     expect(resolved.style["--chat-dialog-background-slice"]).toBe("1 24 200 48");
     expect(resolved.style["--chat-dialog-background-width"]).toBe("1px 24px 200px 48px");
-    expect(resolved.style["--chat-dialog-frame-slice"]).toBe("16");
-    expect(resolved.style["--chat-dialog-frame-width"]).toBe("16px");
-    expect(resolved.style["--chat-dialog-frame"]).toBe('url("asset://assets/dialog.svg") 16 fill / 16px stretch');
+    expect(resolved.style["--chat-dialog-frame-slice"]).toBe("10 20 30 40");
+    expect(resolved.style["--chat-dialog-frame-width"]).toBe("10px 20px 30px 40px");
+    expect(resolved.style["--chat-dialog-frame"]).toBe(
+      'url("asset://assets/dialog.svg") 10 20 30 40 fill / 10px 20px 30px 40px stretch',
+    );
   });
 
   it("maps the arrow-fade name decoration without adding a frame", () => {
