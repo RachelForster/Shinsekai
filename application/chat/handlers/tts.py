@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 import yaml
 from config.config_manager import ConfigManager
-from core.file_transactions import read_text_without_links
+from sdk.file_transactions import read_text_without_links
 from core.paths import project_root, resolve_runtime_asset_read_path
 from sdk.handlers import MessageHandler
 from core.messaging.dialog_tokens import (

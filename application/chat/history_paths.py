@@ -22,7 +22,7 @@ from core.sprite.chat_branch_storage import (
     BRANCH_TREE_FILENAME,
     chat_history_session_dir,
 )
-from core.file_transactions import (
+from sdk.file_transactions import (
     atomic_write_text,
     copy_directory_without_links,
     copy_file_exclusive,

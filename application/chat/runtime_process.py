@@ -734,9 +734,14 @@ def _launch_chat(
                     history_path,
                 )
             elif history_path.suffix.lower() == ".json" and history_path.is_file():
-                # Existing legacy files remain external and are never copied
-                # into or deleted with project-managed storage.
-                pass
+                # The child history manager only mutates project-managed
+                # storage. Import an explicitly selected legacy file before
+                # launch so load, incremental save, clear, and final save all
+                # use the same authoritative path.
+                history_path = prepare_history_reference_for_launch(
+                    state,
+                    history_path,
+                )
             else:
                 chat_history_session_dir(history_path).mkdir(
                     parents=True,

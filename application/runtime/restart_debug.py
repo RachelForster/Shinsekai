@@ -5,7 +5,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from core.file_transactions import open_text_append_without_links
+from sdk.file_transactions import open_text_append_without_links
 from core.paths import require_symlink_free_absolute_path, validate_exact_path_text
 
 
