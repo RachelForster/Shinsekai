@@ -482,7 +482,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | `fileItem` | `VisualBlock + hover + active` | 文件列表项及其状态。 |
 | `levels` | object | `debug`、`default`、`error`、`info`、`warn`，每项为 `VisualBlock`。 |
 
-日志工具条、侧栏和查看器的边框颜色与圆角固定使用宿主设置页的 `--color-border` 和 `--radius-panel`；展开条目的详情框使用 `--color-border` 和 `--radius-control`，并禁用主题阴影。它们不会读取 `logs.*.frame*`。旧主题中的日志 frame 字段仍可通过 `schema: 1` 校验，但会被前端忽略。
+日志工具条、侧栏和查看器的边框颜色与圆角固定使用宿主设置页的 `--color-border` 和 `--radius-panel`；展开条目的详情框使用 `--color-border` 和 `--radius-control`，并禁用主题阴影；刷新按钮使用宿主设置页的主按钮配色。它们不会读取 `logs.*.frame*` 或 `chat-send-*`。旧主题中的日志 frame 字段仍可通过 `schema: 1` 校验，但会被前端忽略。
 
 没有显式填写日志样式时，宿主会从聊天主题中派生一部分普通视觉值，但不会把聊天组件的 SVG frame 带进日志页：
 

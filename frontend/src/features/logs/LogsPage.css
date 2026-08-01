@@ -169,9 +169,17 @@
 }
 
 .logs-page .button--primary {
-  border-color: var(--logs-event-border-color, var(--logs-gal-accent));
-  color: var(--chat-send-color, #ffffff);
-  background: var(--chat-send-background, var(--logs-gal-accent));
+  border-color: var(--color-accent-border-strong);
+  border-radius: var(--radius-control);
+  color: var(--color-accent-primary);
+  background: var(--color-accent-bg-hover);
+  box-shadow: none;
+}
+
+.logs-page .button--primary:hover:not(:disabled) {
+  border-color: var(--color-accent-border-strong);
+  color: var(--color-accent-primary);
+  background: var(--color-accent-bg-intense);
 }
 
 .logs-page .button--ghost {
