@@ -11,29 +11,30 @@ import time
 
 _PROCESS_STARTED_AT = time.perf_counter()
 
-# Frozen standalone keeps the old release-root data behavior. Desktop bridge
-# launches can provide SHINSEKAI_PROJECT_ROOT (or legacy EASYAI_PROJECT_ROOT)
-# to keep chat data independent from the application install directory.
-if getattr(sys, "frozen", False):
-    try:
-        _rel = Path(sys.executable).resolve().parent.parent
-        _data_root = Path(
-            os.environ.get("SHINSEKAI_PROJECT_ROOT")
-            or os.environ.get("EASYAI_PROJECT_ROOT")
-            or _rel
-        ).expanduser().resolve(strict=False)
-        _data_root.mkdir(parents=True, exist_ok=True)
-        os.environ["SHINSEKAI_PROJECT_ROOT"] = str(_data_root)
-        os.environ["EASYAI_PROJECT_ROOT"] = str(_data_root)
-        os.environ.setdefault("SHINSEKAI_APP_ROOT", str(_rel))
-        os.chdir(_data_root)
-    except OSError:
-        pass
-
 current_script = Path(__file__).resolve()
-project_root = current_script.parent
-if str(project_root) not in sys.path:
-    sys.path.append(str(project_root))
+_source_root = current_script.parent
+
+# Immutable application files and writable project data are separate roots.
+# The desktop launcher provides the writable root for packaged runs; source
+# runs use the source tree only when no explicit root was selected.
+if getattr(sys, "frozen", False):
+    _default_data_root = Path(sys.executable).resolve().parent.parent
+else:
+    _default_data_root = _source_root
+os.environ.setdefault("SHINSEKAI_APP_ROOT", str(_default_data_root))
+
+from core.file_transactions import read_text_without_links
+from core.paths import (
+    activate_project_root,
+    managed_child_path,
+    managed_project_storage,
+    safe_path_component,
+)
+
+_active_project_root = activate_project_root(_default_data_root)
+
+if str(_source_root) not in sys.path:
+    sys.path.append(str(_source_root))
 
 from core.sprite.sprite_cli import load_sprite_launch_config
 
@@ -86,7 +87,7 @@ if getattr(sys, "frozen", False):
 from sdk.logging import configure_logging, get_logger
 from sdk.exception.handler import handle_main_exception, install_main_exception_hook
 
-configure_logging("chat", project_root=os.environ.get("EASYAI_PROJECT_ROOT") or project_root)
+configure_logging("chat", project_root=_active_project_root)
 logger = get_logger(__name__)
 install_main_exception_hook(app_name="Shinsekai Chat", logger=logger)
 
@@ -505,17 +506,29 @@ def main():
             messages = load_chat_history(str(active_history_path))
             try:
                 active_history_present = isinstance(
-                    json.loads(active_history_path.read_text(encoding="utf-8")),
+                    json.loads(read_text_without_links(active_history_path)),
                     list,
                 )
             except (OSError, json.JSONDecodeError):
                 active_history_present = False
 
-        user_template = ""
-        with open(
-            f"./data/character_templates/{args.template}.txt", "r", encoding="utf-8"
-        ) as f:
-            user_template = f.read()
+        template_name = safe_path_component(
+            str(args.template),
+            field="template name",
+        )
+        template_root = managed_project_storage(
+            "data/character_templates",
+            root=_active_project_root,
+        )
+        template_path = managed_child_path(
+            template_root,
+            safe_path_component(
+                f"{template_name}.txt",
+                field="template filename",
+            ),
+            field="template filename",
+        )
+        user_template = read_text_without_links(template_path)
 
     llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
     logger.info(
@@ -1221,8 +1234,12 @@ def main():
                     if audio_path_queue is None:
                         raise RuntimeError("聊天历史清理队列未就绪。")
                     chat_turn_service.cancel_pending_batch()
+                    history_root = managed_project_storage(
+                        "data/chat_history",
+                        root=_active_project_root,
+                    )
                     history_target = str(chat_history_active_path(args.history)) if args.history else str(
-                        Path("data/chat_history") / "_temp.json"
+                        history_root / "_temp.json"
                     )
                     if args.history:
                         remove_chat_history_storage(args.history)
