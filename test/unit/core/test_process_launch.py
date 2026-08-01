@@ -6,12 +6,16 @@ import pytest
 
 from core import process_launch
 from core.process_launch import (
+    capture_command_executable,
     capture_launch_directory,
     capture_launch_file,
     open_url_with_default_application,
     open_with_default_application,
     popen_with_stable_paths,
+    require_launch_file,
+    run_shell_with_stable_paths,
     run_with_stable_paths,
+    terminate_invalid_launch,
 )
 
 
@@ -215,6 +219,39 @@ def test_command_discovery_rejects_user_home_aliases():
         )
 
 
+@pytest.mark.parametrize("command", ("", " tool", "tool\n"))
+def test_command_discovery_rejects_empty_or_ambiguous_names(command):
+    with pytest.raises(ValueError, match="empty or contains non-portable"):
+        capture_command_executable(command, field="test command", search_path="")
+
+
+def test_command_discovery_handles_absolute_commands_and_absent_path(
+    tmp_path,
+    monkeypatch,
+):
+    executable_path = _executable(tmp_path / "tool")
+    assert capture_command_executable(
+        executable_path,
+        field="test command",
+    ).path == executable_path
+
+    monkeypatch.delenv("PATH", raising=False)
+    with pytest.raises(FileNotFoundError, match="PATH is absent"):
+        capture_command_executable("tool", field="test command")
+
+
+def test_command_discovery_reports_invalid_absolute_path_entries(tmp_path):
+    missing = tmp_path / "missing"
+    with pytest.raises(FileNotFoundError, match="deterministic absolute PATH") as exc:
+        capture_command_executable(
+            "tool",
+            field="test command",
+            search_path=f"{tmp_path.as_posix()}/./alias{os.pathsep}{missing}",
+        )
+
+    assert "test command" in str(exc.value)
+
+
 def test_windows_path_extensions_are_single_portable_suffixes():
     assert process_launch._portable_windows_path_extension(".EXE")
     for extension in (".", "..EXE", ".EXE.", ".EX E", ".工具", " .EXE", ".EXE "):
@@ -248,6 +285,141 @@ def test_python_child_environment_cannot_inherit_another_python_tree():
 
     assert environment == {"KEEP": "value", "PYTHONNOUSERSITE": "1"}
     assert source["PYTHONHOME"] == "/old/runtime"
+
+
+def test_launch_guards_reject_empty_or_mismatched_commands(tmp_path):
+    executable = capture_launch_file(
+        _executable(tmp_path / "runtime"),
+        field="runtime executable",
+        executable=True,
+    )
+    work = tmp_path / "work"
+    work.mkdir()
+    cwd = capture_launch_directory(work, field="runtime directory")
+
+    with pytest.raises(ValueError, match="command is empty"):
+        popen_with_stable_paths([], cwd=cwd, executable=executable)
+    with pytest.raises(ValueError, match="does not match"):
+        popen_with_stable_paths(
+            [tmp_path / "peer"],
+            cwd=cwd,
+            executable=executable,
+        )
+    with pytest.raises(ValueError, match="command is empty"):
+        run_with_stable_paths([], cwd=cwd, executable=executable)
+    with pytest.raises(ValueError, match="does not match"):
+        run_with_stable_paths(
+            [tmp_path / "peer"],
+            cwd=cwd,
+            executable=executable,
+        )
+
+
+def test_launch_file_rejects_an_unstable_open_snapshot(tmp_path, monkeypatch):
+    executable = capture_launch_file(
+        _executable(tmp_path / "runtime"),
+        field="runtime executable",
+        executable=True,
+    )
+    monkeypatch.setattr(process_launch, "file_snapshot_is_stable", lambda *_: False)
+
+    with pytest.raises(PermissionError, match="changed while its identity was checked"):
+        require_launch_file(executable)
+
+
+def test_invalid_child_termination_falls_back_to_kill():
+    class _TerminateFails(_Process):
+        def terminate(self):
+            raise OSError("terminate failed")
+
+    process = _TerminateFails()
+    terminate_invalid_launch(process)
+
+    assert process.stopped is True
+
+
+def test_shell_launch_uses_captured_shell_and_directory(tmp_path, monkeypatch):
+    launcher_dir = tmp_path / "bin"
+    launcher_dir.mkdir()
+    shell = _executable(launcher_dir / "sh")
+    work = tmp_path / "work"
+    work.mkdir()
+    cwd = capture_launch_directory(work, field="command directory")
+    monkeypatch.setenv("PATH", os.fspath(launcher_dir))
+    captured = {}
+    result = object()
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured.update(kwargs)
+        return result
+
+    assert (
+        run_shell_with_stable_paths(
+            "printf ready",
+            cwd=cwd,
+            env={"MODE": "test"},
+            run_factory=fake_run,
+        )
+        is result
+    )
+    assert captured["command"] == "printf ready"
+    assert captured["cwd"] == str(work)
+    assert captured["executable"] == str(shell)
+    assert captured["shell"] is True
+    assert captured["env"] == {"MODE": "test"}
+
+
+def test_default_application_directory_waits_for_captured_launcher(
+    tmp_path,
+    monkeypatch,
+):
+    launcher_dir = tmp_path / "bin"
+    launcher_dir.mkdir()
+    launcher = _executable(launcher_dir / "xdg-open")
+    target = tmp_path / "documents"
+    target.mkdir()
+    monkeypatch.setenv("PATH", os.fspath(launcher_dir))
+    captured = {}
+    result = object()
+
+    def fake_run(command, **kwargs):
+        captured["command"] = command
+        captured.update(kwargs)
+        return result
+
+    assert (
+        open_with_default_application(
+            target,
+            wait=True,
+            check=True,
+            system_name="linux",
+            run_factory=fake_run,
+        )
+        is result
+    )
+    assert captured["command"] == [str(launcher), str(target)]
+    assert captured["cwd"] == str(target)
+    assert captured["check"] is True
+
+
+def test_default_application_windows_and_unsupported_platform_paths(tmp_path):
+    target = tmp_path / "document.txt"
+    target.write_text("document", encoding="utf-8")
+    opened = []
+
+    assert (
+        open_with_default_application(
+            target,
+            system_name="windows",
+            startfile_factory=lambda value: opened.append(value) or "opened",
+        )
+        == "opened"
+    )
+    assert opened == [str(target)]
+
+    with pytest.raises(NotImplementedError, match="unsupported"):
+        open_with_default_application(target, system_name="plan9")
 
 
 def test_default_url_launcher_uses_captured_absolute_executable(
@@ -290,3 +462,21 @@ def test_default_url_launcher_uses_captured_absolute_executable(
 def test_default_url_launcher_rejects_non_http_or_ambiguous_values(url):
     with pytest.raises(ValueError):
         open_url_with_default_application(url, system_name="linux")
+
+
+def test_default_url_launcher_supports_windows_and_rejects_unknown_platforms():
+    opened = []
+    url = "https://example.com/path"
+
+    assert (
+        open_url_with_default_application(
+            url,
+            system_name="windows",
+            startfile_factory=lambda value: opened.append(value) or "opened",
+        )
+        == "opened"
+    )
+    assert opened == [url]
+
+    with pytest.raises(NotImplementedError, match="unsupported"):
+        open_url_with_default_application(url, system_name="plan9")

@@ -15,6 +15,7 @@ from core.archive_paths import (
     extract_zip_safely,
     validate_archive_member_names,
     write_directory_to_zip_without_links,
+    write_zip_file_snapshots_without_links,
     write_zip_files_without_links,
 )
 
@@ -430,6 +431,99 @@ def test_generic_archive_member_preflight_rejects_unsafe_names(names):
 
 def test_generic_archive_member_preflight_accepts_portable_tree():
     validate_archive_member_names(["bundle/", "bundle/bin/", "bundle/bin/server.exe"])
+
+
+@pytest.mark.parametrize(
+    "names, message",
+    [
+        ([], "no regular files"),
+        (["", "bundle/"], "no regular files"),
+        ([" folder/file.txt"], "unsafe archive path"),
+        (["folder/child.txt", "folder"], "conflicts with a directory"),
+    ],
+)
+def test_generic_archive_member_preflight_rejects_incomplete_namespaces(
+    names,
+    message,
+):
+    with pytest.raises(UnsafeArchiveError, match=message):
+        validate_archive_member_names(names)
+
+
+def test_snapshot_zip_writer_publishes_only_the_captured_file_identity(tmp_path):
+    source = tmp_path / "asset.txt"
+    source.write_text("captured", encoding="utf-8")
+    source_identity = source.lstat()
+    parent_identity = tmp_path.lstat()
+    archive_path = tmp_path / "snapshot.zip"
+
+    with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as archive:
+        assert (
+            write_zip_file_snapshots_without_links(
+                archive,
+                [(source, "bundle/asset.txt", source_identity, parent_identity)],
+            )
+            == 1
+        )
+
+    with zipfile.ZipFile(archive_path) as archive:
+        assert archive.namelist() == ["bundle/asset.txt"]
+        assert archive.read("bundle/asset.txt") == b"captured"
+
+
+def test_snapshot_zip_writer_rejects_missing_or_replaced_sources(tmp_path):
+    source = tmp_path / "asset.txt"
+    preserved = tmp_path / "preserved.txt"
+    source.write_text("captured", encoding="utf-8")
+    source_identity = source.lstat()
+    parent_identity = tmp_path.lstat()
+    archive_path = tmp_path / "snapshot.zip"
+
+    source.rename(preserved)
+    with zipfile.ZipFile(archive_path, "w") as archive, pytest.raises(
+        PermissionError,
+        match="disappeared before read",
+    ):
+        write_zip_file_snapshots_without_links(
+            archive,
+            [(source, "bundle/asset.txt", source_identity, parent_identity)],
+        )
+
+    source.write_text("replacement", encoding="utf-8")
+    with zipfile.ZipFile(archive_path, "w") as archive, pytest.raises(
+        PermissionError,
+        match="identity changed before read",
+    ):
+        write_zip_file_snapshots_without_links(
+            archive,
+            [(source, "bundle/asset.txt", source_identity, parent_identity)],
+        )
+
+    assert preserved.read_text(encoding="utf-8") == "captured"
+
+
+def test_zip_writers_reject_directory_shaped_members_and_non_files(tmp_path):
+    source = tmp_path / "source.txt"
+    source.write_text("source", encoding="utf-8")
+    archive_path = tmp_path / "invalid.zip"
+
+    with zipfile.ZipFile(archive_path, "w") as archive, pytest.raises(
+        UnsafeArchiveError,
+        match="regular file",
+    ):
+        write_zip_file_snapshots_without_links(
+            archive,
+            [(source, "bundle/", source.lstat(), tmp_path.lstat())],
+        )
+
+    with zipfile.ZipFile(archive_path, "w") as archive, pytest.raises(
+        PermissionError,
+        match="regular non-link file",
+    ):
+        write_zip_files_without_links(
+            archive,
+            [(tmp_path, "bundle/source.txt")],
+        )
 
 
 def test_link_free_zip_writers_stream_portable_regular_files(tmp_path):
