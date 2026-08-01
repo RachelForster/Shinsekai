@@ -37,7 +37,7 @@ import {
   chatStageRuntimeConfigVersion,
   defaultChatStageRuntimeConfig,
 } from "../../../features/chat-stage/runtimeConfig";
-import { resolveChatTheme, type ChatThemeManifest } from "../../../shared/theme/chatTheme";
+import { resolveChatTheme, type ChatThemeManifest, type FrameVisualBlock } from "../../../shared/theme/chatTheme";
 
 function Probe() {
   const theme = useChatTheme();
@@ -405,7 +405,13 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-name-frame-image"]).toBeUndefined();
   });
 
-  it("maps reusable frame geometry without leaking chat frames into logs", () => {
+  it("maps chat frame geometry without applying theme frames to the logs settings page", () => {
+    const legacyLogsPanel: FrameVisualBlock = {
+      frameImage: "assets/logs.svg",
+      frameOutsetPx: 4,
+      frameSlice: 24,
+      frameWidthPx: 8,
+    };
     const resolved = resolveChatTheme(
       {
         schema: 1,
@@ -419,15 +425,7 @@ describe("chat theme runtime", () => {
             frameWidthPx: 12,
           },
           logs: {
-            panel: {
-              frameImage: "assets/logs.svg",
-              frameOutsetPx: 4,
-              frameSlice: 24,
-              frameWidthPx: 8,
-            },
-            toolbar: {
-              frameWidthPx: 0,
-            },
+            panel: legacyLogsPanel,
           },
         },
       },
@@ -438,12 +436,12 @@ describe("chat theme runtime", () => {
     expect(resolved.style["--chat-dialog-frame-slice"]).toBe("40");
     expect(resolved.style["--chat-dialog-frame-width"]).toBe("12px");
     expect(resolved.style["--chat-dialog-frame-outset"]).toBe("6px");
-    expect(resolved.style["--logs-panel-frame-image"]).toBe('url("asset://assets/logs.svg")');
-    expect(resolved.style["--logs-panel-frame-slice"]).toBe("24");
-    expect(resolved.style["--logs-panel-frame-width"]).toBe("8px");
-    expect(resolved.style["--logs-panel-frame-outset"]).toBe("4px");
+    expect(resolved.style["--logs-panel-frame-image"]).toBeUndefined();
+    expect(resolved.style["--logs-panel-frame-slice"]).toBeUndefined();
+    expect(resolved.style["--logs-panel-frame-width"]).toBeUndefined();
+    expect(resolved.style["--logs-panel-frame-outset"]).toBeUndefined();
     expect(resolved.style["--logs-toolbar-frame-image"]).toBeUndefined();
-    expect(resolved.style["--logs-toolbar-frame-width"]).toBe("0px");
+    expect(resolved.style["--logs-toolbar-frame-width"]).toBeUndefined();
     expect(resolved.style["--logs-viewer-frame-image"]).toBeUndefined();
   });
 

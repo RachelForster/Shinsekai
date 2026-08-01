@@ -130,11 +130,7 @@
         "borderColor": "rgba(255,205,222,0.24)",
         "borderRadius": "16px",
         "boxShadow": "0 18px 44px rgba(20,7,15,0.34)",
-        "color": "#fff5f8",
-        "frameImage": "frame-dialog.svg",
-        "frameOutsetPx": 2,
-        "frameSlice": 32,
-        "frameWidthPx": 18
+        "color": "#fff5f8"
       },
       "toolbar": {
         "background": "rgba(54,23,41,0.9)",

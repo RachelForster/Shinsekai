@@ -245,14 +245,10 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 | `tokens.options` | 每一个选项按钮；所有选项共享该定义。 |
 | `tokens.input` | 输入区外壳。 |
 | `tokens.toolbar` | 当前显示的工具条外壳。 |
-| `tokens.logs.panel` | 日志工具条、侧栏和查看器的公共边框回退。 |
-| `tokens.logs.toolbar` | 单独覆盖日志工具条。 |
-| `tokens.logs.sidebar` | 单独覆盖日志侧栏。 |
-| `tokens.logs.viewer` | 单独覆盖日志查看器。 |
 
-`send`、`options.active`、`options.hover`、日志行和徽章等高密度元素没有独立边框层。不要在这些块上配置 SVG frame。
+`send`、`options.active`、`options.hover` 和整个日志设置页都没有独立边框层。日志工具条、侧栏和查看器统一使用宿主设置页的普通 CSS 边框，不跟随 Chat UI 的 SVG frame。不要在这些块上配置 SVG frame。
 
-为兼容早期 `schema: 1` 主题，校验器可能仍接受不支持位置上的 `frameImage` 和 `frameSlice`，但前端不会渲染它们；`frameWidthPx` 和 `frameOutsetPx` 则会直接被拒绝。应始终以本节表格列出的支持位置为准。
+为兼容早期 `schema: 1` 主题，校验器可能仍接受不支持位置上的 `frameImage` 和 `frameSlice`，但前端不会渲染它们；旧日志容器中的 `frameWidthPx` 和 `frameOutsetPx` 也只做兼容读取，不再渲染。应始终以本节表格列出的支持位置为准。
 
 如果某个组件没有填写 `frameImage`，它的 SVG 边框层不可见，普通 `borderColor` 和 `borderRadius` 仍然生效。因此只给 `dialog` 填写 `frameImage`，不会影响 `input`、`options` 或 `toolbar`。
 
@@ -333,11 +329,10 @@ SVG 边框不是全局皮肤层，每个组件单独配置：
 - 线条、辉光和外伸装饰应留出安全边距，避免裁切；
 - 不同形态的组件应使用不同素材。对话框素材通常不适合直接复用于输入框或胶囊选项。
 
-当前内置主题已按这一规则区分九宫格背景与独立边框。霓虹夜城和樱色梦境的聊天面板通过 `backgroundImage` 引用下列素材，让装饰位于文字下方；日志面板仍通过 `frameImage` 使用独立前景描边：
+当前内置主题已按这一规则区分九宫格背景与独立边框。霓虹夜城和樱色梦境的聊天面板通过 `backgroundImage` 引用下列素材，让装饰位于文字下方；日志设置页则使用宿主统一的 CSS 边框：
 
 - [`frame-dialog.svg`](../assets/chat_ui_themes/neon-night-city/frame-dialog.svg)：`128 × 128`，`slice 28 / width 28 / outset 2`；
-- [`frame-name.svg`](../assets/chat_ui_themes/neon-night-city/frame-name.svg)：`96 × 64`，`slice 16 / width 16 / outset 2`；
-- [`frame-panel.svg`](../assets/chat_ui_themes/neon-night-city/frame-panel.svg)：`96 × 96`，`slice 24 / width 24 / outset 2`。
+- [`frame-name.svg`](../assets/chat_ui_themes/neon-night-city/frame-name.svg)：`96 × 64`，`slice 16 / width 16 / outset 2`。
 
 ## 8. Token 定义
 
@@ -473,10 +468,10 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | 子块 | 类型 | 作用 |
 | --- | --- | --- |
 | `page` | `VisualBlock` | 日志页整体。 |
-| `panel` | `FrameVisualBlock` | 日志主面板样式，也是 toolbar/sidebar/viewer 的公共 frame 回退。 |
-| `toolbar` | `FrameVisualBlock` | 日志工具条，可覆盖 panel frame。 |
-| `sidebar` | `FrameVisualBlock` | 日志文件侧栏，可覆盖 panel frame。 |
-| `viewer` | `FrameVisualBlock` | 日志查看器，可覆盖 panel frame。 |
+| `panel` | `VisualBlock` | 日志主面板的普通视觉回退。 |
+| `toolbar` | `VisualBlock` | 日志工具条。 |
+| `sidebar` | `VisualBlock` | 日志文件侧栏。 |
+| `viewer` | `VisualBlock` | 日志查看器。 |
 | `source` | `VisualBlock` | 日志来源标签。 |
 | `code` | `VisualBlock + fontFamily` | 代码或原始内容区。 |
 | `line` | `VisualBlock + hover + expanded` | 日志行及其状态。 |
@@ -487,7 +482,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 | `fileItem` | `VisualBlock + hover + active` | 文件列表项及其状态。 |
 | `levels` | object | `debug`、`default`、`error`、`info`、`warn`，每项为 `VisualBlock`。 |
 
-`logs.panel.frame*` 本身不是第四个独立可见边框；它给日志工具条、侧栏和查看器提供公共默认值。需要三个不同外形时，在 `logs.toolbar`、`logs.sidebar`、`logs.viewer` 中分别覆盖。
+日志工具条、侧栏和查看器的边框颜色与圆角固定使用宿主设置页的 `--color-border` 和 `--radius-panel`，不会读取 `logs.*.frame*`。旧主题中的日志 frame 字段仍可通过 `schema: 1` 校验，但会被前端忽略。
 
 没有显式填写日志样式时，宿主会从聊天主题中派生一部分普通视觉值，但不会把聊天组件的 SVG frame 带进日志页：
 
@@ -545,7 +540,7 @@ global, fonts, dialog, options, input, toolbar, send, name, logs, typewriter
 - 布局预设先应用，显式视觉字段后应用，显式字段优先。
 - 没有 `backgroundImage` 或 `frameImage` 时，`backgroundSlice`、`frameSlice`、`frameWidthPx` 或 `frameOutsetPx` 单独存在不会产生可见内容。
 - 聊天组件的 frame 相互独立，不会跨组件继承。
-- 日志的普通视觉值有上一节所述回退；聊天 frame 会被移除。只有 `logs.panel.frame*` 会作为三个日志容器的公共 frame 回退。
+- 日志的普通视觉值有上一节所述回退，但工具条、侧栏和查看器始终使用宿主设置页的 CSS 边框，不渲染 Chat UI frame。
 - 当前活动主题无法读取时，应用会尝试内置默认主题 `windborne-adventure`；仍不可用时回退到宿主基础样式。
 
 ## 11. 常见问题

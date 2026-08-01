@@ -52,7 +52,9 @@ ALLOWED_VISUAL_PROPS = frozenset(
 #: 仅具有独立边框层的低密度外壳允许的九宫格边框字段。
 FRAME_VISUAL_PROPS = frozenset({"backgroundSlice", "frameOutsetPx", "frameWidthPx"})
 FRAME_TOKEN_BLOCKS = frozenset({"dialog", "options", "input", "toolbar", "name"})
-LOG_FRAME_VISUAL_BLOCKS = frozenset({"panel", "sidebar", "toolbar", "viewer"})
+# schema=1 themes previously rendered frames on the logs settings page. Keep
+# accepting those fields so installed themes remain valid; the frontend ignores them.
+LEGACY_LOG_FRAME_VISUAL_BLOCKS = frozenset({"panel", "sidebar", "toolbar", "viewer"})
 
 #: 每个可写 token 块允许的额外字段（在可视化属性之外）。
 EXTRA_BLOCK_PROPS = {
@@ -265,7 +267,7 @@ def _validate_logs_block(block: Any, errors: List[str]) -> Dict[str, Any]:
                 block[key],
                 errors,
                 frozenset(),
-                allow_frame=key in LOG_FRAME_VISUAL_BLOCKS,
+                allow_frame=key in LEGACY_LOG_FRAME_VISUAL_BLOCKS,
             )
 
     if "code" in block:

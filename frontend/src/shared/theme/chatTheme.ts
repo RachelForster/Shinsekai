@@ -132,11 +132,11 @@ export interface LogsThemeTokens {
   line?: VisualBlock & { expanded?: VisualBlock; hover?: VisualBlock };
   number?: VisualBlock;
   page?: VisualBlock;
-  panel?: FrameVisualBlock;
-  sidebar?: FrameVisualBlock;
+  panel?: VisualBlock;
+  sidebar?: VisualBlock;
   source?: VisualBlock;
-  toolbar?: FrameVisualBlock;
-  viewer?: FrameVisualBlock;
+  toolbar?: VisualBlock;
+  viewer?: VisualBlock;
 }
 
 /** 完整主题清单（theme.json）。 */
@@ -412,7 +412,6 @@ function applyLogsVisualBlock(
   prefix: string,
   block?: VisualBlock | null,
   assetUrl?: (rel: string) => string,
-  allowFrame = false,
 ) {
   if (!block) {
     return;
@@ -423,10 +422,6 @@ function applyLogsVisualBlock(
     if (backgroundImage) {
       style[`--logs-${prefix}-background-image`] = `url("${backgroundImage}")`;
     }
-  }
-  const frame = allowFrame ? (block as FrameVisualBlock) : undefined;
-  if (frame) {
-    applyFrameVisualBlock(style, "logs", prefix, frame, assetUrl);
   }
   setStyleVar(style, `--logs-${prefix}-border-color`, block.borderColor);
   setStyleVar(style, `--logs-${prefix}-border-radius`, block.borderRadius);
@@ -801,11 +796,11 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
 
   const logs = resolveLogsThemeTokens(tokens);
   applyLogsVisualBlock(style, "page", logs?.page, assetUrl);
-  applyLogsVisualBlock(style, "panel", logs?.panel, assetUrl, true);
-  applyLogsVisualBlock(style, "toolbar", logs?.toolbar, assetUrl, true);
-  applyLogsVisualBlock(style, "sidebar", logs?.sidebar, assetUrl, true);
+  applyLogsVisualBlock(style, "panel", logs?.panel, assetUrl);
+  applyLogsVisualBlock(style, "toolbar", logs?.toolbar, assetUrl);
+  applyLogsVisualBlock(style, "sidebar", logs?.sidebar, assetUrl);
   applyLogsVisualBlock(style, "source", logs?.source, assetUrl);
-  applyLogsVisualBlock(style, "viewer", logs?.viewer, assetUrl, true);
+  applyLogsVisualBlock(style, "viewer", logs?.viewer, assetUrl);
   applyLogsVisualBlock(style, "code", logs?.code, assetUrl);
   applyLogsVisualBlock(style, "line", logs?.line, assetUrl);
   applyLogsVisualBlock(style, "line-hover", logs?.line?.hover, assetUrl);
