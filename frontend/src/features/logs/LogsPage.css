@@ -964,7 +964,7 @@
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover, auto;
-  box-shadow: var(--logs-detail-box-shadow, none);
+  box-shadow: none;
 }
 
 .logs-code__detail-grid dd {

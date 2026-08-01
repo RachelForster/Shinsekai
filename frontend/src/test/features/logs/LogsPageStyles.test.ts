@@ -16,6 +16,8 @@ describe("logs settings page styles", () => {
     expect(headerBlock).toContain("border-bottom: 1px solid var(--color-border);");
     expect(detailBlock).toContain("border: 1px solid var(--color-border);");
     expect(detailBlock).toContain("border-radius: var(--radius-control);");
+    expect(detailBlock).toContain("box-shadow: none;");
+    expect(detailBlock).not.toContain("--logs-detail-box-shadow");
     expect(logsPageCss).not.toContain("border-image");
   });
 });
