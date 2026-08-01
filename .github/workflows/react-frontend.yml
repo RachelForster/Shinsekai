@@ -12,6 +12,7 @@ on:
       - "webui_react.py"
       - "start-react.*"
       - "scripts/start.*"
+      - "tools/launcher/**"
   pull_request:
     branches: [main]
     paths:
@@ -22,6 +23,7 @@ on:
       - "webui_react.py"
       - "start-react.*"
       - "scripts/start.*"
+      - "tools/launcher/**"
 
 permissions:
   contents: read
