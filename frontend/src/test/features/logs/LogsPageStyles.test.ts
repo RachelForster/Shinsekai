@@ -9,10 +9,13 @@ describe("logs settings page styles", () => {
   it("uses the shared settings border instead of Chat UI frame geometry", () => {
     const shellBlock = logsPageCss.split(".logs-toolbar,\n.logs-sidebar,\n.logs-viewer {")[1]?.split("}")[0] ?? "";
     const headerBlock = logsPageCss.split(".logs-header {")[1]?.split("}")[0] ?? "";
+    const detailBlock = logsPageCss.split(".logs-code__detail-grid dd,\n.logs-code__raw {")[1]?.split("}")[0] ?? "";
 
     expect(shellBlock).toContain("border: 1px solid var(--color-border);");
     expect(shellBlock).toContain("border-radius: var(--radius-panel);");
     expect(headerBlock).toContain("border-bottom: 1px solid var(--color-border);");
+    expect(detailBlock).toContain("border: 1px solid var(--color-border);");
+    expect(detailBlock).toContain("border-radius: var(--radius-control);");
     expect(logsPageCss).not.toContain("border-image");
   });
 });

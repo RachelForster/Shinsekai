@@ -955,8 +955,8 @@
 .logs-code__detail-grid dd,
 .logs-code__raw {
   padding: var(--logs-detail-padding, 5px 7px);
-  border: 1px solid var(--logs-detail-border-color, var(--logs-gal-border));
-  border-radius: var(--logs-detail-border-radius, var(--logs-radius));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   color: var(--logs-detail-color, var(--logs-code-color, var(--logs-gal-text)));
   background:
     var(--logs-detail-background-image, none),
