@@ -112,8 +112,8 @@ endlocal & exit /b %SHINSEKAI_EXIT_CODE%
 set "SHINSEKAI_RESOLVED_COMMAND="
 if not defined SystemRoot exit /b 1
 if not exist "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" exit /b 1
-set "SHINSEKAI_COMMAND_RESOLVER=%PROJECT_ROOT%scripts\resolve-command.ps1"
-call :paths_are_non_reparse "%PROJECT_ROOT%scripts" "%SHINSEKAI_COMMAND_RESOLVER%"
+set "SHINSEKAI_COMMAND_RESOLVER=%PROJECT_ROOT%tools\launcher\resolve-command.ps1"
+call :paths_are_non_reparse "%PROJECT_ROOT%tools\launcher" "%SHINSEKAI_COMMAND_RESOLVER%"
 if errorlevel 1 exit /b 1
 for /f "delims=" %%I in ('"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -File "%SHINSEKAI_COMMAND_RESOLVER%" -Name "%~1" 2^>nul') do if not defined SHINSEKAI_RESOLVED_COMMAND set "SHINSEKAI_RESOLVED_COMMAND=%%I"
 if not defined SHINSEKAI_RESOLVED_COMMAND exit /b 1

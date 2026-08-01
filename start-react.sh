@@ -21,13 +21,13 @@ resolve_script_directory() {
 PROJECT_ROOT="$(resolve_script_directory)"
 cd "$PROJECT_ROOT"
 
-PATH_CONTRACT="$PROJECT_ROOT/scripts/shell-path-contract.sh"
+PATH_CONTRACT="$PROJECT_ROOT/tools/launcher/shell-path-contract.sh"
 if [[ -L "$PROJECT_ROOT/scripts" || ! -d "$PROJECT_ROOT/scripts" ||
       -L "$PATH_CONTRACT" || ! -f "$PATH_CONTRACT" ]]; then
     echo "Error: launcher path contract is missing or unsafe: $PATH_CONTRACT" >&2
     exit 1
 fi
-# shellcheck source=scripts/shell-path-contract.sh
+# shellcheck source=tools/launcher/shell-path-contract.sh
 source "$PATH_CONTRACT"
 
 if ! shinsekai_project_file_is_real "webui_react.py" ||

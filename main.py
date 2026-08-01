@@ -23,7 +23,7 @@ else:
     _default_data_root = _source_root
 os.environ.setdefault("SHINSEKAI_APP_ROOT", str(_default_data_root))
 
-from core.file_transactions import read_text_without_links
+from sdk.file_transactions import read_text_without_links
 from core.paths import (
     activate_project_root,
     managed_child_path,
