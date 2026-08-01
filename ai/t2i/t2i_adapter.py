@@ -10,8 +10,8 @@ import requests
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from core.file_transactions import atomic_write_bytes, read_text_without_links
-from core.process_launch import (
+from sdk.file_transactions import atomic_write_bytes, read_text_without_links
+from sdk.process_launch import (
     capture_launch_directory,
     capture_launch_file,
     isolated_python_environment,

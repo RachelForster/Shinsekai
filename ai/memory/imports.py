@@ -18,7 +18,7 @@ from ai.memory.extraction import (
 )
 from ai.memory.operations import memory_remember
 from ai.memory.token_estimator import estimate_text_tokens
-from core.file_transactions import (
+from sdk.file_transactions import (
     capture_directory_identity,
     open_binary_read_without_links,
     read_bytes_without_links,

@@ -6,7 +6,7 @@ import copy
 from collections.abc import Mapping
 from typing import Any
 
-from core.file_transactions import read_bytes_without_links
+from sdk.file_transactions import read_bytes_without_links
 from core.media.chat_attachments import ResolvedChatAttachment, resolve_chat_attachments
 
 

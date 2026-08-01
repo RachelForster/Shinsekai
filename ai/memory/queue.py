@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ai.memory.operations import memory_remember
-from core.file_transactions import atomic_write_text, read_text_without_links
+from sdk.file_transactions import atomic_write_text, read_text_without_links
 from core.paths import (
     project_root,
     require_symlink_free_absolute_path,
