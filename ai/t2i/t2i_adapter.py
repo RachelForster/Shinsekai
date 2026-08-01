@@ -91,7 +91,7 @@ class StableDiffusionAdapter(T2IAdapter):
             "cfg_scale": kwargs.get("cfg_scale", 7),
             "seed": kwargs.get("seed", -1),
         }
-        
+
         # Add the checkpoint model if set
         if self.current_model:
             # Assuming a specific endpoint or method to switch model isn't used here,
@@ -101,17 +101,17 @@ class StableDiffusionAdapter(T2IAdapter):
         try:
             response = requests.post(self.api_url, json=payload)
             response.raise_for_status() # Raise an exception for bad status codes
-            
+
             # The response content is often a JSON object with base64 encoded images
             data = response.json()
             if not data.get("images"):
                 print("Stable Diffusion API returned no images.")
                 return None
-            
+
             # Decode the base64 image and save it
             import base64
             image_data = base64.b64decode(data['images'][0])
-            
+
             output = _output_path(file_path, "data/generated/temp_t2i_sd.png")
             atomic_write_bytes(output, image_data)
 
@@ -126,7 +126,7 @@ class StableDiffusionAdapter(T2IAdapter):
         `model_info` is expected to be a dictionary with 'model_checkpoint' key.
         """
         model_checkpoint = model_info.get('model_checkpoint', '')
-        
+
         if model_checkpoint and self.current_model != model_checkpoint:
             print(f"Switching Stable Diffusion model to: {model_checkpoint}")
             self.current_model = model_checkpoint
@@ -138,16 +138,16 @@ class ComfyUIT2IAdapter(T2IAdapter):
     Adapter for the ComfyUI Text-to-Image service API.
     It executes a predefined ComfyUI workflow by injecting the prompt.
     """
-    
+
     # ------------------ ComfyUI API Endpoints ------------------
     # NOTE: You must have a ComfyUI instance running with the API enabled.
     PROMPT_ENDPOINT = "/prompt"
     HISTORY_ENDPOINT = "/history"
     STARTUP_TIMEOUT_SECONDS = 120
     REQUEST_TIMEOUT_SECONDS = 10
-    
-    def __init__(self, 
-                 api_url: str = "http://127.0.0.1:8188", 
+
+    def __init__(self,
+                 api_url: str = "http://127.0.0.1:8188",
                  work_path: str = "",
                  workflow_path: str = "path/to/default_workflow.json",
                  prompt_node_id: str = "6", # Common ID for the CLIPTextEncode (Prompt) node in SD workflows
@@ -258,7 +258,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
                 Path(sys.executable),
                 field="host Python executable",
             )
-        
+
         python_snapshot = capture_launch_file(
             python_path,
             field="ComfyUI Python executable",
@@ -293,7 +293,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
     def generate_image(self, prompt: str, file_path: Optional[str] = None, **kwargs) -> Optional[str]:
         """
         生成图像。通过修改工作流中的 prompt 节点并提交执行。
-        
+
         Args:
             prompt (str): 图像生成的文本提示。
             file_path (str, optional): 图像保存路径。
@@ -307,7 +307,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
 
         # 1. 深度复制模板以避免修改原始结构
         prompt_workflow = copy.deepcopy(self.workflow_template)
-        
+
         # 2. 注入主 Prompt
         # 假设 CLIPTextEncode 节点 (ID: self.prompt_node_id) 的输入是 index 1
         if self.prompt_node_id in prompt_workflow:
@@ -341,7 +341,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
             response.raise_for_status()
             prompt_data = response.json()
             prompt_id = prompt_data.get("prompt_id")
-            
+
             if not prompt_id:
                 print("ComfyUI API failed to return a prompt_id.")
                 return None
@@ -391,7 +391,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
     def _wait_for_and_get_image(self, prompt_id: str, file_path: Optional[str]) -> Optional[str]:
         """轮询历史记录以查找生成的图像文件。"""
         # 简单轮询，最多等待 60 秒
-        for _ in range(30): 
+        for _ in range(30):
             time.sleep(2)
             try:
                 history_response = requests.get(f"{self.api_url}{self.HISTORY_ENDPOINT}/{prompt_id}")
@@ -401,31 +401,31 @@ class ComfyUIT2IAdapter(T2IAdapter):
                 if prompt_id in history_data:
                     # 查找 SaveImage 节点的输出
                     output = history_data[prompt_id]["outputs"].get(self.output_node_id)
-                    
+
                     if output and "images" in output and output["images"]:
                         image_info = output["images"][0] # 假设只生成一张图
                         filename = image_info["filename"]
                         subfolder = image_info["subfolder"]
-                        
+
                         # 构造图像下载 URL
                         image_url = (f"{self.api_url}/view?"
                                      f"filename={filename}&"
                                      f"subfolder={subfolder}&"
                                      f"type=output")
-                        
+
                         # 下载图像
                         image_response = requests.get(image_url)
                         image_response.raise_for_status()
-                        
+
                         output = _output_path(file_path, "data/generated/temp_comfyui.png")
                         atomic_write_bytes(output, image_response.content)
-                        
+
                         print(f"Image successfully generated and saved to: {output}")
                         return str(output)
 
             except Exception as e:
                 print(f"Error checking ComfyUI history/downloading image: {e}")
-                
+
         print("Timeout or failed to retrieve image from ComfyUI history.")
         return None
 
@@ -433,7 +433,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
     def switch_model(self, model_info: Dict[str, Any]):
         """
         对于 ComfyUI Adapter，此方法可以用来切换工作流文件，从而切换模型。
-        
+
         Args:
             model_info (Dict[str, Any]): 预期包含 'workflow_path' 键。
         """

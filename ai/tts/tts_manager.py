@@ -46,7 +46,7 @@ class TTSAdapterFactory:
     def create_adapter(adapter_name: str, *, wait_until_ready: bool = False, **kwargs) -> TTSAdapter:
         """
         Creates and returns a TTSAdapter instance based on the given name.
-        
+
         Args:
             adapter_name (str): The name of the adapter to create (e.g., 'elevenlabs').
             **kwargs: Configuration arguments for the adapter's constructor (e.g., api_key, work_path).
@@ -58,10 +58,10 @@ class TTSAdapterFactory:
             ValueError: If the adapter name is not supported.
         """
         adapter_class = TTSAdapterFactory._adapters.get(adapter_name.lower())
-        
+
         if not adapter_class:
             raise ValueError(f"Unsupported TTS adapter: '{adapter_name}'. Supported adapters are: {list(TTSAdapterFactory._adapters.keys())}")
-        
+
         try:
             # Instantiate the correct adapter class with the provided kwargs
             adapter = adapter_class(**kwargs)
@@ -134,7 +134,7 @@ class TTSManager:
                      speed_factor=None):
         """Generates TTS audio using the currently set adapter."""
         print("Generating speech")
-        
+
         # Pre-process the text using the provided processor
         if text_processor:
             text = text_processor.remove_parentheses(text)
@@ -145,7 +145,7 @@ class TTSManager:
                 text = text_processor.libre_translate(text, source=language, target=self.voice_language)
             if self.voice_language == 'ja' and (character_name == "狛枝凪斗" or character_name == "仆役" or character_name == "小狛枝"):
                 text = text_processor.replace_watashi(text)
-        
+
         if not ref_audio_path:
             print("No reference audio provided")
             return ''
@@ -254,7 +254,7 @@ class TTSManager:
                 'type': 'speak',
                 'file_path': file_path
             })
-    
+
     def queue_song(self, voice_path, music_path):
         """Adds a song to the queue."""
         self.task_queue.put({
@@ -277,7 +277,7 @@ class TTSManager:
                 print(f"Failed to send audio: {response.text}")
         except Exception as e:
             print(f"Failed to send audio to character UI: {e}")
-    
+
     def _send_song_to_character(self, voice_path, music_path):
         """Sends a song to the character UI."""
         params = {

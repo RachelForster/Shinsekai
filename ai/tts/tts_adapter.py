@@ -332,7 +332,7 @@ class GPTSoVitsAdapter(TTSAdapter):
         )
 
         python_path = _local_python_path(os_path, service_name="GPT-SoVITS")
-        
+
         self._server_process = _popen_local_python_service(
             service_name="GPT-SoVITS",
             work_root=os_path,
@@ -401,7 +401,7 @@ class GPTSoVitsAdapter(TTSAdapter):
         Switches the GPT-SoVITS models.
         `model_info` is expected to be a dictionary with 'gpt_model_path' and 'sovits_model_path'.
         """
-    
+
         local_service = self._is_local_server_url()
         gpt_model_path = _tts_service_input_path(
             model_info.get("gpt_model_path"),
@@ -413,11 +413,11 @@ class GPTSoVitsAdapter(TTSAdapter):
             local_service=local_service,
             field="SoVITS model path",
         )
-        
+
         if self.sovits_model_path == sovits_model_path and self.gpt_model_path == gpt_model_path:
             print("No model switch needed, current models are already set.", self.gpt_model_path, self.sovits_model_path)
             return
-        
+
         try:
             if gpt_model_path and gpt_model_path.endswith(".ckpt"):
                 response = self._session.get(
@@ -782,7 +782,7 @@ class IndexTTSAdapter(TTSAdapter):
             raw_api_path,
             field="IndexTTS startup script",
         )
-        
+
         self._server_process = _popen_local_python_service(
             service_name="IndexTTS",
             work_root=os_path,
@@ -790,7 +790,7 @@ class IndexTTSAdapter(TTSAdapter):
             script_path=api_path,
         )
         print("IndexTTS server starting...")
-    
+
     def generate_speech(self, text, file_path=None, **kwargs):
         """Generates speech using the Index TTS API."""
         try:
@@ -889,7 +889,7 @@ class CosyVoiceAdapter(TTSAdapter):
         """
         voice = model_info.get("voice")
         model = model_info.get("model")
-        
+
         if voice:
             self.current_voice = voice
             print(f"CosyVoice voice switched to: {self.current_voice}")
@@ -1285,12 +1285,12 @@ class GenieTTSAdapter(TTSAdapter):
     def generate_speech(self, text, file_path=None, **kwargs):
         """
         Generates TTS audio using the Genie TTS engine.
-        
+
         Args:
             text (str): The text to synthesize.
             file_path (str, optional): The path to save the generated audio.
             **kwargs: Extra arguments, including 'ref_audio_path' and 'audio_text'.
-        
+
         Returns:
             str: The absolute path of the generated audio file, or None on failure.
         """
@@ -1301,7 +1301,7 @@ class GenieTTSAdapter(TTSAdapter):
         if not self.character_name:
             print("Genie TTS has no active character. Call switch_model first.")
             return None
-        
+
         ref_audio_path = kwargs.get('ref_audio_path')
         audio_text = kwargs.get('prompt_text')
         audio_lang = kwargs.get('prompt_lang') or kwargs.get('text_lang') or "zh"
@@ -1312,7 +1312,7 @@ class GenieTTSAdapter(TTSAdapter):
         if self.loaded_character_name != self.character_name:
             self._load_character_model(audio_lang)
 
-        
+
 
         if ref_audio_path and audio_text and self.reference_audio_key != reference_audio_key:
             try:
