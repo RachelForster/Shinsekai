@@ -8,7 +8,7 @@ if __package__ in {None, ""}:
     if str(_source_root) not in sys.path:
         sys.path.insert(0, str(_source_root))
 
-from core.file_transactions import (
+from sdk.file_transactions import (
     atomic_binary_writer,
     capture_directory_identity,
     file_snapshot_is_stable,
@@ -16,7 +16,7 @@ from core.file_transactions import (
     require_directory_identity,
     snapshot_directory_entries_without_links,
 )
-from core.process_launch import capture_launch_file
+from sdk.process_launch import capture_launch_file
 from core.paths import (
     managed_child_path,
     project_root,

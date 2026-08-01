@@ -11,7 +11,7 @@ if __package__ in {None, ""}:
 
 from PIL import Image
 
-from core.file_transactions import (
+from sdk.file_transactions import (
     atomic_binary_writer,
     file_snapshot_is_stable,
     open_binary_read_without_links,

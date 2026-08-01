@@ -13,12 +13,12 @@ from pyannote.audio import Pipeline
 import torchaudio
 
 from config.config_manager import ConfigManager
-from core.file_transactions import (
+from sdk.file_transactions import (
     atomic_binary_writer,
     capture_directory_identity,
     read_bytes_without_links,
 )
-from core.process_launch import capture_launch_file, require_launch_file
+from sdk.process_launch import capture_launch_file, require_launch_file
 from core.paths import (
     managed_child_path,
     project_root,

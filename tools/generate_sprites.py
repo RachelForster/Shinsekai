@@ -14,7 +14,7 @@ if str(source_root) not in sys.path:
     sys.path.append(str(source_root))
 
 from config.config_manager import ConfigManager
-from core.file_transactions import (
+from sdk.file_transactions import (
     atomic_binary_writer,
     capture_directory_identity,
     file_snapshot_is_stable,

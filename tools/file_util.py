@@ -11,12 +11,12 @@ from pathlib import Path, PurePosixPath
 from config.character_config import CharacterConfig
 from config.schema import Background
 from config.config_manager import ConfigManager
-from core.archive_paths import (
+from sdk.archive_paths import (
     extract_zip_safely,
     write_directory_to_zip_without_links,
     write_zip_files_without_links,
 )
-from core.file_transactions import (
+from sdk.file_transactions import (
     atomic_binary_writer,
     atomic_write_text,
     copy_directory_without_links,
@@ -46,7 +46,7 @@ from core.paths import (
     safe_path_component,
     safe_path_component_with_suffix,
 )
-from core.process_launch import open_with_default_application
+from sdk.process_launch import open_with_default_application
 from typing import List
 import platform
 import subprocess
