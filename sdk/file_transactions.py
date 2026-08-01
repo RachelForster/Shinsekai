@@ -1,3 +1,11 @@
+"""Stable, host-neutral filesystem transaction primitives for extensions.
+
+The public functions in this module depend only on the standard library and
+other SDK path contracts. They deliberately expose no Shinsekai project state;
+callers must provide the exact roots and identities they are authorized to
+mutate.
+"""
+
 from __future__ import annotations
 
 import ctypes
@@ -2674,3 +2682,41 @@ def replace_directory_transactionally(
             field="directory publication parent",
         )
         return target_root
+
+
+__all__ = [
+    "atomic_binary_writer",
+    "atomic_write_bytes",
+    "atomic_write_text",
+    "capture_directory_identity",
+    "clear_directory_without_links",
+    "copy_directory_without_links",
+    "copy_file_exclusive",
+    "copy_file_exclusive_with_identity",
+    "copy_file_transactionally",
+    "create_private_temporary_directory",
+    "ensure_portable_name_available",
+    "file_snapshot_is_stable",
+    "inspect_portable_directory_tree",
+    "inspect_portable_directory_tree_with_metadata",
+    "open_binary_read_without_links",
+    "open_binary_write_exclusive_without_links",
+    "open_text_append_without_links",
+    "portable_name_key",
+    "private_sibling_path",
+    "private_temporary_directory",
+    "read_bytes_snapshot_without_links",
+    "read_bytes_without_links",
+    "read_text_snapshot_without_links",
+    "read_text_without_links",
+    "remove_directory_without_links",
+    "remove_empty_directory_without_links",
+    "remove_file_without_links",
+    "remove_link_without_following",
+    "rename_path_without_overwrite",
+    "replace_directory_transactionally",
+    "replace_file_transactionally",
+    "require_directory_identity",
+    "snapshot_directory_entries_without_links",
+    "write_bytes_exclusive",
+]

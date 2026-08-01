@@ -1,4 +1,4 @@
-"""Portable, link-free ZIP extraction for project-managed imports and updates."""
+"""Stable, portable archive validation and link-free extraction primitives."""
 
 from __future__ import annotations
 
@@ -711,3 +711,15 @@ def extract_tar_safely(tf: tarfile.TarFile, target_dir: str | Path) -> ZipExtrac
         )
     _require_extraction_root_identity(target_dir, root_identity)
     return ZipExtraction(top_level=top_level, file_count=len(files))
+
+
+__all__ = [
+    "UnsafeArchiveError",
+    "ZipExtraction",
+    "extract_tar_safely",
+    "extract_zip_safely",
+    "validate_archive_member_names",
+    "write_directory_to_zip_without_links",
+    "write_zip_file_snapshots_without_links",
+    "write_zip_files_without_links",
+]

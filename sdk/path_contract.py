@@ -471,7 +471,7 @@ def require_regular_file_without_links(
     """Return one exact regular file after rejecting every path alias.
 
     This is the execution/open-by-path counterpart to the descriptor-based
-    helpers in :mod:`core.file_transactions`.  Process launchers cannot hand
+    helpers in :mod:`sdk.file_transactions`.  Process launchers cannot hand
     an already-open descriptor to every supported platform, so they must at
     least derive both readiness and the final command from this same strict
     path identity.

@@ -1,4 +1,4 @@
-"""Identity-bound paths for subprocess launch boundaries.
+"""Stable identity-bound primitives for subprocess launch boundaries.
 
 External runtimes only accept path strings.  Capture every selected file and
 directory before composing the command, then validate the same objects
