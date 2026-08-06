@@ -1,0 +1,31 @@
+version: 1
+nodes:
+  - id: trust-metric
+    type: metric-ref
+    config:
+      variable: trust.ling
+
+  - id: trust-threshold
+    type: condition.gte
+    config:
+      value: 10
+
+  - id: unlock-old-school
+    type: unlock
+    config:
+      storyNodeId: old-school-gate
+
+edges:
+  - from:
+      nodeId: trust-metric
+      port: value
+    to:
+      nodeId: trust-threshold
+      port: input
+
+  - from:
+      nodeId: trust-threshold
+      port: result
+    to:
+      nodeId: unlock-old-school
+      port: when
