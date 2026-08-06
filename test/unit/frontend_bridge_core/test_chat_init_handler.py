@@ -21,9 +21,14 @@ def test_chat_init_route_returns_accepted_task(monkeypatch):
     handler._require_authorized_write = lambda _path: None
     handler._read_json = lambda: {"mode": "resume-last"}
     task = {"id": "chat-init-1", "kind": "chat-init", "status": "queued"}
-    handler._start_chat_init = lambda _body: task
+    monkeypatch.setattr(
+        "frontend_bridge_core.routes.chat_routes.start_chat_initialization",
+        lambda _state, _body: task,
+    )
     responses: list[tuple[object, object]] = []
-    handler._send_json = lambda payload, status=HTTPStatus.OK: responses.append((payload, status))
+    handler._send_json = lambda payload, status=HTTPStatus.OK: responses.append(
+        (payload, status)
+    )
 
     handler.do_POST()
 
@@ -43,7 +48,9 @@ def test_start_chat_init_validates_launch_payload():
 def test_file_exists_errors_are_reported_as_conflicts():
     handler = _handler()
     responses: list[tuple[Exception, HTTPStatus]] = []
-    handler._send_error_json = lambda error, status=HTTPStatus.BAD_REQUEST: responses.append((error, status))
+    handler._send_error_json = (
+        lambda error, status=HTTPStatus.BAD_REQUEST: responses.append((error, status))
+    )
 
     error = FileExistsError("theme already exists")
     handler._send_exception_json(error)
@@ -68,7 +75,9 @@ def test_template_generate_all_stale_returns_stable_unprocessable_error(monkeypa
     }
     handler._log_request_exception = lambda _error: None
     responses: list[tuple[object, HTTPStatus]] = []
-    handler._send_json = lambda payload, status=HTTPStatus.OK: responses.append((payload, status))
+    handler._send_json = lambda payload, status=HTTPStatus.OK: responses.append(
+        (payload, status)
+    )
     monkeypatch.setattr(
         "ai.llm.template_generator._T",
         lambda key, **kwargs: f"template_gen.{key}",
@@ -100,8 +109,19 @@ def test_start_chat_init_forwards_launch_and_resume_callbacks(monkeypatch):
         calls.append(("resume-last", None, init_stream_info))
         return {"status": "idle"}
 
-    handler._launch_chat = launch_chat
-    handler._resume_last_chat = resume_chat
+    monkeypatch.setattr(
+        "frontend_bridge_core.chat_session.launch_chat",
+        lambda _state, payload, *, init_stream_info=None: launch_chat(
+            payload,
+            init_stream_info=init_stream_info,
+        ),
+    )
+    monkeypatch.setattr(
+        "frontend_bridge_core.chat_session.resume_last_chat",
+        lambda _state, *, init_stream_info=None: resume_chat(
+            init_stream_info=init_stream_info,
+        ),
+    )
 
     def start_chat_init(_state, *, mode, launch):
         stream_info = {"sessionId": "init-session"}
@@ -109,9 +129,14 @@ def test_start_chat_init_forwards_launch_and_resume_callbacks(monkeypatch):
         calls.append(("coordinator", mode, result))
         return {"id": f"task-{mode}"}
 
-    monkeypatch.setattr("frontend_bridge_core.routes.api.start_chat_init", start_chat_init)
+    monkeypatch.setattr(
+        "frontend_bridge_core.chat_session.start_chat_init",
+        start_chat_init,
+    )
 
-    launch_task = handler._start_chat_init({"mode": "launch", "payload": {"templateId": "demo"}})
+    launch_task = handler._start_chat_init(
+        {"mode": "launch", "payload": {"templateId": "demo"}}
+    )
     resume_task = handler._start_chat_init({"mode": "resume-last"})
 
     assert launch_task == {"id": "task-launch"}
@@ -124,16 +149,24 @@ def test_start_chat_init_forwards_launch_and_resume_callbacks(monkeypatch):
     ]
 
 
-def test_legacy_chat_routes_keep_synchronous_snapshot_shape():
+def test_legacy_chat_routes_keep_synchronous_snapshot_shape(monkeypatch):
     handler = _handler()
     handler._require_authorized_write = lambda _path: None
     handler._read_json = lambda: {"templateId": "demo"}
     responses: list[tuple[object, object]] = []
-    handler._send_json = lambda payload, status=HTTPStatus.OK: responses.append((payload, status))
+    handler._send_json = lambda payload, status=HTTPStatus.OK: responses.append(
+        (payload, status)
+    )
     launch_snapshot = {"status": "idle", "sessionId": "legacy-launch"}
     resume_snapshot = {"status": "idle", "sessionId": "legacy-resume"}
-    handler._launch_chat = lambda _body: launch_snapshot
-    handler._resume_last_chat = lambda: resume_snapshot
+    monkeypatch.setattr(
+        "frontend_bridge_core.routes.chat_routes.launch_chat",
+        lambda _state, _body: launch_snapshot,
+    )
+    monkeypatch.setattr(
+        "frontend_bridge_core.routes.chat_routes.resume_last_chat",
+        lambda _state: resume_snapshot,
+    )
 
     handler.path = "/api/chat/launch"
     handler.do_POST()

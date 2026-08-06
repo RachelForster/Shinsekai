@@ -36,7 +36,7 @@ def test_character_export_writes_only_below_output_root(tmp_path, monkeypatch):
     handler, responses = _export_handler("安全角色")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "frontend_bridge_core.routes.api._as_character_config",
+        "frontend_bridge_core.routes.transfer_routes._as_character_config",
         lambda character: character,
     )
     monkeypatch.setattr(
