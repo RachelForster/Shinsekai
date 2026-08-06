@@ -1,11 +1,28 @@
 from __future__ import annotations
 
 import os
-import shutil
+import stat
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
+
+from sdk.file_transactions import (
+    read_text_without_links,
+    remove_directory_without_links,
+    remove_file_without_links,
+    require_directory_identity,
+    snapshot_directory_entries_without_links,
+)
+from core.paths import (
+    _metadata_is_link_or_reparse_point,
+    managed_project_storage,
+    path_is_within,
+    project_root,
+    resolve_project_output_path,
+    safe_path_component,
+    user_home_directory,
+)
 
 from .downloads import preload_huggingface_snapshot
 
@@ -52,59 +69,258 @@ class ModelAssetSpec:
         return f"{self.asset_id}:{self.source}:{location}"
 
 
-def _huggingface_cache_roots() -> tuple[Path, ...]:
-    """Return the single hub cache root Hugging Face will actually use."""
+def active_huggingface_hub_cache_root(
+    *,
+    root: Path | None = None,
+) -> Path:
+    """Return the one hub cache root used by readiness checks and downloads.
 
+    Environment-variable presence is authoritative.  In particular, an empty
+    current variable must not fall through to a populated legacy variable or
+    to Hugging Face's cwd-relative interpretation of an empty cache path.
+    """
+
+    project = project_root() if root is None else root
     for env_name in ("HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE"):
-        raw = str(os.environ.get(env_name) or "").strip()
-        if raw:
-            return (Path(raw).expanduser().resolve(strict=False),)
+        if env_name not in os.environ:
+            continue
+        raw = os.environ[env_name]
+        if not raw:
+            raise ValueError(f"{env_name} must not be empty")
+        return resolve_project_output_path(raw, root=project)
 
-    hf_home_raw = str(os.environ.get("HF_HOME") or "").strip()
-    hf_home = Path(hf_home_raw).expanduser() if hf_home_raw else Path.home() / ".cache" / "huggingface"
-    return ((hf_home / "hub").resolve(strict=False),)
+    if "HF_HOME" in os.environ:
+        hf_home_raw = os.environ["HF_HOME"]
+        if not hf_home_raw:
+            raise ValueError("HF_HOME must not be empty")
+        hf_home = resolve_project_output_path(hf_home_raw, root=project)
+    else:
+        try:
+            home = user_home_directory()
+        except (KeyError, OSError, RuntimeError, ValueError):
+            hf_home = managed_project_storage("data/cache/huggingface", root=project)
+        else:
+            hf_home = home / ".cache" / "huggingface"
+    # A project-owned ``HF_HOME`` must not regain an escape through a linked
+    # ``hub`` child created after the parent was validated.
+    return resolve_project_output_path(hf_home / "hub", root=project)
 
 
-def _is_nonempty_file(path: Path) -> bool:
-    try:
-        return path.is_file() and path.stat().st_size > 0
-    except OSError:
-        return False
+def _huggingface_cache_roots(
+    *,
+    root: Path | None = None,
+) -> tuple[Path, ...]:
+    """Backward-compatible tuple wrapper around the single active cache root."""
+
+    return (active_huggingface_hub_cache_root(root=root),)
 
 
-def _matches_required_pattern(snapshot: Path, pattern: str) -> bool:
+def _normalized_required_pattern(pattern: str) -> str:
     normalized = str(pattern or "").strip().replace("\\", "/")
+    if (
+        not normalized
+        or normalized.startswith("/")
+        or any(part in {"", ".", ".."} for part in normalized.split("/"))
+    ):
+        return ""
+    return normalized
+
+
+def _pattern_matches_relative_path(relative: Path, pattern: str) -> bool:
+    normalized = _normalized_required_pattern(pattern)
     if not normalized:
         return False
-    if any(marker in normalized for marker in ("*", "?", "[")):
-        return any(_is_nonempty_file(candidate) for candidate in snapshot.glob(normalized))
-    return _is_nonempty_file(snapshot / Path(*normalized.split("/")))
+    relative_text = relative.as_posix()
+    if not any(marker in normalized for marker in ("*", "?", "[")):
+        return relative_text == normalized
+    if "/" not in normalized and len(relative.parts) != 1:
+        return False
+    return relative.match(normalized)
+
+
+def _snapshot_regular_paths(
+    snapshot: Path,
+    *,
+    allowed_link_root: Path,
+    expected_snapshot_identity: os.stat_result | None = None,
+) -> set[Path] | None:
+    """Inventory one stable model tree, allowing only bounded file links."""
+
+    try:
+        snapshot, snapshot_identity, root_entries = (
+            snapshot_directory_entries_without_links(
+                snapshot,
+                field="model snapshot directory",
+            )
+        )
+    except (FileNotFoundError, NotADirectoryError, PermissionError, ValueError):
+        return None
+    allowed_root = allowed_link_root.resolve(strict=False)
+    if (
+        expected_snapshot_identity is not None
+        and not os.path.samestat(
+            expected_snapshot_identity,
+            snapshot_identity,
+        )
+    ):
+        return None
+    regular_paths: set[Path] = set()
+    observed_leaves: list[
+        tuple[
+            Path,
+            os.stat_result,
+            Path | None,
+            os.stat_result | None,
+        ]
+    ] = []
+    pending: list[
+        tuple[
+            Path,
+            Path,
+            os.stat_result,
+            list[tuple[Path, os.stat_result]] | None,
+        ]
+    ] = [(snapshot, Path(), snapshot_identity, root_entries)]
+    try:
+        while pending:
+            directory, relative_dir, expected_identity, prefetched = pending.pop()
+            if prefetched is None:
+                directory, directory_identity, entries = (
+                    snapshot_directory_entries_without_links(
+                        directory,
+                        field="model snapshot subdirectory",
+                    )
+                )
+                if not os.path.samestat(
+                    expected_identity,
+                    directory_identity,
+                ):
+                    raise PermissionError(
+                        f"model snapshot directory identity changed: {directory}"
+                    )
+            else:
+                directory_identity = expected_identity
+                entries = prefetched
+            for path, metadata in entries:
+                relative = relative_dir / path.name
+                if _metadata_is_link_or_reparse_point(metadata):
+                    try:
+                        resolved = path.resolve(strict=True)
+                        target_identity = resolved.stat()
+                    except OSError:
+                        continue
+                    if (
+                        not path_is_within(resolved, allowed_root)
+                        or not stat.S_ISREG(target_identity.st_mode)
+                        or target_identity.st_size <= 0
+                    ):
+                        continue
+                    regular_paths.add(relative)
+                    observed_leaves.append(
+                        (path, metadata, resolved, target_identity)
+                    )
+                    continue
+                if stat.S_ISDIR(metadata.st_mode):
+                    pending.append(
+                        (path, relative, metadata, None)
+                    )
+                    continue
+                if stat.S_ISREG(metadata.st_mode) and metadata.st_size > 0:
+                    regular_paths.add(relative)
+                    observed_leaves.append(
+                        (path, metadata, None, None)
+                    )
+            require_directory_identity(
+                directory,
+                directory_identity,
+                field="model snapshot directory",
+            )
+            require_directory_identity(
+                snapshot,
+                snapshot_identity,
+                field="model snapshot directory",
+            )
+
+        for path, identity, resolved, target_identity in observed_leaves:
+            current_identity = path.lstat()
+            if not os.path.samestat(identity, current_identity):
+                raise PermissionError(
+                    f"model snapshot file identity changed: {path}"
+                )
+            if resolved is not None:
+                current_resolved = path.resolve(strict=True)
+                current_target_identity = current_resolved.stat()
+                if (
+                    current_resolved != resolved
+                    or target_identity is None
+                    or not os.path.samestat(
+                        target_identity,
+                        current_target_identity,
+                    )
+                ):
+                    raise PermissionError(
+                        f"model snapshot link target changed: {path}"
+                    )
+        require_directory_identity(
+            snapshot,
+            snapshot_identity,
+            field="model snapshot directory",
+        )
+    except (OSError, PermissionError, ValueError):
+        return None
+    return regular_paths
 
 
 def _snapshot_is_complete(
     snapshot: Path,
     required_file_groups: tuple[tuple[str, ...], ...],
     snapshot_validator: Callable[[Path], bool] | None = None,
+    *,
+    allowed_link_root: Path | None = None,
+    expected_snapshot_identity: os.stat_result | None = None,
 ) -> bool:
-    if not snapshot.is_dir():
+    regular_paths = _snapshot_regular_paths(
+        snapshot,
+        allowed_link_root=(
+            snapshot
+            if allowed_link_root is None
+            else allowed_link_root
+        ),
+        expected_snapshot_identity=expected_snapshot_identity,
+    )
+    if regular_paths is None:
         return False
-    try:
-        files_complete = (
-            all(
-                any(_matches_required_pattern(snapshot, pattern) for pattern in alternatives)
-                for alternatives in required_file_groups
+    files_complete = (
+        all(
+            any(
+                any(
+                    _pattern_matches_relative_path(relative, pattern)
+                    for relative in regular_paths
+                )
+                for pattern in alternatives
             )
-            if required_file_groups
-            else any(snapshot.iterdir())
+            for alternatives in required_file_groups
         )
-        return files_complete and (
-            snapshot_validator is None or bool(snapshot_validator(snapshot))
-        )
+        if required_file_groups
+        else bool(regular_paths)
+    )
+    if not files_complete:
+        return False
+    if snapshot_validator is None:
+        return True
+    try:
+        return bool(snapshot_validator(snapshot))
     except Exception:
         return False
 
 
-def _main_huggingface_snapshots(spec: ModelAssetSpec) -> tuple[Path, ...]:
+def _main_huggingface_snapshots(
+    spec: ModelAssetSpec,
+    *,
+    root: Path | None = None,
+) -> tuple[Path, ...]:
+    """Return only the active ``main`` snapshot under the selected cache root."""
+
     if spec.source != "huggingface":
         return ()
     try:
@@ -112,34 +328,35 @@ def _main_huggingface_snapshots(spec: ModelAssetSpec) -> tuple[Path, ...]:
     except ImportError:
         return ()
 
-    snapshots: list[Path] = []
-    for root in _huggingface_cache_roots():
-        try:
-            resolved_root = root.resolve(strict=False)
-            repo_dir = (
-                resolved_root
-                / repo_folder_name(repo_id=spec.repo_id, repo_type="model")
-            ).resolve(strict=False)
-            if os.path.normcase(
-                os.path.commonpath([str(resolved_root), str(repo_dir)])
-            ) != os.path.normcase(str(resolved_root)):
-                continue
-            revision = (repo_dir / "refs" / "main").read_text(encoding="utf-8").strip()
-            if not revision or revision in {".", ".."} or "/" in revision or "\\" in revision:
-                continue
-            snapshots_dir = (repo_dir / "snapshots").resolve(strict=False)
-            snapshot = snapshots_dir / revision
-            resolved_snapshot = snapshot.resolve(strict=False)
-            if os.path.normcase(
-                os.path.commonpath([str(snapshots_dir), str(resolved_snapshot)])
-            ) == os.path.normcase(str(snapshots_dir)):
-                snapshots.append(snapshot)
-        except (OSError, TypeError, ValueError):
-            continue
-    return tuple(snapshots)
+    try:
+        cache_root = active_huggingface_hub_cache_root(root=root)
+        repo_name = safe_path_component(
+            repo_folder_name(repo_id=spec.repo_id, repo_type="model"),
+            field="Hugging Face repository cache directory",
+        )
+        repo_dir = resolve_project_output_path(repo_name, root=cache_root)
+        revision = safe_path_component(
+            read_text_without_links(repo_dir / "refs" / "main").strip(),
+            field="Hugging Face main revision",
+        )
+        snapshots_dir = resolve_project_output_path(
+            repo_dir / "snapshots",
+            root=cache_root,
+        )
+        snapshot = resolve_project_output_path(
+            snapshots_dir / revision,
+            root=cache_root,
+        )
+    except (FileNotFoundError, ImportError, OSError, PermissionError, TypeError, ValueError):
+        return ()
+    return (snapshot,)
 
 
-def find_cached_huggingface_snapshot(spec: ModelAssetSpec) -> Path | None:
+def find_cached_huggingface_snapshot(
+    spec: ModelAssetSpec,
+    *,
+    root: Path | None = None,
+) -> Path | None:
     """Return the complete snapshot referenced by the cached ``main`` ref.
 
     Hugging Face can retain older complete snapshots after an interrupted
@@ -148,17 +365,23 @@ def find_cached_huggingface_snapshot(spec: ModelAssetSpec) -> Path | None:
     load download again (or fail offline).
     """
 
-    for snapshot in _main_huggingface_snapshots(spec):
+    cache_root = active_huggingface_hub_cache_root(root=root)
+    for snapshot in _main_huggingface_snapshots(spec, root=root):
         if _snapshot_is_complete(
             snapshot,
             spec.required_file_groups,
             spec.snapshot_validator,
+            allowed_link_root=cache_root,
         ):
             return snapshot
     return None
 
 
-def _remove_invalid_main_snapshots(spec: ModelAssetSpec) -> bool:
+def _remove_invalid_main_snapshots(
+    spec: ModelAssetSpec,
+    *,
+    root: Path | None = None,
+) -> bool:
     """Remove only invalid snapshots selected by the cached ``main`` ref.
 
     ``snapshot_download(force_download=True)`` refreshes blobs but deliberately
@@ -169,24 +392,45 @@ def _remove_invalid_main_snapshots(spec: ModelAssetSpec) -> bool:
     """
 
     removed = False
-    for snapshot in _main_huggingface_snapshots(spec):
-        if not snapshot.exists() or _snapshot_is_complete(
+    cache_root = active_huggingface_hub_cache_root(root=root)
+    for snapshot in _main_huggingface_snapshots(spec, root=root):
+        try:
+            metadata = snapshot.lstat()
+        except FileNotFoundError:
+            continue
+        if _snapshot_is_complete(
             snapshot,
             spec.required_file_groups,
             spec.snapshot_validator,
+            allowed_link_root=cache_root,
+            expected_snapshot_identity=metadata,
         ):
             continue
-        if snapshot.is_symlink():
-            snapshot.unlink()
-        elif snapshot.is_dir():
-            shutil.rmtree(snapshot)
+        if _metadata_is_link_or_reparse_point(metadata):
+            raise PermissionError(
+                f"invalid model snapshot is a symbolic link or reparse point: {snapshot}"
+            )
+        if stat.S_ISDIR(metadata.st_mode):
+            remove_directory_without_links(
+                snapshot,
+                expected_identity=metadata,
+            )
+        elif stat.S_ISREG(metadata.st_mode):
+            remove_file_without_links(
+                snapshot,
+                expected_identity=metadata,
+            )
         else:
-            snapshot.unlink()
+            raise PermissionError(f"invalid model snapshot has an unsafe type: {snapshot}")
         removed = True
     return removed
 
 
-def inspect_model_asset(spec: ModelAssetSpec) -> dict[str, object]:
+def inspect_model_asset(
+    spec: ModelAssetSpec,
+    *,
+    root: Path | None = None,
+) -> dict[str, object]:
     """Return the cache/download state consumed by model download UIs."""
 
     result: dict[str, object] = {
@@ -205,6 +449,7 @@ def inspect_model_asset(spec: ModelAssetSpec) -> dict[str, object]:
                 path,
                 spec.required_file_groups,
                 spec.snapshot_validator,
+                allowed_link_root=path,
             )
         )
         result["cached"] = cached
@@ -213,7 +458,7 @@ def inspect_model_asset(spec: ModelAssetSpec) -> dict[str, object]:
         return result
 
     result["repoId"] = spec.repo_id
-    snapshot = find_cached_huggingface_snapshot(spec)
+    snapshot = find_cached_huggingface_snapshot(spec, root=root)
     if snapshot is not None:
         result["cached"] = True
         result["path"] = str(snapshot)
@@ -225,8 +470,11 @@ def _download_model_asset_unlocked(
     *,
     update_task: TaskUpdate,
     token: str = "",
+    root: Path | None = None,
 ) -> dict[str, object]:
-    current = inspect_model_asset(spec)
+    """Ensure a model asset is cached and return its resolved status."""
+
+    current = inspect_model_asset(spec, root=root)
     if spec.source == "local":
         if not current["cached"]:
             raise ValueError(f"Local model directory does not exist: {current.get('path', '')}")
@@ -240,13 +488,14 @@ def _download_model_asset_unlocked(
         )
         return {**current, "downloaded": False}
 
-    snapshot_kwargs: dict[str, object] = {}
-    main_snapshots = _main_huggingface_snapshots(spec)
+    cache_root = active_huggingface_hub_cache_root(root=root)
+    snapshot_kwargs: dict[str, object] = {"cache_dir": str(cache_root)}
+    main_snapshots = _main_huggingface_snapshots(spec, root=root)
     if main_snapshots:
         # The active snapshot exists but failed validation. Redownload the
         # complete allowed artifact set and rebuild its snapshot pointers so no
         # partial or corrupt file survives.
-        _remove_invalid_main_snapshots(spec)
+        _remove_invalid_main_snapshots(spec, root=root)
         snapshot_kwargs["force_download"] = True
     if spec.allow_patterns:
         snapshot_kwargs["allow_patterns"] = list(spec.allow_patterns)
@@ -269,10 +518,15 @@ def _download_model_asset_unlocked(
         )
 
     resolved = Path(snapshot_path).resolve(strict=False)
+    if not path_is_within(resolved, cache_root):
+        raise RuntimeError(
+            f"Downloaded model snapshot is outside the active cache root: {spec.repo_id}"
+        )
     if not _snapshot_is_complete(
         resolved,
         spec.required_file_groups,
         spec.snapshot_validator,
+        allowed_link_root=cache_root,
     ):
         raise RuntimeError(
             f"Downloaded model snapshot is incomplete: {spec.repo_id}"
@@ -295,6 +549,7 @@ def download_model_asset(
     *,
     update_task: TaskUpdate,
     token: str = "",
+    root: Path | None = None,
 ) -> dict[str, object]:
     """Ensure a model asset is cached and return its resolved status.
 
@@ -303,11 +558,17 @@ def download_model_asset(
     """
 
     with _model_asset_download_lock(spec.task_key):
-        return _download_model_asset_unlocked(spec, update_task=update_task, token=token)
+        return _download_model_asset_unlocked(
+            spec,
+            update_task=update_task,
+            token=token,
+            root=root,
+        )
 
 
 __all__ = [
     "ModelAssetSpec",
+    "active_huggingface_hub_cache_root",
     "download_model_asset",
     "find_cached_huggingface_snapshot",
     "inspect_model_asset",

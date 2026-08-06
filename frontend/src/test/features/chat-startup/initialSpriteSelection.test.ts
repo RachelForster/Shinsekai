@@ -14,7 +14,7 @@ const characters = [
 describe("initial sprite selection", () => {
   it.each([
     {
-      expected: "C:\\Sprites\\Nanami\\Idle.PNG",
+      expected: " C:\\Sprites\\Nanami\\Idle.PNG ",
       path: " C:\\Sprites\\Nanami\\Idle.PNG ",
       preserveUnknown: true,
       selectedCharacters: ["Nanami"],
@@ -32,7 +32,7 @@ describe("initial sprite selection", () => {
       selectedCharacters: ["Nanami"],
     },
     {
-      expected: "D:/external/custom.png",
+      expected: " D:/external/custom.png ",
       path: " D:/external/custom.png ",
       preserveUnknown: true,
       selectedCharacters: ["Nanami"],
@@ -43,7 +43,7 @@ describe("initial sprite selection", () => {
       preserveUnknown: false,
       selectedCharacters: ["Nanami"],
     },
-    { expected: "", path: "   ", preserveUnknown: true, selectedCharacters: ["Nanami"] },
+    { expected: "   ", path: "   ", preserveUnknown: true, selectedCharacters: ["Nanami"] },
   ])("normalizes compatible paths without changing the retained value", (testCase) => {
     expect(compatibleInitialSpritePath({ characters, ...testCase })).toBe(testCase.expected);
   });
@@ -72,6 +72,24 @@ describe("initial sprite selection", () => {
         selectedCharacters: ["Upper"],
       }),
     ).toBe("");
+  });
+
+  it("does not collapse literal POSIX backslashes into directory separators", () => {
+    const separatorDistinctCharacters = [
+      { name: "Literal", sprites: [{ path: String.raw`/tmp/sprites/hero\idle.png` }] },
+      { name: "Directory", sprites: [{ path: "/tmp/sprites/hero/idle.png" }] },
+    ];
+
+    expect(
+      initialSpriteOwner(String.raw`/tmp/sprites/hero\idle.png`, separatorDistinctCharacters, {
+        caseSensitive: true,
+      }),
+    ).toBe("Literal");
+    expect(
+      initialSpriteOwner("/tmp/sprites/hero/idle.png", separatorDistinctCharacters, {
+        caseSensitive: true,
+      }),
+    ).toBe("Directory");
   });
 
   it("matches Windows path casing with the same semantics as os.path.normcase", () => {

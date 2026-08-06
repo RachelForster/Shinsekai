@@ -1,6 +1,7 @@
 import type { SyntheticEvent } from "react";
 
 import { fileUrl } from "../../entities/files/repository";
+import { classifyMediaSource } from "../../shared/assets/mediaSource";
 import type { MessageKey } from "../../shared/i18n";
 import type { ChatTransportMode, ChatTransportState } from "../../shared/platform/types";
 
@@ -65,28 +66,32 @@ export function hideBrokenStageAsset(event: SyntheticEvent<HTMLImageElement>) {
 }
 
 export function stageAssetUrl(path?: string) {
-  if (!path) {
-    return "";
-  }
-  if (/^https?:\/\//i.test(path) && typeof window !== "undefined") {
-    try {
-      const assetUrl = new URL(path);
-      const pageUrl = window.location;
-      const assetIsLoopback = isLoopbackHost(assetUrl.hostname);
-      const pageIsRemote = isRemoteMobileAccessPage(pageUrl);
-      if (assetIsLoopback && pageIsRemote) {
-        assetUrl.protocol = pageUrl.protocol;
-        assetUrl.host = pageUrl.host;
-        return assetUrl.toString();
+  const source = path ?? "";
+  switch (classifyMediaSource(source)) {
+    case "direct": {
+      if (/^https?:\/\//i.test(source) && typeof window !== "undefined") {
+        try {
+          const assetUrl = new URL(source);
+          const pageUrl = window.location;
+          const assetIsLoopback = isLoopbackHost(assetUrl.hostname);
+          const pageIsRemote = isRemoteMobileAccessPage(pageUrl);
+          if (assetIsLoopback && pageIsRemote) {
+            assetUrl.protocol = pageUrl.protocol;
+            assetUrl.host = pageUrl.host;
+            return assetUrl.toString();
+          }
+        } catch {
+          // The media classifier already rejects malformed HTTP URLs.
+        }
       }
-    } catch {
-      // Fall through to the existing path handling.
+      return source;
     }
+    case "local":
+      return fileUrl(source);
+    case "empty":
+    case "unsupported":
+      return "";
   }
-  if (/^(?:[a-z][a-z\d+.-]*:|\/assets\/)/i.test(path)) {
-    return path;
-  }
-  return fileUrl(path);
 }
 
 export function transportStatusText(

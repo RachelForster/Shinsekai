@@ -439,6 +439,57 @@ def test_frontend_bridge_does_not_own_runtime_implementations() -> None:
     )
 
 
+def test_bridge_persistence_lifecycles_live_in_application() -> None:
+    bridge_root = REPO_ROOT / "frontend_bridge_core"
+    route_source = (bridge_root / "routes" / "api.py").read_text(encoding="utf-8")
+
+    assert not (bridge_root / "chat_themes.py").exists()
+    assert not (bridge_root / "builtin_chat_themes.py").exists()
+    assert not (bridge_root / "effects.py").exists()
+    assert not (bridge_root / "plugin_ui.py").exists()
+    assert (REPO_ROOT / "application" / "chat" / "themes.py").is_file()
+    assert (REPO_ROOT / "application" / "media" / "effects.py").is_file()
+    assert (REPO_ROOT / "application" / "plugins" / "ui.py").is_file()
+    assert "from application.chat.themes import" in route_source
+    assert "from application.media.effects import" in route_source
+    assert "from application.plugins.ui import" in route_source
+
+
+def test_path_safety_modules_use_one_canonical_sdk_namespace() -> None:
+    legacy_modules = {
+        "core.archive_paths",
+        "core.file_transactions",
+        "core.process_launch",
+    }
+    offenders: list[tuple[str, str]] = []
+    source_roots = (*SOURCE_DIRECTORIES, "main.py", "frontend_bridge.py", "webui_react.py")
+
+    for relative_root in source_roots:
+        root = REPO_ROOT / relative_root
+        sources = [root] if root.is_file() else sorted(root.rglob("*.py"))
+        for source in sources:
+            tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module in legacy_modules:
+                    offenders.append(
+                        (source.relative_to(REPO_ROOT).as_posix(), node.module)
+                    )
+                elif isinstance(node, ast.Import):
+                    offenders.extend(
+                        (source.relative_to(REPO_ROOT).as_posix(), alias.name)
+                        for alias in node.names
+                        if alias.name in legacy_modules
+                    )
+
+    assert not (REPO_ROOT / "core" / "archive_paths.py").exists()
+    assert not (REPO_ROOT / "core" / "file_transactions.py").exists()
+    assert not (REPO_ROOT / "core" / "process_launch.py").exists()
+    assert not offenders, f"Use the stable sdk.* path-safety modules: {offenders}"
+    assert (REPO_ROOT / "test" / "unit" / "sdk" / "test_archive_paths.py").is_file()
+    assert (REPO_ROOT / "test" / "unit" / "sdk" / "test_file_transactions.py").is_file()
+    assert (REPO_ROOT / "test" / "unit" / "sdk" / "test_process_launch.py").is_file()
+
+
 def test_mobile_access_respects_application_and_transport_boundaries() -> None:
     """Keep lifecycle in application and concrete listeners in the bridge."""
 

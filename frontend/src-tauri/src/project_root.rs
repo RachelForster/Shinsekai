@@ -10,13 +10,21 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use crate::path_contract::{
+    canonicalize_directory_without_links, canonicalize_regular_file_without_links,
+    files_have_same_identity, metadata_is_link, open_directory_without_links,
+    open_regular_file_without_links, path_is_filesystem_root, path_text_is_portable,
+};
+
 #[cfg(windows)]
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
+#[cfg(windows)]
+use std::os::windows::fs::OpenOptionsExt;
 #[cfg(windows)]
 use std::os::windows::io::AsRawHandle;
 
 #[cfg(unix)]
-use std::os::fd::AsRawFd;
+use std::os::{fd::AsRawFd, unix::fs::OpenOptionsExt};
 
 #[cfg(windows)]
 #[link(name = "kernel32")]
@@ -62,6 +70,8 @@ const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
 const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
 #[cfg(windows)]
 const LOCKFILE_EXCLUSIVE_LOCK: u32 = 0x2;
+#[cfg(windows)]
+const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
 #[cfg(windows)]
 const HKEY_CURRENT_USER: *mut std::ffi::c_void = (-2_147_483_647_isize) as *mut std::ffi::c_void;
 #[cfg(windows)]
@@ -238,14 +248,12 @@ pub(crate) fn preferred_environment_root(
     shinsekai: Option<OsString>,
     easyai: Option<OsString>,
 ) -> Option<(PathBuf, ProjectRootCandidateSource)> {
-    nonempty_os_string(shinsekai)
-        .or_else(|| nonempty_os_string(easyai))
-        .map(|value| {
-            (
-                PathBuf::from(value),
-                ProjectRootCandidateSource::EnvironmentOverride,
-            )
-        })
+    shinsekai.or(easyai).map(|value| {
+        (
+            PathBuf::from(value),
+            ProjectRootCandidateSource::EnvironmentOverride,
+        )
+    })
 }
 
 #[cfg(not(windows))]
@@ -334,10 +342,6 @@ fn read_current_user_registry_string(sub_key: &str, value: &str) -> Option<OsStr
     Some(OsString::from_wide(&buffer[..value_len]))
 }
 
-fn nonempty_os_string(value: Option<OsString>) -> Option<OsString> {
-    value.filter(|value| !value.is_empty())
-}
-
 pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProjectRoot, String> {
     let locator_path = absolute_path(&options.locator_path)?;
 
@@ -384,6 +388,12 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
         ));
     }
 
+    // The platform config directory may itself be reached through a symlink or
+    // reparse-point alias. Resolve that parent once before any locator read,
+    // lock, temporary write, or later UI selection so all operations remain
+    // attached to one directory identity even if the alias is retargeted.
+    let locator_path = prepare_primary_locator_path(&locator_path)?;
+
     let locator_read_paths = deduplicate_paths(
         std::iter::once(locator_path.clone()).chain(options.locator_read_paths.iter().cloned()),
     );
@@ -429,18 +439,20 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
 
     let mut data_candidates = Vec::new();
     let mut seen = HashSet::new();
-    add_data_candidate(
-        &mut data_candidates,
-        &mut seen,
-        &options.app_root,
-        if options.development_source && options.app_root == options.source_root {
-            ProjectRootCandidateSource::DevelopmentSource
-        } else {
-            ProjectRootCandidateSource::CurrentAppRoot
-        },
-        true,
-        true,
-    );
+    // Installation directories are executable/resource locations, not data
+    // locations. Only a strong legacy-data signature may promote one to a
+    // recovery candidate; a packaged cache, schema, or other incidental file
+    // under `data/` must never recreate the old install-as-project behavior.
+    if has_strong_project_data(&options.app_root) {
+        add_data_candidate(
+            &mut data_candidates,
+            &mut seen,
+            &options.app_root,
+            ProjectRootCandidateSource::CurrentAppRoot,
+            true,
+            true,
+        );
+    }
     add_data_candidate(
         &mut data_candidates,
         &mut seen,
@@ -463,6 +475,19 @@ pub(crate) fn resolve(options: ProjectRootResolveOptions) -> Result<ResolvedProj
         for (path, source) in restart_log_candidates(log_path) {
             if data_candidates.len() >= MAX_RECOVERY_CANDIDATES {
                 break;
+            }
+            // Older production builds could report the writable installation
+            // directory as their project root even before any user data was
+            // created.  Once installation and data roots are separated, that
+            // empty current app directory is not a recovery candidate and
+            // must not force a meaningless migration prompt.  A different
+            // (for example removed/old) app path is still retained, as is a
+            // current app root that actually contains project data.
+            if source == ProjectRootCandidateSource::RestartLogProjectRoot
+                && path_identity(&path) == path_identity(&options.app_root)
+                && !has_strong_project_data(&path)
+            {
+                continue;
             }
             add_data_candidate(&mut data_candidates, &mut seen, &path, source, false, true);
         }
@@ -703,9 +728,21 @@ fn current_candidate_snapshot(candidate: &CandidateRecord) -> ProjectRootCandida
 }
 
 fn prepare_explicit_root(path: &Path) -> Result<PathBuf, String> {
+    if !path_text_is_portable(path) {
+        return Err(format!(
+            "explicit project root contains non-portable characters: {}",
+            path.display()
+        ));
+    }
     if !path.is_absolute() {
         return Err(format!(
             "explicit project root must be absolute: {}",
+            path.display()
+        ));
+    }
+    if path_is_filesystem_root(path) {
+        return Err(format!(
+            "explicit project root must not be a filesystem root: {}",
             path.display()
         ));
     }
@@ -729,13 +766,21 @@ fn prepare_current_root(
     app_data_project_root: &Path,
     development_source: bool,
 ) -> Result<(PathBuf, ProjectRootCandidateSource), String> {
-    if let Some(root) = prepare_app_root(app_root) {
-        let source = if development_source {
-            ProjectRootCandidateSource::DevelopmentSource
-        } else {
-            ProjectRootCandidateSource::CurrentAppRoot
-        };
-        return Ok((root, source));
+    // A writable installation directory is not, by itself, a writable-data
+    // contract.  Per-user installers and portable distributions are commonly
+    // writable, but an update can replace or remove that directory.  Preserve
+    // an application root only when it already contains meaningful project
+    // data (or when source development explicitly selected it); otherwise a
+    // fresh production install must start in the platform app-data directory.
+    if development_source || has_strong_project_data(app_root) {
+        if let Some(root) = prepare_app_root(app_root) {
+            let source = if development_source {
+                ProjectRootCandidateSource::DevelopmentSource
+            } else {
+                ProjectRootCandidateSource::CurrentAppRoot
+            };
+            return Ok((root, source));
+        }
     }
 
     let app_data = absolute_path(app_data_project_root)?;
@@ -759,8 +804,13 @@ fn prepare_app_root(app_root: &Path) -> Option<PathBuf> {
         return validate_existing_writable_project_root(app_root);
     }
     let root = validate_existing_writable_root(app_root)?;
+    let root_identity = open_directory_without_links(&root).ok()?;
     fs::create_dir_all(root.join("data")).ok()?;
-    can_write_directory(&root.join("data")).then_some(root)
+    if !path_refers_to_open_directory(&root, &root_identity) {
+        return None;
+    }
+    let prepared = validate_existing_writable_project_root(&root)?;
+    (prepared == root && path_refers_to_open_directory(&root, &root_identity)).then_some(prepared)
 }
 
 fn add_data_candidate(
@@ -771,33 +821,33 @@ fn add_data_candidate(
     trusted_for_automatic_selection: bool,
     retain_unavailable: bool,
 ) {
-    if !path.is_absolute() {
+    if !path.is_absolute() || !path_text_is_portable(path) {
         return;
     }
 
-    let Some(existing_path) = path
-        .is_dir()
-        .then(|| path.canonicalize().unwrap_or_else(|_| path.to_path_buf()))
-    else {
-        if retain_unavailable
-            && matches!(
-                source,
-                ProjectRootCandidateSource::RestartLogProjectRoot
-                    | ProjectRootCandidateSource::WindowsRegistryInstallDir
-            )
-            && !path.exists()
-            && seen.insert(path_identity(path))
-        {
-            candidates.push(CandidateRecord {
-                path: path.to_path_buf(),
-                source,
-                has_project_data: false,
-                selectable: false,
-                trusted_for_automatic_selection,
-                allow_empty_project_data: false,
-            });
+    let existing_path = match canonicalize_directory_without_links(path) {
+        Ok(path) => path,
+        Err(_) => {
+            if retain_unavailable
+                && matches!(
+                    source,
+                    ProjectRootCandidateSource::RestartLogProjectRoot
+                        | ProjectRootCandidateSource::WindowsRegistryInstallDir
+                )
+                && !path.exists()
+                && seen.insert(path_identity(path))
+            {
+                candidates.push(CandidateRecord {
+                    path: path.to_path_buf(),
+                    source,
+                    has_project_data: false,
+                    selectable: false,
+                    trusted_for_automatic_selection,
+                    allow_empty_project_data: false,
+                });
+            }
+            return;
         }
-        return;
     };
 
     let has_project_data = if trusted_for_automatic_selection {
@@ -843,43 +893,104 @@ fn add_data_candidate(
 }
 
 fn validate_existing_writable_root(path: &Path) -> Option<PathBuf> {
-    if !path.is_absolute() || !path.is_dir() || !can_write_directory(path) {
+    if !path.is_absolute()
+        || path_is_filesystem_root(path)
+        || !path_text_is_portable(path)
+        || !path.is_dir()
+    {
         return None;
     }
-    path.canonicalize().ok()
+    let canonical = canonicalize_directory_without_links(path).ok()?;
+    if path_is_filesystem_root(&canonical) || !path_text_is_portable(&canonical) {
+        return None;
+    }
+    let identity = open_directory_without_links(&canonical).ok()?;
+    if !can_write_directory(&canonical) || !path_refers_to_open_directory(&canonical, &identity) {
+        return None;
+    }
+    Some(canonical)
 }
 
 fn validate_existing_writable_project_root(path: &Path) -> Option<PathBuf> {
-    if !path.is_absolute() || !path.is_dir() {
+    if !path.is_absolute()
+        || path_is_filesystem_root(path)
+        || !path_text_is_portable(path)
+        || !path.is_dir()
+    {
         return None;
     }
-    let data = path.join("data");
-    if !data.is_dir() || !can_write_directory(&data) {
+    let root = canonicalize_directory_without_links(path).ok()?;
+    if path_is_filesystem_root(&root) || !path_text_is_portable(&root) {
         return None;
     }
-    path.canonicalize().ok()
+    let root_identity = open_directory_without_links(&root).ok()?;
+    let data = root.join("data");
+    let data_identity = open_directory_without_links(&data).ok()?;
+    if !can_write_directory(&data)
+        || !path_refers_to_open_directory(&root, &root_identity)
+        || !path_refers_to_open_directory(&data, &data_identity)
+    {
+        return None;
+    }
+    let canonical_data = canonicalize_directory_without_links(&data).ok()?;
+    (path_text_is_portable(&canonical_data)
+        && canonical_data.starts_with(&root)
+        && path_refers_to_open_directory(&root, &root_identity)
+        && path_refers_to_open_directory(&canonical_data, &data_identity))
+    .then_some(root)
 }
 
 fn validate_existing_project_root(path: &Path) -> Option<PathBuf> {
-    if path.join("data").is_dir() {
-        validate_existing_writable_project_root(path)
-    } else {
-        validate_existing_writable_root(path)
+    let data = path.join("data");
+    match open_directory_without_links(&data) {
+        Ok(_) => validate_existing_writable_project_root(path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            validate_existing_writable_root(path)
+        }
+        Err(_) => None,
     }
 }
 
 fn absolute_path(path: &Path) -> Result<PathBuf, String> {
-    if path.is_absolute() {
+    if path.is_absolute() && !path_is_filesystem_root(path) && path_text_is_portable(path) {
         return Ok(path.to_path_buf());
     }
-    std::env::current_dir()
-        .map(|cwd| cwd.join(path))
-        .map_err(|error| {
-            format!(
-                "failed to resolve absolute path {}: {error}",
-                path.display()
-            )
-        })
+    Err(format!(
+        "project-root infrastructure path must be absolute and portable: {}",
+        path.display()
+    ))
+}
+
+fn prepare_primary_locator_path(path: &Path) -> Result<PathBuf, String> {
+    let path = absolute_path(path)?;
+    let parent = path.parent().ok_or_else(|| {
+        format!(
+            "project root locator has no parent directory: {}",
+            path.display()
+        )
+    })?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| format!("project root locator has no filename: {}", path.display()))?;
+    fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "failed to create project root locator directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    let canonical_parent = resolve_infrastructure_parent(parent).map_err(|error| {
+        format!(
+            "failed to resolve project root locator directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    if path_is_filesystem_root(&canonical_parent) || !path_text_is_portable(&canonical_parent) {
+        return Err(format!(
+            "project-root locator directory must be a non-root portable path: {}",
+            canonical_parent.display()
+        ));
+    }
+    Ok(canonical_parent.join(name))
 }
 
 fn can_write_directory(path: &Path) -> bool {
@@ -895,13 +1006,54 @@ fn can_write_directory(path: &Path) -> bool {
 }
 
 fn write_and_remove_owned_probe(probe: &Path) -> bool {
+    write_and_remove_owned_probe_after_write(probe, || {})
+}
+
+fn write_and_remove_owned_probe_after_write(probe: &Path, after_write: impl FnOnce()) -> bool {
+    let Some(parent_path) = probe.parent() else {
+        return false;
+    };
+    let Ok(parent_directory) = open_directory_without_links(parent_path) else {
+        return false;
+    };
     let Ok(mut file) = OpenOptions::new().write(true).create_new(true).open(probe) else {
         return false;
     };
     let written = file.write_all(b"ok").is_ok();
+    after_write();
+
+    // A path-based remove must not delete a file that replaced our probe
+    // between creation and cleanup. Re-open through the canonical parent and
+    // compare the live path with the handle returned by create_new first.
+    let still_owned = path_refers_to_open_directory(parent_path, &parent_directory)
+        && path_refers_to_open_file(probe, &file);
     drop(file);
+    if !still_owned {
+        return false;
+    }
     let removed = fs::remove_file(probe).is_ok();
     written && removed
+}
+
+fn path_refers_to_open_file(path: &Path, open_file: &fs::File) -> bool {
+    (|| -> std::io::Result<bool> {
+        let parent = canonicalize_directory_without_links(
+            path.parent()
+                .ok_or_else(|| std::io::Error::other("owned file has no parent"))?,
+        )?;
+        let name = path
+            .file_name()
+            .ok_or_else(|| std::io::Error::other("owned file has no filename"))?;
+        let verification = open_regular_file_without_links(&parent.join(name))?;
+        files_have_same_identity(open_file, &verification)
+    })()
+    .unwrap_or(false)
+}
+
+fn path_refers_to_open_directory(path: &Path, open_directory: &fs::File) -> bool {
+    open_directory_without_links(path)
+        .and_then(|verification| files_have_same_identity(open_directory, &verification))
+        .unwrap_or(false)
 }
 
 fn has_meaningful_project_data(root: &Path) -> bool {
@@ -911,7 +1063,7 @@ fn has_meaningful_project_data(root: &Path) -> bool {
 
 fn has_strong_project_data(root: &Path) -> bool {
     let data = root.join("data");
-    if !data.is_dir() {
+    if open_directory_without_links(&data).is_err() {
         return false;
     }
 
@@ -925,7 +1077,7 @@ fn has_strong_project_data(root: &Path) -> bool {
     ];
     if FILE_MARKERS
         .iter()
-        .any(|marker| data.join(marker).is_file())
+        .any(|marker| is_regular_project_marker(root, marker))
     {
         return true;
     }
@@ -949,12 +1101,41 @@ fn has_strong_project_data(root: &Path) -> bool {
         .any(|marker| directory_contains_file(&data.join(marker), MAX_MARKER_SCAN_ENTRIES))
 }
 
+fn is_regular_project_marker(root: &Path, marker: &str) -> bool {
+    let mut cursor = root.join("data");
+    let Ok(data_identity) = open_directory_without_links(&cursor) else {
+        return false;
+    };
+    let mut directories = vec![(cursor.clone(), data_identity)];
+    let mut components = marker.split('/').peekable();
+    while let Some(component) = components.next() {
+        cursor.push(component);
+        if components.peek().is_some() {
+            let Ok(identity) = open_directory_without_links(&cursor) else {
+                return false;
+            };
+            directories.push((cursor.clone(), identity));
+        } else {
+            let Ok(file) = open_regular_file_without_links(&cursor) else {
+                return false;
+            };
+            return directory_snapshots_are_current(&directories)
+                && path_refers_to_open_file(&cursor, &file);
+        }
+    }
+    false
+}
+
 fn directory_contains_file(path: &Path, max_entries: usize) -> bool {
-    let mut pending = vec![path.to_path_buf()];
+    let Ok(root_identity) = open_directory_without_links(path) else {
+        return false;
+    };
+    let mut pending = vec![(path.to_path_buf(), root_identity)];
+    let mut visited = Vec::new();
     let mut scanned = 0;
-    while let Some(directory) = pending.pop() {
-        let Ok(entries) = fs::read_dir(directory) else {
-            continue;
+    while let Some((directory, directory_identity)) = pending.pop() {
+        let Ok(entries) = fs::read_dir(&directory) else {
+            return false;
         };
         for entry in entries.flatten() {
             scanned += 1;
@@ -962,40 +1143,60 @@ fn directory_contains_file(path: &Path, max_entries: usize) -> bool {
                 return false;
             }
             let entry_path = entry.path();
-            let Ok(file_type) = entry.file_type() else {
+            if !path_text_is_portable(&entry_path) {
                 continue;
-            };
-            if file_type.is_file() {
+            }
+            if let Ok(file) = open_regular_file_without_links(&entry_path) {
                 let ignored = entry
                     .file_name()
                     .to_str()
                     .is_some_and(|name| matches!(name, ".gitkeep" | ".DS_Store"));
-                if !ignored {
+                if !ignored
+                    && path_refers_to_open_directory(&directory, &directory_identity)
+                    && directory_snapshots_are_current(&visited)
+                    && path_refers_to_open_file(&entry_path, &file)
+                {
                     return true;
                 }
-            } else if file_type.is_dir() {
-                pending.push(entry_path);
+            } else if let Ok(identity) = open_directory_without_links(&entry_path) {
+                pending.push((entry_path, identity));
             }
         }
+        if !path_refers_to_open_directory(&directory, &directory_identity) {
+            return false;
+        }
+        visited.push((directory, directory_identity));
     }
     false
 }
 
+fn directory_snapshots_are_current(directories: &[(PathBuf, fs::File)]) -> bool {
+    directories
+        .iter()
+        .all(|(path, identity)| path_refers_to_open_directory(path, identity))
+}
+
 fn read_locator_state(locator_path: &Path) -> LocatorState {
-    let file = match fs::File::open(locator_path) {
-        Ok(file) => file,
+    match fs::symlink_metadata(locator_path) {
+        Ok(metadata) if metadata_is_link(&metadata) || !metadata.file_type().is_file() => {
+            return LocatorState::Malformed;
+        }
+        Ok(_) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return LocatorState::AbsentOrEmpty;
         }
         Err(_) => return LocatorState::Malformed,
+    }
+    let resolved_path = match resolve_infrastructure_file_path(locator_path) {
+        Ok(path) => path,
+        Err(_) => return LocatorState::Malformed,
     };
-    let mut content = Vec::new();
-    if file
-        .take(MAX_PROJECT_ROOT_LOCATOR_BYTES + 1)
-        .read_to_end(&mut content)
-        .is_err()
-        || content.len() as u64 > MAX_PROJECT_ROOT_LOCATOR_BYTES
-    {
+    let Ok(content) =
+        read_stable_regular_file_prefix(&resolved_path, MAX_PROJECT_ROOT_LOCATOR_BYTES + 1)
+    else {
+        return LocatorState::Malformed;
+    };
+    if content.len() as u64 > MAX_PROJECT_ROOT_LOCATOR_BYTES {
         return LocatorState::Malformed;
     }
     if content.is_empty() {
@@ -1012,14 +1213,14 @@ fn read_locator_state(locator_path: &Path) -> LocatorState {
             .get("projectRoot")
             .and_then(serde_json::Value::as_str)
             .map(PathBuf::from)
-            .filter(|path| path.is_absolute());
+            .filter(|path| path.is_absolute() && path_text_is_portable(path));
         return LocatorState::UnsupportedVersion { version, path };
     }
     let Ok(locator) = serde_json::from_value::<ProjectRootLocator>(value) else {
         return LocatorState::Malformed;
     };
     let path = PathBuf::from(locator.project_root);
-    if !path.is_absolute() {
+    if !path.is_absolute() || !path_text_is_portable(&path) {
         return LocatorState::Malformed;
     }
     // A persisted v1 locator describes an established project root. Unlike an
@@ -1084,7 +1285,19 @@ fn persist_locator(
             parent.display()
         )
     })?;
+    let parent_directory = open_directory_without_links(parent).map_err(|error| {
+        format!(
+            "failed to bind project root locator directory {}: {error}",
+            parent.display()
+        )
+    })?;
     let _lock = LocatorWriteLock::acquire(parent)?;
+    if !path_refers_to_open_directory(parent, &parent_directory) {
+        return Err(format!(
+            "project root locator directory changed while acquiring its lock: {}",
+            parent.display()
+        ));
+    }
     if locator_replacement_is_already_complete(
         read_locator_state(locator_path),
         locator_path,
@@ -1109,17 +1322,17 @@ fn persist_locator(
         .map_err(|error| format!("failed to serialize project root locator: {error}"))?;
     contents.push(b'\n');
 
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)
+        .map_err(|error| {
+            format!(
+                "failed to create temporary project root locator {}: {error}",
+                temp_path.display()
+            )
+        })?;
     let write_result = (|| -> Result<(), String> {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp_path)
-            .map_err(|error| {
-                format!(
-                    "failed to create temporary project root locator {}: {error}",
-                    temp_path.display()
-                )
-            })?;
         file.write_all(&contents).map_err(|error| {
             format!(
                 "failed to write temporary project root locator {}: {error}",
@@ -1132,6 +1345,14 @@ fn persist_locator(
                 temp_path.display()
             )
         })?;
+        if !path_refers_to_open_directory(parent, &parent_directory)
+            || !path_refers_to_open_file(&temp_path, &file)
+        {
+            return Err(format!(
+                "project root locator path identity changed before publication: {}",
+                locator_path.display()
+            ));
+        }
 
         // Re-check immediately before the atomic replacement. This preserves a
         // valid locator if another resolver completed while this file was built.
@@ -1143,18 +1364,33 @@ fn persist_locator(
         )? {
             return Ok(());
         }
-        atomic_replace_file(&temp_path, locator_path).map_err(|error| {
-            format!(
-                "failed to atomically publish project root locator {}: {error}",
+        atomic_replace_file(&temp_path, locator_path, parent, &parent_directory).map_err(
+            |error| {
+                format!(
+                    "failed to atomically publish project root locator {}: {error}",
+                    locator_path.display()
+                )
+            },
+        )?;
+        if !path_refers_to_open_directory(parent, &parent_directory)
+            || !path_refers_to_open_file(locator_path, &file)
+        {
+            return Err(format!(
+                "project root locator path identity changed during publication: {}",
                 locator_path.display()
-            )
-        })?;
-        if let Ok(directory) = fs::File::open(parent) {
-            let _ = directory.sync_all();
+            ));
         }
+        let _ = parent_directory.sync_all();
         Ok(())
     })();
-    let _ = fs::remove_file(&temp_path);
+    // On successful publication temp_path no longer names this handle. On
+    // failure or early completion, remove it only while it still has the
+    // identity created above, preserving any concurrent replacement.
+    let remove_temp = path_refers_to_open_file(&temp_path, &file);
+    drop(file);
+    if remove_temp {
+        let _ = fs::remove_file(&temp_path);
+    }
     write_result
 }
 
@@ -1165,6 +1401,24 @@ fn prepare_project_root_for_persistence(project_root: &Path) -> Result<PathBuf, 
             project_root.display()
         ));
     }
+    let project_root = canonicalize_directory_without_links(project_root).map_err(|error| {
+        format!(
+            "cannot resolve project root before persistence {}: {error}",
+            project_root.display()
+        )
+    })?;
+    if path_is_filesystem_root(&project_root) || !path_text_is_portable(&project_root) {
+        return Err(format!(
+            "cannot persist a non-portable project root: {}",
+            project_root.display()
+        ));
+    }
+    let project_root_identity = open_directory_without_links(&project_root).map_err(|error| {
+        format!(
+            "cannot bind project root before persistence {}: {error}",
+            project_root.display()
+        )
+    })?;
     let data = project_root.join("data");
     fs::create_dir_all(&data).map_err(|error| {
         format!(
@@ -1172,12 +1426,34 @@ fn prepare_project_root_for_persistence(project_root: &Path) -> Result<PathBuf, 
             data.display()
         )
     })?;
-    validate_existing_writable_project_root(project_root).ok_or_else(|| {
+    if !path_refers_to_open_directory(&project_root, &project_root_identity) {
+        return Err(format!(
+            "project root changed identity while preparing its data directory: {}",
+            project_root.display()
+        ));
+    }
+    let data_identity = open_directory_without_links(&data).map_err(|error| {
+        format!(
+            "cannot bind project data directory before persistence {}: {error}",
+            data.display()
+        )
+    })?;
+    let prepared = validate_existing_writable_project_root(&project_root).ok_or_else(|| {
         format!(
             "cannot persist a project root whose data directory is not writable: {}",
             project_root.display()
         )
-    })
+    })?;
+    if prepared != project_root
+        || !path_refers_to_open_directory(&project_root, &project_root_identity)
+        || !path_refers_to_open_directory(&data, &data_identity)
+    {
+        return Err(format!(
+            "project root changed identity during persistence validation: {}",
+            project_root.display()
+        ));
+    }
+    Ok(prepared)
 }
 
 fn locator_replacement_is_already_complete(
@@ -1220,18 +1496,53 @@ struct LocatorWriteLock {
 impl LocatorWriteLock {
     fn acquire(parent: &Path) -> Result<Self, String> {
         let path = parent.join(format!(".{PROJECT_ROOT_LOCATOR_FILE}.lock"));
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .truncate(false)
-            .open(&path)
-            .map_err(|error| {
-                format!(
-                    "failed to open project root locator lock {}: {error}",
-                    path.display()
-                )
-            })?;
+        if fs::symlink_metadata(&path)
+            .ok()
+            .is_some_and(|metadata| metadata_is_link(&metadata) || !metadata.file_type().is_file())
+        {
+            return Err(format!(
+                "project root locator lock must be a regular non-link file: {}",
+                path.display()
+            ));
+        }
+        let mut options = OpenOptions::new();
+        options.read(true).write(true).create(true).truncate(false);
+        #[cfg(unix)]
+        options.custom_flags(libc::O_NOFOLLOW);
+        #[cfg(windows)]
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        let file = options.open(&path).map_err(|error| {
+            format!(
+                "failed to open project root locator lock {}: {error}",
+                path.display()
+            )
+        })?;
+        if fs::symlink_metadata(&path)
+            .ok()
+            .is_some_and(|metadata| metadata_is_link(&metadata) || !metadata.file_type().is_file())
+        {
+            return Err(format!(
+                "project root locator lock changed to a non-regular or linked file: {}",
+                path.display()
+            ));
+        }
+        let verification = open_regular_file_without_links(&path).map_err(|error| {
+            format!(
+                "failed to verify project root locator lock {}: {error}",
+                path.display()
+            )
+        })?;
+        if !files_have_same_identity(&file, &verification).map_err(|error| {
+            format!(
+                "failed to compare project root locator lock identity {}: {error}",
+                path.display()
+            )
+        })? {
+            return Err(format!(
+                "project root locator lock changed to a different file: {}",
+                path.display()
+            ));
+        }
         lock_locator_file(&file).map_err(|error| {
             format!(
                 "failed to acquire project root locator lock {}: {error}",
@@ -1278,13 +1589,82 @@ fn lock_locator_file(file: &fs::File) -> std::io::Result<()> {
     }
 }
 
-#[cfg(not(windows))]
-fn atomic_replace_file(source: &Path, destination: &Path) -> std::io::Result<()> {
-    fs::rename(source, destination)
+#[cfg(unix)]
+fn atomic_replace_file(
+    source: &Path,
+    destination: &Path,
+    parent_path: &Path,
+    parent_directory: &fs::File,
+) -> std::io::Result<()> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    if source.parent() != Some(parent_path) || destination.parent() != Some(parent_path) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "atomic replacement paths must share the bound parent directory",
+        ));
+    }
+    let source_name = CString::new(
+        source
+            .file_name()
+            .ok_or_else(|| std::io::Error::other("replacement source has no filename"))?
+            .as_bytes(),
+    )
+    .map_err(|_| std::io::Error::other("replacement source contains NUL"))?;
+    let destination_name = CString::new(
+        destination
+            .file_name()
+            .ok_or_else(|| std::io::Error::other("replacement destination has no filename"))?
+            .as_bytes(),
+    )
+    .map_err(|_| std::io::Error::other("replacement destination contains NUL"))?;
+    let result = unsafe {
+        libc::renameat(
+            parent_directory.as_raw_fd(),
+            source_name.as_ptr(),
+            parent_directory.as_raw_fd(),
+            destination_name.as_ptr(),
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(all(not(unix), not(windows)))]
+fn atomic_replace_file(
+    _source: &Path,
+    _destination: &Path,
+    _parent_path: &Path,
+    _parent_directory: &fs::File,
+) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "atomic file replacement is unavailable on this platform",
+    ))
 }
 
 #[cfg(windows)]
-fn atomic_replace_file(source: &Path, destination: &Path) -> std::io::Result<()> {
+fn atomic_replace_file(
+    source: &Path,
+    destination: &Path,
+    parent_path: &Path,
+    parent_directory: &fs::File,
+) -> std::io::Result<()> {
+    if source.parent() != Some(parent_path) || destination.parent() != Some(parent_path) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "atomic replacement paths must share the bound parent directory",
+        ));
+    }
+    if !path_refers_to_open_directory(parent_path, parent_directory) {
+        return Err(std::io::Error::other(
+            "atomic replacement parent directory changed identity",
+        ));
+    }
     let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
     let destination: Vec<u16> = destination
         .as_os_str()
@@ -1300,30 +1680,29 @@ fn atomic_replace_file(source: &Path, destination: &Path) -> std::io::Result<()>
     };
     if result == 0 {
         Err(std::io::Error::last_os_error())
+    } else if !path_refers_to_open_directory(parent_path, parent_directory) {
+        Err(std::io::Error::other(
+            "atomic replacement parent directory changed identity",
+        ))
     } else {
         Ok(())
     }
 }
 
 fn restart_log_candidates(log_path: &Path) -> Vec<(PathBuf, ProjectRootCandidateSource)> {
-    let Ok(mut file) = fs::File::open(log_path) else {
+    let Ok(metadata) = fs::symlink_metadata(log_path) else {
         return Vec::new();
     };
-    let Ok(length) = file.metadata().map(|metadata| metadata.len()) else {
+    if metadata_is_link(&metadata) || !metadata.file_type().is_file() {
+        return Vec::new();
+    }
+    let Ok(resolved_path) = resolve_infrastructure_file_path(log_path) else {
         return Vec::new();
     };
-    let start = length.saturating_sub(MAX_RESTART_LOG_BYTES as u64);
-    if file.seek(SeekFrom::Start(start)).is_err() {
+    let Ok((start, bytes)) = read_stable_regular_file_tail(&resolved_path, MAX_RESTART_LOG_BYTES)
+    else {
         return Vec::new();
-    }
-    let mut bytes = Vec::with_capacity((length - start) as usize);
-    if file
-        .take(MAX_RESTART_LOG_BYTES as u64)
-        .read_to_end(&mut bytes)
-        .is_err()
-    {
-        return Vec::new();
-    }
+    };
     let mut content = String::from_utf8_lossy(&bytes).as_ref().to_string();
     if start > 0 {
         let Some(first_newline) = content.find('\n') else {
@@ -1366,6 +1745,85 @@ fn restart_log_candidates(log_path: &Path) -> Vec<(PathBuf, ProjectRootCandidate
     candidates
 }
 
+fn resolve_infrastructure_file_path(path: &Path) -> std::io::Result<PathBuf> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("infrastructure file has no parent"))?;
+    let name = path
+        .file_name()
+        .ok_or_else(|| std::io::Error::other("infrastructure file has no filename"))?;
+    Ok(resolve_infrastructure_parent(parent)?.join(name))
+}
+
+fn resolve_infrastructure_parent(parent: &Path) -> std::io::Result<PathBuf> {
+    let resolved_parent = parent.canonicalize()?;
+    if path_is_filesystem_root(&resolved_parent) || !path_text_is_portable(&resolved_parent) {
+        return Err(std::io::Error::other(
+            "infrastructure file parent resolved to an invalid path",
+        ));
+    }
+    let parent_identity = open_directory_without_links(&resolved_parent)?;
+    let verification_parent = parent.canonicalize()?;
+    let verification_identity = open_directory_without_links(&verification_parent)?;
+    if verification_parent != resolved_parent
+        || !files_have_same_identity(&parent_identity, &verification_identity)?
+    {
+        return Err(std::io::Error::other(
+            "infrastructure file parent changed while resolving its path",
+        ));
+    }
+    Ok(resolved_parent)
+}
+
+fn read_stable_regular_file_prefix(path: &Path, limit: u64) -> std::io::Result<Vec<u8>> {
+    let mut file = open_regular_file_without_links(path)?;
+    let mut content = Vec::new();
+    (&mut file).take(limit).read_to_end(&mut content)?;
+    let mut verification = open_regular_file_without_links(path)?;
+    if !files_have_same_identity(&file, &verification)? {
+        return Err(std::io::Error::other(
+            "infrastructure file changed while reading",
+        ));
+    }
+    let mut verification_content = Vec::new();
+    (&mut verification)
+        .take(limit)
+        .read_to_end(&mut verification_content)?;
+    if verification_content != content {
+        return Err(std::io::Error::other(
+            "infrastructure file contents changed while reading",
+        ));
+    }
+    Ok(content)
+}
+
+fn read_stable_regular_file_tail(path: &Path, limit: usize) -> std::io::Result<(u64, Vec<u8>)> {
+    fn read_tail(file: &mut fs::File, limit: usize) -> std::io::Result<(u64, Vec<u8>)> {
+        let length = file.metadata()?.len();
+        let start = length.saturating_sub(limit as u64);
+        file.seek(SeekFrom::Start(start))?;
+        let mut bytes = Vec::with_capacity((length - start) as usize);
+        file.take(limit as u64).read_to_end(&mut bytes)?;
+        Ok((start, bytes))
+    }
+
+    let mut file = open_regular_file_without_links(path)?;
+    let snapshot = read_tail(&mut file, limit)?;
+    let mut verification = open_regular_file_without_links(path)?;
+    if !files_have_same_identity(&file, &verification)? {
+        return Err(std::io::Error::other(
+            "infrastructure file changed while reading",
+        ));
+    }
+    let verification_snapshot = read_tail(&mut verification, limit)?;
+    if verification_snapshot != snapshot {
+        return Err(std::io::Error::other(
+            "infrastructure file contents changed while reading",
+        ));
+    }
+    Ok(snapshot)
+}
+
 fn setup_log_field(line: &str, field: &str, following_fields: &[&str]) -> Option<String> {
     let marker = format!(" {field}=");
     let start = line.find(&marker)? + marker.len();
@@ -1375,19 +1833,16 @@ fn setup_log_field(line: &str, field: &str, following_fields: &[&str]) -> Option
         .filter_map(|following| tail.find(&format!(" {following}=")))
         .min()
         .unwrap_or(tail.len());
-    let raw_value = &tail[..end];
-    if raw_value
-        .chars()
-        .any(|character| matches!(character, '\0' | '\r' | '\n'))
+    let value = &tail[..end];
+    if value.is_empty()
+        || value.trim() != value
+        || value
+            .chars()
+            .any(|character| character <= '\u{1f}' || character == '\u{7f}')
     {
         return None;
     }
-    let value = raw_value.trim_matches([' ', '\t']);
-    (!value.is_empty()
-        && !value
-            .chars()
-            .any(|character| matches!(character, '\0' | '\r' | '\n')))
-    .then(|| value.to_string())
+    Some(value.to_string())
 }
 
 fn deduplicate_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
@@ -1399,7 +1854,9 @@ fn deduplicate_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
 }
 
 fn path_identity(path: &Path) -> String {
-    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let canonical = canonicalize_directory_without_links(path)
+        .or_else(|_| canonicalize_regular_file_without_links(path))
+        .unwrap_or_else(|_| path.to_path_buf());
     let value = display_path(&canonical);
     #[cfg(windows)]
     {
@@ -1477,6 +1934,83 @@ mod tests {
     }
 
     #[test]
+    fn empty_current_environment_override_does_not_fall_back_to_legacy() {
+        let root = temp_dir("empty-current-env");
+        let legacy_root = root.join("legacy-root");
+        let selected = preferred_environment_root(
+            Some(OsString::new()),
+            Some(legacy_root.clone().into_os_string()),
+        )
+        .unwrap();
+
+        assert!(selected.0.as_os_str().is_empty());
+        let mut resolve_options = options(&root);
+        resolve_options.explicit_root = Some(selected);
+        let error = match resolve(resolve_options) {
+            Ok(_) => panic!("empty current override must not resolve"),
+            Err(error) => error,
+        };
+        assert!(error.contains("explicit project root contains non-portable characters"));
+        assert!(!legacy_root.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn infrastructure_paths_never_rebase_against_process_cwd() {
+        let error = absolute_path(Path::new("relative/locator.json")).unwrap_err();
+
+        assert!(error.contains("must be absolute"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn primary_locator_parent_alias_is_pinned_before_persistence_and_selection() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("locator-parent-alias");
+        let real_config = root.join("real-config");
+        let other_config = root.join("other-config");
+        fs::create_dir_all(&real_config).unwrap();
+        fs::create_dir_all(&other_config).unwrap();
+        let alias = root.join("config-alias");
+        symlink(&real_config, &alias).unwrap();
+
+        let mut resolve_options = options(&root);
+        resolve_options.locator_path = alias.join(PROJECT_ROOT_LOCATOR_FILE);
+        let resolved = resolve(resolve_options).unwrap();
+        let real_locator = real_config.join(PROJECT_ROOT_LOCATOR_FILE);
+
+        assert_eq!(
+            resolved.controller.status().locator_path,
+            display_path(&real_locator)
+        );
+        assert!(real_locator.is_file());
+
+        fs::remove_file(&alias).unwrap();
+        symlink(&other_config, &alias).unwrap();
+        let selected = display_path(&resolved.path);
+        resolved.controller.select(&selected).unwrap();
+
+        assert!(real_locator.is_file());
+        assert!(!other_config.join(PROJECT_ROOT_LOCATOR_FILE).exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn filesystem_root_cannot_become_a_project_or_infrastructure_root() {
+        let current = std::env::current_dir().unwrap();
+        let filesystem_root = current.ancestors().last().unwrap();
+
+        assert!(filesystem_root.is_absolute());
+        assert!(prepare_explicit_root(filesystem_root)
+            .unwrap_err()
+            .contains("filesystem root"));
+        assert!(absolute_path(filesystem_root)
+            .unwrap_err()
+            .contains("absolute and portable"));
+    }
+
+    #[test]
     fn explicit_override_is_used_without_persisting_a_locator() {
         let root = temp_dir("explicit");
         let explicit = root.join("explicit-root");
@@ -1498,6 +2032,75 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn explicit_override_rejects_alias_to_nonportable_canonical_root() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("explicit-nonportable-canonical");
+        let target = root.join("target:with-colon");
+        fs::create_dir_all(target.join("data")).unwrap();
+        let alias = root.join("portable-alias");
+        symlink(&target, &alias).unwrap();
+        let mut resolve_options = options(&root);
+        resolve_options.explicit_root =
+            Some((alias, ProjectRootCandidateSource::EnvironmentOverride));
+
+        let error = resolve(resolve_options).err().unwrap();
+
+        assert!(error.contains("not a writable directory"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_override_rejects_symlinked_data_directory() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("explicit-data-symlink");
+        let explicit = root.join("explicit-root");
+        let external = root.join("external-data");
+        fs::create_dir_all(&explicit).unwrap();
+        fs::create_dir_all(&external).unwrap();
+        fs::write(external.join("keep.txt"), "keep").unwrap();
+        symlink(&external, explicit.join("data")).unwrap();
+        let mut options = options(&root);
+        options.explicit_root = Some((explicit, ProjectRootCandidateSource::EnvironmentOverride));
+
+        let error = match resolve(options) {
+            Ok(_) => panic!("symlinked data directory was accepted"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("not a writable directory"));
+        assert_eq!(
+            fs::read_to_string(external.join("keep.txt")).unwrap(),
+            "keep"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn explicit_override_rejects_broken_data_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("explicit-broken-data-symlink");
+        let explicit = root.join("explicit-root");
+        fs::create_dir_all(&explicit).unwrap();
+        symlink(root.join("missing-data"), explicit.join("data")).unwrap();
+        let mut options = options(&root);
+        options.explicit_root = Some((explicit, ProjectRootCandidateSource::EnvironmentOverride));
+
+        let error = match resolve(options) {
+            Ok(_) => panic!("broken data symlink was accepted"),
+            Err(error) => error,
+        };
+
+        assert!(error.contains("not a writable directory"));
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn relative_explicit_override_is_rejected() {
         let root = temp_dir("relative-explicit");
@@ -1511,6 +2114,52 @@ mod tests {
 
         assert!(error.contains("must be absolute"));
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn explicit_override_rejects_nonportable_path_text_before_creating_it() {
+        let root = temp_dir("nonportable-explicit");
+        let explicit = root.join("bad\nproject");
+        let mut options = options(&root);
+        options.explicit_root = Some((
+            explicit.clone(),
+            ProjectRootCandidateSource::EnvironmentOverride,
+        ));
+
+        let error = resolve(options).err().unwrap();
+
+        assert!(error.contains("non-portable characters"));
+        assert!(!explicit.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn explicit_override_rejects_lexical_aliases_before_creating_it() {
+        let root = temp_dir("aliased-explicit");
+        for suffix in ["./aliased-project", "nested//aliased-project"] {
+            let explicit = PathBuf::from(format!("{}/{suffix}", root.display()));
+            let mut options = options(&root);
+            options.explicit_root = Some((
+                explicit.clone(),
+                ProjectRootCandidateSource::EnvironmentOverride,
+            ));
+
+            let error = resolve(options).err().unwrap();
+
+            assert!(error.contains("non-portable characters"));
+            assert!(!explicit.exists());
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn project_root_contract_rejects_non_utf8_path_text() {
+        use std::os::unix::ffi::OsStringExt;
+
+        let path = PathBuf::from(OsString::from_vec(vec![b'/', b't', b'm', b'p', b'/', 0xff]));
+
+        assert!(!path_text_is_portable(&path));
     }
 
     #[test]
@@ -1608,6 +2257,34 @@ mod tests {
             read_valid_locator(&locator_path).unwrap(),
             selected.canonicalize().unwrap()
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn locator_with_nonportable_project_path_is_malformed() {
+        let root = temp_dir("nonportable-locator");
+        #[cfg(not(windows))]
+        let selected = data_root(&root, "bad\nproject");
+        // Windows cannot create a path containing this control character. The
+        // locator parser must reject it before attempting any filesystem I/O.
+        #[cfg(windows)]
+        let selected = root.join("bad\nproject");
+        let locator = root.join("config").join(PROJECT_ROOT_LOCATOR_FILE);
+        fs::create_dir_all(locator.parent().unwrap()).unwrap();
+        fs::write(
+            &locator,
+            serde_json::to_vec(&serde_json::json!({
+                "version": PROJECT_ROOT_LOCATOR_VERSION,
+                "projectRoot": display_path(&selected),
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert!(matches!(
+            read_locator_state(&locator),
+            LocatorState::Malformed
+        ));
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1781,6 +2458,34 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_locator_is_malformed_instead_of_authoritative() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("symlinked-locator");
+        let project = data_root(&root, "project");
+        let target = root.join("external-locator.json");
+        let locator = root.join("config").join(PROJECT_ROOT_LOCATOR_FILE);
+        fs::create_dir_all(locator.parent().unwrap()).unwrap();
+        fs::write(
+            &target,
+            serde_json::to_vec_pretty(&ProjectRootLocator {
+                version: PROJECT_ROOT_LOCATOR_VERSION,
+                project_root: display_path(&project),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        symlink(&target, &locator).unwrap();
+
+        assert!(matches!(
+            read_locator_state(&locator),
+            LocatorState::Malformed
+        ));
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn persisting_a_new_root_prepares_its_data_directory() {
         let root = temp_dir("persist-prepares-data");
@@ -1826,6 +2531,57 @@ mod tests {
             candidates[1].1,
             ProjectRootCandidateSource::RestartLogAppRoot
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn restart_log_parser_ignores_control_character_paths() {
+        let root = temp_dir("restart-log-control");
+        let log = root.join("shinsekai-restart-debug.log");
+        fs::write(
+            &log,
+            "ts=1 pid=1 component=desktop setup resolved source_root=/source project_root=/bad\troot app_root=/app frontend_dist=/dist bridge_port=8787 url=x\n",
+        )
+        .unwrap();
+
+        let candidates = restart_log_candidates(&log);
+
+        assert!(candidates
+            .iter()
+            .all(|(path, _)| path != Path::new("/bad\troot")));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn restart_log_parser_does_not_trim_path_identity() {
+        let line = " setup resolved project_root=/tmp/project  app_root=/app frontend_dist=/dist";
+
+        assert_eq!(
+            setup_log_field(line, "project_root", &["app_root", "frontend_dist"]),
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn restart_log_parser_ignores_symlinked_log_file() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("symlinked-restart-log");
+        let project = data_root(&root, "project");
+        let target = root.join("external.log");
+        let link = root.join("restart.log");
+        fs::write(
+            &target,
+            format!(
+                "ts=1 component=desktop setup resolved project_root={} app_root=/app frontend_dist=/dist\n",
+                project.display()
+            ),
+        )
+        .unwrap();
+        symlink(&target, &link).unwrap();
+
+        assert!(restart_log_candidates(&link).is_empty());
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1923,7 +2679,7 @@ mod tests {
             ),
         ]);
         let locator_path = options.locator_path.clone();
-        let current_path = options.app_root.clone();
+        let current_path = options.current_app_data_project_root.clone();
 
         let resolved = resolve(options).unwrap();
         let status = resolved.controller.status();
@@ -1985,7 +2741,10 @@ mod tests {
 
         assert_eq!(
             resolved.path,
-            root.join("current-app").canonicalize().unwrap()
+            root.join("current-data")
+                .join("project")
+                .canonicalize()
+                .unwrap()
         );
         assert!(status.requires_selection);
         assert!(!locator_path.exists());
@@ -2026,7 +2785,7 @@ mod tests {
         .unwrap();
         options.restart_log_paths.push(log);
         let locator_path = options.locator_path.clone();
-        let current_path = options.app_root.clone();
+        let current_path = options.current_app_data_project_root.clone();
 
         let resolved = resolve(options).unwrap();
         let status = resolved.controller.status();
@@ -2195,7 +2954,7 @@ mod tests {
         )
         .unwrap();
         resolve_options.restart_log_paths.push(log.clone());
-        let current_path = resolve_options.app_root.clone();
+        let current_path = resolve_options.current_app_data_project_root.clone();
         let locator_path = resolve_options.locator_path.clone();
         let resolved = resolve(resolve_options).unwrap();
 
@@ -2312,6 +3071,24 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn symlinked_config_marker_is_not_recognized_as_project_data() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("symlinked-config-marker");
+        let candidate = root.join("candidate");
+        let external_config = root.join("external-config");
+        fs::create_dir_all(candidate.join("data")).unwrap();
+        fs::create_dir_all(&external_config).unwrap();
+        fs::write(external_config.join("api.yaml"), "provider: external").unwrap();
+        symlink(&external_config, candidate.join("data/config")).unwrap();
+
+        assert!(!has_strong_project_data(&candidate));
+        assert!(!has_meaningful_project_data(&candidate));
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn write_probe_never_deletes_a_preexisting_collision() {
         let root = temp_dir("probe-collision");
@@ -2324,15 +3101,126 @@ mod tests {
     }
 
     #[test]
-    fn fresh_current_root_precreates_data_directory() {
+    fn write_probe_preserves_a_replacement_created_before_cleanup() {
+        let root = temp_dir("probe-replacement");
+        let probe = root.join("replaced-probe");
+
+        assert!(!write_and_remove_owned_probe_after_write(&probe, || {
+            fs::remove_file(&probe).unwrap();
+            fs::write(&probe, b"replacement").unwrap();
+        }));
+        assert_eq!(fs::read(&probe).unwrap(), b"replacement");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_probe_rejects_a_replacement_parent_before_cleanup() {
+        let root = temp_dir("probe-parent-replacement");
+        let candidate = root.join("candidate");
+        let preserved_candidate = root.join("preserved-candidate");
+        fs::create_dir_all(&candidate).unwrap();
+        let probe = candidate.join("write-probe");
+
+        assert!(!write_and_remove_owned_probe_after_write(&probe, || {
+            fs::rename(&candidate, &preserved_candidate).unwrap();
+            fs::create_dir_all(&candidate).unwrap();
+            fs::write(&probe, b"peer").unwrap();
+        }));
+
+        assert_eq!(fs::read(&probe).unwrap(), b"peer");
+        assert_eq!(
+            fs::read(preserved_candidate.join("write-probe")).unwrap(),
+            b"ok"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn write_probe_pins_its_parent_against_replacement_before_cleanup() {
+        let root = temp_dir("probe-parent-pinned");
+        let candidate = root.join("candidate");
+        let preserved_candidate = root.join("preserved-candidate");
+        fs::create_dir_all(&candidate).unwrap();
+        let probe = candidate.join("write-probe");
+        let mut rename_error = None;
+
+        assert!(write_and_remove_owned_probe_after_write(&probe, || {
+            rename_error = Some(fs::rename(&candidate, &preserved_candidate).unwrap_err());
+        }));
+
+        assert_eq!(
+            rename_error.unwrap().kind(),
+            std::io::ErrorKind::PermissionDenied
+        );
+        assert!(candidate.is_dir());
+        assert!(!probe.exists());
+        assert!(!preserved_candidate.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_locator_replace_stays_bound_to_the_open_parent_directory() {
+        let root = temp_dir("locator-parent-binding");
+        let parent = root.join("config");
+        let preserved_parent = root.join("preserved-config");
+        fs::create_dir_all(&parent).unwrap();
+        let source = parent.join("locator.tmp");
+        let destination = parent.join(PROJECT_ROOT_LOCATOR_FILE);
+        fs::write(&source, b"new locator").unwrap();
+        fs::write(&destination, b"old locator").unwrap();
+        let parent_directory = open_directory_without_links(&parent).unwrap();
+
+        fs::rename(&parent, &preserved_parent).unwrap();
+        fs::create_dir_all(&parent).unwrap();
+        fs::write(&source, b"peer temp").unwrap();
+        fs::write(&destination, b"peer locator").unwrap();
+
+        atomic_replace_file(&source, &destination, &parent, &parent_directory).unwrap();
+
+        assert_eq!(fs::read(&source).unwrap(), b"peer temp");
+        assert_eq!(fs::read(&destination).unwrap(), b"peer locator");
+        assert!(!preserved_parent.join("locator.tmp").exists());
+        assert_eq!(
+            fs::read(preserved_parent.join(PROJECT_ROOT_LOCATOR_FILE)).unwrap(),
+            b"new locator"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn fresh_production_root_uses_app_data_and_precreates_data_directory() {
         let root = temp_dir("fresh-data-directory");
         let options = options(&root);
         let app_root = options.app_root.clone();
+        let app_data_root = options.current_app_data_project_root.clone();
 
         let resolved = resolve(options).unwrap();
 
-        assert_eq!(resolved.path, app_root.canonicalize().unwrap());
-        assert!(app_root.join("data").is_dir());
+        assert_eq!(resolved.path, app_data_root.canonicalize().unwrap());
+        assert!(app_data_root.join("data").is_dir());
+        assert!(!app_root.join("data").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn incidental_install_data_does_not_make_the_installation_a_project_root() {
+        let root = temp_dir("incidental-install-data");
+        let options = options(&root);
+        let app_root = options.app_root.clone();
+        let app_data_root = options.current_app_data_project_root.clone();
+        fs::create_dir_all(app_root.join("data")).unwrap();
+        fs::write(app_root.join("data").join("packaged-schema.json"), b"{}").unwrap();
+
+        let resolved = resolve(options).unwrap();
+
+        assert_eq!(resolved.path, app_data_root.canonicalize().unwrap());
+        assert_eq!(
+            fs::read(app_root.join("data").join("packaged-schema.json")).unwrap(),
+            b"{}"
+        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -2358,7 +3246,10 @@ mod tests {
 
         assert_eq!(
             resolved.path,
-            root.join("current-app").canonicalize().unwrap()
+            root.join("current-data")
+                .join("project")
+                .canonicalize()
+                .unwrap()
         );
         assert!(status.requires_selection);
         assert!(!locator_path.exists());
@@ -2494,6 +3385,26 @@ mod tests {
 
         assert!(error.contains("refusing to overwrite valid"));
         assert_eq!(fs::read(locator).unwrap(), original);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn locator_lock_does_not_follow_a_symbolic_link() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("symlinked-locator-lock");
+        let parent = root.join("config");
+        fs::create_dir_all(&parent).unwrap();
+        let unrelated = root.join("unrelated.txt");
+        fs::write(&unrelated, "keep").unwrap();
+        let lock_path = parent.join(format!(".{PROJECT_ROOT_LOCATOR_FILE}.lock"));
+        symlink(&unrelated, &lock_path).unwrap();
+
+        let error = LocatorWriteLock::acquire(&parent).err().unwrap();
+
+        assert!(error.contains("regular non-link file"));
+        assert_eq!(fs::read_to_string(unrelated).unwrap(), "keep");
         let _ = fs::remove_dir_all(root);
     }
 

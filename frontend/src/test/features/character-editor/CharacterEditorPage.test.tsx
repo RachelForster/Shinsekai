@@ -195,6 +195,24 @@ describe("mergeSprites", () => {
       undefined,
     ]);
   });
+
+  it("preserves sprite state across Windows separator normalization", () => {
+    const current = {
+      ...structuredClone(character),
+      sprites: [
+        {
+          path: String.raw`D:\sprites\alice\idle.png`,
+          voice_type: "preset" as const,
+        },
+        {
+          path: "D:/sprites/alice/other.png",
+          voice_type: "reference" as const,
+        },
+      ],
+    };
+
+    expect(mergeSprites([{ path: "D:/sprites/alice/idle.png" }], current)[0]?.voice_type).toBe("preset");
+  });
 });
 
 describe("CharacterEditorPage", () => {
@@ -332,6 +350,35 @@ describe("CharacterEditorPage", () => {
       ),
     );
     await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("Sora"));
+  });
+
+  it("rejects model paths with outer whitespace instead of changing their identity", async () => {
+    mockListCharacters.mockResolvedValue([
+      {
+        ...structuredClone(character),
+        gpt_model_path: " D:/models/mika.ckpt",
+      },
+    ]);
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("路径首尾不能包含空白字符。")).toBeInTheDocument();
+    expect(mockSaveCharacter).not.toHaveBeenCalled();
+  });
+
+  it("rejects a whitespace-retargeted sprite directory", async () => {
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), {
+      target: { value: " mika " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("立绘目录名首尾不能包含空白字符。")).toBeInTheDocument();
+    expect(mockSaveCharacter).not.toHaveBeenCalled();
   });
 
   it("updates the cached template selection when a character is renamed", async () => {
@@ -497,6 +544,21 @@ describe("CharacterEditorPage", () => {
         }),
       ),
     );
+  });
+
+  it("does not treat whitespace-retargeted model paths as reference-ready", async () => {
+    mockListCharacters.mockResolvedValue([
+      {
+        ...structuredClone(character),
+        gpt_model_path: " D:/models/mika.ckpt",
+        sovits_model_path: "D:/models/mika.pth",
+        sprites: [{ ...character.sprites[0], voice_text: "Reference line" }],
+      },
+    ]);
+    renderPage();
+
+    await screen.findByDisplayValue("Mika");
+    expect(screen.getByRole("radio", { name: "Fallback voice" })).toBeChecked();
   });
 
   it("imports and exports packages, opens resources, and runs AI actions", async () => {

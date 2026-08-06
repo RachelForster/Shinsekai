@@ -77,6 +77,19 @@ their `build` callbacks.
 Adapter registration stores the **class** (not an instance); registering the same
 provider name again overwrites the earlier one, including built-ins.
 
+### Filesystem and process safety SDK
+
+Plugins that need portable filesystem or subprocess boundaries may import the stable
+submodules `sdk.path_contract`, `sdk.path_references`, `sdk.file_transactions`,
+`sdk.archive_paths`, and `sdk.process_launch`. Their public surface is the explicit
+`__all__` declared by each module. These helpers validate identities and portable
+names; they do not grant access to a host project directory. A plugin must still use
+the `plugin_root` or an explicit path supplied by the host as its authorization root.
+
+Breaking or removing one of these exported names requires a documented deprecation
+period and a major-version removal target. Host-specific download allowlists,
+project-storage choices, and overwrite policy are not SDK behavior.
+
 ---
 
 ### Lifecycle hooks

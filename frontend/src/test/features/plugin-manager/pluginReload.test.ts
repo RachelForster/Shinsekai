@@ -101,4 +101,16 @@ describe("pluginReload", () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("rejects a restarted runtime URL that is not an exact bridge origin", async () => {
+    mocks.restartDesktopBridge.mockResolvedValue({
+      bridgeUrl: "http://127.0.0.1:8787/unexpected-prefix",
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(reloadPluginService()).rejects.toThrow("Bridge base URL must be an exact HTTP(S) origin");
+
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

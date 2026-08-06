@@ -148,8 +148,12 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     services_package = ModuleType("ui.settings_ui.services")
     services_package.__path__ = []
     storage_module = ModuleType("application.chat.session_store")
-    storage_module.save_template_session = lambda _path, data: saved.update(data)
-    storage_module.load_template_session = lambda _path: dict(saved)
+    storage_module.save_template_session = (
+        lambda _path, data, **_kwargs: saved.update(data)
+    )
+    storage_module.load_template_session = (
+        lambda _path, **_kwargs: dict(saved)
+    )
     monkeypatch.setitem(sys.modules, "ui.settings_ui", settings_package)
     monkeypatch.setitem(sys.modules, "ui.settings_ui.services", services_package)
     monkeypatch.setitem(sys.modules, "application.chat.session_store", storage_module)
@@ -249,8 +253,12 @@ def test_character_rename_updates_persisted_template_selection(monkeypatch):
         "scenario_text": "scene",
     }
     storage_module = ModuleType("application.chat.session_store")
-    storage_module.load_template_session = lambda _path: dict(stored)
-    storage_module.save_template_session = lambda _path, data: stored.update(data)
+    storage_module.load_template_session = (
+        lambda _path, **_kwargs: dict(stored)
+    )
+    storage_module.save_template_session = (
+        lambda _path, data, **_kwargs: stored.update(data)
+    )
     monkeypatch.setitem(sys.modules, "application.chat.session_store", storage_module)
     state = SimpleNamespace(
         config_manager=SimpleNamespace(
@@ -272,8 +280,12 @@ def test_loading_template_session_removes_historical_stale_names(monkeypatch):
         "scenario_text": "scene",
     }
     storage_module = ModuleType("application.chat.session_store")
-    storage_module.load_template_session = lambda _path: dict(stored)
-    storage_module.save_template_session = lambda _path, data: stored.update(data)
+    storage_module.load_template_session = (
+        lambda _path, **_kwargs: dict(stored)
+    )
+    storage_module.save_template_session = (
+        lambda _path, data, **_kwargs: stored.update(data)
+    )
     monkeypatch.setitem(sys.modules, "application.chat.session_store", storage_module)
     state = SimpleNamespace(
         config_manager=SimpleNamespace(

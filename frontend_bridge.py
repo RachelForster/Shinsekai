@@ -60,6 +60,19 @@ _bridge_state_lock = threading.Lock()
 _bridge_state = None
 
 
+def _path_text_is_portable(value: str) -> bool:
+    return (
+        bool(value)
+        and value == value.strip()
+        and not any(
+            ord(character) < 32
+            or ord(character) == 127
+            or 0xD800 <= ord(character) <= 0xDFFF
+            for character in value
+        )
+    )
+
+
 def _set_bridge_state(state) -> None:
     global _bridge_state
     with _bridge_state_lock:
@@ -149,30 +162,77 @@ def _configure_runtime_context(
     os.environ["SHINSEKAI_SOURCE_ROOT"] = str(repo_root)
     resolved_frontend_dist = ""
     resolved_app_root = ""
-    if frontend_dist:
-        dist_path = Path(frontend_dist).expanduser()
-        if not dist_path.is_absolute():
-            dist_path = repo_root / dist_path
-        resolved_frontend_dist = str(resolve_regular_path(dist_path))
+    if frontend_dist is not None:
+        if not _path_text_is_portable(frontend_dist):
+            raise RuntimeError(
+                "frontend distribution path contains non-portable characters"
+            )
+        from sdk.path_contract import (
+            require_regular_file_without_links,
+            resolve_project_read_path,
+        )
 
-    raw_app_root = app_root or os.environ.get("SHINSEKAI_APP_ROOT")
-    if raw_app_root:
-        app_root_path = resolve_regular_path(raw_app_root)
-        if app_root_path.exists() and app_root_path.is_dir():
-            resolved_app_root = str(app_root_path)
-            os.environ["SHINSEKAI_APP_ROOT"] = resolved_app_root
+        try:
+            resolved_dist_path = resolve_project_read_path(
+                frontend_dist,
+                root=repo_root,
+            )
+            require_regular_file_without_links(
+                resolved_dist_path / "index.html",
+                field="frontend distribution index",
+            )
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(
+                "frontend distribution path contains a linked component, "
+                "escapes source root, or lacks a regular index file"
+            ) from exc
+        resolved_frontend_dist = str(resolved_dist_path)
+
+    if app_root is not None:
+        raw_app_root = app_root
+        app_root_source = "--app-root"
+    elif "SHINSEKAI_APP_ROOT" in os.environ:
+        raw_app_root = os.environ["SHINSEKAI_APP_ROOT"]
+        app_root_source = "SHINSEKAI_APP_ROOT"
+    else:
+        raw_app_root = None
+        app_root_source = ""
+    if raw_app_root is not None:
+        if not _path_text_is_portable(raw_app_root):
+            raise RuntimeError(
+                f"{app_root_source} app root contains non-portable characters"
+            )
+        from sdk.path_contract import require_directory_without_links
+
+        try:
+            app_root_path = require_directory_without_links(
+                raw_app_root,
+                field=f"{app_root_source} app root",
+            )
+        except (OSError, PermissionError, ValueError) as exc:
+            raise RuntimeError(
+                f"{app_root_source} app root is invalid: "
+                f"{raw_app_root!r}: {exc}"
+            ) from exc
+        resolved_app_root = str(app_root_path)
+        os.environ["SHINSEKAI_APP_ROOT"] = resolved_app_root
     if not resolved_app_root:
+        if getattr(sys, "frozen", False):
+            raise RuntimeError(
+                "frozen bridge requires an explicit --app-root or "
+                "SHINSEKAI_APP_ROOT"
+            )
         resolved_app_root = str(repo_root)
-        os.environ.setdefault("SHINSEKAI_APP_ROOT", resolved_app_root)
+        os.environ["SHINSEKAI_APP_ROOT"] = resolved_app_root
 
-    if project_root:
+    if project_root is not None:
         root = _prepare_project_root(project_root, "--project-root")
     else:
         root = None
         for env_name in ("SHINSEKAI_PROJECT_ROOT", "EASYAI_PROJECT_ROOT"):
-            raw_project_root = os.environ.get(env_name, "").strip()
-            if not raw_project_root:
+            if env_name not in os.environ:
                 continue
+            raw_project_root = os.environ[env_name]
             # An explicitly configured root is authoritative.  In particular,
             # never fall through from a broken SHINSEKAI_PROJECT_ROOT to the
             # legacy variable or cwd: doing so could make the bridge write a
@@ -180,14 +240,16 @@ def _configure_runtime_context(
             root = _prepare_project_root(raw_project_root, env_name)
             break
         if root is None:
-            root = resolve_regular_path(Path.cwd())
+            if getattr(sys, "frozen", False):
+                raise RuntimeError(
+                    "frozen bridge requires an explicit --project-root or "
+                    "SHINSEKAI_PROJECT_ROOT"
+                )
+            root = _prepare_project_root(
+                str(repo_root),
+                "bridge source root",
+            )
     resolved_project_root = str(root)
-    try:
-        os.chdir(root)
-    except OSError as exc:
-        raise RuntimeError(
-            f"project root is not accessible: {resolved_project_root}: {exc}"
-        ) from exc
     os.environ["SHINSEKAI_PROJECT_ROOT"] = resolved_project_root
     os.environ["EASYAI_PROJECT_ROOT"] = resolved_project_root
     if str(repo_root) not in sys.path:
@@ -199,57 +261,23 @@ def _prepare_project_root(raw_path: str, source: str) -> Path:
     """Create and validate an authoritative project-root override."""
 
     try:
-        configured = Path(raw_path).expanduser()
-        if source != "--project-root" and not configured.is_absolute():
-            raise ValueError("environment project roots must be absolute")
-        root = resolve_regular_path(configured)
-        root.mkdir(parents=True, exist_ok=True)
-        data_root = root / "data"
-        data_root.mkdir(parents=True, exist_ok=True)
+        if not _path_text_is_portable(raw_path):
+            raise ValueError("project roots contain non-portable characters")
+        from sdk.path_contract import prepare_and_activate_project_root
+
+        try:
+            root = prepare_and_activate_project_root(
+                raw_path,
+                field=f"{source} project root",
+            )
+        except ValueError as exc:
+            if "must be an absolute path" in str(exc):
+                raise ValueError("project roots must be absolute") from exc
+            raise
     except (OSError, RuntimeError, ValueError) as exc:
         raise RuntimeError(
             f"{source} project root cannot be created or accessed: {raw_path!r}: {exc}"
         ) from exc
-
-    if not root.is_dir():
-        raise RuntimeError(f"{source} project root is not a directory: {root}")
-    if not data_root.is_dir():
-        raise RuntimeError(f"{source} project data path is not a directory: {data_root}")
-
-    # O_EXCL ensures cleanup can never remove somebody else's file if two
-    # bridge processes probe the same directory concurrently.
-    probe = data_root / (
-        f".shinsekai-write-test-{os.getpid()}-{secrets.token_hex(8)}"
-    )
-    descriptor: int | None = None
-    owned_probe = False
-    probe_errors: list[str] = []
-    try:
-        descriptor = os.open(probe, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        owned_probe = True
-        payload = memoryview(b"ok")
-        while payload:
-            written = os.write(descriptor, payload)
-            if written <= 0:
-                raise OSError("write probe made no progress")
-            payload = payload[written:]
-    except OSError as exc:
-        probe_errors.append(f"write: {exc}")
-    finally:
-        if descriptor is not None:
-            try:
-                os.close(descriptor)
-            except OSError as exc:
-                probe_errors.append(f"close: {exc}")
-        if owned_probe:
-            try:
-                probe.unlink()
-            except OSError as exc:
-                probe_errors.append(f"cleanup: {exc}")
-    if probe_errors:
-        raise RuntimeError(
-            f"{source} project root is not safely writable: {root}: {'; '.join(probe_errors)}"
-        )
 
     try:
         return resolve_regular_path(root, strict=True)
@@ -516,7 +544,7 @@ def _watch_windows_parent(parent_pid: int) -> None:
 
 def check_runtime(
     project_root: str | None = None,
-    frontend_dist: str | None = "frontend/dist",
+    frontend_dist: str | None = None,
     requirements_file: str | None = None,
     app_root: str | None = None,
     profile: str = "desktop-core",
@@ -561,7 +589,7 @@ def check_runtime(
 
 def runtime_check_report(
     project_root: str | None = None,
-    frontend_dist: str | None = "frontend/dist",
+    frontend_dist: str | None = None,
     requirements_file: str | None = None,
     app_root: str | None = None,
     profile: str = "desktop-core",
@@ -604,19 +632,31 @@ def _default_runtime_requirements_file(repo_root: Path, profile: str) -> str:
     return str(repo_root / "requirements.txt")
 
 
+def _runtime_requirements_path(
+    repo_root: Path,
+    requirements_file: str | None,
+    profile: str,
+) -> Path:
+    from sdk.path_contract import resolve_project_read_path
+
+    configured = (
+        _default_runtime_requirements_file(repo_root, profile)
+        if requirements_file is None
+        else requirements_file
+    )
+    return resolve_project_read_path(configured, root=repo_root)
+
+
 def _check_runtime_requirements(
     repo_root: Path,
     requirements_file: str | None,
     profile: str,
 ) -> None:
-    requirements_file = requirements_file or _default_runtime_requirements_file(
-        repo_root, profile
+    requirements_path = _runtime_requirements_path(
+        repo_root,
+        requirements_file,
+        profile,
     )
-    if not requirements_file:
-        return
-    requirements_path = Path(requirements_file).expanduser()
-    if not requirements_path.is_absolute():
-        requirements_path = repo_root / requirements_path
     _check_required_distributions(requirements_path)
 
 
@@ -655,12 +695,28 @@ def _missing_distributions_from_message(message: str) -> list[str]:
 
 
 def _iter_requirements(requirements_path: Path, seen: set[Path] | None = None):
-    requirements_path = requirements_path.resolve()
+    from sdk.file_transactions import read_text_without_links
+    from sdk.path_contract import (
+        require_symlink_free_absolute_path,
+        validate_exact_path_text,
+    )
+
+    raw_requirements_path = validate_exact_path_text(
+        requirements_path,
+        field="runtime requirements path",
+    )
+    unresolved_requirements_path = Path(raw_requirements_path)
+    if not unresolved_requirements_path.is_absolute():
+        raise ValueError("runtime requirements path must be absolute")
+    requirements_path = require_symlink_free_absolute_path(
+        unresolved_requirements_path,
+        field="runtime requirements path",
+    )
     seen = seen or set()
     if requirements_path in seen:
         return
     seen.add(requirements_path)
-    for raw_line in requirements_path.read_text(encoding="utf-8").splitlines():
+    for raw_line in read_text_without_links(requirements_path).splitlines():
         line = raw_line.split("#", 1)[0].strip()
         if not line:
             continue
@@ -692,14 +748,17 @@ def _included_requirements_path(requirements_path: Path, line: str) -> Path | No
     if not tokens:
         return None
     if tokens[0] in {"-r", "--requirement"} and len(tokens) >= 2:
-        included = Path(tokens[1]).expanduser()
+        raw_included = tokens[1]
     elif tokens[0].startswith("--requirement="):
-        included = Path(tokens[0].split("=", 1)[1]).expanduser()
+        raw_included = tokens[0].split("=", 1)[1]
     else:
         return None
-    if not included.is_absolute():
-        included = requirements_path.parent / included
-    return included
+    from sdk.path_contract import resolve_project_read_path
+
+    return resolve_project_read_path(
+        raw_included,
+        root=requirements_path.parent,
+    )
 
 
 def _split_requirement_marker(line: str) -> tuple[str, str]:
@@ -750,8 +809,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--frontend-dist",
-        default="frontend/dist",
-        help="Built frontend directory to serve. Relative paths resolve from the repository root.",
+        default=None,
+        help=(
+            "Built frontend directory to serve or explicitly validate. "
+            "Serving defaults to frontend/dist; runtime checks omit frontend validation "
+            "unless this option is provided. Relative paths resolve from the repository root."
+        ),
     )
     parser.add_argument(
         "--open-browser",
@@ -800,7 +863,7 @@ def main() -> None:
             with contextlib.redirect_stdout(sys.stderr):
                 report = runtime_check_report(
                     args.project_root or None,
-                    args.frontend_dist or None,
+                    args.frontend_dist,
                     args.requirements_file or None,
                     args.app_root or None,
                     args.profile,
@@ -812,7 +875,7 @@ def main() -> None:
         else:
             check_runtime(
                 args.project_root or None,
-                args.frontend_dist or None,
+                args.frontend_dist,
                 args.requirements_file or None,
                 args.app_root or None,
                 args.profile,
@@ -825,7 +888,9 @@ def main() -> None:
         host=args.host,
         port=args.port,
         project_root=args.project_root or None,
-        frontend_dist=args.frontend_dist or None,
+        frontend_dist=(
+            "frontend/dist" if args.frontend_dist is None else args.frontend_dist
+        ),
         open_browser=args.open_browser,
         parent_pid=args.parent_pid or None,
         app_root=args.app_root or None,

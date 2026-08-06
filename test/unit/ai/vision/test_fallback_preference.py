@@ -34,7 +34,12 @@ def _image(tmp_path: Path) -> ResolvedChatAttachment:
     path = tmp_path / "apple.png"
     path.write_bytes(b"apple-bytes")
     return ResolvedChatAttachment(
-        kind="image", mime_type="image/png", name="apple.png", path=path, size=path.stat().st_size
+        identity=path.stat(),
+        kind="image",
+        mime_type="image/png",
+        name="apple.png",
+        path=path,
+        size=path.stat().st_size,
     )
 
 

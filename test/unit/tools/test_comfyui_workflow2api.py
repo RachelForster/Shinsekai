@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 
-from tools.comfyui_workflow2api import convert_workflow, main
+import pytest
+
+from tools.comfyui_workflow2api import convert_workflow, load_json, main
 
 
 def test_api_prompt_passthrough_detects_nodes() -> None:
@@ -153,3 +155,37 @@ def test_cli_writes_converted_workflow(tmp_path) -> None:
             "inputs": {"text": "prompt"},
         }
     }
+
+
+def test_comfyui_converter_rejects_input_alias_before_read(tmp_path) -> None:
+    source = tmp_path / "workflow.json"
+    source.write_text("{}", encoding="utf-8")
+    alias = f"{tmp_path.as_posix()}/./workflow.json"
+
+    with pytest.raises(ValueError, match="lexical path aliases"):
+        load_json(alias)
+
+
+def test_comfyui_converter_rejects_symlinked_input_before_read(tmp_path) -> None:
+    source = tmp_path / "workflow.json"
+    source.write_text("{}", encoding="utf-8")
+    alias = tmp_path / "workflow-alias.json"
+    try:
+        alias.symlink_to(source)
+    except (NotImplementedError, OSError):
+        pytest.skip("file symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        load_json(alias)
+
+
+def test_comfyui_converter_rejects_output_alias_before_write(tmp_path) -> None:
+    source = tmp_path / "workflow.json"
+    source.write_text(
+        '{"1":{"class_type":"SaveImage","inputs":{}}}',
+        encoding="utf-8",
+    )
+    output_alias = f"{tmp_path.as_posix()}/./workflow.api.json"
+
+    assert main([source.as_posix(), "-o", output_alias]) == 1
+    assert not (tmp_path / "workflow.api.json").exists()

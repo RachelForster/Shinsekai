@@ -25,15 +25,20 @@ except Exception:
 # Make project root importable (tests run from repo root)
 _THIS_FILE = Path(__file__).resolve()
 _PROJECT_ROOT = _THIS_FILE.parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 
 def _configure_test_temp_dir() -> None:
-    temp_root_override = os.environ.get("SHINSEKAI_PYTEST_TEMP_ROOT")
-    temp_root = (
-        Path(temp_root_override)
-        if temp_root_override
-        else Path(tempfile.gettempdir()) / "shinsekai-pytest-runtime"
-    )
+    if "SHINSEKAI_PYTEST_TEMP_ROOT" in os.environ:
+        from core.paths import resolve_project_path
+
+        temp_root = resolve_project_path(
+            ".",
+            root=os.environ["SHINSEKAI_PYTEST_TEMP_ROOT"],
+        )
+    else:
+        temp_root = Path(tempfile.gettempdir()) / "shinsekai-pytest-runtime"
     temp_root.mkdir(parents=True, exist_ok=True)
     temp_path = str(temp_root)
     os.environ.setdefault("TMPDIR", temp_path)
@@ -50,9 +55,6 @@ from queue import Queue
 from unittest.mock import MagicMock
 
 import pytest
-
-if str(_PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PROJECT_ROOT))
 
 from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 

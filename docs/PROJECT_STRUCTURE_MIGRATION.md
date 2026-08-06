@@ -190,3 +190,15 @@ PR 范围：
 O5 根据“废弃 Qt UI 逻辑”的明确项目决策加速删除 Qt 与仅服务于该 UI
 的兼容入口；稳定插件扩展继续通过 `sdk.adapters`、frontend contribution
 和 JSON 事件契约提供。
+
+## 6. PR #294：路径安全公共面收口
+
+状态：按 [`PATH_SAFETY_SDK_DECISION.md`](PATH_SAFETY_SDK_DECISION.md) 完成。
+
+- `sdk.path_contract`、`sdk.path_references`、`sdk.file_transactions`、
+  `sdk.archive_paths` 与 `sdk.process_launch` 是标准库/SDK-only 的稳定公共面；
+- 本 PR 内新建但从未发布的 `core.archive_paths`、`core.file_transactions`、
+  `core.process_launch` alias 已删除，内部生产引用归零；
+- canonical 实现测试迁入 `test/unit/sdk/`，架构测试禁止旧路径回流；
+- 主题、effect 和插件配置持久化从 `frontend_bridge_core/` 下沉到
+  `application/chat/`、`application/media/` 和 `application/plugins/`。

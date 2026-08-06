@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 
+import pytest
+
 from ai.vision.message_content import normalize_anthropic_user_content, normalize_openai_messages
 from ai.vision.service import ChatVisionService
 from core.media.chat_attachments import resolve_chat_attachments
@@ -44,7 +46,7 @@ def test_chat_vision_service_prefers_native_image_blocks(tmp_path: Path):
     assert isinstance(prepared.content, list)
     assert prepared.content[0] == {"type": "text", "text": "What is here?\n\nImage attachments: moon.png"}
     assert prepared.content[1]["type"] == "local_image"
-    assert prepared.content[1]["path"] == str(image.path)
+    assert prepared.content[1]["path"] == (image.reference or str(image.path))
     assert prepared.content[1]["data"] == base64.b64encode(b"image-bytes").decode("ascii")
 
 
@@ -196,3 +198,37 @@ def test_file_attachments_are_read_locally_and_passed_to_the_llm(tmp_path: Path)
     assert reads == [str(document.resolve())]
     assert "facts from local file_read" in prepared.content
     assert "BEGIN ATTACHED FILE: facts.txt" in prepared.content
+
+
+def test_default_file_attachment_reader_rejects_content_changed_after_validation(
+    tmp_path: Path,
+):
+    document = tmp_path / "facts.txt"
+    document.write_text("approved", encoding="utf-8")
+    attachment = resolve_chat_attachments(
+        [{"kind": "file", "path": str(document)}]
+    )[0]
+    document.write_text("replacement-is-longer", encoding="utf-8")
+
+    prepared = ChatVisionService().prepare(
+        "Read it",
+        [attachment],
+        adapter=_NativeAdapter(),
+    )
+
+    assert "Unable to read file" in prepared.content
+    assert "replacement-is-longer" not in prepared.content
+
+
+def test_native_image_reader_rejects_content_changed_after_validation(
+    tmp_path: Path,
+):
+    image = _image_attachment(tmp_path)
+    image.path.write_bytes(b"replacement-image-is-longer")
+
+    with pytest.raises(PermissionError, match="identity changed"):
+        ChatVisionService().prepare(
+            "Inspect",
+            [image],
+            adapter=_NativeAdapter(),
+        )

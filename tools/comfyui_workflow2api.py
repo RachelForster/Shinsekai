@@ -17,6 +17,19 @@ from pathlib import Path
 from typing import Any
 from urllib.request import urlopen
 
+if __package__ in {None, ""}:
+    _source_root = Path(__file__).resolve().parent.parent
+    if str(_source_root) not in sys.path:
+        sys.path.insert(0, str(_source_root))
+
+from sdk.file_transactions import atomic_write_text, read_text_without_links
+from core.paths import (
+    project_root,
+    require_directory_without_links,
+    resolve_project_output_path,
+    resolve_runtime_asset_read_path,
+)
+
 
 class WorkflowConversionError(ValueError):
     """Raised when a workflow cannot be converted into an API prompt."""
@@ -69,8 +82,10 @@ _BUILTIN_WIDGET_INPUTS: dict[str, list[tuple[str, str]]] = {
 
 
 def load_json(path: str | Path) -> Any:
-    with Path(path).open("r", encoding="utf-8") as handle:
-        return json.load(handle)
+    source = resolve_runtime_asset_read_path(path, root=project_root())
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    return json.loads(read_text_without_links(source))
 
 
 def is_api_prompt(data: Any) -> bool:
@@ -395,8 +410,13 @@ def main(argv: list[str] | None = None) -> int:
         result = convert_workflow(load_json(args.workflow), object_info=object_info)
         text = json.dumps(result.prompt, ensure_ascii=False, indent=args.indent)
         if args.output:
-            Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-            Path(args.output).write_text(text + "\n", encoding="utf-8")
+            output = resolve_project_output_path(args.output, root=project_root())
+            output.parent.mkdir(parents=True, exist_ok=True)
+            require_directory_without_links(
+                output.parent,
+                field="ComfyUI workflow output directory",
+            )
+            atomic_write_text(output, text + "\n")
         else:
             print(text)
         if args.summary:

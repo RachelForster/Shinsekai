@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from sdk.file_transactions import read_text_without_links
 from sdk.lang import SUPPORTED_LANGS, normalize_lang
 
 __all__ = [
@@ -34,8 +35,7 @@ def _load_json(code: str) -> dict[str, Any]:
     path = _locales_dir / f"{code}.json"
     if not path.is_file():
         return {}
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+    return json.loads(read_text_without_links(path))
 
 
 def _walk(d: dict[str, Any], key_path: str) -> Any:

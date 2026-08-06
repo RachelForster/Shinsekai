@@ -203,7 +203,7 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
         label: "HF Cache 目录",
         name: "huggingface_cache_dir",
         pathKind: "directory",
-        placeholder: "./data/cache/huggingface",
+        placeholder: "data/cache/huggingface",
         type: "file",
       },
       {

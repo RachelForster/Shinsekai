@@ -1,7 +1,8 @@
 use std::{
+    collections::HashSet,
     error::Error,
     fs::{self, OpenOptions},
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Stdio},
     sync::mpsc::{self, RecvTimeoutError},
@@ -13,6 +14,11 @@ use serde::Serialize;
 use tauri::{Emitter, Manager, Runtime};
 
 use super::{manifest::RuntimeRequirements, python_env, pytorch};
+use crate::path_contract::{
+    canonicalize_regular_file_without_links, files_have_same_identity, metadata_is_link,
+    open_directory_without_links, open_regular_file_without_links, path_has_no_link_components,
+    path_is_filesystem_root, path_text_is_portable,
+};
 
 type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 const RUNTIME_PROGRESS_EVENT: &str = "shinsekai:runtime-progress";
@@ -21,11 +27,12 @@ fn configure_pip_install_command(
     command: &mut Command,
     python: &Path,
     pip_index_url: Option<&str>,
-) {
-    python_env::configure_pip_command(command, python);
+) -> RuntimeResult<()> {
+    python_env::configure_pip_command(command, python)?;
     if let Some(url) = pip_index_url.map(str::trim).filter(|url| !url.is_empty()) {
         command.arg("-i").arg(url);
     }
+    Ok(())
 }
 
 fn ensure_python_pip_available(python: &Path) -> RuntimeResult<()> {
@@ -39,7 +46,7 @@ fn ensure_python_pip_available(python: &Path) -> RuntimeResult<()> {
         .arg("ensurepip")
         .arg("--upgrade")
         .arg("--default-pip");
-    python_env::configure_pip_command(&mut ensurepip, python);
+    python_env::configure_pip_command(&mut ensurepip, python)?;
     if let Err(error) = run_command(&mut ensurepip, "bootstrap Python pip with ensurepip") {
         return Err(format!(
             "Python pip bootstrap failed for {}: {error}",
@@ -61,35 +68,55 @@ fn ensure_python_pip_available(python: &Path) -> RuntimeResult<()> {
 fn check_python_pip(python: &Path) -> RuntimeResult<()> {
     let mut command = Command::new(python);
     command.arg("-m").arg("pip").arg("--version");
-    python_env::configure_pip_command(&mut command, python);
+    python_env::configure_pip_command(&mut command, python)?;
     run_command(&mut command, "check Python pip")
 }
 
 fn install_runtime_requirements<F>(
     python: &Path,
     requirements_path: &Path,
+    temporary_directory: &Path,
     pip_index_urls: &[String],
     mut on_log_line: F,
 ) -> RuntimeResult<()>
 where
     F: FnMut(&str),
 {
-    ensure_python_pip_available(python)?;
-    let requirements_text = fs::read_to_string(requirements_path).map_err(|error| {
+    let python_identity = open_regular_file_without_links(python).map_err(|error| {
         format!(
-            "read runtime requirements file {} failed: {error}",
-            requirements_path.display()
+            "runtime Python must be a regular non-link file {}: {error}",
+            python.display()
         )
     })?;
+    ensure_python_pip_available(python)?;
+    require_open_regular_file_identity(python, &python_identity, "runtime Python")?;
+    let mut requirements_file =
+        open_regular_file_without_links(requirements_path).map_err(|error| {
+            format!(
+                "runtime requirements must be a regular non-link file {}: {error}",
+                requirements_path.display()
+            )
+        })?;
+    let mut requirements_text = String::new();
+    requirements_file
+        .read_to_string(&mut requirements_text)
+        .map_err(|error| {
+            format!(
+                "read runtime requirements file {} failed: {error}",
+                requirements_path.display()
+            )
+        })?;
     let requirement_lines = requirements_text
         .lines()
         .map(ToString::to_string)
         .collect::<Vec<_>>();
+    let requirement_inputs = capture_requirement_inputs(requirements_path, &requirement_lines)?;
     let (torch_lines, other_lines) = pytorch::partition_requirement_lines(&requirement_lines);
+    let other_lines = rebase_requirement_file_directives(requirements_path, &other_lines)?;
     let split_torch = !torch_lines.is_empty() && !cfg!(target_os = "macos");
 
     if split_torch {
-        let plan = pytorch::install_plan(python, &torch_lines, pip_index_urls);
+        let plan = pytorch::install_plan(python, &torch_lines, pip_index_urls, temporary_directory);
         on_log_line(&format!(
             "PyTorch plan: index={} ({}), install={}, force_reinstall={}: {}",
             plan.index_url,
@@ -99,37 +126,43 @@ where
             plan.detail,
         ));
         let torch_requirements = write_temp_requirements(
-            requirements_path,
+            temporary_directory,
             "shinsekai-torch",
             &plan.requirement_lines,
         )?;
         let other_requirements =
-            write_temp_requirements(requirements_path, "shinsekai-runtime", &other_lines)?;
+            write_temp_requirements(temporary_directory, "shinsekai-runtime", &other_lines)?;
         let result = (|| {
             if plan.install_required {
+                require_open_regular_file_identity(python, &python_identity, "runtime Python")?;
+                torch_requirements.require_current_identity()?;
                 let mut install_torch = pytorch_install_command(
                     python,
                     &torch_requirements,
                     &plan.index_url,
                     plan.force_reinstall,
-                );
+                )?;
                 run_command_with_live_log(
                     &mut install_torch,
                     "install Shinsekai PyTorch runtime dependencies",
                     &mut on_log_line,
                 )?;
+                require_open_regular_file_identity(python, &python_identity, "runtime Python")?;
+                torch_requirements.require_current_identity()?;
                 if plan.force_reinstall {
                     let mut repair_dependencies = pytorch_install_command(
                         python,
                         &torch_requirements,
                         &plan.index_url,
                         false,
-                    );
+                    )?;
                     run_command_with_live_log(
                         &mut repair_dependencies,
                         "repair Shinsekai PyTorch runtime dependencies",
                         &mut on_log_line,
                     )?;
+                    require_open_regular_file_identity(python, &python_identity, "runtime Python")?;
+                    torch_requirements.require_current_identity()?;
                 }
             }
             if !has_non_comment_requirement(&other_lines) {
@@ -137,31 +170,274 @@ where
             }
             install_runtime_requirements_file_with_indexes(
                 python,
+                &python_identity,
                 &other_requirements,
+                &other_requirements.identity,
                 pip_index_urls,
                 Some(&torch_requirements),
+                &requirement_inputs,
                 &mut on_log_line,
             )
         })();
-        let _ = fs::remove_file(torch_requirements);
-        let _ = fs::remove_file(other_requirements);
+        drop(other_requirements);
+        drop(torch_requirements);
         return result;
     }
 
     install_runtime_requirements_file_with_indexes(
         python,
+        &python_identity,
         requirements_path,
+        &requirements_file,
         pip_index_urls,
         None,
+        &requirement_inputs,
         &mut on_log_line,
     )
 }
 
+fn require_open_regular_file_identity(
+    path: &Path,
+    expected: &fs::File,
+    field: &str,
+) -> RuntimeResult<()> {
+    let current = open_regular_file_without_links(path)?;
+    if !files_have_same_identity(expected, &current)? {
+        return Err(format!("{field} changed identity: {}", path.display()).into());
+    }
+    Ok(())
+}
+
+fn require_open_directory_identity(
+    path: &Path,
+    expected: &fs::File,
+    field: &str,
+) -> RuntimeResult<()> {
+    let current = open_directory_without_links(path)?;
+    if !files_have_same_identity(expected, &current)? {
+        return Err(format!("{field} changed identity: {}", path.display()).into());
+    }
+    Ok(())
+}
+
+#[derive(Debug)]
+struct RequirementInputSnapshot {
+    path: PathBuf,
+    identity: fs::File,
+}
+
+impl RequirementInputSnapshot {
+    fn require_current_identity(&self) -> RuntimeResult<()> {
+        require_open_regular_file_identity(
+            &self.path,
+            &self.identity,
+            "included runtime requirements file",
+        )
+    }
+}
+
+#[derive(Debug)]
+struct RequirementFileDirective {
+    option: &'static str,
+    value: String,
+}
+
+fn requirement_file_directive(line: &str) -> RuntimeResult<Option<RequirementFileDirective>> {
+    let trimmed = line.trim();
+    for option in ["-r", "--requirement", "-c", "--constraint"] {
+        let Some(remainder) = trimmed.strip_prefix(option) else {
+            continue;
+        };
+        let value = if let Some(value) = remainder.strip_prefix('=') {
+            value.trim()
+        } else if remainder.chars().next().is_some_and(char::is_whitespace) {
+            remainder.trim()
+        } else {
+            continue;
+        };
+        if value.is_empty() {
+            return Err(format!("{option} requires an exact requirements file path").into());
+        }
+        let unquoted = match (value.chars().next(), value.chars().last()) {
+            (Some('"'), Some('"')) | (Some('\''), Some('\'')) if value.len() >= 2 => {
+                &value[1..value.len() - 1]
+            }
+            (Some('"'), _) | (Some('\''), _) | (_, Some('"')) | (_, Some('\'')) => {
+                return Err(
+                    format!("{option} contains an unmatched requirements file path quote").into(),
+                );
+            }
+            _ => value,
+        };
+        if unquoted.is_empty()
+            || unquoted
+                .chars()
+                .any(|character| character <= '\u{1f}' || character == '\u{7f}')
+        {
+            return Err(format!("{option} contains a non-portable requirements file path").into());
+        }
+        if !value.starts_with(['"', '\''])
+            && unquoted
+                .chars()
+                .any(|character| character.is_whitespace() || character == '#')
+        {
+            return Err(format!(
+                "{option} requirements file paths containing spaces or # must be quoted"
+            )
+            .into());
+        }
+        return Ok(Some(RequirementFileDirective {
+            option,
+            value: unquoted.to_string(),
+        }));
+    }
+    Ok(None)
+}
+
+fn local_requirement_input_path(
+    source_path: &Path,
+    directive: &RequirementFileDirective,
+) -> RuntimeResult<Option<PathBuf>> {
+    let value = directive.value.as_str();
+    if value.starts_with("http://") || value.starts_with("https://") {
+        return Ok(None);
+    }
+    if value.contains("://") || value.contains("${") || value.contains("$(") {
+        return Err(format!(
+            "{} uses an unsupported dynamic or non-HTTP requirements source: {value}",
+            directive.option
+        )
+        .into());
+    }
+    let requested = Path::new(value);
+    let candidate = if requested.is_absolute() {
+        requested.to_path_buf()
+    } else {
+        source_path
+            .parent()
+            .ok_or_else(|| {
+                format!(
+                    "requirements file has no parent directory: {}",
+                    source_path.display()
+                )
+            })?
+            .join(requested)
+    };
+    canonicalize_regular_file_without_links(&candidate)
+        .map(Some)
+        .map_err(|error| {
+            format!(
+                "{} must reference an existing regular non-link requirements file ({}): {error}",
+                directive.option,
+                candidate.display()
+            )
+            .into()
+        })
+}
+
+fn capture_requirement_inputs(
+    source_path: &Path,
+    lines: &[String],
+) -> RuntimeResult<Vec<RequirementInputSnapshot>> {
+    let mut snapshots = Vec::new();
+    let mut visited = HashSet::new();
+    capture_requirement_inputs_from(source_path, lines, &mut visited, &mut snapshots)?;
+    Ok(snapshots)
+}
+
+fn capture_requirement_inputs_from(
+    source_path: &Path,
+    lines: &[String],
+    visited: &mut HashSet<PathBuf>,
+    snapshots: &mut Vec<RequirementInputSnapshot>,
+) -> RuntimeResult<()> {
+    for line in lines {
+        let Some(directive) = requirement_file_directive(line)? else {
+            continue;
+        };
+        let Some(path) = local_requirement_input_path(source_path, &directive)? else {
+            continue;
+        };
+        if !visited.insert(path.clone()) {
+            continue;
+        }
+        let mut identity = open_regular_file_without_links(&path)?;
+        let mut text = String::new();
+        identity.read_to_string(&mut text).map_err(|error| {
+            format!(
+                "read included runtime requirements file {} failed: {error}",
+                path.display()
+            )
+        })?;
+        let snapshot = RequirementInputSnapshot { path, identity };
+        snapshot.require_current_identity()?;
+        let nested_lines = text.lines().map(ToString::to_string).collect::<Vec<_>>();
+        capture_requirement_inputs_from(&snapshot.path, &nested_lines, visited, snapshots)?;
+        snapshots.push(snapshot);
+    }
+    Ok(())
+}
+
+fn pip_requirement_path_literal(path: &Path) -> RuntimeResult<String> {
+    if !path_text_is_portable(path) {
+        return Err(format!(
+            "requirements include path is not portable: {}",
+            path.display()
+        )
+        .into());
+    }
+    let text = path.to_str().ok_or_else(|| {
+        format!(
+            "requirements include path is not Unicode: {}",
+            path.display()
+        )
+    })?;
+    #[cfg(windows)]
+    let escaped = text.replace('\\', "/").replace('"', "\\\"");
+    #[cfg(not(windows))]
+    let escaped = text.replace('\\', "\\\\").replace('"', "\\\"");
+    Ok(format!("\"{escaped}\""))
+}
+
+fn rebase_requirement_file_directives(
+    source_path: &Path,
+    lines: &[String],
+) -> RuntimeResult<Vec<String>> {
+    lines
+        .iter()
+        .map(|line| {
+            let Some(directive) = requirement_file_directive(line)? else {
+                return Ok(line.clone());
+            };
+            let Some(path) = local_requirement_input_path(source_path, &directive)? else {
+                return Ok(line.clone());
+            };
+            Ok(format!(
+                "{} {}",
+                directive.option,
+                pip_requirement_path_literal(&path)?
+            ))
+        })
+        .collect()
+}
+
+fn require_requirement_input_identities(
+    snapshots: &[RequirementInputSnapshot],
+) -> RuntimeResult<()> {
+    for snapshot in snapshots {
+        snapshot.require_current_identity()?;
+    }
+    Ok(())
+}
+
 fn install_runtime_requirements_file_with_indexes<F>(
     python: &Path,
+    python_identity: &fs::File,
     requirements_path: &Path,
+    requirements_identity: &fs::File,
     pip_index_urls: &[String],
-    constraints_path: Option<&Path>,
+    constraints: Option<&OwnedTemporaryRequirements>,
+    requirement_inputs: &[RequirementInputSnapshot],
     mut on_log_line: F,
 ) -> RuntimeResult<()>
 where
@@ -170,24 +446,66 @@ where
     let mut errors = Vec::new();
 
     if pip_index_urls.is_empty() {
-        let mut install = pip_install_command(python, requirements_path, None);
-        apply_pip_constraints(&mut install, constraints_path);
-        return run_command_with_live_log(
+        require_open_regular_file_identity(python, python_identity, "runtime Python")?;
+        require_open_regular_file_identity(
+            requirements_path,
+            requirements_identity,
+            "runtime requirements file",
+        )?;
+        let mut install = pip_install_command(python, requirements_path, None)?;
+        if let Some(constraints) = constraints {
+            constraints.require_current_identity()?;
+        }
+        require_requirement_input_identities(requirement_inputs)?;
+        apply_pip_constraints(&mut install, constraints.map(|value| value.as_ref()));
+        let result = run_command_with_live_log(
             &mut install,
             "install Shinsekai runtime dependencies",
             on_log_line,
         );
+        require_open_regular_file_identity(python, python_identity, "runtime Python")?;
+        require_open_regular_file_identity(
+            requirements_path,
+            requirements_identity,
+            "runtime requirements file",
+        )?;
+        if let Some(constraints) = constraints {
+            constraints.require_current_identity()?;
+        }
+        require_requirement_input_identities(requirement_inputs)?;
+        return result;
     }
 
     for pip_index_url in pip_index_urls {
-        let mut install = pip_install_command(python, requirements_path, Some(pip_index_url));
-        apply_pip_constraints(&mut install, constraints_path);
+        require_open_regular_file_identity(python, python_identity, "runtime Python")?;
+        require_open_regular_file_identity(
+            requirements_path,
+            requirements_identity,
+            "runtime requirements file",
+        )?;
+        let mut install = pip_install_command(python, requirements_path, Some(pip_index_url))?;
+        if let Some(constraints) = constraints {
+            constraints.require_current_identity()?;
+        }
+        require_requirement_input_identities(requirement_inputs)?;
+        apply_pip_constraints(&mut install, constraints.map(|value| value.as_ref()));
         on_log_line(&format!("Using pip index: {}", pip_index_url.trim()));
-        match run_command_with_live_log(
+        let result = run_command_with_live_log(
             &mut install,
             "install Shinsekai runtime dependencies",
             &mut on_log_line,
-        ) {
+        );
+        require_open_regular_file_identity(python, python_identity, "runtime Python")?;
+        require_open_regular_file_identity(
+            requirements_path,
+            requirements_identity,
+            "runtime requirements file",
+        )?;
+        if let Some(constraints) = constraints {
+            constraints.require_current_identity()?;
+        }
+        require_requirement_input_identities(requirement_inputs)?;
+        match result {
             Ok(()) => return Ok(()),
             Err(error) => errors.push(format!("{}: {}", pip_index_url.trim(), error)),
         }
@@ -199,12 +517,67 @@ where
     .into())
 }
 
+#[derive(Debug)]
+struct OwnedTemporaryRequirements {
+    path: PathBuf,
+    identity: fs::File,
+    parent_path: PathBuf,
+    parent_identity: fs::File,
+}
+
+impl std::ops::Deref for OwnedTemporaryRequirements {
+    type Target = Path;
+
+    fn deref(&self) -> &Self::Target {
+        &self.path
+    }
+}
+
+impl AsRef<Path> for OwnedTemporaryRequirements {
+    fn as_ref(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl OwnedTemporaryRequirements {
+    fn require_current_identity(&self) -> RuntimeResult<()> {
+        let current_parent = open_directory_without_links(&self.parent_path)?;
+        let current = open_regular_file_without_links(&self.path)?;
+        if !files_have_same_identity(&self.parent_identity, &current_parent)?
+            || !files_have_same_identity(&self.identity, &current)?
+        {
+            return Err(format!(
+                "runtime temporary requirements path changed identity: {}",
+                self.path.display()
+            )
+            .into());
+        }
+        Ok(())
+    }
+}
+
+impl Drop for OwnedTemporaryRequirements {
+    fn drop(&mut self) {
+        if self.require_current_identity().is_ok() {
+            let _ = fs::remove_file(&self.path);
+        }
+    }
+}
+
 fn write_temp_requirements(
-    requirements_path: &Path,
+    temporary_directory: &Path,
     prefix: &str,
     lines: &[String],
-) -> RuntimeResult<PathBuf> {
-    let parent = requirements_path.parent().unwrap_or_else(|| Path::new("."));
+) -> RuntimeResult<OwnedTemporaryRequirements> {
+    if !temporary_directory.is_absolute() {
+        return Err(format!(
+            "runtime temporary directory must be absolute: {}",
+            temporary_directory.display()
+        )
+        .into());
+    }
+    let parent = prepare_runtime_directory(temporary_directory, "runtime temporary directory")?;
+    let parent_identity = open_directory_without_links(&parent)?;
     let filename = format!(
         "{}-{}-{}.txt",
         prefix,
@@ -215,8 +588,21 @@ fn write_temp_requirements(
             .as_nanos()
     );
     let path = parent.join(filename);
-    fs::write(&path, lines.join("\n"))?;
-    Ok(path)
+    let mut file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .open(&path)?;
+    file.write_all(lines.join("\n").as_bytes())?;
+    file.sync_all()?;
+    let temporary_requirements = OwnedTemporaryRequirements {
+        path,
+        identity: file,
+        parent_path: parent,
+        parent_identity,
+    };
+    temporary_requirements.require_current_identity()?;
+    Ok(temporary_requirements)
 }
 
 fn has_non_comment_requirement(lines: &[String]) -> bool {
@@ -230,12 +616,12 @@ fn pip_install_command(
     python: &Path,
     requirements_path: &Path,
     pip_index_url: Option<&str>,
-) -> Command {
+) -> RuntimeResult<Command> {
     let mut install = Command::new(python);
     install.arg("-m").arg("pip").arg("install");
-    configure_pip_install_command(&mut install, python, pip_index_url);
+    configure_pip_install_command(&mut install, python, pip_index_url)?;
     install.arg("-r").arg(requirements_path);
-    install
+    Ok(install)
 }
 
 fn apply_pip_constraints(command: &mut Command, constraints_path: Option<&Path>) {
@@ -249,8 +635,8 @@ fn pytorch_install_command(
     requirements_path: &Path,
     index_url: &str,
     force_stack_only: bool,
-) -> Command {
-    let mut install = pip_install_command(python, requirements_path, None);
+) -> RuntimeResult<Command> {
+    let mut install = pip_install_command(python, requirements_path, None)?;
     install
         .arg("--index-url")
         .arg(index_url)
@@ -265,7 +651,7 @@ fn pytorch_install_command(
             .arg("--force-reinstall")
             .arg("--no-deps");
     }
-    install
+    Ok(install)
 }
 
 pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
@@ -277,11 +663,22 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
     requirements: &RuntimeRequirements,
     pip_index_urls: &[String],
 ) -> RuntimeResult<PathBuf> {
-    if !python.is_file() {
-        return Err(format!("runtime Python does not exist: {}", python.display()).into());
-    }
+    let source_root_identity = open_directory_without_links(source_root).map_err(|error| {
+        format!(
+            "Shinsekai source root must be a regular non-link directory {}: {error}",
+            source_root.display()
+        )
+    })?;
+    let python_identity = open_regular_file_without_links(python).map_err(|error| {
+        format!(
+            "runtime Python must be a regular non-link file {}: {error}",
+            python.display()
+        )
+    })?;
     let runtime_home = runtime_home(app)?;
-    let _install_lock = acquire_install_lock(&runtime_home)?;
+    let install_lock = acquire_install_lock(&runtime_home)?;
+    require_open_directory_identity(source_root, &source_root_identity, "Shinsekai source root")?;
+    require_open_regular_file_identity(python, &python_identity, "runtime Python")?;
     let candidate_id = safe_component(candidate_id);
     let requirements_path = requirements_path(source_root, &requirements.requirements_file);
     emit_runtime_progress(
@@ -295,19 +692,28 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         Some("Installing Shinsekai runtime dependencies"),
         None,
     );
-    install_runtime_requirements(python, &requirements_path, pip_index_urls, |line| {
-        emit_runtime_progress(
-            app,
-            "installingDeps",
-            Some(candidate_id.to_string()),
-            Some("local".to_string()),
-            None,
-            None,
-            None,
-            Some("Installing Shinsekai runtime dependencies"),
-            Some(line),
-        );
-    })?;
+    install_runtime_requirements(
+        python,
+        &requirements_path,
+        &runtime_home,
+        pip_index_urls,
+        |line| {
+            emit_runtime_progress(
+                app,
+                "installingDeps",
+                Some(candidate_id.to_string()),
+                Some("local".to_string()),
+                None,
+                None,
+                None,
+                Some("Installing Shinsekai runtime dependencies"),
+                Some(line),
+            );
+        },
+    )?;
+    install_lock.require_current_identity()?;
+    require_open_directory_identity(source_root, &source_root_identity, "Shinsekai source root")?;
+    require_open_regular_file_identity(python, &python_identity, "runtime Python")?;
 
     emit_runtime_progress(
         app,
@@ -321,6 +727,9 @@ pub fn install_runtime_dependencies<R: Runtime, M: Manager<R> + Emitter<R>>(
         None,
     );
     verify_python_runtime(source_root, python, profile, requirements)?;
+    install_lock.require_current_identity()?;
+    require_open_directory_identity(source_root, &source_root_identity, "Shinsekai source root")?;
+    require_open_regular_file_identity(python, &python_identity, "runtime Python")?;
     emit_runtime_progress(
         app,
         "ready",
@@ -341,11 +750,27 @@ fn verify_python_runtime(
     profile: &str,
     requirements: &RuntimeRequirements,
 ) -> RuntimeResult<()> {
+    let source_root_identity = open_directory_without_links(source_root)?;
+    let python_identity = open_regular_file_without_links(python)?;
     let bridge = source_root.join("frontend_bridge.py");
     let requirements_path = requirements_path(source_root, &requirements.requirements_file);
+    let bridge_identity = open_regular_file_without_links(&bridge).map_err(|error| {
+        format!(
+            "Shinsekai bridge must be a regular non-link file {}: {error}",
+            bridge.display()
+        )
+    })?;
+    let requirements_identity =
+        open_regular_file_without_links(&requirements_path).map_err(|error| {
+            format!(
+                "runtime requirements must be a regular non-link file {}: {error}",
+                requirements_path.display()
+            )
+        })?;
+    require_open_directory_identity(source_root, &source_root_identity, "Shinsekai source root")?;
     let mut command = Command::new(python);
     command
-        .arg(bridge)
+        .arg(&bridge)
         .arg("--check-runtime")
         .arg("--json")
         .arg("--profile")
@@ -353,10 +778,18 @@ fn verify_python_runtime(
         .arg("--project-root")
         .arg(source_root)
         .arg("--requirements-file")
-        .arg(requirements_path)
+        .arg(&requirements_path)
         .current_dir(source_root);
-    python_env::configure_python_command(&mut command, python);
+    python_env::configure_python_command(&mut command, python)?;
     run_command(&mut command, "check Shinsekai runtime")?;
+    require_open_directory_identity(source_root, &source_root_identity, "Shinsekai source root")?;
+    require_open_regular_file_identity(python, &python_identity, "runtime Python")?;
+    require_open_regular_file_identity(&bridge, &bridge_identity, "Shinsekai bridge")?;
+    require_open_regular_file_identity(
+        &requirements_path,
+        &requirements_identity,
+        "runtime requirements file",
+    )?;
     verify_python_imports(python, &requirements.imports)
 }
 
@@ -364,6 +797,7 @@ fn verify_python_imports(python: &Path, modules: &[String]) -> RuntimeResult<()>
     if modules.is_empty() {
         return Ok(());
     }
+    let python_identity = open_regular_file_without_links(python)?;
     let script = concat!(
         "import importlib, sys\n",
         "missing = []\n",
@@ -377,8 +811,10 @@ fn verify_python_imports(python: &Path, modules: &[String]) -> RuntimeResult<()>
     );
     let mut command = Command::new(python);
     command.arg("-c").arg(script).args(modules);
-    python_env::configure_python_command(&mut command, python);
-    run_command(&mut command, "check Shinsekai runtime imports")
+    python_env::configure_python_command(&mut command, python)?;
+    let result = run_command(&mut command, "check Shinsekai runtime imports");
+    require_open_regular_file_identity(python, &python_identity, "runtime Python")?;
+    result
 }
 
 fn run_command(command: &mut Command, label: &str) -> RuntimeResult<()> {
@@ -555,115 +991,177 @@ where
 }
 
 fn runtime_home<R: Runtime>(app: &impl Manager<R>) -> RuntimeResult<PathBuf> {
-    Ok(app.path().app_data_dir()?.join("runtime"))
+    let app_data =
+        prepare_runtime_directory(&app.path().app_data_dir()?, "application data directory")?;
+    prepare_runtime_directory(&app_data.join("runtime"), "runtime state directory")
 }
 
 struct InstallLock {
-    path: PathBuf,
+    file: fs::File,
+    lock_path: PathBuf,
+    runtime_home: PathBuf,
+    runtime_home_identity: fs::File,
+}
+
+impl InstallLock {
+    fn require_current_identity(&self) -> RuntimeResult<()> {
+        let current_runtime_home = open_directory_without_links(&self.runtime_home)?;
+        let current_lock = open_regular_file_without_links(&self.lock_path)?;
+        if !files_have_same_identity(&self.runtime_home_identity, &current_runtime_home)?
+            || !files_have_same_identity(&self.file, &current_lock)?
+        {
+            return Err(format!(
+                "runtime install lock path changed identity: {}",
+                self.lock_path.display()
+            )
+            .into());
+        }
+        Ok(())
+    }
 }
 
 impl Drop for InstallLock {
     fn drop(&mut self) {
-        let _ = fs::remove_file(&self.path);
+        let _ = unlock_install_file(&self.file);
     }
 }
 
 fn acquire_install_lock(runtime_home: &Path) -> RuntimeResult<InstallLock> {
-    fs::create_dir_all(runtime_home)?;
+    let runtime_home = prepare_runtime_directory(runtime_home, "runtime state directory")?;
+    let runtime_home_identity = open_directory_without_links(&runtime_home)?;
     let lock_path = runtime_home.join("install.lock");
-    if is_stale_lock(&lock_path) {
-        let _ = fs::remove_file(&lock_path);
-    }
-    let mut file = OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&lock_path)
-        .map_err(|error| {
-            format!(
-                "another Shinsekai runtime install appears to be running ({}): {error}",
-                lock_path.display()
-            )
-        })?;
+    let mut file = open_install_lock_file(&lock_path).map_err(|error| {
+        format!(
+            "runtime install lock must be a regular non-link file ({}): {error}",
+            lock_path.display()
+        )
+    })?;
+    try_lock_install_file(&file).map_err(|error| {
+        format!(
+            "another Shinsekai runtime install appears to be running ({}): {error}",
+            lock_path.display()
+        )
+    })?;
+    file.set_len(0)?;
+    file.seek(SeekFrom::Start(0))?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or(0);
     writeln!(file, "pid={}", std::process::id())?;
     writeln!(file, "created_at_ms={now}")?;
-    Ok(InstallLock { path: lock_path })
+    file.sync_data()?;
+    let lock = InstallLock {
+        file,
+        lock_path,
+        runtime_home,
+        runtime_home_identity,
+    };
+    lock.require_current_identity()?;
+    Ok(lock)
 }
 
-fn is_stale_lock(lock_path: &Path) -> bool {
-    const STALE_LOCK_AFTER: Duration = Duration::from_secs(6 * 60 * 60);
-    if lock_owner_has_exited(lock_path) {
-        return true;
+fn open_install_lock_file(lock_path: &Path) -> std::io::Result<fs::File> {
+    if !path_has_no_link_components(lock_path) {
+        return Err(std::io::Error::other(
+            "path contains a symbolic link or reparse point",
+        ));
     }
-    let Ok(metadata) = fs::metadata(lock_path) else {
-        return false;
-    };
-    let Ok(modified) = metadata.modified() else {
-        return false;
-    };
-    modified
-        .elapsed()
-        .map(|elapsed| elapsed > STALE_LOCK_AFTER)
-        .unwrap_or(false)
-}
-
-fn lock_owner_has_exited(lock_path: &Path) -> bool {
-    let Ok(text) = fs::read_to_string(lock_path) else {
-        return false;
-    };
-    let Some(pid) = lock_pid_from_text(&text) else {
-        return false;
-    };
-    process_has_exited(pid).unwrap_or(false)
-}
-
-fn lock_pid_from_text(text: &str) -> Option<u32> {
-    text.lines()
-        .find_map(|line| line.trim().strip_prefix("pid="))
-        .and_then(|value| value.trim().parse::<u32>().ok())
-        .filter(|pid| *pid > 0)
+    let mut options = OpenOptions::new();
+    options.read(true).write(true).create(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NOFOLLOW);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+    }
+    let file = options.open(lock_path)?;
+    let metadata = file.metadata()?;
+    if metadata_is_link(&metadata)
+        || !metadata.file_type().is_file()
+        || !path_has_no_link_components(lock_path)
+    {
+        return Err(std::io::Error::other(
+            "path changed to a non-regular or linked file",
+        ));
+    }
+    let verification = open_regular_file_without_links(lock_path)?;
+    if !files_have_same_identity(&file, &verification)? {
+        return Err(std::io::Error::other(
+            "path changed to a different regular file",
+        ));
+    }
+    Ok(file)
 }
 
 #[cfg(unix)]
-fn process_has_exited(pid: u32) -> Option<bool> {
-    if pid == std::process::id() {
-        return Some(false);
-    }
-    let result = unsafe { libc::kill(pid as libc::pid_t, 0) };
+fn try_lock_install_file(file: &fs::File) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
     if result == 0 {
-        return Some(false);
-    }
-    match last_errno() {
-        libc::ESRCH => Some(true),
-        libc::EPERM => Some(false),
-        _ => None,
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
     }
 }
 
-#[cfg(target_os = "linux")]
-fn last_errno() -> i32 {
-    unsafe { *libc::__errno_location() }
+#[cfg(unix)]
+fn unlock_install_file(file: &fs::File) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+
+    let result = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_UN) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
 }
 
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-fn last_errno() -> i32 {
-    unsafe { *libc::__error() }
+#[cfg(windows)]
+fn try_lock_install_file(file: &fs::File) -> std::io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::{
+        Storage::FileSystem::{LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY},
+        System::IO::OVERLAPPED,
+    };
+
+    let mut overlapped = OVERLAPPED::default();
+    let result = unsafe {
+        LockFileEx(
+            file.as_raw_handle(),
+            LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+            0,
+            u32::MAX,
+            u32::MAX,
+            &mut overlapped,
+        )
+    };
+    if result != 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
 }
 
-#[cfg(all(
-    unix,
-    not(any(target_os = "linux", target_os = "macos", target_os = "ios"))
-))]
-fn last_errno() -> i32 {
-    0
-}
+#[cfg(windows)]
+fn unlock_install_file(file: &fs::File) -> std::io::Result<()> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::{Storage::FileSystem::UnlockFileEx, System::IO::OVERLAPPED};
 
-#[cfg(not(unix))]
-fn process_has_exited(_pid: u32) -> Option<bool> {
-    None
+    let mut overlapped = OVERLAPPED::default();
+    let result =
+        unsafe { UnlockFileEx(file.as_raw_handle(), 0, u32::MAX, u32::MAX, &mut overlapped) };
+    if result != 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -712,6 +1210,80 @@ fn requirements_path(source_root: &Path, requirements_file: &str) -> PathBuf {
     } else {
         source_root.join(path)
     }
+}
+
+fn prepare_runtime_directory(path: &Path, field: &str) -> RuntimeResult<PathBuf> {
+    if !path.is_absolute() || path_is_filesystem_root(path) || !path_text_is_portable(path) {
+        return Err(format!(
+            "{field} must be an absolute, portable, non-root path: {}",
+            path.display()
+        )
+        .into());
+    }
+    if !path_has_no_link_components(path) {
+        return Err(format!(
+            "{field} must not contain a symbolic link or reparse-point component: {}",
+            path.display()
+        )
+        .into());
+    }
+    let mut missing_components = Vec::new();
+    let mut existing_ancestor = path;
+    loop {
+        match fs::symlink_metadata(existing_ancestor) {
+            Ok(metadata) => {
+                if metadata_is_link(&metadata) || !metadata.is_dir() {
+                    return Err(format!(
+                        "{field} ancestor must be a real directory: {}",
+                        existing_ancestor.display()
+                    )
+                    .into());
+                }
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let name = existing_ancestor.file_name().ok_or_else(|| {
+                    format!(
+                        "{field} has no existing directory ancestor: {}",
+                        path.display()
+                    )
+                })?;
+                missing_components.push(name.to_owned());
+                existing_ancestor = existing_ancestor.parent().ok_or_else(|| {
+                    format!(
+                        "{field} has no existing directory ancestor: {}",
+                        path.display()
+                    )
+                })?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    let mut current_path = existing_ancestor.to_path_buf();
+    let mut current_identity = open_directory_without_links(&current_path)?;
+    for component in missing_components.iter().rev() {
+        require_open_directory_identity(
+            &current_path,
+            &current_identity,
+            &format!("{field} parent"),
+        )?;
+        let next = current_path.join(component);
+        match fs::create_dir(&next) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error.into()),
+        }
+        require_open_directory_identity(
+            &current_path,
+            &current_identity,
+            &format!("{field} parent"),
+        )?;
+        current_identity = open_directory_without_links(&next)?;
+        current_path = next;
+    }
+    require_open_directory_identity(path, &current_identity, field)?;
+    Ok(path.to_path_buf())
 }
 
 fn safe_component(value: &str) -> String {

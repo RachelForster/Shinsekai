@@ -31,6 +31,32 @@ def test_register_dag_yaml_is_workflow_contribution() -> None:
     assert registry.dag_yaml_paths == ["plugins/demo/workflow.yaml"]
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        " plugins/demo/workflow.yaml",
+        "plugins/demo/workflow.yaml ",
+        "bad\npath.yaml",
+        "./plugins/demo/workflow.yaml",
+        "plugins//demo/workflow.yaml",
+        "plugins/../demo/workflow.yaml",
+    ],
+)
+def test_register_dag_yaml_rejects_ambiguous_path_text(path: str) -> None:
+    registry = PluginCapabilityRegistry()
+
+    with pytest.raises((PermissionError, ValueError)):
+        registry.register_dag_yaml(path)
+
+
+def test_register_dag_yaml_derives_name_from_portable_separators() -> None:
+    registry = PluginCapabilityRegistry()
+
+    registry.register_dag_yaml(r"plugins\demo\workflow.yaml")
+
+    assert registry.workflow_contributions[0].name == "workflow"
+
+
 def test_register_workflow_with_output_contract() -> None:
     registry = PluginCapabilityRegistry()
     contribution = WorkflowContribution(

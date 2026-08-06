@@ -31,7 +31,11 @@ vi.mock("../../../shared/platform/platform", () => ({
   getPlatform: () => platformMocks.getPlatform(),
 }));
 
-import { ChatThemeProvider, useChatTheme } from "../../../features/chat-stage/theme/ChatThemeProvider";
+import {
+  ChatThemeProvider,
+  chatThemeAssetUrl,
+  useChatTheme,
+} from "../../../features/chat-stage/theme/ChatThemeProvider";
 import { ChatThemePicker } from "../../../features/chat-stage/theme/ChatThemePicker";
 import {
   chatStageRuntimeConfigVersion,
@@ -81,6 +85,20 @@ describe("chat theme runtime", () => {
     document.documentElement.removeAttribute("style");
     document.getElementById("shinsekai-chat-theme-fonts")?.remove();
     window.localStorage.removeItem("shinsekai-chat-stage-runtime-config");
+  });
+
+  it("does not retarget theme ids or asset paths with outer separators or whitespace", () => {
+    expect(chatThemeAssetUrl(" token-rich-theme ", "assets/font.woff2")).toBe("");
+    expect(chatThemeAssetUrl("token-rich-theme", " assets/font.woff2")).toBe("");
+    expect(chatThemeAssetUrl("token-rich-theme", "/assets/font.woff2")).toBe("");
+    expect(chatThemeAssetUrl("token-rich-theme", "assets//font.woff2")).toBe("");
+    expect(chatThemeAssetUrl("token-rich-theme", "assets/./font.woff2")).toBe("");
+    expect(chatThemeAssetUrl("token-rich-theme", "assets/CON.woff2")).toBe("");
+    expect(chatThemeAssetUrl("token-rich-theme", "assets/font.")).toBe("");
+    expect(chatThemeAssetUrl("token-rich-theme", "assets/font:alt.woff2")).toBe("");
+    expect(chatThemeAssetUrl("token-rich-theme", "assets/font.woff2")).toBe(
+      "asset://data/chat_ui_themes/token-rich-theme/assets/font.woff2",
+    );
   });
 
   it("maps manifest tokens into chat stage CSS variables and font faces", () => {
@@ -634,6 +652,7 @@ describe("chat theme runtime", () => {
           },
           fonts: [
             { family: "Theme Sans", src: "../escape.woff2", style: "italic", weight: "400" },
+            { family: "Retargeted Sans", src: " assets/fonts/theme.woff2", style: "italic", weight: "400" },
             { family: "Theme Sans", src: "assets/fonts/theme.woff2", style: "italic", weight: "400" },
           ],
           dialog: {
@@ -703,6 +722,7 @@ describe("chat theme runtime", () => {
     expect(resolved.typewriter.soundUrl).toBeUndefined();
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/theme.woff2")');
     expect(resolved.fontFaces).not.toContain("../escape.woff2");
+    expect(resolved.fontFaces).not.toContain("Retargeted Sans");
   });
 
   it("applies resolved theme variables and font faces at runtime", async () => {

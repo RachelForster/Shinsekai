@@ -5,12 +5,40 @@ from pathlib import Path
 import pytest
 
 from sdk.path_utils import (
+    _has_windows_verbatim_prefix,
+    _windows_verbatim_path,
+    normalize_path_identity,
+    reject_control_chars,
+    resolve_regular_path,
     safe_child_path,
     safe_existing_dir_path,
     safe_existing_file_path,
     safe_filename,
     safe_project_path,
+    strip_windows_verbatim_prefix,
 )
+
+
+def test_path_text_helpers_preserve_exact_portable_identity(tmp_path, monkeypatch):
+    assert reject_control_chars("  asset.txt  ", field="asset") == "asset.txt"
+    for value in ("", " \t ", "asset\n.txt", "asset\x7f.txt"):
+        with pytest.raises(ValueError):
+            reject_control_chars(value, field="asset")
+
+    assert _has_windows_verbatim_prefix(r"\\?\C:\project")
+    assert _has_windows_verbatim_prefix("//?/C:/project")
+    assert not _has_windows_verbatim_prefix("C:/project")
+    assert _windows_verbatim_path(r"\\server\share\project") == (
+        r"\\?\UNC\server\share\project"
+    )
+    assert _windows_verbatim_path(r"C:\project") == r"\\?\C:\project"
+    assert strip_windows_verbatim_prefix(r"\\?\C:\project") == r"C:\project"
+
+    monkeypatch.chdir(tmp_path)
+    assert normalize_path_identity("folder/../asset.txt") == tmp_path / "asset.txt"
+    existing = tmp_path / "existing"
+    existing.mkdir()
+    assert resolve_regular_path(existing, strict=True) == existing
 
 
 def test_safe_project_path_accepts_only_paths_inside_root(tmp_path):
@@ -90,6 +118,12 @@ def test_safe_existing_file_path_requires_an_explicit_allowed_root(tmp_path):
 
     with pytest.raises(ValueError, match="trusted path root"):
         safe_existing_file_path(expected, roots=[])
+
+    with pytest.raises(FileNotFoundError):
+        safe_existing_file_path(allowed / "missing.txt", roots=[allowed])
+
+    with pytest.raises(NotADirectoryError):
+        safe_existing_dir_path(expected, roots=[allowed])
 
 
 def test_safe_existing_dir_path_allows_the_exact_trusted_root(tmp_path):

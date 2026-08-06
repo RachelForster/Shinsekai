@@ -1,11 +1,28 @@
 from __future__ import annotations
 
 import ast
-import shutil
+import os
+import stat
 import uuid
 from pathlib import Path
 from typing import Any
 
+from sdk.file_transactions import (
+    copy_directory_without_links,
+    private_sibling_path,
+    read_text_without_links,
+    remove_directory_without_links,
+    replace_directory_transactionally,
+    require_directory_identity,
+    snapshot_directory_entries_without_links,
+)
+from sdk.path_contract import (
+    _metadata_is_link_or_reparse_point,
+    managed_project_storage,
+    path_is_link_or_reparse_point,
+    require_symlink_free_absolute_path,
+)
+from sdk.path_references import portable_path_text, state_project_root
 from application.plugins.catalog import _set_plugin_enabled
 from application.runtime.state import BridgeState
 from application.runtime.tasks import _append_task_log, _update_task
@@ -21,12 +38,28 @@ class PluginPackageDependencyInstallError(RuntimeError):
         self.detail = detail.strip() or self.user_message
 
 
+def _registry_manifest_entry(record: Any | None) -> str:
+    raw = str(getattr(record, "entry", "") or "")
+    if not raw:
+        return ""
+    return portable_path_text(raw, field="plugin registry manifest entry")
+
+
+def _plugins_root(state: BridgeState) -> Path:
+    project_root = state_project_root(state)
+    return managed_project_storage("plugins", root=project_root)
+
+
 def _app_update_info() -> dict[str, Any]:
-    from core.app_update.github_bundle import default_app_github_repo_slug, read_local_version, resolve_project_root
+    from core.app_update.github_bundle import (
+        default_app_github_repo_slug,
+        read_local_version,
+        resolve_project_root as resolve_app_root,
+    )
 
     return {
         "repo": default_app_github_repo_slug(),
-        "version": read_local_version(resolve_project_root()).strip(),
+        "version": read_local_version(resolve_app_root()).strip(),
     }
 
 
@@ -54,7 +87,7 @@ def _run_app_update(state: BridgeState, task_id: str, payload: dict[str, Any]) -
         default_app_github_repo_slug,
         overwrite_merge_app_tree,
         read_local_version,
-        resolve_project_root,
+        resolve_project_root as resolve_app_root,
     )
     from plugin_system.requirements.install import install_plugin_requirements_txt
     from plugin_system.registry.download import format_download_error
@@ -62,10 +95,15 @@ def _run_app_update(state: BridgeState, task_id: str, payload: dict[str, Any]) -
     slug = default_app_github_repo_slug().strip()
     if not slug or slug.count("/") < 1:
         raise ValueError("无法解析主程序 GitHub 仓库。")
-    ref_kind = str(payload.get("refKind") or "latest").strip()
+    ref_kind = portable_path_text(
+        str(payload.get("refKind") or "latest"),
+        field="app update ref kind",
+    )
     if ref_kind not in {"latest", "head", "tag"}:
-        ref_kind = "latest"
-    tag_name = str(payload.get("tagName") or "").strip()
+        raise ValueError(f"unsupported app update ref kind: {ref_kind!r}")
+    tag_name = str(payload.get("tagName") or "")
+    if tag_name:
+        tag_name = portable_path_text(tag_name, field="app update tag")
     if ref_kind == "tag" and not tag_name:
         raise ValueError("请选择一个有效的 tag。")
 
@@ -101,7 +139,13 @@ def _run_app_update(state: BridgeState, task_id: str, payload: dict[str, Any]) -
     def _pip_line(line: str) -> None:
         _append_task_log(state, task_id, line)
 
-    pip_code, detail = install_plugin_requirements_txt(resolve_project_root(), on_output_line=_pip_line)
+    app_root = resolve_app_root()
+    project_root = state_project_root(state)
+    pip_code, detail = install_plugin_requirements_txt(
+        app_root,
+        on_output_line=_pip_line,
+        root=project_root,
+    )
     if detail:
         _append_task_log(state, task_id, detail)
     _update_task(
@@ -112,9 +156,10 @@ def _run_app_update(state: BridgeState, task_id: str, payload: dict[str, Any]) -
         progress=0.92,
     )
     runtime_pip_code, runtime_detail = install_plugin_requirements_txt(
-        resolve_project_root(),
+        app_root,
         requirements_file="requirements-runtime-core.txt",
         on_output_line=_pip_line,
+        root=project_root,
     )
     if runtime_detail:
         _append_task_log(state, task_id, f"requirements-runtime-core.txt: {runtime_detail}")
@@ -127,7 +172,7 @@ def _run_app_update(state: BridgeState, task_id: str, payload: dict[str, Any]) -
         if item
     )
     pip_code = f"requirements.txt:{pip_code};requirements-runtime-core.txt:{runtime_pip_code}"
-    version = read_local_version(resolve_project_root()).strip()
+    version = read_local_version(app_root).strip()
     result = {
         "detail": detail,
         "frontendDistUpdated": bool(merge_result.get("frontendDistUpdated")),
@@ -146,7 +191,9 @@ def _repo_slug_from_source(source: str) -> str:
 
 
 def _is_repo_source(source: str) -> bool:
-    raw = source.strip().lower()
+    if not source or source != source.strip():
+        return False
+    raw = source.lower()
     if ":" in source and not (
         raw.startswith("http://") or raw.startswith("https://") or raw.startswith("git@github.com:")
     ):
@@ -156,7 +203,7 @@ def _is_repo_source(source: str) -> bool:
 
 def _lookup_registry_plugin(source: str) -> Any | None:
     repo_slug = _repo_slug_from_source(source).lower()
-    source_key = source.strip().lower()
+    source_key = source.lower()
     try:
         from plugin_system.registry.catalog import fetch_registry_plugins
         from plugin_system.registry.download import normalize_repo_slug
@@ -176,14 +223,36 @@ def _lookup_registry_plugin(source: str) -> Any | None:
             return rec
         if str(getattr(rec, "display_name", "") or "").strip().lower() == source_key:
             return rec
-        if rec.entry.strip().lower() == source_key:
+        try:
+            entry = _registry_manifest_entry(rec)
+        except ValueError:
+            continue
+        if entry.lower() == source_key:
             return rec
     return None
 
 
-def _plugin_class_from_file(path: Path) -> str:
+def _plugin_class_from_file(
+    path: Path,
+    *,
+    expected_identity: os.stat_result | None = None,
+    expected_parent_identity: os.stat_result | None = None,
+) -> str:
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        tree = ast.parse(
+            read_text_without_links(
+                path,
+                expected_identity=expected_identity,
+                expected_parent_identity=expected_parent_identity,
+            )
+        )
+    except PermissionError:
+        if (
+            expected_identity is not None
+            or expected_parent_identity is not None
+        ):
+            raise
+        return ""
     except (OSError, SyntaxError, UnicodeDecodeError):
         return ""
     for node in tree.body:
@@ -198,27 +267,101 @@ def _plugin_class_from_file(path: Path) -> str:
 
 
 def _infer_plugin_entry(plugin_root: Path) -> str:
+    plugin_root, plugin_root_identity, root_entries = (
+        snapshot_directory_entries_without_links(
+            plugin_root,
+            field="plugin directory",
+        )
+    )
     package = plugin_root.name
-    candidates = [plugin_root / "plugin.py", *sorted(plugin_root.glob("*/plugin.py"))]
-    for path in candidates:
-        if not path.is_file():
+    candidates: list[
+        tuple[Path, os.stat_result, os.stat_result]
+    ] = []
+    for path, metadata in root_entries:
+        if _metadata_is_link_or_reparse_point(metadata):
             continue
-        class_name = _plugin_class_from_file(path)
+        if path.name == "plugin.py" and stat.S_ISREG(metadata.st_mode):
+            candidates.insert(
+                0,
+                (path, metadata, plugin_root_identity),
+            )
+            continue
+        if not stat.S_ISDIR(metadata.st_mode):
+            continue
+        child_root, child_identity, child_entries = (
+            snapshot_directory_entries_without_links(
+                path,
+                field="plugin package directory",
+            )
+        )
+        if not os.path.samestat(metadata, child_identity):
+            raise PermissionError(
+                f"plugin package directory identity changed: {path}"
+            )
+        for child, child_metadata in child_entries:
+            if (
+                child.name == "plugin.py"
+                and not _metadata_is_link_or_reparse_point(child_metadata)
+                and stat.S_ISREG(child_metadata.st_mode)
+            ):
+                candidates.append(
+                    (child, child_metadata, child_identity)
+                )
+        require_directory_identity(
+            child_root,
+            child_identity,
+            field="plugin package directory",
+        )
+
+    candidates.sort(
+        key=lambda item: (
+            len(item[0].relative_to(plugin_root).parts),
+            item[0].relative_to(plugin_root).as_posix(),
+        )
+    )
+    for path, path_identity, parent_identity in candidates:
+        class_name = _plugin_class_from_file(
+            path,
+            expected_identity=path_identity,
+            expected_parent_identity=parent_identity,
+        )
         if not class_name:
             continue
         rel = path.relative_to(plugin_root).with_suffix("")
         module_parts = [package, *rel.parts]
         if all(part.isidentifier() for part in module_parts):
+            require_directory_identity(
+                plugin_root,
+                plugin_root_identity,
+                field="plugin directory",
+            )
             return f"plugins.{'.'.join(module_parts)}:{class_name}"
+    require_directory_identity(
+        plugin_root,
+        plugin_root_identity,
+        field="plugin directory",
+    )
     return ""
 
 
-def _plugin_result_from_manifest(entry: str) -> dict[str, Any]:
+def _plugin_result_from_manifest(
+    entry: str,
+    *,
+    project_root: Path,
+) -> dict[str, Any]:
     from plugin_system.host import append_plugin_manifest_entry_if_missing, normalize_manifest_entry
 
-    append_plugin_manifest_entry_if_missing(entry, enabled=True)
+    append_plugin_manifest_entry_if_missing(
+        entry,
+        enabled=True,
+        root=project_root,
+    )
     norm = normalize_manifest_entry(entry)
-    return _set_plugin_enabled(norm, True)
+    return _set_plugin_enabled(
+        norm,
+        True,
+        project_root=project_root,
+    )
 
 
 def _synthetic_plugin_result(
@@ -280,7 +423,7 @@ def _registry_package_metadata(
     metadata: dict[str, Any] = {
         "dependencyDetail": dependency_detail,
         "dependencyStatus": dependency_status,
-        "entry": str(getattr(record, "entry", "") or "").strip(),
+        "entry": _registry_manifest_entry(record),
         "packageSource": package_source if is_verified_package else "local",
         "packageStatus": package_status,
         "repo": str(getattr(record, "repo", "") or "").strip(),
@@ -359,14 +502,131 @@ def _update_task_package_error(state: BridgeState, task_id: str, details: dict[s
     _update_task(state, task_id, **updates)
 
 
-def _restore_package_target(target: Path, backup: Path | None, *, remove_new_target: bool) -> None:
-    if remove_new_target and target.exists():
-        shutil.rmtree(target, ignore_errors=True)
-    if backup is not None and backup.exists() and not target.exists():
-        backup.rename(target)
+def _restore_package_target(
+    target: Path,
+    backup: Path | None,
+    *,
+    remove_new_target: bool,
+    backup_identity: os.stat_result | None = None,
+    installed_target_identity: os.stat_result | None = None,
+    original_target_identity: os.stat_result | None = None,
+) -> None:
+    if backup is not None and os.path.lexists(backup):
+        backup = _verified_plugin_tree(backup, field="plugin rollback backup")
+        current_backup_identity = backup.lstat()
+        if (
+            backup_identity is not None
+            and not os.path.samestat(backup_identity, current_backup_identity)
+        ):
+            raise PermissionError("plugin rollback backup identity changed")
+
+        if os.path.lexists(target):
+            current_target = _verified_plugin_tree(
+                target,
+                field="failed plugin installation",
+            )
+            current_target_identity = current_target.lstat()
+        else:
+            current_target_identity = None
+        if installed_target_identity is not None:
+            if (
+                current_target_identity is not None
+                and not os.path.samestat(
+                    installed_target_identity,
+                    current_target_identity,
+                )
+            ):
+                raise PermissionError("failed plugin installation identity changed")
+        elif original_target_identity is not None:
+            if current_target_identity is not None and os.path.samestat(
+                original_target_identity,
+                current_target_identity,
+            ):
+                remove_directory_without_links(
+                    backup,
+                    expected_identity=current_backup_identity,
+                )
+                return
+            if current_target_identity is not None:
+                raise PermissionError(
+                    "plugin target changed before rollback ownership was established"
+                )
+
+        replace_directory_transactionally(
+            backup,
+            target,
+            overwrite=True,
+            expected_staging_identity=current_backup_identity,
+            expected_destination_identity=current_target_identity,
+        )
+        return
+    if backup is not None and backup_identity is not None:
+        raise FileNotFoundError(f"plugin rollback backup disappeared: {backup}")
+    if remove_new_target and os.path.lexists(target):
+        target = _verified_plugin_tree(target, field="failed plugin installation")
+        current_target_identity = target.lstat()
+        if installed_target_identity is not None:
+            if not os.path.samestat(
+                installed_target_identity,
+                current_target_identity,
+            ):
+                raise PermissionError("failed plugin installation identity changed")
+        elif original_target_identity is not None:
+            raise PermissionError(
+                "refusing to remove an unowned plugin target after failed installation"
+            )
+        remove_directory_without_links(
+            target,
+            expected_identity=current_target_identity,
+        )
+
+
+def _verified_plugin_tree(path: Path, *, field: str) -> Path:
+    exact = require_symlink_free_absolute_path(path, field=field)
+    if path_is_link_or_reparse_point(exact) or not exact.is_dir():
+        raise NotADirectoryError(exact)
+    return exact
+
+
+def _remove_plugin_backup(
+    backup: Path | None,
+    *,
+    expected_identity: os.stat_result | None = None,
+) -> None:
+    if backup is None or not os.path.lexists(backup):
+        return
+    backup = _verified_plugin_tree(backup, field="plugin rollback backup")
+    backup_identity = backup.lstat()
+    if (
+        expected_identity is not None
+        and not os.path.samestat(expected_identity, backup_identity)
+    ):
+        raise PermissionError("plugin rollback backup identity changed")
+    remove_directory_without_links(
+        backup,
+        expected_identity=backup_identity,
+    )
 
 
 def _install_registry_package_source(
+    state: BridgeState,
+    task_id: str,
+    record: Any,
+    *,
+    overwrite: bool = False,
+) -> dict[str, Any]:
+    from plugin_system.install.package import registry_package_install_transaction
+
+    with registry_package_install_transaction():
+        return _install_registry_package_source_transaction(
+            state,
+            task_id,
+            record,
+            overwrite=overwrite,
+        )
+
+
+def _install_registry_package_source_transaction(
     state: BridgeState,
     task_id: str,
     record: Any,
@@ -378,15 +638,35 @@ def _install_registry_package_source(
     from plugin_system.registry.download import mark_repo_downloaded, normalize_repo_slug
 
     repo_slug = normalize_repo_slug(str(getattr(record, "repo", "") or ""))
-    entry = str(getattr(record, "entry", "") or "").strip()
+    entry = _registry_manifest_entry(record)
     display_name = str(getattr(record, "display_name", "") or getattr(record, "name", "") or "").strip()
     description = str(getattr(record, "description", "") or "").strip()
-    target = registry_package_target(record, plugins_parent=Path("plugins"))
+    plugins_parent = _plugins_root(state)
+    project_root = state_project_root(state)
+    target = registry_package_target(
+        record,
+        plugins_parent=plugins_parent,
+        root=project_root,
+    )
     existed_before = target.is_dir()
+    original_target_identity = target.lstat() if existed_before else None
     backup: Path | None = None
+    backup_identity: os.stat_result | None = None
     if overwrite and existed_before:
-        backup = target.with_name(f".{target.name}.backup-{uuid.uuid4().hex}")
-        target.rename(backup)
+        backup = require_symlink_free_absolute_path(
+            private_sibling_path(
+                target,
+                f".backup-{uuid.uuid4().hex}",
+                field="plugin rollback backup",
+            ),
+            field="plugin rollback backup",
+        )
+        copy_directory_without_links(
+            target,
+            backup,
+            expected_source_identity=original_target_identity,
+        )
+        backup_identity = backup.lstat()
 
     _update_task(
         state,
@@ -404,13 +684,17 @@ def _install_registry_package_source(
 
     dependency_status = ""
     dependency_detail = ""
+    installed_target_identity: os.stat_result | None = None
     try:
         package_status = "existing" if existed_before and not overwrite else "verified"
         plugin_root = install_registry_package_under_plugins(
             record,
             overwrite=overwrite,
-            plugins_parent=Path("plugins"),
+            plugins_parent=plugins_parent,
+            expected_target_identity=original_target_identity,
+            root=project_root,
         )
+        installed_target_identity = plugin_root.lstat()
         package_message = (
             "检测到已有插件目录，跳过官方包体校验。"
             if package_status == "existing"
@@ -424,7 +708,11 @@ def _install_registry_package_source(
             progress=0.72,
             packageStatus=package_status,
         )
-        dependency_status, dependency_detail = install_plugin_requirements_txt(plugin_root, on_output_line=_pip_line)
+        dependency_status, dependency_detail = install_plugin_requirements_txt(
+            plugin_root,
+            on_output_line=_pip_line,
+            root=project_root,
+        )
         if dependency_detail:
             _append_task_log(state, task_id, dependency_detail)
         if dependency_status in {"pip_failed", "pip_timeout", "pip_exception", "pip_conflict"}:
@@ -458,15 +746,29 @@ def _install_registry_package_source(
             dependencyInstallStatus=dependency_status,
         )
         if entry:
-            result = _plugin_result_from_manifest(entry)
+            result = _plugin_result_from_manifest(
+                entry,
+                project_root=project_root,
+            )
             if repo_slug:
-                mark_repo_downloaded(repo_slug, manifest_entry=entry, install_metadata=metadata)
+                mark_repo_downloaded(
+                    repo_slug,
+                    manifest_entry=entry,
+                    install_metadata=metadata,
+                    root=project_root,
+                )
             _update_task(state, task_id, message="官方包体安装完成。", phase="completed", progress=1)
-            if backup is not None:
-                shutil.rmtree(backup, ignore_errors=True)
+            _remove_plugin_backup(
+                backup,
+                expected_identity=backup_identity,
+            )
             return _with_install_metadata(result, metadata)
         if repo_slug:
-            mark_repo_downloaded(repo_slug, manifest_entry=None)
+            mark_repo_downloaded(
+                repo_slug,
+                manifest_entry=None,
+                root=project_root,
+            )
         result = _synthetic_plugin_result(
             description=description or f"包体已下载到 {plugin_root.as_posix()}，但没有找到可登记的插件入口。",
             enabled=False,
@@ -474,11 +776,20 @@ def _install_registry_package_source(
             title=display_name or target.name,
         )
         _update_task(state, task_id, message="官方包体已下载，但没有找到可登记的插件入口。", progress=1)
-        if backup is not None:
-            shutil.rmtree(backup, ignore_errors=True)
+        _remove_plugin_backup(
+            backup,
+            expected_identity=backup_identity,
+        )
         return _with_install_metadata(result, metadata)
     except Exception:
-        _restore_package_target(target, backup, remove_new_target=(not existed_before or backup is not None))
+        _restore_package_target(
+            target,
+            backup,
+            remove_new_target=(not existed_before or backup is not None),
+            backup_identity=backup_identity,
+            installed_target_identity=installed_target_identity,
+            original_target_identity=original_target_identity,
+        )
         _update_task(state, task_id, packageStatus="failed")
         raise
 
@@ -492,11 +803,11 @@ def _install_plugin_source(
     tag_name: str = "",
     overwrite: bool = False,
 ) -> dict[str, Any]:
-    source = source.strip()
-    if not source:
-        raise ValueError("plugin id is required")
-    ref_kind = ref_kind if ref_kind in {"latest", "head", "tag"} else "latest"
-    tag_name = tag_name.strip()
+    source = portable_path_text(source, field="plugin source")
+    if ref_kind not in {"latest", "head", "tag"}:
+        raise ValueError(f"unsupported plugin ref kind: {ref_kind!r}")
+    if tag_name:
+        tag_name = portable_path_text(tag_name, field="plugin tag")
     if ref_kind == "tag" and not tag_name:
         raise ValueError("tagName is required when refKind is tag")
 
@@ -571,11 +882,11 @@ def _install_github_plugin_source(
     tag_name: str = "",
     overwrite: bool = False,
 ) -> dict[str, Any]:
-    source = source.strip()
-    if not source:
-        raise ValueError("plugin id is required")
-    ref_kind = ref_kind if ref_kind in {"latest", "head", "tag"} else "latest"
-    tag_name = tag_name.strip()
+    source = portable_path_text(source, field="plugin source")
+    if ref_kind not in {"latest", "head", "tag"}:
+        raise ValueError(f"unsupported plugin ref kind: {ref_kind!r}")
+    if tag_name:
+        tag_name = portable_path_text(tag_name, field="plugin tag")
     if ref_kind == "tag" and not tag_name:
         raise ValueError("tagName is required when refKind is tag")
 
@@ -587,7 +898,10 @@ def _install_github_plugin_source(
             phase="manifest",
             progress=0.45,
         )
-        result = _plugin_result_from_manifest(source)
+        result = _plugin_result_from_manifest(
+            source,
+            project_root=state_project_root(state),
+        )
         _update_task(state, task_id, message="插件清单已更新。", progress=0.9)
         return result
 
@@ -604,7 +918,7 @@ def _install_github_plugin_source(
         progress=0.04,
     )
     registry_rec = _lookup_registry_plugin(repo_slug)
-    entry = str(getattr(registry_rec, "entry", "") or "").strip()
+    entry = _registry_manifest_entry(registry_rec)
     display_name = str(getattr(registry_rec, "name", "") or "").strip()
     description = str(getattr(registry_rec, "description", "") or "").strip()
 
@@ -637,7 +951,8 @@ def _install_github_plugin_source(
             ref_kind=ref_kind,  # type: ignore[arg-type]
             tag_name=tag_name,
             overwrite=overwrite,
-            plugins_parent=Path("plugins"),
+            plugins_parent=_plugins_root(state),
+            root=state_project_root(state),
             progress=_progress,
             on_phase=_phase,
         )
@@ -655,7 +970,12 @@ def _install_github_plugin_source(
     def _pip_line(line: str) -> None:
         _append_task_log(state, task_id, line)
 
-    pip_code, pip_detail = install_plugin_requirements_txt(plugin_root, on_output_line=_pip_line)
+    project_root = state_project_root(state)
+    pip_code, pip_detail = install_plugin_requirements_txt(
+        plugin_root,
+        on_output_line=_pip_line,
+        root=project_root,
+    )
     if pip_code in {"pip_failed", "pip_timeout", "pip_exception", "pip_conflict"}:
         detail = pip_detail or pip_code
         raise RuntimeError(f"插件依赖安装失败：{detail}")
@@ -664,9 +984,16 @@ def _install_github_plugin_source(
         entry = _infer_plugin_entry(plugin_root)
 
     _update_task(state, task_id, message="正在登记插件安装状态。", phase="manifest", progress=0.9)
-    mark_repo_downloaded(repo_slug, manifest_entry=entry or None)
+    mark_repo_downloaded(
+        repo_slug,
+        manifest_entry=entry or None,
+        root=project_root,
+    )
     if entry:
-        return _plugin_result_from_manifest(entry)
+        return _plugin_result_from_manifest(
+            entry,
+            project_root=project_root,
+        )
 
     return _synthetic_plugin_result(
         description=description or f"源码已下载到 {plugin_root.as_posix()}，但未找到 manifest entry。",

@@ -291,6 +291,10 @@ export function TemplateEditorPage() {
       setNameError(t("template.validation.nameRequired"));
       return false;
     }
+    if (draft.name !== draft.name.trim()) {
+      setNameError("模板名称首尾不能包含空白字符。");
+      return false;
+    }
     setNameError("");
     return true;
   };
@@ -562,6 +566,13 @@ export function TemplateEditorPage() {
     },
     onSuccess({ snapshot, template }) {
       void updateRuntimeStatusFromSnapshot(snapshot);
+      const launchedHistoryPath = snapshot.historyPath;
+      if (launchedHistoryPath) {
+        setHistoryPath(launchedHistoryPath);
+        queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
+          current ? { ...current, historyPath: launchedHistoryPath } : current,
+        );
+      }
       const normalized = normalizeTemplateSummary(template);
       setSessionDraftActive(true);
       setDraft(normalized);

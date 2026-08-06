@@ -5,7 +5,14 @@ from typing import Any
 from urllib.parse import urlparse
 
 from frontend_bridge_core.media_utils import _optional_suffix_check, _path_namespace_list
+from sdk.path_references import (
+    make_path_reference,
+    path_reference_value,
+    state_project_root,
+)
 from application.runtime.state import BridgeState, _jsonify
+from frontend_bridge_core.security import portable_path_text
+from sdk.path_contract import resolve_runtime_asset_read_path, safe_path_component
 
 
 def _validate_reference_audio(voice_path: str) -> None:
@@ -29,9 +36,13 @@ def _normalize_sprite_voice_type(value: Any, *, allow_empty: bool = False) -> st
 
 
 def _has_gpt_sovits_model(character: Any) -> bool:
+    gpt_path = str(getattr(character, "gpt_model_path", "") or "")
+    sovits_path = str(getattr(character, "sovits_model_path", "") or "")
     return bool(
-        str(getattr(character, "gpt_model_path", "") or "").strip()
-        and str(getattr(character, "sovits_model_path", "") or "").strip()
+        gpt_path
+        and gpt_path == gpt_path.strip()
+        and sovits_path
+        and sovits_path == sovits_path.strip()
     )
 
 
@@ -59,7 +70,12 @@ def _uses_remote_gpt_sovits(state: BridgeState) -> bool:
     )
 
 
-def _validate_character_payload(body: dict[str, Any], *, allow_remote_voice_paths: bool = False) -> None:
+def _validate_character_payload(
+    body: dict[str, Any],
+    *,
+    allow_remote_voice_paths: bool = False,
+    project_root: Path | None = None,
+) -> None:
     from sdk.ui.validators import (
         ascii_only,
         audio_duration_between,
@@ -69,10 +85,24 @@ def _validate_character_payload(body: dict[str, Any], *, allow_remote_voice_path
         not_empty,
     )
 
-    sprite_prefix = str(body.get("sprite_prefix") or "").strip()
-    gpt_model_path = str(body.get("gpt_model_path") or "").strip()
-    sovits_model_path = str(body.get("sovits_model_path") or "").strip()
-    refer_audio_path = str(body.get("refer_audio_path") or "").strip()
+    sprite_prefix = str(body.get("sprite_prefix") or "")
+    try:
+        safe_path_component(sprite_prefix, field="sprite_prefix")
+    except ValueError as exc:
+        raise ValueError("立绘目录名无效") from exc
+    gpt_model_path = str(body.get("gpt_model_path") or "")
+    sovits_model_path = str(body.get("sovits_model_path") or "")
+    refer_audio_path = str(body.get("refer_audio_path") or "")
+    if gpt_model_path:
+        gpt_model_path = portable_path_text(gpt_model_path, field="GPT model path")
+    if sovits_model_path:
+        sovits_model_path = portable_path_text(sovits_model_path, field="SoVITS model path")
+    if refer_audio_path:
+        refer_audio_path = portable_path_text(refer_audio_path, field="reference audio path")
+    if project_root is not None:
+        gpt_model_path = _resolved_character_path(gpt_model_path, project_root)
+        sovits_model_path = _resolved_character_path(sovits_model_path, project_root)
+        refer_audio_path = _resolved_character_path(refer_audio_path, project_root)
     checks = [
         not_empty(sprite_prefix, "立绘目录"),
         ascii_only(sprite_prefix, "立绘目录"),
@@ -92,6 +122,36 @@ def _validate_character_payload(body: dict[str, Any], *, allow_remote_voice_path
     ok, errors = check_all(*checks)
     if not ok:
         raise ValueError("\n".join(errors))
+
+
+def _resolved_character_path(value: str, project_root: Path) -> str:
+    if not value:
+        return ""
+    return resolve_runtime_asset_read_path(value, root=project_root).as_posix()
+
+
+def _stored_character_path(value: Any, project_root: Path) -> str:
+    raw = str(value or "")
+    if not raw:
+        return ""
+    raw = portable_path_text(raw, field="character asset path")
+    reference = make_path_reference(
+        raw,
+        project_root,
+        legacy_project_prefixes=(
+            ("data", "models"),
+            ("data", "speech"),
+        ),
+        resource_prefixes=(
+            ("assets", "system", "models"),
+            ("assets", "system", "sound"),
+        ),
+        recover_legacy_absolute=False,
+    )
+    stored = path_reference_value(reference)
+    if stored is None:
+        raise ValueError("character asset path could not be classified")
+    return stored
 
 
 def _sprite_voice_path(sprite: Any) -> str:
@@ -115,20 +175,28 @@ def _validate_sprite_voice_duration(voice_path: str, voice_text: str) -> None:
 def _save_character(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     from config.schema import Character
 
-    body = payload.get("character", payload)
-    if not isinstance(body, dict):
+    raw_body = payload.get("character", payload)
+    if not isinstance(raw_body, dict):
         raise ValueError("character payload must be an object")
+    body = dict(raw_body)
     original_name = str(payload.get("originalName") or body.get("name") or "").strip()
-    _validate_character_payload(body, allow_remote_voice_paths=_uses_remote_gpt_sovits(state))
+    root = state_project_root(state)
+    _validate_character_payload(
+        body,
+        allow_remote_voice_paths=_uses_remote_gpt_sovits(state),
+        project_root=root,
+    )
+    for field in ("gpt_model_path", "sovits_model_path", "refer_audio_path"):
+        body[field] = _stored_character_path(body.get(field), root)
     character = Character.model_validate(body)
     saved_name = character.name.strip()
     message, _names = state.character_manager.add_character(
         saved_name,
         str(character.color or "").strip() or "#d07d7d",
-        character.sprite_prefix.strip() or "temp",
-        str(character.gpt_model_path or "").strip(),
-        str(character.sovits_model_path or "").strip(),
-        str(character.refer_audio_path or "").strip(),
+        str(character.sprite_prefix or ""),
+        str(character.gpt_model_path or ""),
+        str(character.sovits_model_path or ""),
+        str(character.refer_audio_path or ""),
         str(character.prompt_text or "").strip(),
         str(character.prompt_lang or "").strip(),
         str(character.character_setting or "").strip(),
@@ -138,7 +206,13 @@ def _save_character(state: BridgeState, payload: dict[str, Any]) -> dict[str, An
         edit_as_name=original_name,
         emotion_tags=str(character.emotion_tags or ""),
     )
-    if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
+    if (
+        message.startswith("名称不能为空")
+        or "已与其他角色重复" in message
+        or "目录名" in message
+        or "已被角色" in message
+        or message.startswith("保存失败")
+    ):
         raise RuntimeError(message)
     state.config_manager.reload()
     if original_name and original_name != saved_name:
@@ -196,7 +270,7 @@ def _translate_character_fields(state: BridgeState, payload: dict[str, Any]) -> 
 def _upload_sprite_voice(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
     name = str(payload.get("name") or "").strip()
     sprite_index = int(payload.get("spriteIndex") or 0)
-    voice_path = str(payload.get("voicePath") or "").strip()
+    voice_path = str(payload.get("voicePath") or "")
     voice_text = str(payload.get("voiceText") or "").strip()
     character = _character_by_name(state, name)
     voice_type = _normalize_sprite_voice_type(payload.get("voiceType"), allow_empty=True)
@@ -204,6 +278,8 @@ def _upload_sprite_voice(state: BridgeState, payload: dict[str, Any]) -> dict[st
         voice_type = _default_sprite_voice_type(character)
     if not voice_path:
         raise ValueError("voice path is required")
+    voice_path = portable_path_text(voice_path, field="voice path")
+    voice_path = _resolved_character_path(voice_path, state_project_root(state))
     if voice_type == "reference":
         _validate_reference_audio(voice_path)
     message, _path = state.character_manager.upload_voice(name, sprite_index, voice_path, voice_text, voice_type)
@@ -283,8 +359,13 @@ def _save_sprite_voice_text(state: BridgeState, payload: dict[str, Any]) -> dict
             _vt = _s.get("voice_type") if isinstance(_s, dict) else None
         if _vt == "reference":
             voice_path = _sprite_voice_path(_s)
-            if voice_path and Path(voice_path).is_file():
-                _validate_sprite_voice_duration(voice_path, voice_text)
+            if voice_path:
+                resolved_voice = _resolved_character_path(
+                    voice_path,
+                    state_project_root(state),
+                )
+                if Path(resolved_voice).is_file():
+                    _validate_sprite_voice_duration(resolved_voice, voice_text)
     message = state.character_manager.save_sprite_voice_text(name, sprite_index, voice_text)
     if message.startswith("找不到") or message.startswith("立绘不存在") or message.startswith("请先"):
         raise RuntimeError(message)
@@ -300,6 +381,10 @@ def _save_sprite_voice_type(state: BridgeState, payload: dict[str, Any]) -> dict
     if voice_type == "reference" and 0 <= sprite_index < len(sprites):
         voice_path = _sprite_voice_path(sprites[sprite_index])
         if voice_path:
+            voice_path = _resolved_character_path(
+                voice_path,
+                state_project_root(state),
+            )
             if not Path(voice_path).is_file():
                 raise ValueError("reference audio file does not exist")
             _validate_reference_audio(voice_path)

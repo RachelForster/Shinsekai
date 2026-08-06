@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readRegularFileWithoutLinks } from "./path-contract.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(scriptDir, "..");
@@ -16,6 +16,8 @@ const prepareRuntimeScriptPath = path.join(frontendDir, "scripts", "prepare-runt
 const prepareTauriResourcesScriptPath = path.join(frontendDir, "scripts", "prepare-tauri-resources.mjs");
 const verifyTauriResourcesScriptPath = path.join(frontendDir, "scripts", "verify-tauri-resources.mjs");
 const verifyPackagedRuntimeScriptPath = path.join(frontendDir, "scripts", "verify-packaged-runtime.mjs");
+const pathContractScriptPath = path.join(frontendDir, "scripts", "path-contract.mjs");
+const tauriResourcePlanScriptPath = path.join(frontendDir, "scripts", "tauri-resource-plan.mjs");
 const rustToolchainPath = path.join(repoRoot, "rust-toolchain.toml");
 
 const expectedRustToolchain = "1.96.0";
@@ -24,7 +26,8 @@ const linuxTriples = new Map([
   ["linux-x64", "x86_64-unknown-linux-gnu"],
   ["linux-arm64", "aarch64-unknown-linux-gnu"],
 ]);
-const linuxRuntimePruneFiles = ["lib/python*/lib-dynload/_tkinter.*.so"];
+const portableRuntimePruneDirectories = ["share/terminfo"];
+const linuxRuntimePruneFiles = ["lib/python*/lib-dynload/_tkinter.*.so", ...portableRuntimePruneDirectories];
 const windowsRequiredFiles = new Map([
   ["windows-x64", ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll", "vcruntime140_threads.dll"]],
   ["windows-arm64", ["python.exe", "vcruntime140.dll", "vcruntime140_1.dll"]],
@@ -45,17 +48,28 @@ const expectedArtifactPaths = [
   "frontend/src-tauri/target/release/bundle/rpm/*.rpm",
 ];
 
-const runtimeSources = JSON.parse(await readFile(runtimeSourcesPath, "utf8"));
-const workflow = await readFile(workflowPath, "utf8");
-const releaseWorkflow = await readFile(releaseWorkflowPath, "utf8");
-const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
-const srcTauriCargoToml = await readFile(srcTauriCargoTomlPath, "utf8");
-const tauriConfig = JSON.parse(await readFile(tauriConfigPath, "utf8"));
-const prepareRuntimeScript = await readFile(prepareRuntimeScriptPath, "utf8");
-const prepareTauriResourcesScript = await readFile(prepareTauriResourcesScriptPath, "utf8");
-const verifyTauriResourcesScript = await readFile(verifyTauriResourcesScriptPath, "utf8");
-const verifyPackagedRuntimeScript = await readFile(verifyPackagedRuntimeScriptPath, "utf8");
-const rustToolchainConfig = await readFile(rustToolchainPath, "utf8");
+const runtimeSources = JSON.parse(await readStrictText(runtimeSourcesPath, "runtime source manifest"));
+const workflow = await readStrictText(workflowPath, "Tauri build workflow");
+const releaseWorkflow = await readStrictText(releaseWorkflowPath, "release workflow");
+const packageJson = JSON.parse(await readStrictText(packageJsonPath, "frontend package manifest"));
+const srcTauriCargoToml = await readStrictText(srcTauriCargoTomlPath, "Tauri Cargo manifest");
+const tauriConfig = JSON.parse(await readStrictText(tauriConfigPath, "Tauri configuration"));
+const prepareRuntimeScript = await readStrictText(prepareRuntimeScriptPath, "runtime preparation script");
+const prepareTauriResourcesScript = await readStrictText(
+  prepareTauriResourcesScriptPath,
+  "Tauri resource preparation script",
+);
+const verifyTauriResourcesScript = await readStrictText(
+  verifyTauriResourcesScriptPath,
+  "Tauri resource verification script",
+);
+const verifyPackagedRuntimeScript = await readStrictText(
+  verifyPackagedRuntimeScriptPath,
+  "packaged runtime verification script",
+);
+const pathContractScript = await readStrictText(pathContractScriptPath, "build path contract");
+const tauriResourcePlanScript = await readStrictText(tauriResourcePlanScriptPath, "Tauri resource source plan");
+const rustToolchainConfig = await readStrictText(rustToolchainPath, "Rust toolchain configuration");
 
 const errors = [];
 
@@ -133,7 +147,7 @@ for (const targetName of expectedTargets) {
     );
     check(
       sameList(target.prune_files ?? [], linuxRuntimePruneFiles),
-      `${targetName} must prune unused Tk runtime extension for AppImage packaging`,
+      `${targetName} must prune unused Tk and non-portable terminfo runtime files`,
     );
   }
 
@@ -142,6 +156,10 @@ for (const targetName of expectedTargets) {
     check(
       target.required_files.includes("bin/python3.10"),
       `${targetName} must include the PBS Python 3.10 executable`,
+    );
+    check(
+      sameList(target.prune_files ?? [], portableRuntimePruneDirectories),
+      `${targetName} must prune non-portable terminfo runtime files`,
     );
   }
 
@@ -280,9 +298,136 @@ check(
   "prepare-runtime must not pass an absolute archivePath directly to tar on Windows",
 );
 check(
-  prepareRuntimeScript.includes("toPosixRelativePath(extractRoot, archivePath)") &&
-    prepareRuntimeScript.includes("cwd: extractRoot"),
-  "prepare-runtime must extract tar archives from extractRoot with a relative archive path",
+  prepareRuntimeScript.includes("toPosixRelativePath(extractionRoot, privateArchivePath)") &&
+    prepareRuntimeScript.includes("cwd: extractionRoot") &&
+    prepareRuntimeScript.includes("copyRegularFileExclusiveWithoutLinks(") &&
+    prepareRuntimeScript.includes("privateArchiveSnapshot.destinationIdentity"),
+  "prepare-runtime must extract an identity-bound private archive through a relative path",
+);
+check(
+  verifyPackagedRuntimeScript.includes("copyRegularFileExclusiveWithoutLinks(packagePath, privatePackagePath") &&
+    verifyPackagedRuntimeScript.includes("expectedSourceIdentity: packagePin.identity") &&
+    verifyPackagedRuntimeScript.includes("expectedSha256: packagePin.sha256") &&
+    !verifyPackagedRuntimeScript.includes("await link(packagePath, privatePackagePath)"),
+  "package inspection must use an identity-bound private copy without mutating the pinned installer metadata",
+);
+check(
+  prepareRuntimeScript.includes("preflightTarArchive(tarArchivePathArg, extractionRoot, target.asset, target)") &&
+    prepareRuntimeScript.indexOf("preflightTarArchive(tarArchivePathArg, extractionRoot, target.asset, target)") <
+      prepareRuntimeScript.indexOf('spawnWithCapturedExecutable("tar", ["-xzf", tarArchivePathArg]'),
+  "prepare-runtime must validate every tar member and link before extraction",
+);
+check(
+  prepareRuntimeScript.includes("runtimeArchiveMemberWillBePruned") &&
+    prepareRuntimeScript.includes("allowPortableNameCollisions: true") &&
+    prepareRuntimeScript.indexOf("pruneRuntimeFiles(stagingRuntime") <
+      prepareRuntimeScript.indexOf('assertContainedDirectoryTree(stagingRuntime, "prepared embedded runtime"'),
+  "prepare-runtime may defer native filename-collision checks only until the explicit prune step",
+);
+check(
+  pathContractScript.includes("export function resolveAbsoluteEnvironmentPath") &&
+    pathContractScript.includes("export function captureExecutableSnapshot") &&
+    pathContractScript.includes("export function requireExecutableSnapshot") &&
+    pathContractScript.includes("export function validateExactArchiveMemberPath") &&
+    pathContractScript.includes("export function validateArchiveLinkTarget") &&
+    pathContractScript.includes("export async function removeDirectoryWithoutLinks") &&
+    pathContractScript.includes("export async function removeFileWithoutLinks") &&
+    pathContractScript.includes("export async function replaceDirectoryTransactionally") &&
+    pathContractScript.includes("sameFilesystemIdentity"),
+  "build scripts must retain the shared environment and archive path contract",
+);
+check(
+  prepareRuntimeScript.includes('spawnWithCapturedExecutable("tar"') &&
+    prepareRuntimeScript.includes("spawnWithCapturedExecutable(command, argumentsList, options)") &&
+    prepareRuntimeScript.includes("spawnSync(executablePath, argumentsList, options)") &&
+    verifyPackagedRuntimeScript.includes("captureExecutableSnapshot(command") &&
+    verifyPackagedRuntimeScript.includes("spawnSync(executablePath, privateArgs") &&
+    verifyPackagedRuntimeScript.includes("requireExecutableSnapshot(executable"),
+  "build and package inspection tools must execute one identity-bound absolute executable",
+);
+check(
+  pathContractScript.includes("export async function readRegularFileWithoutLinks") &&
+    pathContractScript.includes("export async function sha256RegularFileWithoutLinks") &&
+    pathContractScript.includes("export async function copyRegularFileExclusiveWithoutLinks") &&
+    prepareRuntimeScript.includes('".requirements-inputs"') &&
+    prepareRuntimeScript.includes("runPinnedCommand(") &&
+    prepareRuntimeScript.includes("files: [pythonPin, sourcePin") &&
+    prepareRuntimeScript.includes("expectedDestinationParentIdentity: requirementsInputRootIdentity"),
+  "runtime subprocesses must consume identity-bound Python, archive, and requirements snapshots",
+);
+check(
+  prepareRuntimeScript.includes("replaceDirectoryTransactionally(stagingRuntime, outputRuntime") &&
+    prepareRuntimeScript.includes("replaceDirectoryTransactionally(stagingWheels, wheelsDir") &&
+    prepareRuntimeScript.includes("portableTemporaryPathPrefix(`${outputRuntime}.tmp-`") &&
+    prepareRuntimeScript.includes("portableTemporaryPathPrefix(`${wheelsDir}.tmp-`") &&
+    !prepareRuntimeScript.includes("await rm(outputRuntime, { force: true, recursive: true })") &&
+    !prepareRuntimeScript.includes("await rm(wheelsDir, { force: true, recursive: true })"),
+  "runtime and wheel publication must use private siblings and preserve the previous complete directory until replacement succeeds",
+);
+check(
+  prepareRuntimeScript.includes('await mkdtemp(path.join(outputDirectory, ".runtime-download-"))') &&
+    prepareRuntimeScript.includes('createWriteStream(outputPath, { flags: "wx" })') &&
+    prepareRuntimeScript.includes("await link(privatePath, tempPath)") &&
+    prepareRuntimeScript.includes("replaceFileTransactionally(tempPath, outputPath"),
+  "runtime downloads must use a private directory, exclusive writes, no-overwrite staging, and transactional cache publication",
+);
+check(
+  prepareTauriResourcesScript.includes("portableTemporaryPathPrefix(`${stageRoot}.tmp-`") &&
+    prepareTauriResourcesScript.includes("expectedIdentity: stagingRootIdentity") &&
+    prepareTauriResourcesScript.includes("removeDirectoryWithoutLinks(stagingRoot") &&
+    prepareTauriResourcesScript.includes("replaceDirectoryTransactionally(stagingRoot, stageRoot") &&
+    !prepareTauriResourcesScript.includes("await rm("),
+  "Tauri resources must be assembled in a private sibling and published transactionally",
+);
+check(
+  prepareRuntimeScript.includes("expectedIdentity: extractRootIdentity") &&
+    prepareRuntimeScript.includes("expectedIdentity: stagingRuntimeIdentity") &&
+    prepareRuntimeScript.includes("expectedIdentity: stagingWheelsIdentity") &&
+    prepareRuntimeScript.includes("expectedIdentity: privateDownloadRootIdentity") &&
+    prepareRuntimeScript.includes("expectedIdentity: tempPathIdentity"),
+  "runtime temporary cleanup must preserve the identity captured when each private path was created",
+);
+check(
+  tauriResourcePlanScript.includes("export async function collectTauriResourceMappings") &&
+    tauriResourcePlanScript.includes("assertContainedDirectoryTree(sourceRoot") &&
+    tauriResourcePlanScript.includes("assertRegularFileWithoutLinks(") &&
+    prepareTauriResourcesScript.includes('from "./tauri-resource-plan.mjs"') &&
+    verifyTauriResourcesScript.includes('from "./tauri-resource-plan.mjs"'),
+  "Tauri preparation and verification must share one link-free source-to-destination resource plan",
+);
+check(
+  verifyTauriResourcesScript.includes("assertRegularFileWithoutLinks(filePath") &&
+    verifyTauriResourcesScript.includes(
+      'resolveExactRelativePath(runtimeRoot, requiredFile, "embedded runtime required file")',
+    ) &&
+    verifyPackagedRuntimeScript.includes("assertRegularFileWithoutLinks(filePath") &&
+    verifyPackagedRuntimeScript.includes(
+      'resolveExactRelativePath(runtimeRoot, requiredFile, "packaged runtime required file")',
+    ),
+  "resource verification must require exact runtime-relative regular non-link files",
+);
+
+async function readStrictText(filePath, field) {
+  return (
+    await readRegularFileWithoutLinks(filePath, {
+      field,
+      encoding: "utf8",
+    })
+  ).data;
+}
+check(
+  prepareRuntimeScript.includes('resolveAbsoluteEnvironmentPath("SHINSEKAI_PBS_CACHE_DIR"') &&
+    prepareRuntimeScript.includes('resolveAbsoluteEnvironmentPath("SHINSEKAI_RUNTIME_OUTPUT_DIR"') &&
+    prepareRuntimeScript.includes('resolveAbsoluteEnvironmentPath("SHINSEKAI_RUNTIME_WHEEL_DIR"') &&
+    prepareTauriResourcesScript.includes('resolveAbsoluteEnvironmentPath("SHINSEKAI_TAURI_RUNTIME_DIR"') &&
+    /resolveAbsoluteEnvironmentPath\(\s*"SHINSEKAI_TAURI_TARGET_DIR"/u.test(verifyPackagedRuntimeScript),
+  "all build-time filesystem environment paths must use the shared exact absolute resolver",
+);
+check(
+  packageJson.scripts?.["test:path-contract"] === "node --test scripts/path-contract.test.mjs" &&
+    packageJson.scripts?.test?.startsWith("pnpm test:path-contract &&") &&
+    packageJson.scripts?.["test:coverage"]?.startsWith("pnpm test:path-contract &&"),
+  "frontend test entrypoints must enforce the build path contract",
 );
 check(
   prepareRuntimeScript.includes('"--skip-wheels"'),

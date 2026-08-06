@@ -2,12 +2,17 @@ use std::{
     collections::HashMap,
     env,
     error::Error,
-    fs,
-    path::{Path, PathBuf},
+    io::Read,
+    path::{Component, Path, PathBuf},
     time::{Duration, Instant},
 };
 
 use serde::Deserialize;
+
+use crate::path_contract::{
+    canonicalize_directory_without_links, open_regular_file_without_links,
+    path_has_no_link_components, path_text_is_portable,
+};
 
 pub type RuntimeResult<T> = Result<T, Box<dyn Error>>;
 
@@ -120,9 +125,23 @@ struct ProbeStats {
 }
 
 pub fn load_manifest(source_root: &Path) -> RuntimeResult<RuntimeManifest> {
-    let path =
-        env_path("SHINSEKAI_RUNTIME_MANIFEST").unwrap_or_else(|| source_root.join(MANIFEST_FILE));
-    let text = fs::read_to_string(&path)?;
+    let path = explicit_env_path_value(
+        "SHINSEKAI_RUNTIME_MANIFEST",
+        env::var_os("SHINSEKAI_RUNTIME_MANIFEST"),
+    )?
+    .unwrap_or_else(|| {
+        canonicalize_directory_without_links(source_root)
+            .unwrap_or_else(|_| source_root.to_path_buf())
+            .join(MANIFEST_FILE)
+    });
+    let mut file = open_regular_file_without_links(&path).map_err(|error| {
+        format!(
+            "runtime manifest must be a regular non-link file at {}: {error}",
+            path.display()
+        )
+    })?;
+    let mut text = String::new();
+    file.read_to_string(&mut text)?;
     Ok(serde_json::from_str(&text)?)
 }
 
@@ -130,7 +149,7 @@ pub fn runtime_requirements(
     source_root: &Path,
     manifest: Option<&RuntimeManifest>,
     profile: &str,
-) -> RuntimeRequirements {
+) -> RuntimeResult<RuntimeRequirements> {
     let mut requirements = manifest
         .map(|manifest| requirements_from_profile(manifest, profile))
         .unwrap_or_else(default_runtime_requirements);
@@ -145,8 +164,8 @@ pub fn runtime_requirements(
     }
 
     requirements.requirements_file =
-        runtime_requirements_file(source_root, Some(&requirements.requirements_file));
-    requirements
+        runtime_requirements_file(source_root, Some(&requirements.requirements_file))?;
+    Ok(requirements)
 }
 
 fn default_runtime_requirements() -> RuntimeRequirements {
@@ -223,23 +242,83 @@ fn requirements_from_profile(
     result
 }
 
-fn runtime_requirements_file(source_root: &Path, manifest_value: Option<&str>) -> String {
-    if let Ok(raw) = env::var("SHINSEKAI_RUNTIME_REQUIREMENTS_FILE") {
-        let trimmed = raw.trim();
-        if !trimmed.is_empty() {
-            return trimmed.to_string();
-        }
+fn runtime_requirements_file(
+    source_root: &Path,
+    manifest_value: Option<&str>,
+) -> RuntimeResult<String> {
+    if let Some(raw) = env::var_os("SHINSEKAI_RUNTIME_REQUIREMENTS_FILE") {
+        let raw = raw
+            .into_string()
+            .map_err(|_| "SHINSEKAI_RUNTIME_REQUIREMENTS_FILE contains non-Unicode path text")?;
+        return runtime_requirements_file_value(source_root, Some(&raw), manifest_value);
+    }
+    runtime_requirements_file_value(source_root, None, manifest_value)
+}
+
+fn runtime_requirements_file_value(
+    source_root: &Path,
+    environment_value: Option<&str>,
+    manifest_value: Option<&str>,
+) -> RuntimeResult<String> {
+    if let Some(value) = environment_value {
+        return validated_requirements_file(value, true).ok_or_else(|| {
+            format!(
+                "SHINSEKAI_RUNTIME_REQUIREMENTS_FILE is not an exact supported requirements path: {value:?}"
+            )
+            .into()
+        });
     }
     if let Some(value) = manifest_value {
-        if !value.trim().is_empty() {
-            return value.to_string();
-        }
+        return validated_requirements_file(value, false).ok_or_else(|| {
+            format!("runtime manifest requirements path is invalid: {value:?}").into()
+        });
     }
-    if source_root.join(DEFAULT_REQUIREMENTS_FILE).is_file() {
-        DEFAULT_REQUIREMENTS_FILE.to_string()
+    if open_regular_file_without_links(&source_root.join(DEFAULT_REQUIREMENTS_FILE)).is_ok() {
+        Ok(DEFAULT_REQUIREMENTS_FILE.to_string())
     } else {
-        FALLBACK_REQUIREMENTS_FILE.to_string()
+        Ok(FALLBACK_REQUIREMENTS_FILE.to_string())
     }
+}
+
+fn validated_requirements_file(value: &str, allow_external_absolute: bool) -> Option<String> {
+    if value.is_empty()
+        || value.trim() != value
+        || value
+            .chars()
+            .any(|character| character <= '\u{1f}' || character == '\u{7f}')
+    {
+        return None;
+    }
+    let path = Path::new(value);
+    if path.is_absolute() {
+        return (allow_external_absolute && path_text_is_portable(path)).then(|| value.to_string());
+    }
+    if value.starts_with('~')
+        || !path_text_is_portable(path)
+        || value.contains('\\')
+        || value
+            .split('/')
+            .any(|component| component.is_empty() || matches!(component, "." | ".."))
+    {
+        return None;
+    }
+    let mut saw_component = false;
+    for component in path.components() {
+        let Component::Normal(component) = component else {
+            return None;
+        };
+        let text = component.to_str()?;
+        if text.is_empty()
+            || text.trim() != text
+            || text
+                .chars()
+                .any(|character| character <= '\u{1f}' || character == '\u{7f}')
+        {
+            return None;
+        }
+        saw_component = true;
+    }
+    saw_component.then(|| value.to_string())
 }
 
 pub fn pip_index_urls_for_source(manifest: &RuntimeManifest, source: Option<&str>) -> Vec<String> {
@@ -479,35 +558,35 @@ pub fn current_arch() -> &'static str {
     }
 }
 
-pub fn env_path(name: &str) -> Option<PathBuf> {
-    env::var_os(name)
-        .map(PathBuf::from)
-        .map(expand_home)
-        .map(|path| path.canonicalize().unwrap_or(path))
-}
-
-pub fn expand_home(path: PathBuf) -> PathBuf {
-    let raw = path.as_os_str().to_string_lossy();
-    if raw == "~" {
-        return home_dir().unwrap_or(path);
+fn explicit_env_path_value(
+    name: &str,
+    value: Option<std::ffi::OsString>,
+) -> RuntimeResult<Option<PathBuf>> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value.is_empty() {
+        return Err(format!("{name} must not be empty").into());
     }
-    if let Some(rest) = raw.strip_prefix("~/") {
-        if let Some(home) = home_dir() {
-            return home.join(rest);
-        }
+    let path = PathBuf::from(value);
+    if !path_text_is_portable(&path) {
+        return Err(format!(
+            "{name} contains non-portable path characters: {}",
+            path.display()
+        )
+        .into());
     }
-    path
-}
-
-pub fn home_dir() -> Option<PathBuf> {
-    #[cfg(windows)]
-    {
-        env::var_os("USERPROFILE").map(PathBuf::from)
+    if !path.is_absolute() {
+        return Err(format!("{name} must be an absolute path: {}", path.display()).into());
     }
-    #[cfg(not(windows))]
-    {
-        env::var_os("HOME").map(PathBuf::from)
+    if !path_has_no_link_components(&path) {
+        return Err(format!(
+            "{name} contains a symbolic link or reparse-point component: {}",
+            path.display()
+        )
+        .into());
     }
+    Ok(Some(path))
 }
 
 #[cfg(test)]

@@ -59,7 +59,7 @@ describe("MusicCoverPage", () => {
     renderPage();
 
     expect(await screen.findByRole("heading", { name: "流水线与工具路径" })).toBeInTheDocument();
-    fireEvent.change(screen.getByDisplayValue("./data/music_cover"), { target: { value: "/tmp/music" } });
+    fireEvent.change(screen.getByDisplayValue("data/music_cover"), { target: { value: "/tmp/music" } });
     fireEvent.click(screen.getByRole("button", { name: "保存翻唱流水线配置" }));
 
     await waitFor(() =>

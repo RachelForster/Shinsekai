@@ -136,6 +136,63 @@ def test_runtime_context_rejects_project_root_whose_data_path_is_a_file(
     assert Path.cwd() == launch_dir.resolve()
 
 
+def test_runtime_context_rejects_symlinked_project_data_directory(tmp_path, monkeypatch):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    project_root = tmp_path / "project"
+    external = tmp_path / "external-data"
+    launch_dir.mkdir()
+    project_root.mkdir()
+    external.mkdir()
+    marker = external / "keep.txt"
+    marker.write_text("keep", encoding="utf-8")
+    try:
+        (project_root / "data").symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project_root.as_posix())
+
+    with pytest.raises(RuntimeError, match="SHINSEKAI_PROJECT_ROOT project root"):
+        _configure_runtime_context(None, None, None)
+
+    assert Path.cwd() == launch_dir.resolve()
+    assert marker.read_text(encoding="utf-8") == "keep"
+
+
+def test_project_root_probe_rejects_replaced_data_directory(tmp_path, monkeypatch):
+    from sdk import file_transactions
+    from frontend_bridge import _prepare_project_root
+
+    project_root = tmp_path / "project"
+    data_root = project_root / "data"
+    preserved_data = project_root / "preserved-data"
+    data_root.mkdir(parents=True)
+    real_open = file_transactions.open_binary_write_exclusive_without_links
+    replaced = False
+
+    def replace_data_before_probe(path, **kwargs):
+        nonlocal replaced
+        if not replaced:
+            replaced = True
+            data_root.rename(preserved_data)
+            data_root.mkdir()
+        return real_open(path, **kwargs)
+
+    monkeypatch.setattr(
+        file_transactions,
+        "open_binary_write_exclusive_without_links",
+        replace_data_before_probe,
+    )
+
+    with pytest.raises(RuntimeError, match="not safely writable"):
+        _prepare_project_root(project_root.as_posix(), "test")
+
+    assert list(data_root.iterdir()) == []
+    assert list(preserved_data.iterdir()) == []
+
+
 def test_runtime_context_fails_closed_when_environment_project_root_cannot_be_created(
     tmp_path, monkeypatch
 ):
@@ -205,6 +262,91 @@ def test_runtime_context_does_not_fall_back_from_invalid_public_root(
     assert os.environ["EASYAI_PROJECT_ROOT"] == str(legacy_root)
 
 
+def test_runtime_context_does_not_fall_back_from_empty_public_root(
+    tmp_path,
+    monkeypatch,
+):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    legacy_root = tmp_path / "legacy-root"
+    launch_dir.mkdir()
+    monkeypatch.chdir(launch_dir)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", "")
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(legacy_root))
+
+    with pytest.raises(RuntimeError, match="SHINSEKAI_PROJECT_ROOT project root"):
+        _configure_runtime_context(None, None, None)
+
+    assert Path.cwd() == launch_dir.resolve()
+    assert not legacy_root.exists()
+
+
+def test_runtime_context_rejects_empty_app_root_without_replacing_it(
+    tmp_path,
+    monkeypatch,
+):
+    from frontend_bridge import _configure_runtime_context
+
+    project_root = tmp_path / "project"
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project_root))
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", "")
+
+    with pytest.raises(RuntimeError, match="SHINSEKAI_APP_ROOT app root"):
+        _configure_runtime_context(None, None, None)
+
+    assert os.environ["SHINSEKAI_APP_ROOT"] == ""
+    assert not project_root.exists()
+
+
+def test_runtime_context_rejects_symlinked_app_root_before_canonicalizing_it(
+    tmp_path,
+    monkeypatch,
+):
+    from frontend_bridge import _configure_runtime_context
+
+    real_app_root = tmp_path / "real-application"
+    linked_app_root = tmp_path / "linked-application"
+    real_app_root.mkdir()
+    try:
+        linked_app_root.symlink_to(real_app_root, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(RuntimeError, match="app root is invalid"):
+        _configure_runtime_context(
+            str(tmp_path / "project"),
+            None,
+            linked_app_root.as_posix(),
+        )
+
+    assert not (tmp_path / "project").exists()
+
+
+def test_frozen_runtime_context_requires_desktop_selected_roots(
+    tmp_path,
+    monkeypatch,
+):
+    import frontend_bridge
+
+    monkeypatch.setattr(frontend_bridge.sys, "frozen", True, raising=False)
+    monkeypatch.delenv("SHINSEKAI_APP_ROOT", raising=False)
+    monkeypatch.delenv("SHINSEKAI_PROJECT_ROOT", raising=False)
+    monkeypatch.delenv("EASYAI_PROJECT_ROOT", raising=False)
+
+    with pytest.raises(RuntimeError, match="frozen bridge requires an explicit --app-root"):
+        frontend_bridge._configure_runtime_context(None, None, None)
+
+    app_root = tmp_path / "application"
+    app_root.mkdir()
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", app_root.as_posix())
+    with pytest.raises(
+        RuntimeError,
+        match="frozen bridge requires an explicit --project-root",
+    ):
+        frontend_bridge._configure_runtime_context(None, None, None)
+
+
 def test_runtime_context_rejects_relative_environment_project_root(
     tmp_path, monkeypatch
 ):
@@ -220,6 +362,108 @@ def test_runtime_context_rejects_relative_environment_project_root(
 
     assert Path.cwd() == launch_dir.resolve()
     assert os.environ["SHINSEKAI_PROJECT_ROOT"] == "relative-project"
+
+
+def test_runtime_context_rejects_relative_cli_project_root(tmp_path, monkeypatch):
+    from frontend_bridge import _configure_runtime_context
+
+    launch_dir = tmp_path / "launch"
+    launch_dir.mkdir()
+    monkeypatch.chdir(launch_dir)
+
+    with pytest.raises(RuntimeError, match="must be absolute"):
+        _configure_runtime_context("relative-project", None, None)
+
+    assert Path.cwd() == launch_dir.resolve()
+
+
+def test_runtime_context_rejects_relative_frontend_dist_escape(tmp_path, monkeypatch):
+    from frontend_bridge import _configure_runtime_context
+
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project_root.as_posix())
+
+    with pytest.raises(RuntimeError, match="escapes source root"):
+        _configure_runtime_context(None, "../outside-dist", None)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink semantics")
+def test_runtime_context_rejects_linked_frontend_dist(tmp_path, monkeypatch):
+    import frontend_bridge
+    from frontend_bridge import _configure_runtime_context
+
+    project_root = tmp_path / "project"
+    external_dist = tmp_path / "external-dist"
+    source_root = tmp_path / "source"
+    project_root.mkdir()
+    external_dist.mkdir()
+    source_root.mkdir()
+    (source_root / "frontend").mkdir()
+    (source_root / "frontend" / "dist").symlink_to(
+        external_dist,
+        target_is_directory=True,
+    )
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project_root.as_posix())
+    monkeypatch.setattr(frontend_bridge, "_repo_root", lambda: source_root)
+
+    with pytest.raises(RuntimeError, match="linked component"):
+        _configure_runtime_context(None, "frontend/dist", None)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink semantics")
+def test_runtime_context_rejects_linked_frontend_index(tmp_path, monkeypatch):
+    import frontend_bridge
+    from frontend_bridge import _configure_runtime_context
+
+    project_root = tmp_path / "project"
+    source_root = tmp_path / "source"
+    frontend_dist = source_root / "frontend/dist"
+    external_index = tmp_path / "external-index.html"
+    project_root.mkdir()
+    frontend_dist.mkdir(parents=True)
+    external_index.write_text("external", encoding="utf-8")
+    (frontend_dist / "index.html").symlink_to(external_index)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project_root.as_posix())
+    monkeypatch.setattr(frontend_bridge, "_repo_root", lambda: source_root)
+
+    with pytest.raises(RuntimeError, match="linked component"):
+        _configure_runtime_context(None, "frontend/dist", None)
+
+
+def test_runtime_context_rejects_non_file_frontend_index(tmp_path, monkeypatch):
+    import frontend_bridge
+    from frontend_bridge import _configure_runtime_context
+
+    project_root = tmp_path / "project"
+    source_root = tmp_path / "source"
+    frontend_dist = source_root / "frontend/dist"
+    project_root.mkdir()
+    (frontend_dist / "index.html").mkdir(parents=True)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project_root.as_posix())
+    monkeypatch.setattr(frontend_bridge, "_repo_root", lambda: source_root)
+
+    with pytest.raises(RuntimeError, match="frontend distribution path"):
+        _configure_runtime_context(None, "frontend/dist", None)
+
+
+def test_runtime_context_rejects_present_empty_frontend_dist(tmp_path, monkeypatch):
+    from frontend_bridge import _configure_runtime_context
+
+    project_root = tmp_path / "project"
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project_root.as_posix())
+
+    with pytest.raises(RuntimeError, match="frontend distribution path"):
+        _configure_runtime_context(None, "", None)
+
+    assert not project_root.exists()
+
+
+def test_runtime_requirements_path_rejects_present_empty_value(tmp_path):
+    from frontend_bridge import _runtime_requirements_path
+
+    with pytest.raises(ValueError, match="path is empty"):
+        _runtime_requirements_path(tmp_path, "", "desktop-core")
 
 
 def test_runtime_context_rejects_invalid_legacy_root_when_public_root_is_unset(
@@ -328,6 +572,63 @@ def test_runtime_requirements_parser_follows_recursive_includes(tmp_path):
         "pydantic",
         "fastembed",
     ]
+
+
+def test_runtime_requirements_parser_rejects_relative_entry_path():
+    from frontend_bridge import _iter_requirement_names
+
+    with pytest.raises(ValueError, match="must be absolute"):
+        list(_iter_requirement_names(Path("requirements.txt")))
+
+
+def test_runtime_requirements_parser_rejects_user_home_alias():
+    from frontend_bridge import _iter_requirement_names
+
+    with pytest.raises(ValueError, match="must be absolute"):
+        list(_iter_requirement_names(Path("~/requirements.txt")))
+
+
+def test_runtime_requirements_parser_rejects_lexical_include_alias(tmp_path):
+    from frontend_bridge import _iter_requirement_names
+
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("-r ./nested.txt\n", encoding="utf-8")
+    (tmp_path / "nested.txt").write_text("pyyaml\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exact relative components"):
+        list(_iter_requirement_names(requirements))
+
+
+def test_runtime_requirements_parser_rejects_linked_entry_file(tmp_path):
+    from frontend_bridge import _iter_requirement_names
+
+    requirements = tmp_path / "requirements.txt"
+    alias = tmp_path / "requirements-alias.txt"
+    requirements.write_text("pyyaml\n", encoding="utf-8")
+    try:
+        alias.symlink_to(requirements)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        list(_iter_requirement_names(alias))
+
+
+def test_runtime_requirements_parser_rejects_linked_include(tmp_path):
+    from frontend_bridge import _iter_requirement_names
+
+    requirements = tmp_path / "requirements.txt"
+    included = tmp_path / "included.txt"
+    alias = tmp_path / "included-alias.txt"
+    requirements.write_text("-r included-alias.txt\n", encoding="utf-8")
+    included.write_text("pyyaml\n", encoding="utf-8")
+    try:
+        alias.symlink_to(included)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        list(_iter_requirement_names(requirements))
 
 
 def test_runtime_check_rejects_installed_distributions_with_incompatible_versions(

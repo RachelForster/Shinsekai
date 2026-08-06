@@ -11,7 +11,7 @@
 - 按职责和稳定边界组织目录，不按历史入口或临时实现命名。
 - `frontend_bridge_core/` 是接口适配层，只负责协议、安全、路由和 DTO 转换。
 - 跨领域用例和进程生命周期放在 `application/`，不写进 bridge 或通用 `core/`。
-- `sdk/` 是插件和外部扩展可依赖的公共契约，不能反向依赖宿主实现。
+- `sdk/` 是插件和外部扩展可依赖的公共契约，不能反向依赖宿主实现；无宿主依赖的路径、文件事务、归档和进程启动安全原语属于稳定 SDK，具体决策见 [`PATH_SAFETY_SDK_DECISION.md`](PATH_SAFETY_SDK_DECISION.md)。
 - `plugins/` 保存用户插件或本地插件内容；宿主插件平台源码放在 `plugin_system/`。
 - `config/` 负责配置 schema、默认值、迁移和持久化，不依赖 AI 或界面实现。
 - 命名空间迁移先更新实现和内部引用，再按发布策略删除兼容入口。
@@ -227,7 +227,7 @@ core/media/         文件、附件、媒体资源和安全格式处理
 core/messaging/     消息模型、流解析和对话协议
 core/model_assets/  模型下载、缓存、来源和进度
 core/runtime_env/   Python、pip、依赖检测和运行环境诊断
-core/security/      归档、下载来源等宿主安全校验及旧路径兼容入口
+core/security/      下载来源、领域授权等宿主安全策略
 core/sprite/        聊天记录、立绘和分支存储
 core/story/         剧本 Schema、确定性规则、编译、事件、校验和路径模拟
 ```
@@ -267,7 +267,8 @@ plugin_system/contributions/  前端页面、配置页、聊天 UI 等贡献解�
 - 宿主回调和运行期注入契约；
 - UI contribution 数据类型；
 - 公共日志、异常和校验契约；
-- 不依赖宿主实现的跨层路径校验工具。
+- 不依赖宿主实现的跨层路径校验工具；
+- `sdk.file_transactions`、`sdk.archive_paths` 和 `sdk.process_launch` 中明确导出的、调用方提供授权根与对象身份的安全原语。
 
 SDK 使用协议和注入点连接宿主，不直接导入宿主 manager、Qt 控件或 bridge。
 
@@ -299,7 +300,9 @@ or when `--show-migration-helper` is requested.
 3. 若公开 SDK 需要兼容，兼容入口必须有明确的删除版本和测试。
 4. 内部引用为零、验证通过后删除旧路径。
 
-迁移不得把宿主实现暴露为新的 SDK 契约。
+迁移不得把宿主实现暴露为新的 SDK 契约。纯标准库、无宿主状态且由调用方
+提供授权边界的安全原语可经独立架构决策升级为稳定 SDK；当前生效决定见
+[`PATH_SAFETY_SDK_DECISION.md`](PATH_SAFETY_SDK_DECISION.md)。
 
 ## 7. 测试和架构守卫
 
@@ -334,7 +337,8 @@ allowlist。O1 的锁定基线是永久上限；迁移完成后任何提交都�
 | 模型下载和缓存 | `core/model_assets/` |
 | Python、pip 和依赖环境 | `core/runtime_env/` |
 | 跨层通用路径校验 | `sdk/path_utils.py` |
-| 归档与下载来源安全 | `core/security/` |
+| 文件事务、归档成员与进程启动安全原语 | `sdk/file_transactions.py`、`sdk/archive_paths.py`、`sdk/process_launch.py` |
+| 下载来源与领域授权策略 | `core/security/` |
 | 插件 host/install/update/registry | `plugin_system/` |
 | 本地配置 schema 和持久化 | `config/` |
 | 插件公共契约 | `sdk/` |

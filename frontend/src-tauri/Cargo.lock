@@ -3307,6 +3307,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-updater",
  "tauri-runtime",
+ "windows-sys 0.61.2",
  "zip 5.1.1",
 ]
 

@@ -9,12 +9,34 @@ import logging.handlers
 import os
 import queue
 import re
+import stat
 import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
+from sdk.file_transactions import (
+    open_text_append_without_links,
+    read_text_without_links,
+    remove_file_without_links,
+    require_directory_identity,
+    rename_path_without_overwrite,
+    snapshot_directory_entries_without_links,
+)
+from sdk.path_contract import (
+    managed_child_path,
+    managed_project_storage,
+    path_is_link_or_reparse_point,
+    project_root as configured_project_root,
+    require_directory_without_links,
+    require_symlink_free_absolute_path,
+    resolve_project_output_path,
+    resolve_project_path,
+    safe_path_component,
+    truncate_utf8_bytes,
+)
 from sdk.logging.context import get_log_context, new_log_id
 from sdk.logging.environment import runtime_environment
 from sdk.logging.formatters import ConsoleFormatter, JsonLineFormatter
@@ -52,34 +74,101 @@ class _PreservingQueueHandler(logging.handlers.QueueHandler):
         return copy.copy(record)
 
 
+class _PathSafeRotatingFileHandler(logging.handlers.RotatingFileHandler):
+    """Rotate only exact regular files under the shared path contract."""
+
+    def _open(self):
+        return open_text_append_without_links(
+            self.baseFilename,
+            encoding=self.encoding or "utf-8",
+        )
+
+    @staticmethod
+    def _regular_file_identity(path: str) -> os.stat_result:
+        candidate = Path(path)
+        metadata = candidate.lstat()
+        if path_is_link_or_reparse_point(candidate) or not stat.S_ISREG(
+            metadata.st_mode
+        ):
+            raise PermissionError(f"log rotation source is not a regular file: {candidate}")
+        return metadata
+
+    def doRollover(self) -> None:  # noqa: N802 - stdlib API name
+        if self.stream:
+            self.stream.close()
+            self.stream = None
+
+        if self.backupCount > 0:
+            for index in range(self.backupCount - 1, 0, -1):
+                source = self.rotation_filename(f"{self.baseFilename}.{index}")
+                destination = self.rotation_filename(
+                    f"{self.baseFilename}.{index + 1}"
+                )
+                if not os.path.lexists(source):
+                    continue
+                source_identity = self._regular_file_identity(source)
+                if os.path.lexists(destination):
+                    destination_identity = self._regular_file_identity(
+                        destination
+                    )
+                    remove_file_without_links(
+                        destination,
+                        expected_identity=destination_identity,
+                    )
+                rename_path_without_overwrite(
+                    source,
+                    destination,
+                    expected_identity=source_identity,
+                )
+
+            destination = self.rotation_filename(f"{self.baseFilename}.1")
+            if os.path.lexists(self.baseFilename):
+                source_identity = self._regular_file_identity(self.baseFilename)
+                if os.path.lexists(destination):
+                    destination_identity = self._regular_file_identity(
+                        destination
+                    )
+                    remove_file_without_links(
+                        destination,
+                        expected_identity=destination_identity,
+                    )
+                rename_path_without_overwrite(
+                    self.baseFilename,
+                    destination,
+                    expected_identity=source_identity,
+                )
+
+        if not self.delay:
+            self.stream = self._open()
+
+
 def _safe_name(value: str) -> str:
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip()).strip("-")
-    return safe or "app"
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", value.strip()).strip(" .-")
+    safe = truncate_utf8_bytes(safe or "app", 255)
+    try:
+        return safe_path_component(safe, field="logging application name")
+    except ValueError:
+        # The sanitizer's alphabet has already removed separators and control
+        # characters and the byte limit is already enforced, so the remaining
+        # failure is a Windows device alias.
+        return safe_path_component(
+            truncate_utf8_bytes(f"app-{safe}", 255),
+            field="logging application name",
+        )
 
 
 def _read_version(project_root: Path) -> str:
-    candidates = [project_root / "VERSION"]
-    frozen_root = getattr(sys, "_MEIPASS", None)
-    if frozen_root:
-        candidates.append(Path(frozen_root) / "VERSION")
-    executable_root = Path(sys.executable).resolve(strict=False).parent
-    candidates.append(executable_root / "VERSION")
-    seen: set[Path] = set()
-    for candidate in candidates:
-        try:
-            path = candidate.resolve(strict=False)
-        except OSError:
-            path = candidate
-        if path in seen:
-            continue
-        seen.add(path)
-        try:
-            value = path.read_text(encoding="utf-8").strip()
-        except OSError:
-            continue
-        if value:
-            return value
-    return "unknown"
+    del project_root  # Version metadata belongs to the immutable distribution.
+    try:
+        from sdk.path_contract import resource_path
+
+        candidate = resource_path("VERSION")
+    except Exception:
+        return "unknown"
+    try:
+        return read_text_without_links(candidate).strip() or "unknown"
+    except (OSError, PermissionError, ValueError):
+        return "unknown"
 
 
 def _parse_level(value: str | int | None) -> int:
@@ -95,14 +184,42 @@ def _cleanup_old_logs(log_dir: Path, retention_days: int) -> None:
         return
     cutoff = time.time() - retention_days * 86400
     try:
-        entries = list(log_dir.glob("*.jsonl*"))
+        log_dir, log_dir_identity, directory_entries = (
+            snapshot_directory_entries_without_links(
+                log_dir,
+                field="log directory",
+            )
+        )
+        entries = [
+            (path, metadata)
+            for path, metadata in directory_entries
+            if path.match("*.jsonl*")
+        ]
+        require_directory_identity(
+            log_dir,
+            log_dir_identity,
+            field="log directory",
+        )
     except OSError:
         return
-    for path in entries:
+    for path, metadata in entries:
         try:
-            if path.is_file() and path.stat().st_mtime < cutoff:
-                path.unlink()
-        except OSError:
+            require_directory_identity(
+                log_dir,
+                log_dir_identity,
+                field="log directory",
+            )
+            if (
+                not path_is_link_or_reparse_point(path)
+                and stat.S_ISREG(metadata.st_mode)
+                and metadata.st_mtime < cutoff
+            ):
+                remove_file_without_links(
+                    path,
+                    expected_identity=metadata,
+                    expected_parent_identity=log_dir_identity,
+                )
+        except (OSError, ValueError):
             continue
 
 
@@ -154,7 +271,11 @@ def configure_logging(
     """
     global _listener, _queue_handler, _atexit_registered
 
-    root_path = Path(project_root or os.environ.get("EASYAI_PROJECT_ROOT") or Path.cwd()).resolve()
+    root_path = (
+        resolve_project_path(".", root=project_root)
+        if project_root is not None
+        else configured_project_root()
+    )
     version = _read_version(root_path)
     safe_app_name = _safe_name(app_name)
     resolved_level = _parse_level(level)
@@ -174,12 +295,35 @@ def configure_logging(
 
         if file:
             try:
-                base_dir = Path(log_dir).resolve() if log_dir else root_path / "logs" / safe_app_name
+                if log_dir is not None:
+                    configured_log_dir = Path(log_dir).expanduser()
+                    if configured_log_dir.is_absolute():
+                        require_symlink_free_absolute_path(
+                            configured_log_dir,
+                            field="log directory",
+                        )
+                    base_dir = resolve_project_output_path(
+                        log_dir,
+                        root=root_path,
+                    )
+                else:
+                    base_dir = managed_project_storage(
+                        Path("logs") / safe_app_name,
+                        root=root_path,
+                    )
                 base_dir.mkdir(parents=True, exist_ok=True)
+                base_dir = require_directory_without_links(
+                    base_dir,
+                    field="log directory",
+                )
                 _cleanup_old_logs(base_dir, retention_days)
                 stamp = time.strftime("%Y%m%d-%H%M%S")
-                output_path = base_dir / f"{stamp}-{os.getpid()}.jsonl"
-                file_handler = logging.handlers.RotatingFileHandler(
+                output_path = managed_child_path(
+                    base_dir,
+                    f"{stamp}-{os.getpid()}-{uuid.uuid4().hex}.jsonl",
+                    field="log filename",
+                )
+                file_handler = _PathSafeRotatingFileHandler(
                     output_path,
                     maxBytes=max_bytes,
                     backupCount=backup_count,

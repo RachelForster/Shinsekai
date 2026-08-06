@@ -1,8 +1,7 @@
 @echo off
 chcp 65001 > nul
 setlocal
-
-cd /d "%~dp0"
+set "PROJECT_ROOT=%~dp0"
 
 set "SHINSEKAI_SHOW_BACKEND_CONSOLE="
 if /i "%~1"=="--backend-console" set "SHINSEKAI_SHOW_BACKEND_CONSOLE=1"
@@ -11,54 +10,59 @@ if /i "%~1"=="backend-console" set "SHINSEKAI_SHOW_BACKEND_CONSOLE=1"
 if /i "%~1"=="--help" goto :usage
 if /i "%~1"=="/?" goto :usage
 
-:: Check that the current path contains only ASCII characters.
-powershell -NoProfile -Command "if ('%cd%' -match '[^\x20-\x7E]') { exit 1 } else { exit 0 }" > nul 2>&1
-if %errorlevel% neq 0 (
-    echo.
-    echo ========================================
-    echo   Path contains non-ASCII characters!
-    echo   Please move this folder to a path
-    echo   with only English letters and numbers.
-    echo   e.g. D:\Shinsekai
-    echo ========================================
-    echo   Current: %cd%
-    echo ========================================
-    pause
-    exit /b 1
-)
-
-where pnpm > nul 2>&1
+call :resolve_command pnpm
 if errorlevel 1 (
     echo Error: pnpm was not found in PATH.
     echo Please install pnpm or enable it with: corepack enable
     pause
     exit /b 1
 )
+set "PNPM_CMD=%SHINSEKAI_RESOLVED_COMMAND%"
 
-where cargo > nul 2>&1
-if errorlevel 1 (
-    if exist "%USERPROFILE%\.cargo\bin\cargo.exe" (
-        set "PATH=%USERPROFILE%\.cargo\bin;%PATH%"
+set "CARGO_CMD="
+call :resolve_command cargo
+if not errorlevel 1 set "CARGO_CMD=%SHINSEKAI_RESOLVED_COMMAND%"
+if not defined CARGO_CMD (
+    if defined USERPROFILE if exist "%USERPROFILE%\.cargo\bin\cargo.exe" (
+        call :paths_are_non_reparse "%USERPROFILE%" "%USERPROFILE%\.cargo" "%USERPROFILE%\.cargo\bin" "%USERPROFILE%\.cargo\bin\cargo.exe"
+        if errorlevel 1 (
+            echo Error: USERPROFILE or the rustup cargo path is not an absolute, existing, non-reparse path.
+            pause
+            exit /b 1
+        )
+        set "CARGO_CMD=%USERPROFILE%\.cargo\bin\cargo.exe"
     )
 )
 
-where cargo > nul 2>&1
-if errorlevel 1 (
+if not defined CARGO_CMD (
     echo Error: cargo was not found in PATH.
     echo Please install Rust with rustup, then reopen this terminal.
     pause
     exit /b 1
 )
+for %%I in ("%CARGO_CMD%") do set "PATH=%%~dpI;%PATH%"
+set "CARGO=%CARGO_CMD%"
 
-if not exist "frontend\package.json" (
+if not exist "%PROJECT_ROOT%frontend\package.json" (
     echo Error: frontend\package.json was not found.
+    pause
+    exit /b 1
+)
+if not exist "%PROJECT_ROOT%frontend\src-tauri\Cargo.toml" (
+    echo Error: frontend\src-tauri\Cargo.toml was not found.
+    pause
+    exit /b 1
+)
+call :paths_are_non_reparse "%PROJECT_ROOT%frontend" "%PROJECT_ROOT%frontend\package.json" "%PROJECT_ROOT%frontend\src-tauri" "%PROJECT_ROOT%frontend\src-tauri\Cargo.toml"
+if errorlevel 1 (
+    echo Error: frontend source paths are linked, missing, or unsafe.
     pause
     exit /b 1
 )
 
 echo Building Tauri app...
-pushd frontend
-call pnpm tauri build --no-bundle
+pushd "%PROJECT_ROOT%frontend"
+call "%PNPM_CMD%" tauri build --no-bundle
 if errorlevel 1 (
     popd
     echo.
@@ -68,31 +72,64 @@ if errorlevel 1 (
 )
 popd
 
-set "EXE_PATH=frontend\src-tauri\target\release\Shinsekai.exe"
-if not exist "%EXE_PATH%" (
-    for /f "delims=" %%F in ('dir /b /s "frontend\src-tauri\target\release\*.exe" 2^>nul ^| findstr /v /i "\\deps\\ \\build\\ \\examples\\"') do (
-        set "EXE_PATH=%%F"
-        goto :found_exe
-    )
-)
-
-:found_exe
+set "EXE_PATH=%PROJECT_ROOT%frontend\src-tauri\target\release\shinsekai.exe"
 if not exist "%EXE_PATH%" (
     echo.
-    echo Build succeeded, but no release exe was found under:
-    echo frontend\src-tauri\target\release
+    echo Build succeeded, but the expected release executable was not found:
+    echo "%EXE_PATH%"
+    pause
+    exit /b 1
+)
+call :paths_are_non_reparse "%PROJECT_ROOT%frontend" "%PROJECT_ROOT%frontend\src-tauri" "%PROJECT_ROOT%frontend\src-tauri\target" "%PROJECT_ROOT%frontend\src-tauri\target\release" "%EXE_PATH%"
+if errorlevel 1 (
+    echo.
+    echo Build output path is linked, missing, or unsafe:
+    echo "%EXE_PATH%"
     pause
     exit /b 1
 )
 
 echo.
-echo Opening %EXE_PATH%...
+echo Opening "%EXE_PATH%"...
 if "%SHINSEKAI_SHOW_BACKEND_CONSOLE%"=="1" (
     echo Backend console debug mode enabled.
 )
 start "" "%EXE_PATH%"
 endlocal
 exit /b 0
+
+:resolve_command
+set "SHINSEKAI_RESOLVED_COMMAND="
+if not defined SystemRoot exit /b 1
+if not exist "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" exit /b 1
+set "SHINSEKAI_COMMAND_RESOLVER=%PROJECT_ROOT%tools\launcher\resolve-command.ps1"
+call :paths_are_non_reparse "%PROJECT_ROOT%tools\launcher" "%SHINSEKAI_COMMAND_RESOLVER%"
+if errorlevel 1 exit /b 1
+for /f "delims=" %%I in ('"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -File "%SHINSEKAI_COMMAND_RESOLVER%" -Name "%~1" 2^>nul') do if not defined SHINSEKAI_RESOLVED_COMMAND set "SHINSEKAI_RESOLVED_COMMAND=%%I"
+if not defined SHINSEKAI_RESOLVED_COMMAND exit /b 1
+call :paths_are_non_reparse "%SHINSEKAI_RESOLVED_COMMAND%"
+if errorlevel 1 (
+    set "SHINSEKAI_RESOLVED_COMMAND="
+    exit /b 1
+)
+exit /b 0
+
+:paths_are_non_reparse
+set "SHINSEKAI_CHECK_PATH_1=%~1"
+set "SHINSEKAI_CHECK_PATH_2=%~2"
+set "SHINSEKAI_CHECK_PATH_3=%~3"
+set "SHINSEKAI_CHECK_PATH_4=%~4"
+set "SHINSEKAI_CHECK_PATH_5=%~5"
+if not defined SystemRoot exit /b 1
+if not exist "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" exit /b 1
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -Command "$ErrorActionPreference='Stop'; $paths=@($env:SHINSEKAI_CHECK_PATH_1,$env:SHINSEKAI_CHECK_PATH_2,$env:SHINSEKAI_CHECK_PATH_3,$env:SHINSEKAI_CHECK_PATH_4,$env:SHINSEKAI_CHECK_PATH_5); foreach($path in $paths){if([string]::IsNullOrWhiteSpace($path)){continue}; $driveAbsolute=$path -match '^[A-Za-z]:[\\/]'; $uncAbsolute=$path -match '^[\\/]{2}[^\\/]+[\\/][^\\/]+'; if(-not ($driveAbsolute -or $uncAbsolute)){exit 1}; $item=Get-Item -LiteralPath $path -Force; while($null -ne $item){if(($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0){exit 1}; $item=$item.Parent}}; exit 0" > nul 2>&1
+set "SHINSEKAI_CHECK_RESULT=%ERRORLEVEL%"
+set "SHINSEKAI_CHECK_PATH_1="
+set "SHINSEKAI_CHECK_PATH_2="
+set "SHINSEKAI_CHECK_PATH_3="
+set "SHINSEKAI_CHECK_PATH_4="
+set "SHINSEKAI_CHECK_PATH_5="
+exit /b %SHINSEKAI_CHECK_RESULT%
 
 :usage
 echo Usage: start-tauri.bat [--backend-console]

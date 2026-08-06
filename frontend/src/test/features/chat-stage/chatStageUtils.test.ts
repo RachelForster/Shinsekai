@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("../../../entities/files/repository", () => ({
+  fileUrl: (path: string) => `bridge://${encodeURIComponent(path)}`,
+}));
+
 import { isRemoteMobileAccessPage, stageAssetUrl } from "../../../features/chat-stage/chatStageUtils";
 
 describe("stageAssetUrl", () => {
@@ -47,5 +51,27 @@ describe("stageAssetUrl", () => {
     expect(isRemoteMobileAccessPage({ hostname: "localhost", protocol: "http:" })).toBe(false);
     expect(isRemoteMobileAccessPage({ hostname: "tauri.localhost", protocol: "http:" })).toBe(false);
     expect(isRemoteMobileAccessPage({ hostname: "localhost", protocol: "tauri:" })).toBe(false);
+  });
+
+  it("routes Windows drive paths through the desktop media bridge", () => {
+    expect(stageAssetUrl(String.raw`C:\Users\新世界\背景.png`)).toBe(
+      `bridge://${encodeURIComponent(String.raw`C:\Users\新世界\背景.png`)}`,
+    );
+    expect(stageAssetUrl("D:/sprites/mio.png")).toBe(`bridge://${encodeURIComponent("D:/sprites/mio.png")}`);
+  });
+
+  it("keeps only supported direct media URL schemes", () => {
+    for (const source of [
+      "https://example.test/image.png",
+      "blob:https://example.test/id",
+      "data:image/png;base64,AA==",
+      "asset://localhost/image.png",
+      "/assets/system/picture/shinsekai.png",
+    ]) {
+      expect(stageAssetUrl(source)).toBe(source);
+    }
+    expect(stageAssetUrl("javascript:alert(1)")).toBe("");
+    expect(stageAssetUrl("file:///C:/Users/example/image.png")).toBe("");
+    expect(stageAssetUrl("C:drive-relative.png")).toBe("");
   });
 });

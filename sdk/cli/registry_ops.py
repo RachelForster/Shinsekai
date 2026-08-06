@@ -8,13 +8,60 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from sdk.file_transactions import read_text_without_links
+from sdk.process_launch import (
+    capture_command_executable,
+    capture_launch_directory,
+    run_with_stable_paths,
+)
+from sdk.path_contract import (
+    require_directory_without_links,
+    resolve_managed_project_path,
+)
+
+
+def exact_registry_entry(entry: str) -> str:
+    raw = str(entry or "")
+    if not raw or raw != raw.strip() or any(
+        ord(character) < 32
+        or ord(character) == 127
+        or 0xD800 <= ord(character) <= 0xDFFF
+        for character in raw
+    ):
+        raise ValueError(
+            "registry entry is required and must not contain surrounding whitespace "
+            "or control characters"
+        )
+    return raw
+
+
 def normalize_repo_slug(repo: str) -> str:
-    parts = [p.strip() for p in repo.strip().strip("/").split("/") if p.strip()]
-    return "/".join(parts).lower()
+    raw = str(repo or "")
+    if (
+        not raw
+        or raw != raw.strip()
+        or raw.startswith("/")
+        or raw.endswith("/")
+        or any(
+            ord(character) < 32
+            or ord(character) == 127
+            or 0xD800 <= ord(character) <= 0xDFFF
+            for character in raw
+        )
+    ):
+        raise ValueError("repo must be an exact owner/name slug")
+    parts = raw.split("/")
+    if (
+        len(parts) != 2
+        or any(part in {"", ".", ".."} or part != part.strip() for part in parts)
+        or any(not re.fullmatch(r"[A-Za-z0-9._-]+", part) for part in parts)
+    ):
+        raise ValueError("repo must be an exact owner/name slug")
+    return raw
 
 
 def load_registry_json(path: Path) -> list[dict[str, Any]]:
-    text = path.read_text(encoding="utf-8")
+    text = read_text_without_links(path)
 
     def _relax_trailing_commas(s: str) -> str:
         return re.sub(r",(\s*[}\]])", r"\1", s.strip())
@@ -51,15 +98,12 @@ def merge_registry_entry(
     replace: bool,
 ) -> list[dict[str, Any]]:
     slug = normalize_repo_slug(repo)
-    if not slug or slug.count("/") < 1:
-        raise ValueError("repo must look like owner/name")
-
     new_row = {
         "name": name.strip(),
         "author": author.strip(),
-        "repo": repo.strip().strip("/"),
+        "repo": slug,
         "description": description.strip(),
-        "entry": entry.strip(),
+        "entry": exact_registry_entry(entry),
     }
 
     out: list[dict[str, Any]] = []
@@ -68,7 +112,7 @@ def merge_registry_entry(
         if not isinstance(row, dict):
             continue
         r = row.get("repo", "")
-        if isinstance(r, str) and normalize_repo_slug(r) == slug:
+        if isinstance(r, str) and normalize_repo_slug(r).casefold() == slug.casefold():
             if replace:
                 if not replaced_or_skipped:
                     out.append(dict(new_row))
@@ -87,14 +131,43 @@ def merge_registry_entry(
     return out
 
 
-def run_git_commit(registry_root: Path, message: str) -> None:
-    subprocess.run(
-        ["git", "add", "plugins.json"],
-        cwd=registry_root,
+def run_git_commit(
+    registry_root: Path,
+    message: str,
+    *,
+    file_path: str = "plugins.json",
+) -> None:
+    registry_root = require_directory_without_links(
+        registry_root,
+        field="registry clone root",
+    )
+    raw_file_path = str(file_path)
+    if Path(raw_file_path).is_absolute():
+        raise ValueError("registry file path must be relative to the registry clone")
+    managed_file = resolve_managed_project_path(
+        raw_file_path,
+        root=registry_root,
+    )
+    relative_file = managed_file.relative_to(registry_root).as_posix()
+    root_snapshot = capture_launch_directory(
+        registry_root,
+        field="registry clone root",
+    )
+    git_snapshot = capture_command_executable(
+        "git",
+        field="git executable",
+    )
+    run_with_stable_paths(
+        [git_snapshot.path, "add", "--", relative_file],
+        cwd=root_snapshot,
+        executable=git_snapshot,
+        run_factory=subprocess.run,
         check=True,
     )
-    subprocess.run(
-        ["git", "commit", "-m", message],
-        cwd=registry_root,
+    run_with_stable_paths(
+        [git_snapshot.path, "commit", "-m", message],
+        cwd=root_snapshot,
+        executable=git_snapshot,
+        run_factory=subprocess.run,
         check=True,
     )

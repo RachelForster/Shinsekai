@@ -1,10 +1,32 @@
 import os
-import numpy as np
+import sys
+from io import BytesIO
+from pathlib import Path
+
+if __package__ in {None, ""}:
+    _source_root = Path(__file__).resolve().parent.parent
+    if str(_source_root) not in sys.path:
+        sys.path.insert(0, str(_source_root))
+
 from pydub import AudioSegment
 from pyannote.audio import Pipeline
 import torchaudio
 
 from config.config_manager import ConfigManager
+from sdk.file_transactions import (
+    atomic_binary_writer,
+    capture_directory_identity,
+    read_bytes_without_links,
+)
+from sdk.process_launch import capture_launch_file, require_launch_file
+from core.paths import (
+    managed_child_path,
+    project_root,
+    require_directory_without_links,
+    resolve_project_output_path,
+    resolve_runtime_asset_read_path,
+    safe_path_component_with_suffix,
+)
 
 config = ConfigManager()
 
@@ -19,10 +41,28 @@ def diarize_and_stitch_by_speaker(input_audio_path, output_dir):
         output_dir (str): 输出拼接后音频文件的目录。
     """
     
-    # 检查输出目录
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        print(f"创建输出目录: {output_dir}")
+    root = project_root()
+    source = resolve_runtime_asset_read_path(
+        os.fspath(input_audio_path),
+        root=root,
+    )
+    if not source.is_file():
+        raise FileNotFoundError(source)
+    source_snapshot = capture_launch_file(
+        source,
+        field="diarization input audio",
+    )
+    output_path = resolve_project_output_path(os.fspath(output_dir), root=root)
+    output_path.mkdir(parents=True, exist_ok=True)
+    output_path = require_directory_without_links(
+        output_path,
+        field="diarization output directory",
+    )
+    output_path, output_identity = capture_directory_identity(
+        output_path,
+        field="diarization output directory",
+    )
+    print(f"输出目录: {output_path}")
 
     # 1. 初始化说话人识别 Pipeline
     try:
@@ -38,21 +78,33 @@ def diarize_and_stitch_by_speaker(input_audio_path, output_dir):
         print(f"加载 pyannote 模型失败，请检查您的 HUGGING_FACE_TOKEN 和网络连接。\n错误信息: {e}")
         return
 
-    # 2. 执行说话人识别
-    print(f"正在处理音频文件: {input_audio_path}")
+    # 2. 从同一个经过校验的文件描述符加载音频，后续识别与切片都使用
+    # 这一份内存数据，避免路径在多个库各自打开之间被替换。
+    print(f"正在处理音频文件: {source}")
     try:
-        diarization = pipeline(input_audio_path)
+        source_payload = read_bytes_without_links(
+            source_snapshot.path,
+            expected_identity=source_snapshot.identity,
+            expected_parent_identity=source_snapshot.parent.identity,
+        )
+        waveform, sample_rate = torchaudio.load(BytesIO(source_payload))
+        full_audio = AudioSegment.from_file(
+            BytesIO(source_payload),
+            format=source.suffix.removeprefix(".") or None,
+        )
+        require_launch_file(source_snapshot)
+        diarization = pipeline(
+            {
+                "waveform": waveform,
+                "sample_rate": sample_rate,
+            }
+        )
     except Exception as e:
         print(f"说话人识别失败: {e}")
         return
 
     # 3. 按说话人分组片段
     speaker_segments = {}
-    
-    # torchaudio 读取音频用于片段提取
-    waveform, sample_rate = torchaudio.load(input_audio_path)
-    # 将 waveform 转换为 numpy 数组以便处理
-    waveform_np = waveform.squeeze().numpy() 
 
     # 遍历识别结果
     for segment, _, speaker in diarization.itertracks(yield_labelling=True):
@@ -71,18 +123,8 @@ def diarize_and_stitch_by_speaker(input_audio_path, output_dir):
             # 初始化一个空的 AudioSegment，代表该说话人拼接后的总音频
             speaker_segments[speaker] = AudioSegment.empty()
 
-        try:
-            # 使用 pydub 加载整个音频（确保格式兼容，如wav, mp3）
-            full_audio = AudioSegment.from_file(input_audio_path)
-            # 切割出该片段
-            segment_audio = full_audio[start_ms:end_ms]
-            
-            # 拼接片段
-            speaker_segments[speaker] += segment_audio
-        
-        except Exception as e:
-            print(f"处理说话人 {speaker} 的片段时出错: {e}")
-            continue
+        # 切割并拼接这一说话人的片段。
+        speaker_segments[speaker] += full_audio[start_ms:end_ms]
 
     # 4. 导出结果
     print("\n--- 导出结果 ---")
@@ -91,11 +133,24 @@ def diarize_and_stitch_by_speaker(input_audio_path, output_dir):
         return
 
     for speaker, stitched_audio in speaker_segments.items():
-        output_filename = os.path.join(output_dir, f"{speaker}_stitched.wav")
+        output_filename = safe_path_component_with_suffix(
+            str(speaker),
+            "_stitched.wav",
+            field="speaker output filename",
+        )
+        output_file = managed_child_path(
+            output_path,
+            output_filename,
+            field="speaker output filename",
+        )
         
         # 导出为 WAV 格式
-        stitched_audio.export(output_filename, format="wav")
-        print(f"成功导出 {speaker} 的音频到: {output_filename}")
+        with atomic_binary_writer(
+            output_file,
+            expected_parent_identity=output_identity,
+        ) as output:
+            stitched_audio.export(output, format="wav")
+        print(f"成功导出 {speaker} 的音频到: {output_file}")
 
 # --- 运行示例 ---
 if __name__ == "__main__":
@@ -107,7 +162,10 @@ if __name__ == "__main__":
 
     if HUGGING_FACE_TOKEN == "YOUR_HUGGING_FACE_TOKEN_HERE":
         print("!!! 请在代码顶部设置您的 HUGGING_FACE_TOKEN 才能运行 !!!")
-    elif not os.path.exists(INPUT_FILE):
+    elif not resolve_runtime_asset_read_path(
+        INPUT_FILE,
+        root=project_root(),
+    ).is_file():
         print(f"!!! 错误: 找不到输入文件 '{INPUT_FILE}'。请将您的音频文件放置于此或修改 INPUT_FILE 变量。")
     else:
         diarize_and_stitch_by_speaker(INPUT_FILE, OUTPUT_FOLDER)

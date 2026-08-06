@@ -4,8 +4,7 @@ import hmac
 import ipaddress
 import json
 import mimetypes
-import shutil
-import tempfile
+import os
 import threading
 from http.cookies import SimpleCookie
 from email.parser import BytesParser
@@ -14,9 +13,30 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import Any, Callable
-from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
+from urllib.parse import (
+    parse_qs,
+    parse_qsl,
+    quote,
+    unquote,
+    unquote_to_bytes,
+    urlencode,
+    urlparse,
+    urlunparse,
+)
 
+from sdk.file_transactions import (
+    create_private_temporary_directory,
+    remove_directory_without_links,
+    write_bytes_exclusive,
+)
 from sdk.logging import get_logger, log_context, new_log_id
+from sdk.path_contract import (
+    app_root,
+    relative_path_has_prefix,
+    resolve_runtime_asset_read_path,
+    source_root,
+)
+from sdk.path_references import portable_path_text, state_project_root
 
 from frontend_bridge_core.backgrounds import (
     _delete_all_background_bgm,
@@ -30,7 +50,7 @@ from frontend_bridge_core.backgrounds import (
     _upload_background_bgm,
     _upload_background_images,
 )
-from frontend_bridge_core.effects import (
+from application.media.effects import (
     _build_effect_usage_guide,
     _delete_all_effect_audio,
     _delete_effect,
@@ -59,7 +79,7 @@ from application.chat.runtime_process import (
     remove_chat_history_storage,
     _sanitize_user_display_name,
 )
-from frontend_bridge_core.chat_themes import (
+from application.chat.themes import (
     delete_chat_theme,
     get_active_chat_theme_id,
     get_chat_theme_manifest,
@@ -140,7 +160,7 @@ from frontend_bridge_core.plugin_publisher import (
     _scan_local_plugin,
     _validate_plugin_submission,
 )
-from frontend_bridge_core.plugin_ui import (
+from application.plugins.ui import (
     _frontend_chat_ui_contribution_payloads,
     _plugin_ui_detail,
     _resolve_plugin_frontend_file,
@@ -160,14 +180,14 @@ from application.runtime.dependencies import (
     runtime_dependency_error_from_text,
 )
 from frontend_bridge_core.security import (
+    safe_child_path,
     safe_content_disposition,
     safe_header_value,
+    safe_project_path,
 )
 from sdk.path_utils import (
     reject_control_chars,
-    safe_child_path,
     safe_filename,
-    safe_project_path,
 )
 from application.runtime.state import BridgeState, _jsonify, plugin_load_snapshot
 from frontend_bridge_core.static import _frontend_dist_root
@@ -223,6 +243,68 @@ _POLLING_PATHS = {
     "/api/model-assets/status",
     "/api/plugins/status",
 }
+
+
+def _cleanup_upload_directory(
+    path: Path,
+    expected_identity: os.stat_result,
+) -> None:
+    try:
+        remove_directory_without_links(
+            path,
+            expected_identity=expected_identity,
+        )
+    except (FileNotFoundError, OSError, ValueError):
+        pass
+
+
+def _validate_percent_encoding(value: str) -> None:
+    index = 0
+    while index < len(value):
+        if value[index] != "%":
+            index += 1
+            continue
+        if (
+            index + 2 >= len(value)
+            or value[index + 1] not in "0123456789abcdefABCDEF"
+            or value[index + 2] not in "0123456789abcdefABCDEF"
+        ):
+            raise ValueError("URL contains an invalid percent escape")
+        index += 3
+
+
+def _decode_url_component_once(value: str) -> str:
+    """Strictly decode one URL component without replacement characters."""
+
+    _validate_percent_encoding(value)
+    return unquote_to_bytes(value).decode("utf-8", errors="strict")
+
+
+def _parse_query(value: str) -> dict[str, list[str]]:
+    """Decode a query exactly once and reject malformed encoding."""
+
+    _validate_percent_encoding(value)
+    return parse_qs(value, keep_blank_values=True, errors="strict")
+
+
+def _query_value(query: dict[str, list[str]], name: str) -> str:
+    """Return a scalar after the query's single decoding pass."""
+
+    return (query.get(name) or [""])[0]
+
+
+_MULTIPART_UPLOAD_PATHS = frozenset(
+    {
+        "/api/backgrounds/import-upload",
+        "/api/characters/import-upload",
+        "/api/characters/memories/import-preview-upload",
+        "/api/characters/memories/import-upload",
+        "/api/effects/import-upload",
+        "/api/logs/import-upload",
+        "/api/chat/attachments/upload",
+        "/api/chat/themes/upload",
+    }
+)
 
 
 def _safe_export_output_path(name: str, suffix: str) -> tuple[Path, str]:
@@ -353,7 +435,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if header_token:
             return header_token
         parsed = urlparse(getattr(self, "path", ""))
-        query = parse_qs(parsed.query)
+        query = _parse_query(parsed.query)
         query_token = str(
             (query.get(BRIDGE_AUTH_QUERY) or query.get("token") or [""])[0]
         ).strip()
@@ -399,9 +481,21 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             return detail
         for page in detail.get("pages") or []:
             url = str(page.get("frontendUrl") or "")
-            if url.startswith("/api/") and BRIDGE_AUTH_QUERY not in url:
-                sep = "&" if "?" in url else "?"
-                page["frontendUrl"] = f"{url}{sep}{BRIDGE_AUTH_QUERY}={quote(token, safe='')}"
+            if not url.startswith("/api/"):
+                continue
+            parsed = urlparse(url)
+            query = [
+                (key, value)
+                for key, value in parse_qsl(
+                    parsed.query,
+                    keep_blank_values=True,
+                )
+                if key != BRIDGE_AUTH_QUERY
+            ]
+            query.append((BRIDGE_AUTH_QUERY, token))
+            page["frontendUrl"] = urlunparse(
+                parsed._replace(query=urlencode(query, doseq=True))
+            )
         return detail
 
     def _require_authorized_write(self, path: str) -> None:
@@ -546,35 +640,48 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             raise ValueError("request body must be a JSON object")
         return data
 
-    def _read_upload_files(self) -> tuple[Path, list[Path]]:
+    def _read_upload_files(
+        self,
+    ) -> tuple[Path, os.stat_result, list[Path]]:
         ctype = self.headers.get("Content-Type", "")
         if not ctype.lower().startswith("multipart/form-data"):
             raise ValueError("request must be multipart/form-data")
         length = int(self.headers.get("Content-Length") or "0")
         if length <= 0:
             raise ValueError("request body is empty")
-        temp_dir = Path(tempfile.mkdtemp(prefix="shinsekai-frontend-upload-"))
-        body = self.rfile.read(length)
-        message = BytesParser(policy=default_email_policy).parsebytes(
-            f"Content-Type: {ctype}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8") + body
+        temp_dir, temp_dir_identity = create_private_temporary_directory(
+            prefix="shinsekai-frontend-upload-",
         )
-        paths: list[Path] = []
-        for part in message.iter_parts():
-            if part.get_content_disposition() != "form-data":
-                continue
-            if part.get_param("name", header="content-disposition") != "files":
-                continue
-            try:
-                filename = safe_filename(str(part.get_filename() or ""))
-            except ValueError:
-                continue
-            dest = safe_child_path(temp_dir, filename)
-            dest.write_bytes(part.get_payload(decode=True) or b"")
-            paths.append(dest)
-        if not paths:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise ValueError("no files uploaded")
-        return temp_dir, paths
+        try:
+            body = self.rfile.read(length)
+            message = BytesParser(policy=default_email_policy).parsebytes(
+                f"Content-Type: {ctype}\r\nMIME-Version: 1.0\r\n\r\n".encode("utf-8")
+                + body
+            )
+            paths: list[Path] = []
+            for part in message.iter_parts():
+                if part.get_content_disposition() != "form-data":
+                    continue
+                if part.get_param("name", header="content-disposition") != "files":
+                    continue
+                try:
+                    filename = safe_filename(str(part.get_filename() or ""))
+                except ValueError:
+                    continue
+                paths.append(
+                    write_bytes_exclusive(
+                        temp_dir,
+                        filename,
+                        part.get_payload(decode=True) or b"",
+                        field="upload filename",
+                    )
+                )
+            if not paths:
+                raise ValueError("no files uploaded")
+            return temp_dir, temp_dir_identity, paths
+        except BaseException:
+            _cleanup_upload_directory(temp_dir, temp_dir_identity)
+            raise
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         if not self._request_origin_allowed():
@@ -622,7 +729,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path == "/api/plugins/status":
                 self._send_json(plugin_load_snapshot(self.state))
             elif path.startswith("/api/plugins/") and path.endswith("/ui"):
-                plugin_id = unquote(path[len("/api/plugins/") : -len("/ui")])
+                plugin_id = _decode_url_component_once(path[len("/api/plugins/") : -len("/ui")])
                 self._send_json(self._inject_bridge_token(_plugin_ui_detail(plugin_id)))
             elif path.startswith("/api/plugins/") and "/frontend/" in path:
                 rest = path[len("/api/plugins/") :]
@@ -630,9 +737,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 page_part, _, asset_part = frontend_tail.partition("/")
                 self._send_local_file(
                     _resolve_plugin_frontend_file(
-                        unquote(plugin_part),
-                        unquote(page_part),
-                        unquote(asset_part),
+                        _decode_url_component_once(plugin_part),
+                        _decode_url_component_once(page_part),
+                        _decode_url_component_once(asset_part),
                     ),
                     send_body=True,
                 )
@@ -643,7 +750,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path == "/api/mcp/config":
                 self._send_json(_mcp_config_response())
             elif path.startswith("/api/tasks/"):
-                task_id = unquote(path.rsplit("/", 1)[-1])
+                task_id = _decode_url_component_once(path.rsplit("/", 1)[-1])
                 self._send_json(_get_task(self.state, task_id))
             elif path == "/api/chat/runtime-status":
                 self._send_json(_chat_runtime_status(self.state))
@@ -656,8 +763,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path == "/api/chat/history-file":
                 if not self._request_origin_allowed():
                     raise PermissionError("request origin is not allowed")
-                query = parse_qs(parsed.query)
-                capability = str((query.get("cap") or [""])[0])
+                query = _parse_query(parsed.query)
+                capability = _query_value(query, "cap")
                 self._send_local_file(
                     _chat_history_download_file(self.state, capability),
                     attachment=True,
@@ -669,21 +776,21 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path == "/api/chat/themes/active":
                 self._send_json(get_active_chat_theme_id(self.state))
             elif path.startswith("/api/chat/themes/"):
-                theme_id = unquote(path[len("/api/chat/themes/"):])
+                theme_id = _decode_url_component_once(path[len("/api/chat/themes/"):])
                 self._send_json(get_chat_theme_manifest(self.state, theme_id))
             elif path == "/api/download":
-                query = parse_qs(parsed.query)
-                target = unquote((query.get("path") or [""])[0])
+                query = _parse_query(parsed.query)
+                target = _query_value(query, "path")
                 self._send_file(target, attachment=True)
             elif path == "/api/media":
                 self._require_authorized_media_read()
-                query = parse_qs(parsed.query)
-                target = unquote((query.get("path") or [""])[0])
+                query = _parse_query(parsed.query)
+                target = _query_value(query, "path")
                 self._send_media_file(target)
             elif path == "/api/media/thumbnail":
-                query = parse_qs(parsed.query)
-                target = unquote((query.get("path") or [""])[0])
-                size = (query.get("size") or ["160"])[0]
+                query = _parse_query(parsed.query)
+                target = _query_value(query, "path")
+                size = _query_value(query, "size") or "160"
                 self._send_media_thumbnail(target, size)
             elif path.startswith("/assets/") or path.startswith("/data/"):
                 self._send_file(path.lstrip("/"))
@@ -705,26 +812,26 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if path == "/api/chat/history-file":
                 if not self._request_origin_allowed():
                     raise PermissionError("request origin is not allowed")
-                query = parse_qs(parsed.query)
-                capability = str((query.get("cap") or [""])[0])
+                query = _parse_query(parsed.query)
+                capability = _query_value(query, "cap")
                 self._send_local_file(
                     _chat_history_download_file(self.state, capability),
                     attachment=True,
                     send_body=False,
                 )
             elif path == "/api/download":
-                query = parse_qs(parsed.query)
-                target = unquote((query.get("path") or [""])[0])
+                query = _parse_query(parsed.query)
+                target = _query_value(query, "path")
                 self._send_file(target, attachment=True, send_body=False)
             elif path == "/api/media":
                 self._require_authorized_media_read()
-                query = parse_qs(parsed.query)
-                target = unquote((query.get("path") or [""])[0])
+                query = _parse_query(parsed.query)
+                target = _query_value(query, "path")
                 self._send_media_file(target, send_body=False)
             elif path == "/api/media/thumbnail":
-                query = parse_qs(parsed.query)
-                target = unquote((query.get("path") or [""])[0])
-                size = (query.get("size") or ["160"])[0]
+                query = _parse_query(parsed.query)
+                target = _query_value(query, "path")
+                size = _query_value(query, "size") or "160"
                 self._send_media_thumbnail(target, size, send_body=False)
             elif path.startswith("/api/plugins/") and "/frontend/" in path:
                 rest = path[len("/api/plugins/") :]
@@ -732,9 +839,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 page_part, _, asset_part = frontend_tail.partition("/")
                 self._send_local_file(
                     _resolve_plugin_frontend_file(
-                        unquote(plugin_part),
-                        unquote(page_part),
-                        unquote(asset_part),
+                        _decode_url_component_once(plugin_part),
+                        _decode_url_component_once(page_part),
+                        _decode_url_component_once(asset_part),
                     ),
                     send_body=False,
                 )
@@ -767,15 +874,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         try:
             path = urlparse(self.path).path
             self._require_authorized_write(path)
-            is_upload = method == "POST" and path in {
-                "/api/characters/import-upload",
-                "/api/characters/memories/import-preview-upload",
-                "/api/characters/memories/import-upload",
-                "/api/backgrounds/import-upload",
-                "/api/logs/import-upload",
-                "/api/chat/themes/upload",
-                "/api/chat/attachments/upload",
-            }
+            is_upload = method == "POST" and path in _MULTIPART_UPLOAD_PATHS
             body = {} if method == "DELETE" or is_upload else self._read_json()
             if method in {"POST", "PUT"} and path == "/api/config/api":
                 self._send_json(_save_api_config(self.state, body))
@@ -823,11 +922,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     )
                 )
             elif method == "POST" and path == "/api/logs/import-upload":
-                temp_dir, paths = self._read_upload_files()
+                temp_dir, temp_dir_identity, paths = self._read_upload_files()
                 try:
                     self._send_json(_log_snapshot(paths[0], roots=(temp_dir,)))
                 finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    _cleanup_upload_directory(temp_dir, temp_dir_identity)
             elif method == "POST" and path == "/api/logs/diagnostic-bundle":
                 self._send_json(_diagnostic_bundle(Path.cwd().resolve()))
             elif method == "POST" and path == "/api/music-cover/search":
@@ -869,7 +968,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                             worker=lambda task_id: _download_model_asset(self.state, task_id, spec),
                         )
             elif method == "POST" and path.startswith("/api/tasks/") and path.endswith("/cancel"):
-                task_id = unquote(path[len("/api/tasks/") : -len("/cancel")])
+                task_id = _decode_url_component_once(path[len("/api/tasks/") : -len("/cancel")])
                 self._send_json(_request_task_cancel(self.state, task_id))
             elif method in {"POST", "PUT"} and path == "/api/characters":
                 self._send_json(_save_character(self.state, body))
@@ -878,20 +977,35 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/characters/translate":
                 self._send_json(_translate_character_fields(self.state, body))
             elif method == "POST" and path == "/api/characters/memories/status":
-                self._send_json(_get_mem0_status())
+                self._send_json(_get_mem0_status(self.state))
             elif method == "POST" and path == "/api/characters/memories/list":
-                self._send_json(_list_character_memories(str(body.get("name") or "")))
+                self._send_json(
+                    _list_character_memories(
+                        str(body.get("name") or ""),
+                        state=self.state,
+                    )
+                )
             elif method == "POST" and path == "/api/characters/memories/add":
-                self._send_json(_add_character_memory(str(body.get("name") or ""), str(body.get("content") or "")))
+                self._send_json(
+                    _add_character_memory(
+                        str(body.get("name") or ""),
+                        str(body.get("content") or ""),
+                        state=self.state,
+                    )
+                )
             elif method == "POST" and path == "/api/characters/memories/delete":
                 self._send_json(
-                    _delete_character_memory(str(body.get("name") or ""), str(body.get("memoryId") or ""))
+                    _delete_character_memory(
+                        str(body.get("name") or ""),
+                        str(body.get("memoryId") or ""),
+                        state=self.state,
+                    )
                 )
             elif method == "POST" and path == "/api/characters/memories/import-preview-upload":
-                temp_dir, paths = self._read_upload_files()
+                temp_dir, temp_dir_identity, paths = self._read_upload_files()
                 try:
-                    query = parse_qs(urlparse(self.path).query)
-                    name = str((query.get("name") or [""])[0])
+                    query = _parse_query(urlparse(self.path).query)
+                    name = _query_value(query, "name")
                     self._send_json(
                         _preview_character_memory_import(
                             self.state,
@@ -901,11 +1015,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                         )
                     )
                 finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    _cleanup_upload_directory(temp_dir, temp_dir_identity)
             elif method == "POST" and path == "/api/characters/memories/import-upload":
-                temp_dir, paths = self._read_upload_files()
-                query = parse_qs(urlparse(self.path).query)
-                name = str((query.get("name") or [""])[0]).strip()
+                temp_dir, temp_dir_identity, paths = self._read_upload_files()
+                query = _parse_query(urlparse(self.path).query)
+                name = _query_value(query, "name").strip()
 
                 def run_uploaded_memory_import(task_id: str) -> dict[str, Any]:
                     try:
@@ -917,7 +1031,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                             source_root=temp_dir,
                         )
                     finally:
-                        shutil.rmtree(temp_dir, ignore_errors=True)
+                        _cleanup_upload_directory(temp_dir, temp_dir_identity)
 
                 try:
                     self._enqueue_background_task(
@@ -927,18 +1041,29 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                         worker=run_uploaded_memory_import,
                     )
                 except Exception:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    _cleanup_upload_directory(temp_dir, temp_dir_identity)
                     raise
             elif method == "POST" and path == "/api/memory/status":
-                self._send_json(_get_mem0_status(start_loading=bool(body.get("startLoading", True))))
+                self._send_json(
+                    _get_mem0_status(
+                        self.state,
+                        start_loading=bool(body.get("startLoading", True)),
+                    )
+                )
             elif method == "POST" and path == "/api/memory/list":
-                self._send_json(_list_character_memories(str(body.get("name") or body.get("characterName") or "")))
+                self._send_json(
+                    _list_character_memories(
+                        str(body.get("name") or body.get("characterName") or ""),
+                        state=self.state,
+                    )
+                )
             elif method == "POST" and path == "/api/memory/search":
                 self._send_json(
                     _memory_tool_search(
                         str(body.get("query") or ""),
                         str(body.get("characterName") or body.get("character_name") or ""),
                         int(body.get("limit") or 10),
+                        state=self.state,
                     )
                 )
             elif method == "POST" and path == "/api/memory/remember":
@@ -946,10 +1071,16 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     _memory_tool_remember(
                         str(body.get("content") or ""),
                         str(body.get("characterName") or body.get("character_name") or ""),
+                        state=self.state,
                     )
                 )
             elif method == "POST" and path == "/api/memory/forget":
-                self._send_json(_memory_tool_forget(str(body.get("memoryId") or body.get("memory_id") or "")))
+                self._send_json(
+                    _memory_tool_forget(
+                        str(body.get("memoryId") or body.get("memory_id") or ""),
+                        state=self.state,
+                    )
+                )
             elif method == "POST" and path == "/api/characters/sprite-voice/upload":
                 self._send_json(_upload_sprite_voice(self.state, body))
             elif method == "POST" and path == "/api/characters/sprites/upload":
@@ -979,10 +1110,10 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/characters/sprite-voice/delete":
                 self._send_json(_delete_sprite_voice(self.state, body))
             elif method == "DELETE" and path.startswith("/api/chat/themes/"):
-                theme_id = unquote(path[len("/api/chat/themes/"):])
+                theme_id = _decode_url_component_once(path[len("/api/chat/themes/"):])
                 self._send_json(delete_chat_theme(self.state, theme_id))
             elif method == "DELETE" and path.startswith("/api/characters/"):
-                name = unquote(path.rsplit("/", 1)[-1])
+                name = _decode_url_component_once(path.rsplit("/", 1)[-1])
                 message, names = self.state.character_manager.delete_character(name)
                 self._send_json({"message": message, "names": names})
             elif method == "POST" and path == "/api/characters/import":
@@ -997,7 +1128,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self.state.config_manager.reload()
                 self._send_json([item.__dict__ for item in imported])
             elif method == "POST" and path == "/api/characters/import-upload":
-                temp_dir, paths = self._read_upload_files()
+                temp_dir, temp_dir_identity, paths = self._read_upload_files()
                 try:
                     import tools.file_util as file_util
 
@@ -1007,7 +1138,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     self.state.config_manager.reload()
                     self._send_json([item.__dict__ for item in imported])
                 finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    _cleanup_upload_directory(temp_dir, temp_dir_identity)
             elif method == "POST" and path == "/api/characters/export":
                 name = str(body.get("name") or "")
                 character = self.state.config_manager.get_character_by_name(name)
@@ -1054,7 +1185,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method in {"POST", "PUT"} and path == "/api/backgrounds":
                 self._send_json(_save_background(self.state, body))
             elif method == "DELETE" and path.startswith("/api/backgrounds/"):
-                name = unquote(path.rsplit("/", 1)[-1])
+                name = _decode_url_component_once(path.rsplit("/", 1)[-1])
                 message, names = self.state.background_manager.delete_background(name)
                 if message.startswith("找不到") or message.startswith("请选择") or "失败" in message:
                     raise RuntimeError(message)
@@ -1065,11 +1196,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     raise ValueError("paths must be a list")
                 self._send_json(self._import_background_paths([str(item) for item in paths]))
             elif method == "POST" and path == "/api/backgrounds/import-upload":
-                temp_dir, paths = self._read_upload_files()
+                temp_dir, temp_dir_identity, paths = self._read_upload_files()
                 try:
                     self._send_json(self._import_background_paths([str(item) for item in paths]))
                 finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    _cleanup_upload_directory(temp_dir, temp_dir_identity)
             elif method == "POST" and path == "/api/backgrounds/export":
                 name = str(body.get("name") or "")
                 background = self.state.config_manager.get_background_by_name(name)
@@ -1097,7 +1228,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method in {"POST", "PUT"} and path == "/api/effects":
                 self._send_json(_save_effect(self.state, body))
             elif method == "DELETE" and path.startswith("/api/effects/"):
-                name = unquote(path.rsplit("/", 1)[-1])
+                name = _decode_url_component_once(path.rsplit("/", 1)[-1])
                 self._send_json(_delete_effect(self.state, name))
             elif method == "POST" and path == "/api/effects/import":
                 paths = body.get("paths") or []
@@ -1105,11 +1236,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     raise ValueError("paths must be a list")
                 self._send_json(self._import_effect_paths([str(item) for item in paths]))
             elif method == "POST" and path == "/api/effects/import-upload":
-                temp_dir, paths = self._read_upload_files()
+                temp_dir, temp_dir_identity, paths = self._read_upload_files()
                 try:
                     self._send_json(self._import_effect_paths([str(item) for item in paths]))
                 finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    _cleanup_upload_directory(temp_dir, temp_dir_identity)
             elif method == "POST" and path == "/api/effects/export":
                 name = _validate_effect_storage_name(str(body.get("name") or ""))
                 effect = self.state.config_manager.get_effect_by_name(name)
@@ -1231,7 +1362,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     worker=lambda task_id: _run_app_update(self.state, task_id, body),
                 )
             elif method == "POST" and path.startswith("/api/plugins/") and path.endswith("/enabled"):
-                plugin_id = unquote(path[len("/api/plugins/") : -len("/enabled")])
+                plugin_id = _decode_url_component_once(path[len("/api/plugins/") : -len("/enabled")])
                 self._send_json(_set_plugin_enabled(plugin_id, bool(body.get("enabled"))))
             elif method == "POST" and path.startswith("/api/plugins/") and "/chat-ui/" in path and path.endswith("/run"):
                 rest = path[len("/api/plugins/") :]
@@ -1239,8 +1370,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 contribution_part = contribution_tail[: -len("/run")]
                 self._send_json(
                     _run_frontend_chat_ui_contribution(
-                        unquote(plugin_part),
-                        unquote(contribution_part),
+                        _decode_url_component_once(plugin_part),
+                        _decode_url_component_once(contribution_part),
                     )
                 )
             elif method == "POST" and path.startswith("/api/plugins/") and "/ui/" in path and "/actions/" in path:
@@ -1250,9 +1381,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 page_part, _, action_tail = ui_tail.partition("/actions/")
                 self._send_json(
                     _run_plugin_ui_action(
-                        unquote(plugin_part),
-                        unquote(page_part),
-                        unquote(action_tail),
+                        _decode_url_component_once(plugin_part),
+                        _decode_url_component_once(page_part),
+                        _decode_url_component_once(action_tail),
                         body,
                     )
                 )
@@ -1262,13 +1393,13 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 page_part = page_tail[: -len("/config")]
                 self._send_json(
                     _save_plugin_ui_config(
-                        unquote(plugin_part),
-                        unquote(page_part),
+                        _decode_url_component_once(plugin_part),
+                        _decode_url_component_once(page_part),
                         body,
                     )
                 )
             elif method == "DELETE" and path.startswith("/api/plugins/"):
-                plugin_id = unquote(path[len("/api/plugins/") :])
+                plugin_id = _decode_url_component_once(path[len("/api/plugins/") :])
                 self._send_json(_uninstall_plugin(plugin_id))
             elif method == "POST" and path == "/api/runtime/install-missing-dependency":
                 module_name = str(body.get("moduleName") or "").strip()
@@ -1300,19 +1431,26 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/chat/themes/save":
                 self._send_json(save_chat_theme(self.state, body))
             elif method == "POST" and path == "/api/chat/themes/upload":
-                temp_dir, paths = self._read_upload_files()
+                temp_dir, temp_dir_identity, paths = self._read_upload_files()
                 try:
                     if not paths:
                         raise ValueError("未收到主题压缩包")
                     self._send_json(install_theme_from_zip(self.state, paths[0]))
                 finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    _cleanup_upload_directory(temp_dir, temp_dir_identity)
             elif method == "POST" and path == "/api/chat/attachments/upload":
-                temp_dir, paths = self._read_upload_files()
+                temp_dir, temp_dir_identity, paths = self._read_upload_files()
                 try:
-                    self._send_json({"attachments": stage_uploaded_chat_attachments(paths)})
+                    self._send_json(
+                        {
+                            "attachments": stage_uploaded_chat_attachments(
+                                paths,
+                                project_root=state_project_root(self.state),
+                            )
+                        }
+                    )
                 finally:
-                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    _cleanup_upload_directory(temp_dir, temp_dir_identity)
             else:
                 self._send_error_json(FileNotFoundError(path), HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -1667,40 +1805,26 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         )
 
     def _resolve_project_path(self, raw_path: str) -> Path:
-        raw = str(raw_path or "").strip()
+        raw = portable_path_text(raw_path, field="project path")
         if not raw:
             raise FileNotFoundError(raw_path)
-        if Path(raw).is_absolute():
-            return safe_project_path(raw)
+        return safe_project_path(raw, root=state_project_root(self.state))
 
-        candidates: list[str] = [raw]
-        slash_path = raw.replace("\\", "/")
-        if slash_path != raw:
-            candidates.append(slash_path)
-
-        parts = [part for part in slash_path.split("/") if part and part != "."]
-        if len(parts) >= 5 and parts[0] == "data":
-            family, prefix = parts[1], parts[2]
-            if parts[3] == family and parts[4] == prefix:
-                candidates.append("/".join(parts[:3] + parts[5:]))
-            if family in {"backgrounds", "bgm", "speech", "sprite"}:
-                candidates.append("/".join(parts[:3] + [parts[-1]]))
-
-        first_valid: Path | None = None
-        seen: set[str] = set()
-        for candidate in candidates:
-            if candidate in seen:
-                continue
-            seen.add(candidate)
-            path = safe_project_path(candidate)
-            if first_valid is None:
-                first_valid = path
-            if path.is_file():
-                return path
-        return first_valid if first_valid is not None else safe_project_path(raw)
+    def _resolve_resource_path(self, raw_path: str) -> Path:
+        raw = portable_path_text(raw_path, field="resource path")
+        if not relative_path_has_prefix(
+            raw,
+            (("assets",),),
+            field="resource path",
+        ):
+            raise PermissionError("resource path is outside application assets")
+        return resolve_runtime_asset_read_path(
+            raw,
+            root=state_project_root(self.state),
+        )
 
     def _resolve_media_path(self, raw_path: str) -> Path:
-        raw = str(raw_path or "").strip()
+        raw = portable_path_text(raw_path, field="media path")
         if not raw:
             raise FileNotFoundError(raw_path)
         if is_absolute_local_media_path_text(raw):
@@ -1719,13 +1843,27 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 raw,
                 approved_paths=approved_paths,
             )
+        if relative_path_has_prefix(
+            raw,
+            (("assets",),),
+            field="media path",
+        ):
+            return validate_readable_media_file(
+                self._resolve_resource_path(raw),
+                roots=[source_root(), app_root()],
+            )
         return validate_readable_media_file(
             self._resolve_project_path(raw),
-            roots=[Path.cwd()],
+            roots=[state_project_root(self.state)],
         )
 
     def _resolve_static_path(self, root: Path, request_path: str) -> Path:
-        return safe_child_path(root, request_path)
+        decoded_path = _decode_url_component_once(request_path)
+        if not decoded_path.startswith("/"):
+            raise ValueError(
+                "frontend request path must start with exactly one slash"
+            )
+        return safe_child_path(root, decoded_path[1:])
 
     def _media_thumbnail_batch_response(self, body: dict[str, Any]) -> dict[str, Any]:
         raw_paths = body.get("paths") or []

@@ -33,7 +33,7 @@ export const resourceLinks = [
   ],
 ] as const;
 
-export const VOSK_MODEL_PATH = "./assets/system/models/vosk-model-small-cn-0.22";
+export const VOSK_MODEL_PATH = "assets/system/models/vosk-model-small-cn-0.22";
 export const VOSK_MODELS_URL = "https://alphacephei.com/vosk/models";
 export const DEFAULT_T2I_PROVIDER = "comfyui";
 export const DEFAULT_T2I_API_URL = "http://127.0.0.1:8188";
@@ -131,7 +131,7 @@ export function normalizeTtsProvider(provider: string) {
 }
 
 export function resolveAsrWhisperPresetValue(model: string) {
-  const value = String(model ?? "").trim();
+  const value = String(model ?? "");
   return (asrWhisperModelPresets as readonly string[]).includes(value) ? value : "__custom__";
 }
 
@@ -157,7 +157,7 @@ export function normalizeSystemAsrForSave(systemConfig: SystemConfig): SystemCon
     asr_whisper_device: String(systemConfig.asr_whisper_device || "auto")
       .trim()
       .toLowerCase(),
-    asr_whisper_model_size: String(systemConfig.asr_whisper_model_size || "small").trim() || "small",
+    asr_whisper_model_size: String(systemConfig.asr_whisper_model_size || "small"),
   };
 }
 
@@ -167,7 +167,8 @@ export function normalizeApiAsrForSave(apiConfig: ApiConfig, systemConfig: Syste
     return apiConfig;
   }
   const current = (apiConfig.asr_extra_configs ?? {}).vosk ?? {};
-  const modelPath = String(current.model_path ?? "").trim() || VOSK_MODEL_PATH;
+  const configuredModelPath = String(current.model_path ?? "");
+  const modelPath = configuredModelPath || VOSK_MODEL_PATH;
   return updateAsrExtraConfig(apiConfig, "vosk", "model_path", modelPath);
 }
 
@@ -349,16 +350,16 @@ export function ttsServerUrlOrDefault(provider: string, currentUrl: string) {
 
 export function applyTtsProviderDefaults(config: ApiConfig, installedTtsBundlePath = ""): ApiConfig {
   const ttsProvider = normalizeTtsProvider(config.tts_provider);
-  const cleanPath = String(config.gpt_sovits_api_path || "").trim();
-  const defaultPath = String(installedTtsBundlePath || "").trim();
+  const configuredPath = String(config.gpt_sovits_api_path || "");
+  const defaultPath = String(installedTtsBundlePath || "");
   return {
     ...config,
     gpt_sovits_api_path:
       ttsProvider === "kaggle-gpt-sovits"
         ? ""
-        : requiresTtsWorkPath(ttsProvider) && !cleanPath && defaultPath
+        : requiresTtsWorkPath(ttsProvider) && !configuredPath && defaultPath
           ? defaultPath
-          : cleanPath,
+          : configuredPath,
     gpt_sovits_url: ttsServerUrlOrDefault(ttsProvider, config.gpt_sovits_url),
     tts_provider: ttsProvider,
   };
@@ -403,8 +404,8 @@ export function normalizeApiConfigForUi(config: ApiConfig, installedTtsBundlePat
 export function inferT2iSetupMode(
   config: Pick<ApiConfig, "t2i_api_url" | "t2i_default_workflow_path" | "t2i_provider" | "t2i_work_path">,
 ): T2iSetupMode {
-  const workflow = String(config.t2i_default_workflow_path || "").trim();
-  const workPath = String(config.t2i_work_path || "").trim();
+  const workflow = String(config.t2i_default_workflow_path || "");
+  const workPath = String(config.t2i_work_path || "");
   const url = String(config.t2i_api_url || "")
     .trim()
     .toLowerCase();
@@ -464,12 +465,12 @@ export function isT2iReadyForSprites(
     .trim()
     .toLowerCase();
   const apiUrl = String(config.t2i_api_url || "").trim();
-  const workflow = String(config.t2i_default_workflow_path || "").trim();
+  const workflow = String(config.t2i_default_workflow_path || "");
   if (!provider || !apiUrl) {
     return false;
   }
   if (provider === DEFAULT_T2I_PROVIDER) {
-    return Boolean(workflow);
+    return Boolean(workflow && workflow === workflow.trim());
   }
   return true;
 }

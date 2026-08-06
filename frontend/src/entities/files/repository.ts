@@ -1,5 +1,6 @@
 import { getPlatform } from "../../shared/platform/platform";
 import type { FileBrowserSnapshot } from "../../shared/platform/types";
+import { normalizePathSeparatorsForIdentity } from "../../shared/paths/pathContract";
 
 const THUMBNAIL_BATCH_SIZE = 128;
 const DATA_THUMBNAIL_BATCH_SIZE = 24;
@@ -12,7 +13,7 @@ interface ThumbnailBatchOptions {
 }
 
 function thumbnailCacheKey(path: string, size: number, delivery: "data" | "url") {
-  return `${delivery}\0${size}\0${path}`;
+  return `${delivery}\0${size}\0${normalizePathSeparatorsForIdentity(path)}`;
 }
 
 function chunks<T>(items: T[], size: number): T[][] {
@@ -42,35 +43,69 @@ export async function fileThumbnailBatch(
 ): Promise<Record<string, string>> {
   const platform = getPlatform();
   const delivery = options.delivery ?? "url";
-  const uniquePaths = [...new Set(paths.filter(Boolean))];
-  const result: Record<string, string> = {};
+  const aliasesByIdentity = new Map<string, string[]>();
+  const representativeByIdentity = new Map<string, string>();
+  for (const path of new Set(paths.filter(Boolean))) {
+    const identity = normalizePathSeparatorsForIdentity(path);
+    const aliases = aliasesByIdentity.get(identity);
+    if (aliases) {
+      aliases.push(path);
+    } else {
+      aliasesByIdentity.set(identity, [path]);
+      representativeByIdentity.set(identity, path);
+    }
+  }
+  const uniquePaths = [...representativeByIdentity.values()];
+  const resultByIdentity = new Map<string, string>();
   const missingPaths: string[] = [];
 
+  const resultForIdentities = (identities: Iterable<string>): Record<string, string> =>
+    Object.fromEntries(
+      [...identities].flatMap((identity) => {
+        const source = resultByIdentity.get(identity);
+        if (source === undefined) {
+          return [];
+        }
+        return (aliasesByIdentity.get(identity) ?? []).map((path) => [path, source]);
+      }),
+    );
+  const publishIdentities = (identities: Iterable<string>) => {
+    const sources = resultForIdentities(identities);
+    if (Object.keys(sources).length) {
+      options.onBatch?.(sources);
+    }
+  };
+  const completeResult = () => resultForIdentities(representativeByIdentity.keys());
+
+  const cachedIdentities: string[] = [];
   for (const path of uniquePaths) {
+    const identity = normalizePathSeparatorsForIdentity(path);
     const cached = thumbnailSourceCache.get(thumbnailCacheKey(path, size, delivery));
     if (cached) {
-      result[path] = cached;
+      resultByIdentity.set(identity, cached);
+      cachedIdentities.push(identity);
     } else {
       missingPaths.push(path);
     }
   }
 
-  if (Object.keys(result).length) {
-    options.onBatch?.(result);
-  }
+  publishIdentities(cachedIdentities);
 
   if (!missingPaths.length) {
-    return result;
+    return completeResult();
   }
 
   if (!platform.files.thumbnailBatch) {
+    const loadedIdentities: string[] = [];
     for (const path of missingPaths) {
+      const identity = normalizePathSeparatorsForIdentity(path);
       const source = platform.files.thumbnailUrl(path, { size });
       thumbnailSourceCache.set(thumbnailCacheKey(path, size, delivery), source);
-      result[path] = source;
+      resultByIdentity.set(identity, source);
+      loadedIdentities.push(identity);
     }
-    options.onBatch?.(Object.fromEntries(missingPaths.map((path) => [path, result[path]])));
-    return result;
+    publishIdentities(loadedIdentities);
+    return completeResult();
   }
 
   const batchSize = Math.max(
@@ -78,37 +113,41 @@ export async function fileThumbnailBatch(
     options.batchSize ?? (delivery === "data" ? DATA_THUMBNAIL_BATCH_SIZE : THUMBNAIL_BATCH_SIZE),
   );
   const loadBatch = async (batch: string[]) => {
+    const batchPathsByIdentity = new Map(
+      batch.map((path) => [normalizePathSeparatorsForIdentity(path), path] as const),
+    );
     const sources = await platform.files.thumbnailBatch!(batch, { delivery, size }).catch(() =>
       Object.fromEntries(batch.map((path) => [path, platform.files.thumbnailUrl(path, { size })])),
     );
-    const loadedSources: Record<string, string> = {};
+    const loadedIdentities = new Set<string>();
     for (const [path, source] of Object.entries(sources)) {
-      thumbnailSourceCache.set(thumbnailCacheKey(path, size, delivery), source);
-      result[path] = source;
-      loadedSources[path] = source;
+      const identity = normalizePathSeparatorsForIdentity(path);
+      const requestedPath = batchPathsByIdentity.get(identity);
+      if (!requestedPath || loadedIdentities.has(identity)) {
+        continue;
+      }
+      thumbnailSourceCache.set(thumbnailCacheKey(requestedPath, size, delivery), source);
+      resultByIdentity.set(identity, source);
+      loadedIdentities.add(identity);
     }
-    if (Object.keys(loadedSources).length) {
-      options.onBatch?.(loadedSources);
-    }
-    return loadedSources;
+    publishIdentities(loadedIdentities);
   };
 
   await Promise.all(chunks(missingPaths, batchSize).map(loadBatch));
 
-  const fallbackSources: Record<string, string> = {};
+  const fallbackIdentities: string[] = [];
   for (const path of missingPaths) {
-    if (!result[path]) {
+    const identity = normalizePathSeparatorsForIdentity(path);
+    if (!resultByIdentity.has(identity)) {
       const source = platform.files.thumbnailUrl(path, { size });
       thumbnailSourceCache.set(thumbnailCacheKey(path, size, delivery), source);
-      result[path] = source;
-      fallbackSources[path] = source;
+      resultByIdentity.set(identity, source);
+      fallbackIdentities.push(identity);
     }
   }
-  if (Object.keys(fallbackSources).length) {
-    options.onBatch?.(fallbackSources);
-  }
+  publishIdentities(fallbackIdentities);
 
-  return result;
+  return completeResult();
 }
 
 export function openExternal(url: string): Promise<void> {

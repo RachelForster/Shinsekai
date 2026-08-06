@@ -68,9 +68,9 @@ function LocationProbe() {
   return <output data-testid="location">{location.pathname}</output>;
 }
 
-function renderPage() {
+function renderPage(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={client}>
       <ToastProvider>
         <I18nProvider language="en">
           <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -156,6 +156,94 @@ describe("ChatLauncherPage", () => {
     );
     await waitFor(() => expect(screen.getByTestId("location")).toHaveTextContent("/chat"));
     expect(desktopMocks.openDesktopChatWindow).not.toHaveBeenCalled();
+  });
+
+  it("launches with the canonical paths returned by session persistence", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-canonical",
+        name: "Canonical Template",
+        path: "D:/templates/canonical.txt",
+        scenario: "scene",
+        system: "system",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.listCharacters.mockResolvedValue([{ name: "Mio", sprites: [{ path: "E:/sprites/mio.png" }] }]);
+    mocks.getTemplateSession.mockResolvedValue({
+      background: "透明场景",
+      effectNames: [],
+      filenameStub: "Canonical Template",
+      historyPath: "E:/history/session.json",
+      initSpritePath: "E:/sprites/mio.png",
+      maxDialogItems: 0,
+      maxSpeechChars: 0,
+      roomId: "",
+      scenario: "scene",
+      selectedCharacters: ["Mio"],
+      system: "system",
+      templateFileDropdown: "tpl-canonical",
+      useCg: false,
+      useChoice: true,
+      useCot: false,
+      useEffect: true,
+      useNarration: true,
+      useStat: true,
+      useTranslation: true,
+      voiceLanguage: "ja",
+    } satisfies TemplateLaunchSession);
+    mocks.saveTemplateSession.mockImplementation(async (session: TemplateLaunchSession) => ({
+      ...session,
+      historyPath: "data/chat_history/imported-session.json",
+      initSpritePath: "data/sprite/mio.png",
+    }));
+
+    renderPage();
+    await expectTemplateSelectToShow("Canonical Template");
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
+    expect(mocks.launchChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        historyPath: "data/chat_history/imported-session.json",
+        initSpritePath: "data/sprite/mio.png",
+      }),
+    );
+  });
+
+  it("reconciles the cached session with the final history path returned by launch", async () => {
+    mocks.listTemplates.mockResolvedValue([
+      {
+        content: "template content",
+        id: "tpl-restart-path",
+        name: "Restart Template",
+        path: "D:/templates/restart.txt",
+        scenario: "scene",
+        system: "system",
+        updatedAt: "2026-01-01",
+      },
+    ]);
+    mocks.saveTemplateSession.mockImplementation(async (session: TemplateLaunchSession) => ({
+      ...session,
+      historyPath: "data/chat_history/old-session",
+    }));
+    mocks.launchChat.mockResolvedValue({
+      dialogText: "Ready",
+      historyPath: "data/chat_history/fresh-default",
+      status: "idle",
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    renderPage(client);
+    await expectTemplateSelectToShow("Restart Template");
+    fireEvent.click(screen.getByRole("button", { name: "Launch" }));
+
+    await waitFor(() =>
+      expect(client.getQueryData<TemplateLaunchSession>(["templates", "session"])?.historyPath).toBe(
+        "data/chat_history/fresh-default",
+      ),
+    );
   });
 
   it("keeps the initialization progress open until the chat is ready", async () => {
@@ -336,8 +424,8 @@ describe("ChatLauncherPage", () => {
       expect.objectContaining({
         background: "school",
         effectNames: [],
-        historyPath: "D:/history/session.json",
-        initSpritePath: "D:/sprites/init.png",
+        historyPath: " D:/history/session.json ",
+        initSpritePath: " D:/sprites/init.png ",
         roomId: "room-7",
         selectedCharacters: ["Mio", "Aki"],
         templateFileDropdown: "tpl-session",
@@ -349,8 +437,8 @@ describe("ChatLauncherPage", () => {
       expect.objectContaining({
         backgroundName: "school",
         characters: ["Mio", "Aki"],
-        historyPath: "D:/history/session.json",
-        initSpritePath: "D:/sprites/init.png",
+        historyPath: " D:/history/session.json ",
+        initSpritePath: " D:/sprites/init.png ",
         resetHistory: false,
         roomId: "room-7",
         scenario: "festival night",

@@ -45,7 +45,32 @@ def test_find_character_sprite_by_path_matches_relative_and_absolute(tmp_path, m
     assert find_character_sprite_by_path(
         _config(characters=[character]),
         sprite_abs.as_posix(),
+        project_root=tmp_path,
     ) == ("七海千秋", 0)
+
+
+def test_find_character_sprite_by_path_resolves_immutable_assets_outside_project(
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "source"
+    project = tmp_path / "project"
+    sprite = source / "assets" / "present_example.png"
+    sprite.parent.mkdir(parents=True)
+    project.mkdir()
+    sprite.write_bytes(b"png")
+    monkeypatch.setenv("SHINSEKAI_SOURCE_ROOT", source.as_posix())
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", source.as_posix())
+    character = SimpleNamespace(
+        name="示例",
+        sprites=[SimpleNamespace(path="assets/present_example.png")],
+    )
+
+    assert find_character_sprite_by_path(
+        _config(characters=[character]),
+        sprite.as_posix(),
+        project_root=project,
+    ) == ("示例", 0)
 
 
 def test_find_character_sprite_by_path_uses_host_case_semantics_and_normalizes_slashes(tmp_path, monkeypatch):
@@ -73,6 +98,61 @@ def test_find_character_sprite_by_path_preserves_case_distinct_files_on_sensitiv
     matched = find_character_sprite_by_path(_config(characters=characters), "sprites/face.png")
     expected = ("Upper", 0) if os.path.normcase("A") == os.path.normcase("a") else ("Lower", 0)
     assert matched == expected
+
+
+def test_initial_sprite_path_rejects_outer_whitespace(tmp_path):
+    config = _config(characters=[])
+    config.get_character_by_name = lambda _name: None
+
+    with pytest.raises(ValueError, match="ambiguous"):
+        initial_sprite_path_for_characters(
+            config,
+            " data/sprite/nanami/idle.webp",
+            [],
+            project_root=tmp_path,
+        )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    (
+        "C:/Sprites/./Nanami/idle.png",
+        "C:/Sprites//Nanami/idle.png",
+        r"C:\Sprites\..\Nanami\idle.png",
+    ),
+)
+def test_initial_sprite_path_rejects_cross_platform_lexical_aliases(tmp_path, raw):
+    config = _config(characters=[])
+    config.get_character_by_name = lambda _name: None
+
+    with pytest.raises(ValueError, match="lexical path aliases"):
+        initial_sprite_path_for_characters(
+            config,
+            raw,
+            [],
+            project_root=tmp_path,
+        )
+
+
+def test_initial_sprite_path_rejects_project_symlink_escape(tmp_path):
+    external = tmp_path / "external"
+    project = tmp_path / "project"
+    external.mkdir()
+    project.mkdir()
+    try:
+        (project / "sprites").symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are unavailable")
+    config = _config(characters=[])
+    config.get_character_by_name = lambda _name: None
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        initial_sprite_path_for_characters(
+            config,
+            "sprites/custom.png",
+            [],
+            project_root=project,
+        )
 
 
 def test_display_initial_sprite_prefers_character_sprite_index(tmp_path, monkeypatch):

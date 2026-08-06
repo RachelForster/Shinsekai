@@ -10,6 +10,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
@@ -29,6 +30,19 @@ _service_monitor_lock = threading.Lock()
 _service_monitor_active = False
 _mem0_operation_lock = threading.RLock()
 _SEMANTIC_DEDUPLICATION_SEARCH_LIMIT = 5
+
+
+def _ensure_context_mem0(
+    *,
+    root: str | Path | None,
+    config_manager: Any | None,
+) -> Any:
+    if root is None and config_manager is None:
+        return ensure_mem0()
+    return ensure_mem0(
+        root=root,
+        config_manager=config_manager,
+    )
 
 
 def _resolve_agent_id(character_name: str | None) -> str:
@@ -175,12 +189,21 @@ def _start_memory_service_ready_monitor() -> None:
     threading.Thread(target=_monitor, name="memory-service-ready-monitor", daemon=True).start()
 
 
-def memory_list(character_name: str | None = None, *, limit: int = 200) -> dict[str, Any]:
+def memory_list(
+    character_name: str | None = None,
+    *,
+    limit: int = 200,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
+) -> dict[str, Any]:
     agent_id = _resolve_agent_id(character_name)
     service_result = _memory_service_request("list", {"name": agent_id, "limit": limit})
     if service_result is not None:
         return service_result
-    mem = ensure_mem0()
+    mem = _ensure_context_mem0(
+        root=root,
+        config_manager=config_manager,
+    )
     with _mem0_operation_lock:
         # mem0 renamed ``limit`` to ``top_k`` while retaining ``**kwargs``.
         # With a new mem0 release the old name is therefore silently ignored
@@ -198,6 +221,8 @@ def memory_search(
     character_name: str | None = None,
     *,
     limit: int = 10,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
 ) -> dict[str, Any]:
     q = (query or "").strip()
     if not q:
@@ -208,7 +233,10 @@ def memory_search(
     )
     if service_result is not None:
         return service_result
-    mem = ensure_mem0()
+    mem = _ensure_context_mem0(
+        root=root,
+        config_manager=config_manager,
+    )
     agent_id = _resolve_agent_id(character_name)
     try:
         with _mem0_operation_lock:
@@ -233,6 +261,9 @@ def memory_search(
 def memory_remember(
     content: str,
     character_name: str | None = None,
+    *,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
 ) -> dict[str, Any]:
     text = (content or "").strip()
     if not text:
@@ -243,7 +274,10 @@ def memory_remember(
     )
     if service_result is not None:
         return service_result
-    mem = ensure_mem0()
+    mem = _ensure_context_mem0(
+        root=root,
+        config_manager=config_manager,
+    )
     agent_id = _resolve_agent_id(character_name)
     try:
         with _mem0_operation_lock:
@@ -279,26 +313,51 @@ def memory_remember(
 def memory_remember_and_list(
     content: str,
     character_name: str | None = None,
+    *,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
 ) -> dict[str, Any]:
     text = (content or "").strip()
     if not text:
         return {"error": "memory content is required"}
-    result = memory_remember(text, character_name=character_name)
+    if root is None and config_manager is None:
+        result = memory_remember(text, character_name=character_name)
+    else:
+        result = memory_remember(
+            text,
+            character_name=character_name,
+            root=root,
+            config_manager=config_manager,
+        )
     if isinstance(result, dict) and result.get("error"):
         return result
     if isinstance(result, dict) and result.get("status") == "loading":
         return result
-    return memory_list(character_name)
+    if root is None and config_manager is None:
+        return memory_list(character_name)
+    return memory_list(
+        character_name,
+        root=root,
+        config_manager=config_manager,
+    )
 
 
-def memory_forget(memory_id: str) -> dict[str, Any]:
+def memory_forget(
+    memory_id: str,
+    *,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
+) -> dict[str, Any]:
     mid = (memory_id or "").strip()
     if not mid:
         return {"error": "memory_id 不能为空"}
     service_result = _memory_service_request("forget", {"memoryId": mid})
     if service_result is not None:
         return service_result
-    mem = ensure_mem0()
+    mem = _ensure_context_mem0(
+        root=root,
+        config_manager=config_manager,
+    )
     try:
         with _mem0_operation_lock:
             mem.delete(mid)
@@ -311,13 +370,29 @@ def memory_forget(memory_id: str) -> dict[str, Any]:
 def memory_forget_and_list(
     memory_id: str,
     character_name: str | None = None,
+    *,
+    root: str | Path | None = None,
+    config_manager: Any | None = None,
 ) -> dict[str, Any]:
     mid = (memory_id or "").strip()
     if not mid:
         return {"error": "memory id is required"}
-    result = memory_forget(mid)
+    if root is None and config_manager is None:
+        result = memory_forget(mid)
+    else:
+        result = memory_forget(
+            mid,
+            root=root,
+            config_manager=config_manager,
+        )
     if isinstance(result, dict) and result.get("error"):
         return result
     if isinstance(result, dict) and result.get("status") == "loading":
         return result
-    return memory_list(character_name)
+    if root is None and config_manager is None:
+        return memory_list(character_name)
+    return memory_list(
+        character_name,
+        root=root,
+        config_manager=config_manager,
+    )

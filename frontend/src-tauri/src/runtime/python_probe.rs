@@ -7,6 +7,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{Manager, Runtime};
 
+use crate::path_contract::{
+    canonicalize_regular_file_without_links, files_have_same_identity,
+    open_regular_file_without_links, strip_windows_verbatim_prefix,
+};
+
 use super::python_env;
 
 pub const INSTALL_DIR_RUNTIME_ID: &str = "install-dir-runtime";
@@ -99,31 +104,7 @@ pub fn display_path(path: &Path) -> String {
 }
 
 pub fn display_path_text(value: &str) -> String {
-    let trimmed = value.trim();
-    if let Some(rest) = strip_case_insensitive_prefix(trimmed, r"\\?\UNC\") {
-        return format!(r"\\{rest}");
-    }
-    if let Some(rest) = strip_case_insensitive_prefix(trimmed, "//?/UNC/") {
-        return format!("//{rest}");
-    }
-    for prefix in [r"\\?\", r"\\.\"].iter() {
-        if let Some(rest) = strip_case_insensitive_prefix(trimmed, prefix) {
-            return rest.to_string();
-        }
-    }
-    for prefix in ["//?/", "//./"].iter() {
-        if let Some(rest) = strip_case_insensitive_prefix(trimmed, prefix) {
-            return rest.to_string();
-        }
-    }
-    trimmed.to_string()
-}
-
-fn strip_case_insensitive_prefix<'a>(value: &'a str, prefix: &str) -> Option<&'a str> {
-    value
-        .get(..prefix.len())
-        .filter(|head| head.eq_ignore_ascii_case(prefix))
-        .and_then(|_| value.get(prefix.len()..))
+    strip_windows_verbatim_prefix(value)
 }
 
 pub fn runtime_root_candidates<R: Runtime>(
@@ -147,11 +128,46 @@ pub fn python_in_prefix(prefix: &Path) -> Option<PathBuf> {
         prefix.join("Scripts").join("python"),
         prefix.join("python.exe"),
     ];
-    candidates.into_iter().find(|candidate| candidate.is_file())
+    candidates
+        .into_iter()
+        .find(|candidate| open_regular_file_without_links(candidate).is_ok())
 }
 
 fn probe_python_source(source: PythonSource) -> PythonInstall {
-    if !source.executable.is_file() {
+    let executable_identity = match open_regular_file_without_links(&source.executable) {
+        Ok(identity) => identity,
+        Err(_) => {
+            let id = source.id();
+            return PythonInstall {
+                id,
+                executable: source.executable,
+                label: source.label,
+                kind: source.kind,
+                version: None,
+                major: None,
+                minor: None,
+                arch: None,
+                platform: None,
+                prefix: None,
+                base_prefix: None,
+                is_venv: false,
+                is_conda: false,
+                conda_env: None,
+                has_pip: false,
+                has_venv: false,
+                has_ensurepip: false,
+                externally_managed: false,
+                probe_error: Some("python executable not found or changed".to_string()),
+                priority: source.priority,
+            };
+        }
+    };
+    let executable_is_current = || {
+        open_regular_file_without_links(&source.executable)
+            .and_then(|current| files_have_same_identity(&executable_identity, &current))
+            .unwrap_or(false)
+    };
+    if !executable_is_current() {
         let id = source.id();
         return PythonInstall {
             id,
@@ -172,15 +188,32 @@ fn probe_python_source(source: PythonSource) -> PythonInstall {
             has_venv: false,
             has_ensurepip: false,
             externally_managed: false,
-            probe_error: Some("python executable not found".to_string()),
+            probe_error: Some("python executable changed before probing".to_string()),
             priority: source.priority,
         };
     }
 
     let mut command = Command::new(&source.executable);
     command.arg("-c").arg(PYTHON_PROBE_SCRIPT);
-    python_env::configure_python_command(&mut command, &source.executable);
+    if let Err(error) = python_env::configure_python_command(&mut command, &source.executable) {
+        return install_with_error(
+            source,
+            format!("Python launch path configuration failed: {error}"),
+        );
+    }
+    if !executable_is_current() {
+        return install_with_error(
+            source,
+            "python executable changed before probing".to_string(),
+        );
+    }
     let output = command.output();
+    if !executable_is_current() {
+        return install_with_error(
+            source,
+            "python executable changed while probing".to_string(),
+        );
+    }
     match output {
         Ok(output) if output.status.success() => {
             let payload = serde_json::from_slice::<PythonProbePayload>(&output.stdout);
@@ -256,8 +289,7 @@ fn install_with_error(source: PythonSource, error: String) -> PythonInstall {
 }
 
 fn python_id(kind: &PythonKind, executable: &Path) -> String {
-    let resolved = executable
-        .canonicalize()
+    let resolved = canonicalize_regular_file_without_links(executable)
         .unwrap_or_else(|_| executable.to_path_buf());
     let mut hasher = Sha256::new();
     hasher.update(format!("{kind:?}\0{}", resolved.display()).as_bytes());
@@ -287,14 +319,10 @@ pub fn install_dir_runtime_root(source_root: &Path) -> PathBuf {
 fn dedupe_python_sources(sources: Vec<PythonSource>) -> Vec<PythonSource> {
     let mut deduped: Vec<PythonSource> = Vec::new();
     for source in sources {
-        let normalized = source
-            .executable
-            .canonicalize()
+        let normalized = canonicalize_regular_file_without_links(&source.executable)
             .unwrap_or_else(|_| source.executable.clone());
         if let Some(existing) = deduped.iter_mut().find(|existing| {
-            existing
-                .executable
-                .canonicalize()
+            canonicalize_regular_file_without_links(&existing.executable)
                 .unwrap_or_else(|_| existing.executable.clone())
                 == normalized
         }) {

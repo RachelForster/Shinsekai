@@ -79,6 +79,35 @@ def test_tts_server_path_is_validated_when_provided(tmp_path):
         _validate_api_config_for_save(_valid_config(gpt_sovits_api_path=str(tmp_path / "missing")))
 
 
+def test_tts_server_path_validation_does_not_follow_symlink(tmp_path):
+    server = tmp_path / "gpt-sovits"
+    alias = tmp_path / "gpt-sovits-alias"
+    server.mkdir()
+    try:
+        alias.symlink_to(server, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        _validate_api_config_for_save(
+            _valid_config(gpt_sovits_api_path=alias.as_posix())
+        )
+
+
+def test_relative_tts_server_path_is_resolved_from_selected_project_root(tmp_path, monkeypatch):
+    project = tmp_path / "selected-project"
+    server = project / "data/tts-server"
+    server.mkdir(parents=True)
+    unrelated = tmp_path / "unrelated-cwd"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    _validate_api_config_for_save(
+        _valid_config(gpt_sovits_api_path="data/tts-server"),
+        project_root=project,
+    )
+
+
 def test_kaggle_tts_provider_does_not_require_local_server_path(tmp_path):
     _validate_api_config_for_save(
         _valid_config(
@@ -86,6 +115,93 @@ def test_kaggle_tts_provider_does_not_require_local_server_path(tmp_path):
             gpt_sovits_api_path=str(tmp_path / "missing"),
         )
     )
+
+
+def test_default_empty_t2i_configuration_remains_an_explicit_skip():
+    _validate_api_config_for_save(
+        _valid_config(
+            tts_provider="none",
+            t2i_provider="comfyui",
+            t2i_api_url="http://127.0.0.1:8188",
+            t2i_work_path="",
+            t2i_default_workflow_path="",
+        )
+    )
+
+
+def test_configured_comfyui_requires_an_existing_workflow(tmp_path):
+    with pytest.raises(ValueError, match="默认工作流"):
+        _validate_api_config_for_save(
+            _valid_config(
+                tts_provider="none",
+                t2i_provider="comfyui",
+                t2i_api_url="http://localhost:8188",
+                t2i_work_path="",
+                t2i_default_workflow_path="",
+            ),
+            project_root=tmp_path,
+        )
+
+    with pytest.raises(ValueError, match="已存在的文件"):
+        _validate_api_config_for_save(
+            _valid_config(
+                tts_provider="none",
+                t2i_provider="comfyui",
+                t2i_api_url="http://127.0.0.1:8188",
+                t2i_work_path="",
+                t2i_default_workflow_path="data/workflows/missing.json",
+            ),
+            project_root=tmp_path,
+        )
+
+
+def test_comfyui_paths_resolve_from_selected_project_root(tmp_path, monkeypatch):
+    project = tmp_path / "selected-project"
+    workflow = project / "data" / "workflows" / "sprite.json"
+    work_directory = project / "data" / "comfyui"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("{}", encoding="utf-8")
+    work_directory.mkdir(parents=True)
+    unrelated = tmp_path / "unrelated-cwd"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+
+    _validate_api_config_for_save(
+        _valid_config(
+            tts_provider="none",
+            t2i_provider="comfyui",
+            t2i_api_url="http://127.0.0.1:8188",
+            t2i_work_path="data/comfyui",
+            t2i_default_workflow_path="data/workflows/sprite.json",
+        ),
+        project_root=project,
+    )
+
+
+def test_comfyui_path_validation_does_not_follow_links(tmp_path):
+    project = tmp_path / "project"
+    workflow = project / "data" / "workflows" / "sprite.json"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("{}", encoding="utf-8")
+    external = tmp_path / "external"
+    external.mkdir()
+    linked_work = project / "data" / "comfyui"
+    try:
+        linked_work.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        _validate_api_config_for_save(
+            _valid_config(
+                tts_provider="none",
+                t2i_provider="comfyui",
+                t2i_api_url="http://127.0.0.1:8188",
+                t2i_work_path="data/comfyui",
+                t2i_default_workflow_path="data/workflows/sprite.json",
+            ),
+            project_root=project,
+        )
 
 
 def _api_config_with_local_tts() -> ApiConfig:
@@ -166,7 +282,25 @@ def test_save_api_config_defaults_tts_path_under_project_root(tmp_path):
     assert manager.saved is True
 
 
-def test_project_root_lookup_supports_legacy_state_and_cwd_fallback(tmp_path, monkeypatch):
+def test_save_api_config_failure_restores_previous_in_memory_config(tmp_path):
+    app_root = tmp_path / "app"
+    project_root = tmp_path / "project"
+    app_root.mkdir()
+    _create_gpt_sovits_bundle(project_root)
+    state, manager = _bridge_state_for_config(project_root, app_root)
+    previous = manager.config.api_config
+    payload = _api_config_with_local_tts().model_dump(mode="json")
+    payload["llm_model"] = {"Deepseek": "changed-model"}
+    manager.save_api_config = lambda: (_ for _ in ()).throw(OSError("disk full"))
+
+    with pytest.raises(OSError, match="disk full"):
+        _save_api_config(state, payload)
+
+    assert manager.config.api_config is previous
+    assert manager.config.api_config.llm_model["Deepseek"] == "deepseek-chat"
+
+
+def test_project_root_lookup_supports_legacy_state_and_stable_app_fallback(tmp_path, monkeypatch):
     env_root = tmp_path / "legacy env" / "数据 Root"
     easyai_root = tmp_path / "legacy EASYAI env"
     cwd_root = tmp_path / "legacy cwd" / "Project Data"
@@ -186,4 +320,5 @@ def test_project_root_lookup_supports_legacy_state_and_cwd_fallback(tmp_path, mo
     assert _state_project_root(legacy_state) == easyai_root.resolve()
 
     monkeypatch.delenv("EASYAI_PROJECT_ROOT")
-    assert _state_project_root(legacy_state) == cwd_root.resolve()
+    monkeypatch.setenv("SHINSEKAI_APP_ROOT", str(app_root))
+    assert _state_project_root(legacy_state) == app_root.resolve()

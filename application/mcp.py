@@ -20,6 +20,27 @@ def _as_str_list(value: Any) -> list[str]:
     return [str(item) for item in value]
 
 
+def _exact_mcp_text(
+    value: Any,
+    *,
+    field: str,
+    required: bool = False,
+) -> str:
+    raw = str(value or "")
+    if raw != raw.strip() or any(
+        ord(character) < 32
+        or ord(character) == 127
+        or 0xD800 <= ord(character) <= 0xDFFF
+        for character in raw
+    ):
+        raise ValueError(
+            f"{field} must not contain surrounding whitespace or control characters"
+        )
+    if required and not raw:
+        raise ValueError(f"{field} is required")
+    return raw
+
+
 def _mcp_config_response(data: dict[str, Any] | None = None) -> dict[str, Any]:
     from config.mcp_config import DEFAULT_MCP_CONFIG_PATH, read_mcp_config
 
@@ -53,6 +74,9 @@ def _mcp_config_response(data: dict[str, Any] | None = None) -> dict[str, Any]:
             entry["command"] = str(raw.get("command") or "")
             entry["args"] = _as_str_list(raw.get("args"))
             entry["env"] = _as_str_map(raw.get("env"))
+            cwd = str(raw.get("cwd") or "")
+            if cwd:
+                entry["cwd"] = cwd
         servers.append(entry)
     try:
         default_timeout = float(cfg.get("default_call_timeout", 300))
@@ -69,15 +93,22 @@ def _mcp_config_response(data: dict[str, Any] | None = None) -> dict[str, Any]:
 def _validate_mcp_server(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise ValueError("MCP server must be an object")
-    transport = str(raw.get("transport") or "sse").strip().lower()
+    transport = _exact_mcp_text(
+        raw.get("transport") or "sse",
+        field="MCP transport",
+        required=True,
+    ).lower()
     if transport not in {"sse", "stdio", "streamable_http"}:
         raise ValueError(f"Unknown MCP transport: {transport!r}")
     entry: dict[str, Any] = {
         "enabled": raw.get("enabled") is not False,
-        "name_prefix": str(raw.get("name_prefix") or "").strip(),
+        "name_prefix": _exact_mcp_text(
+            raw.get("name_prefix"),
+            field="MCP name prefix",
+        ),
         "transport": transport,
     }
-    group = str(raw.get("group") or "").strip()
+    group = _exact_mcp_text(raw.get("group"), field="MCP group")
     if group:
         entry["group"] = group
     if raw.get("call_timeout") not in (None, ""):
@@ -89,18 +120,22 @@ def _validate_mcp_server(raw: Any) -> dict[str, Any]:
             entry["call_timeout"] = timeout
 
     if transport in {"sse", "streamable_http"}:
-        url = str(raw.get("url") or "").strip()
-        if not url:
-            raise ValueError("MCP HTTP server requires a URL")
+        url = _exact_mcp_text(
+            raw.get("url"),
+            field="MCP HTTP URL",
+            required=True,
+        )
         entry["url"] = url
         headers = raw.get("headers")
         if headers is not None and not isinstance(headers, dict):
             raise ValueError("MCP headers must be an object")
         entry["headers"] = _as_str_map(headers)
     else:
-        command = str(raw.get("command") or "").strip()
-        if not command:
-            raise ValueError("MCP stdio server requires a command")
+        command = _exact_mcp_text(
+            raw.get("command"),
+            field="MCP stdio command",
+            required=True,
+        )
         args = raw.get("args")
         env = raw.get("env")
         if args is not None and not isinstance(args, list):
@@ -110,6 +145,12 @@ def _validate_mcp_server(raw: Any) -> dict[str, Any]:
         entry["command"] = command
         entry["args"] = _as_str_list(args)
         entry["env"] = _as_str_map(env)
+        cwd = _exact_mcp_text(
+            raw.get("cwd"),
+            field="MCP stdio working directory",
+        )
+        if cwd:
+            entry["cwd"] = cwd
     return entry
 
 

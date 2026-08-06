@@ -632,7 +632,17 @@ export function ApiSettingsPage() {
         });
         return;
       }
-      if (requiresTtsWorkPath(ttsProvider) && !draft.gpt_sovits_api_path.trim()) {
+      if (requiresTtsWorkPath(ttsProvider) && draft.gpt_sovits_api_path !== draft.gpt_sovits_api_path.trim()) {
+        const message = "TTS 服务启动路径首尾不能包含空白字符。";
+        setErrors({ ...nextErrors, gpt_sovits_api_path: message });
+        showToast({
+          kind: "error",
+          message,
+          title: t("common.validationFailed"),
+        });
+        return;
+      }
+      if (requiresTtsWorkPath(ttsProvider) && !draft.gpt_sovits_api_path) {
         const message = "本地 TTS 引擎需要填写服务启动路径。";
         setErrors({ ...nextErrors, gpt_sovits_api_path: message });
         showToast({

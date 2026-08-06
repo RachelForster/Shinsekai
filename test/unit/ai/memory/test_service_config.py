@@ -27,6 +27,7 @@ def _isolate_embedding_cache_roots(monkeypatch, tmp_path: Path) -> None:
     """Keep cache-detection tests independent from developer machine state."""
 
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("HF_HOME", str(tmp_path / "empty-hf-home"))
     monkeypatch.delenv("HF_HUB_CACHE", raising=False)
     monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
@@ -98,6 +99,7 @@ def _write_complete_embedding_snapshot(
 
 def test_mem0_uses_local_multilingual_embedding(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setattr(memory_config, "ConfigManager", _FakeConfigManager)
 
     config = memory_config.build_mem0_config()
@@ -385,5 +387,100 @@ def test_embedding_model_cache_detection_ignores_onnx_only_cache(monkeypatch, tm
     refs.mkdir()
     (refs / "main").write_text(snapshot.name, encoding="utf-8")
     monkeypatch.setenv("HF_HUB_CACHE", str(hub_cache))
+
+    assert memory_config.is_embedding_model_cached() is False
+
+
+def test_mem0_storage_uses_project_root_after_cwd_changes(monkeypatch, tmp_path):
+    project = tmp_path / "project"
+    unrelated = tmp_path / "unrelated"
+    project.mkdir()
+    unrelated.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+    monkeypatch.chdir(unrelated)
+    monkeypatch.setattr(memory_config, "ConfigManager", _FakeConfigManager)
+
+    config = memory_config.build_mem0_config()
+
+    assert config["vector_store"]["config"]["path"] == (
+        project / "data/memory/qdrant"
+    ).as_posix()
+    assert config["history_db_path"] == (project / "data/memory/mem0_history.db").as_posix()
+    assert not (unrelated / "data").exists()
+
+
+def test_mem0_storage_prefers_explicit_root_over_ambient_root(
+    monkeypatch,
+    tmp_path,
+):
+    ambient = tmp_path / "ambient"
+    selected = tmp_path / "selected"
+    ambient.mkdir()
+    selected.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", ambient.as_posix())
+
+    config = memory_config.build_mem0_config(
+        root=selected,
+        config_manager=_FakeConfigManager(),
+    )
+
+    assert config["vector_store"]["config"]["path"] == (
+        selected / "data/memory/qdrant"
+    ).as_posix()
+    assert config["history_db_path"] == (
+        selected / "data/memory/mem0_history.db"
+    ).as_posix()
+    assert not (ambient / "data/memory").exists()
+
+
+def test_embedding_cache_detection_does_not_follow_project_hub_symlink(
+    monkeypatch,
+    tmp_path,
+):
+    project = tmp_path / "project"
+    hf_home = project / "data/cache/huggingface"
+    external_hub = tmp_path / "external-hub"
+    snapshot = (
+        external_hub
+        / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
+        / "snapshots"
+        / "abc123"
+    )
+    hf_home.mkdir(parents=True)
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (snapshot / "model.safetensors").write_bytes(b"model")
+    try:
+        (hf_home / "hub").symlink_to(external_hub, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project))
+    monkeypatch.setenv("HF_HOME", "data/cache/huggingface")
+    monkeypatch.delenv("HF_HUB_CACHE", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
+
+    assert memory_config.is_embedding_model_cached() is False
+
+
+def test_embedding_cache_detection_ignores_stale_non_active_cache(
+    monkeypatch,
+    tmp_path,
+):
+    project = tmp_path / "project"
+    active_cache = tmp_path / "active-cache"
+    stale_cache = project / "data/cache/huggingface/hub"
+    snapshot = (
+        stale_cache
+        / "models--sentence-transformers--paraphrase-multilingual-MiniLM-L12-v2"
+        / "snapshots"
+        / "abc123"
+    )
+    project.mkdir()
+    snapshot.mkdir(parents=True)
+    (snapshot / "config.json").write_text("{}", encoding="utf-8")
+    (snapshot / "model.safetensors").write_bytes(b"model")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(project))
+    monkeypatch.setenv("HF_HUB_CACHE", str(active_cache))
+    monkeypatch.delenv("HUGGINGFACE_HUB_CACHE", raising=False)
 
     assert memory_config.is_embedding_model_cached() is False

@@ -1,9 +1,15 @@
 import requests
 import threading
 import queue
-from pathlib import Path
+import os
 from typing import Optional, Dict, Any
 
+from core.paths import (
+    project_root as runtime_project_root,
+    require_directory_without_links,
+    resolve_project_output_path,
+    resolve_project_path,
+)
 from sdk.adapters.t2i import T2IAdapter
 from ai.t2i.t2i_adapter import ComfyUIT2IAdapter, StableDiffusionAdapter
 
@@ -49,12 +55,30 @@ class T2IAdapterFactory:
 
 # T2I管理器
 class T2IManager:
-    def __init__(self, t2i_adapter, image_cache_dir: str = ".\\cache\\images"):
-        self.image_cache_dir = Path(image_cache_dir)
+    def __init__(
+        self,
+        t2i_adapter,
+        image_cache_dir: str | os.PathLike[str] | None = None,
+        *,
+        project_root: str | os.PathLike[str] | None = None,
+    ):
+        root = runtime_project_root() if project_root is None else resolve_project_path(
+            ".",
+            root=project_root,
+        )
+
+        raw_cache = os.fspath(
+            "data/cache/images" if image_cache_dir is None else image_cache_dir
+        )
+        self.image_cache_dir = resolve_project_output_path(raw_cache, root=root)
         self.cache_num = 10  # Max number of cached images
         self.index = 0       # Index for circular caching
 
         self.image_cache_dir.mkdir(exist_ok=True, parents=True)
+        self.image_cache_dir = require_directory_without_links(
+            self.image_cache_dir,
+            field="T2I image cache directory",
+        )
         # Use the adapter for T2I operations
         self.t2i_adapter: Optional[T2IAdapter] = t2i_adapter
 

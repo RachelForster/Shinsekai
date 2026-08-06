@@ -1,6 +1,29 @@
 import subprocess
+from pathlib import Path
 
 from scripts import presubmit
+
+
+def test_commit_message_file_is_anchored_to_repository_root(
+    tmp_path,
+    monkeypatch,
+):
+    repository = tmp_path / "repository"
+    message_file = repository / ".git" / "COMMIT_EDITMSG"
+    message_file.parent.mkdir(parents=True)
+    message_file.write_text(
+        "fix: validate repository-relative commit message paths\n",
+        encoding="utf-8",
+    )
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    monkeypatch.setattr(presubmit, "ROOT", repository)
+    monkeypatch.chdir(unrelated)
+
+    assert (
+        presubmit.validate_commit_message_file(Path(".git/COMMIT_EDITMSG"))
+        == 0
+    )
 
 
 def test_pre_push_commit_range_excludes_commits_reachable_from_any_remote(monkeypatch):

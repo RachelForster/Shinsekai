@@ -25,7 +25,6 @@ import {
   syncCompactRatioDraft,
   thinkingUnsupported,
   updateAsrExtraConfig,
-  VOSK_MODEL_PATH,
   withCurrentOption,
 } from "../../../features/api-settings/apiSettingsUtils";
 import { sampleConfig } from "../../../shared/platform/sampleData";
@@ -130,7 +129,7 @@ describe("API settings utilities", () => {
     expect(
       normalizeApiAsrForSave(apiConfig, { ...sampleConfig.system_config, asr_provider: "vosk" }).asr_extra_configs,
     ).toEqual({
-      vosk: { model_path: VOSK_MODEL_PATH },
+      vosk: { model_path: "  " },
     });
     expect(normalizeApiAsrForSave(apiConfig, { ...sampleConfig.system_config, asr_provider: "whisper" })).toBe(
       apiConfig,

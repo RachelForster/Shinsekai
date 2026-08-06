@@ -8,8 +8,10 @@ import importlib
 import logging
 from collections.abc import Callable, Iterable, Iterator, Mapping
 from dataclasses import dataclass, replace
-from pathlib import Path
+from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Type
+
+from sdk.path_contract import safe_path_component, validate_exact_path_text
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import (
@@ -54,6 +56,43 @@ from sdk.types import (
 
 logger = logging.getLogger(__name__)
 
+
+def _portable_required_text(value: str, *, field: str) -> str:
+    raw = str(value or "")
+    if (
+        not raw
+        or raw != raw.strip()
+        or any(
+            ord(character) < 32
+            or ord(character) == 127
+            or 0xD800 <= ord(character) <= 0xDFFF
+            for character in raw
+        )
+    ):
+        raise ValueError(
+            f"{field} is required and must not contain non-portable characters"
+        )
+    return raw
+
+
+def _workflow_path_text(value: str) -> str:
+    exact = _portable_required_text(value, field="Workflow YAML path")
+    return validate_exact_path_text(exact, field="Workflow YAML path")
+
+
+def _frontend_entry_path_text(value: str) -> str:
+    exact = _portable_required_text(value, field="frontend entry path")
+    return validate_exact_path_text(exact, field="frontend entry path")
+
+
+def _validate_contribution_identity(value: str, *, field: str) -> str:
+    return safe_path_component(str(value or ""), field=field)
+
+
+def _validate_optional_plugin_id(value: str | None) -> None:
+    if value is not None:
+        _validate_contribution_identity(value, field="plugin id")
+
 @dataclass(frozen=True)
 class _ClassEntry:
     cls: Type[PluginBase]
@@ -81,10 +120,8 @@ class PluginDiscoveryRegistry:
         self._class_entries.append(_ClassEntry(cls=cls, enabled=enabled))
 
     def register_entry(self, entry: str, *, enabled: bool = True) -> None:
-        cleaned = entry.strip()
-        if not cleaned:
-            raise ValueError("Plugin entry cannot be empty")
-        self._import_entries.append(_ImportEntry(entry=cleaned, enabled=enabled))
+        exact = _portable_required_text(entry, field="Plugin entry")
+        self._import_entries.append(_ImportEntry(entry=exact, enabled=enabled))
 
     def register_descriptors(self, descriptors: Iterable[PluginDescriptor]) -> None:
         for d in descriptors:
@@ -226,6 +263,7 @@ class PluginCapabilityRegistry:
 
     def set_settings_ui_plugin_context(self, plugin_id: str, plugin_version: str) -> None:
         """Host-only: while a plugin's ``initialize`` runs, attach id/version to settings contributions."""
+        _validate_contribution_identity(plugin_id, field="plugin id")
         self._settings_ui_plugin_ctx = (plugin_id, plugin_version)
 
     def clear_settings_ui_plugin_context(self) -> None:
@@ -264,6 +302,8 @@ class PluginCapabilityRegistry:
                 plugin_id=contribution.plugin_id or pid,
                 plugin_version=contribution.plugin_version or ver,
             )
+        _validate_contribution_identity(contribution.page_id, field="settings page id")
+        _validate_optional_plugin_id(contribution.plugin_id)
         self._settings_contributions.append(contribution)
 
     def register_tools_tab(self, contribution: ToolsTabContribution) -> None:
@@ -281,6 +321,8 @@ class PluginCapabilityRegistry:
                 plugin_id=contribution.plugin_id or pid,
                 plugin_version=contribution.plugin_version or ver,
             )
+        _validate_contribution_identity(contribution.tab_id, field="tools tab id")
+        _validate_optional_plugin_id(contribution.plugin_id)
         self._tools_tab_contributions.append(contribution)
 
     def register_frontend_config_page(self, contribution: FrontendConfigContribution) -> None:
@@ -292,6 +334,10 @@ class PluginCapabilityRegistry:
                 plugin_id=contribution.plugin_id or pid,
                 plugin_version=contribution.plugin_version or ver,
             )
+        _validate_contribution_identity(contribution.page_id, field="frontend page id")
+        _validate_optional_plugin_id(contribution.plugin_id)
+        for action in contribution.actions:
+            _validate_contribution_identity(action.id, field="frontend action id")
         self._frontend_config_contributions.append(contribution)
 
     def register_frontend_page(self, contribution: FrontendPageContribution) -> None:
@@ -303,6 +349,9 @@ class PluginCapabilityRegistry:
                 plugin_id=contribution.plugin_id or pid,
                 plugin_version=contribution.plugin_version or ver,
             )
+        _validate_contribution_identity(contribution.page_id, field="frontend page id")
+        _validate_optional_plugin_id(contribution.plugin_id)
+        _frontend_entry_path_text(contribution.entry)
         self._frontend_page_contributions.append(contribution)
 
     def register_frontend_chat_ui(self, contribution: FrontendChatUIContribution) -> None:
@@ -359,6 +408,8 @@ class PluginCapabilityRegistry:
                 plugin_id=contribution.plugin_id or pid,
                 plugin_version=contribution.plugin_version or ver,
             )
+        _validate_contribution_identity(contribution.widget_id, field="chat widget id")
+        _validate_optional_plugin_id(contribution.plugin_id)
         self._chat_ui_contributions.append(contribution)
 
     def register_dag_yaml(self, path: str) -> None:
@@ -368,13 +419,12 @@ class PluginCapabilityRegistry:
             Kept for compatibility. Prefer :meth:`register_workflow` when the
             workflow also owns an LLM output contract/schema.
         """
-        cleaned = str(path).strip()
-        if not cleaned:
-            raise ValueError("Workflow YAML path cannot be empty")
+        cleaned = _workflow_path_text(path)
+        portable_name = PurePosixPath(cleaned.replace("\\", "/")).stem
         self.register_workflow(
             WorkflowContribution(
                 id=cleaned,
-                name=Path(cleaned).stem or cleaned,
+                name=portable_name or cleaned,
                 yaml_path=cleaned,
             )
         )
@@ -383,8 +433,7 @@ class PluginCapabilityRegistry:
         """Register a selectable workflow and optional output contract/schema."""
         if not contribution.id.strip():
             raise ValueError("WorkflowContribution.id cannot be empty")
-        if not contribution.yaml_path.strip():
-            raise ValueError("WorkflowContribution.yaml_path cannot be empty")
+        _workflow_path_text(contribution.yaml_path)
         self._workflow_contributions.append(contribution)
 
     def register_output_contract_patch(self, patch: OutputContractPatch) -> None:

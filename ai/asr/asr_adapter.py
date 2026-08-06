@@ -3,16 +3,58 @@ from __future__ import annotations
 import json
 import threading
 import time
-from pathlib import Path
 from typing import Any, Optional
 
 from sdk.lang import normalize_lang
 from sdk.adapters.asr import ASRAdapter, TranscriptionCallback
 from sdk.logging import get_logger
-from core.paths import resource_path
+from core.paths import (
+    resolve_runtime_asset_path,
+    resource_path,
+    validate_exact_path_text,
+)
 
 # Vosk 模型默认路径（可按本机下载模型修改）
 VOSK_MODEL_PATH = str(resource_path("assets/system/models/vosk-model-small-cn-0.22"))
+
+
+def _resolve_vosk_model_path(model_path: str) -> str:
+    """Resolve configured models with the shared resource/project contract."""
+
+    return resolve_runtime_asset_path(model_path).as_posix()
+
+
+def _looks_like_local_whisper_model(value: str) -> bool:
+    portable = value.replace("\\", "/")
+    return bool(
+        value.startswith((".", "/", "\\", "~"))
+        or value.endswith(("/", "\\"))
+        or "\\" in value
+        or portable.startswith(("data/", "assets/", "models/", ".cache/"))
+        or (
+            len(portable) >= 3
+            and portable[0].isalpha()
+            and portable[1:3] == ":/"
+        )
+        or portable.count("/") > 1
+    )
+
+
+def _resolve_whisper_model_reference(value: Any) -> str:
+    """Bind local model references to the project while preserving model IDs."""
+
+    raw = str(value or "small")
+    validate_exact_path_text(
+        raw,
+        field="ASR model reference",
+        allow_non_native_absolute=True,
+    )
+    if not _looks_like_local_whisper_model(raw):
+        return raw
+    return resolve_runtime_asset_path(
+        raw,
+        resource_prefixes=(("assets",),),
+    ).as_posix()
 
 
 def get_asr_log():
@@ -59,7 +101,9 @@ def system_config_to_asr_lang(sys_cfg: Any) -> str:
 def _whisper_triplet_from_sys(sys_cfg: Any) -> tuple[str, str, str]:
     """从 system_config 读取 Whisper / RealtimeSTT 共用的模型与设备选项。"""
     return (
-        str(getattr(sys_cfg, "asr_whisper_model_size", None) or "small"),
+        _resolve_whisper_model_reference(
+            getattr(sys_cfg, "asr_whisper_model_size", None)
+        ),
         str(getattr(sys_cfg, "asr_whisper_device", None) or "auto"),
         str(getattr(sys_cfg, "asr_whisper_compute_type", None) or ""),
     )
@@ -108,12 +152,7 @@ class VoskAdapter(ASRAdapter):
 
         self._pyaudio = pyaudio
         self._KaldiRecognizer = KaldiRecognizer
-        raw_model_path = Path(model_path).expanduser()
-        self.model_path = (
-            raw_model_path.resolve(strict=False)
-            if raw_model_path.is_absolute()
-            else resource_path(raw_model_path)
-        ).as_posix()
+        self.model_path = _resolve_vosk_model_path(model_path)
         self._is_running = False
         self._thread: Optional[threading.Thread] = None
 

@@ -1,11 +1,16 @@
 import type { ChatAttachmentInput } from "../../shared/platform/types";
+import { normalizePathSeparatorsForIdentity } from "../../shared/paths/pathContract";
 
 export const CHAT_ATTACHMENT_LIMIT = 8;
 export const CHAT_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"];
 
 export function attachmentNameFromPath(path: string) {
-  const normalized = path.trim().replace(/\\/g, "/");
+  const normalized = normalizePathSeparatorsForIdentity(path);
   return normalized.split("/").filter(Boolean).pop() || normalized || path;
+}
+
+export function chatAttachmentIdentityKey(attachment: Pick<ChatAttachmentInput, "kind" | "path">) {
+  return `${attachment.kind}\0${normalizePathSeparatorsForIdentity(attachment.path)}`;
 }
 
 export function mergeChatAttachments(
@@ -21,10 +26,10 @@ export function mergeChatAttachments(
 
 export function mergeChatAttachmentInputs(current: ChatAttachmentInput[], additions: ChatAttachmentInput[]) {
   const merged = current.map((attachment) => ({ ...attachment }));
-  const known = new Set(merged.map((attachment) => `${attachment.kind}\0${attachment.path}`));
+  const known = new Set(merged.map(chatAttachmentIdentityKey));
   for (const addition of additions) {
-    const path = addition.path.trim();
-    const key = `${addition.kind}\0${path}`;
+    const path = addition.path;
+    const key = chatAttachmentIdentityKey(addition);
     if (!path || known.has(key) || merged.length >= CHAT_ATTACHMENT_LIMIT) {
       continue;
     }

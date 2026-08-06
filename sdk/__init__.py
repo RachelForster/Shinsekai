@@ -20,6 +20,11 @@ Quick reference
 - :mod:`sdk.register` — 能力注册表 (PluginCapabilityRegistry)
 - :mod:`sdk.manager` — 插件管理器 (PluginManager)
 - :mod:`sdk.chat_ui_theme` — chat_ui 主题 mod 校验/打包 (validate_manifest, pack_theme; CLI: ``python -m sdk.chat_ui_theme``)
+- :mod:`sdk.archive_paths` — portable archive validation and safe extraction
+- :mod:`sdk.file_transactions` — identity-bound file and directory transactions
+- :mod:`sdk.path_contract` — cross-layer path validation and managed-root helpers
+- :mod:`sdk.path_references` — portable persisted path references
+- :mod:`sdk.process_launch` — identity-bound subprocess launch helpers
 """
 
 from __future__ import annotations
@@ -28,6 +33,7 @@ import importlib
 from typing import Any
 
 __all__ = [
+    "archive_paths",
     "apply_registered_tools",
     "ASRAdapter",
     "BeforeChatContext",
@@ -38,6 +44,7 @@ __all__ = [
     "ChatOutputContract",
     "clear_shutdown_hooks",
     "FieldPatch",
+    "file_transactions",
     "FrontendConfigAction",
     "FrontendChatUIContribution",
     "FrontendConfigContribution",
@@ -62,6 +69,8 @@ __all__ = [
     "MessageHandler",
     "OutputContractPatch",
     "OutputFieldSpec",
+    "path_contract",
+    "path_references",
     "PluginBase",
     "PluginCapabilityRegistry",
     "PluginDescriptor",
@@ -72,6 +81,7 @@ __all__ = [
     "PluginManager",
     "PluginRegister",
     "PluginSettingsUIContext",
+    "process_launch",
     "registered_tool_entries",
     "register_shutdown_hook",
     "RequirementPatch",
@@ -220,8 +230,18 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "SUPPORTED_LANGS": ("sdk.lang", "SUPPORTED_LANGS"),
 }
 
+_LAZY_MODULES = {
+    "archive_paths": "sdk.archive_paths",
+    "file_transactions": "sdk.file_transactions",
+    "path_contract": "sdk.path_contract",
+    "path_references": "sdk.path_references",
+    "process_launch": "sdk.process_launch",
+}
+
 
 def __getattr__(name: str) -> Any:
+    if name in _LAZY_MODULES:
+        return importlib.import_module(_LAZY_MODULES[name])
     if name in _LAZY_EXPORTS:
         mod_path, attr = _LAZY_EXPORTS[name]
         mod = importlib.import_module(mod_path)

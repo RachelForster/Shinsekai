@@ -279,10 +279,21 @@ class ChatStreamCommandTests(unittest.TestCase):
 
     def test_handle_chat_command_validates_and_forwards_attachments(self):
         chat_stream = _StubChatStream()
-        state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
         with tempfile.TemporaryDirectory() as temp_dir:
-            image = Path(temp_dir) / "scene.png"
+            project = Path(temp_dir)
+            attachment_root = project / "data" / "chat_attachments"
+            image = (
+                attachment_root
+                / "0123456789abcdef0123456789abcdef"
+                / "scene.png"
+            )
+            image.parent.mkdir(parents=True)
             image.write_bytes(b"image")
+            state = SimpleNamespace(
+                chat_session={"sessionId": "session-1"},
+                chat_stream=chat_stream,
+                project_root_dir=project.as_posix(),
+            )
 
             snapshot = _handle_chat_command(
                 state,
@@ -617,14 +628,18 @@ class ChatStreamCommandTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
-            history_path = Path(tmp_dir) / "session-history"
-            history_path.mkdir()
+            project_root = Path(tmp_dir)
+            history_root = project_root / "data" / "chat_history"
+            history_path = history_root / "session-history"
+            history_path.mkdir(parents=True)
             (history_path / "active.json").write_text("[]", encoding="utf-8")
             (history_path / "branches.json").write_text("{}", encoding="utf-8")
             state = SimpleNamespace(
                 chat_session={"historyPath": history_path.as_posix()},
                 chat_stream=None,
                 config_manager=config_manager,
+                history_dir=history_root.as_posix(),
+                project_root_dir=project_root.as_posix(),
             )
 
             snapshot = _handle_chat_command(state, {"type": "clear-history"})
@@ -633,6 +648,37 @@ class ChatStreamCommandTests(unittest.TestCase):
             self.assertEqual(snapshot["historyEntries"], [])
             self.assertEqual(snapshot["options"], [])
             self.assertEqual(snapshot["dialogText"], "历史记录已经清空。")
+
+    def test_handle_chat_command_never_clears_the_history_collection_root(self):
+        class _Config:
+            characters = []
+            background_list = []
+            system_config = SimpleNamespace(chat_ui_runtime_mode="react", voice_language="ja")
+
+        config_manager = SimpleNamespace(
+            config=_Config(),
+            get_background_by_name=lambda _name: None,
+            get_character_by_name=lambda _name: None,
+        )
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
+            project_root = Path(tmp_dir)
+            history_root = project_root / "data" / "chat_history"
+            sibling = history_root / "must-survive"
+            sibling.mkdir(parents=True)
+            (sibling / "active.json").write_text("[]", encoding="utf-8")
+            state = SimpleNamespace(
+                chat_session={"historyPath": history_root.as_posix()},
+                chat_stream=None,
+                config_manager=config_manager,
+                history_dir=history_root.as_posix(),
+                project_root_dir=project_root.as_posix(),
+            )
+
+            with self.assertRaisesRegex(PermissionError, "history root"):
+                _handle_chat_command(state, {"type": "clear-history"})
+
+            self.assertTrue((sibling / "active.json").is_file())
 
     def test_chat_stream_sends_commands_and_broadcasts_ack_events(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
@@ -975,6 +1021,22 @@ class ChatStreamCommandTests(unittest.TestCase):
                 _close_ws(producer)
             service.stop()
 
+    def test_media_url_rejects_whitespace_instead_of_retargeting_path(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=_free_bridge_port())
+
+        self.assertEqual(
+            service.media_url("HTTPS://media.example.test/room.png"),
+            "HTTPS://media.example.test/room.png",
+        )
+        with self.assertRaisesRegex(ValueError, "non-portable"):
+            service.media_url(" data/speech/nanami/hello.wav")
+        with self.assertRaisesRegex(ValueError, "exact"):
+            service.media_url("data/speech/./nanami/hello.wav")
+        with self.assertRaisesRegex(ValueError, "without credentials"):
+            service.media_url(
+                "https://user:secret@media.example.test/room.png",
+            )
+
     def test_media_url_registers_absolute_media_path_for_later_authenticated_read(
         self,
     ):
@@ -1011,6 +1073,25 @@ class ChatStreamCommandTests(unittest.TestCase):
             if viewer is not None:
                 _close_ws(viewer)
             service.stop()
+
+    def test_media_event_approval_does_not_trim_url_identity(self):
+        service = ChatStreamService(
+            host="127.0.0.1",
+            bridge_port=_free_bridge_port(),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            media_path = str(Path(temp_dir) / "generated" / "line.wav")
+            media_url = f"/api/media?{urlencode({'path': media_path})}"
+
+            service._approve_event_media_path(
+                {"type": "tts.play", "url": f" {media_url} "}
+            )
+            self.assertNotIn(media_path, service.approved_external_media_paths())
+
+            service._approve_event_media_path(
+                {"type": "tts.play", "url": media_url}
+            )
+            self.assertIn(media_path, service.approved_external_media_paths())
 
     def test_ws_client_sink_transports_events_over_real_socket(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=_free_bridge_port())

@@ -2,6 +2,11 @@ use std::{env, error::Error, path::Path, path::PathBuf, process::Command};
 
 use tauri::{Emitter, Manager, Runtime};
 
+use crate::path_contract::{
+    canonicalize_directory_without_links, canonicalize_regular_file_without_links,
+    open_regular_file_without_links,
+};
+
 mod managed;
 mod manifest;
 mod python_env;
@@ -43,7 +48,7 @@ pub fn manual_install_command(
     };
     let profile = runtime_profile();
     let requirements =
-        python_probe::display_path(&runtime_requirements_path(source_root, &profile));
+        python_probe::display_path(&runtime_requirements_path(source_root, &profile).ok()?);
     Some(manual_install_command_for_shell(
         &python,
         &requirements,
@@ -51,15 +56,24 @@ pub fn manual_install_command(
     ))
 }
 
-fn runtime_requirements_path(source_root: &Path, profile: &str) -> PathBuf {
-    let runtime_manifest = manifest::load_manifest(source_root).ok();
+fn runtime_requirements_path(source_root: &Path, profile: &str) -> RuntimeResult<PathBuf> {
+    let runtime_manifest = manifest::load_manifest(source_root)?;
     let requirements =
-        manifest::runtime_requirements(source_root, runtime_manifest.as_ref(), profile);
+        manifest::runtime_requirements(source_root, Some(&runtime_manifest), profile)?;
     let path = PathBuf::from(requirements.requirements_file);
-    if path.is_absolute() {
+    let path = if path.is_absolute() {
         path
     } else {
-        source_root.join(path)
+        canonicalize_directory_without_links(source_root)?.join(path)
+    };
+    if open_regular_file_without_links(&path).is_ok() {
+        Ok(path)
+    } else {
+        Err(format!(
+            "runtime requirements must be a regular non-link file: {}",
+            path.display()
+        )
+        .into())
     }
 }
 
@@ -83,9 +97,16 @@ fn quote_shell_argument(value: &str, windows: bool) -> String {
 }
 
 pub fn scan_runtime_view<R: Runtime>(app: &impl Manager<R>, source_root: &Path) -> RuntimeScanView {
-    let manifest = manifest::load_manifest(source_root).ok();
+    let manifest = match manifest::load_manifest(source_root) {
+        Ok(manifest) => manifest,
+        Err(error) => {
+            return resolver::runtime_configuration_error_view(format!(
+                "failed to load runtime manifest: {error}"
+            ));
+        }
+    };
     let profile = runtime_profile();
-    resolver::scan_runtime_candidates(app, source_root, manifest.as_ref(), &profile)
+    resolver::scan_runtime_candidates(app, source_root, Some(&manifest), &profile)
 }
 
 pub fn install_dir_runtime_view(source_root: &Path) -> RuntimeScanView {
@@ -93,6 +114,9 @@ pub fn install_dir_runtime_view(source_root: &Path) -> RuntimeScanView {
 }
 
 pub fn find_install_dir_python_runtime(source_root: &Path) -> RuntimeResult<PythonRuntime> {
+    let manifest = manifest::load_manifest(source_root)?;
+    let _requirements =
+        manifest::runtime_requirements(source_root, Some(&manifest), &runtime_profile())?;
     let runtime_root = python_probe::install_dir_runtime_root(source_root);
     let path = python_probe::python_in_prefix(&runtime_root).ok_or_else(|| {
         format!(
@@ -102,7 +126,7 @@ pub fn find_install_dir_python_runtime(source_root: &Path) -> RuntimeResult<Pyth
     })?;
     let launch_path = bridge_launch_python(&path);
     let mut command = Command::new(&launch_path);
-    python_env::configure_python_command(&mut command, &path);
+    python_env::configure_python_command(&mut command, &path)?;
     Ok(PythonRuntime {
         command,
         description: format!(
@@ -138,7 +162,7 @@ pub fn find_python_runtime_for_candidate<R: Runtime>(
     let path = PathBuf::from(&candidate.path);
     let launch_path = bridge_launch_python(&path);
     let mut command = Command::new(&launch_path);
-    python_env::configure_python_command(&mut command, &path);
+    python_env::configure_python_command(&mut command, &path)?;
     Ok(PythonRuntime {
         command,
         description: candidate.label.clone(),
@@ -157,7 +181,11 @@ pub fn repair_runtime_candidate<R: Runtime, M: Manager<R> + Emitter<R>>(
         .candidates
         .iter()
         .find(|candidate| candidate.id == candidate_id)
-        .ok_or_else(|| format!("runtime candidate not found: {candidate_id}"))?;
+        .ok_or_else(|| {
+            view.message
+                .clone()
+                .unwrap_or_else(|| format!("runtime candidate not found: {candidate_id}"))
+        })?;
     if !runtime_action_supported(candidate, action) {
         return Err(format!(
             "runtime action {action:?} is not supported for candidate {candidate_id}"
@@ -171,14 +199,11 @@ pub fn repair_runtime_candidate<R: Runtime, M: Manager<R> + Emitter<R>>(
             Ok(runtime.command.get_program().to_str().map(PathBuf::from))
         }
         RuntimeRepairActionKind::InstallRuntimeDeps => {
-            let manifest = manifest::load_manifest(source_root).ok();
+            let manifest = manifest::load_manifest(source_root)?;
             let profile = runtime_profile();
             let requirements =
-                manifest::runtime_requirements(source_root, manifest.as_ref(), &profile);
-            let pip_index_urls = manifest
-                .as_ref()
-                .map(|manifest| manifest::pip_index_urls_for_source(manifest, None))
-                .unwrap_or_default();
+                manifest::runtime_requirements(source_root, Some(&manifest), &profile)?;
+            let pip_index_urls = manifest::pip_index_urls_for_source(&manifest, None);
             if candidate.path.trim().is_empty() {
                 return Err("runtime candidate does not have a Python path".into());
             }
@@ -237,7 +262,7 @@ pub fn install_runtime_profile<R: Runtime, M: Manager<R> + Emitter<R>>(
     if candidate.path.trim().is_empty() {
         return Err("runtime candidate does not have a Python path".into());
     }
-    let requirements = manifest::runtime_requirements(source_root, Some(&manifest), profile);
+    let requirements = manifest::runtime_requirements(source_root, Some(&manifest), profile)?;
     let pip_index_urls = manifest::pip_index_urls_for_source(&manifest, None);
     let progress_id = format!("{}-{profile}", candidate.id);
     managed::install_runtime_dependencies(
@@ -262,7 +287,7 @@ pub fn ready_candidate_id_for_path<R: Runtime>(
 
 #[allow(dead_code)]
 pub fn resolve_python_path(path: &Path) -> RuntimeResult<PathBuf> {
-    if path.is_file() {
+    if open_regular_file_without_links(path).is_ok() {
         return Ok(path.to_path_buf());
     }
     if path.is_dir() {
@@ -283,30 +308,11 @@ fn runtime_profile() -> String {
 }
 
 fn bridge_launch_python(python: &Path) -> PathBuf {
-    #[cfg(windows)]
-    {
-        if crate::show_backend_console() {
-            return python.to_path_buf();
-        }
-        pythonw_for_python(python).unwrap_or_else(|| python.to_path_buf())
-    }
-    #[cfg(not(windows))]
-    {
-        python.to_path_buf()
-    }
-}
-
-#[allow(dead_code)]
-fn pythonw_for_python(python: &Path) -> Option<PathBuf> {
-    let file_name = python.file_name()?.to_str()?.to_ascii_lowercase();
-    if file_name == "pythonw.exe" {
-        return Some(python.to_path_buf());
-    }
-    if !matches!(file_name.as_str(), "python.exe" | "python3.exe") {
-        return None;
-    }
-    let candidate = python.with_file_name("pythonw.exe");
-    candidate.is_file().then_some(candidate)
+    // Readiness, dependency probing and process launch must all use the exact
+    // same executable. Windows console suppression is handled by the child
+    // process creation flags; silently switching to a sibling pythonw.exe
+    // would launch a path that was never validated.
+    python.to_path_buf()
 }
 
 fn ready_candidate_id_for_path_in_view(
@@ -326,14 +332,14 @@ fn ready_candidate_id_for_path_in_view(
 }
 
 fn runtime_python_path(path: &Path) -> Option<PathBuf> {
-    if path.is_file() {
+    if open_regular_file_without_links(path).is_ok() {
         return Some(path.to_path_buf());
     }
     python_probe::python_in_prefix(path)
 }
 
 fn normalized_path(path: &Path) -> PathBuf {
-    path.canonicalize().unwrap_or_else(|_| path.to_path_buf())
+    canonicalize_regular_file_without_links(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[cfg(test)]
@@ -383,9 +389,14 @@ mod tests {
             }"#,
         )
         .unwrap();
+        fs::write(
+            source_root.join("requirements-runtime-local-ai.txt"),
+            "requests\n",
+        )
+        .unwrap();
 
         assert_eq!(
-            runtime_requirements_path(&source_root, "local-ai"),
+            runtime_requirements_path(&source_root, "local-ai").unwrap(),
             source_root.join("requirements-runtime-local-ai.txt")
         );
 
@@ -463,7 +474,7 @@ mod tests {
     }
 
     #[test]
-    fn pythonw_for_python_prefers_sibling_pythonw_executable() {
+    fn bridge_launch_python_uses_the_selected_runtime_executable() {
         let temp_root = unique_temp_dir("runtime-pythonw");
         let python = temp_root.join("python.exe");
         let pythonw = temp_root.join("pythonw.exe");
@@ -471,19 +482,7 @@ mod tests {
         fs::write(&python, "").unwrap();
         fs::write(&pythonw, "").unwrap();
 
-        assert_eq!(pythonw_for_python(&python), Some(pythonw));
-
-        let _ = fs::remove_dir_all(temp_root);
-    }
-
-    #[test]
-    fn pythonw_for_python_falls_back_when_pythonw_is_missing() {
-        let temp_root = unique_temp_dir("runtime-pythonw-missing");
-        let python = temp_root.join("python.exe");
-        fs::create_dir_all(&temp_root).unwrap();
-        fs::write(&python, "").unwrap();
-
-        assert!(pythonw_for_python(&python).is_none());
+        assert_eq!(bridge_launch_python(&python), python);
 
         let _ = fs::remove_dir_all(temp_root);
     }

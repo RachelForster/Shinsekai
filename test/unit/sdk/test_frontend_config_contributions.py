@@ -39,6 +39,81 @@ def test_plugin_host_context_exposes_huggingface_cache_dir(tmp_path: Path) -> No
     assert host.huggingface_cache_dir == cache_dir.resolve(strict=False)
 
 
+def test_plugin_host_context_exposes_absolute_project_data_root(tmp_path: Path) -> None:
+    data_root = tmp_path / "project" / "data"
+
+    host = PluginHostContext.from_config_manager(
+        None,
+        project_data_dir=data_root,
+    )
+
+    assert host.project_data_dir == data_root.resolve(strict=False)
+    assert host.huggingface_cache_dir == data_root / "cache" / "huggingface"
+
+
+def test_plugin_host_context_rejects_relative_project_data_root(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError, match="absolute"):
+        PluginHostContext.from_config_manager(None, project_data_dir=Path("relative/data"))
+
+
+def test_plugin_host_context_rejects_user_home_project_data_alias() -> None:
+    with pytest.raises(ValueError, match="absolute"):
+        PluginHostContext.from_config_manager(None, project_data_dir="~/data")
+
+
+def test_plugin_host_context_rejects_explicit_empty_project_data_root() -> None:
+    with pytest.raises(ValueError, match="empty"):
+        PluginHostContext.from_config_manager(None, project_data_dir="")
+
+
+def test_plugin_host_context_rejects_lexical_project_data_root_alias(tmp_path: Path) -> None:
+    data_root = tmp_path / "project/data"
+    data_root.mkdir(parents=True)
+
+    with pytest.raises(ValueError, match="lexical path aliases"):
+        PluginHostContext.from_config_manager(
+            None,
+            project_data_dir=f"{tmp_path.as_posix()}/project/./data",
+        )
+
+
+def test_plugin_host_context_rejects_symlinked_project_data_root(tmp_path: Path) -> None:
+    project = tmp_path / "project"
+    external = tmp_path / "external"
+    project.mkdir()
+    external.mkdir()
+    data_link = project / "data"
+    try:
+        data_link.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symbolic links are unavailable")
+
+    with pytest.raises(PermissionError, match="symbolic links"):
+        PluginHostContext.from_config_manager(None, project_data_dir=data_link)
+
+
+def test_plugin_host_context_rejects_relative_cache_escape(tmp_path: Path) -> None:
+    data_root = tmp_path / "project" / "data"
+    cm = SimpleNamespace(
+        config=SimpleNamespace(
+            api_config=SimpleNamespace(llm_provider="", tts_provider=""),
+            system_config=SimpleNamespace(
+                base_font_size_px=56,
+                huggingface_cache_dir="../../external-cache",
+                live_room_id="",
+                theme_color="#d4788e",
+                ui_language="zh_CN",
+                voice_language="ja",
+            ),
+        )
+    )
+
+    with pytest.raises(PermissionError, match="escapes project root"):
+        PluginHostContext.from_config_manager(cm, project_data_dir=data_root)
+
+
 def test_frontend_config_contribution_gets_plugin_context() -> None:
     registry = PluginCapabilityRegistry()
     registry.set_settings_ui_plugin_context("demo.plugin", "1.2.3")
@@ -60,7 +135,7 @@ def test_frontend_config_contribution_gets_plugin_context() -> None:
 
 
 def test_frontend_config_contribution_keeps_i18n_payload() -> None:
-    from frontend_bridge_core.plugin_ui import _frontend_config_page_payload
+    from application.plugins.ui import _frontend_config_page_payload
 
     contribution = FrontendConfigContribution(
         page_id="demo",

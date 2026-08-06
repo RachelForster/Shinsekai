@@ -6,14 +6,25 @@ from __future__ import annotations
 import os
 import re
 import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from sdk.file_transactions import (  # noqa: E402
+    read_bytes_without_links,
+    read_text_without_links,
+)
+from sdk.process_launch import (  # noqa: E402
+    capture_command_executable,
+    capture_launch_directory,
+    run_with_stable_paths,
+)
+
 FRONTEND = ROOT / "frontend"
 ZERO_SHA = "0" * 40
 COMMIT_TYPES = (
@@ -91,8 +102,12 @@ def pre_push(remote_name: str, remote_url: str, hook_input: str) -> int:
     ]
 
     if (FRONTEND / "package.json").exists():
-        pnpm = shutil.which("pnpm")
-        if pnpm is None:
+        try:
+            pnpm = capture_command_executable(
+                "pnpm",
+                field="pnpm executable",
+            ).path
+        except (OSError, PermissionError, RuntimeError, ValueError):
             print("presubmit: pnpm is required for frontend checks but was not found.", file=sys.stderr)
             return 1
         checks.extend(
@@ -143,10 +158,16 @@ def commits_from_pre_push_input(remote_name: str, hook_input: str) -> list[str]:
 
 
 def validate_commit_message_file(message_file: Path) -> int:
+    # Git may pass .git/COMMIT_EDITMSG relative to the worktree even though
+    # this presubmit's file boundary deliberately rejects ambient-cwd paths.
+    # Bind that Git-owned relative spelling to this script's repository root
+    # before handing it to the strict reader.
+    message_path = message_file if message_file.is_absolute() else ROOT / message_file
+    payload = read_bytes_without_links(message_path)
     try:
-        lines = message_file.read_text(encoding="utf-8").splitlines()
+        lines = payload.decode("utf-8").splitlines()
     except UnicodeDecodeError:
-        lines = message_file.read_text().splitlines()
+        lines = payload.decode(errors="replace").splitlines()
 
     title = next((line.strip() for line in lines if line.strip() and not line.startswith("#")), "")
     return validate_title(title)
@@ -217,7 +238,7 @@ def run_check(label: str, command: list[str], cwd: Path) -> int:
     env = os.environ.copy()
     env.setdefault("QT_QPA_PLATFORM", "offscreen")
     env.setdefault("PYTHONIOENCODING", "utf-8")
-    result = subprocess.run(command, cwd=cwd, env=env)
+    result = _run_stable_command(command, cwd=cwd, env=env)
     if result.returncode != 0:
         print(f"presubmit: {label} failed.", file=sys.stderr)
     return result.returncode
@@ -235,14 +256,19 @@ def pytest_cache_dir() -> str:
 
 
 def run_git_lfs_pre_push(remote_name: str, remote_url: str, hook_input: str) -> int:
-    if shutil.which("git-lfs") is None:
+    try:
+        git_lfs = capture_command_executable(
+            "git-lfs",
+            field="git-lfs executable",
+        ).path
+    except (OSError, PermissionError, RuntimeError, ValueError):
         if repository_uses_lfs():
             print("presubmit: git-lfs is required for this repository but was not found.", file=sys.stderr)
             return 1
         return 0
 
-    result = subprocess.run(
-        ["git", "lfs", "pre-push", remote_name, remote_url],
+    result = _run_stable_command(
+        [git_lfs, "pre-push", remote_name, remote_url],
         cwd=ROOT,
         input=hook_input,
         text=True,
@@ -252,20 +278,48 @@ def run_git_lfs_pre_push(remote_name: str, remote_url: str, hook_input: str) -> 
 
 def repository_uses_lfs() -> bool:
     attributes = ROOT / ".gitattributes"
-    if not attributes.exists():
-        return False
     try:
-        return "filter=lfs" in attributes.read_text(encoding="utf-8")
+        return "filter=lfs" in read_text_without_links(attributes)
+    except FileNotFoundError:
+        return False
     except UnicodeDecodeError:
-        return "filter=lfs" in attributes.read_text(errors="ignore")
+        return "filter=lfs" in read_text_without_links(
+            attributes,
+            errors="ignore",
+        )
 
 
 def git(args: list[str], capture_output: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    return _run_stable_command(
         ["git", *args],
         cwd=ROOT,
         text=True,
         capture_output=capture_output,
+    )
+
+
+def _run_stable_command(
+    command: list[str],
+    *,
+    cwd: Path,
+    **run_kwargs,
+) -> subprocess.CompletedProcess:
+    if not command:
+        raise ValueError("presubmit command is empty")
+    executable = capture_command_executable(
+        command[0],
+        field="presubmit executable",
+    )
+    working_directory = capture_launch_directory(
+        cwd,
+        field="presubmit working directory",
+    )
+    return run_with_stable_paths(
+        [str(executable.path), *command[1:]],
+        cwd=working_directory,
+        executable=executable,
+        run_factory=subprocess.run,
+        **run_kwargs,
     )
 
 

@@ -25,6 +25,25 @@ def _prevent_export_folder_open(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(file_util, "_open_export_folder", fail_open_folder)
 
 
+def test_unique_package_name_preserves_suffix_within_byte_limit():
+    original = ("界" * 83) + "ab.png"
+    used_names = {file_util.portable_name_key(original)}
+
+    candidate = file_util._unique_file_name(original, used_names)
+
+    assert candidate == ("界" * 83) + "_1.png"
+    assert len(candidate.encode("utf-8")) == 255
+
+
+def test_sprite_prefix_conflict_reserves_bytes_for_counter():
+    original = "界" * 85
+
+    candidate = file_util._resolve_sprite_prefix_conflict(original, {original})
+
+    assert candidate.endswith("1")
+    assert len(candidate.encode("utf-8")) <= 255
+
+
 def _make_export_zip(root: Path, char_data: dict, *,
                      sprites: dict[str, str] | None = None,
                      speeches: dict[str, str] | None = None) -> Path:
@@ -51,6 +70,54 @@ def _make_export_zip(root: Path, char_data: dict, *,
             if f.is_file():
                 zf.write(f, f.relative_to(export))
     return zip_path
+
+
+def test_default_package_paths_ignore_process_cwd(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    unrelated = tmp_path / "unrelated"
+    project.mkdir()
+    unrelated.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+    monkeypatch.chdir(unrelated)
+
+    paths = file_util._package_paths(None)
+
+    assert paths.project_root == project.resolve()
+    assert paths.sprite == project / "data" / "sprite"
+    assert paths.characters_config == project / "data" / "config" / "characters.yaml"
+
+
+def test_default_package_paths_reject_lexical_alias_before_path_conversion(
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+    monkeypatch.setattr(file_util, "SPRITE_DIR", "data//sprite")
+
+    with pytest.raises(ValueError, match="exact relative components"):
+        file_util._package_paths(None)
+
+
+def test_default_package_paths_reject_a_linked_parent_in_external_storage(
+    tmp_path,
+    monkeypatch,
+):
+    project = tmp_path / "project"
+    external = tmp_path / "external"
+    alias = tmp_path / "external-alias"
+    project.mkdir()
+    external.mkdir()
+    try:
+        alias.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+    monkeypatch.setattr(file_util, "SPRITE_DIR", alias / "sprite")
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        file_util._package_paths(None)
 
 
 @contextlib.contextmanager
@@ -534,10 +601,101 @@ class TestRoundTrip:
 
             c = result[0]
             assert c.name == "Alice"
-            assert c.sprite_prefix == "alice"
+            # Existing on-disk storage is occupied even when a stale config
+            # entry is missing; importing must not merge into or overwrite it.
+            assert c.sprite_prefix == "alice1"
             assert c.sprite_scale == 1.5
             assert len(c.sprites) == 2
+            assert (file_util.SPRITE_DIR / "alice1" / "smile.png").is_file()
+            assert (file_util.SPEECH_DIR / "alice1" / "greet.wav").is_file()
             assert (file_util.SPRITE_DIR / "alice" / "smile.png").is_file()
             assert (file_util.SPEECH_DIR / "alice" / "greet.wav").is_file()
             vp = c.sprites[0].get("voice_path")
             assert vp and Path(vp).is_file()
+
+
+def test_explicit_project_root_is_stable_when_cwd_changes(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    package_root = tmp_path / "package"
+    package_root.mkdir()
+    package = _make_export_zip(
+        package_root,
+        BASIC_CHAR,
+        sprites={"smile.png": "png", "angry.png": "png"},
+        speeches={"greet.wav": "wav"},
+    )
+    monkeypatch.chdir(unrelated)
+
+    result = file_util.import_character(str(package), project_root=project.resolve())
+
+    assert result[0].sprites[0]["path"] == "data/sprite/alice/smile.png"
+    assert (project / result[0].sprites[0]["path"]).is_file()
+    assert (project / "data/config/characters.yaml").is_file()
+    assert not (unrelated / "data").exists()
+
+
+def test_failed_character_validation_rolls_back_copied_directories(tmp_path):
+    invalid = dict(BASIC_CHAR)
+    invalid["sprites"] = [
+        {
+            "path": "smile.png",
+            "voice_path": "greet.wav",
+            "voice_type": "invalid",
+        }
+    ]
+    package_root = tmp_path / "package"
+    package_root.mkdir()
+    package = _make_export_zip(
+        package_root,
+        invalid,
+        sprites={"smile.png": "png"},
+        speeches={"greet.wav": "wav"},
+    )
+    project = tmp_path / "project"
+
+    with pytest.raises(ValueError, match="voice_type"):
+        file_util.import_character(str(package), project_root=project.resolve())
+
+    assert not (project / "data/sprite/alice").exists()
+    assert not (project / "data/speech/alice").exists()
+    assert not (project / "data/config/characters.yaml").exists()
+
+
+def test_empty_sprite_prefix_keeps_models_in_an_owned_subdirectory(tmp_path):
+    character = dict(BASIC_CHAR)
+    character["sprite_prefix"] = ""
+    character["sprites"] = []
+    character["gpt_model_path"] = "models/model.bin"
+    package = tmp_path / "model.char"
+    with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("character.yaml", yaml.safe_dump([character], allow_unicode=True))
+        zf.writestr("models/model.bin", b"model")
+    project = tmp_path / "project"
+
+    result = file_util.import_character(str(package), project_root=project.resolve())
+
+    stored = str(result[0].gpt_model_path)
+    assert stored == "data/models/character-models/model.bin"
+    assert (project / stored).read_bytes() == b"model"
+    assert not (project / "data/models/model.bin").exists()
+
+
+def test_failed_export_does_not_replace_existing_package(tmp_path, monkeypatch):
+    from config.character_config import CharacterConfig
+
+    output = tmp_path / "existing.char"
+    output.write_bytes(b"known-good-package")
+    config = CharacterConfig.parse_dic(char_data=BASIC_CHAR)
+
+    def fail_write(*_args, **_kwargs):
+        raise OSError("simulated archive failure")
+
+    monkeypatch.setattr(file_util, "write_directory_to_zip_without_links", fail_write)
+
+    with pytest.raises(OSError, match="archive failure"):
+        file_util.export_character([config], str(output), open_folder=False)
+
+    assert output.read_bytes() == b"known-good-package"
+    assert not list(tmp_path.glob(".existing.char.*.tmp"))

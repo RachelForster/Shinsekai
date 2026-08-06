@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyT2iSetupMode,
+  applyTtsProviderDefaults,
   containsPathQuotes,
   DEFAULT_T2I_API_URL,
   DEFAULT_T2I_OUTPUT_NODE_ID,
@@ -57,6 +58,14 @@ function task(status: TaskSnapshot["status"]): TaskSnapshot {
 }
 
 describe("API settings utilities", () => {
+  it("does not silently trim configured TTS paths", () => {
+    expect(
+      applyTtsProviderDefaults(
+        apiConfig({ gpt_sovits_api_path: " data/tts_bundles/engine", tts_provider: "gpt-sovits" }),
+      ).gpt_sovits_api_path,
+    ).toBe(" data/tts_bundles/engine");
+  });
+
   it("normalizes ASR provider aliases and save payloads", () => {
     expect(normalizeAsrProvider("faster-whisper")).toBe("faster_whisper");
     expect(normalizeAsrProvider("RealtimeSTT")).toBe("realtime_stt");
@@ -82,6 +91,7 @@ describe("API settings utilities", () => {
   it("preserves custom ASR and model options for existing configs", () => {
     expect(resolveAsrWhisperPresetValue("large-v3")).toBe("large-v3");
     expect(resolveAsrWhisperPresetValue("custom-model")).toBe("__custom__");
+    expect(resolveAsrWhisperPresetValue(" small ")).toBe("__custom__");
     expect(resolveAsrWhisperPresetValue("")).toBe("__custom__");
 
     expect(
@@ -174,6 +184,7 @@ describe("API settings utilities", () => {
 
     expect(inferT2iSetupMode(emptyComfy)).toBe("skip");
     expect(inferT2iSetupMode(stableDiffusion)).toBe("local");
+    expect(inferT2iSetupMode({ ...emptyComfy, t2i_work_path: "  " })).toBe("local");
 
     expect(applyT2iSetupMode(emptyComfy, "local")).toMatchObject({
       t2i_api_url: DEFAULT_T2I_API_URL,
@@ -183,6 +194,7 @@ describe("API settings utilities", () => {
     });
 
     expect(isT2iReadyForSprites(emptyComfy)).toBe(false);
+    expect(isT2iReadyForSprites({ ...emptyComfy, t2i_default_workflow_path: "  " })).toBe(false);
     expect(isT2iReadyForSprites({ ...emptyComfy, t2i_default_workflow_path: "D:/workflows/sprite.json" })).toBe(true);
     expect(isT2iReadyForSprites(stableDiffusion)).toBe(true);
   });

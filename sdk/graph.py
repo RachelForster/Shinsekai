@@ -7,13 +7,22 @@ unless a subclass chooses to own execution.
 
 from __future__ import annotations
 
+import errno
 import importlib
 import inspect
+import os
 from collections import defaultdict, deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from sdk.file_transactions import atomic_write_text, read_text_without_links
+from sdk.path_contract import (
+    project_root,
+    resolve_project_output_path,
+    resolve_project_read_path,
+)
 
 try:
     from typing import Self
@@ -329,8 +338,9 @@ class DagBuilder:
         import yaml
 
         out = yaml.dump(self.to_dict(), allow_unicode=True, sort_keys=False)
-        if path:
-            Path(path).write_text(out, encoding="utf-8")
+        if path is not None:
+            target = resolve_project_output_path(path, root=project_root())
+            atomic_write_text(target, out)
         return out
 
     def load_dict(self, data: dict) -> None:
@@ -364,9 +374,36 @@ class DagBuilder:
 
         text = path_or_text
         if "\n" not in path_or_text and "\r" not in path_or_text:
-            p = Path(path_or_text)
-            if p.is_file():
-                text = p.read_text(encoding="utf-8")
+            path_like = (
+                "/" in path_or_text
+                or "\\" in path_or_text
+                or path_or_text.startswith("~")
+                or path_or_text.lower().endswith((".yaml", ".yml"))
+            )
+            try:
+                p = resolve_project_read_path(path_or_text, root=project_root())
+            except (OSError, PermissionError, ValueError):
+                # Inline one-line YAML often contains punctuation that is not
+                # legal in a portable filename.  Preserve that form, but fail
+                # closed for anything that clearly declares path identity.
+                try:
+                    inline_value = yaml.safe_load(path_or_text)
+                except yaml.YAMLError:
+                    inline_value = None
+                if path_like and not isinstance(inline_value, dict):
+                    raise
+            else:
+                if p.is_file():
+                    # Resolve before the existence probe.  Probing ``Path``
+                    # directly would interpret a relative workflow against
+                    # launcher cwd instead of the authoritative project root.
+                    text = read_text_without_links(p)
+                elif path_like:
+                    raise FileNotFoundError(
+                        errno.ENOENT,
+                        "Workflow YAML file does not exist",
+                        os.fspath(p),
+                    )
         data = yaml.safe_load(text)
         if not isinstance(data, dict):
             raise ValueError("YAML must be a dict with 'nodes' and 'edges'")

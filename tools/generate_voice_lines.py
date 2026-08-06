@@ -2,24 +2,29 @@ import time
 import yaml
 import sys
 
-import os
 from pathlib import Path
 # 获取当前脚本的绝对路径
 current_script = Path(__file__).resolve()
 
-# 获取项目根目录（main.py所在的目录）
-project_root = current_script.parent.parent
+# 获取源码根目录（main.py所在的目录）
+source_root = current_script.parent.parent
 
 # 将项目根目录添加到Python模块搜索路径
-if str(project_root) not in sys.path:
-    sys.path.append(str(project_root))
+if str(source_root) not in sys.path:
+    sys.path.append(str(source_root))
 
+from sdk.file_transactions import atomic_write_text, read_text_without_links
+from sdk.path_contract import (
+    activate_project_root,
+    managed_project_directory,
+    portable_project_path,
+    project_root as runtime_project_root,
+    require_directory_without_links,
+    resolve_managed_project_path,
+    safe_path_component,
+    safe_path_component_with_suffix,
+)
 from ai.tts.tts_manager import TTSManager
-UPLOAD_DIR = "./data/sprite"
-VOICE_DIR = "./data/speech"
-API_CONFIG_PATH = "./data/config/api.yaml"
-CHARACTER_CONFIG_PATH = "./data/config/characters.yaml"
-TEMPLATE_DIR_PATH = "./data/character_templates"
 
 api_config = None
 tts_manager = None
@@ -29,10 +34,16 @@ characters=[]
 def load_characters_from_file():
     global characters
     try:
-        with open(CHARACTER_CONFIG_PATH, 'r', encoding='utf-8') as f:
-            loaded_characters = yaml.safe_load(f) or []
-            characters.clear()
-            characters.extend(loaded_characters)
+        root = runtime_project_root()
+        config_path = resolve_managed_project_path(
+            "data/config/characters.yaml",
+            root=root,
+        )
+        loaded_characters = yaml.safe_load(
+            read_text_without_links(config_path)
+        ) or []
+        characters.clear()
+        characters.extend(loaded_characters)
         return "人物设定已加载！", [[c.get("name", ""), c.get("color", ""), c.get("prompt_lang", "")] for c in characters]
     except Exception as e:
         return f"加载失败: {str(e)}", [[c.get("name", ""), c.get("color", ""), c.get("prompt_lang", "")] for c in characters]
@@ -43,22 +54,44 @@ def generate_voice_lines(character_name, words, index=None):
     global tts_manager
 
     character = next((c for c in characters if c["name"] == character_name), None)
+    if character is None:
+        raise KeyError(f"character not found: {character_name}")
 
+    root = runtime_project_root()
     tts_manager.switch_model(character["gpt_model_path"], character["sovits_model_path"])
-    voice_char_dir = os.path.join(VOICE_DIR, character["sprite_prefix"])
-    Path(voice_char_dir).mkdir(parents=True, exist_ok=True)
-    
+    sprite_prefix = safe_path_component(
+        str(character.get("sprite_prefix") or ""),
+        field="sprite_prefix",
+    )
+    voice_char_dir = managed_project_directory(
+        "data/speech",
+        sprite_prefix,
+        root=root,
+    )
+    voice_char_dir.mkdir(parents=True, exist_ok=True)
+    voice_char_dir = require_directory_without_links(
+        voice_char_dir,
+        field="voice output directory",
+    )
+
     def generate_tts_for_index(word, i):
-        voice_filename = f"{character['sprite_prefix']}_voice_{i:02d}.wav"
-        voice_path = os.path.join(voice_char_dir, voice_filename)
-        character['sprites'][i]["voice_path"] = voice_path
+        voice_filename = safe_path_component_with_suffix(
+            f"{sprite_prefix}_voice",
+            f"_{i:02d}.wav",
+            field="voice filename",
+        )
+        voice_path = voice_char_dir / voice_filename
+        character['sprites'][i]["voice_path"] = portable_project_path(
+            voice_path,
+            root=root,
+        )
         tts_manager.generate_tts(
             word,
             text_processor=None,
             ref_audio_path=character['refer_audio_path'],
             prompt_text=character['prompt_text'],
             prompt_lang=character['prompt_lang'],
-            file_path=voice_path
+            file_path=voice_path.as_posix()
         )
         print(f"生成语音文件: {voice_path}")
 
@@ -67,39 +100,41 @@ def generate_voice_lines(character_name, words, index=None):
     else:
         for i, word in enumerate(words):
             generate_tts_for_index(word, i)
-        
-        # 保存语音文件
-        voice_filename = f"{character['sprite_prefix']}_voice_{i:02d}.wav"
-        voice_path = os.path.join(voice_char_dir, voice_filename)
-        character['sprites'][i]["voice_path"] = voice_path
-        tts_manager.generate_tts(
-            word,
-            text_processor=None,
-                ref_audio_path=character['refer_audio_path'],
-                prompt_text=character['prompt_text'],
-                prompt_lang=character['prompt_lang'],
-                file_path=voice_path
-            )
-        print(f"生成语音文件: {voice_path}")
     save_characters_to_file()
 
 def save_characters_to_file():
     global characters
     try:
-        # 保存到当前目录下的characters.yaml文件
-        file_path = CHARACTER_CONFIG_PATH
-        with open(file_path, 'w', encoding='utf-8') as f:
-            yaml.dump(characters, f, allow_unicode=True)
+        root = runtime_project_root()
+        file_path = resolve_managed_project_path(
+            "data/config/characters.yaml",
+            root=root,
+        )
+        atomic_write_text(
+            file_path,
+            yaml.safe_dump(
+                characters,
+                allow_unicode=True,
+                default_flow_style=False,
+                sort_keys=False,
+            ),
+        )
         return f"人物设定已保存到 {file_path}！"
     except Exception as e:
         return f"保存失败: {str(e)}"
 
 def main():
+    root = activate_project_root(source_root)
+
     # 加载配置文件
     load_characters_from_file()
 
     global api_config
-    api_config = yaml.safe_load(open(API_CONFIG_PATH, 'r', encoding='utf-8'))
+    api_config_path = resolve_managed_project_path(
+        "data/config/api.yaml",
+        root=root,
+    )
+    api_config = yaml.safe_load(read_text_without_links(api_config_path))
 
     global tts_manager
     tts_manager = TTSManager(tts_server_url=api_config.get("gpt_sovits_url",""))

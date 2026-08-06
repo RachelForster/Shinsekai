@@ -86,10 +86,10 @@ def test_memory_write_queue_reports_persistence_failure_and_keeps_items(tmp_path
     queue = MemoryWriteQueue(path=tmp_path / "queue.json", remember_func=remember)
     queue.enqueue("persist me", character_name="Alice")
 
-    def fail_replace(_src, _dst):
+    def fail_write(_path, _data):
         raise OSError("disk full")
 
-    monkeypatch.setattr(memory_queue_module.os, "replace", fail_replace)
+    monkeypatch.setattr(memory_queue_module, "atomic_write_text", fail_write)
 
     with pytest.raises(QueuePersistenceError):
         queue.flush()
@@ -97,3 +97,54 @@ def test_memory_write_queue_reports_persistence_failure_and_keeps_items(tmp_path
     assert saved == [("Alice", "persist me")]
     assert len(queue) == 1
     assert queue.pending()[0]["memory"] == "persist me"
+
+
+def test_default_memory_queue_path_uses_project_root_after_cwd_changes(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    unrelated = tmp_path / "unrelated"
+    project.mkdir()
+    unrelated.mkdir()
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+    monkeypatch.chdir(unrelated)
+    queue = MemoryWriteQueue(remember_func=lambda *_args: {"ok": True})
+
+    queue.enqueue("persist in selected project")
+
+    assert queue.path == project / "data/memory/pending_queue.json"
+    assert queue.path.is_file()
+    assert not (unrelated / "data").exists()
+
+
+def test_default_memory_queue_rejects_intermediate_symlink_escape(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    external = tmp_path / "external"
+    (project / "data").mkdir(parents=True)
+    external.mkdir()
+    try:
+        (project / "data" / "memory").symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("symbolic links are unavailable")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+
+    with pytest.raises(PermissionError, match="escapes project root"):
+        MemoryWriteQueue()
+
+    assert list(external.iterdir()) == []
+
+
+def test_external_memory_queue_rejects_linked_parent(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    external = tmp_path / "external"
+    alias = tmp_path / "alias"
+    project.mkdir()
+    external.mkdir()
+    try:
+        alias.symlink_to(external, target_is_directory=True)
+    except (NotImplementedError, OSError):
+        pytest.skip("directory symlinks are unavailable")
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", project.as_posix())
+
+    with pytest.raises(PermissionError, match="symbolic link"):
+        MemoryWriteQueue(path=alias / "pending.json")
+
+    assert list(external.iterdir()) == []

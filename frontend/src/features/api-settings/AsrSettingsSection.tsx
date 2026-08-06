@@ -63,7 +63,7 @@ export function AsrSettingsSection({
   const [modelDownloadError, setModelDownloadError] = useState<string | null>(null);
   const [retryAction, setRetryAction] = useState<"check" | "download">("check");
   const modelOperationTokenRef = useRef(0);
-  const configuredWhisperModel = String(systemDraft.asr_whisper_model_size || "").trim();
+  const configuredWhisperModel = String(systemDraft.asr_whisper_model_size || "");
   const whisperModel = configuredWhisperModel || (customWhisperModel ? "" : "small");
   const supportsWhisperDownload = activeAsrProvider === "faster_whisper" || activeAsrProvider === "realtime_stt";
   const modelBusy = modelDialogState === "checking" || modelDialogState === "downloading";

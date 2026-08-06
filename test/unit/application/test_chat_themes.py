@@ -1,24 +1,31 @@
+import json
 import os
 import shutil
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from frontend_bridge_core.chat_themes import (
+import application.chat.themes as chat_themes_module
+from sdk.file_transactions import rename_path_without_overwrite
+from application.chat.themes import (
     BUILTIN_THEME_OWNER_MARKER,
+    _builtin_themes_root,
     _copy_theme_source,
     _is_builtin_theme_dir,
     delete_chat_theme,
+    get_active_chat_theme_id,
     get_chat_theme_manifest,
+    install_theme_from_zip,
     list_chat_themes,
     save_chat_theme,
     set_active_chat_theme,
 )
 
 
-class ChatThemeBridgeTests(unittest.TestCase):
+class ChatThemeApplicationTests(unittest.TestCase):
     def _make_state(self):
         self.saved = 0
 
@@ -32,11 +39,31 @@ class ChatThemeBridgeTests(unittest.TestCase):
         )
         return SimpleNamespace(config_manager=config_manager)
 
+    def test_builtin_theme_root_uses_application_resource_contract(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            source = Path(tempdir) / "source"
+            project = Path(tempdir) / "project"
+            source.mkdir()
+            project.mkdir()
+            with patch.dict(
+                os.environ,
+                {
+                    "SHINSEKAI_SOURCE_ROOT": source.as_posix(),
+                    "SHINSEKAI_APP_ROOT": source.as_posix(),
+                    "SHINSEKAI_PROJECT_ROOT": project.as_posix(),
+                },
+            ):
+                self.assertEqual(
+                    _builtin_themes_root(),
+                    source / "assets/chat_ui_themes",
+                )
+
     def test_list_chat_themes_seeds_builtin_and_marks_source(self):
         state = self._make_state()
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 themes = list_chat_themes(state)
                 theme_index = {item["id"]: item for item in themes}
@@ -96,13 +123,129 @@ class ChatThemeBridgeTests(unittest.TestCase):
             finally:
                 os.chdir(previous_cwd)
 
+    def test_theme_storage_uses_state_project_root_when_cwd_changes(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as project_dir, tempfile.TemporaryDirectory() as unrelated_dir:
+            state.project_root_dir = project_dir
+            os.chdir(unrelated_dir)
+            try:
+                themes = list_chat_themes(state)
+                self.assertTrue(themes)
+                self.assertTrue(
+                    (
+                        Path(project_dir)
+                        / "data"
+                        / "chat_ui_themes"
+                        / "neon-night-city"
+                        / "theme.json"
+                    ).is_file()
+                )
+                self.assertFalse((Path(unrelated_dir) / "data" / "chat_ui_themes").exists())
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_theme_scan_ignores_external_directory_symlink(self):
+        state = self._make_state()
+        with tempfile.TemporaryDirectory() as project_dir, tempfile.TemporaryDirectory() as external_dir:
+            state.project_root_dir = project_dir
+            external = Path(external_dir)
+            (external / "theme.json").write_text(
+                '{"schemaVersion": 1, "id": "external", "name": {"zh_CN": "External"}, "tokens": {}}',
+                encoding="utf-8",
+            )
+            themes_root = Path(project_dir) / "data" / "chat_ui_themes"
+            themes_root.mkdir(parents=True)
+            try:
+                (themes_root / "external").symlink_to(external, target_is_directory=True)
+            except (NotImplementedError, OSError):
+                self.skipTest("directory symlinks are unavailable")
+
+            themes = list_chat_themes(state)
+
+            self.assertNotIn("external", {item["id"] for item in themes})
+
+    def test_builtin_seed_never_refreshes_through_legacy_id_symlink(self):
+        state = self._make_state()
+        with tempfile.TemporaryDirectory() as project_dir, tempfile.TemporaryDirectory() as external_dir:
+            state.project_root_dir = project_dir
+            external = Path(external_dir)
+            marker = external / "keep.txt"
+            marker.write_text("external", encoding="utf-8")
+            themes_root = Path(project_dir) / "data" / "chat_ui_themes"
+            themes_root.mkdir(parents=True)
+            try:
+                (themes_root / "neon-night-city").symlink_to(
+                    external,
+                    target_is_directory=True,
+                )
+            except (NotImplementedError, OSError):
+                self.skipTest("directory symlinks are unavailable")
+
+            themes = list_chat_themes(state)
+
+            self.assertNotIn("neon-night-city", {item["id"] for item in themes})
+            self.assertEqual(marker.read_text(encoding="utf-8"), "external")
+            self.assertFalse((external / "theme.json").exists())
+
+    def test_builtin_refresh_publish_failure_restores_complete_old_tree(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            state.project_root_dir = tempdir
+            try:
+                list_chat_themes(state)
+                target = Path(tempdir) / "data/chat_ui_themes/neon-night-city"
+                manifest_path = target / "theme.json"
+                old_manifest = manifest_path.read_text(encoding="utf-8").replace(
+                    '"version": "1.3.4"',
+                    '"version": "0.0.1"',
+                )
+                manifest_path.write_text(old_manifest, encoding="utf-8")
+                old_frame = target / "frame-dialog.svg"
+                old_frame.write_text("old-frame", encoding="utf-8")
+                original_rename = rename_path_without_overwrite
+
+                def fail_seed_publish(
+                    path,
+                    destination,
+                    *,
+                    expected_identity=None,
+                ):
+                    if (
+                        path.name.startswith(".neon-night-city.seed-")
+                        and destination == target
+                    ):
+                        raise OSError("seed publish failed")
+                    return original_rename(
+                        path,
+                        destination,
+                        expected_identity=expected_identity,
+                    )
+
+                with patch(
+                    "sdk.file_transactions.rename_path_without_overwrite",
+                    new=fail_seed_publish,
+                ):
+                    with self.assertRaisesRegex(OSError, "seed publish failed"):
+                        list_chat_themes(state)
+
+                self.assertEqual(manifest_path.read_text(encoding="utf-8"), old_manifest)
+                self.assertEqual(old_frame.read_text(encoding="utf-8"), "old-frame")
+                self.assertEqual(list(target.parent.glob(".neon-night-city.backup-*")), [])
+                self.assertEqual(list(target.parent.glob(".neon-night-city.seed-*")), [])
+            finally:
+                os.chdir(previous_cwd)
+
     def test_missing_builtin_assets_do_not_create_python_manifest_fallbacks(self):
         state = self._make_state()
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
-                with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=Path(tempdir) / "missing"):
+                with patch("application.chat.themes._builtin_themes_root", return_value=Path(tempdir) / "missing"):
                     themes = list_chat_themes(state)
                     self.assertEqual(themes, [])
                     with self.assertRaises(FileNotFoundError):
@@ -117,6 +260,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 target = Path(tempdir) / "data" / "chat_ui_themes" / "neon-night-city"
                 target.mkdir(parents=True)
@@ -139,6 +283,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 target = Path(tempdir) / "data" / "chat_ui_themes" / "sakura-dream"
                 target.mkdir(parents=True)
@@ -162,9 +307,11 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 os.chdir(previous_cwd)
 
     def test_builtin_owner_marker_is_only_trusted_under_the_registered_theme_root(self):
+        state = self._make_state()
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 spoofed_dir = Path(tempdir) / "outside" / "sakura-dream"
                 spoofed_dir.mkdir(parents=True)
@@ -172,7 +319,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
                     "sakura-dream\n", encoding="utf-8"
                 )
 
-                self.assertFalse(_is_builtin_theme_dir("sakura-dream"))
+                self.assertFalse(_is_builtin_theme_dir("sakura-dream", state))
             finally:
                 os.chdir(previous_cwd)
 
@@ -187,8 +334,9 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 builtin_root / "windborne-adventure",
             )
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
-                with patch("frontend_bridge_core.chat_themes._builtin_themes_root", return_value=builtin_root):
+                with patch("application.chat.themes._builtin_themes_root", return_value=builtin_root):
                     themes = list_chat_themes(state)
                     self.assertEqual([theme["id"] for theme in themes], ["windborne-adventure"])
 
@@ -206,6 +354,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 result = set_active_chat_theme(state, {"id": "windborne-adventure"})
                 self.assertEqual(result, {"id": "windborne-adventure"})
@@ -214,11 +363,181 @@ class ChatThemeBridgeTests(unittest.TestCase):
             finally:
                 os.chdir(previous_cwd)
 
+    def test_theme_id_outer_whitespace_is_rejected_and_stale_config_falls_back(self):
+        state = self._make_state()
+        state.config_manager.config.system_config.chat_ui_theme_id = " windborne-adventure "
+
+        self.assertEqual(
+            get_active_chat_theme_id(state),
+            {"id": "windborne-adventure"},
+        )
+        with self.assertRaises(ValueError):
+            set_active_chat_theme(state, {"id": " windborne-adventure "})
+
+    def test_set_active_theme_restores_previous_id_when_save_fails(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            state.project_root_dir = tempdir
+            try:
+                list_chat_themes(state)
+                state.config_manager.config.system_config.chat_ui_theme_id = "windborne-adventure"
+
+                def fail_save():
+                    raise OSError("disk full")
+
+                state.config_manager.save_system_config = fail_save
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    set_active_chat_theme(state, {"id": "neon-night-city"})
+
+                self.assertEqual(
+                    state.config_manager.config.system_config.chat_ui_theme_id,
+                    "windborne-adventure",
+                )
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_theme_root_rejects_project_data_symlink(self):
+        state = self._make_state()
+        with tempfile.TemporaryDirectory() as project_dir, tempfile.TemporaryDirectory() as external_dir:
+            project = Path(project_dir)
+            external = Path(external_dir)
+            try:
+                (project / "data").symlink_to(external, target_is_directory=True)
+            except (NotImplementedError, OSError):
+                self.skipTest("directory symlinks are unavailable")
+            state.project_root_dir = project.as_posix()
+
+            with self.assertRaises(PermissionError):
+                list_chat_themes(state)
+
+            self.assertEqual(list(external.iterdir()), [])
+
+    def test_zip_overwrite_restores_old_theme_when_publish_fails(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            state.project_root_dir = tempdir
+            try:
+                list_chat_themes(state)
+                target = Path(tempdir) / "data/chat_ui_themes/custom-theme"
+                target.mkdir()
+                old_manifest = '{"schema":1,"id":"custom-theme","name":{"en":"Old"},"tokens":{}}'
+                (target / "theme.json").write_text(old_manifest, encoding="utf-8")
+                archive = Path(tempdir) / "custom.zip"
+                with zipfile.ZipFile(archive, "w") as zf:
+                    zf.writestr(
+                        "theme/theme.json",
+                        '{"schema":1,"id":"custom-theme","name":{"en":"New"},"tokens":{}}',
+                    )
+
+                original_rename = rename_path_without_overwrite
+
+                def fail_staging_publish(
+                    path,
+                    destination,
+                    *,
+                    expected_identity=None,
+                ):
+                    if (
+                        path.name.startswith(".custom-theme.install-")
+                        and destination == target
+                    ):
+                        raise OSError("publish failed")
+                    return original_rename(
+                        path,
+                        destination,
+                        expected_identity=expected_identity,
+                    )
+
+                with patch(
+                    "sdk.file_transactions.rename_path_without_overwrite",
+                    new=fail_staging_publish,
+                ):
+                    with self.assertRaisesRegex(OSError, "publish failed"):
+                        install_theme_from_zip(state, archive, overwrite=True)
+
+                self.assertEqual((target / "theme.json").read_text(encoding="utf-8"), old_manifest)
+                self.assertEqual(list(target.parent.glob(".custom-theme.backup-*")), [])
+                self.assertEqual(list(target.parent.glob(".custom-theme.install-*")), [])
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_zip_install_uses_one_portable_id_for_directory_manifest_and_summary(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            state.project_root_dir = tempdir
+            try:
+                archive = Path(tempdir) / "reserved-id.zip"
+                with zipfile.ZipFile(archive, "w") as zf:
+                    zf.writestr(
+                        "theme/theme.json",
+                        '{"schema":1,"id":"con","name":{"en":"Portable"},"tokens":{}}',
+                    )
+
+                summary = install_theme_from_zip(state, archive)
+
+                target = Path(tempdir) / "data/chat_ui_themes/theme-con"
+                persisted = json.loads(
+                    (target / "theme.json").read_text(encoding="utf-8")
+                )
+                self.assertEqual(summary["id"], "theme-con")
+                self.assertEqual(persisted["id"], "theme-con")
+                self.assertTrue(target.is_dir())
+                self.assertFalse(
+                    (Path(tempdir) / "data/chat_ui_themes/con").exists()
+                )
+            finally:
+                os.chdir(previous_cwd)
+
+    def test_delete_active_theme_restores_directory_when_config_save_fails(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            state.project_root_dir = tempdir
+            try:
+                list_chat_themes(state)
+                save_chat_theme(
+                    state,
+                    {
+                        "baseId": "windborne-adventure",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "custom-active",
+                            "name": {"en": "Custom"},
+                            "tokens": {},
+                        },
+                    },
+                )
+                target = Path(tempdir) / "data/chat_ui_themes/custom-active"
+                state.config_manager.config.system_config.chat_ui_theme_id = "custom-active"
+
+                def fail_save():
+                    raise OSError("disk full")
+
+                state.config_manager.save_system_config = fail_save
+                with self.assertRaisesRegex(OSError, "disk full"):
+                    delete_chat_theme(state, "custom-active")
+
+                self.assertTrue((target / "theme.json").is_file())
+                self.assertEqual(
+                    state.config_manager.config.system_config.chat_ui_theme_id,
+                    "custom-active",
+                )
+            finally:
+                os.chdir(previous_cwd)
+
     def test_save_chat_theme_clones_builtin_assets_without_builtin_ownership(self):
         state = self._make_state()
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 summary = save_chat_theme(
                     state,
@@ -274,6 +593,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 save_chat_theme(
                     state,
@@ -308,14 +628,117 @@ class ChatThemeBridgeTests(unittest.TestCase):
             finally:
                 os.chdir(previous_cwd)
 
+    def test_existing_theme_save_preserves_replacement_directory(self):
+        state = self._make_state()
+        previous_cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tempdir:
+            os.chdir(tempdir)
+            state.project_root_dir = tempdir
+            try:
+                save_chat_theme(
+                    state,
+                    {
+                        "baseId": "neon-night-city",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "identity-custom",
+                            "name": {"en": "Original"},
+                            "tokens": {},
+                        },
+                    },
+                )
+                target = Path(tempdir) / "data/chat_ui_themes/identity-custom"
+                preserved = target.with_name("identity-custom-preserved")
+                original_write = chat_themes_module._atomic_write_manifest
+
+                def replace_before_write(
+                    theme_dir,
+                    manifest,
+                    *,
+                    expected_theme_identity=None,
+                ):
+                    rename_path_without_overwrite(
+                        theme_dir,
+                        preserved,
+                        expected_identity=expected_theme_identity,
+                    )
+                    theme_dir.mkdir()
+                    (theme_dir / "theme.json").write_text(
+                        '{"peer": true}\n',
+                        encoding="utf-8",
+                    )
+                    return original_write(
+                        theme_dir,
+                        manifest,
+                        expected_theme_identity=expected_theme_identity,
+                    )
+
+                with patch(
+                    "application.chat.themes._atomic_write_manifest",
+                    new=replace_before_write,
+                ):
+                    with self.assertRaisesRegex(PermissionError, "身份已变化"):
+                        save_chat_theme(
+                            state,
+                            {
+                                "baseId": "identity-custom",
+                                "manifest": {
+                                    "schema": 1,
+                                    "id": "identity-custom",
+                                    "name": {"en": "Stale edit"},
+                                    "tokens": {},
+                                },
+                            },
+                        )
+
+                self.assertEqual(
+                    (target / "theme.json").read_text(encoding="utf-8"),
+                    '{"peer": true}\n',
+                )
+                self.assertEqual(
+                    get_chat_theme_manifest(
+                        SimpleNamespace(
+                            project_root_dir=tempdir,
+                            config_manager=state.config_manager,
+                        ),
+                        "identity-custom-preserved",
+                    )["name"]["en"],
+                    "Original",
+                )
+            finally:
+                os.chdir(previous_cwd)
+
     def test_new_theme_publish_failure_leaves_no_partial_target(self):
         state = self._make_state()
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 target = Path(tempdir) / "data" / "chat_ui_themes" / "atomic-custom"
-                with patch("pathlib.Path.rename", side_effect=OSError("publish interrupted")):
+                original_rename = rename_path_without_overwrite
+
+                def fail_new_theme_publish(
+                    path,
+                    destination,
+                    *,
+                    expected_identity=None,
+                ):
+                    if (
+                        path.name.startswith(".atomic-custom.publish-")
+                        and destination == target
+                    ):
+                        raise OSError("publish interrupted")
+                    return original_rename(
+                        path,
+                        destination,
+                        expected_identity=expected_identity,
+                    )
+
+                with patch(
+                    "sdk.file_transactions.rename_path_without_overwrite",
+                    new=fail_new_theme_publish,
+                ):
                     with self.assertRaisesRegex(OSError, "publish interrupted"):
                         save_chat_theme(
                             state,
@@ -339,6 +762,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 list_chat_themes(state)
                 with self.assertRaises(PermissionError):
@@ -362,8 +786,14 @@ class ChatThemeBridgeTests(unittest.TestCase):
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
-                for theme_id in ("../escaped-theme", "nested/escaped-theme", "nested\\escaped-theme"):
+                for theme_id in (
+                    "../escaped-theme",
+                    "nested/escaped-theme",
+                    "nested\\escaped-theme",
+                    " escaped-theme ",
+                ):
                     with self.subTest(theme_id=theme_id), self.assertRaises(ValueError):
                         save_chat_theme(
                             state,
@@ -413,11 +843,84 @@ class ChatThemeBridgeTests(unittest.TestCase):
 
             self.assertFalse(staging.exists())
 
+    def test_copy_theme_source_rejects_descendant_symlinks_without_following_them(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            root = Path(tempdir)
+            themes_root = root / "themes"
+            source = themes_root / "source-theme"
+            assets = source / "assets"
+            assets.mkdir(parents=True)
+            (source / "theme.json").write_text("{}", encoding="utf-8")
+            external = root / "secret.txt"
+            external.write_text("secret", encoding="utf-8")
+            try:
+                (assets / "linked.txt").symlink_to(external)
+            except (NotImplementedError, OSError):
+                self.skipTest("file symlinks are unavailable")
+
+            with self.assertRaises(PermissionError):
+                _copy_theme_source(source, themes_root / "staging", themes_root)
+
+            self.assertEqual(external.read_text(encoding="utf-8"), "secret")
+
+    def test_copy_theme_source_rejects_source_directory_symlink_alias(self):
+        with tempfile.TemporaryDirectory() as tempdir:
+            themes_root = Path(tempdir) / "themes"
+            source = themes_root / "source-theme"
+            source.mkdir(parents=True)
+            (source / "theme.json").write_text("{}", encoding="utf-8")
+            alias = themes_root / "alias-theme"
+            try:
+                alias.symlink_to(source, target_is_directory=True)
+            except (NotImplementedError, OSError):
+                self.skipTest("directory symlinks are unavailable")
+
+            with self.assertRaises(PermissionError):
+                _copy_theme_source(alias, themes_root / "staging", themes_root)
+
+            self.assertFalse((themes_root / "staging").exists())
+
+    def test_save_chat_theme_rejects_internal_directory_symlink_alias(self):
+        state = self._make_state()
+        with tempfile.TemporaryDirectory() as tempdir:
+            state.project_root_dir = tempdir
+            list_chat_themes(state)
+            themes_root = Path(tempdir) / "data/chat_ui_themes"
+            builtin = themes_root / "neon-night-city"
+            original_manifest = (builtin / "theme.json").read_text(encoding="utf-8")
+            try:
+                (themes_root / "alias-theme").symlink_to(
+                    builtin,
+                    target_is_directory=True,
+                )
+            except (NotImplementedError, OSError):
+                self.skipTest("directory symlinks are unavailable")
+
+            with self.assertRaises(PermissionError):
+                save_chat_theme(
+                    state,
+                    {
+                        "baseId": "alias-theme",
+                        "manifest": {
+                            "schema": 1,
+                            "id": "alias-theme",
+                            "name": {"en": "Alias"},
+                            "tokens": {},
+                        },
+                    },
+                )
+
+            self.assertEqual(
+                (builtin / "theme.json").read_text(encoding="utf-8"),
+                original_manifest,
+            )
+
     def test_delete_builtin_theme_is_rejected(self):
         state = self._make_state()
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 list_chat_themes(state)
                 with self.assertRaises(PermissionError):
@@ -434,6 +937,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 invalid_theme_dir = Path(tempdir) / "data" / "chat_ui_themes" / "broken-theme"
                 invalid_theme_dir.mkdir(parents=True, exist_ok=True)
@@ -447,11 +951,52 @@ class ChatThemeBridgeTests(unittest.TestCase):
             finally:
                 os.chdir(previous_cwd)
 
+    def test_list_chat_themes_rejects_replaced_catalog_root(self):
+        state = self._make_state()
+        with tempfile.TemporaryDirectory() as tempdir:
+            state.project_root_dir = tempdir
+            list_chat_themes(state)
+            themes_root = Path(tempdir) / "data/chat_ui_themes"
+            preserved_root = Path(tempdir) / "preserved-chat-ui-themes"
+            real_snapshot = (
+                chat_themes_module.snapshot_directory_entries_without_links
+            )
+            replaced = False
+
+            def snapshot_then_replace(path, **kwargs):
+                nonlocal replaced
+                result = real_snapshot(path, **kwargs)
+                if Path(path) == themes_root and not replaced:
+                    replaced = True
+                    themes_root.rename(preserved_root)
+                    themes_root.mkdir()
+                    peer = themes_root / "peer-theme"
+                    peer.mkdir()
+                    (peer / "theme.json").write_text(
+                        '{"schema":1,"id":"peer-theme","name":{"en":"Peer"},"tokens":{}}',
+                        encoding="utf-8",
+                    )
+                return result
+
+            with patch.object(
+                chat_themes_module,
+                "snapshot_directory_entries_without_links",
+                snapshot_then_replace,
+            ):
+                with self.assertRaises(PermissionError):
+                    list_chat_themes(state)
+
+            self.assertTrue((themes_root / "peer-theme/theme.json").is_file())
+            self.assertTrue(
+                (preserved_root / "neon-night-city/theme.json").is_file()
+            )
+
     def test_get_chat_theme_manifest_returns_normalized_manifest(self):
         state = self._make_state()
         previous_cwd = Path.cwd()
         with tempfile.TemporaryDirectory() as tempdir:
             os.chdir(tempdir)
+            state.project_root_dir = tempdir
             try:
                 theme_dir = Path(tempdir) / "data" / "chat_ui_themes" / "custom-theme"
                 theme_dir.mkdir(parents=True, exist_ok=True)

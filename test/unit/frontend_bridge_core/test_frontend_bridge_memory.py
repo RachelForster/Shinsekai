@@ -1,3 +1,6 @@
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 
@@ -181,7 +184,11 @@ def test_check_mem0_status_does_not_retry_an_unresolved_dependency(monkeypatch):
     monkeypatch.setattr(runtime, "_mem0_load_error", error)
     monkeypatch.setattr(runtime, "current_mem0_task", lambda: None)
     monkeypatch.setattr(runtime, "_module_is_available", lambda module_name: False)
-    monkeypatch.setattr(runtime, "start_mem0_loading", lambda: starts.append(True))
+    monkeypatch.setattr(
+        runtime,
+        "start_mem0_loading",
+        lambda **_kwargs: starts.append(True),
+    )
 
     result = runtime.check_mem0_status(start_loading=True)
 
@@ -208,8 +215,16 @@ def test_check_mem0_status_recovers_after_dependency_install(monkeypatch):
     monkeypatch.setattr(runtime, "_mem0_load_error", error)
     monkeypatch.setattr(runtime, "current_mem0_task", lambda: None)
     monkeypatch.setattr(runtime, "_module_is_available", lambda module_name: True)
-    monkeypatch.setattr(runtime, "is_embedding_model_cached", lambda: False)
-    monkeypatch.setattr(runtime, "start_mem0_loading", lambda: starts.append(True))
+    monkeypatch.setattr(
+        runtime,
+        "is_embedding_model_cached",
+        lambda **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        runtime,
+        "start_mem0_loading",
+        lambda **_kwargs: starts.append(True),
+    )
 
     assert runtime.check_mem0_status(start_loading=False) == {
         "status": "not_started",
@@ -236,8 +251,16 @@ def test_check_mem0_status_returns_loading_when_retrying_an_error(monkeypatch):
     monkeypatch.setattr(runtime, "_mem0_loading", False)
     monkeypatch.setattr(runtime, "_mem0_load_error", RuntimeError("initialization failed"))
     monkeypatch.setattr(runtime, "current_mem0_task", lambda: task)
-    monkeypatch.setattr(runtime, "is_embedding_model_cached", lambda: True)
-    monkeypatch.setattr(runtime, "start_mem0_loading", lambda: starts.append(True))
+    monkeypatch.setattr(
+        runtime,
+        "is_embedding_model_cached",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        runtime,
+        "start_mem0_loading",
+        lambda **_kwargs: starts.append(True),
+    )
 
     result = runtime.check_mem0_status(start_loading=True)
 
@@ -263,8 +286,16 @@ def test_start_mem0_loading_preserves_internal_missing_dependency(monkeypatch):
     monkeypatch.setattr(runtime, "_mem0", None)
     monkeypatch.setattr(runtime, "_mem0_loading", False)
     monkeypatch.setattr(runtime, "_mem0_load_error", None)
-    monkeypatch.setattr(runtime, "is_embedding_model_cached", lambda: True)
-    monkeypatch.setattr(runtime, "_preload_embedding_model", lambda: r"\\?\D:\model")
+    monkeypatch.setattr(
+        runtime,
+        "is_embedding_model_cached",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_preload_embedding_model",
+        lambda **_kwargs: r"\\?\D:\model",
+    )
     monkeypatch.setattr(runtime, "_create_mem0_instance", _raise_missing_dependency)
     monkeypatch.setattr(runtime, "set_mem0_task", lambda **update: updates.append(update))
     monkeypatch.setattr(runtime.threading, "Thread", _ImmediateThread)
@@ -295,8 +326,16 @@ def test_start_mem0_loading_reports_post_download_failure_as_initialization(monk
     monkeypatch.setattr(runtime, "_mem0", None)
     monkeypatch.setattr(runtime, "_mem0_loading", False)
     monkeypatch.setattr(runtime, "_mem0_load_error", None)
-    monkeypatch.setattr(runtime, "is_embedding_model_cached", lambda: True)
-    monkeypatch.setattr(runtime, "_preload_embedding_model", lambda: r"\\?\D:\model")
+    monkeypatch.setattr(
+        runtime,
+        "is_embedding_model_cached",
+        lambda **_kwargs: True,
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_preload_embedding_model",
+        lambda **_kwargs: r"\\?\D:\model",
+    )
     monkeypatch.setattr(runtime, "_create_mem0_instance", _raise_initialization_error)
     monkeypatch.setattr(runtime, "set_mem0_task", lambda **update: updates.append(update))
     monkeypatch.setattr(runtime.threading, "Thread", _ImmediateThread)
@@ -318,7 +357,11 @@ def test_check_mem0_status_exposes_cache_state_while_loading(monkeypatch):
     monkeypatch.setattr(runtime, "current_mem0_task", lambda: task)
 
     for cached in (False, True):
-        monkeypatch.setattr(runtime, "is_embedding_model_cached", lambda cached=cached: cached)
+        monkeypatch.setattr(
+            runtime,
+            "is_embedding_model_cached",
+            lambda cached=cached, **_kwargs: cached,
+        )
 
         assert runtime.check_mem0_status() == {
             "status": "loading",
@@ -327,40 +370,103 @@ def test_check_mem0_status_exposes_cache_state_while_loading(monkeypatch):
         }
 
 
-def test_preload_embedding_model_uses_shared_asset_service(monkeypatch):
+def test_preload_embedding_model_uses_shared_asset_service(tmp_path, monkeypatch):
     from ai.memory import runtime
 
     captured = {}
     snapshot_path = r"\\?\C:\very\deep\cache\snapshots\abc123"
 
-    def _fake_download_model_asset(spec, *, update_task):
+    def _fake_download_model_asset(spec, *, update_task, root):
         captured["spec"] = spec
         captured["update_task"] = update_task
+        captured["root"] = root
         return {"path": snapshot_path}
 
     monkeypatch.setattr(runtime, "download_model_asset", _fake_download_model_asset)
 
-    result = runtime._preload_embedding_model()
+    result = runtime._preload_embedding_model(root=tmp_path)
 
     assert result == snapshot_path
     assert captured == {
         "spec": runtime.EMBEDDING_MODEL_ASSET,
         "update_task": runtime.set_mem0_task,
+        "root": tmp_path,
+    }
+
+def test_frontend_memory_status_passes_state_root_and_config_manager(
+    tmp_path,
+    monkeypatch,
+):
+    import importlib
+
+    from frontend_bridge_core.memory import _get_mem0_status
+
+    selected = tmp_path / "selected"
+    selected.mkdir()
+    config_manager = object()
+    state = SimpleNamespace(
+        project_root_dir=selected.as_posix(),
+        config_manager=config_manager,
+    )
+    captured = {}
+
+    def fake_find_spec(name):
+        if name == "mem0":
+            return object()
+        return importlib.util.find_spec(name)
+
+    def fake_status(**kwargs):
+        captured.update(kwargs)
+        return {"status": "not_started", "modelCached": False}
+
+    monkeypatch.setattr(importlib.util, "find_spec", fake_find_spec)
+    monkeypatch.setattr("ai.memory.runtime.check_mem0_status", fake_status)
+
+    result = _get_mem0_status(state, start_loading=False)
+
+    assert result["status"] == "not_started"
+    assert captured == {
+        "start_loading": False,
+        "root": Path(selected),
+        "config_manager": config_manager,
     }
 
 
-def test_preload_embedding_model_requires_a_resolved_path(monkeypatch):
-    import pytest
+def test_memory_runtime_rejects_reuse_across_project_roots(
+    tmp_path,
+    monkeypatch,
+):
+    from ai.memory import runtime
 
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    monkeypatch.setattr(runtime, "_mem0", object())
+    monkeypatch.setattr(runtime, "_mem0_loading", False)
+    monkeypatch.setattr(runtime, "_mem0_project_root", first)
+
+    try:
+        runtime.ensure_mem0(root=second)
+    except RuntimeError as exc:
+        assert "different project root" in str(exc)
+    else:
+        raise AssertionError("memory runtime silently reused another project's store")
+
+
+def test_preload_embedding_model_requires_a_resolved_path(tmp_path, monkeypatch):
     from ai.memory import runtime
 
     monkeypatch.setattr(runtime, "download_model_asset", lambda *args, **kwargs: {})
 
     with pytest.raises(RuntimeError, match="could not be located"):
-        runtime._preload_embedding_model()
+        runtime._preload_embedding_model(root=tmp_path)
 
 
-def test_create_mem0_instance_uses_local_snapshot_instead_of_repo_id(monkeypatch):
+def test_create_mem0_instance_uses_local_snapshot_instead_of_repo_id(
+    tmp_path,
+    monkeypatch,
+):
     from ai.memory import runtime
 
     snapshot_path = r"\\?\C:\very\deep\cache\snapshots\abc123"
@@ -379,8 +485,22 @@ def test_create_mem0_instance_uses_local_snapshot_instead_of_repo_id(monkeypatch
             captured["config"] = value
             return "memory-instance"
 
-    monkeypatch.setattr(runtime, "build_mem0_config", lambda: config)
-    result = runtime._create_mem0_instance(_FakeMemory, snapshot_path)
+    config_manager = object()
+
+    def fake_build_mem0_config(*, root, config_manager):
+        captured["root"] = root
+        captured["config_manager"] = config_manager
+        return config
+
+    monkeypatch.setattr(runtime, "build_mem0_config", fake_build_mem0_config)
+    result = runtime._create_mem0_instance(
+        _FakeMemory,
+        snapshot_path,
+        root=tmp_path,
+        config_manager=config_manager,
+    )
 
     assert result == "memory-instance"
     assert captured["config"]["embedder"]["config"]["model"] == snapshot_path
+    assert captured["root"] == tmp_path
+    assert captured["config_manager"] is config_manager

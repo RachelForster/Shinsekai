@@ -6,6 +6,7 @@ import copy
 from collections.abc import Mapping
 from typing import Any
 
+from sdk.file_transactions import read_bytes_without_links
 from core.media.chat_attachments import ResolvedChatAttachment, resolve_chat_attachments
 
 
@@ -19,11 +20,16 @@ def local_image_block(attachment: ResolvedChatAttachment) -> dict[str, Any]:
         "type": LOCAL_IMAGE_BLOCK_TYPE,
         "media_type": attachment.mime_type,
         "name": attachment.name,
-        "path": str(attachment.path),
+        "path": attachment.reference or str(attachment.path),
         # Keep a recoverable copy in persisted message history. The path remains
         # useful for display and reroll, but later model requests no longer rely
         # on the user-selected source file still existing.
-        "data": base64.b64encode(attachment.path.read_bytes()).decode("ascii"),
+        "data": base64.b64encode(
+            read_bytes_without_links(
+                attachment.path,
+                expected_identity=attachment.identity,
+            )
+        ).decode("ascii"),
     }
 
 
@@ -32,7 +38,12 @@ def _resolved_block_image(block: Mapping[str, Any]) -> ResolvedChatAttachment:
 
 
 def _image_data(attachment: ResolvedChatAttachment) -> str:
-    return base64.b64encode(attachment.path.read_bytes()).decode("ascii")
+    return base64.b64encode(
+        read_bytes_without_links(
+            attachment.path,
+            expected_identity=attachment.identity,
+        )
+    ).decode("ascii")
 
 
 def _recover_image(block: Mapping[str, Any]) -> tuple[str, str] | None:

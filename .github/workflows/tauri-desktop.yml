@@ -105,7 +105,6 @@ jobs:
             --check-runtime \
             --json \
             --profile desktop-core \
-            --project-root . \
             --requirements-file requirements-runtime-core.txt
 
       - name: Runtime manifest tests

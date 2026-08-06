@@ -10,9 +10,18 @@ from application.plugins.publisher import (
     validation_errors,
 )
 
+from .path_utils import state_project_root
 
-def _scan_local_plugin(body: dict[str, Any]) -> dict[str, Any]:
-    return scan_local_plugin(str(body.get("path") or "."))
+
+def _scan_local_plugin(
+    body: dict[str, Any],
+    *,
+    state: Any | None = None,
+) -> dict[str, Any]:
+    return scan_local_plugin(
+        str(body.get("path") or ""),
+        root=state_project_root(state) if state is not None else None,
+    )
 
 
 def _validate_plugin_submission(body: dict[str, Any]) -> dict[str, Any]:

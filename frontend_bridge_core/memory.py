@@ -3,6 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Sequence
 
+from sdk.path_references import state_project_root
+
+
+def _memory_runtime_kwargs(state: Any | None) -> dict[str, Any]:
+    if state is None:
+        return {}
+    return {
+        "root": state_project_root(state),
+        "config_manager": getattr(state, "config_manager", None),
+    }
+
 
 def _check_mem0_before_call() -> dict[str, Any] | None:
     """Return a dependency error if the complete mem0 runtime is unavailable."""
@@ -23,7 +34,11 @@ def _check_mem0_before_call() -> dict[str, Any] | None:
     return runtime_dependency_error_from_module("mem0")
 
 
-def _get_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
+def _get_mem0_status(
+    state: Any | None = None,
+    *,
+    start_loading: bool = True,
+) -> dict[str, Any]:
     """Return mem0 availability status for frontend polling."""
     dependency_error = _check_mem0_before_call()
     if dependency_error is not None:
@@ -32,7 +47,10 @@ def _get_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
 
     from application.memory.service import check_mem0_status
 
-    return check_mem0_status(start_loading=start_loading)
+    return check_mem0_status(
+        start_loading=start_loading,
+        **_memory_runtime_kwargs(state),
+    )
 
 
 def _raise_memory_error(result: dict[str, Any]) -> None:
@@ -40,7 +58,11 @@ def _raise_memory_error(result: dict[str, Any]) -> None:
         raise RuntimeError(str(result["error"]))
 
 
-def _list_character_memories(name: str) -> dict[str, Any]:
+def _list_character_memories(
+    name: str,
+    *,
+    state: Any | None = None,
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -49,12 +71,18 @@ def _list_character_memories(name: str) -> dict[str, Any]:
     from application.memory.service import list_memories
 
     try:
-        return list_memories(name)
+        return list_memories(name, **_memory_runtime_kwargs(state))
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
 
-def _memory_tool_search(query: str, character_name: str, limit: int = 10) -> dict[str, Any]:
+def _memory_tool_search(
+    query: str,
+    character_name: str,
+    limit: int = 10,
+    *,
+    state: Any | None = None,
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -63,12 +91,22 @@ def _memory_tool_search(query: str, character_name: str, limit: int = 10) -> dic
     from application.memory.service import search_memories
 
     try:
-        return search_memories(query, character_name=character_name, limit=limit)
+        return search_memories(
+            query,
+            character_name=character_name,
+            limit=limit,
+            **_memory_runtime_kwargs(state),
+        )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
 
-def _memory_tool_remember(content: str, character_name: str) -> dict[str, Any]:
+def _memory_tool_remember(
+    content: str,
+    character_name: str,
+    *,
+    state: Any | None = None,
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -77,12 +115,20 @@ def _memory_tool_remember(content: str, character_name: str) -> dict[str, Any]:
     from application.memory.service import remember_memory
 
     try:
-        return remember_memory(content, character_name=character_name)
+        return remember_memory(
+            content,
+            character_name=character_name,
+            **_memory_runtime_kwargs(state),
+        )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
 
-def _memory_tool_forget(memory_id: str) -> dict[str, Any]:
+def _memory_tool_forget(
+    memory_id: str,
+    *,
+    state: Any | None = None,
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -91,12 +137,17 @@ def _memory_tool_forget(memory_id: str) -> dict[str, Any]:
     from application.memory.service import forget_memory
 
     try:
-        return forget_memory(memory_id)
+        return forget_memory(memory_id, **_memory_runtime_kwargs(state))
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
 
 
-def _add_character_memory(name: str, content: str) -> dict[str, Any]:
+def _add_character_memory(
+    name: str,
+    content: str,
+    *,
+    state: Any | None = None,
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -105,14 +156,23 @@ def _add_character_memory(name: str, content: str) -> dict[str, Any]:
     from application.memory.service import remember_and_list
 
     try:
-        result = remember_and_list(content, character_name=name)
+        result = remember_and_list(
+            content,
+            character_name=name,
+            **_memory_runtime_kwargs(state),
+        )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
     _raise_memory_error(result)
     return result
 
 
-def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
+def _delete_character_memory(
+    name: str,
+    memory_id: str,
+    *,
+    state: Any | None = None,
+) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
         return dep_error
@@ -121,7 +181,11 @@ def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
     from application.memory.service import forget_and_list
 
     try:
-        result = forget_and_list(memory_id, character_name=name)
+        result = forget_and_list(
+            memory_id,
+            character_name=name,
+            **_memory_runtime_kwargs(state),
+        )
     except ToolNotReady as exc:
         return {"status": "loading", "message": exc.message}
     _raise_memory_error(result)
@@ -179,6 +243,7 @@ def _run_character_memory_import(
         character_name=name,
         source_root=source_root,
         config_manager=state.config_manager,
+        root=state_project_root(state),
         progress_callback=report,
         cancel_callback=raise_if_cancelled,
     )

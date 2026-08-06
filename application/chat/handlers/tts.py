@@ -15,6 +15,8 @@ from urllib.parse import urlparse
 
 import yaml
 from config.config_manager import ConfigManager
+from sdk.file_transactions import read_text_without_links
+from core.paths import project_root, resolve_runtime_asset_read_path
 from sdk.handlers import MessageHandler
 from core.messaging.dialog_tokens import (
     match_bgm_name,
@@ -28,17 +30,26 @@ from application.runtime.context import get_app_runtime, tts_emit_to_ui_queue
 from i18n import tr as tr_i18n
 
 _config = ConfigManager()
+_PROJECT_ROOT = project_root()
 logger = logging.getLogger(__name__)
+
+
+def _runtime_path(value: str) -> Path:
+    return resolve_runtime_asset_read_path(value, root=_PROJECT_ROOT)
+
+
+def _runtime_path_text(value: object) -> str:
+    raw = str(value or "")
+    return _runtime_path(raw).as_posix() if raw else ""
 
 
 def _read_sprite_voice_cfg(name_s: str, sprite_id: int):
     """直接从 YAML 读取立绘的 voice_type、voice_path、voice_text，避免跨进程缓存。"""
     try:
-        _chars_path = Path("data/config/characters.yaml")
+        _chars_path = Path(_config._CHARACTERS_CONFIG_PATH)
         if not _chars_path.is_file():
             return None, None, None
-        with open(_chars_path, "r", encoding="utf-8") as _fh:
-            _data = yaml.safe_load(_fh) or []
+        _data = yaml.safe_load(read_text_without_links(_chars_path)) or []
         for _c in _data:
             if _c.get("name") == name_s:
                 _sprites = _c.get("sprites") or []
@@ -85,7 +96,7 @@ def _is_remote_gpt_sovits() -> bool:
 
 
 def _is_remote_reference_path(path: str) -> bool:
-    return str(path or "").strip().startswith("/kaggle/")
+    return str(path or "").startswith("/kaggle/")
 
 
 def _sprite_value(sprite_data, key: str, default=None):
@@ -102,15 +113,15 @@ def _sprite_voice_audio(character_config, sprite_id: int, *allowed_types: str):
             character_config.name, sprite_id
         )
         voice_type = yaml_voice_type
-        voice_path = str(yaml_voice_path or "").strip()
+        voice_path = str(yaml_voice_path or "")
         voice_text = yaml_voice_text or ""
         if not voice_path:
             sprite_data = character_config.sprites[sprite_id]
             voice_type = _sprite_value(sprite_data, "voice_type")
-            voice_path = str(_sprite_value(sprite_data, "voice_path", "") or "").strip()
+            voice_path = str(_sprite_value(sprite_data, "voice_path", "") or "")
             voice_text = _sprite_value(sprite_data, "voice_text", "") or ""
         if voice_type in allowed_types and voice_path:
-            return voice_type, Path(voice_path).resolve().as_posix(), voice_text
+            return voice_type, _runtime_path(voice_path).as_posix(), voice_text
     except Exception:
         logger.debug(
             "Failed to resolve sprite voice audio for character=%s sprite_id=%s",
@@ -217,8 +228,8 @@ class DefaultCharacterTtsHandler(MessageHandler):
             try:
                 model_info = {
                     "character_name": name_s,
-                    "sovits_model_path": Path(character_config.sovits_model_path).resolve().as_posix(),
-                    "gpt_model_path": Path(character_config.gpt_model_path).resolve().as_posix(),
+                    "sovits_model_path": _runtime_path_text(character_config.sovits_model_path),
+                    "gpt_model_path": _runtime_path_text(character_config.gpt_model_path),
                 }
                 rt.tts_manager.switch_model(model_info)
                 print("TTSWorker: 使用模型", name_s, model_info)
@@ -243,7 +254,7 @@ class DefaultCharacterTtsHandler(MessageHandler):
                         )
                         return
 
-                ref_audio_path = Path(character_config.refer_audio_path).resolve().as_posix()
+                ref_audio_path = _runtime_path_text(character_config.refer_audio_path)
                 prompt_text = character_config.prompt_text
                 try:
                     if sprite_id < 0:
@@ -251,11 +262,11 @@ class DefaultCharacterTtsHandler(MessageHandler):
                     sprite_data = character_config.sprites[sprite_id]
                     _voice_type = _sprite_value(sprite_data, "voice_type")
                     _vt = _sprite_value(sprite_data, "voice_text")
-                    _vp = str(_sprite_value(sprite_data, "voice_path", "") or "").strip()
+                    _vp = str(_sprite_value(sprite_data, "voice_path", "") or "")
                     if _vp and (_voice_type == "reference" or (_voice_type is None and _vt)) and _vt and (
                         not _is_remote_gpt_sovits() or _is_remote_reference_path(_vp)
                     ):
-                        ref_audio_path = Path(_vp).resolve().as_posix()
+                        ref_audio_path = _runtime_path(_vp).as_posix()
                         prompt_text = _vt
                 except Exception:
                     print("没有立绘")
@@ -306,7 +317,12 @@ class DefaultCharacterTtsHandler(MessageHandler):
                             character_name=name_s,
                             speed_factor=_speed,
                         )
-                        if not _path or not Path(_path).is_file() or Path(_path).stat().st_size <= 0:
+                        resolved_audio = _runtime_path(_path) if _path else None
+                        if (
+                            resolved_audio is None
+                            or not resolved_audio.is_file()
+                            or resolved_audio.stat().st_size <= 0
+                        ):
                             print(
                                 "TTSWorker: 分句语音生成失败，停止后续分句播放，"
                                 f"segment={_i + 1}/{len(_sentences)}, text={_sent!r}"
@@ -323,7 +339,7 @@ class DefaultCharacterTtsHandler(MessageHandler):
                         _is_first = _i == 0
                         _is_last = _i == len(_sentences) - 1
                         rt.audio_path_queue.put(TTSOutputMessage(
-                            audio_path=_path or "",
+                            audio_path=resolved_audio.as_posix(),
                             name=name_s,
                             text=speech if _is_first else "",
                             asset_id=_asset_str if _is_first else _asset_str,

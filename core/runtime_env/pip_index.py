@@ -8,6 +8,13 @@ import re
 import shlex
 from pathlib import Path
 
+from sdk.file_transactions import read_text_without_links
+from core.paths import (
+    resolve_project_path,
+    source_root as runtime_source_root,
+    validate_exact_path_text,
+)
+
 # --extra-index-url 也算用户主动声明：只补 extra 源说明作者希望保持默认主源不变，
 # 这时再注入国内镜像当 primary index 会改变包解析来源。
 _PIP_INDEX_FLAGS = frozenset({"-i", "--index-url", "--extra-index-url", "--no-index"})
@@ -137,31 +144,57 @@ def _manifest_pip_indexes(source_root: Path | None) -> tuple[list[str], list[str
 
 def _load_runtime_manifest(source_root: Path | None) -> dict[str, object] | None:
     candidates: list[Path] = []
-    env_path = os.environ.get("SHINSEKAI_RUNTIME_MANIFEST")
-    if env_path:
-        candidates.append(Path(env_path))
+    if "SHINSEKAI_RUNTIME_MANIFEST" in os.environ:
+        env_path = os.environ["SHINSEKAI_RUNTIME_MANIFEST"]
+        validate_exact_path_text(
+            env_path,
+            field="SHINSEKAI_RUNTIME_MANIFEST",
+        )
+        configured_manifest = Path(env_path)
+        if not configured_manifest.is_absolute():
+            raise ValueError("SHINSEKAI_RUNTIME_MANIFEST must be an absolute path")
+        return _read_runtime_manifest(
+            configured_manifest,
+            field="SHINSEKAI_RUNTIME_MANIFEST",
+        )
     for root in _source_root_candidates(source_root):
+        # Packaged Tauri resources stage the manifest directly beside
+        # frontend_bridge.py; source checkouts keep it below frontend/src-tauri.
+        candidates.append(root / "runtime_manifest.json")
         candidates.append(root / "frontend" / "src-tauri" / "runtime_manifest.json")
     for candidate in candidates:
         try:
-            with candidate.expanduser().resolve().open("r", encoding="utf-8") as file:
-                data = json.load(file)
-        except (OSError, json.JSONDecodeError):
+            candidate.lstat()
+        except FileNotFoundError:
             continue
-        if isinstance(data, dict):
-            return data
+        except OSError as exc:
+            raise RuntimeError(f"runtime manifest could not be inspected: {candidate}") from exc
+        return _read_runtime_manifest(candidate, field="runtime manifest")
     return None
+
+
+def _read_runtime_manifest(candidate: Path, *, field: str) -> dict[str, object]:
+    try:
+        data = json.loads(read_text_without_links(candidate))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{field} is not valid JSON: {candidate}") from exc
+    except OSError as exc:
+        raise RuntimeError(f"{field} could not be read: {candidate}") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"{field} must contain a JSON object: {candidate}")
+    return data
 
 
 def _source_root_candidates(source_root: Path | None) -> list[Path]:
     candidates: list[Path] = []
     if source_root is not None:
-        candidates.append(source_root)
-    for env_name in ("SHINSEKAI_SOURCE_ROOT", "SHINSEKAI_PROJECT_ROOT", "EASYAI_PROJECT_ROOT"):
-        value = os.environ.get(env_name)
-        if value:
-            candidates.append(Path(value))
-    candidates.append(Path.cwd())
+        configured_source = resolve_project_path(".", root=source_root)
+        candidates.append(configured_source)
+    candidates.append(runtime_source_root())
+
+    # The writable project root and process cwd are deliberately absent.
+    # They can be relocated independently from application resources and must
+    # never be allowed to override executable dependency policy.
     candidates.append(Path(__file__).resolve().parents[2])
     return _unique_paths(candidates)
 
@@ -204,10 +237,7 @@ def _unique_paths(paths: list[Path]) -> list[Path]:
     unique: list[Path] = []
     seen: set[str] = set()
     for path in paths:
-        try:
-            key = str(path.expanduser().resolve())
-        except OSError:
-            key = str(path)
+        key = os.path.normcase(os.path.normpath(os.fspath(path)))
         if key in seen:
             continue
         seen.add(key)

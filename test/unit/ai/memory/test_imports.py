@@ -4,6 +4,7 @@ import json
 
 import pytest
 
+from ai.memory import imports as memory_imports
 from ai.memory.imports import execute_memory_import, preview_memory_import
 from test.mocks import MockLLMAdapter
 
@@ -150,6 +151,35 @@ def test_preview_accepts_relative_file_inside_server_managed_source_root(tmp_pat
     assert preview["files"][0]["name"] == "history.txt"
 
 
+def test_preview_rejects_ambiguous_whitespace_in_source_path(tmp_path):
+    source = tmp_path / "history.txt"
+    source.write_text("User: likes tea", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="文件路径不允许"):
+        preview_memory_import(
+            [f" {source.name}"],
+            character_name="Mika",
+            source_root=tmp_path,
+        )
+
+
+def test_preview_rejects_symbolic_link_source_even_when_target_is_inside_root(tmp_path):
+    source = tmp_path / "history.txt"
+    alias = tmp_path / "history-alias.txt"
+    source.write_text("User: likes tea", encoding="utf-8")
+    try:
+        alias.symlink_to(source)
+    except (NotImplementedError, OSError):
+        pytest.skip("file symlinks are unavailable")
+
+    with pytest.raises(ValueError, match="文件路径不允许"):
+        preview_memory_import(
+            [alias],
+            character_name="Mika",
+            source_root=tmp_path,
+        )
+
+
 def test_preview_accepts_active_branch_export(tmp_path):
     path = tmp_path / "branches.json"
     path.write_text(
@@ -170,3 +200,33 @@ def test_preview_accepts_active_branch_export(tmp_path):
 
     assert preview["dialogueLineCount"] == 2
     assert preview["files"][0]["dialogueCharacters"] == len("你: branch\nMika: selected")
+
+
+def test_preview_rejects_source_changed_after_size_validation(
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "history.txt"
+    source.write_text("User: approved", encoding="utf-8")
+    real_normalize = memory_imports._normalized_paths
+
+    def normalize_then_change(*args, **kwargs):
+        normalized = real_normalize(*args, **kwargs)
+        source.write_text(
+            "User: replacement-is-longer",
+            encoding="utf-8",
+        )
+        return normalized
+
+    monkeypatch.setattr(
+        memory_imports,
+        "_normalized_paths",
+        normalize_then_change,
+    )
+
+    with pytest.raises(PermissionError, match="identity changed"):
+        preview_memory_import(
+            [source],
+            character_name="Mika",
+            source_root=tmp_path,
+        )

@@ -15,7 +15,7 @@ export type PluginConfigDraft = Record<string, unknown>;
 
 export function catalogInstallSource(item: PluginCatalogItem) {
   if (item.packageUrl || item.downloadUrl) {
-    return (item.id || item.name).trim();
+    return item.id || item.name;
   }
   return githubRepoSlug(item.repo) || item.repo.trim();
 }
@@ -89,7 +89,7 @@ export function pluginActionId(plugin: PluginManifest) {
 }
 
 export function pluginHasManifestEntry(plugin: PluginManifest) {
-  return Boolean(plugin.entry?.trim());
+  return Boolean(plugin.entry && plugin.entry === plugin.entry.trim());
 }
 
 export function pluginInstallSource(input: PluginInstallInput | string) {

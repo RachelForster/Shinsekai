@@ -19,12 +19,63 @@ $NsisUninstallRegistryPath = "Registry::HKEY_CURRENT_USER\Software\Microsoft\Win
 $StudioRegistryParentPath = "Registry::HKEY_CURRENT_USER\Software\studio.shinsekai"
 $LegacyRegistryParentPath = "Registry::HKEY_CURRENT_USER\Software\shinsekai"
 
+function Test-WindowsAbsolutePath {
+  param([AllowNull()][AllowEmptyString()][string]$Path)
+  if ([string]::IsNullOrWhiteSpace($Path)) {
+    return $false
+  }
+  if ($Path -match '^[\\/]{2}[?.][\\/]') {
+    return $false
+  }
+  return (
+    $Path -match '^[A-Za-z]:[\\/]' -or
+    $Path -match '^[\\/]{2}[^\\/]+[\\/][^\\/]+'
+  )
+}
+
+function Resolve-RepositoryInputPath {
+  param(
+    [Parameter(Mandatory)][string]$InputPath,
+    [Parameter(Mandatory)][string]$RepositoryRoot,
+    [Parameter(Mandatory)][string]$Description
+  )
+  if ([string]::IsNullOrWhiteSpace($InputPath)) {
+    throw "$Description must not be empty"
+  }
+  if ($InputPath -cne $InputPath.Trim()) {
+    throw "$Description must not contain surrounding whitespace"
+  }
+  if (Test-WindowsAbsolutePath $InputPath) {
+    return [IO.Path]::GetFullPath($InputPath)
+  }
+  if ($InputPath -match '^[A-Za-z]:' -or $InputPath -match '^[\\/]') {
+    throw "$Description is rooted but not a fully qualified Windows path: $InputPath"
+  }
+  if ($InputPath.Contains(':')) {
+    throw "$Description must not contain a Windows alternate-data-stream separator: $InputPath"
+  }
+
+  $root = [IO.Path]::GetFullPath($RepositoryRoot).TrimEnd('\', '/')
+  $resolved = [IO.Path]::GetFullPath((Join-Path $root $InputPath))
+  $rootPrefix = $root + [IO.Path]::DirectorySeparatorChar
+  if (
+    -not $resolved.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -and
+    -not [string]::Equals($resolved, $root, [StringComparison]::OrdinalIgnoreCase)
+  ) {
+    throw "$Description escapes the repository root: $InputPath"
+  }
+  return $resolved
+}
+
 $RepositoryRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\.."))
 $FrontendRoot = Join-Path $RepositoryRoot "frontend"
 if ([string]::IsNullOrWhiteSpace($LegacyMsiPath)) {
   $LegacyMsiPath = Join-Path $RepositoryRoot ".cache\legacy-installers\Shinsekai-2.1.0_windows-x64.msi"
-} elseif (-not [IO.Path]::IsPathRooted($LegacyMsiPath)) {
-  $LegacyMsiPath = Join-Path $RepositoryRoot $LegacyMsiPath
+} else {
+  $LegacyMsiPath = Resolve-RepositoryInputPath `
+    -InputPath $LegacyMsiPath `
+    -RepositoryRoot $RepositoryRoot `
+    -Description "legacy MSI path"
 }
 $LegacyMsiPath = [IO.Path]::GetFullPath($LegacyMsiPath)
 $CurrentVersion = (Get-Content -LiteralPath (Join-Path $FrontendRoot "package.json") -Raw | ConvertFrom-Json).version
@@ -37,6 +88,13 @@ $RunnerTemp = if ([string]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
 } else {
   $env:RUNNER_TEMP
 }
+if ($RunnerTemp -cne $RunnerTemp.Trim()) {
+  throw "RUNNER_TEMP must not contain surrounding whitespace"
+}
+if (-not (Test-WindowsAbsolutePath $RunnerTemp)) {
+  throw "RUNNER_TEMP must be an absolute path"
+}
+$RunnerTemp = [IO.Path]::GetFullPath($RunnerTemp)
 $TestRoot = Join-Path $RunnerTemp ("shinsekai-msi-nsis-migration-" + [Guid]::NewGuid().ToString("N"))
 $MsiInstallLog = Join-Path $TestRoot "msi-install.log"
 $MsiCleanupLog = Join-Path $TestRoot "msi-cleanup.log"
@@ -158,7 +216,15 @@ function Normalize-InstallPath {
     return ""
   }
   $trimmed = $Path.Trim().Trim('"')
-  return [IO.Path]::GetFullPath($trimmed).TrimEnd('\')
+  if (-not (Test-WindowsAbsolutePath $trimmed)) {
+    throw "install path must be absolute: $Path"
+  }
+  $normalized = [IO.Path]::GetFullPath($trimmed)
+  $root = [IO.Path]::GetPathRoot($normalized)
+  if ([string]::Equals($normalized, $root, [StringComparison]::OrdinalIgnoreCase)) {
+    return $root
+  }
+  return $normalized.TrimEnd('\', '/')
 }
 
 function Get-RegistryValue {
@@ -320,6 +386,32 @@ function Wait-ForCondition {
   throw "Timed out waiting for $Description"
 }
 
+function Wait-ForNsisRemoval {
+  param(
+    [Parameter(Mandatory)][string]$InstallDir,
+    [int]$TimeoutSeconds = 180
+  )
+
+  # NSIS may self-copy to a temporary process before removing its own files.
+  # The process we launch can therefore exit before uninstall is externally
+  # complete; the ARP entry and install directory are the shared readiness
+  # invariant for both the test and subsequent installer operations.
+  try {
+    Wait-ForCondition -Description "the NSIS installation and ARP entry to be removed" -TimeoutSeconds $TimeoutSeconds -Condition {
+      $remainingNsisEntries = @(
+        Get-ShinsekaiEntries | Where-Object { -not (Test-MsiEntry -Entry $_) }
+      )
+      return $remainingNsisEntries.Count -eq 0 -and -not (Test-Path -LiteralPath $InstallDir)
+    }
+  } catch {
+    $remainingNsisEntries = @(
+      Get-ShinsekaiEntries | Where-Object { -not (Test-MsiEntry -Entry $_) }
+    )
+    $installDirectoryExists = Test-Path -LiteralPath $InstallDir
+    throw "Timed out waiting for NSIS removal: remaining ARP entries=$($remainingNsisEntries.Count), install directory exists=$installDirectoryExists"
+  }
+}
+
 function Get-MigrationHint {
   if (-not (Test-Path -LiteralPath $MigrationRegistryPath)) {
     return $null
@@ -400,6 +492,10 @@ try {
     Assert-Condition ($installerCandidates.Count -eq 1) "expected exactly one freshly built NSIS installer, found $($installerCandidates.Count)"
     $NsisInstallerPath = $installerCandidates[0].FullName
   } else {
+    $NsisInstallerPath = Resolve-RepositoryInputPath `
+      -InputPath $NsisInstallerPath `
+      -RepositoryRoot $RepositoryRoot `
+      -Description "NSIS installer path"
     $NsisInstallerPath = (Resolve-Path -LiteralPath $NsisInstallerPath).Path
   }
   Assert-Condition (Test-Path -LiteralPath $NsisInstallerPath -PathType Leaf) "NSIS installer does not exist: $NsisInstallerPath"
@@ -428,7 +524,10 @@ try {
     -DestinationPath $LegacyMsiPath `
     -ExpectedSha256 $LegacyMsiSha256
   if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_OUTPUT)) {
-    Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value (
+    Assert-Condition (Test-WindowsAbsolutePath $env:GITHUB_OUTPUT) "GITHUB_OUTPUT must be an absolute path"
+    $githubOutputPath = [IO.Path]::GetFullPath($env:GITHUB_OUTPUT)
+    Assert-Condition (Test-Path -LiteralPath $githubOutputPath -PathType Leaf) "GITHUB_OUTPUT does not identify an existing file"
+    Add-Content -LiteralPath $githubOutputPath -Value (
       "legacy-msi-updated=" + $legacyMsiUpdated.ToString().ToLowerInvariant()
     )
   }
@@ -514,12 +613,7 @@ try {
 
   Write-Step "Uninstalling the migrated current-user NSIS installation"
   [void](Invoke-CheckedProcess -FilePath $newUninstaller -ArgumentList @("/S") -AllowedExitCodes @(0) -TimeoutSeconds 180)
-  Wait-ForCondition -Description "the NSIS installation and ARP entry to be removed" -Condition {
-    $remainingNsisEntries = @(
-      Get-ShinsekaiEntries | Where-Object { -not (Test-MsiEntry -Entry $_) }
-    )
-    return $remainingNsisEntries.Count -eq 0 -and -not (Test-Path -LiteralPath $ExpectedNsisInstallDir)
-  }
+  Wait-ForNsisRemoval -InstallDir $ExpectedNsisInstallDir
   Assert-Condition (Test-Path -LiteralPath $SeedFile -PathType Leaf) "uninstalling the new NSIS unexpectedly removed legacy project data"
   Write-Step "Real v2.1.0 MSI-to-current-NSIS migration passed"
 } catch {
@@ -538,6 +632,7 @@ try {
       $uninstaller = Join-Path $ExpectedNsisInstallDir "uninstall.exe"
       if (Test-Path -LiteralPath $uninstaller -PathType Leaf) {
         [void](Invoke-CheckedProcess -FilePath $uninstaller -ArgumentList @("/S") -AllowedExitCodes @(0) -TimeoutSeconds 180)
+        Wait-ForNsisRemoval -InstallDir $ExpectedNsisInstallDir
       }
     }
 
