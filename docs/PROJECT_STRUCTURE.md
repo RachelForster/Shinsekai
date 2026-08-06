@@ -75,6 +75,7 @@ Shinsekai/
     media/
     model_assets/
     runtime/
+    story/
     plugins/
     localization/
 
@@ -93,6 +94,7 @@ Shinsekai/
     asr/
     t2i/
     vision/
+    story/
     tools/
 
   core/
@@ -103,6 +105,7 @@ Shinsekai/
     runtime_env/
     security/
     sprite/
+    story/
 
   plugin_system/
     contributions/
@@ -173,12 +176,16 @@ application/diagnostics/     日志快照与诊断包用例
 application/media/           媒体标注等跨领域用例
 application/model_assets/    模型与 TTS 资源下载用例
 application/runtime/         app runtime、workers、workflow、shutdown
+application/story/           剧情会话、分支状态仓库、人物 readiness 与演出编排
 application/plugins/         插件安装、更新、发布等用例编排
 ```
 
 application 可以组合多个能力域，但不实现具体 HTTP 或 UI 控件。
 AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 application
 注入的 adapter 回调，不得反向导入 `application/`。
+`application/story/` 负责把确定性剧情事务与聊天分支、持久化 generation、
+人物档案 readiness、可降级演出资源和实时事件协调起来；文件提交、资源加载状态
+和 global effect outbox 不得下沉到 `core/story/`。
 
 ### `config/`
 
@@ -202,10 +209,13 @@ ai/tts/       TTS adapter 和 manager
 ai/asr/       ASR adapter、manager 和 streaming controller
 ai/t2i/       文生图 adapter 和 manager
 ai/vision/    图片理解 adapter、manager 和 provider
+ai/story/     AI 剧本生成、意图/语义评估、选角提案和安全上下文投影
 ai/tools/     向 LLM 暴露能力的薄 tool wrapper
 ```
 
 `ai/tools/` 只做参数校验、权限/上下文判断和领域服务调用。通用文件、图片或音频处理放在 `core/media/` 或 `tools/`。
+`ai/story/` 只能返回候选意图、语义信号、选角 ID、剧本草稿或补丁；
+权威剧情状态和演员表仍由 `core/story/` 裁决，并由 application 提交。
 
 ### `core/`
 
@@ -219,9 +229,13 @@ core/model_assets/  模型下载、缓存、来源和进度
 core/runtime_env/   Python、pip、依赖检测和运行环境诊断
 core/security/      归档、下载来源等宿主安全校验及旧路径兼容入口
 core/sprite/        聊天记录、立绘和分支存储
+core/story/         剧本 Schema、确定性规则、编译、事件、校验和路径模拟
 ```
 
 如果代码需要同时协调 UI、AI、插件和进程生命周期，它属于 `application/`，而不是 `core/`。
+`core/story/` 必须保持确定性且无资源 I/O：可以定义 Schema、规则、事件、
+`CastResolutionPlan` 和编译器，但不得加载人物文件、调用 LLM、持有模型句柄
+或发出 React/传输层 DTO。
 
 ### `plugin_system/`
 
@@ -312,8 +326,11 @@ allowlist。O1 的锁定基线是永久上限；迁移完成后任何提交都�
 | --- | --- |
 | HTTP/WebSocket 路由与 DTO | `frontend_bridge_core/routes/` |
 | 跨领域用例和生命周期 | `application/` |
+| 剧情会话、存档和人物资源编排 | `application/story/` |
 | LLM/TTS/ASR/T2I/Vision 实现 | `ai/<domain>/` |
+| AI 剧本生成与场景理解 | `ai/story/` |
 | LLM tool wrapper | `ai/tools/` |
+| 确定性剧情模型、规则与编译 | `core/story/` |
 | 模型下载和缓存 | `core/model_assets/` |
 | Python、pip 和依赖环境 | `core/runtime_env/` |
 | 跨层通用路径校验 | `sdk/path_utils.py` |

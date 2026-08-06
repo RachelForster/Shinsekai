@@ -13,7 +13,7 @@
 
 > 固定关键节点与规则，允许节点之间自由对话；AI 拥有创作权，剧情引擎拥有裁判权。
 
-系统采用模块化单体架构，不引入独立微服务。新增能力沿用当前 `core → application → bridge → frontend` 的依赖方向，并兼容没有结构化剧本的现有自由聊天模式。
+系统采用模块化单体架构，不引入独立微服务。依赖由上层指向下层：`frontend / CLI → frontend_bridge_core → application → ai / core / config / sdk`；下层能力不得反向导入 application、bridge 或 frontend。没有结构化剧本的现有自由聊天模式继续兼容。
 
 实施早期先完成手写剧本的编译、确定性运行和会话闭环，再接入 AI 剧本编译器。不得先生成大量暂时无法校验或执行的剧本文件。
 
@@ -95,7 +95,9 @@ Shinsekai 当前已经具备以下基础：
 | 故事圣经 `StoryBible` | 世界观、人物关系、秘密、主题与不可随意推翻的事实 |
 | 节点 `StoryNode` | 一个可进入、可完成、可跳转的关键剧情锚点 |
 | 选择 `StoryChoice` | 具有稳定 ID、条件、效果和目标节点的玩家行动 |
-| 状态 `StoryState` | 当前节点、变量、道具、标记、完成节点和事件游标 |
+| 分支状态 `BranchStoryState` | 当前节点、branch 变量、道具、标记、完成节点和事件头 |
+| 全局进度 `GlobalStoryProgress` | 不随 Fork 或回档撤销的结局、CG 和周目解锁 |
+| 状态视图 `StoryStateView` | 规则求值时组合分支状态与全局进度的只读视图，不作为整体持久化 |
 | 条件 `Condition` | 对状态进行只读判断的声明式表达式 |
 | 效果 `Effect` | 对状态执行受控修改的声明式操作 |
 | 剧情事件 `StoryEvent` | 已接受命令产生的不可变事实记录 |
@@ -136,7 +138,7 @@ LLM 可以创建节点、设置条件、提出事件和生成演出，但只有�
 
 ### 5.4 状态与分支同生共死
 
-Fork 对话时必须复制当时的 `StoryState`；切换分支时必须同时恢复消息历史和剧情状态。全局解锁状态除外。
+Fork 对话时必须复制当时的 `BranchStoryState`；切换分支时必须同时恢复消息历史和分支剧情状态。`GlobalStoryProgress` 独立保存，不进入 Fork 或回档快照。
 
 ### 5.5 声明式规则，不执行任意代码
 
@@ -236,7 +238,7 @@ AI 剧本编译器 ------> 剧本草稿 ------> 校验与路径模拟 ------> �
                                                    StoryEvent
                                                         |
                                                         v
-                                                   StoryState
+                                      BranchStoryState + GlobalStoryProgress
                                                         |
                            +----------------------------+------------------+
                            |                                               |
@@ -260,7 +262,7 @@ AI 剧本编译器 ------> 剧本草稿 ------> 校验与路径模拟 ------> �
 | AI 剧本编译 | 梗概分析、骨架生成、节点扩写与修复 | `ai/story/` |
 | AI 上下文协调 | 作者与场景上下文隔离、意图解析、语义信号评估、可选选角提案与投影 | `ai/story/` |
 | 会话与存档集成 | 生命周期、状态仓库、人物加载、演员表提交、分支与聊天协调 | `application/story/` |
-| 协议适配 | HTTP/WebSocket DTO 与命令转发 | `frontend_bridge_core/` |
+| 协议适配 | HTTP/WebSocket DTO 与命令转发 | `frontend_bridge_core/routes/` |
 | React 创作和运行 UI | 生成器、编辑器、校验报告和舞台展示 | `frontend/src/` |
 
 ### 7.2 依赖约束
@@ -271,6 +273,7 @@ AI 剧本编译器 ------> 剧本草稿 ------> 校验与路径模拟 ------> �
 - `frontend_bridge_core` 只做协议校验和 DTO 转换，不执行剧情规则。
 - React 不直接读写 `data/stories/`。
 - 剧本格式成熟前不暴露为稳定 `sdk` 契约。
+- `core/story`、`ai/story` 与 `application/story` 的长期职责同步记录在生效中的 `PROJECT_STRUCTURE.md`；实现不得另建平行的 story 宿主目录。
 
 ## 8. 剧本工程模型
 
@@ -321,7 +324,6 @@ compiledProgramRef: compiled/story_program.json
 | `integer` | `trust.ling` | 信任、怀疑、理智、声望、推理进度和计数 |
 | `enum` | `route` | 当前路线或阶段 |
 | `string_set` | `inventory` | 道具、线索、成就集合 |
-| `node_set` | `completedNodes` | 已完成节点 |
 
 变量定义示例：
 
@@ -388,9 +390,9 @@ variables:
     visible: true
 ```
 
-运行时不得创建未在变量表中声明的变量。
+运行时不得创建未在变量表中声明的变量。节点完成与失败状态不属于普通变量，分别只保存在 `BranchStoryState.completedNodeIds` 和 `BranchStoryState.failedNodeIds`；`completed/failed` 条件与 `complete/fail` 效果只能访问这两个系统字段，不能再建立同义变量作为第二事实源。
 
-`StoryMetric` 不是另一套状态存储类型，而是附着在 `integer` 变量上的通用策略元数据。不是所有整数变量都允许由自由文本语义信号修改；生命值、货币等确定性指标默认关闭语义输入。
+`StoryMetric` 不是另一套状态存储类型，而是附着在 `integer` 变量上的通用策略元数据。不是所有整数变量都允许由自由文本语义信号修改；生命值、货币等确定性指标默认关闭语义输入。首版允许语义输入的指标必须是 `branch` 作用域；`global` 只允许结局、CG 等集合追加型进度，`run` 作用域在发布时拒绝。
 
 ### 8.3 节点模型
 
@@ -518,15 +520,17 @@ appendCanon: fact
 unlockEnding: endingId
 ```
 
-所有效果必须在一个事务中完成：
+`complete/fail` 只修改分支节点集合；`unlockEnding` 转换为 `GlobalStoryProgress.unlockedEndings` 的幂等集合追加。变量效果按照变量定义的 scope 路由，首版不得对 global 集合执行 `remove` 或覆盖。
 
-1. 复制当前状态。
-2. 对副本应用并校验全部效果。
+所有效果必须在一个逻辑 `StoryTransaction` 中完成：
+
+1. 复制当前 `BranchStoryState`，并读取带 revision 的 `GlobalStoryProgress`。
+2. 按变量 scope 将效果路由到分支副本或受限的全局单调效果集合，并校验全部效果。
 3. 计算节点和结局变化。
-4. 生成事件列表。
-5. 原子提交新状态。
+4. 生成分支事件、命令结果和全局 effect outbox。
+5. 原子提交新的分支 generation；在返回成功 ack 前幂等应用全局 outbox。
 
-任一效果失败时不得部分提交。
+任一校验失败时不得提交分支 generation。分支提交后发生进程中断时，通过持久 outbox 恢复未完成的全局单调效果；具体协议见 12.3 和 12.6。
 
 ### 8.7 叙事指标与语义信号
 
@@ -604,6 +608,7 @@ metrics:
 策略规则：
 
 - `variable` 必须引用已声明的 `integer` 变量。
+- 允许语义输入的 `variable` 必须是 `branch` 作用域。
 - `semanticInput.enabled: false` 时，任何 LLM 候选信号都不得修改该指标。
 - 每轮、每场景和每章节限额按指标分别计算。
 - 指标最终值仍受变量 `min/max` 约束。
@@ -763,8 +768,8 @@ RuleGraph
 两层图可以在编辑器中联动展示，但领域语义不同：
 
 - `StoryNode` 是玩家能够进入、完成、失败或离开的剧情锚点。
-- `RuleNode` 是创作期逻辑定义，不能作为当前剧情节点写入 `StoryState.currentNodeId`。
-- `MetricReferenceNode` 只引用 `StoryState.variables` 中的变量，不保存另一份当前值。
+- `RuleNode` 是创作期逻辑定义，不能作为当前剧情节点写入 `BranchStoryState.currentNodeId`。
+- `MetricReferenceNode` 只通过 `StoryStateView` 按变量声明的 scope 读取值，不保存另一份当前值。
 - `SemanticSignalNode` 表示信号定义；每次实际触发产生 `SemanticSignalAccepted` 事件，不在工程中复制新节点。
 
 #### 8.8.2 规则节点类型
@@ -1085,28 +1090,34 @@ castPolicy:
 每轮最终演出前执行：
 
 ```text
-CastPolicy + CharacterRegistry + StoryState
+CastPolicy + CharacterRegistry + BranchStoryState
   → 确定性过滤：登记、版本、存活、可用、地点、条件、排除项
   → 绑定 required 与 requiredRoles
   → 按连续性和优先级解决无歧义候选
   → 可选 CastPlanner 从剩余 candidateIds 中提出选择
   → 引擎重新校验 ID、人数、职责、资源与 revision
-  → 按需加载人物档案和演出资源
-  → 原子提交 ActiveCast、roleBindings 和 CastResolved
+  → core/story 输出不执行 I/O 的 CastResolutionPlan
+  → application/story 加载最终演出所需的最小人物档案
+  → 必需人物失败时在未提交计划上执行已发布 fallback 并重新校验
+  → 原子提交下一版 BranchStoryState、ActiveCast、roleBindings 和 CastResolved
+  → 提交后按需预载立绘、语音等可降级演出资源
   → 生成 ActorContext 与 speakerAllowlist
   → 场景 LLM 最终演出
 ```
 
 `CastPlanner` 可以是规则实现、与场景 LLM 共用的工具调用阶段，或单独模型。它只接收合格 `candidateIds` 和非秘密选择理由，只返回人物 ID 与职责绑定。引擎是最终裁决者；非法 ID、超员、缺少职责或过期 revision 一律拒绝。
 
+`CastResolutionPlan` 是纯数据，不包含已打开文件、模型句柄或加载状态。人物档案读取和资源生命周期属于 application；core 只生成稳定人物 ID、fallback 决策和 `ResourceLifecycleCue`。
+
 #### 8.9.4 生命周期与按需加载
 
 人物是否能参与剧情和人物资源是否已载入必须分开建模：
 
 - 权威剧情状态：`available`、`unavailable`、`active`、`offstage`、`dead` 或剧本自定义布尔条件，随分支保存。
-- 应用层加载状态：`not-loaded`、`loading`、`loaded`、`failed`，属于可重建缓存，不写入 `StoryState`。
+- 应用层加载状态：`not-loaded`、`loading`、`loaded`、`failed`，属于可重建缓存，不写入 `BranchStoryState`。
 - `character-preload` 可以提前加载下一场候选；`character-unload` 只能释放缓存，不代表人物死亡或退场。
-- 资源加载失败不回滚已经提交的剧情效果；必需人物按 fallback 处理，可选人物降级移除，并产生可诊断事件。
+- 最终演出所需的最小人物档案属于提交前 readiness gate。必需人物加载失败时，application 在尚未提交的 `CastResolutionPlan` 上执行 fallback；没有合法 fallback 时拒绝本次命令，剧情效果和 revision 均不提交。
+- 立绘、Live2D、语音模型等可降级演出资源在提交后加载；这类失败不回滚已经提交的剧情效果，可选资源降级并产生 application 级诊断事件。
 
 #### 8.9.5 中途登场、退场与临时 NPC
 
@@ -1114,6 +1125,7 @@ CastPolicy + CharacterRegistry + StoryState
 
 ```json
 {
+  "id": "tool-entry-7",
   "name": "request_character_entry",
   "arguments": {
     "characterId": "detective-zhou",
@@ -1124,7 +1136,7 @@ CastPolicy + CharacterRegistry + StoryState
 }
 ```
 
-引擎检查人物已登记、仍存活且可用、地点或到达路线成立、当前节点允许该 `reasonId`、人数未超限，然后返回新的权威演员表。模型收到工具结果后才能生成该人物已经登场的对白。`request_character_exit` 和 `request_character_replace` 使用相同的 revision 与策略校验。
+引擎检查人物已登记、仍存活且可用、地点或到达路线成立、当前节点允许该 `reasonId`、人数未超限，然后返回新的权威演员表。模型收到工具结果后才能生成该人物已经登场的对白。`request_character_exit` 和 `request_character_replace` 使用相同的 revision 与策略校验。内部工具调用继承触发本轮的客户端 `commandId`，并使用 provider tool-call ID 形成 `commandId:toolCallId` 幂等键；重复工具调用返回原工具结果。
 
 临时路人、店员等 NPC 可以由 `AdHocCharacter` 模板创建，但必须先生成稳定 ID、最小档案和作用域，再登记到当前分支，之后才可进入 `speakerAllowlist`。需要跨场景复用时执行 `PromoteAdHocCharacter`，将其升级为剧本域人物；未晋升临时人物在作用域结束后不进入长期 Canon 人物目录。
 
@@ -1176,7 +1188,7 @@ PromoteAdHocCharacter
 EnterNode
 CompleteNode
 ApplyAuthorPatch
-RestoreStorySnapshot
+RestoreBranchSnapshot
 ```
 
 命令示例：
@@ -1184,17 +1196,31 @@ RestoreStorySnapshot
 ```json
 {
   "type": "SelectChoice",
+  "commandId": "018f6f9a-6ef1-7c61-9b4f-0c91eb94d1f0",
+  "branchId": "branch-3",
   "choiceId": "use-old-key",
   "expectedNodeId": "old-school-gate",
   "expectedRevision": 42
 }
 ```
 
-`expectedNodeId` 和 `expectedRevision` 用于拒绝重复点击、重连重放和过期选项。
+所有会修改剧情或演员状态的命令都必须携带客户端生成的稳定 `commandId`、目标 `branchId` 和 `expectedRevision`。`expectedNodeId` 在节点相关命令中额外用于拒绝过期选项。
+
+application 按分支持久化一个有界幂等索引：
+
+```text
+commandId → payloadHash + accepted/rejected + resultingRevision + eventIds + ack
+```
+
+- 首次收到命令时，在会话串行化边界内检查 revision、执行并保存结果。
+- 相同 `commandId` 与相同 payload 重试时返回原 ack 和事件范围，不再次执行效果。
+- 相同 `commandId` 携带不同 payload 时拒绝为协议错误。
+- 新 `commandId` 携带过期 revision 时返回冲突和最新可见快照。
+- 幂等索引随分支检查点保存；裁剪事件前必须保留仍可能重试的命令结果。
 
 ### 9.2 输出事件
 
-领域事件示例：
+core/story 的权威领域事件示例：
 
 ```text
 StoryStarted
@@ -1211,9 +1237,6 @@ SemanticSignalAccepted
 SemanticSignalRejected
 MetricChanged
 CharacterRegistered
-CharacterLoadStarted
-CharacterLoaded
-CharacterLoadFailed
 CastResolved
 CharacterEntered
 CharacterExited
@@ -1222,26 +1245,38 @@ EndingUnlocked
 EndingReached
 ```
 
-领域事件不直接包含 HTML、URL 或 React 组件信息。演出适配层负责转换。
+领域事件不直接包含 HTML、URL、文件句柄、模型对象或 React 组件信息。演出适配层负责转换。
+
+人物加载状态属于 application/story 的可重建资源事件，不参与 `BranchStoryState` 重放：
+
+```text
+CharacterLoadStarted
+CharacterLoaded
+CharacterLoadFailed
+CharacterResourceReleased
+```
+
+core 可以产生 `ResourceLifecycleCue`，application 执行实际 I/O 后再发出上述事件，并按需转换为实时协议事件。两类事件必须使用不同的类型命名空间和持久化策略。
 
 ### 9.3 节点进入流程
 
 ```text
 接收行动
-  → 检查会话与 revision
+  → 按 branchId 检查 commandId 幂等索引
+  → 检查会话、节点与 revision
   → 查找当前节点允许的 choice/intent
   → 计算 when 条件
-  → 应用效果事务
-  → 计算 unlock 与目标节点 enterWhen
-  → 提交 StoryState 和 StoryEvent
-  → 解析 CastPolicy 并提交 ActiveCast
-  → 按需加载人物档案；失败时执行演员 fallback
+  → 在副本上应用效果并计算 unlock 与目标节点 enterWhen
+  → 解析 CastPolicy，生成 CastResolutionPlan
+  → application 加载最小人物档案；失败时在计划上执行演员 fallback
+  → 在同一分支提交中写入 BranchStoryState、ActiveCast、StoryEvent 与命令结果
+  → 提交后按需加载可降级演出资源
   → 生成 ActorContext
   → 调用场景 LLM
   → 发出演出事件
 ```
 
-状态与 `ActiveCast` 提交应先于场景 LLM 的最终演出调用。只要场景具有对白，就不存在“演员表尚未决定”的最终演出请求；LLM 失败时，状态保持已提交，前端可以重试该事件的演出，不重复执行效果或再次选角。
+状态与 `ActiveCast` 必须作为同一分支 revision 提交，并先于场景 LLM 的最终演出调用。只要场景具有对白，就不存在“演员表尚未决定”的最终演出请求；LLM 或可降级演出资源失败时，状态保持已提交，前端可以使用原 `commandId` 的结果重试演出，不重复执行效果或再次选角。
 
 ### 9.4 自由输入
 
@@ -1273,7 +1308,7 @@ EndingReached
   → 识别主动 Intent 与候选 SemanticSignal
   → 引擎验证并执行主动 Intent
   → 语义信号策略去重、限额并选择效果
-  → 在同一状态事务中提交可接受的指标变化
+  → 在同一 StoryTransaction 中提交可接受的指标变化
   → 重新计算依赖变化指标的节点条件
   → 生成关系、推理、压力等非数值化演出提示
   → 场景 LLM 生成最终对白 JSON
@@ -1283,6 +1318,7 @@ EndingReached
 
 ```json
 {
+  "id": "tool-signal-4",
   "name": "propose_semantic_signals",
   "arguments": {
     "expectedNodeId": "old-school-gate",
@@ -1308,7 +1344,7 @@ EndingReached
 
 - 重新生成场景演出不得重复执行剧情效果。
 - 重新生成场景演出不得重新提交或重复接受语义信号。
-- 回溯到某个用户输入前，必须恢复与该历史位置对应的剧情快照或事件游标。
+- 回溯到某个用户输入前，必须恢复与该历史位置对应的分支检查点和 `headEventId`。
 - Fork 必须从历史位置对应的剧情状态创建新分支，而不是复制分支当前最新状态。
 - 清空历史时同时清理分支级剧情状态，但不得清除全局解锁。
 - 重新生成演出复用该历史位置已经提交的 `ActiveCast`，不得重新运行非确定性选角。
@@ -1482,13 +1518,17 @@ AI 生成不得依赖单次大 Prompt。标准流水线为：
 
 ## 12. 状态、事件与存储
 
-### 12.1 StoryState
+### 12.1 BranchStoryState
+
+`BranchStoryState` 只包含随对话分支 Fork、回档和切换的权威状态：
 
 ```json
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "storyId": "campus-mystery",
   "storyVersion": 3,
+  "sourceHash": "sha256:5b90...",
+  "branchId": "branch-3",
   "revision": 42,
   "currentNodeId": "old-school-gate",
   "variables": {
@@ -1524,54 +1564,90 @@ AI 生成不得依赖单次大 Prompt。标准流水线为：
     {
       "id": "canon-12",
       "text": "绫同意与玩家夜探旧校舍",
-      "sourceEventId": "event-41"
+      "sourceEventId": "01J4M7W3J8MZQ6V1E6H0NBB7R8"
     }
   ],
-  "eventCursor": 41
+  "headEventId": "01J4M7W3J8MZQ6V1E6H0NBB7R8"
 }
 ```
 
-`castState` 属于分支权威状态，随历史检查点、Fork 和回档恢复。`loadedCharacterIds`、立绘纹理和语音模型句柄不写入存档；这些是根据 `ActiveCast` 可重建的应用缓存。项目静态登记表保存在 `StoryProgram`，运行时列表主要记录剧本域、临时和当前参与状态。
+`variables` 只保存定义为 `branch` 的变量；加载器发现 `global` 或未支持的 `run` 变量被写入此处时必须拒绝存档。`castState` 同样属于分支权威状态，随历史检查点、Fork 和回档恢复。`loadedCharacterIds`、立绘纹理和语音模型句柄不写入存档；这些是根据 `ActiveCast` 可重建的 application 缓存。项目静态登记表保存在 `StoryProgram`。
 
-### 12.2 作用域
+### 12.2 GlobalStoryProgress
 
-| 作用域 | 随 Fork 复制 | 随回档恢复 | 示例 |
-| --- | --- | --- | --- |
-| `branch` | 是 | 是 | 信任、怀疑、压力、道具、当前节点、人物生死 |
-| `run` | 所有分支共享或按产品策略复制 | 通常否 | 本周目章节元数据 |
-| `global` | 否 | 否 | 结局图鉴、CG、二周目解锁 |
-
-首版建议只正式支持 `branch` 和 `global`，避免 `run` 作用域语义不清。
-
-### 12.3 事件日志
-
-事件日志用于：
-
-- 调试状态变化。
-- 将历史位置映射到剧情状态。
-- 幂等重放。
-- 分支 Fork。
-- 剧本升级诊断。
-
-事件记录至少包含：
+`GlobalStoryProgress` 与聊天分支分开保存，键空间至少包含用户资料和剧本 ID：
 
 ```json
 {
-  "id": "event-42",
-  "revision": 42,
+  "schemaVersion": 1,
+  "profileId": "local-default",
+  "storyId": "campus-mystery",
+  "revision": 8,
+  "variables": {
+    "unlockedEndings": ["truth-ending"],
+    "unlockedCgs": ["old-school-truth"]
+  },
+  "appliedCommandIds": [
+    "018f6f9a-6ef1-7c61-9b4f-0c91eb94d1f0"
+  ]
+}
+```
+
+全局进度不进入 `BranchStoryState`、分支检查点或聊天快照。Fork 和回档只能恢复分支状态，不能撤销已经获得的结局、CG 或周目解锁。首版全局效果只允许集合追加等单调、可幂等操作；删除、计数递减和任意覆盖不属于首版能力。
+
+### 12.3 作用域与跨存储提交
+
+| 作用域 | 随 Fork 复制 | 随回档恢复 | 权威存储 | 示例 |
+| --- | --- | --- | --- | --- |
+| `branch` | 是 | 是 | `BranchStoryState` | 信任、怀疑、压力、道具、当前节点、人物生死 |
+| `run` | 不支持 | 不支持 | 无 | 本周目共享元数据 |
+| `global` | 否 | 否 | `GlobalStoryProgress` | 结局图鉴、CG、二周目解锁 |
+
+首版正式支持 `branch` 和 `global`；Schema 可以保留 `run` 枚举值，但发布器必须拒绝实际使用，直到其 Fork 和回档语义另行确定。
+
+一次命令可以逻辑上同时产生分支效果与全局解锁，但两个文件存储之间不假设存在操作系统级事务。application 使用 durable outbox 保证：
+
+1. core 在内存中验证完整 `StoryTransaction`，生成分支事件和只包含单调操作的 `globalEffects`。
+2. 分支 generation 原子提交时一并写入以 `commandId` 为键的 global effect outbox。
+3. application 在返回成功 ack 前，将 outbox 幂等应用到 `GlobalStoryProgress` 并原子替换进度文件。
+4. 如果进程在分支提交后、全局应用前退出，恢复流程先排空 outbox，再开放会话。
+5. 同一 `commandId` 的全局效果重复应用必须得到相同结果；分支回档不生成反向全局效果。
+
+因此，对用户可观察的成功命令仍满足全部效果已提交；崩溃窗口由持久 outbox 恢复，而不是依赖跨目录 rename。
+
+### 12.4 分支事件日志
+
+事件日志用于调试、历史位置映射、幂等结果、分支 Fork 和剧本升级诊断。会话可以共用一个有界日志，但每条事件必须携带分支身份和因果父事件：
+
+```json
+{
+  "id": "01J4M7W3J8MZQ6V1E6H0NBB7R8",
+  "sessionEventSeq": 108,
+  "branchId": "branch-3",
+  "branchRevision": 42,
+  "parentEventId": "01J4M7VXR6SS2NA7K7N3Y3M4B1",
   "type": "NodeEntered",
   "timestamp": 1786000000000,
+  "storyId": "campus-mystery",
+  "storyVersion": 3,
+  "sourceHash": "sha256:5b90...",
   "nodeId": "old-school-hall",
   "cause": {
-    "commandId": "cmd-123",
+    "commandId": "018f6f9a-6ef1-7c61-9b4f-0c91eb94d1f0",
     "choiceId": "use-old-key"
   }
 }
 ```
 
-首版可以使用“快照为主、有限事件日志为辅”，不要求完全事件溯源。保存时保留最近事件和关键检查点，避免无限增长。
+- `id` 在整个会话内唯一，不由 branch revision 推导。
+- `sessionEventSeq` 只用于日志排序和实时诊断，不能作为分支重放范围。
+- `headEventId` 与 `parentEventId` 形成分支因果链；Fork 后第一条新事件指向 Fork 检查点的 head。
+- 重放从检查点沿目标分支因果链前进，不能按全局行号范围应用事件。
+- application 资源加载事件不写入该领域日志，也不参与状态重放。
 
-### 12.4 文件结构
+首版采用“快照为主、有限事件日志为辅”，不要求完全事件溯源。裁剪日志前必须生成包含完整 `BranchStoryState`、`headEventId` 和幂等索引的检查点，并保留所有活动分支仍引用的祖先事件。
+
+### 12.5 文件结构
 
 ```text
 data/stories/campus-mystery/
@@ -1594,39 +1670,67 @@ data/stories/campus-mystery/
   revisions/
     0003/
 
+data/story_progress/<profile-id>/
+  campus-mystery.json
+
 data/chat_history/<session-id>/
-  active.json
-  branches.json
-  story-events.jsonl
+  session.json
+  generations/
+    0000000041/
+      active.json
+      branches.json
+      story-events.jsonl
+      global-effects-outbox.json
+    0000000042/
+      active.json
+      branches.json
+      story-events.jsonl
+      global-effects-outbox.json
 ```
 
-所有读写必须经过领域仓库，React 和 bridge 不直接访问这些文件。
+`session.json` 是小型原子指针，只引用当前和上一份完整 generation。所有读写必须经过 application 注入的领域仓库；React 和 bridge 不直接访问这些文件。聊天清理、导入、导出和诊断归档必须显式覆盖 generation 与 outbox 文件，但不能递归删除不属于会话存储的内容。
 
-### 12.5 分支存储升级
+### 12.6 分支存储升级与原子提交
 
-分支格式升级为版本 2：
+generation 中的 `branches.json` 使用版本 2：
 
 ```json
 {
   "version": 2,
+  "generation": 42,
   "activeBranchId": "branch-3",
   "branches": {
     "branch-3": {
+      "id": "branch-3",
+      "parentBranchId": "main",
+      "forkedFromEventId": "01J4M7VXR6SS2NA7K7N3Y3M4B1",
       "messages": [],
       "history": [],
-      "storyState": {},
-      "storyCheckpoints": []
+      "branchStoryState": {},
+      "storyCheckpoints": [],
+      "processedCommands": {}
     }
   }
 }
 ```
 
+`storyCheckpoints` 中每项至少保存 `historyEntryId`、`branchRevision`、`headEventId`、完整分支状态或其受校验快照引用，以及状态 hash。Fork 必须从目标历史项对应的检查点创建，不能从源分支当前最新状态复制。
+
+每次保存按以下顺序执行：
+
+1. 在同一会话目录内创建新的临时 generation，完整写入 active、branches、有限事件日志、幂等索引和 outbox。
+2. 关闭并尽可能刷新全部文件，校验 generation 内部版本、hash 和引用。
+3. 将临时 generation 重命名为最终编号；失败时不修改当前指针。
+4. 通过临时文件加原子 replace 更新 `session.json.currentGeneration`，并保留 `previousGeneration`。
+5. 启动恢复只读取指针指向且校验完整的 generation；当前损坏时回退上一代并给出诊断，不把不同 generation 的文件混合。
+
 迁移规则：
 
-- 版本 1 分支读入时，`storyState` 为 `null`。
-- 非剧本会话继续按原逻辑运行。
-- 版本 2 写入器不得修改版本 1 原文件，直到整个保存事务成功。
-- 剧本版本不兼容时停止恢复并给出明确诊断，不静默重置进度。
+- 没有 `session.json` 时按版本 1 读取根目录 `active.json` 和 `branches.json`，此时 `branchStoryState` 为 `null`。
+- 第一次版本 2 保存创建完整 generation 并最后切换 `session.json`；成功前不覆盖或删除版本 1 文件。
+- 非剧本会话可以继续使用版本 1；进入版本 2 后，active、branches 和 story state 始终来自同一 generation。
+- 剧本版本或 `sourceHash` 不兼容时停止恢复并给出明确诊断，不静默重置进度。
+- generation 生成、指针替换或 outbox 应用失败时不返回成功 ack；恢复后使用 `commandId` 继续未完成提交。
 
 ## 13. 实时协议与前端类型
 
@@ -1652,10 +1756,12 @@ interface ChatOption {
 type ChatOptionPayload = string | ChatOption;
 ```
 
-最终 `options.show` 使用 `ChatOption[]`，`submit-option` 使用：
+最终 `options.show` 使用 `ChatOption[]`，剧情选项通过 `select-story-choice` 提交：
 
 ```json
 {
+  "commandId": "018f6f9a-6ef1-7c61-9b4f-0c91eb94d1f0",
+  "branchId": "branch-3",
   "choiceId": "use-old-key",
   "expectedNodeId": "old-school-gate",
   "expectedRevision": 42
@@ -1684,7 +1790,7 @@ interface ChatSnapshot {
 }
 ```
 
-快照只包含运行界面需要的可见投影，不返回完整 `StoryState` 或秘密内容。
+快照只包含运行界面需要的可见投影，不返回完整 `BranchStoryState`、`GlobalStoryProgress` 或秘密内容。
 
 ### 13.3 新事件
 
@@ -1717,6 +1823,8 @@ request-story-inspector
 
 旧 `submit-option` 在兼容期内继续接受字符串；结构化剧情选项优先使用 `select-story-choice`，避免工具确认选项与剧情选项共享模糊 payload。
 
+除只读 `request-story-inspector` 外，新命令统一使用 9.1 的命令 envelope。ack 至少返回 `commandId`、`branchId`、accepted/rejected、resultingRevision 和 `eventIds`。
+
 ## 14. 与现有聊天运行时的集成
 
 ### 14.1 先抽取会话编排
@@ -1724,6 +1832,7 @@ request-story-inspector
 当前分支、回溯、重新生成和命令处理仍有一部分集中在 `main.py` 的闭包中。接入剧情系统前，应先抽取：
 
 ```text
+application/bootstrap/chat_runtime.py
 application/chat/conversation_session.py
 application/chat/conversation_branch_service.py
 application/story/session.py
@@ -1733,11 +1842,10 @@ application/story/branch_integration.py
 `main.py` 只保留：
 
 - 启动参数解析。
-- 依赖组装。
-- workflow 启停。
-- stream command 到 application service 的转发。
+- 调用 `application.bootstrap.chat_runtime` 的单一入口。
+- 将启动失败转换为进程退出码。
 
-不得把条件解析、效果执行和剧情存档继续加入 `main.py`。
+`application/bootstrap/chat_runtime.py` 负责依赖组装、运行模式选择和 workflow 启停；`application/chat/conversation_session.py` 负责 stream command 到 application service 的分发。不得把命令路由、条件解析、效果执行、分支状态或剧情存档继续留在 `main.py`。
 
 ### 14.2 模板集成
 
@@ -1758,7 +1866,7 @@ application/story/branch_integration.py
 ### 14.3 STAT 集成
 
 - 自由聊天模式：继续接受 LLM 生成的 `STAT`。
-- 剧本模式：权威状态由 `StoryState` 投影，LLM `STAT` 默认忽略或仅作为非权威演出文本。
+- 剧本模式：权威状态由 `StoryStateView` 投影，LLM `STAT` 默认忽略或仅作为非权威演出文本。
 - 前端统一使用 `stats.update` 或新的剧情状态投影渲染，不能展示互相矛盾的两套数值。
 
 ### 14.4 资源演出
@@ -1873,6 +1981,8 @@ frontend/src/features/story-runtime/
 - 互斥条件同时要求成立。
 - `lockedContext` 被复制到 `exposedContext`。
 - `StoryMetric` 引用了不存在、非整数或禁止语义输入的变量。
+- `run` 作用域被实际使用，或 `global` 变量声明了非单调效果。
+- 节点完成/失败状态被重复声明为普通变量。
 - `SemanticSignalDefinition` ID 重复、效果目标缺失或强度映射不完整。
 - 信号限额、重复窗口或信号目录超出允许范围。
 - 隐藏信号的判定标准被复制到场景演出可见上下文。
@@ -1999,6 +2109,8 @@ story.migration.completed
 - 每个效果运算符。
 - 类型错误和边界值。
 - 事务回滚。
+- branch/global 变量按声明路由，`BranchStoryState` 拒绝全局变量。
+- `completedNodeIds/failedNodeIds` 是节点状态唯一事实源。
 - 节点状态派生。
 - 结局判定。
 - 相同命令幂等性。
@@ -2012,12 +2124,13 @@ story.migration.completed
 - 四种 `CastPolicy` 模式、候选过滤、职责绑定、人数上下限和稳定排序。
 - CastPlanner 提交非法/未登记 ID、超员或过期 revision 时被拒绝。
 - 缺少必需职责时按声明 fallback 行为执行。
+- `CastResolutionPlan` 保持纯数据且不执行人物或资源 I/O。
 
 建议使用属性测试验证：
 
 - 状态永远符合变量 Schema。
 - 失败事务不改变 revision。
-- 重放同一事件序列得到相同状态。
+- 沿同一分支因果链重放得到相同状态，兄弟分支事件不会串入。
 
 ### 19.2 application 集成测试
 
@@ -2027,10 +2140,15 @@ story.migration.completed
 - 普通对话语义信号的接受、拒绝、限额和阈值解锁。
 - 引用、提问、讽刺、假设、重复表达和言行不一致场景。
 - 场景 LLM 失败后的演出重试。
+- 同一 `commandId` 重试返回原 ack，不重复执行；相同 ID 的不同 payload 被拒绝。
+- 两个分支从同一检查点交错提交后，各自恢复到正确的 `headEventId` 和状态。
+- 在 generation 完成、指针切换、global outbox 应用等边界注入崩溃，恢复时不会混合不同 generation。
+- 分支回档不撤销 `GlobalStoryProgress`；未完成 global outbox 在会话开放前被幂等排空。
 - 两个相邻场景使用不相交演员表时按需加载、提交、退场和恢复。
 - 中途登场、退场、替换与临时 NPC 晋升完整闭环。
 - Fork 后不同分支拥有不同 `ActiveCast`，回档恢复演员表但重新建立加载缓存。
-- 人物资源加载失败时，必需与可选人物分别执行正确 fallback。
+- 必需人物最小档案加载失败时在提交前执行 fallback；无 fallback 时剧情 revision 不变。
+- 可降级演出资源在提交后加载失败时保留剧情状态并发出 application 事件。
 - 清空、回溯、重新生成、Fork 和切换分支。
 - 剧本版本不匹配恢复。
 - 非剧本聊天回归。
@@ -2038,7 +2156,7 @@ story.migration.completed
 ### 19.3 协议测试
 
 - 新旧选项 payload 兼容。
-- WebSocket 命令 ack。
+- WebSocket 命令 ack 包含 `commandId`、`branchId`、结果 revision 和事件 ID；重试返回同一结果。
 - `story.*` 事件折叠进快照。
 - 重连恢复和重复事件忽略。
 - 秘密字段不出现在快照和 DTO 中。
@@ -2069,6 +2187,7 @@ story.migration.completed
 - 一个由指标阈值解锁的节点。
 - 一段由 RuleGraph 编译并可追踪到源节点的解锁逻辑。
 - 至少一次 Fork 后状态差异。
+- 回档其中一个分支后，全局结局解锁保持不变。
 - 至少两个演员表不相交的相邻场景。
 - `fixed`、`mixed` 和 `role-based` 选角各一例。
 - 一次通过工具循环发生的中途人物登场。
@@ -2138,11 +2257,12 @@ story_dynamic_cast_enabled
 交付：
 
 - 为现有自由聊天、分支、回溯、重新生成和 Fork 建立基线 E2E 与协议快照测试。
-- 将分支状态和命令处理从 `main.py` 抽到 `application/chat` service。
+- 将分支状态和命令处理从 `main.py` 抽到 `application/chat` service，将依赖组装和 workflow 生命周期移入 `application/bootstrap`。
 - 建立 `application/story` 入口和剧情功能开关，但不改变默认行为。
+- 保持 `PROJECT_STRUCTURE.md`、架构守卫和 Tauri 资源验证与新增 story 子目录一致。
 - 明确旧 `selectedCharacters`、聊天历史和模板的兼容边界。
 
-退出标准：`main.py` 不再拥有主要分支操作实现；功能开关关闭时，基线测试与现有协议保持一致。
+退出标准：`main.py` 只解析入口参数、调用 application bootstrap 并映射退出码；功能开关关闭时，基线测试与现有协议保持一致。
 
 ### 阶段 1：剧本 Schema 与编译骨架
 
@@ -2162,29 +2282,29 @@ story_dynamic_cast_enabled
 
 交付：
 
-- `StoryState`、领域命令、领域事件、revision、幂等和事务回滚。
+- `BranchStoryState`、`GlobalStoryProgress`、`StoryStateView`、领域命令、领域事件、revision、幂等和事务回滚。
 - 节点进入、选择、Intent、条件、效果、解锁和结局判定。
 - `StoryMetric`、`SemanticSignalDefinition`、去重、限额和 `causeGroup` 的纯逻辑；信号输入使用测试夹具，不调用模型。
 - 纯逻辑 `CastResolver`：固定、混合、职责和动态候选模式，以及稳定排序和 fallback。
 - 路径模拟、演员表可解析性检查和属性测试。
 - `StubSceneRenderer`，仅把权威结果转换为可断言的演出占位事件。
 
-退出标准：纯领域测试能够把固定剧本从起点运行到所有测试结局；事件重放得到相同状态；所有测试场景的 `ActiveCast` 都可确定性复现。
+退出标准：纯领域测试能够把固定剧本从起点运行到所有测试结局；沿分支因果链重放得到相同状态；branch/global 变量不会进入错误存储；所有测试场景的 `ActiveCast` 都可确定性复现。
 
 ### 阶段 3：会话、存档与实时协议闭环
 
 交付：
 
 - `StorySession` 与聊天会话编排集成。
-- 分支存储版本 2、历史检查点、事件游标和原子保存。
-- `storyState` 与 `castState` 的 Fork、回档、切换、重连和重启恢复。
+- 分支存储版本 2、generation 指针、历史检查点、因果 `headEventId`、幂等索引、global effect outbox 和原子保存。
+- `branchStoryState` 与 `castState` 的 Fork、回档、切换、重连和重启恢复；全局进度不随分支恢复。
 - 结构化选项、剧情快照、实时事件和兼容命令。
 - 聊天舞台最小节点、目标、状态和演员表调试视图。
 - 旧存档只读迁移、过期 `sourceHash` 拒绝和可恢复诊断。
 
 人物资源仍使用测试替身，场景演出仍使用 `StubSceneRenderer`。
 
-退出标准：手写剧本可以在真实聊天舞台完成、回档、Fork、切换和恢复；重复命令不产生重复效果，分支切换同时恢复对应 `ActiveCast`。
+退出标准：手写剧本可以在真实聊天舞台完成、回档、Fork、切换和恢复；相同 `commandId` 返回相同结果；在 generation 和 outbox 的每个崩溃窗口恢复后，消息、分支状态、事件头和全局解锁保持一致；分支切换同时恢复对应 `ActiveCast`。
 
 ### 阶段 4：动态人物与资源适配
 
@@ -2199,7 +2319,7 @@ story_dynamic_cast_enabled
 
 本阶段先支持已登记人物和剧本域人物；`AdHocCharacter` 的运行时生成与晋升不作为阻塞项。
 
-退出标准：两个演员表不相交的相邻场景可以在聊天舞台正确加载和释放人物；资源加载失败按策略降级；重启后从 `castState` 重建资源而不改变剧情事实。
+退出标准：两个演员表不相交的相邻场景可以在聊天舞台正确加载和释放人物；必需人物 readiness 失败在提交前执行 fallback，可降级演出资源失败发生在提交后且不改变剧情事实；重启后从 `castState` 重建资源。
 
 ### 阶段 5：场景 LLM、自由输入与受控演出
 
@@ -2256,7 +2376,7 @@ story_dynamic_cast_enabled
 
 | 风险 | 影响 | 缓解措施 |
 | --- | --- | --- |
-| 状态与聊天历史不同步 | 回档或 Fork 后世界线错乱 | 历史检查点、revision、同一会话事务 |
+| 状态与聊天历史不同步 | 回档或 Fork 后世界线错乱 | 单一 generation、原子指针、因果事件头和恢复校验 |
 | AI 生成图结构不完整 | 无法发布或游戏软锁 | 多阶段生成、静态校验、路径模拟、定向修复 |
 | Prompt 泄露隐藏剧情 | 剧透和体验破坏 | 程序侧 ActorContext 投影与 DTO 秘密测试 |
 | 选项协议迁移影响旧 UI | 聊天路径回归 | 联合类型兼容、双路径测试、分阶段迁移 |
@@ -2309,7 +2429,7 @@ story_dynamic_cast_enabled
 4. 回溯采用每个用户轮次完整快照，还是检查点加事件重放。
 5. 动态作者默认关闭，还是在 AI 生成剧本中默认按章节启用。
 6. 锁定条件应支持完全隐藏、模糊提示和完整显示中的哪些组合。
-7. 全局解锁数据应按剧本、角色还是用户资料分区。
+7. 本地 `profileId` 采用单一默认资料还是显式多资料，以及资料删除、导出和合并策略。
 8. 发布后的补丁如何处理正在运行的旧版本存档。
 9. 是否需要首版提供剧本包导入导出与签名来源提示。
 10. AI 编译器的固定评测集、结构通过率和最低发布阈值如何定义。
