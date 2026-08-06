@@ -175,9 +175,14 @@ def _parse_condition(parser: _Parser, value: Any, path: str) -> ConditionSpec:
         return ConditionSpec(
             "not", (_parse_condition(parser, raw_args, f"{path}.not"),)
         )
-    if op in {"completed", "flag", "available", "alive", "sameLocationAs"}:
+    if op in {"completed", "flag", "sameLocationAs"}:
         return ConditionSpec(
             op, (parser.string(raw_args, f"{path}.{op}", required=True),)
+        )
+    if op in {"available", "alive"}:
+        return ConditionSpec(
+            op,
+            (parser.boolean(raw_args, f"{path}.{op}", default=True),),
         )
     if op in {"equals", "gte", "lte", "contains"}:
         args = parser.sequence(raw_args, f"{path}.{op}")

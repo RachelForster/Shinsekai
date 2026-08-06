@@ -145,6 +145,29 @@ def test_set_initial_values_are_normalized_to_immutable_tuple() -> None:
     assert project.variables_by_id["inventory"].initial == ("key", "photo")
 
 
+def test_cast_candidate_status_conditions_accept_boolean_values() -> None:
+    source = _minimal_source()
+    source["narrativeGraph"]["nodes"][0]["castPolicy"] = {
+        "mode": "dynamic",
+        "optionalQuery": {
+            "allConditions": [
+                {"available": True},
+                {"alive": True},
+                {"sameLocationAs": "player"},
+            ]
+        },
+    }
+
+    project = parse_story_project(source)
+    conditions = project.narrative_graph.nodes[0].cast_policy.optional_query.conditions
+
+    assert [(condition.op, condition.args) for condition in conditions] == [
+        ("available", (True,)),
+        ("alive", (True,)),
+        ("sameLocationAs", ("player",)),
+    ]
+
+
 def _minimal_source() -> dict:
     return {
         "schemaVersion": 1,
