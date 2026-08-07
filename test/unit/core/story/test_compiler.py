@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from application.story import load_story_project
 from core.story import (
+    CandidateConditionSpec,
     CharacterSource,
     CharacterSourceType,
     ConditionSpec,
@@ -17,7 +19,6 @@ from core.story import (
     RuleNode,
     StoryCompileError,
     StoryCompiler,
-    load_story_project,
 )
 from core.story.compiler import story_program_json
 
@@ -47,6 +48,62 @@ def test_compile_produces_stable_program_and_source_map(project) -> None:
     )
     assert story_program_json(first) == story_program_json(second)
     assert json.loads(story_program_json(first))["story_id"] == "campus-mystery"
+
+
+def test_compiled_program_is_deeply_immutable_and_detached(project) -> None:
+    mutable_config = {
+        "variable": "trust.ling",
+        "display": {"labels": ["before"]},
+    }
+    changed_rule = replace(project.rule_graph.nodes[0], config=mutable_config)
+    changed = replace(
+        project,
+        rule_graph=replace(
+            project.rule_graph,
+            nodes=(changed_rule,) + project.rule_graph.nodes[1:],
+        ),
+    )
+    program = StoryCompiler().compile(changed)
+    serialized = story_program_json(program)
+    source_hash = program.source_hash
+
+    mutable_config["display"]["labels"].append("after")
+
+    assert program.rule_graph is not changed.rule_graph
+    assert program.rule_graph.nodes[0].config is not changed_rule.config
+    assert story_program_json(program) == serialized
+    assert program.source_hash == source_hash
+    with pytest.raises(TypeError):
+        changed.rule_graph.nodes[0].config["variable"] = "other"
+    with pytest.raises(TypeError):
+        program.rule_graph.nodes[0].config["variable"] = "other"
+    with pytest.raises(TypeError):
+        program.source_map["node:transfer-day"] = "changed"
+
+
+def test_compiled_program_keeps_only_exposed_context(project) -> None:
+    start = replace(
+        project.narrative_graph.nodes[0],
+        exposed_context={"summary": "Visible", "facts": ["one"]},
+        locked_context={"secret": "Hidden"},
+    )
+    changed = replace(
+        project,
+        narrative_graph=replace(
+            project.narrative_graph,
+            nodes=(start,) + project.narrative_graph.nodes[1:],
+        ),
+    )
+
+    program = StoryCompiler().compile(changed)
+    serialized_node = json.loads(story_program_json(program))["nodes"][0]
+
+    assert serialized_node["exposed_context"] == {
+        "summary": "Visible",
+        "facts": ["one"],
+    }
+    assert "locked_context" not in serialized_node
+    assert program.nodes[0].exposed_context["facts"] == ("one",)
 
 
 def test_compile_rejects_missing_start_node(project) -> None:
@@ -175,7 +232,28 @@ def test_compile_rejects_embedded_character_path_escape(project) -> None:
     assert "character.path_escape" in {item.code for item in result.diagnostics}
 
 
-def test_published_unpinned_local_character_is_warning(project) -> None:
+def test_compile_rejects_windows_drive_character_path(project) -> None:
+    character = project.character_registry.characters[1]
+    broken_character = replace(
+        character,
+        source=CharacterSource(
+            type=CharacterSourceType.EMBEDDED,
+            path=r"C:\outside.yaml",
+        ),
+    )
+    broken_registry = replace(
+        project.character_registry,
+        characters=(project.character_registry.characters[0], broken_character),
+    )
+
+    result = StoryCompiler().compile_with_diagnostics(
+        replace(project, character_registry=broken_registry)
+    )
+
+    assert "character.path_escape" in {item.code for item in result.diagnostics}
+
+
+def test_published_unpinned_local_character_is_error(project) -> None:
     character = project.character_registry.characters[0]
     broken_character = replace(
         character,
@@ -191,11 +269,143 @@ def test_published_unpinned_local_character_is_warning(project) -> None:
 
     result = StoryCompiler().compile_with_diagnostics(changed)
 
-    assert result.ok
-    warning = next(
+    assert not result.ok
+    diagnostic = next(
         item for item in result.diagnostics if item.code == "character.unpinned"
     )
-    assert warning.severity.value == "warning"
+    assert diagnostic.severity.value == "error"
+    with pytest.raises(StoryCompileError):
+        StoryCompiler().compile(changed)
+
+
+def test_published_local_character_accepts_content_digest_pin(project) -> None:
+    character = project.character_registry.characters[0]
+    pinned_character = replace(
+        character,
+        source=replace(
+            character.source,
+            revision=None,
+            content_digest="sha256:test-ling",
+        ),
+    )
+    changed = replace(
+        project,
+        character_registry=replace(
+            project.character_registry,
+            characters=(pinned_character, project.character_registry.characters[1]),
+        ),
+    )
+
+    result = StoryCompiler().compile_with_diagnostics(changed)
+
+    assert result.ok
+
+
+def test_compile_rejects_forbidden_only_required_role_candidate(project) -> None:
+    gate = project.narrative_graph.nodes[1]
+    broken_policy = replace(gate.cast_policy, forbidden=("detective-zhou",))
+    broken_gate = replace(gate, cast_policy=broken_policy)
+    changed = replace(
+        project,
+        narrative_graph=replace(
+            project.narrative_graph,
+            nodes=(
+                project.narrative_graph.nodes[0],
+                broken_gate,
+                project.narrative_graph.nodes[2],
+            ),
+        ),
+    )
+
+    result = StoryCompiler().compile_with_diagnostics(changed)
+
+    assert "cast.unresolved_role" in {item.code for item in result.diagnostics}
+
+
+def test_compile_validates_required_role_candidate_count(project) -> None:
+    gate = project.narrative_graph.nodes[1]
+    required_role = replace(gate.cast_policy.required_roles[0], count=2)
+    broken_policy = replace(gate.cast_policy, required_roles=(required_role,))
+    broken_gate = replace(gate, cast_policy=broken_policy)
+    changed = replace(
+        project,
+        narrative_graph=replace(
+            project.narrative_graph,
+            nodes=(
+                project.narrative_graph.nodes[0],
+                broken_gate,
+                project.narrative_graph.nodes[2],
+            ),
+        ),
+    )
+
+    result = StoryCompiler().compile_with_diagnostics(changed)
+
+    assert "cast.unresolved_role" in {item.code for item in result.diagnostics}
+
+
+def test_compile_diagnoses_non_string_rule_config_keys(project) -> None:
+    broken_rule = replace(project.rule_graph.nodes[0], config={1: "a", "x": "b"})
+    changed = replace(
+        project,
+        rule_graph=replace(
+            project.rule_graph,
+            nodes=(broken_rule,) + project.rule_graph.nodes[1:],
+        ),
+    )
+
+    result = StoryCompiler().compile_with_diagnostics(changed)
+
+    assert not result.ok
+    assert "schema.mapping_key" in {item.code for item in result.diagnostics}
+    with pytest.raises(StoryCompileError) as exc_info:
+        StoryCompiler().compile(changed)
+    assert "schema.mapping_key" in {item.code for item in exc_info.value.diagnostics}
+
+
+def test_compile_rejects_candidate_predicate_in_narrative_condition(project) -> None:
+    start = replace(
+        project.narrative_graph.nodes[0],
+        enter_when=ConditionSpec("available", (True,)),
+    )
+    changed = replace(
+        project,
+        narrative_graph=replace(
+            project.narrative_graph,
+            nodes=(start,) + project.narrative_graph.nodes[1:],
+        ),
+    )
+
+    result = StoryCompiler().compile_with_diagnostics(changed)
+
+    assert "condition.operator" in {item.code for item in result.diagnostics}
+
+
+def test_compile_rejects_narrative_condition_in_candidate_query(project) -> None:
+    gate = project.narrative_graph.nodes[1]
+    query = replace(
+        gate.cast_policy.optional_query,
+        conditions=(CandidateConditionSpec("gte", ("missing.metric", 1)),),
+    )
+    broken_gate = replace(
+        gate,
+        cast_policy=replace(gate.cast_policy, optional_query=query),
+    )
+    changed = replace(
+        project,
+        narrative_graph=replace(
+            project.narrative_graph,
+            nodes=(
+                project.narrative_graph.nodes[0],
+                broken_gate,
+                project.narrative_graph.nodes[2],
+            ),
+        ),
+    )
+
+    result = StoryCompiler().compile_with_diagnostics(changed)
+
+    assert "cast.condition_operator" in {item.code for item in result.diagnostics}
 
 
 def test_compile_validates_condition_variable_type(project) -> None:

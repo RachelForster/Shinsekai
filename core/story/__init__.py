@@ -14,6 +14,7 @@ from .diagnostics import (
 )
 from .models import (
     AdHocPolicy,
+    CandidateConditionSpec,
     CandidateQuery,
     CastConstraints,
     CastDefaults,
@@ -47,10 +48,11 @@ from .models import (
     VariableScope,
     VariableType,
 )
-from .schema import StoryProjectLoader, load_story_project, parse_story_project
+from .schema import parse_story_project
 
 __all__ = [
     "AdHocPolicy",
+    "CandidateConditionSpec",
     "CandidateQuery",
     "CastConstraints",
     "CastDefaults",
@@ -85,12 +87,10 @@ __all__ = [
     "StoryNode",
     "StoryProgram",
     "StoryProject",
-    "StoryProjectLoader",
     "StoryValidationError",
     "StoryVariableDefinition",
     "VariableScope",
     "VariableType",
-    "load_story_project",
     "parse_story_project",
     "canonical_json",
     "story_program_json",

@@ -369,6 +369,15 @@ def test_application_does_not_own_concrete_network_transport() -> None:
     )
 
 
+def test_core_story_schema_remains_mapping_only() -> None:
+    """Story filesystem and YAML orchestration belongs to application/story."""
+
+    schema = REPO_ROOT / "core" / "story" / "schema.py"
+    imported_roots = _imported_roots(schema)
+
+    assert not imported_roots.intersection({"pathlib", "yaml"})
+
+
 def test_config_does_not_hide_forbidden_dynamic_imports() -> None:
     """Dynamic imports must not bypass the declared config dependency rule."""
 

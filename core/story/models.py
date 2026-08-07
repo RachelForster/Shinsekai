@@ -2,12 +2,48 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum
+from types import MappingProxyType
 from typing import Any, Mapping
 
 
 JsonValue = None | bool | int | float | str | list["JsonValue"] | dict[str, "JsonValue"]
+
+
+class FrozenDict(Mapping[Any, Any]):
+    """A recursively copied, read-only mapping used by immutable story models."""
+
+    __slots__ = ("_data",)
+
+    def __init__(self, source: Mapping[Any, Any] | None = None) -> None:
+        frozen = {key: _freeze_value(value) for key, value in (source or {}).items()}
+        self._data = MappingProxyType(frozen)
+
+    def __getitem__(self, key: Any) -> Any:
+        return self._data[key]
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self._data)
+
+    def __len__(self) -> int:
+        return len(self._data)
+
+    def __repr__(self) -> str:
+        return f"FrozenDict({self._data!r})"
+
+
+def _freeze_value(value: Any) -> Any:
+    if isinstance(value, FrozenDict):
+        return value
+    if isinstance(value, Mapping):
+        return FrozenDict(value)
+    if isinstance(value, (tuple, list)):
+        return tuple(_freeze_value(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(_freeze_value(item) for item in value)
+    return value
 
 
 class VariableType(str, Enum):
@@ -65,11 +101,32 @@ class ConditionSpec:
     op: str
     args: tuple[Any, ...] = ()
 
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "args", tuple(_freeze_value(item) for item in self.args)
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateConditionSpec:
+    op: str
+    args: tuple[Any, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "args", tuple(_freeze_value(item) for item in self.args)
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class EffectSpec:
     op: str
     args: tuple[Any, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "args", tuple(_freeze_value(item) for item in self.args)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +141,9 @@ class StoryVariableDefinition:
     enum_values: tuple[str, ...] = ()
     allow_semantic_input: bool = False
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "initial", _freeze_value(self.initial))
+
 
 @dataclass(frozen=True, slots=True)
 class CharacterSource:
@@ -91,6 +151,7 @@ class CharacterSource:
     character_id: str | None = None
     path: str | None = None
     revision: str | None = None
+    content_digest: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,7 +200,7 @@ class RequiredRole:
 class CandidateQuery:
     any_tags: tuple[str, ...] = ()
     all_tags: tuple[str, ...] = ()
-    conditions: tuple[ConditionSpec, ...] = ()
+    conditions: tuple[CandidateConditionSpec, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,6 +268,10 @@ class StoryNode:
     exposed_context: Mapping[str, Any] = field(default_factory=dict)
     locked_context: Mapping[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "exposed_context", FrozenDict(self.exposed_context))
+        object.__setattr__(self, "locked_context", FrozenDict(self.locked_context))
+
 
 @dataclass(frozen=True, slots=True)
 class NarrativeGraph:
@@ -230,6 +295,9 @@ class RuleNode:
     type: str
     config: Mapping[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "config", FrozenDict(self.config))
+
 
 @dataclass(frozen=True, slots=True)
 class RuleEdge:
@@ -242,6 +310,10 @@ class RuleGraph:
     version: int = 1
     nodes: tuple[RuleNode, ...] = ()
     edges: tuple[RuleEdge, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "nodes", tuple(self.nodes))
+        object.__setattr__(self, "edges", tuple(self.edges))
 
     @property
     def by_id(self) -> Mapping[str, RuleNode]:
@@ -285,6 +357,10 @@ class RuleNodeSchema:
     inputs: Mapping[str, PortSchema] = field(default_factory=dict)
     outputs: Mapping[str, PortSchema] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "inputs", FrozenDict(self.inputs))
+        object.__setattr__(self, "outputs", FrozenDict(self.outputs))
+
 
 @dataclass(frozen=True, slots=True)
 class CompiledStoryNode:
@@ -296,6 +372,10 @@ class CompiledStoryNode:
     choices: tuple[StoryChoice, ...]
     freeform_intents: tuple[FreeformIntent, ...]
     cast_policy: CastPolicy
+    exposed_context: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "exposed_context", FrozenDict(self.exposed_context))
 
 
 @dataclass(frozen=True, slots=True)
@@ -310,6 +390,9 @@ class StoryProgram:
     nodes: tuple[CompiledStoryNode, ...]
     rule_graph: RuleGraph
     source_map: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "source_map", FrozenDict(self.source_map))
 
     @property
     def nodes_by_id(self) -> Mapping[str, CompiledStoryNode]:

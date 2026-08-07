@@ -6,7 +6,7 @@ from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
 import hashlib
 import json
-from pathlib import PurePosixPath
+import math
 from typing import Any, Iterable, Mapping
 
 from .diagnostics import (
@@ -15,6 +15,7 @@ from .diagnostics import (
     StoryDiagnostic,
 )
 from .models import (
+    CandidateConditionSpec,
     CastMode,
     CastPolicy,
     CompiledStoryNode,
@@ -30,6 +31,7 @@ from .models import (
     StoryVariableDefinition,
     VariableType,
 )
+from .path_policy import is_story_relative_path
 
 
 def _ports(
@@ -206,6 +208,7 @@ def _primitive(value: Any) -> Any:
 def canonical_json(value: Any) -> str:
     return json.dumps(
         _primitive(value),
+        allow_nan=False,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -215,6 +218,7 @@ def canonical_json(value: Any) -> str:
 def story_program_json(program: StoryProgram, *, indent: int | None = None) -> str:
     return json.dumps(
         _primitive(program),
+        allow_nan=False,
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":") if indent is None else None,
@@ -261,6 +265,7 @@ class StoryCompiler:
                 choices=node.choices,
                 freeform_intents=node.freeform_intents,
                 cast_policy=node.cast_policy,
+                exposed_context=node.exposed_context,
             )
             for node in project.narrative_graph.nodes
         )
@@ -277,6 +282,14 @@ class StoryCompiler:
                 )
         for index, node in enumerate(project.rule_graph.nodes):
             source_map[f"rule:{node.id}"] = f"$.logicGraph.nodes[{index}]"
+        rule_graph = RuleGraph(
+            version=project.rule_graph.version,
+            nodes=tuple(
+                RuleNode(id=node.id, type=node.type, config=node.config)
+                for node in project.rule_graph.nodes
+            ),
+            edges=tuple(project.rule_graph.edges),
+        )
         return CompileResult(
             program=StoryProgram(
                 schema_version=1,
@@ -287,7 +300,7 @@ class StoryCompiler:
                 variables=project.variables,
                 character_registry=project.character_registry,
                 nodes=nodes,
-                rule_graph=project.rule_graph,
+                rule_graph=rule_graph,
                 source_map=source_map,
             ),
             diagnostics=tuple(diagnostics),
@@ -335,6 +348,16 @@ class StoryCompiler:
             )
             self._validate_cast_policy(
                 node.cast_policy, characters, diagnostics, f"{node_path}.castPolicy"
+            )
+            self._validate_json_value(
+                node.exposed_context,
+                diagnostics,
+                f"{node_path}.exposedContext",
+            )
+            self._validate_json_value(
+                node.locked_context,
+                diagnostics,
+                f"{node_path}.lockedContext",
             )
             leaked_values = self._leaf_strings(
                 node.exposed_context
@@ -466,28 +489,26 @@ class StoryCompiler:
             )
         for index, character in enumerate(registry.characters):
             path = f"$.cast.characters[{index}].source"
-            if character.source.path:
-                normalized = character.source.path.replace("\\", "/")
-                source_path = PurePosixPath(normalized)
-                if source_path.is_absolute() or ".." in source_path.parts:
-                    self._error(
-                        diagnostics,
-                        "character.path_escape",
-                        "character source path must stay inside the story root",
-                        f"{path}.path",
-                    )
+            if character.source.path and not is_story_relative_path(
+                character.source.path
+            ):
+                self._error(
+                    diagnostics,
+                    "character.path_escape",
+                    "character source path must stay inside the story root",
+                    f"{path}.path",
+                )
             if (
                 project.status == "published"
                 and character.source.type.value == "local-library"
                 and not character.source.revision
+                and not character.source.content_digest
             ):
-                diagnostics.append(
-                    StoryDiagnostic(
-                        code="character.unpinned",
-                        message="published local-library character has no pinned revision",
-                        path=f"{path}.revision",
-                        severity=DiagnosticSeverity.WARNING,
-                    )
+                self._error(
+                    diagnostics,
+                    "character.unpinned",
+                    "published local-library character must pin a revision or content digest",
+                    path,
                 )
 
     def _validate_cast_policy(
@@ -534,8 +555,21 @@ class StoryCompiler:
                 "required characters and roles exceed maxActive",
                 path,
             )
-        available_roles = {
-            role for character in characters.values() for role in character.roles
+        for condition_index, condition in enumerate(policy.optional_query.conditions):
+            self._validate_candidate_condition(
+                condition,
+                characters,
+                diagnostics,
+                f"{path}.optionalQuery.allConditions[{condition_index}]",
+            )
+        any_tags = set(policy.optional_query.any_tags)
+        all_tags = set(policy.optional_query.all_tags)
+        eligible_characters = {
+            identifier: character
+            for identifier, character in characters.items()
+            if identifier not in forbidden
+            and (not any_tags or any_tags.intersection(character.tags))
+            and all_tags.issubset(character.tags)
         }
         for role_index, role in enumerate(policy.required_roles):
             role_path = f"{path}.requiredRoles[{role_index}]"
@@ -547,14 +581,19 @@ class StoryCompiler:
                         f"preferred character {identifier!r} is not registered",
                         f"{role_path}.prefer[{prefer_index}]",
                     )
-            if (
-                role.role not in available_roles
-                and policy.fallback.on_missing_role == "error"
+            role_candidates = tuple(
+                character
+                for character in eligible_characters.values()
+                if role.role in character.roles
+            )
+            if len(role_candidates) < role.count and (
+                policy.fallback.on_missing_role == "error"
             ):
                 self._error(
                     diagnostics,
                     "cast.unresolved_role",
-                    f"no registered character can satisfy role {role.role!r}",
+                    f"role {role.role!r} requires {role.count} eligible character(s), "
+                    f"but only {len(role_candidates)} remain after policy filters",
                     role_path,
                 )
         if policy.mode == CastMode.FIXED and policy.required_roles:
@@ -565,6 +604,55 @@ class StoryCompiler:
                 f"{path}.requiredRoles",
             )
 
+    def _validate_candidate_condition(
+        self,
+        condition: CandidateConditionSpec,
+        characters: Mapping[str, Any],
+        diagnostics: list[StoryDiagnostic],
+        path: str,
+    ) -> None:
+        if not isinstance(condition, CandidateConditionSpec):
+            self._error(
+                diagnostics,
+                "cast.condition_context",
+                "optionalQuery requires candidate conditions",
+                path,
+            )
+            return
+        if condition.op in {"available", "alive"}:
+            value = condition.args[0] if len(condition.args) == 1 else None
+            if len(condition.args) != 1 or not isinstance(value, bool):
+                self._error(
+                    diagnostics,
+                    "cast.condition_value",
+                    f"{condition.op} requires one boolean value",
+                    path,
+                )
+            return
+        if condition.op == "sameLocationAs":
+            target = condition.args[0] if len(condition.args) == 1 else None
+            if not isinstance(target, str) or not target:
+                self._error(
+                    diagnostics,
+                    "cast.condition_value",
+                    "sameLocationAs requires one non-empty actor identifier",
+                    path,
+                )
+            elif target != "player" and target not in characters:
+                self._error(
+                    diagnostics,
+                    "cast.condition_unknown_actor",
+                    f"sameLocationAs actor {target!r} is not registered",
+                    path,
+                )
+            return
+        self._error(
+            diagnostics,
+            "cast.condition_operator",
+            f"unsupported candidate predicate {condition.op!r}",
+            path,
+        )
+
     def _validate_condition(
         self,
         condition: ConditionSpec,
@@ -573,6 +661,23 @@ class StoryCompiler:
         diagnostics: list[StoryDiagnostic],
         path: str,
     ) -> None:
+        if not isinstance(condition, ConditionSpec):
+            self._error(
+                diagnostics,
+                "condition.context",
+                "narrative fields require narrative state conditions",
+                path,
+            )
+            return
+        if condition.op in {"true", "false"}:
+            if condition.args:
+                self._error(
+                    diagnostics,
+                    "condition.arity",
+                    f"{condition.op} does not accept arguments",
+                    path,
+                )
+            return
         if condition.op in {"all", "any"}:
             for index, child in enumerate(condition.args):
                 self._validate_condition(
@@ -584,14 +689,35 @@ class StoryCompiler:
                 )
             return
         if condition.op == "not":
+            if len(condition.args) != 1:
+                self._error(
+                    diagnostics,
+                    "condition.arity",
+                    "not requires one condition",
+                    path,
+                )
             if condition.args:
                 self._validate_condition(
                     condition.args[0], variables, nodes, diagnostics, f"{path}.not"
                 )
             return
         if condition.op == "completed":
+            if len(condition.args) != 1:
+                self._error(
+                    diagnostics,
+                    "condition.arity",
+                    "completed requires one node identifier",
+                    path,
+                )
             node_id = condition.args[0] if condition.args else None
-            if node_id not in nodes:
+            if not isinstance(node_id, str):
+                self._error(
+                    diagnostics,
+                    "condition.reference_type",
+                    "completed requires a string node identifier",
+                    path,
+                )
+            elif node_id not in nodes:
                 self._error(
                     diagnostics,
                     "condition.unknown_node",
@@ -600,9 +726,25 @@ class StoryCompiler:
                 )
             return
         if condition.op == "flag":
+            if len(condition.args) != 1:
+                self._error(
+                    diagnostics,
+                    "condition.arity",
+                    "flag requires one variable identifier",
+                    path,
+                )
             variable_id = condition.args[0] if condition.args else None
-            variable = variables.get(variable_id)
-            if variable is None or variable.type != VariableType.BOOLEAN:
+            variable = (
+                variables.get(variable_id) if isinstance(variable_id, str) else None
+            )
+            if not isinstance(variable_id, str):
+                self._error(
+                    diagnostics,
+                    "condition.reference_type",
+                    "flag requires a string variable identifier",
+                    path,
+                )
+            elif variable is None or variable.type != VariableType.BOOLEAN:
                 self._error(
                     diagnostics,
                     "condition.invalid_flag",
@@ -611,9 +753,25 @@ class StoryCompiler:
                 )
             return
         if condition.op in {"equals", "gte", "lte", "contains"}:
+            if len(condition.args) != 2:
+                self._error(
+                    diagnostics,
+                    "condition.arity",
+                    f"{condition.op} requires two arguments",
+                    path,
+                )
             variable_id = condition.args[0] if condition.args else None
-            variable = variables.get(variable_id)
-            if variable is None:
+            variable = (
+                variables.get(variable_id) if isinstance(variable_id, str) else None
+            )
+            if not isinstance(variable_id, str):
+                self._error(
+                    diagnostics,
+                    "condition.reference_type",
+                    f"{condition.op} requires a string variable identifier",
+                    path,
+                )
+            elif variable is None:
                 self._error(
                     diagnostics,
                     "condition.unknown_variable",
@@ -666,6 +824,13 @@ class StoryCompiler:
                         f"comparison value is invalid for {variable.type.value}",
                         path,
                     )
+            return
+        self._error(
+            diagnostics,
+            "condition.operator",
+            f"unsupported narrative condition operator {condition.op!r}",
+            path,
+        )
 
     def _validate_effects(
         self,
@@ -679,8 +844,17 @@ class StoryCompiler:
             effect_path = f"{path}[{index}]"
             if effect.op in {"set", "increment", "add-set", "remove-set"}:
                 variable_id = effect.args[0] if effect.args else None
-                variable = variables.get(variable_id)
-                if variable is None:
+                variable = (
+                    variables.get(variable_id) if isinstance(variable_id, str) else None
+                )
+                if not isinstance(variable_id, str):
+                    self._error(
+                        diagnostics,
+                        "effect.reference_type",
+                        f"{effect.op} requires a string variable identifier",
+                        effect_path,
+                    )
+                elif variable is None:
                     self._error(
                         diagnostics,
                         "effect.unknown_variable",
@@ -733,7 +907,14 @@ class StoryCompiler:
                         )
             elif effect.op == "unlock":
                 target = effect.args[0] if effect.args else None
-                if target not in nodes:
+                if not isinstance(target, str):
+                    self._error(
+                        diagnostics,
+                        "effect.reference_type",
+                        "unlock requires a string node identifier",
+                        effect_path,
+                    )
+                elif target not in nodes:
                     self._error(
                         diagnostics,
                         "effect.unknown_node",
@@ -752,6 +933,7 @@ class StoryCompiler:
         adjacency: dict[str, set[str]] = {node.id: set() for node in graph.nodes}
         for index, node in enumerate(graph.nodes):
             path = f"$.logicGraph.nodes[{index}]"
+            self._validate_json_value(node.config, diagnostics, f"{path}.config")
             schema = self._node_schemas.get(node.type)
             if schema is None:
                 self._error(
@@ -858,8 +1040,17 @@ class StoryCompiler:
             "remove-set",
         }:
             variable_id = node.config.get("variable")
-            variable = variables.get(variable_id)
-            if variable is None:
+            variable = (
+                variables.get(variable_id) if isinstance(variable_id, str) else None
+            )
+            if not isinstance(variable_id, str):
+                self._error(
+                    diagnostics,
+                    "rule.invalid_config",
+                    f"{node.type} requires a string variable identifier",
+                    f"{path}.variable",
+                )
+            elif variable is None:
                 self._error(
                     diagnostics,
                     "rule.unknown_variable",
@@ -885,7 +1076,14 @@ class StoryCompiler:
                 )
         if node.type in {"unlock", "enter-story-node"}:
             target = node.config.get("storyNodeId")
-            if target not in story_nodes:
+            if not isinstance(target, str):
+                self._error(
+                    diagnostics,
+                    "rule.invalid_config",
+                    f"{node.type} requires a string storyNodeId",
+                    f"{path}.storyNodeId",
+                )
+            elif target not in story_nodes:
                 self._error(
                     diagnostics,
                     "rule.unknown_story_node",
@@ -909,7 +1107,14 @@ class StoryCompiler:
             )
             for field_name in fields_to_validate:
                 character_id = node.config.get(field_name)
-                if character_id not in characters:
+                if not isinstance(character_id, str):
+                    self._error(
+                        diagnostics,
+                        "rule.invalid_config",
+                        f"{field_name} must be a string character identifier",
+                        f"{path}.{field_name}",
+                    )
+                elif character_id not in characters:
                     self._error(
                         diagnostics,
                         "rule.unknown_character",
@@ -978,6 +1183,47 @@ class StoryCompiler:
                 result.update(cls._leaf_strings(item))
             return result
         return set()
+
+    @classmethod
+    def _validate_json_value(
+        cls,
+        value: Any,
+        diagnostics: list[StoryDiagnostic],
+        path: str,
+    ) -> None:
+        if value is None or isinstance(value, (bool, int, str)):
+            return
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                cls._error(
+                    diagnostics,
+                    "schema.json_value",
+                    "JSON numbers must be finite",
+                    path,
+                )
+            return
+        if isinstance(value, Mapping):
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    cls._error(
+                        diagnostics,
+                        "schema.mapping_key",
+                        "object keys must be strings",
+                        f"{path}[{key!r}]",
+                    )
+                    continue
+                cls._validate_json_value(item, diagnostics, f"{path}.{key}")
+            return
+        if isinstance(value, (tuple, list)):
+            for index, item in enumerate(value):
+                cls._validate_json_value(item, diagnostics, f"{path}[{index}]")
+            return
+        cls._error(
+            diagnostics,
+            "schema.json_value",
+            f"unsupported JSON value of type {type(value).__name__}",
+            path,
+        )
 
     @staticmethod
     def _error(

@@ -1,17 +1,16 @@
-"""Safe story source loading and normalization into immutable domain models."""
+"""Pure normalization of story mappings into immutable domain models."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from pathlib import Path
+import math
 import re
 from typing import Any, TypeVar
-
-import yaml
 
 from .diagnostics import StoryDiagnostic, StoryValidationError
 from .models import (
     AdHocPolicy,
+    CandidateConditionSpec,
     CandidateQuery,
     CastConstraints,
     CastDefaults,
@@ -41,6 +40,7 @@ from .models import (
     VariableScope,
     VariableType,
 )
+from .path_policy import is_story_relative_path
 
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
@@ -58,7 +58,62 @@ class _Parser:
         if not isinstance(value, Mapping):
             self.error("schema.type", "expected an object", path)
             return {}
-        return value
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                self.error(
+                    "schema.mapping_key",
+                    "object keys must be strings",
+                    f"{path}[{key!r}]",
+                )
+                continue
+            result[key] = item
+        return result
+
+    def json_value(self, value: Any, path: str) -> Any:
+        if value is None or isinstance(value, (bool, int, str)):
+            return value
+        if isinstance(value, float):
+            if not math.isfinite(value):
+                self.error(
+                    "schema.json_value",
+                    "JSON numbers must be finite",
+                    path,
+                )
+                return None
+            return value
+        if isinstance(value, Mapping):
+            result: dict[str, Any] = {}
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    self.error(
+                        "schema.mapping_key",
+                        "object keys must be strings",
+                        f"{path}[{key!r}]",
+                    )
+                    continue
+                result[key] = self.json_value(item, f"{path}.{key}")
+            return result
+        if isinstance(value, Sequence) and not isinstance(
+            value, (str, bytes, bytearray)
+        ):
+            return [
+                self.json_value(item, f"{path}[{index}]")
+                for index, item in enumerate(value)
+            ]
+        self.error(
+            "schema.json_value",
+            f"unsupported JSON value of type {type(value).__name__}",
+            path,
+        )
+        return None
+
+    def json_mapping(self, value: Any, path: str) -> Mapping[str, Any]:
+        if not isinstance(value, Mapping):
+            self.error("schema.type", "expected an object", path)
+            return {}
+        result = self.json_value(value, path)
+        return result if isinstance(result, Mapping) else {}
 
     def sequence(self, value: Any, path: str) -> Sequence[Any]:
         if isinstance(value, Sequence) and not isinstance(
@@ -175,14 +230,9 @@ def _parse_condition(parser: _Parser, value: Any, path: str) -> ConditionSpec:
         return ConditionSpec(
             "not", (_parse_condition(parser, raw_args, f"{path}.not"),)
         )
-    if op in {"completed", "flag", "sameLocationAs"}:
+    if op in {"completed", "flag"}:
         return ConditionSpec(
             op, (parser.string(raw_args, f"{path}.{op}", required=True),)
-        )
-    if op in {"available", "alive"}:
-        return ConditionSpec(
-            op,
-            (parser.boolean(raw_args, f"{path}.{op}", default=True),),
         )
     if op in {"equals", "gte", "lte", "contains"}:
         args = parser.sequence(raw_args, f"{path}.{op}")
@@ -194,6 +244,38 @@ def _parse_condition(parser: _Parser, value: Any, path: str) -> ConditionSpec:
         return ConditionSpec(op, (args[0], args[1]))
     parser.error("condition.operator", f"unsupported condition operator {op!r}", path)
     return ConditionSpec("false")
+
+
+def _parse_candidate_condition(
+    parser: _Parser,
+    value: Any,
+    path: str,
+) -> CandidateConditionSpec:
+    source = parser.mapping(value, path)
+    if len(source) != 1:
+        parser.error(
+            "cast.condition_shape",
+            "candidate condition must contain exactly one predicate",
+            path,
+        )
+        return CandidateConditionSpec("invalid")
+    op, raw_args = next(iter(source.items()), ("invalid", None))
+    if op in {"available", "alive"}:
+        return CandidateConditionSpec(
+            op,
+            (parser.boolean(raw_args, f"{path}.{op}", default=True),),
+        )
+    if op == "sameLocationAs":
+        return CandidateConditionSpec(
+            op,
+            (parser.string(raw_args, f"{path}.{op}", required=True),),
+        )
+    parser.error(
+        "cast.condition_operator",
+        f"unsupported candidate predicate {op!r}",
+        path,
+    )
+    return CandidateConditionSpec("invalid")
 
 
 def _parse_effect(parser: _Parser, value: Any, path: str) -> EffectSpec:
@@ -286,6 +368,22 @@ def _parse_character_source(parser: _Parser, value: Any, path: str) -> Character
         f"{path}.type",
         default=CharacterSourceType.EMBEDDED,
     )
+    source_path = (
+        parser.string(source.get("path"), f"{path}.path", required=True)
+        if source_type
+        in {
+            CharacterSourceType.EMBEDDED,
+            CharacterSourceType.USER_IMPORTED,
+            CharacterSourceType.AUTHOR_GENERATED,
+        }
+        else None
+    )
+    if source_path and not is_story_relative_path(source_path):
+        parser.error(
+            "character.path_escape",
+            "character source path must stay inside the story root",
+            f"{path}.path",
+        )
     return CharacterSource(
         type=source_type,
         character_id=(
@@ -295,17 +393,12 @@ def _parse_character_source(parser: _Parser, value: Any, path: str) -> Character
             if source_type == CharacterSourceType.LOCAL_LIBRARY
             else None
         ),
-        path=(
-            parser.string(source.get("path"), f"{path}.path", required=True)
-            if source_type
-            in {
-                CharacterSourceType.EMBEDDED,
-                CharacterSourceType.USER_IMPORTED,
-                CharacterSourceType.AUTHOR_GENERATED,
-            }
-            else None
-        ),
+        path=source_path,
         revision=parser.string(source.get("revision"), f"{path}.revision") or None,
+        content_digest=parser.string(
+            source.get("contentDigest"), f"{path}.contentDigest"
+        )
+        or None,
     )
 
 
@@ -399,7 +492,11 @@ def _parse_cast_policy(
     )
     raw_conditions = query_source.get("allConditions", ())
     conditions = tuple(
-        _parse_condition(parser, item, f"{path}.optionalQuery.allConditions[{index}]")
+        _parse_candidate_condition(
+            parser,
+            item,
+            f"{path}.optionalQuery.allConditions[{index}]",
+        )
         for index, item in enumerate(
             parser.sequence(raw_conditions, f"{path}.optionalQuery.allConditions")
         )
@@ -582,15 +679,11 @@ def _parse_narrative_graph(
                     f"{item_path}.castPolicy",
                     default_max_cast,
                 ),
-                exposed_context=dict(
-                    parser.mapping(
-                        item.get("exposedContext", {}), f"{item_path}.exposedContext"
-                    )
+                exposed_context=parser.json_mapping(
+                    item.get("exposedContext", {}), f"{item_path}.exposedContext"
                 ),
-                locked_context=dict(
-                    parser.mapping(
-                        item.get("lockedContext", {}), f"{item_path}.lockedContext"
-                    )
+                locked_context=parser.json_mapping(
+                    item.get("lockedContext", {}), f"{item_path}.lockedContext"
                 ),
             )
         )
@@ -616,8 +709,8 @@ def _parse_rule_graph(parser: _Parser, value: Any, path: str) -> RuleGraph:
                 type=parser.string(
                     item.get("type"), f"{item_path}.type", required=True
                 ),
-                config=dict(
-                    parser.mapping(item.get("config", {}), f"{item_path}.config")
+                config=parser.json_mapping(
+                    item.get("config", {}), f"{item_path}.config"
                 ),
             )
         )
@@ -724,149 +817,3 @@ def parse_story_project(source: Mapping[str, Any]) -> StoryProject:
     if parser.diagnostics:
         raise StoryValidationError(parser.diagnostics)
     return project
-
-
-class StoryProjectLoader:
-    """Load a manifest and its declared YAML documents without path escape."""
-
-    def load(self, path: str | Path) -> StoryProject:
-        requested = Path(path)
-        manifest_path = requested / "manifest.yaml" if requested.is_dir() else requested
-        root = manifest_path.parent.resolve()
-        manifest = self._read_yaml(manifest_path.resolve(), root)
-        aggregate = dict(manifest)
-        self._merge_ref(aggregate, manifest, "variablesRef", "variables", root)
-        self._merge_ref(aggregate, manifest, "castRef", "cast", root)
-        self._merge_ref(
-            aggregate, manifest, "narrativeGraphRef", "narrativeGraph", root
-        )
-        self._merge_ref(aggregate, manifest, "logicGraphRef", "logicGraph", root)
-        self._merge_chapter_refs(aggregate, manifest, root)
-        return parse_story_project(aggregate)
-
-    def _merge_chapter_refs(
-        self,
-        aggregate: dict[str, Any],
-        manifest: Mapping[str, Any],
-        root: Path,
-    ) -> None:
-        references = manifest.get("chaptersRef")
-        if references is None:
-            return
-        if not isinstance(references, Sequence) or isinstance(
-            references, (str, bytes, bytearray)
-        ):
-            raise StoryValidationError(
-                [
-                    StoryDiagnostic(
-                        "schema.ref", "chaptersRef must be a list", "$.chaptersRef"
-                    )
-                ]
-            )
-        graph = aggregate.setdefault("narrativeGraph", {})
-        if not isinstance(graph, dict):
-            graph = dict(graph) if isinstance(graph, Mapping) else {}
-            aggregate["narrativeGraph"] = graph
-        nodes = graph.setdefault("nodes", [])
-        if not isinstance(nodes, list):
-            nodes = list(nodes) if isinstance(nodes, Sequence) else []
-            graph["nodes"] = nodes
-        for index, reference in enumerate(references):
-            if not isinstance(reference, str) or not reference:
-                raise StoryValidationError(
-                    [
-                        StoryDiagnostic(
-                            "schema.ref",
-                            "chapter reference must be a string",
-                            f"$.chaptersRef[{index}]",
-                        )
-                    ]
-                )
-            document = self._read_yaml((root / reference).resolve(), root)
-            chapter = document.get("narrativeGraph", document)
-            if not isinstance(chapter, Mapping):
-                raise StoryValidationError(
-                    [
-                        StoryDiagnostic(
-                            "schema.document",
-                            "chapter document must be an object",
-                            reference,
-                        )
-                    ]
-                )
-            chapter_nodes = chapter.get("nodes", ())
-            if not isinstance(chapter_nodes, Sequence) or isinstance(
-                chapter_nodes, (str, bytes, bytearray)
-            ):
-                raise StoryValidationError(
-                    [
-                        StoryDiagnostic(
-                            "schema.document",
-                            "chapter nodes must be a list",
-                            reference,
-                        )
-                    ]
-                )
-            nodes.extend(chapter_nodes)
-
-    def _merge_ref(
-        self,
-        aggregate: dict[str, Any],
-        manifest: Mapping[str, Any],
-        ref_key: str,
-        destination_key: str,
-        root: Path,
-    ) -> None:
-        reference = manifest.get(ref_key)
-        if reference is None:
-            return
-        if not isinstance(reference, str) or not reference:
-            raise StoryValidationError(
-                [
-                    StoryDiagnostic(
-                        "schema.ref", "reference must be a string", f"$.{ref_key}"
-                    )
-                ]
-            )
-        target = (root / reference).resolve()
-        document = self._read_yaml(target, root)
-        aggregate[destination_key] = document.get(destination_key, document)
-
-    def _read_yaml(self, path: Path, root: Path) -> Mapping[str, Any]:
-        try:
-            path.relative_to(root)
-        except ValueError as error:
-            raise StoryValidationError(
-                [
-                    StoryDiagnostic(
-                        "schema.path_escape", "reference escapes story root", str(path)
-                    )
-                ]
-            ) from error
-        if not path.is_file():
-            raise StoryValidationError(
-                [
-                    StoryDiagnostic(
-                        "schema.missing_file", "story file does not exist", str(path)
-                    )
-                ]
-            )
-        try:
-            value = yaml.safe_load(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, yaml.YAMLError) as error:
-            raise StoryValidationError(
-                [StoryDiagnostic("schema.read_failed", str(error), str(path))]
-            ) from error
-        if not isinstance(value, Mapping):
-            raise StoryValidationError(
-                [
-                    StoryDiagnostic(
-                        "schema.document", "YAML document must be an object", str(path)
-                    )
-                ]
-            )
-        return value
-
-
-def load_story_project(path: str | Path) -> StoryProject:
-    return StoryProjectLoader().load(path)
