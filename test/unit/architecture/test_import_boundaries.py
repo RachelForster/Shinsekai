@@ -369,6 +369,67 @@ def test_application_does_not_own_concrete_network_transport() -> None:
     )
 
 
+def test_core_story_remains_resource_io_free() -> None:
+    """Story filesystem and YAML orchestration belongs to application/story."""
+
+    forbidden_imports = {"os", "shutil", "subprocess", "tempfile", "yaml"}
+    forbidden_names = {"open"}
+    forbidden_attributes = {
+        "glob",
+        "is_dir",
+        "is_file",
+        "iterdir",
+        "mkdir",
+        "read_bytes",
+        "read_text",
+        "rename",
+        "rglob",
+        "unlink",
+        "write_bytes",
+        "write_text",
+    }
+    unexpected: list[str] = []
+    story_root = REPO_ROOT / "core" / "story"
+    for source in sorted(story_root.rglob("*.py")):
+        relative = source.relative_to(REPO_ROOT).as_posix()
+        imported = _imported_roots(source) & forbidden_imports
+        tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        names = {
+            node.func.id
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        }
+        attributes = {
+            node.func.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        }
+        for name in sorted(
+            imported
+            | (names & forbidden_names)
+            | (attributes & forbidden_attributes)
+        ):
+            unexpected.append(f"{relative}: {name}")
+
+    assert not unexpected, (
+        "Move story file/YAML/resource orchestration to application/story: "
+        f"{unexpected}"
+    )
+
+
+def test_core_story_unit_tests_do_not_import_application() -> None:
+    story_tests = REPO_ROOT / "test" / "unit" / "core" / "story"
+    unexpected = [
+        source.relative_to(REPO_ROOT).as_posix()
+        for source in sorted(story_tests.rglob("*.py"))
+        if "application" in _imported_roots(source)
+    ]
+
+    assert (
+        not unexpected
+    ), f"Keep core/story unit tests isolated from application: {unexpected}"
+
+
 def test_config_does_not_hide_forbidden_dynamic_imports() -> None:
     """Dynamic imports must not bypass the declared config dependency rule."""
 

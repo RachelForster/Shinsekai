@@ -1,0 +1,31 @@
+version: 1
+
+defaults:
+  maxActive: 4
+  preserveCurrentCast: true
+
+initialCast: [ling]
+
+characters:
+  - id: ling
+    source:
+      type: local-library
+      characterId: ling
+      revision: sha256:test-ling
+    tags: [student, investigator]
+    roles: [companion]
+    priority: 100
+
+  - id: detective-zhou
+    source:
+      type: embedded
+      path: characters/detective-zhou.yaml
+    tags: [adult, police, investigator]
+    roles: [authority, clue-provider]
+    priority: 50
+
+adHocPolicy:
+  enabled: false
+  maxPerScene: 0
+  persistScope: branch
+  requirePromotionForReuse: true
