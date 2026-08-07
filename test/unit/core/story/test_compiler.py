@@ -2,11 +2,9 @@ from __future__ import annotations
 
 from dataclasses import replace
 import json
-from pathlib import Path
 
 import pytest
 
-from application.story import load_story_project
 from core.story import (
     CandidateConditionSpec,
     CharacterSource,
@@ -19,18 +17,16 @@ from core.story import (
     RuleNode,
     StoryCompileError,
     StoryCompiler,
+    parse_story_project,
 )
 from core.story.compiler import story_program_json
 
-
-FIXTURE_ROOT = (
-    Path(__file__).resolve().parents[3] / "fixtures" / "stories" / "campus-mystery"
-)
+from .story_fixtures import campus_mystery_source
 
 
 @pytest.fixture
 def project():
-    return load_story_project(FIXTURE_ROOT)
+    return parse_story_project(campus_mystery_source())
 
 
 def test_compile_produces_stable_program_and_source_map(project) -> None:

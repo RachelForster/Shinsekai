@@ -7,6 +7,8 @@ import math
 import re
 from typing import Any, TypeVar
 
+from sdk.path_utils import is_portable_relative_path
+
 from .diagnostics import StoryDiagnostic, StoryValidationError
 from .models import (
     AdHocPolicy,
@@ -40,7 +42,6 @@ from .models import (
     VariableScope,
     VariableType,
 )
-from .path_policy import is_story_relative_path
 
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
@@ -378,7 +379,7 @@ def _parse_character_source(parser: _Parser, value: Any, path: str) -> Character
         }
         else None
     )
-    if source_path and not is_story_relative_path(source_path):
+    if source_path and not is_portable_relative_path(source_path):
         parser.error(
             "character.path_escape",
             "character source path must stay inside the story root",

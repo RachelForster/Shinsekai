@@ -9,6 +9,8 @@ import json
 import math
 from typing import Any, Iterable, Mapping
 
+from sdk.path_utils import is_portable_relative_path
+
 from .diagnostics import (
     DiagnosticSeverity,
     StoryCompileError,
@@ -31,7 +33,6 @@ from .models import (
     StoryVariableDefinition,
     VariableType,
 )
-from .path_policy import is_story_relative_path
 
 
 def _ports(
@@ -489,7 +490,7 @@ class StoryCompiler:
             )
         for index, character in enumerate(registry.characters):
             path = f"$.cast.characters[{index}].source"
-            if character.source.path and not is_story_relative_path(
+            if character.source.path and not is_portable_relative_path(
                 character.source.path
             ):
                 self._error(

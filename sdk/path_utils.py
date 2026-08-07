@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Iterable
 
 
@@ -85,6 +85,23 @@ def normalize_path_identity(
     raw = reject_control_chars(os.fspath(value), field=field)
     expanded = os.path.expanduser(raw)
     return Path(os.path.abspath(os.path.normpath(expanded)))
+
+
+def is_portable_relative_path(value: str | os.PathLike[str]) -> bool:
+    """Return whether a path is relative and non-traversing on POSIX and Windows."""
+
+    try:
+        raw = reject_control_chars(os.fspath(value), field="path")
+    except ValueError:
+        return False
+    posix_path = PurePosixPath(raw.replace("\\", "/"))
+    windows_path = PureWindowsPath(raw)
+    return not (
+        posix_path.is_absolute()
+        or windows_path.drive
+        or windows_path.root
+        or ".." in posix_path.parts
+    )
 
 
 def safe_project_path(
@@ -216,6 +233,7 @@ def safe_existing_dir_path(
 
 
 __all__ = [
+    "is_portable_relative_path",
     "normalize_path_identity",
     "reject_control_chars",
     "resolve_regular_path",

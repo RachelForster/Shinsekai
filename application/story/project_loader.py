@@ -10,9 +10,12 @@ import yaml
 
 from core.story.diagnostics import StoryDiagnostic, StoryValidationError
 from core.story.models import StoryProject
-from core.story.path_policy import is_story_relative_path
 from core.story.schema import parse_story_project
-from sdk.path_utils import safe_child_path, safe_existing_file_path
+from sdk.path_utils import (
+    is_portable_relative_path,
+    safe_child_path,
+    safe_existing_file_path,
+)
 
 
 class StoryProjectLoader:
@@ -129,7 +132,7 @@ class StoryProjectLoader:
         diagnostic_path: str,
     ) -> Mapping[str, Any]:
         normalized = reference.replace("\\", "/")
-        if not is_story_relative_path(reference):
+        if not is_portable_relative_path(reference):
             raise StoryValidationError(
                 [
                     StoryDiagnostic(

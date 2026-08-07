@@ -5,12 +5,38 @@ from pathlib import Path
 import pytest
 
 from sdk.path_utils import (
+    is_portable_relative_path,
     safe_child_path,
     safe_existing_dir_path,
     safe_existing_file_path,
     safe_filename,
     safe_project_path,
 )
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["characters/ling.yaml", r"characters\ling.yaml", "./chapter-1.yaml"],
+)
+def test_portable_relative_path_accepts_cross_platform_children(value) -> None:
+    assert is_portable_relative_path(value)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "../outside.yaml",
+        r"..\outside.yaml",
+        "/outside.yaml",
+        r"\outside.yaml",
+        r"C:\outside.yaml",
+        r"C:outside.yaml",
+        r"\\server\share\outside.yaml",
+    ],
+)
+def test_portable_relative_path_rejects_escape_and_root_forms(value) -> None:
+    assert not is_portable_relative_path(value)
 
 
 def test_safe_project_path_accepts_only_paths_inside_root(tmp_path):
