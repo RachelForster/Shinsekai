@@ -8,7 +8,7 @@ from types import MappingProxyType
 from typing import Mapping
 
 from .cast import CastResolutionContext, CastResolutionError
-from .commands import PerformIntent, SelectChoice, StartStory
+from .commands import EnterNode, PerformIntent, SelectChoice, StartStory
 from .compiler import canonical_json
 from .runtime import StoryRuntime, StoryRuntimeError
 from .state import StoryState
@@ -101,6 +101,18 @@ class StorySimulator:
                     next_states.append(
                         (result, (*path, f"intent:{node.id}/{intent.id}"), depth + 1)
                     )
+            enterable_node_ids = sorted(
+                state.unlocked_node_ids.difference({state.current_node_id})
+            )
+            for index, node_id in enumerate(enterable_node_ids):
+                command = EnterNode(
+                    command_id=f"sim-{len(visited)}-enter-{index}",
+                    expected_revision=state.revision,
+                    node_id=node_id,
+                )
+                result = self._try_execute(state, command, cast_context)
+                if result is not None:
+                    next_states.append((result, (*path, f"enter:{node_id}"), depth + 1))
             if not next_states:
                 dead_ends.add(node.id)
             queue.extend(next_states)
@@ -134,7 +146,7 @@ class StorySimulator:
     def _try_execute(
         self,
         state: StoryState,
-        command: SelectChoice | PerformIntent,
+        command: SelectChoice | PerformIntent | EnterNode,
         cast_context: CastResolutionContext | None,
     ) -> StoryState | None:
         try:

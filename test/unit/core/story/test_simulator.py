@@ -56,6 +56,22 @@ def test_simulator_reports_truncation_at_depth_limit() -> None:
     assert "truth-ending" not in report.ending_paths
 
 
+def test_simulator_explores_nodes_entered_after_unlock() -> None:
+    source = campus_mystery_source()
+    source["narrativeGraph"]["nodes"][0]["choices"][0].pop("goto")
+    runtime = StoryRuntime(StoryCompiler().compile(parse_story_project(source)))
+
+    report = StorySimulator(runtime).simulate()
+
+    assert report.truncated is False
+    assert report.reachable_node_ids == {
+        "transfer-day",
+        "old-school-gate",
+        "truth-ending",
+    }
+    assert "enter:old-school-gate" in report.ending_paths["truth-ending"]
+
+
 def test_stub_renderer_is_deterministic_and_system_scoped() -> None:
     runtime = _runtime()
     result = runtime.start(StartStory("start-1"))
