@@ -55,7 +55,6 @@ class RuntimeResult:
     events: tuple[StoryEvent, ...]
     global_effects: tuple[EffectSpec, ...] = ()
     cast_plans: tuple[CastResolutionPlan, ...] = ()
-    duplicate: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,12 +238,17 @@ class _Transaction:
         ):
             self.unlock_node(node_id)
 
-    def enter_node(self, node_id: str) -> None:
+    def enter_node(self, node_id: str, *, require_unlocked: bool = False) -> None:
         node = self.program.nodes_by_id.get(node_id)
         if node is None:
             raise StoryRuntimeError(
                 "runtime.unknown_node",
                 f"node {node_id!r} does not exist",
+            )
+        if require_unlocked and node_id not in self.unlocked:
+            raise StoryRuntimeError(
+                "runtime.node_locked",
+                f"node {node_id!r} is not unlocked",
             )
         if not self.evaluate(node.enter_when):
             raise StoryRuntimeError(
@@ -303,7 +307,6 @@ class _Transaction:
             )
             for index, pending in enumerate(self.pending)
         )
-        processed = (*self.original.processed_command_ids, self.command_id)[-256:]
         registered = frozenset(self.program.character_registry.by_id)
         active = tuple(self.active_cast)
         cast_state = CastState(
@@ -335,7 +338,6 @@ class _Transaction:
             semantic_signal_state=self.semantic_state,
             cast_state=cast_state,
             event_cursor=self.original.event_cursor + len(events),
-            processed_command_ids=processed,
         )
         return RuntimeResult(
             state=state,
@@ -484,8 +486,6 @@ class StoryRuntime:
         global_variables: Mapping[str, Any] | None = None,
     ) -> RuntimeResult:
         self._validate_command(state, command)
-        if command.command_id in state.processed_command_ids:
-            return RuntimeResult(state=state, events=(), duplicate=True)
         transaction = self._transaction(
             state,
             command.command_id,
@@ -499,7 +499,7 @@ class StoryRuntime:
         elif isinstance(command, ApplySemanticSignals):
             self._apply_semantic_signals(transaction, command)
         elif isinstance(command, EnterNode):
-            transaction.enter_node(command.node_id)
+            transaction.enter_node(command.node_id, require_unlocked=True)
         elif isinstance(command, CompleteNode):
             if command.node_id != state.current_node_id:
                 raise StoryRuntimeError(
@@ -633,8 +633,6 @@ class StoryRuntime:
                 "runtime.program_mismatch",
                 "StoryState does not belong to this StoryProgram",
             )
-        if command.command_id in state.processed_command_ids:
-            return
         if command.expected_revision != state.revision:
             raise StoryRuntimeError(
                 "runtime.revision_conflict",

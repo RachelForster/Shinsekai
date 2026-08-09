@@ -6,6 +6,7 @@ import pytest
 
 from core.story import (
     ApplySemanticSignals,
+    EnterNode,
     EffectSpec,
     PerformIntent,
     SelectChoice,
@@ -17,6 +18,8 @@ from core.story import (
     StartStory,
     StoryCompiler,
     StoryEventType,
+    StoryEvent,
+    StoryEventReplayError,
     StoryEventReplayer,
     StoryRuntime,
     StoryRuntimeError,
@@ -126,12 +129,13 @@ def test_domain_events_replay_to_identical_ending_state(runtime) -> None:
     replayed = StoryEventReplayer().replay(
         runtime.initial_state(),
         (*started.events, *gate.events, *ending.events),
+        program=runtime.program,
     )
 
     assert replayed == ending.state
 
 
-def test_duplicate_command_is_idempotent(runtime) -> None:
+def test_repeated_command_is_rejected_by_revision_boundary(runtime) -> None:
     started = runtime.start(StartStory("start-1"))
     command = SelectChoice(
         command_id="choice-1",
@@ -141,11 +145,10 @@ def test_duplicate_command_is_idempotent(runtime) -> None:
     )
     first = runtime.execute(started.state, command)
 
-    duplicate = runtime.execute(first.state, command)
+    with pytest.raises(StoryRuntimeError) as exc_info:
+        runtime.execute(first.state, command)
 
-    assert duplicate.duplicate
-    assert duplicate.state is first.state
-    assert duplicate.events == ()
+    assert exc_info.value.code == "runtime.revision_conflict"
 
 
 def test_stale_revision_is_rejected_without_mutating_state(runtime) -> None:
@@ -232,6 +235,7 @@ def test_semantic_signal_changes_only_published_metric(runtime) -> None:
     replayed = StoryEventReplayer().replay(
         runtime.initial_state(),
         (*started.events, *result.events),
+        program=runtime.program,
     )
     assert replayed == result.state
 
@@ -284,6 +288,7 @@ def test_no_effect_command_emits_replayable_revision_event(runtime) -> None:
     replayed = StoryEventReplayer().replay(
         runtime.initial_state(),
         (*started.events, *result.events),
+        program=runtime.program,
     )
 
     assert [event.type for event in result.events] == [StoryEventType.COMMAND_PROCESSED]
@@ -304,6 +309,41 @@ def test_state_from_different_program_is_rejected(runtime) -> None:
         runtime.execute(mismatched, command)
 
     assert exc_info.value.code == "runtime.program_mismatch"
+
+
+def test_direct_enter_rejects_locked_ending(runtime) -> None:
+    started = runtime.start(StartStory("start-1"))
+
+    with pytest.raises(StoryRuntimeError) as exc_info:
+        runtime.execute(
+            started.state,
+            EnterNode(
+                command_id="skip-ending",
+                expected_revision=started.state.revision,
+                node_id="truth-ending",
+            ),
+        )
+
+    assert exc_info.value.code == "runtime.node_locked"
+    assert started.state.current_node_id == "transfer-day"
+
+
+def test_replay_rejects_undeclared_variable(runtime) -> None:
+    initial = runtime.initial_state()
+    corrupted = StoryEvent(
+        id="event-1-1",
+        revision=1,
+        type=StoryEventType.VARIABLE_CHANGED,
+        payload={"variableId": "invented", "previous": None, "current": "bad"},
+        cause_command_id="corrupt",
+    )
+
+    with pytest.raises(StoryEventReplayError, match="undeclared branch variable"):
+        StoryEventReplayer().replay(
+            initial,
+            (corrupted,),
+            program=runtime.program,
+        )
 
 
 def test_global_effects_are_planned_without_entering_branch_state() -> None:
@@ -328,9 +368,7 @@ def test_global_effects_are_planned_without_entering_branch_state() -> None:
     )
 
     assert "trust.ling" not in result.state.variables
-    assert result.global_effects == (
-        EffectSpec("increment", ("trust.ling", 10)),
-    )
+    assert result.global_effects == (EffectSpec("increment", ("trust.ling", 10)),)
     assert result.state.current_node_id == "old-school-gate"
 
 

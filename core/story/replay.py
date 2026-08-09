@@ -7,6 +7,7 @@ from dataclasses import replace
 from typing import Any
 
 from .events import StoryEvent, StoryEventType
+from .models import StoryProgram, VariableScope
 from .state import (
     CanonFact,
     CastState,
@@ -14,6 +15,7 @@ from .state import (
     StoryState,
     freeze_mapping,
     freeze_value,
+    variable_value_is_valid,
 )
 
 
@@ -28,7 +30,10 @@ class StoryEventReplayer:
         self,
         initial: StoryState,
         events: Iterable[StoryEvent],
+        *,
+        program: StoryProgram,
     ) -> StoryState:
+        self._validate_initial(initial, program)
         variables = dict(initial.variables)
         completed = set(initial.completed_node_ids)
         failed = set(initial.failed_node_ids)
@@ -45,7 +50,6 @@ class StoryEventReplayer:
         cast_revision = initial.cast_state.cast_revision
         event_cursor = initial.event_cursor
         revision = initial.revision
-        processed = list(initial.processed_command_ids)
         group_revision: int | None = None
         group_command_id: str | None = None
 
@@ -63,9 +67,8 @@ class StoryEventReplayer:
                 group_revision = event.revision
                 group_command_id = event.cause_command_id
             elif event.revision != group_revision:
-                revision, processed = self._finish_group(
+                revision = self._finish_group(
                     revision,
-                    processed,
                     group_revision,
                     group_command_id,
                 )
@@ -99,13 +102,36 @@ class StoryEventReplayer:
                 StoryEventType.SET_VALUE_ADDED,
                 StoryEventType.SET_VALUE_REMOVED,
             }:
-                variables[str(payload["variableId"])] = freeze_value(payload["current"])
+                variable_id = str(payload.get("variableId", ""))
+                definitions = {
+                    definition.id: definition
+                    for definition in program.variables
+                    if definition.scope == VariableScope.BRANCH
+                }
+                definition = definitions.get(variable_id)
+                if definition is None:
+                    raise StoryEventReplayError(
+                        f"event targets undeclared branch variable {variable_id!r}"
+                    )
+                if (
+                    "previous" not in payload
+                    or payload["previous"] != variables[variable_id]
+                ):
+                    raise StoryEventReplayError(
+                        f"event previous value does not match {variable_id!r}"
+                    )
+                current = freeze_value(payload.get("current"))
+                if not variable_value_is_valid(definition, current):
+                    raise StoryEventReplayError(
+                        f"event value is invalid for variable {variable_id!r}"
+                    )
+                variables[variable_id] = current
             elif event.type == StoryEventType.NODE_UNLOCKED:
-                unlocked.add(str(payload["nodeId"]))
+                unlocked.add(self._node_id(payload, program))
             elif event.type == StoryEventType.NODE_ENTERED:
-                current_node_id = str(payload["nodeId"])
+                current_node_id = self._node_id(payload, program)
             elif event.type == StoryEventType.NODE_COMPLETED:
-                completed.add(str(payload["nodeId"]))
+                completed.add(self._node_id(payload, program))
             elif event.type == StoryEventType.CANON_APPENDED:
                 canon.append(
                     CanonFact(
@@ -121,6 +147,17 @@ class StoryEventReplayer:
                     for key, value in self._mapping(payload["roleBindings"]).items()
                 }
                 resolved_for_node_id = str(payload["nodeId"])
+                registered = set(program.character_registry.by_id)
+                if not set(active_cast).issubset(registered):
+                    raise StoryEventReplayError(
+                        "CastResolved contains an unregistered character"
+                    )
+                if not set(role_bindings.values()).issubset(active_cast):
+                    raise StoryEventReplayError(
+                        "CastResolved binds a role outside the active cast"
+                    )
+                if resolved_for_node_id not in program.nodes_by_id:
+                    raise StoryEventReplayError("CastResolved targets an unknown node")
                 cast_revision += 1
             elif event.type == StoryEventType.SEMANTIC_SIGNAL_ACCEPTED:
                 semantic_sequence += 1
@@ -142,9 +179,8 @@ class StoryEventReplayer:
                 )
 
         if group_revision is not None:
-            revision, processed = self._finish_group(
+            revision = self._finish_group(
                 revision,
-                processed,
                 group_revision,
                 group_command_id,
             )
@@ -181,21 +217,50 @@ class StoryEventReplayer:
             semantic_signal_state=semantic_state,
             cast_state=cast_state,
             event_cursor=event_cursor,
-            processed_command_ids=tuple(processed),
         )
 
     @staticmethod
     def _finish_group(
         revision: int,
-        processed: list[str],
         group_revision: int,
         command_id: str | None,
-    ) -> tuple[int, list[str]]:
+    ) -> int:
         if group_revision != revision + 1 or not command_id:
             raise StoryEventReplayError("invalid event revision group")
-        if command_id in processed:
-            raise StoryEventReplayError(f"command {command_id!r} was already processed")
-        return group_revision, [*processed, command_id][-256:]
+        return group_revision
+
+    @staticmethod
+    def _node_id(payload: Mapping[str, Any], program: StoryProgram) -> str:
+        node_id = str(payload.get("nodeId", ""))
+        if node_id not in program.nodes_by_id:
+            raise StoryEventReplayError(f"event targets unknown node {node_id!r}")
+        return node_id
+
+    @staticmethod
+    def _validate_initial(initial: StoryState, program: StoryProgram) -> None:
+        if (
+            initial.story_id != program.story_id
+            or initial.story_version != program.story_version
+            or initial.program_source_hash != program.source_hash
+        ):
+            raise StoryEventReplayError("initial state belongs to another StoryProgram")
+        definitions = {
+            definition.id: definition
+            for definition in program.variables
+            if definition.scope == VariableScope.BRANCH
+        }
+        if set(initial.variables) != set(definitions):
+            raise StoryEventReplayError("initial variables do not match StoryProgram")
+        for variable_id, value in initial.variables.items():
+            if not variable_value_is_valid(definitions[variable_id], value):
+                raise StoryEventReplayError(
+                    f"initial value is invalid for variable {variable_id!r}"
+                )
+        registered = frozenset(program.character_registry.by_id)
+        if initial.cast_state.registered_story_character_ids != registered:
+            raise StoryEventReplayError(
+                "initial cast registry does not match StoryProgram"
+            )
 
     @staticmethod
     def _mapping(value: Any) -> Mapping[str, Any]:

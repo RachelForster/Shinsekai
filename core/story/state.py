@@ -97,4 +97,3 @@ class StoryState:
     )
     cast_state: CastState = field(default_factory=CastState)
     event_cursor: int = 0
-    processed_command_ids: tuple[str, ...] = ()
