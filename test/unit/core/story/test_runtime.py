@@ -51,6 +51,7 @@ def test_start_story_initializes_authoritative_state_and_cast(runtime) -> None:
     assert result.state.variables["inventory"] == frozenset({"old_school_key"})
     assert result.state.cast_state.active_character_ids == ("ling",)
     assert result.state.cast_state.resolved_for_node_id == "transfer-day"
+    assert result.cast_plans[0].required_character_ids == ("ling",)
     assert [event.type for event in result.events] == [
         StoryEventType.STORY_STARTED,
         StoryEventType.NODE_UNLOCKED,
@@ -303,6 +304,34 @@ def test_state_from_different_program_is_rejected(runtime) -> None:
         runtime.execute(mismatched, command)
 
     assert exc_info.value.code == "runtime.program_mismatch"
+
+
+def test_global_effects_are_planned_without_entering_branch_state() -> None:
+    source = campus_mystery_source()
+    source["variables"]["trust.ling"]["scope"] = "global"
+    program = StoryCompiler().compile(parse_story_project(source))
+    runtime = StoryRuntime(program)
+    started = runtime.start(
+        StartStory("start-1"),
+        global_variables={"trust.ling": 0},
+    )
+
+    result = runtime.execute(
+        started.state,
+        SelectChoice(
+            command_id="choice-1",
+            expected_revision=started.state.revision,
+            choice_id="prepare-investigation",
+            expected_node_id="transfer-day",
+        ),
+        global_variables={"trust.ling": 0},
+    )
+
+    assert "trust.ling" not in result.state.variables
+    assert result.global_effects == (
+        EffectSpec("increment", ("trust.ling", 10)),
+    )
+    assert result.state.current_node_id == "old-school-gate"
 
 
 def _reach_gate(runtime: StoryRuntime):

@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
 
+from .models import StoryVariableDefinition, VariableType
+
 
 def freeze_value(value: Any) -> Any:
     if isinstance(value, Mapping):
@@ -24,6 +26,30 @@ def freeze_mapping(value: Mapping[str, Any] | None = None) -> Mapping[str, Any]:
     return MappingProxyType(
         {str(key): freeze_value(item) for key, item in (value or {}).items()}
     )
+
+
+def variable_value_is_valid(
+    definition: StoryVariableDefinition,
+    value: Any,
+) -> bool:
+    """Return whether a runtime value satisfies its compiled variable contract."""
+
+    if definition.type == VariableType.BOOLEAN:
+        return isinstance(value, bool)
+    if definition.type == VariableType.INTEGER:
+        if isinstance(value, bool) or not isinstance(value, int):
+            return False
+        return not (
+            (definition.minimum is not None and value < definition.minimum)
+            or (definition.maximum is not None and value > definition.maximum)
+        )
+    if definition.type == VariableType.ENUM:
+        return isinstance(value, str) and value in definition.enum_values
+    if definition.type in {VariableType.STRING_SET, VariableType.NODE_SET}:
+        return isinstance(value, frozenset) and all(
+            isinstance(item, str) for item in value
+        )
+    return False
 
 
 @dataclass(frozen=True, slots=True)

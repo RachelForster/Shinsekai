@@ -7,7 +7,12 @@ from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any
 
-from .cast import CastResolutionContext, CastResolutionError, CastResolver
+from .cast import (
+    CastResolutionContext,
+    CastResolutionError,
+    CastResolutionPlan,
+    CastResolver,
+)
 from .commands import (
     ApplySemanticSignals,
     CompleteNode,
@@ -18,7 +23,13 @@ from .commands import (
     StartStory,
 )
 from .events import StoryEvent, StoryEventType
-from .models import EffectSpec, StoryProgram, StoryVariableDefinition, VariableType
+from .models import (
+    EffectSpec,
+    StoryProgram,
+    StoryVariableDefinition,
+    VariableScope,
+    VariableType,
+)
 from .rules import ConditionEvaluator, RuleEvaluator
 from .semantic import SemanticSignalDefinition, SemanticSignalPolicy
 from .state import (
@@ -28,6 +39,7 @@ from .state import (
     StoryState,
     freeze_mapping,
     freeze_value,
+    variable_value_is_valid,
 )
 
 
@@ -41,6 +53,8 @@ class StoryRuntimeError(ValueError):
 class RuntimeResult:
     state: StoryState
     events: tuple[StoryEvent, ...]
+    global_effects: tuple[EffectSpec, ...] = ()
+    cast_plans: tuple[CastResolutionPlan, ...] = ()
     duplicate: bool = False
 
 
@@ -56,6 +70,7 @@ class _Transaction:
         *,
         program: StoryProgram,
         state: StoryState,
+        global_variables: Mapping[str, Any],
         command_id: str,
         cast_resolver: CastResolver,
         cast_context: CastResolutionContext,
@@ -64,6 +79,7 @@ class _Transaction:
     ) -> None:
         self.program = program
         self.original = state
+        self.global_variables = dict(global_variables)
         self.command_id = command_id
         self.cast_resolver = cast_resolver
         self.cast_context = cast_context
@@ -79,6 +95,8 @@ class _Transaction:
         self.active_cast = list(state.cast_state.active_character_ids)
         self.role_bindings = dict(state.cast_state.role_bindings)
         self.cast_changed = False
+        self.global_effects: list[EffectSpec] = []
+        self.cast_plans: list[CastResolutionPlan] = []
         self.pending: list[_PendingEvent] = []
 
     def emit(self, event_type: StoryEventType, **payload: Any) -> str:
@@ -86,9 +104,10 @@ class _Transaction:
         return self._event_id(len(self.pending) - 1)
 
     def evaluate(self, condition: Any) -> bool:
+        variables = {**self.global_variables, **self.variables}
         return self.condition_evaluator.evaluate(
             condition,
-            variables=self.variables,
+            variables=variables,
             completed_node_ids=frozenset(self.completed),
         )
 
@@ -112,7 +131,12 @@ class _Transaction:
                     "runtime.semantic_target",
                     f"variable {variable_id!r} does not allow semantic input",
                 )
-            previous = self.variables[variable_id]
+            target_variables = (
+                self.global_variables
+                if definition.scope == VariableScope.GLOBAL
+                else self.variables
+            )
+            previous = target_variables[variable_id]
             operand = effect.args[1]
             if effect.op == "set":
                 current = self._normalize_value(definition, operand)
@@ -139,8 +163,11 @@ class _Transaction:
                 else:
                     values.discard(operand)
                 current = frozenset(values)
-            self.variables[variable_id] = current
+            target_variables[variable_id] = current
             if current == previous:
+                return
+            if definition.scope == VariableScope.GLOBAL:
+                self.global_effects.append(effect)
                 return
             if effect.op == "add-set":
                 event_type = StoryEventType.SET_VALUE_ADDED
@@ -203,10 +230,11 @@ class _Transaction:
 
     def recompute_unlocks(self) -> None:
         transient_state = self._preview_state()
+        variables = {**self.global_variables, **transient_state.variables}
         for node_id in sorted(
             self.rule_evaluator.evaluate_unlocks(
                 self.program,
-                transient_state.variables,
+                variables,
             )
         ):
             self.unlock_node(node_id)
@@ -241,6 +269,7 @@ class _Transaction:
         self.active_cast = list(resolution.active_character_ids)
         self.role_bindings = dict(resolution.role_bindings)
         self.cast_changed = True
+        self.cast_plans.append(resolution)
         self.emit(
             StoryEventType.CAST_RESOLVED,
             nodeId=node_id,
@@ -308,7 +337,12 @@ class _Transaction:
             event_cursor=self.original.event_cursor + len(events),
             processed_command_ids=processed,
         )
-        return RuntimeResult(state=state, events=events)
+        return RuntimeResult(
+            state=state,
+            events=events,
+            global_effects=tuple(self.global_effects),
+            cast_plans=tuple(self.cast_plans),
+        )
 
     def _preview_state(self) -> StoryState:
         return replace(
@@ -341,39 +375,33 @@ class _Transaction:
         return freeze_value(value)
 
     def _validate_state(self) -> None:
-        definitions = {
-            definition.id: definition for definition in self.program.variables
+        branch_definitions = {
+            definition.id: definition
+            for definition in self.program.variables
+            if definition.scope == VariableScope.BRANCH
         }
-        if set(self.variables) != set(definitions):
+        global_definitions = {
+            definition.id: definition
+            for definition in self.program.variables
+            if definition.scope == VariableScope.GLOBAL
+        }
+        if set(self.variables) != set(branch_definitions):
             raise StoryRuntimeError(
                 "runtime.variable_schema",
                 "runtime variables no longer match StoryProgram schema",
             )
-        for variable_id, value in self.variables.items():
-            definition = definitions[variable_id]
-            if definition.type == VariableType.BOOLEAN and not isinstance(value, bool):
-                raise StoryRuntimeError("runtime.variable_type", variable_id)
-            if definition.type == VariableType.INTEGER and (
-                isinstance(value, bool) or not isinstance(value, int)
-            ):
-                raise StoryRuntimeError("runtime.variable_type", variable_id)
-            if definition.type == VariableType.INTEGER and (
-                (definition.minimum is not None and value < definition.minimum)
-                or (definition.maximum is not None and value > definition.maximum)
-            ):
-                raise StoryRuntimeError("runtime.variable_bounds", variable_id)
-            if (
-                definition.type == VariableType.ENUM
-                and value not in definition.enum_values
-            ):
-                raise StoryRuntimeError("runtime.variable_type", variable_id)
-            if definition.type in {
-                VariableType.STRING_SET,
-                VariableType.NODE_SET,
-            } and not (
-                isinstance(value, frozenset)
-                and all(isinstance(item, str) for item in value)
-            ):
+        if set(self.global_variables) != set(global_definitions):
+            raise StoryRuntimeError(
+                "runtime.global_variable_schema",
+                "global variables no longer match StoryProgram schema",
+            )
+        for values, definitions in (
+            (self.variables, branch_definitions),
+            (self.global_variables, global_definitions),
+        ):
+            for variable_id, value in values.items():
+                if variable_value_is_valid(definitions[variable_id], value):
+                    continue
                 raise StoryRuntimeError("runtime.variable_type", variable_id)
         registered = set(self.program.character_registry.by_id)
         if not set(self.active_cast).issubset(registered):
@@ -404,6 +432,7 @@ class StoryRuntime:
         command: StartStory,
         *,
         cast_context: CastResolutionContext | None = None,
+        global_variables: Mapping[str, Any] | None = None,
     ) -> RuntimeResult:
         if not command.command_id:
             raise StoryRuntimeError("runtime.command_id", "command_id cannot be empty")
@@ -415,6 +444,7 @@ class StoryRuntime:
             or CastResolutionContext(
                 current_cast=self.program.character_registry.initial_cast
             ),
+            self._prepare_global_variables(global_variables),
         )
         transaction.emit(StoryEventType.STORY_STARTED, storyId=self.program.story_id)
         transaction.unlock_node(self.program.start_node_id)
@@ -426,6 +456,7 @@ class StoryRuntime:
         variables = {
             definition.id: self._initial_value(definition)
             for definition in self.program.variables
+            if definition.scope == VariableScope.BRANCH
         }
         registered = frozenset(self.program.character_registry.by_id)
         return StoryState(
@@ -450,6 +481,7 @@ class StoryRuntime:
         command: RuntimeCommand,
         *,
         cast_context: CastResolutionContext | None = None,
+        global_variables: Mapping[str, Any] | None = None,
     ) -> RuntimeResult:
         self._validate_command(state, command)
         if command.command_id in state.processed_command_ids:
@@ -458,6 +490,7 @@ class StoryRuntime:
             state,
             command.command_id,
             cast_context or CastResolutionContext(),
+            self._prepare_global_variables(global_variables),
         )
         if isinstance(command, SelectChoice):
             self._select_choice(transaction, command)
@@ -575,10 +608,12 @@ class StoryRuntime:
         state: StoryState,
         command_id: str,
         cast_context: CastResolutionContext,
+        global_variables: Mapping[str, Any],
     ) -> _Transaction:
         return _Transaction(
             program=self.program,
             state=state,
+            global_variables=global_variables,
             command_id=command_id,
             cast_resolver=self.cast_resolver,
             cast_context=cast_context,
@@ -605,6 +640,33 @@ class StoryRuntime:
                 "runtime.revision_conflict",
                 f"expected revision {command.expected_revision}, current revision is {state.revision}",
             )
+
+    def _prepare_global_variables(
+        self,
+        supplied: Mapping[str, Any] | None,
+    ) -> Mapping[str, Any]:
+        definitions = {
+            definition.id: definition
+            for definition in self.program.variables
+            if definition.scope == VariableScope.GLOBAL
+        }
+        values = (
+            {
+                definition.id: self._initial_value(definition)
+                for definition in definitions.values()
+            }
+            if supplied is None
+            else {str(key): freeze_value(value) for key, value in supplied.items()}
+        )
+        if set(values) != set(definitions):
+            raise StoryRuntimeError(
+                "runtime.global_variable_schema",
+                "global variables no longer match StoryProgram schema",
+            )
+        for variable_id, value in values.items():
+            if not variable_value_is_valid(definitions[variable_id], value):
+                raise StoryRuntimeError("runtime.variable_type", variable_id)
+        return freeze_mapping(values)
 
     @staticmethod
     def _require_current_node(state: StoryState, expected_node_id: str) -> None:

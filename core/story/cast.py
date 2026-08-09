@@ -14,7 +14,6 @@ class CharacterRuntimeStatus:
     available: bool = True
     alive: bool = True
     location: str | None = None
-    loaded: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,11 +27,16 @@ class CastResolutionContext:
 
 
 @dataclass(frozen=True, slots=True)
-class CastResolution:
+class CastResolutionPlan:
+    """Pure logical cast plan awaiting application-level resource readiness."""
+
     active_character_ids: tuple[str, ...]
     role_bindings: Mapping[str, str]
     excluded: Mapping[str, str]
     unresolved_roles: tuple[str, ...] = ()
+    required_character_ids: tuple[str, ...] = ()
+    requires_loaded_assets: bool = False
+    on_load_failure: str = "error"
 
 
 class CastResolutionError(ValueError):
@@ -49,7 +53,7 @@ class CastResolver:
         registry: CharacterRegistry,
         policy: CastPolicy,
         context: CastResolutionContext | None = None,
-    ) -> CastResolution:
+    ) -> CastResolutionPlan:
         context = context or CastResolutionContext()
         characters = registry.by_id
         excluded: dict[str, str] = {}
@@ -120,6 +124,8 @@ class CastResolver:
                 )
                 role_bindings[binding_key] = candidate
 
+        required_character_ids = tuple(active)
+
         if context.ai_proposal:
             if not policy.selection.allow_ai_proposal:
                 raise CastResolutionError(
@@ -160,11 +166,14 @@ class CastResolver:
                 "cast.min_active",
                 "resolved cast does not satisfy minActive",
             )
-        return CastResolution(
+        return CastResolutionPlan(
             active_character_ids=tuple(active),
             role_bindings=MappingProxyType(role_bindings),
             excluded=MappingProxyType(excluded),
             unresolved_roles=tuple(unresolved_roles),
+            required_character_ids=required_character_ids,
+            requires_loaded_assets=policy.constraints.require_loaded_assets,
+            on_load_failure=policy.fallback.on_load_failure,
         )
 
     def _exclusion_reason(
@@ -182,8 +191,6 @@ class CastResolver:
             return "unavailable"
         if not status.alive:
             return "dead"
-        if policy.constraints.require_loaded_assets and not status.loaded:
-            return "not-loaded"
         if not apply_optional_query:
             return None
         query = policy.optional_query

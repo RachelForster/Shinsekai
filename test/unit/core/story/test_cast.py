@@ -165,3 +165,23 @@ def test_resolution_is_independent_of_registry_iteration_order(registry) -> None
     }
 
     assert results == {("ling", "detective-zhou")}
+
+
+def test_resolution_returns_application_readiness_plan(registry) -> None:
+    policy = CastPolicy(
+        mode=CastMode.FIXED,
+        required=("ling",),
+        constraints=CastConstraints(
+            min_active=1,
+            max_active=2,
+            require_loaded_assets=True,
+        ),
+        fallback=CastFallback(on_load_failure="continue-without-optional"),
+    )
+
+    plan = CastResolver().resolve(registry, policy)
+
+    assert plan.active_character_ids == ("ling",)
+    assert plan.required_character_ids == ("ling",)
+    assert plan.requires_loaded_assets is True
+    assert plan.on_load_failure == "continue-without-optional"

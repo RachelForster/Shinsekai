@@ -7,7 +7,7 @@ from .compiler import (
     story_program_json,
 )
 from .cast import (
-    CastResolution,
+    CastResolutionPlan,
     CastResolutionContext,
     CastResolutionError,
     CastResolver,
@@ -102,7 +102,7 @@ __all__ = [
     "CastFallback",
     "CastMode",
     "CastPolicy",
-    "CastResolution",
+    "CastResolutionPlan",
     "CastResolutionContext",
     "CastResolutionError",
     "CastResolver",
