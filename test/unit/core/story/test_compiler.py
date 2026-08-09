@@ -15,6 +15,7 @@ from core.story import (
     RuleEdge,
     RuleGraph,
     RuleNode,
+    SignalStrength,
     StoryCompileError,
     StoryCompiler,
     parse_story_project,
@@ -44,6 +45,24 @@ def test_compile_produces_stable_program_and_source_map(project) -> None:
     )
     assert story_program_json(first) == story_program_json(second)
     assert json.loads(story_program_json(first))["story_id"] == "campus-mystery"
+    assert first.semantic_signals_by_id["respect-boundary"].effects_by_strength[
+        SignalStrength.MEDIUM
+    ] == (
+        EffectSpec("increment", ("trust.ling", 2)),
+    )
+
+
+def test_semantic_definitions_contribute_to_source_hash() -> None:
+    original_source = campus_mystery_source()
+    changed_source = campus_mystery_source()
+    changed_source["semanticSignals"][0]["effectsByStrength"]["medium"] = [
+        {"increment": ["trust.ling", 3]}
+    ]
+
+    original = StoryCompiler().compile(parse_story_project(original_source))
+    changed = StoryCompiler().compile(parse_story_project(changed_source))
+
+    assert original.source_hash != changed.source_hash
 
 
 def test_compiled_program_is_deeply_immutable_and_detached(project) -> None:
@@ -75,6 +94,10 @@ def test_compiled_program_is_deeply_immutable_and_detached(project) -> None:
         program.rule_graph.nodes[0].config["variable"] = "other"
     with pytest.raises(TypeError):
         program.source_map["node:transfer-day"] = "changed"
+    with pytest.raises(TypeError):
+        program.semantic_signals_by_id["respect-boundary"].effects_by_strength[
+            SignalStrength.MEDIUM
+        ] = ()
 
 
 def test_compiled_program_keeps_only_exposed_context(project) -> None:

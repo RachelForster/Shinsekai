@@ -12,11 +12,11 @@ from core.story import (
     SelectChoice,
     SemanticSignalCandidate,
     SemanticSignalContext,
-    SemanticSignalDefinition,
     SignalStrength,
     SpeechAct,
     StartStory,
     StoryCompiler,
+    StoryCompileError,
     StoryEventType,
     StoryEvent,
     StoryEventReplayError,
@@ -36,13 +36,7 @@ def program():
 
 @pytest.fixture
 def runtime(program):
-    definition = SemanticSignalDefinition(
-        id="respect-boundary",
-        effects_by_strength={
-            SignalStrength.MEDIUM: (EffectSpec("increment", ("trust.ling", 2)),)
-        },
-    )
-    return StoryRuntime(program, semantic_definitions={definition.id: definition})
+    return StoryRuntime(program)
 
 
 def test_start_story_initializes_authoritative_state_and_cast(runtime) -> None:
@@ -61,6 +55,8 @@ def test_start_story_initializes_authoritative_state_and_cast(runtime) -> None:
         StoryEventType.CAST_RESOLVED,
         StoryEventType.NODE_ENTERED,
     ]
+    with pytest.raises(TypeError):
+        runtime.semantic_definitions["respect-boundary"] = None
 
 
 def test_choice_transaction_applies_effect_unlocks_and_enters_target(runtime) -> None:
@@ -240,39 +236,17 @@ def test_semantic_signal_changes_only_published_metric(runtime) -> None:
     assert replayed == result.state
 
 
-def test_semantic_effect_cannot_modify_non_semantic_variable(program) -> None:
-    definition = SemanticSignalDefinition(
-        id="invented-flag",
-        effects_by_strength={
-            SignalStrength.MEDIUM: (
-                EffectSpec("set", ("flags.arrived_old_school", True)),
-            )
-        },
-    )
-    runtime = StoryRuntime(program, semantic_definitions={definition.id: definition})
-    started = runtime.start(StartStory("start-1"))
-    candidate = SemanticSignalCandidate(
-        signal_id=definition.id,
-        strength=SignalStrength.MEDIUM,
-        confidence=0.95,
-        speech_act=SpeechAct.ENDORSEMENT,
-        fingerprint="flag",
-        source_message_id="message-1",
-        cause_group="message-1:flag",
-    )
-    command = ApplySemanticSignals(
-        command_id="signals-1",
-        expected_revision=started.state.revision,
-        candidates=(candidate,),
-        context=SemanticSignalContext("turn-1", "transfer-day", "chapter-1"),
-    )
+def test_semantic_effect_cannot_target_unpublished_metric() -> None:
+    source = campus_mystery_source()
+    for effects in source["semanticSignals"][0]["effectsByStrength"].values():
+        effects[:] = [{"set": ["flags.arrived_old_school", True]}]
 
-    with pytest.raises(StoryRuntimeError) as exc_info:
-        runtime.execute(started.state, command)
+    with pytest.raises(StoryCompileError) as exc_info:
+        StoryCompiler().compile(parse_story_project(source))
 
-    assert exc_info.value.code == "runtime.semantic_target"
-    assert started.state.variables["flags.arrived_old_school"] is False
-    assert started.state.semantic_signal_state.sequence == 0
+    assert {item.code for item in exc_info.value.diagnostics} == {
+        "semantic.target_disabled"
+    }
 
 
 def test_no_effect_command_emits_replayable_revision_event(runtime) -> None:
@@ -348,6 +322,7 @@ def test_replay_rejects_undeclared_variable(runtime) -> None:
 
 def test_global_effects_are_planned_without_entering_branch_state() -> None:
     source = campus_mystery_source()
+    source["semanticSignals"] = []
     source["variables"]["trust.ling"]["scope"] = "global"
     program = StoryCompiler().compile(parse_story_project(source))
     runtime = StoryRuntime(program)

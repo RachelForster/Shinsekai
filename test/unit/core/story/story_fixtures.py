@@ -36,6 +36,22 @@ def campus_mystery_source() -> dict[str, Any]:
                 "initial": ["old_school_key"],
             },
         },
+        "semanticSignals": [
+            {
+                "id": "respect-boundary",
+                "minimumConfidence": "medium",
+                "allowedSpeechActs": ["endorsement", "action"],
+                "repeatWindow": 20,
+                "maxPerTurn": 1,
+                "maxPerScene": 3,
+                "maxPerChapter": 10,
+                "effectsByStrength": {
+                    "weak": [{"increment": ["trust.ling", 1]}],
+                    "medium": [{"increment": ["trust.ling", 2]}],
+                    "strong": [{"increment": ["trust.ling", 4]}],
+                },
+            }
+        ],
         "cast": {
             "defaults": {"maxActive": 4, "preserveCurrentCast": True},
             "initialCast": ["ling"],

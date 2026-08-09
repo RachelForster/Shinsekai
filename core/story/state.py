@@ -63,6 +63,9 @@ class CanonFact:
 class SemanticSignalState:
     sequence: int = 0
     usage: Mapping[str, int] = field(default_factory=freeze_mapping)
+    turn_id: str | None = None
+    scene_id: str | None = None
+    chapter_id: str | None = None
     recent_fingerprints: tuple[tuple[str, int], ...] = ()
     accepted_cause_groups: tuple[str, ...] = ()
 

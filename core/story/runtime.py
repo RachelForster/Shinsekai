@@ -31,7 +31,7 @@ from .models import (
     VariableType,
 )
 from .rules import ConditionEvaluator, RuleEvaluator
-from .semantic import SemanticSignalDefinition, SemanticSignalPolicy
+from .semantic import SemanticSignalPolicy
 from .state import (
     CanonFact,
     CastState,
@@ -418,12 +418,13 @@ class StoryRuntime:
         self,
         program: StoryProgram,
         *,
-        semantic_definitions: Mapping[str, SemanticSignalDefinition] | None = None,
         cast_resolver: CastResolver | None = None,
         semantic_policy: SemanticSignalPolicy | None = None,
     ) -> None:
         self.program = program
-        self.semantic_definitions = dict(semantic_definitions or {})
+        self.semantic_definitions = MappingProxyType(
+            dict(program.semantic_signals_by_id)
+        )
         self.cast_resolver = cast_resolver or CastResolver()
         self.semantic_policy = semantic_policy or SemanticSignalPolicy()
         self.condition_evaluator = ConditionEvaluator()
@@ -596,6 +597,7 @@ class StoryRuntime:
                 sourceMessageId=decision.candidate.source_message_id,
                 causeGroup=decision.candidate.cause_group,
                 fingerprint=decision.candidate.fingerprint,
+                metricIds=decision.metric_ids,
                 turnId=command.context.turn_id,
                 sceneId=command.context.scene_id,
                 chapterId=command.context.chapter_id,

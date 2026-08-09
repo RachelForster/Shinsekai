@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+import math
 from types import MappingProxyType
 
 from .models import EffectSpec
@@ -39,6 +40,18 @@ class SemanticSignalDefinition:
     max_per_scene: int = 3
     max_per_chapter: int = 10
 
+    def __post_init__(self) -> None:
+        effects = {
+            SignalStrength(strength): tuple(items)
+            for strength, items in self.effects_by_strength.items()
+        }
+        object.__setattr__(self, "effects_by_strength", MappingProxyType(effects))
+        object.__setattr__(
+            self,
+            "allowed_speech_acts",
+            frozenset(SpeechAct(item) for item in self.allowed_speech_acts),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class SemanticSignalCandidate:
@@ -65,6 +78,7 @@ class SemanticSignalDecision:
     accepted: bool
     reason_code: str
     effects: tuple[EffectSpec, ...] = ()
+    metric_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,20 +97,32 @@ class SemanticSignalPolicy:
     ) -> SemanticPolicyResult:
         sequence = state.sequence
         usage = dict(state.usage)
+        turn_id = state.turn_id
+        scene_id = state.scene_id
+        chapter_id = state.chapter_id
         fingerprints = list(state.recent_fingerprints)
         cause_groups = list(state.accepted_cause_groups)
         decisions: list[SemanticSignalDecision] = []
 
         for candidate in candidates:
             definition = definitions.get(candidate.signal_id)
+            metric_ids = self._metric_ids(definition, candidate.strength)
+            scoped_usage = self._usage_for_context(
+                usage,
+                turn_id=turn_id,
+                scene_id=scene_id,
+                chapter_id=chapter_id,
+                context=context,
+            )
             reason = self._rejection_reason(
                 candidate,
                 definition,
                 state_sequence=sequence,
-                usage=usage,
+                usage=scoped_usage,
                 fingerprints=fingerprints,
                 cause_groups=cause_groups,
                 context=context,
+                metric_ids=metric_ids,
             )
             if reason is not None or definition is None:
                 decisions.append(
@@ -109,10 +135,14 @@ class SemanticSignalPolicy:
                 continue
 
             sequence += 1
+            usage = scoped_usage
+            turn_id = context.turn_id
+            scene_id = context.scene_id
+            chapter_id = context.chapter_id
             fingerprint_key = f"{candidate.signal_id}:{candidate.fingerprint}"
             fingerprints.append((fingerprint_key, sequence))
             cause_groups.append(candidate.cause_group)
-            for key in self._usage_keys(candidate.signal_id, context):
+            for key in self._usage_keys(metric_ids):
                 usage[key] = usage.get(key, 0) + 1
             effects = tuple(definition.effects_by_strength.get(candidate.strength, ()))
             decisions.append(
@@ -121,6 +151,7 @@ class SemanticSignalPolicy:
                     accepted=True,
                     reason_code="accepted",
                     effects=effects,
+                    metric_ids=metric_ids,
                 )
             )
 
@@ -133,6 +164,9 @@ class SemanticSignalPolicy:
             state=SemanticSignalState(
                 sequence=sequence,
                 usage=MappingProxyType(usage),
+                turn_id=turn_id,
+                scene_id=scene_id,
+                chapter_id=chapter_id,
                 recent_fingerprints=tuple(fingerprints),
                 accepted_cause_groups=tuple(cause_groups),
             ),
@@ -149,9 +183,12 @@ class SemanticSignalPolicy:
         fingerprints: list[tuple[str, int]],
         cause_groups: list[str],
         context: SemanticSignalContext,
+        metric_ids: tuple[str, ...],
     ) -> str | None:
         if definition is None:
             return "unknown-signal"
+        if not math.isfinite(candidate.confidence):
+            return "invalid-confidence"
         if candidate.confidence < 0.0 or candidate.confidence > 1.0:
             return "invalid-confidence"
         if candidate.confidence < definition.minimum_confidence:
@@ -162,6 +199,8 @@ class SemanticSignalPolicy:
             return "missing-fingerprint"
         if not candidate.cause_group:
             return "missing-cause-group"
+        if not metric_ids:
+            return "missing-metric-target"
         if (
             candidate.cause_group in context.suppressed_cause_groups
             or candidate.cause_group in cause_groups
@@ -173,29 +212,63 @@ class SemanticSignalPolicy:
                 if state_sequence - accepted_sequence < definition.repeat_window:
                     return "duplicate-fingerprint"
                 break
-        limits = (
-            (f"turn:{context.turn_id}:{candidate.signal_id}", definition.max_per_turn),
-            (
-                f"scene:{context.scene_id}:{candidate.signal_id}",
-                definition.max_per_scene,
-            ),
-            (
-                f"chapter:{context.chapter_id}:{candidate.signal_id}",
-                definition.max_per_chapter,
-            ),
-        )
-        for key, limit in limits:
-            if usage.get(key, 0) >= limit:
-                return "rate-limited"
+        for metric_id in metric_ids:
+            limits = (
+                (f"turn:{metric_id}", definition.max_per_turn),
+                (f"scene:{metric_id}", definition.max_per_scene),
+                (f"chapter:{metric_id}", definition.max_per_chapter),
+            )
+            for key, limit in limits:
+                if usage.get(key, 0) >= limit:
+                    return "rate-limited"
         return None
 
     @staticmethod
-    def _usage_keys(
-        signal_id: str,
-        context: SemanticSignalContext,
-    ) -> tuple[str, str, str]:
-        return (
-            f"turn:{context.turn_id}:{signal_id}",
-            f"scene:{context.scene_id}:{signal_id}",
-            f"chapter:{context.chapter_id}:{signal_id}",
+    def _usage_keys(metric_ids: tuple[str, ...]) -> tuple[str, ...]:
+        return tuple(
+            f"{scope}:{metric_id}"
+            for metric_id in metric_ids
+            for scope in ("turn", "scene", "chapter")
         )
+
+    @staticmethod
+    def _metric_ids(
+        definition: SemanticSignalDefinition | None,
+        strength: SignalStrength,
+    ) -> tuple[str, ...]:
+        if definition is None:
+            return ()
+        return tuple(
+            sorted(
+                {
+                    str(effect.args[0])
+                    for effect in definition.effects_by_strength.get(strength, ())
+                    if effect.op in {"set", "increment", "add-set", "remove-set"}
+                    and effect.args
+                }
+            )
+        )
+
+    @staticmethod
+    def _usage_for_context(
+        usage: Mapping[str, int],
+        *,
+        turn_id: str | None,
+        scene_id: str | None,
+        chapter_id: str | None,
+        context: SemanticSignalContext,
+    ) -> dict[str, int]:
+        reset_scopes = {
+            scope
+            for scope, previous, current in (
+                ("turn", turn_id, context.turn_id),
+                ("scene", scene_id, context.scene_id),
+                ("chapter", chapter_id, context.chapter_id),
+            )
+            if previous != current
+        }
+        return {
+            key: value
+            for key, value in usage.items()
+            if key.partition(":")[0] not in reset_scopes
+        }

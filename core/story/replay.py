@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 from typing import Any
 
@@ -42,6 +42,9 @@ class StoryEventReplayer:
         current_node_id = initial.current_node_id
         semantic_sequence = initial.semantic_signal_state.sequence
         semantic_usage = dict(initial.semantic_signal_state.usage)
+        semantic_turn_id = initial.semantic_signal_state.turn_id
+        semantic_scene_id = initial.semantic_signal_state.scene_id
+        semantic_chapter_id = initial.semantic_signal_state.chapter_id
         fingerprints = list(initial.semantic_signal_state.recent_fingerprints)
         cause_groups = list(initial.semantic_signal_state.accepted_cause_groups)
         active_cast = tuple(initial.cast_state.active_character_ids)
@@ -162,17 +165,59 @@ class StoryEventReplayer:
             elif event.type == StoryEventType.SEMANTIC_SIGNAL_ACCEPTED:
                 semantic_sequence += 1
                 signal_id = str(payload["signalId"])
+                if signal_id not in program.semantic_signals_by_id:
+                    raise StoryEventReplayError(
+                        f"event targets unknown semantic signal {signal_id!r}"
+                    )
                 fingerprint = str(payload["fingerprint"])
                 cause_group = str(payload["causeGroup"])
                 fingerprints.append((f"{signal_id}:{fingerprint}", semantic_sequence))
                 cause_groups.append(cause_group)
-                for scope, key in (
-                    ("turn", "turnId"),
-                    ("scene", "sceneId"),
-                    ("chapter", "chapterId"),
+                next_ids = {
+                    "turn": str(payload["turnId"]),
+                    "scene": str(payload["sceneId"]),
+                    "chapter": str(payload["chapterId"]),
+                }
+                previous_ids = {
+                    "turn": semantic_turn_id,
+                    "scene": semantic_scene_id,
+                    "chapter": semantic_chapter_id,
+                }
+                reset_scopes = {
+                    scope
+                    for scope, current in next_ids.items()
+                    if previous_ids[scope] != current
+                }
+                semantic_usage = {
+                    key: value
+                    for key, value in semantic_usage.items()
+                    if key.partition(":")[0] not in reset_scopes
+                }
+                raw_metric_ids = payload.get("metricIds")
+                if not isinstance(raw_metric_ids, Sequence) or isinstance(
+                    raw_metric_ids, (str, bytes, bytearray)
                 ):
-                    usage_key = f"{scope}:{payload[key]}:{signal_id}"
-                    semantic_usage[usage_key] = semantic_usage.get(usage_key, 0) + 1
+                    raise StoryEventReplayError(
+                        "semantic event metricIds must be a list"
+                    )
+                metric_ids = tuple(str(item) for item in raw_metric_ids)
+                definitions = program.variables_by_id
+                if not metric_ids or any(
+                    metric_id not in definitions
+                    or definitions[metric_id].scope != VariableScope.BRANCH
+                    or not definitions[metric_id].allow_semantic_input
+                    for metric_id in metric_ids
+                ):
+                    raise StoryEventReplayError(
+                        "semantic event targets an invalid branch metric"
+                    )
+                for metric_id in metric_ids:
+                    for scope in ("turn", "scene", "chapter"):
+                        usage_key = f"{scope}:{metric_id}"
+                        semantic_usage[usage_key] = semantic_usage.get(usage_key, 0) + 1
+                semantic_turn_id = next_ids["turn"]
+                semantic_scene_id = next_ids["scene"]
+                semantic_chapter_id = next_ids["chapter"]
             else:  # pragma: no cover - protects future event additions
                 raise StoryEventReplayError(
                     f"unsupported event type {event.type.value!r}"
@@ -189,6 +234,9 @@ class StoryEventReplayer:
         semantic_state = SemanticSignalState(
             sequence=semantic_sequence,
             usage=freeze_mapping(semantic_usage),
+            turn_id=semantic_turn_id,
+            scene_id=semantic_scene_id,
+            chapter_id=semantic_chapter_id,
             recent_fingerprints=tuple(
                 item for item in fingerprints if item[1] >= minimum_sequence
             )[-256:],
