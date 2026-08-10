@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import threading
 from types import MappingProxyType
 from typing import Any
@@ -11,7 +11,9 @@ from typing import Any
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
     EffectSpec,
+    CastResolutionPlan,
     RuntimeCommand,
+    RuntimeResult,
     StartStory,
     StoryEvent,
     StoryEventReplayer,
@@ -42,6 +44,8 @@ from .protocol import story_chat_snapshot, story_event_messages, story_state_vie
 
 
 FailureInjector = Callable[[str], None]
+CastPlanPreparer = Callable[[CastResolutionPlan], CastResolutionPlan]
+CastPlanCommitted = Callable[[CastResolutionPlan], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,6 +184,8 @@ class StorySession:
         repository: JsonStorySessionRepository | None = None,
         global_store: JsonGlobalStoryProgressStore | None = None,
         failure_injector: FailureInjector | None = None,
+        cast_plan_preparer: CastPlanPreparer | None = None,
+        cast_plan_committed: CastPlanCommitted | None = None,
     ) -> None:
         flags.require(FeatureFlag.STORY_SYSTEM)
         self.runtime = runtime
@@ -188,6 +194,8 @@ class StorySession:
         self.repository = repository
         self.global_store = global_store
         self.failure_injector = failure_injector or (lambda _point: None)
+        self.cast_plan_preparer = cast_plan_preparer
+        self.cast_plan_committed = cast_plan_committed
         self.active_branch_id = "main"
         self.branches: dict[str, StoryBranch] = {}
         self.outbox: list[GlobalEffectOutboxEntry] = []
@@ -205,6 +213,8 @@ class StorySession:
         global_store: JsonGlobalStoryProgressStore | None = None,
         history_entries: Sequence[Mapping[str, Any]] = (),
         failure_injector: FailureInjector | None = None,
+        cast_plan_preparer: CastPlanPreparer | None = None,
+        cast_plan_committed: CastPlanCommitted | None = None,
     ) -> StorySession:
         flags.require(FeatureFlag.STORY_SYSTEM)
         progress = (
@@ -219,9 +229,12 @@ class StorySession:
             repository=repository,
             global_store=global_store,
             failure_injector=failure_injector,
+            cast_plan_preparer=cast_plan_preparer,
+            cast_plan_committed=cast_plan_committed,
         )
         command = StartStory(command_id)
         result = runtime.start(command, global_variables=progress.variables)
+        result = session._prepare_runtime_result(runtime.initial_state(), result)
         branch = StoryBranch(
             id="main",
             parent_id=None,
@@ -231,7 +244,13 @@ class StorySession:
             history_entries=_history_entries(history_entries),
         )
         session.branches[branch.id] = branch
-        session._commit_result(branch, command, result.events, result.global_effects)
+        session._commit_result(
+            branch,
+            command,
+            result.events,
+            result.global_effects,
+            cast_plans=result.cast_plans,
+        )
         return session
 
     @classmethod
@@ -243,6 +262,8 @@ class StorySession:
         repository: JsonStorySessionRepository,
         global_store: JsonGlobalStoryProgressStore,
         failure_injector: FailureInjector | None = None,
+        cast_plan_preparer: CastPlanPreparer | None = None,
+        cast_plan_committed: CastPlanCommitted | None = None,
     ) -> StorySession:
         flags.require(FeatureFlag.STORY_SYSTEM)
         raw = repository.load()
@@ -264,6 +285,8 @@ class StorySession:
             repository=repository,
             global_store=global_store,
             failure_injector=failure_injector,
+            cast_plan_preparer=cast_plan_preparer,
+            cast_plan_committed=cast_plan_committed,
         )
         session.active_branch_id = str(raw.get("activeBranchId") or "")
         branches_raw = raw.get("branches")
@@ -308,6 +331,7 @@ class StorySession:
                 command,
                 global_variables=self.global_progress.variables,
             )
+            result = self._prepare_runtime_result(branch.state, result)
             if history_entries is not None:
                 branch.history_entries = _history_entries(history_entries)
             return self._commit_result(
@@ -316,6 +340,7 @@ class StorySession:
                 result.events,
                 result.global_effects,
                 state=result.state,
+                cast_plans=result.cast_plans,
             )
 
     def checkpoint_generation_before_user_index(self, user_index: int) -> int:
@@ -451,6 +476,7 @@ class StorySession:
         global_effects: tuple[EffectSpec, ...],
         *,
         state: StoryState | None = None,
+        cast_plans: tuple[CastResolutionPlan, ...] = (),
     ) -> StorySessionAck:
         if state is not None:
             branch.state = state
@@ -527,7 +553,50 @@ class StorySession:
         self._save()
         self.failure_injector("after_session_commit")
         self.flush_global_outbox()
+        if self.cast_plan_committed is not None:
+            for plan in cast_plans:
+                self.cast_plan_committed(plan)
         return ack
+
+    def _prepare_runtime_result(
+        self,
+        previous_state: StoryState,
+        result: RuntimeResult,
+    ) -> RuntimeResult:
+        if self.cast_plan_preparer is None or not result.cast_plans:
+            return result
+        prepared_plans = tuple(
+            self.cast_plan_preparer(plan) for plan in result.cast_plans
+        )
+        plan_index = 0
+        events: list[StoryEvent] = []
+        for event in result.events:
+            if event.type != StoryEventType.CAST_RESOLVED:
+                events.append(event)
+                continue
+            if plan_index >= len(prepared_plans):
+                raise StoryPersistenceError("cast plan and event count differ")
+            plan = prepared_plans[plan_index]
+            plan_index += 1
+            payload = dict(event.payload)
+            payload["activeCharacterIds"] = plan.active_character_ids
+            payload["roleBindings"] = dict(plan.role_bindings)
+            payload["unresolvedRoles"] = plan.unresolved_roles
+            events.append(replace(event, payload=MappingProxyType(payload)))
+        if plan_index != len(prepared_plans):
+            raise StoryPersistenceError("cast plan and event count differ")
+        prepared_events = tuple(events)
+        prepared_state = StoryEventReplayer().replay(
+            previous_state,
+            prepared_events,
+            program=self.runtime.program,
+        )
+        return RuntimeResult(
+            state=prepared_state,
+            events=prepared_events,
+            global_effects=result.global_effects,
+            cast_plans=prepared_plans,
+        )
 
     def _apply_global_entry(self, entry: GlobalEffectOutboxEntry) -> None:
         variables = self.global_progress.variables

@@ -37,6 +37,8 @@ class CastResolutionPlan:
     required_character_ids: tuple[str, ...] = ()
     requires_loaded_assets: bool = False
     on_load_failure: str = "error"
+    minimum_active: int = 0
+    maximum_active: int = 8
 
 
 class CastResolutionError(ValueError):
@@ -174,6 +176,8 @@ class CastResolver:
             required_character_ids=required_character_ids,
             requires_loaded_assets=policy.constraints.require_loaded_assets,
             on_load_failure=policy.fallback.on_load_failure,
+            minimum_active=policy.constraints.min_active,
+            maximum_active=policy.constraints.max_active,
         )
 
     def _exclusion_reason(

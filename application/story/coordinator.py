@@ -14,6 +14,13 @@ from core.sprite.chat_branch_storage import (
 from core.story import StoryCompiler, StoryRuntime
 from sdk.path_utils import safe_existing_path
 
+from .characters import (
+    CharacterImportTokenStore,
+    CharacterResourceManager,
+    CharacterSourceResolver,
+    ConfigCharacterLibrary,
+    StoryCastApplicationService,
+)
 from .persistence import JsonGlobalStoryProgressStore, JsonStorySessionRepository
 from .project_loader import load_story_project
 from .session import StorySession
@@ -43,17 +50,44 @@ def start_or_recover_story_session(
 
     program = StoryCompiler().compile(load_story_project(resolved_story_path))
     runtime = StoryRuntime(program)
+    story_root = (
+        resolved_story_path
+        if resolved_story_path.is_dir()
+        else resolved_story_path.parent
+    )
+    import_tokens = getattr(state, "story_import_tokens", None)
+    if import_tokens is None:
+        import_tokens = CharacterImportTokenStore(flags)
+        state.story_import_tokens = import_tokens
+    resolver = CharacterSourceResolver(
+        flags,
+        story_id=program.story_id,
+        story_root=story_root,
+        local_library=ConfigCharacterLibrary(state.config_manager),
+        import_tokens=import_tokens,
+    )
+    cast_service = StoryCastApplicationService(
+        flags,
+        CharacterResourceManager(
+            flags,
+            registry=program.character_registry,
+            resolver=resolver,
+        ),
+    )
     repository = JsonStorySessionRepository(chat_history_session_dir(history_path))
     global_store = JsonGlobalStoryProgressStore(
         Path(state.history_dir).resolve(strict=False) / ".story-global"
     )
-    if repository.load() is None:
+    recovering = repository.load() is not None
+    if not recovering:
         session = StorySession.create(
             runtime,
             flags,
             command_id=command_id,
             repository=repository,
             global_store=global_store,
+            cast_plan_preparer=cast_service.prepare,
+            cast_plan_committed=cast_service.committed,
         )
     else:
         session = StorySession.recover(
@@ -61,9 +95,15 @@ def start_or_recover_story_session(
             flags,
             repository=repository,
             global_store=global_store,
+            cast_plan_preparer=cast_service.prepare,
+            cast_plan_committed=cast_service.committed,
+        )
+        cast_service.rebuild(
+            session.active_branch.state.cast_state.active_character_ids
         )
     session.owner_history_path = str(Path(history_path).resolve(strict=False))
     state.story_session = session
+    state.story_cast_service = cast_service
     return session
 
 
@@ -93,11 +133,16 @@ def story_snapshot_patch(state: Any) -> dict[str, Any]:
     session = bound_story_session(state)
     if session is None:
         return {}
-    return session.chat_snapshot()
+    patch = session.chat_snapshot()
+    cast_service = getattr(state, "story_cast_service", None)
+    if cast_service is not None:
+        patch.update(cast_service.chat_patch())
+    return patch
 
 
 def clear_story_session(state: Any) -> None:
     setattr(state, "story_session", None)
+    setattr(state, "story_cast_service", None)
 
 
 def discard_story_session_storage(history_path: str | Path) -> None:
