@@ -8,6 +8,7 @@ from typing import Any
 
 from .events import StoryEvent, StoryEventType
 from .models import StoryProgram, VariableScope
+from .semantic import MAX_REPEAT_WINDOW
 from .state import (
     CanonFact,
     CastState,
@@ -55,6 +56,11 @@ class StoryEventReplayer:
         revision = initial.revision
         group_revision: int | None = None
         group_command_id: str | None = None
+        started = initial.revision > 0
+        startup_pending = initial.revision == 0
+        start_node_unlocked = False
+        start_cast_resolved = False
+        start_node_entered = False
 
         for event in events:
             expected_cursor = event_cursor + 1
@@ -75,6 +81,13 @@ class StoryEventReplayer:
                     group_revision,
                     group_command_id,
                 )
+                if startup_pending:
+                    self._validate_startup_group(
+                        start_node_unlocked=start_node_unlocked,
+                        start_cast_resolved=start_cast_resolved,
+                        start_node_entered=start_node_entered,
+                    )
+                    startup_pending = False
                 if event.revision != revision + 1:
                     raise StoryEventReplayError(
                         f"event revision {event.revision} does not follow {revision}"
@@ -88,6 +101,21 @@ class StoryEventReplayer:
 
             payload = event.payload
             event_cursor = expected_cursor
+            if not started and event.type != StoryEventType.STORY_STARTED:
+                raise StoryEventReplayError(
+                    "StoryStarted must precede all runtime events"
+                )
+            if startup_pending and event.type in {
+                StoryEventType.COMMAND_PROCESSED,
+                StoryEventType.CHOICE_SELECTED,
+                StoryEventType.INTENT_PERFORMED,
+                StoryEventType.NODE_COMPLETED,
+                StoryEventType.SEMANTIC_SIGNAL_ACCEPTED,
+                StoryEventType.SEMANTIC_SIGNAL_REJECTED,
+            }:
+                raise StoryEventReplayError(
+                    "runtime command events cannot occur in the startup revision"
+                )
             if event.type in {
                 StoryEventType.COMMAND_PROCESSED,
                 StoryEventType.CHOICE_SELECTED,
@@ -97,8 +125,11 @@ class StoryEventReplayer:
             }:
                 continue
             if event.type == StoryEventType.STORY_STARTED:
+                if started:
+                    raise StoryEventReplayError("StoryStarted cannot be applied twice")
                 if payload.get("storyId") != initial.story_id:
                     raise StoryEventReplayError("StoryStarted targets another story")
+                started = True
             elif event.type in {
                 StoryEventType.VARIABLE_CHANGED,
                 StoryEventType.METRIC_CHANGED,
@@ -130,9 +161,14 @@ class StoryEventReplayer:
                     )
                 variables[variable_id] = current
             elif event.type == StoryEventType.NODE_UNLOCKED:
-                unlocked.add(self._node_id(payload, program))
+                node_id = self._node_id(payload, program)
+                unlocked.add(node_id)
+                if startup_pending and node_id == program.start_node_id:
+                    start_node_unlocked = True
             elif event.type == StoryEventType.NODE_ENTERED:
                 current_node_id = self._node_id(payload, program)
+                if startup_pending and current_node_id == program.start_node_id:
+                    start_node_entered = True
             elif event.type == StoryEventType.NODE_COMPLETED:
                 completed.add(self._node_id(payload, program))
             elif event.type == StoryEventType.CANON_APPENDED:
@@ -161,6 +197,8 @@ class StoryEventReplayer:
                     )
                 if resolved_for_node_id not in program.nodes_by_id:
                     raise StoryEventReplayError("CastResolved targets an unknown node")
+                if startup_pending and resolved_for_node_id == program.start_node_id:
+                    start_cast_resolved = True
                 cast_revision += 1
             elif event.type == StoryEventType.SEMANTIC_SIGNAL_ACCEPTED:
                 semantic_sequence += 1
@@ -229,8 +267,14 @@ class StoryEventReplayer:
                 group_revision,
                 group_command_id,
             )
+            if startup_pending:
+                self._validate_startup_group(
+                    start_node_unlocked=start_node_unlocked,
+                    start_cast_resolved=start_cast_resolved,
+                    start_node_entered=start_node_entered,
+                )
 
-        minimum_sequence = max(0, semantic_sequence - 256)
+        minimum_sequence = max(0, semantic_sequence - MAX_REPEAT_WINDOW)
         semantic_state = SemanticSignalState(
             sequence=semantic_sequence,
             usage=freeze_mapping(semantic_usage),
@@ -239,8 +283,8 @@ class StoryEventReplayer:
             chapter_id=semantic_chapter_id,
             recent_fingerprints=tuple(
                 item for item in fingerprints if item[1] >= minimum_sequence
-            )[-256:],
-            accepted_cause_groups=tuple(cause_groups[-256:]),
+            )[-MAX_REPEAT_WINDOW:],
+            accepted_cause_groups=tuple(cause_groups[-MAX_REPEAT_WINDOW:]),
         )
         registered = initial.cast_state.registered_story_character_ids
         cast_state = CastState(
@@ -276,6 +320,18 @@ class StoryEventReplayer:
         if group_revision != revision + 1 or not command_id:
             raise StoryEventReplayError("invalid event revision group")
         return group_revision
+
+    @staticmethod
+    def _validate_startup_group(
+        *,
+        start_node_unlocked: bool,
+        start_cast_resolved: bool,
+        start_node_entered: bool,
+    ) -> None:
+        if not (start_node_unlocked and start_cast_resolved and start_node_entered):
+            raise StoryEventReplayError(
+                "startup revision must unlock, resolve cast for, and enter the start node"
+            )
 
     @staticmethod
     def _node_id(payload: Mapping[str, Any], program: StoryProgram) -> str:

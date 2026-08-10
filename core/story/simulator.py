@@ -47,10 +47,23 @@ class StorySimulator:
             current_cast=self.runtime.program.character_registry.initial_cast
         )
         cast_failures = self._check_cast_resolution(resolution_context)
-        started = self.runtime.start(
-            StartStory("simulation-start"),
-            cast_context=resolution_context,
-        )
+        try:
+            started = self.runtime.start(
+                StartStory("simulation-start"),
+                cast_context=resolution_context,
+            )
+        except StoryRuntimeError as error:
+            start_node_id = self.runtime.program.start_node_id
+            if cast_failures.get(start_node_id) != error.code:
+                raise
+            return SimulationReport(
+                explored_states=0,
+                reachable_node_ids=frozenset(),
+                ending_paths=MappingProxyType({}),
+                dead_end_node_ids=frozenset({start_node_id}),
+                cast_resolution_failures=MappingProxyType(cast_failures),
+                truncated=False,
+            )
         queue = deque([(started.state, tuple(), 0)])
         visited: set[str] = set()
         reachable: set[str] = set()

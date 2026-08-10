@@ -640,6 +640,11 @@ class StoryRuntime:
                 "runtime.revision_conflict",
                 f"expected revision {command.expected_revision}, current revision is {state.revision}",
             )
+        if state.revision < 1:
+            raise StoryRuntimeError(
+                "runtime.not_started",
+                "runtime commands require a StoryStarted state",
+            )
 
     def _prepare_global_variables(
         self,

@@ -49,6 +49,23 @@ def test_simulator_reports_unresolvable_scene_cast() -> None:
     assert report.dead_end_node_ids == {"transfer-day"}
 
 
+def test_simulator_returns_diagnostic_when_start_cast_is_unresolvable() -> None:
+    report = StorySimulator(_runtime()).simulate(
+        cast_context=CastResolutionContext(
+            statuses={
+                "ling": CharacterRuntimeStatus(available=False),
+            }
+        )
+    )
+
+    assert report.explored_states == 0
+    assert report.reachable_node_ids == frozenset()
+    assert report.dead_end_node_ids == {"transfer-day"}
+    assert (
+        report.cast_resolution_failures["transfer-day"] == "cast.required_unavailable"
+    )
+
+
 def test_simulator_reports_truncation_at_depth_limit() -> None:
     report = StorySimulator(_runtime(), max_depth=1).simulate()
 

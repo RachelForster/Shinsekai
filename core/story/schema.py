@@ -43,6 +43,7 @@ from .models import (
     VariableType,
 )
 from .semantic import (
+    MAX_REPEAT_WINDOW,
     SemanticSignalDefinition,
     SignalStrength,
     SpeechAct,
@@ -161,12 +162,16 @@ class _Parser:
         *,
         default: int = 0,
         minimum: int | None = None,
+        maximum: int | None = None,
     ) -> int:
         if isinstance(value, bool) or not isinstance(value, int):
             self.error("schema.integer", "expected an integer", path)
             return default
         if minimum is not None and value < minimum:
             self.error("schema.range", f"must be at least {minimum}", path)
+            return default
+        if maximum is not None and value > maximum:
+            self.error("schema.range", f"must be at most {maximum}", path)
             return default
         return value
 
@@ -374,6 +379,7 @@ def _parse_semantic_signal(
             source.get("repeatWindow", 20),
             f"{path}.repeatWindow",
             minimum=0,
+            maximum=MAX_REPEAT_WINDOW,
             default=20,
         ),
         max_per_turn=parser.integer(
@@ -561,7 +567,11 @@ def _parse_registry(parser: _Parser, value: Any, path: str) -> CharacterRegistry
 
 
 def _parse_cast_policy(
-    parser: _Parser, value: Any, path: str, default_max: int
+    parser: _Parser,
+    value: Any,
+    path: str,
+    default_max: int,
+    default_preserve_current_cast: bool,
 ) -> CastPolicy:
     source = parser.mapping(value or {}, path)
     raw_roles = parser.sequence(
@@ -635,7 +645,7 @@ def _parse_cast_policy(
             preserve_current_cast=parser.boolean(
                 constraint_source.get("preserveCurrentCast"),
                 f"{path}.constraints.preserveCurrentCast",
-                default=True,
+                default=default_preserve_current_cast,
             ),
             require_loaded_assets=parser.boolean(
                 constraint_source.get("requireLoadedAssets"),
@@ -707,6 +717,7 @@ def _parse_narrative_graph(
     *,
     fallback_start_node_id: str,
     default_max_cast: int,
+    default_preserve_current_cast: bool,
 ) -> NarrativeGraph:
     source = parser.mapping(value, path)
     raw_nodes = parser.sequence(source.get("nodes", ()), f"{path}.nodes")
@@ -773,6 +784,7 @@ def _parse_narrative_graph(
                     item.get("castPolicy"),
                     f"{item_path}.castPolicy",
                     default_max_cast,
+                    default_preserve_current_cast,
                 ),
                 exposed_context=parser.json_mapping(
                     item.get("exposedContext", {}), f"{item_path}.exposedContext"
@@ -882,6 +894,7 @@ def parse_story_project(source: Mapping[str, Any]) -> StoryProject:
         "$.narrativeGraph",
         fallback_start_node_id=fallback_start,
         default_max_cast=registry.defaults.max_active,
+        default_preserve_current_cast=registry.defaults.preserve_current_cast,
     )
     project = StoryProject(
         schema_version=parser.integer(

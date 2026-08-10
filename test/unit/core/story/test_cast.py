@@ -58,6 +58,33 @@ def test_role_based_cast_prefers_declared_character(registry) -> None:
     assert result.role_bindings == {"authority": "detective-zhou"}
 
 
+def test_required_roles_respect_candidate_location_filter(registry) -> None:
+    policy = CastPolicy(
+        mode=CastMode.ROLE_BASED,
+        required=("ling",),
+        required_roles=(RequiredRole("authority"),),
+        optional_query=CandidateQuery(
+            conditions=(ConditionSpec("sameLocationAs", ("player",)),),
+        ),
+        constraints=CastConstraints(min_active=2, max_active=2),
+    )
+
+    with pytest.raises(CastResolutionError) as exc_info:
+        CastResolver().resolve(
+            registry,
+            policy,
+            CastResolutionContext(
+                statuses={
+                    "ling": CharacterRuntimeStatus(location="school"),
+                    "detective-zhou": CharacterRuntimeStatus(location="station"),
+                },
+                player_location="school",
+            ),
+        )
+
+    assert exc_info.value.code == "cast.missing_role"
+
+
 def test_optional_query_does_not_filter_required_character(registry) -> None:
     policy = CastPolicy(
         mode=CastMode.DYNAMIC,

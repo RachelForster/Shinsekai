@@ -69,6 +69,19 @@ class SemanticSignalState:
     recent_fingerprints: tuple[tuple[str, int], ...] = ()
     accepted_cause_groups: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "usage", freeze_mapping(self.usage))
+        object.__setattr__(
+            self,
+            "recent_fingerprints",
+            tuple(tuple(item) for item in self.recent_fingerprints),
+        )
+        object.__setattr__(
+            self,
+            "accepted_cause_groups",
+            tuple(self.accepted_cause_groups),
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class CastState:
@@ -80,6 +93,21 @@ class CastState:
     role_bindings: Mapping[str, str] = field(default_factory=freeze_mapping)
     resolved_for_node_id: str | None = None
     cast_revision: int = 0
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "registered_story_character_ids",
+            "offstage_character_ids",
+            "story_scoped_character_ids",
+            "ad_hoc_character_ids",
+        ):
+            object.__setattr__(self, field_name, frozenset(getattr(self, field_name)))
+        object.__setattr__(
+            self,
+            "active_character_ids",
+            tuple(self.active_character_ids),
+        )
+        object.__setattr__(self, "role_bindings", freeze_mapping(self.role_bindings))
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,3 +128,13 @@ class StoryState:
     )
     cast_state: CastState = field(default_factory=CastState)
     event_cursor: int = 0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "variables", freeze_mapping(self.variables))
+        for field_name in (
+            "completed_node_ids",
+            "failed_node_ids",
+            "unlocked_node_ids",
+        ):
+            object.__setattr__(self, field_name, frozenset(getattr(self, field_name)))
+        object.__setattr__(self, "canon", tuple(self.canon))

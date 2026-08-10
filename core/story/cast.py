@@ -104,7 +104,7 @@ class CastResolver:
                 candidate = self._choose_for_role(
                     role_requirement.role,
                     role_requirement.prefer,
-                    eligible,
+                    optional_eligible,
                     active,
                     context,
                 )

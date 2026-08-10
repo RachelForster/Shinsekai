@@ -34,7 +34,8 @@ from .models import (
     VariableScope,
     VariableType,
 )
-from .semantic import SignalStrength
+from .semantic import MAX_REPEAT_WINDOW, SignalStrength
+from .state import freeze_value, variable_value_is_valid
 
 
 def _ports(
@@ -506,6 +507,17 @@ class StoryCompiler:
                     "semantic.speech_acts",
                     "at least one speech act must be allowed",
                     f"{path}.allowedSpeechActs",
+                )
+            if (
+                isinstance(definition.repeat_window, bool)
+                or not isinstance(definition.repeat_window, int)
+                or not 0 <= definition.repeat_window <= MAX_REPEAT_WINDOW
+            ):
+                self._error(
+                    diagnostics,
+                    "semantic.repeat_window",
+                    f"repeatWindow must be between 0 and {MAX_REPEAT_WINDOW}",
+                    f"{path}.repeatWindow",
                 )
             if set(definition.effects_by_strength) != required_strengths:
                 self._error(
@@ -1193,6 +1205,27 @@ class StoryCompiler:
                     f"{node.type} requires an integer value",
                     f"{path}.value",
                 )
+        if node.type == "compare":
+            operator = node.config.get("operator", "gte")
+            if not isinstance(operator, str) or operator not in {
+                "gte",
+                "lte",
+                "equals",
+            }:
+                self._error(
+                    diagnostics,
+                    "rule.invalid_config",
+                    "compare operator must be gte, lte, or equals",
+                    f"{path}.operator",
+                )
+            value = node.config.get("value")
+            if isinstance(value, bool) or not isinstance(value, int):
+                self._error(
+                    diagnostics,
+                    "rule.invalid_config",
+                    "compare requires an integer value",
+                    f"{path}.value",
+                )
         if node.type.startswith("character-"):
             fields_to_validate = (
                 ("fromCharacterId", "toCharacterId")
@@ -1251,15 +1284,15 @@ class StoryCompiler:
 
     @staticmethod
     def _variable_accepts(variable: StoryVariableDefinition, value: Any) -> bool:
-        if variable.type == VariableType.BOOLEAN:
-            return isinstance(value, bool)
-        if variable.type == VariableType.INTEGER:
-            return isinstance(value, int) and not isinstance(value, bool)
-        if variable.type == VariableType.ENUM:
-            return isinstance(value, str) and value in variable.enum_values
-        return isinstance(value, (list, tuple, set, frozenset)) and all(
-            isinstance(item, str) for item in value
-        )
+        if variable.type in {VariableType.STRING_SET, VariableType.NODE_SET}:
+            if not isinstance(value, (list, tuple, set, frozenset)) or not all(
+                isinstance(item, str) for item in value
+            ):
+                return False
+            value = frozenset(value)
+        else:
+            value = freeze_value(value)
+        return variable_value_is_valid(variable, value)
 
     @classmethod
     def _leaf_strings(cls, value: Any) -> set[str]:

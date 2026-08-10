@@ -3,9 +3,13 @@ from __future__ import annotations
 import pytest
 
 from core.story import (
+    CastResolutionContext,
+    CastResolver,
     StoryValidationError,
     parse_story_project,
 )
+
+from .story_fixtures import campus_mystery_source
 
 
 def test_parse_rejects_duplicate_narrative_node_ids() -> None:
@@ -167,6 +171,36 @@ def test_parse_rejects_windows_drive_character_path() -> None:
         parse_story_project(source)
 
     assert "character.path_escape" in {item.code for item in exc_info.value.diagnostics}
+
+
+def test_registry_continuity_default_applies_to_node_policy() -> None:
+    source = campus_mystery_source()
+    source["cast"]["defaults"]["preserveCurrentCast"] = False
+    source["narrativeGraph"]["nodes"][0]["castPolicy"] = {
+        "mode": "dynamic",
+        "constraints": {"minActive": 1, "maxActive": 1},
+    }
+
+    project = parse_story_project(source)
+    policy = project.narrative_graph.nodes[0].cast_policy
+    result = CastResolver().resolve(
+        project.character_registry,
+        policy,
+        CastResolutionContext(current_cast=("detective-zhou",)),
+    )
+
+    assert policy.constraints.preserve_current_cast is False
+    assert result.active_character_ids == ("ling",)
+
+
+def test_parse_rejects_repeat_window_larger_than_retained_history() -> None:
+    source = campus_mystery_source()
+    source["semanticSignals"][0]["repeatWindow"] = 257
+
+    with pytest.raises(StoryValidationError) as exc_info:
+        parse_story_project(source)
+
+    assert "schema.range" in {item.code for item in exc_info.value.diagnostics}
 
 
 def _minimal_source() -> dict:

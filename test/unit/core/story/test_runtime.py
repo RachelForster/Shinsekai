@@ -164,6 +164,23 @@ def test_stale_revision_is_rejected_without_mutating_state(runtime) -> None:
     assert started.state.revision == 1
 
 
+def test_runtime_commands_are_rejected_before_story_started(runtime) -> None:
+    initial = runtime.initial_state()
+
+    with pytest.raises(StoryRuntimeError) as exc_info:
+        runtime.execute(
+            initial,
+            SelectChoice(
+                command_id="choice-before-start",
+                expected_revision=0,
+                choice_id="prepare-investigation",
+                expected_node_id="transfer-day",
+            ),
+        )
+
+    assert exc_info.value.code == "runtime.not_started"
+
+
 def test_failed_transition_rolls_back_all_pending_effects(program) -> None:
     start = program.nodes[0]
     choice = replace(start.choices[0], effects=())
@@ -303,10 +320,11 @@ def test_direct_enter_rejects_locked_ending(runtime) -> None:
 
 
 def test_replay_rejects_undeclared_variable(runtime) -> None:
-    initial = runtime.initial_state()
+    started = runtime.start(StartStory("start-1"))
+    next_cursor = started.state.event_cursor + 1
     corrupted = StoryEvent(
-        id="event-1-1",
-        revision=1,
+        id=f"event-2-{next_cursor}",
+        revision=2,
         type=StoryEventType.VARIABLE_CHANGED,
         payload={"variableId": "invented", "previous": None, "current": "bad"},
         cause_command_id="corrupt",
@@ -314,8 +332,42 @@ def test_replay_rejects_undeclared_variable(runtime) -> None:
 
     with pytest.raises(StoryEventReplayError, match="undeclared branch variable"):
         StoryEventReplayer().replay(
-            initial,
+            started.state,
             (corrupted,),
+            program=runtime.program,
+        )
+
+
+def test_replay_rejects_runtime_events_before_story_started(runtime) -> None:
+    event = StoryEvent(
+        id="event-1-1",
+        revision=1,
+        type=StoryEventType.COMMAND_PROCESSED,
+        payload={},
+        cause_command_id="before-start",
+    )
+
+    with pytest.raises(StoryEventReplayError, match="StoryStarted"):
+        StoryEventReplayer().replay(
+            runtime.initial_state(),
+            (event,),
+            program=runtime.program,
+        )
+
+
+def test_replay_rejects_incomplete_startup_revision(runtime) -> None:
+    event = StoryEvent(
+        id="event-1-1",
+        revision=1,
+        type=StoryEventType.STORY_STARTED,
+        payload={"storyId": runtime.program.story_id},
+        cause_command_id="incomplete-start",
+    )
+
+    with pytest.raises(StoryEventReplayError, match="startup revision"):
+        StoryEventReplayer().replay(
+            runtime.initial_state(),
+            (event,),
             program=runtime.program,
         )
 

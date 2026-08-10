@@ -12,6 +12,9 @@ from .models import EffectSpec
 from .state import SemanticSignalState
 
 
+MAX_REPEAT_WINDOW = 256
+
+
 class SignalStrength(str, Enum):
     WEAK = "weak"
     MEDIUM = "medium"
@@ -155,11 +158,11 @@ class SemanticSignalPolicy:
                 )
             )
 
-        minimum_sequence = max(0, sequence - 256)
+        minimum_sequence = max(0, sequence - MAX_REPEAT_WINDOW)
         fingerprints = [item for item in fingerprints if item[1] >= minimum_sequence][
-            -256:
+            -MAX_REPEAT_WINDOW:
         ]
-        cause_groups = cause_groups[-256:]
+        cause_groups = cause_groups[-MAX_REPEAT_WINDOW:]
         return SemanticPolicyResult(
             state=SemanticSignalState(
                 sequence=sequence,
