@@ -25,6 +25,7 @@ from .characters import (
 from .persistence import JsonGlobalStoryProgressStore, JsonStorySessionRepository
 from .project_loader import load_story_project
 from .session import StorySession
+from .scene import ConfigSceneModel, SceneOrchestrator
 
 
 def start_or_recover_story_session(
@@ -108,6 +109,13 @@ def start_or_recover_story_session(
     session.owner_history_path = str(Path(history_path).resolve(strict=False))
     state.story_session = session
     state.story_cast_service = cast_service
+    state.story_scene_service = SceneOrchestrator(
+        flags,
+        program=program,
+        session=session,
+        cast_service=cast_service,
+        model=ConfigSceneModel(flags, state.config_manager),
+    )
     return session
 
 
@@ -145,6 +153,7 @@ def story_snapshot_patch(state: Any) -> dict[str, Any]:
 def clear_story_session(state: Any) -> None:
     setattr(state, "story_session", None)
     setattr(state, "story_cast_service", None)
+    setattr(state, "story_scene_service", None)
 
 
 def discard_story_session_storage(history_path: str | Path) -> None:

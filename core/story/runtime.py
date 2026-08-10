@@ -12,12 +12,16 @@ from .cast import (
     CastResolutionError,
     CastResolutionPlan,
     CastResolver,
+    CharacterRuntimeStatus,
 )
 from .commands import (
     ApplySemanticSignals,
     CompleteNode,
     EnterNode,
     PerformIntent,
+    RequestCharacterEntry,
+    RequestCharacterExit,
+    RequestCharacterReplace,
     RuntimeCommand,
     SelectChoice,
     StartStory,
@@ -292,6 +296,148 @@ class _Transaction:
         self.completed.add(node_id)
         self.emit(StoryEventType.NODE_COMPLETED, nodeId=node_id)
 
+    def request_character_entry(
+        self,
+        character_id: str,
+        reason_id: str,
+    ) -> None:
+        node = self.program.nodes_by_id[self.current_node_id]
+        self._require_character_reason(node, "entry", reason_id)
+        if character_id not in self.program.character_registry.by_id:
+            raise StoryRuntimeError(
+                "runtime.character_unregistered",
+                f"character {character_id!r} is not registered",
+            )
+        if character_id in self.active_cast:
+            return
+        if character_id in node.cast_policy.forbidden:
+            raise StoryRuntimeError(
+                "runtime.character_forbidden",
+                f"character {character_id!r} is forbidden in this scene",
+            )
+        status = self.cast_context.statuses.get(
+            character_id,
+            CharacterRuntimeStatus(),
+        )
+        if not status.available or not status.alive:
+            raise StoryRuntimeError(
+                "runtime.character_unavailable",
+                f"character {character_id!r} is unavailable",
+            )
+        if len(self.active_cast) >= node.cast_policy.constraints.max_active:
+            raise StoryRuntimeError(
+                "runtime.cast_max_active",
+                "character entry would violate maxActive",
+            )
+        self.active_cast.append(character_id)
+        self.cast_changed = True
+        self._emit_requested_cast(node)
+
+    def request_character_exit(
+        self,
+        character_id: str,
+        reason_id: str,
+    ) -> None:
+        node = self.program.nodes_by_id[self.current_node_id]
+        self._require_character_reason(node, "exit", reason_id)
+        if character_id not in self.active_cast:
+            return
+        protected = set(node.cast_policy.required) | set(self.role_bindings.values())
+        if character_id in protected:
+            raise StoryRuntimeError(
+                "runtime.character_required",
+                f"character {character_id!r} fulfills a required scene role",
+            )
+        if len(self.active_cast) - 1 < node.cast_policy.constraints.min_active:
+            raise StoryRuntimeError(
+                "runtime.cast_min_active",
+                "character exit would violate minActive",
+            )
+        self.active_cast.remove(character_id)
+        self.cast_changed = True
+        self._emit_requested_cast(node)
+
+    def request_character_replace(
+        self,
+        outgoing_character_id: str,
+        incoming_character_id: str,
+        reason_id: str,
+    ) -> None:
+        node = self.program.nodes_by_id[self.current_node_id]
+        self._require_character_reason(node, "replace", reason_id)
+        if outgoing_character_id not in self.active_cast:
+            raise StoryRuntimeError(
+                "runtime.character_not_active",
+                f"character {outgoing_character_id!r} is not active",
+            )
+        protected = set(node.cast_policy.required) | set(self.role_bindings.values())
+        if outgoing_character_id in protected:
+            raise StoryRuntimeError(
+                "runtime.character_required",
+                f"character {outgoing_character_id!r} fulfills a required scene role",
+            )
+        if incoming_character_id not in self.program.character_registry.by_id:
+            raise StoryRuntimeError(
+                "runtime.character_unregistered",
+                f"character {incoming_character_id!r} is not registered",
+            )
+        if incoming_character_id in node.cast_policy.forbidden:
+            raise StoryRuntimeError(
+                "runtime.character_forbidden",
+                f"character {incoming_character_id!r} is forbidden in this scene",
+            )
+        if incoming_character_id in self.active_cast:
+            raise StoryRuntimeError(
+                "runtime.character_already_active",
+                f"character {incoming_character_id!r} is already active",
+            )
+        status = self.cast_context.statuses.get(
+            incoming_character_id,
+            CharacterRuntimeStatus(),
+        )
+        if not status.available or not status.alive:
+            raise StoryRuntimeError(
+                "runtime.character_unavailable",
+                f"character {incoming_character_id!r} is unavailable",
+            )
+        index = self.active_cast.index(outgoing_character_id)
+        self.active_cast[index] = incoming_character_id
+        self.active_cast = list(dict.fromkeys(self.active_cast))
+        self.cast_changed = True
+        self._emit_requested_cast(node)
+
+    def _emit_requested_cast(self, node: Any) -> None:
+        plan = CastResolutionPlan(
+            active_character_ids=tuple(self.active_cast),
+            role_bindings=MappingProxyType(dict(self.role_bindings)),
+            excluded=MappingProxyType({}),
+            required_character_ids=tuple(self.active_cast),
+            on_load_failure="error",
+            minimum_active=node.cast_policy.constraints.min_active,
+            maximum_active=node.cast_policy.constraints.max_active,
+        )
+        self.cast_plans.append(plan)
+        self.emit(
+            StoryEventType.CAST_RESOLVED,
+            nodeId=node.id,
+            activeCharacterIds=tuple(self.active_cast),
+            roleBindings=self.role_bindings,
+            unresolvedRoles=(),
+        )
+
+    @staticmethod
+    def _require_character_reason(node: Any, action: str, reason_id: str) -> None:
+        key = f"character{action.title()}ReasonIds"
+        allowed = node.exposed_context.get(key, ())
+        if (
+            not isinstance(allowed, (tuple, list, set, frozenset))
+            or reason_id not in allowed
+        ):
+            raise StoryRuntimeError(
+                "runtime.character_reason",
+                f"reason {reason_id!r} is not published for character {action}",
+            )
+
     def commit(self) -> RuntimeResult:
         self._validate_state()
         if not self.pending:
@@ -508,6 +654,25 @@ class StoryRuntime:
                     "cannot complete a node that is not current",
                 )
             transaction.complete_node(command.node_id)
+        elif isinstance(command, RequestCharacterEntry):
+            self._require_current_node(state, command.expected_node_id)
+            transaction.request_character_entry(
+                command.character_id,
+                command.reason_id,
+            )
+        elif isinstance(command, RequestCharacterExit):
+            self._require_current_node(state, command.expected_node_id)
+            transaction.request_character_exit(
+                command.character_id,
+                command.reason_id,
+            )
+        elif isinstance(command, RequestCharacterReplace):
+            self._require_current_node(state, command.expected_node_id)
+            transaction.request_character_replace(
+                command.outgoing_character_id,
+                command.incoming_character_id,
+                command.reason_id,
+            )
         else:
             raise StoryRuntimeError("runtime.command", "unsupported command")
         transaction.recompute_unlocks()

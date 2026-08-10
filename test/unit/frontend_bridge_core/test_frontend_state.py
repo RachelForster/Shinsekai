@@ -55,3 +55,4 @@ def test_bridge_state_keeps_project_root_as_last_positional_parameter():
     assert positional[-1] == "project_root_dir"
     assert "story_cast_service" not in positional
     assert "story_import_tokens" not in positional
+    assert "story_scene_service" not in positional

@@ -70,6 +70,7 @@ from application.story.coordinator import (
     publish_story_transition,
     story_snapshot_patch,
 )
+from config.feature_flags import FeatureFlag
 from core.story import SelectChoice
 from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
 from sdk.path_utils import reject_control_chars
@@ -1340,6 +1341,53 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             submitted_text = str(payload or "").strip()
         if not submitted_text and not attachments:
             raise ValueError("选项不能为空。" if command == "submit-option" else "消息内容不能为空。")
+        story_scene_service = getattr(state, "story_scene_service", None)
+        story_flags = getattr(getattr(state, "config_manager", None), "feature_flags", None)
+        if (
+            command == "send-message"
+            and not attachments
+            and story_scene_service is not None
+            and story_flags is not None
+            and story_flags.is_enabled(FeatureFlag.STORY_SYSTEM)
+        ):
+            command_id = str(body.get("cmdId") or uuid.uuid4().hex)
+            result = story_scene_service.handle_free_text(
+                submitted_text,
+                command_id=command_id,
+                message_id=f"message:{command_id}",
+            )
+            dialogue = result.dialogue[-1]
+            history_entries = _chat_history_entries(state)
+            history_entries.extend(
+                [
+                    {
+                        "role": "user",
+                        "name": _chat_user_display_name_from_snapshot(state),
+                        "content": submitted_text,
+                    },
+                    *(
+                        {
+                            "role": "assistant",
+                            "name": item.character_id,
+                            "content": item.text,
+                        }
+                        for item in result.dialogue
+                    ),
+                ]
+            )
+            patch = {
+                **story_snapshot_patch(state),
+                "characterName": dialogue.character_id,
+                "dialogText": dialogue.text,
+                "dialogHtml": None,
+                "historyEntries": history_entries,
+                "sceneTurn": result.to_payload(),
+                "status": "idle",
+                "numericInfo": "idle",
+            }
+            if session_id and chat_stream is not None:
+                chat_stream.update_session_snapshot(session_id, patch)
+            return _chat_snapshot(state, "idle", extra=patch)
         if _chat_turn_options(state)["batchEnabled"]:
             snapshot_patch: dict[str, Any] = {"inputDraft": ""}
             if command == "send-message":

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from application.chat.runtime_process import _handle_chat_command
-from application.story import StorySession
+from application.story import SceneDialogueItem, SceneTurnResult, StorySession
 from application.story.coordinator import (
     bound_story_session,
     clear_story_session,
@@ -61,6 +61,16 @@ class _ChatStream:
     def send_command(self, session_id: str, command: dict) -> bool:
         self.command = (session_id, dict(command))
         return True
+
+
+class _SceneService:
+    def handle_free_text(self, text: str, *, command_id: str, message_id: str):
+        return SceneTurnResult(
+            command_id=command_id,
+            revision=2,
+            dialogue=(SceneDialogueItem("ling", f"收到：{text}"),),
+            tool_results=(),
+        )
 
 
 def _state(*, enabled: bool, fork: bool = False, flowchart: bool = False) -> SimpleNamespace:
@@ -264,3 +274,21 @@ def test_publish_story_transition_is_noop_when_flag_is_off() -> None:
     assert state.chat_stream.published == []
     assert state.chat_stream.snapshot["eventSeq"] == 0
     assert "story" not in state.chat_stream.snapshot
+
+
+def test_free_text_uses_scene_service_only_when_story_flag_is_enabled() -> None:
+    state = _state(enabled=True)
+    state.story_scene_service = _SceneService()
+
+    snapshot = _handle_chat_command(
+        state,
+        {
+            "cmdId": "turn-1",
+            "payload": "你好",
+            "type": "send-message",
+        },
+    )
+
+    assert snapshot["dialogText"] == "收到：你好"
+    assert snapshot["characterName"] == "ling"
+    assert snapshot["sceneTurn"]["revision"] == 2
