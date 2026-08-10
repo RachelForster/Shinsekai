@@ -72,6 +72,10 @@ vi.mock("../../../features/tools/ToolsPage", () => ({
   ToolsPage: () => <h1>Tools route</h1>,
 }));
 
+vi.mock("../../../features/story-generator/StoryGeneratorPage", () => ({
+  StoryGeneratorPage: () => <h1>Story generator route</h1>,
+}));
+
 vi.mock("../../../features/onboarding/onboardingState", () => ({
   getInitialSettingsPath: () => "/settings/api",
 }));
@@ -99,6 +103,7 @@ describe("AppRoutes", () => {
     ["/settings/plugins", "Plugins route"],
     ["/settings/logs", "Logs route"],
     ["/settings/tools", "Tools route"],
+    ["/settings/stories/new", "Story generator route"],
     ["/settings/music-cover", "Music cover route"],
     ["/settings/launch", "Launch route"],
     ["/settings/system", "System route"],

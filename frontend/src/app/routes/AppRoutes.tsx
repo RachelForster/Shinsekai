@@ -80,6 +80,11 @@ const ToolsPage = lazy(() =>
     default: ToolsPage,
   })),
 );
+const StoryGeneratorPage = lazy(() =>
+  import("../../features/story-generator/StoryGeneratorPage").then(({ StoryGeneratorPage }) => ({
+    default: StoryGeneratorPage,
+  })),
+);
 
 function RouteLoader() {
   return <div aria-hidden className="route-loading" />;
@@ -118,6 +123,7 @@ export function AppRoutes() {
         <Route element={lazyRouteElement(<MusicCoverPage />)} path="music-cover" />
         <Route element={lazyRouteElement(<ChatLauncherPage />)} path="launch" />
         <Route element={lazyRouteElement(<SystemSettingsPage />)} path="system" />
+        <Route element={lazyRouteElement(<StoryGeneratorPage />)} path="stories/new" />
         <Route element={lazyRouteElement(<ChatThemeManagementPage />)} path="system/chat-themes" />
         <Route element={lazyRouteElement(<ChatThemeCustomizerPage />)} path="system/chat-themes/customize" />
       </Route>

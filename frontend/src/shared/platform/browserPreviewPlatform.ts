@@ -38,6 +38,7 @@ import type {
   TemplateLaunchSession,
   SpriteGenerationResult,
   SpritePromptResult,
+  StoryGenerationTask,
   TaskProgressOptions,
   TaskSnapshot,
 } from "./types";
@@ -142,6 +143,43 @@ function previewTask<TResult>(
     updatedAt: now,
     ...patch,
   });
+}
+
+function previewStoryGeneration(id: string, status: StoryGenerationTask["status"]): StoryGenerationTask {
+  const now = Date.now();
+  return {
+    artifactHashes: {},
+    assumptions: ["Browser preview uses a compact three-scene mystery."],
+    cancelRequested: status === "cancelled",
+    completedStages:
+      status === "succeeded" ? ["requirements", "bible", "characters", "state", "narrative", "logic", "resources"] : [],
+    cost: { estimatedTokens: 3200, inputChars: 8400, outputChars: 4400, requests: 7 },
+    createdAt: now,
+    currentStage: status === "succeeded" ? "complete" : "requirements",
+    draftPath: status === "succeeded" ? `data/stories/.generation/${id}/draft.json` : "",
+    error: null,
+    id,
+    options: {},
+    repairAttempts: 0,
+    resourceCatalog: {},
+    status,
+    synopsis: "A compact preview story.",
+    updatedAt: now,
+    validation:
+      status === "succeeded"
+        ? {
+            castFailureNodeIds: [],
+            endingCoverage: 1,
+            endingNodeIds: ["truth-ending", "leave-ending"],
+            exploredStates: 12,
+            issues: [],
+            reachableEndingIds: ["truth-ending", "leave-ending"],
+            reachableNodeIds: ["opening", "clue", "truth-ending", "leave-ending"],
+            sourceHash: "preview",
+            valid: true,
+          }
+        : null,
+  };
 }
 
 function previewNormalizePluginKey(value: string | null | undefined) {
@@ -2383,6 +2421,30 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         title: "预览任务",
         updatedAt: Date.now(),
       }),
+    },
+    story: {
+      cancelGeneration: async (id) =>
+        delay({
+          ...previewStoryGeneration(id, "cancelled"),
+          cancelRequested: true,
+        }),
+      getGeneration: async (id) => delay(previewStoryGeneration(id, "succeeded")),
+      regenerateGeneration: async (id, _stage, options) => {
+        const result = previewStoryGeneration(id, "succeeded");
+        previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
+        return delay(result);
+      },
+      resumeGeneration: async (id, options) => {
+        const result = previewStoryGeneration(id, "succeeded");
+        previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
+        return delay(result);
+      },
+      startGeneration: async (input, options) => {
+        const id = `story-preview-${Date.now()}`;
+        const result = { ...previewStoryGeneration(id, "succeeded"), synopsis: input.synopsis };
+        previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
+        return delay(result, 400);
+      },
     },
     templates: {
       async generate(input) {
