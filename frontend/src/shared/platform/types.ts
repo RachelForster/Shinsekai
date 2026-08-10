@@ -1255,6 +1255,97 @@ export interface StoryGenerationInput {
   synopsis: string;
 }
 
+export interface StoryProjectManifest {
+  createdAt: number;
+  draftRevision: number;
+  id: string;
+  publishedSourceHash: string;
+  publishedVersion: number;
+  title: string;
+  updatedAt: number;
+}
+
+export interface StoryProjectDocument {
+  manifest: StoryProjectManifest;
+  resources: Record<string, unknown>;
+  source: Record<string, unknown>;
+  validation: StoryGenerationValidation;
+}
+
+export interface StoryPatchOperation {
+  characterId?: string;
+  nodeId?: string;
+  op: "add" | "remove" | "replace" | "replace-character" | "replace-node" | "replace-rule-node" | "replace-variable";
+  path?: string;
+  value?: unknown;
+  variableId?: string;
+}
+
+export interface StoryPatchResult {
+  baseRevision: number;
+  candidateRevision: number;
+  committed: boolean;
+  diff: Array<{ after: unknown; before: unknown; op: string; path: string }>;
+  document?: StoryProjectDocument;
+  source: Record<string, unknown>;
+  validation: StoryGenerationValidation;
+}
+
+export interface StoryGraphProjection {
+  diagnostics: StoryGenerationValidationIssue[];
+  narrative: {
+    edges: Array<{ from: string; id: string; label: string; to: string }>;
+    nodes: Array<{ id: string; title: string; type: string; x: number; y: number }>;
+  };
+  rules: {
+    edges: Array<{ from: string; fromPort: string; id: string; to: string; toPort: string }>;
+    nodes: Array<{ id: string; title: string; type: string; x: number; y: number }>;
+  };
+  sourceMap: Record<string, string>;
+}
+
+export interface StoryCastPreview {
+  activeCharacterIds: string[];
+  candidates: Array<{ accepted: boolean; characterId: string; reasonCode: string }>;
+  error: { code: string; message: string } | null;
+  nodeId: string;
+  roleBindings: Record<string, string>;
+  unresolvedRoles: string[];
+  valid: boolean;
+}
+
+export interface StoryPathPreview {
+  branchId: string;
+  endingId?: string;
+  finalState: Record<string, unknown>;
+  projectId: string;
+  snapshots: Array<{
+    action: Record<string, unknown>;
+    events: Record<string, unknown>[];
+    state: Record<string, unknown>;
+    step: number;
+  }>;
+}
+
+export interface StoryPublicationResult {
+  path: string;
+  projectId: string;
+  resourceDependencies: Record<string, unknown>;
+  saveCompatibility: {
+    breakingChanges: Array<{ code: string; id: string }>;
+    compatibleWithPrevious: boolean;
+    schemaVersion: number;
+    sourceHash: string;
+    storyVersion: number;
+  };
+  sourceHash: string;
+  version: number;
+}
+
+export interface StoryAiPatchProposal extends StoryPatchResult {
+  patch: { operations: StoryPatchOperation[] };
+}
+
 export interface ImageAutoLabelFailure {
   index: number;
   message: string;
@@ -1362,6 +1453,38 @@ export interface ShinsekaiPlatform {
       input: StoryGenerationInput,
       options?: TaskProgressOptions<StoryGenerationTask>,
     ) => Promise<StoryGenerationTask>;
+    createProject: (source: Record<string, unknown>) => Promise<StoryProjectDocument>;
+    getProject: (id: string) => Promise<StoryProjectDocument>;
+    getProjectGraph: (id: string) => Promise<StoryGraphProjection>;
+    importGeneratedProject: (generationTaskId: string) => Promise<StoryProjectDocument>;
+    listProjects: () => Promise<StoryProjectManifest[]>;
+    patchProject: (input: {
+      allowInvalid?: boolean;
+      baseRevision: number;
+      commit: boolean;
+      id: string;
+      patch: { operations: StoryPatchOperation[] };
+    }) => Promise<StoryPatchResult>;
+    previewCast: (input: {
+      aiProposal?: string[];
+      currentCast?: string[];
+      id: string;
+      nodeId: string;
+      playerLocation?: string;
+      statuses?: Record<string, { alive?: boolean; available?: boolean; location?: string }>;
+    }) => Promise<StoryCastPreview>;
+    previewPath: (input: {
+      actions?: Array<{ id: string; type: "choice" | "enter" | "intent" }>;
+      endingId?: string;
+      id: string;
+    }) => Promise<StoryPathPreview>;
+    proposeAiPatch: (
+      input: { baseRevision: number; id: string; instruction: string; region: string },
+      options?: TaskProgressOptions<StoryAiPatchProposal>,
+    ) => Promise<StoryAiPatchProposal>;
+    publishProject: (id: string, baseRevision: number) => Promise<StoryPublicationResult>;
+    undoProject: (id: string, baseRevision: number) => Promise<StoryProjectDocument>;
+    validateProject: (id: string) => Promise<StoryGenerationValidation>;
   };
   characters: {
     autoLabelSprites: (

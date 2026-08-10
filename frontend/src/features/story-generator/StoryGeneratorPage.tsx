@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import {
   cancelStoryGeneration,
+  importGeneratedStoryProject,
   regenerateStoryGeneration,
   resumeStoryGeneration,
   startStoryGeneration,
@@ -25,6 +27,7 @@ function taskFromUpdate(update: TaskSnapshot<StoryGenerationTask>) {
 }
 
 export function StoryGeneratorPage() {
+  const navigate = useNavigate();
   const [synopsis, setSynopsis] = useState("");
   const [task, setTask] = useState<StoryGenerationTask | null>(null);
   const [busy, setBusy] = useState(false);
@@ -65,6 +68,19 @@ export function StoryGeneratorPage() {
       setTask(await cancelStoryGeneration(task.id));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  };
+  const openEditor = async () => {
+    if (!task) return;
+    setBusy(true);
+    setError("");
+    try {
+      const project = await importGeneratedStoryProject(task.id);
+      navigate(`/settings/stories/${project.manifest.id}/edit`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -209,6 +225,9 @@ export function StoryGeneratorPage() {
               </select>
               <button disabled={busy} onClick={regenerate} type="button">
                 重新生成
+              </button>
+              <button disabled={busy} onClick={openEditor} type="button">
+                打开编辑器
               </button>
             </section>
           ) : null}

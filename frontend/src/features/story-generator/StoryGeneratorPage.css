@@ -172,7 +172,7 @@
 
 .story-generator-regenerate {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
 }
 
 @media (max-width: 720px) {

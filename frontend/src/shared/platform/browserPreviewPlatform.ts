@@ -39,6 +39,14 @@ import type {
   SpriteGenerationResult,
   SpritePromptResult,
   StoryGenerationTask,
+  StoryAiPatchProposal,
+  StoryCastPreview,
+  StoryGenerationValidation,
+  StoryGraphProjection,
+  StoryPathPreview,
+  StoryProjectDocument,
+  StoryProjectManifest,
+  StoryPublicationResult,
   TaskProgressOptions,
   TaskSnapshot,
 } from "./types";
@@ -181,6 +189,46 @@ function previewStoryGeneration(id: string, status: StoryGenerationTask["status"
         : null,
   };
 }
+
+function previewStoryProject(id = "preview-story"): StoryProjectDocument {
+  const now = Date.now();
+  const validation: StoryGenerationValidation = {
+    castFailureNodeIds: [],
+    endingCoverage: 1,
+    endingNodeIds: ["ending"],
+    exploredStates: 4,
+    issues: [],
+    reachableEndingIds: ["ending"],
+    reachableNodeIds: ["opening", "ending"],
+    sourceHash: "preview-source",
+    valid: true,
+  };
+  return {
+    manifest: {
+      createdAt: now,
+      draftRevision: 1,
+      id,
+      publishedSourceHash: "",
+      publishedVersion: 0,
+      title: "Preview story",
+      updatedAt: now,
+    },
+    resources: { bindings: {}, characters: [] },
+    source: {
+      id,
+      title: "Preview story",
+      version: 1,
+      variables: {},
+      semanticSignals: [],
+      cast: { characters: [], initialCast: [] },
+      narrativeGraph: { startNodeId: "opening", nodes: [] },
+      logicGraph: { version: 1, nodes: [], edges: [] },
+    },
+    validation,
+  };
+}
+
+let previewStoryDocument: StoryProjectDocument | null = null;
 
 function previewNormalizePluginKey(value: string | null | undefined) {
   return (value ?? "")
@@ -2445,6 +2493,109 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
         return delay(result, 400);
       },
+      createProject: async (source) => {
+        const id = String(source.id || `preview-story-${Date.now()}`);
+        previewStoryDocument = { ...previewStoryProject(id), source: structuredClone(source) };
+        return delay(previewStoryDocument);
+      },
+      getProject: async (id) =>
+        delay(previewStoryDocument?.manifest.id === id ? previewStoryDocument : previewStoryProject(id)),
+      getProjectGraph: async (_id) => {
+        const graph: StoryGraphProjection = {
+          diagnostics: [],
+          narrative: { edges: [], nodes: [] },
+          rules: { edges: [], nodes: [] },
+          sourceMap: {},
+        };
+        return delay(graph);
+      },
+      importGeneratedProject: async (generationTaskId) => {
+        previewStoryDocument = previewStoryProject(`generated-${generationTaskId}`);
+        return delay(previewStoryDocument);
+      },
+      listProjects: async () => {
+        const document = previewStoryDocument ?? previewStoryProject();
+        return delay<StoryProjectManifest[]>([document.manifest]);
+      },
+      patchProject: async ({ id, baseRevision }) => {
+        const document = previewStoryDocument?.manifest.id === id ? previewStoryDocument : previewStoryProject(id);
+        previewStoryDocument = {
+          ...document,
+          manifest: { ...document.manifest, draftRevision: baseRevision + 1, updatedAt: Date.now() },
+        };
+        return delay({
+          baseRevision,
+          candidateRevision: baseRevision + 1,
+          committed: true,
+          diff: [],
+          document: previewStoryDocument,
+          source: previewStoryDocument.source,
+          validation: previewStoryDocument.validation,
+        });
+      },
+      previewCast: async ({ nodeId }) => {
+        const result: StoryCastPreview = {
+          activeCharacterIds: [],
+          candidates: [],
+          error: null,
+          nodeId,
+          roleBindings: {},
+          unresolvedRoles: [],
+          valid: true,
+        };
+        return delay(result);
+      },
+      previewPath: async ({ id, endingId }) => {
+        const result: StoryPathPreview = {
+          branchId: `editor-test-${Date.now()}`,
+          endingId,
+          finalState: { currentNodeId: endingId || "opening" },
+          projectId: id,
+          snapshots: [],
+        };
+        return delay(result);
+      },
+      proposeAiPatch: async ({ id, baseRevision }, options) => {
+        const document = previewStoryDocument?.manifest.id === id ? previewStoryDocument : previewStoryProject(id);
+        const result: StoryAiPatchProposal = {
+          baseRevision,
+          candidateRevision: baseRevision + 1,
+          committed: false,
+          diff: [],
+          patch: { operations: [] },
+          source: document.source,
+          validation: document.validation,
+        };
+        previewTask(`story-ai-patch-${Date.now()}`, { kind: "story-ai-patch", result, status: "succeeded" }, options);
+        return delay(result);
+      },
+      publishProject: async (id) => {
+        const result: StoryPublicationResult = {
+          path: `data/stories/projects/${id}/published/v1/story.json`,
+          projectId: id,
+          resourceDependencies: {},
+          saveCompatibility: {
+            breakingChanges: [],
+            compatibleWithPrevious: true,
+            schemaVersion: 1,
+            sourceHash: "preview-source",
+            storyVersion: 1,
+          },
+          sourceHash: "preview-source",
+          version: 1,
+        };
+        return delay(result);
+      },
+      undoProject: async (id, baseRevision) => {
+        const document = previewStoryDocument?.manifest.id === id ? previewStoryDocument : previewStoryProject(id);
+        previewStoryDocument = {
+          ...document,
+          manifest: { ...document.manifest, draftRevision: baseRevision + 1, updatedAt: Date.now() },
+        };
+        return delay(previewStoryDocument);
+      },
+      validateProject: async (id) =>
+        delay((previewStoryDocument?.manifest.id === id ? previewStoryDocument : previewStoryProject(id)).validation),
     },
     templates: {
       async generate(input) {

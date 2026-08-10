@@ -1,7 +1,16 @@
 export type {
+  StoryAiPatchProposal,
+  StoryCastPreview,
   StoryGenerationInput,
   StoryGenerationStage,
   StoryGenerationTask,
   StoryGenerationValidation,
   StoryGenerationValidationIssue,
+  StoryGraphProjection,
+  StoryPatchOperation,
+  StoryPatchResult,
+  StoryPathPreview,
+  StoryProjectDocument,
+  StoryProjectManifest,
+  StoryPublicationResult,
 } from "../../shared/platform/types";

@@ -68,6 +68,13 @@ from .generation_eval import (
     StoryGenerationEvalCase,
     StoryGenerationEvaluator,
 )
+from .authoring import (
+    StoryAuthoringError,
+    StoryAuthoringService,
+    StoryProjectRepository,
+    import_generation_task_for_state,
+    story_authoring_service_for_state,
+)
 
 __all__ = [
     "StoryCommandConflictError",
@@ -128,4 +135,9 @@ __all__ = [
     "FIXED_STORY_GENERATION_EVAL_SET",
     "StoryGenerationEvalCase",
     "StoryGenerationEvaluator",
+    "StoryAuthoringError",
+    "StoryAuthoringService",
+    "StoryProjectRepository",
+    "import_generation_task_for_state",
+    "story_authoring_service_for_state",
 ]

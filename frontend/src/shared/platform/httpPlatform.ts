@@ -65,6 +65,15 @@ import type {
   SpriteGenerationResult,
   SpritePromptResult,
   StoryGenerationTask,
+  StoryAiPatchProposal,
+  StoryCastPreview,
+  StoryGenerationValidation,
+  StoryGraphProjection,
+  StoryPathPreview,
+  StoryProjectDocument,
+  StoryProjectManifest,
+  StoryPublicationResult,
+  StoryPatchResult,
   SystemConfig,
   TaskProgressOptions,
   TaskSnapshot,
@@ -851,6 +860,59 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         });
         return waitForTask(apiBase, task, options);
       },
+      createProject: (source) =>
+        requestJson<StoryProjectDocument>(apiBase, "/api/story/projects", {
+          body: JSON.stringify({ source }),
+          method: "POST",
+        }),
+      getProject: (id) => requestJson<StoryProjectDocument>(apiBase, `/api/story/projects/${encodePath(id)}`),
+      getProjectGraph: (id) =>
+        requestJson<StoryGraphProjection>(apiBase, `/api/story/projects/${encodePath(id)}/graph`),
+      importGeneratedProject: (generationTaskId) =>
+        requestJson<StoryProjectDocument>(apiBase, "/api/story/projects/import-generation", {
+          body: JSON.stringify({ generationTaskId }),
+          method: "POST",
+        }),
+      listProjects: () => requestJson<StoryProjectManifest[]>(apiBase, "/api/story/projects"),
+      patchProject: ({ id, ...input }) =>
+        requestJson<StoryPatchResult>(apiBase, `/api/story/projects/${encodePath(id)}/patch`, {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      previewCast: ({ id, ...input }) =>
+        requestJson<StoryCastPreview>(apiBase, `/api/story/projects/${encodePath(id)}/cast-preview`, {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      previewPath: ({ id, ...input }) =>
+        requestJson<StoryPathPreview>(apiBase, `/api/story/projects/${encodePath(id)}/preview`, {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      async proposeAiPatch(input, options) {
+        const { id, ...body } = input;
+        const task = await requestJson<TaskSnapshot<StoryAiPatchProposal>>(
+          apiBase,
+          `/api/story/projects/${encodePath(id)}/ai-patch`,
+          { body: JSON.stringify(body), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      publishProject: (id, baseRevision) =>
+        requestJson<StoryPublicationResult>(apiBase, `/api/story/projects/${encodePath(id)}/publish`, {
+          body: JSON.stringify({ baseRevision }),
+          method: "POST",
+        }),
+      undoProject: (id, baseRevision) =>
+        requestJson<StoryProjectDocument>(apiBase, `/api/story/projects/${encodePath(id)}/undo`, {
+          body: JSON.stringify({ baseRevision }),
+          method: "POST",
+        }),
+      validateProject: (id) =>
+        requestJson<StoryGenerationValidation>(apiBase, `/api/story/projects/${encodePath(id)}/validate`, {
+          body: JSON.stringify({}),
+          method: "POST",
+        }),
     },
     characters: {
       autoLabelSprites: async (name, options) => {

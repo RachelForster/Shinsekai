@@ -181,6 +181,10 @@ from application.story.generation import (
     run_story_generation_background,
     story_generation_service_for_state,
 )
+from application.story.authoring import (
+    import_generation_task_for_state,
+    story_authoring_service_for_state,
+)
 from frontend_bridge_core.static import _frontend_dist_root
 from application.runtime.tasks import (
     _create_task,
@@ -663,6 +667,22 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                         generation_task_id
                     )
                 )
+            elif path == "/api/story/projects":
+                self._send_json(
+                    story_authoring_service_for_state(self.state).list_projects()
+                )
+            elif path.startswith("/api/story/projects/") and path.endswith("/graph"):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/graph")]
+                )
+                self._send_json(
+                    story_authoring_service_for_state(self.state).graph_projection(
+                        project_id
+                    )
+                )
+            elif path.startswith("/api/story/projects/"):
+                project_id = unquote(path[len("/api/story/projects/") :])
+                self._send_json(story_authoring_service_for_state(self.state).get(project_id))
             elif path == "/api/chat/runtime-status":
                 self._send_json(_chat_runtime_status(self.state))
             elif path == "/api/chat/snapshot":
@@ -1410,6 +1430,138 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     story_generation_service_for_state(self.state).cancel(
                         generation_task_id
                     )
+                )
+            elif method == "POST" and path == "/api/story/projects/import-generation":
+                generation_task_id = str(body.get("generationTaskId") or "").strip()
+                if not generation_task_id:
+                    raise ValueError("generationTaskId is required")
+                self._send_json(
+                    import_generation_task_for_state(self.state, generation_task_id)
+                )
+            elif method == "POST" and path == "/api/story/projects":
+                source = body.get("source")
+                if not isinstance(source, dict):
+                    raise ValueError("source must be an object")
+                self._send_json(story_authoring_service_for_state(self.state).import_source(source))
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/patch")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/patch")]
+                )
+                patch = body.get("patch")
+                if not isinstance(patch, dict):
+                    raise ValueError("patch must be an object")
+                self._send_json(
+                    story_authoring_service_for_state(self.state).apply_patch(
+                        project_id,
+                        patch,
+                        base_revision=int(body.get("baseRevision") or 0),
+                        commit=bool(body.get("commit")),
+                        allow_invalid=bool(body.get("allowInvalid", True)),
+                    )
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/undo")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/undo")]
+                )
+                self._send_json(
+                    story_authoring_service_for_state(self.state).undo(
+                        project_id, base_revision=int(body.get("baseRevision") or 0)
+                    )
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/validate")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/validate")]
+                )
+                self._send_json(
+                    story_authoring_service_for_state(self.state).validate(project_id)
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/cast-preview")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/cast-preview")]
+                )
+                node_id = str(body.get("nodeId") or "").strip()
+                if not node_id:
+                    raise ValueError("nodeId is required")
+                current_cast = body.get("currentCast")
+                ai_proposal = body.get("aiProposal")
+                self._send_json(
+                    story_authoring_service_for_state(self.state).preview_cast(
+                        project_id,
+                        node_id,
+                        current_cast=current_cast if isinstance(current_cast, list) else (),
+                        statuses=body.get("statuses") if isinstance(body.get("statuses"), dict) else {},
+                        player_location=(
+                            str(body["playerLocation"])
+                            if body.get("playerLocation") is not None
+                            else None
+                        ),
+                        ai_proposal=ai_proposal if isinstance(ai_proposal, list) else (),
+                    )
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/preview")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/preview")]
+                )
+                actions = body.get("actions")
+                self._send_json(
+                    story_authoring_service_for_state(self.state).preview_path(
+                        project_id,
+                        ending_id=(str(body["endingId"]) if body.get("endingId") else None),
+                        actions=actions if isinstance(actions, list) else (),
+                    )
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/publish")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/publish")]
+                )
+                self._send_json(
+                    story_authoring_service_for_state(self.state).publish(
+                        project_id, base_revision=int(body.get("baseRevision") or 0)
+                    )
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/ai-patch")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/ai-patch")]
+                )
+                service = story_authoring_service_for_state(self.state)
+                self._enqueue_background_task(
+                    kind="story-ai-patch",
+                    title="Regenerate story region",
+                    message="AI authoring patch queued.",
+                    worker=lambda _task_id: service.propose_ai_patch(
+                        project_id,
+                        base_revision=int(body.get("baseRevision") or 0),
+                        region=str(body.get("region") or ""),
+                        instruction=str(body.get("instruction") or ""),
+                    ),
                 )
             elif method == "POST" and path == "/api/chat/themes/active":
                 self._send_json(set_active_chat_theme(self.state, body))

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StoryGeneratorPage } from "../../../features/story-generator/StoryGeneratorPage";
@@ -8,12 +9,14 @@ const startStoryGeneration = vi.fn();
 const resumeStoryGeneration = vi.fn();
 const regenerateStoryGeneration = vi.fn();
 const cancelStoryGeneration = vi.fn();
+const importGeneratedStoryProject = vi.fn();
 
 vi.mock("../../../entities/story/repository", () => ({
   startStoryGeneration: (...args: unknown[]) => startStoryGeneration(...args),
   resumeStoryGeneration: (...args: unknown[]) => resumeStoryGeneration(...args),
   regenerateStoryGeneration: (...args: unknown[]) => regenerateStoryGeneration(...args),
   cancelStoryGeneration: (...args: unknown[]) => cancelStoryGeneration(...args),
+  importGeneratedStoryProject: (...args: unknown[]) => importGeneratedStoryProject(...args),
 }));
 
 function generatedTask(status: StoryGenerationTask["status"] = "succeeded"): StoryGenerationTask {
@@ -53,7 +56,11 @@ describe("StoryGeneratorPage", () => {
 
   it("generates a draft and previews assumptions and validation", async () => {
     startStoryGeneration.mockResolvedValue(generatedTask());
-    render(<StoryGeneratorPage />);
+    render(
+      <MemoryRouter>
+        <StoryGeneratorPage />
+      </MemoryRouter>,
+    );
 
     fireEvent.change(screen.getByRole("textbox", { name: "剧情梗概" }), { target: { value: "调查废弃校舍" } });
     fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
@@ -67,7 +74,11 @@ describe("StoryGeneratorPage", () => {
   it("resumes a failed task from its checkpoint", async () => {
     startStoryGeneration.mockResolvedValue(generatedTask("failed"));
     resumeStoryGeneration.mockResolvedValue(generatedTask());
-    render(<StoryGeneratorPage />);
+    render(
+      <MemoryRouter>
+        <StoryGeneratorPage />
+      </MemoryRouter>,
+    );
 
     fireEvent.change(screen.getByRole("textbox", { name: "剧情梗概" }), { target: { value: "断点剧本" } });
     fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
