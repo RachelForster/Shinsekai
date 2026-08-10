@@ -170,6 +170,7 @@ from sdk.path_utils import (
     safe_project_path,
 )
 from application.runtime.state import BridgeState, _jsonify, plugin_load_snapshot
+from application.story.coordinator import start_or_recover_story_session
 from frontend_bridge_core.static import _frontend_dist_root
 from application.runtime.tasks import (
     _create_task,
@@ -1295,6 +1296,18 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_close_chat(self.state))
             elif method == "POST" and path == "/api/chat/command":
                 self._send_json(_handle_chat_command(self.state, body))
+            elif method == "POST" and path == "/api/story/start":
+                story_path = str(body.get("storyPath") or "").strip()
+                if not story_path:
+                    raise ValueError("storyPath is required")
+                session = start_or_recover_story_session(
+                    self.state,
+                    story_path,
+                    command_id=str(body.get("commandId") or new_log_id()),
+                )
+                self._send_json(
+                    _chat_snapshot(self.state, "idle", extra=session.chat_snapshot())
+                )
             elif method == "POST" and path == "/api/chat/themes/active":
                 self._send_json(set_active_chat_theme(self.state, body))
             elif method == "POST" and path == "/api/chat/themes/save":

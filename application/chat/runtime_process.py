@@ -61,6 +61,9 @@ from application.chat.templates import (
 )
 from application.runtime.dependencies import runtime_dependency_error_from_text
 from application.runtime.state import BridgeState
+from application.story.coordinator import story_snapshot_patch
+from config.feature_flags import FeatureFlag
+from core.story import SelectChoice
 from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
 from sdk.path_utils import reject_control_chars
 
@@ -774,6 +777,7 @@ def _chat_snapshot(
         "chatRuntimeClosing": _chat_runtime_closing(state),
         "turnOptions": _chat_turn_options(state),
     }
+    story_patch = story_snapshot_patch(state)
     mobile_access_info = get_mobile_access_info(state)
     if mobile_access_info is not None:
         runtime_state["mobileAccess"] = mobile_access_info.to_payload()
@@ -807,6 +811,8 @@ def _chat_snapshot(
                 next_snapshot["wsUrl"] = mobile_access_info.websocket_url
             if extra:
                 next_snapshot.update(extra)
+            if story_patch:
+                next_snapshot.update(story_patch)
             return next_snapshot
     bg_path, character_name, sprites = _chat_session_media(state)
     history_path = str(state.chat_session.get("historyPath") or "")
@@ -828,6 +834,7 @@ def _chat_snapshot(
         "userDisplayName": user_display_name,
         "voiceLanguage": voice_language,
         **runtime_state,
+        **story_patch,
         **(extra or {}),
     }
 
@@ -1086,6 +1093,44 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
 
     if command == "submit-option" and isinstance(body.get("payload"), dict):
         payload = body["payload"]
+        if payload.get("kind") == "story-choice":
+            flags = getattr(state.config_manager, "feature_flags", None)
+            story_session = getattr(state, "story_session", None)
+            if (
+                flags is None
+                or not flags.is_enabled(FeatureFlag.STORY_SYSTEM)
+                or story_session is None
+            ):
+                raise ValueError("Option selection must be a string.")
+            choice_id = reject_control_chars(
+                str(payload.get("choiceId") or "").strip(),
+                field="choiceId",
+            )
+            expected_node_id = reject_control_chars(
+                str(payload.get("expectedNodeId") or "").strip(),
+                field="expectedNodeId",
+            )
+            try:
+                expected_revision = int(payload.get("expectedRevision"))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Story choice revision is invalid.") from exc
+            if not choice_id or not expected_node_id:
+                raise ValueError("Story choice is invalid.")
+            command_id = str(body.get("cmdId") or uuid.uuid4().hex)
+            ack = story_session.execute(
+                SelectChoice(
+                    command_id=command_id,
+                    expected_revision=expected_revision,
+                    choice_id=choice_id,
+                    expected_node_id=expected_node_id,
+                ),
+                history_entries=_chat_history_entries(state),
+            )
+            patch = story_session.chat_snapshot()
+            patch["storyAck"] = ack.to_payload()
+            if session_id and chat_stream is not None:
+                chat_stream.update_session_snapshot(session_id, patch)
+            return _chat_snapshot(state, "idle", extra=patch)
         if payload.get("kind") != "tool-confirmation":
             raise ValueError("Option selection must be a string.")
         confirmation_id = reject_control_chars(

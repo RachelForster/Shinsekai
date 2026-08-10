@@ -169,6 +169,7 @@ export const sampleConfig: AppConfig = {
     chat_ui_runtime_mode: "react",
     react_chat_fork_experimental_enabled: false,
     react_chat_flowchart_experimental_enabled: false,
+    story_system_enabled: false,
     mirror_auto_detect_china: true,
     mirror_region: "auto",
     huggingface_mirror_url: "",

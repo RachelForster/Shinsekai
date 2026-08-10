@@ -1,11 +1,13 @@
 import type {
   ChatAttachmentInput,
   ChatHistoryEntry,
+  ChatOption,
   ChatRuntimeStatus,
   ChatSnapshot,
   ChatSprite,
   ChatStat,
   ChatStageEvent,
+  ChatStoryState,
   ChatToolConfirmation,
   ChatTurnOptions,
   ChatTurnState,
@@ -62,7 +64,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
       inputDraft: string;
       inputAttachments: ChatAttachmentInput[];
       notificationText?: string;
-      options: string[];
+      options: ChatOption[];
       sessionClosedReason?: string;
       status: ChatRuntimeStatus;
       statusMessage?: string;
@@ -96,8 +98,9 @@ export interface ChatStageViewModel {
   inputDraft: string;
   layers: ChatStageLayers;
   notificationText?: string;
-  options: string[];
+  options: ChatOption[];
   sprites: ChatStageSprite[];
+  story?: ChatStoryState;
   stats: ChatStat[];
   status: ChatRuntimeStatus;
   statusText: string;

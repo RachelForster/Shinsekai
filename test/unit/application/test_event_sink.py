@@ -615,5 +615,31 @@ class EventSinkSnapshotTests(unittest.TestCase):
         self.assertEqual(dismissed["pluginPagePresentations"], [])
 
 
+class StoryEventSinkTests(unittest.TestCase):
+    def test_structured_options_and_story_state_survive_snapshot_folding(self):
+        option = {
+            "enabled": True,
+            "expectedNodeId": "gate",
+            "expectedRevision": 3,
+            "id": "enter",
+            "label": "Enter",
+            "source": "story",
+        }
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {"type": "options.show", "options": ["Wait", option]},
+        )
+        snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "type": "story.state.replace",
+                "story": {"currentNodeId": "gate", "options": [option]},
+            },
+        )
+
+        self.assertEqual(snapshot["options"], [option])
+        self.assertEqual(snapshot["story"]["currentNodeId"], "gate")
+
+
 if __name__ == "__main__":
     unittest.main()

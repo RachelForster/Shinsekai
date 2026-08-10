@@ -1,0 +1,44 @@
+.story-debug-panel {
+  position: absolute;
+  z-index: 72;
+  top: max(56px, calc(env(safe-area-inset-top) + 44px));
+  right: max(12px, env(safe-area-inset-right));
+  width: min(280px, calc(100vw - 24px));
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 78%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
+  color: var(--color-text);
+  font-size: 0.78rem;
+  pointer-events: auto;
+  backdrop-filter: blur(12px);
+}
+
+.story-debug-panel summary {
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.story-debug-panel dl,
+.story-debug-panel dl div {
+  display: grid;
+  gap: 4px 10px;
+}
+
+.story-debug-panel dl {
+  margin: 10px 0 2px;
+}
+
+.story-debug-panel dl div {
+  grid-template-columns: 64px 1fr;
+}
+
+.story-debug-panel dt,
+.story-debug-panel dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.story-debug-panel dt {
+  opacity: 0.68;
+}

@@ -7,11 +7,30 @@ from .idempotency import (
     story_command_payload_hash,
 )
 from .project_loader import StoryProjectLoader, load_story_project
+from .coordinator import start_or_recover_story_session, story_snapshot_patch
+from .persistence import (
+    GlobalStoryProgress,
+    JsonGlobalStoryProgressStore,
+    JsonStorySessionRepository,
+    StoryPersistenceError,
+    StoryProgramMismatchError,
+)
+from .session import StoryBranch, StorySession, StorySessionAck
 
 __all__ = [
     "StoryCommandConflictError",
     "StoryCommandIdempotencyIndex",
     "StoryCommandRecord",
+    "StoryBranch",
+    "StorySession",
+    "StorySessionAck",
+    "GlobalStoryProgress",
+    "JsonGlobalStoryProgressStore",
+    "JsonStorySessionRepository",
+    "StoryPersistenceError",
+    "StoryProgramMismatchError",
+    "start_or_recover_story_session",
+    "story_snapshot_patch",
     "StoryProjectLoader",
     "load_story_project",
     "story_command_payload_hash",

@@ -6,7 +6,7 @@ import { closeChatSurface } from "../../shared/desktop/chatWindow";
 import { sendChatCommand, uploadChatAttachments } from "../../entities/chat/repository";
 import { useI18n } from "../../shared/i18n";
 import type { PluginPageTarget } from "../../shared/plugin/PluginSlot";
-import type { ChatAttachmentInput, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
+import type { ChatAttachmentInput, ChatOption, ChatSendPayload, ChatTurnOptions } from "../../shared/platform/types";
 import { normalizeThemeColor } from "../../shared/theme/appTheme";
 import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { AlertDialog, useToast } from "../../shared/ui";
@@ -33,6 +33,7 @@ import {
   ToolConfirmationLayer,
 } from "./components/StageLayers";
 import { TopStageTools } from "./components/TopStageTools";
+import { StoryDebugPanel } from "./components/StoryDebugPanel";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
 import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
@@ -412,15 +413,30 @@ export function ChatStagePage() {
     void handleDropFiles(files);
   };
 
-  const submitOption = (option: string) => {
+  const submitOption = (option: ChatOption) => {
+    const label = typeof option === "string" ? option : option.label;
+    if (typeof option !== "string" && !option.enabled) {
+      return;
+    }
     showDialogImmediately();
     dispatch({
       queued: state.turnOptions.batchEnabled,
       source: "submit-option",
-      text: option,
+      text: label,
       type: "submitUserMessage",
     });
-    void sendCommand({ payload: option, type: "submit-option" });
+    void sendCommand({
+      payload:
+        typeof option === "string"
+          ? option
+          : {
+              choiceId: option.id,
+              expectedNodeId: option.expectedNodeId,
+              expectedRevision: option.expectedRevision,
+              kind: "story-choice",
+            },
+      type: "submit-option",
+    });
   };
 
   const resolveToolConfirmation = (action: "confirm" | "cancel") => {
@@ -692,6 +708,7 @@ export function ChatStagePage() {
           sprites={stageSprites}
         />
         <StatLayer stats={viewModel.stats} />
+        <StoryDebugPanel story={viewModel.story} />
         <TokenUsageLayer hidden={!tokenUsageVisible} text={viewModel.tokenUsageText} />
         <BusyLayer hidden={!viewModel.layers.busy} text={viewModel.busyText} />
         <NotificationLayer
