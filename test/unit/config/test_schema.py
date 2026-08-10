@@ -95,6 +95,9 @@ class TestSystemConfig:
     def test_react_chat_ui_is_enabled_by_default(self):
         assert SystemConfig().chat_ui_runtime_mode == "react"
 
+    def test_story_system_is_disabled_by_default(self):
+        assert SystemConfig().story_system_enabled is False
+
     @pytest.mark.parametrize("configured_mode", ["native", "react", "unexpected", None])
     def test_chat_ui_runtime_mode_is_forced_to_react(self, configured_mode):
         assert SystemConfig(chat_ui_runtime_mode=configured_mode).chat_ui_runtime_mode == "react"

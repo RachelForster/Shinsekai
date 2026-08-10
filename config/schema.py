@@ -209,6 +209,10 @@ class SystemConfig(BaseModel):
         default=False,
         description="实验性功能：启用 React Chat UI 的对话分支流程图/树功能",
     )
+    story_system_enabled: DefaultIfNone[bool] = Field(
+        default=False,
+        description="Experimental master switch for every structured story capability.",
+    )
 
     # 音乐翻唱流水线（YouTube/B站下载 → UVR 分离 → RVC 转换 → pydub 合成）
     mirror_auto_detect_china: DefaultIfNone[bool] = Field(
