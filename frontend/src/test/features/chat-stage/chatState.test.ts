@@ -195,6 +195,133 @@ describe("chatStageReducer", () => {
     expect(restored.optimisticSubmission).toBeUndefined();
   });
 
+  it("clears an optimistic story choice when the next story state is published", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Mio",
+        dialogText: "Choose",
+        eventSeq: 3,
+        options: [
+          {
+            enabled: true,
+            expectedNodeId: "gate",
+            expectedRevision: 1,
+            id: "go",
+            label: "Go",
+            source: "story",
+          },
+        ],
+        story: {
+          activeCast: [],
+          castRevision: 1,
+          currentNodeId: "gate",
+          currentNodeTitle: "Gate",
+          objectives: [],
+          options: [],
+          revision: 1,
+          storyId: "campus",
+          storyVersion: 1,
+          unlockedNotifications: [],
+          visibleVariables: [],
+        },
+      },
+      { source: "submit-option", text: "Go", type: "submitUserMessage" },
+    );
+
+    const replaced = chatStageReducer(submitted, {
+      event: {
+        seq: 4,
+        story: {
+          activeCast: [],
+          castRevision: 1,
+          currentNodeId: "ending",
+          currentNodeTitle: "Rain",
+          ending: { id: "ending", title: "Rain" },
+          objectives: [],
+          options: [],
+          revision: 2,
+          storyId: "campus",
+          storyVersion: 1,
+          unlockedNotifications: [],
+          visibleVariables: [],
+        },
+        ts: 4,
+        type: "story.state.replace",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(replaced.optimisticSubmission).toBeUndefined();
+    expect(replaced.story?.currentNodeId).toBe("ending");
+    expect(replaced.options).toEqual([]);
+  });
+
+  it("replaces optimistic story presentation when a polled snapshot reaches an ending", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "Aoi",
+        dialogText: "Go",
+        eventSeq: 3,
+        options: [],
+        status: "generating",
+        story: {
+          activeCast: [],
+          castRevision: 1,
+          currentNodeId: "gate",
+          currentNodeTitle: "Gate",
+          objectives: [],
+          options: [],
+          revision: 1,
+          storyId: "campus",
+          storyVersion: 1,
+          unlockedNotifications: [],
+          visibleVariables: [],
+        },
+        userDisplayName: "Aoi",
+      },
+      { source: "submit-option", text: "Go", type: "submitUserMessage" },
+    );
+
+    const polled = chatStageReducer(submitted, {
+      event: {
+        seq: 4,
+        snapshot: {
+          characterName: "Aoi",
+          dialogText: "Go",
+          eventSeq: 4,
+          inputDraft: "",
+          options: [],
+          sprites: [],
+          status: "idle",
+          story: {
+            activeCast: [],
+            castRevision: 1,
+            currentNodeId: "ending",
+            currentNodeTitle: "Rain",
+            ending: { id: "ending", title: "Rain" },
+            objectives: [],
+            options: [],
+            revision: 2,
+            storyId: "campus",
+            storyVersion: 1,
+            unlockedNotifications: [],
+            visibleVariables: [],
+          },
+        },
+        ts: 4,
+        type: "snapshot",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(polled.optimisticSubmission).toBeUndefined();
+    expect(polled.story?.ending).toEqual({ id: "ending", title: "Rain" });
+  });
+
   it("preserves a new draft when an earlier submission fails late", () => {
     const submitted = chatStageReducer(
       {

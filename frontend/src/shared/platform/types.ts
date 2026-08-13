@@ -108,6 +108,7 @@ export interface SystemConfig {
   chat_ui_runtime_mode: "react";
   react_chat_fork_experimental_enabled: boolean;
   react_chat_flowchart_experimental_enabled: boolean;
+  story_system_enabled: boolean;
   mirror_auto_detect_china: boolean;
   mirror_region: string;
   huggingface_mirror_url: string;
@@ -885,6 +886,40 @@ export interface PluginPagePresentation {
   presentationId: string;
 }
 
+export interface ChatStoryOption {
+  enabled: boolean;
+  expectedNodeId: string;
+  expectedRevision: number;
+  id: string;
+  label: string;
+  lockedReason?: string | null;
+  source: "story";
+}
+
+export type ChatOption = string | ChatStoryOption;
+
+export interface ChatStoryState {
+  activeCast: Array<{ id: string; roles: string[] }>;
+  castRevision: number;
+  currentNodeId: string;
+  currentNodeTitle: string;
+  ending?: { id: string; title: string } | null;
+  lastEvent?: { payload: Record<string, unknown>; revision?: number; type: string };
+  objectives: unknown[];
+  options: ChatStoryOption[];
+  revision: number;
+  storyId: string;
+  storyVersion: number;
+  unlockedNotifications: Array<{ id: string; kind: string }>;
+  visibleVariables: Array<{
+    id: string;
+    maximum?: number | null;
+    minimum?: number | null;
+    type: string;
+    value: unknown;
+  }>;
+}
+
 export interface ChatSnapshot {
   activePlayback?: {
     characterName: string;
@@ -923,13 +958,15 @@ export interface ChatSnapshot {
   mobileAccess?: MobileAccessInfo;
   numericInfo?: string;
   notificationText?: string;
-  options: string[];
+  options: ChatOption[];
   pluginPagePresentations?: PluginPagePresentation[];
   runtimeDependencyError?: RuntimeDependencyError;
   runtimeMode?: "native" | "react";
   sessionClosedReason?: string;
   sessionId?: string;
   sprites: ChatSprite[];
+  story?: ChatStoryState;
+  storyAck?: Record<string, unknown>;
   stats?: ChatStat[];
   status: ChatRuntimeStatus;
   statusMessage?: string;
@@ -1056,8 +1093,14 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "bgm.change"; url: string })
   | (ChatEventBase & { type: "cg.show"; url: string })
   | (ChatEventBase & { type: "cg.hide" })
-  | (ChatEventBase & { type: "options.show"; options: string[] })
+  | (ChatEventBase & { type: "options.show"; options: ChatOption[] })
   | (ChatEventBase & { type: "options.clear" })
+  | (ChatEventBase & { type: "story.state.replace"; story: ChatStoryState })
+  | (ChatEventBase & {
+      type: "story.node.entered" | "story.node.unlocked" | "story.cast.replace" | "story.ending.reached";
+      payload: Record<string, unknown>;
+      revision: number;
+    })
   | (ChatEventBase & {
       type: "tool.confirmation.show";
       confirmationId: string;

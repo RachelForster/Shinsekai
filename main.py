@@ -957,7 +957,7 @@ def main():
                         return body.strip()
             return text.strip()
 
-        def _fork_history_branch(user_index: int) -> None:
+        def _fork_history_branch(user_index: int, branch_id: str = "") -> None:
             if user_index < 0:
                 raise ValueError("分支索引无效。")
             user_pos = _user_history_position(user_index)
@@ -976,21 +976,33 @@ def main():
             _save_active_branch()
             prefix_history = list(chat_history[:user_pos])
             prefix_messages = _messages_before_user(user_index)
-            branch_state["counter"] = int(branch_state.get("counter") or 1) + 1
-            branch_id = f"branch-{branch_state['counter']}"
+            requested_id = str(branch_id or "").strip()
+            if requested_id:
+                if requested_id in _branches():
+                    raise ValueError("对话分支已存在。")
+                suffix = requested_id[7:] if requested_id.startswith("branch-") else ""
+                if suffix.isdigit():
+                    branch_state["counter"] = max(
+                        int(branch_state.get("counter") or 1),
+                        int(suffix),
+                    )
+                next_id = requested_id
+            else:
+                branch_state["counter"] = int(branch_state.get("counter") or 1) + 1
+                next_id = f"branch-{branch_state['counter']}"
             now = int(time.time() * 1000)
-            _branches()[branch_id] = {
+            _branches()[next_id] = {
                 "createdAt": now,
                 "forkedFromEntryId": f"history-{user_pos}",
                 "forkedFromText": user_text,
                 "history": list(prefix_history),
-                "id": branch_id,
+                "id": next_id,
                 "label": f"Branch {branch_state['counter']}",
                 "messages": copy.deepcopy(prefix_messages),
                 "parentId": _active_branch_id(),
                 "updatedAt": now,
             }
-            branch_state["active"] = branch_id
+            branch_state["active"] = next_id
             chat_history[:] = prefix_history
             llm_manager.set_messages(copy.deepcopy(prefix_messages))
             stream_sink.emit({"type": "options.clear"})
@@ -1274,8 +1286,11 @@ def main():
                     emit_ack(ok=True)
                     return
                 if command_type == "fork-history":
-                    raw_index = payload.get("userIndex") if isinstance(payload, dict) else payload
-                    _fork_history_branch(int(raw_index))
+                    raw_payload = payload if isinstance(payload, dict) else {"userIndex": payload}
+                    _fork_history_branch(
+                        int(raw_payload.get("userIndex")),
+                        branch_id=str(raw_payload.get("branchId") or "").strip(),
+                    )
                     emit_ack(ok=True)
                     return
                 if command_type == "switch-branch":

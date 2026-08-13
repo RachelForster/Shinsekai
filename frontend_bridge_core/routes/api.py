@@ -170,6 +170,12 @@ from sdk.path_utils import (
     safe_project_path,
 )
 from application.runtime.state import BridgeState, _jsonify, plugin_load_snapshot
+from application.story.coordinator import (
+    clear_story_session,
+    publish_story_transition,
+    release_unbound_story_session,
+    start_or_recover_story_session,
+)
 from frontend_bridge_core.static import _frontend_dist_root
 from application.runtime.tasks import (
     _create_task,
@@ -1295,6 +1301,20 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self._send_json(_close_chat(self.state))
             elif method == "POST" and path == "/api/chat/command":
                 self._send_json(_handle_chat_command(self.state, body))
+            elif method == "POST" and path == "/api/story/start":
+                story_path = str(body.get("storyPath") or "").strip()
+                if not story_path:
+                    raise ValueError("storyPath is required")
+                session = start_or_recover_story_session(
+                    self.state,
+                    story_path,
+                    command_id=str(body.get("commandId") or new_log_id()),
+                )
+                patch = session.chat_snapshot()
+                publish_story_transition(self.state, patch)
+                self._send_json(
+                    _chat_snapshot(self.state, "idle", extra=patch)
+                )
             elif method == "POST" and path == "/api/chat/themes/active":
                 self._send_json(set_active_chat_theme(self.state, body))
             elif method == "POST" and path == "/api/chat/themes/save":
@@ -1422,6 +1442,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         )
         reset_history = bool(body.get("resetHistory"))
         if reset_history:
+            clear_story_session(self.state)
             for item in {history_path, default_history_path}:
                 remove_chat_history_storage(item)
         user_scenario = _scenario_from_template_like(row)
@@ -1442,6 +1463,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             "voiceLanguage": str(self.state.config_manager.config.system_config.voice_language or "ja"),
             "workflowPath": str(body.get("workflowPath") or ""),
         }
+        release_unbound_story_session(self.state, session_base["historyPath"])
         if _chat_process_running():
             self.state.chat_session = {**self.state.chat_session, **session_base}
             configure_mobile_access(
@@ -1586,6 +1608,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             "voiceLanguage": str(session.get("voiceLanguage") or self.state.config_manager.config.system_config.voice_language or "ja"),
             "workflowPath": str(session.get("workflowPath") or ""),
         }
+        release_unbound_story_session(self.state, session_base["historyPath"])
         if _chat_process_running():
             self.state.chat_session = {**self.state.chat_session, **session_base}
             configure_mobile_access(

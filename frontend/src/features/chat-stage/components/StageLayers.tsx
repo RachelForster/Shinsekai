@@ -13,7 +13,7 @@ import { Clock, Coins, Gauge, Heart, Shield, Sparkles, Star, Target, Zap, type L
 import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../shared/desktop/desktopApi";
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
-import type { ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
+import type { ChatOption, ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
@@ -280,8 +280,8 @@ export function OptionsLayer({
   options,
 }: {
   hidden: boolean;
-  onSelect: (option: string) => void;
-  options: string[];
+  onSelect: (option: ChatOption) => void;
+  options: ChatOption[];
 }) {
   const { t } = useI18n();
   if (hidden || !options.length) {
@@ -295,26 +295,32 @@ export function OptionsLayer({
       hidden={hidden}
     >
       <div aria-label={t("chat.options.label")} className="options-layer__scroll" role="list">
-        {options.map((option, index) => (
-          <div className="options-layer__item" key={option} role="listitem">
-            <ThemeFrame prefix="chat-option" />
-            <Button
-              autoFocus={index === 0}
-              className="options-layer__button"
-              onClick={() => onSelect(option)}
-              onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
-                if (event.key !== "Enter" || event.nativeEvent.isComposing) {
-                  return;
-                }
-                event.preventDefault();
-                event.stopPropagation();
-                onSelect(option);
-              }}
-            >
-              {option}
-            </Button>
-          </div>
-        ))}
+        {options.map((option, index) => {
+          const label = typeof option === "string" ? option : option.label;
+          const disabled = typeof option !== "string" && !option.enabled;
+          const key = typeof option === "string" ? option : `${option.expectedRevision}:${option.id}`;
+          return (
+            <div className="options-layer__item" key={key} role="listitem">
+              <ThemeFrame prefix="chat-option" />
+              <Button
+                autoFocus={index === 0}
+                className="options-layer__button"
+                disabled={disabled}
+                onClick={() => onSelect(option)}
+                onKeyDown={(event: KeyboardEvent<HTMLButtonElement>) => {
+                  if (event.key !== "Enter" || event.nativeEvent.isComposing) {
+                    return;
+                  }
+                  event.preventDefault();
+                  event.stopPropagation();
+                  onSelect(option);
+                }}
+              >
+                {label}
+              </Button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

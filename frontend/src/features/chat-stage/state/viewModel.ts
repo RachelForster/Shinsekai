@@ -52,6 +52,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     options: state.options,
     sprites: state.sprites,
     stats: state.stats ?? [],
+    story: state.story,
     status: state.status,
     statusText: state.status,
     tokenUsageText,

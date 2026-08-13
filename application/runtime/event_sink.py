@@ -256,8 +256,34 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "options.show":
         _clear_transient_notification_state(next_snapshot)
-        next_snapshot["options"] = [str(item) for item in (event.get("options") or [])]
+        next_snapshot["options"] = [
+            dict(item) if isinstance(item, dict) else str(item)
+            for item in (event.get("options") or [])
+        ]
         next_snapshot["toolConfirmation"] = None
+        return next_snapshot
+
+    if event_type == "story.state.replace":
+        story = event.get("story")
+        if isinstance(story, dict):
+            next_snapshot["story"] = dict(story)
+            next_snapshot["options"] = [
+                dict(item)
+                for item in story.get("options", [])
+                if isinstance(item, dict)
+            ]
+        return next_snapshot
+
+    if event_type in {"story.node.entered", "story.node.unlocked", "story.cast.replace", "story.ending.reached"}:
+        story = dict(next_snapshot.get("story") or {})
+        payload = event.get("payload")
+        if isinstance(payload, dict):
+            story["lastEvent"] = {
+                "type": event_type,
+                "payload": dict(payload),
+                "revision": event.get("revision"),
+            }
+        next_snapshot["story"] = story
         return next_snapshot
 
     if event_type == "options.clear":

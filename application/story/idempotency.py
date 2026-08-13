@@ -52,6 +52,56 @@ class StoryCommandIdempotencyIndex:
     def records(self) -> Mapping[str, StoryCommandRecord]:
         return MappingProxyType(dict(self._records))
 
+    def to_payload(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "commandId": record.command_id,
+                "payloadHash": record.payload_hash,
+                "accepted": record.accepted,
+                "resultingRevision": record.resulting_revision,
+                "eventIds": list(record.event_ids),
+                "ack": dict(record.ack),
+            }
+            for command_id in self._order
+            if (record := self._records.get(command_id)) is not None
+        ]
+
+    @classmethod
+    def from_payload(
+        cls,
+        payload: Any,
+        *,
+        max_entries: int = 256,
+    ) -> StoryCommandIdempotencyIndex:
+        if not isinstance(payload, list):
+            raise ValueError("idempotency payload must be a list")
+        index = cls(max_entries=max_entries)
+        for raw in payload[-max_entries:]:
+            if not isinstance(raw, Mapping):
+                raise ValueError("idempotency record must be an object")
+            command_id = str(raw.get("commandId") or "")
+            payload_hash = str(raw.get("payloadHash") or "")
+            event_ids = raw.get("eventIds")
+            ack = raw.get("ack")
+            if (
+                not command_id
+                or len(payload_hash) != 64
+                or not isinstance(event_ids, list)
+                or not isinstance(ack, Mapping)
+            ):
+                raise ValueError("invalid idempotency record")
+            record = StoryCommandRecord(
+                command_id=command_id,
+                payload_hash=payload_hash,
+                accepted=bool(raw.get("accepted")),
+                resulting_revision=int(raw.get("resultingRevision") or 0),
+                event_ids=tuple(str(item) for item in event_ids),
+                ack=ack,
+            )
+            index._records[command_id] = record
+            index._order.append(command_id)
+        return index
+
     def lookup(self, command: Any) -> StoryCommandRecord | None:
         command_id = self._command_id(command)
         existing = self._records.get(command_id)

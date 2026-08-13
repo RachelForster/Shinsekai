@@ -182,6 +182,31 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         eventSeq: Math.max(state.eventSeq, event.seq),
         options: [],
       });
+    case "story.state.replace":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        options: event.story.options,
+        story: event.story,
+      });
+    case "story.node.entered":
+    case "story.node.unlocked":
+    case "story.cast.replace":
+    case "story.ending.reached":
+      return withResolvedLayers({
+        ...state,
+        eventSeq: Math.max(state.eventSeq, event.seq),
+        story: state.story
+          ? {
+              ...state.story,
+              lastEvent: {
+                payload: event.payload,
+                revision: event.revision,
+                type: event.type,
+              },
+            }
+          : undefined,
+      });
     case "tool.confirmation.show":
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
