@@ -1,6 +1,9 @@
+from collections.abc import Mapping
+
 from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator, field_validator, model_validator
 from pydantic_core import PydanticUseDefault
 from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar
+from config.feature_flags import FeatureFlagConfigManager
 from config.network_proxy import normalize_proxy_url
 
 # ----------------- 解决 YAML None 问题的工具 -----------------
@@ -213,6 +216,11 @@ class SystemConfig(BaseModel):
         default=False,
         description="Experimental master switch for every structured story capability.",
     )
+    story_system_enabled_diagnostic: Optional[str] = Field(
+        default=None,
+        exclude=True,
+        description="Load-time fail-closed diagnostic for story_system_enabled; never persisted.",
+    )
 
     # 音乐翻唱流水线（YouTube/B站下载 → UVR 分离 → RVC 转换 → pydub 合成）
     mirror_auto_detect_china: DefaultIfNone[bool] = Field(
@@ -255,6 +263,24 @@ class SystemConfig(BaseModel):
         default="",
         description="SOCKS5 proxy URL, exported as ALL_PROXY/all_proxy.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fail_closed_story_system_enabled(cls, data: Any) -> Any:
+        """Invalid persisted story_system_enabled must not abort SystemConfig load."""
+        if not isinstance(data, Mapping):
+            return data
+        updated = dict(data)
+        updated.pop("story_system_enabled_diagnostic", None)
+        if "story_system_enabled" not in updated:
+            return updated
+        enabled, diagnostic = FeatureFlagConfigManager.coerce_persisted_value(
+            updated.get("story_system_enabled")
+        )
+        updated["story_system_enabled"] = enabled
+        if diagnostic:
+            updated["story_system_enabled_diagnostic"] = diagnostic
+        return updated
 
     @field_validator("chat_ui_runtime_mode", mode="before")
     @classmethod

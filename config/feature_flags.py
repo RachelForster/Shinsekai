@@ -95,6 +95,15 @@ class FeatureFlagConfigManager:
             self._system_config, config_field
         ):
             configured = getattr(self._system_config, config_field)
+            load_diagnostic = getattr(
+                self._system_config, f"{config_field}_diagnostic", None
+            )
+            if isinstance(load_diagnostic, str) and load_diagnostic.strip():
+                return FeatureFlagResolution(
+                    enabled=False,
+                    source=f"config:{config_field}",
+                    diagnostic=load_diagnostic,
+                )
             if isinstance(configured, bool):
                 return FeatureFlagResolution(
                     enabled=configured,
@@ -149,6 +158,22 @@ class FeatureFlagConfigManager:
             return FeatureFlag(str(flag))
         except ValueError as error:
             raise KeyError(f"unregistered feature flag {flag!r}") from error
+
+    @classmethod
+    def coerce_persisted_value(cls, value: Any) -> tuple[bool, str | None]:
+        """Coerce a persisted flag value without raising.
+
+        Invalid values fail closed (``False``) and return a diagnostic. ``None``
+        uses the registry default and is not treated as a load error.
+        """
+        if value is None:
+            return False, None
+        if isinstance(value, bool):
+            return value, None
+        parsed = cls._parse_bool(value)
+        if parsed is None:
+            return False, f"invalid boolean value {value!r}; failed closed"
+        return parsed, None
 
     @staticmethod
     def _parse_bool(value: Any) -> bool | None:

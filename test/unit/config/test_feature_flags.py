@@ -9,6 +9,7 @@ from config.feature_flags import (
     FeatureFlag,
     FeatureFlagConfigManager,
 )
+from config.schema import SystemConfig
 
 
 def test_story_system_is_disabled_by_default() -> None:
@@ -58,6 +59,18 @@ def test_invalid_environment_value_fails_closed_with_diagnostic() -> None:
 
     assert resolution.enabled is False
     assert resolution.diagnostic == "invalid boolean value 'sometimes'; failed closed"
+
+
+def test_invalid_persisted_config_value_fails_closed_with_diagnostic() -> None:
+    system_config = SystemConfig.model_validate({"story_system_enabled": "maybe"})
+    manager = FeatureFlagConfigManager(system_config, environ={})
+
+    resolution = manager.resolve(FeatureFlag.STORY_SYSTEM)
+
+    assert system_config.story_system_enabled is False
+    assert resolution.enabled is False
+    assert resolution.source == "config:story_system_enabled"
+    assert resolution.diagnostic == "invalid boolean value 'maybe'; failed closed"
 
 
 def test_explicit_override_has_highest_precedence() -> None:

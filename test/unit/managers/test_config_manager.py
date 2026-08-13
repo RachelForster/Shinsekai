@@ -59,6 +59,19 @@ def test_config_manager_exposes_centralized_feature_flags():
     assert manager.feature_flags.is_enabled(FeatureFlag.STORY_SYSTEM)
 
 
+def test_invalid_persisted_story_flag_does_not_abort_config_load():
+    manager = _config_manager_with_api()
+    manager.config.system_config = SystemConfig.model_validate(
+        {"story_system_enabled": "maybe"}
+    )
+
+    resolution = manager.feature_flags.resolve(FeatureFlag.STORY_SYSTEM)
+
+    assert manager.config.system_config.story_system_enabled is False
+    assert resolution.enabled is False
+    assert resolution.diagnostic == "invalid boolean value 'maybe'; failed closed"
+
+
 def test_get_llm_api_config_defaults_known_provider_base_url_when_empty():
     manager = _config_manager_with_api(
         llm_provider="Deepseek",
