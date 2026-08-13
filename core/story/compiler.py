@@ -31,8 +31,11 @@ from .models import (
     StoryProgram,
     StoryProject,
     StoryVariableDefinition,
+    VariableScope,
     VariableType,
 )
+from .semantic import MAX_REPEAT_WINDOW, SignalStrength
+from .state import freeze_value, variable_value_is_valid
 
 
 def _ports(
@@ -198,7 +201,10 @@ def _primitive(value: Any) -> Any:
             item.name: _primitive(getattr(value, item.name)) for item in fields(value)
         }
     if isinstance(value, Mapping):
-        return {str(key): _primitive(item) for key, item in sorted(value.items())}
+        return {
+            str(_primitive(key)): _primitive(item)
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+        }
     if isinstance(value, (tuple, list)):
         return [_primitive(item) for item in value]
     if isinstance(value, (set, frozenset)):
@@ -299,6 +305,7 @@ class StoryCompiler:
                 source_hash=source_hash,
                 start_node_id=project.narrative_graph.start_node_id,
                 variables=project.variables,
+                semantic_signals=project.semantic_signals,
                 character_registry=project.character_registry,
                 nodes=nodes,
                 rule_graph=rule_graph,
@@ -330,6 +337,7 @@ class StoryCompiler:
                 "$.narrativeGraph.startNodeId",
             )
         self._validate_variables(project, diagnostics)
+        self._validate_semantic_signals(project, diagnostics)
         self._validate_registry(project, diagnostics)
         for node_index, node in enumerate(project.narrative_graph.nodes):
             node_path = f"$.narrativeGraph.nodes[{node_index}]"
@@ -465,6 +473,103 @@ class StoryCompiler:
                     "semantic input is only supported for integer variables",
                     f"{path}.allowSemanticInput",
                 )
+
+    def _validate_semantic_signals(
+        self,
+        project: StoryProject,
+        diagnostics: list[StoryDiagnostic],
+    ) -> None:
+        variables = project.variables_by_id
+        seen: set[str] = set()
+        required_strengths = set(SignalStrength)
+        for index, definition in enumerate(project.semantic_signals):
+            path = f"$.semanticSignals[{index}]"
+            if definition.id in seen:
+                self._error(
+                    diagnostics,
+                    "semantic.duplicate_id",
+                    f"duplicate semantic signal {definition.id!r}",
+                    f"{path}.id",
+                )
+            seen.add(definition.id)
+            if not math.isfinite(definition.minimum_confidence) or not (
+                0.0 <= definition.minimum_confidence <= 1.0
+            ):
+                self._error(
+                    diagnostics,
+                    "semantic.confidence",
+                    "minimum confidence must be finite and between 0 and 1",
+                    f"{path}.minimumConfidence",
+                )
+            if not definition.allowed_speech_acts:
+                self._error(
+                    diagnostics,
+                    "semantic.speech_acts",
+                    "at least one speech act must be allowed",
+                    f"{path}.allowedSpeechActs",
+                )
+            if (
+                isinstance(definition.repeat_window, bool)
+                or not isinstance(definition.repeat_window, int)
+                or not 0 <= definition.repeat_window <= MAX_REPEAT_WINDOW
+            ):
+                self._error(
+                    diagnostics,
+                    "semantic.repeat_window",
+                    f"repeatWindow must be between 0 and {MAX_REPEAT_WINDOW}",
+                    f"{path}.repeatWindow",
+                )
+            if set(definition.effects_by_strength) != required_strengths:
+                self._error(
+                    diagnostics,
+                    "semantic.strength_map",
+                    "effectsByStrength must define weak, medium, and strong",
+                    f"{path}.effectsByStrength",
+                )
+            for strength in SignalStrength:
+                effects = definition.effects_by_strength.get(strength, ())
+                effect_path = f"{path}.effectsByStrength.{strength.value}"
+                if not effects:
+                    self._error(
+                        diagnostics,
+                        "semantic.empty_effects",
+                        "each signal strength must define at least one effect",
+                        effect_path,
+                    )
+                self._validate_effects(
+                    effects,
+                    variables,
+                    project.narrative_graph.by_id,
+                    diagnostics,
+                    effect_path,
+                )
+                for effect_index, effect in enumerate(effects):
+                    target_path = f"{effect_path}[{effect_index}]"
+                    if effect.op not in {"set", "increment"} or not effect.args:
+                        self._error(
+                            diagnostics,
+                            "semantic.effect_operator",
+                            "semantic signals may only set or increment metrics",
+                            target_path,
+                        )
+                        continue
+                    variable = variables.get(str(effect.args[0]))
+                    if variable is None:
+                        continue
+                    if variable.scope != VariableScope.BRANCH:
+                        self._error(
+                            diagnostics,
+                            "semantic.global_target",
+                            "semantic signals may only target branch variables",
+                            target_path,
+                        )
+                    if not variable.allow_semantic_input:
+                        self._error(
+                            diagnostics,
+                            "semantic.target_disabled",
+                            "target variable does not allow semantic input",
+                            target_path,
+                        )
 
     def _validate_registry(
         self,
@@ -1100,6 +1205,27 @@ class StoryCompiler:
                     f"{node.type} requires an integer value",
                     f"{path}.value",
                 )
+        if node.type == "compare":
+            operator = node.config.get("operator", "gte")
+            if not isinstance(operator, str) or operator not in {
+                "gte",
+                "lte",
+                "equals",
+            }:
+                self._error(
+                    diagnostics,
+                    "rule.invalid_config",
+                    "compare operator must be gte, lte, or equals",
+                    f"{path}.operator",
+                )
+            value = node.config.get("value")
+            if isinstance(value, bool) or not isinstance(value, int):
+                self._error(
+                    diagnostics,
+                    "rule.invalid_config",
+                    "compare requires an integer value",
+                    f"{path}.value",
+                )
         if node.type.startswith("character-"):
             fields_to_validate = (
                 ("fromCharacterId", "toCharacterId")
@@ -1158,15 +1284,15 @@ class StoryCompiler:
 
     @staticmethod
     def _variable_accepts(variable: StoryVariableDefinition, value: Any) -> bool:
-        if variable.type == VariableType.BOOLEAN:
-            return isinstance(value, bool)
-        if variable.type == VariableType.INTEGER:
-            return isinstance(value, int) and not isinstance(value, bool)
-        if variable.type == VariableType.ENUM:
-            return isinstance(value, str) and value in variable.enum_values
-        return isinstance(value, (list, tuple, set, frozenset)) and all(
-            isinstance(item, str) for item in value
-        )
+        if variable.type in {VariableType.STRING_SET, VariableType.NODE_SET}:
+            if not isinstance(value, (list, tuple, set, frozenset)) or not all(
+                isinstance(item, str) for item in value
+            ):
+                return False
+            value = frozenset(value)
+        else:
+            value = freeze_value(value)
+        return variable_value_is_valid(variable, value)
 
     @classmethod
     def _leaf_strings(cls, value: Any) -> set[str]:

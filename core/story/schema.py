@@ -42,6 +42,12 @@ from .models import (
     VariableScope,
     VariableType,
 )
+from .semantic import (
+    MAX_REPEAT_WINDOW,
+    SemanticSignalDefinition,
+    SignalStrength,
+    SpeechAct,
+)
 
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
@@ -156,12 +162,16 @@ class _Parser:
         *,
         default: int = 0,
         minimum: int | None = None,
+        maximum: int | None = None,
     ) -> int:
         if isinstance(value, bool) or not isinstance(value, int):
             self.error("schema.integer", "expected an integer", path)
             return default
         if minimum is not None and value < minimum:
             self.error("schema.range", f"must be at least {minimum}", path)
+            return default
+        if maximum is not None and value > maximum:
+            self.error("schema.range", f"must be at most {maximum}", path)
             return default
         return value
 
@@ -301,6 +311,96 @@ def _parse_effect(parser: _Parser, value: Any, path: str) -> EffectSpec:
         return EffectSpec(normalized_op, (raw_args,))
     parser.error("effect.operator", f"unsupported effect operator {op!r}", path)
     return EffectSpec("noop")
+
+
+def _parse_minimum_confidence(parser: _Parser, value: Any, path: str) -> float:
+    levels = {"low": 0.5, "medium": 0.8, "high": 0.95}
+    if isinstance(value, str) and value in levels:
+        return levels[value]
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    parser.error(
+        "semantic.confidence",
+        "minimumConfidence must be low, medium, high, or a number",
+        path,
+    )
+    return levels["medium"]
+
+
+def _parse_semantic_signal(
+    parser: _Parser,
+    value: Any,
+    path: str,
+) -> SemanticSignalDefinition:
+    source = parser.mapping(value, path)
+    effects_source = parser.mapping(
+        source.get("effectsByStrength", {}),
+        f"{path}.effectsByStrength",
+    )
+    effects_by_strength: dict[SignalStrength, tuple[EffectSpec, ...]] = {}
+    for strength in SignalStrength:
+        if strength.value not in effects_source:
+            continue
+        effects = parser.sequence(
+            effects_source[strength.value],
+            f"{path}.effectsByStrength.{strength.value}",
+        )
+        effects_by_strength[strength] = tuple(
+            _parse_effect(
+                parser,
+                item,
+                f"{path}.effectsByStrength.{strength.value}[{index}]",
+            )
+            for index, item in enumerate(effects)
+        )
+    raw_speech_acts = parser.sequence(
+        source.get("allowedSpeechActs", ["endorsement", "action"]),
+        f"{path}.allowedSpeechActs",
+    )
+    allowed_speech_acts = frozenset(
+        parser.enum(
+            SpeechAct,
+            item,
+            f"{path}.allowedSpeechActs[{index}]",
+            default=SpeechAct.ENDORSEMENT,
+        )
+        for index, item in enumerate(raw_speech_acts)
+    )
+    return SemanticSignalDefinition(
+        id=parser.story_id(source.get("id"), f"{path}.id"),
+        effects_by_strength=effects_by_strength,
+        minimum_confidence=_parse_minimum_confidence(
+            parser,
+            source.get("minimumConfidence", "medium"),
+            f"{path}.minimumConfidence",
+        ),
+        allowed_speech_acts=allowed_speech_acts,
+        repeat_window=parser.integer(
+            source.get("repeatWindow", 20),
+            f"{path}.repeatWindow",
+            minimum=0,
+            maximum=MAX_REPEAT_WINDOW,
+            default=20,
+        ),
+        max_per_turn=parser.integer(
+            source.get("maxPerTurn", 1),
+            f"{path}.maxPerTurn",
+            minimum=1,
+            default=1,
+        ),
+        max_per_scene=parser.integer(
+            source.get("maxPerScene", 3),
+            f"{path}.maxPerScene",
+            minimum=1,
+            default=3,
+        ),
+        max_per_chapter=parser.integer(
+            source.get("maxPerChapter", 10),
+            f"{path}.maxPerChapter",
+            minimum=1,
+            default=10,
+        ),
+    )
 
 
 def _parse_variable(
@@ -467,7 +567,11 @@ def _parse_registry(parser: _Parser, value: Any, path: str) -> CharacterRegistry
 
 
 def _parse_cast_policy(
-    parser: _Parser, value: Any, path: str, default_max: int
+    parser: _Parser,
+    value: Any,
+    path: str,
+    default_max: int,
+    default_preserve_current_cast: bool,
 ) -> CastPolicy:
     source = parser.mapping(value or {}, path)
     raw_roles = parser.sequence(
@@ -541,7 +645,7 @@ def _parse_cast_policy(
             preserve_current_cast=parser.boolean(
                 constraint_source.get("preserveCurrentCast"),
                 f"{path}.constraints.preserveCurrentCast",
-                default=True,
+                default=default_preserve_current_cast,
             ),
             require_loaded_assets=parser.boolean(
                 constraint_source.get("requireLoadedAssets"),
@@ -613,6 +717,7 @@ def _parse_narrative_graph(
     *,
     fallback_start_node_id: str,
     default_max_cast: int,
+    default_preserve_current_cast: bool,
 ) -> NarrativeGraph:
     source = parser.mapping(value, path)
     raw_nodes = parser.sequence(source.get("nodes", ()), f"{path}.nodes")
@@ -679,6 +784,7 @@ def _parse_narrative_graph(
                     item.get("castPolicy"),
                     f"{item_path}.castPolicy",
                     default_max_cast,
+                    default_preserve_current_cast,
                 ),
                 exposed_context=parser.json_mapping(
                     item.get("exposedContext", {}), f"{item_path}.exposedContext"
@@ -767,6 +873,19 @@ def parse_story_project(source: Mapping[str, Any]) -> StoryProject:
         _parse_variable(parser, str(identifier), value, f"$.variables.{identifier}")
         for identifier, value in variables_source.items()
     )
+    semantic_source = parser.sequence(
+        root.get("semanticSignals", ()),
+        "$.semanticSignals",
+    )
+    parser.unique_ids(semantic_source, "$.semanticSignals")
+    semantic_signals = tuple(
+        _parse_semantic_signal(
+            parser,
+            value,
+            f"$.semanticSignals[{index}]",
+        )
+        for index, value in enumerate(semantic_source)
+    )
     registry = _parse_registry(parser, root.get("cast", {}), "$.cast")
     fallback_start = parser.story_id(root.get("startNodeId"), "$.startNodeId")
     narrative_graph = _parse_narrative_graph(
@@ -775,6 +894,7 @@ def parse_story_project(source: Mapping[str, Any]) -> StoryProject:
         "$.narrativeGraph",
         fallback_start_node_id=fallback_start,
         default_max_cast=registry.defaults.max_active,
+        default_preserve_current_cast=registry.defaults.preserve_current_cast,
     )
     project = StoryProject(
         schema_version=parser.integer(
@@ -809,6 +929,7 @@ def parse_story_project(source: Mapping[str, Any]) -> StoryProject:
             ),
         ),
         variables=variables,
+        semantic_signals=semantic_signals,
         character_registry=registry,
         narrative_graph=narrative_graph,
         rule_graph=_parse_rule_graph(

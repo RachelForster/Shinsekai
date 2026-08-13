@@ -15,6 +15,7 @@ from core.story import (
     RuleEdge,
     RuleGraph,
     RuleNode,
+    SignalStrength,
     StoryCompileError,
     StoryCompiler,
     parse_story_project,
@@ -44,6 +45,24 @@ def test_compile_produces_stable_program_and_source_map(project) -> None:
     )
     assert story_program_json(first) == story_program_json(second)
     assert json.loads(story_program_json(first))["story_id"] == "campus-mystery"
+    assert first.semantic_signals_by_id["respect-boundary"].effects_by_strength[
+        SignalStrength.MEDIUM
+    ] == (
+        EffectSpec("increment", ("trust.ling", 2)),
+    )
+
+
+def test_semantic_definitions_contribute_to_source_hash() -> None:
+    original_source = campus_mystery_source()
+    changed_source = campus_mystery_source()
+    changed_source["semanticSignals"][0]["effectsByStrength"]["medium"] = [
+        {"increment": ["trust.ling", 3]}
+    ]
+
+    original = StoryCompiler().compile(parse_story_project(original_source))
+    changed = StoryCompiler().compile(parse_story_project(changed_source))
+
+    assert original.source_hash != changed.source_hash
 
 
 def test_compiled_program_is_deeply_immutable_and_detached(project) -> None:
@@ -75,6 +94,10 @@ def test_compiled_program_is_deeply_immutable_and_detached(project) -> None:
         program.rule_graph.nodes[0].config["variable"] = "other"
     with pytest.raises(TypeError):
         program.source_map["node:transfer-day"] = "changed"
+    with pytest.raises(TypeError):
+        program.semantic_signals_by_id["respect-boundary"].effects_by_strength[
+            SignalStrength.MEDIUM
+        ] = ()
 
 
 def test_compiled_program_keeps_only_exposed_context(project) -> None:
@@ -168,6 +191,39 @@ def test_compile_rejects_invalid_rule_port_type(project) -> None:
     result = StoryCompiler().compile_with_diagnostics(broken)
 
     assert "rule.port_type" in {item.code for item in result.diagnostics}
+
+
+@pytest.mark.parametrize(
+    "config",
+    (
+        {"operator": "gt", "value": 10},
+        {"operator": "gte", "value": "10"},
+    ),
+)
+def test_compile_rejects_invalid_compare_config(project, config) -> None:
+    metric = project.rule_graph.nodes[0]
+    compare = RuleNode("compare-threshold", "compare", config)
+    unlock = project.rule_graph.nodes[2]
+    graph = RuleGraph(
+        nodes=(metric, compare, unlock),
+        edges=(
+            RuleEdge(
+                PortRef(metric.id, "value"),
+                PortRef(compare.id, "input"),
+            ),
+            RuleEdge(
+                PortRef(compare.id, "result"),
+                PortRef(unlock.id, "when"),
+            ),
+        ),
+    )
+
+    result = StoryCompiler().compile_with_diagnostics(
+        replace(project, rule_graph=graph)
+    )
+
+    assert not result.ok
+    assert "rule.invalid_config" in {item.code for item in result.diagnostics}
 
 
 def test_compile_rejects_rule_cycle(project) -> None:
@@ -445,6 +501,37 @@ def test_compile_validates_effect_value_type(project) -> None:
     result = StoryCompiler().compile_with_diagnostics(broken)
 
     assert "effect.value_type" in {item.code for item in result.diagnostics}
+
+
+def test_compile_rejects_set_value_outside_variable_bounds(project) -> None:
+    start = project.narrative_graph.nodes[0]
+    broken_choice = replace(
+        start.choices[0],
+        effects=(EffectSpec("set", ("trust.ling", 101)),),
+    )
+    broken_start = replace(start, choices=(broken_choice,))
+    broken = replace(
+        project,
+        narrative_graph=replace(
+            project.narrative_graph,
+            nodes=(broken_start,) + project.narrative_graph.nodes[1:],
+        ),
+    )
+
+    result = StoryCompiler().compile_with_diagnostics(broken)
+
+    assert not result.ok
+    assert "effect.value_type" in {item.code for item in result.diagnostics}
+
+
+def test_compile_rejects_repeat_window_larger_than_retained_history(project) -> None:
+    definition = replace(project.semantic_signals[0], repeat_window=257)
+    changed = replace(project, semantic_signals=(definition,))
+
+    result = StoryCompiler().compile_with_diagnostics(changed)
+
+    assert not result.ok
+    assert "semantic.repeat_window" in {item.code for item in result.diagnostics}
 
 
 def test_compile_rejects_locked_context_copied_to_exposed_context(project) -> None:

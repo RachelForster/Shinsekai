@@ -6,7 +6,10 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from enum import Enum
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping
+
+if TYPE_CHECKING:
+    from .semantic import SemanticSignalDefinition
 
 
 JsonValue = None | bool | int | float | str | list["JsonValue"] | dict[str, "JsonValue"]
@@ -336,6 +339,7 @@ class StoryProject:
     status: str
     metadata: StoryMetadata
     variables: tuple[StoryVariableDefinition, ...]
+    semantic_signals: tuple[SemanticSignalDefinition, ...]
     character_registry: CharacterRegistry
     narrative_graph: NarrativeGraph
     rule_graph: RuleGraph
@@ -343,6 +347,10 @@ class StoryProject:
     @property
     def variables_by_id(self) -> Mapping[str, StoryVariableDefinition]:
         return {variable.id: variable for variable in self.variables}
+
+    @property
+    def semantic_signals_by_id(self) -> Mapping[str, SemanticSignalDefinition]:
+        return {definition.id: definition for definition in self.semantic_signals}
 
 
 @dataclass(frozen=True, slots=True)
@@ -386,6 +394,7 @@ class StoryProgram:
     source_hash: str
     start_node_id: str
     variables: tuple[StoryVariableDefinition, ...]
+    semantic_signals: tuple[SemanticSignalDefinition, ...]
     character_registry: CharacterRegistry
     nodes: tuple[CompiledStoryNode, ...]
     rule_graph: RuleGraph
@@ -397,3 +406,11 @@ class StoryProgram:
     @property
     def nodes_by_id(self) -> Mapping[str, CompiledStoryNode]:
         return {node.id: node for node in self.nodes}
+
+    @property
+    def variables_by_id(self) -> Mapping[str, StoryVariableDefinition]:
+        return {variable.id: variable for variable in self.variables}
+
+    @property
+    def semantic_signals_by_id(self) -> Mapping[str, SemanticSignalDefinition]:
+        return {definition.id: definition for definition in self.semantic_signals}
