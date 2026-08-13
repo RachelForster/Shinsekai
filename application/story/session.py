@@ -46,6 +46,7 @@ from .protocol import story_chat_snapshot, story_event_messages, story_state_vie
 FailureInjector = Callable[[str], None]
 CastPlanPreparer = Callable[[CastResolutionPlan], CastResolutionPlan]
 CastPlanCommitted = Callable[[CastResolutionPlan], None]
+CastResourcesRebuilder = Callable[[Sequence[str]], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +187,7 @@ class StorySession:
         failure_injector: FailureInjector | None = None,
         cast_plan_preparer: CastPlanPreparer | None = None,
         cast_plan_committed: CastPlanCommitted | None = None,
+        cast_resources_rebuilder: CastResourcesRebuilder | None = None,
     ) -> None:
         flags.require(FeatureFlag.STORY_SYSTEM)
         self.runtime = runtime
@@ -196,6 +198,7 @@ class StorySession:
         self.failure_injector = failure_injector or (lambda _point: None)
         self.cast_plan_preparer = cast_plan_preparer
         self.cast_plan_committed = cast_plan_committed
+        self.cast_resources_rebuilder = cast_resources_rebuilder
         self.active_branch_id = "main"
         self.branches: dict[str, StoryBranch] = {}
         self.outbox: list[GlobalEffectOutboxEntry] = []
@@ -215,6 +218,7 @@ class StorySession:
         failure_injector: FailureInjector | None = None,
         cast_plan_preparer: CastPlanPreparer | None = None,
         cast_plan_committed: CastPlanCommitted | None = None,
+        cast_resources_rebuilder: CastResourcesRebuilder | None = None,
     ) -> StorySession:
         flags.require(FeatureFlag.STORY_SYSTEM)
         progress = (
@@ -231,6 +235,7 @@ class StorySession:
             failure_injector=failure_injector,
             cast_plan_preparer=cast_plan_preparer,
             cast_plan_committed=cast_plan_committed,
+            cast_resources_rebuilder=cast_resources_rebuilder,
         )
         command = StartStory(command_id)
         result = runtime.start(command, global_variables=progress.variables)
@@ -264,6 +269,7 @@ class StorySession:
         failure_injector: FailureInjector | None = None,
         cast_plan_preparer: CastPlanPreparer | None = None,
         cast_plan_committed: CastPlanCommitted | None = None,
+        cast_resources_rebuilder: CastResourcesRebuilder | None = None,
     ) -> StorySession:
         flags.require(FeatureFlag.STORY_SYSTEM)
         raw = repository.load()
@@ -287,6 +293,7 @@ class StorySession:
             failure_injector=failure_injector,
             cast_plan_preparer=cast_plan_preparer,
             cast_plan_committed=cast_plan_committed,
+            cast_resources_rebuilder=cast_resources_rebuilder,
         )
         session.active_branch_id = str(raw.get("activeBranchId") or "")
         branches_raw = raw.get("branches")
@@ -394,6 +401,7 @@ class StorySession:
             self.branches[branch_id] = forked
             self.active_branch_id = branch_id
             self._save()
+            self._rebuild_cast_resources()
             return forked
 
     def restore_generation(self, generation: int) -> StoryBranch:
@@ -413,6 +421,7 @@ class StorySession:
             )
             branch.history_entries = checkpoint.history_entries
             self._save()
+            self._rebuild_cast_resources()
             return branch
 
     def switch_branch(self, branch_id: str) -> StoryBranch:
@@ -422,6 +431,7 @@ class StorySession:
                 raise KeyError(f"story branch {branch_id!r} does not exist")
             self.active_branch_id = branch_id
             self._save()
+            self._rebuild_cast_resources()
             return self.active_branch
 
     def chat_snapshot(self) -> dict[str, Any]:
@@ -557,6 +567,12 @@ class StorySession:
             for plan in cast_plans:
                 self.cast_plan_committed(plan)
         return ack
+
+    def _rebuild_cast_resources(self) -> None:
+        rebuilder = self.cast_resources_rebuilder
+        if rebuilder is None:
+            return
+        rebuilder(self.active_branch.state.cast_state.active_character_ids)
 
     def _prepare_runtime_result(
         self,

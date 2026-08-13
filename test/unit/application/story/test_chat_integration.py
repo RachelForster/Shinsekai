@@ -11,6 +11,7 @@ from application.story.coordinator import (
     bound_story_session,
     clear_story_session,
     discard_story_session_storage,
+    publish_story_transition,
     story_snapshot_patch,
 )
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
@@ -194,3 +195,42 @@ def test_fork_history_creates_a_matching_story_branch() -> None:
     assert session.active_branch_id == "branch-2"
     assert session.active_branch.state.current_node_id == "transfer-day"
     assert state.chat_stream.command[1]["payload"]["branchId"] == "branch-2"
+
+
+def test_live_story_transition_publishes_approved_actor_resources() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    state.story_cast_service = SimpleNamespace(
+        chat_patch=lambda: {
+            "actorContext": {
+                "activeCharacterIds": ["ling"],
+                "speakerAllowlist": ["ling", "NARR", "SYSTEM"],
+            },
+            "sprites": [
+                {
+                    "id": "story:ling",
+                    "characterName": "ling",
+                    "label": "绫",
+                    "path": r"C:\stories\case\characters\ling.png",
+                    "scale": 1.0,
+                }
+            ],
+            "storyResources": {"activeCharacterIds": ["ling"]},
+        }
+    )
+    state.chat_stream.media_url = (
+        lambda path: f"/api/media?path={path.replace(chr(92), '/')}"
+    )
+
+    publish_story_transition(state, state.story_session.chat_snapshot())
+
+    published_types = [event["type"] for event in state.chat_stream.published]
+    assert "story.state.replace" in published_types
+    assert "sprite.show" in published_types
+    sprite_event = next(
+        event for event in state.chat_stream.published if event["type"] == "sprite.show"
+    )
+    assert sprite_event["url"].startswith("/api/media?path=")
+    assert state.chat_stream.snapshot["sprites"][0]["path"].startswith("/api/media?path=")
+    assert state.chat_stream.snapshot["actorContext"]["activeCharacterIds"] == ["ling"]
+    assert story_snapshot_patch(state)["sprites"][0]["path"].startswith("/api/media?path=")

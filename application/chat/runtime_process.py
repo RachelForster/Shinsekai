@@ -1380,7 +1380,9 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         except (TypeError, ValueError) as exc:
             raise ValueError("回溯索引无效。") from exc
         _sync_story_session_branch_command(state, command, body)
-        return _forward_runtime_command("idle")
+        result = _forward_runtime_command("idle")
+        publish_story_transition(state, story_snapshot_patch(state))
+        return result
     if command == "fork-history":
         if not _chat_experimental_features(state)["forkHistory"]:
             raise PermissionError("React Chat UI Fork 实验功能未启用。")
@@ -1391,7 +1393,9 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         except (TypeError, ValueError) as exc:
             raise ValueError("分支索引无效。") from exc
         _sync_story_session_branch_command(state, command, body)
-        return _forward_runtime_command("generating", "正在创建对话分支。")
+        result = _forward_runtime_command("generating", "正在创建对话分支。")
+        publish_story_transition(state, story_snapshot_patch(state))
+        return result
     if command == "switch-branch":
         if not _chat_experimental_features(state)["conversationTree"]:
             raise PermissionError("React Chat UI 分支流程图实验功能未启用。")
@@ -1399,7 +1403,9 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         if not branch_id:
             raise ValueError("分支 id 不能为空。")
         _sync_story_session_branch_command(state, command, body)
-        return _forward_runtime_command("idle", "已切换对话分支。")
+        result = _forward_runtime_command("idle", "已切换对话分支。")
+        publish_story_transition(state, story_snapshot_patch(state))
+        return result
     if command == "rename-branch":
         if not _chat_experimental_features(state)["conversationTree"]:
             raise PermissionError("React Chat UI 分支流程图实验功能未启用。")

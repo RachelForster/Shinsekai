@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 import hashlib
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -15,6 +17,7 @@ from application.story import (
     CharacterResolutionError,
     CharacterResourceManager,
     CharacterSourceResolver,
+    ConfigCharacterLibrary,
     StoryCastApplicationService,
     StorySession,
     materialize_imported_character,
@@ -34,6 +37,7 @@ from core.story import (
     SelectChoice,
     StoryCompiler,
     StoryRuntime,
+    canonical_json,
     parse_story_project,
 )
 from test.unit.core.story.story_fixtures import campus_mystery_source
@@ -546,3 +550,187 @@ def _disjoint_cast_source() -> dict:
         "constraints": {"minActive": 1, "maxActive": 1},
     }
     return source
+
+
+def _payload_digest(payload: dict) -> str:
+    filtered = {
+        key: value
+        for key, value in payload.items()
+        if key not in {"_content_digest", "_revision"}
+    }
+    return f"sha256:{hashlib.sha256(canonical_json(filtered).encode('utf-8')).hexdigest()}"
+
+
+class _InstalledCharacter:
+    def __init__(self, payload: dict) -> None:
+        self.name = str(payload["name"])
+        self._payload = payload
+
+    def model_dump(self, *, mode: str) -> dict:
+        assert mode == "json"
+        return dict(self._payload)
+
+
+def test_materialize_imported_character_writes_json_for_json_destination(tmp_path) -> None:
+    flags = _flags()
+    import_root = tmp_path / "imports"
+    source = import_root / "selected.char"
+    _write_profile(source, "Selected")
+    tokens = CharacterImportTokenStore(flags)
+    token = tokens.issue(source, story_id="story-a", allowed_roots=(import_root,))
+    story_root = tmp_path / "story"
+
+    target, _digest = materialize_imported_character(
+        flags,
+        tokens,
+        token=token,
+        story_id="story-a",
+        story_root=story_root,
+        destination="characters/selected.json",
+    )
+
+    loaded = json.loads(target.read_text(encoding="utf-8"))
+    assert loaded["name"] == "Selected"
+    profile = CharacterSourceResolver(
+        flags,
+        story_id="story-a",
+        story_root=story_root,
+        local_library=_Library(),
+    ).resolve(
+        _definition(
+            "selected",
+            CharacterSourceType.EMBEDDED,
+            path="characters/selected.json",
+        )
+    )
+    assert profile.name == "Selected"
+
+
+def test_local_library_pins_observe_installed_digest_and_content_digest(tmp_path) -> None:
+    flags = _flags()
+    payload = {"name": "Ling", "sprites": [], "characterSetting": "student"}
+    digest = _payload_digest(payload)
+    library = ConfigCharacterLibrary(
+        SimpleNamespace(
+            config=SimpleNamespace(characters=[_InstalledCharacter(payload)]),
+            get_character_by_name=lambda name: (
+                _InstalledCharacter(payload) if name == "Ling" else None
+            ),
+        )
+    )
+    observed = library.load_character("Ling", None)
+    assert observed["_revision"] == digest
+    assert observed["_content_digest"] == digest
+
+    with pytest.raises(CharacterResolutionError) as stale_pin:
+        library.load_character("Ling", "v1")
+    assert stale_pin.value.code == "character.revision_mismatch"
+
+    changed = library.load_character("Ling", digest)
+    assert changed["_revision"] == digest
+
+    resolver = CharacterSourceResolver(
+        flags,
+        story_id="story-1",
+        story_root=tmp_path / "stories" / "case",
+        local_library=library,
+        library_root=tmp_path,
+    )
+    profile = resolver.resolve(
+        _definition(
+            "Ling",
+            CharacterSourceType.LOCAL_LIBRARY,
+            content_digest=digest,
+        )
+    )
+    assert profile.revision == digest
+
+    with pytest.raises(CharacterResolutionError) as digest_info:
+        resolver.resolve(
+            _definition(
+                "Ling",
+                CharacterSourceType.LOCAL_LIBRARY,
+                content_digest=f"sha256:{'0' * 64}",
+            )
+        )
+    assert digest_info.value.code == "character.revision_mismatch"
+
+    payload["characterSetting"] = "changed"
+    with pytest.raises(CharacterResolutionError) as changed_info:
+        library.load_character("Ling", digest)
+    assert changed_info.value.code == "character.revision_mismatch"
+
+
+def test_local_library_sprites_resolve_against_library_root(tmp_path) -> None:
+    flags = _flags()
+    project = tmp_path / "project"
+    story = project / "stories" / "case"
+    sprite = project / "data" / "sprite" / "ling.png"
+    sprite.parent.mkdir(parents=True)
+    sprite.write_bytes(b"png")
+    story.mkdir(parents=True)
+    resolver = CharacterSourceResolver(
+        flags,
+        story_id="story-1",
+        story_root=story,
+        local_library=_Library(
+            {"ling": {"name": "Ling", "sprites": [{"path": "data/sprite/ling.png"}]}}
+        ),
+        library_root=project,
+    )
+
+    profile = resolver.resolve(_definition("ling", CharacterSourceType.LOCAL_LIBRARY))
+
+    assert Path(profile.sprites[0]["path"]) == sprite.resolve()
+    assert not str(profile.sprites[0]["path"]).replace("\\", "/").endswith(
+        "stories/case/data/sprite/ling.png"
+    )
+
+
+def test_branch_switch_rebuilds_cast_resources(tmp_path) -> None:
+    flags = _flags()
+    root = tmp_path / "story"
+    _write_profile(root / "characters" / "alice.yaml", "Alice")
+    _write_profile(root / "characters" / "bob.yaml", "Bob")
+    program = StoryCompiler().compile(parse_story_project(_disjoint_cast_source()))
+    presentation = _Presentation()
+    resources = CharacterResourceManager(
+        flags,
+        registry=program.character_registry,
+        resolver=CharacterSourceResolver(
+            flags,
+            story_id=program.story_id,
+            story_root=root,
+            local_library=_Library(),
+        ),
+        presentation_adapter=presentation,
+    )
+    service = StoryCastApplicationService(flags, resources)
+    session = StorySession.create(
+        StoryRuntime(program),
+        flags,
+        command_id="start-1",
+        cast_plan_preparer=service.prepare,
+        cast_plan_committed=service.committed,
+        cast_resources_rebuilder=service.rebuild,
+    )
+    started_revision = session.active_branch.state.revision
+    session.execute(
+        SelectChoice(
+            command_id="choice-1",
+            expected_revision=started_revision,
+            choice_id="prepare-investigation",
+            expected_node_id="transfer-day",
+        )
+    )
+    assert resources.active_character_ids == ("bob",)
+
+    session.fork("branch-2", generation=1)
+
+    assert session.active_branch_id == "branch-2"
+    assert session.active_branch.state.cast_state.active_character_ids == ("alice",)
+    assert resources.active_character_ids == ("alice",)
+
+    session.switch_branch("main")
+
+    assert resources.active_character_ids == ("bob",)

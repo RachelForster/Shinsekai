@@ -226,12 +226,12 @@ class ConfigCharacterLibrary:
             else dict(character)
         )
         computed = _payload_digest(payload)
-        if revision and _strict_digest(revision) and revision != computed:
+        if revision and revision != computed:
             raise CharacterResolutionError(
                 "character.revision_mismatch",
                 f"local character {character_id!r} does not match pinned revision",
             )
-        return {**payload, "_revision": revision or computed}
+        return {**payload, "_content_digest": computed, "_revision": computed}
 
 
 class CharacterSourceResolver:
@@ -245,11 +245,13 @@ class CharacterSourceResolver:
         story_root: str | Path,
         local_library: LocalCharacterLibrary,
         import_tokens: CharacterImportTokenStore | None = None,
+        library_root: str | Path | None = None,
     ) -> None:
         flags.require(FeatureFlag.STORY_SYSTEM)
         self.flags = flags
         self.story_id = story_id
         self.story_root = Path(story_root).resolve(strict=False)
+        self.library_root = Path(library_root or self.story_root).resolve(strict=False)
         self.local_library = local_library
         self.import_tokens = import_tokens
 
@@ -259,9 +261,13 @@ class CharacterSourceResolver:
         source_root = self.story_root
         authorized_digest: str | None = None
         if source.type == CharacterSourceType.LOCAL_LIBRARY:
+            source_root = self.library_root
             raw = self.local_library.load_character(
                 str(source.character_id or definition.id),
                 source.revision,
+            )
+            authorized_digest = str(raw.get("_content_digest") or "") or _payload_digest(
+                raw
             )
         elif source.type == CharacterSourceType.USER_IMPORTED:
             if self.import_tokens is None or not source.path:
@@ -291,7 +297,6 @@ class CharacterSourceResolver:
 
         revision = _payload_digest(raw)
         declared_revision = source.revision
-        supplied_revision = str(raw.get("_revision") or "")
         if source.content_digest:
             if authorized_digest is None:
                 raise CharacterResolutionError(
@@ -300,13 +305,7 @@ class CharacterSourceResolver:
                 )
             _require_digest(source.content_digest, authorized_digest, definition.id)
         if declared_revision:
-            actual = (
-                supplied_revision
-                if supplied_revision == declared_revision
-                else revision
-            )
-            _require_digest(declared_revision, actual, definition.id)
-            revision = declared_revision
+            _require_digest(declared_revision, revision, definition.id)
         return _profile_from_mapping(
             definition.id,
             raw,
@@ -849,7 +848,11 @@ def materialize_imported_character(
             delete=False,
         ) as file:
             temporary = Path(file.name)
-            yaml.safe_dump(dict(payload), file, allow_unicode=True, sort_keys=True)
+            _write_profile_payload(
+                file,
+                payload,
+                suffix=target.suffix.lower(),
+            )
             file.flush()
             os.fsync(file.fileno())
         os.replace(temporary, target)
@@ -990,8 +993,21 @@ def _validated_resource_mapping(
     return result
 
 
+def _write_profile_payload(file: Any, payload: Mapping[str, Any], *, suffix: str) -> None:
+    data = dict(payload)
+    if suffix == ".json":
+        json.dump(data, file, ensure_ascii=False, indent=2)
+        file.write("\n")
+        return
+    yaml.safe_dump(data, file, allow_unicode=True, sort_keys=True)
+
+
 def _payload_digest(payload: Mapping[str, Any]) -> str:
-    filtered = {str(key): value for key, value in payload.items() if key != "_revision"}
+    filtered = {
+        str(key): value
+        for key, value in payload.items()
+        if key not in {"_content_digest", "_revision"}
+    }
     return (
         f"sha256:{hashlib.sha256(canonical_json(filtered).encode('utf-8')).hexdigest()}"
     )
@@ -1003,12 +1019,6 @@ def _file_digest(path: Path) -> str:
         for block in iter(lambda: file.read(1024 * 1024), b""):
             digest.update(block)
     return f"sha256:{digest.hexdigest()}"
-
-
-def _strict_digest(value: str) -> bool:
-    if not value.startswith("sha256:") or len(value) != 71:
-        return False
-    return all(character in "0123456789abcdef" for character in value[7:].lower())
 
 
 def _require_digest(expected: str, actual: str, character_id: str) -> None:
