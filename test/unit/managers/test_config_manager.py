@@ -4,6 +4,7 @@ import os
 
 import config.network_proxy as network_proxy
 from config.config_manager import ConfigManager
+from config.feature_flags import FeatureFlag
 from config.schema import AppConfig, ApiConfig, Background, Character, SystemConfig
 from config.sprite_voice import normalize_sprite_voice_types
 
@@ -49,6 +50,26 @@ def _save_api_config_for_test(manager: ConfigManager, **overrides) -> str:
     }
     params.update(overrides)
     return manager.save_api_config_new(**params)
+
+
+def test_config_manager_exposes_centralized_feature_flags():
+    manager = _config_manager_with_api()
+    manager.config.system_config.story_system_enabled = True
+
+    assert manager.feature_flags.is_enabled(FeatureFlag.STORY_SYSTEM)
+
+
+def test_invalid_persisted_story_flag_does_not_abort_config_load():
+    manager = _config_manager_with_api()
+    manager.config.system_config = SystemConfig.model_validate(
+        {"story_system_enabled": "maybe"}
+    )
+
+    resolution = manager.feature_flags.resolve(FeatureFlag.STORY_SYSTEM)
+
+    assert manager.config.system_config.story_system_enabled is False
+    assert resolution.enabled is False
+    assert resolution.diagnostic == "invalid boolean value 'maybe'; failed closed"
 
 
 def test_get_llm_api_config_defaults_known_provider_base_url_when_empty():

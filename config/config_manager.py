@@ -21,6 +21,7 @@ from config.tts_provider_config import (
     uses_shared_tts_server_config,
 )
 from config.llm_defaults import LLM_BASE_URLS
+from config.feature_flags import FeatureFlagConfigManager
 from config.mirror_env import apply_mirror_environment
 from config.network_proxy import apply_network_proxy_environment
 from config.sprite_voice import normalize_sprite_voice_types
@@ -102,6 +103,11 @@ class ConfigManager:
             if self._config is None:
                  raise RuntimeError("配置加载失败，无法访问配置数据。")
         return self._config
+
+    @property
+    def feature_flags(self) -> FeatureFlagConfigManager:
+        """Return the centralized flag view for the current system config."""
+        return FeatureFlagConfigManager(self.config.system_config)
 
     # --- 内部加载/合并逻辑 ---
     def _load_yaml(self, file_path: Path) -> Dict[str, Any]:
