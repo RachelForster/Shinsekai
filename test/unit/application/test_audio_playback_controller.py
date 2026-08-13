@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -42,6 +43,16 @@ def _start_playback(controller: VoicePlaybackController, **kwargs):
     thread = threading.Thread(target=run)
     thread.start()
     return thread, result
+
+
+def _wait_for_post_tts_play(ui_updates, timeout: float = 1.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        call_args = ui_updates.post_tts_play.call_args
+        if call_args is not None:
+            return call_args.kwargs
+        time.sleep(0.01)
+    raise AssertionError("post_tts_play was not called")
 
 
 def test_controller_blocks_until_matching_backend_finished_signal() -> None:
@@ -160,7 +171,7 @@ def test_frontend_backend_emits_ids_and_waits_for_external_signal() -> None:
     thread, result = _start_playback(controller)
 
     assert thread.is_alive()
-    play_kwargs = ui_updates.post_tts_play.call_args.kwargs
+    play_kwargs = _wait_for_post_tts_play(ui_updates)
     playback_id = play_kwargs["playback_id"]
     assert play_kwargs["volume"] == 1.0
     assert controller.handle_signal(playback_id, "started") is True
@@ -177,7 +188,7 @@ def test_controller_rejects_terminal_signal_from_a_different_renderer() -> None:
     )
     controller = VoicePlaybackController(FrontendVoicePlaybackBackend(ui_updates))
     thread, result = _start_playback(controller)
-    playback_id = ui_updates.post_tts_play.call_args.kwargs["playback_id"]
+    playback_id = _wait_for_post_tts_play(ui_updates)["playback_id"]
 
     assert controller.handle_signal(
         playback_id,
