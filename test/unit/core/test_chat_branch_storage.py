@@ -10,6 +10,7 @@ from unittest.mock import patch
 from core.sprite.chat_branch_storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
+    STORY_SESSION_FILENAME,
     chat_history_active_path,
     chat_history_branch_tree_path,
     load_branch_state,
@@ -215,6 +216,20 @@ class ChatBranchStorageTests(unittest.TestCase):
             self.assertEqual(_chat_history_path(state, {"historyPath": legacy_path.as_posix()}, template), legacy_path.resolve())
         finally:
             remove_chat_history_storage(root)
+
+    def test_clear_removes_story_session_document(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir) / "session"
+            root.mkdir()
+            (root / ACTIVE_HISTORY_FILENAME).write_text("[]", encoding="utf-8")
+            (root / BRANCH_TREE_FILENAME).write_text("{}", encoding="utf-8")
+            story = root / STORY_SESSION_FILENAME
+            story.write_text("{}", encoding="utf-8")
+
+            remove_chat_history_storage(root)
+
+            self.assertFalse(root.exists())
+            self.assertFalse(story.exists())
 
 
 if __name__ == "__main__":

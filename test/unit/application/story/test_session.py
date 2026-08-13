@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from copy import deepcopy
 import json
 
@@ -11,12 +12,19 @@ from application.story import (
     StoryProgramMismatchError,
     StorySession,
 )
+from application.story.persistence import global_progress_filename
 from config.feature_flags import (
     FeatureDisabledError,
     FeatureFlag,
     FeatureFlagConfigManager,
 )
-from core.story import SelectChoice, StoryCompiler, StoryRuntime, parse_story_project
+from core.story import (
+    SelectChoice,
+    StoryCompiler,
+    StoryRuntime,
+    StoryRuntimeError,
+    parse_story_project,
+)
 from test.unit.core.story.story_fixtures import campus_mystery_source
 
 
@@ -51,6 +59,16 @@ def _choice(session: StorySession, command_id: str = "choice-1") -> SelectChoice
         expected_revision=state.revision,
         choice_id="prepare-investigation",
         expected_node_id="transfer-day",
+    )
+
+
+def _enter_with_key(session: StorySession, command_id: str = "choice-2") -> SelectChoice:
+    state = session.active_branch.state
+    return SelectChoice(
+        command_id=command_id,
+        expected_revision=state.revision,
+        choice_id="enter-with-key",
+        expected_node_id="old-school-gate",
     )
 
 
@@ -249,3 +267,82 @@ def test_causal_chain_tampering_is_rejected(tmp_path) -> None:
             repository=repository,
             global_store=global_store,
         )
+
+
+def test_concurrent_choices_do_not_duplicate_event_groups(tmp_path) -> None:
+    runtime = _runtime()
+    repository = JsonStorySessionRepository(tmp_path / "session")
+    global_store = JsonGlobalStoryProgressStore(tmp_path / "global")
+    session = StorySession.create(
+        runtime,
+        _flags(),
+        command_id="start-1",
+        repository=repository,
+        global_store=global_store,
+    )
+    revision = session.active_branch.state.revision
+
+    def attempt(index: int) -> object:
+        return session.execute(
+            SelectChoice(
+                command_id=f"choice-{index}",
+                expected_revision=revision,
+                choice_id="prepare-investigation",
+                expected_node_id="transfer-day",
+            )
+        )
+
+    accepted = []
+    errors = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [pool.submit(attempt, index) for index in range(8)]
+        for future in as_completed(futures):
+            try:
+                accepted.append(future.result())
+            except StoryRuntimeError as error:
+                errors.append(error)
+
+    assert len(accepted) == 1
+    assert len(errors) == 7
+    recovered = StorySession.recover(
+        runtime,
+        _flags(),
+        repository=repository,
+        global_store=global_store,
+    )
+    assert recovered.active_branch.state == session.active_branch.state
+    assert recovered.active_branch.state.revision == accepted[0].revision
+
+
+def test_set_variable_effects_round_trip_through_recovery(tmp_path) -> None:
+    runtime = _runtime()
+    repository = JsonStorySessionRepository(tmp_path / "session")
+    global_store = JsonGlobalStoryProgressStore(tmp_path / "global")
+    session = StorySession.create(
+        runtime,
+        _flags(),
+        command_id="start-1",
+        repository=repository,
+        global_store=global_store,
+    )
+    session.execute(_choice(session))
+    session.execute(_enter_with_key(session))
+
+    recovered = StorySession.recover(
+        runtime,
+        _flags(),
+        repository=repository,
+        global_store=global_store,
+    )
+
+    assert recovered.active_branch.state == session.active_branch.state
+    assert recovered.active_branch.state.variables["inventory"] == frozenset()
+
+
+def test_long_story_ids_keep_distinct_global_progress_files() -> None:
+    prefix = "a" * 100
+    first = prefix + "left-branch-id"
+    second = prefix + "right-branch-id"
+    assert len(first) <= 128
+    assert first[:100] == second[:100]
+    assert global_progress_filename(first) != global_progress_filename(second)

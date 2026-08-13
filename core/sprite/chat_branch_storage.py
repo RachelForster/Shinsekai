@@ -8,6 +8,7 @@ from typing import Any
 
 ACTIVE_HISTORY_FILENAME = "active.json"
 BRANCH_TREE_FILENAME = "branches.json"
+STORY_SESSION_FILENAME = "story-v2.json"
 BRANCH_TREE_VERSION = 1
 
 
@@ -63,13 +64,15 @@ def remove_chat_history_storage(path: str | Path) -> None:
         directory_targets = [chat_history_session_dir(candidate)]
 
     # A history directory is not an ownership boundary. Remove only files
-    # created by chat storage, then remove the directory if it is empty.
-    # Never recursively delete unrelated content from an external directory.
+    # created by chat and story session storage, then remove the directory
+    # if it is empty. Never recursively delete unrelated content from an
+    # external directory.
     for directory in directory_targets:
         for name in (
             BRANCH_TREE_FILENAME,
             f"{ACTIVE_HISTORY_FILENAME}.tmp",
             ACTIVE_HISTORY_FILENAME,
+            STORY_SESSION_FILENAME,
         ):
             target = directory / name
             target.unlink(missing_ok=True)

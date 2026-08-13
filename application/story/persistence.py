@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,8 @@ import re
 import tempfile
 from types import MappingProxyType
 from typing import Any
+
+from core.sprite.chat_branch_storage import STORY_SESSION_FILENAME
 
 from core.story import (
     CanonFact,
@@ -31,7 +34,16 @@ from core.story.state import variable_value_is_valid
 
 
 STORY_SESSION_STORAGE_VERSION = 2
-STORY_SESSION_FILENAME = "story-v2.json"
+_GLOBAL_PROGRESS_SLUG_LIMIT = 100
+_GLOBAL_PROGRESS_HASH_LENGTH = 16
+_VARIABLE_EVENT_TYPES = frozenset(
+    {
+        StoryEventType.VARIABLE_CHANGED,
+        StoryEventType.METRIC_CHANGED,
+        StoryEventType.SET_VALUE_ADDED,
+        StoryEventType.SET_VALUE_REMOVED,
+    }
+)
 
 
 class StoryPersistenceError(ValueError):
@@ -82,7 +94,7 @@ def story_event_from_payload(raw: Mapping[str, Any]) -> StoryEvent:
         id=event_id,
         revision=revision,
         type=event_type,
-        payload=freeze_mapping(payload),
+        payload=_restore_event_payload(event_type, payload),
         cause_command_id=command_id,
     )
 
@@ -445,10 +457,7 @@ class JsonGlobalStoryProgressStore:
         _atomic_write_json(self._path(progress.story_id), progress.to_payload())
 
     def _path(self, story_id: str) -> Path:
-        slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", story_id).strip(".-")[:100]
-        if not slug:
-            raise StoryPersistenceError("story id cannot map to an empty filename")
-        return self.root / f"{slug}.json"
+        return self.root / global_progress_filename(story_id)
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
@@ -500,3 +509,34 @@ def _persisted_variable_value(variable_type: Any, value: Any) -> Any:
     if variable_type in {VariableType.STRING_SET, VariableType.NODE_SET}:
         return frozenset(str(item) for item in _sequence(value, "set variable"))
     return freeze_value(value)
+
+
+def _restore_event_variable_value(value: Any) -> Any:
+    if isinstance(value, (list, tuple)) and not isinstance(value, (str, bytes, bytearray)):
+        return frozenset(str(item) for item in value)
+    return freeze_value(value)
+
+
+def _restore_event_payload(
+    event_type: StoryEventType,
+    payload: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    restored = dict(payload)
+    if event_type in _VARIABLE_EVENT_TYPES:
+        for key in ("previous", "current"):
+            if key in restored:
+                restored[key] = _restore_event_variable_value(restored[key])
+    return freeze_mapping(restored)
+
+
+def global_progress_filename(story_id: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", story_id).strip(".-")
+    if not slug:
+        raise StoryPersistenceError("story id cannot map to an empty filename")
+    if len(slug) > _GLOBAL_PROGRESS_SLUG_LIMIT:
+        digest = hashlib.sha256(story_id.encode("utf-8")).hexdigest()[
+            :_GLOBAL_PROGRESS_HASH_LENGTH
+        ]
+        prefix_len = _GLOBAL_PROGRESS_SLUG_LIMIT - _GLOBAL_PROGRESS_HASH_LENGTH - 1
+        slug = f"{slug[:prefix_len]}-{digest}"
+    return f"{slug}.json"

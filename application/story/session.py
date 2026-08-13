@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+import threading
 from types import MappingProxyType
 from typing import Any
 
@@ -190,6 +191,8 @@ class StorySession:
         self.active_branch_id = "main"
         self.branches: dict[str, StoryBranch] = {}
         self.outbox: list[GlobalEffectOutboxEntry] = []
+        self.owner_history_path = ""
+        self._lock = threading.RLock()
 
     @classmethod
     def create(
@@ -294,124 +297,151 @@ class StorySession:
         *,
         history_entries: Sequence[Mapping[str, Any]] | None = None,
     ) -> StorySessionAck:
-        self._require_enabled()
-        branch = self.active_branch
-        duplicate = branch.idempotency.lookup(command)
-        if duplicate is not None:
-            return StorySessionAck.from_payload(duplicate.ack, duplicate=True)
-        result = self.runtime.execute(
-            branch.state,
-            command,
-            global_variables=self.global_progress.variables,
-        )
-        if history_entries is not None:
-            branch.history_entries = _history_entries(history_entries)
-        return self._commit_result(
-            branch,
-            command,
-            result.events,
-            result.global_effects,
-            state=result.state,
-        )
+        with self._lock:
+            self._require_enabled()
+            branch = self.active_branch
+            duplicate = branch.idempotency.lookup(command)
+            if duplicate is not None:
+                return StorySessionAck.from_payload(duplicate.ack, duplicate=True)
+            result = self.runtime.execute(
+                branch.state,
+                command,
+                global_variables=self.global_progress.variables,
+            )
+            if history_entries is not None:
+                branch.history_entries = _history_entries(history_entries)
+            return self._commit_result(
+                branch,
+                command,
+                result.events,
+                result.global_effects,
+                state=result.state,
+            )
+
+    def checkpoint_generation_before_user_index(self, user_index: int) -> int:
+        with self._lock:
+            self._require_enabled()
+            branch = self.active_branch
+            prefix = len(branch.history_entries)
+            seen = 0
+            for index, entry in enumerate(branch.history_entries):
+                if str(entry.get("role") or "") != "user":
+                    continue
+                if seen == user_index:
+                    prefix = index
+                    break
+                seen += 1
+            for checkpoint in reversed(branch.checkpoints):
+                if checkpoint.message_count <= prefix:
+                    return checkpoint.generation
+            if not branch.checkpoints:
+                raise KeyError("story branch has no checkpoint")
+            return branch.checkpoints[0].generation
 
     def fork(self, branch_id: str, *, generation: int | None = None) -> StoryBranch:
-        self._require_enabled()
-        branch_id = _branch_id(branch_id)
-        if branch_id in self.branches:
-            raise ValueError(f"story branch {branch_id!r} already exists")
-        source = self.active_branch
-        checkpoint = self._checkpoint(
-            source,
-            source.generation if generation is None else generation,
-        )
-        forked = StoryBranch(
-            id=branch_id,
-            parent_id=source.id,
-            generation=checkpoint.generation,
-            state=checkpoint.state,
-            head_event_id=checkpoint.head_event_id,
-            events=list(source.events[: checkpoint.event_count]),
-            checkpoints=[
-                item
-                for item in source.checkpoints
-                if item.generation <= checkpoint.generation
-            ],
-            idempotency=StoryCommandIdempotencyIndex.from_payload(
-                list(checkpoint.idempotency_payload)
-            ),
-            history_entries=checkpoint.history_entries,
-        )
-        self.branches[branch_id] = forked
-        self.active_branch_id = branch_id
-        self._save()
-        return forked
+        with self._lock:
+            self._require_enabled()
+            branch_id = _branch_id(branch_id)
+            if branch_id in self.branches:
+                raise ValueError(f"story branch {branch_id!r} already exists")
+            source = self.active_branch
+            checkpoint = self._checkpoint(
+                source,
+                source.generation if generation is None else generation,
+            )
+            forked = StoryBranch(
+                id=branch_id,
+                parent_id=source.id,
+                generation=checkpoint.generation,
+                state=checkpoint.state,
+                head_event_id=checkpoint.head_event_id,
+                events=list(source.events[: checkpoint.event_count]),
+                checkpoints=[
+                    item
+                    for item in source.checkpoints
+                    if item.generation <= checkpoint.generation
+                ],
+                idempotency=StoryCommandIdempotencyIndex.from_payload(
+                    list(checkpoint.idempotency_payload)
+                ),
+                history_entries=checkpoint.history_entries,
+            )
+            self.branches[branch_id] = forked
+            self.active_branch_id = branch_id
+            self._save()
+            return forked
 
     def restore_generation(self, generation: int) -> StoryBranch:
-        self._require_enabled()
-        branch = self.active_branch
-        checkpoint = self._checkpoint(branch, generation)
-        branch.generation = checkpoint.generation
-        branch.state = checkpoint.state
-        branch.head_event_id = checkpoint.head_event_id
-        del branch.events[checkpoint.event_count :]
-        branch.checkpoints = [
-            item for item in branch.checkpoints if item.generation <= generation
-        ]
-        branch.idempotency = StoryCommandIdempotencyIndex.from_payload(
-            list(checkpoint.idempotency_payload)
-        )
-        branch.history_entries = checkpoint.history_entries
-        self._save()
-        return branch
+        with self._lock:
+            self._require_enabled()
+            branch = self.active_branch
+            checkpoint = self._checkpoint(branch, generation)
+            branch.generation = checkpoint.generation
+            branch.state = checkpoint.state
+            branch.head_event_id = checkpoint.head_event_id
+            del branch.events[checkpoint.event_count :]
+            branch.checkpoints = [
+                item for item in branch.checkpoints if item.generation <= generation
+            ]
+            branch.idempotency = StoryCommandIdempotencyIndex.from_payload(
+                list(checkpoint.idempotency_payload)
+            )
+            branch.history_entries = checkpoint.history_entries
+            self._save()
+            return branch
 
     def switch_branch(self, branch_id: str) -> StoryBranch:
-        self._require_enabled()
-        if branch_id not in self.branches:
-            raise KeyError(f"story branch {branch_id!r} does not exist")
-        self.active_branch_id = branch_id
-        self._save()
-        return self.active_branch
+        with self._lock:
+            self._require_enabled()
+            if branch_id not in self.branches:
+                raise KeyError(f"story branch {branch_id!r} does not exist")
+            self.active_branch_id = branch_id
+            self._save()
+            return self.active_branch
 
     def chat_snapshot(self) -> dict[str, Any]:
-        self._require_enabled()
-        view = story_state_view(
-            self.runtime.program,
-            self.active_branch.state,
-            self.global_progress,
-        )
-        return story_chat_snapshot(view)
+        with self._lock:
+            self._require_enabled()
+            view = story_state_view(
+                self.runtime.program,
+                self.active_branch.state,
+                self.global_progress,
+            )
+            return story_chat_snapshot(view)
 
     def to_payload(self) -> dict[str, Any]:
-        self._require_enabled()
-        return {
-            "activeBranchId": self.active_branch_id,
-            "storyId": self.runtime.program.story_id,
-            "storyVersion": self.runtime.program.story_version,
-            "programSourceHash": self.runtime.program.source_hash,
-            "branches": {
-                branch_id: branch.to_payload()
-                for branch_id, branch in sorted(self.branches.items())
-            },
-            "globalEffectOutbox": [item.to_payload() for item in self.outbox],
-        }
+        with self._lock:
+            self._require_enabled()
+            return {
+                "activeBranchId": self.active_branch_id,
+                "storyId": self.runtime.program.story_id,
+                "storyVersion": self.runtime.program.story_version,
+                "programSourceHash": self.runtime.program.source_hash,
+                "branches": {
+                    branch_id: branch.to_payload()
+                    for branch_id, branch in sorted(self.branches.items())
+                },
+                "globalEffectOutbox": [item.to_payload() for item in self.outbox],
+            }
 
     def flush_global_outbox(self) -> None:
-        self._require_enabled()
-        changed = False
-        for entry in self.outbox:
-            if entry.applied:
-                continue
-            if entry.id not in self.global_progress.applied_outbox_ids:
-                self._apply_global_entry(entry)
-                if self.global_store is not None:
-                    self.global_store.save(self.global_progress)
-                self.failure_injector("after_global_apply")
-            entry.applied = True
-            changed = True
-            self._save()
-        if changed:
-            self.outbox = [item for item in self.outbox if not item.applied][-256:]
-            self._save()
+        with self._lock:
+            self._require_enabled()
+            changed = False
+            for entry in self.outbox:
+                if entry.applied:
+                    continue
+                if entry.id not in self.global_progress.applied_outbox_ids:
+                    self._apply_global_entry(entry)
+                    if self.global_store is not None:
+                        self.global_store.save(self.global_progress)
+                    self.failure_injector("after_global_apply")
+                entry.applied = True
+                changed = True
+                self._save()
+            if changed:
+                self.outbox = [item for item in self.outbox if not item.applied][-256:]
+                self._save()
 
     def _commit_result(
         self,

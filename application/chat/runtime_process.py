@@ -38,7 +38,9 @@ from core.sprite.chat_branch_storage import (
     chat_history_active_path,
     chat_history_download_path,
     chat_history_session_dir,
+    load_branch_state,
     remove_chat_history_storage,
+    save_branch_state,
 )
 from core.sprite.chat_history_text import history_payload_to_plain_text, parse_assistant_dialog_content
 from ai.tools.chat_ui_tools import sanitize_user_display_name
@@ -61,8 +63,13 @@ from application.chat.templates import (
 )
 from application.runtime.dependencies import runtime_dependency_error_from_text
 from application.runtime.state import BridgeState
-from application.story.coordinator import story_snapshot_patch
-from config.feature_flags import FeatureFlag
+from application.story.coordinator import (
+    bound_story_session,
+    clear_story_session,
+    discard_story_session_storage,
+    publish_story_transition,
+    story_snapshot_patch,
+)
 from core.story import SelectChoice
 from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
 from sdk.path_utils import reject_control_chars
@@ -552,6 +559,7 @@ def _close_chat(
                 delete_session(session_id)
         if str(state.chat_session.get("sessionId") or "").strip() == session_id:
             state.chat_session = {**state.chat_session, "sessionId": ""}
+    clear_story_session(state)
     return closed_snapshot
 
 
@@ -923,6 +931,134 @@ def _chat_history_download_file(state: BridgeState, capability: str) -> Path:
     return history_file
 
 
+def _story_choice_label(session: Any, choice_id: str) -> str:
+    snapshot = session.chat_snapshot()
+    for option in snapshot.get("options") or []:
+        if not isinstance(option, dict):
+            continue
+        if str(option.get("id") or "") != choice_id:
+            continue
+        label = str(option.get("label") or "").strip()
+        if label:
+            return label
+    return choice_id
+
+
+def _persist_story_choice_messages(
+    state: BridgeState,
+    label: str,
+    user_name: str,
+) -> None:
+    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    if not history_raw or is_unc_history_path(history_raw):
+        return
+    history_path = _resolve_history_file(state, history_raw)
+    if is_unc_history_path(history_path):
+        return
+    active = chat_history_active_path(history_path)
+    messages: list[Any] = []
+    if active.is_file():
+        loaded = _read_history_file(active)
+        if isinstance(loaded, list):
+            messages = loaded
+    messages.append({"role": "user", "content": label})
+    active.parent.mkdir(parents=True, exist_ok=True)
+    with active.open("w", encoding="utf-8") as file:
+        json.dump(messages, file, ensure_ascii=False, indent=4)
+    branch_state = load_branch_state(history_path)
+    if branch_state is None:
+        return
+    branches = branch_state.get("branches")
+    if not isinstance(branches, dict):
+        return
+    active_id = str(branch_state.get("active") or "main")
+    branch = branches.get(active_id)
+    if not isinstance(branch, dict):
+        return
+    history = list(branch.get("history") or [])
+    history.append(f"<b>{user_name}</b>：{label}")
+    branch["messages"] = list(messages)
+    branch["history"] = history
+    save_branch_state(history_path, branch_state)
+
+
+def _record_story_choice_history(state: BridgeState, label: str) -> list[dict[str, Any]]:
+    entries = [dict(item) for item in _chat_history_entries(state)]
+    user_name = _chat_user_display_name_from_snapshot(state)
+    user_index = sum(1 for item in entries if str(item.get("role") or "") == "user")
+    entries.append(
+        {
+            "id": f"history-{len(entries)}",
+            "revertUserIndex": user_index,
+            "role": "user",
+            "text": f"{user_name}: {label}",
+        }
+    )
+    _persist_story_choice_messages(state, label, user_name)
+    return entries
+
+
+def _allocate_aligned_story_branch_id(state: BridgeState, session: Any) -> str:
+    max_counter = 1
+    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    if history_raw and not is_unc_history_path(history_raw):
+        history_path = _resolve_history_file(state, history_raw)
+        if not is_unc_history_path(history_path):
+            branch_state = load_branch_state(history_path)
+            if branch_state is not None:
+                try:
+                    max_counter = max(max_counter, int(branch_state.get("counter") or 1))
+                except (TypeError, ValueError):
+                    pass
+    for branch_id in session.branches:
+        suffix = str(branch_id)[7:] if str(branch_id).startswith("branch-") else ""
+        if suffix.isdigit():
+            max_counter = max(max_counter, int(suffix))
+    candidate = max_counter + 1
+    while f"branch-{candidate}" in session.branches:
+        candidate += 1
+    return f"branch-{candidate}"
+
+
+def _sync_story_session_branch_command(
+    state: BridgeState,
+    command: str,
+    body: dict[str, Any],
+) -> None:
+    session = bound_story_session(state)
+    if session is None:
+        return
+    if command == "fork-history":
+        payload = body.get("payload")
+        raw_index = payload.get("userIndex") if isinstance(payload, dict) else payload
+        user_index = int(raw_index)
+        generation = session.checkpoint_generation_before_user_index(user_index)
+        branch_id = _allocate_aligned_story_branch_id(state, session)
+        session.fork(branch_id, generation=generation)
+        if isinstance(payload, dict):
+            body["payload"] = {**payload, "branchId": branch_id}
+        else:
+            body["payload"] = {"userIndex": user_index, "branchId": branch_id}
+        return
+    if command == "switch-branch":
+        branch_id = str(body.get("payload") or "").strip()
+        if branch_id in session.branches:
+            session.switch_branch(branch_id)
+        return
+    if command == "revert-history":
+        generation = session.checkpoint_generation_before_user_index(int(body.get("payload")))
+        session.restore_generation(generation)
+
+
+def _discard_bound_story_session(state: BridgeState) -> None:
+    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    if history_raw and not is_unc_history_path(history_raw):
+        history_path = _resolve_history_file(state, history_raw)
+        if not is_unc_history_path(history_path):
+            discard_story_session_storage(history_path)
+    clear_story_session(state)
+
+
 def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, Any]:
     command = str(body.get("type") or "").strip()
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
@@ -1006,6 +1142,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         )
 
     if command == "clear-history":
+        _discard_bound_story_session(state)
         if session_id and chat_stream is not None:
             return _forward_runtime_command(
                 "idle",
@@ -1094,13 +1231,8 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
     if command == "submit-option" and isinstance(body.get("payload"), dict):
         payload = body["payload"]
         if payload.get("kind") == "story-choice":
-            flags = getattr(state.config_manager, "feature_flags", None)
-            story_session = getattr(state, "story_session", None)
-            if (
-                flags is None
-                or not flags.is_enabled(FeatureFlag.STORY_SYSTEM)
-                or story_session is None
-            ):
+            story_session = bound_story_session(state)
+            if story_session is None:
                 raise ValueError("Option selection must be a string.")
             choice_id = reject_control_chars(
                 str(payload.get("choiceId") or "").strip(),
@@ -1117,6 +1249,10 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             if not choice_id or not expected_node_id:
                 raise ValueError("Story choice is invalid.")
             command_id = str(body.get("cmdId") or uuid.uuid4().hex)
+            history_entries = _record_story_choice_history(
+                state,
+                _story_choice_label(story_session, choice_id),
+            )
             ack = story_session.execute(
                 SelectChoice(
                     command_id=command_id,
@@ -1124,12 +1260,16 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
                     choice_id=choice_id,
                     expected_node_id=expected_node_id,
                 ),
-                history_entries=_chat_history_entries(state),
+                history_entries=history_entries,
             )
             patch = story_session.chat_snapshot()
             patch["storyAck"] = ack.to_payload()
-            if session_id and chat_stream is not None:
-                chat_stream.update_session_snapshot(session_id, patch)
+            publish_story_transition(
+                state,
+                patch,
+                history_entries=history_entries,
+                presentation_events=ack.presentation_events,
+            )
             return _chat_snapshot(state, "idle", extra=patch)
         if payload.get("kind") != "tool-confirmation":
             raise ValueError("Option selection must be a string.")
@@ -1239,6 +1379,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             int(body.get("payload"))
         except (TypeError, ValueError) as exc:
             raise ValueError("回溯索引无效。") from exc
+        _sync_story_session_branch_command(state, command, body)
         return _forward_runtime_command("idle")
     if command == "fork-history":
         if not _chat_experimental_features(state)["forkHistory"]:
@@ -1249,6 +1390,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             int(raw_index)
         except (TypeError, ValueError) as exc:
             raise ValueError("分支索引无效。") from exc
+        _sync_story_session_branch_command(state, command, body)
         return _forward_runtime_command("generating", "正在创建对话分支。")
     if command == "switch-branch":
         if not _chat_experimental_features(state)["conversationTree"]:
@@ -1256,6 +1398,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         branch_id = str(body.get("payload") or "").strip()
         if not branch_id:
             raise ValueError("分支 id 不能为空。")
+        _sync_story_session_branch_command(state, command, body)
         return _forward_runtime_command("idle", "已切换对话分支。")
     if command == "rename-branch":
         if not _chat_experimental_features(state)["conversationTree"]:
