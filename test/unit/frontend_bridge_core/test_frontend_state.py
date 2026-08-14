@@ -1,4 +1,5 @@
 from pathlib import Path
+import inspect
 
 from application.runtime.state import BridgeState, _jsonify
 
@@ -36,3 +37,21 @@ def test_bridge_state_project_root_defaults_to_runtime_project_root(tmp_path, mo
     state = BridgeState(None, None, None, None)
 
     assert Path(state.project_root_dir) == project_root.resolve()
+
+
+def test_bridge_state_keeps_project_root_as_last_positional_parameter():
+    parameters = inspect.signature(BridgeState.__init__).parameters
+    positional = [
+        name
+        for name, parameter in parameters.items()
+        if name != "self"
+        and parameter.kind
+        in (
+            inspect.Parameter.POSITIONAL_ONLY,
+            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        )
+    ]
+
+    assert positional[-1] == "project_root_dir"
+    assert "story_cast_service" not in positional
+    assert "story_import_tokens" not in positional

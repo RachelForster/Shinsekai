@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,13 @@ from core.sprite.chat_branch_storage import (
 from core.story import StoryCompiler, StoryRuntime
 from sdk.path_utils import safe_existing_path
 
+from .characters import (
+    CharacterImportTokenStore,
+    CharacterResourceManager,
+    CharacterSourceResolver,
+    ConfigCharacterLibrary,
+    StoryCastApplicationService,
+)
 from .persistence import JsonGlobalStoryProgressStore, JsonStorySessionRepository
 from .project_loader import load_story_project
 from .session import StorySession
@@ -43,17 +51,46 @@ def start_or_recover_story_session(
 
     program = StoryCompiler().compile(load_story_project(resolved_story_path))
     runtime = StoryRuntime(program)
+    story_root = (
+        resolved_story_path
+        if resolved_story_path.is_dir()
+        else resolved_story_path.parent
+    )
+    import_tokens = getattr(state, "story_import_tokens", None)
+    if import_tokens is None:
+        import_tokens = CharacterImportTokenStore(flags)
+        state.story_import_tokens = import_tokens
+    resolver = CharacterSourceResolver(
+        flags,
+        story_id=program.story_id,
+        story_root=story_root,
+        local_library=ConfigCharacterLibrary(state.config_manager),
+        import_tokens=import_tokens,
+        library_root=root,
+    )
+    cast_service = StoryCastApplicationService(
+        flags,
+        CharacterResourceManager(
+            flags,
+            registry=program.character_registry,
+            resolver=resolver,
+        ),
+    )
     repository = JsonStorySessionRepository(chat_history_session_dir(history_path))
     global_store = JsonGlobalStoryProgressStore(
         Path(state.history_dir).resolve(strict=False) / ".story-global"
     )
-    if repository.load() is None:
+    recovering = repository.load() is not None
+    if not recovering:
         session = StorySession.create(
             runtime,
             flags,
             command_id=command_id,
             repository=repository,
             global_store=global_store,
+            cast_plan_preparer=cast_service.prepare,
+            cast_plan_committed=cast_service.committed,
+            cast_resources_rebuilder=cast_service.rebuild,
         )
     else:
         session = StorySession.recover(
@@ -61,9 +98,16 @@ def start_or_recover_story_session(
             flags,
             repository=repository,
             global_store=global_store,
+            cast_plan_preparer=cast_service.prepare,
+            cast_plan_committed=cast_service.committed,
+            cast_resources_rebuilder=cast_service.rebuild,
+        )
+        cast_service.rebuild(
+            session.active_branch.state.cast_state.active_character_ids
         )
     session.owner_history_path = str(Path(history_path).resolve(strict=False))
     state.story_session = session
+    state.story_cast_service = cast_service
     return session
 
 
@@ -93,11 +137,14 @@ def story_snapshot_patch(state: Any) -> dict[str, Any]:
     session = bound_story_session(state)
     if session is None:
         return {}
-    return session.chat_snapshot()
+    patch = session.chat_snapshot()
+    patch.update(_approved_resource_patch(state))
+    return patch
 
 
 def clear_story_session(state: Any) -> None:
     setattr(state, "story_session", None)
+    setattr(state, "story_cast_service", None)
 
 
 def discard_story_session_storage(history_path: str | Path) -> None:
@@ -126,10 +173,15 @@ def publish_story_transition(
     history_entries: list[dict[str, Any]] | None = None,
     presentation_events: tuple[Any, ...] = (),
 ) -> None:
+    if not _story_system_enabled(state):
+        return
     session_id = str(getattr(state, "chat_session", {}).get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
     if not session_id or chat_stream is None:
         return
+    live_patch = dict(patch)
+    resource_patch = _approved_resource_patch(state)
+    live_patch.update(resource_patch)
     events: list[dict[str, Any]] = []
     if history_entries is not None:
         events.append(
@@ -138,12 +190,13 @@ def publish_story_transition(
                 "entries": [dict(item) for item in history_entries],
             }
         )
-    story = patch.get("story")
+    story = live_patch.get("story")
     if isinstance(story, dict):
         events.append({"type": "story.state.replace", "story": dict(story)})
-    options = patch.get("options")
+    options = live_patch.get("options")
     if isinstance(options, list):
         events.append({"type": "options.show", "options": list(options)})
+    events.extend(_story_sprite_events(chat_stream, session_id, resource_patch))
     for item in presentation_events:
         if isinstance(item, dict):
             events.append(dict(item))
@@ -156,7 +209,7 @@ def publish_story_transition(
     update = getattr(chat_stream, "update_session_snapshot", None)
     if not callable(update):
         return
-    snapshot_patch = dict(patch)
+    snapshot_patch = dict(live_patch)
     if history_entries is not None:
         snapshot_patch["historyEntries"] = [dict(item) for item in history_entries]
     if not published_any:
@@ -168,3 +221,78 @@ def publish_story_transition(
             current_seq = 0
         snapshot_patch["eventSeq"] = current_seq + max(1, len(events) or 1)
     update(session_id, snapshot_patch)
+
+
+def _story_system_enabled(state: Any) -> bool:
+    flags = getattr(getattr(state, "config_manager", None), "feature_flags", None)
+    return flags is not None and flags.is_enabled(FeatureFlag.STORY_SYSTEM)
+
+
+def _approved_resource_patch(state: Any) -> dict[str, Any]:
+    if not _story_system_enabled(state):
+        return {}
+    cast_service = getattr(state, "story_cast_service", None)
+    if cast_service is None:
+        return {}
+    patch = dict(cast_service.chat_patch())
+    sprites = patch.get("sprites")
+    if not isinstance(sprites, list):
+        return patch
+    chat_stream = getattr(state, "chat_stream", None)
+    media_url = getattr(chat_stream, "media_url", None)
+    approved: list[dict[str, Any]] = []
+    for sprite in sprites:
+        if not isinstance(sprite, dict):
+            continue
+        item = dict(sprite)
+        path = str(item.get("path") or "").strip()
+        if path and callable(media_url):
+            item["path"] = str(media_url(path) or path)
+        elif path:
+            approve = getattr(chat_stream, "approve_external_media_path", None)
+            if callable(approve):
+                approve(path)
+        approved.append(item)
+    if approved:
+        patch["sprites"] = approved
+    return patch
+
+
+def _story_sprite_events(
+    chat_stream: Any,
+    session_id: str,
+    resource_patch: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    next_sprites = [
+        dict(item)
+        for item in resource_patch.get("sprites") or []
+        if isinstance(item, dict)
+    ]
+    get_snapshot = getattr(chat_stream, "get_snapshot", None)
+    current = get_snapshot(session_id) if callable(get_snapshot) else None
+    previous = [
+        dict(item)
+        for item in (current or {}).get("sprites") or []
+        if isinstance(item, dict) and str(item.get("id") or "").startswith("story:")
+    ]
+    next_ids = {str(item.get("id") or "") for item in next_sprites}
+    events: list[dict[str, Any]] = []
+    for sprite in previous:
+        sprite_id = str(sprite.get("id") or "")
+        if sprite_id and sprite_id not in next_ids:
+            events.append(
+                {
+                    "type": "sprite.remove",
+                    "characterName": str(sprite.get("characterName") or sprite_id),
+                }
+            )
+    for sprite in next_sprites:
+        events.append(
+            {
+                "type": "sprite.show",
+                "characterName": str(sprite.get("characterName") or ""),
+                "url": str(sprite.get("path") or ""),
+                "scale": sprite.get("scale"),
+            }
+        )
+    return events

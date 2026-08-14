@@ -53,6 +53,8 @@ class BridgeState:
     plugin_load_started_at: float = 0.0
     plugin_load_completed_at: float = 0.0
     story_session: Any = None
+    story_cast_service: Any = field(default=None, kw_only=True)
+    story_import_tokens: Any = field(default=None, kw_only=True)
     # Keep this field last so positional construction by older integrations remains compatible.
     project_root_dir: str = field(default_factory=_default_project_root_dir)
 
