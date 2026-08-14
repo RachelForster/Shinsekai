@@ -212,11 +212,16 @@ def scene_tool_protocol_definitions(
     public_context: Mapping[str, Any],
     *,
     allowed_intent_ids: Sequence[str],
+    allowed_character_ids_by_action: Mapping[str, Sequence[str]] | None = None,
 ) -> tuple[Mapping[str, Any], ...]:
     """Compact per-turn allowlists used by the scene JSON protocol."""
     boundary = {
         "expectedNodeId": node_id,
         "expectedRevision": revision,
+    }
+    character_ids = {
+        str(key): tuple(str(item) for item in value)
+        for key, value in dict(allowed_character_ids_by_action or {}).items()
     }
     tools: list[Mapping[str, Any]] = []
     if allowed_intent_ids:
@@ -248,11 +253,16 @@ def scene_tool_protocol_definitions(
             and not isinstance(reasons, (str, bytes, bytearray))
             and reasons
         ):
+            allowed_ids = character_ids.get(action.lower())
+            if allowed_ids is None:
+                allowed_ids = tuple(sorted(program.character_registry.by_id))
+            if not allowed_ids:
+                continue
             tools.append(
                 MappingProxyType(
                     {
                         "name": f"request_character_{action.lower()}",
-                        "allowedCharacterIds": sorted(program.character_registry.by_id),
+                        "allowedCharacterIds": list(allowed_ids),
                         "allowedReasonIds": [str(item) for item in reasons],
                         **boundary,
                     }

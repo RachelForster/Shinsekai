@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import os
 import re
@@ -11,6 +12,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 from urllib.parse import quote
 
@@ -70,6 +72,7 @@ from application.story.coordinator import (
     publish_story_transition,
     story_snapshot_patch,
 )
+from application.story.session import StoryTurnCancelledError
 from config.feature_flags import FeatureFlag
 from core.story import SelectChoice
 from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
@@ -999,6 +1002,138 @@ def _record_story_choice_history(state: BridgeState, label: str) -> list[dict[st
     return entries
 
 
+def _scene_history_role(character_id: str) -> str:
+    speaker = normalize_character_name(character_id)
+    if speaker in _SYSTEM_HISTORY_NAMES or speaker == "narr":
+        return "system"
+    return "assistant"
+
+
+def _scene_turn_already_recorded(
+    entries: Sequence[dict[str, Any]],
+    user_text: str,
+    dialogue: Sequence[Any],
+) -> bool:
+    if not entries:
+        return False
+    expected_user = user_text.strip()
+    user_entry = next(
+        (
+            item
+            for item in reversed(entries)
+            if str(item.get("role") or "") == "user"
+        ),
+        None,
+    )
+    if user_entry is None:
+        return False
+    user_body = str(user_entry.get("text") or "")
+    if expected_user not in user_body:
+        return False
+    if not dialogue:
+        return True
+    last = str(entries[-1].get("text") or "")
+    return str(getattr(dialogue[-1], "text", "") or "") in last
+
+
+def _persist_scene_turn_messages(
+    state: BridgeState,
+    user_text: str,
+    user_name: str,
+    dialogue: Sequence[Any],
+) -> None:
+    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    if not history_raw or is_unc_history_path(history_raw):
+        return
+    history_path = _resolve_history_file(state, history_raw)
+    if is_unc_history_path(history_path):
+        return
+    active = chat_history_active_path(history_path)
+    messages: list[Any] = []
+    if active.is_file():
+        loaded = _read_history_file(active)
+        if isinstance(loaded, list):
+            messages = loaded
+    messages.append({"role": "user", "content": user_text})
+    for item in dialogue:
+        messages.append(
+            {
+                "role": "assistant",
+                "name": item.character_id,
+                "content": item.text,
+            }
+        )
+    active.parent.mkdir(parents=True, exist_ok=True)
+    with active.open("w", encoding="utf-8") as file:
+        json.dump(messages, file, ensure_ascii=False, indent=4)
+    branch_state = load_branch_state(history_path)
+    if branch_state is None:
+        return
+    branches = branch_state.get("branches")
+    if not isinstance(branches, dict):
+        return
+    active_id = str(branch_state.get("active") or "main")
+    branch = branches.get(active_id)
+    if not isinstance(branch, dict):
+        return
+    history = list(branch.get("history") or [])
+    history.append(f"<b>{html.escape(user_name)}</b>：{html.escape(user_text)}")
+    for item in dialogue:
+        history.append(
+            f"<b>{html.escape(item.character_id)}</b>：{html.escape(item.text)}"
+        )
+    branch["messages"] = list(messages)
+    branch["history"] = history
+    save_branch_state(history_path, branch_state)
+
+
+def _record_scene_turn_history(
+    state: BridgeState,
+    user_text: str,
+    dialogue: Sequence[Any],
+) -> list[dict[str, Any]]:
+    entries = [dict(item) for item in _chat_history_entries(state)]
+    if _scene_turn_already_recorded(entries, user_text, dialogue):
+        return entries
+    user_name = _chat_user_display_name_from_snapshot(state)
+    user_index = sum(1 for item in entries if str(item.get("role") or "") == "user")
+    entries.append(
+        {
+            "id": f"history-{len(entries)}",
+            "revertUserIndex": user_index,
+            "role": "user",
+            "text": f"{user_name}: {user_text}",
+        }
+    )
+    for item in dialogue:
+        entries.append(
+            {
+                "id": f"history-{len(entries)}",
+                "role": _scene_history_role(item.character_id),
+                "text": f"{item.character_id}: {item.text}",
+            }
+        )
+    _persist_scene_turn_messages(state, user_text, user_name, dialogue)
+    return entries
+
+
+def _scene_dialog_events(dialogue: Sequence[Any]) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for item in dialogue:
+        speaker = str(item.character_id or "")
+        is_system = _scene_history_role(speaker) == "system"
+        events.append(
+            {
+                "type": "dialog.end",
+                "speaker": speaker,
+                "color": "",
+                "isSystem": is_system,
+                "fullHtml": f"<p>{html.escape(item.text)}</p>",
+            }
+        )
+    return events
+
+
 def _allocate_aligned_story_branch_id(state: BridgeState, session: Any) -> str:
     max_counter = 1
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
@@ -1351,42 +1486,41 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             and story_flags.is_enabled(FeatureFlag.STORY_SYSTEM)
         ):
             command_id = str(body.get("cmdId") or uuid.uuid4().hex)
-            result = story_scene_service.handle_free_text(
+            try:
+                result = story_scene_service.handle_free_text(
+                    submitted_text,
+                    command_id=command_id,
+                    message_id=f"message:{command_id}",
+                )
+            except StoryTurnCancelledError as error:
+                raise ValueError(str(error)) from error
+            history_entries = _record_scene_turn_history(
+                state,
                 submitted_text,
-                command_id=command_id,
-                message_id=f"message:{command_id}",
+                result.dialogue,
             )
+            session = bound_story_session(state)
+            if session is not None:
+                session.replace_history_entries(history_entries)
             dialogue = result.dialogue[-1]
-            history_entries = _chat_history_entries(state)
-            history_entries.extend(
-                [
-                    {
-                        "role": "user",
-                        "name": _chat_user_display_name_from_snapshot(state),
-                        "content": submitted_text,
-                    },
-                    *(
-                        {
-                            "role": "assistant",
-                            "name": item.character_id,
-                            "content": item.text,
-                        }
-                        for item in result.dialogue
-                    ),
-                ]
+            presentation_events = (
+                *tuple(dict(item) for item in result.presentation_events),
+                *_scene_dialog_events(result.dialogue),
             )
             patch = {
                 **story_snapshot_patch(state),
                 "characterName": dialogue.character_id,
                 "dialogText": dialogue.text,
                 "dialogHtml": None,
-                "historyEntries": history_entries,
-                "sceneTurn": result.to_payload(),
                 "status": "idle",
                 "numericInfo": "idle",
             }
-            if session_id and chat_stream is not None:
-                chat_stream.update_session_snapshot(session_id, patch)
+            publish_story_transition(
+                state,
+                patch,
+                history_entries=history_entries,
+                presentation_events=presentation_events,
+            )
             return _chat_snapshot(state, "idle", extra=patch)
         if _chat_turn_options(state)["batchEnabled"]:
             snapshot_patch: dict[str, Any] = {"inputDraft": ""}

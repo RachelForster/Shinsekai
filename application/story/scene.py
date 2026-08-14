@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 from types import MappingProxyType
@@ -16,6 +16,7 @@ from ai.tools.story_tools import (
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
     ApplySemanticSignals,
+    CastResolutionContext,
     ConditionEvaluator,
     PerformIntent,
     RequestCharacterEntry,
@@ -29,7 +30,13 @@ from core.story import (
 )
 
 from .characters import ActorContext, StoryCastApplicationService
-from .session import StorySession
+from .idempotency import StoryCommandConflictError
+from .session import (
+    SceneTurnCommand,
+    SceneTurnScope,
+    StorySession,
+    StoryTurnCancelledError,
+)
 
 
 MAX_SCENE_TOOL_ROUNDS = 6
@@ -80,6 +87,8 @@ class SceneTurnResult:
     tool_results: tuple[Mapping[str, Any], ...]
     degraded: bool = False
     diagnostic: str = ""
+    duplicate: bool = False
+    presentation_events: tuple[Mapping[str, Any], ...] = ()
 
     def to_payload(self) -> dict[str, Any]:
         return {
@@ -89,7 +98,61 @@ class SceneTurnResult:
             "toolResults": [dict(item) for item in self.tool_results],
             "degraded": self.degraded,
             "diagnostic": self.diagnostic,
+            "duplicate": self.duplicate,
+            "presentationEvents": [dict(item) for item in self.presentation_events],
         }
+
+    @classmethod
+    def from_payload(
+        cls,
+        raw: Mapping[str, Any],
+        *,
+        duplicate: bool = False,
+    ) -> SceneTurnResult:
+        dialogue_raw = raw.get("dialogue")
+        tool_results_raw = raw.get("toolResults")
+        events_raw = raw.get("presentationEvents")
+        if not isinstance(dialogue_raw, Sequence) or isinstance(
+            dialogue_raw, (str, bytes, bytearray)
+        ):
+            raise SceneProtocolError("scene.turn_payload", "stored scene turn is invalid")
+        if not isinstance(tool_results_raw, Sequence) or isinstance(
+            tool_results_raw, (str, bytes, bytearray)
+        ):
+            tool_results_raw = ()
+        if not isinstance(events_raw, Sequence) or isinstance(
+            events_raw, (str, bytes, bytearray)
+        ):
+            events_raw = ()
+        dialogue = []
+        for item in dialogue_raw:
+            if not isinstance(item, Mapping):
+                continue
+            dialogue.append(
+                SceneDialogueItem(
+                    character_id=str(item.get("characterId") or ""),
+                    text=str(item.get("text") or ""),
+                    emotion=str(item.get("emotion") or ""),
+                )
+            )
+        return cls(
+            command_id=str(raw.get("commandId") or ""),
+            revision=int(raw.get("revision") or 0),
+            dialogue=tuple(dialogue),
+            tool_results=tuple(
+                MappingProxyType(dict(item))
+                for item in tool_results_raw
+                if isinstance(item, Mapping)
+            ),
+            degraded=bool(raw.get("degraded")),
+            diagnostic=str(raw.get("diagnostic") or ""),
+            duplicate=duplicate,
+            presentation_events=tuple(
+                MappingProxyType(dict(item))
+                for item in events_raw
+                if isinstance(item, Mapping)
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,12 +185,6 @@ class _ToolRecord:
     result: Mapping[str, Any]
 
 
-@dataclass(frozen=True, slots=True)
-class _TurnRecord:
-    input_hash: str
-    result: SceneTurnResult
-
-
 class ConfigSceneModel:
     """Lazy adapter from the existing configured LLM to the scene JSON protocol."""
 
@@ -153,23 +210,33 @@ class ConfigSceneModel:
         openai_tools = openai_tools_from_protocol(protocol_tools)
         prompt = json.dumps(request, ensure_ascii=False, separators=(",", ":"))
         adapter = getattr(manager, "llm_adapter", None)
-        if openai_tools and type(adapter).__name__ in _NATIVE_TOOL_ADAPTERS:
-            response = adapter.chat(
-                [
-                    {"role": "system", "content": SCENE_RENDERER_TEMPLATE},
-                    {"role": "user", "content": prompt},
-                ],
-                stream=False,
-                tools=openai_tools,
-            )
-            return _parse_adapter_scene_response(response)
-        response = manager.chat(
-            prompt,
-            stream=False,
-            response_format={"type": "json_object"},
-            include_local_time=False,
+        adapter_name = type(adapter).__name__
+        messages = [
+            {"role": "system", "content": SCENE_RENDERER_TEMPLATE},
+            {"role": "user", "content": prompt},
+        ]
+        chat_kwargs: dict[str, Any] = {}
+        native_tools = bool(
+            openai_tools and adapter_name in _NATIVE_TOOL_ADAPTERS
         )
-        return _parse_json_mapping(response)
+        if native_tools:
+            chat_kwargs["tools"] = openai_tools
+        elif adapter_name in _NATIVE_TOOL_ADAPTERS:
+            chat_kwargs["response_format"] = {"type": "json_object"}
+        if adapter is None or not hasattr(adapter, "chat"):
+            raise SceneProtocolError(
+                "scene.model_not_configured",
+                "scene LLM adapter is missing",
+            )
+        response = adapter.chat(messages, stream=False, **chat_kwargs)
+        if response is None:
+            raise SceneProtocolError(
+                "scene.model_json",
+                "scene model did not return a response",
+            )
+        if native_tools:
+            return _parse_adapter_scene_response(response)
+        return _parse_json_mapping(_adapter_text_content(response))
 
     def _llm_manager(self) -> Any:
         provider, model, base_url, api_key = self.config_manager.get_llm_api_config()
@@ -278,6 +345,11 @@ class SceneContextBuilder:
                 state.revision,
                 node.exposed_context,
                 allowed_intent_ids=tuple(item["id"] for item in intents),
+                allowed_character_ids_by_action=_character_tool_allowlists(
+                    program,
+                    session,
+                    node,
+                ),
             ),
         )
 
@@ -341,7 +413,8 @@ class SceneOrchestrator:
         self.max_tool_calls = max(1, min(MAX_SCENE_TOOL_CALLS, int(max_tool_calls)))
         self.repair_attempts = max(0, min(2, int(repair_attempts)))
         self._tool_records: dict[str, _ToolRecord] = {}
-        self._turn_records: dict[str, _TurnRecord] = {}
+        self._scope: SceneTurnScope | None = None
+        self._presentation_events: list[Mapping[str, Any]] = []
 
     def handle_free_text(
         self,
@@ -354,17 +427,29 @@ class SceneOrchestrator:
         user_text = str(text).strip()
         if not user_text:
             raise ValueError("scene input cannot be empty")
-        input_hash = hashlib.sha256(
-            f"{message_id}\0{user_text}".encode("utf-8")
-        ).hexdigest()
-        existing_turn = self._turn_records.get(command_id)
-        if existing_turn is not None:
-            if existing_turn.input_hash != input_hash:
+        command = SceneTurnCommand(
+            command_id=command_id,
+            message_id=message_id,
+            text=user_text,
+        )
+        try:
+            existing = self.session.lookup_recorded_command(command)
+        except StoryCommandConflictError as error:
+            raise SceneProtocolError(
+                "scene.command_id_conflict",
+                "scene command ID was reused with different input",
+            ) from error
+        if existing is not None:
+            payload = existing.ack.get("sceneTurn")
+            if not isinstance(payload, Mapping):
                 raise SceneProtocolError(
-                    "scene.command_id_conflict",
-                    "scene command ID was reused with different input",
+                    "scene.turn_payload",
+                    "stored scene turn is invalid",
                 )
-            return existing_turn.result
+            return SceneTurnResult.from_payload(payload, duplicate=True)
+        scope = self.session.begin_scene_turn()
+        self._scope = scope
+        self._presentation_events = []
         actor_context = self.cast_service.resources.actor_context()
         contexts = self.context_builder.build(
             self.program,
@@ -377,6 +462,7 @@ class SceneOrchestrator:
         total_calls = 0
         try:
             for round_index in range(self.max_rounds):
+                self._require_active_scope()
                 request = self._request_payload(
                     contexts,
                     command_id=command_id,
@@ -384,6 +470,7 @@ class SceneOrchestrator:
                     tool_results=tool_results,
                 )
                 response = self.model.complete(request)
+                self._require_active_scope()
                 raw_calls = response.get("toolCalls")
                 if (
                     isinstance(raw_calls, Sequence)
@@ -413,20 +500,22 @@ class SceneOrchestrator:
                     )
                     continue
                 dialogue = self._validated_dialogue(response, actor_context)
-                return self._record_turn(
-                    command_id,
-                    input_hash,
+                return self._persist_turn(
+                    command,
                     SceneTurnResult(
                         command_id=command_id,
                         revision=self.session.active_branch.state.revision,
                         dialogue=dialogue,
                         tool_results=tuple(tool_results),
+                        presentation_events=tuple(self._presentation_events),
                     ),
                 )
             raise SceneProtocolError(
                 "scene.round_limit",
                 "scene model did not finish within the bounded tool loop",
             )
+        except StoryTurnCancelledError:
+            raise
         except Exception as error:
             if isinstance(error, SceneProtocolError) and error.code.startswith(
                 "scene.dialogue_"
@@ -439,37 +528,60 @@ class SceneOrchestrator:
                     error=error,
                 )
                 if repaired is not None:
-                    return self._record_turn(
-                        command_id,
-                        input_hash,
+                    return self._persist_turn(
+                        command,
                         SceneTurnResult(
                             command_id=command_id,
                             revision=self.session.active_branch.state.revision,
                             dialogue=repaired,
                             tool_results=tuple(tool_results),
                             diagnostic=error.code,
+                            presentation_events=tuple(self._presentation_events),
                         ),
                     )
-            return self._record_turn(
-                command_id,
-                input_hash,
+            return self._persist_turn(
+                command,
                 self._fallback(
                     command_id,
                     tool_results,
                     getattr(error, "code", type(error).__name__),
                 ),
             )
+        finally:
+            self.session.end_scene_turn(scope)
+            self._scope = None
 
-    def _record_turn(
+    def _require_active_scope(self) -> None:
+        scope = self._scope
+        if scope is None:
+            raise StoryTurnCancelledError(
+                "scene.session_invalid",
+                "scene turn is no longer bound to this session",
+            )
+        self._scope = self.session.validate_scene_scope(scope)
+
+    def _persist_turn(
         self,
-        command_id: str,
-        input_hash: str,
+        command: SceneTurnCommand,
         result: SceneTurnResult,
     ) -> SceneTurnResult:
-        self._turn_records[command_id] = _TurnRecord(input_hash, result)
-        while len(self._turn_records) > 256:
-            self._turn_records.pop(next(iter(self._turn_records)))
+        ack = self.session.record_scene_turn(
+            command,
+            result_payload=result.to_payload(),
+            scene_scope=self._scope,
+        )
+        payload = ack.get("sceneTurn")
+        if isinstance(payload, Mapping):
+            return SceneTurnResult.from_payload(payload, duplicate=result.duplicate)
         return result
+
+    def _execute_story_command(self, command: Any) -> Any:
+        self._require_active_scope()
+        ack = self.session.execute(command, scene_scope=self._scope)
+        if self._scope is not None:
+            self._scope = replace(self._scope, generation=ack.generation)
+        self._presentation_events.extend(ack.presentation_events)
+        return ack
 
     def _execute_tool_call(
         self,
@@ -540,7 +652,7 @@ class SceneOrchestrator:
         state = self.session.active_branch.state
         expected_node_id, expected_revision = _request_boundary(arguments)
         if name == "perform_intent":
-            ack = self.session.execute(
+            ack = self._execute_story_command(
                 PerformIntent(
                     command_id=command_id,
                     expected_revision=expected_revision,
@@ -561,7 +673,7 @@ class SceneOrchestrator:
             fingerprint = hashlib.sha256(
                 f"{signal_id}\0{message_id}".encode("utf-8")
             ).hexdigest()
-            ack = self.session.execute(
+            ack = self._execute_story_command(
                 ApplySemanticSignals(
                     command_id=command_id,
                     expected_revision=expected_revision,
@@ -584,7 +696,7 @@ class SceneOrchestrator:
                 )
             )
         elif name == "request_character_entry":
-            ack = self.session.execute(
+            ack = self._execute_story_command(
                 RequestCharacterEntry(
                     command_id=command_id,
                     expected_revision=expected_revision,
@@ -594,7 +706,7 @@ class SceneOrchestrator:
                 )
             )
         elif name == "request_character_exit":
-            ack = self.session.execute(
+            ack = self._execute_story_command(
                 RequestCharacterExit(
                     command_id=command_id,
                     expected_revision=expected_revision,
@@ -604,7 +716,7 @@ class SceneOrchestrator:
                 )
             )
         elif name == "request_character_replace":
-            ack = self.session.execute(
+            ack = self._execute_story_command(
                 RequestCharacterReplace(
                     command_id=command_id,
                     expected_revision=expected_revision,
@@ -761,7 +873,35 @@ class SceneOrchestrator:
             tool_results=tuple(tool_results),
             degraded=True,
             diagnostic=str(diagnostic),
+            presentation_events=tuple(self._presentation_events),
         )
+
+
+def _character_tool_allowlists(
+    program: StoryProgram,
+    session: StorySession,
+    node: Any,
+) -> dict[str, tuple[str, ...]]:
+    state = session.active_branch.state
+    active = tuple(state.cast_state.active_character_ids)
+    context = CastResolutionContext(current_cast=active)
+    entry_ids = session.runtime.cast_resolver.optional_candidate_ids(
+        program.character_registry,
+        node.cast_policy,
+        context,
+        exclude_ids=active,
+    )
+    protected = set(node.cast_policy.required) | set(
+        state.cast_state.role_bindings.values()
+    )
+    exit_ids = tuple(
+        character_id for character_id in active if character_id not in protected
+    )
+    return {
+        "entry": entry_ids,
+        "exit": exit_ids,
+        "replace": tuple(dict.fromkeys((*exit_ids, *entry_ids))),
+    }
 
 
 def _parse_adapter_scene_response(response: Any) -> Mapping[str, Any]:
@@ -824,6 +964,11 @@ def _native_tool_calls(response: Any) -> list[dict[str, Any]]:
 
 
 def _adapter_text_content(response: Any) -> Any:
+    if isinstance(response, (str, Mapping)):
+        return response
+    text = getattr(response, "text", None)
+    if isinstance(text, str) and text.strip():
+        return text
     content = getattr(response, "content", None)
     if isinstance(content, str):
         return content

@@ -31,7 +31,7 @@ from .persistence import (
     StoryPersistenceError,
     StoryProgramMismatchError,
 )
-from .session import StoryBranch, StorySession, StorySessionAck
+from .session import StoryBranch, StorySession, StorySessionAck, StoryTurnCancelledError
 from .scene import (
     AuthorContext,
     CastSelectionContext,
@@ -51,6 +51,7 @@ __all__ = [
     "StoryBranch",
     "StorySession",
     "StorySessionAck",
+    "StoryTurnCancelledError",
     "GlobalStoryProgress",
     "JsonGlobalStoryProgressStore",
     "JsonStorySessionRepository",

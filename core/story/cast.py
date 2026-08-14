@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
@@ -220,6 +220,30 @@ class CastResolver:
                 if expected_location is None or status.location != expected_location:
                     return "location-condition"
         return None
+
+    def optional_candidate_ids(
+        self,
+        registry: CharacterRegistry,
+        policy: CastPolicy,
+        context: CastResolutionContext | None = None,
+        *,
+        exclude_ids: Sequence[str] = (),
+    ) -> tuple[str, ...]:
+        context = context or CastResolutionContext()
+        skipped = {str(item) for item in exclude_ids}
+        eligible: list[str] = []
+        for character in registry.characters:
+            if character.id in skipped:
+                continue
+            reason = self._exclusion_reason(
+                character,
+                policy,
+                context,
+                apply_optional_query=True,
+            )
+            if reason is None:
+                eligible.append(character.id)
+        return tuple(eligible)
 
     @staticmethod
     def _choose_for_role(

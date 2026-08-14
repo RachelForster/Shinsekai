@@ -137,3 +137,75 @@ def test_character_request_rejects_unpublished_reason_and_required_exit() -> Non
             ),
         )
     assert required_error.value.code == "runtime.character_required"
+
+
+def test_character_entry_requires_optional_query_and_copies_asset_constraints() -> None:
+    source = deepcopy(campus_mystery_source())
+    source["cast"]["characters"].extend(
+        [
+            {
+                "id": "witness",
+                "tags": ["witness"],
+                "source": {
+                    "type": "local-library",
+                    "characterId": "witness",
+                    "revision": "fixture-witness",
+                },
+            },
+            {
+                "id": "doctor",
+                "tags": ["medical"],
+                "source": {
+                    "type": "local-library",
+                    "characterId": "doctor",
+                    "revision": "fixture-doctor",
+                },
+            },
+        ]
+    )
+    gate = source["narrativeGraph"]["nodes"][1]
+    gate["castPolicy"] = {
+        "mode": "fixed",
+        "required": ["ling", "detective-zhou"],
+        "constraints": {
+            "minActive": 2,
+            "maxActive": 3,
+            "requireLoadedAssets": True,
+        },
+        "fallback": {"onLoadFailure": "continue-without-optional"},
+        "optionalQuery": {"allTags": ["witness"]},
+    }
+    gate["exposedContext"] = {
+        "characterEntryReasonIds": ["door-opened"],
+        "characterReplaceReasonIds": ["medical-help"],
+    }
+    runtime = StoryRuntime(StoryCompiler().compile(parse_story_project(source)))
+    state = _gate(runtime)
+
+    entered = runtime.execute(
+        state,
+        RequestCharacterEntry(
+            "entry",
+            state.revision,
+            "witness",
+            "door-opened",
+            "old-school-gate",
+        ),
+    )
+    assert entered.cast_plans[-1].requires_loaded_assets is True
+    assert entered.cast_plans[-1].on_load_failure == "continue-without-optional"
+    assert "witness" not in entered.cast_plans[-1].required_character_ids
+
+    with pytest.raises(StoryRuntimeError) as error:
+        runtime.execute(
+            entered.state,
+            RequestCharacterReplace(
+                "replace",
+                entered.state.revision,
+                "witness",
+                "doctor",
+                "medical-help",
+                "old-school-gate",
+            ),
+        )
+    assert error.value.code == "runtime.character_ineligible"

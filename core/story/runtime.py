@@ -324,6 +324,11 @@ class _Transaction:
                 "runtime.character_unavailable",
                 f"character {character_id!r} is unavailable",
             )
+        if not self._is_optional_cast_candidate(node, character_id):
+            raise StoryRuntimeError(
+                "runtime.character_ineligible",
+                f"character {character_id!r} is not eligible for this scene",
+            )
         if len(self.active_cast) >= node.cast_policy.constraints.max_active:
             raise StoryRuntimeError(
                 "runtime.cast_max_active",
@@ -400,6 +405,11 @@ class _Transaction:
                 "runtime.character_unavailable",
                 f"character {incoming_character_id!r} is unavailable",
             )
+        if not self._is_optional_cast_candidate(node, incoming_character_id):
+            raise StoryRuntimeError(
+                "runtime.character_ineligible",
+                f"character {incoming_character_id!r} is not eligible for this scene",
+            )
         index = self.active_cast.index(outgoing_character_id)
         self.active_cast[index] = incoming_character_id
         self.active_cast = list(dict.fromkeys(self.active_cast))
@@ -407,12 +417,21 @@ class _Transaction:
         self._emit_requested_cast(node)
 
     def _emit_requested_cast(self, node: Any) -> None:
+        required = tuple(
+            dict.fromkeys(
+                (
+                    *node.cast_policy.required,
+                    *self.role_bindings.values(),
+                )
+            )
+        )
         plan = CastResolutionPlan(
             active_character_ids=tuple(self.active_cast),
             role_bindings=MappingProxyType(dict(self.role_bindings)),
             excluded=MappingProxyType({}),
-            required_character_ids=tuple(self.active_cast),
-            on_load_failure="error",
+            required_character_ids=required,
+            requires_loaded_assets=node.cast_policy.constraints.require_loaded_assets,
+            on_load_failure=node.cast_policy.fallback.on_load_failure,
             minimum_active=node.cast_policy.constraints.min_active,
             maximum_active=node.cast_policy.constraints.max_active,
         )
@@ -423,6 +442,17 @@ class _Transaction:
             activeCharacterIds=tuple(self.active_cast),
             roleBindings=self.role_bindings,
             unresolvedRoles=(),
+        )
+
+    def _is_optional_cast_candidate(self, node: Any, character_id: str) -> bool:
+        context = replace(
+            self.cast_context,
+            current_cast=tuple(self.active_cast) or self.cast_context.current_cast,
+        )
+        return character_id in self.cast_resolver.optional_candidate_ids(
+            self.program.character_registry,
+            node.cast_policy,
+            context,
         )
 
     @staticmethod

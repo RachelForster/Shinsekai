@@ -14,6 +14,7 @@ from application.story import (
     SceneOrchestrator,
     StoryCastApplicationService,
     StorySession,
+    StoryTurnCancelledError,
     ValidatedCastPlanner,
 )
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
@@ -249,7 +250,9 @@ def test_duplicate_tool_call_and_dialogue_repair_do_not_repeat_effects() -> None
         command_id="turn-1",
         message_id="message-1",
     )
-    assert repeated is result
+    assert repeated.duplicate is True
+    assert repeated.dialogue[0].text == result.dialogue[0].text
+    assert session.active_branch.state.variables["trust.ling"] == 15
     assert len(model.requests) == 4
 
 
@@ -378,15 +381,78 @@ def test_config_scene_model_keeps_json_fallback_without_native_tools(
     monkeypatch,
 ) -> None:
     class OtherAdapter:
-        pass
+        def chat(self, messages, stream=False, **kwargs):
+            assert "tools" not in kwargs
+            return {"dialogue": [{"characterId": "ling", "text": "好。"}]}
 
-    def fake_chat(prompt, stream=False, **kwargs):
-        assert kwargs["response_format"] == {"type": "json_object"}
-        return {"dialogue": [{"characterId": "ling", "text": "好。"}]}
-
-    manager = SimpleNamespace(llm_adapter=OtherAdapter(), chat=fake_chat)
+    manager = SimpleNamespace(llm_adapter=OtherAdapter())
     model = ConfigSceneModel(_flags(), config_manager=SimpleNamespace())
     monkeypatch.setattr(model, "_llm_manager", lambda: manager)
 
     result = model.complete({"tools": []})
     assert result["dialogue"][0]["characterId"] == "ling"
+
+
+def test_scene_turn_is_persisted_per_branch_and_not_replayed() -> None:
+    _, session, cast_service, model, scene = _story(
+        model_responses=(
+            {"dialogue": [{"characterId": "ling", "text": "谢谢你。"}]},
+        )
+    )
+    first = scene.handle_free_text(
+        "我会陪着你",
+        command_id="turn-1",
+        message_id="message-1",
+    )
+    recovered = SceneOrchestrator(
+        _flags(),
+        program=scene.program,
+        session=session,
+        cast_service=cast_service,
+        model=_Model(),
+    )
+
+    second = recovered.handle_free_text(
+        "我会陪着你",
+        command_id="turn-1",
+        message_id="message-1",
+    )
+
+    assert second.duplicate is True
+    assert second.dialogue[0].text == first.dialogue[0].text
+    assert len(model.requests) == 1
+
+
+def test_scene_turn_cancels_when_another_request_forks() -> None:
+    _, session, _, model, scene = _story(
+        model_responses=({"dialogue": [{"characterId": "ling", "text": "晚到"}]},)
+    )
+    original = model.complete
+
+    def forking(request):
+        session.fork("alt")
+        return original(request)
+
+    model.complete = forking
+    with pytest.raises(StoryTurnCancelledError):
+        scene.handle_free_text(
+            "我会陪着你",
+            command_id="turn-1",
+            message_id="message-1",
+        )
+
+
+def test_character_entry_tool_only_lists_optional_candidates() -> None:
+    _, _, _, model, scene = _story(
+        model_responses=({"dialogue": [{"characterId": "ling", "text": "好。"}]},)
+    )
+
+    scene.handle_free_text("继续", command_id="turn-1", message_id="message-1")
+
+    entry = next(
+        item
+        for item in model.requests[0]["tools"]
+        if item["name"] == "request_character_entry"
+    )
+    assert entry["allowedCharacterIds"] == ["witness"]
+    assert "ling" not in entry["allowedCharacterIds"]

@@ -55,6 +55,27 @@ class _ChatStream:
             self.snapshot["options"] = list(story.get("options") or [])
         elif event_type == "options.show":
             self.snapshot["options"] = list(payload.get("options") or [])
+        elif event_type == "dialog.end":
+            self.snapshot["dialogHtml"] = payload.get("fullHtml")
+            self.snapshot["dialogText"] = str(payload.get("fullHtml") or "")
+            self.snapshot["characterName"] = payload.get("speaker")
+            self.snapshot["status"] = "idle"
+        elif event_type == "sprite.show":
+            sprites = [dict(item) for item in self.snapshot.get("sprites") or []]
+            sprites.append(
+                {
+                    "characterName": payload.get("characterName"),
+                    "path": payload.get("url"),
+                }
+            )
+            self.snapshot["sprites"] = sprites
+        elif event_type == "sprite.remove":
+            name = payload.get("characterName")
+            self.snapshot["sprites"] = [
+                item
+                for item in self.snapshot.get("sprites") or []
+                if item.get("characterName") != name
+            ]
         self.published.append(payload)
         return True
 
@@ -291,4 +312,9 @@ def test_free_text_uses_scene_service_only_when_story_flag_is_enabled() -> None:
 
     assert snapshot["dialogText"] == "收到：你好"
     assert snapshot["characterName"] == "ling"
-    assert snapshot["sceneTurn"]["revision"] == 2
+    assert snapshot["eventSeq"] > 0
+    assert any(event["type"] == "history.replace" for event in state.chat_stream.published)
+    assert any(event["type"] == "dialog.end" for event in state.chat_stream.published)
+    assert snapshot["historyEntries"][0]["role"] == "user"
+    assert "你好" in snapshot["historyEntries"][0]["text"]
+    assert snapshot["historyEntries"][1]["text"].startswith("ling:")

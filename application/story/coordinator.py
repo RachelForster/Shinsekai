@@ -151,6 +151,10 @@ def story_snapshot_patch(state: Any) -> dict[str, Any]:
 
 
 def clear_story_session(state: Any) -> None:
+    session = getattr(state, "story_session", None)
+    closer = getattr(session, "close", None)
+    if callable(closer):
+        closer()
     setattr(state, "story_session", None)
     setattr(state, "story_cast_service", None)
     setattr(state, "story_scene_service", None)
