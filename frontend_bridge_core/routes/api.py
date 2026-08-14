@@ -176,6 +176,11 @@ from application.story.coordinator import (
     release_unbound_story_session,
     start_or_recover_story_session,
 )
+from application.story.generation import (
+    StoryGenerationStage,
+    run_story_generation_background,
+    story_generation_service_for_state,
+)
 from frontend_bridge_core.static import _frontend_dist_root
 from application.runtime.tasks import (
     _create_task,
@@ -651,6 +656,13 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path.startswith("/api/tasks/"):
                 task_id = unquote(path.rsplit("/", 1)[-1])
                 self._send_json(_get_task(self.state, task_id))
+            elif path.startswith("/api/story/generation/"):
+                generation_task_id = unquote(path[len("/api/story/generation/") :])
+                self._send_json(
+                    story_generation_service_for_state(self.state).get(
+                        generation_task_id
+                    )
+                )
             elif path == "/api/chat/runtime-status":
                 self._send_json(_chat_runtime_status(self.state))
             elif path == "/api/chat/snapshot":
@@ -1314,6 +1326,90 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 publish_story_transition(self.state, patch)
                 self._send_json(
                     _chat_snapshot(self.state, "idle", extra=patch)
+                )
+            elif method == "POST" and path == "/api/story/generation/start":
+                service = story_generation_service_for_state(self.state)
+                generation_task = service.create(
+                    str(body.get("synopsis") or ""),
+                    options=body.get("options") if isinstance(body.get("options"), dict) else {},
+                    resource_catalog=(
+                        body.get("resourceCatalog")
+                        if isinstance(body.get("resourceCatalog"), dict)
+                        else {}
+                    ),
+                )
+                generation_task_id = str(generation_task["id"])
+                self._enqueue_background_task(
+                    kind="story-generation",
+                    title="AI story compiler",
+                    message="Story generation queued.",
+                    task_updates={
+                        "generationTaskId": generation_task_id,
+                        "generationTask": generation_task,
+                    },
+                    worker=lambda task_id: run_story_generation_background(
+                        self.state, task_id, generation_task_id
+                    ),
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/generation/")
+                and path.endswith("/resume")
+            ):
+                generation_task_id = unquote(
+                    path[len("/api/story/generation/") : -len("/resume")]
+                )
+                service = story_generation_service_for_state(self.state)
+                generation_task = service.get(generation_task_id)
+                self._enqueue_background_task(
+                    kind="story-generation",
+                    title="Resume AI story compiler",
+                    message="Story generation resume queued.",
+                    task_updates={
+                        "generationTaskId": generation_task_id,
+                        "generationTask": generation_task,
+                    },
+                    worker=lambda task_id: run_story_generation_background(
+                        self.state, task_id, generation_task_id, resume=True
+                    ),
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/generation/")
+                and path.endswith("/regenerate")
+            ):
+                generation_task_id = unquote(
+                    path[len("/api/story/generation/") : -len("/regenerate")]
+                )
+                service = story_generation_service_for_state(self.state)
+                generation_task = service.regenerate_from(
+                    generation_task_id,
+                    StoryGenerationStage(str(body.get("stage") or "")),
+                )
+                self._enqueue_background_task(
+                    kind="story-generation",
+                    title="Regenerate story stage",
+                    message="Partial story regeneration queued.",
+                    task_updates={
+                        "generationTaskId": generation_task_id,
+                        "generationTask": generation_task,
+                    },
+                    worker=lambda task_id: run_story_generation_background(
+                        self.state, task_id, generation_task_id
+                    ),
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/generation/")
+                and path.endswith("/cancel")
+            ):
+                generation_task_id = unquote(
+                    path[len("/api/story/generation/") : -len("/cancel")]
+                )
+                self._send_json(
+                    story_generation_service_for_state(self.state).cancel(
+                        generation_task_id
+                    )
                 )
             elif method == "POST" and path == "/api/chat/themes/active":
                 self._send_json(set_active_chat_theme(self.state, body))

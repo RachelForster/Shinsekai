@@ -7,7 +7,11 @@ from .idempotency import (
     story_command_payload_hash,
 )
 from .project_loader import StoryProjectLoader, load_story_project
-from .coordinator import start_or_recover_story_session, story_snapshot_patch
+from .coordinator import (
+    apply_story_resource_bindings,
+    start_or_recover_story_session,
+    story_snapshot_patch,
+)
 from .characters import (
     ActorContext,
     CastChangeRequestError,
@@ -43,6 +47,27 @@ from .scene import (
     SceneTurnResult,
     ValidatedCastPlanner,
 )
+from .generation import (
+    ConfigStoryAuthorModel,
+    GenerationValidationIssue,
+    GenerationValidationReport,
+    StoryAuthorModelPort,
+    StoryDraftValidator,
+    StoryGenerationCancelled,
+    StoryGenerationError,
+    StoryGenerationRepository,
+    StoryGenerationService,
+    StoryGenerationStage,
+    StoryGenerationStatus,
+    StoryPatchApplier,
+    run_story_generation_background,
+    story_generation_service_for_state,
+)
+from .generation_eval import (
+    FIXED_STORY_GENERATION_EVAL_SET,
+    StoryGenerationEvalCase,
+    StoryGenerationEvaluator,
+)
 
 __all__ = [
     "StoryCommandConflictError",
@@ -57,6 +82,7 @@ __all__ = [
     "JsonStorySessionRepository",
     "StoryPersistenceError",
     "StoryProgramMismatchError",
+    "apply_story_resource_bindings",
     "start_or_recover_story_session",
     "story_snapshot_patch",
     "ActorContext",
@@ -85,4 +111,21 @@ __all__ = [
     "StoryProjectLoader",
     "load_story_project",
     "story_command_payload_hash",
+    "ConfigStoryAuthorModel",
+    "GenerationValidationIssue",
+    "GenerationValidationReport",
+    "StoryAuthorModelPort",
+    "StoryDraftValidator",
+    "StoryGenerationCancelled",
+    "StoryGenerationError",
+    "StoryGenerationRepository",
+    "StoryGenerationService",
+    "StoryGenerationStage",
+    "StoryGenerationStatus",
+    "StoryPatchApplier",
+    "run_story_generation_background",
+    "story_generation_service_for_state",
+    "FIXED_STORY_GENERATION_EVAL_SET",
+    "StoryGenerationEvalCase",
+    "StoryGenerationEvaluator",
 ]

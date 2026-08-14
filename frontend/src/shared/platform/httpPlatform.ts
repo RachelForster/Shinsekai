@@ -64,6 +64,7 @@ import type {
   ShinsekaiPlatform,
   SpriteGenerationResult,
   SpritePromptResult,
+  StoryGenerationTask,
   SystemConfig,
   TaskProgressOptions,
   TaskSnapshot,
@@ -818,6 +819,37 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           window.clearTimeout(connectTimeoutId);
           closeSocket();
         };
+      },
+    },
+    story: {
+      cancelGeneration: (id) =>
+        requestJson<StoryGenerationTask>(apiBase, `/api/story/generation/${encodePath(id)}/cancel`, {
+          body: JSON.stringify({}),
+          method: "POST",
+        }),
+      getGeneration: (id) => requestJson<StoryGenerationTask>(apiBase, `/api/story/generation/${encodePath(id)}`),
+      async regenerateGeneration(id, stage, options) {
+        const task = await requestJson<TaskSnapshot<StoryGenerationTask>>(
+          apiBase,
+          `/api/story/generation/${encodePath(id)}/regenerate`,
+          { body: JSON.stringify({ stage }), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async resumeGeneration(id, options) {
+        const task = await requestJson<TaskSnapshot<StoryGenerationTask>>(
+          apiBase,
+          `/api/story/generation/${encodePath(id)}/resume`,
+          { body: JSON.stringify({}), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      async startGeneration(input, options) {
+        const task = await requestJson<TaskSnapshot<StoryGenerationTask>>(apiBase, "/api/story/generation/start", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task, options);
       },
     },
     characters: {

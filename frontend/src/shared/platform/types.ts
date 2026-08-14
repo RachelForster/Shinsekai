@@ -1170,6 +1170,8 @@ export interface TaskSnapshot<TResult = unknown> {
   fallbackAllowed?: boolean;
   httpStatus?: number;
   id: string;
+  generationTask?: StoryGenerationTask;
+  generationTaskId?: string;
   installSource?: string;
   installSourceLabel?: string;
   kind: string;
@@ -1192,6 +1194,65 @@ export interface TaskSnapshot<TResult = unknown> {
 
 export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
+}
+
+export type StoryGenerationStage =
+  | "requirements"
+  | "bible"
+  | "characters"
+  | "state"
+  | "narrative"
+  | "logic"
+  | "resources";
+
+export interface StoryGenerationValidationIssue {
+  code: string;
+  message: string;
+  path: string;
+  severity: "error" | "info" | "warning";
+}
+
+export interface StoryGenerationValidation {
+  castFailureNodeIds: string[];
+  endingCoverage: number;
+  endingNodeIds: string[];
+  exploredStates: number;
+  issues: StoryGenerationValidationIssue[];
+  reachableEndingIds: string[];
+  reachableNodeIds: string[];
+  sourceHash: string;
+  valid: boolean;
+}
+
+export interface StoryGenerationTask {
+  artifactHashes: Partial<Record<StoryGenerationStage, string>>;
+  assumptions: string[];
+  cancelRequested: boolean;
+  completedStages: StoryGenerationStage[];
+  cost: {
+    estimatedTokens: number;
+    inputChars: number;
+    outputChars: number;
+    requests: number;
+  };
+  createdAt: number;
+  currentStage: StoryGenerationStage | "complete" | "repair";
+  draftPath: string;
+  error: { code: string; message: string } | null;
+  id: string;
+  options: Record<string, unknown>;
+  repairAttempts: number;
+  resourceCatalog: Record<string, unknown>;
+  status: "cancelled" | "failed" | "queued" | "running" | "succeeded";
+  synopsis: string;
+  updatedAt: number;
+  validation: StoryGenerationValidation | null;
+}
+
+export interface StoryGenerationInput {
+  options?: Record<string, unknown>;
+  resourceCatalog?: Record<string, unknown>;
+  synopsis: string;
 }
 
 export interface ImageAutoLabelFailure {
@@ -1287,6 +1348,20 @@ export interface ShinsekaiPlatform {
     deleteTheme: (id: string) => Promise<void>;
     // --- 实时事件流（WebSocket）；M0 占位，M2/M3 接真实 WS ---
     subscribeEvents: (listener: (event: ChatStageEvent) => void) => () => void;
+  };
+  story: {
+    cancelGeneration: (id: string) => Promise<StoryGenerationTask>;
+    getGeneration: (id: string) => Promise<StoryGenerationTask>;
+    regenerateGeneration: (
+      id: string,
+      stage: StoryGenerationStage,
+      options?: TaskProgressOptions<StoryGenerationTask>,
+    ) => Promise<StoryGenerationTask>;
+    resumeGeneration: (id: string, options?: TaskProgressOptions<StoryGenerationTask>) => Promise<StoryGenerationTask>;
+    startGeneration: (
+      input: StoryGenerationInput,
+      options?: TaskProgressOptions<StoryGenerationTask>,
+    ) => Promise<StoryGenerationTask>;
   };
   characters: {
     autoLabelSprites: (
