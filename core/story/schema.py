@@ -862,6 +862,18 @@ def _parse_rule_graph(parser: _Parser, value: Any, path: str) -> RuleGraph:
     )
 
 
+def _parse_resource_bindings(
+    parser: _Parser, value: Any, path: str
+) -> dict[str, Any]:
+    if value is None:
+        return {}
+    source = parser.mapping(value, path)
+    bindings: dict[str, Any] = {}
+    for key, item in source.items():
+        bindings[key] = parser.json_value(item, f"{path}.{key}")
+    return bindings
+
+
 def parse_story_project(source: Mapping[str, Any]) -> StoryProject:
     """Normalize an aggregate story mapping and reject invalid source shapes."""
 
@@ -926,6 +938,11 @@ def parse_story_project(source: Mapping[str, Any]) -> StoryProject:
                 metadata_source.get("generationMode"),
                 "$.metadata.generationMode",
                 default="manual",
+            ),
+            resource_bindings=_parse_resource_bindings(
+                parser,
+                metadata_source.get("resourceBindings", {}),
+                "$.metadata.resourceBindings",
             ),
         ),
         variables=variables,

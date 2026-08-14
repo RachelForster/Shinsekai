@@ -328,6 +328,12 @@ class StoryMetadata:
     language: str = "zh-CN"
     estimated_minutes: int | None = None
     generation_mode: str = "manual"
+    resource_bindings: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "resource_bindings", FrozenDict(self.resource_bindings)
+        )
 
 
 @dataclass(frozen=True, slots=True)

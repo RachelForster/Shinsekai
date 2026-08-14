@@ -7,7 +7,11 @@ from .idempotency import (
     story_command_payload_hash,
 )
 from .project_loader import StoryProjectLoader, load_story_project
-from .coordinator import start_or_recover_story_session, story_snapshot_patch
+from .coordinator import (
+    apply_story_resource_bindings,
+    start_or_recover_story_session,
+    story_snapshot_patch,
+)
 from .characters import (
     ActorContext,
     CastChangeRequestError,
@@ -78,6 +82,7 @@ __all__ = [
     "JsonStorySessionRepository",
     "StoryPersistenceError",
     "StoryProgramMismatchError",
+    "apply_story_resource_bindings",
     "start_or_recover_story_session",
     "story_snapshot_patch",
     "ActorContext",

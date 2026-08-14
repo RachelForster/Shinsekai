@@ -203,6 +203,15 @@ def test_parse_rejects_repeat_window_larger_than_retained_history() -> None:
     assert "schema.range" in {item.code for item in exc_info.value.diagnostics}
 
 
+def test_parse_retains_resource_bindings() -> None:
+    source = campus_mystery_source()
+    source["metadata"]["resourceBindings"] = {"openingBackground": "old-school"}
+
+    project = parse_story_project(source)
+
+    assert project.metadata.resource_bindings["openingBackground"] == "old-school"
+
+
 def _minimal_source() -> dict:
     return {
         "schemaVersion": 1,

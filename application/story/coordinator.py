@@ -28,6 +28,42 @@ from .session import StorySession
 from .scene import ConfigSceneModel, SceneOrchestrator
 
 
+def apply_story_resource_bindings(
+    state: Any, bindings: Mapping[str, Any] | None
+) -> dict[str, Any]:
+    """Copy catalog-validated opening media onto the live chat session."""
+    if not bindings:
+        return {}
+    background = _binding_text(
+        bindings, "openingBackground", "background", "backgroundId"
+    )
+    if not background:
+        return {}
+    chat_session = dict(getattr(state, "chat_session", {}) or {})
+    chat_session["backgroundName"] = background
+    state.chat_session = chat_session
+    background_path = ""
+    config_manager = getattr(state, "config_manager", None)
+    getter = getattr(config_manager, "get_background_by_name", None)
+    if callable(getter):
+        record = getter(background)
+        sprites = getattr(record, "sprites", None) if record is not None else None
+        if sprites:
+            sprite = sprites[0]
+            background_path = str(
+                sprite.path if hasattr(sprite, "path") else sprite.get("path", "")
+            )
+    return {"backgroundName": background, "backgroundPath": background_path}
+
+
+def _binding_text(bindings: Mapping[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = bindings.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 def start_or_recover_story_session(
     state: Any,
     story_path: str | Path,
@@ -50,8 +86,12 @@ def start_or_recover_story_session(
     if str(history_path).startswith("\\\\"):
         raise ValueError("story sessions do not support UNC history storage")
 
-    program = StoryCompiler().compile(load_story_project(resolved_story_path))
+    project = load_story_project(resolved_story_path)
+    program = StoryCompiler().compile(project)
     runtime = StoryRuntime(program)
+    state.story_media_patch = apply_story_resource_bindings(
+        state, project.metadata.resource_bindings
+    )
     story_root = (
         resolved_story_path
         if resolved_story_path.is_dir()
@@ -147,6 +187,9 @@ def story_snapshot_patch(state: Any) -> dict[str, Any]:
         return {}
     patch = session.chat_snapshot()
     patch.update(_approved_resource_patch(state))
+    media_patch = getattr(state, "story_media_patch", None)
+    if isinstance(media_patch, Mapping):
+        patch.update(dict(media_patch))
     return patch
 
 
@@ -158,6 +201,7 @@ def clear_story_session(state: Any) -> None:
     setattr(state, "story_session", None)
     setattr(state, "story_cast_service", None)
     setattr(state, "story_scene_service", None)
+    setattr(state, "story_media_patch", None)
 
 
 def discard_story_session_storage(history_path: str | Path) -> None:

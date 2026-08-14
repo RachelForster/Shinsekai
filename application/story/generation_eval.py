@@ -52,6 +52,7 @@ class StoryGenerationEvaluator:
         total_tokens = 0
         total_requests = 0
         for case in cases:
+            task: dict[str, Any] | None = None
             try:
                 task = self.service.create(
                     case.synopsis,
@@ -79,14 +80,23 @@ class StoryGenerationEvaluator:
                     "error": result.get("error"),
                 }
             except Exception as error:
+                cost: dict[str, Any] = {}
+                status = "failed"
+                if task is not None:
+                    try:
+                        persisted = self.service.get(str(task["id"]))
+                        cost = persisted.get("cost") or {}
+                        status = str(persisted.get("status") or "failed")
+                    except Exception:
+                        pass
                 row = {
                     "id": case.id,
                     "passed": False,
-                    "status": "failed",
+                    "status": status,
                     "endingCoverage": 0.0,
                     "reachableEndings": 0,
-                    "requests": 0,
-                    "estimatedTokens": 0,
+                    "requests": int(cost.get("requests") or 0),
+                    "estimatedTokens": int(cost.get("estimatedTokens") or 0),
                     "error": str(error),
                 }
             total_tokens += int(row["estimatedTokens"])
