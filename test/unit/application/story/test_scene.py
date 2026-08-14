@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
 import json
 
 import pytest
@@ -14,7 +15,13 @@ from application.story import (
     ValidatedCastPlanner,
 )
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
-from core.story import SelectChoice, StoryCompiler, StoryRuntime, parse_story_project
+from core.story import (
+    SelectChoice,
+    StoryCompiler,
+    StoryRuntime,
+    canonical_json,
+    parse_story_project,
+)
 from test.unit.core.story.story_fixtures import campus_mystery_source
 
 
@@ -25,15 +32,30 @@ def _flags() -> FeatureFlagConfigManager:
     )
 
 
+def _library_payload(character_id: str) -> dict:
+    return {
+        "name": character_id.title(),
+        "characterSetting": f"Actor profile for {character_id}",
+        "sprites": [],
+        "toolPermissions": ["memory.search"],
+    }
+
+
+def _library_digest(character_id: str) -> str:
+    payload = _library_payload(character_id)
+    return (
+        "sha256:"
+        f"{hashlib.sha256(canonical_json(payload).encode('utf-8')).hexdigest()}"
+    )
+
+
 class _Library:
     def load_character(self, character_id: str, revision: str | None):
-        return {
-            "_revision": revision or "fixture",
-            "name": character_id.title(),
-            "characterSetting": f"Actor profile for {character_id}",
-            "sprites": [],
-            "toolPermissions": ["memory.search"],
-        }
+        payload = _library_payload(character_id)
+        digest = _library_digest(character_id)
+        if revision and revision != digest:
+            raise ValueError(f"unexpected pin {revision}")
+        return {**payload, "_content_digest": digest, "_revision": digest}
 
 
 class _Model:
@@ -52,13 +74,14 @@ class _Model:
 def _story(*, model_responses):
     flags = _flags()
     source = deepcopy(campus_mystery_source())
+    source["cast"]["characters"][0]["source"]["revision"] = _library_digest("ling")
     source["cast"]["characters"].append(
         {
             "id": "witness",
             "source": {
                 "type": "local-library",
                 "characterId": "witness",
-                "revision": "fixture-witness",
+                "revision": _library_digest("witness"),
             },
             "roles": ["witness"],
         }
@@ -66,7 +89,7 @@ def _story(*, model_responses):
     source["cast"]["characters"][1]["source"] = {
         "type": "local-library",
         "characterId": "detective-zhou",
-        "revision": "fixture-detective",
+        "revision": _library_digest("detective-zhou"),
     }
     gate = source["narrativeGraph"]["nodes"][1]
     gate["castPolicy"] = {
