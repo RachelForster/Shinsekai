@@ -173,6 +173,8 @@ def publish_story_transition(
     history_entries: list[dict[str, Any]] | None = None,
     presentation_events: tuple[Any, ...] = (),
 ) -> None:
+    if not _story_system_enabled(state):
+        return
     session_id = str(getattr(state, "chat_session", {}).get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
     if not session_id or chat_stream is None:
@@ -221,7 +223,14 @@ def publish_story_transition(
     update(session_id, snapshot_patch)
 
 
+def _story_system_enabled(state: Any) -> bool:
+    flags = getattr(getattr(state, "config_manager", None), "feature_flags", None)
+    return flags is not None and flags.is_enabled(FeatureFlag.STORY_SYSTEM)
+
+
 def _approved_resource_patch(state: Any) -> dict[str, Any]:
+    if not _story_system_enabled(state):
+        return {}
     cast_service = getattr(state, "story_cast_service", None)
     if cast_service is None:
         return {}

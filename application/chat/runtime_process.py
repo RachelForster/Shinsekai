@@ -1050,6 +1050,12 @@ def _sync_story_session_branch_command(
         session.restore_generation(generation)
 
 
+def _publish_bound_story_transition(state: BridgeState) -> None:
+    if bound_story_session(state) is None:
+        return
+    publish_story_transition(state, story_snapshot_patch(state))
+
+
 def _discard_bound_story_session(state: BridgeState) -> None:
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
     if history_raw and not is_unc_history_path(history_raw):
@@ -1381,7 +1387,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             raise ValueError("回溯索引无效。") from exc
         _sync_story_session_branch_command(state, command, body)
         result = _forward_runtime_command("idle")
-        publish_story_transition(state, story_snapshot_patch(state))
+        _publish_bound_story_transition(state)
         return result
     if command == "fork-history":
         if not _chat_experimental_features(state)["forkHistory"]:
@@ -1394,7 +1400,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             raise ValueError("分支索引无效。") from exc
         _sync_story_session_branch_command(state, command, body)
         result = _forward_runtime_command("generating", "正在创建对话分支。")
-        publish_story_transition(state, story_snapshot_patch(state))
+        _publish_bound_story_transition(state)
         return result
     if command == "switch-branch":
         if not _chat_experimental_features(state)["conversationTree"]:
@@ -1404,7 +1410,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             raise ValueError("分支 id 不能为空。")
         _sync_story_session_branch_command(state, command, body)
         result = _forward_runtime_command("idle", "已切换对话分支。")
-        publish_story_transition(state, story_snapshot_patch(state))
+        _publish_bound_story_transition(state)
         return result
     if command == "rename-branch":
         if not _chat_experimental_features(state)["conversationTree"]:

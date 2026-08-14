@@ -234,3 +234,33 @@ def test_live_story_transition_publishes_approved_actor_resources() -> None:
     assert state.chat_stream.snapshot["sprites"][0]["path"].startswith("/api/media?path=")
     assert state.chat_stream.snapshot["actorContext"]["activeCharacterIds"] == ["ling"]
     assert story_snapshot_patch(state)["sprites"][0]["path"].startswith("/api/media?path=")
+
+
+def test_fork_history_skips_story_transition_when_flag_is_off() -> None:
+    state = _state(enabled=False, fork=True)
+    event_seq = state.chat_stream.snapshot["eventSeq"]
+
+    snapshot = _handle_chat_command(
+        state,
+        {"payload": {"userIndex": 0}, "type": "fork-history"},
+    )
+
+    assert snapshot["status"] == "generating"
+    assert state.chat_stream.published == []
+    assert state.chat_stream.snapshot["eventSeq"] == event_seq
+
+
+def test_publish_story_transition_is_noop_when_flag_is_off() -> None:
+    state = _state(enabled=False)
+    state.story_cast_service = SimpleNamespace(
+        chat_patch=lambda: (_ for _ in ()).throw(AssertionError("unguarded chat_patch"))
+    )
+
+    publish_story_transition(
+        state,
+        {"options": [], "story": {"revision": 1}},
+    )
+
+    assert state.chat_stream.published == []
+    assert state.chat_stream.snapshot["eventSeq"] == 0
+    assert "story" not in state.chat_stream.snapshot
