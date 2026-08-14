@@ -27,7 +27,7 @@ from core.story import (
 )
 from core.story.state import variable_value_is_valid
 
-from .idempotency import StoryCommandIdempotencyIndex
+from .idempotency import StoryCommandConflictError, StoryCommandIdempotencyIndex
 from .persistence import (
     GlobalEffectOutboxEntry,
     GlobalStoryProgress,
@@ -83,6 +83,26 @@ class StoryCheckpoint:
             "historyEntries": [dict(item) for item in self.history_entries],
             "idempotency": [dict(item) for item in self.idempotency_payload],
         }
+
+
+class StoryTurnCancelledError(RuntimeError):
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+@dataclass(frozen=True, slots=True)
+class SceneTurnScope:
+    epoch: int
+    branch_id: str
+    generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class SceneTurnCommand:
+    command_id: str
+    message_id: str
+    text: str
 
 
 @dataclass(slots=True)
@@ -204,6 +224,9 @@ class StorySession:
         self.outbox: list[GlobalEffectOutboxEntry] = []
         self.owner_history_path = ""
         self._lock = threading.RLock()
+        self._epoch = 0
+        self._closed = False
+        self._scene_turn_epoch: int | None = None
 
     @classmethod
     def create(
@@ -326,9 +349,14 @@ class StorySession:
         command: RuntimeCommand,
         *,
         history_entries: Sequence[Mapping[str, Any]] | None = None,
+        scene_scope: SceneTurnScope | None = None,
     ) -> StorySessionAck:
         with self._lock:
             self._require_enabled()
+            if scene_scope is None:
+                self._invalidate_scene_turns()
+            else:
+                scene_scope = self._require_scene_scope(scene_scope)
             branch = self.active_branch
             duplicate = branch.idempotency.lookup(command)
             if duplicate is not None:
@@ -373,6 +401,7 @@ class StorySession:
     def fork(self, branch_id: str, *, generation: int | None = None) -> StoryBranch:
         with self._lock:
             self._require_enabled()
+            self._invalidate_scene_turns()
             branch_id = _branch_id(branch_id)
             if branch_id in self.branches:
                 raise ValueError(f"story branch {branch_id!r} already exists")
@@ -407,6 +436,7 @@ class StorySession:
     def restore_generation(self, generation: int) -> StoryBranch:
         with self._lock:
             self._require_enabled()
+            self._invalidate_scene_turns()
             branch = self.active_branch
             checkpoint = self._checkpoint(branch, generation)
             branch.generation = checkpoint.generation
@@ -427,12 +457,135 @@ class StorySession:
     def switch_branch(self, branch_id: str) -> StoryBranch:
         with self._lock:
             self._require_enabled()
+            self._invalidate_scene_turns()
             if branch_id not in self.branches:
                 raise KeyError(f"story branch {branch_id!r} does not exist")
             self.active_branch_id = branch_id
             self._save()
             self._rebuild_cast_resources()
             return self.active_branch
+
+    def close(self) -> None:
+        with self._lock:
+            self._closed = True
+            self._invalidate_scene_turns()
+
+    def begin_scene_turn(self) -> SceneTurnScope:
+        with self._lock:
+            self._require_enabled()
+            self._scene_turn_epoch = self._epoch
+            return SceneTurnScope(
+                epoch=self._epoch,
+                branch_id=self.active_branch_id,
+                generation=self.active_branch.generation,
+            )
+
+    def end_scene_turn(self, scope: SceneTurnScope) -> None:
+        with self._lock:
+            if self._scene_turn_epoch == scope.epoch:
+                self._scene_turn_epoch = None
+
+    def validate_scene_scope(self, scope: SceneTurnScope) -> SceneTurnScope:
+        with self._lock:
+            self._require_enabled()
+            return self._require_scene_scope(scope)
+
+    def lookup_recorded_command(self, command: Any) -> Any | None:
+        with self._lock:
+            self._require_enabled()
+            try:
+                return self.active_branch.idempotency.lookup(command)
+            except StoryCommandConflictError:
+                raise
+
+    def record_scene_turn(
+        self,
+        command: SceneTurnCommand,
+        *,
+        result_payload: Mapping[str, Any],
+        history_entries: Sequence[Mapping[str, Any]] | None = None,
+        scene_scope: SceneTurnScope | None = None,
+    ) -> Mapping[str, Any]:
+        with self._lock:
+            self._require_enabled()
+            if scene_scope is not None:
+                self._require_scene_scope(scene_scope)
+            branch = self.active_branch
+            existing = branch.idempotency.lookup(command)
+            if existing is not None:
+                return existing.ack
+            if history_entries is not None:
+                branch.history_entries = _history_entries(history_entries)
+            record = branch.idempotency.record(
+                command,
+                accepted=True,
+                resulting_revision=int(
+                    result_payload.get("revision") or branch.state.revision
+                ),
+                event_ids=(),
+                ack={"sceneTurn": dict(result_payload)},
+            )
+            branch.generation += 1
+            branch.checkpoints.append(
+                StoryCheckpoint(
+                    generation=branch.generation,
+                    message_count=len(branch.history_entries),
+                    state=branch.state,
+                    head_event_id=branch.head_event_id,
+                    event_count=len(branch.events),
+                    history_entries=branch.history_entries,
+                    idempotency_payload=tuple(
+                        MappingProxyType(item)
+                        for item in branch.idempotency.to_payload()
+                    ),
+                )
+            )
+            branch.checkpoints = branch.checkpoints[-128:]
+            self._save()
+            return record.ack
+
+    def replace_history_entries(
+        self,
+        history_entries: Sequence[Mapping[str, Any]],
+        *,
+        scene_scope: SceneTurnScope | None = None,
+    ) -> None:
+        with self._lock:
+            self._require_enabled()
+            if scene_scope is not None:
+                self._require_scene_scope(scene_scope)
+            branch = self.active_branch
+            branch.history_entries = _history_entries(history_entries)
+            if branch.checkpoints:
+                latest = branch.checkpoints[-1]
+                branch.checkpoints[-1] = replace(
+                    latest,
+                    message_count=len(branch.history_entries),
+                    history_entries=branch.history_entries,
+                )
+            self._save()
+
+    def _invalidate_scene_turns(self) -> None:
+        self._epoch += 1
+        self._scene_turn_epoch = None
+
+    def _require_scene_scope(self, scope: SceneTurnScope) -> SceneTurnScope:
+        if self._closed or scope.epoch != self._epoch:
+            raise StoryTurnCancelledError(
+                "scene.session_invalid",
+                "scene turn is no longer bound to this session",
+            )
+        if self.active_branch_id != scope.branch_id:
+            raise StoryTurnCancelledError(
+                "scene.branch_changed",
+                "scene turn no longer matches the active branch",
+            )
+        if self.active_branch.generation != scope.generation:
+            raise StoryTurnCancelledError(
+                "scene.generation_changed",
+                "story state changed before the scene turn finished",
+            )
+        return scope
 
     def chat_snapshot(self) -> dict[str, Any]:
         with self._lock:
@@ -760,6 +913,11 @@ class StorySession:
 
     def _require_enabled(self) -> None:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
+        if self._closed:
+            raise StoryTurnCancelledError(
+                "scene.session_closed",
+                "story session has been closed",
+            )
 
 
 def _initial_global_progress(program: StoryProgram) -> GlobalStoryProgress:

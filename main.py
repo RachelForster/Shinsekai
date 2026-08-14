@@ -102,6 +102,7 @@ import ai.tools.memory_tools
 import ai.tools.tool_search
 import ai.tools.file_tools
 import ai.tools.chat_ui_tools
+import ai.tools.story_tools
 from ai.llm.template_generator import is_transparent_background
 from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
 from ai.llm.text_processor import TextProcessor

@@ -23,6 +23,7 @@ import ai.tools.memory_tools  # noqa: F401
 import ai.tools.tool_search  # noqa: F401
 import ai.tools.file_tools  # noqa: F401
 import ai.tools.chat_ui_tools  # noqa: F401
+import ai.tools.story_tools  # noqa: F401
 
 config_manager = ConfigManager()
 DEFAULT_DIALOG_CONTRACT_ID = "default.dialog.v1"

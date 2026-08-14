@@ -31,7 +31,18 @@ from .persistence import (
     StoryPersistenceError,
     StoryProgramMismatchError,
 )
-from .session import StoryBranch, StorySession, StorySessionAck
+from .session import StoryBranch, StorySession, StorySessionAck, StoryTurnCancelledError
+from .scene import (
+    AuthorContext,
+    CastSelectionContext,
+    ConfigSceneModel,
+    SceneContextBuilder,
+    SceneDialogueItem,
+    SceneOrchestrator,
+    SceneProtocolError,
+    SceneTurnResult,
+    ValidatedCastPlanner,
+)
 
 __all__ = [
     "StoryCommandConflictError",
@@ -40,6 +51,7 @@ __all__ = [
     "StoryBranch",
     "StorySession",
     "StorySessionAck",
+    "StoryTurnCancelledError",
     "GlobalStoryProgress",
     "JsonGlobalStoryProgressStore",
     "JsonStorySessionRepository",
@@ -61,6 +73,15 @@ __all__ = [
     "StoryCastApplicationService",
     "materialize_imported_character",
     "migrate_selected_characters",
+    "ConfigSceneModel",
+    "AuthorContext",
+    "CastSelectionContext",
+    "SceneContextBuilder",
+    "SceneDialogueItem",
+    "SceneOrchestrator",
+    "SceneProtocolError",
+    "SceneTurnResult",
+    "ValidatedCastPlanner",
     "StoryProjectLoader",
     "load_story_project",
     "story_command_payload_hash",

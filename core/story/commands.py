@@ -46,6 +46,35 @@ class CompleteNode(StoryCommand):
     node_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class RequestCharacterEntry(StoryCommand):
+    character_id: str
+    reason_id: str
+    expected_node_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class RequestCharacterExit(StoryCommand):
+    character_id: str
+    reason_id: str
+    expected_node_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class RequestCharacterReplace(StoryCommand):
+    outgoing_character_id: str
+    incoming_character_id: str
+    reason_id: str
+    expected_node_id: str
+
+
 RuntimeCommand = (
-    SelectChoice | PerformIntent | ApplySemanticSignals | EnterNode | CompleteNode
+    SelectChoice
+    | PerformIntent
+    | ApplySemanticSignals
+    | EnterNode
+    | CompleteNode
+    | RequestCharacterEntry
+    | RequestCharacterExit
+    | RequestCharacterReplace
 )
