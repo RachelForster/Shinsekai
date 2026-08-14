@@ -14,6 +14,10 @@ DEFAULT_TOOL_GROUP_OVERRIDES: dict[str, str] = {
     "moondream_ocr_screen": "vision",
 }
 
+# Scene tools are registered for the story runtime only. Regular chat must
+# not discover or activate them through search_tools / list_tool_groups.
+HIDDEN_TOOL_GROUPS: frozenset[str] = frozenset({"story"})
+
 
 class ToolManager:
     _instance = None
@@ -208,7 +212,14 @@ class ToolManager:
     def get_definitions(self, groups: str | List[str] | None = None) -> List[Dict[str, Any]]:
         """Return tool definitions, optionally filtered by group(s)."""
         if groups is None:
-            return self._tools_definitions
+            return [
+                definition
+                for definition in self._tools_definitions
+                if self._tool_groups.get(
+                    definition.get("function", {}).get("name"), "default"
+                )
+                not in HIDDEN_TOOL_GROUPS
+            ]
         if isinstance(groups, str):
             groups = [groups]
         return [
@@ -224,13 +235,16 @@ class ToolManager:
         results = []
         for d in self._tools_definitions:
             fn = d["function"]
+            group = self._tool_groups.get(fn["name"], "default")
+            if group in HIDDEN_TOOL_GROUPS:
+                continue
             name = fn.get("name", "").lower()
             desc = fn.get("description", "").lower()
-            grp = self._tool_groups.get(fn["name"], "default").lower()
+            grp = group.lower()
             if kw in name or kw in desc or kw == grp:
                 results.append({
                     "name": fn["name"],
-                    "group": self._tool_groups.get(fn["name"], "default"),
+                    "group": group,
                     "description": fn.get("description", ""),
                 })
         return results
@@ -245,7 +259,13 @@ class ToolManager:
 
     def get_groups(self) -> List[str]:
         """Return list of all registered groups."""
-        return list(sorted(set(self._tool_groups.values())))
+        return list(
+            sorted(
+                group
+                for group in set(self._tool_groups.values())
+                if group not in HIDDEN_TOOL_GROUPS
+            )
+        )
 
     def execute(self, name: str, arguments_json: str) -> str:
         if name not in self._functions:

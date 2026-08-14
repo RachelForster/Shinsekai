@@ -24,7 +24,7 @@ SUPPORTED_CHAT_PARAMS = {
         "tools",
         "tool_choice",
     },
-    "ClaudeAdapter": {"temperature", "max_tokens"},
+    "ClaudeAdapter": {"temperature", "max_tokens", "tools"},
 }
 
 def filter_supported_chat_params(adapter_name: str, kwargs: dict) -> dict:

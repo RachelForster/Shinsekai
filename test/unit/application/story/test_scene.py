@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from types import SimpleNamespace
 import hashlib
 import json
 
@@ -9,6 +10,7 @@ import pytest
 from application.story import (
     CharacterResourceManager,
     CharacterSourceResolver,
+    ConfigSceneModel,
     SceneOrchestrator,
     StoryCastApplicationService,
     StorySession,
@@ -175,6 +177,14 @@ def test_free_text_intent_is_adjudicated_before_dialogue_and_hides_secrets() -> 
     assert result.dialogue[0].character_id == "ling"
     assert "headmaster-secret" not in json.dumps(model.requests, ensure_ascii=False)
     assert model.requests[0]["scene"]["publicContext"]["publicClue"] == "rain"
+    tool_names = [item["name"] for item in model.requests[0]["tools"]]
+    assert tool_names == [
+        "perform_intent",
+        "apply_semantic_signal",
+        "request_character_entry",
+    ]
+    assert "allowedIntentIds" in model.requests[0]["tools"][0]
+    assert "type" not in model.requests[0]["tools"][0]
 
 
 def test_semantic_signal_uses_published_id_and_application_owned_fingerprint() -> None:
@@ -307,3 +317,76 @@ def test_cast_planner_validates_candidate_envelope() -> None:
             candidate_ids=["witness"],
             maximum_active=2,
         )
+
+
+def test_config_scene_model_maps_native_tool_calls(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+
+    class OpenAIAdapter:
+        def chat(self, messages, stream=False, **kwargs):
+            captured["tools"] = kwargs.get("tools")
+            captured["messages"] = messages
+            function = SimpleNamespace(
+                name="perform_intent",
+                arguments=json.dumps(
+                    {
+                        "intentId": "reassure-ling",
+                        "expectedNodeId": "old-school-gate",
+                        "expectedRevision": 2,
+                    }
+                ),
+            )
+            tool_call = SimpleNamespace(id="intent-1", function=function)
+            message = SimpleNamespace(content="", tool_calls=[tool_call])
+            return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    manager = SimpleNamespace(
+        llm_adapter=OpenAIAdapter(),
+        chat=lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("native tool adapters must not use the JSON chat path")
+        ),
+    )
+    model = ConfigSceneModel(_flags(), config_manager=SimpleNamespace())
+    monkeypatch.setattr(model, "_llm_manager", lambda: manager)
+
+    result = model.complete(
+        {
+            "tools": [
+                {
+                    "name": "perform_intent",
+                    "allowedIntentIds": ["reassure-ling"],
+                    "expectedNodeId": "old-school-gate",
+                    "expectedRevision": 2,
+                }
+            ]
+        }
+    )
+
+    assert result["toolCalls"][0]["name"] == "perform_intent"
+    assert result["toolCalls"][0]["arguments"]["intentId"] == "reassure-ling"
+    native_tools = captured["tools"]
+    assert isinstance(native_tools, list)
+    assert native_tools[0]["type"] == "function"
+    assert native_tools[0]["function"]["name"] == "perform_intent"
+    intent_enum = native_tools[0]["function"]["parameters"]["properties"]["intentId"][
+        "enum"
+    ]
+    assert intent_enum == ["reassure-ling"]
+
+
+def test_config_scene_model_keeps_json_fallback_without_native_tools(
+    monkeypatch,
+) -> None:
+    class OtherAdapter:
+        pass
+
+    def fake_chat(prompt, stream=False, **kwargs):
+        assert kwargs["response_format"] == {"type": "json_object"}
+        return {"dialogue": [{"characterId": "ling", "text": "好。"}]}
+
+    manager = SimpleNamespace(llm_adapter=OtherAdapter(), chat=fake_chat)
+    model = ConfigSceneModel(_flags(), config_manager=SimpleNamespace())
+    monkeypatch.setattr(model, "_llm_manager", lambda: manager)
+
+    result = model.complete({"tools": []})
+    assert result["dialogue"][0]["characterId"] == "ling"
