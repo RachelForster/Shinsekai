@@ -281,11 +281,7 @@ export function MentionTextArea({
   }, [popupOpen, updateMenuPosition]);
 
   return (
-    <div
-      className={["mention-editor", "textarea", disabled ? "is-disabled" : "", className]
-        .filter(Boolean)
-        .join(" ")}
-    >
+    <div className={["mention-editor", "textarea", disabled ? "is-disabled" : "", className].filter(Boolean).join(" ")}>
       <div aria-hidden className="mention-editor__mirror" ref={mirrorRef}>
         {segments.map((segment, index) =>
           segment.type === "mention" && segment.option ? (
