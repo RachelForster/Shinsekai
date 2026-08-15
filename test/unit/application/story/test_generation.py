@@ -23,6 +23,8 @@ from application.story.generation import (
     StoryPatchApplier,
     _force_playable_source,
     _sanitize_generated_source,
+    _stage_schema,
+    _validate_logic,
     run_story_generation_background,
 )
 from application.story.generation_eval import (
@@ -217,6 +219,25 @@ def test_missing_ending_is_synthesized_without_repair(tmp_path: Path) -> None:
     )
     report = StoryDraftValidator().validate(source)
     assert report.valid is True
+
+
+def test_logic_stage_coerces_string_version_and_missing_collections() -> None:
+    assert _stage_schema(StoryGenerationStage.LOGIC)["version"] == 1
+    artifact: dict[str, Any] = {"version": "1"}
+    _validate_logic(artifact)
+    assert artifact == {"version": 1, "nodes": [], "edges": []}
+
+
+def test_pipeline_accepts_string_logic_graph_version(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["logic"]["version"] = "1"
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Accept a string logic graph version.", task_id="logic-version")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert source["logicGraph"]["version"] == 1
 
 
 def test_sanitize_keeps_unknown_required_cast_for_repair() -> None:

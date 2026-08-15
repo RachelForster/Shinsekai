@@ -1297,7 +1297,7 @@ def _stage_schema(stage: StoryGenerationStage) -> Mapping[str, Any]:
             "nodes": "StoryNode[]; every node includes structured CastPolicy and fallback",
         },
         StoryGenerationStage.LOGIC: {
-            "version": "1",
+            "version": 1,
             "nodes": "typed RuleNode[]",
             "edges": "typed RuleEdge[]",
         },
@@ -1476,16 +1476,11 @@ def _validate_narrative(value: dict[str, Any]) -> None:
 
 
 def _validate_logic(value: dict[str, Any]) -> None:
-    if value.get("version") != 1:
-        raise StoryGenerationError(
-            "generation.logic_invalid", "logic graph version must be 1"
-        )
-    if not isinstance(value.get("nodes"), list) or not isinstance(
-        value.get("edges"), list
-    ):
-        raise StoryGenerationError(
-            "generation.logic_invalid", "logic graph nodes and edges must be arrays"
-        )
+    value["version"] = 1
+    if not isinstance(value.get("nodes"), list):
+        value["nodes"] = []
+    if not isinstance(value.get("edges"), list):
+        value["edges"] = []
 
 
 def _validate_resources(value: dict[str, Any]) -> None:
@@ -2128,31 +2123,34 @@ def _sanitize_generated_source(source: Mapping[str, Any]) -> dict[str, Any]:
     payload["startNodeId"] = narrative.get("startNodeId", payload.get("startNodeId"))
 
     logic = payload.get("logicGraph")
-    if isinstance(logic, dict):
-        logic_nodes = logic.get("nodes")
-        if isinstance(logic_nodes, list):
-            logic_map = _assign_unique_ids(logic_nodes, "rule")
-            for node in logic_nodes:
-                if not isinstance(node, dict):
-                    continue
-                config = node.get("config")
-                if not isinstance(config, dict):
-                    continue
-                if "storyNodeId" in config:
-                    config["storyNodeId"] = _map_or_keep(
-                        config.get("storyNodeId"), node_map
-                    )
-                if "variable" in config:
-                    config["variable"] = _map_or_keep(config.get("variable"), var_map)
-            edges = logic.get("edges")
-            if isinstance(edges, list):
-                for edge in edges:
-                    if not isinstance(edge, dict):
-                        continue
-                    for endpoint in ("from", "to"):
-                        ref = edge.get(endpoint)
-                        if isinstance(ref, dict) and ref.get("nodeId"):
-                            ref["nodeId"] = _map_or_keep(ref.get("nodeId"), logic_map)
+    if not isinstance(logic, dict):
+        logic = {}
+        payload["logicGraph"] = logic
+    logic["version"] = 1
+    logic_nodes = logic.get("nodes")
+    if not isinstance(logic_nodes, list):
+        logic_nodes = []
+        logic["nodes"] = logic_nodes
+    if not isinstance(logic.get("edges"), list):
+        logic["edges"] = []
+    logic_map = _assign_unique_ids(logic_nodes, "rule")
+    for node in logic_nodes:
+        if not isinstance(node, dict):
+            continue
+        config = node.get("config")
+        if not isinstance(config, dict):
+            continue
+        if "storyNodeId" in config:
+            config["storyNodeId"] = _map_or_keep(config.get("storyNodeId"), node_map)
+        if "variable" in config:
+            config["variable"] = _map_or_keep(config.get("variable"), var_map)
+    for edge in logic["edges"]:
+        if not isinstance(edge, dict):
+            continue
+        for endpoint in ("from", "to"):
+            ref = edge.get(endpoint)
+            if isinstance(ref, dict) and ref.get("nodeId"):
+                ref["nodeId"] = _map_or_keep(ref.get("nodeId"), logic_map)
     return payload
 
 
