@@ -21,6 +21,8 @@ from application.story.generation import (
     StoryGenerationService,
     StoryGenerationStage,
     StoryPatchApplier,
+    _force_playable_source,
+    _sanitize_generated_source,
     run_story_generation_background,
 )
 from application.story.generation_eval import (
@@ -163,6 +165,76 @@ def test_pipeline_persists_intermediate_artifacts_and_compiled_draft(
     assert result["cost"]["requests"] == 7
     assert Path(result["draftPath"]).is_file()
     assert repository.load_artifact("story-task", StoryGenerationStage.BIBLE)["secrets"]
+
+
+def _title_case_id(value: str) -> str:
+    return "-".join(
+        part[:1].upper() + part[1:] if part else part for part in value.split("-")
+    )
+
+
+def test_uppercase_node_ids_are_normalized_without_repair(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    narrative = artifacts["narrative"]
+    renamed = {node["id"]: _title_case_id(node["id"]) for node in narrative["nodes"]}
+    narrative["startNodeId"] = renamed[narrative["startNodeId"]]
+    for node in narrative["nodes"]:
+        node["id"] = renamed[node["id"]]
+        for choice in node.get("choices") or []:
+            if choice.get("goto") in renamed:
+                choice["goto"] = renamed[choice["goto"]]
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Normalize generated identifiers.", task_id="id-case")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    assert result["repairAttempts"] == 0
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert source["narrativeGraph"]["startNodeId"] == "transfer-day"
+    assert {node["id"] for node in source["narrativeGraph"]["nodes"]} == {
+        "transfer-day",
+        "old-school-gate",
+        "truth-ending",
+    }
+
+
+def test_missing_ending_is_synthesized_without_repair(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["narrative"]["nodes"] = [
+        node
+        for node in artifacts["narrative"]["nodes"]
+        if node.get("type") != "ending"
+    ]
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Synthesize a reachable ending.", task_id="ending-fix")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    assert result["repairAttempts"] == 0
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert any(
+        node.get("type") == "ending" for node in source["narrativeGraph"]["nodes"]
+    )
+    report = StoryDraftValidator().validate(source)
+    assert report.valid is True
+
+
+def test_sanitize_keeps_unknown_required_cast_for_repair() -> None:
+    source = campus_mystery_source()
+    source["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
+    sanitized = _sanitize_generated_source(source)
+    assert sanitized["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] == [
+        "ghost"
+    ]
+
+
+def test_force_playable_replaces_unknown_required_cast() -> None:
+    source = campus_mystery_source()
+    source["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
+    forced = _force_playable_source(source)
+    assert forced["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] == ["ling"]
+    report = StoryDraftValidator().validate(forced)
+    assert report.valid is True
 
 
 def test_failed_task_resumes_from_latest_stage(tmp_path: Path) -> None:
@@ -387,17 +459,18 @@ def test_applied_repair_is_checkpointed_before_attempt_count(tmp_path: Path) -> 
     service, repository = service_at(tmp_path, model)
     task = service.create("Checkpoint repairs.", task_id="repair-checkpoint")
 
-    with pytest.raises(StoryGenerationError, match="did not pass validation"):
-        service.run(task["id"])
-    failed = service.get(task["id"])
-    assert failed["repairAttempts"] == 3
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    assert result["repairAttempts"] == 3
+    assert result["validation"]["valid"] is True
     narrative = repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)
     assert narrative["nodes"][0]["title"] == "Still broken"
+    assert "ghost" not in narrative["nodes"][2]["castPolicy"]["required"]
     assert repository.load_draft(task["id"]) is not None
 
     model.calls.clear()
-    with pytest.raises(StoryGenerationError, match="did not pass validation"):
-        service.run(task["id"], resume=True)
+    resumed = service.run(task["id"], resume=True)
+    assert resumed["status"] == "succeeded"
     assert "repair" not in model.calls
     assert (
         repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)["nodes"][0][

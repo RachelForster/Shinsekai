@@ -1264,6 +1264,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "story.generator.exploredStates": "路径状态",
   "story.generator.eyebrow": "AI STORY COMPILER",
   "story.generator.generating": "生成中…",
+  "story.generator.openDraftHint": "校验未通过，但草稿已保存，可以打开编辑器继续修改。",
   "story.generator.openEditor": "打开编辑器",
   "story.generator.placeholder": "写下人物、核心冲突、希望保留的秘密与结局方向……",
   "story.generator.progress": "生成进度",
@@ -1287,6 +1288,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "story.generator.validationEmpty": "剧情图、逻辑图与资源绑定完成后运行。",
   "story.generator.validationFailed": "仍有阻断问题",
   "story.generator.validationPassed": "已通过确定性校验",
+  "story.generator.validationRepairFailed":
+    "生成结果在有限次自动修补后仍未通过校验。请查看下方问题列表，或打开编辑器手动修改。",
   "top.chatStage": "聊天舞台",
   "effect.action.community": "下载音效",
   "effect.action.pickColor": "选择颜色",

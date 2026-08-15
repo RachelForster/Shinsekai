@@ -90,4 +90,98 @@ describe("StoryGeneratorPage", () => {
     await waitFor(() => expect(resumeStoryGeneration).toHaveBeenCalledWith("generation-1", expect.anything()));
     expect(await screen.findByText("已通过确定性校验")).toBeInTheDocument();
   });
+
+  it("automatically continues a failed generation from its checkpoint", async () => {
+    startStoryGeneration.mockImplementation(async (_input, options) => {
+      options?.onTaskUpdate?.({
+        createdAt: 1,
+        error: "transient",
+        generationTask: generatedTask("failed"),
+        id: "bridge-1",
+        kind: "story-generation",
+        logs: [],
+        message: "transient",
+        phase: "failed",
+        status: "failed",
+        title: "AI story compiler",
+        updatedAt: 2,
+      });
+      throw new Error("transient");
+    });
+    resumeStoryGeneration.mockResolvedValue(generatedTask());
+    renderPage();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "剧情梗概" }), { target: { value: "调查废弃校舍" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
+
+    await waitFor(() => expect(resumeStoryGeneration).toHaveBeenCalledWith("generation-1", expect.anything()));
+    expect(await screen.findByText("已通过确定性校验")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("lets the user open a failed generation draft", async () => {
+    const failed = generatedTask("failed");
+    failed.draftPath = "draft.json";
+    failed.currentStage = "repair";
+    failed.repairAttempts = 3;
+    failed.error = {
+      code: "generation.validation_failed",
+      message: "generated story did not pass validation after bounded repair",
+    };
+    failed.validation = {
+      ...failed.validation!,
+      valid: false,
+      issues: [
+        {
+          code: "simulation.no_ending",
+          message: "story must define at least one ending",
+          path: "/narrativeGraph",
+          severity: "error",
+        },
+      ],
+    };
+    startStoryGeneration.mockImplementation(async (_input, options) => {
+      options?.onTaskUpdate?.({
+        createdAt: 1,
+        error: failed.error?.message,
+        generationTask: failed,
+        id: "bridge-1",
+        kind: "story-generation",
+        logs: [],
+        message: failed.error?.message ?? "",
+        phase: "failed",
+        status: "failed",
+        title: "AI story compiler",
+        updatedAt: 2,
+      });
+      throw new Error(failed.error?.message);
+    });
+    resumeStoryGeneration.mockImplementation(async (_id, options) => {
+      options?.onTaskUpdate?.({
+        createdAt: 1,
+        error: failed.error?.message,
+        generationTask: failed,
+        id: "bridge-1",
+        kind: "story-generation",
+        logs: [],
+        message: failed.error?.message ?? "",
+        phase: "failed",
+        status: "failed",
+        title: "AI story compiler",
+        updatedAt: 2,
+      });
+      throw new Error(failed.error?.message);
+    });
+    importGeneratedStoryProject.mockResolvedValue({
+      manifest: { id: "campus-mystery" },
+    });
+    renderPage();
+
+    fireEvent.change(screen.getByRole("textbox", { name: "剧情梗概" }), { target: { value: "调查废弃校舍" } });
+    fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("生成结果在有限次自动修补后仍未通过校验");
+    fireEvent.click(screen.getByRole("button", { name: "打开编辑器" }));
+    await waitFor(() => expect(importGeneratedStoryProject).toHaveBeenCalledWith("generation-1"));
+  });
 });

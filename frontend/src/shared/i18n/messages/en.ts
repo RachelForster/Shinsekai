@@ -1295,6 +1295,8 @@ export const enMessages: Record<MessageKey, string> = {
   "story.generator.exploredStates": "Path states",
   "story.generator.eyebrow": "AI STORY COMPILER",
   "story.generator.generating": "Generating…",
+  "story.generator.openDraftHint":
+    "Validation failed, but a draft was saved. You can open the editor and keep editing.",
   "story.generator.openEditor": "Open editor",
   "story.generator.placeholder": "Write characters, the core conflict, secrets to keep, and ending direction…",
   "story.generator.progress": "Generation progress",
@@ -1319,6 +1321,8 @@ export const enMessages: Record<MessageKey, string> = {
   "story.generator.validationEmpty": "Runs after the narrative graph, logic graph, and resource bindings complete.",
   "story.generator.validationFailed": "Blocking issues remain",
   "story.generator.validationPassed": "Passed deterministic validation",
+  "story.generator.validationRepairFailed":
+    "The generated story still failed validation after bounded repair. Review the issues below, or open the editor to fix them.",
   "top.chatStage": "Chat stage",
   "effect.action.community": "Download Effects",
   "effect.action.pickColor": "Pick color",

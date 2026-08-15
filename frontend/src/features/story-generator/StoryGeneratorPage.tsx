@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
@@ -46,19 +46,45 @@ export function StoryGeneratorPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [regenerationStage, setRegenerationStage] = useState<StoryGenerationStage>("narrative");
+  const taskRef = useRef<StoryGenerationTask | null>(null);
   const completed = useMemo(() => new Set(task?.completedStages ?? []), [task?.completedStages]);
+
+  const rememberTask = (next: StoryGenerationTask) => {
+    taskRef.current = next;
+    setTask(next);
+  };
 
   const track = (update: TaskSnapshot<StoryGenerationTask>) => {
     const next = taskFromUpdate(update);
-    if (next) setTask(next);
+    if (next) rememberTask(next);
   };
 
-  const run = async (operation: () => Promise<StoryGenerationTask>) => {
+  const displayError = (() => {
+    if (!error) return "";
+    const code = task?.error?.code;
+    if (code === "generation.validation_failed" || /did not pass validation after bounded repair/i.test(error)) {
+      return t("story.generator.validationRepairFailed");
+    }
+    return error;
+  })();
+  const canOpenDraft = Boolean(task?.draftPath);
+
+  const run = async (operation: () => Promise<StoryGenerationTask>, autoResume = true) => {
     setBusy(true);
     setError("");
     try {
-      setTask(await operation());
+      rememberTask(await operation());
     } catch (reason) {
+      const current = taskRef.current;
+      if (autoResume && current?.status === "failed") {
+        try {
+          rememberTask(await resumeStoryGeneration(current.id, { onTaskUpdate: track }));
+          return;
+        } catch (resumeReason) {
+          setError(resumeReason instanceof Error ? resumeReason.message : String(resumeReason));
+          return;
+        }
+      }
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setBusy(false);
@@ -72,7 +98,7 @@ export function StoryGeneratorPage() {
         { onTaskUpdate: track },
       ),
     );
-  const resume = () => task && run(() => resumeStoryGeneration(task.id, { onTaskUpdate: track }));
+  const resume = () => task && run(() => resumeStoryGeneration(task.id, { onTaskUpdate: track }), false);
   const regenerate = () =>
     task && run(() => regenerateStoryGeneration(task.id, regenerationStage, { onTaskUpdate: track }));
   const cancel = async () => {
@@ -133,9 +159,9 @@ export function StoryGeneratorPage() {
             </button>
           ) : null}
         </div>
-        {error ? (
+        {displayError ? (
           <p className="story-generator-error" role="alert">
-            {error}
+            {displayError}
           </p>
         ) : null}
       </section>
@@ -242,6 +268,16 @@ export function StoryGeneratorPage() {
               <button disabled={busy} onClick={regenerate} type="button">
                 {t("story.generator.regenerate")}
               </button>
+              <button disabled={busy} onClick={openEditor} type="button">
+                {t("story.generator.openEditor")}
+              </button>
+            </section>
+          ) : canOpenDraft ? (
+            <section className="story-generator-card story-generator-regenerate">
+              <div>
+                <h2>{t("story.generator.openEditor")}</h2>
+                <p>{t("story.generator.openDraftHint")}</p>
+              </div>
               <button disabled={busy} onClick={openEditor} type="button">
                 {t("story.generator.openEditor")}
               </button>

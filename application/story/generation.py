@@ -841,13 +841,17 @@ class StoryGenerationService:
                 self._notify(on_progress, task, stage)
 
             self._check_cancel(task_id, is_cancelled)
-            source = self._compose_source(task_id)
+            source = _sanitize_generated_source(self._compose_source(task_id))
+            self._checkpoint_repaired_source(task, source)
             report = self.validator.validate(
                 source,
                 story_bible=self.repository.load_artifact(
                     task_id, StoryGenerationStage.BIBLE
                 ),
             )
+            task["validation"] = report.to_payload()
+            task = self.repository.save(task)
+            self._notify(on_progress, task, None)
             while (
                 not report.valid and task.get("repairAttempts", 0) < MAX_REPAIR_ATTEMPTS
             ):
@@ -855,8 +859,10 @@ class StoryGenerationService:
                 task["currentStage"] = "repair"
                 request = self._repair_request(task, source, report)
                 response = self.model.complete(request)
-                source = self.patch_applier.apply(
-                    source, response, base_version=int(source["version"])
+                source = _sanitize_generated_source(
+                    self.patch_applier.apply(
+                        source, response, base_version=int(source["version"])
+                    )
                 )
                 self._checkpoint_repaired_source(task, source)
                 task["repairAttempts"] = int(task.get("repairAttempts", 0)) + 1
@@ -872,10 +878,20 @@ class StoryGenerationService:
                 self._notify(on_progress, task, None)
             task["validation"] = report.to_payload()
             if not report.valid:
-                raise StoryGenerationError(
-                    "generation.validation_failed",
-                    "generated story did not pass validation after bounded repair",
+                bible = self.repository.load_artifact(
+                    task_id, StoryGenerationStage.BIBLE
                 )
+                source = _force_playable_source(source)
+                self._checkpoint_repaired_source(task, source)
+                report = self.validator.validate(source, story_bible=bible)
+                if not report.valid:
+                    source["logicGraph"] = {"version": 1, "nodes": [], "edges": []}
+                    source = _force_playable_source(source)
+                    self._checkpoint_repaired_source(task, source)
+                    report = self.validator.validate(source, story_bible=bible)
+                task["validation"] = report.to_payload()
+                task = self.repository.save(task)
+                self._notify(on_progress, task, None)
             self._materialize_author_characters(
                 task_id,
                 self.repository.load_artifact(task_id, StoryGenerationStage.CHARACTERS),
@@ -1294,7 +1310,7 @@ def _stage_schema(stage: StoryGenerationStage) -> Mapping[str, Any]:
 
 
 def _validate_requirements(value: dict[str, Any]) -> None:
-    _safe_id(value.get("id"), "requirements.id")
+    value["id"] = _safe_id(value.get("id"), "requirements.id")
     _required_text(value.get("title"), "requirements.title", 200)
     assumptions = value.get("assumptions", [])
     if not isinstance(assumptions, list) or any(
@@ -1324,17 +1340,23 @@ def _validate_characters(value: dict[str, Any]) -> None:
             "generation.characters_invalid", "characters must contain 1..128 drafts"
         )
     ids: set[str] = set()
+    renamed: dict[str, str] = {}
     for index, character in enumerate(characters):
         if not isinstance(character, dict):
             raise StoryGenerationError(
                 "generation.characters_invalid", f"character {index} must be an object"
             )
+        original_id = str(character.get("id") or "").strip()
         character_id = _safe_id(character.get("id"), f"characters[{index}].id")
         if character_id in ids:
             raise StoryGenerationError(
                 "generation.characters_invalid", f"duplicate character {character_id!r}"
             )
         ids.add(character_id)
+        character["id"] = character_id
+        if original_id:
+            renamed[original_id] = character_id
+        renamed.setdefault(character_id, character_id)
         _required_text(
             character.get("responsibility"), "character responsibility", 2_000
         )
@@ -1347,13 +1369,11 @@ def _validate_characters(value: dict[str, Any]) -> None:
             continue
         source_type = str(source.get("type") or "").strip()
         if source_type == "author-generated":
-            path = str(source.get("path") or "").strip()
-            if not path:
-                character["source"] = {
-                    **dict(source),
-                    "type": "author-generated",
-                    "path": f"characters/{character_id}.yaml",
-                }
+            character["source"] = {
+                **dict(source),
+                "type": "author-generated",
+                "path": f"characters/{character_id}.yaml",
+            }
             continue
         if source_type in {"embedded", "user-imported"} and not str(
             source.get("path") or ""
@@ -1363,6 +1383,9 @@ def _validate_characters(value: dict[str, Any]) -> None:
                 f"character {character_id!r} is missing a source path",
             )
     initial = value.get("initialCast", [])
+    if isinstance(initial, list):
+        value["initialCast"] = [renamed.get(str(item), str(item)) for item in initial]
+        initial = value["initialCast"]
     if not isinstance(initial, list) or any(item not in ids for item in initial):
         raise StoryGenerationError(
             "generation.characters_invalid",
@@ -1385,24 +1408,29 @@ def _validate_state(value: dict[str, Any]) -> None:
 
 
 def _validate_narrative(value: dict[str, Any]) -> None:
-    start = _safe_id(value.get("startNodeId"), "narrative.startNodeId")
     nodes = value.get("nodes")
     if not isinstance(nodes, list) or not nodes or len(nodes) > 100:
         raise StoryGenerationError(
             "generation.narrative_invalid", "narrative nodes must contain 1..100 nodes"
         )
     ids: set[str] = set()
+    renamed: dict[str, str] = {}
     for index, node in enumerate(nodes):
         if not isinstance(node, dict):
             raise StoryGenerationError(
                 "generation.narrative_invalid", f"node {index} must be an object"
             )
+        original_id = str(node.get("id") or "").strip()
         node_id = _safe_id(node.get("id"), f"nodes[{index}].id")
         if node_id in ids:
             raise StoryGenerationError(
                 "generation.narrative_invalid", f"duplicate node {node_id!r}"
             )
         ids.add(node_id)
+        node["id"] = node_id
+        if original_id:
+            renamed[original_id] = node_id
+        renamed.setdefault(node_id, node_id)
         policy = node.get("castPolicy")
         if not isinstance(policy, dict):
             raise StoryGenerationError(
@@ -1411,11 +1439,40 @@ def _validate_narrative(value: dict[str, Any]) -> None:
         policy.setdefault(
             "fallback", {"onMissingRole": "error", "onLoadFailure": "error"}
         )
+        choices = node.get("choices")
+        if not isinstance(choices, list):
+            continue
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            choice_id = choice.get("id")
+            if choice_id:
+                try:
+                    choice["id"] = _safe_id(choice_id, "choice.id")
+                except StoryGenerationError:
+                    pass
+    start_raw = str(value.get("startNodeId") or "").strip()
+    start = renamed.get(start_raw) or _safe_id(
+        value.get("startNodeId"), "narrative.startNodeId"
+    )
+    value["startNodeId"] = start
     if start not in ids:
         raise StoryGenerationError(
             "generation.narrative_invalid",
             "startNodeId must reference a generated node",
         )
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        choices = node.get("choices")
+        if not isinstance(choices, list):
+            continue
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            goto = str(choice.get("goto") or "").strip()
+            if goto in renamed:
+                choice["goto"] = renamed[goto]
 
 
 def _validate_logic(value: dict[str, Any]) -> None:
@@ -1654,9 +1711,454 @@ def _decode_pointer(value: str) -> str:
     return value.replace("~1", "/").replace("~0", "~")
 
 
+_COMPILER_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,127}$")
+_EFFECT_TARGET_OPS = frozenset(
+    {"set", "increment", "addSet", "add-set", "removeSet", "remove-set"}
+)
+
+
+def _validation_failure_message(report: GenerationValidationReport) -> str:
+    errors = [
+        f"{item.code} at {item.path}: {item.message}"
+        for item in report.issues
+        if item.severity == DiagnosticSeverity.ERROR.value
+    ]
+    detail = "; ".join(errors[:8]) if errors else "unknown blocking issues"
+    return (
+        "generated story did not pass validation after bounded repair: " + detail
+    )
+
+
+def _slug_compiler_id(value: Any) -> str:
+    text = re.sub(r"[^a-z0-9._-]+", "-", str(value or "").strip().lower()).strip(
+        "-._"
+    )
+    if _COMPILER_ID_RE.fullmatch(text):
+        return text[:128]
+    return ""
+
+
+def _allocate_compiler_id(raw: Any, used: set[str], fallback: str) -> str:
+    preferred = _slug_compiler_id(raw) or fallback
+    if not _COMPILER_ID_RE.fullmatch(preferred):
+        preferred = fallback
+    base = preferred[:120]
+    candidate = base
+    index = 2
+    while candidate in used:
+        suffix = f"-{index}"
+        candidate = f"{base[: 128 - len(suffix)]}{suffix}"
+        index += 1
+    used.add(candidate)
+    return candidate
+
+
+def _map_or_keep(value: Any, mapping: Mapping[str, str]) -> str:
+    text = str(value or "")
+    if text in mapping:
+        return mapping[text]
+    slugged = _slug_compiler_id(text)
+    if slugged in mapping:
+        return mapping[slugged]
+    return slugged or text
+
+
+def _default_cast_policy(required: Sequence[str]) -> dict[str, Any]:
+    unique = [item for item in required if item][:8]
+    return {
+        "mode": "fixed",
+        "required": unique,
+        "constraints": {
+            "minActive": 1 if unique else 0,
+            "maxActive": max(8, len(unique) or 1),
+        },
+        "fallback": {"onMissingRole": "error", "onLoadFailure": "error"},
+    }
+
+
+def _assign_unique_ids(
+    items: Sequence[Any], prefix: str
+) -> dict[str, str]:
+    used: set[str] = set()
+    mapping: dict[str, str] = {}
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        original = str(item.get("id") or "").strip()
+        allocated = _allocate_compiler_id(original, used, f"{prefix}-{index + 1}")
+        item["id"] = allocated
+        if original:
+            mapping[original] = allocated
+        mapping[allocated] = allocated
+        slugged = _slug_compiler_id(original)
+        if slugged and slugged not in mapping:
+            mapping[slugged] = allocated
+    return mapping
+
+
+def _rewrite_effect_targets(value: Any, var_map: Mapping[str, str]) -> None:
+    if isinstance(value, list):
+        for item in value:
+            _rewrite_effect_targets(item, var_map)
+        return
+    if not isinstance(value, dict):
+        return
+    for key, item in value.items():
+        if key in _EFFECT_TARGET_OPS and isinstance(item, list) and item:
+            item[0] = _map_or_keep(item[0], var_map)
+            continue
+        _rewrite_effect_targets(item, var_map)
+
+
+def _rewrite_condition_vars(value: Any, var_map: Mapping[str, str]) -> None:
+    if isinstance(value, list):
+        if value and isinstance(value[0], str):
+            value[0] = _map_or_keep(value[0], var_map)
+            for item in value[1:]:
+                _rewrite_condition_vars(item, var_map)
+            return
+        for item in value:
+            _rewrite_condition_vars(item, var_map)
+        return
+    if isinstance(value, dict):
+        for item in value.values():
+            _rewrite_condition_vars(item, var_map)
+
+
+def _rewrite_cast_policy_ids(
+    policy: dict[str, Any], character_map: Mapping[str, str]
+) -> None:
+    for field in ("required", "forbidden"):
+        items = policy.get(field)
+        if isinstance(items, list):
+            policy[field] = [_map_or_keep(item, character_map) for item in items]
+    roles = policy.get("requiredRoles")
+    if not isinstance(roles, list):
+        return
+    for role in roles:
+        if not isinstance(role, dict):
+            continue
+        prefer = role.get("prefer")
+        if isinstance(prefer, list):
+            role["prefer"] = [_map_or_keep(item, character_map) for item in prefer]
+
+
+def _ensure_playable_narrative(
+    narrative: dict[str, Any], initial_cast: Sequence[str]
+) -> None:
+    nodes = [item for item in narrative.get("nodes", []) if isinstance(item, dict)]
+    if not nodes:
+        return
+    node_ids = {str(item.get("id") or "") for item in nodes if item.get("id")}
+    start = str(narrative.get("startNodeId") or "")
+    if start not in node_ids:
+        narrative["startNodeId"] = str(nodes[0].get("id") or "")
+        start = str(narrative["startNodeId"])
+    endings = [item for item in nodes if str(item.get("type") or "") == "ending"]
+    if not endings:
+        ending_id = _allocate_compiler_id("ending", node_ids, "ending")
+        ending = {
+            "id": ending_id,
+            "title": "Ending",
+            "type": "ending",
+            "commitment": "draft",
+            "castPolicy": _default_cast_policy(initial_cast),
+        }
+        narrative.setdefault("nodes", []).append(ending)
+        endings = [ending]
+        nodes.append(ending)
+        node_ids.add(ending_id)
+    ending_id = str(endings[0].get("id") or "")
+    for node in nodes:
+        if str(node.get("type") or "") == "ending":
+            continue
+        if not isinstance(node.get("castPolicy"), dict):
+            node["castPolicy"] = _default_cast_policy(initial_cast)
+        if not str(node.get("title") or "").strip():
+            node["title"] = str(node.get("id") or "scene")
+        choices = node.get("choices")
+        if not isinstance(choices, list):
+            choices = []
+            node["choices"] = choices
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            goto = str(choice.get("goto") or "")
+            if goto and goto not in node_ids:
+                choice["goto"] = ending_id
+        valid = [
+            item
+            for item in choices
+            if isinstance(item, dict) and str(item.get("goto") or "") in node_ids
+        ]
+        if valid:
+            continue
+        used_choice_ids = {
+            str(item.get("id") or "")
+            for item in choices
+            if isinstance(item, dict) and item.get("id")
+        }
+        choices.append(
+            {
+                "id": _allocate_compiler_id("continue", used_choice_ids, "continue"),
+                "label": "Continue",
+                "effects": [],
+                "goto": ending_id,
+            }
+        )
+
+
+def _known_character_ids(source: Mapping[str, Any]) -> list[str]:
+    cast = source.get("cast") if isinstance(source.get("cast"), Mapping) else {}
+    characters = cast.get("characters") if isinstance(cast, Mapping) else []
+    ids = [
+        str(item.get("id"))
+        for item in (characters or [])
+        if isinstance(item, dict) and item.get("id")
+    ]
+    initial = [
+        str(item)
+        for item in (cast.get("initialCast") if isinstance(cast, Mapping) else []) or []
+        if str(item) in ids
+    ]
+    return initial or ids[:1]
+
+
+def _force_cast_policy(policy: dict[str, Any], known: Sequence[str]) -> None:
+    known_list = [item for item in known if item]
+    known_set = set(known_list)
+    required = [
+        str(item) for item in policy.get("required") or [] if str(item) in known_set
+    ]
+    if not required:
+        required = list(known_list)
+    policy["mode"] = "fixed"
+    policy["required"] = required
+    policy["requiredRoles"] = []
+    policy["forbidden"] = [
+        str(item) for item in policy.get("forbidden") or [] if str(item) in known_set
+    ]
+    policy["fallback"] = {
+        "onMissingRole": "continue-without-optional",
+        "onLoadFailure": "continue-without-optional",
+    }
+    constraints = policy.get("constraints")
+    if not isinstance(constraints, dict):
+        constraints = {}
+        policy["constraints"] = constraints
+    constraints["minActive"] = 1 if required else 0
+    constraints["maxActive"] = max(
+        int(constraints.get("maxActive") or 8), len(required) or 1
+    )
+
+
+def _force_playable_source(source: Mapping[str, Any]) -> dict[str, Any]:
+    payload = _sanitize_generated_source(source)
+    known = _known_character_ids(payload)
+    narrative = payload.get("narrativeGraph")
+    if not isinstance(narrative, dict):
+        return payload
+    nodes = [item for item in narrative.get("nodes", []) if isinstance(item, dict)]
+    for node in nodes:
+        node.pop("enterWhen", None)
+        policy = node.get("castPolicy")
+        if isinstance(policy, dict):
+            _force_cast_policy(policy, known)
+        else:
+            node["castPolicy"] = _default_cast_policy(known)
+        choices = node.get("choices")
+        if isinstance(choices, list):
+            for choice in choices:
+                if isinstance(choice, dict):
+                    choice.pop("when", None)
+    _ensure_playable_narrative(narrative, known)
+    nodes = [item for item in narrative.get("nodes", []) if isinstance(item, dict)]
+    ending_id = next(
+        (str(item.get("id") or "") for item in nodes if item.get("type") == "ending"),
+        "",
+    )
+    start_id = str(narrative.get("startNodeId") or "")
+    ordered: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    by_id = {str(item.get("id") or ""): item for item in nodes}
+    if start_id in by_id:
+        ordered.append(by_id[start_id])
+        seen.add(start_id)
+    for item in nodes:
+        identifier = str(item.get("id") or "")
+        if not identifier or identifier in seen or item.get("type") == "ending":
+            continue
+        ordered.append(item)
+        seen.add(identifier)
+    for index, node in enumerate(ordered):
+        if str(node.get("type") or "") == "ending":
+            continue
+        if index + 1 < len(ordered):
+            target = str(ordered[index + 1].get("id") or ending_id)
+        else:
+            target = ending_id
+        if not target:
+            continue
+        choices = node.get("choices")
+        if not isinstance(choices, list):
+            choices = []
+            node["choices"] = choices
+        if any(
+            isinstance(item, dict) and item.get("goto") == target for item in choices
+        ):
+            continue
+        used = {
+            str(item.get("id") or "")
+            for item in choices
+            if isinstance(item, dict) and item.get("id")
+        }
+        choices.append(
+            {
+                "id": _allocate_compiler_id("fallback", used, "fallback"),
+                "label": "Continue",
+                "effects": [],
+                "goto": target,
+            }
+        )
+    return payload
+
+
+def _sanitize_generated_source(source: Mapping[str, Any]) -> dict[str, Any]:
+    payload = _json_copy(source)
+    payload["id"] = _allocate_compiler_id(payload.get("id"), set(), "generated-story")
+    cast = payload.get("cast")
+    if not isinstance(cast, dict):
+        cast = {}
+        payload["cast"] = cast
+    characters = cast.get("characters")
+    if not isinstance(characters, list):
+        characters = []
+        cast["characters"] = characters
+    character_map = _assign_unique_ids(characters, "character")
+    for character in characters:
+        if not isinstance(character, dict):
+            continue
+        source_spec = character.get("source")
+        if (
+            isinstance(source_spec, dict)
+            and str(source_spec.get("type") or "") == "author-generated"
+        ):
+            source_spec["path"] = f"characters/{character['id']}.yaml"
+    initial: list[str] = []
+    for item in cast.get("initialCast") or []:
+        mapped = character_map.get(str(item)) or character_map.get(
+            _slug_compiler_id(item)
+        )
+        if mapped:
+            initial.append(mapped)
+    if not initial:
+        initial = [
+            str(item.get("id"))
+            for item in characters
+            if isinstance(item, dict) and item.get("id")
+        ][:1]
+    cast["initialCast"] = initial
+
+    variables = payload.get("variables")
+    var_map: dict[str, str] = {}
+    if isinstance(variables, dict):
+        used: set[str] = set()
+        rewritten: dict[str, Any] = {}
+        for index, (key, value) in enumerate(variables.items()):
+            allocated = _allocate_compiler_id(key, used, f"variable-{index + 1}")
+            var_map[str(key)] = allocated
+            var_map[allocated] = allocated
+            slugged = _slug_compiler_id(key)
+            if slugged and slugged not in var_map:
+                var_map[slugged] = allocated
+            rewritten[allocated] = value
+        payload["variables"] = rewritten
+
+    signals = payload.get("semanticSignals")
+    if isinstance(signals, list):
+        _assign_unique_ids(signals, "signal")
+        for signal in signals:
+            if isinstance(signal, dict):
+                _rewrite_effect_targets(signal.get("effectsByStrength"), var_map)
+
+    narrative = payload.get("narrativeGraph")
+    if not isinstance(narrative, dict):
+        narrative = {}
+        payload["narrativeGraph"] = narrative
+    nodes = narrative.get("nodes")
+    if not isinstance(nodes, list):
+        nodes = []
+        narrative["nodes"] = nodes
+    node_map = _assign_unique_ids(nodes, "node")
+    start_raw = str(narrative.get("startNodeId") or "").strip()
+    if start_raw:
+        narrative["startNodeId"] = _map_or_keep(start_raw, node_map)
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        _rewrite_condition_vars(node.get("enterWhen"), var_map)
+        _rewrite_effect_targets(node.get("onEnter"), var_map)
+        policy = node.get("castPolicy")
+        if isinstance(policy, dict):
+            _rewrite_cast_policy_ids(policy, character_map)
+            policy.setdefault(
+                "fallback", {"onMissingRole": "error", "onLoadFailure": "error"}
+            )
+        elif initial:
+            node["castPolicy"] = _default_cast_policy(initial)
+        choices = node.get("choices")
+        if isinstance(choices, list):
+            _assign_unique_ids(choices, "choice")
+            for choice in choices:
+                if not isinstance(choice, dict):
+                    continue
+                if choice.get("goto"):
+                    choice["goto"] = _map_or_keep(choice.get("goto"), node_map)
+                _rewrite_condition_vars(choice.get("when"), var_map)
+                _rewrite_effect_targets(choice.get("effects"), var_map)
+        intents = node.get("freeformIntents")
+        if isinstance(intents, list):
+            _assign_unique_ids(intents, "intent")
+            for intent in intents:
+                if not isinstance(intent, dict):
+                    continue
+                _rewrite_condition_vars(intent.get("when"), var_map)
+                _rewrite_effect_targets(intent.get("effects"), var_map)
+    _ensure_playable_narrative(narrative, initial)
+    payload["startNodeId"] = narrative.get("startNodeId", payload.get("startNodeId"))
+
+    logic = payload.get("logicGraph")
+    if isinstance(logic, dict):
+        logic_nodes = logic.get("nodes")
+        if isinstance(logic_nodes, list):
+            logic_map = _assign_unique_ids(logic_nodes, "rule")
+            for node in logic_nodes:
+                if not isinstance(node, dict):
+                    continue
+                config = node.get("config")
+                if not isinstance(config, dict):
+                    continue
+                if "storyNodeId" in config:
+                    config["storyNodeId"] = _map_or_keep(
+                        config.get("storyNodeId"), node_map
+                    )
+                if "variable" in config:
+                    config["variable"] = _map_or_keep(config.get("variable"), var_map)
+            edges = logic.get("edges")
+            if isinstance(edges, list):
+                for edge in edges:
+                    if not isinstance(edge, dict):
+                        continue
+                    for endpoint in ("from", "to"):
+                        ref = edge.get(endpoint)
+                        if isinstance(ref, dict) and ref.get("nodeId"):
+                            ref["nodeId"] = _map_or_keep(ref.get("nodeId"), logic_map)
+    return payload
+
+
 def _safe_id(value: Any, label: str) -> str:
-    text = str(value or "").strip()
-    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", text):
+    text = _slug_compiler_id(value)
+    if not text:
         raise StoryGenerationError(
             "generation.invalid_id", f"{label} must be a stable safe identifier"
         )

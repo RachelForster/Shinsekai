@@ -800,12 +800,15 @@ def import_generation_task_for_state(
     flags.require(FeatureFlag.STORY_SYSTEM)
     generation = story_generation_service_for_state(state)
     task = generation.get(generation_task_id)
-    if task.get("status") != "succeeded":
+    status = str(task.get("status") or "")
+    draft_path = Path(str(task.get("draftPath") or "")).resolve(strict=False)
+    task_root = generation.repository.task_directory(generation_task_id)
+    if status not in {"succeeded", "failed"} or not str(
+        task.get("draftPath") or ""
+    ).strip():
         raise StoryAuthoringError(
             "authoring.generation_incomplete", "generation task has no completed draft"
         )
-    draft_path = Path(str(task.get("draftPath") or "")).resolve(strict=False)
-    task_root = generation.repository.task_directory(generation_task_id)
     if draft_path.parent != task_root or draft_path.name != "draft.json":
         raise StoryAuthoringError(
             "authoring.generation_path_invalid",

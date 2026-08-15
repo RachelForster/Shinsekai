@@ -324,6 +324,37 @@ def test_import_generation_task_copies_character_profiles(tmp_path: Path) -> Non
     assert copied.is_file()
 
 
+def test_import_failed_generation_task_with_draft(tmp_path: Path) -> None:
+    flags = enabled_flags()
+    task_id = "gen-failed"
+    task_dir = tmp_path / "generation" / task_id
+    task_dir.mkdir(parents=True)
+    source = story_source()
+    (task_dir / "draft.json").write_text(json.dumps(source), encoding="utf-8")
+
+    class Repository:
+        def task_directory(self, _task_id: str) -> Path:
+            return task_dir.resolve()
+
+    class Generation:
+        repository = Repository()
+
+        def get(self, _task_id: str) -> dict[str, Any]:
+            return {
+                "status": "failed",
+                "draftPath": str(task_dir.resolve() / "draft.json"),
+            }
+
+    project_root = tmp_path / "project"
+    state = SimpleNamespace(
+        config_manager=SimpleNamespace(feature_flags=flags),
+        project_root_dir=str(project_root),
+        story_generation_service=Generation(),
+    )
+    document = import_generation_task_for_state(state, task_id)
+    assert document["manifest"]["id"] == "campus-mystery"
+
+
 def test_interrupted_publication_can_be_retried(tmp_path: Path) -> None:
     service = service_at(tmp_path)
     service.import_source(story_source())

@@ -1296,6 +1296,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "story.generator.exploredStates": "経路状態",
   "story.generator.eyebrow": "AI STORY COMPILER",
   "story.generator.generating": "生成中…",
+  "story.generator.openDraftHint": "検証には失敗しましたが、下書きは保存されています。エディタで続けて修正できます。",
   "story.generator.openEditor": "エディタを開く",
   "story.generator.placeholder": "人物、中心衝突、守りたい秘密、結末の方向を書いてください…",
   "story.generator.progress": "生成の進捗",
@@ -1319,6 +1320,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "story.generator.validationEmpty": "ナラティブ、ロジック、リソース割り当て完了後に実行されます。",
   "story.generator.validationFailed": "まだブロッキングな問題があります",
   "story.generator.validationPassed": "決定的検証に合格",
+  "story.generator.validationRepairFailed":
+    "有限回の自動修復後も生成結果は検証に合格しませんでした。下の問題一覧を確認するか、エディタで修正してください。",
   "top.chatStage": "チャットステージ",
   "effect.action.community": "エフェクトをダウンロード",
   "effect.action.pickColor": "色を選択",
