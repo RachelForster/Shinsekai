@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,6 +12,12 @@ const resumeStoryGeneration = vi.fn();
 const regenerateStoryGeneration = vi.fn();
 const cancelStoryGeneration = vi.fn();
 const importGeneratedStoryProject = vi.fn();
+const listCharacters = vi.fn();
+
+vi.mock("../../../entities/character/repository", () => ({
+  charactersQueryKey: ["characters"],
+  listCharacters: () => listCharacters(),
+}));
 
 vi.mock("../../../entities/story/repository", () => ({
   startStoryGeneration: (...args: unknown[]) => startStoryGeneration(...args),
@@ -53,17 +60,34 @@ function generatedTask(status: StoryGenerationTask["status"] = "succeeded"): Sto
 }
 
 function renderPage() {
+  const client = new QueryClient({
+    defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+  });
   return render(
     <I18nProvider language="zh_CN">
-      <MemoryRouter>
-        <StoryGeneratorPage />
-      </MemoryRouter>
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <StoryGeneratorPage />
+        </MemoryRouter>
+      </QueryClientProvider>
     </I18nProvider>,
   );
 }
 
 describe("StoryGeneratorPage", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listCharacters.mockResolvedValue([{ color: "#66ccff", name: "Nanami" }]);
+  });
+
+  it("mentions a system character from the synopsis editor", async () => {
+    renderPage();
+    const synopsis = await screen.findByRole("textbox", { name: "剧情梗概" });
+    fireEvent.change(synopsis, { target: { value: "@" } });
+    expect(await screen.findByRole("option", { name: "用户" })).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole("option", { name: "Nanami" }));
+    expect(synopsis).toHaveValue("@Nanami ");
+  });
 
   it("generates a draft and previews assumptions and validation", async () => {
     startStoryGeneration.mockResolvedValue(generatedTask());

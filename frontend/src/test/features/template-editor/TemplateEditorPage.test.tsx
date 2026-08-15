@@ -183,6 +183,15 @@ describe("TemplateEditorPage", () => {
     expect(await screen.findByDisplayValue("Generated scenario")).toBeInTheDocument();
   });
 
+  it("mentions a system character from the scenario editor", async () => {
+    renderPage();
+    const scenario = await screen.findByRole("textbox", { name: "Scenario" });
+    fireEvent.change(scenario, { target: { value: "@" } });
+    expect(await screen.findByRole("option", { name: "User" })).toBeInTheDocument();
+    fireEvent.mouseDown(screen.getByRole("option", { name: "Nanami" }));
+    expect(scenario).toHaveValue("@Nanami ");
+  });
+
   it("auto-generates only when character selection changes and puts the default RPG brief in scenario", async () => {
     mockGenerateTemplate.mockImplementationOnce(async (input) => ({
       ...template,

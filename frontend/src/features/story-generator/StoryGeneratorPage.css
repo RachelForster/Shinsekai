@@ -39,17 +39,16 @@
   margin: 0 0 14px;
 }
 
-.story-generator-card textarea {
+.story-generator-card .mention-editor {
   background: var(--surface-secondary, #f7f8fa);
   border: 1px solid var(--border-subtle, #d8dce5);
   border-radius: 12px;
-  box-sizing: border-box;
-  color: inherit;
-  font: inherit;
-  line-height: 1.65;
+}
+
+.story-generator-card .mention-editor__input,
+.story-generator-card .mention-editor__mirror {
   padding: 15px;
-  resize: vertical;
-  width: 100%;
+  line-height: 1.65;
 }
 
 .story-generator-actions,

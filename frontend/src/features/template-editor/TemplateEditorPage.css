@@ -92,7 +92,11 @@
 
 .template-scenario-textarea {
   min-height: 120px;
-  resize: vertical;
+}
+
+.template-scenario-textarea .mention-editor__input,
+.template-scenario-textarea .mention-editor__mirror {
+  min-height: 120px;
 }
 
 .template-system-toggle {

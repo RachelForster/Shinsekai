@@ -1,6 +1,8 @@
 import { useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
+import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import {
   cancelStoryGeneration,
   importGeneratedStoryProject,
@@ -12,6 +14,7 @@ import type { StoryGenerationStage, StoryGenerationTask } from "../../entities/s
 import { useI18n } from "../../shared/i18n";
 import type { MessageKey } from "../../shared/i18n";
 import type { TaskSnapshot } from "../../shared/platform/types";
+import { MentionTextArea, characterMentionOptions } from "../../shared/ui";
 import "./StoryGeneratorPage.css";
 
 const stages: StoryGenerationStage[] = [
@@ -41,6 +44,11 @@ function taskFromUpdate(update: TaskSnapshot<StoryGenerationTask>) {
 export function StoryGeneratorPage() {
   const navigate = useNavigate();
   const { t } = useI18n();
+  const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
+  const mentionOptions = useMemo(
+    () => characterMentionOptions(charactersQuery.data ?? [], t("mention.user")),
+    [charactersQuery.data, t],
+  );
   const [synopsis, setSynopsis] = useState("");
   const [task, setTask] = useState<StoryGenerationTask | null>(null);
   const [busy, setBusy] = useState(false);
@@ -135,11 +143,12 @@ export function StoryGeneratorPage() {
 
       <section className="story-generator-card" aria-labelledby="story-synopsis-title">
         <h2 id="story-synopsis-title">{t("story.generator.synopsis")}</h2>
-        <textarea
+        <MentionTextArea
           aria-label={t("story.generator.synopsis")}
           disabled={busy}
           maxLength={20000}
-          onChange={(event) => setSynopsis(event.target.value)}
+          onChange={setSynopsis}
+          options={mentionOptions}
           placeholder={t("story.generator.placeholder")}
           rows={8}
           value={synopsis}

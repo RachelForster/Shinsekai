@@ -35,12 +35,14 @@ import {
   Button,
   EmptyState,
   FilePicker,
+  MentionTextArea,
   NumberInput,
   QueryErrorState,
   Select,
   Switch,
   TextArea,
   TextInput,
+  characterMentionOptions,
   useToast,
 } from "../../shared/ui";
 import {
@@ -136,6 +138,7 @@ export function TemplateEditorPage() {
   }, [backgrounds]);
   const selectedCharacterNames = useMemo(() => new Set(selectedCharacters), [selectedCharacters]);
   const selectedEffectNames = useMemo(() => new Set(selectedEffects), [selectedEffects]);
+  const mentionOptions = useMemo(() => characterMentionOptions(characters, t("mention.user")), [characters, t]);
 
   const effectHintText = useMemo(() => {
     if (!selectedEffects.length) return "";
@@ -897,9 +900,11 @@ export function TemplateEditorPage() {
           <section className="template-panel template-panel--scenario">
             <label className="template-stack-field">
               <span className="template-panel__label">{t("template.field.scenario")}</span>
-              <TextArea
+              <MentionTextArea
+                aria-label={t("template.field.scenario")}
                 className="template-scenario-textarea"
-                onChange={(event) => updateDraft({ scenario: event.target.value })}
+                onChange={(scenario) => updateDraft({ scenario })}
+                options={mentionOptions}
                 rows={7}
                 value={draft.scenario ?? ""}
               />
