@@ -240,6 +240,43 @@ def test_pipeline_accepts_string_logic_graph_version(tmp_path: Path) -> None:
     assert source["logicGraph"]["version"] == 1
 
 
+def test_sanitize_coerces_variable_types_and_empty_choice_labels() -> None:
+    source = campus_mystery_source()
+    source["variables"]["attractionlevel"] = {"type": "number", "initial": 0, "min": 0, "max": 100}
+    source["narrativeGraph"]["nodes"][0]["choices"][0]["label"] = ""
+    source["narrativeGraph"]["nodes"][0]["choices"].append(
+        {"id": "ask-ling", "text": "Ask Ling", "goto": "old-school-gate"}
+    )
+    sanitized = _sanitize_generated_source(source)
+    assert sanitized["variables"]["attractionlevel"]["type"] == "integer"
+    labels = [choice["label"] for choice in sanitized["narrativeGraph"]["nodes"][0]["choices"]]
+    assert labels[0]
+    assert "Ask Ling" in labels
+    report = StoryDraftValidator().validate(sanitized)
+    assert report.valid is True
+
+
+def test_pipeline_accepts_number_variable_type_and_blank_choice_labels(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["state"]["variables"]["attractionlevel"] = {
+        "type": "number",
+        "initial": 0,
+        "min": 0,
+        "max": 100,
+    }
+    artifacts["narrative"]["nodes"][0]["choices"][0]["label"] = "   "
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Normalize generated state and choices.", task_id="choice-labels")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert source["variables"]["attractionlevel"]["type"] == "integer"
+    assert source["narrativeGraph"]["nodes"][0]["choices"][0]["label"].strip()
+    report = StoryDraftValidator().validate(source)
+    assert report.valid is True
+
+
 def test_sanitize_keeps_unknown_required_cast_for_repair() -> None:
     source = campus_mystery_source()
     source["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
@@ -449,6 +486,51 @@ def test_author_model_uses_stateless_adapter_calls(monkeypatch) -> None:
     assert "task-a-secret" not in captured[1][1]["content"]
     assert "task-b-public" in captured[1][1]["content"]
     assert len(captured[1]) == 2
+
+
+class FullStoryRepairModel(ScriptedModel):
+    def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        if request["operation"] == "repair":
+            self.calls.append("repair")
+            assert request["validationErrors"]
+            story = campus_mystery_source()
+            story["status"] = "draft"
+            return {"baseVersion": request["baseVersion"], "story": story}
+        return super().complete(request)
+
+
+def test_repair_loop_accepts_a_full_corrected_story(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["narrative"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
+    model = FullStoryRepairModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Return a full repaired story.", task_id="full-repair")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    assert result["repairAttempts"] >= 1
+    assert result["validation"]["valid"] is True
+    assert model.calls[-1] == "repair"
+
+
+class InvalidPatchRepairModel(ScriptedModel):
+    def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        if request["operation"] == "repair":
+            self.calls.append("repair")
+            return {"operations": "not-a-list"}
+        return super().complete(request)
+
+
+def test_invalid_repair_patch_falls_back_to_a_playable_draft(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["narrative"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
+    model = InvalidPatchRepairModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Ignore a broken repair patch.", task_id="bad-patch")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    assert result["validation"]["valid"] is True
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert source["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] == ["ling"]
 
 
 def test_save_merges_cancel_requested_from_disk(tmp_path: Path) -> None:
