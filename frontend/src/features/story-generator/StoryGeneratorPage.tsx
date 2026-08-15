@@ -9,18 +9,30 @@ import {
   startStoryGeneration,
 } from "../../entities/story/repository";
 import type { StoryGenerationStage, StoryGenerationTask } from "../../entities/story/types";
+import { useI18n } from "../../shared/i18n";
+import type { MessageKey } from "../../shared/i18n";
 import type { TaskSnapshot } from "../../shared/platform/types";
 import "./StoryGeneratorPage.css";
 
-const stages: { id: StoryGenerationStage; label: string }[] = [
-  { id: "requirements", label: "需求与假设" },
-  { id: "bible", label: "故事圣经" },
-  { id: "characters", label: "人物职责" },
-  { id: "state", label: "状态与信号" },
-  { id: "narrative", label: "剧情图" },
-  { id: "logic", label: "逻辑图" },
-  { id: "resources", label: "资源绑定" },
+const stages: StoryGenerationStage[] = [
+  "requirements",
+  "bible",
+  "characters",
+  "state",
+  "narrative",
+  "logic",
+  "resources",
 ];
+
+const stageLabelKeys: Record<StoryGenerationStage, MessageKey> = {
+  bible: "story.generator.stage.bible",
+  characters: "story.generator.stage.characters",
+  logic: "story.generator.stage.logic",
+  narrative: "story.generator.stage.narrative",
+  requirements: "story.generator.stage.requirements",
+  resources: "story.generator.stage.resources",
+  state: "story.generator.stage.state",
+};
 
 function taskFromUpdate(update: TaskSnapshot<StoryGenerationTask>) {
   return update.generationTask ?? update.result ?? null;
@@ -28,6 +40,7 @@ function taskFromUpdate(update: TaskSnapshot<StoryGenerationTask>) {
 
 export function StoryGeneratorPage() {
   const navigate = useNavigate();
+  const { t } = useI18n();
   const [synopsis, setSynopsis] = useState("");
   const [task, setTask] = useState<StoryGenerationTask | null>(null);
   const [busy, setBusy] = useState(false);
@@ -88,35 +101,35 @@ export function StoryGeneratorPage() {
     <main className="story-generator-page">
       <header className="story-generator-header">
         <div>
-          <p className="story-generator-eyebrow">AI STORY COMPILER</p>
-          <h1>从剧情梗概生成可运行剧本</h1>
-          <p>LLM 负责分阶段创作；Schema、引用、路径、演员表与秘密隔离由确定性编译器裁决。</p>
+          <p className="story-generator-eyebrow">{t("story.generator.eyebrow")}</p>
+          <h1>{t("story.generator.title")}</h1>
+          <p>{t("story.generator.description")}</p>
         </div>
       </header>
 
       <section className="story-generator-card" aria-labelledby="story-synopsis-title">
-        <h2 id="story-synopsis-title">剧情梗概</h2>
+        <h2 id="story-synopsis-title">{t("story.generator.synopsis")}</h2>
         <textarea
-          aria-label="剧情梗概"
+          aria-label={t("story.generator.synopsis")}
           disabled={busy}
           maxLength={20000}
           onChange={(event) => setSynopsis(event.target.value)}
-          placeholder="写下人物、核心冲突、希望保留的秘密与结局方向……"
+          placeholder={t("story.generator.placeholder")}
           rows={8}
           value={synopsis}
         />
         <div className="story-generator-actions">
           <button disabled={busy || !synopsis.trim()} onClick={start} type="button">
-            {busy ? "生成中…" : "开始生成"}
+            {busy ? t("story.generator.generating") : t("story.generator.start")}
           </button>
           {task?.status === "failed" || task?.status === "cancelled" ? (
             <button disabled={busy} onClick={resume} type="button">
-              从断点继续
+              {t("story.generator.resume")}
             </button>
           ) : null}
           {task?.status === "running" ? (
             <button className="secondary" onClick={cancel} type="button">
-              取消
+              {t("story.generator.cancel")}
             </button>
           ) : null}
         </div>
@@ -132,9 +145,12 @@ export function StoryGeneratorPage() {
           <section className="story-generator-card" aria-labelledby="story-progress-title">
             <div className="story-generator-section-heading">
               <div>
-                <h2 id="story-progress-title">生成进度</h2>
+                <h2 id="story-progress-title">{t("story.generator.progress")}</h2>
                 <p>
-                  状态：{task.status} · 当前阶段：{task.currentStage}
+                  {t("story.generator.progressMeta", {
+                    status: task.status,
+                    stage: task.currentStage,
+                  })}
                 </p>
               </div>
               <code>{task.id}</code>
@@ -142,11 +158,11 @@ export function StoryGeneratorPage() {
             <ol className="story-generator-stages">
               {stages.map((stage) => (
                 <li
-                  className={completed.has(stage.id) ? "completed" : task.currentStage === stage.id ? "active" : ""}
-                  key={stage.id}
+                  className={completed.has(stage) ? "completed" : task.currentStage === stage ? "active" : ""}
+                  key={stage}
                 >
-                  <span aria-hidden>{completed.has(stage.id) ? "✓" : "·"}</span>
-                  {stage.label}
+                  <span aria-hidden>{completed.has(stage) ? "✓" : "·"}</span>
+                  {t(stageLabelKeys[stage])}
                 </li>
               ))}
             </ol>
@@ -154,7 +170,7 @@ export function StoryGeneratorPage() {
 
           <section className="story-generator-grid">
             <article className="story-generator-card">
-              <h2>生成假设</h2>
+              <h2>{t("story.generator.assumptions")}</h2>
               {task.assumptions.length ? (
                 <ul>
                   {task.assumptions.map((item) => (
@@ -162,31 +178,31 @@ export function StoryGeneratorPage() {
                   ))}
                 </ul>
               ) : (
-                <p>需求阶段完成后显示。</p>
+                <p>{t("story.generator.assumptionsEmpty")}</p>
               )}
             </article>
             <article className="story-generator-card">
-              <h2>校验摘要</h2>
+              <h2>{t("story.generator.validation")}</h2>
               {task.validation ? (
                 <>
                   <p className={task.validation.valid ? "story-generator-pass" : "story-generator-error"}>
-                    {task.validation.valid ? "已通过确定性校验" : "仍有阻断问题"}
+                    {t(task.validation.valid ? "story.generator.validationPassed" : "story.generator.validationFailed")}
                   </p>
                   <dl className="story-generator-metrics">
                     <div>
-                      <dt>结局覆盖</dt>
+                      <dt>{t("story.generator.endingCoverage")}</dt>
                       <dd>{Math.round(task.validation.endingCoverage * 100)}%</dd>
                     </div>
                     <div>
-                      <dt>路径状态</dt>
+                      <dt>{t("story.generator.exploredStates")}</dt>
                       <dd>{task.validation.exploredStates}</dd>
                     </div>
                     <div>
-                      <dt>演员表失败</dt>
+                      <dt>{t("story.generator.castFailures")}</dt>
                       <dd>{task.validation.castFailureNodeIds.length}</dd>
                     </div>
                     <div>
-                      <dt>估算 Tokens</dt>
+                      <dt>{t("story.generator.estimatedTokens")}</dt>
                       <dd>{task.cost.estimatedTokens}</dd>
                     </div>
                   </dl>
@@ -201,7 +217,7 @@ export function StoryGeneratorPage() {
                   ) : null}
                 </>
               ) : (
-                <p>剧情图、逻辑图与资源绑定完成后运行。</p>
+                <p>{t("story.generator.validationEmpty")}</p>
               )}
             </article>
           </section>
@@ -209,25 +225,25 @@ export function StoryGeneratorPage() {
           {task.status === "succeeded" ? (
             <section className="story-generator-card story-generator-regenerate">
               <div>
-                <h2>局部重新生成</h2>
-                <p>所选阶段之后的产物会失效，之前的稳定产物保留。</p>
+                <h2>{t("story.generator.regenerateTitle")}</h2>
+                <p>{t("story.generator.regenerateHint")}</p>
               </div>
               <select
-                aria-label="重新生成阶段"
+                aria-label={t("story.generator.regenerateStage")}
                 onChange={(event) => setRegenerationStage(event.target.value as StoryGenerationStage)}
                 value={regenerationStage}
               >
                 {stages.map((stage) => (
-                  <option key={stage.id} value={stage.id}>
-                    {stage.label}
+                  <option key={stage} value={stage}>
+                    {t(stageLabelKeys[stage])}
                   </option>
                 ))}
               </select>
               <button disabled={busy} onClick={regenerate} type="button">
-                重新生成
+                {t("story.generator.regenerate")}
               </button>
               <button disabled={busy} onClick={openEditor} type="button">
-                打开编辑器
+                {t("story.generator.openEditor")}
               </button>
             </section>
           ) : null}

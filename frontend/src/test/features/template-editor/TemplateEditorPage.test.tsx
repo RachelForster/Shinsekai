@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
@@ -89,13 +90,18 @@ function renderPage() {
   });
 
   return render(
-    <QueryClientProvider client={client}>
-      <ToastProvider>
-        <I18nProvider language="en">
-          <TemplateEditorPage />
-        </I18nProvider>
-      </ToastProvider>
-    </QueryClientProvider>,
+    <MemoryRouter initialEntries={["/settings/templates"]}>
+      <QueryClientProvider client={client}>
+        <ToastProvider>
+          <I18nProvider language="en">
+            <Routes>
+              <Route element={<TemplateEditorPage />} path="/settings/templates" />
+              <Route element={<div>Story creator page</div>} path="/settings/stories/new" />
+            </Routes>
+          </I18nProvider>
+        </ToastProvider>
+      </QueryClientProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -531,5 +537,19 @@ describe("TemplateEditorPage", () => {
     );
     expect(mockInstallMissingRuntimeDependency).toHaveBeenCalledWith({ moduleName: "mem0" });
     expect(mockShowChatSurface).not.toHaveBeenCalled();
+  });
+
+  it("opens the story creator from story play mode", async () => {
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open story creator" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Free mode" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Story mode" }));
+    expect(screen.getByRole("button", { name: "Story mode" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Open story creator" }));
+
+    expect(await screen.findByText("Story creator page")).toBeInTheDocument();
   });
 });

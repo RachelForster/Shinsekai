@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StoryGeneratorPage } from "../../../features/story-generator/StoryGeneratorPage";
 import type { StoryGenerationTask } from "../../../entities/story/types";
+import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
 const startStoryGeneration = vi.fn();
 const resumeStoryGeneration = vi.fn();
@@ -51,16 +52,22 @@ function generatedTask(status: StoryGenerationTask["status"] = "succeeded"): Sto
   };
 }
 
+function renderPage() {
+  return render(
+    <I18nProvider language="zh_CN">
+      <MemoryRouter>
+        <StoryGeneratorPage />
+      </MemoryRouter>
+    </I18nProvider>,
+  );
+}
+
 describe("StoryGeneratorPage", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("generates a draft and previews assumptions and validation", async () => {
     startStoryGeneration.mockResolvedValue(generatedTask());
-    render(
-      <MemoryRouter>
-        <StoryGeneratorPage />
-      </MemoryRouter>,
-    );
+    renderPage();
 
     fireEvent.change(screen.getByRole("textbox", { name: "剧情梗概" }), { target: { value: "调查废弃校舍" } });
     fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
@@ -74,11 +81,7 @@ describe("StoryGeneratorPage", () => {
   it("resumes a failed task from its checkpoint", async () => {
     startStoryGeneration.mockResolvedValue(generatedTask("failed"));
     resumeStoryGeneration.mockResolvedValue(generatedTask());
-    render(
-      <MemoryRouter>
-        <StoryGeneratorPage />
-      </MemoryRouter>,
-    );
+    renderPage();
 
     fireEvent.change(screen.getByRole("textbox", { name: "剧情梗概" }), { target: { value: "断点剧本" } });
     fireEvent.click(screen.getByRole("button", { name: "开始生成" }));

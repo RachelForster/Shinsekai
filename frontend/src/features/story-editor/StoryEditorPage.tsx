@@ -21,6 +21,8 @@ import type {
   StoryPathPreview,
   StoryProjectDocument,
 } from "../../entities/story/types";
+import { useI18n } from "../../shared/i18n";
+import type { MessageKey } from "../../shared/i18n";
 import "./StoryEditorPage.css";
 
 type StoryObject = Record<string, unknown>;
@@ -98,7 +100,14 @@ function initialCastPolicy() {
   };
 }
 
+function nodeTypeLabel(type: string, t: (key: MessageKey) => string) {
+  if (type === "ending") return t("story.editor.nodeType.ending");
+  if (type === "story") return t("story.editor.nodeType.story");
+  return type;
+}
+
 export function StoryEditorPage() {
+  const { t } = useI18n();
   const { storyId = "" } = useParams();
   const [document, setDocument] = useState<StoryProjectDocument | null>(null);
   const [graph, setGraph] = useState<StoryGraphProjection>(emptyGraph);
@@ -193,7 +202,7 @@ export function StoryEditorPage() {
         path: "/narrativeGraph/nodes/-",
         value: {
           id,
-          title: `新场景 ${index}`,
+          title: t("story.editor.newScene", { index }),
           commitment: "draft",
           castPolicy: initialCastPolicy(),
           choices: [],
@@ -213,7 +222,7 @@ export function StoryEditorPage() {
     void commit(
       appendOperations(source, `/narrativeGraph/nodes/${selectedNodeIndex}/choices`, {
         id,
-        label: `选择 ${index}`,
+        label: t("story.editor.newChoice", { index }),
         goto: "",
         effects: [],
         when: { true: [] },
@@ -281,9 +290,7 @@ export function StoryEditorPage() {
       ruleNodes.map((node) => String(node.id || "")),
       "rule-",
     );
-    void commit(
-      appendOperations(source, "/logicGraph/nodes", { id, type: "story-start", config: {} }),
-    );
+    void commit(appendOperations(source, "/logicGraph/nodes", { id, type: "story-start", config: {} }));
   };
 
   const undo = async () => {
@@ -368,7 +375,12 @@ export function StoryEditorPage() {
     try {
       const result = await publishStoryProject(storyId, document.manifest.draftRevision);
       setError(
-        `已发布 v${result.version} · ${result.saveCompatibility.compatibleWithPrevious ? "存档兼容" : "含破坏性变更"}`,
+        t(
+          result.saveCompatibility.compatibleWithPrevious
+            ? "story.editor.publishCompatible"
+            : "story.editor.publishBreaking",
+          { version: result.version },
+        ),
       );
       await refresh();
     } catch (reason) {
@@ -384,7 +396,7 @@ export function StoryEditorPage() {
   if (!storyId) {
     return (
       <main className="story-editor-page">
-        <p>缺少剧本 ID。</p>
+        <p>{t("story.editor.missingId")}</p>
       </main>
     );
   }
@@ -393,19 +405,22 @@ export function StoryEditorPage() {
     <main className="story-editor-page">
       <header className="story-editor-header">
         <div>
-          <Link to="/settings/stories/new">← 剧本生成器</Link>
-          <p className="story-editor-eyebrow">STORY CREATOR</p>
-          <h1>{document?.manifest.title ?? "加载剧本…"}</h1>
+          <Link to="/settings/stories/new">{t("story.editor.backToGenerator")}</Link>
+          <p className="story-editor-eyebrow">{t("story.editor.eyebrow")}</p>
+          <h1>{document?.manifest.title ?? t("story.editor.loading")}</h1>
           <p>
-            草稿 r{document?.manifest.draftRevision ?? 0} · 已发布 v{document?.manifest.publishedVersion ?? 0}
+            {t("story.editor.draftPublished", {
+              revision: document?.manifest.draftRevision ?? 0,
+              version: document?.manifest.publishedVersion ?? 0,
+            })}
           </p>
         </div>
         <div className="story-editor-actions">
           <button disabled={busy || !document} onClick={undo} type="button">
-            撤销
+            {t("story.editor.undo")}
           </button>
           <button disabled={busy || !document} onClick={validate} type="button">
-            发布前校验
+            {t("story.editor.validate")}
           </button>
           <button
             className="primary"
@@ -413,7 +428,7 @@ export function StoryEditorPage() {
             onClick={publish}
             type="button"
           >
-            发布版本
+            {t("story.editor.publish")}
           </button>
         </div>
       </header>
@@ -427,12 +442,12 @@ export function StoryEditorPage() {
       <section className="story-editor-layout">
         <aside className="story-editor-sidebar">
           <div className="story-editor-section-title">
-            <h2>剧情节点</h2>
+            <h2>{t("story.editor.nodes")}</h2>
             <button disabled={busy} onClick={addNode} type="button">
-              + 节点
+              {t("story.editor.addNode")}
             </button>
           </div>
-          <nav aria-label="剧情节点">
+          <nav aria-label={t("story.editor.nodes")}>
             {nodes.map((node) => (
               <button
                 className={node.id === selectedNodeId ? "selected" : ""}
@@ -441,12 +456,12 @@ export function StoryEditorPage() {
                 type="button"
               >
                 <span>{String(node.title || node.id)}</span>
-                <small>{String(node.type || "story")}</small>
+                <small>{nodeTypeLabel(String(node.type || "story"), t)}</small>
               </button>
             ))}
           </nav>
           <div className="story-editor-section-title">
-            <h2>结局试演</h2>
+            <h2>{t("story.editor.endings")}</h2>
           </div>
           {endings.map((node) => (
             <button
@@ -456,7 +471,7 @@ export function StoryEditorPage() {
               onClick={() => previewEnding(String(node.id))}
               type="button"
             >
-              试演 {String(node.title || node.id)}
+              {t("story.editor.previewEnding", { title: String(node.title || node.id) })}
             </button>
           ))}
         </aside>
@@ -465,11 +480,11 @@ export function StoryEditorPage() {
           {selectedNode ? (
             <article className="story-editor-card">
               <div className="story-editor-section-title">
-                <h2>场景与节点</h2>
+                <h2>{t("story.editor.selectedNode")}</h2>
                 <code>{String(selectedNode.id)}</code>
               </div>
               <label>
-                标题
+                {t("story.editor.nodeTitle")}
                 <input
                   onBlur={(event) => updateNode("title", event.target.value)}
                   defaultValue={String(selectedNode.title || "")}
@@ -477,33 +492,33 @@ export function StoryEditorPage() {
               </label>
               <div className="story-editor-two-col">
                 <label>
-                  节点类型
+                  {t("story.editor.nodeType")}
                   <select
                     value={String(selectedNode.type || "story")}
                     onChange={(event) => updateNode("type", event.target.value)}
                   >
-                    <option value="story">剧情场景</option>
-                    <option value="ending">结局</option>
+                    <option value="story">{t("story.editor.nodeType.story")}</option>
+                    <option value="ending">{t("story.editor.nodeType.ending")}</option>
                   </select>
                 </label>
                 <label>
-                  承诺边界
+                  {t("story.editor.commitment")}
                   <select
                     value={String(selectedNode.commitment || "draft")}
                     onChange={(event) => updateNode("commitment", event.target.value)}
                   >
-                    <option value="draft">草稿</option>
-                    <option value="committed">已承诺</option>
-                    <option value="frozen">冻结</option>
+                    <option value="draft">{t("story.editor.commitment.draft")}</option>
+                    <option value="committed">{t("story.editor.commitment.committed")}</option>
+                    <option value="frozen">{t("story.editor.commitment.frozen")}</option>
                   </select>
                 </label>
               </div>
               <fieldset>
-                <legend>进入条件</legend>
+                <legend>{t("story.editor.enterCondition")}</legend>
                 <label>
-                  变量阈值（留空表示总是可进入）
+                  {t("story.editor.enterWhen")}
                   <input
-                    placeholder="例如 trust.ling >= 10"
+                    placeholder={t("story.editor.enterWhenPlaceholder")}
                     onBlur={(event) => {
                       const match = event.target.value.trim().match(/^([^\s]+)\s*>=\s*(-?\d+)$/);
                       updateNode("enterWhen", match ? { gte: [match[1], Number(match[2])] } : { true: [] });
@@ -512,31 +527,31 @@ export function StoryEditorPage() {
                 </label>
               </fieldset>
               <fieldset>
-                <legend>进入效果</legend>
+                <legend>{t("story.editor.enterEffects")}</legend>
                 <div className="story-editor-inline">
                   <input
-                    placeholder="变量 ID"
+                    placeholder={t("story.editor.variableId")}
                     value={effectTarget}
                     onChange={(event) => setEffectTarget(event.target.value)}
                   />
                   <input
-                    aria-label="效果增量"
+                    aria-label={t("story.editor.effectAmount")}
                     type="number"
                     value={effectAmount}
                     onChange={(event) => setEffectAmount(event.target.value)}
                   />
                   <button disabled={busy || !effectTarget.trim()} onClick={addEffect} type="button">
-                    添加增量
+                    {t("story.editor.addEffect")}
                   </button>
                 </div>
-                <p>当前效果：{asArray(selectedNode.onEnter).length} 条</p>
+                <p>{t("story.editor.effectCount", { count: asArray(selectedNode.onEnter).length })}</p>
               </fieldset>
               <fieldset>
-                <legend>结构化选项</legend>
+                <legend>{t("story.editor.choices")}</legend>
                 {asArray(selectedNode.choices).map((choice, choiceIndex) => (
                   <div className="story-editor-choice" key={String(choice.id)}>
                     <input
-                      aria-label={`选项 ${choiceIndex + 1} 文案`}
+                      aria-label={t("story.editor.choiceLabel", { index: choiceIndex + 1 })}
                       defaultValue={String(choice.label || "")}
                       onBlur={(event) =>
                         void commit([
@@ -549,7 +564,7 @@ export function StoryEditorPage() {
                       }
                     />
                     <select
-                      aria-label={`选项 ${choiceIndex + 1} 目标`}
+                      aria-label={t("story.editor.choiceGoto", { index: choiceIndex + 1 })}
                       value={String(choice.goto || "")}
                       onChange={(event) =>
                         void commit([
@@ -561,7 +576,7 @@ export function StoryEditorPage() {
                         ])
                       }
                     >
-                      <option value="">选择目标节点</option>
+                      <option value="">{t("story.editor.choiceTarget")}</option>
                       {nodes.map((node) => (
                         <option key={String(node.id)} value={String(node.id)}>
                           {String(node.title || node.id)}
@@ -577,47 +592,47 @@ export function StoryEditorPage() {
                       }
                       type="button"
                     >
-                      删除
+                      {t("story.editor.delete")}
                     </button>
                   </div>
                 ))}
                 <button disabled={busy} onClick={addChoice} type="button">
-                  + 添加选择
+                  {t("story.editor.addChoice")}
                 </button>
               </fieldset>
             </article>
           ) : (
             <article className="story-editor-card">
-              <p>选择一个节点开始编辑。</p>
+              <p>{t("story.editor.selectNode")}</p>
             </article>
           )}
 
           <article className="story-editor-card">
             <div className="story-editor-section-title">
-              <h2>演员表与 CastPolicy</h2>
+              <h2>{t("story.editor.castTitle")}</h2>
               <button disabled={busy || !selectedNode} onClick={inspectCast} type="button">
-                预览演员表
+                {t("story.editor.castPreview")}
               </button>
             </div>
             {selectedNode ? (
               <>
                 <div className="story-editor-two-col">
                   <label>
-                    模式
+                    {t("story.editor.castMode")}
                     <select
                       value={String(castPolicy.mode || "fixed")}
                       onChange={(event) =>
                         updateCastPolicy({ ...initialCastPolicy(), ...castPolicy, mode: event.target.value })
                       }
                     >
-                      <option value="fixed">固定</option>
-                      <option value="mixed">混合</option>
-                      <option value="role-based">职责驱动</option>
-                      <option value="dynamic">动态候选</option>
+                      <option value="fixed">{t("story.editor.castMode.fixed")}</option>
+                      <option value="mixed">{t("story.editor.castMode.mixed")}</option>
+                      <option value="role-based">{t("story.editor.castMode.roleBased")}</option>
+                      <option value="dynamic">{t("story.editor.castMode.dynamic")}</option>
                     </select>
                   </label>
                   <label>
-                    最大活跃人数
+                    {t("story.editor.maxActive")}
                     <input
                       type="number"
                       min="0"
@@ -633,7 +648,7 @@ export function StoryEditorPage() {
                   </label>
                 </div>
                 <label>
-                  固定角色（以逗号分隔）
+                  {t("story.editor.castRequired")}
                   <input
                     value={asTextList(castPolicy.required).join(", ")}
                     onChange={(event) =>
@@ -691,19 +706,21 @@ export function StoryEditorPage() {
                     onClick={() => void commit([{ op: "remove", path: `/cast/characters/${index}` }])}
                     type="button"
                   >
-                    移除
+                    {t("story.editor.remove")}
                   </button>
                 </div>
               ))}
             </div>
             <button disabled={busy} onClick={addCharacter} type="button">
-              + 人物
+              {t("story.editor.addCharacter")}
             </button>
             {castPreview ? (
               <div className="story-editor-preview">
                 <p>
                   {castPreview.valid
-                    ? `已选：${castPreview.activeCharacterIds.join("、") || "无人"}`
+                    ? t("story.editor.castSelected", {
+                        ids: castPreview.activeCharacterIds.join("、") || t("story.editor.castEmpty"),
+                      })
                     : castPreview.error?.message}
                 </p>
                 <ul>
@@ -719,21 +736,21 @@ export function StoryEditorPage() {
 
           <article className="story-editor-card">
             <div className="story-editor-section-title">
-              <h2>变量、语义信号与规则</h2>
+              <h2>{t("story.editor.variablesTitle")}</h2>
               <div>
                 <button disabled={busy} onClick={addVariable} type="button">
-                  + 变量
+                  {t("story.editor.addVariable")}
                 </button>
                 <button disabled={busy} onClick={addSignal} type="button">
-                  + 信号
+                  {t("story.editor.addSignal")}
                 </button>
                 <button disabled={busy} onClick={addRuleNode} type="button">
-                  + 规则节点
+                  {t("story.editor.addRule")}
                 </button>
               </div>
             </div>
             <div className="story-editor-table">
-              <h3>变量</h3>
+              <h3>{t("story.editor.variables")}</h3>
               {Object.entries(variables).map(([id, definition]) => {
                 const item = asObject(definition);
                 return (
@@ -747,10 +764,10 @@ export function StoryEditorPage() {
                         ])
                       }
                     >
-                      <option value="integer">整数</option>
-                      <option value="boolean">布尔</option>
-                      <option value="enum">枚举</option>
-                      <option value="string_set">字符串集合</option>
+                      <option value="integer">{t("story.editor.variableType.integer")}</option>
+                      <option value="boolean">{t("story.editor.variableType.boolean")}</option>
+                      <option value="enum">{t("story.editor.variableType.enum")}</option>
+                      <option value="string_set">{t("story.editor.variableType.stringSet")}</option>
                     </select>
                     <input
                       aria-label={`${id} initial`}
@@ -770,18 +787,18 @@ export function StoryEditorPage() {
                       onClick={() => void commit([{ op: "remove", path: `/variables/${pointer(id)}` }])}
                       type="button"
                     >
-                      删除
+                      {t("story.editor.delete")}
                     </button>
                   </div>
                 );
               })}
             </div>
             <div className="story-editor-table">
-              <h3>语义信号</h3>
+              <h3>{t("story.editor.signals")}</h3>
               {signals.map((signal, index) => (
                 <div key={String(signal.id)}>
                   <input
-                    aria-label={`信号 ${index + 1} ID`}
+                    aria-label={t("story.editor.signalId", { index: index + 1 })}
                     defaultValue={String(signal.id || "")}
                     onBlur={(event) =>
                       void commit([{ op: "replace", path: `/semanticSignals/${index}/id`, value: event.target.value }])
@@ -799,27 +816,27 @@ export function StoryEditorPage() {
                       ])
                     }
                   >
-                    <option value="low">低</option>
-                    <option value="medium">中</option>
-                    <option value="high">高</option>
+                    <option value="low">{t("story.editor.confidence.low")}</option>
+                    <option value="medium">{t("story.editor.confidence.medium")}</option>
+                    <option value="high">{t("story.editor.confidence.high")}</option>
                   </select>
                   <button
                     disabled={busy}
                     onClick={() => void commit([{ op: "remove", path: `/semanticSignals/${index}` }])}
                     type="button"
                   >
-                    删除
+                    {t("story.editor.delete")}
                   </button>
                 </div>
               ))}
             </div>
             <div className="story-editor-table">
-              <h3>逻辑图节点</h3>
+              <h3>{t("story.editor.rules")}</h3>
               {ruleNodes.map((node, index) => (
                 <div key={String(node.id)}>
                   <code>{String(node.id)}</code>
                   <input
-                    aria-label={`规则 ${index + 1} 类型`}
+                    aria-label={t("story.editor.ruleType", { index: index + 1 })}
                     defaultValue={String(node.type || "")}
                     onBlur={(event) =>
                       void commit([
@@ -832,7 +849,7 @@ export function StoryEditorPage() {
                     onClick={() => void commit([{ op: "remove", path: `/logicGraph/nodes/${index}` }])}
                     type="button"
                   >
-                    删除
+                    {t("story.editor.delete")}
                   </button>
                 </div>
               ))}
@@ -841,22 +858,27 @@ export function StoryEditorPage() {
 
           <article className="story-editor-card">
             <div className="story-editor-section-title">
-              <h2>AI 局部重生与差异</h2>
+              <h2>{t("story.editor.aiTitle")}</h2>
               <button disabled={busy || !selectedNode || !aiInstruction.trim()} onClick={askAi} type="button">
-                生成补丁
+                {t("story.editor.aiGenerate")}
               </button>
             </div>
             <textarea
-              aria-label="AI 修改说明"
+              aria-label={t("story.editor.aiInstruction")}
               value={aiInstruction}
               onChange={(event) => setAiInstruction(event.target.value)}
-              placeholder="例如：强化这一场景的抉择，但保持现有节点 ID 和所有已承诺事实。"
+              placeholder={t("story.editor.aiPlaceholder")}
               rows={3}
             />
             {proposal ? (
               <div className="story-editor-proposal">
                 <p>
-                  候选补丁：{proposal.diff.length} 项差异，{proposal.validation.valid ? "已通过校验" : "仍有校验问题"}
+                  {t("story.editor.aiProposal", {
+                    count: proposal.diff.length,
+                    status: t(
+                      proposal.validation.valid ? "story.editor.validationPassed" : "story.editor.validationFailed",
+                    ),
+                  })}
                 </p>
                 <ul>
                   {proposal.diff.map((item) => (
@@ -871,7 +893,7 @@ export function StoryEditorPage() {
                   onClick={applyProposal}
                   type="button"
                 >
-                  应用此补丁
+                  {t("story.editor.aiApply")}
                 </button>
               </div>
             ) : null}
@@ -880,9 +902,9 @@ export function StoryEditorPage() {
 
         <aside className="story-editor-inspector">
           <section className="story-editor-card">
-            <h2>图与端口诊断</h2>
+            <h2>{t("story.editor.graphTitle")}</h2>
             <GraphCanvas graph={graph} />
-            <h3>源码映射</h3>
+            <h3>{t("story.editor.sourceMap")}</h3>
             <ul className="story-editor-source-map">
               {Object.entries(graph.sourceMap)
                 .slice(0, 14)
@@ -895,20 +917,23 @@ export function StoryEditorPage() {
             </ul>
           </section>
           <section className="story-editor-card">
-            <h2>校验问题</h2>
+            <h2>{t("story.editor.diagnostics")}</h2>
             <Diagnostics validation={validation} />
           </section>
           {pathPreview ? (
             <section className="story-editor-card">
-              <h2>测试分支</h2>
+              <h2>{t("story.editor.pathPreview")}</h2>
               <p>
                 <code>{pathPreview.branchId}</code>
               </p>
-              <p>最终节点：{String(pathPreview.finalState.currentNodeId || "-")}</p>
+              <p>{t("story.editor.finalNode", { id: String(pathPreview.finalState.currentNodeId || "-") })}</p>
               <ol>
                 {pathPreview.snapshots.map((snapshot) => (
                   <li key={snapshot.step}>
-                    步骤 {snapshot.step} · {String(snapshot.action.type || "start")}
+                    {t("story.editor.step", {
+                      step: snapshot.step,
+                      action: String(snapshot.action.type || "start"),
+                    })}
                   </li>
                 ))}
               </ol>
@@ -921,6 +946,7 @@ export function StoryEditorPage() {
 }
 
 function GraphCanvas({ graph }: { graph: StoryGraphProjection }) {
+  const { t } = useI18n();
   const nodes = useMemo(() => [...graph.narrative.nodes, ...graph.rules.nodes], [graph]);
   const edges = useMemo(
     () => [
@@ -945,7 +971,7 @@ function GraphCanvas({ graph }: { graph: StoryGraphProjection }) {
           </div>
         ))}
         {edges.length ? (
-          <ul className="story-editor-graph-edges" aria-label="图关系">
+          <ul className="story-editor-graph-edges" aria-label={t("story.editor.graphEdges")}>
             {edges.map((edge) => (
               <li key={edge}>{edge}</li>
             ))}
@@ -957,9 +983,9 @@ function GraphCanvas({ graph }: { graph: StoryGraphProjection }) {
 }
 
 function Diagnostics({ validation }: { validation: StoryGenerationValidation | null }) {
-  if (!validation) return <p>正在读取校验结果…</p>;
-  if (!validation.issues.length)
-    return <p className="story-editor-valid">Schema、引用、路径、演员表与秘密隔离均已通过。</p>;
+  const { t } = useI18n();
+  if (!validation) return <p>{t("story.editor.diagnosticsLoading")}</p>;
+  if (!validation.issues.length) return <p className="story-editor-valid">{t("story.editor.diagnosticsPass")}</p>;
   return (
     <ul className="story-editor-diagnostics">
       {validation.issues.map((issue) => (

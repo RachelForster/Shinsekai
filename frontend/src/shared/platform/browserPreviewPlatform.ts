@@ -289,10 +289,7 @@ function resolvePreviewPointerParent(root: Record<string, unknown>, tokens: stri
   return { parent: current, key: tokens[tokens.length - 1] ?? "" };
 }
 
-function applyPreviewReplaceDomain(
-  source: Record<string, unknown>,
-  operation: StoryPatchOperation,
-) {
+function applyPreviewReplaceDomain(source: Record<string, unknown>, operation: StoryPatchOperation) {
   const specs: Record<string, { idField: keyof StoryPatchOperation; collection: unknown }> = {
     "replace-node": {
       idField: "nodeId",
@@ -339,11 +336,7 @@ function applyPreviewReplaceDomain(
   throw new Error("operation target was not found");
 }
 
-function applyPreviewStoryOperation(
-  source: Record<string, unknown>,
-  operation: StoryPatchOperation,
-  index: number,
-) {
+function applyPreviewStoryOperation(source: Record<string, unknown>, operation: StoryPatchOperation, index: number) {
   if (operation.op.startsWith("replace-")) {
     applyPreviewReplaceDomain(source, operation);
     return;
@@ -386,10 +379,7 @@ function applyPreviewStoryOperation(
   record[key] = clone(operation.value);
 }
 
-function applyPreviewStoryPatch(
-  source: Record<string, unknown>,
-  operations: StoryPatchOperation[],
-) {
+function applyPreviewStoryPatch(source: Record<string, unknown>, operations: StoryPatchOperation[]) {
   if (!operations.length) {
     throw new Error("patch operations must be a non-empty array");
   }
@@ -2736,9 +2726,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       patchProject: async ({ id, allowInvalid = true, baseRevision, commit, patch }) => {
         const document = requirePreviewStory(id);
         if (document.manifest.draftRevision !== baseRevision) {
-          throw new Error(
-            `expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`,
-          );
+          throw new Error(`expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`);
         }
         const candidate = applyPreviewStoryPatch(document.source, patch.operations);
         const validation = document.validation;
@@ -2810,9 +2798,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       publishProject: async (id, baseRevision) => {
         const document = requirePreviewStory(id);
         if (document.manifest.draftRevision !== baseRevision) {
-          throw new Error(
-            `expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`,
-          );
+          throw new Error(`expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`);
         }
         const version = document.manifest.publishedVersion + 1;
         const sourceHash = `preview-source-v${version}`;
@@ -2846,9 +2832,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       undoProject: async (id, baseRevision) => {
         const document = requirePreviewStory(id);
         if (document.manifest.draftRevision !== baseRevision) {
-          throw new Error(
-            `expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`,
-          );
+          throw new Error(`expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`);
         }
         const previous = previewStoryHistory.get(previewUndoCursor - 1);
         if (!previous) {

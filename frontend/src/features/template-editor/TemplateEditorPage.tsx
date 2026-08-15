@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
@@ -58,8 +59,11 @@ import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
 
+type PlayMode = "free" | "story";
+
 export function TemplateEditorPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const { t } = useI18n();
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
@@ -107,6 +111,7 @@ export function TemplateEditorPage() {
   const [useStat, setUseStat] = useState(true);
   const [mobileAccessEnabled, setMobileAccessEnabled] = useState(false);
   const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
+  const [playMode, setPlayMode] = useState<PlayMode>("free");
   const [maxSpeechChars, setMaxSpeechChars] = useState(0);
   const [maxDialogItems, setMaxDialogItems] = useState(0);
   const [initSpritePath, setInitSpritePath] = useState("");
@@ -773,6 +778,38 @@ export function TemplateEditorPage() {
                   />
                 </label>
                 <p>{t("template.mobileAccessHint")}</p>
+              </div>
+
+              <div className="template-play-mode">
+                <span className="template-panel__label">{t("template.field.playMode")}</span>
+                <div aria-label={t("template.field.playMode")} className="template-play-mode-segments" role="group">
+                  <button
+                    aria-pressed={playMode === "free"}
+                    className={`template-language-segment${
+                      playMode === "free" ? " template-language-segment--active" : ""
+                    }`}
+                    onClick={() => setPlayMode("free")}
+                    type="button"
+                  >
+                    {t("template.playMode.free")}
+                  </button>
+                  <button
+                    aria-pressed={playMode === "story"}
+                    className={`template-language-segment${
+                      playMode === "story" ? " template-language-segment--active" : ""
+                    }`}
+                    onClick={() => setPlayMode("story")}
+                    type="button"
+                  >
+                    {t("template.playMode.story")}
+                  </button>
+                </div>
+                <p>{t(playMode === "story" ? "template.playMode.storyHint" : "template.playMode.freeHint")}</p>
+                {playMode === "story" ? (
+                  <Button onClick={() => navigate("/settings/stories/new")} type="button">
+                    {t("template.playMode.openCreator")}
+                  </Button>
+                ) : null}
               </div>
 
               {effects.length > 0 ? (

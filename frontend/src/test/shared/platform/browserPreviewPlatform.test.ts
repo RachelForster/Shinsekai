@@ -939,8 +939,11 @@ describe("browser preview story authoring", () => {
     expect(patched.committed).toBe(true);
     expect((patched.source.narrativeGraph as { nodes: Array<{ title: string }> }).nodes[0].title).toBe("B");
     expect(
-      ((await resolvePreview(platform.story.getProject("preview-story"))).source.narrativeGraph as { nodes: Array<{ title: string }> })
-        .nodes[0].title,
+      (
+        (await resolvePreview(platform.story.getProject("preview-story"))).source.narrativeGraph as {
+          nodes: Array<{ title: string }>;
+        }
+      ).nodes[0].title,
     ).toBe("B");
 
     const second = await resolvePreview(
@@ -970,8 +973,11 @@ describe("browser preview story authoring", () => {
     );
     expect(previewOnly.committed).toBe(false);
     expect(
-      ((await resolvePreview(platform.story.getProject("preview-story"))).source.narrativeGraph as { nodes: Array<{ title: string }> })
-        .nodes[0].title,
+      (
+        (await resolvePreview(platform.story.getProject("preview-story"))).source.narrativeGraph as {
+          nodes: Array<{ title: string }>;
+        }
+      ).nodes[0].title,
     ).toBe("A");
 
     const published = await resolvePreview(

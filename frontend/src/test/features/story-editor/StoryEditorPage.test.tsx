@@ -3,6 +3,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { StoryEditorPage } from "../../../features/story-editor/StoryEditorPage";
+import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 
 const getStoryProject = vi.fn();
 const getStoryProjectGraph = vi.fn();
@@ -85,11 +86,13 @@ const graph = {
 
 function renderPage() {
   return render(
-    <MemoryRouter initialEntries={["/settings/stories/campus-mystery/edit"]}>
-      <Routes>
-        <Route element={<StoryEditorPage />} path="/settings/stories/:storyId/edit" />
-      </Routes>
-    </MemoryRouter>,
+    <I18nProvider language="zh_CN">
+      <MemoryRouter initialEntries={["/settings/stories/campus-mystery/edit"]}>
+        <Routes>
+          <Route element={<StoryEditorPage />} path="/settings/stories/:storyId/edit" />
+        </Routes>
+      </MemoryRouter>
+    </I18nProvider>,
   );
 }
 
@@ -147,14 +150,15 @@ describe("StoryEditorPage", () => {
   });
 
   it("initializes a missing onEnter array before appending an effect", async () => {
+    const nodeWithoutEnter = { ...document.source.narrativeGraph.nodes[0] };
+    delete (nodeWithoutEnter as { onEnter?: unknown }).onEnter;
     const source = {
       ...document.source,
       narrativeGraph: {
         ...document.source.narrativeGraph,
-        nodes: [{ ...document.source.narrativeGraph.nodes[0] }],
+        nodes: [nodeWithoutEnter],
       },
     };
-    delete source.narrativeGraph.nodes[0].onEnter;
     getStoryProject.mockResolvedValue({ ...document, source });
     renderPage();
     await screen.findByRole("heading", { name: "校园谜案" });
