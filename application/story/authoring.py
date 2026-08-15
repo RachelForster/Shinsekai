@@ -423,6 +423,11 @@ class StoryAuthoringService:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
         return self.repository.list_projects()
 
+    def project_directory(self, project_id: str) -> Path:
+        self.flags.require(FeatureFlag.STORY_SYSTEM)
+        document = self.repository.load(project_id)
+        return self.repository._project_dir(str(document["manifest"]["id"]))
+
     def import_source(self, source: Mapping[str, Any]) -> dict[str, Any]:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
         payload = _json_copy(source)

@@ -392,6 +392,15 @@
 .template-play-mode .button {
   justify-self: start;
 }
+.template-play-mode-story {
+  display: grid;
+  gap: 8px;
+}
+.template-play-mode-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 
 .template-toggle-row {
   display: flex;

@@ -128,6 +128,7 @@ export function buildTemplateLaunchSession(input: {
   runtime: TemplateRuntimeOptions;
   selectedCharacters: string[];
   selectedTemplateId: string;
+  storyId?: string;
 }): TemplateLaunchSession {
   return {
     background: input.backgroundName,
@@ -141,6 +142,7 @@ export function buildTemplateLaunchSession(input: {
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.draft.scenario ?? ""),
     selectedCharacters: input.selectedCharacters,
+    storyId: input.storyId?.trim() || undefined,
     system: String(input.draft.system ?? ""),
     templateFileDropdown: input.selectedTemplateId,
     useCg: input.options.useCg,
@@ -163,6 +165,7 @@ export function buildChatLaunchPayload(input: {
   selectedCharacters: string[];
   template: TemplateSummary;
   useCg: boolean;
+  storyId?: string;
 }): ChatLaunchPayload {
   return {
     backgroundName: input.backgroundName,
@@ -174,6 +177,7 @@ export function buildChatLaunchPayload(input: {
     resetHistory: input.resetHistory,
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.template.scenario ?? ""),
+    storyId: input.storyId?.trim() || undefined,
     system: String(input.template.system ?? ""),
     templateId: input.template.id,
     templateName: input.template.name,
@@ -196,6 +200,7 @@ export function synchronizeChatLaunchPayloadWithSession(
     initSpritePath: session.initSpritePath.trim(),
     roomId: session.roomId.trim(),
     scenario: session.scenario,
+    storyId: session.storyId?.trim() || undefined,
     system: session.system,
     templateId: session.templateFileDropdown,
     templateName: session.filenameStub,

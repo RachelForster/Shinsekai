@@ -58,6 +58,9 @@ def service_at(tmp_path: Path, *, model: Any = None) -> StoryAuthoringService:
 def test_versioned_patch_diff_validation_and_undo(tmp_path: Path) -> None:
     service = service_at(tmp_path)
     document = service.import_source(story_source())
+    assert service.project_directory("campus-mystery") == tmp_path / "campus-mystery"
+    assert (service.project_directory("campus-mystery") / "manifest.json").is_file()
+    assert document["manifest"]["id"] == "campus-mystery"
 
     preview = service.apply_patch(
         "campus-mystery",

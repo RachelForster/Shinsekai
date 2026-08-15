@@ -25,6 +25,7 @@ const mockListTemplates = vi.fn();
 const mockRefreshRuntimeStatus = vi.fn();
 const mockSaveTemplate = vi.fn();
 const mockSaveTemplateSession = vi.fn();
+const mockListStoryProjects = vi.fn();
 const mockShowChatSurface = vi.fn();
 const mockUpdateRuntimeStatusFromSnapshot = vi.fn();
 const mockUseChatLaunchGuard = vi.fn();
@@ -65,6 +66,11 @@ vi.mock("../../../entities/template/repository", () => ({
   templatesQueryKey: ["templates"],
 }));
 
+vi.mock("../../../entities/story/repository", () => ({
+  listStoryProjects: () => mockListStoryProjects(),
+  storyProjectsQueryKey: ["story-projects"],
+}));
+
 vi.mock("../../../entities/effect/repository", () => ({
   effectsQueryKey: ["effects"],
   listEffects: () => mockListEffects(),
@@ -97,6 +103,7 @@ function renderPage() {
             <Routes>
               <Route element={<TemplateEditorPage />} path="/settings/templates" />
               <Route element={<div>Story creator page</div>} path="/settings/stories/new" />
+              <Route element={<div>Story editor campus-mystery</div>} path="/settings/stories/:storyId/edit" />
             </Routes>
           </I18nProvider>
         </ToastProvider>
@@ -122,6 +129,17 @@ describe("TemplateEditorPage", () => {
     ]);
     mockListBackgrounds.mockResolvedValue([{ name: "默认房间" }]);
     mockListEffects.mockResolvedValue([]);
+    mockListStoryProjects.mockResolvedValue([
+      {
+        createdAt: 1,
+        draftRevision: 1,
+        id: "campus-mystery",
+        publishedSourceHash: "",
+        publishedVersion: 0,
+        title: "校园谜案",
+        updatedAt: 2,
+      },
+    ]);
     mockSaveTemplate.mockImplementation(async (input) => ({ ...template, ...(input as object), id: "opening" }));
     mockGenerateTemplate.mockResolvedValue({
       ...template,
@@ -577,5 +595,38 @@ describe("TemplateEditorPage", () => {
 
     expect(await screen.findByRole("button", { name: "Open story creator" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Story mode" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("selects a saved story from story play mode and opens its editor", async () => {
+    mockGetAppConfig.mockResolvedValue({
+      ...sampleConfig,
+      system_config: { ...sampleConfig.system_config, story_system_enabled: true },
+    });
+    renderPage();
+
+    const storySelect = await screen.findByRole("combobox", { name: "Saved story" });
+    fireEvent.click(storySelect);
+    fireEvent.click(await screen.findByRole("option", { name: "校园谜案" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open selected story" }));
+
+    expect(await screen.findByText("Story editor campus-mystery")).toBeInTheDocument();
+  });
+
+  it("includes the selected story when launching from story play mode", async () => {
+    mockGetAppConfig.mockResolvedValue({
+      ...sampleConfig,
+      system_config: { ...sampleConfig.system_config, story_system_enabled: true },
+    });
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("combobox", { name: "Saved story" }));
+    fireEvent.click(await screen.findByRole("option", { name: "校园谜案" }));
+    fireEvent.click(screen.getByRole("button", { name: "Nanami" }));
+    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+
+    await waitFor(() => expect(mockLaunchChat).toHaveBeenCalled());
+    expect(mockSaveTemplateSession).toHaveBeenCalledWith(expect.objectContaining({ storyId: "campus-mystery" }));
+    expect(mockLaunchChat).toHaveBeenCalledWith(expect.objectContaining({ storyId: "campus-mystery" }));
   });
 });

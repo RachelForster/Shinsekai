@@ -15,6 +15,7 @@ import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelect
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
 import type { AppConfig } from "../../entities/config/types";
+import { listStoryProjects, storyProjectsQueryKey } from "../../entities/story/repository";
 import {
   generateTemplate,
   getTemplateSession,
@@ -116,6 +117,13 @@ export function TemplateEditorPage() {
   const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
   const [playMode, setPlayMode] = useState<PlayMode>("free");
   const playModeSyncedRef = useRef(false);
+  const [selectedStoryId, setSelectedStoryId] = useState("");
+  const storiesQuery = useQuery({
+    enabled: playMode === "story" && Boolean(appConfig?.system_config.story_system_enabled),
+    queryFn: listStoryProjects,
+    queryKey: storyProjectsQueryKey,
+  });
+  const storyProjects = storiesQuery.data ?? [];
   const [maxSpeechChars, setMaxSpeechChars] = useState(0);
   const [maxDialogItems, setMaxDialogItems] = useState(0);
   const [initSpritePath, setInitSpritePath] = useState("");
@@ -242,6 +250,7 @@ export function TemplateEditorPage() {
     setInitSpritePath(launchSession.initSpritePath || "");
     setHistoryPath(launchSession.historyPath || "");
     setRoomId(launchSession.roomId || "");
+    setSelectedStoryId(launchSession.storyId || "");
     const matchingTemplate = templates.find((template) => template.id === launchSession.templateFileDropdown);
     setSelectedId(matchingTemplate?.id ?? "");
     setDraft(
@@ -442,6 +451,7 @@ export function TemplateEditorPage() {
         current ? { ...current, system_config: saved } : current,
       );
       void queryClient.invalidateQueries({ queryKey: configQueryKey });
+      void queryClient.invalidateQueries({ queryKey: storyProjectsQueryKey });
     },
   });
 
@@ -572,6 +582,7 @@ export function TemplateEditorPage() {
           runtime: runtimeOptionsState,
           selectedCharacters,
           selectedTemplateId: selectedId,
+          storyId: playMode === "story" ? selectedStoryId : "",
         });
         const savedSession = await saveTemplateSession(session);
         queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
@@ -584,6 +595,7 @@ export function TemplateEditorPage() {
               resetHistory,
               runtime: runtimeOptionsState,
               selectedCharacters,
+              storyId: playMode === "story" ? selectedStoryId : "",
               template,
               useCg,
             }),
@@ -864,9 +876,36 @@ export function TemplateEditorPage() {
                 </div>
                 <p>{t(playMode === "story" ? "template.playMode.storyHint" : "template.playMode.freeHint")}</p>
                 {playMode === "story" ? (
-                  <Button onClick={() => void openStoryCreator()} type="button">
-                    {t("template.playMode.openCreator")}
-                  </Button>
+                  <div className="template-play-mode-story">
+                    <label className="template-stack-field">
+                      <span className="template-panel__label">{t("template.playMode.selectStory")}</span>
+                      <Select
+                        aria-label={t("template.playMode.selectStory")}
+                        onChange={(event) => setSelectedStoryId(event.target.value)}
+                        value={selectedStoryId}
+                      >
+                        <option value="">{t("template.playMode.selectStoryPlaceholder")}</option>
+                        {storyProjects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.title || project.id}
+                          </option>
+                        ))}
+                      </Select>
+                    </label>
+                    {storyProjects.length === 0 ? <p>{t("template.playMode.noStories")}</p> : null}
+                    <div className="template-play-mode-actions">
+                      <Button
+                        disabled={!selectedStoryId}
+                        onClick={() => navigate(`/settings/stories/${selectedStoryId}/edit`)}
+                        type="button"
+                      >
+                        {t("template.playMode.openEditor")}
+                      </Button>
+                      <Button onClick={() => void openStoryCreator()} type="button">
+                        {t("template.playMode.openCreator")}
+                      </Button>
+                    </div>
+                  </div>
                 ) : null}
               </div>
 

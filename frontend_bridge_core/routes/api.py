@@ -13,7 +13,7 @@ from email.policy import default as default_email_policy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
@@ -185,6 +185,7 @@ from application.story.authoring import (
     import_generation_task_for_state,
     story_authoring_service_for_state,
 )
+from config.feature_flags import FeatureFlag
 from frontend_bridge_core.static import _frontend_dist_root
 from application.runtime.tasks import (
     _create_task,
@@ -229,6 +230,31 @@ _ALLOWED_CUSTOM_ORIGIN_SCHEMES = {"shinsekai", "tauri"}
 _ALLOWED_LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "::1", "localhost", "tauri.localhost"}
 
 CHAT_RUNTIME_READY_TIMEOUT_SECONDS = 20.0
+
+
+def _resolve_launch_story_path(state: BridgeState, body: Mapping[str, Any] | None) -> str:
+    payload = body or {}
+    flags = getattr(getattr(state, "config_manager", None), "feature_flags", None)
+    if flags is None or not flags.is_enabled(FeatureFlag.STORY_SYSTEM):
+        return ""
+    story_id = str(payload.get("storyId") or "").strip()
+    if story_id:
+        return str(
+            story_authoring_service_for_state(state).project_directory(story_id)
+        )
+    return str(payload.get("storyPath") or "").strip()
+
+
+def _bind_story_from_launch_body(state: BridgeState, body: Mapping[str, Any] | None) -> None:
+    story_path = _resolve_launch_story_path(state, body)
+    if not story_path:
+        return
+    session = start_or_recover_story_session(
+        state,
+        story_path,
+        command_id=new_log_id(),
+    )
+    publish_story_transition(state, session.chat_snapshot())
 _POLLING_PATHS = {
     "/api/characters/memories/status",
     "/api/health",
@@ -1334,9 +1360,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/chat/command":
                 self._send_json(_handle_chat_command(self.state, body))
             elif method == "POST" and path == "/api/story/start":
-                story_path = str(body.get("storyPath") or "").strip()
+                story_path = _resolve_launch_story_path(self.state, body)
                 if not story_path:
-                    raise ValueError("storyPath is required")
+                    raise ValueError("storyPath or storyId is required")
                 session = start_or_recover_story_session(
                     self.state,
                     story_path,
@@ -1718,6 +1744,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self.state,
                 enabled=mobile_access_enabled,
             )
+            _bind_story_from_launch_body(self.state, body)
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
@@ -1792,6 +1819,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self.state,
             enabled=mobile_access_enabled,
         )
+        _bind_story_from_launch_body(self.state, body)
         return _chat_snapshot(
             self.state,
             "idle",
@@ -1863,6 +1891,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self.state,
                 enabled=mobile_access_enabled,
             )
+            _bind_story_from_launch_body(self.state, session)
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
@@ -1927,6 +1956,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self.state,
             enabled=mobile_access_enabled,
         )
+        _bind_story_from_launch_body(self.state, session)
         return _chat_snapshot(
             self.state,
             "idle",

@@ -226,6 +226,7 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
         "selectedCharacters": ["Alice", "42"],
         "system": "系统",
         "templateFileDropdown": "demo.txt",
+        "storyId": "",
         "workflowPath": "test/e2e/live_bridge_runtime.yaml",
         "useCg": True,
         "useChoice": False,

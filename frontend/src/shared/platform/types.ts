@@ -517,6 +517,7 @@ export interface ChatLaunchPayload {
   templateName?: string;
   templateId: string;
   useCg?: boolean;
+  storyId?: string;
 }
 
 export interface TemplateGenerateInput {
@@ -549,6 +550,7 @@ export interface TemplateLaunchSession {
   roomId: string;
   scenario: string;
   selectedCharacters: string[];
+  storyId?: string;
   system: string;
   templateFileDropdown: string;
   useCg: boolean;

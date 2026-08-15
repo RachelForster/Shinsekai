@@ -43,6 +43,12 @@ export function importGeneratedStoryProject(generationTaskId: string) {
   return getPlatform().story.importGeneratedProject(generationTaskId);
 }
 
+export function listStoryProjects() {
+  return getPlatform().story.listProjects();
+}
+
+export const storyProjectsQueryKey = ["story-projects"] as const;
+
 export function getStoryProject(id: string) {
   return getPlatform().story.getProject(id);
 }
