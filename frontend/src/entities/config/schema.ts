@@ -172,6 +172,12 @@ export const systemConfigFormSchema: Array<FormGroupSchema<SystemConfig>> = [
         name: "react_chat_flowchart_experimental_enabled",
         type: "checkbox",
       },
+      {
+        description: "开启后可使用结构化剧本能力。模板页选择剧本模式时会打开此开关，也可在此关闭。",
+        label: "剧本系统",
+        name: "story_system_enabled",
+        type: "checkbox",
+      },
     ],
   },
   {

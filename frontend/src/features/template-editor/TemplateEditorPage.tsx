@@ -14,6 +14,7 @@ import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
+import type { AppConfig } from "../../entities/config/types";
 import {
   generateTemplate,
   getTemplateSession,
@@ -112,6 +113,7 @@ export function TemplateEditorPage() {
   const [mobileAccessEnabled, setMobileAccessEnabled] = useState(false);
   const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
   const [playMode, setPlayMode] = useState<PlayMode>("free");
+  const playModeSyncedRef = useRef(false);
   const [maxSpeechChars, setMaxSpeechChars] = useState(0);
   const [maxDialogItems, setMaxDialogItems] = useState(0);
   const [initSpritePath, setInitSpritePath] = useState("");
@@ -276,6 +278,14 @@ export function TemplateEditorPage() {
   }, [appConfig, launchSession, sessionRestored, voiceLanguage]);
 
   useEffect(() => {
+    if (playModeSyncedRef.current || !appConfig) {
+      return;
+    }
+    playModeSyncedRef.current = true;
+    setPlayMode(appConfig.system_config.story_system_enabled ? "story" : "free");
+  }, [appConfig]);
+
+  useEffect(() => {
     if (!sessionRestored) {
       return;
     }
@@ -405,6 +415,30 @@ export function TemplateEditorPage() {
         message: error instanceof Error ? error.message : t("system.error.saveFallback"),
         title: t("common.saveFailed"),
       });
+    },
+  });
+
+  const storySystemMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const config = await getAppConfig();
+      return saveSystemConfig({
+        ...config.system_config,
+        story_system_enabled: enabled,
+      });
+    },
+    onError(error) {
+      setPlayMode(appConfig?.system_config.story_system_enabled ? "story" : "free");
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("system.error.saveFallback"),
+        title: t("common.saveFailed"),
+      });
+    },
+    onSuccess(saved) {
+      queryClient.setQueryData<AppConfig>(configQueryKey, (current) =>
+        current ? { ...current, system_config: saved } : current,
+      );
+      void queryClient.invalidateQueries({ queryKey: configQueryKey });
     },
   });
 
@@ -628,6 +662,25 @@ export function TemplateEditorPage() {
     voiceLanguageMutation.mutate(nextLanguage);
   };
 
+  const handlePlayModeChange = (nextMode: PlayMode) => {
+    if (nextMode === playMode || storySystemMutation.isPending) {
+      return;
+    }
+    setPlayMode(nextMode);
+    storySystemMutation.mutate(nextMode === "story");
+  };
+
+  const openStoryCreator = async () => {
+    if (!appConfig?.system_config.story_system_enabled) {
+      try {
+        await storySystemMutation.mutateAsync(true);
+      } catch {
+        return;
+      }
+    }
+    navigate("/settings/stories/new");
+  };
+
   const handleGenerateTemplate = () => {
     if (!selectedBackground) {
       showToast({
@@ -788,7 +841,8 @@ export function TemplateEditorPage() {
                     className={`template-language-segment${
                       playMode === "free" ? " template-language-segment--active" : ""
                     }`}
-                    onClick={() => setPlayMode("free")}
+                    disabled={storySystemMutation.isPending}
+                    onClick={() => handlePlayModeChange("free")}
                     type="button"
                   >
                     {t("template.playMode.free")}
@@ -798,7 +852,8 @@ export function TemplateEditorPage() {
                     className={`template-language-segment${
                       playMode === "story" ? " template-language-segment--active" : ""
                     }`}
-                    onClick={() => setPlayMode("story")}
+                    disabled={storySystemMutation.isPending}
+                    onClick={() => handlePlayModeChange("story")}
                     type="button"
                   >
                     {t("template.playMode.story")}
@@ -806,7 +861,7 @@ export function TemplateEditorPage() {
                 </div>
                 <p>{t(playMode === "story" ? "template.playMode.storyHint" : "template.playMode.freeHint")}</p>
                 {playMode === "story" ? (
-                  <Button onClick={() => navigate("/settings/stories/new")} type="button">
+                  <Button onClick={() => void openStoryCreator()} type="button">
                     {t("template.playMode.openCreator")}
                   </Button>
                 ) : null}

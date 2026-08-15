@@ -140,7 +140,10 @@ describe("TemplateEditorPage", () => {
     });
     mockInstallMissingRuntimeDependency.mockResolvedValue({ message: "installed" });
     mockSaveTemplateSession.mockImplementation(async (session) => session);
-    mockSaveSystemConfig.mockResolvedValue(sampleConfig.system_config);
+    mockSaveSystemConfig.mockImplementation(async (input) => ({
+      ...sampleConfig.system_config,
+      ...(input as object),
+    }));
     mockShowChatSurface.mockResolvedValue(undefined);
   });
 
@@ -548,8 +551,22 @@ describe("TemplateEditorPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Story mode" }));
     expect(screen.getByRole("button", { name: "Story mode" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() =>
+      expect(mockSaveSystemConfig).toHaveBeenCalledWith(expect.objectContaining({ story_system_enabled: true })),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Open story creator" }));
 
     expect(await screen.findByText("Story creator page")).toBeInTheDocument();
+  });
+
+  it("restores story play mode when the story system flag is already enabled", async () => {
+    mockGetAppConfig.mockResolvedValue({
+      ...sampleConfig,
+      system_config: { ...sampleConfig.system_config, story_system_enabled: true },
+    });
+    renderPage();
+
+    expect(await screen.findByRole("button", { name: "Open story creator" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Story mode" })).toHaveAttribute("aria-pressed", "true");
   });
 });
