@@ -145,4 +145,47 @@ describe("StoryEditorPage", () => {
     await waitFor(() => expect(previewStoryCast).toHaveBeenCalledWith({ id: "campus-mystery", nodeId: "opening" }));
     expect(await screen.findByText("已选：ling")).toBeInTheDocument();
   });
+
+  it("initializes a missing onEnter array before appending an effect", async () => {
+    const source = {
+      ...document.source,
+      narrativeGraph: {
+        ...document.source.narrativeGraph,
+        nodes: [{ ...document.source.narrativeGraph.nodes[0] }],
+      },
+    };
+    delete source.narrativeGraph.nodes[0].onEnter;
+    getStoryProject.mockResolvedValue({ ...document, source });
+    renderPage();
+    await screen.findByRole("heading", { name: "校园谜案" });
+    fireEvent.change(screen.getByPlaceholderText("变量 ID"), { target: { value: "trust.ling" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加增量" }));
+    await waitFor(() => expect(patchStoryProject).toHaveBeenCalled());
+    expect(patchStoryProject.mock.calls[0][0].patch.operations).toEqual([
+      { op: "add", path: "/narrativeGraph/nodes/0/onEnter", value: [] },
+      {
+        op: "add",
+        path: "/narrativeGraph/nodes/0/onEnter/-",
+        value: { increment: ["trust.ling", 1] },
+      },
+    ]);
+  });
+
+  it("does not reuse a remaining variable id after deletion", async () => {
+    getStoryProject.mockResolvedValue({
+      ...document,
+      source: {
+        ...document.source,
+        variables: { "state.variable_2": { initial: 0, type: "integer" } },
+      },
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: "校园谜案" });
+    fireEvent.click(screen.getByRole("button", { name: "+ 变量" }));
+    await waitFor(() => expect(patchStoryProject).toHaveBeenCalled());
+    expect(patchStoryProject.mock.calls[0][0].patch.operations[0]).toMatchObject({
+      op: "add",
+      path: "/variables/state.variable_1",
+    });
+  });
 });

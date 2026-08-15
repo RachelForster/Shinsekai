@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Mapping
+import json
 
 import pytest
 
@@ -11,6 +13,7 @@ from application.story.authoring import (
     StoryAuthoringService,
     StoryProjectRepository,
     _save_compatibility,
+    import_generation_task_for_state,
 )
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from test.unit.core.story.story_fixtures import campus_mystery_source
@@ -199,6 +202,202 @@ def test_save_compatibility_detects_removed_state_and_nodes() -> None:
         "variable.removed",
         "node.removed",
     }
+
+
+def test_repeated_undo_walks_backward_through_history(tmp_path: Path) -> None:
+    service = service_at(tmp_path)
+    service.import_source(story_source())
+    first = service.apply_patch(
+        "campus-mystery",
+        {
+            "operations": [
+                {
+                    "op": "replace-node",
+                    "nodeId": "truth-ending",
+                    "value": {
+                        **story_source()["narrativeGraph"]["nodes"][2],
+                        "title": "Revision B",
+                    },
+                }
+            ]
+        },
+        base_revision=1,
+        commit=True,
+    )
+    service.apply_patch(
+        "campus-mystery",
+        {
+            "operations": [
+                {
+                    "op": "replace-node",
+                    "nodeId": "truth-ending",
+                    "value": {
+                        **first["source"]["narrativeGraph"]["nodes"][2],
+                        "title": "Revision C",
+                    },
+                }
+            ]
+        },
+        base_revision=2,
+        commit=True,
+    )
+
+    undone_b = service.undo("campus-mystery", base_revision=3)
+    undone_a = service.undo("campus-mystery", base_revision=4)
+
+    assert undone_b["source"]["narrativeGraph"]["nodes"][2]["title"] == "Revision B"
+    assert undone_a["source"]["narrativeGraph"]["nodes"][2]["title"] == "雨声之后"
+
+
+def test_import_and_publish_copy_story_scoped_character_files(tmp_path: Path) -> None:
+    service = service_at(tmp_path / "projects")
+    source = story_source()
+    source["cast"]["characters"][0]["source"] = {
+        "type": "author-generated",
+        "path": "characters/ling.yaml",
+    }
+    service.import_source(source)
+    generated = tmp_path / "generated"
+    (generated / "characters").mkdir(parents=True)
+    (generated / "characters" / "ling.yaml").write_text(
+        "name: Ling\ncharacterSetting: Companion\n", encoding="utf-8"
+    )
+    (generated / "characters" / "detective-zhou.yaml").write_text(
+        "name: Zhou\ncharacterSetting: Investigator\n", encoding="utf-8"
+    )
+    service.repository.copy_story_scoped_resources("campus-mystery", generated, source)
+
+    project_dir = tmp_path / "projects" / "campus-mystery"
+    assert (project_dir / "characters" / "ling.yaml").is_file()
+    assert (project_dir / "characters" / "detective-zhou.yaml").is_file()
+
+    published = service.publish("campus-mystery", base_revision=1)
+    published_dir = Path(published["path"]).parent
+    assert (published_dir / "characters" / "ling.yaml").is_file()
+    assert (published_dir / "characters" / "detective-zhou.yaml").is_file()
+    assert (published_dir / ".complete").is_file()
+
+
+def test_import_generation_task_copies_character_profiles(tmp_path: Path) -> None:
+    flags = enabled_flags()
+    task_id = "gen-1"
+    task_dir = tmp_path / "generation" / task_id
+    (task_dir / "characters").mkdir(parents=True)
+    source = story_source()
+    source["cast"]["characters"][0]["source"] = {
+        "type": "author-generated",
+        "path": "characters/ling.yaml",
+    }
+    (task_dir / "draft.json").write_text(json.dumps(source), encoding="utf-8")
+    (task_dir / "characters" / "ling.yaml").write_text(
+        "name: Ling\ncharacterSetting: Companion\n", encoding="utf-8"
+    )
+
+    class Repository:
+        def task_directory(self, _task_id: str) -> Path:
+            return task_dir.resolve()
+
+    class Generation:
+        repository = Repository()
+
+        def get(self, _task_id: str) -> dict[str, Any]:
+            draft_path = str(task_dir.resolve() / "draft.json")
+            return {"status": "succeeded", "draftPath": draft_path}
+
+    project_root = tmp_path / "project"
+    state = SimpleNamespace(
+        config_manager=SimpleNamespace(feature_flags=flags),
+        project_root_dir=str(project_root),
+        story_generation_service=Generation(),
+    )
+    document = import_generation_task_for_state(state, task_id)
+    copied = (
+        project_root
+        / "data"
+        / "stories"
+        / "projects"
+        / "campus-mystery"
+        / "characters"
+        / "ling.yaml"
+    )
+    assert document["manifest"]["id"] == "campus-mystery"
+    assert copied.is_file()
+
+
+def test_interrupted_publication_can_be_retried(tmp_path: Path) -> None:
+    service = service_at(tmp_path)
+    service.import_source(story_source())
+    leftover = tmp_path / "campus-mystery" / "published" / "v1"
+    leftover.mkdir(parents=True)
+    (leftover / "story.json").write_text("{}", encoding="utf-8")
+
+    published = service.publish("campus-mystery", base_revision=1)
+
+    assert published["version"] == 1
+    assert Path(published["path"]).is_file()
+    payload = Path(published["path"]).read_text(encoding="utf-8")
+    assert '"id": "campus-mystery"' in payload
+
+
+def test_pending_draft_commit_is_applied_on_load(tmp_path: Path) -> None:
+    service = service_at(tmp_path)
+    service.import_source(story_source())
+    directory = tmp_path / "campus-mystery"
+    live = service.repository.load("campus-mystery")
+    next_source = deepcopy(live["source"])
+    next_source["title"] = "Recovered title"
+    staging = directory / ".commit"
+    staging.mkdir()
+    (staging / "draft.json").write_text(
+        json.dumps(next_source), encoding="utf-8"
+    )
+    next_manifest = {
+        **live["manifest"],
+        "draftRevision": 2,
+        "undoCursor": 2,
+        "title": "Recovered title",
+    }
+    (staging / "manifest.json").write_text(
+        json.dumps(next_manifest), encoding="utf-8"
+    )
+    (staging / "ready").write_text("1", encoding="utf-8")
+
+    recovered = service.get("campus-mystery")
+
+    assert recovered["manifest"]["draftRevision"] == 2
+    assert recovered["source"]["title"] == "Recovered title"
+    assert not staging.exists()
+
+
+class RoguePatchModel:
+    def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        return {
+            "operations": [
+                {
+                    "op": "replace-node",
+                    "nodeId": "truth-ending",
+                    "value": {**request["selectedSource"], "title": "Scoped"},
+                },
+                {
+                    "op": "replace",
+                    "path": "/variables/trust.ling/initial",
+                    "value": 99,
+                },
+            ]
+        }
+
+
+def test_ai_patch_rejects_operations_outside_selected_region(tmp_path: Path) -> None:
+    service = service_at(tmp_path, model=RoguePatchModel())
+    service.import_source(story_source())
+
+    with pytest.raises(StoryAuthoringError, match="outside authoring region"):
+        service.propose_ai_patch(
+            "campus-mystery",
+            base_revision=1,
+            region="node:truth-ending",
+            instruction="Rewrite only this ending",
+        )
 
 
 def test_flag_off_prevents_authoring_storage_creation(tmp_path: Path) -> None:

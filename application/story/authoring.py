@@ -8,12 +8,14 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import threading
 import time
 from typing import Any
 import uuid
 
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from sdk.path_utils import safe_child_path
 from core.story import (
     CastResolutionContext,
     CastResolutionError,
@@ -45,6 +47,16 @@ from .persistence import story_event_to_payload, story_state_to_payload
 MAX_HISTORY_ENTRIES = 100
 MAX_DIFF_ENTRIES = 300
 MAX_PREVIEW_STEPS = 100
+DRAFT_COMMIT_DIR = ".commit"
+DRAFT_COMMIT_READY = "ready"
+PUBLICATION_READY = ".complete"
+_STORY_SCOPED_CHARACTER_TYPES = frozenset({"author-generated", "embedded"})
+_REGION_REPLACE_OPS = {
+    "node": ("replace-node", "nodeId"),
+    "character": ("replace-character", "characterId"),
+    "variable": ("replace-variable", "variableId"),
+    "rule": ("replace-rule-node", "nodeId"),
+}
 
 
 class StoryAuthoringError(RuntimeError):
@@ -60,19 +72,27 @@ class StoryProjectRepository:
         flags.require(FeatureFlag.STORY_SYSTEM)
         self.flags = flags
         self.root = Path(root).expanduser().resolve(strict=False)
+        self._lock = threading.RLock()
 
     def list_projects(self) -> list[dict[str, Any]]:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
         if not self.root.is_dir():
             return []
         rows: list[dict[str, Any]] = []
-        for directory in sorted(self.root.iterdir(), key=lambda item: item.name):
-            manifest = directory / "manifest.json"
-            if directory.is_dir() and manifest.is_file():
+        with self._lock:
+            for directory in sorted(self.root.iterdir(), key=lambda item: item.name):
+                if not directory.is_dir():
+                    continue
                 try:
-                    rows.append(self._read_json(manifest))
+                    self._recover_pending(directory)
                 except StoryAuthoringError:
                     continue
+                manifest = directory / "manifest.json"
+                if manifest.is_file():
+                    try:
+                        rows.append(self._read_json(manifest))
+                    except StoryAuthoringError:
+                        continue
         return rows
 
     def create(self, source: Mapping[str, Any]) -> dict[str, Any]:
@@ -80,32 +100,31 @@ class StoryProjectRepository:
         payload = _json_copy(source)
         project_id = _safe_id(payload.get("id"), "story id")
         directory = self._project_dir(project_id)
-        if directory.exists():
-            raise StoryAuthoringError(
-                "authoring.project_exists",
-                f"story project {project_id!r} already exists",
-            )
-        directory.mkdir(parents=True, exist_ok=False)
-        now = _now_ms()
-        manifest = {
-            "id": project_id,
-            "title": str(payload.get("title") or project_id),
-            "draftRevision": 1,
-            "publishedVersion": 0,
-            "publishedSourceHash": "",
-            "createdAt": now,
-            "updatedAt": now,
-        }
-        self._write_json(directory / "draft.json", payload)
-        self._write_json(directory / "manifest.json", manifest)
-        return self.load(project_id)
+        with self._lock:
+            if directory.exists():
+                raise StoryAuthoringError(
+                    "authoring.project_exists",
+                    f"story project {project_id!r} already exists",
+                )
+            directory.mkdir(parents=True, exist_ok=False)
+            now = _now_ms()
+            manifest = {
+                "id": project_id,
+                "title": str(payload.get("title") or project_id),
+                "draftRevision": 1,
+                "undoCursor": 1,
+                "publishedVersion": 0,
+                "publishedSourceHash": "",
+                "createdAt": now,
+                "updatedAt": now,
+            }
+            self._commit_project_files(directory, payload, manifest)
+            return self._load_unlocked(project_id)
 
     def load(self, project_id: str) -> dict[str, Any]:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
-        directory = self._project_dir(project_id)
-        manifest = self._read_json(directory / "manifest.json")
-        source = self._read_json(directory / "draft.json")
-        return {"manifest": manifest, "source": source}
+        with self._lock:
+            return self._load_unlocked(project_id)
 
     def save_draft(
         self,
@@ -115,51 +134,68 @@ class StoryProjectRepository:
         expected_revision: int,
     ) -> dict[str, Any]:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
-        current = self.load(project_id)
-        manifest = current["manifest"]
-        actual_revision = int(manifest.get("draftRevision", 0))
-        if actual_revision != expected_revision:
-            raise StoryAuthoringError(
-                "authoring.revision_conflict",
-                f"expected draft revision {expected_revision}, found {actual_revision}",
-            )
-        directory = self._project_dir(project_id)
-        history = directory / "history"
-        history.mkdir(parents=True, exist_ok=True)
-        self._write_json(history / f"{actual_revision:08d}.json", current["source"])
-        next_source = _json_copy(source)
-        next_revision = actual_revision + 1
-        next_manifest = {
-            **manifest,
-            "title": str(
-                next_source.get("title") or manifest.get("title") or project_id
-            ),
-            "draftRevision": next_revision,
-            "updatedAt": _now_ms(),
-        }
-        self._write_json(directory / "draft.json", next_source)
-        self._write_json(directory / "manifest.json", next_manifest)
-        self._trim_history(history)
-        return {"manifest": next_manifest, "source": next_source}
+        with self._lock:
+            current = self._load_unlocked(project_id)
+            manifest = current["manifest"]
+            actual_revision = int(manifest.get("draftRevision", 0))
+            if actual_revision != expected_revision:
+                raise StoryAuthoringError(
+                    "authoring.revision_conflict",
+                    f"expected draft revision {expected_revision}, found {actual_revision}",
+                )
+            directory = self._project_dir(project_id)
+            history = directory / "history"
+            history.mkdir(parents=True, exist_ok=True)
+            self._write_json(history / f"{actual_revision:08d}.json", current["source"])
+            next_source = _json_copy(source)
+            next_revision = actual_revision + 1
+            next_manifest = {
+                **manifest,
+                "title": str(
+                    next_source.get("title") or manifest.get("title") or project_id
+                ),
+                "draftRevision": next_revision,
+                "undoCursor": next_revision,
+                "updatedAt": _now_ms(),
+            }
+            self._commit_project_files(directory, next_source, next_manifest)
+            self._trim_history(history)
+            return {"manifest": next_manifest, "source": next_source}
 
     def undo(self, project_id: str, *, expected_revision: int) -> dict[str, Any]:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
-        current = self.load(project_id)
-        actual = int(current["manifest"].get("draftRevision", 0))
-        if actual != expected_revision:
-            raise StoryAuthoringError(
-                "authoring.revision_conflict",
-                f"expected draft revision {expected_revision}, found {actual}",
+        with self._lock:
+            current = self._load_unlocked(project_id)
+            manifest = current["manifest"]
+            actual = int(manifest.get("draftRevision", 0))
+            if actual != expected_revision:
+                raise StoryAuthoringError(
+                    "authoring.revision_conflict",
+                    f"expected draft revision {expected_revision}, found {actual}",
+                )
+            cursor = int(manifest.get("undoCursor", actual))
+            previous_path = (
+                self._project_dir(project_id) / "history" / f"{cursor - 1:08d}.json"
             )
-        previous_path = (
-            self._project_dir(project_id) / "history" / f"{actual - 1:08d}.json"
-        )
-        if not previous_path.is_file():
-            raise StoryAuthoringError(
-                "authoring.undo_empty", "there is no earlier draft revision"
+            if not previous_path.is_file():
+                raise StoryAuthoringError(
+                    "authoring.undo_empty", "there is no earlier draft revision"
+                )
+            previous = self._read_json(previous_path)
+            next_revision = actual + 1
+            next_manifest = {
+                **manifest,
+                "title": str(
+                    previous.get("title") or manifest.get("title") or project_id
+                ),
+                "draftRevision": next_revision,
+                "undoCursor": cursor - 1,
+                "updatedAt": _now_ms(),
+            }
+            self._commit_project_files(
+                self._project_dir(project_id), previous, next_manifest
             )
-        previous = self._read_json(previous_path)
-        return self.save_draft(project_id, previous, expected_revision=actual)
+            return {"manifest": next_manifest, "source": previous}
 
     def publish(
         self,
@@ -172,47 +208,77 @@ class StoryProjectRepository:
         compatibility: Mapping[str, Any],
     ) -> dict[str, Any]:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
-        current = self.load(project_id)
-        manifest = current["manifest"]
-        actual = int(manifest.get("draftRevision", 0))
-        if actual != expected_revision:
-            raise StoryAuthoringError(
-                "authoring.revision_conflict",
-                f"expected draft revision {expected_revision}, found {actual}",
-            )
-        version = int(manifest.get("publishedVersion", 0)) + 1
-        directory = self._project_dir(project_id) / "published" / f"v{version}"
-        if directory.exists():
-            raise StoryAuthoringError(
-                "authoring.publication_exists",
-                f"published version {version} already exists",
-            )
-        directory.mkdir(parents=True, exist_ok=False)
-        self._write_json(directory / "story.json", source)
-        self._write_json(directory / "resources.json", dependencies)
-        self._write_json(directory / "save-compatibility.json", compatibility)
-        next_manifest = {
-            **manifest,
-            "publishedVersion": version,
-            "publishedSourceHash": source_hash,
-            "updatedAt": _now_ms(),
-        }
-        self._write_json(self._project_dir(project_id) / "manifest.json", next_manifest)
-        return {
-            "projectId": project_id,
-            "version": version,
-            "sourceHash": source_hash,
-            "path": str(directory / "story.json"),
-            "resourceDependencies": _json_copy(dependencies),
-            "saveCompatibility": _json_copy(compatibility),
-        }
+        with self._lock:
+            current = self._load_unlocked(project_id)
+            manifest = current["manifest"]
+            actual = int(manifest.get("draftRevision", 0))
+            if actual != expected_revision:
+                raise StoryAuthoringError(
+                    "authoring.revision_conflict",
+                    f"expected draft revision {expected_revision}, found {actual}",
+                )
+            version = int(manifest.get("publishedVersion", 0)) + 1
+            project_dir = self._project_dir(project_id)
+            published_root = project_dir / "published"
+            final = published_root / f"v{version}"
+            staging = published_root / f".v{version}.staging"
+            next_manifest = {
+                **manifest,
+                "publishedVersion": version,
+                "publishedSourceHash": source_hash,
+                "updatedAt": _now_ms(),
+            }
+            result = {
+                "projectId": project_id,
+                "version": version,
+                "sourceHash": source_hash,
+                "path": str(final / "story.json"),
+                "resourceDependencies": _json_copy(dependencies),
+                "saveCompatibility": _json_copy(compatibility),
+            }
+            if self._publication_is_complete(final):
+                self._commit_project_files(project_dir, current["source"], next_manifest)
+                return result
+            self._remove_path(staging)
+            if final.exists():
+                self._remove_path(final)
+            staging.mkdir(parents=True, exist_ok=False)
+            try:
+                self._write_json(staging / "story.json", source)
+                self._write_json(staging / "resources.json", dependencies)
+                self._write_json(staging / "save-compatibility.json", compatibility)
+                copy_story_scoped_character_resources(project_dir, staging, source)
+                self._write_ready_marker(staging / PUBLICATION_READY)
+                os.replace(staging, final)
+            except Exception:
+                self._remove_path(staging)
+                raise
+            self._commit_project_files(project_dir, current["source"], next_manifest)
+            return result
 
     def load_published(self, project_id: str, version: int) -> dict[str, Any] | None:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
-        path = (
-            self._project_dir(project_id) / "published" / f"v{version}" / "story.json"
-        )
-        return self._read_json(path) if path.is_file() else None
+        with self._lock:
+            directory = self._project_dir(project_id)
+            self._recover_pending(directory)
+            path = directory / "published" / f"v{version}" / "story.json"
+            return self._read_json(path) if path.is_file() else None
+
+    def copy_story_scoped_resources(
+        self, project_id: str, source_root: str | Path, source: Mapping[str, Any]
+    ) -> None:
+        self.flags.require(FeatureFlag.STORY_SYSTEM)
+        with self._lock:
+            copy_story_scoped_character_resources(
+                Path(source_root), self._project_dir(project_id), source
+            )
+
+    def _load_unlocked(self, project_id: str) -> dict[str, Any]:
+        directory = self._project_dir(project_id)
+        self._recover_pending(directory)
+        manifest = self._read_json(directory / "manifest.json")
+        source = self._read_json(directory / "draft.json")
+        return {"manifest": manifest, "source": source}
 
     def _project_dir(self, project_id: str) -> Path:
         safe = _safe_id(project_id, "story id")
@@ -222,6 +288,70 @@ class StoryProjectRepository:
                 "authoring.invalid_id", "story project path escaped root"
             )
         return path
+
+    def _recover_pending(self, directory: Path) -> None:
+        if not directory.is_dir():
+            return
+        self._apply_draft_commit(directory)
+        self._discard_incomplete_publication_staging(directory)
+
+    def _commit_project_files(
+        self,
+        directory: Path,
+        draft: Mapping[str, Any],
+        manifest: Mapping[str, Any],
+    ) -> None:
+        staging = directory / DRAFT_COMMIT_DIR
+        self._remove_path(staging)
+        staging.mkdir(parents=True, exist_ok=True)
+        self._write_json(staging / "draft.json", draft)
+        self._write_json(staging / "manifest.json", manifest)
+        self._write_ready_marker(staging / DRAFT_COMMIT_READY)
+        self._apply_draft_commit(directory)
+
+    def _apply_draft_commit(self, directory: Path) -> None:
+        staging = directory / DRAFT_COMMIT_DIR
+        ready = staging / DRAFT_COMMIT_READY
+        if not staging.is_dir():
+            return
+        if not ready.is_file():
+            self._remove_path(staging)
+            return
+        draft_src = staging / "draft.json"
+        manifest_src = staging / "manifest.json"
+        if not draft_src.is_file() or not manifest_src.is_file():
+            self._remove_path(staging)
+            return
+        self._write_json(directory / "draft.json", self._read_json(draft_src))
+        self._write_json(directory / "manifest.json", self._read_json(manifest_src))
+        self._remove_path(staging)
+
+    def _discard_incomplete_publication_staging(self, directory: Path) -> None:
+        published = directory / "published"
+        if not published.is_dir():
+            return
+        for path in published.iterdir():
+            if (
+                path.is_dir()
+                and path.name.startswith(".")
+                and path.name.endswith(".staging")
+            ):
+                self._remove_path(path)
+
+    @staticmethod
+    def _publication_is_complete(directory: Path) -> bool:
+        return (
+            directory.is_dir()
+            and (directory / "story.json").is_file()
+            and (directory / PUBLICATION_READY).is_file()
+        )
+
+    @staticmethod
+    def _remove_path(path: Path) -> None:
+        if path.is_dir():
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            path.unlink(missing_ok=True)
 
     @staticmethod
     def _read_json(path: Path) -> dict[str, Any]:
@@ -247,6 +377,19 @@ class StoryProjectRepository:
         try:
             with temporary.open("w", encoding="utf-8", newline="\n") as handle:
                 handle.write(encoded)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    @staticmethod
+    def _write_ready_marker(path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+        try:
+            with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+                handle.write("1")
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temporary, path)
@@ -574,6 +717,11 @@ class StoryAuthoringService:
         }
         model_patch = self.author_model.complete(request)
         operations = model_patch.get("operations")
+        if not isinstance(operations, list):
+            raise StoryAuthoringError(
+                "authoring.patch_invalid", "authoring patch operations must be an array"
+            )
+        _assert_patch_respects_region(source, operations, region)
         patch = {"operations": operations}
         preview = self.apply_patch(
             project_id,
@@ -674,7 +822,12 @@ def import_generation_task_for_state(
         raise StoryAuthoringError(
             "authoring.generation_draft_invalid", "generated draft must be an object"
         )
-    return story_authoring_service_for_state(state).import_source(source)
+    service = story_authoring_service_for_state(state)
+    document = service.import_source(source)
+    service.repository.copy_story_scoped_resources(
+        str(document["manifest"]["id"]), task_root, source
+    )
+    return service.get(str(document["manifest"]["id"]))
 
 
 def _layout_narrative_graph(source: Any) -> dict[str, Any]:
@@ -841,6 +994,58 @@ def _structural_diff(before: Any, after: Any, path: str = "") -> list[dict[str, 
     return [_json_copy(item) for item in changes]
 
 
+def copy_story_scoped_character_resources(
+    source_root: Path,
+    destination_root: Path,
+    source: Mapping[str, Any],
+) -> None:
+    """Copy author-owned character files into a project or published version."""
+
+    source_base = source_root.resolve(strict=False)
+    destination_base = destination_root.resolve(strict=False)
+    characters_dir = source_base / "characters"
+    if characters_dir.is_dir():
+        _copy_tree(characters_dir, destination_base / "characters")
+    cast = source.get("cast", {})
+    if not isinstance(cast, Mapping):
+        return
+    for character in cast.get("characters", []):
+        if not isinstance(character, Mapping):
+            continue
+        origin = character.get("source", {})
+        if not isinstance(origin, Mapping):
+            continue
+        if str(origin.get("type") or "") not in _STORY_SCOPED_CHARACTER_TYPES:
+            continue
+        relative = str(origin.get("path") or "").strip()
+        if not relative:
+            continue
+        try:
+            src_file = safe_child_path(source_base, relative)
+            dest_file = safe_child_path(destination_base, relative)
+        except (OSError, PermissionError, ValueError):
+            continue
+        if not src_file.is_file():
+            continue
+        dest_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_file, dest_file)
+
+
+def _copy_tree(source: Path, destination: Path) -> None:
+    for path in source.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(source)
+        if any(part in {".", ".."} for part in relative.parts):
+            continue
+        try:
+            target = safe_child_path(destination, relative.as_posix())
+        except (OSError, PermissionError, ValueError):
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target)
+
+
 def _resource_dependencies(source: Mapping[str, Any]) -> dict[str, Any]:
     metadata = source.get("metadata", {})
     cast = source.get("cast", {})
@@ -900,6 +1105,118 @@ def _save_compatibility(
         "compatibleWithPrevious": not breaking,
         "breakingChanges": breaking,
     }
+
+
+def _pointer_escape(value: str) -> str:
+    return value.replace("~", "~0").replace("/", "~1")
+
+
+def _region_path_prefix(source: Mapping[str, Any], region: str) -> tuple[str, str, str]:
+    kind, separator, identifier = region.partition(":")
+    if not separator or not identifier:
+        raise StoryAuthoringError(
+            "authoring.region_invalid", "region must be kind:stable-id"
+        )
+    if kind == "node":
+        items = source.get("narrativeGraph", {}).get("nodes", [])
+        prefix_root = "/narrativeGraph/nodes"
+    elif kind == "character":
+        items = source.get("cast", {}).get("characters", [])
+        prefix_root = "/cast/characters"
+    elif kind == "signal":
+        items = source.get("semanticSignals", [])
+        prefix_root = "/semanticSignals"
+    elif kind == "rule":
+        items = source.get("logicGraph", {}).get("nodes", [])
+        prefix_root = "/logicGraph/nodes"
+    elif kind == "variable":
+        variables = source.get("variables", {})
+        if isinstance(variables, Mapping) and identifier in variables:
+            return kind, identifier, f"/variables/{_pointer_escape(identifier)}"
+        raise StoryAuthoringError(
+            "authoring.region_not_found", f"authoring region {region!r} was not found"
+        )
+    else:
+        raise StoryAuthoringError(
+            "authoring.region_invalid", f"unsupported region {kind!r}"
+        )
+    if isinstance(items, list):
+        for index, item in enumerate(items):
+            if isinstance(item, Mapping) and item.get("id") == identifier:
+                return kind, identifier, f"{prefix_root}/{index}"
+    raise StoryAuthoringError(
+        "authoring.region_not_found", f"authoring region {region!r} was not found"
+    )
+
+
+def _path_in_region(path: str, prefix: str) -> bool:
+    return path == prefix or path.startswith(f"{prefix}/")
+
+
+def _assert_patch_respects_region(
+    source: Mapping[str, Any],
+    operations: Sequence[Any],
+    region: str,
+) -> None:
+    kind, identifier, prefix = _region_path_prefix(source, region)
+    expected_replace = _REGION_REPLACE_OPS.get(kind)
+    for index, operation in enumerate(operations):
+        if not isinstance(operation, Mapping):
+            raise StoryAuthoringError(
+                "authoring.patch_invalid", f"operation {index} must be an object"
+            )
+        op = str(operation.get("op") or "")
+        if op.startswith("replace-"):
+            if expected_replace is None or op != expected_replace[0]:
+                raise StoryAuthoringError(
+                    "authoring.patch_region_violation",
+                    f"operation {index} is outside authoring region {region!r}",
+                )
+            object_id = str(operation.get(expected_replace[1]) or "")
+            if object_id != identifier:
+                raise StoryAuthoringError(
+                    "authoring.patch_region_violation",
+                    f"operation {index} is outside authoring region {region!r}",
+                )
+            value = operation.get("value")
+            if (
+                isinstance(value, Mapping)
+                and "id" in value
+                and str(value.get("id")) != identifier
+            ):
+                raise StoryAuthoringError(
+                    "authoring.patch_identity_changed",
+                    f"operation {index} cannot change object identity",
+                )
+            continue
+        raw_path = operation.get("path")
+        if not isinstance(raw_path, str) or not _path_in_region(raw_path, prefix):
+            raise StoryAuthoringError(
+                "authoring.patch_region_violation",
+                f"operation {index} is outside authoring region {region!r}",
+            )
+        if op == "remove" and raw_path == prefix:
+            raise StoryAuthoringError(
+                "authoring.patch_identity_changed",
+                f"operation {index} cannot remove the selected region",
+            )
+        if raw_path == f"{prefix}/id":
+            raise StoryAuthoringError(
+                "authoring.patch_identity_changed",
+                f"operation {index} cannot change object identity",
+            )
+        value = operation.get("value")
+        if (
+            op in {"add", "replace"}
+            and raw_path == prefix
+            and isinstance(value, Mapping)
+            and "id" in value
+            and str(value.get("id")) != identifier
+        ):
+            raise StoryAuthoringError(
+                "authoring.patch_identity_changed",
+                f"operation {index} cannot change object identity",
+            )
 
 
 def _select_authoring_region(source: Mapping[str, Any], region: str) -> Any:

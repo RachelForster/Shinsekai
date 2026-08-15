@@ -50,6 +50,45 @@ function pointer(value: string) {
   return value.replaceAll("~", "~0").replaceAll("/", "~1");
 }
 
+function decodePointerToken(token: string) {
+  return token.replaceAll("~1", "/").replaceAll("~0", "~");
+}
+
+function readPointer(root: unknown, path: string): unknown {
+  if (!path || path === "/") return root;
+  let current: unknown = root;
+  for (const token of path.split("/").slice(1).map(decodePointerToken)) {
+    if (Array.isArray(current) && /^\d+$/.test(token)) {
+      current = current[Number(token)];
+      continue;
+    }
+    if (current && typeof current === "object" && !Array.isArray(current) && token in current) {
+      current = (current as StoryObject)[token];
+      continue;
+    }
+    return undefined;
+  }
+  return current;
+}
+
+function appendOperations(root: unknown, parentPath: string, value: unknown): StoryPatchOperation[] {
+  const operations: StoryPatchOperation[] = [];
+  if (!Array.isArray(readPointer(root, parentPath))) {
+    operations.push({ op: "add", path: parentPath, value: [] });
+  }
+  operations.push({ op: "add", path: `${parentPath}/-`, value });
+  return operations;
+}
+
+function nextIndexedId(existing: Iterable<string>, prefix: string) {
+  const used = new Set(existing);
+  let next = 1;
+  while (used.has(`${prefix}${next}`)) {
+    next += 1;
+  }
+  return `${prefix}${next}`;
+}
+
 function initialCastPolicy() {
   return {
     mode: "fixed",
@@ -143,8 +182,11 @@ export function StoryEditorPage() {
   };
 
   const addNode = () => {
-    const index = nodes.length + 1;
-    const id = `scene-${index}`;
+    const id = nextIndexedId(
+      nodes.map((node) => String(node.id || "")),
+      "scene-",
+    );
+    const index = Number(id.slice("scene-".length));
     void commit([
       {
         op: "add",
@@ -163,30 +205,33 @@ export function StoryEditorPage() {
 
   const addChoice = () => {
     if (selectedNodeIndex < 0) return;
-    const choices = asArray(selectedNode?.choices);
-    const index = choices.length + 1;
-    void commit([
-      {
-        op: "add",
-        path: `/narrativeGraph/nodes/${selectedNodeIndex}/choices/-`,
-        value: { id: `choice-${index}`, label: `选择 ${index}`, goto: "", effects: [], when: { true: [] } },
-      },
-    ]);
+    const id = nextIndexedId(
+      asArray(selectedNode?.choices).map((choice) => String(choice.id || "")),
+      "choice-",
+    );
+    const index = Number(id.slice("choice-".length));
+    void commit(
+      appendOperations(source, `/narrativeGraph/nodes/${selectedNodeIndex}/choices`, {
+        id,
+        label: `选择 ${index}`,
+        goto: "",
+        effects: [],
+        when: { true: [] },
+      }),
+    );
   };
 
   const addEffect = () => {
     if (selectedNodeIndex < 0 || !effectTarget.trim()) return;
-    void commit([
-      {
-        op: "add",
-        path: `/narrativeGraph/nodes/${selectedNodeIndex}/onEnter/-`,
-        value: { increment: [effectTarget.trim(), Number(effectAmount) || 0] },
-      },
-    ]);
+    void commit(
+      appendOperations(source, `/narrativeGraph/nodes/${selectedNodeIndex}/onEnter`, {
+        increment: [effectTarget.trim(), Number(effectAmount) || 0],
+      }),
+    );
   };
 
   const addVariable = () => {
-    const id = `state.variable_${Object.keys(variables).length + 1}`;
+    const id = nextIndexedId(Object.keys(variables), "state.variable_");
     void commit([
       {
         op: "add",
@@ -197,52 +242,48 @@ export function StoryEditorPage() {
   };
 
   const addSignal = () => {
-    const index = signals.length + 1;
-    void commit([
-      {
-        op: "add",
-        path: "/semanticSignals/-",
-        value: {
-          id: `signal-${index}`,
-          minimumConfidence: "medium",
-          allowedSpeechActs: ["endorsement"],
-          repeatWindow: 20,
-          maxPerTurn: 1,
-          maxPerScene: 2,
-          maxPerChapter: 6,
-          effectsByStrength: { weak: [], medium: [], strong: [] },
-        },
-      },
-    ]);
+    const id = nextIndexedId(
+      signals.map((signal) => String(signal.id || "")),
+      "signal-",
+    );
+    void commit(
+      appendOperations(source, "/semanticSignals", {
+        id,
+        minimumConfidence: "medium",
+        allowedSpeechActs: ["endorsement"],
+        repeatWindow: 20,
+        maxPerTurn: 1,
+        maxPerScene: 2,
+        maxPerChapter: 6,
+        effectsByStrength: { weak: [], medium: [], strong: [] },
+      }),
+    );
   };
 
   const addCharacter = () => {
-    const index = characters.length + 1;
-    const id = `character-${index}`;
-    void commit([
-      {
-        op: "add",
-        path: "/cast/characters/-",
-        value: {
-          id,
-          source: { type: "author-generated", path: `characters/${id}.yaml` },
-          tags: [],
-          roles: [],
-          priority: 0,
-        },
-      },
-    ]);
+    const id = nextIndexedId(
+      characters.map((character) => String(character.id || "")),
+      "character-",
+    );
+    void commit(
+      appendOperations(source, "/cast/characters", {
+        id,
+        source: { type: "author-generated", path: `characters/${id}.yaml` },
+        tags: [],
+        roles: [],
+        priority: 0,
+      }),
+    );
   };
 
   const addRuleNode = () => {
-    const index = ruleNodes.length + 1;
-    void commit([
-      {
-        op: "add",
-        path: "/logicGraph/nodes/-",
-        value: { id: `rule-${index}`, type: "story-start", config: {} },
-      },
-    ]);
+    const id = nextIndexedId(
+      ruleNodes.map((node) => String(node.id || "")),
+      "rule-",
+    );
+    void commit(
+      appendOperations(source, "/logicGraph/nodes", { id, type: "story-start", config: {} }),
+    );
   };
 
   const undo = async () => {
@@ -818,7 +859,7 @@ export function StoryEditorPage() {
                   候选补丁：{proposal.diff.length} 项差异，{proposal.validation.valid ? "已通过校验" : "仍有校验问题"}
                 </p>
                 <ul>
-                  {proposal.diff.slice(0, 12).map((item) => (
+                  {proposal.diff.map((item) => (
                     <li key={item.path}>
                       {item.op} {item.path}
                     </li>

@@ -35,6 +35,8 @@ from .persistence import (
     JsonStorySessionRepository,
     StoryPersistenceError,
     StoryProgramMismatchError,
+    remap_saved_program_identity,
+    saved_program_is_compatible_previous,
     story_event_from_payload,
     story_event_to_payload,
     story_state_from_payload,
@@ -293,20 +295,28 @@ class StorySession:
         cast_plan_preparer: CastPlanPreparer | None = None,
         cast_plan_committed: CastPlanCommitted | None = None,
         cast_resources_rebuilder: CastResourcesRebuilder | None = None,
+        save_compatibility: Mapping[str, Any] | None = None,
     ) -> StorySession:
         flags.require(FeatureFlag.STORY_SYSTEM)
         raw = repository.load()
         if raw is None:
             raise FileNotFoundError(repository.path)
-        if (
-            str(raw.get("storyId") or "") != runtime.program.story_id
-            or int(raw.get("storyVersion") or -1) != runtime.program.story_version
-            or str(raw.get("programSourceHash") or "") != runtime.program.source_hash
-        ):
-            raise StoryProgramMismatchError(
-                "saved story session does not match the compiled StoryProgram"
-            )
-        progress = global_store.load(runtime.program)
+        identity_matches = (
+            str(raw.get("storyId") or "") == runtime.program.story_id
+            and int(raw.get("storyVersion") or -1) == runtime.program.story_version
+            and str(raw.get("programSourceHash") or "") == runtime.program.source_hash
+        )
+        if not identity_matches:
+            if not saved_program_is_compatible_previous(
+                raw, runtime.program, save_compatibility
+            ):
+                raise StoryProgramMismatchError(
+                    "saved story session does not match the compiled StoryProgram"
+                )
+            raw = remap_saved_program_identity(raw, runtime.program)
+        progress = global_store.load(
+            runtime.program, save_compatibility=save_compatibility
+        )
         session = cls(
             runtime,
             flags,

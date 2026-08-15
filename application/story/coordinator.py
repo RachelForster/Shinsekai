@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+import json
 
 from application.chat.history_paths import resolve_history_path_for_project
 from config.feature_flags import FeatureFlag
@@ -62,6 +63,17 @@ def _binding_text(bindings: Mapping[str, Any], *keys: str) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
+
+
+def _load_save_compatibility(story_root: Path) -> dict[str, Any] | None:
+    path = story_root / "save-compatibility.json"
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def start_or_recover_story_session(
@@ -122,6 +134,7 @@ def start_or_recover_story_session(
         Path(state.history_dir).resolve(strict=False) / ".story-global"
     )
     recovering = repository.load() is not None
+    save_compatibility = _load_save_compatibility(story_root)
     if not recovering:
         session = StorySession.create(
             runtime,
@@ -142,6 +155,7 @@ def start_or_recover_story_session(
             cast_plan_preparer=cast_service.prepare,
             cast_plan_committed=cast_service.committed,
             cast_resources_rebuilder=cast_service.rebuild,
+            save_compatibility=save_compatibility,
         )
         cast_service.rebuild(
             session.active_branch.state.cast_state.active_character_ids
