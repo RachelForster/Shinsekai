@@ -79,7 +79,13 @@ const document = {
 
 const graph = {
   diagnostics: [],
-  narrative: { edges: [], nodes: [{ id: "opening", title: "开场", type: "story", x: 0, y: 0 }] },
+  narrative: {
+    edges: [{ from: "opening", id: "choice:opening/next", label: "继续", to: "ending" }],
+    nodes: [
+      { id: "opening", title: "开场", type: "story", x: 0, y: 0 },
+      { id: "ending", title: "结局", type: "ending", x: 300, y: 0 },
+    ],
+  },
   rules: { edges: [], nodes: [] },
   sourceMap: { "node:opening": "$.narrativeGraph.nodes[0]" },
 };
@@ -122,11 +128,13 @@ describe("StoryEditorPage", () => {
   });
 
   it("renders structured editors and graph diagnostics", async () => {
-    renderPage();
+    const { container } = renderPage();
     expect(await screen.findByRole("heading", { name: "校园谜案" })).toBeInTheDocument();
     expect(screen.queryByLabelText("选项 1 文案")).not.toBeInTheDocument();
     expect(screen.getByText("变量、语义信号与规则")).toBeInTheDocument();
     expect(screen.getByText("node:opening")).toBeInTheDocument();
+    expect(screen.getByLabelText("图关系")).toBeInTheDocument();
+    expect(container.querySelector(".story-editor-graph-lines path")).not.toBeNull();
   });
 
   it("adds a node through a versioned structured patch", async () => {

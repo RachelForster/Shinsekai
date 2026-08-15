@@ -209,6 +209,27 @@
   min-height: 260px;
   position: relative;
 }
+.story-editor-graph-lines {
+  color: var(--accent-primary, #635bff);
+  display: block;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  z-index: 0;
+}
+.story-editor-graph-lines path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+.story-editor-graph-lines text {
+  fill: var(--text-secondary, #697386);
+  font-size: 11px;
+  text-anchor: middle;
+}
 .story-editor-graph-node {
   background: var(--surface-primary, #fff);
   border: 1px solid var(--accent-primary, #635bff);
@@ -219,6 +240,10 @@
   min-width: 150px;
   padding: 9px;
   position: absolute;
+  z-index: 1;
+}
+.story-editor-graph-node-rules {
+  border-color: var(--text-secondary, #697386);
 }
 .story-editor-graph-node small {
   color: var(--text-secondary, #697386);
