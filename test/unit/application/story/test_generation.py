@@ -22,7 +22,10 @@ from application.story.generation import (
     StoryGenerationStage,
     StoryPatchApplier,
     _force_playable_source,
+    _normalize_effect_list,
     _sanitize_generated_source,
+    _stage_example,
+    _stage_prompt_extras,
     _stage_schema,
     _validate_logic,
     run_story_generation_background,
@@ -228,6 +231,21 @@ def test_logic_stage_coerces_string_version_and_missing_collections() -> None:
     assert artifact == {"version": 1, "nodes": [], "edges": []}
 
 
+def test_narrative_stage_prompt_includes_effect_example() -> None:
+    extras = _stage_prompt_extras(StoryGenerationStage.NARRATIVE)
+    example = extras["responseExample"]
+    notes = extras["responseNotes"]
+    effects = example["nodes"][0]["choices"][0]["effects"]
+    on_enter = example["nodes"][0]["onEnter"]
+    assert _stage_example(StoryGenerationStage.NARRATIVE) == example
+    assert example["startNodeId"] == "opening"
+    assert any(node.get("type") == "ending" for node in example["nodes"])
+    assert all(len(item) == 1 for item in effects)
+    assert all(len(item) == 1 for item in on_enter)
+    assert any("exactly one operator" in note for note in notes)
+    assert _stage_prompt_extras(StoryGenerationStage.LOGIC) == {}
+
+
 def test_pipeline_accepts_string_logic_graph_version(tmp_path: Path) -> None:
     artifacts = stage_artifacts()
     artifacts["logic"]["version"] = "1"
@@ -254,6 +272,83 @@ def test_sanitize_coerces_variable_types_and_empty_choice_labels() -> None:
     assert "Ask Ling" in labels
     report = StoryDraftValidator().validate(sanitized)
     assert report.valid is True
+
+
+def test_normalize_effect_list_coerces_llm_shapes() -> None:
+    effects = _normalize_effect_list(
+        [
+            {"increment": ["trust.ling", 10], "comment": "boost"},
+            {"op": "set", "variable": "flags.arrived_old_school", "value": True},
+            {
+                "increment": ["trust.ling", 1],
+                "set": ["flags.arrived_old_school", True],
+            },
+            {},
+            {"type": "increment", "target": "trust.ling", "amount": 2},
+            {"increment": 3, "variable": "trust.ling"},
+            {"add": ["inventory", "old_school_key"]},
+        ]
+    )
+    assert effects == [
+        {"increment": ["trust.ling", 10]},
+        {"set": ["flags.arrived_old_school", True]},
+        {"increment": ["trust.ling", 1]},
+        {"set": ["flags.arrived_old_school", True]},
+        {"increment": ["trust.ling", 2]},
+        {"increment": ["trust.ling", 3]},
+        {"addSet": ["inventory", "old_school_key"]},
+    ]
+    assert all(len(item) == 1 for item in effects)
+
+
+def test_sanitize_normalizes_effect_shapes() -> None:
+    source = campus_mystery_source()
+    source["narrativeGraph"]["nodes"][0]["onEnter"] = {
+        "increment": ["trust.ling", 1],
+        "comment": "arrival",
+    }
+    source["narrativeGraph"]["nodes"][0]["choices"][0]["effects"] = [
+        {"increment": ["trust.ling", 10], "reason": "promise"},
+        {"op": "set", "variable": "flags.arrived_old_school", "value": True},
+        {},
+        {
+            "increment": ["trust.ling", 1],
+            "set": ["flags.arrived_old_school", True],
+        },
+    ]
+    source["semanticSignals"][0]["effectsByStrength"]["weak"] = [
+        {"type": "increment", "variable": "trust.ling", "value": 1, "note": "soft"}
+    ]
+    sanitized = _sanitize_generated_source(source)
+    choice_effects = sanitized["narrativeGraph"]["nodes"][0]["choices"][0]["effects"]
+    on_enter = sanitized["narrativeGraph"]["nodes"][0]["onEnter"]
+    weak = sanitized["semanticSignals"][0]["effectsByStrength"]["weak"]
+    assert all(isinstance(item, dict) and len(item) == 1 for item in choice_effects)
+    assert on_enter == [{"increment": ["trust.ling", 1]}]
+    assert weak == [{"increment": ["trust.ling", 1]}]
+    report = StoryDraftValidator().validate(sanitized)
+    assert report.valid is True
+    assert not any(issue.code == "effect.shape" for issue in report.issues)
+
+
+def test_pipeline_accepts_verbose_effect_objects(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["narrative"]["nodes"][0]["choices"][0]["effects"] = [
+        {"op": "increment", "variable": "trust.ling", "value": 10},
+        {"increment": ["trust.ling", 1], "comment": "bonus"},
+    ]
+    artifacts["state"]["semanticSignals"][0]["effectsByStrength"]["medium"] = [
+        {"operator": "increment", "target": "trust.ling", "delta": 2}
+    ]
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Normalize verbose effect objects.", task_id="effect-shape")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    report = StoryDraftValidator().validate(source)
+    assert report.valid is True
+    assert not any(issue.code == "effect.shape" for issue in report.issues)
 
 
 def test_pipeline_accepts_number_variable_type_and_blank_choice_labels(tmp_path: Path) -> None:
