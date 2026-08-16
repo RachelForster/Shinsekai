@@ -240,7 +240,7 @@ def _resolve_launch_story_path(state: BridgeState, body: Mapping[str, Any] | Non
     story_id = str(payload.get("storyId") or "").strip()
     if story_id:
         return str(
-            story_authoring_service_for_state(state).project_directory(story_id)
+            story_authoring_service_for_state(state).playable_story_path(story_id)
         )
     return str(payload.get("storyPath") or "").strip()
 
@@ -255,6 +255,8 @@ def _bind_story_from_launch_body(state: BridgeState, body: Mapping[str, Any] | N
         command_id=new_log_id(),
     )
     publish_story_transition(state, session.chat_snapshot())
+
+
 _POLLING_PATHS = {
     "/api/characters/memories/status",
     "/api/health",
@@ -1711,7 +1713,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         history_path = _chat_history_path(self.state, normalized_history_payload, row)
         default_history_path = _chat_history_path(
             self.state,
-            {"historyPath": "", "characters": characters},
+            {
+                "historyPath": "",
+                "characters": characters,
+                "storyId": str(body.get("storyId") or ""),
+            },
             row,
         )
         reset_history = bool(body.get("resetHistory"))

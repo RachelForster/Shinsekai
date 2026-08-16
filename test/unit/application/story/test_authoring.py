@@ -15,6 +15,7 @@ from application.story.authoring import (
     _save_compatibility,
     import_generation_task_for_state,
 )
+from application.story.project_loader import load_story_project
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from test.unit.core.story.story_fixtures import campus_mystery_source
 
@@ -61,6 +62,10 @@ def test_versioned_patch_diff_validation_and_undo(tmp_path: Path) -> None:
     assert service.project_directory("campus-mystery") == tmp_path / "campus-mystery"
     assert (service.project_directory("campus-mystery") / "manifest.json").is_file()
     assert document["manifest"]["id"] == "campus-mystery"
+    assert service.playable_story_path("campus-mystery") == tmp_path / "campus-mystery"
+    assert load_story_project(service.playable_story_path("campus-mystery")).id == (
+        "campus-mystery"
+    )
 
     preview = service.apply_patch(
         "campus-mystery",
@@ -183,6 +188,10 @@ def test_publish_creates_immutable_version_resources_and_save_contract(
     assert Path(published["path"]).is_file()
     assert published["resourceDependencies"]["characters"][0]["characterId"] == "ling"
     assert published["saveCompatibility"]["compatibleWithPrevious"] is True
+    playable = service.playable_story_path("campus-mystery")
+    assert playable == tmp_path / "campus-mystery" / "published" / "v1"
+    assert load_story_project(playable).id == "campus-mystery"
+    assert load_story_project(Path(published["path"])).id == "campus-mystery"
 
     second = service.publish("campus-mystery", base_revision=1)
     first_source = service.repository.load_published("campus-mystery", 1)

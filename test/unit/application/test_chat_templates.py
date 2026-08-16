@@ -42,6 +42,10 @@ def test_history_id_uses_effective_scenario_and_selected_characters():
     assert _history_id_from_scenario("") == _history_id_from_scenario(
         "你扮演一个RPG系统。",
     )
+    assert _history_id_from_scenario("scenario", ["Alice"], story_id="campus") != scenario_id
+    assert _history_id_from_scenario(
+        "scenario", ["Alice"], story_id="campus"
+    ) == _history_id_from_scenario("scenario", ["Alice"], story_id="campus")
 
 
 def test_runtime_template_places_json_reminder_after_user_scenario(monkeypatch):

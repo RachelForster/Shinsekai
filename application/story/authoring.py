@@ -428,6 +428,23 @@ class StoryAuthoringService:
         document = self.repository.load(project_id)
         return self.repository._project_dir(str(document["manifest"]["id"]))
 
+    def playable_story_path(self, project_id: str) -> Path:
+        """Return the published snapshot, or the draft project directory."""
+        self.flags.require(FeatureFlag.STORY_SYSTEM)
+        document = self.repository.load(project_id)
+        directory = self.repository._project_dir(str(document["manifest"]["id"]))
+        version = int(document["manifest"].get("publishedVersion") or 0)
+        if version > 0:
+            published = directory / "published" / f"v{version}"
+            if (published / "story.json").is_file():
+                return published
+        if (directory / "draft.json").is_file():
+            return directory
+        raise StoryAuthoringError(
+            "authoring.playable_missing",
+            f"story project {project_id!r} has no playable story document",
+        )
+
     def import_source(self, source: Mapping[str, Any]) -> dict[str, Any]:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
         payload = _json_copy(source)

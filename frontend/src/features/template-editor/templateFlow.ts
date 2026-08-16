@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
+import { DEFAULT_CHARACTER_COLOR, TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import type {
   ChatLaunchPayload,
   TemplateGenerateInput,
@@ -189,6 +189,25 @@ export function synchronizeChatLaunchPayloadWithSession(
   payload: ChatLaunchPayload,
   session: TemplateLaunchSession,
 ): ChatLaunchPayload {
+  const storyId = String(payload.storyId || session.storyId || "").trim();
+  if (storyId) {
+    return {
+      ...payload,
+      backgroundName: TRANSPARENT_BACKGROUND_NAME,
+      characters: [],
+      enableMobileAccess: Boolean(session.enableMobileAccess ?? payload.enableMobileAccess),
+      effectNames: undefined,
+      historyPath: "",
+      initSpritePath: "",
+      roomId: String(session.roomId || payload.roomId || "").trim(),
+      scenario: "",
+      storyId,
+      system: "",
+      templateId: session.templateFileDropdown || payload.templateId,
+      templateName: session.filenameStub || payload.templateName,
+      useCg: false,
+    };
+  }
   const effectNames = Array.isArray(session.effectNames) ? session.effectNames : [];
   return {
     ...payload,
@@ -200,7 +219,7 @@ export function synchronizeChatLaunchPayloadWithSession(
     initSpritePath: session.initSpritePath.trim(),
     roomId: session.roomId.trim(),
     scenario: session.scenario,
-    storyId: session.storyId?.trim() || undefined,
+    storyId: undefined,
     system: session.system,
     templateId: session.templateFileDropdown,
     templateName: session.filenameStub,

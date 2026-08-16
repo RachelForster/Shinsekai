@@ -49,6 +49,14 @@ export function listStoryProjects() {
 
 export const storyProjectsQueryKey = ["story-projects"] as const;
 
+export function storyProjectQueryKey(id: string) {
+  return ["story-projects", id] as const;
+}
+
+export function storyProjectGraphQueryKey(id: string) {
+  return ["story-projects", id, "graph"] as const;
+}
+
 export function getStoryProject(id: string) {
   return getPlatform().story.getProject(id);
 }

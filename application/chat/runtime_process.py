@@ -588,7 +588,11 @@ def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: di
     if not isinstance(characters, list):
         characters = template.get("selectedCharacters")
     scenario = _scenario_from_template_like(template)
-    template_hash = _history_id_from_scenario(scenario, characters)
+    template_hash = _history_id_from_scenario(
+        scenario,
+        characters,
+        story_id=str(payload.get("storyId") or ""),
+    )
     return _resolve_history_file(state, Path(state.history_dir) / template_hash)
 
 

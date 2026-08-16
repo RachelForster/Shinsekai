@@ -90,11 +90,15 @@ def _scenario_from_template_like(template: dict[str, Any]) -> str:
 def _history_id_from_scenario(
     user_scenario: str,
     character_names: Any = None,
+    story_id: str = "",
 ) -> str:
-    stable = {
+    stable: dict[str, Any] = {
         "characters": _normalize_hash_character_names(character_names),
         "scenario": _effective_user_scenario(user_scenario),
     }
+    story = str(story_id or "").strip()
+    if story:
+        stable["storyId"] = story
     return hashlib.md5(
         json.dumps(stable, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
