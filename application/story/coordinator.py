@@ -264,13 +264,13 @@ def publish_story_transition(
     story = live_patch.get("story")
     if isinstance(story, dict):
         events.append({"type": "story.state.replace", "story": dict(story)})
-    options = live_patch.get("options")
-    if isinstance(options, list):
-        events.append({"type": "options.show", "options": list(options)})
     events.extend(_story_sprite_events(chat_stream, session_id, resource_patch))
     for item in presentation_events:
         if isinstance(item, dict):
             events.append(dict(item))
+    options = live_patch.get("options")
+    if isinstance(options, list):
+        events.append({"type": "options.show", "options": list(options)})
     publish = getattr(chat_stream, "publish_event", None)
     published_any = False
     if callable(publish):

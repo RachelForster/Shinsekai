@@ -1045,6 +1045,8 @@ def _persist_scene_turn_messages(
     user_text: str,
     user_name: str,
     dialogue: Sequence[Any],
+    *,
+    include_user: bool = True,
 ) -> None:
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
     if not history_raw or is_unc_history_path(history_raw):
@@ -1058,7 +1060,8 @@ def _persist_scene_turn_messages(
         loaded = _read_history_file(active)
         if isinstance(loaded, list):
             messages = loaded
-    messages.append({"role": "user", "content": user_text})
+    if include_user:
+        messages.append({"role": "user", "content": user_text})
     for item in dialogue:
         messages.append(
             {
@@ -1081,7 +1084,8 @@ def _persist_scene_turn_messages(
     if not isinstance(branch, dict):
         return
     history = list(branch.get("history") or [])
-    history.append(f"<b>{html.escape(user_name)}</b>：{html.escape(user_text)}")
+    if include_user:
+        history.append(f"<b>{html.escape(user_name)}</b>：{html.escape(user_text)}")
     for item in dialogue:
         history.append(
             f"<b>{html.escape(item.character_id)}</b>：{html.escape(item.text)}"
@@ -1136,6 +1140,129 @@ def _scene_dialog_events(dialogue: Sequence[Any]) -> list[dict[str, Any]]:
             }
         )
     return events
+
+
+def _story_scene_available(state: BridgeState) -> bool:
+    service = getattr(state, "story_scene_service", None)
+    flags = getattr(getattr(state, "config_manager", None), "feature_flags", None)
+    return (
+        service is not None
+        and flags is not None
+        and flags.is_enabled(FeatureFlag.STORY_SYSTEM)
+    )
+
+
+def _story_opening_prompt(session: Any) -> str:
+    snapshot = session.chat_snapshot()
+    story = snapshot.get("story")
+    title = ""
+    if isinstance(story, dict):
+        title = str(story.get("currentNodeTitle") or "").strip()
+    if title:
+        return f"进入场景：{title}"
+    return "进入当前场景"
+
+
+def _render_story_scene_text(
+    state: BridgeState,
+    user_text: str,
+    *,
+    command_id: str,
+    message_id: str,
+) -> Any | None:
+    if not _story_scene_available(state):
+        return None
+    try:
+        return state.story_scene_service.handle_free_text(
+            user_text,
+            command_id=command_id,
+            message_id=message_id,
+        )
+    except StoryTurnCancelledError:
+        raise
+    except Exception:
+        return None
+
+
+def _append_scene_dialogue_history(
+    entries: list[dict[str, Any]],
+    dialogue: Sequence[Any],
+) -> list[dict[str, Any]]:
+    for item in dialogue:
+        entries.append(
+            {
+                "id": f"history-{len(entries)}",
+                "role": _scene_history_role(item.character_id),
+                "text": f"{item.character_id}: {item.text}",
+            }
+        )
+    return entries
+
+
+def _publish_story_scene_result(
+    state: BridgeState,
+    result: Any,
+    history_entries: list[dict[str, Any]],
+    *,
+    extra_patch: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    session = bound_story_session(state)
+    if session is not None:
+        session.replace_history_entries(history_entries)
+    presentation_events = (
+        *tuple(dict(item) for item in getattr(result, "presentation_events", ()) or ()),
+        *_scene_dialog_events(result.dialogue),
+    )
+    patch: dict[str, Any] = {
+        **story_snapshot_patch(state),
+        "status": "idle",
+        "numericInfo": "idle",
+    }
+    if extra_patch:
+        patch.update(extra_patch)
+    if result.dialogue:
+        dialogue = result.dialogue[-1]
+        patch["characterName"] = dialogue.character_id
+        patch["dialogText"] = dialogue.text
+        patch["dialogHtml"] = None
+    publish_story_transition(
+        state,
+        patch,
+        history_entries=history_entries,
+        presentation_events=presentation_events,
+    )
+    return patch
+
+
+def publish_bound_story_scene(state: BridgeState, command_id: str) -> None:
+    session = bound_story_session(state)
+    if session is None:
+        return
+    result = None
+    try:
+        result = _render_story_scene_text(
+            state,
+            _story_opening_prompt(session),
+            command_id=f"{command_id}:opening-scene",
+            message_id=f"opening:{command_id}",
+        )
+    except StoryTurnCancelledError:
+        result = None
+    if result is None or not result.dialogue:
+        publish_story_transition(state, session.chat_snapshot())
+        return
+    history_entries = _append_scene_dialogue_history(
+        [dict(item) for item in _chat_history_entries(state)],
+        result.dialogue,
+    )
+    _persist_scene_turn_messages(
+        state,
+        "",
+        _chat_user_display_name_from_snapshot(state),
+        result.dialogue,
+        include_user=False,
+    )
+    _publish_story_scene_result(state, result, history_entries)
 
 
 def _allocate_aligned_story_branch_id(state: BridgeState, session: Any) -> str:
@@ -1395,10 +1522,8 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             if not choice_id or not expected_node_id:
                 raise ValueError("Story choice is invalid.")
             command_id = str(body.get("cmdId") or uuid.uuid4().hex)
-            history_entries = _record_story_choice_history(
-                state,
-                _story_choice_label(story_session, choice_id),
-            )
+            choice_label = _story_choice_label(story_session, choice_id)
+            history_entries = _record_story_choice_history(state, choice_label)
             ack = story_session.execute(
                 SelectChoice(
                     command_id=command_id,
@@ -1408,6 +1533,35 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
                 ),
                 history_entries=history_entries,
             )
+            result = None
+            try:
+                result = _render_story_scene_text(
+                    state,
+                    choice_label,
+                    command_id=f"{command_id}:scene",
+                    message_id=f"choice:{command_id}",
+                )
+            except StoryTurnCancelledError as error:
+                raise ValueError(str(error)) from error
+            if result is not None and result.dialogue:
+                history_entries = _append_scene_dialogue_history(
+                    history_entries,
+                    result.dialogue,
+                )
+                _persist_scene_turn_messages(
+                    state,
+                    choice_label,
+                    _chat_user_display_name_from_snapshot(state),
+                    result.dialogue,
+                    include_user=False,
+                )
+                patch = _publish_story_scene_result(
+                    state,
+                    result,
+                    history_entries,
+                    extra_patch={"storyAck": ack.to_payload()},
+                )
+                return _chat_snapshot(state, "idle", extra=patch)
             patch = story_session.chat_snapshot()
             patch["storyAck"] = ack.to_payload()
             publish_story_transition(
@@ -1503,28 +1657,7 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
                 submitted_text,
                 result.dialogue,
             )
-            session = bound_story_session(state)
-            if session is not None:
-                session.replace_history_entries(history_entries)
-            dialogue = result.dialogue[-1]
-            presentation_events = (
-                *tuple(dict(item) for item in result.presentation_events),
-                *_scene_dialog_events(result.dialogue),
-            )
-            patch = {
-                **story_snapshot_patch(state),
-                "characterName": dialogue.character_id,
-                "dialogText": dialogue.text,
-                "dialogHtml": None,
-                "status": "idle",
-                "numericInfo": "idle",
-            }
-            publish_story_transition(
-                state,
-                patch,
-                history_entries=history_entries,
-                presentation_events=presentation_events,
-            )
+            patch = _publish_story_scene_result(state, result, history_entries)
             return _chat_snapshot(state, "idle", extra=patch)
         if _chat_turn_options(state)["batchEnabled"]:
             snapshot_patch: dict[str, Any] = {"inputDraft": ""}

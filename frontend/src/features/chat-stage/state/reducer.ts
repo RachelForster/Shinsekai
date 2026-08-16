@@ -1,6 +1,6 @@
 import { mergeChatAttachmentInputs } from "../attachments";
 import { applyStageEvent } from "./events";
-import { clearTransientNotificationState, withResolvedLayers } from "./layers";
+import { clearTransientNotificationState, dialogHoldKey, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
 import { normalizedUserDisplayName } from "./text";
 import type { ChatStageAction, ChatStageState } from "./types";
@@ -226,6 +226,11 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         ...state,
         sessionClosedReason: undefined,
         status: action.status,
+      });
+    case "revealHeldOptions":
+      return withResolvedLayers({
+        ...state,
+        revealedOptionsAfterDialogKey: dialogHoldKey(state),
       });
     case "error":
       return withResolvedLayers({

@@ -1050,6 +1050,71 @@ describe("chatStageReducer", () => {
     expect(hidden.layers.busy).toBe(false);
   });
 
+  it("holds story options until the player advances the scene dialogue", () => {
+    const withDialogue = chatStageReducer(emptyChatState, {
+      event: {
+        color: "",
+        fullHtml: "<p>酒吧里很吵。</p>",
+        isSystem: false,
+        seq: 1,
+        speaker: "房石阳明",
+        ts: 1,
+        type: "dialog.end",
+        v: 1,
+      },
+      type: "event",
+    });
+    const withOptions = chatStageReducer(withDialogue, {
+      event: {
+        options: [
+          {
+            enabled: true,
+            expectedNodeId: "bar",
+            expectedRevision: 2,
+            id: "order",
+            label: "点一杯酒",
+            source: "story",
+          },
+        ],
+        seq: 2,
+        ts: 2,
+        type: "options.show",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(withOptions.dialogText).toContain("酒吧里很吵");
+    expect(withOptions.options).toHaveLength(1);
+    expect(withOptions.layers.dialog).toBe(true);
+    expect(withOptions.layers.options).toBe(false);
+
+    const revealed = chatStageReducer(withOptions, { type: "revealHeldOptions" });
+    expect(revealed.layers.dialog).toBe(false);
+    expect(revealed.layers.options).toBe(true);
+
+    const userChoice = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "你",
+        dialogText: "点一杯酒",
+        userDisplayName: "你",
+      },
+      {
+        event: {
+          options: ["下一句"],
+          seq: 1,
+          ts: 1,
+          type: "options.show",
+          v: 1,
+        },
+        type: "event",
+      },
+    );
+    expect(userChoice.layers.options).toBe(true);
+    expect(userChoice.layers.dialog).toBe(false);
+  });
+
   it("correlates tool confirmation events and disables free-form input", () => {
     const prompted = chatStageReducer(emptyChatState, {
       event: {

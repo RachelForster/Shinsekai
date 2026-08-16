@@ -56,6 +56,7 @@ from application.chat.runtime_process import (
     _chat_theme_payload,
     _handle_chat_command,
     _launch_chat,
+    publish_bound_story_scene,
     remove_chat_history_storage,
     _sanitize_user_display_name,
 )
@@ -249,12 +250,13 @@ def _bind_story_from_launch_body(state: BridgeState, body: Mapping[str, Any] | N
     story_path = _resolve_launch_story_path(state, body)
     if not story_path:
         return
-    session = start_or_recover_story_session(
+    command_id = new_log_id()
+    start_or_recover_story_session(
         state,
         story_path,
-        command_id=new_log_id(),
+        command_id=command_id,
     )
-    publish_story_transition(state, session.chat_snapshot())
+    publish_bound_story_scene(state, command_id)
 
 
 _POLLING_PATHS = {

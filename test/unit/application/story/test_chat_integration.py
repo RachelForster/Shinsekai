@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.chat.runtime_process import _handle_chat_command
+from application.chat.runtime_process import _handle_chat_command, publish_bound_story_scene
 from application.story import SceneDialogueItem, SceneTurnResult, StorySession
 from application.story.coordinator import (
     bound_story_session,
@@ -156,6 +156,34 @@ def test_structured_story_choice_uses_deterministic_session() -> None:
     assert "options.show" in published_types
     assert snapshot["eventSeq"] >= 1
     assert state.story_session.active_branch.history_entries[-1]["role"] == "user"
+
+
+def test_structured_story_choice_renders_scene_dialogue_before_next_options() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    state.story_scene_service = _SceneService()
+
+    snapshot = _handle_chat_command(
+        state,
+        {
+            "cmdId": "choice-1",
+            "payload": {
+                "choiceId": "prepare-investigation",
+                "expectedNodeId": "transfer-day",
+                "expectedRevision": 1,
+                "kind": "story-choice",
+            },
+            "type": "submit-option",
+        },
+    )
+
+    assert snapshot["story"]["currentNodeId"] == "old-school-gate"
+    assert snapshot["dialogText"] == "收到：和绫约定调查旧校舍"
+    assert snapshot["characterName"] == "ling"
+    assert snapshot["historyEntries"][-1]["text"].startswith("ling:")
+    published_types = [event["type"] for event in state.chat_stream.published]
+    assert published_types.index("dialog.end") < published_types.index("options.show")
+    assert snapshot["options"]
 
 
 def test_structured_story_choice_keeps_legacy_error_when_flag_is_off() -> None:
@@ -318,3 +346,16 @@ def test_free_text_uses_scene_service_only_when_story_flag_is_enabled() -> None:
     assert snapshot["historyEntries"][0]["role"] == "user"
     assert "你好" in snapshot["historyEntries"][0]["text"]
     assert snapshot["historyEntries"][1]["text"].startswith("ling:")
+
+
+def test_bound_story_opening_renders_scene_dialogue() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    state.story_scene_service = _SceneService()
+
+    publish_bound_story_scene(state, "start-1")
+
+    assert state.chat_stream.snapshot["dialogText"] == "收到：进入场景：转校日"
+    assert state.chat_stream.snapshot["characterName"] == "ling"
+    published_types = [event["type"] for event in state.chat_stream.published]
+    assert published_types.index("dialog.end") < published_types.index("options.show")
