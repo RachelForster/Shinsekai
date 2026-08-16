@@ -25,7 +25,47 @@ def compose_story_system_prompt(
 ) -> str:
     """Build the six-part story system prompt. Author bible never belongs here."""
     init_i18n(current_language())
+    return (
+        "\n\n".join(
+            part
+            for part in (
+                compose_story_user_scene_context(request),
+                compose_story_chat_system_prompt(
+                    request,
+                    use_effect=use_effect,
+                    use_cg=use_cg,
+                    use_llm_translation=use_llm_translation,
+                ),
+            )
+            if part
+        ).rstrip()
+        + "\n"
+    )
+
+
+def compose_story_user_scene_context(request: Mapping[str, Any]) -> str:
+    """Current node and progress only; spliced into the chat user turn."""
+    init_i18n(current_language())
     scene = _as_mapping(request.get("scene"))
+    return "\n\n".join(
+        part
+        for part in (
+            _section(_T("section_current"), _current_scene_block(scene)),
+            _section(_T("section_progress"), _progress_block(scene)),
+        )
+        if part
+    ).strip()
+
+
+def compose_story_chat_system_prompt(
+    request: Mapping[str, Any],
+    *,
+    use_effect: bool = True,
+    use_cg: bool = False,
+    use_llm_translation: bool = True,
+) -> str:
+    """Format, cast, tools, and workflow for the leading chat system message."""
+    init_i18n(current_language())
     actor = _as_mapping(request.get("actorContext"))
     tools = _as_sequence(request.get("tools"))
     characters = [
@@ -48,17 +88,30 @@ def compose_story_system_prompt(
         use_cot=False,
         has_real_background=False,
     )
+    return _compose_story_chat_system_sections(
+        format_block=format_block.rstrip(),
+        requirements_block=requirements_block.rstrip(),
+        characters=characters,
+        tools=tools,
+    )
+
+
+def _compose_story_chat_system_sections(
+    *,
+    format_block: str,
+    requirements_block: str,
+    characters: Sequence[Mapping[str, Any]],
+    tools: Sequence[Any],
+) -> str:
     sections = [
-        _section(_T("section_current"), _current_scene_block(scene)),
-        _section(_T("section_progress"), _progress_block(scene)),
-        _section(_T("section_format"), format_block.rstrip()),
+        _section(_T("section_format"), format_block),
         _section(_T("section_characters"), _characters_block(characters)),
         _section(_T("section_tools"), _tools_block(tools)),
         _section(
             _T("section_workflow"),
             "\n".join(
                 [
-                    requirements_block.rstrip(),
+                    requirements_block,
                     _T("workflow_tools_first"),
                     _T("workflow_then_dialog"),
                     _T("workflow_no_invent"),
@@ -69,7 +122,7 @@ def compose_story_system_prompt(
             ),
         ),
     ]
-    return "\n\n".join(part for part in sections if part).rstrip() + "\n"
+    return "\n\n".join(part for part in sections if part).strip()
 
 
 def compose_story_user_message(request: Mapping[str, Any]) -> str:

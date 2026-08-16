@@ -42,7 +42,12 @@ from core.messaging.dialog_tokens import (
 
 from .characters import ActorContext, CharacterProfile, StoryCastApplicationService
 from .idempotency import StoryCommandConflictError
-from .prompt import compose_story_system_prompt, compose_story_user_message
+from .prompt import (
+    compose_story_chat_system_prompt,
+    compose_story_system_prompt,
+    compose_story_user_message,
+    compose_story_user_scene_context,
+)
 from .session import (
     SceneTurnCommand,
     SceneTurnScope,
@@ -218,6 +223,17 @@ class SceneContexts:
     scene_understanding: Mapping[str, Any]
     actor: Mapping[str, Any]
     tools: tuple[Mapping[str, Any], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class StoryLlmTurn:
+    """Scene judgment plus prompts for the chat before_chat hook."""
+
+    appendix: str
+    user_context: str
+    system_prompt: str
+    node_id: str
+    revision: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -456,6 +472,41 @@ class SceneOrchestrator:
         self._tool_records: dict[str, _ToolRecord] = {}
         self._scope: SceneTurnScope | None = None
         self._presentation_events: list[Mapping[str, Any]] = []
+
+    def prepare_llm_turn(
+        self,
+        text: str,
+        *,
+        command_id: str,
+        message_id: str,
+    ) -> StoryLlmTurn:
+        """Judge the current scene and return a prompt appendix. No presentation LLM."""
+        self.flags.require(FeatureFlag.STORY_SYSTEM)
+        user_text = str(text or "").strip()
+        actor_context = self.cast_service.resources.actor_context()
+        contexts = self.context_builder.build(
+            self.program,
+            self.session,
+            actor_context,
+            user_text=user_text,
+            message_id=message_id,
+        )
+        request = self._request_payload(
+            contexts,
+            command_id=command_id,
+            round_index=0,
+            tool_results=(),
+        )
+        user_context = compose_story_user_scene_context(request)
+        system_prompt = compose_story_chat_system_prompt(request)
+        state = self.session.active_branch.state
+        return StoryLlmTurn(
+            appendix=user_context,
+            user_context=user_context,
+            system_prompt=system_prompt,
+            node_id=state.current_node_id,
+            revision=state.revision,
+        )
 
     def handle_free_text(
         self,

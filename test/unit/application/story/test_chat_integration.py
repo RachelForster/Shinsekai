@@ -5,7 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.chat.runtime_process import _handle_chat_command, publish_bound_story_scene
+from application.chat.runtime_process import (
+    _handle_chat_command,
+    _story_speech_lines,
+    publish_bound_story_scene,
+)
 from application.story import SceneDialogueItem, SceneTurnResult, StorySession
 from application.story.coordinator import (
     bound_story_session,
@@ -85,6 +89,9 @@ class _ChatStream:
 
 
 class _SceneService:
+    def prepare_llm_turn(self, text: str, *, command_id: str, message_id: str):
+        return SimpleNamespace(appendix=f"scene-prompt:{text}", node_id="n", revision=1)
+
     def handle_free_text(self, text: str, *, command_id: str, message_id: str):
         return SceneTurnResult(
             command_id=command_id,
@@ -178,11 +185,15 @@ def test_structured_story_choice_renders_scene_dialogue_before_next_options() ->
     )
 
     assert snapshot["story"]["currentNodeId"] == "old-school-gate"
-    assert snapshot["dialogText"] == "收到：和绫约定调查旧校舍"
-    assert snapshot["characterName"] == "ling"
-    assert snapshot["historyEntries"][-1]["text"].startswith("ling:")
+    assert snapshot["status"] == "generating"
+    assert snapshot["dialogText"] == "已选择：和绫约定调查旧校舍"
+    assert state.chat_stream.command[1]["type"] == "send-message"
+    assert state.chat_stream.command[1]["payload"]["text"] == "和绫约定调查旧校舍"
+    assert "promptAppendix" not in state.chat_stream.command[1]["payload"]
     published_types = [event["type"] for event in state.chat_stream.published]
-    assert published_types.index("dialog.end") < published_types.index("options.show")
+    assert "story.state.replace" in published_types
+    assert "options.show" in published_types
+    assert "dialog.end" not in published_types
     assert snapshot["options"]
 
 
@@ -218,12 +229,16 @@ def test_clearing_story_session_drops_memory_and_document(tmp_path) -> None:
     state = _state(enabled=True)
     state.chat_session["historyPath"] = str(history_path)
     state.story_session = _story_session(state.config_manager.feature_flags)
+    from application.story.hooks import write_story_chat_prompt, read_story_chat_prompt
+
+    write_story_chat_prompt(history_path, "cached-scene")
 
     discard_story_session_storage(history_path)
     clear_story_session(state)
 
     assert state.story_session is None
     assert not story_path.exists()
+    assert not read_story_chat_prompt(history_path).available
 
 
 def test_fork_history_creates_a_matching_story_branch() -> None:
@@ -325,7 +340,7 @@ def test_publish_story_transition_is_noop_when_flag_is_off() -> None:
     assert "story" not in state.chat_stream.snapshot
 
 
-def test_free_text_uses_scene_service_only_when_story_flag_is_enabled() -> None:
+def test_free_text_forwards_player_text_to_the_chat_llm_path() -> None:
     state = _state(enabled=True)
     state.story_scene_service = _SceneService()
 
@@ -333,77 +348,52 @@ def test_free_text_uses_scene_service_only_when_story_flag_is_enabled() -> None:
         state,
         {
             "cmdId": "turn-1",
-            "payload": "你好",
+            "payload": {"attachments": [], "text": "你好"},
             "type": "send-message",
         },
     )
 
-    assert snapshot["dialogText"] == "收到：你好"
-    assert snapshot["characterName"] == "ling"
-    assert snapshot["eventSeq"] > 0
-    assert any(event["type"] == "history.replace" for event in state.chat_stream.published)
-    assert any(event["type"] == "dialog.end" for event in state.chat_stream.published)
-    assert snapshot["historyEntries"][0]["role"] == "user"
-    assert "你好" in snapshot["historyEntries"][0]["text"]
-    assert snapshot["historyEntries"][1]["text"].startswith("ling:")
+    assert snapshot["status"] == "generating"
+    assert state.chat_stream.command[1]["type"] == "send-message"
+    assert state.chat_stream.command[1]["payload"]["text"] == "你好"
+    assert "promptAppendix" not in state.chat_stream.command[1]["payload"]
+    assert all(event["type"] != "dialog.end" for event in state.chat_stream.published)
 
 
-def test_bound_story_opening_renders_scene_dialogue() -> None:
+def test_bound_story_opening_kicks_the_chat_llm_path_without_a_player_line() -> None:
     state = _state(enabled=True)
     state.story_session = _story_session(state.config_manager.feature_flags)
     state.story_scene_service = _SceneService()
 
     publish_bound_story_scene(state, "start-1")
 
-    assert state.chat_stream.snapshot["dialogText"] == "收到：进入场景：转校日"
-    assert state.chat_stream.snapshot["characterName"] == "ling"
     published_types = [event["type"] for event in state.chat_stream.published]
-    assert published_types.index("dialog.end") < published_types.index("options.show")
+    assert "story.state.replace" in published_types
+    assert "options.show" in published_types
+    assert "dialog.end" not in published_types
+    assert state.chat_stream.command[1]["type"] == "send-message"
+    assert state.chat_stream.command[1]["payload"]["text"] == ""
+    assert "promptAppendix" not in state.chat_stream.command[1]["payload"]
 
 
-def test_scene_dialogue_publishes_sprite_before_dialog() -> None:
+def test_story_speech_lines_skip_player_narration_and_unknown_characters() -> None:
     state = _state(enabled=True)
-    state.chat_stream.media_url = lambda path: f"/api/media?path={path.replace(chr(92), '/')}"
+    state.config_manager.get_character_by_name = lambda name: (
+        SimpleNamespace(name=name) if name == "绫" else None
+    )
+    dialogue = (
+        SceneDialogueItem("user", "我走进酒吧。", display_name="用户"),
+        SceneDialogueItem("NARR", "夜色很深。"),
+        SceneDialogueItem("npc-1", "本地库没有我。", display_name="路人"),
+        SceneDialogueItem("ling", "今晚有空吗？", display_name="绫", sprite="02"),
+    )
 
-    class _SpriteSceneService:
-        def handle_free_text(self, text: str, *, command_id: str, message_id: str):
-            return SceneTurnResult(
-                command_id=command_id,
-                revision=2,
-                dialogue=(
-                    SceneDialogueItem(
-                        "ling",
-                        f"收到：{text}",
-                        display_name="绫",
-                        sprite_path=r"C:\stories\ling.png",
-                        sprite_scale=1.0,
-                        color="#ff88aa",
-                    ),
-                ),
-                tool_results=(),
-            )
-
-    state.story_scene_service = _SpriteSceneService()
-
-    snapshot = _handle_chat_command(
-        state,
+    assert _story_speech_lines(state, dialogue) == [
         {
-            "cmdId": "turn-1",
-            "payload": "你好",
-            "type": "send-message",
-        },
-    )
+            "effect": "",
+            "name": "绫",
+            "sprite": "02",
+            "text": "今晚有空吗？",
+        }
+    ]
 
-    published_types = [event["type"] for event in state.chat_stream.published]
-    assert published_types.index("sprite.show") < published_types.index("dialog.end")
-    sprite_event = next(
-        event for event in state.chat_stream.published if event["type"] == "sprite.show"
-    )
-    dialog_event = next(
-        event for event in state.chat_stream.published if event["type"] == "dialog.end"
-    )
-    assert sprite_event["characterName"] == "绫"
-    assert sprite_event["url"].startswith("/api/media?path=")
-    assert dialog_event["speaker"] == "绫"
-    assert snapshot["characterName"] == "绫"
-    assert snapshot["dialogText"] == "收到：你好"

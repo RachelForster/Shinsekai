@@ -29,6 +29,7 @@ from application.story.generation import (
     _stage_schema,
     _validate_logic,
     run_story_generation_background,
+    story_resource_catalog_from_config,
 )
 from application.story.generation_eval import (
     StoryGenerationEvalCase,
@@ -244,6 +245,8 @@ def test_narrative_stage_prompt_includes_effect_example() -> None:
     assert all(len(item) == 1 for item in on_enter)
     assert any("exactly one operator" in note for note in notes)
     assert _stage_prompt_extras(StoryGenerationStage.LOGIC) == {}
+    resource_notes = _stage_prompt_extras(StoryGenerationStage.RESOURCES)["responseNotes"]
+    assert any("resourceCatalog is empty" in note for note in resource_notes)
 
 
 def test_pipeline_accepts_string_logic_graph_version(tmp_path: Path) -> None:
@@ -498,6 +501,58 @@ def test_resource_bindings_must_use_supplied_catalog_ids(tmp_path: Path) -> None
     with pytest.raises(StoryGenerationError, match="not in the supplied catalog"):
         service.run(task["id"])
     assert service.get(task["id"])["currentStage"] == "resources"
+
+
+def test_empty_catalog_moves_bindings_to_unresolved(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["resources"]["bindings"] = {"openingBackground": "invented-yard"}
+    artifacts["resources"]["unresolved"] = ["missing-theme"]
+    model = ScriptedModel(artifacts)
+    service, repository = service_at(tmp_path, model)
+    task = service.create("No local media library.", task_id="empty-catalog")
+
+    result = service.run(task["id"])
+
+    assert result["status"] == "succeeded"
+    resources = repository.load_artifact(task["id"], StoryGenerationStage.RESOURCES)
+    assert resources["bindings"] == {}
+    assert resources["unresolved"] == ["missing-theme", "invented-yard"]
+
+
+def test_empty_catalog_is_filled_from_config_manager(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["resources"]["bindings"] = {"openingBackground": "校园"}
+    model = ScriptedModel(artifacts)
+    model.config_manager = SimpleNamespace(
+        config=SimpleNamespace(
+            background_list=[
+                SimpleNamespace(name="校园", bg_tags="school yard", bgm_list=["theme.mp3"])
+            ],
+            effect_list=[SimpleNamespace(name="rain")],
+        )
+    )
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Use local backgrounds.", task_id="local-catalog")
+
+    assert task["resourceCatalog"]["backgrounds"][0]["id"] == "校园"
+    assert task["resourceCatalog"]["effects"][0]["id"] == "rain"
+    assert task["resourceCatalog"]["bgm"][0]["id"] == "theme.mp3"
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+
+
+def test_story_resource_catalog_from_config_uses_background_names() -> None:
+    catalog = story_resource_catalog_from_config(
+        SimpleNamespace(
+            config=SimpleNamespace(
+                background_list=[{"name": "码头", "bg_tags": "harbor"}],
+                effect_list=[],
+            )
+        )
+    )
+    assert catalog == {
+        "backgrounds": [{"id": "码头", "name": "码头", "tags": "harbor"}]
+    }
 
 
 def test_validator_detects_secret_leak() -> None:

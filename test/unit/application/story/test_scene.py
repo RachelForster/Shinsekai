@@ -17,7 +17,12 @@ from application.story import (
     StoryTurnCancelledError,
     ValidatedCastPlanner,
 )
-from application.story.prompt import compose_story_system_prompt, compose_story_user_message
+from application.story.prompt import (
+    compose_story_chat_system_prompt,
+    compose_story_system_prompt,
+    compose_story_user_message,
+    compose_story_user_scene_context,
+)
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
     SelectChoice,
@@ -586,6 +591,27 @@ def test_story_system_prompt_uses_six_sections_and_free_mode_contract() -> None:
     assert "我会陪着你" in user
     assert "perform_intent" in user
     assert "shinsekai.scene.v1" not in user
+    user_scene = compose_story_user_scene_context(
+        {
+            "scene": {
+                "nodeTitle": "旧校舍门口",
+                "nodeId": "old-school-gate",
+                "completedNodeIds": ["transfer-day"],
+            }
+        }
+    )
+    chat_system = compose_story_chat_system_prompt(
+        {
+            "scene": {"nodeTitle": "旧校舍门口"},
+            "actorContext": {"characters": [{"id": "ling", "name": "绫"}]},
+            "tools": [{"name": "perform_intent"}],
+        }
+    )
+    assert tr("story_scene_prompt.section_current") in user_scene
+    assert tr("story_scene_prompt.section_progress") in user_scene
+    assert tr("story_scene_prompt.section_format") not in user_scene
+    assert tr("story_scene_prompt.section_current") not in chat_system
+    assert tr("story_scene_prompt.section_format") in chat_system
 
 
 def test_story_prompt_treats_user_as_player_not_npc() -> None:
@@ -623,3 +649,22 @@ def test_story_prompt_treats_user_as_player_not_npc() -> None:
         if "character_name" in line and "房石阳明" in line
     )
     assert "用户" not in names_line
+
+
+def test_prepare_llm_turn_appends_scene_prompt_without_calling_the_model() -> None:
+    _, _session, _, model, scene = _story(model_responses=())
+
+    turn = scene.prepare_llm_turn(
+        "我会陪着你",
+        command_id="turn-1",
+        message_id="message-1",
+    )
+
+    from i18n import tr
+
+    assert model.requests == []
+    assert turn.user_context
+    assert tr("story_scene_prompt.player_input_header") not in turn.user_context
+    assert "old-school-gate" in turn.user_context or turn.node_id == "old-school-gate"
+    assert "character_name" in turn.system_prompt
+    assert '"dialog"' in turn.system_prompt

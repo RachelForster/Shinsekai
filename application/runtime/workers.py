@@ -189,31 +189,35 @@ class LLMWorker(ThreadDagNode):
                 turn_scope = log_context(turn_id=new_log_id("turn_"))
                 turn_scope.__enter__()
                 attachments = resolve_chat_attachments(message.attachments)
-                prepared_input = self.chat_vision_service.prepare(
-                    message.text,
-                    attachments,
-                    adapter=self.llm_manager.llm_adapter,
-                )
+                source_text = str(message.text or "").strip()
+                prepared_input = None
+                if source_text or attachments:
+                    prepared_input = self.chat_vision_service.prepare(
+                        message.text,
+                        attachments,
+                        adapter=self.llm_manager.llm_adapter,
+                    )
                 logger.info(
                     "LLM worker processing user message",
                     extra={
                         "event": "chat.turn.started",
                         "input_chars": len(message.text or ""),
                         "attachment_count": len(attachments),
-                        "vision_mode": prepared_input.mode,
+                        "vision_mode": getattr(prepared_input, "mode", "text"),
                     },
                 )
                 tracker.start_cross("e2e")
                 self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
 
-                if hasattr(self.ui_update_manager, "record_user_message"):
-                    self.ui_update_manager.record_user_message(prepared_input.display_text)
-                else:
-                    formatted_user_message = (
-                        "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
-                        f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
-                    )
-                    self.ui_update_manager.chat_history.append(formatted_user_message)
+                if prepared_input is not None:
+                    if hasattr(self.ui_update_manager, "record_user_message"):
+                        self.ui_update_manager.record_user_message(prepared_input.display_text)
+                    else:
+                        formatted_user_message = (
+                            "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+                            f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
+                        )
+                        self.ui_update_manager.chat_history.append(formatted_user_message)
 
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
@@ -223,9 +227,12 @@ class LLMWorker(ThreadDagNode):
                         "user_input_text": message.text,
                         "user_attachments": [attachment.to_payload() for attachment in attachments],
                     }
-                    if attachments:
+                    if attachments and prepared_input is not None:
                         chat_kwargs["user_display_text"] = prepared_input.display_text
-                    raw_response = self.llm_manager.chat(prepared_input.content, **chat_kwargs)
+                    raw_response = self.llm_manager.chat(
+                        None if prepared_input is None else prepared_input.content,
+                        **chat_kwargs,
+                    )
 
                 if turn.is_cancelled():
                     # chat() returned early due to cancel — skip parse / persist
@@ -507,9 +514,10 @@ class TTSWorker(ThreadDagNode):
                     and turn.id == current_turn.id
                     and not turn.is_cancelled()
                 ):
+                    speech = "" if getattr(item, "audio_only", False) else item.text
                     self.put_data(
                         get_app_runtime().opencc.convert(item.name),
-                        item.text,
+                        speech,
                         str(item.asset_id) if item.asset_id is not None else "-1",
                         "",
                         is_system_message=False,

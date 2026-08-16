@@ -701,6 +701,22 @@ class StoryGenerationService:
         with self._guard:
             return self._task_locks.setdefault(task_id, threading.Lock())
 
+    def _resolved_resource_catalog(
+        self, resource_catalog: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        catalog = _json_copy(resource_catalog or {})
+        if _catalog_ids(catalog):
+            return catalog
+        return story_resource_catalog_from_config(
+            getattr(self.model, "config_manager", None)
+        )
+
+    def _ensure_task_resource_catalog(self, task: dict[str, Any]) -> dict[str, Any]:
+        catalog = self._resolved_resource_catalog(task.get("resourceCatalog", {}))
+        if catalog != (task.get("resourceCatalog") or {}):
+            task["resourceCatalog"] = catalog
+        return task
+
     def create(
         self,
         synopsis: str,
@@ -725,7 +741,7 @@ class StoryGenerationService:
             "id": _safe_id(task_id or uuid.uuid4().hex, "task id"),
             "synopsis": normalized,
             "options": _json_copy(options or {}),
-            "resourceCatalog": _json_copy(resource_catalog or {}),
+            "resourceCatalog": self._resolved_resource_catalog(resource_catalog),
             "status": StoryGenerationStatus.QUEUED.value,
             "currentStage": StoryGenerationStage.REQUIREMENTS.value,
             "completedStages": [],
@@ -863,6 +879,7 @@ class StoryGenerationService:
         )
         if resume:
             task["cancelRequested"] = False
+        task = self._ensure_task_resource_catalog(task)
         task = self.repository.save(task, preserve_cancel=not resume)
         if task.get("cancelRequested") and not resume:
             raise StoryGenerationCancelled()
@@ -1434,6 +1451,10 @@ _NARRATIVE_RESPONSE_NOTES = (
     'Legal: {"increment":["trust.hero",1]} {"set":["flags.started",true]} {"addSet":["inventory","key"]}.',
     'Illegal: {"op":"increment","variable":"trust.hero","value":1} or extra keys such as comment/reason.',
 )
+_RESOURCES_RESPONSE_NOTES = (
+    "bindings values must be ids from resourceCatalog.",
+    "If resourceCatalog is empty, return bindings: {} and list needed names in unresolved.",
+)
 
 
 def _stage_example(stage: StoryGenerationStage) -> Mapping[str, Any] | None:
@@ -1443,12 +1464,14 @@ def _stage_example(stage: StoryGenerationStage) -> Mapping[str, Any] | None:
 
 
 def _stage_prompt_extras(stage: StoryGenerationStage) -> dict[str, Any]:
+    extras: dict[str, Any] = {}
     example = _stage_example(stage)
-    if example is None:
-        return {}
-    extras: dict[str, Any] = {"responseExample": example}
+    if example is not None:
+        extras["responseExample"] = example
     if stage is StoryGenerationStage.NARRATIVE:
         extras["responseNotes"] = list(_NARRATIVE_RESPONSE_NOTES)
+    if stage is StoryGenerationStage.RESOURCES:
+        extras["responseNotes"] = list(_RESOURCES_RESPONSE_NOTES)
     return extras
 
 
@@ -1620,20 +1643,90 @@ def _validate_resource_catalog(
     value: Mapping[str, Any], catalog: Mapping[str, Any]
 ) -> None:
     allowed = _catalog_ids(catalog)
-    if not allowed:
-        if value.get("bindings"):
-            raise StoryGenerationError(
-                "generation.resource_not_allowed",
-                "resource bindings are not allowed when the catalog is empty",
-            )
-        return
     bindings = value.get("bindings", {})
+    if not allowed:
+        unresolved = [
+            item
+            for item in value.get("unresolved", [])
+            if isinstance(item, str) and item.strip()
+        ]
+        seen = {item.strip() for item in unresolved}
+        for identifier in sorted(_binding_ids(bindings)):
+            if identifier not in seen:
+                unresolved.append(identifier)
+                seen.add(identifier)
+        if isinstance(value, dict):
+            value["bindings"] = {}
+            value["unresolved"] = unresolved
+        return
     for identifier in _binding_ids(bindings):
         if identifier not in allowed:
             raise StoryGenerationError(
                 "generation.resource_not_allowed",
                 f"resource id {identifier!r} is not in the supplied catalog",
             )
+
+
+def story_resource_catalog_from_config(config_manager: Any) -> dict[str, Any]:
+    """Build a generation catalog from the local background and effect libraries."""
+
+    config = getattr(config_manager, "config", None)
+    if config is None:
+        return {}
+    catalog: dict[str, Any] = {}
+    backgrounds = _named_resource_entries(
+        getattr(config, "background_list", ()),
+        tag_field="bg_tags",
+    )
+    if backgrounds:
+        catalog["backgrounds"] = backgrounds
+    effects = _named_resource_entries(getattr(config, "effect_list", ()))
+    if effects:
+        catalog["effects"] = effects
+    bgm: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in getattr(config, "background_list", ()) or ():
+        tracks = (
+            item.get("bgm_list")
+            if isinstance(item, Mapping)
+            else getattr(item, "bgm_list", None)
+        )
+        for track in tracks or ():
+            name = str(track).strip()
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            bgm.append({"id": name})
+    if bgm:
+        catalog["bgm"] = bgm
+    return catalog
+
+
+def _named_resource_entries(
+    items: Any, *, tag_field: str = ""
+) -> list[dict[str, str]]:
+    entries: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for item in items or ():
+        name = _resource_item_field(item, "name") or _resource_item_field(item, "id")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        entry = {"id": name, "name": name}
+        if tag_field:
+            tags = _resource_item_field(item, tag_field)
+            if tags:
+                entry["tags"] = tags
+        entries.append(entry)
+    return entries
+
+
+def _resource_item_field(item: Any, field: str) -> str:
+    if isinstance(item, Mapping):
+        value = item.get(field)
+    else:
+        value = getattr(item, field, None)
+    return str(value or "").strip()
 
 
 def _catalog_ids(value: Any) -> set[str]:

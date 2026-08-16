@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 import json
+import logging
 
 from application.chat.history_paths import resolve_history_path_for_project
 from config.feature_flags import FeatureFlag
@@ -23,10 +24,13 @@ from .characters import (
     ConfigCharacterLibrary,
     StoryCastApplicationService,
 )
+from .hooks import StoryChatPrompt, discard_story_chat_prompt, write_story_chat_prompt
 from .persistence import JsonGlobalStoryProgressStore, JsonStorySessionRepository
 from .project_loader import load_story_project
 from .session import StorySession
 from .scene import ConfigSceneModel, SceneOrchestrator
+
+logger = logging.getLogger(__name__)
 
 
 def apply_story_resource_bindings(
@@ -170,7 +174,41 @@ def start_or_recover_story_session(
         cast_service=cast_service,
         model=ConfigSceneModel(flags, state.config_manager),
     )
+    session.on_persist = lambda: refresh_story_chat_prompt(state)
+    refresh_story_chat_prompt(state)
     return session
+
+
+def refresh_story_chat_prompt(state: Any) -> None:
+    session = getattr(state, "story_session", None)
+    service = getattr(state, "story_scene_service", None)
+    prepare = getattr(service, "prepare_llm_turn", None)
+    if session is None or not callable(prepare):
+        return
+    try:
+        turn = prepare(
+            "",
+            command_id="story-chat-prompt",
+            message_id="story-chat-prompt",
+        )
+    except Exception:
+        logger.exception("failed to refresh story chat prompt")
+        return
+    history_path = (
+        str(getattr(session, "owner_history_path", "") or "").strip()
+        or str(getattr(state, "chat_session", {}).get("historyPath") or "").strip()
+    )
+    write_story_chat_prompt(
+        history_path,
+        StoryChatPrompt(
+            user=str(
+                getattr(turn, "user_context", "")
+                or getattr(turn, "appendix", "")
+                or ""
+            ),
+            system=str(getattr(turn, "system_prompt", "") or ""),
+        ),
+    )
 
 
 def bound_story_session(state: Any) -> StorySession | None:
@@ -209,6 +247,7 @@ def story_snapshot_patch(state: Any) -> dict[str, Any]:
 
 def clear_story_session(state: Any) -> None:
     session = getattr(state, "story_session", None)
+    discard_story_chat_prompt(getattr(session, "owner_history_path", "") or "")
     closer = getattr(session, "close", None)
     if callable(closer):
         closer()
@@ -221,6 +260,7 @@ def clear_story_session(state: Any) -> None:
 def discard_story_session_storage(history_path: str | Path) -> None:
     path = chat_history_session_dir(history_path) / STORY_SESSION_FILENAME
     path.unlink(missing_ok=True)
+    discard_story_chat_prompt(history_path)
 
 
 def release_unbound_story_session(state: Any, history_path: str | Path) -> None:

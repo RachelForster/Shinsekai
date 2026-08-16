@@ -94,6 +94,11 @@ def _sprite_value(sprite_data, key: str, default=None):
     return getattr(sprite_data, key, default)
 
 
+def _ui_speech(msg: LLMDialogMessage, speech: str) -> str:
+    """Story mode already posted dialog; keep the audio path but skip a second caption."""
+    return "" if getattr(msg, "audio_only", False) else speech
+
+
 def _sprite_voice_audio(character_config, sprite_id: int, *allowed_types: str):
     if sprite_id < 0:
         return None, "", ""
@@ -238,8 +243,12 @@ class DefaultCharacterTtsHandler(MessageHandler):
                     if _voice_audio_path:
                         _hide_tts_busy()
                         tts_emit_to_ui_queue(
-                            name_s, _voice_text or speech, str(asset_id), _voice_audio_path,
-                            is_system_message=False, effect=msg.effect,
+                            name_s,
+                            _ui_speech(msg, _voice_text or speech),
+                            str(asset_id),
+                            _voice_audio_path,
+                            is_system_message=False,
+                            effect=msg.effect,
                         )
                         return
 
@@ -313,7 +322,7 @@ class DefaultCharacterTtsHandler(MessageHandler):
                             )
                             tts_emit_to_ui_queue(
                                 name_s,
-                                speech,
+                                _ui_speech(msg, speech),
                                 _asset_str,
                                 "",
                                 is_system_message=False,
@@ -325,7 +334,7 @@ class DefaultCharacterTtsHandler(MessageHandler):
                         rt.audio_path_queue.put(TTSOutputMessage(
                             audio_path=_path or "",
                             name=name_s,
-                            text=speech if _is_first else "",
+                            text=_ui_speech(msg, speech) if _is_first else "",
                             asset_id=_asset_str if _is_first else _asset_str,
                             effect=msg.effect if _is_first else "",
                             is_final_segment=_is_last,
@@ -343,7 +352,12 @@ class DefaultCharacterTtsHandler(MessageHandler):
                 character_config, sprite_id, "fallback", "preset"
             )
         tts_emit_to_ui_queue(
-            name_s, speech, str(asset_id), audio_path, is_system_message=False, effect=msg.effect,
+            name_s,
+            _ui_speech(msg, speech),
+            str(asset_id),
+            audio_path,
+            is_system_message=False,
+            effect=msg.effect,
         )
 
 

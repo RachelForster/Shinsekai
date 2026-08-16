@@ -162,6 +162,33 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     )
 
 
+def test_llm_worker_opening_kick_runs_chat_without_a_player_line(monkeypatch) -> None:
+    user_input_queue = CountingQueue()
+    tts_queue = CountingQueue()
+    user_input_queue.put(UserInputMessage(text=""))
+    user_input_queue.put(None)
+
+    runtime = _make_app_runtime()
+    runtime.config.config.api_config.is_streaming = False
+    runtime.llm_manager.chat.return_value = (
+        '{"character_name":"Alice","speech":"Hi","sprite":"0"}'
+    )
+    worker = LLMWorker(user_input_queue, tts_queue)
+    monkeypatch.setattr(worker, "_init_app", lambda: None)
+    worker.ui_update_manager = runtime.ui_update_manager
+    worker.llm_manager = runtime.llm_manager
+    worker.run()
+
+    runtime.ui_update_manager.record_user_message.assert_not_called()
+    runtime.llm_manager.chat.assert_called_once_with(
+        None,
+        stream=False,
+        dialog_output_required=True,
+        user_attachments=[],
+        user_input_text="",
+    )
+
+
 def test_llm_worker_does_not_requeue_dialogue_after_stream_repair() -> None:
     valid = (
         '{"dialog":['

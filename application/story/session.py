@@ -225,6 +225,7 @@ class StorySession:
         self.branches: dict[str, StoryBranch] = {}
         self.outbox: list[GlobalEffectOutboxEntry] = []
         self.owner_history_path = ""
+        self.on_persist: Callable[[], None] | None = None
         self._lock = threading.RLock()
         self._epoch = 0
         self._closed = False
@@ -920,6 +921,9 @@ class StorySession:
     def _save(self) -> None:
         if self.repository is not None:
             self.repository.save(self.to_payload())
+        callback = self.on_persist
+        if callable(callback):
+            callback()
 
     def _require_enabled(self) -> None:
         self.flags.require(FeatureFlag.STORY_SYSTEM)

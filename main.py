@@ -566,13 +566,20 @@ def main():
                 plugin_manager.hook_dispatcher if plugin_manager is not None else None
             ),
         )
+        story_hooks = None
         if plugin_manager is not None:
             from ai.memory.hooks import install_memory_hooks
+            from application.story.hooks import install_story_hooks
 
             install_memory_hooks(
                 plugin_manager.hook_dispatcher,
                 llm_adapter=llm_adapter,
                 character_names=_memory_character_names(args, config),
+            )
+            story_hooks = install_story_hooks(
+                plugin_manager.hook_dispatcher,
+                history_path=str(args.history or ""),
+                llm_manager=llm_manager,
             )
 
     with _startup_phase("chat.init_hooks"):
@@ -592,6 +599,8 @@ def main():
 
     if messages:
         llm_manager.set_messages(messages)
+    if story_hooks is not None:
+        story_hooks.apply_system()
 
     image_queue = Queue()
     emotion_queue = Queue()
@@ -784,6 +793,8 @@ def main():
             return restored
 
         branch_state: dict[str, object] = _load_initial_branch_state()
+        if story_hooks is not None:
+            story_hooks.apply_system()
 
         def submit_runtime_text(
             text: str,
@@ -805,7 +816,16 @@ def main():
                     except (OSError, ValueError):
                         continue
             if not value and not resolved_attachments:
-                return False
+                from application.story.hooks import story_chat_prompt_available
+
+                if not story_chat_prompt_available(args.history) or user_input_queue is None:
+                    return False
+                from sdk.messages import UserInputMessage
+
+                last_user_message["text"] = ""
+                last_user_message["attachments"] = []
+                user_input_queue.put(UserInputMessage(text=""))
+                return True
             last_user_message["text"] = value
             last_user_message["attachments"] = [attachment.to_payload() for attachment in resolved_attachments]
             if emit_user_text is None:
@@ -1168,6 +1188,21 @@ def main():
                     return
                 if command_type == "cancel-input-batch":
                     chat_turn_service.cancel_pending_batch()
+                    emit_ack(ok=True)
+                    return
+                if command_type == "speak-dialog":
+                    from application.chat.spoken_dialog import enqueue_spoken_dialog_lines
+
+                    if not isinstance(payload, dict):
+                        raise ValueError("Spoken dialog must be an object.")
+                    raw_lines = payload.get("lines")
+                    if not isinstance(raw_lines, list):
+                        raise ValueError("Spoken dialog lines must be a list.")
+                    enqueue_spoken_dialog_lines(
+                        tts_queue,
+                        chat_turn_service,
+                        raw_lines,
+                    )
                     emit_ack(ok=True)
                     return
                 if command_type == "audio-playback-signal":

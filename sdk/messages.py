@@ -37,6 +37,12 @@ class LLMDialogMessage(BaseModel):
         repr=False,
         description="Internal runtime turn identity",
     )
+    audio_only: bool = Field(
+        False,
+        exclude=True,
+        repr=False,
+        description="Synthesize and play audio without re-posting dialog or sprites.",
+    )
 
 
 class TTSOutputMessage(BaseModel):
