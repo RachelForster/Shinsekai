@@ -86,7 +86,15 @@ function layoutGraphCanvas(graph: StoryGraphProjection) {
   return { edges, labels, height, nodes, width };
 }
 
-export function StoryGraphCanvas({ graph }: { graph: StoryGraphProjection }) {
+export function StoryGraphCanvas({
+  graph,
+  onSelectNode,
+  selectedNodeId,
+}: {
+  graph: StoryGraphProjection;
+  onSelectNode?: (nodeId: string) => void;
+  selectedNodeId?: string;
+}) {
   const { t } = useI18n();
   const { edges, height, labels, nodes, width } = useMemo(() => layoutGraphCanvas(graph), [graph]);
   return (
@@ -109,16 +117,49 @@ export function StoryGraphCanvas({ graph }: { graph: StoryGraphProjection }) {
             </g>
           ))}
         </svg>
-        {nodes.map((node) => (
-          <div
-            className={`story-editor-graph-node story-editor-graph-node-${node.kind}`}
-            key={`${node.kind}-${node.id}`}
-            style={{ left: node.x, top: node.y }}
-          >
-            <strong>{node.title}</strong>
-            <small>{node.type}</small>
-          </div>
-        ))}
+        {nodes.map((node) => {
+          const selected = node.kind === "narrative" && node.id === selectedNodeId;
+          const selectable = Boolean(onSelectNode) && node.kind === "narrative";
+          const className = [
+            "story-editor-graph-node",
+            `story-editor-graph-node-${node.kind}`,
+            selected ? "selected" : "",
+            selectable ? "selectable" : "",
+          ]
+            .filter(Boolean)
+            .join(" ");
+          const content = (
+            <>
+              <strong>{node.title}</strong>
+              <small>{node.type}</small>
+            </>
+          );
+          if (!selectable) {
+            return (
+              <div
+                className={className}
+                data-node-id={node.id}
+                key={`${node.kind}-${node.id}`}
+                style={{ left: node.x, top: node.y }}
+              >
+                {content}
+              </div>
+            );
+          }
+          return (
+            <button
+              aria-pressed={selected}
+              className={className}
+              data-node-id={node.id}
+              key={`${node.kind}-${node.id}`}
+              onClick={() => onSelectNode?.(node.id)}
+              style={{ left: node.x, top: node.y }}
+              type="button"
+            >
+              {content}
+            </button>
+          );
+        })}
         {labels.length ? (
           <ul aria-label={t("story.editor.graphEdges")} className="story-editor-graph-edges">
             {labels.map((edge) => (

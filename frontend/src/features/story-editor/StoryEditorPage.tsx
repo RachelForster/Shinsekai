@@ -107,6 +107,15 @@ function nodeTypeLabel(type: string, t: (key: MessageKey) => string) {
   return type;
 }
 
+function enterWhenText(value: unknown) {
+  const item = asObject(value);
+  const gte = item.gte;
+  if (Array.isArray(gte) && gte.length >= 2) {
+    return `${String(gte[0])} >= ${String(gte[1])}`;
+  }
+  return "";
+}
+
 export function StoryEditorPage() {
   const { t } = useI18n();
   const { storyId = "" } = useParams();
@@ -135,6 +144,11 @@ export function StoryEditorPage() {
   const selectedNodeIndex = nodes.findIndex((node) => node.id === selectedNodeId);
   const selectedNode = selectedNodeIndex >= 0 ? nodes[selectedNodeIndex] : null;
   const endings = nodes.filter((node) => node.type === "ending");
+
+  const selectNode = (nodeId: string) => {
+    setSelectedNodeId(nodeId);
+    setCastPreview(null);
+  };
 
   const refresh = async () => {
     if (!storyId) return;
@@ -453,7 +467,7 @@ export function StoryEditorPage() {
               <button
                 className={node.id === selectedNodeId ? "selected" : ""}
                 key={String(node.id)}
-                onClick={() => setSelectedNodeId(String(node.id))}
+                onClick={() => selectNode(String(node.id))}
                 type="button"
               >
                 <span>{String(node.title || node.id)}</span>
@@ -479,7 +493,7 @@ export function StoryEditorPage() {
 
         <section className="story-editor-workspace">
           {selectedNode ? (
-            <article className="story-editor-card">
+            <article className="story-editor-card" key={String(selectedNode.id)}>
               <div className="story-editor-section-title">
                 <h2>{t("story.editor.selectedNode")}</h2>
                 <code>{String(selectedNode.id)}</code>
@@ -519,6 +533,7 @@ export function StoryEditorPage() {
                 <label>
                   {t("story.editor.enterWhen")}
                   <input
+                    defaultValue={enterWhenText(selectedNode.enterWhen)}
                     placeholder={t("story.editor.enterWhenPlaceholder")}
                     onBlur={(event) => {
                       const match = event.target.value.trim().match(/^([^\s]+)\s*>=\s*(-?\d+)$/);
@@ -904,7 +919,7 @@ export function StoryEditorPage() {
         <aside className="story-editor-inspector">
           <section className="story-editor-card">
             <h2>{t("story.editor.graphTitle")}</h2>
-            <StoryGraphCanvas graph={graph} />
+            <StoryGraphCanvas graph={graph} onSelectNode={selectNode} selectedNodeId={selectedNodeId} />
             <h3>{t("story.editor.sourceMap")}</h3>
             <ul className="story-editor-source-map">
               {Object.entries(graph.sourceMap)

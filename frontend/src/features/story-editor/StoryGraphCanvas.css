@@ -33,12 +33,22 @@
   border: 1px solid var(--accent-primary, #635bff);
   border-radius: 8px;
   box-shadow: 0 3px 10px rgba(27, 35, 52, 0.12);
+  color: inherit;
   display: grid;
+  font: inherit;
   gap: 3px;
   min-width: 150px;
   padding: 9px;
   position: absolute;
+  text-align: left;
   z-index: 1;
+}
+.story-editor-graph-node.selectable {
+  cursor: pointer;
+}
+.story-editor-graph-node.selected {
+  background: rgba(99, 91, 255, 0.12);
+  box-shadow: 0 0 0 2px var(--accent-primary, #635bff);
 }
 .story-editor-graph-node-rules {
   border-color: var(--text-secondary, #697386);

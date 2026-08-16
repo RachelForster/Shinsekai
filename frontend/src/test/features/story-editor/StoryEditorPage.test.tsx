@@ -200,4 +200,41 @@ describe("StoryEditorPage", () => {
       path: "/variables/state.variable_1",
     });
   });
+
+  it("updates the node inspector when another scene is selected from the list or graph", async () => {
+    const endingNode = {
+      id: "ending",
+      title: "结局",
+      type: "ending",
+      commitment: "frozen",
+      enterWhen: { gte: ["trust.ling", 10] },
+      onEnter: [],
+      choices: [{ id: "stay", label: "留下", goto: "opening" }],
+      castPolicy: { mode: "fixed", required: [], constraints: { maxActive: 1 } },
+    };
+    getStoryProject.mockResolvedValue({
+      ...document,
+      source: {
+        ...document.source,
+        narrativeGraph: {
+          ...document.source.narrativeGraph,
+          nodes: [...document.source.narrativeGraph.nodes, endingNode],
+        },
+      },
+    });
+    const { container } = renderPage();
+    await screen.findByRole("heading", { name: "校园谜案" });
+    expect(screen.getByLabelText("标题")).toHaveValue("开场");
+
+    fireEvent.click(screen.getByRole("navigation", { name: "剧情节点" }).querySelector("button:nth-child(2)")!);
+    expect(screen.getByLabelText("标题")).toHaveValue("结局");
+    expect(screen.getByLabelText("节点类型")).toHaveValue("ending");
+    expect(screen.getByPlaceholderText("例如 trust.ling >= 10")).toHaveValue("trust.ling >= 10");
+    expect(screen.getByLabelText("选项 1 文案")).toHaveValue("留下");
+
+    fireEvent.click(container.querySelector('.story-editor-graph-node[data-node-id="opening"]')!);
+    expect(screen.getByLabelText("标题")).toHaveValue("开场");
+    expect(screen.getByLabelText("节点类型")).toHaveValue("story");
+    expect(screen.queryByLabelText("选项 1 文案")).not.toBeInTheDocument();
+  });
 });
