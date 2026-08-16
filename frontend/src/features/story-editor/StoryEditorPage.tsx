@@ -292,7 +292,7 @@ export function StoryEditorPage() {
     void commit(
       appendOperations(source, "/cast/characters", {
         id,
-        source: { type: "author-generated", path: `characters/${id}.yaml` },
+        source: { path: `characters/${id}.yaml` },
         tags: [],
         roles: [],
         priority: 0,

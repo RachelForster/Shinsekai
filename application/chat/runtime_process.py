@@ -16,6 +16,7 @@ from collections.abc import Sequence
 from typing import Any
 from urllib.parse import quote
 
+from application.chat.ui_updates import _format_dialog_html
 from core.messaging.dialog_tokens import (
     BGM_ALIASES,
     CG_ALIASES,
@@ -24,8 +25,12 @@ from core.messaging.dialog_tokens import (
     SCENE_ALIASES,
     STAT_ALIASES,
     is_option_history_name,
+    match_choice_name,
+    match_cot_name,
+    match_stat_name,
     normalize_character_name,
 )
+from core.messaging.stat_payload import parse_stat_payload
 from core.paths import app_root as runtime_app_root
 from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
@@ -1066,7 +1071,7 @@ def _persist_scene_turn_messages(
         messages.append(
             {
                 "role": "assistant",
-                "name": item.character_id,
+                "name": _scene_speaker_name(item),
                 "content": item.text,
             }
         )
@@ -1088,7 +1093,7 @@ def _persist_scene_turn_messages(
         history.append(f"<b>{html.escape(user_name)}</b>：{html.escape(user_text)}")
     for item in dialogue:
         history.append(
-            f"<b>{html.escape(item.character_id)}</b>：{html.escape(item.text)}"
+            f"<b>{html.escape(_scene_speaker_name(item))}</b>：{html.escape(item.text)}"
         )
     branch["messages"] = list(messages)
     branch["history"] = history
@@ -1118,25 +1123,62 @@ def _record_scene_turn_history(
             {
                 "id": f"history-{len(entries)}",
                 "role": _scene_history_role(item.character_id),
-                "text": f"{item.character_id}: {item.text}",
+                "text": f"{_scene_speaker_name(item)}: {item.text}",
             }
         )
     _persist_scene_turn_messages(state, user_text, user_name, dialogue)
     return entries
 
 
-def _scene_dialog_events(dialogue: Sequence[Any]) -> list[dict[str, Any]]:
+def _scene_speaker_name(item: Any) -> str:
+    return str(getattr(item, "display_name", "") or item.character_id or "").strip()
+
+
+def _scene_dialog_events(
+    state: BridgeState,
+    dialogue: Sequence[Any],
+) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
+    chat_stream = getattr(state, "chat_stream", None)
+    media_url = getattr(chat_stream, "media_url", None)
+    approve = getattr(chat_stream, "approve_external_media_path", None)
     for item in dialogue:
-        speaker = str(item.character_id or "")
-        is_system = _scene_history_role(speaker) == "system"
+        speaker = _scene_speaker_name(item)
+        if match_cot_name(speaker) or match_cot_name(str(item.character_id or "")):
+            continue
+        if match_choice_name(speaker) or match_choice_name(str(item.character_id or "")):
+            continue
+        if match_stat_name(speaker) or match_stat_name(str(item.character_id or "")):
+            events.append({"type": "stats.update", "stats": parse_stat_payload(item.text)})
+            continue
+        effect = str(getattr(item, "effect", "") or "").strip()
+        if effect.upper() == "LEAVE":
+            events.append({"type": "sprite.remove", "characterName": speaker})
+        else:
+            sprite_path = str(getattr(item, "sprite_path", "") or "").strip()
+            if sprite_path:
+                url = sprite_path
+                if callable(media_url):
+                    url = str(media_url(sprite_path) or sprite_path)
+                elif callable(approve):
+                    approve(sprite_path)
+                events.append(
+                    {
+                        "type": "sprite.show",
+                        "characterName": speaker,
+                        "url": url,
+                        "scale": getattr(item, "sprite_scale", 1.0),
+                    }
+                )
+        is_system = _scene_history_role(str(item.character_id or speaker)) == "system"
+        color = str(getattr(item, "color", "") or "")
         events.append(
             {
                 "type": "dialog.end",
                 "speaker": speaker,
-                "color": "",
+                "color": color,
                 "isSystem": is_system,
-                "fullHtml": f"<p>{html.escape(item.text)}</p>",
+                "fullHtml": _format_dialog_html(speaker, item.text, color, is_system),
             }
         )
     return events
@@ -1193,7 +1235,7 @@ def _append_scene_dialogue_history(
             {
                 "id": f"history-{len(entries)}",
                 "role": _scene_history_role(item.character_id),
-                "text": f"{item.character_id}: {item.text}",
+                "text": f"{_scene_speaker_name(item)}: {item.text}",
             }
         )
     return entries
@@ -1211,7 +1253,7 @@ def _publish_story_scene_result(
         session.replace_history_entries(history_entries)
     presentation_events = (
         *tuple(dict(item) for item in getattr(result, "presentation_events", ()) or ()),
-        *_scene_dialog_events(result.dialogue),
+        *_scene_dialog_events(state, result.dialogue),
     )
     patch: dict[str, Any] = {
         **story_snapshot_patch(state),
@@ -1222,7 +1264,7 @@ def _publish_story_scene_result(
         patch.update(extra_patch)
     if result.dialogue:
         dialogue = result.dialogue[-1]
-        patch["characterName"] = dialogue.character_id
+        patch["characterName"] = _scene_speaker_name(dialogue)
         patch["dialogText"] = dialogue.text
         patch["dialogHtml"] = None
     publish_story_transition(

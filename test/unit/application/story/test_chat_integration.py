@@ -359,3 +359,51 @@ def test_bound_story_opening_renders_scene_dialogue() -> None:
     assert state.chat_stream.snapshot["characterName"] == "ling"
     published_types = [event["type"] for event in state.chat_stream.published]
     assert published_types.index("dialog.end") < published_types.index("options.show")
+
+
+def test_scene_dialogue_publishes_sprite_before_dialog() -> None:
+    state = _state(enabled=True)
+    state.chat_stream.media_url = lambda path: f"/api/media?path={path.replace(chr(92), '/')}"
+
+    class _SpriteSceneService:
+        def handle_free_text(self, text: str, *, command_id: str, message_id: str):
+            return SceneTurnResult(
+                command_id=command_id,
+                revision=2,
+                dialogue=(
+                    SceneDialogueItem(
+                        "ling",
+                        f"收到：{text}",
+                        display_name="绫",
+                        sprite_path=r"C:\stories\ling.png",
+                        sprite_scale=1.0,
+                        color="#ff88aa",
+                    ),
+                ),
+                tool_results=(),
+            )
+
+    state.story_scene_service = _SpriteSceneService()
+
+    snapshot = _handle_chat_command(
+        state,
+        {
+            "cmdId": "turn-1",
+            "payload": "你好",
+            "type": "send-message",
+        },
+    )
+
+    published_types = [event["type"] for event in state.chat_stream.published]
+    assert published_types.index("sprite.show") < published_types.index("dialog.end")
+    sprite_event = next(
+        event for event in state.chat_stream.published if event["type"] == "sprite.show"
+    )
+    dialog_event = next(
+        event for event in state.chat_stream.published if event["type"] == "dialog.end"
+    )
+    assert sprite_event["characterName"] == "绫"
+    assert sprite_event["url"].startswith("/api/media?path=")
+    assert dialog_event["speaker"] == "绫"
+    assert snapshot["characterName"] == "绫"
+    assert snapshot["dialogText"] == "收到：你好"

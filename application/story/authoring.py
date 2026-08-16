@@ -50,7 +50,6 @@ MAX_PREVIEW_STEPS = 100
 DRAFT_COMMIT_DIR = ".commit"
 DRAFT_COMMIT_READY = "ready"
 PUBLICATION_READY = ".complete"
-_STORY_SCOPED_CHARACTER_TYPES = frozenset({"author-generated", "embedded"})
 _REGION_REPLACE_OPS = {
     "node": ("replace-node", "nodeId"),
     "character": ("replace-character", "characterId"),
@@ -1040,10 +1039,8 @@ def copy_story_scoped_character_resources(
         origin = character.get("source", {})
         if not isinstance(origin, Mapping):
             continue
-        if str(origin.get("type") or "") not in _STORY_SCOPED_CHARACTER_TYPES:
-            continue
         relative = str(origin.get("path") or "").strip()
-        if not relative:
+        if not relative or relative.startswith("import_"):
             continue
         try:
             src_file = safe_child_path(source_base, relative)

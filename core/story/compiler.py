@@ -606,14 +606,14 @@ class StoryCompiler:
                 )
             if (
                 project.status == "published"
-                and character.source.type.value == "local-library"
+                and not character.source.path
                 and not character.source.revision
                 and not character.source.content_digest
             ):
                 self._error(
                     diagnostics,
                     "character.unpinned",
-                    "published local-library character must pin a revision or content digest",
+                    "published library character must pin a revision or content digest",
                     path,
                 )
 

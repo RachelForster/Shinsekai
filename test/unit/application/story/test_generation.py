@@ -792,6 +792,7 @@ def test_author_generated_characters_are_materialized(tmp_path: Path) -> None:
         assert payload["sprites"] == []
     source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
     assert source["cast"]["characters"][0]["source"]["path"] == "characters/ling.yaml"
+    assert "type" not in source["cast"]["characters"][0]["source"]
 
 
 def test_failed_eval_includes_spent_cost(tmp_path: Path) -> None:

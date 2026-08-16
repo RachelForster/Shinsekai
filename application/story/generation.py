@@ -889,7 +889,7 @@ class StoryGenerationService:
                 if stage is StoryGenerationStage.REQUIREMENTS:
                     task["assumptions"] = list(artifact.get("assumptions") or [])
                 if stage is StoryGenerationStage.CHARACTERS:
-                    self._materialize_author_characters(task_id, artifact)
+                    self._materialize_character_profiles(task_id, artifact)
                 task["cost"] = _updated_cost(task.get("cost"), request, response)
                 task = self.repository.save(task)
                 self._notify(on_progress, task, stage)
@@ -949,7 +949,7 @@ class StoryGenerationService:
                 task["validation"] = report.to_payload()
                 task = self.repository.save(task)
                 self._notify(on_progress, task, None)
-            self._materialize_author_characters(
+            self._materialize_character_profiles(
                 task_id,
                 self.repository.load_artifact(task_id, StoryGenerationStage.CHARACTERS),
             )
@@ -1128,7 +1128,7 @@ class StoryGenerationService:
                 task_id, stage, artifact
             )
             if stage is StoryGenerationStage.CHARACTERS:
-                self._materialize_author_characters(task_id, artifact)
+                self._materialize_character_profiles(task_id, artifact)
         draft_path = self.repository.save_draft(task_id, source)
         task["draftPath"] = str(draft_path)
 
@@ -1191,7 +1191,7 @@ class StoryGenerationService:
             StoryGenerationStage.RESOURCES: _json_copy(resources),
         }
 
-    def _materialize_author_characters(
+    def _materialize_character_profiles(
         self, task_id: str, artifact: Mapping[str, Any]
     ) -> None:
         characters = artifact.get("characters")
@@ -1199,11 +1199,6 @@ class StoryGenerationService:
             return
         for character in characters:
             if not isinstance(character, Mapping):
-                continue
-            source = character.get("source")
-            if not isinstance(source, Mapping):
-                continue
-            if str(source.get("type") or "") != "author-generated":
                 continue
             character_id = _safe_id(character.get("id"), "character id")
             self.repository.save_character_profile(
@@ -1355,7 +1350,7 @@ def _stage_schema(stage: StoryGenerationStage) -> Mapping[str, Any]:
             "secrets": "string[]; never copy to exposedContext",
         },
         StoryGenerationStage.CHARACTERS: {
-            "characters": "CharacterDraft[] with id, name, responsibility, roles, tags, source",
+            "characters": "CharacterDraft[] with id, name, responsibility, roles, tags",
             "initialCast": "registered character id[]",
             "defaults": "CastDefaults",
         },
@@ -1508,28 +1503,7 @@ def _validate_characters(value: dict[str, Any]) -> None:
         _required_text(
             character.get("responsibility"), "character responsibility", 2_000
         )
-        source = character.get("source")
-        if not isinstance(source, Mapping):
-            character["source"] = {
-                "type": "author-generated",
-                "path": f"characters/{character_id}.yaml",
-            }
-            continue
-        source_type = str(source.get("type") or "").strip()
-        if source_type == "author-generated":
-            character["source"] = {
-                **dict(source),
-                "type": "author-generated",
-                "path": f"characters/{character_id}.yaml",
-            }
-            continue
-        if source_type in {"embedded", "user-imported"} and not str(
-            source.get("path") or ""
-        ).strip():
-            raise StoryGenerationError(
-                "generation.characters_invalid",
-                f"character {character_id!r} is missing a source path",
-            )
+        character["source"] = {"path": f"characters/{character_id}.yaml"}
     initial = value.get("initialCast", [])
     if isinstance(initial, list):
         value["initialCast"] = [renamed.get(str(item), str(item)) for item in initial]
@@ -2524,11 +2498,11 @@ def _sanitize_generated_source(source: Mapping[str, Any]) -> dict[str, Any]:
         if not isinstance(character, dict):
             continue
         source_spec = character.get("source")
-        if (
-            isinstance(source_spec, dict)
-            and str(source_spec.get("type") or "") == "author-generated"
-        ):
-            source_spec["path"] = f"characters/{character['id']}.yaml"
+        if not isinstance(source_spec, dict):
+            source_spec = {}
+            character["source"] = source_spec
+        source_spec.pop("type", None)
+        source_spec["path"] = f"characters/{character['id']}.yaml"
     initial: list[str] = []
     for item in cast.get("initialCast") or []:
         mapped = character_map.get(str(item)) or character_map.get(
