@@ -37,7 +37,6 @@ import { StoryDebugPanel } from "./components/StoryDebugPanel";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
 import { optionsHeldForDialog } from "./state/layers";
-import { optionsHeldForDialog } from "./state/layers";
 import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
