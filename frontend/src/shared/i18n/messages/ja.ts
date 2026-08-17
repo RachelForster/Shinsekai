@@ -1209,7 +1209,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "template.playMode.storyCast": "ストーリーの登場人物",
   "template.playMode.graphTitle": "ストーリー図",
   "template.playMode.graphLoading": "ストーリー図を読み込み中…",
-  "template.playMode.storyHint": "保存済みストーリーを選んでプレイするか、作成ページで新規作成できます。登場人物とシナリオはストーリー側が決めます。",
+  "template.playMode.storyHint":
+    "保存済みストーリーを選んでプレイするか、作成ページで新規作成できます。登場人物とシナリオはストーリー側が決めます。",
   "story.editor.addChoice": "+ 選択肢を追加",
   "story.editor.addCharacter": "+ キャラクター",
   "story.editor.addEffect": "増分を追加",

@@ -169,10 +169,7 @@ export function TemplateEditorPage() {
     queryFn: () => getStoryProjectGraph(selectedStoryId),
     queryKey: storyProjectGraphQueryKey(selectedStoryId),
   });
-  const storyCastNames = useMemo(
-    () => storyCastLabels(storyProjectQuery.data?.source),
-    [storyProjectQuery.data],
-  );
+  const storyCastNames = useMemo(() => storyCastLabels(storyProjectQuery.data?.source), [storyProjectQuery.data]);
   const [maxSpeechChars, setMaxSpeechChars] = useState(0);
   const [maxDialogItems, setMaxDialogItems] = useState(0);
   const [initSpritePath, setInitSpritePath] = useState("");
@@ -1037,142 +1034,142 @@ export function TemplateEditorPage() {
           {isStoryPlay ? null : (
             <>
               <section className="template-panel template-panel--scenario">
-            <label className="template-stack-field">
-              <span className="template-panel__label">{t("template.field.scenario")}</span>
-              <MentionTextArea
-                aria-label={t("template.field.scenario")}
-                className="template-scenario-textarea"
-                onChange={(scenario) => updateDraft({ scenario })}
-                options={mentionOptions}
-                rows={7}
-                value={draft.scenario ?? ""}
-              />
-            </label>
-          </section>
+                <label className="template-stack-field">
+                  <span className="template-panel__label">{t("template.field.scenario")}</span>
+                  <MentionTextArea
+                    aria-label={t("template.field.scenario")}
+                    className="template-scenario-textarea"
+                    onChange={(scenario) => updateDraft({ scenario })}
+                    options={mentionOptions}
+                    rows={7}
+                    value={draft.scenario ?? ""}
+                  />
+                </label>
+              </section>
 
-          <section className={`template-panel template-panel--system${systemExpanded ? " is-expanded" : ""}`}>
-            <button
-              aria-expanded={systemExpanded}
-              className="template-system-toggle"
-              onClick={() => setSystemExpanded((current) => !current)}
-              type="button"
-            >
-              <span>{t("template.section.system")}</span>
-              <span aria-hidden className="section-toggle__indicator" />
-            </button>
-            {systemExpanded ? (
-              <label className="template-stack-field template-stack-field--system">
-                <span className="template-panel__label">{t("template.field.system")}</span>
-                <TextArea
-                  className="template-system-textarea"
-                  onChange={(event) => updateDraft({ system: event.target.value })}
-                  rows={12}
-                  value={draft.system ?? ""}
-                />
-              </label>
-            ) : null}
-          </section>
+              <section className={`template-panel template-panel--system${systemExpanded ? " is-expanded" : ""}`}>
+                <button
+                  aria-expanded={systemExpanded}
+                  className="template-system-toggle"
+                  onClick={() => setSystemExpanded((current) => !current)}
+                  type="button"
+                >
+                  <span>{t("template.section.system")}</span>
+                  <span aria-hidden className="section-toggle__indicator" />
+                </button>
+                {systemExpanded ? (
+                  <label className="template-stack-field template-stack-field--system">
+                    <span className="template-panel__label">{t("template.field.system")}</span>
+                    <TextArea
+                      className="template-system-textarea"
+                      onChange={(event) => updateDraft({ system: event.target.value })}
+                      rows={12}
+                      value={draft.system ?? ""}
+                    />
+                  </label>
+                ) : null}
+              </section>
             </>
           )}
         </section>
 
         {isStoryPlay ? null : (
-        <aside className="template-options-panel">
-          <div className="template-options-panel__header">
-            <h2 className="template-options-panel__title">{t("template.section.generate")}</h2>
-            <AsyncButton
-              className="template-generate-button"
-              icon={<Sparkles aria-hidden className="button__icon" />}
-              loading={generateMutation.isPending}
-              onClick={handleGenerateTemplate}
-              variant="primary"
-            >
-              {t("template.mode.generate")}
-            </AsyncButton>
-          </div>
+          <aside className="template-options-panel">
+            <div className="template-options-panel__header">
+              <h2 className="template-options-panel__title">{t("template.section.generate")}</h2>
+              <AsyncButton
+                className="template-generate-button"
+                icon={<Sparkles aria-hidden className="button__icon" />}
+                loading={generateMutation.isPending}
+                onClick={handleGenerateTemplate}
+                variant="primary"
+              >
+                {t("template.mode.generate")}
+              </AsyncButton>
+            </div>
 
-          <label className="template-side-field">
-            <span className="template-side-field__label">{t("template.field.background")}</span>
-            <Select onChange={(event) => setSelectedBackground(event.target.value)} value={selectedBackground}>
-              {backgroundOptions.map((name) => (
-                <option key={name} value={name}>
-                  {name === TRANSPARENT_BACKGROUND_NAME ? t("template.transparentBackground") : name}
-                </option>
-              ))}
-            </Select>
-          </label>
+            <label className="template-side-field">
+              <span className="template-side-field__label">{t("template.field.background")}</span>
+              <Select onChange={(event) => setSelectedBackground(event.target.value)} value={selectedBackground}>
+                {backgroundOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name === TRANSPARENT_BACKGROUND_NAME ? t("template.transparentBackground") : name}
+                  </option>
+                ))}
+              </Select>
+            </label>
 
-          <div className="template-side-field">
-            <span className="template-side-field__label">{t("template.field.voiceLanguage")}</span>
-            <div className="template-language-segments" role="group">
-              {voiceLanguages.map((option) => (
-                <button
-                  aria-pressed={voiceLanguage === option.value}
-                  className={`template-language-segment${
-                    voiceLanguage === option.value ? " template-language-segment--active" : ""
-                  }`}
-                  key={option.value}
-                  onClick={() => handleVoiceLanguageChange(option.value)}
-                  type="button"
-                >
-                  {t(option.labelKey)}
-                </button>
+            <div className="template-side-field">
+              <span className="template-side-field__label">{t("template.field.voiceLanguage")}</span>
+              <div className="template-language-segments" role="group">
+                {voiceLanguages.map((option) => (
+                  <button
+                    aria-pressed={voiceLanguage === option.value}
+                    className={`template-language-segment${
+                      voiceLanguage === option.value ? " template-language-segment--active" : ""
+                    }`}
+                    key={option.value}
+                    onClick={() => handleVoiceLanguageChange(option.value)}
+                    type="button"
+                  >
+                    {t(option.labelKey)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <p className="template-options-panel__hint">{t("template.optionHelp")}</p>
+
+            <div className="template-option-list">
+              {templateOptions.map((option) => (
+                <label className="template-toggle-row" key={option.key}>
+                  <span>{option.label}</span>
+                  <Switch checked={option.value} onChange={(e) => option.setValue(e.target.checked)} />
+                </label>
               ))}
             </div>
-          </div>
 
-          <p className="template-options-panel__hint">{t("template.optionHelp")}</p>
-
-          <div className="template-option-list">
-            {templateOptions.map((option) => (
-              <label className="template-toggle-row" key={option.key}>
-                <span>{option.label}</span>
-                <Switch checked={option.value} onChange={(e) => option.setValue(e.target.checked)} />
+            <div className="template-number-grid">
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.maxSpeechChars")}</span>
+                <NumberInput
+                  max={500000}
+                  min={0}
+                  onChange={(event) => setMaxSpeechChars(Number.parseInt(event.target.value, 10) || 0)}
+                  step={10}
+                  value={maxSpeechChars}
+                />
               </label>
-            ))}
-          </div>
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.maxDialogItems")}</span>
+                <NumberInput
+                  max={500}
+                  min={0}
+                  onChange={(event) => setMaxDialogItems(Number.parseInt(event.target.value, 10) || 0)}
+                  value={maxDialogItems}
+                />
+              </label>
+            </div>
 
-          <div className="template-number-grid">
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.maxSpeechChars")}</span>
-              <NumberInput
-                max={500000}
-                min={0}
-                onChange={(event) => setMaxSpeechChars(Number.parseInt(event.target.value, 10) || 0)}
-                step={10}
-                value={maxSpeechChars}
-              />
-            </label>
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.maxDialogItems")}</span>
-              <NumberInput
-                max={500}
-                min={0}
-                onChange={(event) => setMaxDialogItems(Number.parseInt(event.target.value, 10) || 0)}
-                value={maxDialogItems}
-              />
-            </label>
-          </div>
-
-          <div className="template-runtime-fields">
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.initSprite")}</span>
-              <FilePicker
-                acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
-                onChange={(event) => setInitSpritePath(event.target.value)}
-                onPathChange={setInitSpritePath}
-                pickLabel={t("common.chooseFile")}
-                pickerTitle={t("template.field.initSprite")}
-                readOnly={false}
-                value={initSpritePath}
-              />
-            </label>
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.historyFile")}</span>
-              <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
-            </label>
-          </div>
-        </aside>
+            <div className="template-runtime-fields">
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.initSprite")}</span>
+                <FilePicker
+                  acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+                  onChange={(event) => setInitSpritePath(event.target.value)}
+                  onPathChange={setInitSpritePath}
+                  pickLabel={t("common.chooseFile")}
+                  pickerTitle={t("template.field.initSprite")}
+                  readOnly={false}
+                  value={initSpritePath}
+                />
+              </label>
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.historyFile")}</span>
+                <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
+              </label>
+            </div>
+          </aside>
         )}
       </div>
 

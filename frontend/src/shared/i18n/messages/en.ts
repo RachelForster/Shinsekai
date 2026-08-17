@@ -1207,7 +1207,8 @@ export const enMessages: Record<MessageKey, string> = {
   "template.playMode.storyCast": "Story cast",
   "template.playMode.graphTitle": "Story graph",
   "template.playMode.graphLoading": "Loading story graph…",
-  "template.playMode.storyHint": "Select a saved story to play, or open the creator to make a new one. Characters and scenario come from the story.",
+  "template.playMode.storyHint":
+    "Select a saved story to play, or open the creator to make a new one. Characters and scenario come from the story.",
   "story.editor.addChoice": "+ Add choice",
   "story.editor.addCharacter": "+ Character",
   "story.editor.addEffect": "Add increment",

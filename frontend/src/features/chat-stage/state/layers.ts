@@ -47,8 +47,7 @@ export function optionsHeldForDialog(state: ChatStageState): boolean {
 
 export function withResolvedLayers(state: ChatStageState): ChatStageState {
   const holdingOptions = optionsHeldForDialog(state);
-  const optionsVisible =
-    !holdingOptions && (state.options.length > 0 || Boolean(state.toolConfirmation));
+  const optionsVisible = !holdingOptions && (state.options.length > 0 || Boolean(state.toolConfirmation));
   return {
     ...state,
     layers: {
