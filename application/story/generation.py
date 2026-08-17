@@ -34,6 +34,7 @@ from core.story import (
     canonical_json,
     parse_story_project,
 )
+from core.story.compiler import BUILTIN_RULE_NODE_SCHEMAS
 
 
 MAX_SYNOPSIS_CHARS = 20_000
@@ -95,6 +96,7 @@ class GenerationValidationIssue:
     message: str
     path: str = ""
     severity: str = "error"
+    suggestion: str = ""
 
     def to_payload(self) -> dict[str, str]:
         return {
@@ -102,7 +104,227 @@ class GenerationValidationIssue:
             "message": self.message,
             "path": self.path,
             "severity": self.severity,
+            "suggestion": self.suggestion or _suggested_fix(
+                self.code, self.path, self.message
+            ),
         }
+
+
+_DIAGNOSTIC_FIXES = {
+    "narrative.missing_start": (
+        "Set narrativeGraph.startNodeId to the id of an existing narrative node."
+    ),
+    "narrative.missing_target": (
+        "Change this choice's goto to an existing narrative node id, or add the "
+        "missing target node."
+    ),
+    "narrative.secret_leak": (
+        "Remove the secret from player-visible text and keep it only in the story "
+        "bible or a locked context field."
+    ),
+    "rule.missing_node": (
+        "Change the edge endpoint to an existing logicGraph node id, or add the "
+        "referenced rule node."
+    ),
+    "rule.missing_port": (
+        "Use a port declared by that rule node type. Check both the endpoint node "
+        "and its fromPort/toPort value."
+    ),
+    "rule.port_type": (
+        "Reconnect the edge so the source output type matches the destination input "
+        "type; insert a compatible rule node if conversion is required."
+    ),
+    "rule.port_cardinality": (
+        "Keep only one incoming edge for this single-input port, or route the values "
+        "through a rule node that accepts multiple inputs."
+    ),
+    "rule.required_port": (
+        "Add an incoming edge to the required input port from a compatible rule-node "
+        "output."
+    ),
+    "rule.cycle": (
+        "Remove or redirect one of the listed logicGraph edges so rule evaluation is "
+        "acyclic."
+    ),
+    "rule.invalid_config": (
+        "Replace this rule node's config with the fields and value types required by "
+        "its type; use the error message to identify the invalid field."
+    ),
+    "rule.unknown_type": (
+        "Change the rule node type to a supported type and rebuild its config and "
+        "ports for that type."
+    ),
+    "rule.unknown_story_node": (
+        "Replace the referenced story node id with an existing narrativeGraph node id."
+    ),
+    "rule.unknown_variable": (
+        "Replace the variable id with one declared in variables, or declare the "
+        "missing variable with the required type."
+    ),
+    "rule.unknown_character": (
+        "Replace the character id with one registered in cast.characters, or register "
+        "the missing character."
+    ),
+    "rule.invalid_flag": (
+        "Reference a boolean variable from this flag rule, or change the variable's "
+        "declared type and initial value to boolean."
+    ),
+    "rule.invalid_metric": (
+        "Reference an integer variable from this metric rule, or change the variable's "
+        "declared type and initial value to integer."
+    ),
+    "condition.unknown_node": (
+        "Replace the node id in this condition with an existing narrativeGraph node id."
+    ),
+    "condition.unknown_variable": (
+        "Replace the variable id with one declared in variables, or add the missing "
+        "variable definition."
+    ),
+    "condition.invalid_flag": (
+        "Make this flag condition reference a declared boolean variable."
+    ),
+    "condition.invalid_numeric": (
+        "Make this gte/lte condition reference an integer variable."
+    ),
+    "condition.invalid_collection": (
+        "Make this contains condition reference a string-set or node-set variable."
+    ),
+    "condition.value_type": (
+        "Replace the comparison value with the type required by the referenced "
+        "variable and operator."
+    ),
+    "condition.reference_type": "Replace the referenced id with a non-empty string.",
+    "condition.arity": (
+        "Use exactly the number of arguments stated in the error message for this "
+        "condition operator."
+    ),
+    "condition.operator": (
+        "Replace the condition with a supported single-key condition object."
+    ),
+    "condition.shape": (
+        "Represent the condition as an object containing exactly one supported operator."
+    ),
+    "effect.unknown_node": (
+        "Replace the node id with an existing narrativeGraph node id."
+    ),
+    "effect.unknown_variable": (
+        "Replace the variable id with one declared in variables, or add the missing "
+        "variable definition."
+    ),
+    "effect.invalid_increment": (
+        "Make increment target an integer variable and use an integer delta."
+    ),
+    "effect.invalid_collection": (
+        "Make this collection effect target a string-set or node-set variable."
+    ),
+    "effect.value_type": (
+        "Change the effect value to match the target variable's declared type and bounds."
+    ),
+    "effect.reference_type": "Replace the referenced id with a non-empty string.",
+    "effect.arity": (
+        "Use exactly the number of arguments stated in the error message for this effect."
+    ),
+    "effect.operator": "Replace the effect with a supported effect operator.",
+    "effect.shape": (
+        "Represent the effect as an object containing exactly one supported operator."
+    ),
+    "cast.unknown_character": (
+        "Replace the id with one from cast.characters, or add a complete character "
+        "registration for that id."
+    ),
+    "cast.unresolved_role": (
+        "Add enough eligible characters with the required role/tags, relax the role "
+        "count or filters, or choose a non-error fallback."
+    ),
+    "cast.required_overflow": (
+        "Increase constraints.maxActive or reduce required characters and required-role counts."
+    ),
+    "cast.required_forbidden": (
+        "Remove the character from either required or forbidden so the sets do not overlap."
+    ),
+    "cast.invalid_range": "Set minActive less than or equal to maxActive.",
+    "cast.too_many_initial": (
+        "Remove initialCast entries or increase cast.defaults.maxActive."
+    ),
+    "cast.fixed_roles": (
+        "Remove requiredRoles from the fixed policy, or change the cast mode to a "
+        "role-capable mode."
+    ),
+    "character.path_escape": (
+        "Use a portable relative path that remains inside the story directory; do not "
+        "use an absolute path or '..'."
+    ),
+    "character.unpinned": (
+        "Set source.revision or source.contentDigest before publishing the story."
+    ),
+    "variable.bounds": "Set min less than or equal to max.",
+    "variable.enum_values": "Add at least one allowed string to the enum values list.",
+    "variable.initial_type": (
+        "Change initial to match the variable type, enum values, and numeric bounds."
+    ),
+    "variable.semantic_type": (
+        "Disable allowSemanticInput or change the variable to an integer with a valid initial value."
+    ),
+    "semantic.global_target": (
+        "Make the target variable branch-scoped or remove it from this semantic signal."
+    ),
+    "semantic.target_disabled": (
+        "Enable allowSemanticInput on the target integer variable or target another enabled variable."
+    ),
+    "semantic.strength_map": (
+        "Define effectsByStrength entries for weak, medium, and strong."
+    ),
+    "semantic.empty_effects": "Add at least one valid set or increment effect here.",
+    "semantic.effect_operator": (
+        "Replace this effect with set or increment targeting an eligible branch metric."
+    ),
+    "semantic.confidence": "Set minimumConfidence to a finite number from 0 through 1.",
+    "semantic.repeat_window": "Set repeatWindow to an integer within the allowed range.",
+    "simulation.unreachable_nodes": (
+        "Add or correct choices/goto transitions from reachable nodes to each listed node, "
+        "or remove nodes that are intentionally unused."
+    ),
+    "simulation.no_ending": (
+        "Add at least one narrative node with type 'ending' and a reachable transition to it."
+    ),
+    "simulation.unreachable_endings": (
+        "Add a satisfiable path from the start node to each listed ending, correcting "
+        "conditions and effects along that path."
+    ),
+    "cast.simulation_failed": (
+        "Adjust this node's castPolicy so its required characters and roles can be "
+        "resolved within minActive/maxActive."
+    ),
+    "simulation.truncated": (
+        "Reduce branching or loops so bounded path simulation can cover the story."
+    ),
+    "simulation.failed": (
+        "Inspect the named narrative path and correct the invalid runtime transition, "
+        "condition, effect, or cast policy described by the error."
+    ),
+}
+
+
+def _suggested_fix(code: str, path: str, message: str) -> str:
+    suggestion = _DIAGNOSTIC_FIXES.get(code)
+    if suggestion:
+        return suggestion
+    if code.startswith("schema."):
+        return (
+            "Replace the value at this path with the JSON shape or primitive type "
+            "stated in the error; keep all required sibling fields."
+        )
+    if code.startswith("cast.condition_"):
+        return (
+            "Rewrite this cast condition using a supported candidate predicate and the "
+            "argument type stated in the error."
+        )
+    if code.startswith("semantic."):
+        return (
+            "Edit this semantic signal field to satisfy the constraint stated in the error."
+        )
+    location = path or "the reported story field"
+    return f"Edit {location} to satisfy this constraint: {message}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1041,16 +1263,31 @@ class StoryGenerationService:
         report: GenerationValidationReport,
     ) -> dict[str, Any]:
         issues = [item.to_payload() for item in report.issues]
-        errors = [
-            f"{item.path}: {item.message}" if item.path else item.message
+        repair_plan = [
+            {
+                "code": item.code,
+                "path": item.path,
+                "problem": item.message,
+                "howToFix": item.suggestion
+                or _suggested_fix(item.code, item.path, item.message),
+            }
             for item in report.issues
             if item.severity == DiagnosticSeverity.ERROR.value
+        ]
+        errors = [
+            (
+                f"[{item['code']}] {item['path'] or '$'}: {item['problem']} "
+                f"How to fix: {item['howToFix']}"
+            )
+            for item in repair_plan
         ]
         return {
             "protocol": "shinsekai.story-patch.v1",
             "operation": "repair",
             "instruction": (
-                "Validation failed. Fix every listed error and return a playable story. "
+                "Validation failed. Follow repairPlan item by item. Modify the exact "
+                "path named by each item, preserve unrelated valid content, then check "
+                "that every listed error is resolved. Return a playable story. "
                 'Preferred response: {"baseVersion": <same integer>, "story": <full corrected story>}. '
                 "Alternatively return bounded JSON-patch operations."
             ),
@@ -1058,6 +1295,7 @@ class StoryGenerationService:
             "story": source,
             "validationErrors": errors,
             "validationIssues": issues,
+            "repairPlan": repair_plan,
             "constraints": {
                 "maxOperations": MAX_PATCH_OPERATIONS,
                 "allowedOperations": [
@@ -1451,6 +1689,86 @@ _NARRATIVE_RESPONSE_NOTES = (
     'Legal: {"increment":["trust.hero",1]} {"set":["flags.started",true]} {"addSet":["inventory","key"]}.',
     'Illegal: {"op":"increment","variable":"trust.hero","value":1} or extra keys such as comment/reason.',
 )
+_NARRATIVE_GENERATION_GUIDE = {
+    "steps": [
+        "Read completedArtifacts.characters and state first; only reference character and variable ids declared there.",
+        "Create unique stable lowercase node ids, then choose one existing id as startNodeId.",
+        "Build choices so every goto exactly matches an id in nodes and every intended node is reachable from startNodeId.",
+        "Include at least one reachable node with type 'ending'; an ending normally has no choices.",
+        "Give every node a satisfiable castPolicy using registered characters and minActive <= maxActive.",
+        "Use only typed conditions and single-operator effects; make their values match the referenced variable types.",
+    ],
+    "referenceRules": {
+        "characterIds": "completedArtifacts.characters.characters[*].id",
+        "variableIds": "keys(completedArtifacts.state.variables)",
+        "nodeIds": "nodes[*].id from this response",
+        "secrets": "never copy completedArtifacts.bible.secrets into title, label, or exposedContext",
+    },
+    "conditionShapes": [
+        {"flag": ["boolean-variable-id"]},
+        {"equals": ["variable-id", "matching-type-value"]},
+        {"gte": ["integer-variable-id", 1]},
+        {"lte": ["integer-variable-id", 10]},
+        {"contains": ["set-variable-id", "string-value"]},
+        {"completed": ["existing-node-id"]},
+        {"all": [{"flag": ["boolean-variable-id"]}]},
+        {"any": [{"completed": ["existing-node-id"]}]},
+        {"not": {"flag": ["boolean-variable-id"]}},
+    ],
+    "effectShapes": [
+        {"set": ["variable-id", "matching-type-value"]},
+        {"increment": ["integer-variable-id", 1]},
+        {"addSet": ["set-variable-id", "string-value"]},
+        {"removeSet": ["set-variable-id", "string-value"]},
+        {"unlock": ["existing-node-id"]},
+        {"appendCanon": ["canon-key", "text"]},
+    ],
+    "selfCheck": [
+        "startNodeId exists in nodes",
+        "node ids and choice ids are unique",
+        "every goto/unlock/completed reference exists",
+        "all nodes and all endings are reachable",
+        "all character and variable references exist",
+        "each effect object has exactly one operator key",
+    ],
+}
+_LOGIC_RESPONSE_EXAMPLE = {
+    "version": 1,
+    "nodes": [
+        {
+            "id": "trust-value",
+            "type": "metric-ref",
+            "config": {"variable": "trust.hero"},
+        },
+        {
+            "id": "trust-high-enough",
+            "type": "condition.gte",
+            "config": {"value": 5},
+        },
+        {
+            "id": "unlock-next-scene",
+            "type": "unlock",
+            "config": {"storyNodeId": "next-scene"},
+        },
+    ],
+    "edges": [
+        {
+            "from": {"nodeId": "trust-value", "port": "value"},
+            "to": {"nodeId": "trust-high-enough", "port": "input"},
+        },
+        {
+            "from": {"nodeId": "trust-high-enough", "port": "result"},
+            "to": {"nodeId": "unlock-next-scene", "port": "when"},
+        },
+    ],
+}
+_LOGIC_RESPONSE_NOTES = (
+    "Copy this shape, not these ids. Use only node types and exact port names from generationGuide.nodeTypeCatalog.",
+    "Every edge.from must name an output port; every edge.to must name an input port of the same type (ANY is compatible with any type).",
+    "Connect every required input exactly once unless its catalog entry says multiple=true, and never create a directed cycle.",
+    "Use variable ids from completedArtifacts.state, story node ids from completedArtifacts.narrative, and character ids from completedArtifacts.characters.",
+    "An empty graph {version:1,nodes:[],edges:[]} is valid when no cross-node rule is needed; do not invent decorative rule nodes.",
+)
 _RESOURCES_RESPONSE_NOTES = (
     "bindings values must be ids from resourceCatalog.",
     "If resourceCatalog is empty, return bindings: {} and list needed names in unresolved.",
@@ -1460,7 +1778,63 @@ _RESOURCES_RESPONSE_NOTES = (
 def _stage_example(stage: StoryGenerationStage) -> Mapping[str, Any] | None:
     if stage is StoryGenerationStage.NARRATIVE:
         return _NARRATIVE_RESPONSE_EXAMPLE
+    if stage is StoryGenerationStage.LOGIC:
+        return _LOGIC_RESPONSE_EXAMPLE
     return None
+
+
+def _logic_graph_generation_guide() -> dict[str, Any]:
+    node_type_catalog: dict[str, Any] = {}
+    for node_type, schema in BUILTIN_RULE_NODE_SCHEMAS.items():
+        node_type_catalog[node_type] = {
+            "inputs": {
+                name: {
+                    "type": port.type.value,
+                    "required": port.required,
+                    "multiple": port.multiple,
+                }
+                for name, port in schema.inputs.items()
+            },
+            "outputs": {
+                name: {
+                    "type": port.type.value,
+                    "multiple": port.multiple,
+                }
+                for name, port in schema.outputs.items()
+            },
+        }
+    return {
+        "steps": [
+            "Decide which deterministic cross-node rule is actually needed; return an empty graph if none is needed.",
+            "Create nodes with unique ids, a type from nodeTypeCatalog, and the required config fields.",
+            "Create edges using the exact {from:{nodeId,port},to:{nodeId,port}} shape.",
+            "Match output and input port types and connect all required input ports.",
+            "Topologically inspect the finished graph and remove every directed cycle.",
+        ],
+        "configRules": {
+            "metric-ref|flag-ref|increment-metric|set-variable|add-set|remove-set": {
+                "variable": "existing variable id; metric/increment require integer, flag-ref requires boolean"
+            },
+            "condition.gte|condition.lte": {"value": "integer"},
+            "compare": {"operator": "gte | lte | equals", "value": "integer"},
+            "unlock|enter-story-node": {"storyNodeId": "existing narrative node id"},
+            "character-*": (
+                "config.characterId must be registered; character-replace instead uses "
+                "fromCharacterId and toCharacterId"
+            ),
+        },
+        "nodeTypeCatalog": node_type_catalog,
+        "selfCheck": [
+            "all node ids are unique",
+            "all edge nodeIds exist",
+            "all port names exist on the selected node types",
+            "edge port types are compatible",
+            "every required input is connected",
+            "single-input ports have at most one incoming edge",
+            "the directed graph has no cycle",
+            "all config references exist in completedArtifacts",
+        ],
+    }
 
 
 def _stage_prompt_extras(stage: StoryGenerationStage) -> dict[str, Any]:
@@ -1470,6 +1844,10 @@ def _stage_prompt_extras(stage: StoryGenerationStage) -> dict[str, Any]:
         extras["responseExample"] = example
     if stage is StoryGenerationStage.NARRATIVE:
         extras["responseNotes"] = list(_NARRATIVE_RESPONSE_NOTES)
+        extras["generationGuide"] = _json_copy(_NARRATIVE_GENERATION_GUIDE)
+    if stage is StoryGenerationStage.LOGIC:
+        extras["responseNotes"] = list(_LOGIC_RESPONSE_NOTES)
+        extras["generationGuide"] = _logic_graph_generation_guide()
     if stage is StoryGenerationStage.RESOURCES:
         extras["responseNotes"] = list(_RESOURCES_RESPONSE_NOTES)
     return extras

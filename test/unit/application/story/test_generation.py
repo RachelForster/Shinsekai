@@ -236,6 +236,7 @@ def test_narrative_stage_prompt_includes_effect_example() -> None:
     extras = _stage_prompt_extras(StoryGenerationStage.NARRATIVE)
     example = extras["responseExample"]
     notes = extras["responseNotes"]
+    guide = extras["generationGuide"]
     effects = example["nodes"][0]["choices"][0]["effects"]
     on_enter = example["nodes"][0]["onEnter"]
     assert _stage_example(StoryGenerationStage.NARRATIVE) == example
@@ -244,7 +245,27 @@ def test_narrative_stage_prompt_includes_effect_example() -> None:
     assert all(len(item) == 1 for item in effects)
     assert all(len(item) == 1 for item in on_enter)
     assert any("exactly one operator" in note for note in notes)
-    assert _stage_prompt_extras(StoryGenerationStage.LOGIC) == {}
+    assert "every goto/unlock/completed reference exists" in guide["selfCheck"]
+    assert guide["referenceRules"]["variableIds"] == (
+        "keys(completedArtifacts.state.variables)"
+    )
+    logic_extras = _stage_prompt_extras(StoryGenerationStage.LOGIC)
+    logic_example = logic_extras["responseExample"]
+    logic_guide = logic_extras["generationGuide"]
+    assert logic_example["edges"][0] == {
+        "from": {"nodeId": "trust-value", "port": "value"},
+        "to": {"nodeId": "trust-high-enough", "port": "input"},
+    }
+    assert logic_guide["nodeTypeCatalog"]["condition.gte"]["inputs"]["input"] == {
+        "type": "Integer",
+        "required": True,
+        "multiple": False,
+    }
+    assert logic_guide["nodeTypeCatalog"]["unlock"]["inputs"]["when"][
+        "type"
+    ] == "Boolean"
+    assert "the directed graph has no cycle" in logic_guide["selfCheck"]
+    assert any("exact port names" in note for note in logic_extras["responseNotes"])
     resource_notes = _stage_prompt_extras(StoryGenerationStage.RESOURCES)["responseNotes"]
     assert any("resourceCatalog is empty" in note for note in resource_notes)
 
@@ -568,6 +589,20 @@ def test_validator_detects_secret_leak() -> None:
     assert "secret.exposed" in {item.code for item in report.issues}
 
 
+def test_graph_compile_diagnostic_includes_actionable_fix() -> None:
+    source = campus_mystery_source()
+    source["logicGraph"]["edges"][0]["to"]["port"] = "missing-input"
+
+    report = StoryDraftValidator().validate(source)
+    issue = next(item for item in report.issues if item.code == "rule.missing_port")
+    payload = issue.to_payload()
+
+    assert payload["path"].startswith("$.logicGraph.edges[0]")
+    assert "port" in payload["message"].lower()
+    assert "port" in payload["suggestion"].lower()
+    assert "fromPort/toPort" in payload["suggestion"]
+
+
 def test_fixed_eval_reports_pass_rate_coverage_and_cost(tmp_path: Path) -> None:
     model = ScriptedModel(stage_artifacts(two_endings=True))
     service, _ = service_at(tmp_path, model)
@@ -643,6 +678,13 @@ class FullStoryRepairModel(ScriptedModel):
         if request["operation"] == "repair":
             self.calls.append("repair")
             assert request["validationErrors"]
+            assert request["repairPlan"]
+            issue = request["repairPlan"][0]
+            assert set(issue) == {"code", "path", "problem", "howToFix"}
+            assert issue["path"]
+            assert issue["problem"]
+            assert issue["howToFix"]
+            assert "How to fix:" in request["validationErrors"][0]
             story = campus_mystery_source()
             story["status"] = "draft"
             return {"baseVersion": request["baseVersion"], "story": story}

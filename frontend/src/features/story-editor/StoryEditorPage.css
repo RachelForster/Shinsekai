@@ -232,6 +232,11 @@
   color: var(--text-secondary, #697386);
   font-size: 11px;
 }
+.story-editor-diagnostic-suggestion {
+  color: var(--text-secondary, #526070);
+  font-size: 12px;
+  line-height: 1.45;
+}
 .story-editor-valid {
   color: #197944 !important;
 }

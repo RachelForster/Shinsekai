@@ -244,8 +244,15 @@ export function StoryGeneratorPage() {
                   {task.validation.issues.length ? (
                     <ul>
                       {task.validation.issues.map((issue) => (
-                        <li key={`${issue.code}-${issue.path}`}>
-                          {issue.code}: {issue.message}
+                        <li className="story-generator-validation-issue" key={`${issue.code}-${issue.path}`}>
+                          <strong>{issue.code}</strong>
+                          <span>{issue.message}</span>
+                          <code>{issue.path}</code>
+                          {issue.suggestion ? (
+                            <span>
+                              {t("story.generator.validationSuggestion", { suggestion: issue.suggestion })}
+                            </span>
+                          ) : null}
                         </li>
                       ))}
                     </ul>

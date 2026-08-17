@@ -1212,6 +1212,7 @@ export interface StoryGenerationValidationIssue {
   message: string;
   path: string;
   severity: "error" | "info" | "warning";
+  suggestion: string;
 }
 
 export interface StoryGenerationValidation {

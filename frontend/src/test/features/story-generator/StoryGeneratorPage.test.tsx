@@ -161,6 +161,7 @@ describe("StoryGeneratorPage", () => {
           message: "story must define at least one ending",
           path: "/narrativeGraph",
           severity: "error",
+          suggestion: "Add a reachable ending node.",
         },
       ],
     };
@@ -205,6 +206,8 @@ describe("StoryGeneratorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("生成结果在有限次自动修补后仍未通过校验");
+    expect(screen.getByText("/narrativeGraph")).toBeInTheDocument();
+    expect(screen.getByText("修改建议：Add a reachable ending node.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "打开编辑器" }));
     await waitFor(() => expect(importGeneratedStoryProject).toHaveBeenCalledWith("generation-1"));
   });

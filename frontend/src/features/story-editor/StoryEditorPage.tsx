@@ -972,6 +972,11 @@ function Diagnostics({ validation }: { validation: StoryGenerationValidation | n
           <strong>{issue.code}</strong>
           <span>{issue.message}</span>
           <code>{issue.path}</code>
+          {issue.suggestion ? (
+            <span className="story-editor-diagnostic-suggestion">
+              {t("story.editor.diagnosticSuggestion", { suggestion: issue.suggestion })}
+            </span>
+          ) : null}
         </li>
       ))}
     </ul>

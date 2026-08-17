@@ -169,6 +169,18 @@
   font-weight: 700;
 }
 
+.story-generator-validation-issue {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 8px;
+}
+
+.story-generator-validation-issue code,
+.story-generator-validation-issue span:last-child {
+  color: var(--text-secondary, #687083);
+  font-size: 12px;
+}
+
 .story-generator-regenerate {
   display: grid;
   grid-template-columns: 1fr auto auto auto;

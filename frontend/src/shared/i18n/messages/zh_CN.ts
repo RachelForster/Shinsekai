@@ -1216,6 +1216,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "story.editor.commitment.frozen": "冻结",
   "story.editor.delete": "删除",
   "story.editor.diagnostics": "校验问题",
+  "story.editor.diagnosticSuggestion": "修改建议：{suggestion}",
   "story.editor.diagnosticsLoading": "正在读取校验结果…",
   "story.editor.diagnosticsPass": "Schema、引用、路径、演员表与秘密隔离均已通过。",
   "story.editor.draftPublished": "草稿 r{revision} · 已发布 v{version}",
@@ -1301,6 +1302,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "story.generator.validationPassed": "已通过确定性校验",
   "story.generator.validationRepairFailed":
     "生成结果在有限次自动修补后仍未通过校验。请查看下方问题列表，或打开编辑器手动修改。",
+  "story.generator.validationSuggestion": "修改建议：{suggestion}",
   "top.chatStage": "聊天舞台",
   "effect.action.community": "下载音效",
   "effect.action.pickColor": "选择颜色",

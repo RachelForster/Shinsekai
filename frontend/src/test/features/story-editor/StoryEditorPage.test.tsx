@@ -137,6 +137,30 @@ describe("StoryEditorPage", () => {
     expect(container.querySelector(".story-editor-graph-lines path")).not.toBeNull();
   });
 
+  it("shows an actionable fix for graph compilation errors", async () => {
+    getStoryProject.mockResolvedValue({
+      ...document,
+      validation: {
+        ...document.validation,
+        valid: false,
+        issues: [
+          {
+            code: "rule.missing_port",
+            message: "destination port 'input-x' does not exist",
+            path: "$.logicGraph.edges[0].to.port",
+            severity: "error",
+            suggestion: "Use an input port declared by the destination rule node type.",
+          },
+        ],
+      },
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("rule.missing_port")).toBeInTheDocument();
+    expect(screen.getByText(/修改建议：Use an input port declared/)).toBeInTheDocument();
+  });
+
   it("adds a node through a versioned structured patch", async () => {
     renderPage();
     await screen.findByRole("heading", { name: "校园谜案" });

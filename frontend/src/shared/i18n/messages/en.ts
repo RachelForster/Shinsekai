@@ -1247,6 +1247,7 @@ export const enMessages: Record<MessageKey, string> = {
   "story.editor.commitment.frozen": "Frozen",
   "story.editor.delete": "Delete",
   "story.editor.diagnostics": "Validation issues",
+  "story.editor.diagnosticSuggestion": "Suggested fix: {suggestion}",
   "story.editor.diagnosticsLoading": "Loading validation…",
   "story.editor.diagnosticsPass": "Schema, references, paths, cast, and secret isolation all passed.",
   "story.editor.draftPublished": "Draft r{revision} · Published v{version}",
@@ -1335,6 +1336,7 @@ export const enMessages: Record<MessageKey, string> = {
   "story.generator.validationPassed": "Passed deterministic validation",
   "story.generator.validationRepairFailed":
     "The generated story still failed validation after bounded repair. Review the issues below, or open the editor to fix them.",
+  "story.generator.validationSuggestion": "Suggested fix: {suggestion}",
   "top.chatStage": "Chat stage",
   "effect.action.community": "Download Effects",
   "effect.action.pickColor": "Pick color",

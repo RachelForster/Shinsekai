@@ -1248,6 +1248,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "story.editor.commitment.frozen": "凍結",
   "story.editor.delete": "削除",
   "story.editor.diagnostics": "検証の問題",
+  "story.editor.diagnosticSuggestion": "修正案：{suggestion}",
   "story.editor.diagnosticsLoading": "検証結果を読み込み中…",
   "story.editor.diagnosticsPass": "スキーマ、参照、経路、キャスト、秘密の隔離はすべて通過しました。",
   "story.editor.draftPublished": "下書き r{revision} · 公開済み v{version}",
@@ -1334,6 +1335,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "story.generator.validationPassed": "決定的検証に合格",
   "story.generator.validationRepairFailed":
     "有限回の自動修復後も生成結果は検証に合格しませんでした。下の問題一覧を確認するか、エディタで修正してください。",
+  "story.generator.validationSuggestion": "修正案：{suggestion}",
   "top.chatStage": "チャットステージ",
   "effect.action.community": "エフェクトをダウンロード",
   "effect.action.pickColor": "色を選択",
