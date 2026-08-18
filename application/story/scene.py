@@ -26,6 +26,7 @@ from core.story import (
     SemanticSignalContext,
     SignalStrength,
     SpeechAct,
+    StoryEventType,
     StoryProgram,
 )
 
@@ -354,6 +355,15 @@ class SceneContextBuilder:
                 completed_node_ids=state.completed_node_ids,
             )
         ]
+        choices = [
+            {"id": choice.id, "label": choice.label}
+            for choice in node.choices
+            if evaluator.evaluate(
+                choice.when,
+                variables=variables,
+                completed_node_ids=state.completed_node_ids,
+            )
+        ]
         scene_context = MappingProxyType(
             {
                 "storyId": program.story_id,
@@ -362,6 +372,12 @@ class SceneContextBuilder:
                 "nodeTitle": node.title,
                 "revision": state.revision,
                 "publicContext": _protocol_value(node.exposed_context),
+                "incomingTransition": _incoming_choice_transition(
+                    program,
+                    session,
+                    node.id,
+                ),
+                "availableChoices": choices,
                 "completedNodeIds": sorted(state.completed_node_ids),
                 "canon": [fact.text for fact in state.canon],
                 "visibleVariables": {
@@ -1225,6 +1241,33 @@ def _sprite_scale_value(value: Any) -> float:
     if scale <= 0:
         return 1.0
     return scale
+
+
+def _incoming_choice_transition(
+    program: StoryProgram,
+    session: StorySession,
+    current_node_id: str,
+) -> dict[str, str]:
+    for causal in reversed(session.active_branch.events):
+        event = causal.event
+        if event.type != StoryEventType.CHOICE_SELECTED:
+            continue
+        source_id = str(event.payload.get("nodeId") or "")
+        choice_id = str(event.payload.get("choiceId") or "")
+        source = program.nodes_by_id.get(source_id)
+        if source is None:
+            continue
+        choice = next((item for item in source.choices if item.id == choice_id), None)
+        if choice is None or choice.goto != current_node_id:
+            continue
+        return {
+            "fromNodeId": source.id,
+            "fromNodeTitle": source.title,
+            "choiceId": choice.id,
+            "choiceLabel": choice.label,
+            "toNodeId": current_node_id,
+        }
+    return {}
 
 
 def _protocol_value(value: Any) -> Any:

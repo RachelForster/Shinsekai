@@ -115,6 +115,7 @@ def _compose_story_chat_system_sections(
                     _T("workflow_tools_first"),
                     _T("workflow_then_dialog"),
                     _T("workflow_no_invent"),
+                    _T("workflow_continuity"),
                     _T("workflow_no_choice"),
                     _T("workflow_untrusted"),
                     json_format_reminder(),
@@ -162,10 +163,18 @@ def _current_scene_block(scene: Mapping[str, Any]) -> str:
         lines.append(_T("node_title", title=title))
     if node_id:
         lines.append(_T("node_id", id=node_id))
+    transition = scene.get("incomingTransition")
+    if isinstance(transition, Mapping) and transition:
+        lines.append(_T("incoming_transition"))
+        lines.append(_format_data(transition))
     public_context = scene.get("publicContext")
     if public_context not in (None, "", {}, []):
         lines.append(_T("public_context"))
         lines.append(_format_data(public_context))
+    choices = scene.get("availableChoices")
+    if choices not in (None, "", {}, []):
+        lines.append(_T("available_choices"))
+        lines.append(_format_data(choices))
     intents = scene.get("availableIntentIds")
     if intents not in (None, "", {}, []):
         lines.append(_T("available_intents"))

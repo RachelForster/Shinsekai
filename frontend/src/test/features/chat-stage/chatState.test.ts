@@ -1115,6 +1115,42 @@ describe("chatStageReducer", () => {
     expect(userChoice.layers.dialog).toBe(false);
   });
 
+  it("does not reveal the next story options while the selected turn is generating", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "你",
+        dialogText: "搜查房间",
+        userDisplayName: "你",
+      },
+      { source: "submit-option", text: "搜查房间", type: "submitUserMessage" },
+    );
+    const nextOptions = chatStageReducer(submitted, {
+      event: {
+        options: [
+          {
+            enabled: true,
+            expectedNodeId: "search-room",
+            expectedRevision: 2,
+            id: "ask-remote",
+            label: "询问遥控器用途",
+            source: "story",
+          },
+        ],
+        seq: 2,
+        ts: 2,
+        type: "options.show",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(nextOptions.optimisticSubmission).toBeDefined();
+    expect(nextOptions.options).toHaveLength(1);
+    expect(nextOptions.layers.options).toBe(false);
+    expect(nextOptions.layers.dialog).toBe(true);
+  });
+
   it("correlates tool confirmation events and disables free-form input", () => {
     const prompted = chatStageReducer(emptyChatState, {
       event: {

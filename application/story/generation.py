@@ -1726,7 +1726,8 @@ def _stage_schema(stage: StoryGenerationStage) -> Mapping[str, Any]:
             "startNodeId": "node id",
             "nodes": (
                 "StoryNode[]; every node includes structured CastPolicy and fallback; "
-                "every choice has a non-empty label string; onEnter/effects items are "
+                "every node includes public exposedContext.sceneBeat; every choice has "
+                "a concrete non-empty label string; onEnter/effects items are "
                 "exactly one operator: {set|increment|addSet|removeSet|unlock|appendCanon: args}"
             ),
         },
@@ -1750,6 +1751,12 @@ _NARRATIVE_RESPONSE_EXAMPLE = {
             "id": "opening",
             "title": "Opening",
             "commitment": "draft",
+            "exposedContext": {
+                "sceneBeat": (
+                    "The hero reaches the sealed archive and sees a witness beside "
+                    "the visibly broken door seal."
+                )
+            },
             "castPolicy": {
                 "mode": "fixed",
                 "required": ["hero"],
@@ -1762,8 +1769,8 @@ _NARRATIVE_RESPONSE_EXAMPLE = {
             "onEnter": [{"set": ["flags.started", True]}],
             "choices": [
                 {
-                    "id": "go-next",
-                    "label": "Continue",
+                    "id": "ask-about-seal",
+                    "label": "Ask the witness about the broken seal",
                     "effects": [{"increment": ["trust.hero", 1]}],
                     "goto": "ending",
                 }
@@ -1853,6 +1860,8 @@ _NARRATIVE_RESPONSE_NOTES = (
     "Each onEnter/effects item must contain exactly one operator key.",
     'Legal: {"increment":["trust.hero",1]} {"set":["flags.started",true]} {"addSet":["inventory","key"]}.',
     'Illegal: {"op":"increment","variable":"trust.hero","value":1} or extra keys such as comment/reason.',
+    "Give every node a public exposedContext.sceneBeat that bridges from the incoming choice and establishes the people, objects, and facts referenced by its choices.",
+    "Never use generic labels such as Continue, Next, or Proceed and never add array-order fallback choices; every choice must describe a concrete action grounded in the current scene.",
 )
 _NARRATIVE_GENERATION_GUIDE = {
     "steps": [
@@ -1862,6 +1871,10 @@ _NARRATIVE_GENERATION_GUIDE = {
         "Include at least one reachable node with type 'ending'; an ending normally has no choices.",
         "Give every node a satisfiable castPolicy using registered characters and minActive <= maxActive.",
         "Use only typed conditions and single-operator effects; make their values match the referenced variable types.",
+        "Write exposedContext.sceneBeat for every node as the public connective beat the scene LLM should narrate on entry; do not put secrets there.",
+        "Make each choice a concrete action that follows from that sceneBeat. Mention an object or person only after it is established in this node or an earlier reachable node.",
+        "Keep enough dramatic space inside each node for setup and reaction; do not turn every tiny action into an abrupt node jump.",
+        "Do not emit generic Continue/Next/Proceed choices or synthetic fallback edges based on node array order.",
     ],
     "referenceRules": {
         "characterIds": "completedArtifacts.characters.characters[*].id",
@@ -2708,10 +2721,11 @@ def _ensure_playable_narrative(
             for item in choices
             if isinstance(item, dict) and item.get("id")
         }
+        ending_title = str(endings[0].get("title") or ending_id).strip()
         choices.append(
             {
-                "id": _allocate_compiler_id("continue", used_choice_ids, "continue"),
-                "label": "Continue",
+                "id": _allocate_compiler_id("conclude", used_choice_ids, "conclude"),
+                "label": f"Conclude: {ending_title}",
                 "effects": [],
                 "goto": ending_id,
             }
@@ -2782,54 +2796,6 @@ def _force_playable_source(source: Mapping[str, Any]) -> dict[str, Any]:
                 if isinstance(choice, dict):
                     choice.pop("when", None)
     _ensure_playable_narrative(narrative, known)
-    nodes = [item for item in narrative.get("nodes", []) if isinstance(item, dict)]
-    ending_id = next(
-        (str(item.get("id") or "") for item in nodes if item.get("type") == "ending"),
-        "",
-    )
-    start_id = str(narrative.get("startNodeId") or "")
-    ordered: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    by_id = {str(item.get("id") or ""): item for item in nodes}
-    if start_id in by_id:
-        ordered.append(by_id[start_id])
-        seen.add(start_id)
-    for item in nodes:
-        identifier = str(item.get("id") or "")
-        if not identifier or identifier in seen or item.get("type") == "ending":
-            continue
-        ordered.append(item)
-        seen.add(identifier)
-    for index, node in enumerate(ordered):
-        if str(node.get("type") or "") == "ending":
-            continue
-        if index + 1 < len(ordered):
-            target = str(ordered[index + 1].get("id") or ending_id)
-        else:
-            target = ending_id
-        if not target:
-            continue
-        choices = node.get("choices")
-        if not isinstance(choices, list):
-            choices = []
-            node["choices"] = choices
-        if any(
-            isinstance(item, dict) and item.get("goto") == target for item in choices
-        ):
-            continue
-        used = {
-            str(item.get("id") or "")
-            for item in choices
-            if isinstance(item, dict) and item.get("id")
-        }
-        choices.append(
-            {
-                "id": _allocate_compiler_id("fallback", used, "fallback"),
-                "label": "Continue",
-                "effects": [],
-                "goto": target,
-            }
-        )
     return payload
 
 
@@ -3231,6 +3197,49 @@ def _fill_choice_label(choice: dict[str, Any], fallback: str) -> None:
     choice["label"] = fallback
 
 
+_SYNTHETIC_CONTINUE_ID = re.compile(r"^(?:fallback|continue)(?:-\d+)?$", re.IGNORECASE)
+
+
+def remove_synthetic_continue_choices(source: Mapping[str, Any]) -> int:
+    """Remove legacy array-order fallbacks without creating new dead ends."""
+    narrative = source.get("narrativeGraph")
+    if not isinstance(narrative, dict):
+        return 0
+    changed = 0
+    for node in narrative.get("nodes") or []:
+        if not isinstance(node, dict):
+            continue
+        choices = node.get("choices")
+        if not isinstance(choices, list) or len(choices) < 2:
+            continue
+
+        def is_synthetic(choice: Any) -> bool:
+            if not isinstance(choice, Mapping):
+                return False
+            identifier = str(choice.get("id") or "").strip()
+            label = str(choice.get("label") or "").strip().casefold()
+            effects = choice.get("effects")
+            return bool(
+                _SYNTHETIC_CONTINUE_ID.fullmatch(identifier)
+                and label == "continue"
+                and effects in (None, [])
+                and str(choice.get("goto") or "").strip()
+            )
+
+        retained = [choice for choice in choices if not is_synthetic(choice)]
+        has_playable_choice = any(
+            isinstance(choice, Mapping) and str(choice.get("goto") or "").strip()
+            for choice in retained
+        )
+        if not has_playable_choice:
+            continue
+        removed = len(choices) - len(retained)
+        if removed:
+            node["choices"] = retained
+            changed += removed
+    return changed
+
+
 def _sanitize_generated_source(source: Mapping[str, Any]) -> dict[str, Any]:
     payload = _json_copy(source)
     payload["id"] = _allocate_compiler_id(payload.get("id"), set(), "generated-story")
@@ -3336,6 +3345,7 @@ def _sanitize_generated_source(source: Mapping[str, Any]) -> dict[str, Any]:
                 _rewrite_condition_vars(intent.get("when"), var_map)
                 _rewrite_effect_targets(intent.get("effects"), var_map)
     _ensure_playable_narrative(narrative, initial)
+    remove_synthetic_continue_choices(payload)
     payload["startNodeId"] = narrative.get("startNodeId", payload.get("startNodeId"))
 
     logic = payload.get("logicGraph")

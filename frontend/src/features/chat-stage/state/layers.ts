@@ -33,8 +33,14 @@ function hasHeldStoryOptions(options: ChatOption[]): boolean {
 }
 
 export function optionsHeldForDialog(state: ChatStageState): boolean {
+  if (!hasHeldStoryOptions(state.options) || state.toolConfirmation) {
+    return false;
+  }
+  if (state.optimisticSubmission || ["generating", "streaming", "speaking"].includes(state.status)) {
+    return true;
+  }
   const hasDialog = Boolean(state.dialogHtml?.trim() || state.dialogText.trim());
-  if (!hasDialog || !hasHeldStoryOptions(state.options) || state.toolConfirmation) {
+  if (!hasDialog) {
     return false;
   }
   const speaker = state.characterName?.trim() ?? "";

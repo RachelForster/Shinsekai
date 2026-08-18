@@ -293,6 +293,28 @@ def test_repair_redirects_boolean_semantic_target_without_llm(tmp_path: Path) ->
     assert repaired["source"]["variables"]["flags.arrived_old_school"]["type"] == "boolean"
 
 
+def test_repair_removes_legacy_continue_fallback_from_valid_draft(
+    tmp_path: Path,
+) -> None:
+    service = service_at(tmp_path)
+    source = story_source()
+    source["narrativeGraph"]["nodes"][0]["choices"].append(
+        {
+            "id": "fallback",
+            "label": "Continue",
+            "effects": [],
+            "goto": "truth-ending",
+        }
+    )
+    service.import_source(source)
+
+    repaired = service.repair_with_ai("campus-mystery", base_revision=1)
+
+    assert repaired["manifest"]["draftRevision"] == 2
+    repaired_choices = repaired["source"]["narrativeGraph"]["nodes"][0]["choices"]
+    assert not any(choice["id"] == "fallback" for choice in repaired_choices)
+
+
 def test_publish_creates_immutable_version_resources_and_save_contract(
     tmp_path: Path,
 ) -> None:

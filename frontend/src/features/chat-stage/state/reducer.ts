@@ -151,7 +151,10 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
           ? { ...next, optimisticSubmission: undefined }
           : preserveOptimisticPresentation(state, next);
       }
-      if (["dialog.end", "options.show", "session.closed", "story.state.replace"].includes(action.event.type)) {
+      if (["dialog.end", "session.closed"].includes(action.event.type)) {
+        return { ...next, optimisticSubmission: undefined };
+      }
+      if (action.event.type === "story.state.replace" && action.event.story.ending) {
         return { ...next, optimisticSubmission: undefined };
       }
       return next;

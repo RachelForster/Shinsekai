@@ -24,6 +24,7 @@ from application.story.generation import (
     _force_playable_source,
     _normalize_effect_list,
     _parse_json_mapping,
+    remove_synthetic_continue_choices,
     _sanitize_generated_source,
     _stage_example,
     _stage_prompt_extras,
@@ -172,6 +173,37 @@ def test_pipeline_persists_intermediate_artifacts_and_compiled_draft(
     assert result["cost"]["requests"] == 7
     assert Path(result["draftPath"]).is_file()
     assert repository.load_artifact("story-task", StoryGenerationStage.BIBLE)["secrets"]
+
+
+def test_legacy_array_order_continue_fallbacks_are_removed() -> None:
+    source = campus_mystery_source()
+    choices = source["narrativeGraph"]["nodes"][0]["choices"]
+    choices.append(
+        {
+            "id": "fallback",
+            "label": "Continue",
+            "effects": [],
+            "goto": "truth-ending",
+        }
+    )
+
+    changed = remove_synthetic_continue_choices(source)
+
+    assert changed == 1
+    repaired_choices = source["narrativeGraph"]["nodes"][0]["choices"]
+    assert [choice["id"] for choice in repaired_choices if choice["id"] == "fallback"] == []
+
+
+def test_force_playable_source_does_not_add_array_order_fallbacks() -> None:
+    source = _force_playable_source(campus_mystery_source())
+
+    all_choices = [
+        choice
+        for node in source["narrativeGraph"]["nodes"]
+        for choice in node.get("choices", [])
+    ]
+    assert not any(choice.get("id") == "fallback" for choice in all_choices)
+    assert not any(choice.get("label") == "Continue" for choice in all_choices)
 
 
 def _title_case_id(value: str) -> str:

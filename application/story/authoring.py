@@ -42,6 +42,7 @@ from .generation import (
     StoryPatchApplier,
     _stage_prompt_extras,
     enable_semantic_input_targets,
+    remove_synthetic_continue_choices,
     story_generation_service_for_state,
 )
 from .persistence import story_event_to_payload, story_state_to_payload
@@ -774,11 +775,8 @@ class StoryAuthoringService:
             )
         original = document["source"]
         candidate = _json_copy(original)
-        initial_report = self.validator.validate(candidate)
-        if initial_report.valid:
-            return self._document_payload(document)
-
         deterministic_changes = enable_semantic_input_targets(candidate)
+        deterministic_changes += remove_synthetic_continue_choices(candidate)
         report = self.validator.validate(candidate)
         model = self.author_model
         if not report.valid and model is None:

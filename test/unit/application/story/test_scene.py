@@ -184,6 +184,10 @@ def test_free_text_intent_is_adjudicated_before_dialogue_and_hides_secrets() -> 
     assert result.dialogue[0].character_id == "ling"
     assert "headmaster-secret" not in json.dumps(model.requests, ensure_ascii=False)
     assert model.requests[0]["scene"]["publicContext"]["publicClue"] == "rain"
+    assert model.requests[0]["scene"]["incomingTransition"]["choiceLabel"] == "和绫约定调查旧校舍"
+    assert model.requests[0]["scene"]["availableChoices"] == [
+        {"id": "enter-with-key", "label": "使用旧钥匙进入"}
+    ]
     tool_names = [item["name"] for item in model.requests[0]["tools"]]
     assert tool_names == [
         "perform_intent",
@@ -596,6 +600,8 @@ def test_story_system_prompt_uses_six_sections_and_free_mode_contract() -> None:
             "scene": {
                 "nodeTitle": "旧校舍门口",
                 "nodeId": "old-school-gate",
+                "incomingTransition": {"choiceLabel": "和绫约定调查旧校舍"},
+                "availableChoices": [{"id": "ask-remote", "label": "询问遥控器用途"}],
                 "completedNodeIds": ["transfer-day"],
             }
         }
@@ -610,8 +616,11 @@ def test_story_system_prompt_uses_six_sections_and_free_mode_contract() -> None:
     assert tr("story_scene_prompt.section_current") in user_scene
     assert tr("story_scene_prompt.section_progress") in user_scene
     assert tr("story_scene_prompt.section_format") not in user_scene
+    assert "和绫约定调查旧校舍" in user_scene
+    assert "询问遥控器用途" in user_scene
     assert tr("story_scene_prompt.section_current") not in chat_system
     assert tr("story_scene_prompt.section_format") in chat_system
+    assert tr("story_scene_prompt.workflow_continuity") in chat_system
 
 
 def test_story_prompt_treats_user_as_player_not_npc() -> None:
