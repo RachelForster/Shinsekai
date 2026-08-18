@@ -1191,6 +1191,8 @@ export type MessageKey =
   | "story.editor.pathPreview"
   | "story.editor.previewEnding"
   | "story.editor.publish"
+  | "story.editor.repair"
+  | "story.editor.repairSucceeded"
   | "story.editor.publishBreaking"
   | "story.editor.publishCompatible"
   | "story.editor.remove"

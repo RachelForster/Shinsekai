@@ -109,6 +109,13 @@ export function proposeStoryAiPatch(
   return getPlatform().story.proposeAiPatch(input, options);
 }
 
+export function repairStoryProject(
+  input: { baseRevision: number; id: string },
+  options?: TaskProgressOptions<StoryProjectDocument>,
+) {
+  return getPlatform().story.repairProject(input, options);
+}
+
 export function publishStoryProject(id: string, baseRevision: number): Promise<StoryPublicationResult> {
   return getPlatform().story.publishProject(id, baseRevision);
 }

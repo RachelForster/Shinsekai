@@ -1276,6 +1276,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "story.editor.pathPreview": "テスト分岐",
   "story.editor.previewEnding": "{title} を試演",
   "story.editor.publish": "バージョンを公開",
+  "story.editor.repair": "Repair",
+  "story.editor.repairSucceeded": "Repair が完了し、下書きを再検証して保存しました。",
   "story.editor.publishBreaking": "v{version} を公開 · 破壊的変更あり",
   "story.editor.publishCompatible": "v{version} を公開 · セーブ互換",
   "story.editor.remove": "外す",

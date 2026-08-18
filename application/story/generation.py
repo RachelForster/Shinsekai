@@ -269,7 +269,11 @@ _DIAGNOSTIC_FIXES = {
         "Make the target variable branch-scoped or remove it from this semantic signal."
     ),
     "semantic.target_disabled": (
-        "Enable allowSemanticInput on the target integer variable or target another enabled variable."
+        "If the target is a branch-scoped integer, set allowSemanticInput to true. "
+        "Boolean, enum, and set variables cannot receive semantic input: create a separate "
+        "branch-scoped integer metric with initial 0 and allowSemanticInput true, then "
+        "replace the first effect argument with that metric. Keep boolean state changes in "
+        "narrative or logic effects."
     ),
     "semantic.strength_map": (
         "Define effectsByStrength entries for weak, medium, and strong."
@@ -1612,11 +1616,13 @@ def _stage_schema(stage: StoryGenerationStage) -> Mapping[str, Any]:
         StoryGenerationStage.STATE: {
             "variables": (
                 "object keyed by id; each type is one of "
-                "boolean, integer, enum, string_set, node_set"
+                "boolean, integer, enum, string_set, node_set; every semantic-signal "
+                "target must be a branch-scoped integer with allowSemanticInput: true"
             ),
             "semanticSignals": (
                 "SemanticSignalDefinition[]; effectsByStrength values are arrays of "
-                "single-operator effects such as {increment:[var, n]} or {set:[var, value]}"
+                "single-operator set/increment effects targeting only variables with "
+                "scope: branch and allowSemanticInput: true"
             ),
         },
         StoryGenerationStage.NARRATIVE: {
@@ -1681,6 +1687,68 @@ _NARRATIVE_RESPONSE_EXAMPLE = {
                 },
             },
         },
+    ],
+}
+_STATE_RESPONSE_EXAMPLE = {
+    "variables": {
+        "trust.hero": {
+            "type": "integer",
+            "initial": 0,
+            "min": 0,
+            "max": 100,
+            "scope": "branch",
+            "visible": True,
+            "allowSemanticInput": True,
+        },
+        "flags.met_hero": {
+            "type": "boolean",
+            "initial": False,
+            "allowSemanticInput": False,
+        },
+    },
+    "semanticSignals": [
+        {
+            "id": "respect-hero",
+            "minimumConfidence": "medium",
+            "allowedSpeechActs": ["endorsement", "action"],
+            "repeatWindow": 20,
+            "maxPerTurn": 1,
+            "maxPerScene": 3,
+            "maxPerChapter": 10,
+            "effectsByStrength": {
+                "weak": [{"increment": ["trust.hero", 1]}],
+                "medium": [{"increment": ["trust.hero", 2]}],
+                "strong": [{"increment": ["trust.hero", 4]}],
+            },
+        }
+    ],
+}
+_STATE_RESPONSE_NOTES = (
+    "Every variable targeted by semanticSignals must have type integer, scope branch, and allowSemanticInput true.",
+    "Never target boolean, enum, string_set, or node_set variables from semanticSignals; create a separate integer score/metric instead.",
+    "Semantic effects may only use set or increment and must target a variable declared in this same response.",
+    "effectsByStrength must contain non-empty weak, medium, and strong arrays for every signal.",
+    "Do not set allowSemanticInput true on boolean, enum, string_set, node_set, or global variables.",
+)
+_STATE_GENERATION_GUIDE = {
+    "steps": [
+        "Declare all variables before writing semantic signals.",
+        "For each semantic effect target, declare a branch-scoped integer variable and set allowSemanticInput to true.",
+        "Use the exact same variable id in weak, medium, and strong effects.",
+        "Check every effect target against the variables object before returning the response.",
+    ],
+    "validSemanticTarget": {
+        "type": "integer",
+        "scope": "branch",
+        "allowSemanticInput": True,
+    },
+    "selfCheck": [
+        "every semantic target exists in variables",
+        "every semantic target has type integer",
+        "every semantic target has scope branch",
+        "every semantic target has allowSemanticInput true",
+        "no semantic effect targets a boolean, enum, string_set, or node_set variable",
+        "weak, medium, and strong each contain at least one set or increment effect",
     ],
 }
 _NARRATIVE_RESPONSE_NOTES = (
@@ -1776,6 +1844,8 @@ _RESOURCES_RESPONSE_NOTES = (
 
 
 def _stage_example(stage: StoryGenerationStage) -> Mapping[str, Any] | None:
+    if stage is StoryGenerationStage.STATE:
+        return _STATE_RESPONSE_EXAMPLE
     if stage is StoryGenerationStage.NARRATIVE:
         return _NARRATIVE_RESPONSE_EXAMPLE
     if stage is StoryGenerationStage.LOGIC:
@@ -1842,6 +1912,9 @@ def _stage_prompt_extras(stage: StoryGenerationStage) -> dict[str, Any]:
     example = _stage_example(stage)
     if example is not None:
         extras["responseExample"] = example
+    if stage is StoryGenerationStage.STATE:
+        extras["responseNotes"] = list(_STATE_RESPONSE_NOTES)
+        extras["generationGuide"] = _json_copy(_STATE_GENERATION_GUIDE)
     if stage is StoryGenerationStage.NARRATIVE:
         extras["responseNotes"] = list(_NARRATIVE_RESPONSE_NOTES)
         extras["generationGuide"] = _json_copy(_NARRATIVE_GENERATION_GUIDE)
@@ -2937,6 +3010,98 @@ def _normalize_generated_effects(payload: dict[str, Any]) -> None:
                     _assign_normalized_effects(item, "effects")
 
 
+def enable_semantic_input_targets(payload: dict[str, Any]) -> int:
+    """Make every semantic effect target a dedicated, enabled branch integer.
+
+    Existing eligible integer targets are enabled in place. Targets of unsupported
+    types are redirected to isolated integer metrics so repairing semantic input
+    never changes the type or meaning of a variable used by narrative/logic rules.
+    """
+    variables = payload.get("variables")
+    signals = payload.get("semanticSignals")
+    if not isinstance(variables, dict) or not isinstance(signals, list):
+        return 0
+    changed = 0
+    replacement_targets: dict[str, str] = {}
+    used_ids = {str(identifier) for identifier in variables}
+
+    def eligible(variable: Any) -> bool:
+        if not isinstance(variable, dict):
+            return False
+        variable_type = _normalize_variable_type(
+            variable.get("type"), variable.get("initial")
+        )
+        scope = str(variable.get("scope") or "branch").strip().lower()
+        return variable_type == VariableType.INTEGER.value and scope == "branch"
+
+    def integer_value(value: Any, *, default: int) -> int:
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float) and value.is_integer():
+            return int(value)
+        return default
+
+    def replacement_for(target: str, variable: Any) -> str:
+        nonlocal changed
+        existing = replacement_targets.get(target)
+        if existing is not None:
+            return existing
+        replacement = _allocate_compiler_id(
+            f"semantic.{target}", used_ids, "semantic.metric"
+        )
+        initial = variable.get("initial") if isinstance(variable, dict) else 0
+        variables[replacement] = {
+            "type": VariableType.INTEGER.value,
+            "initial": integer_value(initial, default=0),
+            "scope": "branch",
+            "visible": False,
+            "allowSemanticInput": True,
+        }
+        replacement_targets[target] = replacement
+        changed += 1
+        return replacement
+
+    for signal in signals:
+        if not isinstance(signal, dict):
+            continue
+        strengths = signal.get("effectsByStrength")
+        if not isinstance(strengths, dict):
+            continue
+        for effects in strengths.values():
+            if not isinstance(effects, list):
+                continue
+            for effect in effects:
+                if not isinstance(effect, dict) or len(effect) != 1:
+                    continue
+                operator, args = next(iter(effect.items()))
+                if operator not in {"set", "increment"}:
+                    continue
+                if (
+                    not isinstance(args, list)
+                    or not args
+                    or not isinstance(args[0], str)
+                ):
+                    continue
+                target = args[0]
+                variable = variables.get(target)
+                if eligible(variable):
+                    if variable.get("allowSemanticInput") is not True:
+                        variable["allowSemanticInput"] = True
+                        changed += 1
+                    continue
+                args[0] = replacement_for(target, variable)
+                if len(args) > 1:
+                    default = 1
+                    normalized = integer_value(args[1], default=default)
+                    if args[1] != normalized or isinstance(args[1], bool):
+                        args[1] = normalized
+                        changed += 1
+                changed += 1
+    return changed
+
+
 def _fill_choice_label(choice: dict[str, Any], fallback: str) -> None:
     for key in _CHOICE_LABEL_KEYS:
         value = choice.get(key)
@@ -3011,6 +3176,7 @@ def _sanitize_generated_source(source: Mapping[str, Any]) -> dict[str, Any]:
         for signal in signals:
             if isinstance(signal, dict):
                 _rewrite_effect_targets(signal.get("effectsByStrength"), var_map)
+    enable_semantic_input_targets(payload)
 
     narrative = payload.get("narrativeGraph")
     if not isinstance(narrative, dict):

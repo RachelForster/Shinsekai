@@ -1520,6 +1520,24 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif (
                 method == "POST"
                 and path.startswith("/api/story/projects/")
+                and path.endswith("/repair")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/repair")]
+                )
+                service = story_authoring_service_for_state(self.state)
+                self._enqueue_background_task(
+                    kind="story-repair",
+                    title="Repair story draft",
+                    message="AI story repair queued.",
+                    worker=lambda _task_id: service.repair_with_ai(
+                        project_id,
+                        base_revision=int(body.get("baseRevision") or 0),
+                    ),
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
                 and path.endswith("/cast-preview")
             ):
                 project_id = unquote(

@@ -1485,6 +1485,10 @@ export interface ShinsekaiPlatform {
       input: { baseRevision: number; id: string; instruction: string; region: string },
       options?: TaskProgressOptions<StoryAiPatchProposal>,
     ) => Promise<StoryAiPatchProposal>;
+    repairProject: (
+      input: { baseRevision: number; id: string },
+      options?: TaskProgressOptions<StoryProjectDocument>,
+    ) => Promise<StoryProjectDocument>;
     publishProject: (id: string, baseRevision: number) => Promise<StoryPublicationResult>;
     undoProject: (id: string, baseRevision: number) => Promise<StoryProjectDocument>;
     validateProject: (id: string) => Promise<StoryGenerationValidation>;

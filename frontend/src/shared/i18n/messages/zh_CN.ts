@@ -1244,6 +1244,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "story.editor.pathPreview": "测试分支",
   "story.editor.previewEnding": "试演 {title}",
   "story.editor.publish": "发布版本",
+  "story.editor.repair": "一键 Repair",
+  "story.editor.repairSucceeded": "Repair 完成，草稿已重新校验并保存。",
   "story.editor.publishBreaking": "已发布 v{version} · 含破坏性变更",
   "story.editor.publishCompatible": "已发布 v{version} · 存档兼容",
   "story.editor.remove": "移除",

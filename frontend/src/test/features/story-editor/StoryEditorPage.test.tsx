@@ -12,6 +12,7 @@ const previewStoryCast = vi.fn();
 const previewStoryPath = vi.fn();
 const proposeStoryAiPatch = vi.fn();
 const publishStoryProject = vi.fn();
+const repairStoryProject = vi.fn();
 const undoStoryProject = vi.fn();
 const validateStoryProject = vi.fn();
 
@@ -23,6 +24,7 @@ vi.mock("../../../entities/story/repository", () => ({
   previewStoryPath: (...args: unknown[]) => previewStoryPath(...args),
   proposeStoryAiPatch: (...args: unknown[]) => proposeStoryAiPatch(...args),
   publishStoryProject: (...args: unknown[]) => publishStoryProject(...args),
+  repairStoryProject: (...args: unknown[]) => repairStoryProject(...args),
   undoStoryProject: (...args: unknown[]) => undoStoryProject(...args),
   validateStoryProject: (...args: unknown[]) => validateStoryProject(...args),
 }));
@@ -125,6 +127,11 @@ describe("StoryEditorPage", () => {
       unresolvedRoles: [],
       valid: true,
     });
+    repairStoryProject.mockResolvedValue({
+      ...document,
+      manifest: { ...document.manifest, draftRevision: 4 },
+      validation: { ...document.validation, issues: [], valid: true },
+    });
   });
 
   it("renders structured editors and graph diagnostics", async () => {
@@ -161,6 +168,36 @@ describe("StoryEditorPage", () => {
     expect(screen.getByText(/修改建议：Use an input port declared/)).toBeInTheDocument();
   });
 
+  it("repairs the complete invalid draft with one click", async () => {
+    getStoryProject.mockResolvedValue({
+      ...document,
+      validation: {
+        ...document.validation,
+        valid: false,
+        issues: [
+          {
+            code: "semantic.target_disabled",
+            message: "target variable does not allow semantic input",
+            path: "$.semanticSignals[0].effectsByStrength.strong[0]",
+            severity: "error",
+            suggestion: "Enable allowSemanticInput on the target integer variable.",
+          },
+        ],
+      },
+    });
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "一键 Repair" }));
+
+    await waitFor(() =>
+      expect(repairStoryProject).toHaveBeenCalledWith({
+        id: "campus-mystery",
+        baseRevision: 3,
+      }),
+    );
+    expect(await screen.findByText("Repair 完成，草稿已重新校验并保存。")).toBeInTheDocument();
+  });
+
   it("adds a node through a versioned structured patch", async () => {
     renderPage();
     await screen.findByRole("heading", { name: "校园谜案" });
@@ -170,6 +207,20 @@ describe("StoryEditorPage", () => {
     expect(patchStoryProject.mock.calls[0][0].patch.operations[0]).toMatchObject({
       op: "add",
       path: "/narrativeGraph/nodes/-",
+    });
+  });
+
+  it("adds a compiler-supported rule node type", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "校园谜案" });
+
+    fireEvent.click(screen.getByRole("button", { name: "+ 规则节点" }));
+
+    await waitFor(() => expect(patchStoryProject).toHaveBeenCalled());
+    expect(patchStoryProject.mock.calls[0][0].patch.operations[0]).toMatchObject({
+      op: "add",
+      path: "/logicGraph/nodes/-",
+      value: { id: "rule-1", type: "cast-resolve", config: {} },
     });
   });
 

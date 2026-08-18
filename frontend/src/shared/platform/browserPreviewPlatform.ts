@@ -2795,6 +2795,24 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         previewTask(`story-ai-patch-${Date.now()}`, { kind: "story-ai-patch", result, status: "succeeded" }, options);
         return delay(result);
       },
+      repairProject: async ({ id, baseRevision }, options) => {
+        const document = requirePreviewStory(id);
+        if (document.manifest.draftRevision !== baseRevision) {
+          throw new Error(`expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`);
+        }
+        const result: StoryProjectDocument = {
+          ...document,
+          manifest: {
+            ...document.manifest,
+            draftRevision: baseRevision + 1,
+            updatedAt: Date.now(),
+          },
+          validation: { ...document.validation, issues: [], valid: true },
+        };
+        previewStoryDocument = clone(result);
+        previewTask(`story-repair-${Date.now()}`, { kind: "story-repair", result, status: "succeeded" }, options);
+        return delay(result);
+      },
       publishProject: async (id, baseRevision) => {
         const document = requirePreviewStory(id);
         if (document.manifest.draftRevision !== baseRevision) {

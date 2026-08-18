@@ -233,6 +233,19 @@ def test_logic_stage_coerces_string_version_and_missing_collections() -> None:
 
 
 def test_narrative_stage_prompt_includes_effect_example() -> None:
+    state_extras = _stage_prompt_extras(StoryGenerationStage.STATE)
+    assert state_extras["responseExample"]["variables"]["trust.hero"][
+        "allowSemanticInput"
+    ] is True
+    assert state_extras["generationGuide"]["validSemanticTarget"] == {
+        "type": "integer",
+        "scope": "branch",
+        "allowSemanticInput": True,
+    }
+    assert any(
+        "allowSemanticInput true" in note
+        for note in state_extras["responseNotes"]
+    )
     extras = _stage_prompt_extras(StoryGenerationStage.NARRATIVE)
     example = extras["responseExample"]
     notes = extras["responseNotes"]
@@ -296,6 +309,39 @@ def test_sanitize_coerces_variable_types_and_empty_choice_labels() -> None:
     assert "Ask Ling" in labels
     report = StoryDraftValidator().validate(sanitized)
     assert report.valid is True
+
+
+def test_sanitize_enables_semantic_input_on_target_integer_variables() -> None:
+    source = campus_mystery_source()
+    source["variables"]["trust.ling"]["allowSemanticInput"] = False
+
+    sanitized = _sanitize_generated_source(source)
+
+    assert sanitized["variables"]["trust.ling"]["allowSemanticInput"] is True
+    assert StoryDraftValidator().validate(sanitized).valid is True
+
+
+def test_sanitize_redirects_boolean_semantic_targets_to_integer_metrics() -> None:
+    source = campus_mystery_source()
+    source["semanticSignals"][0]["effectsByStrength"]["strong"] = [
+        {"set": ["flags.arrived_old_school", True]}
+    ]
+
+    sanitized = _sanitize_generated_source(source)
+
+    effect = sanitized["semanticSignals"][0]["effectsByStrength"]["strong"][0]
+    target, value = effect["set"]
+    assert target == "semantic.flags.arrived_old_school"
+    assert value == 1
+    assert sanitized["variables"]["flags.arrived_old_school"]["type"] == "boolean"
+    assert sanitized["variables"][target] == {
+        "type": "integer",
+        "initial": 0,
+        "scope": "branch",
+        "visible": False,
+        "allowSemanticInput": True,
+    }
+    assert StoryDraftValidator().validate(sanitized).valid is True
 
 
 def test_normalize_effect_list_coerces_llm_shapes() -> None:

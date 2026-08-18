@@ -1275,6 +1275,8 @@ export const enMessages: Record<MessageKey, string> = {
   "story.editor.pathPreview": "Test branch",
   "story.editor.previewEnding": "Preview {title}",
   "story.editor.publish": "Publish version",
+  "story.editor.repair": "Repair",
+  "story.editor.repairSucceeded": "Repair completed. The draft was revalidated and saved.",
   "story.editor.publishBreaking": "Published v{version} · Breaking changes",
   "story.editor.publishCompatible": "Published v{version} · Save compatible",
   "story.editor.remove": "Remove",

@@ -38,7 +38,10 @@ from .generation import (
     StoryAuthorModelPort,
     StoryDraftValidator,
     StoryGenerationError,
+    StoryGenerationStage,
     StoryPatchApplier,
+    _stage_prompt_extras,
+    enable_semantic_input_targets,
     story_generation_service_for_state,
 )
 from .persistence import story_event_to_payload, story_state_to_payload
@@ -47,6 +50,7 @@ from .persistence import story_event_to_payload, story_state_to_payload
 MAX_HISTORY_ENTRIES = 100
 MAX_DIFF_ENTRIES = 300
 MAX_PREVIEW_STEPS = 100
+MAX_AUTHORING_REPAIR_ATTEMPTS = 3
 DRAFT_COMMIT_DIR = ".commit"
 DRAFT_COMMIT_READY = "ready"
 PUBLICATION_READY = ".complete"
@@ -752,6 +756,141 @@ class StoryAuthoringService:
             allow_invalid=False,
         )
         return {"patch": patch, **preview}
+
+    def repair_with_ai(
+        self,
+        project_id: str,
+        *,
+        base_revision: int,
+    ) -> dict[str, Any]:
+        """Repair the complete draft and commit only a fully valid candidate."""
+        self.flags.require(FeatureFlag.STORY_SYSTEM)
+        document = self.repository.load(project_id)
+        actual_revision = int(document["manifest"].get("draftRevision", 0))
+        if actual_revision != base_revision:
+            raise StoryAuthoringError(
+                "authoring.revision_conflict",
+                f"expected draft revision {base_revision}, found {actual_revision}",
+            )
+        original = document["source"]
+        candidate = _json_copy(original)
+        initial_report = self.validator.validate(candidate)
+        if initial_report.valid:
+            return self._document_payload(document)
+
+        deterministic_changes = enable_semantic_input_targets(candidate)
+        report = self.validator.validate(candidate)
+        model = self.author_model
+        if not report.valid and model is None:
+            raise StoryAuthoringError(
+                "authoring.model_unavailable", "authoring model is not configured"
+            )
+        attempts = 0
+        previous_response_error = ""
+        while not report.valid and attempts < MAX_AUTHORING_REPAIR_ATTEMPTS:
+            attempts += 1
+            request = self._repair_request(
+                candidate,
+                report.to_payload(),
+                attempt=attempts,
+                previous_response_error=previous_response_error,
+            )
+            assert model is not None
+            response = model.complete(request)
+            try:
+                candidate = self.patch_applier.apply_response(
+                    candidate,
+                    response,
+                    base_version=int(candidate.get("version", 1)),
+                )
+                previous_response_error = ""
+            except StoryGenerationError as error:
+                previous_response_error = f"{error.code}: {error}"
+                continue
+            report = self.validator.validate(candidate)
+
+        if not report.valid:
+            detail = canonical_json(
+                {
+                    "attempts": attempts,
+                    "deterministicChanges": deterministic_changes,
+                    "issues": report.to_payload()["issues"],
+                    "responseError": previous_response_error,
+                }
+            )
+            raise StoryAuthoringError("authoring.repair_failed", detail)
+
+        if candidate == original:
+            return self._document_payload(document)
+        if int(candidate.get("version", 1)) == int(original.get("version", 1)):
+            candidate["version"] = int(original.get("version", 1)) + 1
+        saved = self.repository.save_draft(
+            project_id,
+            candidate,
+            expected_revision=base_revision,
+        )
+        return self._document_payload(saved)
+
+    @staticmethod
+    def _repair_request(
+        source: Mapping[str, Any],
+        validation: Mapping[str, Any],
+        *,
+        attempt: int,
+        previous_response_error: str,
+    ) -> dict[str, Any]:
+        issues = validation.get("issues")
+        issue_list = list(issues) if isinstance(issues, list) else []
+        repair_plan = [
+            {
+                "code": str(item.get("code") or ""),
+                "path": str(item.get("path") or ""),
+                "problem": str(item.get("message") or ""),
+                "howToFix": str(item.get("suggestion") or ""),
+            }
+            for item in issue_list
+            if isinstance(item, Mapping) and item.get("severity") == "error"
+        ]
+        return {
+            "protocol": "shinsekai.story-authoring-repair.v1",
+            "operation": "repair-story",
+            "instruction": (
+                "Repair every item in repairPlan across the complete story. Follow the "
+                "exact paths and howToFix instructions, preserve valid story content and "
+                "intent, and return a candidate that passes all validation. For semantic "
+                "effects, targets must be branch-scoped integer variables with "
+                "allowSemanticInput true. Never enable semantic input on a boolean, enum, "
+                "or set variable; create a separate integer metric and retarget the semantic "
+                "effect, while leaving ordinary boolean state changes in narrative/logic "
+                "effects. For logicGraph, use only cataloged node types "
+                "and compatible ports, connect required inputs, and remove cycles."
+            ),
+            "attempt": attempt,
+            "baseVersion": int(source.get("version", 1)),
+            "story": source,
+            "validationIssues": issue_list,
+            "repairPlan": repair_plan,
+            "previousResponseError": previous_response_error,
+            "generationGuides": {
+                stage.value: _stage_prompt_extras(stage).get("generationGuide", {})
+                for stage in (
+                    StoryGenerationStage.STATE,
+                    StoryGenerationStage.NARRATIVE,
+                    StoryGenerationStage.LOGIC,
+                )
+            },
+            "constraints": {
+                "preserveStoryId": True,
+                "preserveValidContent": True,
+                "mustPassValidation": True,
+                "maxOperations": 96,
+            },
+            "responseSchema": {
+                "baseVersion": "integer matching request",
+                "story": "preferred: full corrected story object",
+                "operations": "optional bounded patch operations if story is omitted",
+            },
+        }
 
     def publish(self, project_id: str, *, base_revision: int) -> dict[str, Any]:
         self.flags.require(FeatureFlag.STORY_SYSTEM)

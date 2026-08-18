@@ -898,6 +898,15 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         );
         return waitForTask(apiBase, task, options);
       },
+      async repairProject(input, options) {
+        const { id, ...body } = input;
+        const task = await requestJson<TaskSnapshot<StoryProjectDocument>>(
+          apiBase,
+          `/api/story/projects/${encodePath(id)}/repair`,
+          { body: JSON.stringify(body), method: "POST" },
+        );
+        return waitForTask(apiBase, task, options);
+      },
       publishProject: (id, baseRevision) =>
         requestJson<StoryPublicationResult>(apiBase, `/api/story/projects/${encodePath(id)}/publish`, {
           body: JSON.stringify({ baseRevision }),

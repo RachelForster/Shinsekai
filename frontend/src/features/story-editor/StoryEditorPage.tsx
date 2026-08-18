@@ -9,6 +9,7 @@ import {
   previewStoryPath,
   proposeStoryAiPatch,
   publishStoryProject,
+  repairStoryProject,
   undoStoryProject,
   validateStoryProject,
 } from "../../entities/story/repository";
@@ -305,7 +306,7 @@ export function StoryEditorPage() {
       ruleNodes.map((node) => String(node.id || "")),
       "rule-",
     );
-    void commit(appendOperations(source, "/logicGraph/nodes", { id, type: "story-start", config: {} }));
+    void commit(appendOperations(source, "/logicGraph/nodes", { id, type: "cast-resolve", config: {} }));
   };
 
   const undo = async () => {
@@ -329,6 +330,27 @@ export function StoryEditorPage() {
     try {
       setValidation(await validateStoryProject(storyId));
       setGraph(await getStoryProjectGraph(storyId));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const repair = async () => {
+    if (!document || !storyId || validation?.valid !== false) return;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await repairStoryProject({
+        id: storyId,
+        baseRevision: document.manifest.draftRevision,
+      });
+      setDocument(next);
+      setValidation(next.validation);
+      setGraph(await getStoryProjectGraph(storyId));
+      setProposal(null);
+      setError(t("story.editor.repairSucceeded"));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -436,6 +458,13 @@ export function StoryEditorPage() {
           </button>
           <button disabled={busy || !document} onClick={validate} type="button">
             {t("story.editor.validate")}
+          </button>
+          <button
+            disabled={busy || !document || validation?.valid !== false}
+            onClick={repair}
+            type="button"
+          >
+            {t("story.editor.repair")}
           </button>
           <button
             className="primary"

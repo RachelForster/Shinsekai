@@ -47,6 +47,22 @@ class PatchModel:
         }
 
 
+class WholeStoryRepairModel:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        self.calls += 1
+        assert request["operation"] == "repair-story"
+        assert any(
+            item["code"] == "rule.missing_port" for item in request["repairPlan"]
+        )
+        assert request["generationGuides"]["logic"]["nodeTypeCatalog"]
+        story = deepcopy(request["story"])
+        story["logicGraph"]["edges"][0]["to"]["port"] = "input"
+        return {"baseVersion": request["baseVersion"], "story": story}
+
+
 def service_at(tmp_path: Path, *, model: Any = None) -> StoryAuthoringService:
     flags = enabled_flags()
     return StoryAuthoringService(
@@ -173,6 +189,56 @@ def test_ai_patch_is_previewed_before_explicit_commit(tmp_path: Path) -> None:
         proposal["source"]["narrativeGraph"]["nodes"][2]["title"] == "AI revised ending"
     )
     assert service.get("campus-mystery")["manifest"]["draftRevision"] == 1
+
+
+def test_repair_with_ai_fixes_semantic_targets_and_logic_graph(tmp_path: Path) -> None:
+    model = WholeStoryRepairModel()
+    service = service_at(tmp_path, model=model)
+    source = story_source()
+    source["variables"]["trust.ling"]["allowSemanticInput"] = False
+    source["logicGraph"]["edges"][0]["to"]["port"] = "missing-input"
+    service.import_source(source)
+
+    repaired = service.repair_with_ai("campus-mystery", base_revision=1)
+
+    assert model.calls == 1
+    assert repaired["manifest"]["draftRevision"] == 2
+    assert repaired["validation"]["valid"] is True
+    assert repaired["source"]["variables"]["trust.ling"][
+        "allowSemanticInput"
+    ] is True
+    assert repaired["source"]["logicGraph"]["edges"][0]["to"]["port"] == "input"
+
+
+def test_repair_skips_llm_when_semantic_target_fix_is_sufficient(
+    tmp_path: Path,
+) -> None:
+    service = service_at(tmp_path)
+    source = story_source()
+    source["variables"]["trust.ling"]["allowSemanticInput"] = False
+    service.import_source(source)
+
+    repaired = service.repair_with_ai("campus-mystery", base_revision=1)
+
+    assert repaired["manifest"]["draftRevision"] == 2
+    assert repaired["validation"]["valid"] is True
+
+
+def test_repair_redirects_boolean_semantic_target_without_llm(tmp_path: Path) -> None:
+    service = service_at(tmp_path)
+    source = story_source()
+    source["semanticSignals"][0]["effectsByStrength"]["strong"] = [
+        {"set": ["flags.arrived_old_school", True]}
+    ]
+    service.import_source(source)
+
+    repaired = service.repair_with_ai("campus-mystery", base_revision=1)
+
+    assert repaired["manifest"]["draftRevision"] == 2
+    assert repaired["validation"]["valid"] is True
+    effect = repaired["source"]["semanticSignals"][0]["effectsByStrength"]["strong"][0]
+    assert effect == {"set": ["semantic.flags.arrived_old_school", 1]}
+    assert repaired["source"]["variables"]["flags.arrived_old_school"]["type"] == "boolean"
 
 
 def test_publish_creates_immutable_version_resources_and_save_contract(
