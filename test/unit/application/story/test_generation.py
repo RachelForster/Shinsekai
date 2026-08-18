@@ -344,6 +344,20 @@ def test_sanitize_coerces_variable_types_and_empty_choice_labels() -> None:
     assert report.valid is True
 
 
+def test_sanitize_adds_localized_multi_turn_phase_context() -> None:
+    sanitized = _sanitize_generated_source(campus_mystery_source())
+
+    phase = sanitized["narrativeGraph"]["nodes"][0]
+    context = phase["exposedContext"]
+    assert context["summary"] == "剧情阶段「转校日」。"
+    assert "不要过早跳到下一阶段" in context["dramaticGoal"]
+    assert context["referenceChoices"] == ["和绫约定调查旧校舍"]
+    assert context["pacing"]["suggestedTurns"] == 3
+
+    ending = sanitized["narrativeGraph"]["nodes"][-1]["exposedContext"]
+    assert ending["pacing"]["suggestedTurns"] == 1
+
+
 def test_sanitize_enables_semantic_input_on_target_integer_variables() -> None:
     source = campus_mystery_source()
     source["variables"]["trust.ling"]["allowSemanticInput"] = False

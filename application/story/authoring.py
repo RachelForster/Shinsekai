@@ -42,6 +42,7 @@ from .generation import (
     StoryPatchApplier,
     _stage_prompt_extras,
     enable_semantic_input_targets,
+    ensure_phase_contexts,
     remove_synthetic_continue_choices,
     story_generation_service_for_state,
 )
@@ -777,6 +778,7 @@ class StoryAuthoringService:
         candidate = _json_copy(original)
         deterministic_changes = enable_semantic_input_targets(candidate)
         deterministic_changes += remove_synthetic_continue_choices(candidate)
+        deterministic_changes += ensure_phase_contexts(candidate)
         report = self.validator.validate(candidate)
         model = self.author_model
         if not report.valid and model is None:
@@ -884,7 +886,11 @@ class StoryAuthoringService:
                 "Paths for add/replace/remove must be / JSON pointers, not $. paths."
                 " Use stablePathIndex instead of guessing array indexes. Prefer "
                 "replace-node with nodeId when changing a narrative node. Never add a "
-                "nested field unless its parent path already exists."
+                "nested field unless its parent path already exists. Preserve narrative "
+                "nodes as multi-turn phases: exposedContext is public phase guidance, "
+                "choices are only authoritative local state/phase actions, and "
+                "referenceChoices are soft examples for the runtime LLM. Do not turn "
+                "every possible dialogue option into a graph transition."
             ),
             "attempt": attempt,
             "baseVersion": int(source.get("version", 1)),

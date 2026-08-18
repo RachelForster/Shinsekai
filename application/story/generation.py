@@ -1362,7 +1362,10 @@ class StoryGenerationService:
                 "with baseVersion and operations. Do not return story, source, artifact, "
                 "markdown, commentary, or the unchanged parts of the input. Use "
                 "stablePathIndex instead of guessing array indexes; prefer replace-node "
-                "with nodeId for narrative changes."
+                "with nodeId for narrative changes. Keep narrative nodes as multi-turn "
+                "phases: exposedContext describes the phase, graph choices are only "
+                "authoritative local state/phase actions, and referenceChoices are soft "
+                "writing guidance rather than goto transitions."
             ),
             "baseVersion": source["version"],
             "story": source,
@@ -1726,8 +1729,10 @@ def _stage_schema(stage: StoryGenerationStage) -> Mapping[str, Any]:
             "startNodeId": "node id",
             "nodes": (
                 "StoryNode[]; every node includes structured CastPolicy and fallback; "
-                "every node includes public exposedContext.sceneBeat; every choice has "
-                "a concrete non-empty label string; onEnter/effects items are "
+                "every node is a multi-turn phase with structured exposedContext "
+                "(summary, entryBeat, dramaticGoal, requiredBeats, "
+                "forbiddenAssumptions, referenceChoices, pacing); graph choices are "
+                "only authoritative local actions with concrete labels; onEnter/effects are "
                 "exactly one operator: {set|increment|addSet|removeSet|unlock|appendCanon: args}"
             ),
         },
@@ -1752,10 +1757,16 @@ _NARRATIVE_RESPONSE_EXAMPLE = {
             "title": "Opening",
             "commitment": "draft",
             "exposedContext": {
-                "sceneBeat": (
+                "summary": "The hero investigates the sealed archive with a witness.",
+                "entryBeat": (
                     "The hero reaches the sealed archive and sees a witness beside "
                     "the visibly broken door seal."
-                )
+                ),
+                "dramaticGoal": "Establish the broken seal and the witness's unease.",
+                "requiredBeats": ["Show the broken seal before asking about it."],
+                "forbiddenAssumptions": ["Do not reveal who broke the seal."],
+                "referenceChoices": ["Inspect the seal", "Question the witness"],
+                "pacing": {"suggestedTurns": 3},
             },
             "castPolicy": {
                 "mode": "fixed",
@@ -1860,7 +1871,9 @@ _NARRATIVE_RESPONSE_NOTES = (
     "Each onEnter/effects item must contain exactly one operator key.",
     'Legal: {"increment":["trust.hero",1]} {"set":["flags.started",true]} {"addSet":["inventory","key"]}.',
     'Illegal: {"op":"increment","variable":"trust.hero","value":1} or extra keys such as comment/reason.',
-    "Give every node a public exposedContext.sceneBeat that bridges from the incoming choice and establishes the people, objects, and facts referenced by its choices.",
+    "Treat every node as a multi-turn story phase, not a single click or line of dialogue.",
+    "Give every node structured public exposedContext with summary, entryBeat, dramaticGoal, requiredBeats, forbiddenAssumptions, referenceChoices, and pacing.suggestedTurns.",
+    "Graph choices are locally adjudicated state changes or phase exits, not the complete list of visible UI options. The runtime LLM creates intermediate choices during play.",
     "Never use generic labels such as Continue, Next, or Proceed and never add array-order fallback choices; every choice must describe a concrete action grounded in the current scene.",
 )
 _NARRATIVE_GENERATION_GUIDE = {
@@ -1871,9 +1884,13 @@ _NARRATIVE_GENERATION_GUIDE = {
         "Include at least one reachable node with type 'ending'; an ending normally has no choices.",
         "Give every node a satisfiable castPolicy using registered characters and minActive <= maxActive.",
         "Use only typed conditions and single-operator effects; make their values match the referenced variable types.",
-        "Write exposedContext.sceneBeat for every node as the public connective beat the scene LLM should narrate on entry; do not put secrets there.",
-        "Make each choice a concrete action that follows from that sceneBeat. Mention an object or person only after it is established in this node or an earlier reachable node.",
-        "Keep enough dramatic space inside each node for setup and reaction; do not turn every tiny action into an abrupt node jump.",
+        "Model every node as a phase intended to last multiple player turns, usually 2 to 6, rather than one click or one line.",
+        "Write exposedContext.summary, entryBeat, dramaticGoal, requiredBeats, forbiddenAssumptions, referenceChoices, and pacing.suggestedTurns for every node; do not put secrets there.",
+        "Use exposedContext.referenceChoices for soft, non-authoritative examples the runtime LLM may rewrite or ignore.",
+        "Put an item in node.choices only when selecting its exact label must deterministically change local state or leave the phase; these are authoritative actions, not all visible choices.",
+        "Use freeformIntents with natural examples for deterministic within-phase actions such as collecting evidence; selecting an exact example can apply its local effects without leaving the phase.",
+        "Mention an object or person only after requiredBeats or entryBeat establishes it in this phase or an earlier reachable phase.",
+        "Keep enough dramatic space inside each node for setup, exploration, and reaction; do not turn every tiny action into an abrupt node jump.",
         "Do not emit generic Continue/Next/Proceed choices or synthetic fallback edges based on node array order.",
     ],
     "referenceRules": {
@@ -3240,6 +3257,92 @@ def remove_synthetic_continue_choices(source: Mapping[str, Any]) -> int:
     return changed
 
 
+def _ensure_phase_context(node: dict[str, Any], *, language: str = "en") -> int:
+    before = canonical_json(node.get("exposedContext"))
+    title = str(node.get("title") or node.get("id") or "scene").strip()
+    context = node.get("exposedContext")
+    if not isinstance(context, dict):
+        context = {}
+        node["exposedContext"] = context
+    ending = str(node.get("type") or "") == "ending"
+    language_key = str(language or "en").lower()
+    if language_key.startswith("zh"):
+        summary = f"剧情阶段「{title}」。"
+        entry_beat = f"自然承接玩家上一行动，进入「{title}」。"
+        dramatic_goal = (
+            f"在「{title}」中自然收束当前剧情。"
+            if ending
+            else f"围绕「{title}」展开互动与调查，不要过早跳到下一阶段。"
+        )
+        forbidden_assumptions = [
+            "不要假定玩家已经选择了本轮新生成的选项。",
+            "人物、物品或事实必须先在剧情中出现，之后才能被角色谈论或使用。",
+        ]
+    elif language_key.startswith("ja"):
+        summary = f"物語フェーズ「{title}」。"
+        entry_beat = f"直前のプレイヤー行動を自然に受けて「{title}」へ入る。"
+        dramatic_goal = (
+            f"「{title}」で現在の物語を自然に終える。"
+            if ending
+            else f"「{title}」の対話と調査を描き、次のフェーズへ急がない。"
+        )
+        forbidden_assumptions = [
+            "今回新しく生成した選択肢をプレイヤーが既に選んだと仮定しない。",
+            "人物、物、事実は物語内で登場させてから言及または使用する。",
+        ]
+    else:
+        summary = f"Current story phase: {title}."
+        entry_beat = f"Continue the player's previous action naturally into {title}."
+        dramatic_goal = (
+            f"Bring the current story to a coherent conclusion in {title}."
+            if ending
+            else f"Develop {title} through interaction without rushing to another phase."
+        )
+        forbidden_assumptions = [
+            "Do not assume the player selected a newly generated option.",
+            "Establish people, objects, or facts in the story before discussing or using them.",
+        ]
+    context.setdefault("summary", summary)
+    context.setdefault("entryBeat", entry_beat)
+    context.setdefault("dramaticGoal", dramatic_goal)
+    context.setdefault("requiredBeats", [])
+    context.setdefault(
+        "forbiddenAssumptions",
+        forbidden_assumptions,
+    )
+    reference_choices = context.get("referenceChoices")
+    if not isinstance(reference_choices, list):
+        reference_choices = []
+    if not reference_choices:
+        reference_choices.extend(
+            str(choice.get("label") or "").strip()
+            for choice in node.get("choices") or []
+            if isinstance(choice, Mapping) and str(choice.get("label") or "").strip()
+        )
+    context["referenceChoices"] = list(dict.fromkeys(reference_choices))[:8]
+    pacing = context.get("pacing")
+    if not isinstance(pacing, dict):
+        pacing = {}
+        context["pacing"] = pacing
+    pacing.setdefault("suggestedTurns", 1 if ending else 3)
+    return int(before != canonical_json(context))
+
+
+def ensure_phase_contexts(source: Mapping[str, Any]) -> int:
+    """Add runtime phase guidance to narrative nodes without replacing authored fields."""
+    narrative = source.get("narrativeGraph")
+    nodes = narrative.get("nodes") if isinstance(narrative, Mapping) else None
+    if not isinstance(nodes, list):
+        return 0
+    metadata = source.get("metadata")
+    language = metadata.get("language") if isinstance(metadata, Mapping) else "en"
+    return sum(
+        _ensure_phase_context(node, language=str(language or "en"))
+        for node in nodes
+        if isinstance(node, dict)
+    )
+
+
 def _sanitize_generated_source(source: Mapping[str, Any]) -> dict[str, Any]:
     payload = _json_copy(source)
     payload["id"] = _allocate_compiler_id(payload.get("id"), set(), "generated-story")
@@ -3346,6 +3449,7 @@ def _sanitize_generated_source(source: Mapping[str, Any]) -> dict[str, Any]:
                 _rewrite_effect_targets(intent.get("effects"), var_map)
     _ensure_playable_narrative(narrative, initial)
     remove_synthetic_continue_choices(payload)
+    ensure_phase_contexts(payload)
     payload["startNodeId"] = narrative.get("startNodeId", payload.get("startNodeId"))
 
     logic = payload.get("logicGraph")

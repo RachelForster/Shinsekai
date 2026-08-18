@@ -587,6 +587,7 @@ def test_story_system_prompt_uses_six_sections_and_free_mode_contract() -> None:
     assert "transfer-day" in prompt
     assert "character_name" in prompt
     assert '"dialog"' in prompt
+    assert "CHOICE" in prompt
     assert "绫" in prompt
     assert "微笑" in prompt
     assert "perform_intent" in prompt
@@ -621,6 +622,7 @@ def test_story_system_prompt_uses_six_sections_and_free_mode_contract() -> None:
     assert tr("story_scene_prompt.section_current") not in chat_system
     assert tr("story_scene_prompt.section_format") in chat_system
     assert tr("story_scene_prompt.workflow_continuity") in chat_system
+    assert tr("story_scene_prompt.workflow_dynamic_choices") in chat_system
 
 
 def test_story_prompt_treats_user_as_player_not_npc() -> None:
@@ -677,3 +679,5 @@ def test_prepare_llm_turn_appends_scene_prompt_without_calling_the_model() -> No
     assert "old-school-gate" in turn.user_context or turn.node_id == "old-school-gate"
     assert "character_name" in turn.system_prompt
     assert '"dialog"' in turn.system_prompt
+    assert "CHOICE" in turn.system_prompt
+    assert "perform_intent" not in turn.system_prompt

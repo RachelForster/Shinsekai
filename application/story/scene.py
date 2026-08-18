@@ -370,6 +370,7 @@ class SceneContextBuilder:
                 "storyVersion": program.story_version,
                 "nodeId": node.id,
                 "nodeTitle": node.title,
+                "isEnding": node.type == "ending",
                 "revision": state.revision,
                 "publicContext": _protocol_value(node.exposed_context),
                 "incomingTransition": _incoming_choice_transition(
@@ -514,7 +515,10 @@ class SceneOrchestrator:
             tool_results=(),
         )
         user_context = compose_story_user_scene_context(request)
-        system_prompt = compose_story_chat_system_prompt(request)
+        system_prompt = compose_story_chat_system_prompt(
+            request,
+            allow_scene_tools=False,
+        )
         state = self.session.active_branch.state
         return StoryLlmTurn(
             appendix=user_context,

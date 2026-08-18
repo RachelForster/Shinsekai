@@ -39,8 +39,8 @@ def test_before_chat_splices_scene_into_user_without_changing_history() -> None:
     hooks.before_chat(context)
 
     assert context.messages[0]["role"] == "system"
-    assert context.messages[0]["content"] == "S"
-    assert "## 回复格式" not in context.messages[0]["content"]
+    assert context.messages[0]["content"].startswith("S")
+    assert "## 回复格式" in context.messages[0]["content"]
     assert context.messages[-1]["role"] == "user"
     assert context.messages[-1]["content"].startswith("## 现在场景")
     assert "旧校舍门口" in context.messages[-1]["content"]
@@ -52,6 +52,49 @@ def test_before_chat_splices_scene_into_user_without_changing_history() -> None:
         {"role": "system", "content": "S"},
         {"role": "user", "content": "你好"},
     ]
+
+
+def test_before_chat_replaces_the_story_system_for_the_current_phase() -> None:
+    prompt = StoryChatPrompt(user="phase two", system="system two")
+    hooks = StoryChatHooks(prompt_loader=lambda: prompt)
+    context = _context(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "base\n\n<shinsekai_story_system>\n"
+                    "system one\n</shinsekai_story_system>"
+                ),
+            },
+            {"role": "user", "content": "继续"},
+        ]
+    )
+
+    hooks.before_chat(context)
+
+    assert "system one" not in context.messages[0]["content"]
+    assert context.messages[0]["content"].count("<shinsekai_story_system>") == 1
+    assert "system two" in context.messages[0]["content"]
+
+
+def test_before_chat_removes_stale_story_system_after_unbinding() -> None:
+    hooks = StoryChatHooks(prompt_loader=StoryChatPrompt)
+    context = _context(
+        [
+            {
+                "role": "system",
+                "content": (
+                    "base\n\n<shinsekai_story_system>\n"
+                    "old story\n</shinsekai_story_system>"
+                ),
+            },
+            {"role": "user", "content": "普通聊天"},
+        ]
+    )
+
+    hooks.before_chat(context)
+
+    assert context.messages[0] == {"role": "system", "content": "base"}
 
 
 def test_before_chat_injects_on_opening_turn_without_user_message() -> None:

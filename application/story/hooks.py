@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 STORY_CHAT_PROMPT_FILENAME = "story-chat-prompt.json"
 _LEGACY_STORY_CHAT_PROMPT_FILENAME = "story-chat-prompt.txt"
 _PLAYER_MESSAGE_MARKER = "[用户消息]"
+_STORY_SYSTEM_START = "<shinsekai_story_system>"
+_STORY_SYSTEM_END = "</shinsekai_story_system>"
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,9 +127,10 @@ class StoryChatHooks:
         apply_story_system(self._llm_manager, prompt.system)
 
     def before_chat(self, context: BeforeChatContext) -> None:
+        prompt = _as_prompt(self._prompt_loader())
+        _merge_leading_system(context.messages, prompt.system)
         if not _should_inject_story_prompt(context.messages):
             return
-        prompt = _as_prompt(self._prompt_loader())
         _splice_user_scene(context.messages, prompt.user)
 
 
@@ -161,16 +164,15 @@ def _as_prompt(prompt: StoryChatPrompt | str, *, system: str = "") -> StoryChatP
 
 def apply_story_system(llm_manager: Any | None, extra: str) -> None:
     text = str(extra or "").strip()
-    if llm_manager is None or not text:
+    if llm_manager is None:
         return
     template = str(getattr(llm_manager, "user_template", "") or "")
-    if text not in template:
-        merged = f"{template.rstrip()}\n\n{text}".strip() if template.strip() else text
-        llm_manager.user_template = merged
-        adapter = getattr(llm_manager, "llm_adapter", None)
-        setter = getattr(adapter, "set_user_template", None)
-        if callable(setter):
-            setter(merged)
+    merged = _replace_story_system_block(template, text)
+    llm_manager.user_template = merged
+    adapter = getattr(llm_manager, "llm_adapter", None)
+    setter = getattr(adapter, "set_user_template", None)
+    if callable(setter):
+        setter(merged)
     messages = getattr(llm_manager, "messages", None)
     if not isinstance(messages, list):
         return
@@ -188,19 +190,38 @@ def _should_inject_story_prompt(messages: list[dict[str, Any]]) -> bool:
 
 def _merge_leading_system(messages: list[dict[str, Any]], extra: str) -> None:
     text = str(extra or "").strip()
-    if not text:
-        return
     if messages and str(messages[0].get("role") or "") == "system":
         content = str(messages[0].get("content") or "")
-        if text in content:
+        merged = _replace_story_system_block(content, text)
+        if not merged:
+            messages.pop(0)
             return
-        prefix = content.rstrip()
         messages[0] = {
             **messages[0],
-            "content": f"{prefix}\n\n{text}".strip() if prefix else text,
+            "content": merged,
         }
         return
-    messages.insert(0, {"role": "system", "content": text})
+    if not text:
+        return
+    messages.insert(0, {"role": "system", "content": _story_system_block(text)})
+
+
+def _story_system_block(text: str) -> str:
+    return f"{_STORY_SYSTEM_START}\n{text.strip()}\n{_STORY_SYSTEM_END}"
+
+
+def _replace_story_system_block(content: str, extra: str) -> str:
+    base = str(content or "")
+    start = base.find(_STORY_SYSTEM_START)
+    end = base.find(_STORY_SYSTEM_END, start + len(_STORY_SYSTEM_START))
+    if start >= 0 and end >= 0:
+        end += len(_STORY_SYSTEM_END)
+        base = f"{base[:start].rstrip()}\n\n{base[end:].lstrip()}".strip()
+    text = str(extra or "").strip()
+    if not text:
+        return base
+    block = _story_system_block(text)
+    return f"{base.rstrip()}\n\n{block}".strip() if base.strip() else block
 
 
 def _splice_user_scene(messages: list[dict[str, Any]], extra: str) -> None:

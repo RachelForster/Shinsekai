@@ -74,7 +74,12 @@ def story_state_view(
             for node_id in sorted(state.unlocked_node_ids)
         ],
         "ending": ending,
-        "options": options,
+        # Authoritative graph actions are grounding material for the scene LLM,
+        # not presentation choices. The LLM emits the visible CHOICE item after
+        # its dialogue; selecting an exact authoritative label is adjudicated
+        # locally by StorySession.
+        "options": [],
+        "referenceActions": options,
         "castRevision": state.cast_state.cast_revision,
     }
 
@@ -105,7 +110,6 @@ def story_event_messages(events: tuple[StoryEvent, ...]) -> list[dict[str, Any]]
 def story_chat_snapshot(view: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "story": dict(view),
-        "options": [dict(item) for item in view.get("options", ())],
         "stats": [
             {
                 "icon": "gauge",

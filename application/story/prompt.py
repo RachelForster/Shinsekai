@@ -63,11 +63,13 @@ def compose_story_chat_system_prompt(
     use_effect: bool = True,
     use_cg: bool = False,
     use_llm_translation: bool = True,
+    allow_scene_tools: bool = True,
 ) -> str:
     """Format, cast, tools, and workflow for the leading chat system message."""
     init_i18n(current_language())
     actor = _as_mapping(request.get("actorContext"))
-    tools = _as_sequence(request.get("tools"))
+    scene = _as_mapping(request.get("scene"))
+    tools = _as_sequence(request.get("tools")) if allow_scene_tools else ()
     characters = [
         item for item in _as_sequence(actor.get("characters")) if isinstance(item, Mapping)
     ]
@@ -82,7 +84,7 @@ def compose_story_chat_system_prompt(
         use_effect=use_effect,
         use_cg=use_cg,
         use_llm_translation=use_llm_translation,
-        use_choice=False,
+        use_choice=not bool(scene.get("isEnding")),
         use_narration=True,
         use_stat=True,
         use_cot=False,
@@ -93,6 +95,7 @@ def compose_story_chat_system_prompt(
         requirements_block=requirements_block.rstrip(),
         characters=characters,
         tools=tools,
+        requires_choices=not bool(scene.get("isEnding")),
     )
 
 
@@ -102,6 +105,7 @@ def _compose_story_chat_system_sections(
     requirements_block: str,
     characters: Sequence[Mapping[str, Any]],
     tools: Sequence[Any],
+    requires_choices: bool,
 ) -> str:
     sections = [
         _section(_T("section_format"), format_block),
@@ -112,11 +116,24 @@ def _compose_story_chat_system_sections(
             "\n".join(
                 [
                     requirements_block,
-                    _T("workflow_tools_first"),
-                    _T("workflow_then_dialog"),
+                    *(
+                        (
+                            _T("workflow_tools_first"),
+                            _T("workflow_then_dialog"),
+                        )
+                        if tools
+                        else ()
+                    ),
                     _T("workflow_no_invent"),
                     _T("workflow_continuity"),
-                    _T("workflow_no_choice"),
+                    *(
+                        (
+                            _T("workflow_dynamic_choices"),
+                            _T("workflow_bound_choices"),
+                        )
+                        if requires_choices
+                        else ()
+                    ),
                     _T("workflow_untrusted"),
                     json_format_reminder(),
                 ]
@@ -240,6 +257,8 @@ def _characters_block(characters: Sequence[Mapping[str, Any]]) -> str:
 
 
 def _tools_block(tools: Sequence[Any]) -> str:
+    if not tools:
+        return ""
     lines = [_T("tools_intro")]
     for item in tools:
         if not isinstance(item, Mapping):

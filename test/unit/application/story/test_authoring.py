@@ -315,6 +315,20 @@ def test_repair_removes_legacy_continue_fallback_from_valid_draft(
     assert not any(choice["id"] == "fallback" for choice in repaired_choices)
 
 
+def test_repair_adds_phase_context_without_calling_llm(tmp_path: Path) -> None:
+    service = service_at(tmp_path)
+    service.import_source(story_source())
+
+    repaired = service.repair_with_ai("campus-mystery", base_revision=1)
+
+    assert repaired["manifest"]["draftRevision"] == 2
+    nodes = repaired["source"]["narrativeGraph"]["nodes"]
+    assert all("summary" in node["exposedContext"] for node in nodes)
+    assert nodes[0]["exposedContext"]["referenceChoices"] == [
+        "和绫约定调查旧校舍"
+    ]
+
+
 def test_publish_creates_immutable_version_resources_and_save_contract(
     tmp_path: Path,
 ) -> None:

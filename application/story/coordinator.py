@@ -304,6 +304,9 @@ def publish_story_transition(
     story = live_patch.get("story")
     if isinstance(story, dict):
         events.append({"type": "story.state.replace", "story": dict(story)})
+        # A local phase/state transition invalidates the previous LLM-authored
+        # choices. Ordinary snapshot polling deliberately does not clear them.
+        live_patch.setdefault("options", [])
     events.extend(_story_sprite_events(chat_stream, session_id, resource_patch))
     for item in presentation_events:
         if isinstance(item, dict):

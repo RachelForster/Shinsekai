@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -194,7 +193,70 @@ def test_structured_story_choice_renders_scene_dialogue_before_next_options() ->
     assert "story.state.replace" in published_types
     assert "options.show" in published_types
     assert "dialog.end" not in published_types
-    assert snapshot["options"]
+    assert snapshot["options"] == []
+
+
+def test_llm_authored_option_matching_authoritative_label_advances_locally() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+
+    snapshot = _handle_chat_command(
+        state,
+        {
+            "cmdId": "dynamic-choice-1",
+            "payload": "和绫约定调查旧校舍",
+            "type": "submit-option",
+        },
+    )
+
+    assert snapshot["story"]["currentNodeId"] == "old-school-gate"
+    assert snapshot["storyAck"]["commandId"] == "dynamic-choice-1"
+    assert state.chat_stream.command[1]["type"] == "send-message"
+
+
+def test_llm_authored_intermediate_option_stays_in_current_phase() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+
+    snapshot = _handle_chat_command(
+        state,
+        {
+            "cmdId": "dynamic-choice-1",
+            "payload": "先观察教室里的气氛",
+            "type": "submit-option",
+        },
+    )
+
+    assert snapshot["story"]["currentNodeId"] == "transfer-day"
+    assert state.chat_stream.command[1]["type"] == "submit-option"
+
+
+def test_llm_authored_option_matching_intent_example_applies_local_effects() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    _handle_chat_command(
+        state,
+        {
+            "cmdId": "phase-choice",
+            "payload": "和绫约定调查旧校舍",
+            "type": "submit-option",
+        },
+    )
+
+    snapshot = _handle_chat_command(
+        state,
+        {
+            "cmdId": "intent-choice",
+            "payload": "我会陪着你",
+            "type": "submit-option",
+        },
+    )
+
+    assert snapshot["story"]["currentNodeId"] == "old-school-gate"
+    trust = next(
+        item for item in snapshot["story"]["visibleVariables"] if item["id"] == "trust.ling"
+    )
+    assert trust["value"] == 15
 
 
 def test_structured_story_choice_keeps_legacy_error_when_flag_is_off() -> None:
@@ -308,6 +370,22 @@ def test_live_story_transition_publishes_approved_actor_resources() -> None:
     assert state.chat_stream.snapshot["sprites"][0]["path"].startswith("/api/media?path=")
     assert state.chat_stream.snapshot["actorContext"]["activeCharacterIds"] == ["ling"]
     assert story_snapshot_patch(state)["sprites"][0]["path"].startswith("/api/media?path=")
+
+
+def test_story_polling_preserves_llm_options_until_a_local_transition() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    state.chat_stream.snapshot["options"] = ["继续调查", "询问绫"]
+
+    patch = story_snapshot_patch(state)
+
+    assert "options" not in patch
+    state.chat_stream.snapshot.update(patch)
+    assert state.chat_stream.snapshot["options"] == ["继续调查", "询问绫"]
+
+    publish_story_transition(state, patch)
+
+    assert state.chat_stream.snapshot["options"] == []
 
 
 def test_fork_history_skips_story_transition_when_flag_is_off() -> None:

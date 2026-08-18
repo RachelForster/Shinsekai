@@ -3,7 +3,6 @@ from __future__ import annotations
 import html
 import json
 import os
-import re
 import signal
 import subprocess
 import sys
@@ -82,7 +81,7 @@ from application.story.coordinator import (
     story_snapshot_patch,
 )
 from config.feature_flags import FeatureFlag
-from core.story import SelectChoice
+from core.story import ConditionEvaluator, PerformIntent, SelectChoice
 from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
 from sdk.path_utils import reject_control_chars
 
@@ -948,16 +947,39 @@ def _chat_history_download_file(state: BridgeState, capability: str) -> Path:
 
 
 def _story_choice_label(session: Any, choice_id: str) -> str:
-    snapshot = session.chat_snapshot()
-    for option in snapshot.get("options") or []:
-        if not isinstance(option, dict):
-            continue
-        if str(option.get("id") or "") != choice_id:
-            continue
-        label = str(option.get("label") or "").strip()
-        if label:
-            return label
+    state = session.active_branch.state
+    node = session.runtime.program.nodes_by_id[state.current_node_id]
+    for choice in node.choices:
+        if choice.id == choice_id:
+            return choice.label
     return choice_id
+
+
+def _story_action_for_label(session: Any, label: str) -> tuple[str, str] | None:
+    state = session.active_branch.state
+    program = session.runtime.program
+    node = program.nodes_by_id[state.current_node_id]
+    variables = {**session.global_progress.variables, **state.variables}
+    evaluator = ConditionEvaluator()
+    for choice in node.choices:
+        if choice.label != label:
+            continue
+        if evaluator.evaluate(
+            choice.when,
+            variables=variables,
+            completed_node_ids=state.completed_node_ids,
+        ):
+            return "choice", choice.id
+    for intent in node.freeform_intents:
+        if label not in intent.examples:
+            continue
+        if evaluator.evaluate(
+            intent.when,
+            variables=variables,
+            completed_node_ids=state.completed_node_ids,
+        ):
+            return "intent", intent.id
+    return None
 
 
 def _persist_story_choice_messages(
@@ -1012,6 +1034,47 @@ def _record_story_choice_history(state: BridgeState, label: str) -> list[dict[st
     )
     _persist_story_choice_messages(state, label, user_name)
     return entries
+
+
+def _execute_story_label_action(
+    state: BridgeState,
+    label: str,
+    *,
+    command_id: str,
+) -> dict[str, Any] | None:
+    session = bound_story_session(state)
+    if session is None:
+        return None
+    action = _story_action_for_label(session, label)
+    if action is None:
+        return None
+    action_kind, action_id = action
+    story_state = session.active_branch.state
+    history_entries = _record_story_choice_history(state, label)
+    if action_kind == "choice":
+        runtime_command = SelectChoice(
+            command_id=command_id,
+            expected_revision=story_state.revision,
+            choice_id=action_id,
+            expected_node_id=story_state.current_node_id,
+        )
+    else:
+        runtime_command = PerformIntent(
+            command_id=command_id,
+            expected_revision=story_state.revision,
+            intent_id=action_id,
+            expected_node_id=story_state.current_node_id,
+        )
+    ack = session.execute(runtime_command, history_entries=history_entries)
+    patch = session.chat_snapshot()
+    patch["storyAck"] = ack.to_payload()
+    publish_story_transition(
+        state,
+        patch,
+        history_entries=history_entries,
+        presentation_events=ack.presentation_events,
+    )
+    return patch
 
 
 def _scene_history_role(character_id: str) -> str:
@@ -1582,6 +1645,30 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
 
     if command in {"chat-input-state", "flush-input-batch", "cancel-input-batch"}:
         return _forward_runtime_command(_current_runtime_status())
+
+    if command == "submit-option" and isinstance(body.get("payload"), str):
+        option_label = reject_control_chars(
+            str(body.get("payload") or "").strip(),
+            field="option",
+        )
+        command_id = str(body.get("cmdId") or uuid.uuid4().hex)
+        patch = _execute_story_label_action(
+            state,
+            option_label,
+            command_id=command_id,
+        )
+        if patch is not None:
+            command = "send-message"
+            body["type"] = "send-message"
+            body["payload"] = {
+                "attachments": [],
+                "text": option_label,
+            }
+            return _forward_runtime_command(
+                "generating",
+                f"已选择：{option_label}",
+                snapshot_patch=patch,
+            )
 
     if command == "submit-option" and isinstance(body.get("payload"), dict):
         payload = body["payload"]
