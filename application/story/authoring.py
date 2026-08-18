@@ -796,8 +796,8 @@ class StoryAuthoringService:
                 previous_response_error=previous_response_error,
             )
             assert model is not None
-            response = model.complete(request)
             try:
+                response = model.complete(request)
                 candidate = self.patch_applier.apply_response(
                     candidate,
                     response,
@@ -863,7 +863,9 @@ class StoryAuthoringService:
                 "or set variable; create a separate integer metric and retarget the semantic "
                 "effect, while leaving ordinary boolean state changes in narrative/logic "
                 "effects. For logicGraph, use only cataloged node types "
-                "and compatible ports, connect required inputs, and remove cycles."
+                "and compatible ports, connect required inputs, and remove cycles. Return "
+                "only baseVersion and compact operations; never repeat the full story. "
+                "Paths for add/replace/remove must be / JSON pointers, not $. paths."
             ),
             "attempt": attempt,
             "baseVersion": int(source.get("version", 1)),
@@ -884,11 +886,27 @@ class StoryAuthoringService:
                 "preserveValidContent": True,
                 "mustPassValidation": True,
                 "maxOperations": 96,
+                "operationsOnly": True,
+                "maxOutputCharacters": 12_000,
+                "forbiddenResponseFields": ["story", "source", "artifact"],
             },
             "responseSchema": {
                 "baseVersion": "integer matching request",
-                "story": "preferred: full corrected story object",
-                "operations": "optional bounded patch operations if story is omitted",
+                "operations": (
+                    "required non-empty array; use add/replace/remove with / JSON-pointer "
+                    "paths, or replace-node/replace-character/replace-variable/"
+                    "replace-rule-node with the matching stable id and complete value"
+                ),
+            },
+            "responseExample": {
+                "baseVersion": int(source.get("version", 1)),
+                "operations": [
+                    {
+                        "op": "replace",
+                        "path": "/logicGraph/edges/0/to/port",
+                        "value": "input",
+                    }
+                ],
             },
         }
 

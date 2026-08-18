@@ -23,6 +23,7 @@ from application.story.generation import (
     StoryPatchApplier,
     _force_playable_source,
     _normalize_effect_list,
+    _parse_json_mapping,
     _sanitize_generated_source,
     _stage_example,
     _stage_prompt_extras,
@@ -342,6 +343,16 @@ def test_sanitize_redirects_boolean_semantic_targets_to_integer_metrics() -> Non
         "allowSemanticInput": True,
     }
     assert StoryDraftValidator().validate(sanitized).valid is True
+
+
+def test_parse_json_mapping_explains_truncated_model_response() -> None:
+    with pytest.raises(StoryGenerationError) as caught:
+        _parse_json_mapping('{"baseVersion":1,"operations":[{"value":"unfinished')
+
+    assert caught.value.code == "generation.model_json_invalid"
+    assert "line 1, column" in str(caught.value)
+    assert "appears truncated" in str(caught.value)
+    assert "compact JSON patch" in str(caught.value)
 
 
 def test_normalize_effect_list_coerces_llm_shapes() -> None:

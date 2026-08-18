@@ -15,6 +15,7 @@ from application.story.authoring import (
     _save_compatibility,
     import_generation_task_for_state,
 )
+from application.story.generation import StoryGenerationError
 from application.story.project_loader import load_story_project
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from test.unit.core.story.story_fixtures import campus_mystery_source
@@ -58,9 +59,43 @@ class WholeStoryRepairModel:
             item["code"] == "rule.missing_port" for item in request["repairPlan"]
         )
         assert request["generationGuides"]["logic"]["nodeTypeCatalog"]
-        story = deepcopy(request["story"])
-        story["logicGraph"]["edges"][0]["to"]["port"] = "input"
-        return {"baseVersion": request["baseVersion"], "story": story}
+        assert request["constraints"]["operationsOnly"] is True
+        assert "story" not in request["responseSchema"]
+        return {
+            "baseVersion": request["baseVersion"],
+            "operations": [
+                {
+                    "op": "replace",
+                    "path": "/logicGraph/edges/0/to/port",
+                    "value": "input",
+                }
+            ],
+        }
+
+
+class TruncatedThenPatchRepairModel:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        self.calls += 1
+        if self.calls == 1:
+            raise StoryGenerationError(
+                "generation.model_json_invalid",
+                "story author returned invalid JSON; response appears truncated",
+            )
+        assert "generation.model_json_invalid" in request["previousResponseError"]
+        assert request["constraints"]["operationsOnly"] is True
+        return {
+            "baseVersion": request["baseVersion"],
+            "operations": [
+                {
+                    "op": "replace",
+                    "path": "/logicGraph/edges/0/to/port",
+                    "value": "input",
+                }
+            ],
+        }
 
 
 def service_at(tmp_path: Path, *, model: Any = None) -> StoryAuthoringService:
@@ -207,6 +242,20 @@ def test_repair_with_ai_fixes_semantic_targets_and_logic_graph(tmp_path: Path) -
     assert repaired["source"]["variables"]["trust.ling"][
         "allowSemanticInput"
     ] is True
+    assert repaired["source"]["logicGraph"]["edges"][0]["to"]["port"] == "input"
+
+
+def test_repair_retries_truncated_model_json_with_compact_patch(tmp_path: Path) -> None:
+    model = TruncatedThenPatchRepairModel()
+    service = service_at(tmp_path, model=model)
+    source = story_source()
+    source["logicGraph"]["edges"][0]["to"]["port"] = "missing-input"
+    service.import_source(source)
+
+    repaired = service.repair_with_ai("campus-mystery", base_revision=1)
+
+    assert model.calls == 2
+    assert repaired["validation"]["valid"] is True
     assert repaired["source"]["logicGraph"]["edges"][0]["to"]["port"] == "input"
 
 
