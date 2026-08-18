@@ -355,6 +355,86 @@ def test_parse_json_mapping_explains_truncated_model_response() -> None:
     assert "compact JSON patch" in str(caught.value)
 
 
+def test_truncated_simulation_uses_structural_reachability(monkeypatch: Any) -> None:
+    class TruncatedSimulator:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def simulate(self) -> Any:
+            return SimpleNamespace(
+                explored_states=2_000,
+                reachable_node_ids=frozenset({"transfer-day"}),
+                ending_paths={},
+                cast_resolution_failures={},
+                truncated=True,
+            )
+
+    monkeypatch.setattr(
+        "application.story.generation.StorySimulator", TruncatedSimulator
+    )
+
+    report = StoryDraftValidator().validate(campus_mystery_source())
+    codes = {issue.code for issue in report.issues}
+
+    assert report.valid is True
+    assert "simulation.truncated" in codes
+    assert "simulation.unreachable_nodes" not in codes
+    assert "simulation.unreachable_endings" not in codes
+
+
+def test_truncated_simulation_still_rejects_structurally_disconnected_nodes(
+    monkeypatch: Any,
+) -> None:
+    class TruncatedSimulator:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def simulate(self) -> Any:
+            return SimpleNamespace(
+                explored_states=2_000,
+                reachable_node_ids=frozenset({"transfer-day"}),
+                ending_paths={},
+                cast_resolution_failures={},
+                truncated=True,
+            )
+
+    source = campus_mystery_source()
+    source["narrativeGraph"]["nodes"][0]["choices"][0].pop("goto")
+    source["logicGraph"] = {"version": 1, "nodes": [], "edges": []}
+    monkeypatch.setattr(
+        "application.story.generation.StorySimulator", TruncatedSimulator
+    )
+
+    report = StoryDraftValidator().validate(source)
+    codes = {issue.code for issue in report.issues}
+
+    assert report.valid is False
+    assert "simulation.unreachable_nodes" in codes
+    assert "simulation.unreachable_endings" in codes
+
+
+def test_patch_error_identifies_the_operation_and_missing_path() -> None:
+    with pytest.raises(StoryGenerationError) as caught:
+        StoryPatchApplier().apply(
+            campus_mystery_source(),
+            {
+                "baseVersion": 1,
+                "operations": [
+                    {
+                        "op": "replace",
+                        "path": "/narrativeGraph/missing/0",
+                        "value": "truth-ending",
+                    }
+                ],
+            },
+            base_version=1,
+        )
+
+    assert caught.value.code == "generation.patch_path_missing"
+    assert "operation 0" in str(caught.value)
+    assert "/narrativeGraph/missing/0" in str(caught.value)
+
+
 def test_normalize_effect_list_coerces_llm_shapes() -> None:
     effects = _normalize_effect_list(
         [

@@ -851,6 +851,24 @@ class StoryAuthoringService:
             for item in issue_list
             if isinstance(item, Mapping) and item.get("severity") == "error"
         ]
+        narrative = source.get("narrativeGraph")
+        narrative_nodes = (
+            narrative.get("nodes") if isinstance(narrative, Mapping) else []
+        )
+        logic = source.get("logicGraph")
+        logic_nodes = logic.get("nodes") if isinstance(logic, Mapping) else []
+        stable_path_index = {
+            "narrativeNodes": {
+                str(node.get("id")): f"/narrativeGraph/nodes/{index}"
+                for index, node in enumerate(narrative_nodes)
+                if isinstance(node, Mapping) and node.get("id")
+            },
+            "logicNodes": {
+                str(node.get("id")): f"/logicGraph/nodes/{index}"
+                for index, node in enumerate(logic_nodes)
+                if isinstance(node, Mapping) and node.get("id")
+            },
+        }
         return {
             "protocol": "shinsekai.story-authoring-repair.v1",
             "operation": "repair-story",
@@ -866,12 +884,16 @@ class StoryAuthoringService:
                 "and compatible ports, connect required inputs, and remove cycles. Return "
                 "only baseVersion and compact operations; never repeat the full story. "
                 "Paths for add/replace/remove must be / JSON pointers, not $. paths."
+                " Use stablePathIndex instead of guessing array indexes. Prefer "
+                "replace-node with nodeId when changing a narrative node. Never add a "
+                "nested field unless its parent path already exists."
             ),
             "attempt": attempt,
             "baseVersion": int(source.get("version", 1)),
             "story": source,
             "validationIssues": issue_list,
             "repairPlan": repair_plan,
+            "stablePathIndex": stable_path_index,
             "previousResponseError": previous_response_error,
             "generationGuides": {
                 stage.value: _stage_prompt_extras(stage).get("generationGuide", {})

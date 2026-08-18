@@ -61,6 +61,9 @@ class WholeStoryRepairModel:
         assert request["generationGuides"]["logic"]["nodeTypeCatalog"]
         assert request["constraints"]["operationsOnly"] is True
         assert "story" not in request["responseSchema"]
+        assert request["stablePathIndex"]["narrativeNodes"]["truth-ending"] == (
+            "/narrativeGraph/nodes/2"
+        )
         return {
             "baseVersion": request["baseVersion"],
             "operations": [

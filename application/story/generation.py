@@ -718,7 +718,13 @@ class StoryPatchApplier:
                 "generation.patch_path_forbidden",
                 f"operation {index} has an unsafe path",
             )
-        parent, key = _resolve_pointer_parent(source, tokens)
+        try:
+            parent, key = _resolve_pointer_parent(source, tokens)
+        except StoryGenerationError as error:
+            raise StoryGenerationError(
+                error.code,
+                f"operation {index} path {raw_path!r}: {error}",
+            ) from error
         if isinstance(parent, list):
             position = _list_position(key, len(parent), allow_end=op == "add")
             if op == "add":
@@ -788,6 +794,45 @@ class StoryPatchApplier:
         )
 
 
+def _structurally_reachable_node_ids(program: Any) -> set[str]:
+    """Return an over-approximation of nodes connected from the story start."""
+    nodes_by_id = program.nodes_by_id
+    reachable: set[str] = set()
+    pending = [program.start_node_id]
+
+    # Rule-graph unlock nodes are possible entry points even when bounded state
+    # simulation has not reached the triggering metric combination yet.
+    for rule_node in program.rule_graph.nodes:
+        if rule_node.type != "unlock":
+            continue
+        target = rule_node.config.get("storyNodeId")
+        if isinstance(target, str) and target in nodes_by_id:
+            pending.append(target)
+
+    def add_effect_targets(effects: Sequence[Any]) -> None:
+        for effect in effects:
+            if effect.op != "unlock" or not effect.args:
+                continue
+            target = effect.args[0]
+            if isinstance(target, str) and target in nodes_by_id:
+                pending.append(target)
+
+    while pending:
+        node_id = pending.pop()
+        if node_id in reachable or node_id not in nodes_by_id:
+            continue
+        reachable.add(node_id)
+        node = nodes_by_id[node_id]
+        add_effect_targets(node.on_enter)
+        for choice in node.choices:
+            if choice.goto is not None:
+                pending.append(choice.goto)
+            add_effect_targets(choice.effects)
+        for intent in node.freeform_intents:
+            add_effect_targets(intent.effects)
+    return reachable
+
+
 class StoryDraftValidator:
     def validate(
         self,
@@ -846,7 +891,16 @@ class StoryDraftValidator:
         ending_ids = {
             node.id for node in compile_result.program.nodes if node.type == "ending"
         }
-        unreachable = node_ids.difference(simulation.reachable_node_ids)
+        reachable_for_validation = set(simulation.reachable_node_ids)
+        if simulation.truncated:
+            # A bounded simulation cannot prove that a node is unreachable once it
+            # stops early. Structural reachability is a conservative fallback: it
+            # prevents deep but connected nodes from becoming false blocking errors,
+            # while the truncation warning still communicates incomplete coverage.
+            reachable_for_validation.update(
+                _structurally_reachable_node_ids(compile_result.program)
+            )
+        unreachable = node_ids.difference(reachable_for_validation)
         if unreachable:
             issues.append(
                 GenerationValidationIssue(
@@ -863,7 +917,12 @@ class StoryDraftValidator:
                     "/narrativeGraph",
                 )
             )
-        unreachable_endings = ending_ids.difference(simulation.ending_paths)
+        reachable_endings_for_validation = set(simulation.ending_paths)
+        if simulation.truncated:
+            reachable_endings_for_validation.update(
+                ending_ids.intersection(reachable_for_validation)
+            )
+        unreachable_endings = ending_ids.difference(reachable_endings_for_validation)
         if unreachable_endings:
             issues.append(
                 GenerationValidationIssue(
@@ -1287,6 +1346,12 @@ class StoryGenerationService:
             )
             for item in repair_plan
         ]
+        narrative = source.get("narrativeGraph")
+        narrative_nodes = (
+            narrative.get("nodes") if isinstance(narrative, Mapping) else []
+        )
+        logic = source.get("logicGraph")
+        logic_nodes = logic.get("nodes") if isinstance(logic, Mapping) else []
         return {
             "protocol": "shinsekai.story-patch.v1",
             "operation": "repair",
@@ -1295,13 +1360,27 @@ class StoryGenerationService:
                 "path named by each item, preserve unrelated valid content, then check "
                 "that every listed error is resolved. Return only a compact patch object "
                 "with baseVersion and operations. Do not return story, source, artifact, "
-                "markdown, commentary, or the unchanged parts of the input."
+                "markdown, commentary, or the unchanged parts of the input. Use "
+                "stablePathIndex instead of guessing array indexes; prefer replace-node "
+                "with nodeId for narrative changes."
             ),
             "baseVersion": source["version"],
             "story": source,
             "validationErrors": errors,
             "validationIssues": issues,
             "repairPlan": repair_plan,
+            "stablePathIndex": {
+                "narrativeNodes": {
+                    str(node.get("id")): f"/narrativeGraph/nodes/{index}"
+                    for index, node in enumerate(narrative_nodes)
+                    if isinstance(node, Mapping) and node.get("id")
+                },
+                "logicNodes": {
+                    str(node.get("id")): f"/logicGraph/nodes/{index}"
+                    for index, node in enumerate(logic_nodes)
+                    if isinstance(node, Mapping) and node.get("id")
+                },
+            },
             "constraints": {
                 "maxOperations": MAX_PATCH_OPERATIONS,
                 "operationsOnly": True,
