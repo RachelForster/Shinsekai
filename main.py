@@ -604,25 +604,20 @@ def main():
             from ai.llm.text_processor import name_map
             name_map.update(_pm)
 
-    bg_group = None
     try:
-        bg_group = (
-            None
-            if is_transparent_background(args.bg)
-            else config.get_background_by_name(args.bg).sprites
-        )
-    except Exception:
-        pass
-
-    bgm_list = []
-    try:
-        bgm_list = (
-            []
-            if is_transparent_background(args.bg)
-            else config.get_background_by_name(args.bg).bgm_list
-        )
-    except Exception:
-        pass
+        background_names = json.loads(args.background_names) if args.background_names else [args.bg]
+    except (TypeError, ValueError):
+        background_names = [args.bg]
+    if not isinstance(background_names, list):
+        background_names = [args.bg]
+    backgrounds = [
+        config.get_background_by_name(str(name))
+        for name in background_names
+        if str(name).strip() and not is_transparent_background(str(name))
+    ]
+    backgrounds = [background for background in backgrounds if background is not None]
+    bg_group = [sprite for background in backgrounds for sprite in background.sprites]
+    bgm_list = [path for background in backgrounds for path in background.bgm_list]
 
     # 加载特效方案，构建关键词→音频路径映射
     effect_keyword_map: dict[str, str] = {}
@@ -1316,7 +1311,7 @@ def main():
 
         with _startup_phase("stream.initial_ui"):
             init_sprite_path = args.init_sprite_path
-            if not init_sprite_path and not is_transparent_background(args.bg):
+            if not init_sprite_path and bg_group:
                 init_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
 
             if system_config_to_asr_lang(config.config.system_config) == "zh":

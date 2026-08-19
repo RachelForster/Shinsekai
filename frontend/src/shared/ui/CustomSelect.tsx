@@ -134,9 +134,24 @@ export function CustomSelect({
   const [internalValue, setInternalValue] = useState(() =>
     String(defaultValue ?? options.find((option) => !option.disabled)?.value ?? ""),
   );
-  const selectedValue = String(isControlled ? value : internalValue);
-  const selectedIndex = options.findIndex((option) => option.value === selectedValue);
+  const [internalValues, setInternalValues] = useState<string[]>(() =>
+    Array.isArray(defaultValue) ? defaultValue.map(String) : [],
+  );
+  const selectedValues = multiple
+    ? new Set((Array.isArray(value) ? value : isControlled ? [] : internalValues).map(String))
+    : new Set<string>();
+  const selectedValue =
+    multiple && Array.isArray(value) ? value.map(String).join("\n") : String(isControlled ? value : internalValue);
+  const selectedIndex = options.findIndex((option) =>
+    multiple ? selectedValues.has(option.value) : option.value === selectedValue,
+  );
   const selectedOption = selectedIndex >= 0 ? options[selectedIndex] : undefined;
+  const selectedLabel = multiple
+    ? options
+        .filter((option) => selectedValues.has(option.value))
+        .map((option) => option.label)
+        .join(", ")
+    : selectedOption?.label || "";
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(selectedIndex);
   const [menuStyle, setMenuStyle] = useState<CSSProperties>();
@@ -189,6 +204,17 @@ export function CustomSelect({
 
   const selectOption = (option: ParsedSelectOption | undefined) => {
     if (!option || option.disabled) {
+      return;
+    }
+    if (multiple) {
+      if (!isControlled) {
+        setInternalValues((current) =>
+          current.includes(option.value)
+            ? current.filter((value) => value !== option.value)
+            : [...current, option.value],
+        );
+      }
+      onChange?.(createSelectChangeEvent(option.value, { id, name }));
       return;
     }
     if (!isControlled) {
@@ -340,24 +366,6 @@ export function CustomSelect({
     }
   };
 
-  if (multiple) {
-    return (
-      <select
-        className={["select", className].filter(Boolean).join(" ")}
-        defaultValue={defaultValue}
-        disabled={disabled}
-        id={id}
-        multiple
-        name={name}
-        onChange={onChange}
-        value={value}
-        {...props}
-      >
-        {children}
-      </select>
-    );
-  }
-
   const activeOptionId = open && activeIndex >= 0 && listboxId ? `${listboxId}-option-${activeIndex}` : undefined;
 
   return (
@@ -390,18 +398,23 @@ export function CustomSelect({
         title={props.title}
         type="button"
       >
-        <span className={selectedOption ? "custom-select__value" : "custom-select__placeholder"}>
-          {selectedOption?.label || ""}
-        </span>
+        <span className={selectedLabel ? "custom-select__value" : "custom-select__placeholder"}>{selectedLabel}</span>
         <ChevronDown aria-hidden className="custom-select__icon" />
       </button>
       {open && options.length
         ? createPortal(
-            <div className="custom-select__menu" id={listboxId} ref={menuRef} role="listbox" style={menuStyle}>
+            <div
+              aria-multiselectable={multiple || undefined}
+              className="custom-select__menu"
+              id={listboxId}
+              ref={menuRef}
+              role="listbox"
+              style={menuStyle}
+            >
               {options.map((option, index) => (
                 <button
                   aria-disabled={option.disabled || undefined}
-                  aria-selected={option.value === selectedValue}
+                  aria-selected={multiple ? selectedValues.has(option.value) : option.value === selectedValue}
                   className="custom-select__option"
                   data-active={index === activeIndex || undefined}
                   disabled={option.disabled}
@@ -417,6 +430,11 @@ export function CustomSelect({
                   role="option"
                   type="button"
                 >
+                  {multiple ? (
+                    <span aria-hidden className="custom-select__option-check">
+                      ✓
+                    </span>
+                  ) : null}
                   <span className="custom-select__option-label">{option.label}</span>
                 </button>
               ))}

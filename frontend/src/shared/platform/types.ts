@@ -505,6 +505,7 @@ export interface TemplateGenerationResult extends TemplateSummary {
 
 export interface ChatLaunchPayload {
   backgroundName: string;
+  backgroundNames?: string[];
   characters: string[];
   enableMobileAccess?: boolean;
   effectNames?: string[];
@@ -521,6 +522,7 @@ export interface ChatLaunchPayload {
 
 export interface TemplateGenerateInput {
   backgroundName: string;
+  backgroundNames?: string[];
   characters: string[];
   effectNames?: string[];
   maxDialogItems?: number;
@@ -539,6 +541,7 @@ export interface TemplateGenerateInput {
 
 export interface TemplateLaunchSession {
   background: string;
+  backgroundNames?: string[];
   enableMobileAccess?: boolean;
   effectNames: string[];
   filenameStub: string;

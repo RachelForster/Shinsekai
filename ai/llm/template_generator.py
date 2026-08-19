@@ -445,19 +445,40 @@ class TemplateGenerator:
                 template += _T("profile_for", name=char_name)
                 template += f"{character_setting}\n\n"
 
-        has_real_background = bool(bg_name) and not is_transparent_background(bg_name)
+        background_names = bg_name if isinstance(bg_name, (list, tuple)) else [bg_name]
+        backgrounds = []
+        for name in background_names:
+            name = str(name or "").strip()
+            if not name or is_transparent_background(name):
+                continue
+            background = config_manager.get_background_by_name(name)
+            if background is not None and background not in backgrounds:
+                backgrounds.append(background)
+        has_real_background = bool(backgrounds)
 
         if has_real_background:
-            bg = config_manager.get_background_by_name(bg_name)
-            if bg and bg.sprites:
+            sprites = [sprite for background in backgrounds for sprite in (background.sprites or [])]
+            bgm_list = [path for background in backgrounds for path in (background.bgm_list or [])]
+            if sprites:
                 template += _T("scene_block_header")
-                template += _T("scene_count", n=len(bg.sprites))
-                template += f"{bg.bg_tags}\n\n"
-
-            if bg and bg.bgm_list:
+                template += _T("scene_count", n=len(sprites))
+                offset = 0
+                for background in backgrounds:
+                    count = len(background.sprites or [])
+                    if count:
+                        template += f"{getattr(background, 'name', '背景组')}（图片编号 {offset + 1}-{offset + count}）：\n{background.bg_tags}\n"
+                        offset += count
+                template += "\n"
+            if bgm_list:
                 template += _T("bgm_block_header")
-                template += _T("bgm_count", n=len(bg.bgm_list))
-                template += f"{bg.bgm_tags}\n\n"
+                template += _T("bgm_count", n=len(bgm_list))
+                offset = 0
+                for background in backgrounds:
+                    count = len(background.bgm_list or [])
+                    if count:
+                        template += f"{getattr(background, 'name', '背景组')}（音乐编号 {offset + 1}-{offset + count}）：\n{background.bgm_tags}\n"
+                        offset += count
+                template += "\n"
 
         # 保留字新代号（与 core.messaging.dialog_tokens 及 handlers 一致；旧版中文仍兼容）
         opt_scene = (f", {SCENE}" if has_real_background else "")

@@ -95,7 +95,7 @@ export function TemplateEditorPage() {
   const [draft, setDraft] = useState<TemplateSummary>(() => createTemplateDraft(t("template.defaultName")));
   const [nameError, setNameError] = useState("");
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
-  const [selectedBackground, setSelectedBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
+  const [selectedBackgrounds, setSelectedBackgrounds] = useState<string[]>([TRANSPARENT_BACKGROUND_NAME]);
   const [selectedEffects, setSelectedEffects] = useState<string[]>([]);
   const [voiceLanguage, setVoiceLanguage] = useState("ja");
   const [useEffectPrompt, setUseEffectPrompt] = useState(true);
@@ -216,7 +216,11 @@ export function TemplateEditorPage() {
     }
     setSessionDraftActive(true);
     setSelectedCharacters(Array.isArray(launchSession.selectedCharacters) ? launchSession.selectedCharacters : []);
-    setSelectedBackground(launchSession.background || TRANSPARENT_BACKGROUND_NAME);
+    setSelectedBackgrounds(
+      Array.isArray(launchSession.backgroundNames) && launchSession.backgroundNames.length
+        ? launchSession.backgroundNames
+        : [launchSession.background || TRANSPARENT_BACKGROUND_NAME],
+    );
     setSelectedEffects(Array.isArray(launchSession.effectNames) ? launchSession.effectNames : []);
     setVoiceLanguage(launchSession.voiceLanguage || "ja");
     setUseEffectPrompt(launchSession.useEffect ?? true);
@@ -248,10 +252,27 @@ export function TemplateEditorPage() {
   }, [launchSession, sessionFetched, sessionRestored, t, templates]);
 
   useEffect(() => {
-    if (!backgroundOptions.includes(selectedBackground)) {
-      setSelectedBackground(TRANSPARENT_BACKGROUND_NAME);
-    }
-  }, [backgroundOptions, selectedBackground]);
+    setSelectedBackgrounds((current) => {
+      const next = current.filter((name) => backgroundOptions.includes(name));
+      return next.length ? next : [TRANSPARENT_BACKGROUND_NAME];
+    });
+  }, [backgroundOptions]);
+
+  const selectedBackground = selectedBackgrounds[0] || TRANSPARENT_BACKGROUND_NAME;
+
+  const updateSelectedBackgrounds = (next: string[]) => {
+    const unique = [...new Set(next)];
+    const opaque = unique.filter((name) => name !== TRANSPARENT_BACKGROUND_NAME);
+    setSelectedBackgrounds(opaque.length ? opaque : [TRANSPARENT_BACKGROUND_NAME]);
+  };
+
+  const toggleSelectedBackground = (name: string) => {
+    updateSelectedBackgrounds(
+      selectedBackgrounds.includes(name)
+        ? selectedBackgrounds.filter((item) => item !== name)
+        : [...selectedBackgrounds, name],
+    );
+  };
 
   useEffect(() => {
     if (!sessionRestored || launchSession) {
@@ -409,6 +430,7 @@ export function TemplateEditorPage() {
       return generateTemplate(
         buildTemplateGenerateInput({
           backgroundName: selectedBackground,
+          backgroundNames: selectedBackgrounds,
           draft: { ...draft, scenario },
           effectNames: selectedEffects,
           options: templateOptionsState,
@@ -499,7 +521,7 @@ export function TemplateEditorPage() {
     return () => window.clearTimeout(timer);
   }, [
     selectedCharactersKey,
-    selectedBackground,
+    selectedBackgrounds,
     selectedEffects,
     voiceLanguage,
     useEffectPrompt,
@@ -523,6 +545,7 @@ export function TemplateEditorPage() {
         const template = buildTemplateSummary(draft);
         const session: TemplateLaunchSession = buildTemplateLaunchSession({
           backgroundName: selectedBackground,
+          backgroundNames: selectedBackgrounds,
           draft,
           effectNames: selectedEffects,
           mobileAccessEnabled,
@@ -537,6 +560,7 @@ export function TemplateEditorPage() {
           synchronizeChatLaunchPayloadWithSession(
             buildChatLaunchPayload({
               backgroundName: selectedBackground,
+              backgroundNames: selectedBackgrounds,
               effectNames: selectedEffects,
               mobileAccessEnabled,
               resetHistory,
@@ -624,7 +648,7 @@ export function TemplateEditorPage() {
   };
 
   const handleGenerateTemplate = () => {
-    if (!selectedBackground) {
+    if (!selectedBackgrounds.length) {
       showToast({
         kind: "error",
         message: t("template.validation.backgroundRequired"),
@@ -854,7 +878,11 @@ export function TemplateEditorPage() {
 
           <label className="template-side-field">
             <span className="template-side-field__label">{t("template.field.background")}</span>
-            <Select onChange={(event) => setSelectedBackground(event.target.value)} value={selectedBackground}>
+            <Select
+              multiple
+              onChange={(event) => toggleSelectedBackground(event.currentTarget.value)}
+              value={selectedBackgrounds}
+            >
               {backgroundOptions.map((name) => (
                 <option key={name} value={name}>
                   {name === TRANSPARENT_BACKGROUND_NAME ? t("template.transparentBackground") : name}
