@@ -39,6 +39,15 @@ import type {
   SpriteGenerationResult,
   SpritePromptResult,
   StoryGenerationTask,
+  StoryAiPatchProposal,
+  StoryCastPreview,
+  StoryGenerationValidation,
+  StoryGraphProjection,
+  StoryPathPreview,
+  StoryPatchOperation,
+  StoryProjectDocument,
+  StoryProjectManifest,
+  StoryPublicationResult,
   TaskProgressOptions,
   TaskSnapshot,
 } from "./types";
@@ -180,6 +189,254 @@ function previewStoryGeneration(id: string, status: StoryGenerationTask["status"
           }
         : null,
   };
+}
+
+function previewStoryProject(id = "preview-story"): StoryProjectDocument {
+  const now = Date.now();
+  const validation: StoryGenerationValidation = {
+    castFailureNodeIds: [],
+    endingCoverage: 1,
+    endingNodeIds: ["ending"],
+    exploredStates: 4,
+    issues: [],
+    reachableEndingIds: ["ending"],
+    reachableNodeIds: ["opening", "ending"],
+    sourceHash: "preview-source",
+    valid: true,
+  };
+  return {
+    manifest: {
+      createdAt: now,
+      draftRevision: 1,
+      id,
+      publishedSourceHash: "",
+      publishedVersion: 0,
+      title: "Preview story",
+      updatedAt: now,
+    },
+    resources: { bindings: {}, characters: [] },
+    source: {
+      id,
+      title: "Preview story",
+      version: 1,
+      variables: {},
+      semanticSignals: [],
+      cast: { characters: [], initialCast: [] },
+      narrativeGraph: { startNodeId: "opening", nodes: [] },
+      logicGraph: { version: 1, nodes: [], edges: [] },
+    },
+    validation,
+  };
+}
+
+let previewStoryDocument: StoryProjectDocument | null = null;
+const previewStoryHistory = new Map<number, Record<string, unknown>>();
+let previewUndoCursor = 1;
+
+const STORY_PATCH_TOP_LEVEL = new Set([
+  "metadata",
+  "variables",
+  "semanticSignals",
+  "cast",
+  "narrativeGraph",
+  "logicGraph",
+]);
+
+function resetPreviewStoryState(document: StoryProjectDocument) {
+  previewStoryDocument = document;
+  previewStoryHistory.clear();
+  previewUndoCursor = document.manifest.draftRevision;
+  return document;
+}
+
+function decodePreviewPointer(token: string) {
+  return token.replaceAll("~1", "/").replaceAll("~0", "~");
+}
+
+function previewPointerTokens(path: string) {
+  if (!path.startsWith("/")) {
+    throw new Error("operation has an invalid path");
+  }
+  return path.split("/").slice(1).map(decodePreviewPointer);
+}
+
+function previewListIndex(value: string, length: number, allowEnd: boolean) {
+  if (value === "-" && allowEnd) {
+    return length;
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new Error(`invalid array index ${value}`);
+  }
+  const position = Number(value);
+  const maximum = allowEnd ? length : length - 1;
+  if (position < 0 || position > maximum) {
+    throw new Error(`array index ${position} is out of range`);
+  }
+  return position;
+}
+
+function resolvePreviewPointerParent(root: Record<string, unknown>, tokens: string[]) {
+  let current: unknown = root;
+  for (const token of tokens.slice(0, -1)) {
+    if (Array.isArray(current)) {
+      current = current[previewListIndex(token, current.length, false)];
+    } else if (current && typeof current === "object" && token in current) {
+      current = (current as Record<string, unknown>)[token];
+    } else {
+      throw new Error("patch parent path does not exist");
+    }
+  }
+  return { parent: current, key: tokens[tokens.length - 1] ?? "" };
+}
+
+function applyPreviewReplaceDomain(source: Record<string, unknown>, operation: StoryPatchOperation) {
+  const specs: Record<string, { idField: keyof StoryPatchOperation; collection: unknown }> = {
+    "replace-node": {
+      idField: "nodeId",
+      collection: (source.narrativeGraph as Record<string, unknown> | undefined)?.nodes,
+    },
+    "replace-character": {
+      idField: "characterId",
+      collection: (source.cast as Record<string, unknown> | undefined)?.characters,
+    },
+    "replace-variable": { idField: "variableId", collection: source.variables },
+    "replace-rule-node": {
+      idField: "nodeId",
+      collection: (source.logicGraph as Record<string, unknown> | undefined)?.nodes,
+    },
+  };
+  const spec = specs[operation.op];
+  if (!spec) {
+    throw new Error(`operation uses forbidden op ${operation.op}`);
+  }
+  const objectId = String(operation[spec.idField] || "");
+  const value = operation.value;
+  if (!objectId || !value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("operation value must be an object");
+  }
+  if (Array.isArray(spec.collection)) {
+    const position = spec.collection.findIndex(
+      (item) => item && typeof item === "object" && !Array.isArray(item) && item.id === objectId,
+    );
+    if (position < 0) {
+      throw new Error("operation target was not found");
+    }
+    const replacement = clone(value) as Record<string, unknown>;
+    if (replacement.id !== undefined && String(replacement.id) !== objectId) {
+      throw new Error("operation cannot change object identity");
+    }
+    replacement.id = objectId;
+    spec.collection[position] = replacement;
+    return;
+  }
+  if (spec.collection && typeof spec.collection === "object" && objectId in spec.collection) {
+    (spec.collection as Record<string, unknown>)[objectId] = clone(value);
+    return;
+  }
+  throw new Error("operation target was not found");
+}
+
+function applyPreviewStoryOperation(source: Record<string, unknown>, operation: StoryPatchOperation, index: number) {
+  if (operation.op.startsWith("replace-")) {
+    applyPreviewReplaceDomain(source, operation);
+    return;
+  }
+  if (operation.op !== "add" && operation.op !== "replace" && operation.op !== "remove") {
+    throw new Error(`operation ${index} uses forbidden op ${operation.op}`);
+  }
+  const rawPath = operation.path;
+  if (!rawPath) {
+    throw new Error(`operation ${index} has an invalid path`);
+  }
+  const tokens = previewPointerTokens(rawPath);
+  if (!tokens.length || !STORY_PATCH_TOP_LEVEL.has(tokens[0] ?? "")) {
+    throw new Error(`operation ${index} cannot modify ${rawPath}`);
+  }
+  const { parent, key } = resolvePreviewPointerParent(source, tokens);
+  if (Array.isArray(parent)) {
+    const position = previewListIndex(key, parent.length, operation.op === "add");
+    if (operation.op === "add") {
+      parent.splice(position, 0, clone(operation.value));
+    } else if (operation.op === "replace") {
+      parent[position] = clone(operation.value);
+    } else {
+      parent.splice(position, 1);
+    }
+    return;
+  }
+  if (!parent || typeof parent !== "object") {
+    throw new Error(`path ${rawPath} has no container`);
+  }
+  const record = parent as Record<string, unknown>;
+  const exists = key in record;
+  if ((operation.op === "replace" || operation.op === "remove") && !exists) {
+    throw new Error(`path ${rawPath} does not exist`);
+  }
+  if (operation.op === "remove") {
+    delete record[key];
+    return;
+  }
+  record[key] = clone(operation.value);
+}
+
+function applyPreviewStoryPatch(source: Record<string, unknown>, operations: StoryPatchOperation[]) {
+  if (!operations.length) {
+    throw new Error("patch operations must be a non-empty array");
+  }
+  const candidate = clone(source);
+  operations.forEach((operation, index) => applyPreviewStoryOperation(candidate, operation, index));
+  candidate.version = Number(source.version || 1) + 1;
+  return candidate;
+}
+
+function previewStructuralDiff(
+  before: unknown,
+  after: unknown,
+  path = "",
+  changes: Array<{ after: unknown; before: unknown; op: string; path: string }> = [],
+) {
+  if (changes.length >= 300 || Object.is(before, after) || JSON.stringify(before) === JSON.stringify(after)) {
+    return changes;
+  }
+  const isObject = (value: unknown): value is Record<string, unknown> =>
+    Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  if (isObject(before) && isObject(after)) {
+    for (const key of [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()) {
+      const child = `${path}/${key}`;
+      if (!(key in before)) {
+        changes.push({ op: "add", path: child, before: null, after: after[key] });
+      } else if (!(key in after)) {
+        changes.push({ op: "remove", path: child, before: before[key], after: null });
+      } else {
+        previewStructuralDiff(before[key], after[key], child, changes);
+      }
+    }
+    return changes;
+  }
+  if (Array.isArray(before) && Array.isArray(after)) {
+    for (let index = 0; index < Math.max(before.length, after.length); index += 1) {
+      const child = `${path}/${index}`;
+      if (index >= before.length) {
+        changes.push({ op: "add", path: child, before: null, after: after[index] });
+      } else if (index >= after.length) {
+        changes.push({ op: "remove", path: child, before: before[index], after: null });
+      } else {
+        previewStructuralDiff(before[index], after[index], child, changes);
+      }
+    }
+    return changes;
+  }
+  changes.push({ op: "replace", path: path || "/", before, after });
+  return changes;
+}
+
+function requirePreviewStory(id: string) {
+  if (previewStoryDocument?.manifest.id === id) {
+    return previewStoryDocument;
+  }
+  const document = previewStoryProject(id);
+  resetPreviewStoryState(document);
+  return document;
 }
 
 function previewNormalizePluginKey(value: string | null | undefined) {
@@ -2445,6 +2702,174 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         previewTask(id, { kind: "story-generation", result, status: "succeeded" }, options);
         return delay(result, 400);
       },
+      createProject: async (source) => {
+        const id = String(source.id || `preview-story-${Date.now()}`);
+        return delay(resetPreviewStoryState({ ...previewStoryProject(id), source: structuredClone(source) }));
+      },
+      getProject: async (id) => delay(requirePreviewStory(id)),
+      getProjectGraph: async (_id) => {
+        const graph: StoryGraphProjection = {
+          diagnostics: [],
+          narrative: { edges: [], nodes: [] },
+          rules: { edges: [], nodes: [] },
+          sourceMap: {},
+        };
+        return delay(graph);
+      },
+      importGeneratedProject: async (generationTaskId) => {
+        return delay(resetPreviewStoryState(previewStoryProject(`generated-${generationTaskId}`)));
+      },
+      listProjects: async () => {
+        const document = previewStoryDocument ?? previewStoryProject();
+        return delay<StoryProjectManifest[]>([document.manifest]);
+      },
+      patchProject: async ({ id, allowInvalid = true, baseRevision, commit, patch }) => {
+        const document = requirePreviewStory(id);
+        if (document.manifest.draftRevision !== baseRevision) {
+          throw new Error(`expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`);
+        }
+        const candidate = applyPreviewStoryPatch(document.source, patch.operations);
+        const validation = document.validation;
+        if (commit && !allowInvalid && !validation.valid) {
+          throw new Error("patch candidate does not pass validation");
+        }
+        const nextDocument: StoryProjectDocument = {
+          ...document,
+          source: candidate,
+          manifest: {
+            ...document.manifest,
+            title: String(candidate.title || document.manifest.title),
+            draftRevision: baseRevision + 1,
+            updatedAt: Date.now(),
+          },
+          validation,
+        };
+        if (commit) {
+          previewStoryHistory.set(baseRevision, clone(document.source));
+          previewUndoCursor = nextDocument.manifest.draftRevision;
+          previewStoryDocument = nextDocument;
+        }
+        return delay({
+          baseRevision,
+          candidateRevision: baseRevision + 1,
+          committed: Boolean(commit),
+          diff: previewStructuralDiff(document.source, candidate),
+          document: commit ? nextDocument : undefined,
+          source: candidate,
+          validation,
+        });
+      },
+      previewCast: async ({ nodeId }) => {
+        const result: StoryCastPreview = {
+          activeCharacterIds: [],
+          candidates: [],
+          error: null,
+          nodeId,
+          roleBindings: {},
+          unresolvedRoles: [],
+          valid: true,
+        };
+        return delay(result);
+      },
+      previewPath: async ({ id, endingId }) => {
+        const result: StoryPathPreview = {
+          branchId: `editor-test-${Date.now()}`,
+          endingId,
+          finalState: { currentNodeId: endingId || "opening" },
+          projectId: id,
+          snapshots: [],
+        };
+        return delay(result);
+      },
+      proposeAiPatch: async ({ id, baseRevision }, options) => {
+        const document = requirePreviewStory(id);
+        const result: StoryAiPatchProposal = {
+          baseRevision,
+          candidateRevision: baseRevision + 1,
+          committed: false,
+          diff: [],
+          patch: { operations: [] },
+          source: document.source,
+          validation: document.validation,
+        };
+        previewTask(`story-ai-patch-${Date.now()}`, { kind: "story-ai-patch", result, status: "succeeded" }, options);
+        return delay(result);
+      },
+      repairProject: async ({ id, baseRevision }, options) => {
+        const document = requirePreviewStory(id);
+        if (document.manifest.draftRevision !== baseRevision) {
+          throw new Error(`expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`);
+        }
+        const result: StoryProjectDocument = {
+          ...document,
+          manifest: {
+            ...document.manifest,
+            draftRevision: baseRevision + 1,
+            updatedAt: Date.now(),
+          },
+          validation: { ...document.validation, issues: [], valid: true },
+        };
+        previewStoryDocument = clone(result);
+        previewTask(`story-repair-${Date.now()}`, { kind: "story-repair", result, status: "succeeded" }, options);
+        return delay(result);
+      },
+      publishProject: async (id, baseRevision) => {
+        const document = requirePreviewStory(id);
+        if (document.manifest.draftRevision !== baseRevision) {
+          throw new Error(`expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`);
+        }
+        const version = document.manifest.publishedVersion + 1;
+        const sourceHash = `preview-source-v${version}`;
+        const source = { ...clone(document.source), status: "published", version };
+        previewStoryDocument = {
+          ...document,
+          source,
+          manifest: {
+            ...document.manifest,
+            publishedVersion: version,
+            publishedSourceHash: sourceHash,
+            updatedAt: Date.now(),
+          },
+        };
+        const result: StoryPublicationResult = {
+          path: `data/stories/projects/${id}/published/v${version}/story.json`,
+          projectId: id,
+          resourceDependencies: {},
+          saveCompatibility: {
+            breakingChanges: [],
+            compatibleWithPrevious: true,
+            schemaVersion: 1,
+            sourceHash,
+            storyVersion: version,
+          },
+          sourceHash,
+          version,
+        };
+        return delay(result);
+      },
+      undoProject: async (id, baseRevision) => {
+        const document = requirePreviewStory(id);
+        if (document.manifest.draftRevision !== baseRevision) {
+          throw new Error(`expected draft revision ${baseRevision}, found ${document.manifest.draftRevision}`);
+        }
+        const previous = previewStoryHistory.get(previewUndoCursor - 1);
+        if (!previous) {
+          throw new Error("there is no earlier draft revision");
+        }
+        previewUndoCursor -= 1;
+        previewStoryDocument = {
+          ...document,
+          source: clone(previous),
+          manifest: {
+            ...document.manifest,
+            title: String(previous.title || document.manifest.title),
+            draftRevision: baseRevision + 1,
+            updatedAt: Date.now(),
+          },
+        };
+        return delay(previewStoryDocument);
+      },
+      validateProject: async (id) => delay(requirePreviewStory(id).validation),
     },
     templates: {
       async generate(input) {

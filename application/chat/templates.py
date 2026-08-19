@@ -90,11 +90,15 @@ def _scenario_from_template_like(template: dict[str, Any]) -> str:
 def _history_id_from_scenario(
     user_scenario: str,
     character_names: Any = None,
+    story_id: str = "",
 ) -> str:
-    stable = {
+    stable: dict[str, Any] = {
         "characters": _normalize_hash_character_names(character_names),
         "scenario": _effective_user_scenario(user_scenario),
     }
+    story = str(story_id or "").strip()
+    if story:
+        stable["storyId"] = story
     return hashlib.md5(
         json.dumps(stable, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
@@ -328,6 +332,7 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         "selectedCharacters": _session_string_list(raw.get("selected_characters")),
         "system": str(raw.get("system_template_text") or ""),
         "templateFileDropdown": str(raw.get("template_file_dropdown") or ""),
+        "storyId": str(raw.get("story_id") or ""),
         "workflowPath": str(raw.get("workflow_path") or ""),
         "useCg": bool(raw.get("use_cg_yes", False)),
         "useChoice": bool(raw.get("use_choice_yes", True)),
@@ -440,6 +445,7 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         "system_template_text": str(payload.get("system") or ""),
         "filename_stub": str(payload.get("filenameStub") or ""),
         "template_file_dropdown": str(payload.get("templateFileDropdown") or ""),
+        "story_id": str(payload.get("storyId") or ""),
         "init_sprite_path": init_sprite_path,
         "history_file": str(payload.get("historyPath") or ""),
         "room_id": str(payload.get("roomId") or ""),

@@ -1050,6 +1050,107 @@ describe("chatStageReducer", () => {
     expect(hidden.layers.busy).toBe(false);
   });
 
+  it("holds story options until the player advances the scene dialogue", () => {
+    const withDialogue = chatStageReducer(emptyChatState, {
+      event: {
+        color: "",
+        fullHtml: "<p>酒吧里很吵。</p>",
+        isSystem: false,
+        seq: 1,
+        speaker: "房石阳明",
+        ts: 1,
+        type: "dialog.end",
+        v: 1,
+      },
+      type: "event",
+    });
+    const withOptions = chatStageReducer(withDialogue, {
+      event: {
+        options: [
+          {
+            enabled: true,
+            expectedNodeId: "bar",
+            expectedRevision: 2,
+            id: "order",
+            label: "点一杯酒",
+            source: "story",
+          },
+        ],
+        seq: 2,
+        ts: 2,
+        type: "options.show",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(withOptions.dialogText).toContain("酒吧里很吵");
+    expect(withOptions.options).toHaveLength(1);
+    expect(withOptions.layers.dialog).toBe(true);
+    expect(withOptions.layers.options).toBe(false);
+
+    const revealed = chatStageReducer(withOptions, { type: "revealHeldOptions" });
+    expect(revealed.layers.dialog).toBe(false);
+    expect(revealed.layers.options).toBe(true);
+
+    const userChoice = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "你",
+        dialogText: "点一杯酒",
+        userDisplayName: "你",
+      },
+      {
+        event: {
+          options: ["下一句"],
+          seq: 1,
+          ts: 1,
+          type: "options.show",
+          v: 1,
+        },
+        type: "event",
+      },
+    );
+    expect(userChoice.layers.options).toBe(true);
+    expect(userChoice.layers.dialog).toBe(false);
+  });
+
+  it("does not reveal the next story options while the selected turn is generating", () => {
+    const submitted = chatStageReducer(
+      {
+        ...emptyChatState,
+        characterName: "你",
+        dialogText: "搜查房间",
+        userDisplayName: "你",
+      },
+      { source: "submit-option", text: "搜查房间", type: "submitUserMessage" },
+    );
+    const nextOptions = chatStageReducer(submitted, {
+      event: {
+        options: [
+          {
+            enabled: true,
+            expectedNodeId: "search-room",
+            expectedRevision: 2,
+            id: "ask-remote",
+            label: "询问遥控器用途",
+            source: "story",
+          },
+        ],
+        seq: 2,
+        ts: 2,
+        type: "options.show",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(nextOptions.optimisticSubmission).toBeDefined();
+    expect(nextOptions.options).toHaveLength(1);
+    expect(nextOptions.layers.options).toBe(false);
+    expect(nextOptions.layers.dialog).toBe(true);
+  });
+
   it("correlates tool confirmation events and disables free-form input", () => {
     const prompted = chatStageReducer(emptyChatState, {
       event: {
@@ -1212,9 +1313,15 @@ describe("chatStageReducer", () => {
 
     expect(aoi.sprites.map((sprite) => sprite.characterName)).toEqual(["Nanami", "Mio", "Aoi"]);
     expect(aoi.sprites.map((sprite) => sprite.slot)).toEqual([2, 0, 1]);
+
+    const fourth = showSprite(aoi, 7, "Yuki", 0);
+    const fourthExpression = showSprite(fourth, 8, "Yuki", 2, "asset://yuki-happy.png");
+    expect(fourthExpression.sprites.map((sprite) => sprite.characterName)).toEqual(["Mio", "Aoi", "Yuki"]);
+    expect(fourthExpression.sprites.map((sprite) => sprite.slot)).toEqual([0, 1, 2]);
+    expect(fourthExpression.sprites.at(-1)?.path).toBe("asset://yuki-happy.png");
   });
 
-  it("preserves snapshot LRU order so the most recent sprite stays in front", () => {
+  it("rebuilds snapshot slots entirely on the frontend", () => {
     const hydrated = chatStageReducer(emptyChatState, {
       snapshot: {
         dialogText: "",
@@ -1231,7 +1338,7 @@ describe("chatStageReducer", () => {
     });
 
     expect(hydrated.sprites.map((sprite) => sprite.label)).toEqual(["Aoi", "Mio"]);
-    expect(hydrated.sprites.map((sprite) => sprite.slot)).toEqual([2, 0]);
+    expect(hydrated.sprites.map((sprite) => sprite.slot)).toEqual([0, 1]);
   });
 
   it("maps the latest sprite into the single mobile display slot", () => {

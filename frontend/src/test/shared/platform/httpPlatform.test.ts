@@ -45,6 +45,64 @@ describe("http platform", () => {
     );
   });
 
+  it("repairs a story draft through a background task", async () => {
+    const document = {
+      manifest: {
+        createdAt: 1,
+        draftRevision: 4,
+        id: "campus-mystery",
+        publishedSourceHash: "",
+        publishedVersion: 0,
+        title: "Campus mystery",
+        updatedAt: 2,
+      },
+      resources: {},
+      source: { id: "campus-mystery" },
+      validation: {
+        castFailureNodeIds: [],
+        endingCoverage: 1,
+        endingNodeIds: [],
+        exploredStates: 1,
+        issues: [],
+        reachableEndingIds: [],
+        reachableNodeIds: [],
+        sourceHash: "hash",
+        valid: true,
+      },
+    };
+    const fetchMock = vi.fn(() =>
+      mockJsonResponse({
+        createdAt: 1,
+        id: "story-repair-1",
+        kind: "story-repair",
+        logs: [],
+        message: "done",
+        phase: "completed",
+        progress: 1,
+        result: document,
+        status: "succeeded",
+        title: "Repair story draft",
+        updatedAt: 2,
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    const repaired = await platform.story.repairProject({
+      id: "campus-mystery",
+      baseRevision: 3,
+    });
+
+    expect(repaired.manifest.draftRevision).toBe(4);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/story/projects/campus-mystery/repair",
+      expect.objectContaining({
+        body: JSON.stringify({ baseRevision: 3 }),
+        method: "POST",
+      }),
+    );
+  });
+
   it("sends bridge auth token on requests and generated media URLs", async () => {
     const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse(sampleConfig));
     vi.stubGlobal("fetch", fetchMock);

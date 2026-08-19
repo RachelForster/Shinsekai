@@ -12,7 +12,7 @@ import itertools
 import math
 import re
 import time
-from typing import Any, Dict, List, Protocol, runtime_checkable
+from typing import Any, Dict, Protocol, runtime_checkable
 
 #: 事件协议版本，与前端 ``ChatStageEvent`` 的 ``v`` 字段一致。
 EVENT_PROTOCOL_VERSION = 1
@@ -198,24 +198,23 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     if event_type == "sprite.show":
         _clear_transient_notification_state(next_snapshot)
         character_name = str(event.get("characterName") or "")
-        slot = event.get("slot")
-        sprite_id = f"{character_name}:{slot}" if slot is not None else character_name
-        current = [dict(item) for item in (next_snapshot.get("sprites") or []) if isinstance(item, dict)]
+        current = [
+            dict(item)
+            for item in (next_snapshot.get("sprites") or [])
+            if isinstance(item, dict)
+        ]
         current = [
             item
             for item in current
-            if item.get("id") != sprite_id
-            and item.get("label") != character_name
+            if item.get("label") != character_name
             and item.get("characterName") != character_name
-            and (slot is None or item.get("slot") != slot)
         ]
         next_sprite = {
-            "id": sprite_id,
+            "id": character_name,
             "label": character_name,
             "path": str(event.get("url") or ""),
             "characterName": character_name,
             "scale": event.get("scale"),
-            "slot": slot,
         }
         for axis in ("x", "y"):
             if event.get(axis) is not None:

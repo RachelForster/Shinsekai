@@ -3,7 +3,6 @@ from __future__ import annotations
 import html
 import json
 import os
-import re
 import signal
 import subprocess
 import sys
@@ -16,6 +15,7 @@ from collections.abc import Sequence
 from typing import Any
 from urllib.parse import quote
 
+from application.chat.ui_updates import _format_dialog_html
 from core.messaging.dialog_tokens import (
     BGM_ALIASES,
     CG_ALIASES,
@@ -24,8 +24,15 @@ from core.messaging.dialog_tokens import (
     SCENE_ALIASES,
     STAT_ALIASES,
     is_option_history_name,
+    match_bgm_name,
+    match_cg_name,
+    match_choice_name,
+    match_cot_name,
+    match_scene_name,
+    match_stat_name,
     normalize_character_name,
 )
+from core.messaging.stat_payload import parse_stat_payload
 from core.paths import app_root as runtime_app_root
 from core.paths import project_root as runtime_project_root
 from core.paths import source_root as runtime_source_root
@@ -65,6 +72,7 @@ from application.chat.templates import (
 )
 from application.runtime.dependencies import runtime_dependency_error_from_text
 from application.runtime.state import BridgeState
+from application.story.characters import is_player_stand_in
 from application.story.coordinator import (
     bound_story_session,
     clear_story_session,
@@ -72,9 +80,8 @@ from application.story.coordinator import (
     publish_story_transition,
     story_snapshot_patch,
 )
-from application.story.session import StoryTurnCancelledError
 from config.feature_flags import FeatureFlag
-from core.story import SelectChoice
+from core.story import ConditionEvaluator, PerformIntent, SelectChoice
 from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
 from sdk.path_utils import reject_control_chars
 
@@ -588,7 +595,11 @@ def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: di
     if not isinstance(characters, list):
         characters = template.get("selectedCharacters")
     scenario = _scenario_from_template_like(template)
-    template_hash = _history_id_from_scenario(scenario, characters)
+    template_hash = _history_id_from_scenario(
+        scenario,
+        characters,
+        story_id=str(payload.get("storyId") or ""),
+    )
     return _resolve_history_file(state, Path(state.history_dir) / template_hash)
 
 
@@ -936,16 +947,39 @@ def _chat_history_download_file(state: BridgeState, capability: str) -> Path:
 
 
 def _story_choice_label(session: Any, choice_id: str) -> str:
-    snapshot = session.chat_snapshot()
-    for option in snapshot.get("options") or []:
-        if not isinstance(option, dict):
-            continue
-        if str(option.get("id") or "") != choice_id:
-            continue
-        label = str(option.get("label") or "").strip()
-        if label:
-            return label
+    state = session.active_branch.state
+    node = session.runtime.program.nodes_by_id[state.current_node_id]
+    for choice in node.choices:
+        if choice.id == choice_id:
+            return choice.label
     return choice_id
+
+
+def _story_action_for_label(session: Any, label: str) -> tuple[str, str] | None:
+    state = session.active_branch.state
+    program = session.runtime.program
+    node = program.nodes_by_id[state.current_node_id]
+    variables = {**session.global_progress.variables, **state.variables}
+    evaluator = ConditionEvaluator()
+    for choice in node.choices:
+        if choice.label != label:
+            continue
+        if evaluator.evaluate(
+            choice.when,
+            variables=variables,
+            completed_node_ids=state.completed_node_ids,
+        ):
+            return "choice", choice.id
+    for intent in node.freeform_intents:
+        if label not in intent.examples:
+            continue
+        if evaluator.evaluate(
+            intent.when,
+            variables=variables,
+            completed_node_ids=state.completed_node_ids,
+        ):
+            return "intent", intent.id
+    return None
 
 
 def _persist_story_choice_messages(
@@ -1002,6 +1036,47 @@ def _record_story_choice_history(state: BridgeState, label: str) -> list[dict[st
     return entries
 
 
+def _execute_story_label_action(
+    state: BridgeState,
+    label: str,
+    *,
+    command_id: str,
+) -> dict[str, Any] | None:
+    session = bound_story_session(state)
+    if session is None:
+        return None
+    action = _story_action_for_label(session, label)
+    if action is None:
+        return None
+    action_kind, action_id = action
+    story_state = session.active_branch.state
+    history_entries = _record_story_choice_history(state, label)
+    if action_kind == "choice":
+        runtime_command = SelectChoice(
+            command_id=command_id,
+            expected_revision=story_state.revision,
+            choice_id=action_id,
+            expected_node_id=story_state.current_node_id,
+        )
+    else:
+        runtime_command = PerformIntent(
+            command_id=command_id,
+            expected_revision=story_state.revision,
+            intent_id=action_id,
+            expected_node_id=story_state.current_node_id,
+        )
+    ack = session.execute(runtime_command, history_entries=history_entries)
+    patch = session.chat_snapshot()
+    patch["storyAck"] = ack.to_payload()
+    publish_story_transition(
+        state,
+        patch,
+        history_entries=history_entries,
+        presentation_events=ack.presentation_events,
+    )
+    return patch
+
+
 def _scene_history_role(character_id: str) -> str:
     speaker = normalize_character_name(character_id)
     if speaker in _SYSTEM_HISTORY_NAMES or speaker == "narr":
@@ -1041,6 +1116,8 @@ def _persist_scene_turn_messages(
     user_text: str,
     user_name: str,
     dialogue: Sequence[Any],
+    *,
+    include_user: bool = True,
 ) -> None:
     history_raw = str(state.chat_session.get("historyPath") or "").strip()
     if not history_raw or is_unc_history_path(history_raw):
@@ -1054,12 +1131,13 @@ def _persist_scene_turn_messages(
         loaded = _read_history_file(active)
         if isinstance(loaded, list):
             messages = loaded
-    messages.append({"role": "user", "content": user_text})
+    if include_user:
+        messages.append({"role": "user", "content": user_text})
     for item in dialogue:
         messages.append(
             {
                 "role": "assistant",
-                "name": item.character_id,
+                "name": _scene_speaker_name(item),
                 "content": item.text,
             }
         )
@@ -1077,10 +1155,11 @@ def _persist_scene_turn_messages(
     if not isinstance(branch, dict):
         return
     history = list(branch.get("history") or [])
-    history.append(f"<b>{html.escape(user_name)}</b>：{html.escape(user_text)}")
+    if include_user:
+        history.append(f"<b>{html.escape(user_name)}</b>：{html.escape(user_text)}")
     for item in dialogue:
         history.append(
-            f"<b>{html.escape(item.character_id)}</b>：{html.escape(item.text)}"
+            f"<b>{html.escape(_scene_speaker_name(item))}</b>：{html.escape(item.text)}"
         )
     branch["messages"] = list(messages)
     branch["history"] = history
@@ -1110,28 +1189,225 @@ def _record_scene_turn_history(
             {
                 "id": f"history-{len(entries)}",
                 "role": _scene_history_role(item.character_id),
-                "text": f"{item.character_id}: {item.text}",
+                "text": f"{_scene_speaker_name(item)}: {item.text}",
             }
         )
     _persist_scene_turn_messages(state, user_text, user_name, dialogue)
     return entries
 
 
-def _scene_dialog_events(dialogue: Sequence[Any]) -> list[dict[str, Any]]:
-    events: list[dict[str, Any]] = []
+def _scene_speaker_name(item: Any) -> str:
+    return str(getattr(item, "display_name", "") or item.character_id or "").strip()
+
+
+def _is_story_system_speaker(speaker: str, character_id: str) -> bool:
+    names = (speaker, character_id)
+    if any(match_cot_name(name) or match_choice_name(name) for name in names):
+        return True
+    if any(match_stat_name(name) or match_scene_name(name) for name in names):
+        return True
+    if any(match_bgm_name(name) or match_cg_name(name) for name in names):
+        return True
+    normalized = normalize_character_name(speaker)
+    if normalized in _SYSTEM_HISTORY_NAMES or normalized.casefold() in {"narr", "system"}:
+        return True
+    return normalize_character_name(character_id) in _SYSTEM_HISTORY_NAMES
+
+
+def _story_speech_lines(
+    state: BridgeState,
+    dialogue: Sequence[Any],
+) -> list[dict[str, str]]:
+    getter = getattr(getattr(state, "config_manager", None), "get_character_by_name", None)
+    lines: list[dict[str, str]] = []
     for item in dialogue:
-        speaker = str(item.character_id or "")
-        is_system = _scene_history_role(speaker) == "system"
+        speaker = _scene_speaker_name(item)
+        character_id = str(getattr(item, "character_id", "") or "")
+        text = str(getattr(item, "text", "") or "").strip()
+        if not speaker or not text:
+            continue
+        if is_player_stand_in(character_id, speaker):
+            continue
+        if _is_story_system_speaker(speaker, character_id):
+            continue
+        if callable(getter) and getter(speaker) is None:
+            continue
+        sprite = str(getattr(item, "sprite", "") or "").strip() or "-1"
+        lines.append(
+            {
+                "effect": str(getattr(item, "effect", "") or "").strip(),
+                "name": speaker,
+                "sprite": sprite,
+                "text": text,
+            }
+        )
+    return lines
+
+
+def _enqueue_story_speech(state: BridgeState, dialogue: Sequence[Any]) -> None:
+    lines = _story_speech_lines(state, dialogue)
+    if not lines:
+        return
+    chat_stream = getattr(state, "chat_stream", None)
+    session_id = str((getattr(state, "chat_session", None) or {}).get("sessionId") or "").strip()
+    send = getattr(chat_stream, "send_command", None)
+    if not session_id or not callable(send):
+        return
+    send(
+        session_id,
+        {
+            "cmdId": uuid.uuid4().hex,
+            "payload": {"lines": lines},
+            "type": "speak-dialog",
+        },
+    )
+
+
+def _scene_dialog_events(
+    state: BridgeState,
+    dialogue: Sequence[Any],
+) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    chat_stream = getattr(state, "chat_stream", None)
+    media_url = getattr(chat_stream, "media_url", None)
+    approve = getattr(chat_stream, "approve_external_media_path", None)
+    for item in dialogue:
+        speaker = _scene_speaker_name(item)
+        if match_cot_name(speaker) or match_cot_name(str(item.character_id or "")):
+            continue
+        if match_choice_name(speaker) or match_choice_name(str(item.character_id or "")):
+            continue
+        if match_stat_name(speaker) or match_stat_name(str(item.character_id or "")):
+            events.append({"type": "stats.update", "stats": parse_stat_payload(item.text)})
+            continue
+        effect = str(getattr(item, "effect", "") or "").strip()
+        if effect.upper() == "LEAVE":
+            events.append({"type": "sprite.remove", "characterName": speaker})
+        else:
+            sprite_path = str(getattr(item, "sprite_path", "") or "").strip()
+            if sprite_path:
+                url = sprite_path
+                if callable(media_url):
+                    url = str(media_url(sprite_path) or sprite_path)
+                elif callable(approve):
+                    approve(sprite_path)
+                events.append(
+                    {
+                        "type": "sprite.show",
+                        "characterName": speaker,
+                        "url": url,
+                        "scale": getattr(item, "sprite_scale", 1.0),
+                    }
+                )
+        is_system = _scene_history_role(str(item.character_id or speaker)) == "system"
+        color = str(getattr(item, "color", "") or "")
         events.append(
             {
                 "type": "dialog.end",
                 "speaker": speaker,
-                "color": "",
+                "color": color,
                 "isSystem": is_system,
-                "fullHtml": f"<p>{html.escape(item.text)}</p>",
+                "fullHtml": _format_dialog_html(speaker, item.text, color, is_system),
             }
         )
     return events
+
+
+def _story_scene_available(state: BridgeState) -> bool:
+    service = getattr(state, "story_scene_service", None)
+    flags = getattr(getattr(state, "config_manager", None), "feature_flags", None)
+    return (
+        service is not None
+        and flags is not None
+        and flags.is_enabled(FeatureFlag.STORY_SYSTEM)
+    )
+
+
+def _send_story_llm_turn(
+    state: BridgeState,
+    display_text: str,
+    *,
+    command_id: str,
+) -> None:
+    chat_stream = getattr(state, "chat_stream", None)
+    session_id = str((getattr(state, "chat_session", None) or {}).get("sessionId") or "").strip()
+    send = getattr(chat_stream, "send_command", None)
+    if not session_id or not callable(send):
+        return
+    send(
+        session_id,
+        {
+            "cmdId": command_id or uuid.uuid4().hex,
+            "payload": {
+                "attachments": [],
+                "text": str(display_text or ""),
+            },
+            "type": "send-message",
+        },
+    )
+
+
+def _append_scene_dialogue_history(
+    entries: list[dict[str, Any]],
+    dialogue: Sequence[Any],
+) -> list[dict[str, Any]]:
+    for item in dialogue:
+        entries.append(
+            {
+                "id": f"history-{len(entries)}",
+                "role": _scene_history_role(item.character_id),
+                "text": f"{_scene_speaker_name(item)}: {item.text}",
+            }
+        )
+    return entries
+
+
+def _publish_story_scene_result(
+    state: BridgeState,
+    result: Any,
+    history_entries: list[dict[str, Any]],
+    *,
+    extra_patch: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    session = bound_story_session(state)
+    if session is not None:
+        session.replace_history_entries(history_entries)
+    presentation_events = (
+        *tuple(dict(item) for item in getattr(result, "presentation_events", ()) or ()),
+        *_scene_dialog_events(state, result.dialogue),
+    )
+    patch: dict[str, Any] = {
+        **story_snapshot_patch(state),
+        "status": "idle",
+        "numericInfo": "idle",
+    }
+    if extra_patch:
+        patch.update(extra_patch)
+    if result.dialogue:
+        dialogue = result.dialogue[-1]
+        patch["characterName"] = _scene_speaker_name(dialogue)
+        patch["dialogText"] = dialogue.text
+        patch["dialogHtml"] = None
+    publish_story_transition(
+        state,
+        patch,
+        history_entries=history_entries,
+        presentation_events=presentation_events,
+    )
+    _enqueue_story_speech(state, result.dialogue)
+    return patch
+
+
+def publish_bound_story_scene(state: BridgeState, command_id: str) -> None:
+    session = bound_story_session(state)
+    if session is None:
+        return
+    publish_story_transition(state, session.chat_snapshot())
+    _send_story_llm_turn(
+        state,
+        "",
+        command_id=f"{command_id}:opening-scene",
+    )
 
 
 def _allocate_aligned_story_branch_id(state: BridgeState, session: Any) -> str:
@@ -1370,6 +1646,30 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
     if command in {"chat-input-state", "flush-input-batch", "cancel-input-batch"}:
         return _forward_runtime_command(_current_runtime_status())
 
+    if command == "submit-option" and isinstance(body.get("payload"), str):
+        option_label = reject_control_chars(
+            str(body.get("payload") or "").strip(),
+            field="option",
+        )
+        command_id = str(body.get("cmdId") or uuid.uuid4().hex)
+        patch = _execute_story_label_action(
+            state,
+            option_label,
+            command_id=command_id,
+        )
+        if patch is not None:
+            command = "send-message"
+            body["type"] = "send-message"
+            body["payload"] = {
+                "attachments": [],
+                "text": option_label,
+            }
+            return _forward_runtime_command(
+                "generating",
+                f"已选择：{option_label}",
+                snapshot_patch=patch,
+            )
+
     if command == "submit-option" and isinstance(body.get("payload"), dict):
         payload = body["payload"]
         if payload.get("kind") == "story-choice":
@@ -1391,10 +1691,8 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
             if not choice_id or not expected_node_id:
                 raise ValueError("Story choice is invalid.")
             command_id = str(body.get("cmdId") or uuid.uuid4().hex)
-            history_entries = _record_story_choice_history(
-                state,
-                _story_choice_label(story_session, choice_id),
-            )
+            choice_label = _story_choice_label(story_session, choice_id)
+            history_entries = _record_story_choice_history(state, choice_label)
             ack = story_session.execute(
                 SelectChoice(
                     command_id=command_id,
@@ -1412,7 +1710,17 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
                 history_entries=history_entries,
                 presentation_events=ack.presentation_events,
             )
-            return _chat_snapshot(state, "idle", extra=patch)
+            command = "send-message"
+            body["type"] = "send-message"
+            body["payload"] = {
+                "attachments": [],
+                "text": choice_label,
+            }
+            return _forward_runtime_command(
+                "generating",
+                f"已选择：{choice_label}",
+                snapshot_patch=patch,
+            )
         if payload.get("kind") != "tool-confirmation":
             raise ValueError("Option selection must be a string.")
         confirmation_id = reject_control_chars(
@@ -1475,53 +1783,13 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         else:
             submitted_text = str(payload or "").strip()
         if not submitted_text and not attachments:
-            raise ValueError("选项不能为空。" if command == "submit-option" else "消息内容不能为空。")
-        story_scene_service = getattr(state, "story_scene_service", None)
-        story_flags = getattr(getattr(state, "config_manager", None), "feature_flags", None)
+            if command != "send-message" or not _story_scene_available(state):
+                raise ValueError("选项不能为空。" if command == "submit-option" else "消息内容不能为空。")
         if (
             command == "send-message"
-            and not attachments
-            and story_scene_service is not None
-            and story_flags is not None
-            and story_flags.is_enabled(FeatureFlag.STORY_SYSTEM)
+            and _story_scene_available(state)
         ):
-            command_id = str(body.get("cmdId") or uuid.uuid4().hex)
-            try:
-                result = story_scene_service.handle_free_text(
-                    submitted_text,
-                    command_id=command_id,
-                    message_id=f"message:{command_id}",
-                )
-            except StoryTurnCancelledError as error:
-                raise ValueError(str(error)) from error
-            history_entries = _record_scene_turn_history(
-                state,
-                submitted_text,
-                result.dialogue,
-            )
-            session = bound_story_session(state)
-            if session is not None:
-                session.replace_history_entries(history_entries)
-            dialogue = result.dialogue[-1]
-            presentation_events = (
-                *tuple(dict(item) for item in result.presentation_events),
-                *_scene_dialog_events(result.dialogue),
-            )
-            patch = {
-                **story_snapshot_patch(state),
-                "characterName": dialogue.character_id,
-                "dialogText": dialogue.text,
-                "dialogHtml": None,
-                "status": "idle",
-                "numericInfo": "idle",
-            }
-            publish_story_transition(
-                state,
-                patch,
-                history_entries=history_entries,
-                presentation_events=presentation_events,
-            )
-            return _chat_snapshot(state, "idle", extra=patch)
+            publish_story_transition(state, story_snapshot_patch(state))
         if _chat_turn_options(state)["batchEnabled"]:
             snapshot_patch: dict[str, Any] = {"inputDraft": ""}
             if command == "send-message":

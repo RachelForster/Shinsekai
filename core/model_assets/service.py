@@ -52,17 +52,47 @@ class ModelAssetSpec:
         return f"{self.asset_id}:{self.source}:{location}"
 
 
+def _is_windows_verbatim_path(path: Path | str) -> bool:
+    return os.name == "nt" and str(path).startswith("\\\\?\\")
+
+
+def _maybe_resolve(path: Path) -> Path:
+    """Resolve cache paths without corrupting Windows ``\\\\?\\`` prefixes."""
+
+    if _is_windows_verbatim_path(path):
+        return path
+    return path.resolve(strict=False)
+
+
+def _is_within(parent: Path, child: Path) -> bool:
+    try:
+        parent_key = os.path.normcase(str(_maybe_resolve(parent)))
+        child_key = os.path.normcase(str(_maybe_resolve(child)))
+        return os.path.commonpath([parent_key, child_key]) == parent_key
+    except (OSError, TypeError, ValueError):
+        return False
+
+
+def _huggingface_repo_folder_name(repo_id: str) -> str:
+    try:
+        from huggingface_hub.file_download import repo_folder_name
+    except ImportError:
+        normalized = str(repo_id or "").strip().replace("\\", "/")
+        return f"models--{normalized.replace('/', '--')}"
+    return str(repo_folder_name(repo_id=repo_id, repo_type="model"))
+
+
 def _huggingface_cache_roots() -> tuple[Path, ...]:
     """Return the single hub cache root Hugging Face will actually use."""
 
     for env_name in ("HF_HUB_CACHE", "HUGGINGFACE_HUB_CACHE"):
         raw = str(os.environ.get(env_name) or "").strip()
         if raw:
-            return (Path(raw).expanduser().resolve(strict=False),)
+            return (_maybe_resolve(Path(raw).expanduser()),)
 
     hf_home_raw = str(os.environ.get("HF_HOME") or "").strip()
     hf_home = Path(hf_home_raw).expanduser() if hf_home_raw else Path.home() / ".cache" / "huggingface"
-    return ((hf_home / "hub").resolve(strict=False),)
+    return (_maybe_resolve(hf_home / "hub"),)
 
 
 def _is_nonempty_file(path: Path) -> bool:
@@ -107,32 +137,20 @@ def _snapshot_is_complete(
 def _main_huggingface_snapshots(spec: ModelAssetSpec) -> tuple[Path, ...]:
     if spec.source != "huggingface":
         return ()
-    try:
-        from huggingface_hub.file_download import repo_folder_name
-    except ImportError:
-        return ()
 
     snapshots: list[Path] = []
+    folder_name = _huggingface_repo_folder_name(spec.repo_id)
     for root in _huggingface_cache_roots():
         try:
-            resolved_root = root.resolve(strict=False)
-            repo_dir = (
-                resolved_root
-                / repo_folder_name(repo_id=spec.repo_id, repo_type="model")
-            ).resolve(strict=False)
-            if os.path.normcase(
-                os.path.commonpath([str(resolved_root), str(repo_dir)])
-            ) != os.path.normcase(str(resolved_root)):
+            repo_dir = root / folder_name
+            if not _is_within(root, repo_dir):
                 continue
             revision = (repo_dir / "refs" / "main").read_text(encoding="utf-8").strip()
             if not revision or revision in {".", ".."} or "/" in revision or "\\" in revision:
                 continue
-            snapshots_dir = (repo_dir / "snapshots").resolve(strict=False)
+            snapshots_dir = repo_dir / "snapshots"
             snapshot = snapshots_dir / revision
-            resolved_snapshot = snapshot.resolve(strict=False)
-            if os.path.normcase(
-                os.path.commonpath([str(snapshots_dir), str(resolved_snapshot)])
-            ) == os.path.normcase(str(snapshots_dir)):
+            if _is_within(snapshots_dir, snapshot):
                 snapshots.append(snapshot)
         except (OSError, TypeError, ValueError):
             continue

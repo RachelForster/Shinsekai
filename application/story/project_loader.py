@@ -1,8 +1,9 @@
-"""Filesystem orchestration for loading story project YAML documents."""
+"""Filesystem orchestration for loading story project YAML and JSON documents."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import json
 from pathlib import Path
 from typing import Any
 
@@ -17,15 +18,34 @@ from sdk.path_utils import (
     safe_existing_file_path,
 )
 
+_JSON_STORY_FILENAMES = ("story.json", "draft.json")
+
 
 class StoryProjectLoader:
-    """Load a manifest and its declared YAML documents without path escape."""
+    """Load a packaged YAML story or an authoring JSON document without path escape."""
 
     def load(self, path: str | Path) -> StoryProject:
         requested = Path(path)
-        manifest_path = requested / "manifest.yaml" if requested.is_dir() else requested
+        if requested.is_dir():
+            return self._load_directory(requested.resolve())
+        if requested.suffix.lower() == ".json":
+            root = requested.parent.resolve()
+            return parse_story_project(self._read_document(requested.resolve(), root))
+        return self._load_yaml_package(requested.resolve())
+
+    def _load_directory(self, root: Path) -> StoryProject:
+        yaml_manifest = root / "manifest.yaml"
+        if yaml_manifest.is_file():
+            return self._load_yaml_package(yaml_manifest)
+        for name in _JSON_STORY_FILENAMES:
+            candidate = root / name
+            if candidate.is_file():
+                return parse_story_project(self._read_document(candidate, root))
+        return self._load_yaml_package(yaml_manifest)
+
+    def _load_yaml_package(self, manifest_path: Path) -> StoryProject:
         root = manifest_path.parent.resolve()
-        manifest = self._read_yaml(manifest_path.resolve(), root)
+        manifest = self._read_document(manifest_path.resolve(), root)
         aggregate = dict(manifest)
         self._merge_ref(aggregate, manifest, "variablesRef", "variables", root)
         self._merge_ref(aggregate, manifest, "castRef", "cast", root)
@@ -154,9 +174,9 @@ class StoryProjectLoader:
                     )
                 ]
             ) from error
-        return self._read_yaml(target, root)
+        return self._read_document(target, root)
 
-    def _read_yaml(self, path: Path, root: Path) -> Mapping[str, Any]:
+    def _read_document(self, path: Path, root: Path) -> Mapping[str, Any]:
         try:
             safe_path = safe_existing_file_path(path, roots=(root,), field="story file")
         except PermissionError as error:
@@ -175,18 +195,21 @@ class StoryProjectLoader:
                     )
                 ]
             ) from error
+        suffix = safe_path.suffix.lower()
         try:
-            value = yaml.safe_load(safe_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, yaml.YAMLError) as error:
+            text = safe_path.read_text(encoding="utf-8")
+            value = json.loads(text) if suffix == ".json" else yaml.safe_load(text)
+        except (OSError, UnicodeError, json.JSONDecodeError, yaml.YAMLError) as error:
             raise StoryValidationError(
                 [StoryDiagnostic("schema.read_failed", str(error), str(safe_path))]
             ) from error
         if not isinstance(value, Mapping):
+            kind = "JSON" if suffix == ".json" else "YAML"
             raise StoryValidationError(
                 [
                     StoryDiagnostic(
                         "schema.document",
-                        "YAML document must be an object",
+                        f"{kind} document must be an object",
                         str(safe_path),
                     )
                 ]

@@ -21,7 +21,17 @@ from application.story.generation import (
     StoryGenerationService,
     StoryGenerationStage,
     StoryPatchApplier,
+    _force_playable_source,
+    _normalize_effect_list,
+    _parse_json_mapping,
+    remove_synthetic_continue_choices,
+    _sanitize_generated_source,
+    _stage_example,
+    _stage_prompt_extras,
+    _stage_schema,
+    _validate_logic,
     run_story_generation_background,
+    story_resource_catalog_from_config,
 )
 from application.story.generation_eval import (
     StoryGenerationEvalCase,
@@ -165,6 +175,428 @@ def test_pipeline_persists_intermediate_artifacts_and_compiled_draft(
     assert repository.load_artifact("story-task", StoryGenerationStage.BIBLE)["secrets"]
 
 
+def test_legacy_array_order_continue_fallbacks_are_removed() -> None:
+    source = campus_mystery_source()
+    choices = source["narrativeGraph"]["nodes"][0]["choices"]
+    choices.append(
+        {
+            "id": "fallback",
+            "label": "Continue",
+            "effects": [],
+            "goto": "truth-ending",
+        }
+    )
+
+    changed = remove_synthetic_continue_choices(source)
+
+    assert changed == 1
+    repaired_choices = source["narrativeGraph"]["nodes"][0]["choices"]
+    assert [choice["id"] for choice in repaired_choices if choice["id"] == "fallback"] == []
+
+
+def test_force_playable_source_does_not_add_array_order_fallbacks() -> None:
+    source = _force_playable_source(campus_mystery_source())
+
+    all_choices = [
+        choice
+        for node in source["narrativeGraph"]["nodes"]
+        for choice in node.get("choices", [])
+    ]
+    assert not any(choice.get("id") == "fallback" for choice in all_choices)
+    assert not any(choice.get("label") == "Continue" for choice in all_choices)
+
+
+def _title_case_id(value: str) -> str:
+    return "-".join(
+        part[:1].upper() + part[1:] if part else part for part in value.split("-")
+    )
+
+
+def test_uppercase_node_ids_are_normalized_without_repair(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    narrative = artifacts["narrative"]
+    renamed = {node["id"]: _title_case_id(node["id"]) for node in narrative["nodes"]}
+    narrative["startNodeId"] = renamed[narrative["startNodeId"]]
+    for node in narrative["nodes"]:
+        node["id"] = renamed[node["id"]]
+        for choice in node.get("choices") or []:
+            if choice.get("goto") in renamed:
+                choice["goto"] = renamed[choice["goto"]]
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Normalize generated identifiers.", task_id="id-case")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    assert result["repairAttempts"] == 0
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert source["narrativeGraph"]["startNodeId"] == "transfer-day"
+    assert {node["id"] for node in source["narrativeGraph"]["nodes"]} == {
+        "transfer-day",
+        "old-school-gate",
+        "truth-ending",
+    }
+
+
+def test_missing_ending_is_synthesized_without_repair(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["narrative"]["nodes"] = [
+        node
+        for node in artifacts["narrative"]["nodes"]
+        if node.get("type") != "ending"
+    ]
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Synthesize a reachable ending.", task_id="ending-fix")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    assert result["repairAttempts"] == 0
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert any(
+        node.get("type") == "ending" for node in source["narrativeGraph"]["nodes"]
+    )
+    report = StoryDraftValidator().validate(source)
+    assert report.valid is True
+
+
+def test_logic_stage_coerces_string_version_and_missing_collections() -> None:
+    assert _stage_schema(StoryGenerationStage.LOGIC)["version"] == 1
+    artifact: dict[str, Any] = {"version": "1"}
+    _validate_logic(artifact)
+    assert artifact == {"version": 1, "nodes": [], "edges": []}
+
+
+def test_narrative_stage_prompt_includes_effect_example() -> None:
+    state_extras = _stage_prompt_extras(StoryGenerationStage.STATE)
+    assert state_extras["responseExample"]["variables"]["trust.hero"][
+        "allowSemanticInput"
+    ] is True
+    assert state_extras["generationGuide"]["validSemanticTarget"] == {
+        "type": "integer",
+        "scope": "branch",
+        "allowSemanticInput": True,
+    }
+    assert any(
+        "allowSemanticInput true" in note
+        for note in state_extras["responseNotes"]
+    )
+    extras = _stage_prompt_extras(StoryGenerationStage.NARRATIVE)
+    example = extras["responseExample"]
+    notes = extras["responseNotes"]
+    guide = extras["generationGuide"]
+    effects = example["nodes"][0]["choices"][0]["effects"]
+    on_enter = example["nodes"][0]["onEnter"]
+    assert _stage_example(StoryGenerationStage.NARRATIVE) == example
+    assert example["startNodeId"] == "opening"
+    assert any(node.get("type") == "ending" for node in example["nodes"])
+    assert all(len(item) == 1 for item in effects)
+    assert all(len(item) == 1 for item in on_enter)
+    assert any("exactly one operator" in note for note in notes)
+    assert "every goto/unlock/completed reference exists" in guide["selfCheck"]
+    assert guide["referenceRules"]["variableIds"] == (
+        "keys(completedArtifacts.state.variables)"
+    )
+    logic_extras = _stage_prompt_extras(StoryGenerationStage.LOGIC)
+    logic_example = logic_extras["responseExample"]
+    logic_guide = logic_extras["generationGuide"]
+    assert logic_example["edges"][0] == {
+        "from": {"nodeId": "trust-value", "port": "value"},
+        "to": {"nodeId": "trust-high-enough", "port": "input"},
+    }
+    assert logic_guide["nodeTypeCatalog"]["condition.gte"]["inputs"]["input"] == {
+        "type": "Integer",
+        "required": True,
+        "multiple": False,
+    }
+    assert logic_guide["nodeTypeCatalog"]["unlock"]["inputs"]["when"][
+        "type"
+    ] == "Boolean"
+    assert "the directed graph has no cycle" in logic_guide["selfCheck"]
+    assert any("exact port names" in note for note in logic_extras["responseNotes"])
+    resource_notes = _stage_prompt_extras(StoryGenerationStage.RESOURCES)["responseNotes"]
+    assert any("resourceCatalog is empty" in note for note in resource_notes)
+
+
+def test_pipeline_accepts_string_logic_graph_version(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["logic"]["version"] = "1"
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Accept a string logic graph version.", task_id="logic-version")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert source["logicGraph"]["version"] == 1
+
+
+def test_sanitize_coerces_variable_types_and_empty_choice_labels() -> None:
+    source = campus_mystery_source()
+    source["variables"]["attractionlevel"] = {"type": "number", "initial": 0, "min": 0, "max": 100}
+    source["narrativeGraph"]["nodes"][0]["choices"][0]["label"] = ""
+    source["narrativeGraph"]["nodes"][0]["choices"].append(
+        {"id": "ask-ling", "text": "Ask Ling", "goto": "old-school-gate"}
+    )
+    sanitized = _sanitize_generated_source(source)
+    assert sanitized["variables"]["attractionlevel"]["type"] == "integer"
+    labels = [choice["label"] for choice in sanitized["narrativeGraph"]["nodes"][0]["choices"]]
+    assert labels[0]
+    assert "Ask Ling" in labels
+    report = StoryDraftValidator().validate(sanitized)
+    assert report.valid is True
+
+
+def test_sanitize_adds_localized_multi_turn_phase_context() -> None:
+    sanitized = _sanitize_generated_source(campus_mystery_source())
+
+    phase = sanitized["narrativeGraph"]["nodes"][0]
+    context = phase["exposedContext"]
+    assert context["summary"] == "剧情阶段「转校日」。"
+    assert "不要过早跳到下一阶段" in context["dramaticGoal"]
+    assert context["referenceChoices"] == ["和绫约定调查旧校舍"]
+    assert context["pacing"]["suggestedTurns"] == 3
+
+    ending = sanitized["narrativeGraph"]["nodes"][-1]["exposedContext"]
+    assert ending["pacing"]["suggestedTurns"] == 1
+
+
+def test_sanitize_enables_semantic_input_on_target_integer_variables() -> None:
+    source = campus_mystery_source()
+    source["variables"]["trust.ling"]["allowSemanticInput"] = False
+
+    sanitized = _sanitize_generated_source(source)
+
+    assert sanitized["variables"]["trust.ling"]["allowSemanticInput"] is True
+    assert StoryDraftValidator().validate(sanitized).valid is True
+
+
+def test_sanitize_redirects_boolean_semantic_targets_to_integer_metrics() -> None:
+    source = campus_mystery_source()
+    source["semanticSignals"][0]["effectsByStrength"]["strong"] = [
+        {"set": ["flags.arrived_old_school", True]}
+    ]
+
+    sanitized = _sanitize_generated_source(source)
+
+    effect = sanitized["semanticSignals"][0]["effectsByStrength"]["strong"][0]
+    target, value = effect["set"]
+    assert target == "semantic.flags.arrived_old_school"
+    assert value == 1
+    assert sanitized["variables"]["flags.arrived_old_school"]["type"] == "boolean"
+    assert sanitized["variables"][target] == {
+        "type": "integer",
+        "initial": 0,
+        "scope": "branch",
+        "visible": False,
+        "allowSemanticInput": True,
+    }
+    assert StoryDraftValidator().validate(sanitized).valid is True
+
+
+def test_parse_json_mapping_explains_truncated_model_response() -> None:
+    with pytest.raises(StoryGenerationError) as caught:
+        _parse_json_mapping('{"baseVersion":1,"operations":[{"value":"unfinished')
+
+    assert caught.value.code == "generation.model_json_invalid"
+    assert "line 1, column" in str(caught.value)
+    assert "appears truncated" in str(caught.value)
+    assert "compact JSON patch" in str(caught.value)
+
+
+def test_truncated_simulation_uses_structural_reachability(monkeypatch: Any) -> None:
+    class TruncatedSimulator:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def simulate(self) -> Any:
+            return SimpleNamespace(
+                explored_states=2_000,
+                reachable_node_ids=frozenset({"transfer-day"}),
+                ending_paths={},
+                cast_resolution_failures={},
+                truncated=True,
+            )
+
+    monkeypatch.setattr(
+        "application.story.generation.StorySimulator", TruncatedSimulator
+    )
+
+    report = StoryDraftValidator().validate(campus_mystery_source())
+    codes = {issue.code for issue in report.issues}
+
+    assert report.valid is True
+    assert "simulation.truncated" in codes
+    assert "simulation.unreachable_nodes" not in codes
+    assert "simulation.unreachable_endings" not in codes
+
+
+def test_truncated_simulation_still_rejects_structurally_disconnected_nodes(
+    monkeypatch: Any,
+) -> None:
+    class TruncatedSimulator:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+        def simulate(self) -> Any:
+            return SimpleNamespace(
+                explored_states=2_000,
+                reachable_node_ids=frozenset({"transfer-day"}),
+                ending_paths={},
+                cast_resolution_failures={},
+                truncated=True,
+            )
+
+    source = campus_mystery_source()
+    source["narrativeGraph"]["nodes"][0]["choices"][0].pop("goto")
+    source["logicGraph"] = {"version": 1, "nodes": [], "edges": []}
+    monkeypatch.setattr(
+        "application.story.generation.StorySimulator", TruncatedSimulator
+    )
+
+    report = StoryDraftValidator().validate(source)
+    codes = {issue.code for issue in report.issues}
+
+    assert report.valid is False
+    assert "simulation.unreachable_nodes" in codes
+    assert "simulation.unreachable_endings" in codes
+
+
+def test_patch_error_identifies_the_operation_and_missing_path() -> None:
+    with pytest.raises(StoryGenerationError) as caught:
+        StoryPatchApplier().apply(
+            campus_mystery_source(),
+            {
+                "baseVersion": 1,
+                "operations": [
+                    {
+                        "op": "replace",
+                        "path": "/narrativeGraph/missing/0",
+                        "value": "truth-ending",
+                    }
+                ],
+            },
+            base_version=1,
+        )
+
+    assert caught.value.code == "generation.patch_path_missing"
+    assert "operation 0" in str(caught.value)
+    assert "/narrativeGraph/missing/0" in str(caught.value)
+
+
+def test_normalize_effect_list_coerces_llm_shapes() -> None:
+    effects = _normalize_effect_list(
+        [
+            {"increment": ["trust.ling", 10], "comment": "boost"},
+            {"op": "set", "variable": "flags.arrived_old_school", "value": True},
+            {
+                "increment": ["trust.ling", 1],
+                "set": ["flags.arrived_old_school", True],
+            },
+            {},
+            {"type": "increment", "target": "trust.ling", "amount": 2},
+            {"increment": 3, "variable": "trust.ling"},
+            {"add": ["inventory", "old_school_key"]},
+        ]
+    )
+    assert effects == [
+        {"increment": ["trust.ling", 10]},
+        {"set": ["flags.arrived_old_school", True]},
+        {"increment": ["trust.ling", 1]},
+        {"set": ["flags.arrived_old_school", True]},
+        {"increment": ["trust.ling", 2]},
+        {"increment": ["trust.ling", 3]},
+        {"addSet": ["inventory", "old_school_key"]},
+    ]
+    assert all(len(item) == 1 for item in effects)
+
+
+def test_sanitize_normalizes_effect_shapes() -> None:
+    source = campus_mystery_source()
+    source["narrativeGraph"]["nodes"][0]["onEnter"] = {
+        "increment": ["trust.ling", 1],
+        "comment": "arrival",
+    }
+    source["narrativeGraph"]["nodes"][0]["choices"][0]["effects"] = [
+        {"increment": ["trust.ling", 10], "reason": "promise"},
+        {"op": "set", "variable": "flags.arrived_old_school", "value": True},
+        {},
+        {
+            "increment": ["trust.ling", 1],
+            "set": ["flags.arrived_old_school", True],
+        },
+    ]
+    source["semanticSignals"][0]["effectsByStrength"]["weak"] = [
+        {"type": "increment", "variable": "trust.ling", "value": 1, "note": "soft"}
+    ]
+    sanitized = _sanitize_generated_source(source)
+    choice_effects = sanitized["narrativeGraph"]["nodes"][0]["choices"][0]["effects"]
+    on_enter = sanitized["narrativeGraph"]["nodes"][0]["onEnter"]
+    weak = sanitized["semanticSignals"][0]["effectsByStrength"]["weak"]
+    assert all(isinstance(item, dict) and len(item) == 1 for item in choice_effects)
+    assert on_enter == [{"increment": ["trust.ling", 1]}]
+    assert weak == [{"increment": ["trust.ling", 1]}]
+    report = StoryDraftValidator().validate(sanitized)
+    assert report.valid is True
+    assert not any(issue.code == "effect.shape" for issue in report.issues)
+
+
+def test_pipeline_accepts_verbose_effect_objects(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["narrative"]["nodes"][0]["choices"][0]["effects"] = [
+        {"op": "increment", "variable": "trust.ling", "value": 10},
+        {"increment": ["trust.ling", 1], "comment": "bonus"},
+    ]
+    artifacts["state"]["semanticSignals"][0]["effectsByStrength"]["medium"] = [
+        {"operator": "increment", "target": "trust.ling", "delta": 2}
+    ]
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Normalize verbose effect objects.", task_id="effect-shape")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    report = StoryDraftValidator().validate(source)
+    assert report.valid is True
+    assert not any(issue.code == "effect.shape" for issue in report.issues)
+
+
+def test_pipeline_accepts_number_variable_type_and_blank_choice_labels(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["state"]["variables"]["attractionlevel"] = {
+        "type": "number",
+        "initial": 0,
+        "min": 0,
+        "max": 100,
+    }
+    artifacts["narrative"]["nodes"][0]["choices"][0]["label"] = "   "
+    model = ScriptedModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Normalize generated state and choices.", task_id="choice-labels")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert source["variables"]["attractionlevel"]["type"] == "integer"
+    assert source["narrativeGraph"]["nodes"][0]["choices"][0]["label"].strip()
+    report = StoryDraftValidator().validate(source)
+    assert report.valid is True
+
+
+def test_sanitize_keeps_unknown_required_cast_for_repair() -> None:
+    source = campus_mystery_source()
+    source["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
+    sanitized = _sanitize_generated_source(source)
+    assert sanitized["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] == [
+        "ghost"
+    ]
+
+
+def test_force_playable_replaces_unknown_required_cast() -> None:
+    source = campus_mystery_source()
+    source["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
+    forced = _force_playable_source(source)
+    assert forced["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] == ["ling"]
+    report = StoryDraftValidator().validate(forced)
+    assert report.valid is True
+
+
 def test_failed_task_resumes_from_latest_stage(tmp_path: Path) -> None:
     model = ScriptedModel(stage_artifacts(), fail_once_at="narrative")
     service, repository = service_at(tmp_path, model)
@@ -275,6 +707,58 @@ def test_resource_bindings_must_use_supplied_catalog_ids(tmp_path: Path) -> None
     assert service.get(task["id"])["currentStage"] == "resources"
 
 
+def test_empty_catalog_moves_bindings_to_unresolved(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["resources"]["bindings"] = {"openingBackground": "invented-yard"}
+    artifacts["resources"]["unresolved"] = ["missing-theme"]
+    model = ScriptedModel(artifacts)
+    service, repository = service_at(tmp_path, model)
+    task = service.create("No local media library.", task_id="empty-catalog")
+
+    result = service.run(task["id"])
+
+    assert result["status"] == "succeeded"
+    resources = repository.load_artifact(task["id"], StoryGenerationStage.RESOURCES)
+    assert resources["bindings"] == {}
+    assert resources["unresolved"] == ["missing-theme", "invented-yard"]
+
+
+def test_empty_catalog_is_filled_from_config_manager(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["resources"]["bindings"] = {"openingBackground": "校园"}
+    model = ScriptedModel(artifacts)
+    model.config_manager = SimpleNamespace(
+        config=SimpleNamespace(
+            background_list=[
+                SimpleNamespace(name="校园", bg_tags="school yard", bgm_list=["theme.mp3"])
+            ],
+            effect_list=[SimpleNamespace(name="rain")],
+        )
+    )
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Use local backgrounds.", task_id="local-catalog")
+
+    assert task["resourceCatalog"]["backgrounds"][0]["id"] == "校园"
+    assert task["resourceCatalog"]["effects"][0]["id"] == "rain"
+    assert task["resourceCatalog"]["bgm"][0]["id"] == "theme.mp3"
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+
+
+def test_story_resource_catalog_from_config_uses_background_names() -> None:
+    catalog = story_resource_catalog_from_config(
+        SimpleNamespace(
+            config=SimpleNamespace(
+                background_list=[{"name": "码头", "bg_tags": "harbor"}],
+                effect_list=[],
+            )
+        )
+    )
+    assert catalog == {
+        "backgrounds": [{"id": "码头", "name": "码头", "tags": "harbor"}]
+    }
+
+
 def test_validator_detects_secret_leak() -> None:
     source = campus_mystery_source()
     source["narrativeGraph"]["nodes"][0]["exposedContext"] = {
@@ -286,6 +770,20 @@ def test_validator_detects_secret_leak() -> None:
 
     assert report.valid is False
     assert "secret.exposed" in {item.code for item in report.issues}
+
+
+def test_graph_compile_diagnostic_includes_actionable_fix() -> None:
+    source = campus_mystery_source()
+    source["logicGraph"]["edges"][0]["to"]["port"] = "missing-input"
+
+    report = StoryDraftValidator().validate(source)
+    issue = next(item for item in report.issues if item.code == "rule.missing_port")
+    payload = issue.to_payload()
+
+    assert payload["path"].startswith("$.logicGraph.edges[0]")
+    assert "port" in payload["message"].lower()
+    assert "port" in payload["suggestion"].lower()
+    assert "fromPort/toPort" in payload["suggestion"]
 
 
 def test_fixed_eval_reports_pass_rate_coverage_and_cost(tmp_path: Path) -> None:
@@ -358,6 +856,58 @@ def test_author_model_uses_stateless_adapter_calls(monkeypatch) -> None:
     assert len(captured[1]) == 2
 
 
+class FullStoryRepairModel(ScriptedModel):
+    def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        if request["operation"] == "repair":
+            self.calls.append("repair")
+            assert request["validationErrors"]
+            assert request["repairPlan"]
+            issue = request["repairPlan"][0]
+            assert set(issue) == {"code", "path", "problem", "howToFix"}
+            assert issue["path"]
+            assert issue["problem"]
+            assert issue["howToFix"]
+            assert "How to fix:" in request["validationErrors"][0]
+            story = campus_mystery_source()
+            story["status"] = "draft"
+            return {"baseVersion": request["baseVersion"], "story": story}
+        return super().complete(request)
+
+
+def test_repair_loop_accepts_a_full_corrected_story(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["narrative"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
+    model = FullStoryRepairModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Return a full repaired story.", task_id="full-repair")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    assert result["repairAttempts"] >= 1
+    assert result["validation"]["valid"] is True
+    assert model.calls[-1] == "repair"
+
+
+class InvalidPatchRepairModel(ScriptedModel):
+    def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        if request["operation"] == "repair":
+            self.calls.append("repair")
+            return {"operations": "not-a-list"}
+        return super().complete(request)
+
+
+def test_invalid_repair_patch_falls_back_to_a_playable_draft(tmp_path: Path) -> None:
+    artifacts = stage_artifacts()
+    artifacts["narrative"]["nodes"][2]["castPolicy"]["required"] = ["ghost"]
+    model = InvalidPatchRepairModel(artifacts)
+    service, _ = service_at(tmp_path, model)
+    task = service.create("Ignore a broken repair patch.", task_id="bad-patch")
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    assert result["validation"]["valid"] is True
+    source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
+    assert source["narrativeGraph"]["nodes"][2]["castPolicy"]["required"] == ["ling"]
+
+
 def test_save_merges_cancel_requested_from_disk(tmp_path: Path) -> None:
     repository = StoryGenerationRepository(enabled_flags(), tmp_path)
     task = repository.create(
@@ -387,17 +937,18 @@ def test_applied_repair_is_checkpointed_before_attempt_count(tmp_path: Path) -> 
     service, repository = service_at(tmp_path, model)
     task = service.create("Checkpoint repairs.", task_id="repair-checkpoint")
 
-    with pytest.raises(StoryGenerationError, match="did not pass validation"):
-        service.run(task["id"])
-    failed = service.get(task["id"])
-    assert failed["repairAttempts"] == 3
+    result = service.run(task["id"])
+    assert result["status"] == "succeeded"
+    assert result["repairAttempts"] == 3
+    assert result["validation"]["valid"] is True
     narrative = repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)
     assert narrative["nodes"][0]["title"] == "Still broken"
+    assert "ghost" not in narrative["nodes"][2]["castPolicy"]["required"]
     assert repository.load_draft(task["id"]) is not None
 
     model.calls.clear()
-    with pytest.raises(StoryGenerationError, match="did not pass validation"):
-        service.run(task["id"], resume=True)
+    resumed = service.run(task["id"], resume=True)
+    assert resumed["status"] == "succeeded"
     assert "repair" not in model.calls
     assert (
         repository.load_artifact(task["id"], StoryGenerationStage.NARRATIVE)["nodes"][0][
@@ -521,6 +1072,7 @@ def test_author_generated_characters_are_materialized(tmp_path: Path) -> None:
         assert payload["sprites"] == []
     source = json.loads(Path(result["draftPath"]).read_text(encoding="utf-8"))
     assert source["cast"]["characters"][0]["source"]["path"] == "characters/ling.yaml"
+    assert "type" not in source["cast"]["characters"][0]["source"]
 
 
 def test_failed_eval_includes_spent_cost(tmp_path: Path) -> None:

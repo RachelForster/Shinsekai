@@ -76,6 +76,7 @@ function mockSystemConfig(systemOverrides: Record<string, unknown> = {}) {
       chat_ui_theme_path: "",
       react_chat_fork_experimental_enabled: false,
       react_chat_flowchart_experimental_enabled: false,
+      story_system_enabled: false,
       font_pixel_size: 0,
       height: 0,
       live_room_id: "",
@@ -191,6 +192,7 @@ describe("SystemSettingsPage", () => {
     expect(screen.queryByText("原生窗口")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("原生聊天主题 JSON")).not.toBeInTheDocument();
     expect(screen.getByLabelText("启用代理配置")).toBeInTheDocument();
+    expect(screen.getByLabelText("剧本系统")).toBeInTheDocument();
     expect(screen.getByLabelText("HTTP 代理")).toBeInTheDocument();
     expect(screen.getByLabelText("HTTPS 代理")).toBeInTheDocument();
     expect(screen.getByLabelText("SOCKS5 代理")).toBeInTheDocument();
@@ -225,6 +227,25 @@ describe("SystemSettingsPage", () => {
       expect(mockSaveSystemConfig).toHaveBeenCalledWith(
         expect.objectContaining({
           chat_ui_runtime_mode: "react",
+        }),
+      ),
+    );
+  });
+
+  it("can turn the story system flag off from system settings", async () => {
+    mockGetAppConfig.mockResolvedValue(mockSystemConfig({ story_system_enabled: true }));
+    renderPage();
+
+    const storySwitch = await screen.findByLabelText("剧本系统");
+    expect(storySwitch).toBeChecked();
+    fireEvent.click(storySwitch);
+    expect(storySwitch).not.toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(mockSaveSystemConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          story_system_enabled: false,
         }),
       ),
     );

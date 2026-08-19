@@ -910,3 +910,80 @@ describe("browser preview platform chat themes", () => {
     unsubscribeEvents();
   });
 });
+
+describe("browser preview story authoring", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("applies committed patches, preview-only patches, undo, and publish", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    const created = await resolvePreview(
+      platform.story.createProject({
+        id: "preview-story",
+        title: "A",
+        version: 1,
+        narrativeGraph: { startNodeId: "opening", nodes: [{ id: "opening", title: "A" }] },
+      }),
+    );
+
+    const patched = await resolvePreview(
+      platform.story.patchProject({
+        id: "preview-story",
+        baseRevision: created.manifest.draftRevision,
+        commit: true,
+        patch: { operations: [{ op: "replace", path: "/narrativeGraph/nodes/0/title", value: "B" }] },
+      }),
+    );
+    expect(patched.committed).toBe(true);
+    expect((patched.source.narrativeGraph as { nodes: Array<{ title: string }> }).nodes[0].title).toBe("B");
+    expect(
+      (
+        (await resolvePreview(platform.story.getProject("preview-story"))).source.narrativeGraph as {
+          nodes: Array<{ title: string }>;
+        }
+      ).nodes[0].title,
+    ).toBe("B");
+
+    const second = await resolvePreview(
+      platform.story.patchProject({
+        id: "preview-story",
+        baseRevision: patched.document?.manifest.draftRevision ?? 0,
+        commit: true,
+        patch: { operations: [{ op: "replace", path: "/narrativeGraph/nodes/0/title", value: "C" }] },
+      }),
+    );
+    const undone = await resolvePreview(
+      platform.story.undoProject("preview-story", second.document?.manifest.draftRevision ?? 0),
+    );
+    expect((undone.source.narrativeGraph as { nodes: Array<{ title: string }> }).nodes[0].title).toBe("B");
+    const undoneAgain = await resolvePreview(
+      platform.story.undoProject("preview-story", undone.manifest.draftRevision),
+    );
+    expect((undoneAgain.source.narrativeGraph as { nodes: Array<{ title: string }> }).nodes[0].title).toBe("A");
+
+    const previewOnly = await resolvePreview(
+      platform.story.patchProject({
+        id: "preview-story",
+        baseRevision: undoneAgain.manifest.draftRevision,
+        commit: false,
+        patch: { operations: [{ op: "replace", path: "/narrativeGraph/nodes/0/title", value: "preview-only" }] },
+      }),
+    );
+    expect(previewOnly.committed).toBe(false);
+    expect(
+      (
+        (await resolvePreview(platform.story.getProject("preview-story"))).source.narrativeGraph as {
+          nodes: Array<{ title: string }>;
+        }
+      ).nodes[0].title,
+    ).toBe("A");
+
+    const published = await resolvePreview(
+      platform.story.publishProject("preview-story", undoneAgain.manifest.draftRevision),
+    );
+    expect(published.version).toBe(1);
+    expect((await resolvePreview(platform.story.getProject("preview-story"))).manifest.publishedVersion).toBe(1);
+  });
+});

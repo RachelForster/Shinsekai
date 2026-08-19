@@ -40,6 +40,7 @@ from core.story import (
     canonical_json,
     parse_story_project,
 )
+from application.story.characters import is_player_stand_in
 from test.unit.core.story.story_fixtures import campus_mystery_source
 
 
@@ -685,6 +686,143 @@ def test_local_library_sprites_resolve_against_library_root(tmp_path) -> None:
     assert not str(profile.sprites[0]["path"]).replace("\\", "/").endswith(
         "stories/case/data/sprite/ling.png"
     )
+
+
+def test_author_generated_profile_borrows_installed_library_sprites(tmp_path) -> None:
+    flags = _flags()
+    project = tmp_path / "project"
+    story = project / "stories" / "bar-encounter-spark"
+    sprite = project / "data" / "sprite" / "fangshi" / "01.png"
+    sprite.parent.mkdir(parents=True)
+    sprite.write_bytes(b"png")
+    generated = story / "characters" / "fangshiyangming.yaml"
+    _write_profile(generated, "房石阳明")
+    library = _Library(
+        {
+            "房石阳明": {
+                "name": "房石阳明",
+                "sprites": [{"path": "data/sprite/fangshi/01.png"}],
+                "sprite_scale": 1.25,
+            }
+        }
+    )
+    resolver = CharacterSourceResolver(
+        flags,
+        story_id="bar-encounter-spark",
+        story_root=story,
+        local_library=library,
+        library_root=project,
+    )
+    resources = CharacterResourceManager(
+        flags,
+        registry=CharacterRegistry(
+            characters=(
+                _definition(
+                    "fangshiyangming",
+                    CharacterSourceType.AUTHOR_GENERATED,
+                    path="characters/fangshiyangming.yaml",
+                ),
+            ),
+            initial_cast=("fangshiyangming",),
+        ),
+        resolver=resolver,
+    )
+    service = StoryCastApplicationService(flags, resources)
+    resources.activate(("fangshiyangming",))
+
+    profile = resources.load_profile("fangshiyangming")
+    patch = service.chat_patch()
+
+    assert Path(profile.sprites[0]["path"]) == sprite.resolve()
+    assert profile.sprites[0]["scale"] == 1.25
+    assert patch["sprites"][0]["characterName"] == "房石阳明"
+    assert Path(patch["sprites"][0]["path"]) == sprite.resolve()
+    assert patch["sprites"][0]["scale"] == 1.25
+
+
+def test_local_library_sprites_replace_story_file_sprites(tmp_path) -> None:
+    flags = _flags()
+    project = tmp_path / "project"
+    story = project / "stories" / "case"
+    story_sprite = story / "characters" / "story.png"
+    library_sprite = project / "data" / "sprite" / "ling.png"
+    story_sprite.parent.mkdir(parents=True)
+    library_sprite.parent.mkdir(parents=True)
+    story_sprite.write_bytes(b"story")
+    library_sprite.write_bytes(b"local")
+    _write_profile(
+        story / "characters" / "ling.yaml",
+        "Ling",
+        sprite="characters/story.png",
+    )
+    resolver = CharacterSourceResolver(
+        flags,
+        story_id="story-1",
+        story_root=story,
+        local_library=_Library(
+            {"Ling": {"name": "Ling", "sprites": [{"path": "data/sprite/ling.png"}]}}
+        ),
+        library_root=project,
+    )
+
+    profile = resolver.resolve(
+        _definition(
+            "ling",
+            CharacterSourceType.EMBEDDED,
+            path="characters/ling.yaml",
+        )
+    )
+
+    assert Path(profile.sprites[0]["path"]) == library_sprite.resolve()
+
+
+def test_player_stand_in_is_not_given_library_sprites(tmp_path) -> None:
+    flags = _flags()
+    project = tmp_path / "project"
+    story = project / "stories" / "bar-encounter-spark"
+    sprite = project / "data" / "sprite" / "user" / "01.png"
+    sprite.parent.mkdir(parents=True)
+    sprite.write_bytes(b"png")
+    generated = story / "characters" / "user.yaml"
+    _write_profile(generated, "用户")
+    resolver = CharacterSourceResolver(
+        flags,
+        story_id="bar-encounter-spark",
+        story_root=story,
+        local_library=_Library(
+            {
+                "用户": {
+                    "name": "用户",
+                    "sprites": [{"path": "data/sprite/user/01.png"}],
+                }
+            }
+        ),
+        library_root=project,
+    )
+    resources = CharacterResourceManager(
+        flags,
+        registry=CharacterRegistry(
+            characters=(
+                _definition(
+                    "user",
+                    CharacterSourceType.AUTHOR_GENERATED,
+                    path="characters/user.yaml",
+                ),
+            ),
+            initial_cast=("user",),
+        ),
+        resolver=resolver,
+    )
+    service = StoryCastApplicationService(flags, resources)
+    resources.activate(("user",))
+
+    profile = resources.load_profile("user")
+    patch = service.chat_patch()
+
+    assert is_player_stand_in("user", "用户")
+    assert profile.is_player is True
+    assert profile.sprites == ()
+    assert "sprites" not in patch
 
 
 def test_branch_switch_rebuilds_cast_resources(tmp_path) -> None:

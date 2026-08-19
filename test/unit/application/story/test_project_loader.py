@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from application.story import StoryProjectLoader, load_story_project
 from core.story import CastMode, StoryValidationError, VariableType
+from test.unit.core.story.story_fixtures import campus_mystery_source
 
 
 FIXTURE_ROOT = (
@@ -114,3 +116,20 @@ nodes:
     project = load_story_project(tmp_path)
 
     assert [node.id for node in project.narrative_graph.nodes] == ["start"]
+
+
+def test_loader_reads_authoring_json_documents(tmp_path: Path) -> None:
+    source = campus_mystery_source()
+    draft_root = tmp_path / "draft-project"
+    draft_root.mkdir()
+    (draft_root / "draft.json").write_text(json.dumps(source), encoding="utf-8")
+
+    from_directory = load_story_project(draft_root)
+    from_file = load_story_project(draft_root / "draft.json")
+    assert from_directory.id == "campus-mystery"
+    assert from_file == from_directory
+
+    published_root = tmp_path / "published"
+    published_root.mkdir()
+    (published_root / "story.json").write_text(json.dumps(source), encoding="utf-8")
+    assert load_story_project(published_root).id == "campus-mystery"

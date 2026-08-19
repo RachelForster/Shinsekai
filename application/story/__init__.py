@@ -9,8 +9,14 @@ from .idempotency import (
 from .project_loader import StoryProjectLoader, load_story_project
 from .coordinator import (
     apply_story_resource_bindings,
+    refresh_story_chat_prompt,
     start_or_recover_story_session,
     story_snapshot_patch,
+)
+from .hooks import (
+    StoryChatHooks,
+    StoryChatPrompt,
+    install_story_hooks,
 )
 from .characters import (
     ActorContext,
@@ -45,6 +51,7 @@ from .scene import (
     SceneOrchestrator,
     SceneProtocolError,
     SceneTurnResult,
+    StoryLlmTurn,
     ValidatedCastPlanner,
 )
 from .generation import (
@@ -68,6 +75,13 @@ from .generation_eval import (
     StoryGenerationEvalCase,
     StoryGenerationEvaluator,
 )
+from .authoring import (
+    StoryAuthoringError,
+    StoryAuthoringService,
+    StoryProjectRepository,
+    import_generation_task_for_state,
+    story_authoring_service_for_state,
+)
 
 __all__ = [
     "StoryCommandConflictError",
@@ -83,8 +97,12 @@ __all__ = [
     "StoryPersistenceError",
     "StoryProgramMismatchError",
     "apply_story_resource_bindings",
+    "refresh_story_chat_prompt",
     "start_or_recover_story_session",
     "story_snapshot_patch",
+    "StoryChatHooks",
+    "StoryChatPrompt",
+    "install_story_hooks",
     "ActorContext",
     "CastChangeRequestError",
     "CharacterImportTokenStore",
@@ -107,6 +125,7 @@ __all__ = [
     "SceneOrchestrator",
     "SceneProtocolError",
     "SceneTurnResult",
+    "StoryLlmTurn",
     "ValidatedCastPlanner",
     "StoryProjectLoader",
     "load_story_project",
@@ -128,4 +147,9 @@ __all__ = [
     "FIXED_STORY_GENERATION_EVAL_SET",
     "StoryGenerationEvalCase",
     "StoryGenerationEvaluator",
+    "StoryAuthoringError",
+    "StoryAuthoringService",
+    "StoryProjectRepository",
+    "import_generation_task_for_state",
+    "story_authoring_service_for_state",
 ]

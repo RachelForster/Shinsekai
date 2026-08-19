@@ -157,7 +157,7 @@ def story_state_from_payload(
         raise StoryProgramMismatchError(
             "saved story state does not match the compiled StoryProgram"
         )
-    variables_raw = _mapping(raw.get("variables"), "variables")
+    variables_raw = dict(_mapping(raw.get("variables"), "variables"))
     branch_definitions = {
         definition.id: definition
         for definition in program.variables
@@ -382,7 +382,12 @@ class JsonGlobalStoryProgressStore:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root).resolve(strict=False)
 
-    def load(self, program: StoryProgram) -> GlobalStoryProgress:
+    def load(
+        self,
+        program: StoryProgram,
+        *,
+        save_compatibility: Mapping[str, Any] | None = None,
+    ) -> GlobalStoryProgress:
         path = self._path(program.story_id)
         if not path.is_file():
             variables = {
@@ -410,9 +415,12 @@ class JsonGlobalStoryProgressStore:
             or int(raw.get("storyVersion") or -1) != program.story_version
             or str(raw.get("programSourceHash") or "") != program.source_hash
         ):
-            raise StoryProgramMismatchError(
-                "global story progress belongs to another StoryProgram"
-            )
+            if not saved_program_is_compatible_previous(
+                raw, program, save_compatibility
+            ):
+                raise StoryProgramMismatchError(
+                    "global story progress belongs to another StoryProgram"
+                )
         variables = dict(_mapping(raw.get("variables", {}), "global variables"))
         definitions = {
             definition.id: definition
@@ -458,6 +466,52 @@ class JsonGlobalStoryProgressStore:
 
     def _path(self, story_id: str) -> Path:
         return self.root / global_progress_filename(story_id)
+
+
+def saved_program_is_compatible_previous(
+    saved: Mapping[str, Any],
+    program: StoryProgram,
+    compatibility: Mapping[str, Any] | None,
+) -> bool:
+    if not isinstance(compatibility, Mapping):
+        return False
+    if not compatibility.get("compatibleWithPrevious"):
+        return False
+    if str(saved.get("storyId") or "") != program.story_id:
+        return False
+    if int(compatibility.get("storyVersion", -1)) != program.story_version:
+        return False
+    if str(compatibility.get("sourceHash") or "") != program.source_hash:
+        return False
+    return int(saved.get("storyVersion") or -1) == program.story_version - 1
+
+
+def remap_saved_program_identity(
+    raw: Mapping[str, Any], program: StoryProgram
+) -> dict[str, Any]:
+    payload = json.loads(json.dumps(raw))
+    payload["storyVersion"] = program.story_version
+    payload["programSourceHash"] = program.source_hash
+    branches = payload.get("branches")
+    if isinstance(branches, dict):
+        for branch in branches.values():
+            if not isinstance(branch, dict):
+                continue
+            state = branch.get("state")
+            if isinstance(state, dict):
+                state["storyVersion"] = program.story_version
+                state["programSourceHash"] = program.source_hash
+            checkpoints = branch.get("checkpoints")
+            if not isinstance(checkpoints, list):
+                continue
+            for checkpoint in checkpoints:
+                if not isinstance(checkpoint, dict):
+                    continue
+                checkpoint_state = checkpoint.get("state")
+                if isinstance(checkpoint_state, dict):
+                    checkpoint_state["storyVersion"] = program.story_version
+                    checkpoint_state["programSourceHash"] = program.source_hash
+    return payload
 
 
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:

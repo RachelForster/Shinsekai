@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
+import json
+import logging
 
 from application.chat.history_paths import resolve_history_path_for_project
 from config.feature_flags import FeatureFlag
@@ -22,10 +24,13 @@ from .characters import (
     ConfigCharacterLibrary,
     StoryCastApplicationService,
 )
+from .hooks import StoryChatPrompt, discard_story_chat_prompt, write_story_chat_prompt
 from .persistence import JsonGlobalStoryProgressStore, JsonStorySessionRepository
 from .project_loader import load_story_project
 from .session import StorySession
 from .scene import ConfigSceneModel, SceneOrchestrator
+
+logger = logging.getLogger(__name__)
 
 
 def apply_story_resource_bindings(
@@ -62,6 +67,17 @@ def _binding_text(bindings: Mapping[str, Any], *keys: str) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return ""
+
+
+def _load_save_compatibility(story_root: Path) -> dict[str, Any] | None:
+    path = story_root / "save-compatibility.json"
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def start_or_recover_story_session(
@@ -122,6 +138,7 @@ def start_or_recover_story_session(
         Path(state.history_dir).resolve(strict=False) / ".story-global"
     )
     recovering = repository.load() is not None
+    save_compatibility = _load_save_compatibility(story_root)
     if not recovering:
         session = StorySession.create(
             runtime,
@@ -142,6 +159,7 @@ def start_or_recover_story_session(
             cast_plan_preparer=cast_service.prepare,
             cast_plan_committed=cast_service.committed,
             cast_resources_rebuilder=cast_service.rebuild,
+            save_compatibility=save_compatibility,
         )
         cast_service.rebuild(
             session.active_branch.state.cast_state.active_character_ids
@@ -156,7 +174,41 @@ def start_or_recover_story_session(
         cast_service=cast_service,
         model=ConfigSceneModel(flags, state.config_manager),
     )
+    session.on_persist = lambda: refresh_story_chat_prompt(state)
+    refresh_story_chat_prompt(state)
     return session
+
+
+def refresh_story_chat_prompt(state: Any) -> None:
+    session = getattr(state, "story_session", None)
+    service = getattr(state, "story_scene_service", None)
+    prepare = getattr(service, "prepare_llm_turn", None)
+    if session is None or not callable(prepare):
+        return
+    try:
+        turn = prepare(
+            "",
+            command_id="story-chat-prompt",
+            message_id="story-chat-prompt",
+        )
+    except Exception:
+        logger.exception("failed to refresh story chat prompt")
+        return
+    history_path = (
+        str(getattr(session, "owner_history_path", "") or "").strip()
+        or str(getattr(state, "chat_session", {}).get("historyPath") or "").strip()
+    )
+    write_story_chat_prompt(
+        history_path,
+        StoryChatPrompt(
+            user=str(
+                getattr(turn, "user_context", "")
+                or getattr(turn, "appendix", "")
+                or ""
+            ),
+            system=str(getattr(turn, "system_prompt", "") or ""),
+        ),
+    )
 
 
 def bound_story_session(state: Any) -> StorySession | None:
@@ -186,7 +238,12 @@ def story_snapshot_patch(state: Any) -> dict[str, Any]:
     if session is None:
         return {}
     patch = session.chat_snapshot()
-    patch.update(_approved_resource_patch(state))
+    resource_patch = _approved_resource_patch(state)
+    # Sprite events maintain an LRU stage independently from the complete cast.
+    # Reapplying the cast sprites on every poll would undo expression changes
+    # and make a fourth speaker disappear immediately after their line.
+    resource_patch.pop("sprites", None)
+    patch.update(resource_patch)
     media_patch = getattr(state, "story_media_patch", None)
     if isinstance(media_patch, Mapping):
         patch.update(dict(media_patch))
@@ -195,6 +252,7 @@ def story_snapshot_patch(state: Any) -> dict[str, Any]:
 
 def clear_story_session(state: Any) -> None:
     session = getattr(state, "story_session", None)
+    discard_story_chat_prompt(getattr(session, "owner_history_path", "") or "")
     closer = getattr(session, "close", None)
     if callable(closer):
         closer()
@@ -207,6 +265,7 @@ def clear_story_session(state: Any) -> None:
 def discard_story_session_storage(history_path: str | Path) -> None:
     path = chat_history_session_dir(history_path) / STORY_SESSION_FILENAME
     path.unlink(missing_ok=True)
+    discard_story_chat_prompt(history_path)
 
 
 def release_unbound_story_session(state: Any, history_path: str | Path) -> None:
@@ -250,13 +309,16 @@ def publish_story_transition(
     story = live_patch.get("story")
     if isinstance(story, dict):
         events.append({"type": "story.state.replace", "story": dict(story)})
-    options = live_patch.get("options")
-    if isinstance(options, list):
-        events.append({"type": "options.show", "options": list(options)})
+        # A local phase/state transition invalidates the previous LLM-authored
+        # choices. Ordinary snapshot polling deliberately does not clear them.
+        live_patch.setdefault("options", [])
     events.extend(_story_sprite_events(chat_stream, session_id, resource_patch))
     for item in presentation_events:
         if isinstance(item, dict):
             events.append(dict(item))
+    options = live_patch.get("options")
+    if isinstance(options, list):
+        events.append({"type": "options.show", "options": list(options)})
     publish = getattr(chat_stream, "publish_event", None)
     published_any = False
     if callable(publish):
@@ -302,6 +364,7 @@ def _approved_resource_patch(state: Any) -> dict[str, Any]:
         if not isinstance(sprite, dict):
             continue
         item = dict(sprite)
+        item.pop("slot", None)
         path = str(item.get("path") or "").strip()
         if path and callable(media_url):
             item["path"] = str(media_url(path) or path)
@@ -310,8 +373,7 @@ def _approved_resource_patch(state: Any) -> dict[str, Any]:
             if callable(approve):
                 approve(path)
         approved.append(item)
-    if approved:
-        patch["sprites"] = approved
+    patch["sprites"] = approved
     return patch
 
 
@@ -330,17 +392,22 @@ def _story_sprite_events(
     previous = [
         dict(item)
         for item in (current or {}).get("sprites") or []
-        if isinstance(item, dict) and str(item.get("id") or "").startswith("story:")
+        if isinstance(item, dict)
     ]
-    next_ids = {str(item.get("id") or "") for item in next_sprites}
+    next_names = {
+        str(item.get("characterName") or item.get("label") or "").strip()
+        for item in next_sprites
+    }
     events: list[dict[str, Any]] = []
     for sprite in previous:
-        sprite_id = str(sprite.get("id") or "")
-        if sprite_id and sprite_id not in next_ids:
+        character_name = str(
+            sprite.get("characterName") or sprite.get("label") or ""
+        ).strip()
+        if character_name and character_name not in next_names:
             events.append(
                 {
                     "type": "sprite.remove",
-                    "characterName": str(sprite.get("characterName") or sprite_id),
+                    "characterName": character_name,
                 }
             )
     for sprite in next_sprites:
@@ -350,6 +417,16 @@ def _story_sprite_events(
                 "characterName": str(sprite.get("characterName") or ""),
                 "url": str(sprite.get("path") or ""),
                 "scale": sprite.get("scale"),
+                **(
+                    {"x": sprite.get("x")}
+                    if sprite.get("x") is not None
+                    else {}
+                ),
+                **(
+                    {"y": sprite.get("y")}
+                    if sprite.get("y") is not None
+                    else {}
+                ),
             }
         )
     return events
