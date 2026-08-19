@@ -459,11 +459,7 @@ export function StoryEditorPage() {
           <button disabled={busy || !document} onClick={validate} type="button">
             {t("story.editor.validate")}
           </button>
-          <button
-            disabled={busy || !document || validation?.valid !== false}
-            onClick={repair}
-            type="button"
-          >
+          <button disabled={busy || !document || validation?.valid !== false} onClick={repair} type="button">
             {t("story.editor.repair")}
           </button>
           <button

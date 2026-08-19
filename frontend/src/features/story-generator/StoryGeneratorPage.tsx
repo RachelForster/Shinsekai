@@ -249,9 +249,7 @@ export function StoryGeneratorPage() {
                           <span>{issue.message}</span>
                           <code>{issue.path}</code>
                           {issue.suggestion ? (
-                            <span>
-                              {t("story.generator.validationSuggestion", { suggestion: issue.suggestion })}
-                            </span>
+                            <span>{t("story.generator.validationSuggestion", { suggestion: issue.suggestion })}</span>
                           ) : null}
                         </li>
                       ))}
