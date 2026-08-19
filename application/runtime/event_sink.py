@@ -12,7 +12,7 @@ import itertools
 import math
 import re
 import time
-from typing import Any, Dict, List, Protocol, runtime_checkable
+from typing import Any, Dict, Protocol, runtime_checkable
 
 #: 事件协议版本，与前端 ``ChatStageEvent`` 的 ``v`` 字段一致。
 EVENT_PROTOCOL_VERSION = 1
@@ -198,9 +198,26 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     if event_type == "sprite.show":
         _clear_transient_notification_state(next_snapshot)
         character_name = str(event.get("characterName") or "")
-        slot = event.get("slot")
+        current = [
+            dict(item)
+            for item in (next_snapshot.get("sprites") or [])
+            if isinstance(item, dict)
+        ]
+        existing = next(
+            (
+                item
+                for item in current
+                if item.get("label") == character_name
+                or item.get("characterName") == character_name
+            ),
+            None,
+        )
+        # Expression changes must not move a character merely because the
+        # producer's local LRU assigned a different slot.
+        slot = existing.get("slot") if existing is not None else None
+        if slot is None:
+            slot = event.get("slot")
         sprite_id = f"{character_name}:{slot}" if slot is not None else character_name
-        current = [dict(item) for item in (next_snapshot.get("sprites") or []) if isinstance(item, dict)]
         current = [
             item
             for item in current

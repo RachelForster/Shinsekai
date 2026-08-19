@@ -187,6 +187,39 @@ class EventSinkSnapshotTests(unittest.TestCase):
         )
         self.assertEqual(snapshot["sprites"][-1]["path"], "asset://mio-3.png")
 
+    def test_sprite_expression_change_preserves_the_existing_slot(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "characterName": "Mio",
+                "scale": 1.0,
+                "seq": 1,
+                "slot": 2,
+                "ts": 1,
+                "type": "sprite.show",
+                "url": "asset://mio.png",
+                "v": 1,
+            },
+        )
+
+        snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "characterName": "Mio",
+                "scale": 1.0,
+                "seq": 2,
+                "slot": 0,
+                "ts": 2,
+                "type": "sprite.show",
+                "url": "asset://mio-happy.png",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(len(snapshot["sprites"]), 1)
+        self.assertEqual(snapshot["sprites"][0]["slot"], 2)
+        self.assertEqual(snapshot["sprites"][0]["path"], "asset://mio-happy.png")
+
     def test_chat_init_progress_is_folded_into_snapshot_and_sanitized(self):
         snapshot = make_empty_chat_snapshot()
 

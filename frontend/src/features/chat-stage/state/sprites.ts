@@ -51,7 +51,7 @@ export function upsertChatStageSprite(sprites: readonly ChatStageSprite[], nextS
   const freeSlot = existingSlot == null ? firstFreeSpriteSlot(sprites) : undefined;
   const requestedSlot = validSpriteSlot(nextSprite.slot) ? nextSprite.slot : undefined;
   const oldestSlot = sprites.length ? resolvedChatStageSpriteSlot(sprites[0], 0) : 0;
-  const slot = existingSlot ?? freeSlot ?? requestedSlot ?? oldestSlot;
+  const slot = existingSlot ?? requestedSlot ?? freeSlot ?? oldestSlot;
   return replaceSpriteInSlot(sprites, nextSprite, slot);
 }
 

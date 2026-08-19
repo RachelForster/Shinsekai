@@ -31,6 +31,7 @@ from .session import StorySession
 from .scene import ConfigSceneModel, SceneOrchestrator
 
 logger = logging.getLogger(__name__)
+_STORY_SPRITE_SLOT_COUNT = 3
 
 
 def apply_story_resource_bindings(
@@ -238,7 +239,12 @@ def story_snapshot_patch(state: Any) -> dict[str, Any]:
     if session is None:
         return {}
     patch = session.chat_snapshot()
-    patch.update(_approved_resource_patch(state))
+    resource_patch = _approved_resource_patch(state)
+    # Sprite events maintain an LRU stage independently from the complete cast.
+    # Reapplying the cast sprites on every poll would undo expression changes
+    # and make a fourth speaker disappear immediately after their line.
+    resource_patch.pop("sprites", None)
+    patch.update(resource_patch)
     media_patch = getattr(state, "story_media_patch", None)
     if isinstance(media_patch, Mapping):
         patch.update(dict(media_patch))
@@ -355,10 +361,11 @@ def _approved_resource_patch(state: Any) -> dict[str, Any]:
     chat_stream = getattr(state, "chat_stream", None)
     media_url = getattr(chat_stream, "media_url", None)
     approved: list[dict[str, Any]] = []
-    for sprite in sprites:
+    for slot, sprite in enumerate(sprites[:_STORY_SPRITE_SLOT_COUNT]):
         if not isinstance(sprite, dict):
             continue
         item = dict(sprite)
+        item["slot"] = slot
         path = str(item.get("path") or "").strip()
         if path and callable(media_url):
             item["path"] = str(media_url(path) or path)
@@ -367,8 +374,7 @@ def _approved_resource_patch(state: Any) -> dict[str, Any]:
             if callable(approve):
                 approve(path)
         approved.append(item)
-    if approved:
-        patch["sprites"] = approved
+    patch["sprites"] = approved
     return patch
 
 
@@ -387,17 +393,22 @@ def _story_sprite_events(
     previous = [
         dict(item)
         for item in (current or {}).get("sprites") or []
-        if isinstance(item, dict) and str(item.get("id") or "").startswith("story:")
+        if isinstance(item, dict)
     ]
-    next_ids = {str(item.get("id") or "") for item in next_sprites}
+    next_names = {
+        str(item.get("characterName") or item.get("label") or "").strip()
+        for item in next_sprites
+    }
     events: list[dict[str, Any]] = []
     for sprite in previous:
-        sprite_id = str(sprite.get("id") or "")
-        if sprite_id and sprite_id not in next_ids:
+        character_name = str(
+            sprite.get("characterName") or sprite.get("label") or ""
+        ).strip()
+        if character_name and character_name not in next_names:
             events.append(
                 {
                     "type": "sprite.remove",
-                    "characterName": str(sprite.get("characterName") or sprite_id),
+                    "characterName": character_name,
                 }
             )
     for sprite in next_sprites:
@@ -407,6 +418,17 @@ def _story_sprite_events(
                 "characterName": str(sprite.get("characterName") or ""),
                 "url": str(sprite.get("path") or ""),
                 "scale": sprite.get("scale"),
+                "slot": sprite.get("slot"),
+                **(
+                    {"x": sprite.get("x")}
+                    if sprite.get("x") is not None
+                    else {}
+                ),
+                **(
+                    {"y": sprite.get("y")}
+                    if sprite.get("y") is not None
+                    else {}
+                ),
             }
         )
     return events

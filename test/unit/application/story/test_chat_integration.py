@@ -367,25 +367,72 @@ def test_live_story_transition_publishes_approved_actor_resources() -> None:
         event for event in state.chat_stream.published if event["type"] == "sprite.show"
     )
     assert sprite_event["url"].startswith("/api/media?path=")
+    assert sprite_event["slot"] == 0
     assert state.chat_stream.snapshot["sprites"][0]["path"].startswith("/api/media?path=")
     assert state.chat_stream.snapshot["actorContext"]["activeCharacterIds"] == ["ling"]
-    assert story_snapshot_patch(state)["sprites"][0]["path"].startswith("/api/media?path=")
+    assert "sprites" not in story_snapshot_patch(state)
 
 
 def test_story_polling_preserves_llm_options_until_a_local_transition() -> None:
     state = _state(enabled=True)
     state.story_session = _story_session(state.config_manager.feature_flags)
     state.chat_stream.snapshot["options"] = ["继续调查", "询问绫"]
+    state.chat_stream.snapshot["sprites"] = [
+        {
+            "characterName": "第四人",
+            "id": "第四人:0",
+            "label": "第四人",
+            "path": "asset://fourth.png",
+            "slot": 0,
+        }
+    ]
 
     patch = story_snapshot_patch(state)
 
     assert "options" not in patch
+    assert "sprites" not in patch
     state.chat_stream.snapshot.update(patch)
     assert state.chat_stream.snapshot["options"] == ["继续调查", "询问绫"]
+    assert state.chat_stream.snapshot["sprites"][0]["characterName"] == "第四人"
 
     publish_story_transition(state, patch)
 
     assert state.chat_stream.snapshot["options"] == []
+
+
+def test_story_cast_projection_uses_three_stable_sprite_slots() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    names = ["甲", "乙", "丙", "丁"]
+    state.story_cast_service = SimpleNamespace(
+        chat_patch=lambda: {
+            "sprites": [
+                {
+                    "id": f"story:{index}",
+                    "characterName": name,
+                    "label": name,
+                    "path": f"{name}.png",
+                    "scale": 1.0,
+                }
+                for index, name in enumerate(names)
+            ]
+        }
+    )
+
+    publish_story_transition(state, state.story_session.chat_snapshot())
+
+    sprite_events = [
+        event
+        for event in state.chat_stream.published
+        if event["type"] == "sprite.show"
+    ]
+    assert [event["characterName"] for event in sprite_events] == names[:3]
+    assert [event["slot"] for event in sprite_events] == [0, 1, 2]
+    assert [sprite["slot"] for sprite in state.chat_stream.snapshot["sprites"]] == [
+        0,
+        1,
+        2,
+    ]
 
 
 def test_fork_history_skips_story_transition_when_flag_is_off() -> None:
