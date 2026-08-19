@@ -203,36 +203,18 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             for item in (next_snapshot.get("sprites") or [])
             if isinstance(item, dict)
         ]
-        existing = next(
-            (
-                item
-                for item in current
-                if item.get("label") == character_name
-                or item.get("characterName") == character_name
-            ),
-            None,
-        )
-        # Expression changes must not move a character merely because the
-        # producer's local LRU assigned a different slot.
-        slot = existing.get("slot") if existing is not None else None
-        if slot is None:
-            slot = event.get("slot")
-        sprite_id = f"{character_name}:{slot}" if slot is not None else character_name
         current = [
             item
             for item in current
-            if item.get("id") != sprite_id
-            and item.get("label") != character_name
+            if item.get("label") != character_name
             and item.get("characterName") != character_name
-            and (slot is None or item.get("slot") != slot)
         ]
         next_sprite = {
-            "id": sprite_id,
+            "id": character_name,
             "label": character_name,
             "path": str(event.get("url") or ""),
             "characterName": character_name,
             "scale": event.get("scale"),
-            "slot": slot,
         }
         for axis in ("x", "y"):
             if event.get(axis) is not None:

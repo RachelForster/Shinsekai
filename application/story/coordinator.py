@@ -31,7 +31,6 @@ from .session import StorySession
 from .scene import ConfigSceneModel, SceneOrchestrator
 
 logger = logging.getLogger(__name__)
-_STORY_SPRITE_SLOT_COUNT = 3
 
 
 def apply_story_resource_bindings(
@@ -361,11 +360,11 @@ def _approved_resource_patch(state: Any) -> dict[str, Any]:
     chat_stream = getattr(state, "chat_stream", None)
     media_url = getattr(chat_stream, "media_url", None)
     approved: list[dict[str, Any]] = []
-    for slot, sprite in enumerate(sprites[:_STORY_SPRITE_SLOT_COUNT]):
+    for sprite in sprites:
         if not isinstance(sprite, dict):
             continue
         item = dict(sprite)
-        item["slot"] = slot
+        item.pop("slot", None)
         path = str(item.get("path") or "").strip()
         if path and callable(media_url):
             item["path"] = str(media_url(path) or path)
@@ -418,7 +417,6 @@ def _story_sprite_events(
                 "characterName": str(sprite.get("characterName") or ""),
                 "url": str(sprite.get("path") or ""),
                 "scale": sprite.get("scale"),
-                "slot": sprite.get("slot"),
                 **(
                     {"x": sprite.get("x")}
                     if sprite.get("x") is not None

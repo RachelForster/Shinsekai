@@ -118,7 +118,7 @@ class EventSinkSnapshotTests(unittest.TestCase):
         self.assertEqual(next_snapshot["backgroundPath"], "asset://room.png")
         self.assertEqual(next_snapshot["bgmPath"], "asset://room.mp3")
 
-    def test_sprite_show_replaces_the_previous_slot_occupant_and_preserves_axes(self):
+    def test_sprite_snapshot_records_characters_without_assigning_slots(self):
         snapshot = fold_event_into_snapshot(
             make_empty_chat_snapshot(),
             {
@@ -152,12 +152,18 @@ class EventSinkSnapshotTests(unittest.TestCase):
             next_snapshot["sprites"],
             [
                 {
+                    "characterName": "Mio",
+                    "id": "Mio",
+                    "label": "Mio",
+                    "path": "asset://mio.png",
+                    "scale": 1.0,
+                },
+                {
                     "characterName": "Ren",
-                    "id": "Ren:0",
+                    "id": "Ren",
                     "label": "Ren",
                     "path": "asset://ren.png",
                     "scale": 0.9,
-                    "slot": 0,
                     "x": 18,
                     "y": -12,
                 }
@@ -182,12 +188,13 @@ class EventSinkSnapshotTests(unittest.TestCase):
             )
 
         self.assertEqual(
-            [(sprite["characterName"], sprite["slot"]) for sprite in snapshot["sprites"]],
-            [("Aoi", 2), ("Mio", 0)],
+            [sprite["characterName"] for sprite in snapshot["sprites"]],
+            ["Aoi", "Mio"],
         )
+        self.assertTrue(all("slot" not in sprite for sprite in snapshot["sprites"]))
         self.assertEqual(snapshot["sprites"][-1]["path"], "asset://mio-3.png")
 
-    def test_sprite_expression_change_preserves_the_existing_slot(self):
+    def test_sprite_expression_change_updates_only_the_character_record(self):
         snapshot = fold_event_into_snapshot(
             make_empty_chat_snapshot(),
             {
@@ -217,7 +224,7 @@ class EventSinkSnapshotTests(unittest.TestCase):
         )
 
         self.assertEqual(len(snapshot["sprites"]), 1)
-        self.assertEqual(snapshot["sprites"][0]["slot"], 2)
+        self.assertNotIn("slot", snapshot["sprites"][0])
         self.assertEqual(snapshot["sprites"][0]["path"], "asset://mio-happy.png")
 
     def test_chat_init_progress_is_folded_into_snapshot_and_sanitized(self):

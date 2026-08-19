@@ -13,7 +13,6 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
     label: event.characterName,
     path: event.url,
     scale: event.scale,
-    slot: event.slot,
     x: event.x,
     y: event.y,
   };

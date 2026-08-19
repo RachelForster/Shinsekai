@@ -367,7 +367,7 @@ def test_live_story_transition_publishes_approved_actor_resources() -> None:
         event for event in state.chat_stream.published if event["type"] == "sprite.show"
     )
     assert sprite_event["url"].startswith("/api/media?path=")
-    assert sprite_event["slot"] == 0
+    assert "slot" not in sprite_event
     assert state.chat_stream.snapshot["sprites"][0]["path"].startswith("/api/media?path=")
     assert state.chat_stream.snapshot["actorContext"]["activeCharacterIds"] == ["ling"]
     assert "sprites" not in story_snapshot_patch(state)
@@ -400,7 +400,7 @@ def test_story_polling_preserves_llm_options_until_a_local_transition() -> None:
     assert state.chat_stream.snapshot["options"] == []
 
 
-def test_story_cast_projection_uses_three_stable_sprite_slots() -> None:
+def test_story_cast_projection_leaves_all_sprite_layout_to_the_frontend() -> None:
     state = _state(enabled=True)
     state.story_session = _story_session(state.config_manager.feature_flags)
     names = ["甲", "乙", "丙", "丁"]
@@ -426,13 +426,9 @@ def test_story_cast_projection_uses_three_stable_sprite_slots() -> None:
         for event in state.chat_stream.published
         if event["type"] == "sprite.show"
     ]
-    assert [event["characterName"] for event in sprite_events] == names[:3]
-    assert [event["slot"] for event in sprite_events] == [0, 1, 2]
-    assert [sprite["slot"] for sprite in state.chat_stream.snapshot["sprites"]] == [
-        0,
-        1,
-        2,
-    ]
+    assert [event["characterName"] for event in sprite_events] == names
+    assert all("slot" not in event for event in sprite_events)
+    assert all("slot" not in sprite for sprite in state.chat_stream.snapshot["sprites"])
 
 
 def test_fork_history_skips_story_transition_when_flag_is_off() -> None:

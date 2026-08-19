@@ -49,31 +49,17 @@ export function upsertChatStageSprite(sprites: readonly ChatStageSprite[], nextS
   const existing = existingIndex >= 0 ? sprites[existingIndex] : undefined;
   const existingSlot = existing ? resolvedChatStageSpriteSlot(existing, existingIndex) : undefined;
   const freeSlot = existingSlot == null ? firstFreeSpriteSlot(sprites) : undefined;
-  const requestedSlot = validSpriteSlot(nextSprite.slot) ? nextSprite.slot : undefined;
   const oldestSlot = sprites.length ? resolvedChatStageSpriteSlot(sprites[0], 0) : 0;
-  const slot = existingSlot ?? requestedSlot ?? freeSlot ?? oldestSlot;
+  const slot = existingSlot ?? freeSlot ?? oldestSlot;
   return replaceSpriteInSlot(sprites, nextSprite, slot);
 }
 
-/** Preserve server-assigned slots on reconnect while repairing old snapshots without slots. */
+/** Rebuild slots from event order; backend-provided slots are intentionally ignored. */
 export function normalizeChatStageSprites(sprites: readonly ChatStageSprite[]) {
-  return sprites.reduce<ChatStageSprite[]>((normalized, sprite) => {
-    const characterName = chatStageSpriteCharacterName(sprite);
-    const existingIndex = normalized.findIndex((item) => chatStageSpriteCharacterName(item) === characterName);
-    const existing = existingIndex >= 0 ? normalized[existingIndex] : undefined;
-    const existingSlot = existing ? resolvedChatStageSpriteSlot(existing, existingIndex) : undefined;
-    const requestedSlot = validSpriteSlot(sprite.slot) ? sprite.slot : undefined;
-    const requestedOccupied =
-      requestedSlot != null &&
-      normalized.some((item, index) => resolvedChatStageSpriteSlot(item, index) === requestedSlot);
-    const slot =
-      existingSlot ??
-      (requestedSlot != null && !requestedOccupied ? requestedSlot : undefined) ??
-      firstFreeSpriteSlot(normalized) ??
-      requestedSlot ??
-      (normalized[0] ? resolvedChatStageSpriteSlot(normalized[0], 0) : 0);
-    return replaceSpriteInSlot(normalized, sprite, slot);
-  }, []);
+  return sprites.reduce<ChatStageSprite[]>(
+    (normalized, sprite) => upsertChatStageSprite(normalized, { ...sprite, slot: undefined }),
+    [],
+  );
 }
 
 /** Keep the most recently shown sprites and remap them into a smaller client-side slot set. */

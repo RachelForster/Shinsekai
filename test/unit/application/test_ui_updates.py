@@ -111,7 +111,7 @@ def test_streaming_presenter_emits_frontend_effect_audio_events(tmp_path) -> Non
     assert sink.events[1]["key"] == "rain"
 
 
-def test_streaming_presenter_keeps_character_slot_across_expression_changes() -> None:
+def test_streaming_presenter_emits_layout_agnostic_sprite_updates() -> None:
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink)
 
@@ -126,7 +126,7 @@ def test_streaming_presenter_keeps_character_slot_across_expression_changes() ->
         presenter.update_sprite("Mio", 0)
         presenter.update_sprite("Mio", 1)
 
-    assert [event["slot"] for event in sink.events] == [0, 0]
+    assert all("slot" not in event for event in sink.events)
     assert sink.events[-1]["url"] == "media://happy.png"
 
 

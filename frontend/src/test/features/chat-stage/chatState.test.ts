@@ -1302,7 +1302,7 @@ describe("chatStageReducer", () => {
       expect.objectContaining({
         id: "Mio",
         path: "asset://mio-happy.png",
-        slot: 2,
+        slot: 0,
       }),
     );
 
@@ -1312,16 +1312,16 @@ describe("chatStageReducer", () => {
     const aoi = showSprite(refreshedMio, 6, "Aoi", 1);
 
     expect(aoi.sprites.map((sprite) => sprite.characterName)).toEqual(["Nanami", "Mio", "Aoi"]);
-    expect(aoi.sprites.map((sprite) => sprite.slot)).toEqual([0, 2, 1]);
+    expect(aoi.sprites.map((sprite) => sprite.slot)).toEqual([2, 0, 1]);
 
     const fourth = showSprite(aoi, 7, "Yuki", 0);
     const fourthExpression = showSprite(fourth, 8, "Yuki", 2, "asset://yuki-happy.png");
     expect(fourthExpression.sprites.map((sprite) => sprite.characterName)).toEqual(["Mio", "Aoi", "Yuki"]);
-    expect(fourthExpression.sprites.map((sprite) => sprite.slot)).toEqual([2, 1, 0]);
+    expect(fourthExpression.sprites.map((sprite) => sprite.slot)).toEqual([0, 1, 2]);
     expect(fourthExpression.sprites.at(-1)?.path).toBe("asset://yuki-happy.png");
   });
 
-  it("preserves snapshot LRU order so the most recent sprite stays in front", () => {
+  it("rebuilds snapshot slots entirely on the frontend", () => {
     const hydrated = chatStageReducer(emptyChatState, {
       snapshot: {
         dialogText: "",
@@ -1338,7 +1338,7 @@ describe("chatStageReducer", () => {
     });
 
     expect(hydrated.sprites.map((sprite) => sprite.label)).toEqual(["Aoi", "Mio"]);
-    expect(hydrated.sprites.map((sprite) => sprite.slot)).toEqual([2, 0]);
+    expect(hydrated.sprites.map((sprite) => sprite.slot)).toEqual([0, 1]);
   });
 
   it("maps the latest sprite into the single mobile display slot", () => {
