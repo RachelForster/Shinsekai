@@ -1274,9 +1274,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         );
         await delay(null, 80);
         const character = config.characters.find((item) => payload.characters.includes(item.name));
-        const background = config.background_list.find((item) =>
-          (payload.backgroundNames ?? [payload.backgroundName]).includes(item.name),
-        );
+        const backgroundNames = payload.backgroundNames?.length ? payload.backgroundNames : [payload.backgroundName];
+        const background = backgroundNames
+          .map((name) => config.background_list.find((item) => item.name === name))
+          .find((item) => item !== undefined);
         const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
         chat = {
           ...chat,

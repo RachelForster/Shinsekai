@@ -70,11 +70,13 @@ function parseSelectOptions(children: ReactNode): ParsedSelectOption[] {
 function createSelectChangeEvent(
   value: string,
   props: Pick<SelectHTMLAttributes<HTMLSelectElement>, "id" | "name">,
+  selectedOptions: string[] = [],
 ): ChangeEvent<HTMLSelectElement> {
   const target = {
     id: props.id,
     name: props.name,
     value,
+    selectedOptions: selectedOptions.map((optionValue) => ({ value: optionValue })),
   };
   return {
     currentTarget: target,
@@ -207,14 +209,16 @@ export function CustomSelect({
       return;
     }
     if (multiple) {
+      const currentValues = isControlled ? (Array.isArray(value) ? value.map(String) : []) : internalValues;
+      const nextValues = currentValues.includes(option.value)
+        ? currentValues.filter((item) => item !== option.value)
+        : [...currentValues, option.value];
       if (!isControlled) {
-        setInternalValues((current) =>
-          current.includes(option.value)
-            ? current.filter((value) => value !== option.value)
-            : [...current, option.value],
-        );
+        setInternalValues(nextValues);
       }
-      onChange?.(createSelectChangeEvent(option.value, { id, name }));
+      // Mirror the native select contract: the change event exposes the full
+      // post-toggle selection via selectedOptions.
+      onChange?.(createSelectChangeEvent(option.value, { id, name }, nextValues));
       return;
     }
     if (!isControlled) {

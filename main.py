@@ -617,7 +617,7 @@ def main():
     ]
     backgrounds = [background for background in backgrounds if background is not None]
     bg_group = [sprite for background in backgrounds for sprite in background.sprites]
-    bgm_list = [path for background in backgrounds for path in background.bgm_list]
+    bgm_list = [path for background in backgrounds for path in (background.bgm_list or [])]
 
     # 加载特效方案，构建关键词→音频路径映射
     effect_keyword_map: dict[str, str] = {}

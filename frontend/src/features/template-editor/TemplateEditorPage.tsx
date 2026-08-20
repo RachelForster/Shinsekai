@@ -26,7 +26,7 @@ import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import { platformErrorCode } from "../../shared/platform/errors";
-import type { ChatSnapshot, MobileAccessInfo, TemplateLaunchSession } from "../../shared/platform/types";
+import type { Background, ChatSnapshot, MobileAccessInfo, TemplateLaunchSession } from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
@@ -57,6 +57,7 @@ import {
 import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
+const NO_BACKGROUNDS: Background[] = [];
 
 export function TemplateEditorPage() {
   const queryClient = useQueryClient();
@@ -86,7 +87,7 @@ export function TemplateEditorPage() {
   const sessionFetched = sessionQuery.isFetched;
   const appConfig = configQuery.data;
   const characters = charactersQuery.data ?? [];
-  const backgrounds = backgroundsQuery.data ?? [];
+  const backgrounds = backgroundsQuery.data ?? NO_BACKGROUNDS;
   const effects = Array.isArray(effectsQuery.data) ? effectsQuery.data : [];
   const [selectedId, setSelectedId] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -254,6 +255,11 @@ export function TemplateEditorPage() {
   useEffect(() => {
     setSelectedBackgrounds((current) => {
       const next = current.filter((name) => backgroundOptions.includes(name));
+      // Keep the same array reference when nothing was filtered out so the
+      // state write bails out instead of re-rendering in a loop.
+      if (next.length === current.length) {
+        return current;
+      }
       return next.length ? next : [TRANSPARENT_BACKGROUND_NAME];
     });
   }, [backgroundOptions]);
