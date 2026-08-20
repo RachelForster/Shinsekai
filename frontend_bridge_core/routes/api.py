@@ -1549,8 +1549,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             system_template,
         )
         user_display_name = _sanitize_user_display_name(body.get("userDisplayName"))
+        selected_backgrounds = body.get("backgroundNames")
+        if not isinstance(selected_backgrounds, list):
+            selected_backgrounds = [str(body.get("backgroundName") or "")]
+        selected_backgrounds = [str(name).strip() for name in selected_backgrounds if str(name).strip()]
         session_base = {
-            "backgroundName": str(body.get("backgroundName") or ""),
+            "backgroundName": selected_backgrounds[0] if selected_backgrounds else "",
             "characterName": first_character,
             "historyPath": (default_history_path if reset_history else history_path).as_posix(),
             "sessionId": "",
@@ -1591,7 +1595,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             history_file=(default_history_path if reset_history else history_path).as_posix(),
             init_sprite_path=init_sprite_path,
             room_id=room_id,
-            selected_bg=str(body.get("backgroundName") or ""),
+            selected_bg=selected_backgrounds[0] if selected_backgrounds else "",
+            selected_bgs=selected_backgrounds,
             system_template=system_template,
             use_cg=bool(body.get("useCg")),
             user_scenario=user_scenario,
@@ -1692,7 +1697,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             selected_characters,
         )
         room_id = str(session.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
-        selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
+        selected_backgrounds = session.get("backgroundNames")
+        if not isinstance(selected_backgrounds, list):
+            selected_backgrounds = [str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)]
+        selected_backgrounds = [str(name).strip() for name in selected_backgrounds if str(name).strip()]
+        selected_bg = selected_backgrounds[0] if selected_backgrounds else TRANSPARENT_BACKGROUND_NAME
         user_display_name = _sanitize_user_display_name(session.get("userDisplayName"))
         session_base = {
             "backgroundName": selected_bg,
@@ -1727,6 +1736,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             init_sprite_path=init_sprite_path,
             room_id=room_id,
             selected_bg=selected_bg,
+            selected_bgs=selected_backgrounds,
             system_template=system_template,
             use_cg=bool(session.get("useCg", False)),
             user_scenario=scenario,

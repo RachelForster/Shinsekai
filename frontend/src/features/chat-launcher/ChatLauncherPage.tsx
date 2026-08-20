@@ -75,6 +75,7 @@ export function ChatLauncherPage() {
   const appConfig = configQuery.data;
   const [templateId, setTemplateId] = useState("");
   const [backgroundName, setBackgroundName] = useState(TRANSPARENT_BACKGROUND_NAME);
+  const [backgroundNames, setBackgroundNames] = useState<string[]>([TRANSPARENT_BACKGROUND_NAME]);
   const [selectedEffects, setSelectedEffects] = useState<string[]>([]);
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [historyPath, setHistoryPath] = useState("");
@@ -134,7 +135,12 @@ export function ChatLauncherPage() {
     if (restoredTemplate) {
       setTemplateId(restoredTemplate.id);
     }
-    setBackgroundName(launchSession.background || TRANSPARENT_BACKGROUND_NAME);
+    const restoredBackgrounds =
+      Array.isArray(launchSession.backgroundNames) && launchSession.backgroundNames.length
+        ? launchSession.backgroundNames
+        : [launchSession.background || TRANSPARENT_BACKGROUND_NAME];
+    setBackgroundName(restoredBackgrounds[0] || TRANSPARENT_BACKGROUND_NAME);
+    setBackgroundNames(restoredBackgrounds);
     setSelectedEffects(Array.isArray(launchSession.effectNames) ? launchSession.effectNames : []);
     setSelectedCharacters(Array.isArray(launchSession.selectedCharacters) ? launchSession.selectedCharacters : []);
     setHistoryPath(launchSession.historyPath || "");
@@ -163,6 +169,7 @@ export function ChatLauncherPage() {
 
   const buildSession = (): TemplateLaunchSession => ({
     background: backgroundName,
+    backgroundNames: backgroundNames.length ? backgroundNames : [backgroundName],
     enableMobileAccess: launchSession?.enableMobileAccess ?? false,
     effectNames: selectedEffects,
     filenameStub: selectedTemplate?.name ?? "",
@@ -349,7 +356,10 @@ export function ChatLauncherPage() {
               <span className="field-row__control">
                 <Select
                   aria-label={t("launch.background")}
-                  onChange={(event) => setBackgroundName(event.target.value)}
+                  onChange={(event) => {
+                    setBackgroundName(event.target.value);
+                    setBackgroundNames([event.target.value]);
+                  }}
                   value={backgroundName}
                 >
                   {backgroundOptions.map((name) => (

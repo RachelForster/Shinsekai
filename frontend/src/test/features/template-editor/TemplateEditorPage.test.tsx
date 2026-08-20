@@ -101,7 +101,9 @@ function renderPage() {
 
 describe("TemplateEditorPage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Reset (not just clear) mocks so one-time implementations queued by a
+    // failing test cannot leak into the next test.
+    vi.resetAllMocks();
     mockUseChatLaunchGuard.mockReturnValue({
       refreshRuntimeStatus: mockRefreshRuntimeStatus,
       runtimeLaunchDisabled: false,
