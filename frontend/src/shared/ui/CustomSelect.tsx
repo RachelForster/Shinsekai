@@ -144,6 +144,13 @@ export function CustomSelect({
     : new Set<string>();
   const selectedValue =
     multiple && Array.isArray(value) ? value.map(String).join("\n") : String(isControlled ? value : internalValue);
+  const nativeValue = multiple
+    ? Array.isArray(value)
+      ? value.map(String)
+      : isControlled
+        ? []
+        : internalValues
+    : selectedValue;
   const selectedIndex = options.findIndex((option) =>
     multiple ? selectedValues.has(option.value) : option.value === selectedValue,
   );
@@ -378,10 +385,11 @@ export function CustomSelect({
         aria-hidden="true"
         className="custom-select__native"
         disabled={disabled}
+        multiple={multiple || undefined}
         name={name}
         onChange={handleNativeChange}
         tabIndex={-1}
-        value={selectedValue}
+        value={nativeValue}
       >
         {children}
       </select>
