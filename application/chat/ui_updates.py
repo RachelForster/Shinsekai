@@ -417,6 +417,25 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             return
         self._sink.emit({"type": "effect.play", "url": self._media_url(path)})
 
+    def _play_matching_keyword_effect(self, text: str) -> None:
+        """Play the first configured one-shot effect mentioned in visible dialogue."""
+        try:
+            from application.runtime.context import get_app_runtime
+
+            keyword_map = getattr(get_app_runtime(), "effect_keyword_map", {}) or {}
+            matches = sorted(
+                ((str(keyword or "").strip(), str(path or "").strip())
+                 for keyword, path in keyword_map.items()),
+                key=lambda item: len(item[0]),
+                reverse=True,
+            )
+            for keyword, path in matches:
+                if keyword and keyword in str(text or ""):
+                    self.play_sound_effect(path)
+                    return
+        except Exception:
+            return
+
     def start_loop_effect(self, keyword: str, audio_path: str) -> None:
         key = str(keyword or "").strip()
         path = str(audio_path or "").strip()
@@ -459,6 +478,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
+        self._play_matching_keyword_effect(speech)
         self._sink.emit(
             {
                 "type": "dialog.end",

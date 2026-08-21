@@ -111,6 +111,22 @@ def test_streaming_presenter_emits_frontend_effect_audio_events(tmp_path) -> Non
     assert sink.events[1]["key"] == "rain"
 
 
+def test_streaming_presenter_auto_plays_matching_dialogue_effect(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    keyboard = tmp_path / "keyboard.wav"
+    keyboard.write_bytes(b"wav")
+
+    with patch(
+        "application.runtime.context.get_app_runtime",
+        return_value=type("Runtime", (), {"effect_keyword_map": {"键盘敲击声": str(keyboard)}})(),
+    ):
+        presenter.update_dialog("旁白", "身后传来键盘敲击声。", "", True)
+
+    assert [event["type"] for event in sink.events[:2]] == ["effect.play", "dialog.end"]
+    assert "keyboard.wav" in sink.events[0]["url"]
+
+
 def test_streaming_presenter_keeps_character_slot_across_expression_changes() -> None:
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink)
