@@ -484,6 +484,9 @@ export function ChatStagePage() {
   const updateRuntimeBgmVolume = (bgmVolume: number) => {
     setRuntimeConfig((current) => ({ ...current, bgmVolume: Math.min(1, Math.max(0, bgmVolume)) }));
   };
+  const updateRuntimeEffectVolume = (effectVolume: number) => {
+    setRuntimeConfig((current) => ({ ...current, effectVolume: Math.min(1, Math.max(0, effectVolume)) }));
+  };
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
@@ -631,6 +634,7 @@ export function ChatStagePage() {
       asrEnabled={viewModel.asrEnabled}
       auto={runtimeConfig.auto}
       bgmVolume={runtimeConfig.bgmVolume}
+      effectVolume={runtimeConfig.effectVolume}
       closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
       configOpen={toolbarConfigOpen}
       hidden={!dialogSurfaceVisible}
@@ -638,6 +642,7 @@ export function ChatStagePage() {
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
       onBgmVolumeChange={updateRuntimeBgmVolume}
+      onEffectVolumeChange={updateRuntimeEffectVolume}
       onCancelBatch={() => void sendCommand({ type: "cancel-input-batch" })}
       onCloseSurface={closeSurface}
       onCommand={sendCommand}
@@ -696,6 +701,7 @@ export function ChatStagePage() {
         <ChatSoundPlayer
           bgmPath={viewModel.bgmPath}
           bgmVolume={runtimeConfig.bgmVolume}
+          effectVolume={runtimeConfig.effectVolume}
           commands={state.audioCommands}
           onPlaybackSignal={handlePlaybackSignal}
         />
