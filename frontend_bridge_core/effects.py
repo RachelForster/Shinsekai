@@ -325,6 +325,7 @@ def _build_effect_usage_guide(state: BridgeState, effect_names: list[str]) -> st
     lines.append('  {"effect": "stop:关键词"}       → 停止该关键词的循环播放')
     lines.append('  {"effect": "before:关键词"}     → 对话前播放一次（同无前缀）')
     lines.append('  {"effect": "after:关键词"}      → 对话后播放一次')
+    lines.append("输出前必须逐条检查每个角色台词和旁白：只要内容命中下方任一特效关键词，或出现其明确同义动作/环境，就必须在该条填写对应的 effect，禁止省略。effect 仅在没有任何匹配音效时才可留空；不得编造关键词。例如“老师正在敲击键盘”必须填 \"打字\"；出现下雨必须填 \"loop:雨天\"。")
     lines.append("")
 
     for ef_name in effect_names:

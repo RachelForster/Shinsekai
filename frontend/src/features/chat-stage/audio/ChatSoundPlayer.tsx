@@ -11,11 +11,13 @@ import { SoundPlayer, type VoicePlaybackSignal } from "./soundPlayer";
 export function ChatSoundPlayer({
   bgmPath,
   bgmVolume,
+  effectVolume,
   commands,
   onPlaybackSignal,
 }: {
   bgmPath?: string;
   bgmVolume: number;
+  effectVolume: number;
   commands: ChatAudioCommand[];
   onPlaybackSignal: (signal: VoicePlaybackSignal) => void;
 }) {
@@ -41,6 +43,10 @@ export function ChatSoundPlayer({
   useEffect(() => {
     playerRef.current?.setBgm(stageAssetUrl(bgmPath), bgmVolume);
   }, [bgmPath, bgmVolume]);
+
+  useEffect(() => {
+    playerRef.current?.setEffectVolume(effectVolume);
+  }, [effectVolume]);
 
   useEffect(() => {
     const player = playerRef.current;

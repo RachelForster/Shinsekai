@@ -477,6 +477,7 @@ export type MessageKey =
   | "chat.config.scaleValue"
   | "chat.config.batchEnabled"
   | "chat.config.bgmVolume"
+  | "chat.config.effectVolume"
   | "chat.audio.unlock"
   | "chat.audio.unlockHint"
   | "chat.config.batchHelp"

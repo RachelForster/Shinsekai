@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import html
+import logging
 import re
 import time
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
     from application.runtime.event_sink import ChatEventSink
 
 from core.messaging.stat_payload import format_stats_html, parse_stat_payload
+from core.paths import resource_path
 from application.chat.history_state import serialize_chat_history_entries
 
 SOUND_EFFECTS_PATH = {
@@ -22,6 +24,7 @@ SOUND_EFFECTS_PATH = {
 }
 
 _config_manager = None
+logger = logging.getLogger(__name__)
 
 
 def _get_config_manager():
@@ -219,7 +222,15 @@ class HeadlessUIUpdateManager:
         if value:
             self.user_display_name = value
 
-    def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
+    def update_dialog(
+        self,
+        name: str,
+        speech: str,
+        color: str,
+        is_system: bool = True,
+        *,
+        play_matching_effect: bool = True,
+    ) -> None:
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
@@ -240,7 +251,10 @@ class HeadlessUIUpdateManager:
         if new_bgm_path:
             print(f"bgm: {new_bgm_path}")
 
-    def resolve_effect(self, *args: Any, **kwargs: Any) -> None:
+    def resolve_effect(self, *args: Any, **kwargs: Any) -> bool:
+        return False
+
+    def play_matching_keyword_effect(self, text: str) -> None:
         pass
 
 
@@ -412,41 +426,72 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._sink.emit(payload)
 
     def play_sound_effect(self, sound_effect_path: str) -> None:
-        path = str(sound_effect_path or "").strip()
-        if not path or not Path(path).exists():
+        raw_path = str(sound_effect_path or "").strip()
+        if not raw_path:
             return
-        self._sink.emit({"type": "effect.play", "url": self._media_url(path)})
+        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
+        self._sink.emit({"type": "effect.play", "url": self._media_url(str(path))})
 
     def _play_matching_keyword_effect(self, text: str) -> None:
-        """Play the first configured one-shot effect mentioned in visible dialogue."""
+        """Play the best configured one-shot effect mentioned in visible dialogue."""
         try:
             from application.runtime.context import get_app_runtime
 
             keyword_map = getattr(get_app_runtime(), "effect_keyword_map", {}) or {}
-            matches = sorted(
-                ((str(keyword or "").strip(), str(path or "").strip())
-                 for keyword, path in keyword_map.items()),
-                key=lambda item: len(item[0]),
-                reverse=True,
-            )
+            compact_text = re.sub(r"[\W_]+", "", str(text or "").casefold())
+            matches = [
+                (re.sub(r"[\W_]+", "", str(keyword or "").casefold()), str(path or "").strip())
+                for keyword, path in keyword_map.items()
+            ]
+            matches = [(keyword, path) for keyword, path in matches if keyword and path]
+            if not compact_text or not matches:
+                return
+
+            context_chars_by_path: dict[str, set[str]] = {}
+            for path in {path for _, path in matches}:
+                chars = Counter(
+                    char
+                    for keyword, candidate_path in matches
+                    if candidate_path == path
+                    for char in set(keyword)
+                    if "\u4e00" <= char <= "\u9fff"
+                )
+                context_chars_by_path[path] = {char for char, count in chars.items() if count >= 2}
+
+            best: tuple[tuple[int, int], str] | None = None
             for keyword, path in matches:
-                if keyword and keyword in str(text or ""):
-                    self.play_sound_effect(path)
-                    return
+                score: tuple[int, int] | None = None
+                if keyword in compact_text:
+                    score = (3, len(keyword))
+                elif len(keyword) >= 2 and re.search(r".{0,2}".join(map(re.escape, keyword)), compact_text):
+                    score = (2, len(keyword))
+                elif len(keyword) >= 3 and keyword[-2:] in compact_text:
+                    score = (1, 2)
+                elif any(char in compact_text for char in context_chars_by_path[path]):
+                    score = (0, 1)
+                if score and (best is None or score > best[0]):
+                    best = (score, path)
+
+            if best:
+                self.play_sound_effect(best[1])
         except Exception:
             return
 
+    def play_matching_keyword_effect(self, text: str) -> None:
+        self._play_matching_keyword_effect(text)
+
     def start_loop_effect(self, keyword: str, audio_path: str) -> None:
         key = str(keyword or "").strip()
-        path = str(audio_path or "").strip()
-        if not key or not path or not Path(path).exists() or key in self._looping_effects:
+        raw_path = str(audio_path or "").strip()
+        if not key or not raw_path or key in self._looping_effects:
             return
-        self._looping_effects[key] = path
+        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
+        self._looping_effects[key] = str(path)
         self._sink.emit(
             {
                 "type": "effect.loop.start",
                 "key": key,
-                "url": self._media_url(path),
+                "url": self._media_url(str(path)),
             }
         )
 
@@ -474,11 +519,20 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
 
     # --- 高层业务组装 → 事件 ---
 
-    def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
+    def update_dialog(
+        self,
+        name: str,
+        speech: str,
+        color: str,
+        is_system: bool = True,
+        *,
+        play_matching_effect: bool = True,
+    ) -> None:
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
-        self._play_matching_keyword_effect(speech)
+        if play_matching_effect:
+            self._play_matching_keyword_effect(speech)
         self._sink.emit(
             {
                 "type": "dialog.end",
@@ -566,13 +620,15 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._sprite_lru.pop(character_name, None)
         self._sink.emit({"type": "sprite.remove", "characterName": character_name})
 
-    def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> None:
+    def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> bool:
         raw = str(effect or "").strip()
         if not raw:
-            return
+            return False
         if raw.upper() == "LEAVE" and after_dialog:
             self.remove_character_sprite(str(args.get("character_name") or ""))
-            return
+            return True
+        if raw.upper() == "LEAVE":
+            return True
 
         mode = "once"
         if raw.startswith("loop:"):
@@ -591,7 +647,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             if (timing == "before" and after_dialog) or (
                 timing == "after" and not after_dialog
             ):
-                return
+                return True
 
         keyword = raw.strip()
         if not keyword:
@@ -614,10 +670,23 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             except Exception:
                 audio_path = ""
         if mode != "stop" and not audio_path:
-            return
+            logger.warning("chat.effect.unresolved effect=%r keyword=%r", effect, keyword)
+            return False
         if mode == "loop":
             self.start_loop_effect(keyword, audio_path)
+            emitted = keyword in self._looping_effects
         elif mode == "stop":
+            emitted = keyword in self._looping_effects
             self.stop_loop_effect(keyword)
         else:
             self.play_sound_effect(audio_path)
+            emitted = True
+        if emitted:
+            logger.info(
+                "chat.effect.emitted effect=%r mode=%s keyword=%r path=%r",
+                effect,
+                mode,
+                keyword,
+                audio_path,
+            )
+        return emitted

@@ -148,10 +148,18 @@ class SystemMiscUiHandler(UIOutputMessageHandler):
 
     def handle(self, out: TTSOutputMessage) -> None:
         _ui().hide_busy_bar()
-        _ui().update_dialog(out.name, out.text or "", "#84C2D5")
-        _ui().resolve_effect(
+        has_explicit_effect = bool(str(out.effect or "").strip())
+        _ui().update_dialog(
+            out.name,
+            out.text or "",
+            "#84C2D5",
+            play_matching_effect=not has_explicit_effect,
+        )
+        resolved = _ui().resolve_effect(
             effect=out.effect, args={"character_name": out.name}, after_dialog=False
         )
+        if has_explicit_effect and not resolved:
+            _ui().play_matching_keyword_effect(out.text or "")
         ev = _play().task_done_requested
         if ev and not ev.is_set():
             sp = out.text or ""
@@ -188,6 +196,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         if audio_path:
             audio_path = Path(audio_path).as_posix()
         effect = out.effect
+        has_explicit_effect = bool(str(effect or "").strip())
         is_continuation = not speech  # 非首段，仅播放音频
 
         if not is_continuation:
@@ -211,10 +220,18 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             ui.post_notification(f"{character_name}正在回复……")
             if speech:
                 color = character_config.color if character_config else fallback_color
-                ui.update_dialog(character_name, speech, color, is_system=False)
-            ui.resolve_effect(
+                ui.update_dialog(
+                    character_name,
+                    speech,
+                    color,
+                    is_system=False,
+                    play_matching_effect=not has_explicit_effect,
+                )
+            resolved = ui.resolve_effect(
                 effect=effect, args={"character_name": character_name}, after_dialog=False
             )
+            if has_explicit_effect and not resolved:
+                ui.play_matching_keyword_effect(speech)
 
         _tmo = out.timeout
         min_stop_time = (

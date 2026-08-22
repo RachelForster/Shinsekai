@@ -7,7 +7,9 @@ import { IconButton, Switch } from "../../../shared/ui";
 
 export function ChatTurnSettingsPopover({
   bgmVolume,
+  effectVolume,
   onBgmVolumeChange,
+  onEffectVolumeChange,
   onCancelBatch,
   onClose,
   onFlushBatch,
@@ -17,7 +19,9 @@ export function ChatTurnSettingsPopover({
   turnState,
 }: {
   bgmVolume: number;
+  effectVolume: number;
   onBgmVolumeChange: (value: number) => void;
+  onEffectVolumeChange: (value: number) => void;
   onCancelBatch: () => void;
   onClose: () => void;
   onFlushBatch: () => void;
@@ -92,6 +96,22 @@ export function ChatTurnSettingsPopover({
             step={0.05}
             type="range"
             value={bgmVolume}
+          />
+        </label>
+        <label className="dialog-stage-controls__chat-setting dialog-stage-controls__chat-slider">
+          <span className="dialog-stage-controls__chat-slider-label">
+            {t("chat.config.effectVolume")}
+            <span className="dialog-stage-controls__chat-slider-value">{Math.round(effectVolume * 100)}%</span>
+          </span>
+          <input
+            aria-label={t("chat.config.effectVolume")}
+            className="dialog-stage-controls__chat-slider-input"
+            max={1}
+            min={0}
+            onChange={(event) => onEffectVolumeChange(Number(event.currentTarget.value))}
+            step={0.05}
+            type="range"
+            value={effectVolume}
           />
         </label>
       </div>

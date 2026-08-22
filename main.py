@@ -731,6 +731,7 @@ def main():
                     tts_manager=tts_manager,
                     t2i_manager=t2i_manager,
                     bgm_list=bgm_list,
+                    effect_keyword_map=effect_keyword_map,
                     user_input_queue=user_input_queue,
                     tts_queue=tts_queue,
                     audio_path_queue=audio_path_queue,

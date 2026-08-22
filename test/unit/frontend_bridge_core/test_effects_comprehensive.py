@@ -340,6 +340,9 @@ def test_guide_with_keywords():
     assert "尖叫" in guide
     assert "爆炸" in guide
     assert "test_effect" in guide
+    assert "逐条检查" in guide
+    assert '“老师正在敲击键盘”必须填 "打字"' in guide
+    assert '出现下雨必须填 "loop:雨天"' in guide
 
 
 def test_guide_nonexistent_effect_skipped():
