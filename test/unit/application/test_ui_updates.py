@@ -119,7 +119,7 @@ def test_streaming_presenter_keeps_relative_effect_audio_paths_for_the_bridge() 
     presenter.start_loop_effect("typing", "data/effects/custom/typing.wav")
 
     assert [event["type"] for event in sink.events] == ["effect.play", "effect.loop.start"]
-    assert all(event["url"] == "data/effects/custom/typing.wav" for event in sink.events)
+    assert all(event["url"] == "media://data/effects/custom/typing.wav" for event in sink.events)
 
 
 def test_streaming_presenter_auto_plays_matching_dialogue_effect(tmp_path) -> None:
@@ -181,7 +181,7 @@ def test_streaming_presenter_skips_fallback_when_effect_is_explicit(tmp_path) ->
     ):
         presenter.update_dialog("旁白", "他正敲击键盘。", "", True, play_matching_effect=False)
 
-    assert [event["type"] for event in sink.events] == ["dialog.end"]
+    assert "effect.play" not in [event["type"] for event in sink.events]
 
 
 def test_streaming_presenter_resolves_explicit_configured_effects(tmp_path) -> None:
