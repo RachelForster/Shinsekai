@@ -333,6 +333,7 @@ class TemplateGenerator:
         use_stat=True,
         max_speech_chars: int = 0,
         max_dialog_items: int = 0,
+        effect_catalog: list[str] | None = None,
     ):
         if not selected_characters:
             raise NoValidCharactersError()
@@ -431,6 +432,9 @@ class TemplateGenerator:
             template += trans_line
         template += _T("json_foot")
         template += _render_field_notes(fields)
+        if use_effect and effect_catalog:
+            template += _T("effects_header")
+            template += "\n".join(f"- {entry}" for entry in effect_catalog) + "\n"
 
         template += _T("sprites_header")
         for char_name, char_detail in resolved_characters:

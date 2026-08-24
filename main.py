@@ -635,13 +635,10 @@ def main():
             print(f"[Effect] 可用特效方案: {all_effect_names}")
             for ef in config.config.effect_list:
                 if ef.name in effect_names:
-                    tags = (ef.audio_tags or "").splitlines()
+                    tags = [line.strip() for line in (ef.audio_tags or "").splitlines() if line.strip()]
                     audio_list = ef.audio_list or []
                     print(f"[Effect] 解析 {ef.name}: tags={len(tags)}行, audio={len(audio_list)}个")
                     for i, tag_line in enumerate(tags):
-                        tag_line = tag_line.strip()
-                        if not tag_line:
-                            continue
                         if "：" in tag_line:
                             keyword = tag_line.split("：", 1)[-1].strip()
                         elif ":" in tag_line:

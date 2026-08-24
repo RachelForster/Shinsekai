@@ -6,7 +6,7 @@ import html
 import logging
 import re
 import time
-from collections import Counter, OrderedDict
+from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 
@@ -228,8 +228,6 @@ class HeadlessUIUpdateManager:
         speech: str,
         color: str,
         is_system: bool = True,
-        *,
-        play_matching_effect: bool = True,
     ) -> None:
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
@@ -253,10 +251,6 @@ class HeadlessUIUpdateManager:
 
     def resolve_effect(self, *args: Any, **kwargs: Any) -> bool:
         return False
-
-    def play_matching_keyword_effect(self, text: str) -> None:
-        pass
-
 
 class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     """把演出输出序列化成 chat stage 事件流的无 Qt 实现（M0 占位骨架）。
@@ -432,54 +426,6 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
         self._sink.emit({"type": "effect.play", "url": self._media_url(str(path))})
 
-    def _play_matching_keyword_effect(self, text: str) -> None:
-        """Play the best configured one-shot effect mentioned in visible dialogue."""
-        try:
-            from application.runtime.context import get_app_runtime
-
-            keyword_map = getattr(get_app_runtime(), "effect_keyword_map", {}) or {}
-            compact_text = re.sub(r"[\W_]+", "", str(text or "").casefold())
-            matches = [
-                (re.sub(r"[\W_]+", "", str(keyword or "").casefold()), str(path or "").strip())
-                for keyword, path in keyword_map.items()
-            ]
-            matches = [(keyword, path) for keyword, path in matches if keyword and path]
-            if not compact_text or not matches:
-                return
-
-            context_chars_by_path: dict[str, set[str]] = {}
-            for path in {path for _, path in matches}:
-                chars = Counter(
-                    char
-                    for keyword, candidate_path in matches
-                    if candidate_path == path
-                    for char in set(keyword)
-                    if "\u4e00" <= char <= "\u9fff"
-                )
-                context_chars_by_path[path] = {char for char, count in chars.items() if count >= 2}
-
-            best: tuple[tuple[int, int], str] | None = None
-            for keyword, path in matches:
-                score: tuple[int, int] | None = None
-                if keyword in compact_text:
-                    score = (3, len(keyword))
-                elif len(keyword) >= 2 and re.search(r".{0,2}".join(map(re.escape, keyword)), compact_text):
-                    score = (2, len(keyword))
-                elif len(keyword) >= 3 and keyword[-2:] in compact_text:
-                    score = (1, 2)
-                elif any(char in compact_text for char in context_chars_by_path[path]):
-                    score = (0, 1)
-                if score and (best is None or score > best[0]):
-                    best = (score, path)
-
-            if best:
-                self.play_sound_effect(best[1])
-        except Exception:
-            return
-
-    def play_matching_keyword_effect(self, text: str) -> None:
-        self._play_matching_keyword_effect(text)
-
     def start_loop_effect(self, keyword: str, audio_path: str) -> None:
         key = str(keyword or "").strip()
         raw_path = str(audio_path or "").strip()
@@ -525,14 +471,10 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         speech: str,
         color: str,
         is_system: bool = True,
-        *,
-        play_matching_effect: bool = True,
     ) -> None:
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
-        if play_matching_effect:
-            self._play_matching_keyword_effect(speech)
         self._sink.emit(
             {
                 "type": "dialog.end",

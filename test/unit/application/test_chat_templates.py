@@ -16,6 +16,7 @@ from application.chat.templates import (
     _rename_template_session_character,
     _scenario_from_template_like,
     _safe_session_int,
+    _selected_effect_catalog,
     _save_template_session_payload,
     _template_session_to_frontend,
 )
@@ -103,6 +104,35 @@ def test_generate_template_summary_returns_canonical_resolved_characters(monkeyp
     assert summary["resolvedCharacters"] == ["Alice"]
     assert "Alice" in summary["system"]
     assert "Deleted" not in summary["system"]
+
+
+def test_generated_template_includes_only_selected_effect_labels(monkeypatch):
+    character = SimpleNamespace(name="Alice", sprites=[], emotion_tags="", character_setting="")
+    selected_effect = SimpleNamespace(
+        name="Ambient",
+        audio_list=["door.wav", "cloth.wav"],
+        audio_tags="Effect 1：开门\n\nEffect 2：衣物摩擦,脱衣服\n",
+    )
+    unselected_effect = SimpleNamespace(
+        name="Other", audio_list=["rain.wav"], audio_tags="Effect 1：下雨\n"
+    )
+    config_manager = SimpleNamespace(
+        config=SimpleNamespace(effect_list=[selected_effect, unselected_effect]),
+        get_character_by_name=lambda name: character if name.lower() == "alice" else None,
+    )
+    monkeypatch.setattr("ai.llm.template_generator.config_manager", config_manager)
+    monkeypatch.setattr("ai.llm.template_generator._T", lambda key, **kwargs: f"{key}:{kwargs}\n")
+    state = SimpleNamespace(config_manager=config_manager, template_generator=TemplateGenerator(output_contract_patches=[]))
+
+    summary = _generate_template_summary(
+        state,
+        {"characters": ["Alice"], "effectNames": ["Ambient"], "useEffect": True},
+    )
+
+    assert "开门" in summary["system"]
+    assert "衣物摩擦" in summary["system"]
+    assert "下雨" not in summary["system"]
+    assert _selected_effect_catalog(state, ["Ambient"]) == ["开门", "衣物摩擦"]
 
 
 def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):

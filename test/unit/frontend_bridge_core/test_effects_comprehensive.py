@@ -563,16 +563,13 @@ def test_keyword_parsing_normal():
 
 
 def test_keyword_parsing_with_empty_line():
-    """Keyword parsing with an empty tag line."""
+    """Empty tag lines do not shift the audio-to-tag pairing."""
     audio_tags = "特效 1：吓到\n\n特效 3：提示\n"
     audio_list = ["a1.wav", "a2.wav", "a3.wav"]
 
-    tags = audio_tags.splitlines()
+    tags = [line.strip() for line in audio_tags.splitlines() if line.strip()]
     effect_keyword_map = {}
     for i, tag_line in enumerate(tags):
-        tag_line = tag_line.strip()
-        if not tag_line:
-            continue
         if "：" in tag_line:
             keyword = tag_line.split("：", 1)[-1].strip()
         else:
@@ -583,11 +580,10 @@ def test_keyword_parsing_with_empty_line():
                 if kw:
                     effect_keyword_map[kw] = audio_list[i]
 
-    # Audio at index 1 (a2.wav) has no keyword → correctly unmapped
     assert "吓到" in effect_keyword_map
     assert "提示" in effect_keyword_map
     assert effect_keyword_map["吓到"] == "a1.wav"
-    assert effect_keyword_map["提示"] == "a3.wav"
+    assert effect_keyword_map["提示"] == "a2.wav"
 
 
 def test_keyword_parsing_multi_keywords():
