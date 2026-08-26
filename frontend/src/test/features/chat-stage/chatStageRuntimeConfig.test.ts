@@ -304,4 +304,29 @@ describe("chat stage runtime config", () => {
     const overriddenStyle = chatStageRuntimeStyle(overridden, themeStyle) as unknown as Record<string, unknown>;
     expect(overriddenStyle["--chat-dialog-text-align"]).toBe("center");
   });
+
+  it("keeps the default dialog width cap and widens it when dialogWidthPct is set", () => {
+    const themeStyle = {} as CSSProperties;
+    const defaultStyle = chatStageRuntimeStyle(defaultChatStageRuntimeConfig, themeStyle) as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(defaultStyle["--chat-dialog-runtime-width"]).toBe("1040px");
+    expect(defaultStyle["--chat-dialog-width"]).toBeUndefined();
+    expect(defaultStyle["--chat-dialog-max-width"]).toBeUndefined();
+
+    const widened = chatStageRuntimeStyle(
+      { ...defaultChatStageRuntimeConfig, dialogWidthPct: 100 },
+      themeStyle,
+    ) as unknown as Record<string, unknown>;
+    expect(widened["--chat-dialog-width"]).toBe("100vw");
+    expect(widened["--chat-dialog-runtime-width"]).toBe("100vw");
+    expect(widened["--chat-dialog-max-width"]).toBe("100vw");
+
+    const clamped = chatStageRuntimeStyle(
+      { ...defaultChatStageRuntimeConfig, dialogWidthPct: 500 },
+      themeStyle,
+    ) as unknown as Record<string, unknown>;
+    expect(clamped["--chat-dialog-width"]).toBe("100vw");
+  });
 });

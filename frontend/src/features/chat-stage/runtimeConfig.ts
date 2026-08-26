@@ -9,6 +9,7 @@ import { DEFAULT_TYPEWRITER_CPS } from "../../shared/theme/chatTheme";
 import { DEFAULT_THEME_COLOR, normalizeThemeColor } from "../../shared/theme/appTheme";
 
 export const clickThroughGuardIntervalMs = 32;
+const defaultChatDialogRuntimeWidth = "1040px";
 const runtimeConfigStorageKey = "shinsekai-chat-stage-runtime-config";
 const runtimeConfigChangeEventName = "shinsekai:chat-stage-runtime-config-change";
 export const chatStageRuntimeConfigVersion = 4;
@@ -20,6 +21,10 @@ export const runtimeDialogOpacityStep = 0.05;
 export const runtimeDialogFillOpacityMin = 0;
 export const runtimeDialogFillOpacityMax = 1;
 export const runtimeDialogFillOpacityStep = 0.05;
+export const runtimeDialogWidthPctDefault = 86;
+export const runtimeDialogWidthPctMin = 40;
+export const runtimeDialogWidthPctMax = 100;
+export const runtimeDialogWidthPctStep = 1;
 export const runtimeDialogScaleMin = 0.8;
 export const runtimeDialogScaleMax = 1.2;
 export const runtimeDialogScaleStep = 0.05;
@@ -78,6 +83,7 @@ export interface ChatStageRuntimeConfig {
   dialogFill: ChatStageDialogFillConfig;
   dialogOpacity: number;
   dialogScale: number;
+  dialogWidthPct: number | null;
   immersiveMode: boolean;
   longPressTalk: boolean;
   spriteScales: Record<string, number>;
@@ -124,6 +130,7 @@ export const defaultChatStageRuntimeConfig: ChatStageRuntimeConfig = {
   },
   dialogOpacity: 1,
   dialogScale: 1,
+  dialogWidthPct: null,
   immersiveMode: false,
   longPressTalk: false,
   nameText: {
@@ -329,6 +336,17 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
       runtimeDialogScaleMin,
       runtimeDialogScaleMax,
     ),
+    dialogWidthPct:
+      parsed.dialogWidthPct == null
+        ? null
+        : Math.round(
+            clampRuntimeNumber(
+              parsed.dialogWidthPct,
+              runtimeDialogWidthPctMax,
+              runtimeDialogWidthPctMin,
+              runtimeDialogWidthPctMax,
+            ),
+          ),
     immersiveMode:
       typeof parsed.immersiveMode === "boolean" ? parsed.immersiveMode : defaultChatStageRuntimeConfig.immersiveMode,
     longPressTalk:
@@ -667,6 +685,25 @@ export function chatStageRuntimeStyle(
     runtimeWindowScaleMin,
     runtimeWindowScaleMax,
   );
+  const dialogWidthPct =
+    config.dialogWidthPct == null
+      ? null
+      : Math.round(
+          clampRuntimeNumber(
+            config.dialogWidthPct,
+            runtimeDialogWidthPctMax,
+            runtimeDialogWidthPctMin,
+            runtimeDialogWidthPctMax,
+          ),
+        );
+  const dialogWidthStyle: Record<string, string> =
+    dialogWidthPct == null
+      ? { "--chat-dialog-runtime-width": defaultChatDialogRuntimeWidth }
+      : {
+          "--chat-dialog-width": `${dialogWidthPct}vw`,
+          "--chat-dialog-runtime-width": `${dialogWidthPct}vw`,
+          "--chat-dialog-max-width": `${dialogWidthPct}vw`,
+        };
   return {
     ...themeStyle,
     "--chat-config-accent": configAccent,
@@ -675,7 +712,7 @@ export function chatStageRuntimeStyle(
     "--chat-dialog-runtime-inverse-scale": String(Number((1 / dialogScale).toFixed(4))),
     "--chat-dialog-runtime-scale": String(dialogScale),
     "--chat-dialog-composed-scale": String(Number((dialogScale * windowScale).toFixed(4))),
-    "--chat-dialog-runtime-width": "1040px",
+    ...dialogWidthStyle,
     "--chat-dialog-text-runtime-color": runtimeTextColor(
       config.dialogText.color,
       defaultChatStageRuntimeConfig.dialogText.color,

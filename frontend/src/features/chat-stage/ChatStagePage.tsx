@@ -508,6 +508,10 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, dialogScale }));
   };
 
+  const updateRuntimeDialogWidthPct = (dialogWidthPct: number | null) => {
+    setRuntimeConfig((current) => ({ ...current, dialogWidthPct }));
+  };
+
   const updateRuntimeSpriteOffsetX = (spriteOffsetX: number) => {
     setRuntimeConfig((current) => ({ ...current, spriteOffsetX }));
   };
@@ -828,6 +832,7 @@ export function ChatStagePage() {
           dialogText={runtimeConfig.dialogText}
           dialogOpacity={runtimeConfig.dialogOpacity}
           dialogScale={runtimeConfig.dialogScale}
+          dialogWidthPct={runtimeConfig.dialogWidthPct}
           effectiveDialogText={effectiveDialogText}
           effectiveNameText={effectiveNameText}
           immersiveMode={runtimeConfig.immersiveMode}
@@ -843,6 +848,7 @@ export function ChatStagePage() {
           onDialogFillChange={updateRuntimeDialogFill}
           onDialogOpacityChange={updateRuntimeDialogOpacity}
           onDialogScaleChange={updateRuntimeDialogScale}
+          onDialogWidthPctChange={updateRuntimeDialogWidthPct}
           onImmersiveModeChange={updateRuntimeImmersiveMode}
           onResetThemeAppearance={resetRuntimeThemeAppearance}
           onOpenPluginPage={openPluginPage}
