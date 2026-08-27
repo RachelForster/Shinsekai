@@ -690,15 +690,22 @@ export function chatStageRuntimeStyle(
     runtimeWindowScaleMin,
     runtimeWindowScaleMax,
   );
+  const dialogComposedScale = Number((dialogScale * windowScale).toFixed(4));
   const dialogWidthPct = normalizeRuntimeDialogWidthPct(config.dialogWidthPct);
-  const dialogWidthStyle: Record<string, string> =
+  const dialogLayoutWidth =
     dialogWidthPct == null
+      ? null
+      : dialogComposedScale === 1
+        ? `${dialogWidthPct}vw`
+        : `calc(${dialogWidthPct}vw * ${Number((1 / dialogComposedScale).toFixed(8))})`;
+  const dialogWidthStyle: Record<string, string> =
+    dialogLayoutWidth == null
       ? { "--chat-dialog-runtime-width": defaultChatDialogRuntimeWidth }
       : {
-          "--chat-dialog-width": `${dialogWidthPct}vw`,
-          "--chat-dialog-runtime-width": `${dialogWidthPct}vw`,
-          "--chat-dialog-max-width": `${dialogWidthPct}vw`,
-          "--chat-dialog-responsive-width": `${dialogWidthPct}vw`,
+          "--chat-dialog-width": dialogLayoutWidth,
+          "--chat-dialog-runtime-width": dialogLayoutWidth,
+          "--chat-dialog-max-width": dialogLayoutWidth,
+          "--chat-dialog-responsive-width": dialogLayoutWidth,
         };
   return {
     ...themeStyle,
@@ -707,7 +714,7 @@ export function chatStageRuntimeStyle(
     ...(dialogFillBackground ? { "--chat-dialog-runtime-background": dialogFillBackground } : {}),
     "--chat-dialog-runtime-inverse-scale": String(Number((1 / dialogScale).toFixed(4))),
     "--chat-dialog-runtime-scale": String(dialogScale),
-    "--chat-dialog-composed-scale": String(Number((dialogScale * windowScale).toFixed(4))),
+    "--chat-dialog-composed-scale": String(dialogComposedScale),
     ...dialogWidthStyle,
     "--chat-dialog-text-runtime-color": runtimeTextColor(
       config.dialogText.color,

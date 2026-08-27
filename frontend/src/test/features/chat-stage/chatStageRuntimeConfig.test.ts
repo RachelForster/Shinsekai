@@ -330,6 +330,22 @@ describe("chat stage runtime config", () => {
       themeStyle,
     ) as unknown as Record<string, unknown>;
     expect(clamped["--chat-dialog-width"]).toBe("100vw");
+
+    const scaled = chatStageRuntimeStyle(
+      {
+        ...defaultChatStageRuntimeConfig,
+        dialogScale: 1.2,
+        dialogWidthPct: 100,
+        windowScale: 1.2,
+      },
+      themeStyle,
+    ) as unknown as Record<string, unknown>;
+    expect(scaled["--chat-dialog-composed-scale"]).toBe("1.44");
+    expect(scaled["--chat-dialog-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(scaled["--chat-dialog-runtime-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(scaled["--chat-dialog-max-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(scaled["--chat-dialog-responsive-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(0.69444444 * 1.44).toBeCloseTo(1, 7);
   });
 
   it("disables custom dialog width when a persisted value is invalid", () => {
