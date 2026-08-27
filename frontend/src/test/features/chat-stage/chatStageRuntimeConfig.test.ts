@@ -314,6 +314,7 @@ describe("chat stage runtime config", () => {
     expect(defaultStyle["--chat-dialog-runtime-width"]).toBe("1040px");
     expect(defaultStyle["--chat-dialog-width"]).toBeUndefined();
     expect(defaultStyle["--chat-dialog-max-width"]).toBeUndefined();
+    expect(defaultStyle["--chat-dialog-responsive-width"]).toBeUndefined();
 
     const widened = chatStageRuntimeStyle(
       { ...defaultChatStageRuntimeConfig, dialogWidthPct: 100 },
@@ -322,11 +323,28 @@ describe("chat stage runtime config", () => {
     expect(widened["--chat-dialog-width"]).toBe("100vw");
     expect(widened["--chat-dialog-runtime-width"]).toBe("100vw");
     expect(widened["--chat-dialog-max-width"]).toBe("100vw");
+    expect(widened["--chat-dialog-responsive-width"]).toBe("100vw");
 
     const clamped = chatStageRuntimeStyle(
       { ...defaultChatStageRuntimeConfig, dialogWidthPct: 500 },
       themeStyle,
     ) as unknown as Record<string, unknown>;
     expect(clamped["--chat-dialog-width"]).toBe("100vw");
+  });
+
+  it("disables custom dialog width when a persisted value is invalid", () => {
+    for (const dialogWidthPct of ["invalid", "", Number.NaN, Number.POSITIVE_INFINITY, false, {}]) {
+      expect(normalizeChatStageRuntimeConfig({ dialogWidthPct }).dialogWidthPct).toBeNull();
+    }
+
+    expect(normalizeChatStageRuntimeConfig({ dialogWidthPct: "72" }).dialogWidthPct).toBe(72);
+    expect(normalizeChatStageRuntimeConfig({ dialogWidthPct: 500 }).dialogWidthPct).toBe(100);
+
+    const invalidStyle = chatStageRuntimeStyle(
+      { ...defaultChatStageRuntimeConfig, dialogWidthPct: Number.NaN },
+      {},
+    ) as unknown as Record<string, unknown>;
+    expect(invalidStyle["--chat-dialog-runtime-width"]).toBe("1040px");
+    expect(invalidStyle["--chat-dialog-responsive-width"]).toBeUndefined();
   });
 });

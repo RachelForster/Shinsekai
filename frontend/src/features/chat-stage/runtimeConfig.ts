@@ -154,6 +154,21 @@ export function clampRuntimeNumber(value: unknown, fallback: number, min: number
   return Math.min(max, Math.max(min, next));
 }
 
+function normalizeRuntimeDialogWidthPct(value: unknown): number | null {
+  if (
+    value == null ||
+    (typeof value !== "number" && typeof value !== "string") ||
+    (typeof value === "string" && !value.trim())
+  ) {
+    return null;
+  }
+  const next = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(next)) {
+    return null;
+  }
+  return Math.round(Math.min(runtimeDialogWidthPctMax, Math.max(runtimeDialogWidthPctMin, next)));
+}
+
 function readRuntimeSpriteScales(
   parsed: Partial<ChatStageRuntimeConfig> & { spriteScale?: unknown },
   storedVersion: number,
@@ -336,17 +351,7 @@ export function normalizeChatStageRuntimeConfig(value: unknown): ChatStageRuntim
       runtimeDialogScaleMin,
       runtimeDialogScaleMax,
     ),
-    dialogWidthPct:
-      parsed.dialogWidthPct == null
-        ? null
-        : Math.round(
-            clampRuntimeNumber(
-              parsed.dialogWidthPct,
-              runtimeDialogWidthPctMax,
-              runtimeDialogWidthPctMin,
-              runtimeDialogWidthPctMax,
-            ),
-          ),
+    dialogWidthPct: normalizeRuntimeDialogWidthPct(parsed.dialogWidthPct),
     immersiveMode:
       typeof parsed.immersiveMode === "boolean" ? parsed.immersiveMode : defaultChatStageRuntimeConfig.immersiveMode,
     longPressTalk:
@@ -685,17 +690,7 @@ export function chatStageRuntimeStyle(
     runtimeWindowScaleMin,
     runtimeWindowScaleMax,
   );
-  const dialogWidthPct =
-    config.dialogWidthPct == null
-      ? null
-      : Math.round(
-          clampRuntimeNumber(
-            config.dialogWidthPct,
-            runtimeDialogWidthPctMax,
-            runtimeDialogWidthPctMin,
-            runtimeDialogWidthPctMax,
-          ),
-        );
+  const dialogWidthPct = normalizeRuntimeDialogWidthPct(config.dialogWidthPct);
   const dialogWidthStyle: Record<string, string> =
     dialogWidthPct == null
       ? { "--chat-dialog-runtime-width": defaultChatDialogRuntimeWidth }
@@ -703,6 +698,7 @@ export function chatStageRuntimeStyle(
           "--chat-dialog-width": `${dialogWidthPct}vw`,
           "--chat-dialog-runtime-width": `${dialogWidthPct}vw`,
           "--chat-dialog-max-width": `${dialogWidthPct}vw`,
+          "--chat-dialog-responsive-width": `${dialogWidthPct}vw`,
         };
   return {
     ...themeStyle,
