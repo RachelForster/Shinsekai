@@ -1725,6 +1725,7 @@ describe("ChatStagePage", () => {
         },
         dialogOpacity: 0.55,
         dialogScale: 1.05,
+        dialogWidthPct: null,
         immersiveMode: false,
         longPressTalk: false,
         nameText: {

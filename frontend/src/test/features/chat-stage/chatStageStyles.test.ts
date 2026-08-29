@@ -8,6 +8,7 @@ const dialogLayerCss: string = readFileSync("src/features/chat-stage/styles/dial
 const inputLayerCss: string = readFileSync("src/features/chat-stage/styles/input-layer.css", "utf8");
 const mediaLayersCss: string = readFileSync("src/features/chat-stage/styles/media-layers.css", "utf8");
 const optionsLayerCss: string = readFileSync("src/features/chat-stage/styles/options-layer.css", "utf8");
+const responsiveCss: string = readFileSync("src/features/chat-stage/styles/responsive.css", "utf8");
 const themePickerCss: string = readFileSync("src/features/chat-stage/theme/chat-theme-picker.css", "utf8");
 
 describe("chat stage immersive styles", () => {
@@ -93,5 +94,12 @@ describe("chat stage immersive styles", () => {
 
     expect(dialogBlock).not.toContain("var(--chat-dialog-background-image, none),");
     expect(nameBlock).not.toContain("var(--chat-name-background-image)");
+  });
+
+  it("allows the runtime dialog width to override the narrow viewport fallback", () => {
+    const responsiveDialogBlock = responsiveCss.split(".dialog-stack {")[1]?.split("}")[0] ?? "";
+
+    expect(responsiveDialogBlock).toContain("width: var(--chat-dialog-responsive-width, calc(100vw - 24px));");
+    expect(responsiveDialogBlock).toContain("max-width: var(--chat-dialog-responsive-width, calc(100vw - 24px));");
   });
 });

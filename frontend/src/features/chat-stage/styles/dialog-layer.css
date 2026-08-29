@@ -5,7 +5,7 @@
   z-index: 5;
   display: block;
   width: min(var(--chat-dialog-width), var(--chat-dialog-runtime-width));
-  max-width: calc(100vw - 40px);
+  max-width: var(--chat-dialog-max-width, calc(100vw - 40px));
   transform: translateX(-50%) scale(var(--chat-dialog-composed-scale));
   transform-origin: bottom center;
 }
