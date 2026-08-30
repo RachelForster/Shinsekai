@@ -512,6 +512,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "連続メッセージをまとめる",
   "chat.config.bgmVolume": "BGM音量",
+  "chat.config.effectVolume": "効果音量",
   "chat.audio.unlock": "サウンドを有効化",
   "chat.audio.unlockHint": "タップすると、この端末で音声・効果音・BGMを再生します。",
   "chat.config.batchHelp": "連続送信を保留し、1つのターンとしてモデルへ送信します。",

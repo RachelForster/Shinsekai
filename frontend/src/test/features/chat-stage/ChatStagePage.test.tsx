@@ -1703,6 +1703,7 @@ describe("ChatStagePage", () => {
         autoHideInput: true,
         autoHideTopTools: true,
         bgmVolume: 1,
+        effectVolume: 1,
         configThemeColor: "#88cc44",
         configUseMainThemeColor: false,
         dialogText: {

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
+from application.chat.effects import build_selected_effect_context
 from sdk.logging import get_logger, log_context, new_log_id
 
 from frontend_bridge_core.backgrounds import (
@@ -31,7 +32,6 @@ from frontend_bridge_core.backgrounds import (
     _upload_background_images,
 )
 from frontend_bridge_core.effects import (
-    _build_effect_usage_guide,
     _delete_all_effect_audio,
     _delete_effect,
     _delete_effect_audio,
@@ -1575,15 +1575,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if use_react_runtime and self.state.chat_stream is not None
             else {}
         )
-        effect_names_list = body.get("effectNames") or []
-        if isinstance(effect_names_list, list):
-            effect_names_str = ",".join(str(n) for n in effect_names_list)
-        else:
-            effect_names_str = ""
-        # 将选中特效方案的关键词和用法注入系统模板
-        effect_guide = _build_effect_usage_guide(self.state, effect_names_list if isinstance(effect_names_list, list) else [])
-        if effect_guide:
-            system_template = system_template.rstrip() + "\n\n" + effect_guide
+        effect_context = build_selected_effect_context(
+            self.state.config_manager,
+            body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
+        )
+        effect_names_str = ",".join(effect_context.selected_names)
+        system_template = effect_context.append_prompt_catalog(system_template)
         message = _launch_chat(
             self.state,
             character_names=characters,

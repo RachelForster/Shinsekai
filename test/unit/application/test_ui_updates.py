@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 from application.chat.ui_updates import (
@@ -109,6 +110,84 @@ def test_streaming_presenter_emits_frontend_effect_audio_events(tmp_path) -> Non
     ]
     assert "impact.wav" in sink.events[0]["url"]
     assert sink.events[1]["key"] == "rain"
+
+
+def test_streaming_presenter_keeps_relative_effect_audio_paths_for_the_bridge() -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    presenter.play_sound_effect("data/effects/custom/typing.wav")
+    presenter.start_loop_effect("typing", "data/effects/custom/typing.wav")
+
+    assert [event["type"] for event in sink.events] == ["effect.play", "effect.loop.start"]
+    assert all(event["url"] == "media://data/effects/custom/typing.wav" for event in sink.events)
+
+
+def test_streaming_presenter_does_not_guess_effects_from_dialogue(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    keyboard = tmp_path / "keyboard.wav"
+    keyboard.write_bytes(b"wav")
+
+    with patch(
+        "application.runtime.context.get_app_runtime",
+        return_value=type("Runtime", (), {"effect_keyword_map": {"键盘敲击声": str(keyboard)}})(),
+    ):
+        presenter.update_dialog("旁白", "身后传来键盘敲击声。", "", True)
+
+    assert [event["type"] for event in sink.events] == ["dialog.end", "history.replace"]
+
+
+def test_streaming_presenter_does_not_match_nearby_effect_wording(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    rain = tmp_path / "rain.wav"
+    keyboard = tmp_path / "keyboard.wav"
+    bell = tmp_path / "bell.wav"
+    for path in (rain, keyboard, bell):
+        path.write_bytes(b"wav")
+
+    runtime = type(
+        "Runtime",
+        (),
+        {
+            "effect_keyword_map": {
+                "雨天": str(rain),
+                "下雨": str(rain),
+                "雨声": str(rain),
+                "敲键盘": str(keyboard),
+                "按门铃": str(bell),
+            }
+        },
+    )()
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        presenter.update_dialog("旁白", "窗外的雨下得很急。", "", True)
+        presenter.update_dialog("旁白", "他正敲击键盘。", "", True)
+        presenter.update_dialog("旁白", "门铃忽然响了。", "", True)
+
+    assert "effect.play" not in [event["type"] for event in sink.events]
+
+
+def test_streaming_presenter_resolves_explicit_configured_effects(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    rain = tmp_path / "rain.wav"
+    typing = tmp_path / "typing.wav"
+    rain.write_bytes(b"wav")
+    typing.write_bytes(b"wav")
+
+    runtime = type(
+        "Runtime",
+        (),
+        {"effect_keyword_map": {"雨天": str(rain), "打字": str(typing)}},
+    )()
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        assert presenter.resolve_effect("loop:雨天", {}, after_dialog=False)
+        assert presenter.resolve_effect("打字", {}, after_dialog=False)
+
+    assert [event["type"] for event in sink.events] == [
+        "effect.loop.start",
+        "effect.play",
+    ]
 
 
 def test_streaming_presenter_keeps_character_slot_across_expression_changes() -> None:
