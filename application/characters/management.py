@@ -33,6 +33,13 @@ class CharacterRequest:
     payload: dict[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class CharacterExportResult:
+    """Transport-neutral reference to an exported character package."""
+
+    path: str
+
+
 def parse_character_request(
     operation: CharacterOperation,
     payload: dict[str, Any],
@@ -345,7 +352,7 @@ class CharacterUseCase:
         self._state.config_manager.reload()
         return [dict(item.__dict__) for item in imported]
 
-    def _export_package(self, payload: dict[str, Any]) -> dict[str, str]:
+    def _export_package(self, payload: dict[str, Any]) -> CharacterExportResult:
         name = str(payload.get("name") or "")
         character = self._character(name)
         from config.character_config import CharacterConfig
@@ -355,4 +362,4 @@ class CharacterUseCase:
         config = CharacterConfig.parse_dic(data)
         output, relative = self._resource_paths.export_target(name, ".char")
         export_character([config], output.as_posix(), open_folder=False)
-        return {"downloadUrl": f"/api/download?path={relative}", "path": relative}
+        return CharacterExportResult(path=relative)

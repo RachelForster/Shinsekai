@@ -1,6 +1,7 @@
 """Background application use cases."""
 
 from .management import (
+    BackgroundExportResult,
     BackgroundOperation,
     BackgroundRequest,
     BackgroundUseCase,
@@ -8,6 +9,7 @@ from .management import (
 )
 
 __all__ = [
+    "BackgroundExportResult",
     "BackgroundOperation",
     "BackgroundRequest",
     "BackgroundUseCase",

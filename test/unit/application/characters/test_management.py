@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from application.characters import (
+    CharacterExportResult,
     CharacterOperation,
     CharacterUseCase,
     parse_character_request,
@@ -181,3 +182,17 @@ def test_save_sprite_voice_type_rejects_missing_reference_audio(tmp_path):
             CharacterOperation.SAVE_SPRITE_VOICE_TYPE,
             {"name": "Mika", "spriteIndex": 0, "voiceType": "reference"},
         )
+
+
+def test_export_returns_transport_neutral_path_result(tmp_path, monkeypatch):
+    use_case = make_use_case(make_character(), tmp_path)
+    exported = []
+    monkeypatch.setattr(
+        "tools.file_util.export_character",
+        lambda _characters, output, *, open_folder: exported.append(output),
+    )
+
+    result = execute(use_case, CharacterOperation.EXPORT, {"name": "Mika"})
+
+    assert result == CharacterExportResult(path="output/Mika.char")
+    assert exported == [(tmp_path / "output" / "Mika.char").as_posix()]

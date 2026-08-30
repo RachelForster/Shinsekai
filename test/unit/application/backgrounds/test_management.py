@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from application.backgrounds import (
+    BackgroundExportResult,
     BackgroundOperation,
     BackgroundUseCase,
     parse_background_request,
@@ -75,3 +76,19 @@ def test_delete_background_preserves_bridge_response_shape(tmp_path):
     )
 
     assert result == {"message": "背景组 Room 已删除！", "names": []}
+
+
+def test_export_returns_transport_neutral_path_result(tmp_path, monkeypatch):
+    use_case, _config_manager = make_use_case(tmp_path)
+    exported = []
+    monkeypatch.setattr(
+        "tools.file_util.export_background",
+        lambda _backgrounds, output, *, open_folder: exported.append(output),
+    )
+
+    result = use_case.execute(
+        parse_background_request(BackgroundOperation.EXPORT, {"name": "Room"})
+    )
+
+    assert result == BackgroundExportResult(path="output/Room.bg")
+    assert exported == [(tmp_path / "output" / "Room.bg").as_posix()]

@@ -35,6 +35,13 @@ class BackgroundRequest:
     payload: dict[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class BackgroundExportResult:
+    """Transport-neutral reference to an exported background package."""
+
+    path: str
+
+
 def parse_background_request(
     operation: BackgroundOperation,
     payload: dict[str, Any],
@@ -190,11 +197,11 @@ class BackgroundUseCase:
         self._state.config_manager.reload()
         return [_jsonify(item) for item in imported]
 
-    def _export_package(self, payload: dict[str, Any]) -> dict[str, str]:
+    def _export_package(self, payload: dict[str, Any]) -> BackgroundExportResult:
         name = str(payload.get("name") or "")
         background = self._background(name)
         output, relative = self._resource_paths.export_target(name, ".bg")
         from tools.file_util import export_background
 
         export_background([background], output.as_posix(), open_folder=False)
-        return {"downloadUrl": f"/api/download?path={relative}", "path": relative}
+        return BackgroundExportResult(path=relative)

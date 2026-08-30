@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from application.characters import (
+    CharacterExportResult,
     CharacterOperation,
     CharacterUseCase,
     parse_character_request,
@@ -22,6 +23,17 @@ def _execute_character_request(
     request = parse_character_request(operation, payload)
     roots = (*_local_file_access_roots(state), *extra_file_access_roots)
     return CharacterUseCase(state, file_access_roots=roots).execute(request)
+
+
+def character_response_payload(result: Any) -> Any:
+    """Project application results onto the character HTTP response shape."""
+
+    if isinstance(result, CharacterExportResult):
+        return {
+            "downloadUrl": f"/api/download?path={result.path}",
+            "path": result.path,
+        }
+    return result
 
 
 def _character_json_after_reload(state: BridgeState, name: str) -> dict[str, Any]:

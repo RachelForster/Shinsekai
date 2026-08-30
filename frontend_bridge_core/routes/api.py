@@ -26,6 +26,7 @@ from frontend_bridge_core.backgrounds import (
     _save_background_bgm_tags,
     _save_background_image_tags,
     _translate_background_fields,
+    background_response_payload,
 )
 from application.effects import EffectOperation
 from frontend_bridge_core.effects import (
@@ -68,6 +69,7 @@ from frontend_bridge_core.characters import (
     _save_character_emotion_tags,
     _save_sprite_scale,
     _translate_character_fields,
+    character_response_payload,
 )
 from frontend_bridge_core.memory import (
     _add_character_memory,
@@ -1012,7 +1014,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/characters/export":
-                self._send_json(_execute_character_request(self.state, CharacterOperation.EXPORT, body))
+                self._send_json(
+                    character_response_payload(
+                        _execute_character_request(
+                            self.state,
+                            CharacterOperation.EXPORT,
+                            body,
+                        )
+                    )
+                )
             elif method == "POST" and path == "/api/backgrounds/translate":
                 self._send_json(_translate_background_fields(self.state, body))
             elif method == "POST" and path == "/api/backgrounds/images/upload":
@@ -1066,7 +1076,15 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/backgrounds/export":
-                self._send_json(_execute_background_request(self.state, BackgroundOperation.EXPORT, body))
+                self._send_json(
+                    background_response_payload(
+                        _execute_background_request(
+                            self.state,
+                            BackgroundOperation.EXPORT,
+                            body,
+                        )
+                    )
+                )
             # --- effects ---
             elif method == "POST" and path == "/api/effects/audio/upload":
                 self._send_json(

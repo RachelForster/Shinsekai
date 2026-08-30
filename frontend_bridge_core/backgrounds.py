@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from application.backgrounds import (
+    BackgroundExportResult,
     BackgroundOperation,
     BackgroundUseCase,
     parse_background_request,
@@ -23,6 +24,17 @@ def _execute_background_request(
     request = parse_background_request(operation, payload)
     roots = (*_local_file_access_roots(state), *extra_file_access_roots)
     return BackgroundUseCase(state, file_access_roots=roots).execute(request)
+
+
+def background_response_payload(result: Any) -> Any:
+    """Project application results onto the background HTTP response shape."""
+
+    if isinstance(result, BackgroundExportResult):
+        return {
+            "downloadUrl": f"/api/download?path={result.path}",
+            "path": result.path,
+        }
+    return result
 
 
 def _background_json_after_reload(state: BridgeState, name: str) -> dict[str, Any]:

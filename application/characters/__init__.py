@@ -1,6 +1,7 @@
 """Character application use cases."""
 
 from .management import (
+    CharacterExportResult,
     CharacterOperation,
     CharacterRequest,
     CharacterUseCase,
@@ -9,6 +10,7 @@ from .management import (
 )
 
 __all__ = [
+    "CharacterExportResult",
     "CharacterOperation",
     "CharacterRequest",
     "CharacterUseCase",
