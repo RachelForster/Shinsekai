@@ -1,4 +1,3 @@
-import json
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -70,7 +69,7 @@ if _EARLY_INIT_STREAM_ENDPOINT:
     except Exception:
         _EARLY_INIT_STREAM_SINK = None
 
-from sdk.chat_init import ChatInitService, InitChatCancelled, InitChatContext
+from sdk.chat_init import ChatInitService, InitChatCancelled
 
 _CHAT_INIT_SINK = _EARLY_INIT_STREAM_SINK or _EARLY_STREAM_SINK
 _CHAT_INIT_SERVICE = ChatInitService(_CHAT_INIT_SINK.emit if _CHAT_INIT_SINK is not None else None)
@@ -102,7 +101,6 @@ import ai.tools.file_tools
 import ai.tools.chat_ui_tools
 import ai.tools.story_tools
 from ai.llm.template_generator import is_transparent_background
-from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
 from ai.llm.text_processor import TextProcessor
 from application.chat.turn_wiring import create_chat_turn_service
 from core.messaging.queue import ClearableQueue
@@ -118,9 +116,6 @@ from core.paths import resource_path
 from core.sprite.chat_branch_storage import (
     chat_history_active_path,
 )
-from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
-from config.config_manager import ConfigManager
-from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
 from opencc import OpenCC
 from queue import Queue
 
@@ -138,7 +133,6 @@ from application.chat.history_state import (
     chat_history,
     get_history,
     history_entry_stage_payload,
-    load_chat_history,
     replay_history_entry,
     save_bg,
     save_chat_history,
@@ -150,7 +144,12 @@ from frontend_bridge_core.transport.chat_commands import (
 from application.chat.session_restore import restore_session_presentation
 from application.chat.initial_sprite import (
     display_initial_sprite,
-    find_character_sprite_by_path,
+)
+from application.chat.startup import (
+    chat_history_is_present,
+    create_chat_startup_context,
+    load_chat_config,
+    MissingLlmProviderError,
 )
 from core.sprite.sprite_cli import parse_sprite_args
 logger.info(
@@ -173,10 +172,10 @@ _CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
     "config.load": (0.02, 0.06, "Loading configuration."),
     "i18n.import": (0.06, 0.08, "Loading language support."),
     "i18n.init": (0.08, 0.1, "Preparing translations."),
-    "plugins.import": (0.1, 0.13, "Loading plugin runtime."),
-    "plugins.load": (0.13, 0.22, "Initializing plugins."),
-    "args.parse": (0.22, 0.24, "Reading chat settings."),
-    "stream.sink.init": (0.24, 0.26, "Connecting initialization progress."),
+    "args.parse": (0.1, 0.12, "Reading chat settings."),
+    "stream.sink.init": (0.12, 0.14, "Connecting initialization progress."),
+    "plugins.import": (0.14, 0.17, "Loading plugin runtime."),
+    "plugins.load": (0.17, 0.26, "Initializing plugins."),
     "t2i.init": (0.26, 0.32, "Preparing image generation."),
     "tts.init": (0.32, 0.46, "Starting the voice service."),
     "template.load": (0.46, 0.54, "Loading the chat template and history."),
@@ -318,40 +317,6 @@ def _install_interrupt_handlers():
     return _restore
 
 
-def _parse_character_names(raw: str) -> list[str]:
-    text = str(raw or "").strip()
-    if not text:
-        return []
-    try:
-        parsed = json.loads(text)
-    except json.JSONDecodeError:
-        parsed = [part.strip() for part in text.split(",")]
-    if not isinstance(parsed, list):
-        return []
-    return [str(item).strip() for item in parsed if str(item).strip()]
-
-
-def _memory_character_names(args, config: ConfigManager) -> list[str]:
-    names = _parse_character_names(getattr(args, "characters", ""))
-    if names:
-        return names
-    init_sprite_path = str(getattr(args, "init_sprite_path", "") or "")
-    if not init_sprite_path:
-        return []
-    try:
-        matched = find_character_sprite_by_path(config, init_sprite_path)
-    except OSError:
-        logger.warning(
-            "Failed to resolve memory character from initial sprite path",
-            extra={"event": "memory.character.resolve_failed", "sprite_path": init_sprite_path},
-            exc_info=True,
-        )
-        return []
-    if matched is not None:
-        return [matched[0]]
-    return []
-
-
 class _StreamWindowProxy:
     def __init__(self, ui_updates):
         self._ui_updates = ui_updates
@@ -378,7 +343,7 @@ def main():
     main_started = time.perf_counter()
     logger.info("Chat application starting", extra={"event": "app.started"})
     with _startup_phase("config.load"):
-        config = ConfigManager()
+        config = load_chat_config()
     with _startup_phase("i18n.import"):
         from i18n import init_i18n, tr as tr_i18n, tr_in_bundle
         from ai.asr.asr_adapter import (
@@ -389,36 +354,6 @@ def main():
     with _startup_phase("i18n.init"):
         init_i18n(config.config.system_config.ui_language)
 
-    with _startup_phase("plugins.import"):
-        from plugin_system.host import (
-            bind_frontend_ui_runtime,
-            ensure_plugins_loaded,
-            PluginRuntimeBindings,
-            wire_user_input_plugins,
-        )
-
-    with _startup_phase("plugins.load"):
-        from ai.vision.fallback_registry import configure_registered_fallbacks
-        from ai.asr.asr_manager import ASRAdapterFactory
-        from ai.tools.tool_manager import ToolManager
-
-        def register_mcp_tools(tool_manager) -> None:
-            from ai.tools.mcp_tool_setup import register_mcp_tools_from_config
-
-            register_mcp_tools_from_config(tool_manager)
-
-        plugin_manager = ensure_plugins_loaded(
-            config,
-            runtime_bindings=PluginRuntimeBindings(
-                llm_adapters=LLMAdapterFactory._adapters,
-                tts_adapters=TTSAdapterFactory._adapters,
-                asr_adapters=ASRAdapterFactory._adapters,
-                t2i_adapters=T2IAdapterFactory._adapters,
-                create_tool_manager=ToolManager,
-                configure_vision_fallbacks=configure_registered_fallbacks,
-                register_mcp_tools=register_mcp_tools,
-            ),
-        )
     with _startup_phase("args.parse"):
         args = parse_sprite_args(tr_i18n, defaults=_LAUNCH_CONFIG)
     if not args.stream_endpoint and not args.headless:
@@ -433,170 +368,39 @@ def main():
 
             stream_sink = WSClientSink(args.stream_endpoint)
             stream_sink.emit({"type": "status.change", "status": "idle"})
-    bind_frontend_ui_runtime(
-        stream_sink.emit if plugin_manager is not None and stream_sink is not None else None
-    )
 
-    # T2I manager
-    t2i_manager = None
-    if args.t2i:
-        with _startup_phase("t2i.init"):
-            raw = (args.t2i or "").strip()
-            adapter_pick = (
-                (config.config.api_config.t2i_provider or "comfyui").strip()
-                if raw.lower() == "comfyui"
-                else raw
-            )
-            try:
-                t2i_adapter = T2IAdapterFactory.create_adapter(
-                    adapter_name=adapter_pick,
-                    **config.merged_t2i_factory_kwargs(
-                        adapter_pick,
-                        {
-                            "work_path": config.config.api_config.t2i_work_path,
-                            "api_url": config.config.api_config.t2i_api_url,
-                            "workflow_path": config.config.api_config.t2i_default_workflow_path,
-                            "prompt_node_id": config.config.api_config.t2i_prompt_node_id,
-                            "output_node_id": config.config.api_config.t2i_output_node_id,
-                        },
-                    ),
-                )
-                t2i_manager = T2IManager(t2i_adapter)
-            except Exception:
-                _CHAT_INIT_SERVICE.report(
-                    phase="t2i.init",
-                    message="Image generation is unavailable; continuing without it.",
-                    log="Image generation initialization failed and was skipped.",
-                )
-                logger.exception("T2I initialization failed", extra={"event": "t2i.init.failed"})
+    def _bind_plugin_frontend(plugin_manager) -> None:
+        from plugin_system.host import bind_frontend_ui_runtime
 
-    # TTS
-    gsv_url, gsv_api_path, config_tts_provider = config.get_gpt_sovits_config()
-    adapter_name = (args.tts or "").strip() or config_tts_provider
-    tts_manager = None
-    if adapter_name and str(adapter_name).strip().lower() not in ("none",):
-        with _startup_phase("tts.init"):
-            try:
-                adapter = TTSAdapterFactory.create_adapter(
-                    adapter_name=adapter_name,
-                    wait_until_ready=True,
-                    **config.merged_tts_factory_kwargs(
-                        adapter_name,
-                        {
-                            "gpt_sovits_work_path": gsv_api_path,
-                            "tts_server_url": gsv_url,
-                        },
-                    ),
-                )
-                tts_manager = TTSManager(tts_server_url=gsv_url)
-                tts_manager.set_tts_adapter(adapter=adapter)
-                _voice_lang = str(config.config.system_config.voice_language or "ja").strip() or "ja"
-                tts_manager.set_language(_voice_lang)
-            except Exception:
-                _CHAT_INIT_SERVICE.report(
-                    phase="tts.init",
-                    message="Voice service is unavailable; continuing with text chat.",
-                    log="Voice service initialization failed and was skipped.",
-                )
-                logger.exception("TTS initialization failed", extra={"event": "tts.init.failed"})
+        bind_frontend_ui_runtime(
+            stream_sink.emit
+            if plugin_manager is not None and stream_sink is not None
+            else None
+        )
 
-    print(tr_i18n("main.print_load_template", a=args))
-
-    with _startup_phase("template.load"):
-        messages = []
-        active_history_present = False
-        if args.history:
-            print(tr_i18n("main.print_load_history", path=args.history))
-            active_history_path = chat_history_active_path(args.history)
-            messages = load_chat_history(str(active_history_path))
-            try:
-                active_history_present = isinstance(
-                    json.loads(active_history_path.read_text(encoding="utf-8")),
-                    list,
-                )
-            except (OSError, json.JSONDecodeError):
-                active_history_present = False
-
-        user_template = ""
-        with open(
-            f"./data/character_templates/{args.template}.txt", "r", encoding="utf-8"
-        ) as f:
-            user_template = f.read()
-
-    llm_provider, llm_model, base_url, api_key = config.get_llm_api_config()
-    logger.info(
-        "LLM configuration selected",
-        extra={
-            "event": "llm.config.selected",
-            "provider": llm_provider,
-            "model": llm_model,
-            "custom_base_url": bool(base_url),
-            "auth_configured": bool(api_key),
-        },
-    )
-    if not llm_provider:
-        _CHAT_INIT_SERVICE.failed("No language model provider is configured.")
+    try:
+        startup = create_chat_startup_context(
+            args,
+            config=config,
+            init_service=_CHAT_INIT_SERVICE,
+            translate=tr_i18n,
+            phase=_startup_phase,
+            on_plugins_loaded=_bind_plugin_frontend,
+        )
+    except MissingLlmProviderError as exc:
+        _CHAT_INIT_SERVICE.failed(str(exc))
         print(tr_i18n("main.err_select_llm"))
         return
-    with _startup_phase("llm.init"):
-        llm_adapter = LLMAdapterFactory.create_adapter(
-            **config.merged_llm_factory_kwargs(
-                llm_provider,
-                {
-                    "llm_provider": llm_provider,
-                    "api_key": api_key,
-                    "base_url": base_url,
-                    "model": llm_model,
-                },
-            )
-        )
-        llm_manager = LLMManager(
-            adapter=llm_adapter,
-            user_template=user_template,
-            max_tokens=int(config.config.api_config.max_context_tokens),
-            compact_threshold=float(config.config.api_config.compact_threshold),
-            compact_target_ratio=float(config.config.api_config.compact_target_ratio),
-            history_recent_messages=int(config.config.api_config.history_recent_messages),
-            max_tool_result_chars=int(config.config.api_config.max_tool_result_chars),
-            max_active_tool_groups=int(config.config.api_config.max_active_tool_groups),
-            generation_config={
-                "temperature": float(config.config.api_config.temperature),
-                "repetition_penalty": float(config.config.api_config.repetition_penalty),
-                "presence_penalty": float(config.config.api_config.presence_penalty),
-                "frequency_penalty": float(config.config.api_config.frequency_penalty),
-                "max_tokens": 4096,
-            },
-            history_file=str(chat_history_active_path(args.history)) if args.history else "",
-            hook_dispatcher=(
-                plugin_manager.hook_dispatcher if plugin_manager is not None else None
-            ),
-        )
-        if plugin_manager is not None:
-            from ai.memory.hooks import install_memory_hooks
 
-            install_memory_hooks(
-                plugin_manager.hook_dispatcher,
-                llm_adapter=llm_adapter,
-                character_names=_memory_character_names(args, config),
-            )
+    config = startup.config
+    llm_manager = startup.llm_manager
+    tts_manager = startup.tts_manager
+    t2i_manager = startup.t2i_manager
+    plugin_manager = startup.plugin_manager
+    messages = startup.messages
+    active_history_present = chat_history_is_present(args.history)
 
-    with _startup_phase("chat.init_hooks"):
-        if plugin_manager is not None:
-            init_context = InitChatContext(
-                service=_CHAT_INIT_SERVICE,
-                character_names=tuple(_memory_character_names(args, config)),
-                tts_provider=str(adapter_name or ""),
-                voice_language=str(config.config.system_config.voice_language or "ja"),
-                memory_enabled=str(os.environ.get("SHINSEKAI_MEMORY_AUTO_ENABLED") or "1").strip().lower()
-                not in {"0", "false", "no", "off"},
-                runtime_mode="react" if args.stream_endpoint else "headless" if args.headless else "native",
-                headless=bool(args.headless),
-                metadata={"workflowPath": str(args.workflow or "")},
-            ).scaled(0.68, 0.82)
-            plugin_manager.hook_dispatcher.dispatch_init_chat(init_context)
-
-    if messages:
-        llm_manager.set_messages(messages)
+    from plugin_system.host import wire_user_input_plugins
 
     image_queue = Queue()
     emotion_queue = Queue()

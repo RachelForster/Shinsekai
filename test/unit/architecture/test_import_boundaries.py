@@ -745,6 +745,41 @@ def test_main_delegates_realtime_chat_commands() -> None:
     assert '"type": "cmd.ack"' in transport_source
 
 
+def test_main_delegates_chat_startup_assembly() -> None:
+    """Keep providers, templates, hooks, and fallback policy out of main.py."""
+
+    entrypoint = REPO_ROOT / "main.py"
+    startup = REPO_ROOT / "application" / "chat" / "startup.py"
+    source = entrypoint.read_text(encoding="utf-8")
+    startup_source = startup.read_text(encoding="utf-8")
+    retired_implementations = {
+        "ensure_plugins_loaded(",
+        "LLMAdapterFactory.create_adapter(",
+        "TTSAdapterFactory.create_adapter(",
+        "T2IAdapterFactory.create_adapter(",
+        "install_memory_hooks(",
+        "get_llm_api_config(",
+        "get_gpt_sovits_config(",
+        "data/character_templates",
+    }
+
+    assert startup.is_file()
+    assert "class ChatStartupContext:" in startup_source
+    for field in (
+        "config:",
+        "llm_manager:",
+        "tts_manager:",
+        "t2i_manager:",
+        "plugin_manager:",
+        "messages:",
+    ):
+        assert field in startup_source
+    assert "startup = create_chat_startup_context(" in source
+    assert not {item for item in retired_implementations if item in source}, (
+        "main.py must consume ChatStartupContext instead of assembling providers."
+    )
+
+
 def test_mobile_access_respects_application_and_transport_boundaries() -> None:
     """Keep lifecycle in application and concrete listeners in the bridge."""
 
