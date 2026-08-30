@@ -246,7 +246,9 @@ PR 范围：
   保留在 `frontend_bridge_core/transport/chat_commands.py`；
 - provider、插件、模板、历史和 memory hooks 启动装配迁到
   `application/chat/startup.py`，统一返回 `ChatStartupContext`；
-- streaming/headless 生命周期迁到 `application/chat/run_session.py`；
+- streaming/headless 生命周期迁到 `application/chat/session_runtime.py`，初始场景
+  恢复迁到 `application/chat/presentation.py`，实时适配接线迁到
+  `application/chat/wire_streaming_session.py`；
 - 完成后 `main.py` 只保留进程环境、transport 装配、模式选择和顶层异常处理。
 
 ## 4. 迁移映射
@@ -284,6 +286,7 @@ PR 范围：
 | `main.py` 对话分支闭包 | `application/chat/manage_branches.py` | O9/阶段 1 | 分支状态、操作和持久化归 application，入口只装配窄回调 |
 | `main.py` 实时命令分支 | `application/chat/commands.py` + `frontend_bridge_core/transport/chat_commands.py` | O9/阶段 2 | application 执行命令行为，transport 只解析 payload 并发送 ack |
 | `main.py` provider 与启动装配 | `application/chat/startup.py` | O9/阶段 3 | provider、模板、历史、memory hooks 和降级策略归 application，入口只消费 ChatStartupContext |
+| `main.py` 会话生命周期 | `application/chat/session_runtime.py` + `application/chat/presentation.py` + `application/chat/wire_streaming_session.py` | O9/阶段 4 | Streaming/Headless session 持有 workflow、queues、AppRuntime、初始展示与关闭持久化；实时适配独立接线；main 只保留四步装配 |
 
 ## 5. 通用退出条件
 
