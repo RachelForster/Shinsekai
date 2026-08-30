@@ -41,6 +41,7 @@ export class SoundPlayer {
   private bgm: HTMLAudioElement | null = null;
   private bgmUrl = "";
   private currentVoice: ActiveVoice | null = null;
+  private effectVolume = 1;
   private readonly effectPlayers = new Set<HTMLAudioElement>();
   private readonly listeners = new Set<SoundPlayerLockListener>();
   private locked = false;
@@ -98,6 +99,13 @@ export class SoundPlayer {
     }
   }
 
+  setEffectVolume(volume: number) {
+    this.effectVolume = clampVolume(volume);
+    for (const audio of [...this.effectPlayers, ...this.loopPlayers.values()]) {
+      audio.volume = this.effectVolume;
+    }
+  }
+
   playVoice(playbackId: string, url: string, volume = 1) {
     const nextUrl = url.trim();
     if (!nextUrl) {
@@ -139,6 +147,7 @@ export class SoundPlayer {
     }
     const audio = this.createAudio(nextUrl);
     audio.preload = "auto";
+    audio.volume = this.effectVolume;
     this.effectPlayers.add(audio);
     audio.onended = () => this.effectPlayers.delete(audio);
     this.requestPlay(audio);
@@ -154,6 +163,7 @@ export class SoundPlayer {
     const audio = this.createAudio(nextUrl);
     audio.loop = true;
     audio.preload = "auto";
+    audio.volume = this.effectVolume;
     this.loopPlayers.set(nextKey, audio);
     this.requestPlay(audio);
   }

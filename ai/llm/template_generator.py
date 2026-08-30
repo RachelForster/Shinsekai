@@ -431,7 +431,6 @@ class TemplateGenerator:
             template += trans_line
         template += _T("json_foot")
         template += _render_field_notes(fields)
-
         template += _T("sprites_header")
         for char_name, char_detail in resolved_characters:
             sprites = getattr(char_detail, "sprites", None) or []

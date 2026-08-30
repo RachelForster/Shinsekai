@@ -506,6 +506,7 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.scaleValue": "{value}%",
   "chat.config.batchEnabled": "Stack consecutive messages",
   "chat.config.bgmVolume": "BGM volume",
+  "chat.config.effectVolume": "Sound effect volume",
   "chat.audio.unlock": "Enable sound",
   "chat.audio.unlockHint": "Tap to play voices, sound effects, and BGM on this device.",
   "chat.config.batchHelp": "Hold consecutive sends and submit them to the model as one turn.",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import logging
 import re
 import time
 from collections import OrderedDict
@@ -13,6 +14,7 @@ if TYPE_CHECKING:
     from application.runtime.event_sink import ChatEventSink
 
 from core.messaging.stat_payload import format_stats_html, parse_stat_payload
+from core.paths import resource_path
 from application.chat.history_state import serialize_chat_history_entries
 
 SOUND_EFFECTS_PATH = {
@@ -22,6 +24,7 @@ SOUND_EFFECTS_PATH = {
 }
 
 _config_manager = None
+logger = logging.getLogger(__name__)
 
 
 def _get_config_manager():
@@ -219,7 +222,13 @@ class HeadlessUIUpdateManager:
         if value:
             self.user_display_name = value
 
-    def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
+    def update_dialog(
+        self,
+        name: str,
+        speech: str,
+        color: str,
+        is_system: bool = True,
+    ) -> None:
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
@@ -240,9 +249,8 @@ class HeadlessUIUpdateManager:
         if new_bgm_path:
             print(f"bgm: {new_bgm_path}")
 
-    def resolve_effect(self, *args: Any, **kwargs: Any) -> None:
-        pass
-
+    def resolve_effect(self, *args: Any, **kwargs: Any) -> bool:
+        return False
 
 class StreamingUIUpdateManager(HeadlessUIUpdateManager):
     """把演出输出序列化成 chat stage 事件流的无 Qt 实现（M0 占位骨架）。
@@ -412,22 +420,24 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._sink.emit(payload)
 
     def play_sound_effect(self, sound_effect_path: str) -> None:
-        path = str(sound_effect_path or "").strip()
-        if not path or not Path(path).exists():
+        raw_path = str(sound_effect_path or "").strip()
+        if not raw_path:
             return
-        self._sink.emit({"type": "effect.play", "url": self._media_url(path)})
+        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
+        self._sink.emit({"type": "effect.play", "url": self._media_url(str(path))})
 
     def start_loop_effect(self, keyword: str, audio_path: str) -> None:
         key = str(keyword or "").strip()
-        path = str(audio_path or "").strip()
-        if not key or not path or not Path(path).exists() or key in self._looping_effects:
+        raw_path = str(audio_path or "").strip()
+        if not key or not raw_path or key in self._looping_effects:
             return
-        self._looping_effects[key] = path
+        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
+        self._looping_effects[key] = str(path)
         self._sink.emit(
             {
                 "type": "effect.loop.start",
                 "key": key,
-                "url": self._media_url(path),
+                "url": self._media_url(str(path)),
             }
         )
 
@@ -455,7 +465,13 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
 
     # --- 高层业务组装 → 事件 ---
 
-    def update_dialog(self, name: str, speech: str, color: str, is_system: bool = True) -> None:
+    def update_dialog(
+        self,
+        name: str,
+        speech: str,
+        color: str,
+        is_system: bool = True,
+    ) -> None:
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
@@ -546,13 +562,15 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._sprite_lru.pop(character_name, None)
         self._sink.emit({"type": "sprite.remove", "characterName": character_name})
 
-    def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> None:
+    def resolve_effect(self, effect: str, args: Dict[str, Any], after_dialog: bool = False) -> bool:
         raw = str(effect or "").strip()
         if not raw:
-            return
+            return False
         if raw.upper() == "LEAVE" and after_dialog:
             self.remove_character_sprite(str(args.get("character_name") or ""))
-            return
+            return True
+        if raw.upper() == "LEAVE":
+            return True
 
         mode = "once"
         if raw.startswith("loop:"):
@@ -571,7 +589,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             if (timing == "before" and after_dialog) or (
                 timing == "after" and not after_dialog
             ):
-                return
+                return True
 
         keyword = raw.strip()
         if not keyword:
@@ -594,10 +612,23 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             except Exception:
                 audio_path = ""
         if mode != "stop" and not audio_path:
-            return
+            logger.warning("chat.effect.unresolved effect=%r keyword=%r", effect, keyword)
+            return False
         if mode == "loop":
             self.start_loop_effect(keyword, audio_path)
+            emitted = keyword in self._looping_effects
         elif mode == "stop":
+            emitted = keyword in self._looping_effects
             self.stop_loop_effect(keyword)
         else:
             self.play_sound_effect(audio_path)
+            emitted = True
+        if emitted:
+            logger.info(
+                "chat.effect.emitted effect=%r mode=%s keyword=%r path=%r",
+                effect,
+                mode,
+                keyword,
+                audio_path,
+            )
+        return emitted
