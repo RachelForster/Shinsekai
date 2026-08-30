@@ -17,6 +17,26 @@
 - 命名空间迁移先更新实现和内部引用，再按发布策略删除兼容入口。
 - 产品 UI 只由 React/Tauri 承载；Qt 设置页、Qt 聊天窗和历史 Python UI 入口已退出。
 
+### 1.1 `core` 与 `application` 的边界模型
+
+本项目中的 `core/` 不是“所有业务逻辑”的同义词，也不等同于传统分层架构中的
+service 层。这里采用 **Host Capability + Use Case** 的划分：
+
+- `core/` 是可被复用的宿主基础能力（Host Capability）。它回答“怎样完成一个
+  有明确输入输出的动作”，不拥有当前会话、当前任务或整个应用的运行状态。
+- `application/` 是产品用例和流程所有者（Use Case / Process Owner）。它回答
+  “这次用户操作要按什么顺序调用哪些能力”，并负责依赖装配、状态选择、任务、
+  取消、进度和生命周期。
+
+依赖方向固定为 `application -> core`，不能反向。`core/` 也不能通过动态导入、
+全局 runtime accessor 或注入一个包含整套应用能力的 manager 来绕过这个方向。
+当 `core/` 需要上层能力时，应接收一个针对当前动作的窄 `Protocol`、回调或值对象。
+
+Repository 不是强制的顶层目录。只有当某个用例需要替换存储实现、隔离事务边界
+或同时支持多种持久化后端时，才在对应能力域定义 repository 接口；实现放在最接近
+存储机制的模块，application 只依赖该接口。简单、稳定的单一文件读写不必为了套用
+传统三层结构而额外包装一层。
+
 ## 2. 依赖方向
 
 ```text
@@ -43,10 +63,10 @@ application
 | --- | --- | --- |
 | `sdk/` | 标准库、第三方库、`sdk/` 内部模块 | `application/`、`ai/`、`config/`、`core/`、`plugin_system/`、bridge、前端或 Qt UI |
 | `config/` | 标准库、第三方库、必要的 `sdk/` 契约 | AI provider、bridge、UI、插件宿主实现 |
-| `core/` | 标准库、第三方库、`config/`、`sdk/` | bridge、UI、具体 AI adapter；AI 能力由 application 注入 |
+| `core/` | 标准库、第三方库、`config/`、`sdk/` 契约 | `application/`、bridge、UI、具体 AI adapter、应用 runtime 或宽 manager；AI 能力由 application 通过窄契约注入 |
 | `ai/` | `core/`、`config/`、`sdk/` | bridge、UI、旧 `llm/tts/asr/t2i` 实现路径 |
 | `plugin_system/` | `core/`、`config/`、`sdk/` | bridge、UI、`application/` |
-| `application/` | `ai/`、`core/`、`config/`、`plugin_system/`、`sdk/` | React 具体控件或历史 Qt UI |
+| `application/` | `ai/`、`core/`、`config/`、`plugin_system/`、`sdk/` | bridge 的具体传输实现、React 具体控件或历史 Qt UI |
 | `frontend_bridge_core/` | `application/`、简单配置读写契约、传输层工具 | pip、下载、解压、模型加载、插件覆盖等主体业务 |
 | `frontend/` | 前端自身的 app/entities/features/shared | Python 业务实现和本地配置文件直接读写 |
 
@@ -181,6 +201,9 @@ application/plugins/         插件安装、更新、发布等用例编排
 ```
 
 application 可以组合多个能力域，但不实现具体 HTTP 或 UI 控件。
+application 是 `AppRuntime`、应用级 task、当前会话和 concrete manager 装配的唯一
+所有者；这些对象不能下沉到 `core/`。application 可以把结果投影为稳定的 SDK event
+或调用注入的 port，但不能直接构造 HTTP response、WebSocket frame 或 React DTO。
 AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 application
 注入的 adapter 回调，不得反向导入 `application/`。
 `application/story/` 负责把确定性剧情事务与聊天分支、持久化 generation、
@@ -232,7 +255,17 @@ core/sprite/        聊天记录、立绘和分支存储
 core/story/         剧本 Schema、确定性规则、编译、事件、校验和路径模拟
 ```
 
-如果代码需要同时协调 UI、AI、插件和进程生命周期，它属于 `application/`，而不是 `core/`。
+一个 core API 应满足以下约束：
+
+- 输入和输出明确，不读取当前会话、当前 task 或全局 application runtime；
+- 单独测试时不需要启动应用、bridge、UI 或具体 AI provider；
+- 可以做职责内的确定性计算或局部 I/O，但不决定产品流程和下一步动作；
+- 需要上层协作时只接收窄回调、`Protocol` 或值对象，不接收
+  `AppRuntime`、`BridgeState`、UI manager、LLM manager 等应用对象；
+- 不静态或动态导入 `application/`。
+
+如果代码负责选择配置、协调两个以上能力域、维护任务/取消/进度、决定失败降级，
+或协调 UI、AI、插件和进程生命周期，它属于 `application/`，而不是 `core/`。
 `core/story/` 必须保持确定性且无资源 I/O：可以定义 Schema、规则、事件、
 `CastResolutionPlan` 和编译器，但不得加载人物文件、调用 LLM、持有模型句柄
 或发出 React/传输层 DTO。
@@ -339,3 +372,13 @@ allowlist。O1 的锁定基线是永久上限；迁移完成后任何提交都�
 | 本地配置 schema 和持久化 | `config/` |
 | 插件公共契约 | `sdk/` |
 | React/Tauri UI | `frontend/` |
+
+拿不准放置位置时，按下面顺序判断：
+
+1. 是否拥有一次用户操作、当前会话、任务或应用生命周期？是则放 `application/`。
+2. 是否只完成一个输入输出明确、可独立测试的宿主动作？是则放 `core/`。
+3. 是否绑定具体 AI provider、插件平台或传输协议？放对应的 `ai/`、
+   `plugin_system/` 或 `frontend_bridge_core/`，由 application 编排。
+
+文件名不是边界依据：`service.py` 既可能是 application use case，也可能是 core
+capability；应根据它拥有的状态、协调范围和依赖方向判断。
