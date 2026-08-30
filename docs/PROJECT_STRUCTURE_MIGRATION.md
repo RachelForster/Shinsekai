@@ -6,7 +6,7 @@
 
 本文记录阶段性状态、兼容路径、PR 边界和可量化 OKR。O1 → O5 完成首次目录迁移；
 O6 锁定 `core/` 与 `application/` 的语义边界，O7 按该边界迁移现存的高置信度
-流程编排。
+流程编排，O8 按功能逐个将 bridge 中的主体实现收口到 application。
 
 ## 1. 基线状态
 
@@ -193,6 +193,38 @@ PR 范围：
 - 纯路径匹配、turn policy 和标签解析可脱离 application 独立测试；
 - 架构 allowlist 保持为空，既有聊天行为和协议不变。
 
+### O8：让 Bridge 真正变薄
+
+状态：第一阶段（Effects）在本分支实现。
+
+迁移策略：按功能拆分独立 PR，不一次处理全部 bridge。第一阶段完成 Effects，
+后续阶段再处理 Backgrounds 和 Characters。
+
+第一阶段 PR 范围：
+
+- 将 Effect 配置增删改、音频文件复制和删除、标签保存、目录管理及包导入导出
+  迁到 `application/media/effects.py`；
+- 通过 `EffectRequest -> EffectUseCase.execute()` 提供单一 application 入口；
+- `frontend_bridge_core/effects.py` 只保留 request 解析、依赖装配和 response 投影；
+- HTTP 路径、请求 payload 和响应格式保持不变，前端无需修改；
+- 删除 `tools/file_util.py` 中不再使用的 Effect 导入导出重复实现；
+- 增加架构守卫，阻止 Effect 文件、归档和配置主体逻辑回流 bridge。
+
+第一阶段完成条件：
+
+- Effect bridge 不导入 `shutil`、`pathlib`、`yaml`、`zipfile` 或配置模型；
+- Effect route 不再直接调用文件工具或修改 config manager；
+- 文件访问继续受 trusted roots、managed directory 和 archive path 校验约束；
+- Effect application、bridge adapter、HTTP 既有测试及 Tauri 资源验证通过。
+
+后续阶段：
+
+- `frontend_bridge_core/backgrounds.py` 的文件和多步骤配置操作迁到
+  `application/media/backgrounds.py`；
+- `frontend_bridge_core/characters.py` 中同时修改配置与资源、需要回滚或校验的操作
+  迁到 `application/characters/`；
+- 单一且稳定的简单配置读写不为迁移而迁移。
+
 ## 4. 迁移映射
 
 | 当前路径 | 目标位置 | Objective | 说明 |
@@ -224,6 +256,7 @@ PR 范围：
 | `core/messaging/chat_turn_wiring.py` | `application/chat/turn_wiring.py` | O7 | manager、queue 与消息 port 装配属于 application |
 | `core/sprite/initial_sprite.py` | `core/sprite/selection.py` + `application/chat/initial_sprite.py` | O7 | core 只做路径匹配，配置选择和 UI 呈现由 application 负责 |
 | main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/effects.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
+| `frontend_bridge_core/effects.py` 主体实现 | `application/media/effects.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
 
 ## 5. 通用退出条件
 

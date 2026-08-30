@@ -31,15 +31,11 @@ from frontend_bridge_core.backgrounds import (
     _upload_background_bgm,
     _upload_background_images,
 )
+from application.media.effects import EffectOperation
 from frontend_bridge_core.effects import (
-    _delete_all_effect_audio,
-    _delete_effect,
-    _delete_effect_audio,
-    _effect_dir,
-    _save_effect,
-    _save_effect_audio_tags,
-    _upload_effect_audio,
-    _validate_effect_storage_name,
+    effect_response_payload,
+    effect_use_case,
+    parse_effect_request,
 )
 from application.chat.runtime_process import (
     _chat_history,
@@ -1105,44 +1101,44 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 )
             # --- effects ---
             elif method == "POST" and path == "/api/effects/audio/upload":
-                self._send_json(_upload_effect_audio(self.state, body))
+                self._send_json(
+                    self._execute_effect_request(EffectOperation.UPLOAD_AUDIO, body)
+                )
             elif method == "POST" and path == "/api/effects/audio/delete":
-                self._send_json(_delete_effect_audio(self.state, body))
+                self._send_json(
+                    self._execute_effect_request(EffectOperation.DELETE_AUDIO, body)
+                )
             elif method == "POST" and path == "/api/effects/audio/delete-all":
-                self._send_json(_delete_all_effect_audio(self.state, body))
+                self._send_json(
+                    self._execute_effect_request(EffectOperation.DELETE_ALL_AUDIO, body)
+                )
             elif method == "POST" and path == "/api/effects/audio-tags":
-                self._send_json(_save_effect_audio_tags(self.state, body))
+                self._send_json(
+                    self._execute_effect_request(EffectOperation.SAVE_AUDIO_TAGS, body)
+                )
             elif method in {"POST", "PUT"} and path == "/api/effects":
-                self._send_json(_save_effect(self.state, body))
+                self._send_json(self._execute_effect_request(EffectOperation.SAVE, body))
             elif method == "DELETE" and path.startswith("/api/effects/"):
                 name = unquote(path.rsplit("/", 1)[-1])
-                self._send_json(_delete_effect(self.state, name))
+                self._send_json(
+                    self._execute_effect_request(EffectOperation.DELETE, name=name)
+                )
             elif method == "POST" and path == "/api/effects/import":
-                paths = body.get("paths") or []
-                if not isinstance(paths, list):
-                    raise ValueError("paths must be a list")
-                self._send_json(self._import_effect_paths([str(item) for item in paths]))
+                self._send_json(self._execute_effect_request(EffectOperation.IMPORT, body))
             elif method == "POST" and path == "/api/effects/import-upload":
                 temp_dir, paths = self._read_upload_files()
                 try:
-                    self._send_json(self._import_effect_paths([str(item) for item in paths]))
+                    self._send_json(
+                        self._execute_effect_request(
+                            EffectOperation.IMPORT,
+                            {"paths": [str(item) for item in paths]},
+                            additional_file_roots=(str(temp_dir),),
+                        )
+                    )
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/effects/export":
-                name = _validate_effect_storage_name(str(body.get("name") or ""))
-                effect = self.state.config_manager.get_effect_by_name(name)
-                if effect is None:
-                    raise KeyError(f"effect not found: {name}")
-                output, output_relative = _safe_export_output_path(name, ".ef")
-                import tools.file_util as file_util
-
-                file_util.export_effect([effect], output.as_posix(), open_folder=False)
-                self._send_json(
-                    {
-                        "downloadUrl": f"/api/download?path={output_relative}",
-                        "path": output_relative,
-                    }
-                )
+                self._send_json(self._execute_effect_request(EffectOperation.EXPORT, body))
             # --- templates ---
             elif method in {"POST", "PUT"} and path == "/api/templates":
                 self._send_json(_save_template_summary(self.state, body))
@@ -1452,23 +1448,20 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         self.state.config_manager.reload()
         return [_jsonify(item) for item in imported]
 
-    def _import_effect_paths(self, paths: list[str]) -> list[dict[str, Any]]:
-        import tools.file_util as file_util
-
-        existing = self.state.config_manager.config.effect_list
-        imported = []
-        for item in paths:
-            batch = file_util.import_effect(str(item), existing)
-            imported.extend(batch)
-            for effect in batch:
-                if effect not in existing:
-                    existing.append(effect)
-                # Ensure managed directory exists for each imported effect
-                ef_dir = _effect_dir(effect.name)
-                ef_dir.mkdir(parents=True, exist_ok=True)
-        self.state.config_manager.save_effect_config()
-        self.state.config_manager.reload()
-        return [_jsonify(item) for item in imported]
+    def _execute_effect_request(
+        self,
+        operation: EffectOperation,
+        body: dict[str, Any] | None = None,
+        *,
+        name: str = "",
+        additional_file_roots: tuple[str, ...] = (),
+    ) -> Any:
+        request = parse_effect_request(operation, body, name=name)
+        result = effect_use_case(
+            self.state,
+            additional_file_roots=additional_file_roots,
+        ).execute(request)
+        return effect_response_payload(result)
 
     def _start_chat_init(self, body: dict[str, Any]) -> dict[str, Any]:
         mode = str(body.get("mode") or "").strip().lower()

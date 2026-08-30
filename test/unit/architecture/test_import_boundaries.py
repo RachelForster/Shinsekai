@@ -639,6 +639,43 @@ def test_frontend_bridge_does_not_own_runtime_implementations() -> None:
     )
 
 
+def test_effect_bridge_remains_a_transport_adapter() -> None:
+    """O8 PR 1 keeps effect resource/config ownership in application."""
+
+    adapter = REPO_ROOT / "frontend_bridge_core" / "effects.py"
+    forbidden_modules = {
+        "config",
+        "os",
+        "pathlib",
+        "shutil",
+        "tempfile",
+        "tools",
+        "yaml",
+        "zipfile",
+    }
+    route_source = (
+        REPO_ROOT / "frontend_bridge_core" / "routes" / "api.py"
+    ).read_text(encoding="utf-8")
+    retired_entries = {
+        "_delete_all_effect_audio",
+        "_delete_effect_audio",
+        "_effect_dir",
+        "_import_effect_paths",
+        "_save_effect_audio_tags",
+        "_upload_effect_audio",
+        "file_util.export_effect",
+        "file_util.import_effect",
+    }
+
+    assert not (_imported_roots(adapter) & forbidden_modules), (
+        "Effect bridge code may parse/serialize requests but must not own file, "
+        "archive, or config implementations."
+    )
+    assert not {entry for entry in retired_entries if entry in route_source}, (
+        "Effect routes must use EffectUseCase.execute as their single entry point."
+    )
+
+
 def test_mobile_access_respects_application_and_transport_boundaries() -> None:
     """Keep lifecycle in application and concrete listeners in the bridge."""
 
