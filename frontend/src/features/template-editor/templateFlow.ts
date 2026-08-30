@@ -94,6 +94,7 @@ export function buildTemplateSummary(draft: TemplateSummary): TemplateSummary {
 
 export function buildTemplateGenerateInput(input: {
   backgroundName: string;
+  backgroundNames?: string[];
   draft: TemplateSummary;
   effectNames?: string[];
   options: TemplateFlowOptions;
@@ -102,6 +103,7 @@ export function buildTemplateGenerateInput(input: {
 }): TemplateGenerateInput {
   return {
     backgroundName: input.backgroundName,
+    backgroundNames: input.backgroundNames?.length ? input.backgroundNames : undefined,
     characters: input.selectedCharacters,
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
     maxDialogItems: input.runtime.maxDialogItems,
@@ -121,6 +123,7 @@ export function buildTemplateGenerateInput(input: {
 
 export function buildTemplateLaunchSession(input: {
   backgroundName: string;
+  backgroundNames?: string[];
   draft: TemplateSummary;
   effectNames?: string[];
   mobileAccessEnabled: boolean;
@@ -131,6 +134,7 @@ export function buildTemplateLaunchSession(input: {
 }): TemplateLaunchSession {
   return {
     background: input.backgroundName,
+    backgroundNames: input.backgroundNames ?? [],
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames ?? [],
     filenameStub: input.draft.name.trim(),
@@ -156,6 +160,7 @@ export function buildTemplateLaunchSession(input: {
 
 export function buildChatLaunchPayload(input: {
   backgroundName: string;
+  backgroundNames?: string[];
   effectNames?: string[];
   mobileAccessEnabled: boolean;
   resetHistory: boolean;
@@ -166,6 +171,7 @@ export function buildChatLaunchPayload(input: {
 }): ChatLaunchPayload {
   return {
     backgroundName: input.backgroundName,
+    backgroundNames: input.backgroundNames?.length ? input.backgroundNames : undefined,
     characters: input.selectedCharacters,
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
@@ -189,6 +195,7 @@ export function synchronizeChatLaunchPayloadWithSession(
   return {
     ...payload,
     backgroundName: session.background,
+    backgroundNames: session.backgroundNames?.length ? session.backgroundNames : undefined,
     characters: session.selectedCharacters,
     enableMobileAccess: session.enableMobileAccess,
     effectNames: effectNames.length ? effectNames : undefined,

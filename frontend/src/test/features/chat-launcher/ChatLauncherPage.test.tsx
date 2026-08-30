@@ -89,7 +89,9 @@ async function expectTemplateSelectToShow(templateName: string) {
 
 describe("ChatLauncherPage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    // Reset (not just clear) mocks so one-time implementations queued by a
+    // failing test cannot leak into the next test.
+    vi.resetAllMocks();
     mocks.useChatLaunchGuard.mockReturnValue({
       refreshRuntimeStatus: mocks.refreshRuntimeStatus,
       runtimeLaunchDisabled: false,
