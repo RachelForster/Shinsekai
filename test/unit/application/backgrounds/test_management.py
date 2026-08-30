@@ -1,7 +1,7 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from application.media.background_use_case import (
+from application.backgrounds import (
     BackgroundOperation,
     BackgroundUseCase,
     parse_background_request,

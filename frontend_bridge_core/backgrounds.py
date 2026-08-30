@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Iterable
 
-from application.media.background_use_case import (
+from application.backgrounds import (
     BackgroundOperation,
     BackgroundUseCase,
     parse_background_request,

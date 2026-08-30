@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
 from application.chat.effects import build_selected_effect_context
 from application.characters import CharacterOperation
-from application.media.background_use_case import BackgroundOperation
+from application.backgrounds import BackgroundOperation
 from sdk.logging import get_logger, log_context, new_log_id
 
 from frontend_bridge_core.backgrounds import (

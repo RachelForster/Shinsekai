@@ -220,9 +220,11 @@ Backgrounds 和 Characters。
 第二阶段 PR 范围：
 
 - 将背景资源上传、删除、导入导出和配置与资源联合更新迁入
-  `application/media/background_use_case.py`；
+  `application/backgrounds/management.py`；
 - 将角色保存校验、资源上传删除、语音校验和导入导出迁入
-  `application/characters/character_use_case.py`；
+  `application/characters/management.py`；
+- `backgrounds`、`characters` 和 `effects` 按业务领域建立 application
+  一级目录；`application/media/` 只保留跨领域媒体能力；
 - 每个领域只暴露一个 bridge 执行入口，由 application operation 明确区分用例；
 - 标签、缩放、翻译等简单配置读写继续保留在 bridge，不为机械转发增加空用例；
 - 上传临时目录仍由 HTTP transport 创建和清理，application 只接收获准访问的文件根目录。
@@ -266,8 +268,8 @@ Backgrounds 和 Characters。
 | `core/sprite/initial_sprite.py` | `core/sprite/selection.py` + `application/chat/initial_sprite.py` | O7 | core 只做路径匹配，配置选择和 UI 呈现由 application 负责 |
 | main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/effects.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
 | `frontend_bridge_core/effects.py` 主体实现 | `application/effects/management.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
-| `frontend_bridge_core/backgrounds.py` 资源变更 | `application/media/background_use_case.py` | O8 PR 2 | bridge 仅保留协议、翻译和简单标签写入 |
-| `frontend_bridge_core/characters.py` 资源变更 | `application/characters/character_use_case.py` | O8 PR 2 | 保存校验、文件操作和多步骤更新由 application 编排 |
+| `frontend_bridge_core/backgrounds.py` 资源变更 | `application/backgrounds/management.py` | O8 PR 2 | bridge 仅保留协议、翻译和简单标签写入 |
+| `frontend_bridge_core/characters.py` 资源变更 | `application/characters/management.py` | O8 PR 2 | 保存校验、文件操作和多步骤更新由 application 编排 |
 
 ## 5. 通用退出条件
 
