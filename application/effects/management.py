@@ -327,22 +327,45 @@ class EffectUseCase:
             return imported
 
     def _export_package(self, effect: Effect, output: Path) -> None:
+        effect_data = effect.model_dump(exclude_none=True, mode="json")
+        packaged_audio: list[tuple[Path, str]] = []
+        packaged_names: set[str] = set()
+        exported_audio_list: list[str] = []
+        for raw_audio_path in effect.audio_list or ():
+            audio_file = self._export_audio_file(effect.name, str(raw_audio_path))
+            package_name = self._available_package_filename(
+                audio_file.name,
+                packaged_names,
+            )
+            packaged_names.add(package_name.casefold())
+            packaged_audio.append((audio_file, package_name))
+            exported_audio_list.append(f"audio/{package_name}")
+        effect_data["audio_list"] = exported_audio_list
+
         with tempfile.TemporaryDirectory(prefix="shinsekai-effect-export-") as raw_temp:
             temp_dir = Path(raw_temp)
             yaml_path = temp_dir / "effect.yaml"
             with yaml_path.open("w", encoding="utf-8") as file:
                 yaml.safe_dump(
-                    [effect.model_dump(exclude_none=True, mode="json")],
+                    [effect_data],
                     file,
                     allow_unicode=True,
                     default_flow_style=False,
                 )
             with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as package:
                 package.write(yaml_path, "effect.yaml")
-                for raw_audio_path in effect.audio_list or ():
-                    audio_file = self._managed_file(effect.name, str(raw_audio_path))
-                    if audio_file is not None:
-                        package.write(audio_file, f"audio/{audio_file.name}")
+                for audio_file, package_name in packaged_audio:
+                    package.write(audio_file, f"audio/{package_name}")
+
+    def _export_audio_file(self, effect_name: str, raw_path: str) -> Path:
+        managed_file = self._managed_file(effect_name, raw_path)
+        if managed_file is not None:
+            return managed_file
+        return safe_existing_file_path(
+            self._configured_path(raw_path),
+            roots=self.local_file_access_roots,
+            field="effect audio path",
+        )
 
     def _managed_file(self, effect_name: str, raw_path: str) -> Path | None:
         if not raw_path:
@@ -377,6 +400,17 @@ class EffectUseCase:
             destination = directory / f"{stem}_{counter}{suffix}"
             counter += 1
         return destination
+
+    @staticmethod
+    def _available_package_filename(filename: str, used_names: set[str]) -> str:
+        candidate = safe_filename(filename)
+        stem = Path(candidate).stem
+        suffix = Path(candidate).suffix
+        counter = 1
+        while candidate.casefold() in used_names:
+            candidate = f"{stem}_{counter}{suffix}"
+            counter += 1
+        return candidate
 
     def _renamed_audio_paths(
         self,

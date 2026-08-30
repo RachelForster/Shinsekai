@@ -181,7 +181,7 @@ def test_import_rejects_unsafe_effect_name(tmp_path: Path) -> None:
     assert manager.saved == 0
 
 
-def test_export_packages_only_managed_audio(tmp_path: Path) -> None:
+def test_export_packages_managed_and_allowed_external_audio(tmp_path: Path) -> None:
     managed = tmp_path / "data" / "effects" / "Impact" / "hit.wav"
     managed.parent.mkdir(parents=True)
     managed.write_bytes(b"managed")
@@ -202,4 +202,51 @@ def test_export_packages_only_managed_audio(tmp_path: Path) -> None:
     assert isinstance(result, EffectExportResult)
     assert result.path == "output/Impact.ef"
     with zipfile.ZipFile(tmp_path / result.path) as package:
-        assert sorted(package.namelist()) == ["audio/hit.wav", "effect.yaml"]
+        assert sorted(package.namelist()) == [
+            "audio/external.wav",
+            "audio/hit.wav",
+            "effect.yaml",
+        ]
+        exported = yaml.safe_load(package.read("effect.yaml"))[0]
+        assert exported["audio_list"] == [
+            "audio/hit.wav",
+            "audio/external.wav",
+        ]
+        assert package.read("audio/hit.wav") == b"managed"
+        assert package.read("audio/external.wav") == b"external"
+
+
+def test_export_renames_colliding_audio_filenames(tmp_path: Path) -> None:
+    managed = tmp_path / "data" / "effects" / "Impact" / "hit.wav"
+    managed.parent.mkdir(parents=True)
+    managed.write_bytes(b"managed")
+    external = tmp_path / "external" / "hit.wav"
+    external.parent.mkdir()
+    external.write_bytes(b"external")
+    use_case, _ = _use_case(
+        tmp_path,
+        (_effect("Impact", audio_list=[managed.as_posix(), external.as_posix()]),),
+    )
+
+    result = _execute(use_case, EffectOperation.EXPORT, name="Impact")
+
+    assert isinstance(result, EffectExportResult)
+    with zipfile.ZipFile(tmp_path / result.path) as package:
+        exported = yaml.safe_load(package.read("effect.yaml"))[0]
+        assert exported["audio_list"] == ["audio/hit.wav", "audio/hit_1.wav"]
+        assert package.read("audio/hit.wav") == b"managed"
+        assert package.read("audio/hit_1.wav") == b"external"
+
+
+def test_export_rejects_missing_audio_instead_of_writing_dangling_path(
+    tmp_path: Path,
+) -> None:
+    use_case, _ = _use_case(
+        tmp_path,
+        (_effect("Impact", audio_list=["missing.wav"]),),
+    )
+
+    with pytest.raises(FileNotFoundError):
+        _execute(use_case, EffectOperation.EXPORT, name="Impact")
+
+    assert not (tmp_path / "output" / "Impact.ef").exists()
