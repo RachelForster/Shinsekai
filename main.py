@@ -106,7 +106,7 @@ import ai.tools.story_tools
 from ai.llm.template_generator import is_transparent_background
 from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
 from ai.llm.text_processor import TextProcessor
-from core.messaging.chat_turn_wiring import create_chat_turn_service
+from application.chat.turn_wiring import create_chat_turn_service
 from core.messaging.queue import ClearableQueue
 from application.runtime.context import (
     AppRuntime,
@@ -147,7 +147,10 @@ from application.chat.history_state import (
     save_chat_history,
 )
 from application.chat.session_restore import restore_session_presentation
-from core.sprite.initial_sprite import display_initial_sprite, find_character_sprite_by_path
+from application.chat.initial_sprite import (
+    display_initial_sprite,
+    find_character_sprite_by_path,
+)
 from core.sprite.sprite_cli import parse_sprite_args
 logger.info(
     "Chat startup imports completed",

@@ -1,4 +1,4 @@
-"""Host-runtime composition for the framework-neutral chat turn service."""
+"""Application composition for the framework-neutral chat turn service."""
 
 from __future__ import annotations
 

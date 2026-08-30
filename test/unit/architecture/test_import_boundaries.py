@@ -122,6 +122,16 @@ CORE_FORBIDDEN_APPLICATION_RUNTIME_NAMES = frozenset(
     }
 )
 
+CORE_FORBIDDEN_APPLICATION_MANAGER_NAMES = frozenset(
+    {
+        "llm_manager",
+        "ui_playback",
+        "ui_update_manager",
+        "ui_updates",
+        "ui_worker",
+    }
+)
+
 
 @dataclass(frozen=True, order=True)
 class ImportViolation:
@@ -322,6 +332,14 @@ def _dynamic_imported_roots(source: Path) -> set[str]:
     return _literal_dynamic_imported_roots(tree)
 
 
+def _referenced_names(tree: ast.AST) -> set[str]:
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    names.update(
+        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+    )
+    return names
+
+
 def _violations() -> frozenset[ImportViolation]:
     violations: set[ImportViolation] = set()
     for source in _python_sources():
@@ -404,14 +422,7 @@ def test_core_does_not_reference_application_runtime_owners() -> None:
         tree = ast.parse(
             source.read_text(encoding="utf-8"), filename=str(source)
         )
-        referenced_names = {
-            node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
-        }
-        referenced_names.update(
-            node.attr
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Attribute)
-        )
+        referenced_names = _referenced_names(tree)
         for name in sorted(
             referenced_names & CORE_FORBIDDEN_APPLICATION_RUNTIME_NAMES
         ):
@@ -420,6 +431,43 @@ def test_core_does_not_reference_application_runtime_owners() -> None:
     assert not unexpected, (
         "Application runtime/session ownership must not move into core; pass a "
         f"narrow protocol, callback, or value instead: {unexpected}"
+    )
+
+
+def test_core_does_not_receive_application_managers() -> None:
+    unexpected: list[str] = []
+    core_root = REPO_ROOT / "core"
+    for source in sorted(core_root.rglob("*.py")):
+        relative = source.relative_to(REPO_ROOT).as_posix()
+        tree = ast.parse(
+            source.read_text(encoding="utf-8"), filename=str(source)
+        )
+        for name in sorted(
+            _referenced_names(tree) & CORE_FORBIDDEN_APPLICATION_MANAGER_NAMES
+        ):
+            unexpected.append(f"{relative}: {name}")
+
+    assert not unexpected, (
+        "Core capabilities must receive narrow callbacks/protocols instead of "
+        f"application managers: {unexpected}"
+    )
+
+
+def test_application_owns_chat_composition_and_presentation() -> None:
+    expected_application_modules = (
+        REPO_ROOT / "application" / "chat" / "effects.py",
+        REPO_ROOT / "application" / "chat" / "initial_sprite.py",
+        REPO_ROOT / "application" / "chat" / "turn_wiring.py",
+    )
+    retired_core_modules = (
+        REPO_ROOT / "core" / "messaging" / "chat_turn_wiring.py",
+        REPO_ROOT / "core" / "sprite" / "initial_sprite.py",
+    )
+
+    assert all(path.is_file() for path in expected_application_modules)
+    assert not any(path.exists() for path in retired_core_modules)
+    assert not list((REPO_ROOT / "core").rglob("*wiring.py")), (
+        "Composition roots and manager wiring belong to application."
     )
 
 

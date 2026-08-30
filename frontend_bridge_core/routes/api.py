@@ -190,6 +190,7 @@ from application.runtime.tasks import (
     _run_background_task,
     _update_task,
 )
+from application.chat.initial_sprite import initial_sprite_path_for_characters
 from application.chat.templates import (
     NoValidCharactersError,
     _compose_for_llm,
@@ -203,7 +204,6 @@ from application.chat.templates import (
     _save_template_summary,
     _generate_template_summary,
     _load_template_session_payload,
-    initial_sprite_path_for_characters,
 )
 from application.media.attachments import stage_uploaded_chat_attachments
 from frontend_bridge_core.tools import (

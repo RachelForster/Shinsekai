@@ -204,6 +204,9 @@ application 可以组合多个能力域，但不实现具体 HTTP 或 UI 控件�
 application 是 `AppRuntime`、应用级 task、当前会话和 concrete manager 装配的唯一
 所有者；这些对象不能下沉到 `core/`。application 可以把结果投影为稳定的 SDK event
 或调用注入的 port，但不能直接构造 HTTP response、WebSocket frame 或 React DTO。
+聊天 turn service 的 manager/queue 装配、初始立绘呈现、特效方案选择和 LLM 特效
+用法提示都属于 `application/chat/`；`core/` 只保留对应的 admission policy、路径匹配
+和标签解析能力。
 AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 application
 注入的 adapter 回调，不得反向导入 `application/`。
 `application/story/` 负责把确定性剧情事务与聊天分支、持久化 generation、
@@ -246,12 +249,12 @@ ai/tools/     向 LLM 暴露能力的薄 tool wrapper
 
 ```text
 core/app_update/    主程序版本检查、release 和更新包处理
-core/media/         文件、附件、媒体资源和安全格式处理
-core/messaging/     消息模型、流解析和对话协议
+core/media/         文件、附件、媒体资源、安全格式和标签解析
+core/messaging/     消息模型、流解析、对话协议和框架无关的 turn policy
 core/model_assets/  模型下载、缓存、来源和进度
 core/runtime_env/   Python、pip、依赖检测和运行环境诊断
 core/security/      归档、下载来源等宿主安全校验及旧路径兼容入口
-core/sprite/        聊天记录、立绘和分支存储
+core/sprite/        立绘路径归一化/匹配、聊天记录和分支存储
 core/story/         剧本 Schema、确定性规则、编译、事件、校验和路径模拟
 ```
 

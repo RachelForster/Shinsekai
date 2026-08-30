@@ -5,7 +5,8 @@
 > 稳定结构约定：见 [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md)
 
 本文记录阶段性状态、兼容路径、PR 边界和可量化 OKR。O1 → O5 完成首次目录迁移；
-O6 在不搬迁主体业务的前提下，进一步锁定 `core/` 与 `application/` 的语义边界。
+O6 锁定 `core/` 与 `application/` 的语义边界，O7 按该边界迁移现存的高置信度
+流程编排。
 
 ## 1. 基线状态
 
@@ -169,6 +170,29 @@ PR 范围：
 - 架构 allowlist 继续为空；
 - 不迁移 O7 计划中的 chat wiring、演出编排等主体业务。
 
+### O7：迁移 chat wiring 与演出编排
+
+状态：本分支实现。
+
+PR 范围：
+
+- 将 chat turn service 的 config、queue、LLM/UI manager 装配从
+  `core/messaging/chat_turn_wiring.py` 迁到 `application/chat/turn_wiring.py`；
+- 将初始立绘的配置选择和 UI 更新迁到 `application/chat/initial_sprite.py`，
+  `core/sprite/selection.py` 只保留值输入的路径匹配；
+- 将特效方案选择、运行期 keyword map 和 LLM prompt catalog 迁到
+  `application/chat/effects.py`；
+- 将重复的音频标签解析收敛到 `core/media/effect_audio.py`，main 与 bridge
+  不再各自维护一份解析循环；
+- 将对应单测按职责归位，并禁止 core 再接收 LLM/UI manager 或新增 wiring 模块。
+
+完成条件：
+
+- `core/` 中不再出现 chat manager/queue composition 或 UI 演出调用；
+- main、bridge 只调用 application use case，不复制特效解析逻辑；
+- 纯路径匹配、turn policy 和标签解析可脱离 application 独立测试；
+- 架构 allowlist 保持为空，既有聊天行为和协议不变。
+
 ## 4. 迁移映射
 
 | 当前路径 | 目标位置 | Objective | 说明 |
@@ -197,6 +221,9 @@ PR 范围：
 | `frontend_bridge_core/model_assets.py`、`tts.py` | `application/model_assets/` | O3 | bridge 只创建 task 并转发结果 |
 | `frontend_bridge_core/logs.py` | `application/diagnostics/` | O3 | 诊断归档不在传输层实现 |
 | `core/media/auto_annotation.py` | `application/media/` | O3/O6 | AI 能力由 application 编排；O6 删除残留兼容入口并归位单测 |
+| `core/messaging/chat_turn_wiring.py` | `application/chat/turn_wiring.py` | O7 | manager、queue 与消息 port 装配属于 application |
+| `core/sprite/initial_sprite.py` | `core/sprite/selection.py` + `application/chat/initial_sprite.py` | O7 | core 只做路径匹配，配置选择和 UI 呈现由 application 负责 |
+| main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/effects.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
 
 ## 5. 通用退出条件
 
