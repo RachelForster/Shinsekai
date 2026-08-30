@@ -643,6 +643,8 @@ def test_effect_bridge_remains_a_transport_adapter() -> None:
     """O8 PR 1 keeps effect resource/config ownership in application."""
 
     adapter = REPO_ROOT / "frontend_bridge_core" / "effects.py"
+    use_case = REPO_ROOT / "application" / "effects" / "management.py"
+    retired_use_case = REPO_ROOT / "application" / "media" / "effects.py"
     forbidden_modules = {
         "config",
         "os",
@@ -667,6 +669,8 @@ def test_effect_bridge_remains_a_transport_adapter() -> None:
         "file_util.import_effect",
     }
 
+    assert use_case.is_file()
+    assert not retired_use_case.exists()
     assert not (_imported_roots(adapter) & forbidden_modules), (
         "Effect bridge code may parse/serialize requests but must not own file, "
         "archive, or config implementations."

@@ -31,7 +31,7 @@ from frontend_bridge_core.backgrounds import (
     _upload_background_bgm,
     _upload_background_images,
 )
-from application.media.effects import EffectOperation
+from application.effects import EffectOperation
 from frontend_bridge_core.effects import (
     effect_response_payload,
     effect_use_case,

@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from application.media.effects import EffectExportResult, EffectOperation
+from application.effects import EffectExportResult, EffectOperation
 from frontend_bridge_core.effects import effect_response_payload, parse_effect_request
 
 

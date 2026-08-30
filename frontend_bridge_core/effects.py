@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from application.media.effects import (
+from application.effects import (
     EffectExportResult,
     EffectOperation,
     EffectRequest,

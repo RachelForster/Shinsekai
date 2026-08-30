@@ -193,7 +193,8 @@ application/bootstrap/       进程启动、组合根、运行模式选择
 application/chat/            聊天启动、停止、恢复和历史用例
 application/chat/handlers/   LLM 输出到 TTS/UI event 的应用处理链
 application/diagnostics/     日志快照与诊断包用例
-application/media/           媒体标注、特效配置与资源管理等跨领域用例
+application/effects/         特效配置与资源管理用例
+application/media/           媒体标注等跨领域共享能力
 application/model_assets/    模型与 TTS 资源下载用例
 application/runtime/         app runtime、workers、workflow、shutdown
 application/story/           剧情会话、分支状态仓库、人物 readiness 与演出编排
@@ -207,7 +208,7 @@ application 是 `AppRuntime`、应用级 task、当前会话和 concrete manager
 聊天 turn service 的 manager/queue 装配、初始立绘呈现、特效方案选择和 LLM 特效
 用法提示都属于 `application/chat/`；`core/` 只保留对应的 admission policy、路径匹配
 和标签解析能力。
-特效配置、音频文件、标签、目录和导入导出由 `application/media/effects.py` 统一
+特效配置、音频文件、标签、目录和导入导出由 `application/effects/management.py` 统一
 管理；bridge 只解析请求并调用 `EffectUseCase.execute()`，不得另建文件操作入口。
 AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 application
 注入的 adapter 回调，不得反向导入 `application/`。

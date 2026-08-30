@@ -203,7 +203,7 @@ PR 范围：
 第一阶段 PR 范围：
 
 - 将 Effect 配置增删改、音频文件复制和删除、标签保存、目录管理及包导入导出
-  迁到 `application/media/effects.py`；
+  迁到 `application/effects/management.py`；
 - 通过 `EffectRequest -> EffectUseCase.execute()` 提供单一 application 入口；
 - `frontend_bridge_core/effects.py` 只保留 request 解析、依赖装配和 response 投影；
 - HTTP 路径、请求 payload 和响应格式保持不变，前端无需修改；
@@ -256,7 +256,7 @@ PR 范围：
 | `core/messaging/chat_turn_wiring.py` | `application/chat/turn_wiring.py` | O7 | manager、queue 与消息 port 装配属于 application |
 | `core/sprite/initial_sprite.py` | `core/sprite/selection.py` + `application/chat/initial_sprite.py` | O7 | core 只做路径匹配，配置选择和 UI 呈现由 application 负责 |
 | main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/effects.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
-| `frontend_bridge_core/effects.py` 主体实现 | `application/media/effects.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
+| `frontend_bridge_core/effects.py` 主体实现 | `application/effects/management.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
 
 ## 5. 通用退出条件
 

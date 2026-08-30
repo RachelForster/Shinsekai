@@ -7,7 +7,7 @@ import zipfile
 import pytest
 import yaml
 
-from application.media.effects import (
+from application.effects import (
     EffectExportResult,
     EffectOperation,
     EffectRequest,
