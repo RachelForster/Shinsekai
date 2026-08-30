@@ -269,7 +269,6 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         bool(payload.get("useStat", True)),
         max_speech_chars=max_speech_chars,
         max_dialog_items=max_dialog_items,
-        effect_catalog=_selected_effect_catalog(state, payload.get("effectNames")),
     )
     output_name = str(result or "").strip()
     name = str(output_name or payload.get("name") or "generated").strip()
@@ -286,26 +285,6 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
     }
     row["generationMessage"] = result
     return row
-
-
-def _selected_effect_catalog(state: BridgeState, selected_names: Any) -> list[str]:
-    """Return the exact effect labels available to the generated prompt."""
-    selected = {str(name).strip() for name in selected_names or [] if str(name).strip()}
-    if not selected:
-        return []
-    catalog: list[str] = []
-    for effect in getattr(state.config_manager.config, "effect_list", []) or []:
-        if str(getattr(effect, "name", "") or "") not in selected:
-            continue
-        tags = [line.strip() for line in str(getattr(effect, "audio_tags", "") or "").splitlines() if line.strip()]
-        audio_list = getattr(effect, "audio_list", []) or []
-        for index, tag_line in enumerate(tags):
-            if index >= len(audio_list) or not audio_list[index]:
-                continue
-            label = tag_line.split("：", 1)[-1].split(":", 1)[-1].strip().split(",", 1)[0].strip()
-            if label:
-                catalog.append(label)
-    return catalog
 
 
 def _resolve_template_character_names(state: BridgeState, selected: Any) -> list[str]:
@@ -496,7 +475,6 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
             bool(raw.get("use_stat_yes", True)),
             max_speech_chars=_safe_session_int(raw.get("max_speech_chars")),
             max_dialog_items=_safe_session_int(raw.get("max_dialog_items")),
-            effect_catalog=_selected_effect_catalog(state, raw.get("effect_names")),
         )
     except NoValidCharactersError:
         return raw
