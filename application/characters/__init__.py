@@ -1,6 +1,6 @@
 """Character application use cases."""
 
-from .management import (
+from .character_use_case import (
     CharacterOperation,
     CharacterRequest,
     CharacterUseCase,

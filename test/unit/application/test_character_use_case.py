@@ -102,7 +102,7 @@ def test_character_save_propagates_rename_to_template_session(tmp_path, monkeypa
     use_case = make_use_case(character, tmp_path)
     renamed = []
     monkeypatch.setattr(
-        "application.characters.management.validate_character_payload",
+        "application.characters.character_use_case.validate_character_payload",
         lambda *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
