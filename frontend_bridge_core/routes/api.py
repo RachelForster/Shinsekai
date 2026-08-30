@@ -13,7 +13,7 @@ from email.policy import default as default_email_policy
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
 from sdk.logging import get_logger, log_context, new_log_id
@@ -56,6 +56,7 @@ from application.chat.runtime_process import (
     _chat_theme_payload,
     _handle_chat_command,
     _launch_chat,
+    publish_bound_story_scene,
     remove_chat_history_storage,
     _sanitize_user_display_name,
 )
@@ -181,6 +182,11 @@ from application.story.generation import (
     run_story_generation_background,
     story_generation_service_for_state,
 )
+from application.story.authoring import (
+    import_generation_task_for_state,
+    story_authoring_service_for_state,
+)
+from config.feature_flags import FeatureFlag
 from frontend_bridge_core.static import _frontend_dist_root
 from application.runtime.tasks import (
     _create_task,
@@ -225,6 +231,34 @@ _ALLOWED_CUSTOM_ORIGIN_SCHEMES = {"shinsekai", "tauri"}
 _ALLOWED_LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "::1", "localhost", "tauri.localhost"}
 
 CHAT_RUNTIME_READY_TIMEOUT_SECONDS = 20.0
+
+
+def _resolve_launch_story_path(state: BridgeState, body: Mapping[str, Any] | None) -> str:
+    payload = body or {}
+    flags = getattr(getattr(state, "config_manager", None), "feature_flags", None)
+    if flags is None or not flags.is_enabled(FeatureFlag.STORY_SYSTEM):
+        return ""
+    story_id = str(payload.get("storyId") or "").strip()
+    if story_id:
+        return str(
+            story_authoring_service_for_state(state).playable_story_path(story_id)
+        )
+    return str(payload.get("storyPath") or "").strip()
+
+
+def _bind_story_from_launch_body(state: BridgeState, body: Mapping[str, Any] | None) -> None:
+    story_path = _resolve_launch_story_path(state, body)
+    if not story_path:
+        return
+    command_id = new_log_id()
+    start_or_recover_story_session(
+        state,
+        story_path,
+        command_id=command_id,
+    )
+    publish_bound_story_scene(state, command_id)
+
+
 _POLLING_PATHS = {
     "/api/characters/memories/status",
     "/api/health",
@@ -663,6 +697,22 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                         generation_task_id
                     )
                 )
+            elif path == "/api/story/projects":
+                self._send_json(
+                    story_authoring_service_for_state(self.state).list_projects()
+                )
+            elif path.startswith("/api/story/projects/") and path.endswith("/graph"):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/graph")]
+                )
+                self._send_json(
+                    story_authoring_service_for_state(self.state).graph_projection(
+                        project_id
+                    )
+                )
+            elif path.startswith("/api/story/projects/"):
+                project_id = unquote(path[len("/api/story/projects/") :])
+                self._send_json(story_authoring_service_for_state(self.state).get(project_id))
             elif path == "/api/chat/runtime-status":
                 self._send_json(_chat_runtime_status(self.state))
             elif path == "/api/chat/snapshot":
@@ -1314,9 +1364,9 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/chat/command":
                 self._send_json(_handle_chat_command(self.state, body))
             elif method == "POST" and path == "/api/story/start":
-                story_path = str(body.get("storyPath") or "").strip()
+                story_path = _resolve_launch_story_path(self.state, body)
                 if not story_path:
-                    raise ValueError("storyPath is required")
+                    raise ValueError("storyPath or storyId is required")
                 session = start_or_recover_story_session(
                     self.state,
                     story_path,
@@ -1410,6 +1460,156 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     story_generation_service_for_state(self.state).cancel(
                         generation_task_id
                     )
+                )
+            elif method == "POST" and path == "/api/story/projects/import-generation":
+                generation_task_id = str(body.get("generationTaskId") or "").strip()
+                if not generation_task_id:
+                    raise ValueError("generationTaskId is required")
+                self._send_json(
+                    import_generation_task_for_state(self.state, generation_task_id)
+                )
+            elif method == "POST" and path == "/api/story/projects":
+                source = body.get("source")
+                if not isinstance(source, dict):
+                    raise ValueError("source must be an object")
+                self._send_json(story_authoring_service_for_state(self.state).import_source(source))
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/patch")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/patch")]
+                )
+                patch = body.get("patch")
+                if not isinstance(patch, dict):
+                    raise ValueError("patch must be an object")
+                self._send_json(
+                    story_authoring_service_for_state(self.state).apply_patch(
+                        project_id,
+                        patch,
+                        base_revision=int(body.get("baseRevision") or 0),
+                        commit=bool(body.get("commit")),
+                        allow_invalid=bool(body.get("allowInvalid", True)),
+                    )
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/undo")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/undo")]
+                )
+                self._send_json(
+                    story_authoring_service_for_state(self.state).undo(
+                        project_id, base_revision=int(body.get("baseRevision") or 0)
+                    )
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/validate")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/validate")]
+                )
+                self._send_json(
+                    story_authoring_service_for_state(self.state).validate(project_id)
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/repair")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/repair")]
+                )
+                service = story_authoring_service_for_state(self.state)
+                self._enqueue_background_task(
+                    kind="story-repair",
+                    title="Repair story draft",
+                    message="AI story repair queued.",
+                    worker=lambda _task_id: service.repair_with_ai(
+                        project_id,
+                        base_revision=int(body.get("baseRevision") or 0),
+                    ),
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/cast-preview")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/cast-preview")]
+                )
+                node_id = str(body.get("nodeId") or "").strip()
+                if not node_id:
+                    raise ValueError("nodeId is required")
+                current_cast = body.get("currentCast")
+                ai_proposal = body.get("aiProposal")
+                self._send_json(
+                    story_authoring_service_for_state(self.state).preview_cast(
+                        project_id,
+                        node_id,
+                        current_cast=current_cast if isinstance(current_cast, list) else (),
+                        statuses=body.get("statuses") if isinstance(body.get("statuses"), dict) else {},
+                        player_location=(
+                            str(body["playerLocation"])
+                            if body.get("playerLocation") is not None
+                            else None
+                        ),
+                        ai_proposal=ai_proposal if isinstance(ai_proposal, list) else (),
+                    )
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/preview")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/preview")]
+                )
+                actions = body.get("actions")
+                self._send_json(
+                    story_authoring_service_for_state(self.state).preview_path(
+                        project_id,
+                        ending_id=(str(body["endingId"]) if body.get("endingId") else None),
+                        actions=actions if isinstance(actions, list) else (),
+                    )
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/publish")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/publish")]
+                )
+                self._send_json(
+                    story_authoring_service_for_state(self.state).publish(
+                        project_id, base_revision=int(body.get("baseRevision") or 0)
+                    )
+                )
+            elif (
+                method == "POST"
+                and path.startswith("/api/story/projects/")
+                and path.endswith("/ai-patch")
+            ):
+                project_id = unquote(
+                    path[len("/api/story/projects/") : -len("/ai-patch")]
+                )
+                service = story_authoring_service_for_state(self.state)
+                self._enqueue_background_task(
+                    kind="story-ai-patch",
+                    title="Regenerate story region",
+                    message="AI authoring patch queued.",
+                    worker=lambda _task_id: service.propose_ai_patch(
+                        project_id,
+                        base_revision=int(body.get("baseRevision") or 0),
+                        region=str(body.get("region") or ""),
+                        instruction=str(body.get("instruction") or ""),
+                    ),
                 )
             elif method == "POST" and path == "/api/chat/themes/active":
                 self._send_json(set_active_chat_theme(self.state, body))
@@ -1533,7 +1733,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         history_path = _chat_history_path(self.state, normalized_history_payload, row)
         default_history_path = _chat_history_path(
             self.state,
-            {"historyPath": "", "characters": characters},
+            {
+                "historyPath": "",
+                "characters": characters,
+                "storyId": str(body.get("storyId") or ""),
+            },
             row,
         )
         reset_history = bool(body.get("resetHistory"))
@@ -1566,6 +1770,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self.state,
                 enabled=mobile_access_enabled,
             )
+            _bind_story_from_launch_body(self.state, body)
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
@@ -1640,6 +1845,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self.state,
             enabled=mobile_access_enabled,
         )
+        _bind_story_from_launch_body(self.state, body)
         return _chat_snapshot(
             self.state,
             "idle",
@@ -1711,6 +1917,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 self.state,
                 enabled=mobile_access_enabled,
             )
+            _bind_story_from_launch_body(self.state, session)
             return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
@@ -1775,6 +1982,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self.state,
             enabled=mobile_access_enabled,
         )
+        _bind_story_from_launch_body(self.state, session)
         return _chat_snapshot(
             self.state,
             "idle",

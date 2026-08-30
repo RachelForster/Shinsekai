@@ -73,6 +73,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
     source: "send-message" | "submit-option";
     text: string;
   };
+  revealedOptionsAfterDialogKey?: string;
   sessionClosedReason?: string;
   sprites: ChatStageSprite[];
   transportMode: ChatTransportMode;
@@ -123,4 +124,5 @@ export type ChatStageAction =
   | { type: "setDraft"; text: string }
   | { type: "setTurnOptions"; options: ChatTurnOptions }
   | { type: "setStatus"; status: ChatRuntimeStatus }
+  | { type: "revealHeldOptions" }
   | { type: "error"; message: string };

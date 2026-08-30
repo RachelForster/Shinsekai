@@ -175,6 +175,53 @@ def test_recovery_rejects_program_source_hash_mismatch(tmp_path) -> None:
         )
 
 
+def test_recovery_accepts_compatible_previous_publication(tmp_path) -> None:
+    source = campus_mystery_source()
+    v1_program = StoryCompiler().compile(parse_story_project(source))
+    repository = JsonStorySessionRepository(tmp_path / "session")
+    global_store = JsonGlobalStoryProgressStore(tmp_path / "global")
+    StorySession.create(
+        StoryRuntime(v1_program),
+        _flags(),
+        command_id="start-1",
+        repository=repository,
+        global_store=global_store,
+    )
+
+    source_v2 = deepcopy(source)
+    source_v2["version"] = 2
+    source_v2["title"] = "Updated title"
+    v2_program = StoryCompiler().compile(parse_story_project(source_v2))
+    compatibility = {
+        "schemaVersion": 1,
+        "storyVersion": v2_program.story_version,
+        "sourceHash": v2_program.source_hash,
+        "compatibleWithPrevious": True,
+        "breakingChanges": [],
+    }
+
+    recovered = StorySession.recover(
+        StoryRuntime(v2_program),
+        _flags(),
+        repository=repository,
+        global_store=global_store,
+        save_compatibility=compatibility,
+    )
+
+    assert recovered.active_branch.state.story_version == v2_program.story_version
+    assert recovered.active_branch.state.program_source_hash == v2_program.source_hash
+
+    incompatible = {**compatibility, "compatibleWithPrevious": False}
+    with pytest.raises(StoryProgramMismatchError):
+        StorySession.recover(
+            StoryRuntime(v2_program),
+            _flags(),
+            repository=repository,
+            global_store=global_store,
+            save_compatibility=incompatible,
+        )
+
+
 def test_recovery_applies_pending_global_outbox_once(tmp_path) -> None:
     runtime = _runtime(global_progress=True)
     repository = JsonStorySessionRepository(tmp_path / "session")

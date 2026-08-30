@@ -463,12 +463,22 @@ def _parse_variable(
 
 def _parse_character_source(parser: _Parser, value: Any, path: str) -> CharacterSource:
     source = parser.mapping(value, path)
-    source_type = parser.enum(
-        CharacterSourceType,
-        source.get("type"),
-        f"{path}.type",
-        default=CharacterSourceType.EMBEDDED,
-    )
+    raw_type = source.get("type")
+    if raw_type in (None, ""):
+        path_value = str(source.get("path") or "").strip()
+        if path_value.startswith("import_"):
+            source_type = CharacterSourceType.USER_IMPORTED
+        elif path_value:
+            source_type = CharacterSourceType.EMBEDDED
+        else:
+            source_type = CharacterSourceType.LOCAL_LIBRARY
+    else:
+        source_type = parser.enum(
+            CharacterSourceType,
+            raw_type,
+            f"{path}.type",
+            default=CharacterSourceType.EMBEDDED,
+        )
     source_path = (
         parser.string(source.get("path"), f"{path}.path", required=True)
         if source_type

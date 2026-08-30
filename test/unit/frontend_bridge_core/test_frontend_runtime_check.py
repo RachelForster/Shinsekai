@@ -20,6 +20,22 @@ def _repo_root() -> Path:
     raise AssertionError("Could not locate repository root")
 
 
+def _run_python_script(script: str, *, cwd: Path) -> subprocess.CompletedProcess[str]:
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    return subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=cwd,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+
+
 def test_runtime_context_keeps_app_and_project_roots_separate(tmp_path, monkeypatch):
     from frontend_bridge import _configure_runtime_context
 
@@ -299,17 +315,11 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
         """
     )
 
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=repo_root,
-        text=True,
-        encoding="utf-8",
-        capture_output=True,
-        check=False,
-    )
+    result = _run_python_script(script, cwd=repo_root)
 
-    assert result.returncode == 0, result.stderr or result.stdout
-    report = json.loads(result.stdout.strip().splitlines()[-1])
+    stdout = result.stdout or ""
+    assert result.returncode == 0, result.stderr or stdout
+    report = json.loads(stdout.strip().splitlines()[-1])
     assert report["ok"] is True
     assert report["profile"] == "desktop-core"
     assert report["missingDistributions"] == []
@@ -443,14 +453,7 @@ def test_ui_update_manager_import_does_not_require_cv2():
         """
     )
 
-    result = subprocess.run(
-        [sys.executable, "-c", script],
-        cwd=repo_root,
-        text=True,
-        encoding="utf-8",
-        capture_output=True,
-        check=False,
-    )
+    result = _run_python_script(script, cwd=repo_root)
 
     assert result.returncode == 0, result.stderr or result.stdout
 

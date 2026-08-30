@@ -96,7 +96,12 @@ class ChatTurnService:
         self._typing = False
         self._closed = False
 
-    def submit(self, text: str, *, attachments: list[dict[str, Any]] | None = None) -> BatchState:
+    def submit(
+        self,
+        text: str,
+        *,
+        attachments: list[dict[str, Any]] | None = None,
+    ) -> BatchState:
         """Accept one processed user message.
 
         When batching is disabled the message is delivered immediately.  In

@@ -42,6 +42,10 @@ def test_history_id_uses_effective_scenario_and_selected_characters():
     assert _history_id_from_scenario("") == _history_id_from_scenario(
         "你扮演一个RPG系统。",
     )
+    assert _history_id_from_scenario("scenario", ["Alice"], story_id="campus") != scenario_id
+    assert _history_id_from_scenario(
+        "scenario", ["Alice"], story_id="campus"
+    ) == _history_id_from_scenario("scenario", ["Alice"], story_id="campus")
 
 
 def test_runtime_template_places_json_reminder_after_user_scenario(monkeypatch):
@@ -226,6 +230,7 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
         "selectedCharacters": ["Alice", "42"],
         "system": "系统",
         "templateFileDropdown": "demo.txt",
+        "storyId": "",
         "workflowPath": "test/e2e/live_bridge_runtime.yaml",
         "useCg": True,
         "useChoice": False,

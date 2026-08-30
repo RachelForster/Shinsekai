@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
@@ -13,6 +14,16 @@ import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
+import type { AppConfig } from "../../entities/config/types";
+import {
+  getStoryProject,
+  getStoryProjectGraph,
+  listStoryProjects,
+  storyProjectGraphQueryKey,
+  storyProjectQueryKey,
+  storyProjectsQueryKey,
+} from "../../entities/story/repository";
+import { StoryGraphCanvas } from "../story-editor/StoryGraphCanvas";
 import {
   generateTemplate,
   getTemplateSession,
@@ -33,12 +44,14 @@ import {
   Button,
   EmptyState,
   FilePicker,
+  MentionTextArea,
   NumberInput,
   QueryErrorState,
   Select,
   Switch,
   TextArea,
   TextInput,
+  characterMentionOptions,
   useToast,
 } from "../../shared/ui";
 import {
@@ -58,8 +71,37 @@ import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
 
+type PlayMode = "free" | "story";
+
+function storyCastLabels(source: Record<string, unknown> | undefined) {
+  const cast = source?.cast;
+  if (!cast || typeof cast !== "object" || Array.isArray(cast)) {
+    return [];
+  }
+  const characters = (cast as { characters?: unknown }).characters;
+  if (!Array.isArray(characters)) {
+    return [];
+  }
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const item of characters) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      continue;
+    }
+    const row = item as { id?: unknown; name?: unknown };
+    const label = String(row.name || row.id || "").trim();
+    if (!label || seen.has(label)) {
+      continue;
+    }
+    seen.add(label);
+    names.push(label);
+  }
+  return names;
+}
+
 export function TemplateEditorPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { showToast } = useToast();
   const { t } = useI18n();
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
@@ -107,6 +149,27 @@ export function TemplateEditorPage() {
   const [useStat, setUseStat] = useState(true);
   const [mobileAccessEnabled, setMobileAccessEnabled] = useState(false);
   const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
+  const [playMode, setPlayMode] = useState<PlayMode>("free");
+  const playModeSyncedRef = useRef(false);
+  const [selectedStoryId, setSelectedStoryId] = useState("");
+  const storiesQuery = useQuery({
+    enabled: playMode === "story",
+    queryFn: listStoryProjects,
+    queryKey: storyProjectsQueryKey,
+  });
+  const storyProjects = storiesQuery.data ?? [];
+  const isStoryPlay = playMode === "story";
+  const storyProjectQuery = useQuery({
+    enabled: isStoryPlay && Boolean(selectedStoryId),
+    queryFn: () => getStoryProject(selectedStoryId),
+    queryKey: storyProjectQueryKey(selectedStoryId),
+  });
+  const storyGraphQuery = useQuery({
+    enabled: isStoryPlay && Boolean(selectedStoryId),
+    queryFn: () => getStoryProjectGraph(selectedStoryId),
+    queryKey: storyProjectGraphQueryKey(selectedStoryId),
+  });
+  const storyCastNames = useMemo(() => storyCastLabels(storyProjectQuery.data?.source), [storyProjectQuery.data]);
   const [maxSpeechChars, setMaxSpeechChars] = useState(0);
   const [maxDialogItems, setMaxDialogItems] = useState(0);
   const [initSpritePath, setInitSpritePath] = useState("");
@@ -129,6 +192,7 @@ export function TemplateEditorPage() {
   }, [backgrounds]);
   const selectedCharacterNames = useMemo(() => new Set(selectedCharacters), [selectedCharacters]);
   const selectedEffectNames = useMemo(() => new Set(selectedEffects), [selectedEffects]);
+  const mentionOptions = useMemo(() => characterMentionOptions(characters, t("mention.user")), [characters, t]);
 
   const effectHintText = useMemo(() => {
     if (!selectedEffects.length) return "";
@@ -232,6 +296,7 @@ export function TemplateEditorPage() {
     setInitSpritePath(launchSession.initSpritePath || "");
     setHistoryPath(launchSession.historyPath || "");
     setRoomId(launchSession.roomId || "");
+    setSelectedStoryId(launchSession.storyId || "");
     const matchingTemplate = templates.find((template) => template.id === launchSession.templateFileDropdown);
     setSelectedId(matchingTemplate?.id ?? "");
     setDraft(
@@ -269,6 +334,14 @@ export function TemplateEditorPage() {
     suppressNextAutoGenerateRef.current = true;
     setVoiceLanguage(nextLanguage);
   }, [appConfig, launchSession, sessionRestored, voiceLanguage]);
+
+  useEffect(() => {
+    if (playModeSyncedRef.current || !appConfig) {
+      return;
+    }
+    playModeSyncedRef.current = true;
+    setPlayMode(appConfig.system_config.story_system_enabled ? "story" : "free");
+  }, [appConfig]);
 
   useEffect(() => {
     if (!sessionRestored) {
@@ -403,6 +476,31 @@ export function TemplateEditorPage() {
     },
   });
 
+  const storySystemMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const config = await getAppConfig();
+      return saveSystemConfig({
+        ...config.system_config,
+        story_system_enabled: enabled,
+      });
+    },
+    onError(error) {
+      setPlayMode(appConfig?.system_config.story_system_enabled ? "story" : "free");
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("system.error.saveFallback"),
+        title: t("common.saveFailed"),
+      });
+    },
+    onSuccess(saved) {
+      queryClient.setQueryData<AppConfig>(configQueryKey, (current) =>
+        current ? { ...current, system_config: saved } : current,
+      );
+      void queryClient.invalidateQueries({ queryKey: configQueryKey });
+      void queryClient.invalidateQueries({ queryKey: storyProjectsQueryKey });
+    },
+  });
+
   const generateMutation = useMutation({
     mutationFn: async (options?: { scenario?: string; silent?: boolean }) => {
       const scenario = options?.scenario ?? scenarioForSelectedCharacters();
@@ -483,7 +581,7 @@ export function TemplateEditorPage() {
       suppressNextAutoGenerateRef.current = false;
       return;
     }
-    if (generateMutation.isPending) {
+    if (generateMutation.isPending || playMode === "story") {
       return;
     }
     if (selectedCharactersKey === lastAutoGeneratedCharactersRef.current) {
@@ -530,6 +628,7 @@ export function TemplateEditorPage() {
           runtime: runtimeOptionsState,
           selectedCharacters,
           selectedTemplateId: selectedId,
+          storyId: playMode === "story" ? selectedStoryId : "",
         });
         const savedSession = await saveTemplateSession(session);
         queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
@@ -542,6 +641,7 @@ export function TemplateEditorPage() {
               resetHistory,
               runtime: runtimeOptionsState,
               selectedCharacters,
+              storyId: playMode === "story" ? selectedStoryId : "",
               template,
               useCg,
             }),
@@ -623,7 +723,41 @@ export function TemplateEditorPage() {
     voiceLanguageMutation.mutate(nextLanguage);
   };
 
+  const handlePlayModeChange = (nextMode: PlayMode) => {
+    if (nextMode === playMode || storySystemMutation.isPending) {
+      return;
+    }
+    setPlayMode(nextMode);
+    storySystemMutation.mutate(nextMode === "story");
+  };
+
+  const openStoryCreator = async () => {
+    if (!appConfig?.system_config.story_system_enabled) {
+      try {
+        await storySystemMutation.mutateAsync(true);
+      } catch {
+        return;
+      }
+    }
+    navigate("/settings/stories/new");
+  };
+
+  const handleLaunchChat = (resetHistory: boolean) => {
+    if (isStoryPlay && !selectedStoryId) {
+      showToast({
+        kind: "error",
+        message: t("template.validation.storyRequired"),
+        title: t("template.action.launch"),
+      });
+      return;
+    }
+    launchMutation.mutate({ resetHistory });
+  };
+
   const handleGenerateTemplate = () => {
+    if (isStoryPlay) {
+      return;
+    }
     if (!selectedBackground) {
       showToast({
         kind: "error",
@@ -664,52 +798,81 @@ export function TemplateEditorPage() {
   ];
 
   return (
-    <div className="page template-page">
+    <div className={`page template-page${isStoryPlay ? " template-page--story" : ""}`}>
       <header className="template-page__topbar">
-        <label className="template-topbar-field template-topbar-field--select">
-          <span className="template-topbar-field__label">{t("template.section.load")}</span>
-          <Select
-            disabled={!templates.length}
-            onChange={(event) => handleTemplateSelect(event.target.value)}
-            value={templateSelectValue}
-          >
-            <option value="">
-              {sessionDraftActive || isCreating ? draft.name || t("template.defaultName") : t("template.section.load")}
-            </option>
-            {templates.map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.name}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <label className="template-topbar-field">
-          <span className="template-topbar-field__label">{t("template.field.templateName")}</span>
-          <span className="input-group">
-            <TextInput
-              className={nameError ? "input--error" : ""}
-              onChange={(event) => {
-                updateDraft({ name: event.target.value });
-                if (event.target.value.trim()) {
-                  setNameError("");
-                }
-              }}
-              value={draft.name}
-            />
-            <AsyncButton
-              className="template-save-button"
-              icon={<Save aria-hidden className="button__icon" />}
-              loading={saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}
+        <div className="template-topbar-play-mode">
+          <span className="template-topbar-field__label">{t("template.field.playMode")}</span>
+          <div aria-label={t("template.field.playMode")} className="template-play-mode-segments" role="group">
+            <button
+              aria-pressed={playMode === "free"}
+              className={`template-language-segment${playMode === "free" ? " template-language-segment--active" : ""}`}
+              disabled={storySystemMutation.isPending}
+              onClick={() => handlePlayModeChange("free")}
+              type="button"
             >
-              {t("common.save")}
-            </AsyncButton>
-          </span>
-          {nameError ? <span className="field-error">{nameError}</span> : null}
-        </label>
+              {t("template.playMode.free")}
+            </button>
+            <button
+              aria-pressed={playMode === "story"}
+              className={`template-language-segment${playMode === "story" ? " template-language-segment--active" : ""}`}
+              disabled={storySystemMutation.isPending}
+              onClick={() => handlePlayModeChange("story")}
+              type="button"
+            >
+              {t("template.playMode.story")}
+            </button>
+          </div>
+        </div>
+        {isStoryPlay ? null : (
+          <>
+            <label className="template-topbar-field template-topbar-field--select">
+              <span className="template-topbar-field__label">{t("template.section.load")}</span>
+              <Select
+                disabled={!templates.length}
+                onChange={(event) => handleTemplateSelect(event.target.value)}
+                value={templateSelectValue}
+              >
+                <option value="">
+                  {sessionDraftActive || isCreating
+                    ? draft.name || t("template.defaultName")
+                    : t("template.section.load")}
+                </option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <label className="template-topbar-field">
+              <span className="template-topbar-field__label">{t("template.field.templateName")}</span>
+              <span className="input-group">
+                <TextInput
+                  className={nameError ? "input--error" : ""}
+                  onChange={(event) => {
+                    updateDraft({ name: event.target.value });
+                    if (event.target.value.trim()) {
+                      setNameError("");
+                    }
+                  }}
+                  value={draft.name}
+                />
+                <AsyncButton
+                  className="template-save-button"
+                  icon={<Save aria-hidden className="button__icon" />}
+                  loading={saveMutation.isPending}
+                  onClick={() => saveMutation.mutate()}
+                >
+                  {t("common.save")}
+                </AsyncButton>
+              </span>
+              {nameError ? <span className="field-error">{nameError}</span> : null}
+            </label>
+          </>
+        )}
       </header>
 
-      {isLoading || failedQuery || (!templates.length && !failedQuery) ? (
+      {!isStoryPlay && (isLoading || failedQuery || (!templates.length && !failedQuery)) ? (
         <div className="template-page__status">
           {isLoading ? <EmptyState title={t("template.loading")} /> : null}
           {failedQuery ? (
@@ -729,225 +892,299 @@ export function TemplateEditorPage() {
       <div className="template-workbench">
         <section className="template-workbench__main">
           <section className="template-panel template-panel--characters">
-            <div className="template-character-picker">
-              <div className="template-character-picker__header">
-                <span className="template-panel__label">{t("template.field.characters")}</span>
-                <Button
-                  disabled={!characters.length}
-                  icon={<Users aria-hidden className="button__icon" />}
-                  onClick={() => {
-                    const next = characters.map((character) => character.name);
-                    updateSelectedCharacters(next);
-                  }}
-                  variant="ghost"
-                >
-                  {t("template.action.selectAllCharacters")}
-                </Button>
+            {isStoryPlay ? (
+              <div className="template-play-mode-story">
+                <p>{t("template.playMode.storyHint")}</p>
+                <label className="template-stack-field">
+                  <span className="template-panel__label">{t("template.playMode.selectStory")}</span>
+                  <Select
+                    aria-label={t("template.playMode.selectStory")}
+                    onChange={(event) => setSelectedStoryId(event.target.value)}
+                    value={selectedStoryId}
+                  >
+                    <option value="">{t("template.playMode.selectStoryPlaceholder")}</option>
+                    {storyProjects.map((project) => (
+                      <option key={project.id} value={project.id}>
+                        {project.title || project.id}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+                {storyProjects.length === 0 ? <p>{t("template.playMode.noStories")}</p> : null}
+                <div className="template-play-mode-actions">
+                  <Button
+                    disabled={!selectedStoryId}
+                    onClick={() => navigate(`/settings/stories/${selectedStoryId}/edit`)}
+                    type="button"
+                  >
+                    {t("template.playMode.openEditor")}
+                  </Button>
+                  <Button onClick={() => void openStoryCreator()} type="button">
+                    {t("template.playMode.openCreator")}
+                  </Button>
+                </div>
+                {storyCastNames.length ? (
+                  <div className="template-story-cast">
+                    <span className="template-panel__label">{t("template.playMode.storyCast")}</span>
+                    <div className="template-story-cast-list">
+                      {storyCastNames.map((name) => (
+                        <span className="template-story-cast-chip" key={name}>
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {selectedStoryId ? (
+                  <div className="template-story-graph">
+                    <span className="template-panel__label">{t("template.playMode.graphTitle")}</span>
+                    {storyGraphQuery.data ? (
+                      <StoryGraphCanvas graph={storyGraphQuery.data} />
+                    ) : (
+                      <p>{t("template.playMode.graphLoading")}</p>
+                    )}
+                  </div>
+                ) : null}
+                <div className="template-mobile-access">
+                  <label className="template-toggle-row">
+                    <span>{t("template.field.mobileAccess")}</span>
+                    <Switch
+                      checked={mobileAccessEnabled}
+                      onChange={(event) => setMobileAccessEnabled(event.target.checked)}
+                    />
+                  </label>
+                  <p>{t("template.mobileAccessHint")}</p>
+                </div>
               </div>
-              <div aria-label={t("template.field.characters")} className="template-character-grid" role="group">
-                {characters.map((character) => {
-                  const isSelected = selectedCharacterNames.has(character.name);
-                  return (
-                    <button
-                      aria-pressed={isSelected}
-                      className={`template-character-card${isSelected ? " template-character-card--selected" : ""}`}
-                      key={character.name}
-                      onClick={() => toggleCharacter(character.name, !isSelected)}
-                      style={getCharacterChipStyle(character.color)}
-                      title={character.name}
-                      type="button"
-                    >
-                      <span aria-hidden className="template-character-card__dot" />
-                      <span className="template-character-card__name">{character.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
+            ) : (
+              <div className="template-character-picker">
+                <div className="template-character-picker__header">
+                  <span className="template-panel__label">{t("template.field.characters")}</span>
+                  <Button
+                    disabled={!characters.length}
+                    icon={<Users aria-hidden className="button__icon" />}
+                    onClick={() => {
+                      const next = characters.map((character) => character.name);
+                      updateSelectedCharacters(next);
+                    }}
+                    variant="ghost"
+                  >
+                    {t("template.action.selectAllCharacters")}
+                  </Button>
+                </div>
+                <div aria-label={t("template.field.characters")} className="template-character-grid" role="group">
+                  {characters.map((character) => {
+                    const isSelected = selectedCharacterNames.has(character.name);
+                    return (
+                      <button
+                        aria-pressed={isSelected}
+                        className={`template-character-card${isSelected ? " template-character-card--selected" : ""}`}
+                        key={character.name}
+                        onClick={() => toggleCharacter(character.name, !isSelected)}
+                        style={getCharacterChipStyle(character.color)}
+                        title={character.name}
+                        type="button"
+                      >
+                        <span aria-hidden className="template-character-card__dot" />
+                        <span className="template-character-card__name">{character.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
 
-              <div className="template-mobile-access">
-                <label className="template-toggle-row">
-                  <span>{t("template.field.mobileAccess")}</span>
-                  <Switch
-                    checked={mobileAccessEnabled}
-                    onChange={(event) => setMobileAccessEnabled(event.target.checked)}
+                <div className="template-mobile-access">
+                  <label className="template-toggle-row">
+                    <span>{t("template.field.mobileAccess")}</span>
+                    <Switch
+                      checked={mobileAccessEnabled}
+                      onChange={(event) => setMobileAccessEnabled(event.target.checked)}
+                    />
+                  </label>
+                  <p>{t("template.mobileAccessHint")}</p>
+                </div>
+
+                {effects.length > 0 ? (
+                  <div className="template-effect-section">
+                    <span className="template-effect-section__label">{t("template.field.effectName")}</span>
+                    <div aria-label={t("template.field.effectName")} className="template-character-grid" role="group">
+                      {effects.map((effect) => {
+                        const isSelected = selectedEffectNames.has(effect.name);
+                        return (
+                          <button
+                            aria-pressed={isSelected}
+                            className={`template-character-card${isSelected ? " template-character-card--selected" : ""}`}
+                            key={effect.name}
+                            onClick={() => toggleEffect(effect.name, !isSelected)}
+                            style={{ "--template-character-color": effect.color || "#5b8def" } as CSSProperties}
+                            title={effect.name}
+                            type="button"
+                          >
+                            <span aria-hidden className="template-character-card__dot" />
+                            <span className="template-character-card__name">{effect.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            )}
+          </section>
+
+          {isStoryPlay ? null : (
+            <>
+              <section className="template-panel template-panel--scenario">
+                <label className="template-stack-field">
+                  <span className="template-panel__label">{t("template.field.scenario")}</span>
+                  <MentionTextArea
+                    aria-label={t("template.field.scenario")}
+                    className="template-scenario-textarea"
+                    onChange={(scenario) => updateDraft({ scenario })}
+                    options={mentionOptions}
+                    rows={7}
+                    value={draft.scenario ?? ""}
                   />
                 </label>
-                <p>{t("template.mobileAccessHint")}</p>
-              </div>
+              </section>
 
-              {effects.length > 0 ? (
-                <div className="template-effect-section">
-                  <span className="template-effect-section__label">{t("template.field.effectName")}</span>
-                  <div aria-label={t("template.field.effectName")} className="template-character-grid" role="group">
-                    {effects.map((effect) => {
-                      const isSelected = selectedEffectNames.has(effect.name);
-                      return (
-                        <button
-                          aria-pressed={isSelected}
-                          className={`template-character-card${isSelected ? " template-character-card--selected" : ""}`}
-                          key={effect.name}
-                          onClick={() => toggleEffect(effect.name, !isSelected)}
-                          style={{ "--template-character-color": effect.color || "#5b8def" } as CSSProperties}
-                          title={effect.name}
-                          type="button"
-                        >
-                          <span aria-hidden className="template-character-card__dot" />
-                          <span className="template-character-card__name">{effect.name}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="template-panel template-panel--scenario">
-            <label className="template-stack-field">
-              <span className="template-panel__label">{t("template.field.scenario")}</span>
-              <TextArea
-                className="template-scenario-textarea"
-                onChange={(event) => updateDraft({ scenario: event.target.value })}
-                rows={7}
-                value={draft.scenario ?? ""}
-              />
-            </label>
-          </section>
-
-          <section className={`template-panel template-panel--system${systemExpanded ? " is-expanded" : ""}`}>
-            <button
-              aria-expanded={systemExpanded}
-              className="template-system-toggle"
-              onClick={() => setSystemExpanded((current) => !current)}
-              type="button"
-            >
-              <span>{t("template.section.system")}</span>
-              <span aria-hidden className="section-toggle__indicator" />
-            </button>
-            {systemExpanded ? (
-              <label className="template-stack-field template-stack-field--system">
-                <span className="template-panel__label">{t("template.field.system")}</span>
-                <TextArea
-                  className="template-system-textarea"
-                  onChange={(event) => updateDraft({ system: event.target.value })}
-                  rows={12}
-                  value={draft.system ?? ""}
-                />
-              </label>
-            ) : null}
-          </section>
-        </section>
-
-        <aside className="template-options-panel">
-          <div className="template-options-panel__header">
-            <h2 className="template-options-panel__title">{t("template.section.generate")}</h2>
-            <AsyncButton
-              className="template-generate-button"
-              icon={<Sparkles aria-hidden className="button__icon" />}
-              loading={generateMutation.isPending}
-              onClick={handleGenerateTemplate}
-              variant="primary"
-            >
-              {t("template.mode.generate")}
-            </AsyncButton>
-          </div>
-
-          <label className="template-side-field">
-            <span className="template-side-field__label">{t("template.field.background")}</span>
-            <Select onChange={(event) => setSelectedBackground(event.target.value)} value={selectedBackground}>
-              {backgroundOptions.map((name) => (
-                <option key={name} value={name}>
-                  {name === TRANSPARENT_BACKGROUND_NAME ? t("template.transparentBackground") : name}
-                </option>
-              ))}
-            </Select>
-          </label>
-
-          <div className="template-side-field">
-            <span className="template-side-field__label">{t("template.field.voiceLanguage")}</span>
-            <div className="template-language-segments" role="group">
-              {voiceLanguages.map((option) => (
+              <section className={`template-panel template-panel--system${systemExpanded ? " is-expanded" : ""}`}>
                 <button
-                  aria-pressed={voiceLanguage === option.value}
-                  className={`template-language-segment${
-                    voiceLanguage === option.value ? " template-language-segment--active" : ""
-                  }`}
-                  key={option.value}
-                  onClick={() => handleVoiceLanguageChange(option.value)}
+                  aria-expanded={systemExpanded}
+                  className="template-system-toggle"
+                  onClick={() => setSystemExpanded((current) => !current)}
                   type="button"
                 >
-                  {t(option.labelKey)}
+                  <span>{t("template.section.system")}</span>
+                  <span aria-hidden className="section-toggle__indicator" />
                 </button>
+                {systemExpanded ? (
+                  <label className="template-stack-field template-stack-field--system">
+                    <span className="template-panel__label">{t("template.field.system")}</span>
+                    <TextArea
+                      className="template-system-textarea"
+                      onChange={(event) => updateDraft({ system: event.target.value })}
+                      rows={12}
+                      value={draft.system ?? ""}
+                    />
+                  </label>
+                ) : null}
+              </section>
+            </>
+          )}
+        </section>
+
+        {isStoryPlay ? null : (
+          <aside className="template-options-panel">
+            <div className="template-options-panel__header">
+              <h2 className="template-options-panel__title">{t("template.section.generate")}</h2>
+              <AsyncButton
+                className="template-generate-button"
+                icon={<Sparkles aria-hidden className="button__icon" />}
+                loading={generateMutation.isPending}
+                onClick={handleGenerateTemplate}
+                variant="primary"
+              >
+                {t("template.mode.generate")}
+              </AsyncButton>
+            </div>
+
+            <label className="template-side-field">
+              <span className="template-side-field__label">{t("template.field.background")}</span>
+              <Select onChange={(event) => setSelectedBackground(event.target.value)} value={selectedBackground}>
+                {backgroundOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name === TRANSPARENT_BACKGROUND_NAME ? t("template.transparentBackground") : name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+
+            <div className="template-side-field">
+              <span className="template-side-field__label">{t("template.field.voiceLanguage")}</span>
+              <div className="template-language-segments" role="group">
+                {voiceLanguages.map((option) => (
+                  <button
+                    aria-pressed={voiceLanguage === option.value}
+                    className={`template-language-segment${
+                      voiceLanguage === option.value ? " template-language-segment--active" : ""
+                    }`}
+                    key={option.value}
+                    onClick={() => handleVoiceLanguageChange(option.value)}
+                    type="button"
+                  >
+                    {t(option.labelKey)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <p className="template-options-panel__hint">{t("template.optionHelp")}</p>
+
+            <div className="template-option-list">
+              {templateOptions.map((option) => (
+                <label className="template-toggle-row" key={option.key}>
+                  <span>{option.label}</span>
+                  <Switch checked={option.value} onChange={(e) => option.setValue(e.target.checked)} />
+                </label>
               ))}
             </div>
-          </div>
 
-          <p className="template-options-panel__hint">{t("template.optionHelp")}</p>
-
-          <div className="template-option-list">
-            {templateOptions.map((option) => (
-              <label className="template-toggle-row" key={option.key}>
-                <span>{option.label}</span>
-                <Switch checked={option.value} onChange={(e) => option.setValue(e.target.checked)} />
+            <div className="template-number-grid">
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.maxSpeechChars")}</span>
+                <NumberInput
+                  max={500000}
+                  min={0}
+                  onChange={(event) => setMaxSpeechChars(Number.parseInt(event.target.value, 10) || 0)}
+                  step={10}
+                  value={maxSpeechChars}
+                />
               </label>
-            ))}
-          </div>
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.maxDialogItems")}</span>
+                <NumberInput
+                  max={500}
+                  min={0}
+                  onChange={(event) => setMaxDialogItems(Number.parseInt(event.target.value, 10) || 0)}
+                  value={maxDialogItems}
+                />
+              </label>
+            </div>
 
-          <div className="template-number-grid">
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.maxSpeechChars")}</span>
-              <NumberInput
-                max={500000}
-                min={0}
-                onChange={(event) => setMaxSpeechChars(Number.parseInt(event.target.value, 10) || 0)}
-                step={10}
-                value={maxSpeechChars}
-              />
-            </label>
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.maxDialogItems")}</span>
-              <NumberInput
-                max={500}
-                min={0}
-                onChange={(event) => setMaxDialogItems(Number.parseInt(event.target.value, 10) || 0)}
-                value={maxDialogItems}
-              />
-            </label>
-          </div>
-
-          <div className="template-runtime-fields">
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.initSprite")}</span>
-              <FilePicker
-                acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
-                onChange={(event) => setInitSpritePath(event.target.value)}
-                onPathChange={setInitSpritePath}
-                pickLabel={t("common.chooseFile")}
-                pickerTitle={t("template.field.initSprite")}
-                readOnly={false}
-                value={initSpritePath}
-              />
-            </label>
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.historyFile")}</span>
-              <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
-            </label>
-          </div>
-        </aside>
+            <div className="template-runtime-fields">
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.initSprite")}</span>
+                <FilePicker
+                  acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+                  onChange={(event) => setInitSpritePath(event.target.value)}
+                  onPathChange={setInitSpritePath}
+                  pickLabel={t("common.chooseFile")}
+                  pickerTitle={t("template.field.initSprite")}
+                  readOnly={false}
+                  value={initSpritePath}
+                />
+              </label>
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.historyFile")}</span>
+                <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
+              </label>
+            </div>
+          </aside>
+        )}
       </div>
 
       <footer className="template-page__footer">
         <AsyncButton
-          disabled={runtimeLaunchDisabled || initializationPending}
+          disabled={runtimeLaunchDisabled || initializationPending || (isStoryPlay && !selectedStoryId)}
           icon={<Play aria-hidden className="button__icon" />}
           loading={launchMutation.isPending}
-          onClick={() => launchMutation.mutate({ resetHistory: false })}
+          onClick={() => handleLaunchChat(false)}
           variant="primary"
         >
           {t("template.action.launch")}
         </AsyncButton>
         <Button
-          disabled={runtimeLaunchDisabled || initializationPending}
+          disabled={runtimeLaunchDisabled || initializationPending || (isStoryPlay && !selectedStoryId)}
           icon={<RotateCw aria-hidden className="button__icon" />}
           onClick={() => setQuickRestartOpen(true)}
           variant="ghost"
@@ -964,7 +1201,7 @@ export function TemplateEditorPage() {
         onCancel={() => setQuickRestartOpen(false)}
         onConfirm={() => {
           setQuickRestartOpen(false);
-          launchMutation.mutate({ resetHistory: true });
+          handleLaunchChat(true);
         }}
         open={quickRestartOpen}
         title={t("template.quickRestart.title")}

@@ -49,6 +49,39 @@ class TestDefaultCharacterTtsHandler:
             effect="",
         )
 
+    def test_audio_only_emits_empty_caption_so_story_dialog_is_not_repeated(
+        self, mock_app_runtime, monkeypatch
+    ):
+        runtime = mock_app_runtime
+        runtime.tts_manager = MagicMock()
+        runtime.tts_manager.generate_tts.return_value = "voice.wav"
+        monkeypatch.setattr(
+            "application.chat.handlers.tts._config", runtime.config
+        )
+        emit = MagicMock()
+        monkeypatch.setattr(
+            "application.chat.handlers.tts.tts_emit_to_ui_queue", emit
+        )
+
+        DefaultCharacterTtsHandler().handle(
+            LLMDialogMessage(
+                name="TestChar",
+                text="Hello",
+                asset_id=None,
+                audio_only=True,
+            )
+        )
+
+        runtime.tts_manager.generate_tts.assert_called_once()
+        emit.assert_called_once_with(
+            "TestChar",
+            "",
+            "-1",
+            "voice.wav",
+            is_system_message=False,
+            effect="",
+        )
+
 
 class TestSpecializedHandlers:
     def test_bgm_handler_matches_bgm(self, mock_app_runtime):

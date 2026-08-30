@@ -11,6 +11,7 @@ export * from "./FormControls";
 export * from "./GuidedFlow";
 export * from "./IconButton";
 export * from "./ImageAssetGallery";
+export * from "./MentionTextArea";
 export * from "./PageSectionNav";
 export * from "./PathDisplay";
 export * from "./PathPickerDialog";

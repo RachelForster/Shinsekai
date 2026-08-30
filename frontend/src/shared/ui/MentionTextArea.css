@@ -1,0 +1,71 @@
+.mention-editor.textarea {
+  display: grid;
+  position: relative;
+  overflow: visible;
+  padding: 0;
+  resize: none;
+}
+
+.mention-editor.textarea:focus-within {
+  border-color: var(--color-accent-border-strong);
+  box-shadow: 0 0 0 3px var(--color-accent-bg);
+}
+
+.mention-editor.textarea.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  background: var(--color-surface);
+}
+
+.mention-editor__input,
+.mention-editor__mirror {
+  grid-area: 1 / 1;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 96px;
+  margin: 0;
+  padding: 9px 11px;
+  border: 0;
+  font: inherit;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.mention-editor__mirror {
+  overflow: hidden;
+  pointer-events: none;
+  color: var(--color-text-primary);
+}
+
+.mention-editor .mention-editor__input {
+  position: relative;
+  z-index: 1;
+  resize: vertical;
+  color: transparent;
+  caret-color: var(--color-text-primary);
+  background: transparent;
+}
+
+.mention-editor__input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.mention-editor__input::selection {
+  color: transparent;
+  background: color-mix(in srgb, var(--color-accent-primary) 28%, transparent);
+}
+
+.mention-editor__chip {
+  border-radius: 4px;
+  color: var(--mention-color);
+  background: color-mix(in srgb, var(--mention-color) 18%, transparent);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.mention-editor__empty {
+  padding: 8px 9px;
+  color: var(--color-text-muted);
+}

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from application.chat.runtime_process import _handle_chat_command
+from application.chat.runtime_process import (
+    _handle_chat_command,
+    _story_speech_lines,
+    publish_bound_story_scene,
+)
 from application.story import SceneDialogueItem, SceneTurnResult, StorySession
 from application.story.coordinator import (
     bound_story_session,
@@ -85,6 +88,9 @@ class _ChatStream:
 
 
 class _SceneService:
+    def prepare_llm_turn(self, text: str, *, command_id: str, message_id: str):
+        return SimpleNamespace(appendix=f"scene-prompt:{text}", node_id="n", revision=1)
+
     def handle_free_text(self, text: str, *, command_id: str, message_id: str):
         return SceneTurnResult(
             command_id=command_id,
@@ -158,6 +164,101 @@ def test_structured_story_choice_uses_deterministic_session() -> None:
     assert state.story_session.active_branch.history_entries[-1]["role"] == "user"
 
 
+def test_structured_story_choice_renders_scene_dialogue_before_next_options() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    state.story_scene_service = _SceneService()
+
+    snapshot = _handle_chat_command(
+        state,
+        {
+            "cmdId": "choice-1",
+            "payload": {
+                "choiceId": "prepare-investigation",
+                "expectedNodeId": "transfer-day",
+                "expectedRevision": 1,
+                "kind": "story-choice",
+            },
+            "type": "submit-option",
+        },
+    )
+
+    assert snapshot["story"]["currentNodeId"] == "old-school-gate"
+    assert snapshot["status"] == "generating"
+    assert snapshot["dialogText"] == "已选择：和绫约定调查旧校舍"
+    assert state.chat_stream.command[1]["type"] == "send-message"
+    assert state.chat_stream.command[1]["payload"]["text"] == "和绫约定调查旧校舍"
+    assert "promptAppendix" not in state.chat_stream.command[1]["payload"]
+    published_types = [event["type"] for event in state.chat_stream.published]
+    assert "story.state.replace" in published_types
+    assert "options.show" in published_types
+    assert "dialog.end" not in published_types
+    assert snapshot["options"] == []
+
+
+def test_llm_authored_option_matching_authoritative_label_advances_locally() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+
+    snapshot = _handle_chat_command(
+        state,
+        {
+            "cmdId": "dynamic-choice-1",
+            "payload": "和绫约定调查旧校舍",
+            "type": "submit-option",
+        },
+    )
+
+    assert snapshot["story"]["currentNodeId"] == "old-school-gate"
+    assert snapshot["storyAck"]["commandId"] == "dynamic-choice-1"
+    assert state.chat_stream.command[1]["type"] == "send-message"
+
+
+def test_llm_authored_intermediate_option_stays_in_current_phase() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+
+    snapshot = _handle_chat_command(
+        state,
+        {
+            "cmdId": "dynamic-choice-1",
+            "payload": "先观察教室里的气氛",
+            "type": "submit-option",
+        },
+    )
+
+    assert snapshot["story"]["currentNodeId"] == "transfer-day"
+    assert state.chat_stream.command[1]["type"] == "submit-option"
+
+
+def test_llm_authored_option_matching_intent_example_applies_local_effects() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    _handle_chat_command(
+        state,
+        {
+            "cmdId": "phase-choice",
+            "payload": "和绫约定调查旧校舍",
+            "type": "submit-option",
+        },
+    )
+
+    snapshot = _handle_chat_command(
+        state,
+        {
+            "cmdId": "intent-choice",
+            "payload": "我会陪着你",
+            "type": "submit-option",
+        },
+    )
+
+    assert snapshot["story"]["currentNodeId"] == "old-school-gate"
+    trust = next(
+        item for item in snapshot["story"]["visibleVariables"] if item["id"] == "trust.ling"
+    )
+    assert trust["value"] == 15
+
+
 def test_structured_story_choice_keeps_legacy_error_when_flag_is_off() -> None:
     state = _state(enabled=False)
 
@@ -190,12 +291,16 @@ def test_clearing_story_session_drops_memory_and_document(tmp_path) -> None:
     state = _state(enabled=True)
     state.chat_session["historyPath"] = str(history_path)
     state.story_session = _story_session(state.config_manager.feature_flags)
+    from application.story.hooks import write_story_chat_prompt, read_story_chat_prompt
+
+    write_story_chat_prompt(history_path, "cached-scene")
 
     discard_story_session_storage(history_path)
     clear_story_session(state)
 
     assert state.story_session is None
     assert not story_path.exists()
+    assert not read_story_chat_prompt(history_path).available
 
 
 def test_fork_history_creates_a_matching_story_branch() -> None:
@@ -262,9 +367,68 @@ def test_live_story_transition_publishes_approved_actor_resources() -> None:
         event for event in state.chat_stream.published if event["type"] == "sprite.show"
     )
     assert sprite_event["url"].startswith("/api/media?path=")
+    assert "slot" not in sprite_event
     assert state.chat_stream.snapshot["sprites"][0]["path"].startswith("/api/media?path=")
     assert state.chat_stream.snapshot["actorContext"]["activeCharacterIds"] == ["ling"]
-    assert story_snapshot_patch(state)["sprites"][0]["path"].startswith("/api/media?path=")
+    assert "sprites" not in story_snapshot_patch(state)
+
+
+def test_story_polling_preserves_llm_options_until_a_local_transition() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    state.chat_stream.snapshot["options"] = ["继续调查", "询问绫"]
+    state.chat_stream.snapshot["sprites"] = [
+        {
+            "characterName": "第四人",
+            "id": "第四人:0",
+            "label": "第四人",
+            "path": "asset://fourth.png",
+            "slot": 0,
+        }
+    ]
+
+    patch = story_snapshot_patch(state)
+
+    assert "options" not in patch
+    assert "sprites" not in patch
+    state.chat_stream.snapshot.update(patch)
+    assert state.chat_stream.snapshot["options"] == ["继续调查", "询问绫"]
+    assert state.chat_stream.snapshot["sprites"][0]["characterName"] == "第四人"
+
+    publish_story_transition(state, patch)
+
+    assert state.chat_stream.snapshot["options"] == []
+
+
+def test_story_cast_projection_leaves_all_sprite_layout_to_the_frontend() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    names = ["甲", "乙", "丙", "丁"]
+    state.story_cast_service = SimpleNamespace(
+        chat_patch=lambda: {
+            "sprites": [
+                {
+                    "id": f"story:{index}",
+                    "characterName": name,
+                    "label": name,
+                    "path": f"{name}.png",
+                    "scale": 1.0,
+                }
+                for index, name in enumerate(names)
+            ]
+        }
+    )
+
+    publish_story_transition(state, state.story_session.chat_snapshot())
+
+    sprite_events = [
+        event
+        for event in state.chat_stream.published
+        if event["type"] == "sprite.show"
+    ]
+    assert [event["characterName"] for event in sprite_events] == names
+    assert all("slot" not in event for event in sprite_events)
+    assert all("slot" not in sprite for sprite in state.chat_stream.snapshot["sprites"])
 
 
 def test_fork_history_skips_story_transition_when_flag_is_off() -> None:
@@ -297,7 +461,7 @@ def test_publish_story_transition_is_noop_when_flag_is_off() -> None:
     assert "story" not in state.chat_stream.snapshot
 
 
-def test_free_text_uses_scene_service_only_when_story_flag_is_enabled() -> None:
+def test_free_text_forwards_player_text_to_the_chat_llm_path() -> None:
     state = _state(enabled=True)
     state.story_scene_service = _SceneService()
 
@@ -305,16 +469,52 @@ def test_free_text_uses_scene_service_only_when_story_flag_is_enabled() -> None:
         state,
         {
             "cmdId": "turn-1",
-            "payload": "你好",
+            "payload": {"attachments": [], "text": "你好"},
             "type": "send-message",
         },
     )
 
-    assert snapshot["dialogText"] == "收到：你好"
-    assert snapshot["characterName"] == "ling"
-    assert snapshot["eventSeq"] > 0
-    assert any(event["type"] == "history.replace" for event in state.chat_stream.published)
-    assert any(event["type"] == "dialog.end" for event in state.chat_stream.published)
-    assert snapshot["historyEntries"][0]["role"] == "user"
-    assert "你好" in snapshot["historyEntries"][0]["text"]
-    assert snapshot["historyEntries"][1]["text"].startswith("ling:")
+    assert snapshot["status"] == "generating"
+    assert state.chat_stream.command[1]["type"] == "send-message"
+    assert state.chat_stream.command[1]["payload"]["text"] == "你好"
+    assert "promptAppendix" not in state.chat_stream.command[1]["payload"]
+    assert all(event["type"] != "dialog.end" for event in state.chat_stream.published)
+
+
+def test_bound_story_opening_kicks_the_chat_llm_path_without_a_player_line() -> None:
+    state = _state(enabled=True)
+    state.story_session = _story_session(state.config_manager.feature_flags)
+    state.story_scene_service = _SceneService()
+
+    publish_bound_story_scene(state, "start-1")
+
+    published_types = [event["type"] for event in state.chat_stream.published]
+    assert "story.state.replace" in published_types
+    assert "options.show" in published_types
+    assert "dialog.end" not in published_types
+    assert state.chat_stream.command[1]["type"] == "send-message"
+    assert state.chat_stream.command[1]["payload"]["text"] == ""
+    assert "promptAppendix" not in state.chat_stream.command[1]["payload"]
+
+
+def test_story_speech_lines_skip_player_narration_and_unknown_characters() -> None:
+    state = _state(enabled=True)
+    state.config_manager.get_character_by_name = lambda name: (
+        SimpleNamespace(name=name) if name == "绫" else None
+    )
+    dialogue = (
+        SceneDialogueItem("user", "我走进酒吧。", display_name="用户"),
+        SceneDialogueItem("NARR", "夜色很深。"),
+        SceneDialogueItem("npc-1", "本地库没有我。", display_name="路人"),
+        SceneDialogueItem("ling", "今晚有空吗？", display_name="绫", sprite="02"),
+    )
+
+    assert _story_speech_lines(state, dialogue) == [
+        {
+            "effect": "",
+            "name": "绫",
+            "sprite": "02",
+            "text": "今晚有空吗？",
+        }
+    ]
+

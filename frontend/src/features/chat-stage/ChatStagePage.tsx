@@ -36,6 +36,7 @@ import { TopStageTools } from "./components/TopStageTools";
 import { StoryDebugPanel } from "./components/StoryDebugPanel";
 import "./chat-stage.css";
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "./chatState";
+import { optionsHeldForDialog } from "./state/layers";
 import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
@@ -209,8 +210,12 @@ export function ChatStagePage() {
     [sendCommand],
   );
   const autoAdvanceDialog = useCallback(() => {
+    if (optionsHeldForDialog(state)) {
+      dispatch({ type: "revealHeldOptions" });
+      return;
+    }
     void sendCommand({ type: "dialog-advance" });
-  }, [sendCommand]);
+  }, [sendCommand, state]);
   const {
     dialogTotalCharacters,
     displayedDialog,
@@ -567,8 +572,12 @@ export function ChatStagePage() {
     if (!viewModel.layers.dialog || !dialogTotalCharacters) {
       return;
     }
+    if (optionsHeldForDialog(state)) {
+      dispatch({ type: "revealHeldOptions" });
+      return;
+    }
     void sendCommand({ type: "dialog-advance" });
-  }, [dialogTotalCharacters, sendCommand, showFullDialog, typingDialog, viewModel.layers.dialog]);
+  }, [dialogTotalCharacters, sendCommand, showFullDialog, state, typingDialog, viewModel.layers.dialog]);
 
   const toggleAuto = useCallback(() => {
     setRuntimeConfig((current) => ({ ...current, auto: !current.auto }));

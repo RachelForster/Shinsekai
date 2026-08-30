@@ -1,0 +1,74 @@
+.story-editor-graph-scroll {
+  overflow: auto;
+}
+.story-editor-graph {
+  background: radial-gradient(circle at 1px 1px, rgba(99, 91, 255, 0.22) 1px, transparent 1.5px);
+  background-size: 18px 18px;
+  min-height: 260px;
+  position: relative;
+}
+.story-editor-graph-lines {
+  color: var(--accent-primary, #635bff);
+  display: block;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  z-index: 0;
+}
+.story-editor-graph-lines path {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+.story-editor-graph-lines text {
+  fill: var(--text-secondary, #697386);
+  font-size: 11px;
+  text-anchor: middle;
+}
+.story-editor-graph-node {
+  background: var(--surface-primary, #fff);
+  border: 1px solid var(--accent-primary, #635bff);
+  border-radius: 8px;
+  box-shadow: 0 3px 10px rgba(27, 35, 52, 0.12);
+  color: inherit;
+  display: grid;
+  font: inherit;
+  gap: 3px;
+  min-width: 150px;
+  padding: 9px;
+  position: absolute;
+  text-align: left;
+  z-index: 1;
+}
+.story-editor-graph-node.selectable {
+  cursor: pointer;
+}
+.story-editor-graph-node.selected {
+  background: rgba(99, 91, 255, 0.12);
+  box-shadow: 0 0 0 2px var(--accent-primary, #635bff);
+}
+.story-editor-graph-node-rules {
+  border-color: var(--text-secondary, #697386);
+}
+.story-editor-graph-node small {
+  color: var(--text-secondary, #697386);
+}
+.story-editor-graph-edges {
+  background: color-mix(in srgb, var(--surface-primary, #fff) 88%, transparent);
+  bottom: 10px;
+  display: grid;
+  gap: 3px;
+  list-style: none;
+  margin: 0;
+  max-width: 360px;
+  padding: 7px 9px;
+  position: absolute;
+  right: 10px;
+}
+.story-editor-graph-edges li {
+  color: var(--text-secondary, #697386);
+  font-size: 11px;
+}

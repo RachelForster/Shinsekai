@@ -17,6 +17,12 @@ from application.story import (
     StoryTurnCancelledError,
     ValidatedCastPlanner,
 )
+from application.story.prompt import (
+    compose_story_chat_system_prompt,
+    compose_story_system_prompt,
+    compose_story_user_message,
+    compose_story_user_scene_context,
+)
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
     SelectChoice,
@@ -39,7 +45,7 @@ def _library_payload(character_id: str) -> dict:
     return {
         "name": character_id.title(),
         "characterSetting": f"Actor profile for {character_id}",
-        "sprites": [],
+        "sprites": [{"path": f"data/sprite/{character_id}.png"}],
         "toolPermissions": ["memory.search"],
     }
 
@@ -178,6 +184,10 @@ def test_free_text_intent_is_adjudicated_before_dialogue_and_hides_secrets() -> 
     assert result.dialogue[0].character_id == "ling"
     assert "headmaster-secret" not in json.dumps(model.requests, ensure_ascii=False)
     assert model.requests[0]["scene"]["publicContext"]["publicClue"] == "rain"
+    assert model.requests[0]["scene"]["incomingTransition"]["choiceLabel"] == "和绫约定调查旧校舍"
+    assert model.requests[0]["scene"]["availableChoices"] == [
+        {"id": "enter-with-key", "label": "使用旧钥匙进入"}
+    ]
     tool_names = [item["name"] for item in model.requests[0]["tools"]]
     assert tool_names == [
         "perform_intent",
@@ -354,6 +364,25 @@ def test_config_scene_model_maps_native_tool_calls(monkeypatch) -> None:
 
     result = model.complete(
         {
+            "scene": {
+                "nodeTitle": "旧校舍门口",
+                "nodeId": "old-school-gate",
+                "publicContext": {"publicClue": "rain"},
+                "completedNodeIds": ["transfer-day"],
+                "canon": ["转学第一天"],
+                "userInput": {"text": "我会陪着你", "messageId": "m1"},
+            },
+            "actorContext": {
+                "speakerAllowlist": ["ling", "NARR"],
+                "characters": [
+                    {
+                        "id": "ling",
+                        "name": "绫",
+                        "setting": "转学生",
+                        "sprites": [{"id": "01", "label": "微笑"}],
+                    }
+                ],
+            },
             "tools": [
                 {
                     "name": "perform_intent",
@@ -361,7 +390,7 @@ def test_config_scene_model_maps_native_tool_calls(monkeypatch) -> None:
                     "expectedNodeId": "old-school-gate",
                     "expectedRevision": 2,
                 }
-            ]
+            ],
         }
     )
 
@@ -375,6 +404,16 @@ def test_config_scene_model_maps_native_tool_calls(monkeypatch) -> None:
         "enum"
     ]
     assert intent_enum == ["reassure-ling"]
+    system = captured["messages"][0]["content"]
+    user = captured["messages"][1]["content"]
+    assert captured["messages"][0]["role"] == "system"
+    assert "character_name" in system
+    assert '"dialog"' in system
+    assert "绫" in system
+    assert "perform_intent" in system
+    assert "shinsekai.scene.v1" not in system
+    assert "我会陪着你" in user
+    assert "shinsekai.scene.v1" not in user
 
 
 def test_config_scene_model_keeps_json_fallback_without_native_tools(
@@ -383,14 +422,52 @@ def test_config_scene_model_keeps_json_fallback_without_native_tools(
     class OtherAdapter:
         def chat(self, messages, stream=False, **kwargs):
             assert "tools" not in kwargs
-            return {"dialogue": [{"characterId": "ling", "text": "好。"}]}
+            assert "response_format" not in kwargs
+            return {
+                "dialog": [
+                    {
+                        "character_name": "ling",
+                        "speech": "好。",
+                        "sprite": "01",
+                    }
+                ]
+            }
 
     manager = SimpleNamespace(llm_adapter=OtherAdapter())
     model = ConfigSceneModel(_flags(), config_manager=SimpleNamespace())
     monkeypatch.setattr(model, "_llm_manager", lambda: manager)
 
     result = model.complete({"tools": []})
-    assert result["dialogue"][0]["characterId"] == "ling"
+    assert result["dialog"][0]["character_name"] == "ling"
+
+
+def test_free_mode_dialog_json_is_accepted_as_scene_dialogue() -> None:
+    _, session, _, model, scene = _story(
+        model_responses=(
+            {
+                "dialog": [
+                    {
+                        "character_name": "Ling",
+                        "speech": "谢谢你。",
+                        "sprite": "01",
+                    }
+                ]
+            },
+        )
+    )
+
+    result = scene.handle_free_text(
+        "我会陪着你",
+        command_id="turn-1",
+        message_id="message-1",
+    )
+
+    assert result.dialogue[0].character_id == "ling"
+    assert result.dialogue[0].display_name == "Ling"
+    assert result.dialogue[0].text == "谢谢你。"
+    assert result.dialogue[0].sprite == "01"
+    assert result.dialogue[0].sprite_path
+    assert "headmaster-secret" not in json.dumps(model.requests, ensure_ascii=False)
 
 
 def test_scene_turn_is_persisted_per_branch_and_not_replayed() -> None:
@@ -456,3 +533,151 @@ def test_character_entry_tool_only_lists_optional_candidates() -> None:
     )
     assert entry["allowedCharacterIds"] == ["witness"]
     assert "ling" not in entry["allowedCharacterIds"]
+
+
+def test_story_system_prompt_uses_six_sections_and_free_mode_contract() -> None:
+    from i18n import tr
+
+    prompt = compose_story_system_prompt(
+        {
+            "scene": {
+                "nodeTitle": "旧校舍门口",
+                "nodeId": "old-school-gate",
+                "publicContext": {"publicClue": "rain"},
+                "completedNodeIds": ["transfer-day"],
+                "canon": ["转学第一天"],
+                "visibleVariables": {"trust.ling": 10},
+                "userInput": {"text": "我会陪着你"},
+            },
+            "actorContext": {
+                "characters": [
+                    {
+                        "id": "ling",
+                        "name": "绫",
+                        "setting": "转学生",
+                        "sprites": [{"id": "01", "label": "微笑"}],
+                    }
+                ]
+            },
+            "tools": [
+                {
+                    "name": "perform_intent",
+                    "allowedIntentIds": ["reassure-ling"],
+                }
+            ],
+        }
+    )
+    user = compose_story_user_message(
+        {
+            "scene": {"userInput": {"text": "我会陪着你"}},
+            "toolResults": [{"name": "perform_intent", "ok": True, "revision": 3}],
+        }
+    )
+
+    for key in (
+        "section_current",
+        "section_progress",
+        "section_format",
+        "section_characters",
+        "section_tools",
+        "section_workflow",
+    ):
+        assert tr(f"story_scene_prompt.{key}") in prompt
+    assert "旧校舍门口" in prompt
+    assert "transfer-day" in prompt
+    assert "character_name" in prompt
+    assert '"dialog"' in prompt
+    assert "CHOICE" in prompt
+    assert "绫" in prompt
+    assert "微笑" in prompt
+    assert "perform_intent" in prompt
+    assert "headmaster-secret" not in prompt
+    assert "shinsekai.scene.v1" not in prompt
+    assert "我会陪着你" in user
+    assert "perform_intent" in user
+    assert "shinsekai.scene.v1" not in user
+    user_scene = compose_story_user_scene_context(
+        {
+            "scene": {
+                "nodeTitle": "旧校舍门口",
+                "nodeId": "old-school-gate",
+                "incomingTransition": {"choiceLabel": "和绫约定调查旧校舍"},
+                "availableChoices": [{"id": "ask-remote", "label": "询问遥控器用途"}],
+                "completedNodeIds": ["transfer-day"],
+            }
+        }
+    )
+    chat_system = compose_story_chat_system_prompt(
+        {
+            "scene": {"nodeTitle": "旧校舍门口"},
+            "actorContext": {"characters": [{"id": "ling", "name": "绫"}]},
+            "tools": [{"name": "perform_intent"}],
+        }
+    )
+    assert tr("story_scene_prompt.section_current") in user_scene
+    assert tr("story_scene_prompt.section_progress") in user_scene
+    assert tr("story_scene_prompt.section_format") not in user_scene
+    assert "和绫约定调查旧校舍" in user_scene
+    assert "询问遥控器用途" in user_scene
+    assert tr("story_scene_prompt.section_current") not in chat_system
+    assert tr("story_scene_prompt.section_format") in chat_system
+    assert tr("story_scene_prompt.workflow_continuity") in chat_system
+    assert tr("story_scene_prompt.workflow_dynamic_choices") in chat_system
+
+
+def test_story_prompt_treats_user_as_player_not_npc() -> None:
+    from i18n import tr
+
+    prompt = compose_story_system_prompt(
+        {
+            "scene": {"nodeTitle": "酒吧", "nodeId": "node1"},
+            "actorContext": {
+                "characters": [
+                    {
+                        "id": "fangshiyangming",
+                        "name": "房石阳明",
+                        "setting": "酒吧客人",
+                        "sprites": [{"id": "01", "label": "微笑"}],
+                    },
+                    {
+                        "id": "user",
+                        "name": "用户",
+                        "isPlayer": True,
+                        "setting": "正在游玩的人",
+                    },
+                ]
+            },
+            "tools": [],
+        }
+    )
+
+    assert "房石阳明" in prompt
+    assert "用户" in prompt
+    assert tr("story_scene_prompt.player_character") in prompt
+    names_line = next(
+        line
+        for line in prompt.splitlines()
+        if "character_name" in line and "房石阳明" in line
+    )
+    assert "用户" not in names_line
+
+
+def test_prepare_llm_turn_appends_scene_prompt_without_calling_the_model() -> None:
+    _, _session, _, model, scene = _story(model_responses=())
+
+    turn = scene.prepare_llm_turn(
+        "我会陪着你",
+        command_id="turn-1",
+        message_id="message-1",
+    )
+
+    from i18n import tr
+
+    assert model.requests == []
+    assert turn.user_context
+    assert tr("story_scene_prompt.player_input_header") not in turn.user_context
+    assert "old-school-gate" in turn.user_context or turn.node_id == "old-school-gate"
+    assert "character_name" in turn.system_prompt
+    assert '"dialog"' in turn.system_prompt
+    assert "CHOICE" in turn.system_prompt
+    assert "perform_intent" not in turn.system_prompt

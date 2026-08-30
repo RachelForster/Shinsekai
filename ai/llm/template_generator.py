@@ -110,6 +110,229 @@ def json_format_reminder() -> str:
     return _T("closing_json_reminder").strip()
 
 
+def render_dialog_reply_contract(
+    character_names: list[str] | tuple[str, ...],
+    *,
+    use_effect: bool = True,
+    use_cg: bool = False,
+    use_llm_translation: bool = True,
+    use_cot: bool = False,
+    use_choice: bool = False,
+    use_narration: bool = True,
+    use_stat: bool = True,
+    max_speech_chars: int = 0,
+    max_dialog_items: int = 0,
+    has_real_background: bool = False,
+    output_contract_patches: list[OutputContractPatch] | None = None,
+) -> tuple[str, str]:
+    """Return free-mode (format_block, requirements_block) for the dialog JSON contract.
+
+    Story mode reuses this so replies stay parseable by the existing dialog pipeline.
+    """
+    from i18n import current_language, init_i18n
+
+    init_i18n(current_language())
+    names_list = [str(item).strip() for item in character_names if str(item).strip()]
+    if not names_list:
+        names_list = [_narr_label()]
+    sep = _T("name_sep")
+    names = sep.join(names_list)
+    vlang = _target_voice_display_name()
+    if use_llm_translation and _ui_voice_same_lang():
+        use_llm_translation = False
+    effect_line = _T("json_line_effect") if use_effect else ""
+    trans_line = (
+        _T("json_line_trans", target_voice_name=_json_string_content(vlang))
+        if use_llm_translation
+        else ""
+    )
+    fields: dict[str, _FieldSpec] = {
+        "character_name": _FieldSpec(
+            key="character_name",
+            type="string",
+            description=_T(
+                "r_cname",
+                names=names,
+                cot_part="",
+                fixed_roles="",
+                opt_scene="",
+                opt_bgm="",
+                opt_cg="",
+            ),
+            required=True,
+        ),
+        "sprite": _FieldSpec(
+            key="sprite",
+            type="string",
+            description=_T("r_sprite"),
+            required=True,
+        ),
+        "speech": _FieldSpec(
+            key="speech",
+            type="string",
+            description=_T("r_speech", speech_lang_name=_T("speech_lang_name")),
+            required=True,
+        ),
+    }
+    if use_effect:
+        fields["effect"] = _FieldSpec(
+            key="effect",
+            type="string",
+            description=_T("r_effect"),
+            required=False,
+        )
+    if use_llm_translation:
+        fields["translate"] = _FieldSpec(
+            key="translate",
+            type="string",
+            description=_T("r_translate", target_voice_name=vlang),
+            required=False,
+        )
+    patches = list(output_contract_patches or [])
+    for patch in sorted(patches, key=lambda item: item.priority):
+        for key in patch.remove_fields:
+            if key not in {"character_name", "speech", "sprite"}:
+                fields.pop(key, None)
+        for key, field_patch in patch.field_patches.items():
+            existing = fields.get(key)
+            if existing is not None:
+                fields[key] = _apply_field_patch(existing, field_patch)
+        for field in patch.add_fields:
+            fields[field.key] = _FieldSpec(
+                key=field.key,
+                type=field.type,
+                description=field.description,
+                required=field.required,
+                aliases=field.aliases,
+            )
+    format_block = _T("preamble", names=names) + _T("json_head_top")
+    format_block += _T(
+        "json_speech_line",
+        example=_json_string_content(_T("json_speech_example")),
+    )
+    if use_effect:
+        format_block += effect_line
+    if use_llm_translation:
+        format_block += trans_line
+    format_block += _T("json_foot")
+    format_block += _render_field_notes(fields)
+
+    opt_scene = f", {SCENE}" if has_real_background else ""
+    opt_bgm = f", {BGM}" if has_real_background else ""
+    opt_cg = f", {CG}" if use_cg else ""
+    cot_part = f"{COT}," if use_cot else ""
+    toks = {
+        "narr": _narr_label(),
+        "choice": CHOICE,
+        "stat": STAT,
+        "scn": SCENE,
+        "bgm_t": BGM,
+        "cg": CG,
+        "cot": COT,
+    }
+    fixed_roles_join = "、".join(
+        [
+            item
+            for item in (
+                toks["narr"] if use_narration else None,
+                toks["choice"] if use_choice else None,
+                toks["stat"] if use_stat else None,
+            )
+            if item is not None
+        ]
+    )
+    role_clause = (" " + fixed_roles_join) if fixed_roles_join else ""
+    requirements: list[RequirementSpec] = [
+        RequirementSpec("r_format", _T("r_format"), 10),
+        RequirementSpec("r_user_display_name_tool", _T("r_user_display_name_tool"), 15),
+        RequirementSpec(
+            "r_cname",
+            _T(
+                "r_cname",
+                names=names,
+                cot_part=cot_part,
+                fixed_roles=role_clause,
+                opt_scene=opt_scene,
+                opt_bgm=opt_bgm,
+                opt_cg=opt_cg,
+            ),
+            20,
+        ),
+        RequirementSpec("r_sprite", _T("r_sprite"), 30),
+        RequirementSpec(
+            "r_non_sprite",
+            _T("r_non_sprite", fixed_roles_non_sprite=fixed_roles_join),
+            40,
+        ),
+    ]
+    if has_real_background:
+        requirements += [
+            RequirementSpec("r_scene", _T("r_scene", **toks), 50),
+            RequirementSpec("r_bgm", _T("r_bgm", **toks), 60),
+        ]
+    requirements += [
+        RequirementSpec(
+            "r_speech",
+            _T("r_speech", speech_lang_name=_T("speech_lang_name")),
+            70,
+        ),
+        RequirementSpec("r_array", _T("r_array"), 80),
+    ]
+    if max_speech_chars > 0:
+        requirements.append(
+            RequirementSpec(
+                "r_speech_max_chars",
+                _T("r_speech_max_chars", n=max_speech_chars),
+                90,
+            )
+        )
+    if max_dialog_items > 0:
+        requirements.append(
+            RequirementSpec(
+                "r_dialog_max_items",
+                _T("r_dialog_max_items", n=max_dialog_items),
+                95,
+            )
+        )
+    if use_narration:
+        requirements.append(RequirementSpec("r_narration", _T("r_narration", **toks), 100))
+    if use_choice:
+        requirements += [
+            RequirementSpec("r_choice_pos", _T("r_choice_pos", **toks), 110),
+            RequirementSpec("r_choice_format", _T("r_choice_format", **toks), 120),
+            RequirementSpec("r_choice_balance", _T("r_choice_balance", **toks), 130),
+        ]
+    if use_stat:
+        requirements.append(RequirementSpec("r_stats", _T("r_stats", **toks), 140))
+    if use_cg:
+        requirements.append(RequirementSpec("r_cg", _T("r_cg", **toks), 150))
+    if use_llm_translation:
+        requirements.append(
+            RequirementSpec("r_translate", _T("r_translate", target_voice_name=vlang), 160)
+        )
+    if use_effect:
+        requirements.append(RequirementSpec("r_effect", _T("r_effect"), 170))
+    if use_cot:
+        requirements.insert(0, RequirementSpec("r_cot", _T("r_cot", **toks), 5))
+    requirement_by_id = {item.id: item for item in requirements}
+    for patch in sorted(patches, key=lambda item: item.priority):
+        for req_id, req_patch in patch.requirement_patches.items():
+            if req_id in requirement_by_id:
+                requirement_by_id[req_id] = _apply_requirement_patch(
+                    requirement_by_id[req_id], req_patch
+                )
+        for req in patch.add_requirements:
+            requirement_by_id[req.id] = req
+    ordered = sorted(
+        (item for item in requirement_by_id.values() if item.enabled),
+        key=lambda item: item.order,
+    )
+    requirements_block = _T("requirements_header")
+    for item in ordered:
+        requirements_block += f"- {item.text}\n"
+    return format_block, requirements_block
+
+
 def _json_string_content(value: Any) -> str:
     return json.dumps(str(value), ensure_ascii=False)[1:-1]
 

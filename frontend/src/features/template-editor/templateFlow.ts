@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 
-import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
+import { DEFAULT_CHARACTER_COLOR, TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import type {
   ChatLaunchPayload,
   TemplateGenerateInput,
@@ -128,6 +128,7 @@ export function buildTemplateLaunchSession(input: {
   runtime: TemplateRuntimeOptions;
   selectedCharacters: string[];
   selectedTemplateId: string;
+  storyId?: string;
 }): TemplateLaunchSession {
   return {
     background: input.backgroundName,
@@ -141,6 +142,7 @@ export function buildTemplateLaunchSession(input: {
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.draft.scenario ?? ""),
     selectedCharacters: input.selectedCharacters,
+    storyId: input.storyId?.trim() || undefined,
     system: String(input.draft.system ?? ""),
     templateFileDropdown: input.selectedTemplateId,
     useCg: input.options.useCg,
@@ -163,6 +165,7 @@ export function buildChatLaunchPayload(input: {
   selectedCharacters: string[];
   template: TemplateSummary;
   useCg: boolean;
+  storyId?: string;
 }): ChatLaunchPayload {
   return {
     backgroundName: input.backgroundName,
@@ -174,6 +177,7 @@ export function buildChatLaunchPayload(input: {
     resetHistory: input.resetHistory,
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.template.scenario ?? ""),
+    storyId: input.storyId?.trim() || undefined,
     system: String(input.template.system ?? ""),
     templateId: input.template.id,
     templateName: input.template.name,
@@ -185,6 +189,25 @@ export function synchronizeChatLaunchPayloadWithSession(
   payload: ChatLaunchPayload,
   session: TemplateLaunchSession,
 ): ChatLaunchPayload {
+  const storyId = String(payload.storyId || session.storyId || "").trim();
+  if (storyId) {
+    return {
+      ...payload,
+      backgroundName: TRANSPARENT_BACKGROUND_NAME,
+      characters: [],
+      enableMobileAccess: Boolean(session.enableMobileAccess ?? payload.enableMobileAccess),
+      effectNames: undefined,
+      historyPath: "",
+      initSpritePath: "",
+      roomId: String(session.roomId || payload.roomId || "").trim(),
+      scenario: "",
+      storyId,
+      system: "",
+      templateId: session.templateFileDropdown || payload.templateId,
+      templateName: session.filenameStub || payload.templateName,
+      useCg: false,
+    };
+  }
   const effectNames = Array.isArray(session.effectNames) ? session.effectNames : [];
   return {
     ...payload,
@@ -196,6 +219,7 @@ export function synchronizeChatLaunchPayloadWithSession(
     initSpritePath: session.initSpritePath.trim(),
     roomId: session.roomId.trim(),
     scenario: session.scenario,
+    storyId: undefined,
     system: session.system,
     templateId: session.templateFileDropdown,
     templateName: session.filenameStub,

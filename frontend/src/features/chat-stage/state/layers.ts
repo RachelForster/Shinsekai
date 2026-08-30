@@ -1,3 +1,5 @@
+import { normalizedUserDisplayName } from "./text";
+import type { ChatOption } from "../../../shared/platform/types";
 import type { ChatStageLayers, ChatStageState } from "./types";
 
 export function defaultLayers(): ChatStageLayers {
@@ -22,8 +24,42 @@ export function clearTransientNotificationState(state: ChatStageState) {
   };
 }
 
+export function dialogHoldKey(state: Pick<ChatStageState, "dialogText" | "story">): string {
+  return `${state.story?.currentNodeId ?? ""}:${state.story?.revision ?? ""}:${state.dialogText}`;
+}
+
+function hasHeldStoryOptions(options: ChatOption[]): boolean {
+  return options.some((option) => typeof option !== "string" && option.source === "story");
+}
+
+export function optionsHeldForDialog(state: ChatStageState): boolean {
+  if (state.toolConfirmation) {
+    return false;
+  }
+  if (
+    state.options.length > 0 &&
+    (state.optimisticSubmission || ["generating", "streaming", "speaking"].includes(state.status))
+  ) {
+    return true;
+  }
+  if (!hasHeldStoryOptions(state.options)) {
+    return false;
+  }
+  const hasDialog = Boolean(state.dialogHtml?.trim() || state.dialogText.trim());
+  if (!hasDialog) {
+    return false;
+  }
+  const speaker = state.characterName?.trim() ?? "";
+  const userName = normalizedUserDisplayName(state.userDisplayName);
+  if (speaker && speaker === userName) {
+    return false;
+  }
+  return dialogHoldKey(state) !== state.revealedOptionsAfterDialogKey;
+}
+
 export function withResolvedLayers(state: ChatStageState): ChatStageState {
-  const optionsVisible = state.options.length > 0 || Boolean(state.toolConfirmation);
+  const holdingOptions = optionsHeldForDialog(state);
+  const optionsVisible = !holdingOptions && (state.options.length > 0 || Boolean(state.toolConfirmation));
   return {
     ...state,
     layers: {

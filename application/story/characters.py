@@ -30,6 +30,23 @@ from sdk.path_utils import safe_child_path, safe_existing_file_path
 
 
 MAX_CHARACTER_PROFILE_BYTES = 2 * 1024 * 1024
+_PLAYER_CHARACTER_IDS = frozenset({"user", "player", "you"})
+_PLAYER_CHARACTER_NAMES = frozenset(
+    item.casefold() for item in ("用户", "玩家", "user", "player", "you")
+)
+
+
+def is_player_stand_in(character_id: str, name: str = "") -> bool:
+    """True when the story character is the person playing, not an NPC."""
+    cid = str(character_id or "").strip().casefold()
+    if cid in _PLAYER_CHARACTER_IDS or cid.startswith(("user-", "c-user")):
+        return True
+    return str(name or "").strip().casefold() in _PLAYER_CHARACTER_NAMES
+
+
+def _is_import_token(path: str) -> bool:
+    value = str(path or "").strip()
+    return value.startswith("import_") and "/" not in value and "\\" not in value and "." not in value
 
 
 class CharacterResolutionError(ValueError):
@@ -71,6 +88,7 @@ class CharacterProfile:
     memory_namespace: str = ""
     tool_permissions: tuple[str, ...] = ()
     source_root: str = ""
+    is_player: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,44 +275,10 @@ class CharacterSourceResolver:
 
     def resolve(self, definition: CharacterDefinition) -> CharacterProfile:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
+        raw, source_root, authorized_digest, story_scoped = self._read_source(
+            definition
+        )
         source = definition.source
-        source_root = self.story_root
-        authorized_digest: str | None = None
-        if source.type == CharacterSourceType.LOCAL_LIBRARY:
-            source_root = self.library_root
-            raw = self.local_library.load_character(
-                str(source.character_id or definition.id),
-                source.revision,
-            )
-            authorized_digest = str(raw.get("_content_digest") or "") or _payload_digest(
-                raw
-            )
-        elif source.type == CharacterSourceType.USER_IMPORTED:
-            if self.import_tokens is None or not source.path:
-                raise CharacterResolutionError(
-                    "character.import_token",
-                    "user-imported characters require an import token",
-                )
-            path, authorized_digest = self.import_tokens.resolve(
-                source.path,
-                story_id=self.story_id,
-            )
-            source_root = path.parent
-            raw = _read_profile(path)
-        else:
-            if not source.path:
-                raise CharacterResolutionError(
-                    "character.source_path",
-                    "story-scoped character source path is missing",
-                )
-            path = safe_existing_file_path(
-                safe_child_path(self.story_root, source.path),
-                roots=(self.story_root,),
-                field="story character",
-            )
-            authorized_digest = _file_digest(path)
-            raw = _read_profile(path)
-
         revision = _payload_digest(raw)
         declared_revision = source.revision
         if source.content_digest:
@@ -306,14 +290,78 @@ class CharacterSourceResolver:
             _require_digest(source.content_digest, authorized_digest, definition.id)
         if declared_revision:
             _require_digest(declared_revision, revision, definition.id)
-        return _profile_from_mapping(
+        profile = _profile_from_mapping(
             definition.id,
             raw,
             revision=revision,
             source_root=source_root,
             story_root=self.story_root,
-            story_scoped=source.type != CharacterSourceType.LOCAL_LIBRARY,
+            story_scoped=story_scoped,
         )
+        return self._with_local_library_sprites(profile, definition)
+
+    def _read_source(
+        self, definition: CharacterDefinition
+    ) -> tuple[Mapping[str, Any], Path, str | None, bool]:
+        source = definition.source
+        path = str(source.path or "").strip()
+        if _is_import_token(path):
+            if self.import_tokens is None:
+                raise CharacterResolutionError(
+                    "character.import_token",
+                    "imported characters require an import token",
+                )
+            resolved, authorized_digest = self.import_tokens.resolve(
+                path,
+                story_id=self.story_id,
+            )
+            return _read_profile(resolved), resolved.parent, authorized_digest, True
+        if path:
+            try:
+                file_path = safe_child_path(self.story_root, path)
+            except (OSError, PermissionError, ValueError) as error:
+                raise CharacterResolutionError(
+                    "character.source_path",
+                    "story character source path is invalid",
+                ) from error
+            if file_path.is_file():
+                existing = safe_existing_file_path(
+                    file_path,
+                    roots=(self.story_root,),
+                    field="story character",
+                )
+                return (
+                    _read_profile(existing),
+                    self.story_root,
+                    _file_digest(existing),
+                    True,
+                )
+        library_id = str(source.character_id or definition.id)
+        raw = self.local_library.load_character(library_id, source.revision)
+        authorized_digest = str(raw.get("_content_digest") or "") or _payload_digest(
+            raw
+        )
+        return raw, self.library_root, authorized_digest, False
+
+    def _with_local_library_sprites(
+        self,
+        profile: CharacterProfile,
+        definition: CharacterDefinition,
+    ) -> CharacterProfile:
+        if profile.is_player:
+            return profile
+        borrowed = _borrow_installed_library_sprites(
+            self.local_library,
+            names=(
+                profile.name,
+                definition.id,
+                str(definition.source.character_id or ""),
+            ),
+            library_root=self.library_root,
+        )
+        if not borrowed:
+            return profile
+        return replace(profile, sprites=borrowed)
 
 
 class NoopCharacterPresentationAdapter:
@@ -711,7 +759,7 @@ class StoryCastApplicationService:
         context = self.resources.actor_context()
         sprites = []
         for character_id, profile in context.profiles.items():
-            if not profile.sprites:
+            if profile.is_player or not profile.sprites:
                 continue
             sprite = profile.sprites[0]
             path = str(sprite.get("path") or "")
@@ -720,7 +768,7 @@ class StoryCastApplicationService:
             sprites.append(
                 {
                     "id": f"story:{character_id}",
-                    "characterName": character_id,
+                    "characterName": profile.name or character_id,
                     "label": profile.name,
                     "path": path,
                     "scale": sprite.get("scale", 1.0),
@@ -912,6 +960,7 @@ def _profile_from_mapping(
             "character.profile_sprites",
             "character sprites must be a list",
         )
+    default_scale = raw.get("sprite_scale", raw.get("spriteScale"))
     sprites = []
     for item in raw_sprites:
         if not isinstance(item, Mapping):
@@ -919,16 +968,15 @@ def _profile_from_mapping(
                 "character.profile_sprites",
                 "character sprite must be an object",
             )
-        sprites.append(
-            MappingProxyType(
-                _validated_resource_mapping(
-                    item,
-                    source_root=source_root,
-                    story_root=story_root,
-                    story_scoped=story_scoped,
-                )
-            )
+        mapped = _validated_resource_mapping(
+            item,
+            source_root=source_root,
+            story_root=story_root,
+            story_scoped=story_scoped,
         )
+        if mapped.get("scale") in (None, "") and default_scale not in (None, ""):
+            mapped["scale"] = default_scale
+        sprites.append(MappingProxyType(mapped))
     live2d_raw = raw.get("live2d", {})
     tts_raw = raw.get("tts", {})
     if not isinstance(live2d_raw, Mapping) or not isinstance(tts_raw, Mapping):
@@ -960,7 +1008,64 @@ def _profile_from_mapping(
         ),
         tool_permissions=tuple(str(item) for item in permissions),
         source_root=str(source_root),
+        is_player=is_player_stand_in(character_id, name),
     )
+
+
+def _borrow_installed_library_sprites(
+    local_library: LocalCharacterLibrary,
+    *,
+    names: Sequence[str],
+    library_root: Path,
+) -> tuple[Mapping[str, Any], ...]:
+    """Reuse installed-library portraits when a story profile has none.
+
+    Author-generated drafts persist ``sprites: []``. Matching by display name
+    (or id) against the local character library keeps story mode on the same
+    portrait files as free chat.
+    """
+    seen: set[str] = set()
+    for raw_name in names:
+        name = str(raw_name or "").strip()
+        if not name:
+            continue
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            payload = local_library.load_character(name, None)
+        except Exception:
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        raw_sprites = payload.get("sprites", ())
+        if not isinstance(raw_sprites, Sequence) or isinstance(
+            raw_sprites, (str, bytes, bytearray)
+        ):
+            continue
+        default_scale = payload.get("sprite_scale", payload.get("spriteScale"))
+        sprites: list[Mapping[str, Any]] = []
+        try:
+            for item in raw_sprites:
+                if not isinstance(item, Mapping):
+                    continue
+                mapped = _validated_resource_mapping(
+                    item,
+                    source_root=library_root,
+                    story_root=library_root,
+                    story_scoped=False,
+                )
+                if not str(mapped.get("path") or "").strip():
+                    continue
+                if mapped.get("scale") in (None, "") and default_scale not in (None, ""):
+                    mapped["scale"] = default_scale
+                sprites.append(MappingProxyType(mapped))
+        except CharacterResolutionError:
+            continue
+        if sprites:
+            return tuple(sprites)
+    return ()
 
 
 def _validated_resource_mapping(
