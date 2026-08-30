@@ -28,6 +28,11 @@ def _called_attributes(tree: ast.AST) -> set[str]:
 
 def test_background_bridge_delegates_resource_mutations_to_one_use_case_entry() -> None:
     source = REPO_ROOT / "frontend_bridge_core" / "backgrounds.py"
+    use_case = REPO_ROOT / "application" / "backgrounds" / "management.py"
+    retired_use_cases = (
+        REPO_ROOT / "application" / "media" / "backgrounds.py",
+        REPO_ROOT / "application" / "media" / "background_use_case.py",
+    )
     text = source.read_text(encoding="utf-8")
     tree = ast.parse(text, filename=str(source))
     functions = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
@@ -42,6 +47,8 @@ def test_background_bridge_delegates_resource_mutations_to_one_use_case_entry() 
         "upload_sprites",
     }
 
+    assert use_case.is_file()
+    assert not any(path.exists() for path in retired_use_cases)
     assert "_execute_background_request" in functions
     assert not (_called_attributes(tree) & migrated_manager_calls)
     assert not (_imported_roots(source) & {"os", "shutil", "tempfile", "tools", "yaml", "zipfile"})
@@ -56,6 +63,8 @@ def test_background_bridge_delegates_resource_mutations_to_one_use_case_entry() 
 
 def test_character_bridge_delegates_resource_mutations_to_one_use_case_entry() -> None:
     source = REPO_ROOT / "frontend_bridge_core" / "characters.py"
+    use_case = REPO_ROOT / "application" / "characters" / "management.py"
+    retired_use_case = REPO_ROOT / "application" / "characters" / "character_use_case.py"
     text = source.read_text(encoding="utf-8")
     tree = ast.parse(text, filename=str(source))
     functions = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
@@ -71,6 +80,8 @@ def test_character_bridge_delegates_resource_mutations_to_one_use_case_entry() -
         "upload_voice",
     }
 
+    assert use_case.is_file()
+    assert not retired_use_case.exists()
     assert "_execute_character_request" in functions
     assert not (_called_attributes(tree) & migrated_manager_calls)
     assert not (_imported_roots(source) & {"os", "shutil", "tempfile", "tools", "yaml", "zipfile"})
