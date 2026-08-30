@@ -15,6 +15,10 @@ import {
   runtimeDialogScaleMax,
   runtimeDialogScaleMin,
   runtimeDialogScaleStep,
+  runtimeDialogWidthPctDefault,
+  runtimeDialogWidthPctMax,
+  runtimeDialogWidthPctMin,
+  runtimeDialogWidthPctStep,
   runtimeDialogFontSizeMax,
   runtimeDialogFontSizeMin,
   runtimeNameFontSizeMax,
@@ -101,6 +105,7 @@ export function ChatConfigDialog({
   dialogOpacity,
   dialogFill,
   dialogScale,
+  dialogWidthPct,
   dialogText,
   effectiveDialogText,
   effectiveNameText,
@@ -117,6 +122,7 @@ export function ChatConfigDialog({
   onDialogOpacityChange,
   onDialogFillChange,
   onDialogScaleChange,
+  onDialogWidthPctChange,
   onImmersiveModeChange,
   onResetThemeAppearance,
   onOpenPluginPage,
@@ -146,6 +152,7 @@ export function ChatConfigDialog({
   dialogOpacity: number;
   dialogFill: ChatStageDialogFillConfig;
   dialogScale: number;
+  dialogWidthPct: number | null;
   dialogText: ChatStageTextStyleConfig;
   effectiveDialogText?: ChatStageTextStyleConfig;
   effectiveNameText?: ChatStageTextStyleConfig;
@@ -162,6 +169,7 @@ export function ChatConfigDialog({
   onDialogOpacityChange: (value: number) => void;
   onDialogFillChange: (patch: ChatStageDialogFillPatch) => void;
   onDialogScaleChange: (value: number) => void;
+  onDialogWidthPctChange: (value: number | null) => void;
   onImmersiveModeChange: (value: boolean) => void;
   onResetThemeAppearance: () => void;
   onOpenPluginPage: (target: PluginPageTarget) => void;
@@ -193,6 +201,8 @@ export function ChatConfigDialog({
   const dialogOpacityPercent = Math.round(dialogOpacity * 100);
   const dialogFillOpacityPercent = Math.round(dialogFill.opacity * 100);
   const dialogScalePercent = Math.round(dialogScale * 100);
+  const dialogWidthCustom = dialogWidthPct != null;
+  const dialogWidthPctValue = dialogWidthPct ?? runtimeDialogWidthPctDefault;
   const windowScalePercent = Math.round(windowScale * 100);
 
   if (!open) {
@@ -234,6 +244,13 @@ export function ChatConfigDialog({
   const handleDialogScaleChange = (event: ChangeEvent<HTMLInputElement>) => {
     onDialogScaleChange(
       clampRuntimeNumber(event.target.value, dialogScale, runtimeDialogScaleMin, runtimeDialogScaleMax),
+    );
+  };
+  const handleDialogWidthPctChange = (event: ChangeEvent<HTMLInputElement>) => {
+    onDialogWidthPctChange(
+      Math.round(
+        clampRuntimeNumber(event.target.value, dialogWidthPctValue, runtimeDialogWidthPctMin, runtimeDialogWidthPctMax),
+      ),
     );
   };
   const handleSpriteOffsetXChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -637,6 +654,37 @@ export function ChatConfigDialog({
               </span>
             </span>
           </label>
+          <div className="chat-config-dialog__row chat-config-dialog__checkbox-row">
+            <label className="chat-config-dialog__label" htmlFor="chat-config-dialog-width-custom">
+              {t("chat.config.dialogWidthCustom")}
+            </label>
+            <Switch
+              checked={dialogWidthCustom}
+              className="chat-config-dialog__switch"
+              id="chat-config-dialog-width-custom"
+              onChange={(event) => onDialogWidthPctChange(event.target.checked ? runtimeDialogWidthPctDefault : null)}
+            />
+          </div>
+          {dialogWidthCustom ? (
+            <label className="chat-config-dialog__row chat-config-dialog__range-row">
+              <span className="chat-config-dialog__label">{t("chat.config.dialogWidth")}</span>
+              <span className="chat-config-dialog__range-control">
+                <input
+                  aria-label={t("chat.config.dialogWidth")}
+                  className="chat-config-dialog__range"
+                  max={runtimeDialogWidthPctMax}
+                  min={runtimeDialogWidthPctMin}
+                  onChange={handleDialogWidthPctChange}
+                  step={runtimeDialogWidthPctStep}
+                  type="range"
+                  value={dialogWidthPctValue}
+                />
+                <span className="chat-config-dialog__range-value">
+                  {t("chat.config.dialogWidthValue", { value: dialogWidthPctValue })}
+                </span>
+              </span>
+            </label>
+          ) : null}
           <label className="chat-config-dialog__row chat-config-dialog__range-row">
             <span className="chat-config-dialog__label">{t("chat.config.dialogOpacity")}</span>
             <span className="chat-config-dialog__range-control">

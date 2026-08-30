@@ -304,4 +304,63 @@ describe("chat stage runtime config", () => {
     const overriddenStyle = chatStageRuntimeStyle(overridden, themeStyle) as unknown as Record<string, unknown>;
     expect(overriddenStyle["--chat-dialog-text-align"]).toBe("center");
   });
+
+  it("keeps the default dialog width cap and widens it when dialogWidthPct is set", () => {
+    const themeStyle = {} as CSSProperties;
+    const defaultStyle = chatStageRuntimeStyle(defaultChatStageRuntimeConfig, themeStyle) as unknown as Record<
+      string,
+      unknown
+    >;
+    expect(defaultStyle["--chat-dialog-runtime-width"]).toBe("1040px");
+    expect(defaultStyle["--chat-dialog-width"]).toBeUndefined();
+    expect(defaultStyle["--chat-dialog-max-width"]).toBeUndefined();
+    expect(defaultStyle["--chat-dialog-responsive-width"]).toBeUndefined();
+
+    const widened = chatStageRuntimeStyle(
+      { ...defaultChatStageRuntimeConfig, dialogWidthPct: 100 },
+      themeStyle,
+    ) as unknown as Record<string, unknown>;
+    expect(widened["--chat-dialog-width"]).toBe("100vw");
+    expect(widened["--chat-dialog-runtime-width"]).toBe("100vw");
+    expect(widened["--chat-dialog-max-width"]).toBe("100vw");
+    expect(widened["--chat-dialog-responsive-width"]).toBe("100vw");
+
+    const clamped = chatStageRuntimeStyle(
+      { ...defaultChatStageRuntimeConfig, dialogWidthPct: 500 },
+      themeStyle,
+    ) as unknown as Record<string, unknown>;
+    expect(clamped["--chat-dialog-width"]).toBe("100vw");
+
+    const scaled = chatStageRuntimeStyle(
+      {
+        ...defaultChatStageRuntimeConfig,
+        dialogScale: 1.2,
+        dialogWidthPct: 100,
+        windowScale: 1.2,
+      },
+      themeStyle,
+    ) as unknown as Record<string, unknown>;
+    expect(scaled["--chat-dialog-composed-scale"]).toBe("1.44");
+    expect(scaled["--chat-dialog-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(scaled["--chat-dialog-runtime-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(scaled["--chat-dialog-max-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(scaled["--chat-dialog-responsive-width"]).toBe("calc(100vw * 0.69444444)");
+    expect(0.69444444 * 1.44).toBeCloseTo(1, 7);
+  });
+
+  it("disables custom dialog width when a persisted value is invalid", () => {
+    for (const dialogWidthPct of ["invalid", "", Number.NaN, Number.POSITIVE_INFINITY, false, {}]) {
+      expect(normalizeChatStageRuntimeConfig({ dialogWidthPct }).dialogWidthPct).toBeNull();
+    }
+
+    expect(normalizeChatStageRuntimeConfig({ dialogWidthPct: "72" }).dialogWidthPct).toBe(72);
+    expect(normalizeChatStageRuntimeConfig({ dialogWidthPct: 500 }).dialogWidthPct).toBe(100);
+
+    const invalidStyle = chatStageRuntimeStyle(
+      { ...defaultChatStageRuntimeConfig, dialogWidthPct: Number.NaN },
+      {},
+    ) as unknown as Record<string, unknown>;
+    expect(invalidStyle["--chat-dialog-runtime-width"]).toBe("1040px");
+    expect(invalidStyle["--chat-dialog-responsive-width"]).toBeUndefined();
+  });
 });
