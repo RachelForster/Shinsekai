@@ -242,7 +242,8 @@ PR 范围：
 
 后续阶段：
 
-- 实时命令分发迁到 `application/chat/dispatch_commands.py`；
+- 实时命令分发迁到 `application/chat/commands.py`，WebSocket envelope 与 ack
+  保留在 `frontend_bridge_core/transport/chat_commands.py`；
 - provider、插件、模板和历史启动装配迁到
   `application/chat/initialize_chat.py`；
 - streaming/headless 生命周期迁到 `application/chat/run_session.py`；
@@ -281,6 +282,7 @@ PR 范围：
 | main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/effects.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
 | `frontend_bridge_core/effects.py` 主体实现 | `application/effects/management.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
 | `main.py` 对话分支闭包 | `application/chat/manage_branches.py` | O9/阶段 1 | 分支状态、操作和持久化归 application，入口只装配窄回调 |
+| `main.py` 实时命令分支 | `application/chat/commands.py` + `frontend_bridge_core/transport/chat_commands.py` | O9/阶段 2 | application 执行命令行为，transport 只解析 payload 并发送 ack |
 
 ## 5. 通用退出条件
 

@@ -203,9 +203,11 @@ application/plugins/         插件安装、更新、发布等用例编排
 
 application 可以组合多个能力域，但不实现具体 HTTP 或 UI 控件。
 表示明确流程或动作的 application 模块优先使用 `动词_名词.py`，例如
-`manage_branches.py`、`dispatch_commands.py`、`initialize_chat.py` 和
+`manage_branches.py`、`initialize_chat.py` 和
 `run_session.py`。只有作为整个领域唯一稳定入口时才使用 `management.py`；
 不得使用无法说明职责的通用 `service.py`、`helpers.py` 或 `utils.py` 承载流程。
+实时聊天命令统一通过稳定入口 `application/chat/commands.py` 分发；WebSocket
+payload 解析与 ack 投影保留在 `frontend_bridge_core/transport/`。
 application 是 `AppRuntime`、应用级 task、当前会话和 concrete manager 装配的唯一
 所有者；这些对象不能下沉到 `core/`。application 可以把结果投影为稳定的 SDK event
 或调用注入的 port，但不能直接构造 HTTP response、WebSocket frame 或 React DTO。

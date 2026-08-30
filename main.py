@@ -1,7 +1,6 @@
 import json
 import os
 from contextlib import contextmanager
-from dataclasses import replace
 from pathlib import Path
 import signal
 import sys
@@ -118,7 +117,6 @@ from core.media.chat_attachments import resolve_chat_attachments
 from core.paths import resource_path
 from core.sprite.chat_branch_storage import (
     chat_history_active_path,
-    remove_chat_history_storage,
 )
 from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
 from config.config_manager import ConfigManager
@@ -127,21 +125,27 @@ from opencc import OpenCC
 from queue import Queue
 
 from application.chat.effects import build_selected_effect_context
+from application.chat.commands import (
+    ChatCommandBindings,
+    ChatCommandDispatcher,
+    ChatCommandUiBindings,
+)
 from application.chat.manage_branches import (
     ConversationBranchBindings,
     ConversationBranchManager,
 )
 from application.chat.history_state import (
     chat_history,
-    clear_chat_history,
     get_history,
     history_entry_stage_payload,
     load_chat_history,
-    pop_last_assistant_turn_payload,
     replay_history_entry,
-    revert_chat_history,
     save_bg,
     save_chat_history,
+)
+from frontend_bridge_core.transport.chat_commands import (
+    parse_chat_command,
+    send_chat_command_ack,
 )
 from application.chat.session_restore import restore_session_presentation
 from application.chat.initial_sprite import (
@@ -833,271 +837,75 @@ def main():
         ui_updates.post_pause_asr = _post_pause_asr_for_reply
         ui_updates.post_llm_reply_finished = _post_llm_reply_finished_and_resume_asr
 
-        def handle_stream_command(command: dict[str, object]) -> None:
-            command_type = str(command.get("type") or "").strip()
-            cmd_id = str(command.get("cmdId") or "").strip()
-            payload = command.get("payload")
-            ack_sent = False
-
-            def emit_ack(*, ok: bool, error: str = "") -> None:
-                nonlocal ack_sent
-                if ack_sent or not cmd_id:
-                    return
-                stream_sink.emit(
-                    {
-                        "type": "cmd.ack",
-                        "cmdId": cmd_id,
-                        "commandType": command_type,
-                        "ok": bool(ok),
-                        **({"error": error} if error else {}),
-                    }
-                )
-                ack_sent = True
-
-            try:
-                if command_type == "close-session":
-                    emit_ack(ok=True)
-                    shutdown_requested.set()
-                    return
-                if command_type == "send-message":
-                    runtime_asr.pause_for_turn()
-                    if isinstance(payload, dict):
-                        raw_attachments = payload.get("attachments")
-                        submit_runtime_text(
-                            str(payload.get("text") or ""),
-                            attachments=raw_attachments if isinstance(raw_attachments, list) else [],
-                            notify_key=None,
-                        )
-                    else:
-                        submit_runtime_text(str(payload or ""), notify_key=None)
-                    emit_ack(ok=True)
-                    return
-                if command_type == "submit-option":
-                    if (
-                        isinstance(payload, dict)
-                        and payload.get("kind") == "tool-confirmation"
-                    ):
-                        confirmation_id = str(
-                            payload.get("confirmationId") or ""
-                        ).strip()
-                        action = str(payload.get("action") or "").strip().casefold()
-                        if (
-                            not confirmation_id
-                            or len(confirmation_id) > 128
-                            or action not in {"confirm", "cancel"}
-                        ):
-                            raise ValueError(
-                                "Tool confirmation response is invalid."
-                            )
-                        if not resolve_pending_tool_confirmation(
-                            confirmation_id,
-                            action,
-                        ):
-                            raise ValueError(
-                                "Tool confirmation is stale or does not match "
-                                "the active prompt."
-                            )
-                        if hasattr(ui_updates, "clear_tool_confirmation"):
-                            ui_updates.clear_tool_confirmation(confirmation_id)
-                        emit_ack(ok=True)
-                        return
-                    if isinstance(payload, dict):
-                        raise ValueError("Option selection must be a string.")
-                    runtime_asr.pause_for_turn()
-                    submit_runtime_text(str(payload or ""))
-                    emit_ack(ok=True)
-                    return
-                if command_type == "update-turn-options":
-                    if not isinstance(payload, dict):
-                        raise ValueError("Chat turn options must be an object.")
-                    interrupt_enabled = payload.get("interruptEnabled")
-                    batch_enabled = payload.get("batchEnabled")
-                    batch_idle_seconds = payload.get("batchIdleSeconds")
-                    if not isinstance(interrupt_enabled, bool) or not isinstance(batch_enabled, bool):
-                        raise ValueError("Chat turn switches must be boolean values.")
-                    if isinstance(batch_idle_seconds, bool) or not isinstance(batch_idle_seconds, (int, float)):
-                        raise ValueError("Batch input timeout must be numeric.")
-                    timeout = float(batch_idle_seconds)
-                    if not 0.3 <= timeout <= 120.0:
-                        raise ValueError("Batch input timeout must be between 0.3 and 120 seconds.")
-                    chat_turn_service.update_options(
-                        replace(
-                            chat_turn_service.options,
-                            interrupt_enabled=interrupt_enabled,
-                            batch_enabled=batch_enabled,
-                            batch_idle_seconds=timeout,
-                        )
-                    )
-                    api_config = config.config.api_config.model_copy(deep=True)
-                    api_config.interrupt_enabled = interrupt_enabled
-                    api_config.is_batch_input_enabled = batch_enabled
-                    api_config.batch_input_timeout = timeout
-                    config.config.api_config = api_config
-                    emit_ack(ok=True)
-                    return
-                if command_type == "chat-input-state":
-                    if not isinstance(payload, dict):
-                        raise ValueError("Chat input state must be an object.")
-                    chat_turn_service.input_changed(
-                        has_text=bool(payload.get("hasText")),
-                        composing=bool(payload.get("composing")),
-                    )
-                    emit_ack(ok=True)
-                    return
-                if command_type == "flush-input-batch":
-                    chat_turn_service.flush()
-                    emit_ack(ok=True)
-                    return
-                if command_type == "cancel-input-batch":
-                    chat_turn_service.cancel_pending_batch()
-                    emit_ack(ok=True)
-                    return
-                if command_type == "audio-playback-signal":
-                    if not isinstance(payload, dict):
-                        raise ValueError("Audio playback signal must be an object.")
-                    playback_id = str(payload.get("playbackId") or "").strip()
-                    renderer_id = str(payload.get("rendererId") or "").strip()
-                    playback_state = str(payload.get("state") or "").strip()
-                    error = str(payload.get("error") or "")
-                    if not playback_id or not renderer_id or playback_state not in {
-                        "started",
-                        "finished",
-                        "interrupted",
-                        "failed",
-                    }:
-                        raise ValueError("Audio playback signal is invalid.")
-                    if _um is None or not hasattr(_um, "handle_playback_signal"):
-                        raise RuntimeError("Audio playback controller is unavailable.")
-                    _um.handle_playback_signal(
-                        playback_id,
-                        playback_state,
-                        error,
-                        renderer_id=renderer_id,
-                    )
-                    emit_ack(ok=True)
-                    return
-                if command_type in {"skip-speech", "dialog-advance"}:
-                    if _um is not None and hasattr(_um, "skip_speech"):
-                        _um.skip_speech()
-                    emit_ack(ok=True)
-                    return
-                if command_type == "pause-asr":
-                    runtime_asr.user_pause()
-                    emit_ack(ok=True)
-                    return
-                if command_type == "resume-asr":
-                    runtime_asr.user_resume()
-                    emit_ack(ok=True)
-                    return
-                if command_type == "reroll":
-                    messages_ref = llm_manager.get_messages()
-                    if hasattr(llm_manager, "_strip_orphaned_tool_calls"):
-                        llm_manager._strip_orphaned_tool_calls()
-                    reroll_payload = pop_last_assistant_turn_payload(chat_history, messages_ref)
-                    reroll_text = str(reroll_payload.get("text") or "")
-                    reroll_attachments = list(reroll_payload.get("attachments") or [])
-                    if not reroll_text and not reroll_attachments:
-                        reroll_text = str(last_user_message.get("text") or "")
-                        reroll_attachments = list(last_user_message.get("attachments") or [])
-                    stream_sink.emit({"type": "options.clear"})
-                    if hasattr(ui_updates, "sync_history_entries"):
-                        ui_updates.sync_history_entries()
-                    if (reroll_text or reroll_attachments) and emit_user_text is not None:
-                        submit_runtime_text(
-                            reroll_text,
-                            attachments=reroll_attachments,
-                            ignore_unavailable_attachments=True,
-                            notify_key=None,
-                        )
-                        ui_updates.post_notification(tr_i18n("main.notify_reroll"))
-                    emit_ack(ok=True)
-                    return
-                if command_type == "clear-history":
-                    if audio_path_queue is None:
-                        raise RuntimeError("聊天历史清理队列未就绪。")
-                    chat_turn_service.cancel_pending_batch()
-                    history_target = str(chat_history_active_path(args.history)) if args.history else str(
-                        Path("data/chat_history") / "_temp.json"
-                    )
-                    if args.history:
-                        remove_chat_history_storage(args.history)
-                    clear_chat_history(history_target, audio_path_queue, llm_manager)
-                    branch_manager.reset()
-                    branch_manager.persist()
-                    stream_sink.emit({"type": "options.clear"})
-                    if hasattr(ui_updates, "sync_history_entries"):
-                        ui_updates.sync_history_entries()
-                    branch_manager.publish_tree()
-                    emit_ack(ok=True)
-                    return
-                if command_type == "change-voice-language":
-                    voice_language = str(payload or "").strip().lower()
-                    if not voice_language:
-                        raise ValueError("语音语言不能为空。")
-                    if tts_manager is not None:
-                        tts_manager.set_language(voice_language)
-                    voice_labels = {
-                        "en": "template.voice_lang_en",
-                        "zh": "template.voice_lang_zh",
-                        "ja": "template.voice_lang_ja",
-                        "yue": "template.voice_lang_yue",
-                    }
-                    sc = config.config.system_config.model_copy(deep=True)
-                    sc.voice_language = voice_language
-                    config.config.system_config = sc
-                    config.save_system_config()
-                    ui_updates.post_notification(
-                        tr_i18n(
-                            "desktop.menu.notify_voice_language",
-                            lang=tr_i18n(voice_labels.get(voice_language, "template.voice_lang_en")),
-                        )
-                    )
-                    emit_ack(ok=True)
-                    return
-                if command_type == "revert-history":
-                    index = int(payload)
-                    chat_turn_service.cancel_pending_batch()
-                    revert_chat_history(
-                        index,
-                        llm_manager=llm_manager,
-                        hist=chat_history,
-                        window=_StreamWindowProxy(ui_updates),
-                    )
-                    stream_sink.emit({"type": "options.clear"})
-                    if hasattr(ui_updates, "sync_history_entries"):
-                        ui_updates.sync_history_entries()
-                    emit_ack(ok=True)
-                    return
-                if command_type == "fork-history":
-                    raw_payload = payload if isinstance(payload, dict) else {"userIndex": payload}
-                    branch_manager.fork(
-                        int(raw_payload.get("userIndex")),
-                        branch_id=str(raw_payload.get("branchId") or "").strip(),
-                    )
-                    emit_ack(ok=True)
-                    return
-                if command_type == "switch-branch":
-                    branch_manager.switch(str(payload or ""))
-                    ui_updates.post_notification("已切换对话分支。")
-                    emit_ack(ok=True)
-                    return
-                if command_type == "rename-branch":
-                    raw_payload = payload if isinstance(payload, dict) else {}
-                    branch_manager.rename(
-                        str(raw_payload.get("branchId") or ""),
-                        str(raw_payload.get("label") or ""),
-                    )
-                    ui_updates.post_notification("已重命名对话分支。")
-                    emit_ack(ok=True)
-                    return
-                raise ValueError(f"未知实时聊天命令：{command_type}")
-            except Exception as exc:
-                ui_updates.post_notification(str(exc))
-                emit_ack(ok=False, error=str(exc))
-
         shutdown_requested = threading.Event()
-        stream_sink.set_command_handler(handle_stream_command)
 
+        def _clear_stream_options() -> None:
+            stream_sink.emit({"type": "options.clear"})
+
+        def _sync_stream_history() -> None:
+            if hasattr(ui_updates, "sync_history_entries"):
+                ui_updates.sync_history_entries()
+
+        def _clear_tool_confirmation(confirmation_id: str) -> None:
+            if hasattr(ui_updates, "clear_tool_confirmation"):
+                ui_updates.clear_tool_confirmation(confirmation_id)
+
+        def _handle_playback_signal(
+            playback_id: str,
+            playback_state: str,
+            error: str,
+            renderer_id: str,
+        ) -> None:
+            _um.handle_playback_signal(
+                playback_id,
+                playback_state,
+                error,
+                renderer_id=renderer_id,
+            )
+
+        command_dispatcher = ChatCommandDispatcher(
+            bindings=ChatCommandBindings(
+                submit_text=submit_runtime_text,
+                can_submit_text=lambda: emit_user_text is not None,
+                shutdown_session=shutdown_requested.set,
+                resolve_tool_confirmation=resolve_pending_tool_confirmation,
+                ui=ChatCommandUiBindings(
+                    clear_options=_clear_stream_options,
+                    sync_history=_sync_stream_history,
+                    notify=ui_updates.post_notification,
+                    clear_tool_confirmation=_clear_tool_confirmation,
+                    handle_playback_signal=(
+                        _handle_playback_signal
+                        if _um is not None and hasattr(_um, "handle_playback_signal")
+                        else None
+                    ),
+                    skip_speech=(
+                        _um.skip_speech
+                        if _um is not None and hasattr(_um, "skip_speech")
+                        else None
+                    ),
+                ),
+                translate=tr_i18n,
+            ),
+            config=config,
+            llm_manager=llm_manager,
+            runtime_asr=runtime_asr,
+            chat_turn_service=chat_turn_service,
+            branch_manager=branch_manager,
+            chat_history=chat_history,
+            last_user_message=last_user_message,
+            audio_path_queue=audio_path_queue,
+            history_argument=args.history,
+            history_presenter=_StreamWindowProxy(ui_updates),
+            tts_manager=tts_manager,
+        )
+
+        def handle_stream_command(command: dict[str, object]) -> None:
+            request = parse_chat_command(command)
+            result = command_dispatcher.execute(request)
+            send_chat_command_ack(stream_sink.emit, request, result)
+
+        stream_sink.set_command_handler(handle_stream_command)
         with _startup_phase("workflow.start"):
             workflow.start()
 
