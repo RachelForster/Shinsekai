@@ -4,7 +4,7 @@ from queue import Queue
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from core.messaging.chat_turn_wiring import create_chat_turn_service
+from application.chat.turn_wiring import create_chat_turn_service
 from core.messaging.queue import ClearableQueue
 
 

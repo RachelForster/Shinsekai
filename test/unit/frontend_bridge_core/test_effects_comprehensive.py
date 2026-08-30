@@ -5,9 +5,7 @@ Tests all bugs that were fixed:
 2. Audio tag index mismatch (empty lines preserved)
 3. Rename failure fallback (OSError handled)
 4. Missing prompt word detection (pinpoint)
-5. Effect usage guide generation
 """
-import os
 import shutil
 import tempfile
 import zipfile
@@ -122,8 +120,6 @@ def test_rename_multiple_collisions():
 
 def test_rename_to_same_name():
     """Renaming to the same name (no-op rename): no change."""
-    effect_list = [make_effect("闪光")]
-
     old_dir = Path("data/effects/闪光")
     new_dir = Path("data/effects/闪光")
     assert old_dir == new_dir

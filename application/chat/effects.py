@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
 from typing import Any
 
+from core.media.effect_audio import parse_effect_audio_bindings
 from i18n import tr as tr_i18n
-
-
-_LABEL_SEPARATOR_RE = re.compile(r"[,，]")
 
 
 @dataclass(frozen=True)
@@ -40,26 +37,6 @@ def _selected_name_keys(selected_names: Any) -> set[str]:
     return {value.casefold() for item in values if (value := str(item or "").strip())}
 
 
-def _effect_labels(tag_line: Any) -> tuple[str, ...]:
-    raw = str(tag_line or "").strip()
-    if not raw:
-        return ()
-    if "：" in raw:
-        raw = raw.split("：", 1)[-1]
-    elif ":" in raw:
-        raw = raw.split(":", 1)[-1]
-
-    labels: list[str] = []
-    seen: set[str] = set()
-    for part in _LABEL_SEPARATOR_RE.split(raw):
-        label = part.strip()
-        key = label.casefold()
-        if label and key not in seen:
-            seen.add(key)
-            labels.append(label)
-    return tuple(labels)
-
-
 def build_selected_effect_context(
     config_manager: Any,
     selected_names: Any,
@@ -86,19 +63,16 @@ def build_selected_effect_context(
             continue
         canonical_names.append(effect_name)
 
-        tag_lines = str(getattr(effect, "audio_tags", "") or "").splitlines()
-        audio_list = getattr(effect, "audio_list", []) or []
-        for index, audio_path in enumerate(audio_list):
-            path = str(audio_path or "").strip()
-            tag_line = tag_lines[index] if index < len(tag_lines) else ""
-            if not path:
-                continue
-            for label in _effect_labels(tag_line):
-                keyword_map[label] = path
-                label_key = label.casefold()
-                if label_key not in seen_labels:
-                    seen_labels.add(label_key)
-                    labels.append(label)
+        bindings = parse_effect_audio_bindings(
+            getattr(effect, "audio_tags", ""),
+            getattr(effect, "audio_list", []) or [],
+        )
+        for binding in bindings:
+            keyword_map[binding.keyword] = binding.audio_path
+            label_key = binding.keyword.casefold()
+            if label_key not in seen_labels:
+                seen_labels.add(label_key)
+                labels.append(binding.keyword)
 
     prompt_catalog = ""
     if labels:
