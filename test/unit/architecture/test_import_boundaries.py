@@ -112,6 +112,16 @@ DECLARED_LAYER_ROOTS = frozenset(
     }
 )
 
+CORE_FORBIDDEN_APPLICATION_RUNTIME_NAMES = frozenset(
+    {
+        "AppRuntime",
+        "BridgeState",
+        "get_app_runtime",
+        "set_app_runtime",
+        "try_get_app_runtime",
+    }
+)
+
 
 @dataclass(frozen=True, order=True)
 class ImportViolation:
@@ -260,30 +270,56 @@ def _imported_roots(source: Path) -> set[str]:
             imported_roots.update(alias.name.partition(".")[0] for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
             imported_roots.add(node.module.partition(".")[0])
+    imported_roots.update(_literal_dynamic_imported_roots(tree))
     return imported_roots
 
 
-def _dynamic_imported_roots(source: Path) -> set[str]:
-    """Return literal roots passed to ``importlib.import_module``."""
+def _literal_dynamic_imported_roots(tree: ast.AST) -> set[str]:
+    """Return literal roots loaded through importlib or ``__import__``."""
 
-    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    importlib_aliases = {"importlib"}
+    import_module_aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "importlib":
+                    importlib_aliases.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module == "importlib":
+            for alias in node.names:
+                if alias.name == "import_module":
+                    import_module_aliases.add(alias.asname or alias.name)
+
     imported_roots: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         function = node.func
-        if not (
+        is_importlib_call = (
             isinstance(function, ast.Attribute)
             and isinstance(function.value, ast.Name)
-            and function.value.id == "importlib"
+            and function.value.id in importlib_aliases
             and function.attr == "import_module"
-            and node.args
+        )
+        is_import_module_call = (
+            isinstance(function, ast.Name)
+            and function.id in import_module_aliases
+        )
+        is_builtin_import = (
+            isinstance(function, ast.Name) and function.id == "__import__"
+        )
+        if not node.args or not (
+            is_importlib_call or is_import_module_call or is_builtin_import
         ):
             continue
         module = node.args[0]
         if isinstance(module, ast.Constant) and isinstance(module.value, str):
             imported_roots.add(module.value.partition(".")[0])
     return imported_roots
+
+
+def _dynamic_imported_roots(source: Path) -> set[str]:
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    return _literal_dynamic_imported_roots(tree)
 
 
 def _violations() -> frozenset[ImportViolation]:
@@ -329,6 +365,61 @@ def test_import_boundaries_match_migration_allowlist() -> None:
         f"Unexpected violations: {unexpected}\n"
         f"Stale allowlist entries: {stale_allowlist}\n"
         "Do not add a new exception. Remove stale entries when a migration fixes them."
+    )
+
+
+def test_literal_dynamic_imports_are_dependency_edges(tmp_path: Path) -> None:
+    source = tmp_path / "dynamic_imports.py"
+    source.write_text(
+        "\n".join(
+            (
+                "import importlib as loader",
+                "from importlib import import_module as load",
+                'loader.import_module("application.runtime")',
+                'load("frontend_bridge_core.routes")',
+                '__import__("ai.llm")',
+                'load(variable_module)',
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    assert _dynamic_imported_roots(source) == {
+        "ai",
+        "application",
+        "frontend_bridge_core",
+    }
+    assert _imported_roots(source) >= {
+        "ai",
+        "application",
+        "frontend_bridge_core",
+    }
+
+
+def test_core_does_not_reference_application_runtime_owners() -> None:
+    unexpected: list[str] = []
+    core_root = REPO_ROOT / "core"
+    for source in sorted(core_root.rglob("*.py")):
+        relative = source.relative_to(REPO_ROOT).as_posix()
+        tree = ast.parse(
+            source.read_text(encoding="utf-8"), filename=str(source)
+        )
+        referenced_names = {
+            node.id for node in ast.walk(tree) if isinstance(node, ast.Name)
+        }
+        referenced_names.update(
+            node.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute)
+        )
+        for name in sorted(
+            referenced_names & CORE_FORBIDDEN_APPLICATION_RUNTIME_NAMES
+        ):
+            unexpected.append(f"{relative}: {name}")
+
+    assert not unexpected, (
+        "Application runtime/session ownership must not move into core; pass a "
+        f"narrow protocol, callback, or value instead: {unexpected}"
     )
 
 

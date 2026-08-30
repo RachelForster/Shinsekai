@@ -4,7 +4,8 @@
 > 建立日期：2026-07-27
 > 稳定结构约定：见 [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md)
 
-本文记录阶段性状态、兼容路径、PR 边界和可量化 OKR。每个 Objective 使用一个独立 PR，并按 O1 → O5 顺序合并。
+本文记录阶段性状态、兼容路径、PR 边界和可量化 OKR。O1 → O5 完成首次目录迁移；
+O6 在不搬迁主体业务的前提下，进一步锁定 `core/` 与 `application/` 的语义边界。
 
 ## 1. 基线状态
 
@@ -148,6 +149,26 @@ PR 范围：
 - Windows 本地验证由本 PR 执行，macOS/Linux smoke test 由 CI 执行；
 - 实际目录、测试目录和目标结构一致。
 
+### O6：锁定 core 与 application 的职责边界
+
+状态：本分支实现。
+
+PR 范围：
+
+- 将 `core` 明确定义为 Host Capability，将 `application` 明确定义为 Use Case / Process Owner；
+- 说明 application runtime、当前会话、任务和 concrete manager 的所有权；
+- 明确 repository 只在存在可替换存储或事务边界时引入，不建立空泛的顶层 repository 层；
+- 将字面量动态导入纳入现有依赖矩阵，防止通过 `importlib` 或 `__import__` 绕过边界；
+- 禁止 `core/` 引用 `AppRuntime`、`BridgeState` 和 application runtime accessor；
+- 删除无生产引用的 `core.media.auto_annotation` 残留兼容入口，并将单测归位到 application。
+
+完成条件：
+
+- 新代码放置可以通过“流程所有权”与“独立能力”规则明确判断；
+- `core -> application` 的静态和字面量动态依赖都由同一架构测试阻止；
+- 架构 allowlist 继续为空；
+- 不迁移 O7 计划中的 chat wiring、演出编排等主体业务。
+
 ## 4. 迁移映射
 
 | 当前路径 | 目标位置 | Objective | 说明 |
@@ -175,7 +196,7 @@ PR 范围：
 | `frontend_bridge_core/plugin_*.py` | routes + `application/plugins/` | O2/O3 | O2 迁实现并保留兼容调用；O3 将 catalog/updates 收口到 application 门面 |
 | `frontend_bridge_core/model_assets.py`、`tts.py` | `application/model_assets/` | O3 | bridge 只创建 task 并转发结果 |
 | `frontend_bridge_core/logs.py` | `application/diagnostics/` | O3 | 诊断归档不在传输层实现 |
-| `core/media/auto_annotation.py` | `application/media/` | O3 | AI 能力由 application 编排 |
+| `core/media/auto_annotation.py` | `application/media/` | O3/O6 | AI 能力由 application 编排；O6 删除残留兼容入口并归位单测 |
 
 ## 5. 通用退出条件
 
