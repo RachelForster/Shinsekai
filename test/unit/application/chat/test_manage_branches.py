@@ -10,7 +10,7 @@ from application.chat.manage_branches import (
     ConversationBranchBindings,
     ConversationBranchManager,
 )
-from core.sprite.chat_branch_storage import load_branch_state
+from core.chat_history.storage import load_branch_state
 
 
 class _BranchHarness:

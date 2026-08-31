@@ -17,7 +17,7 @@ from ai.memory.extraction import (
 )
 from ai.memory.operations import memory_remember
 from ai.memory.token_estimator import estimate_text_tokens
-from core.sprite.chat_history_text import history_payload_to_turns
+from core.chat_history.text import history_payload_to_turns
 
 MAX_IMPORT_FILES = 50
 MAX_IMPORT_FILE_BYTES = 16 * 1024 * 1024

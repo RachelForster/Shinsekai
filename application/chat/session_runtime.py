@@ -174,9 +174,9 @@ _active_initialization: _ChatInitialization | None = None
 def peek_launch_endpoints() -> ChatBootstrapEndpoints:
     """Read early producer endpoints without consuming bridge launch config."""
 
-    from core.sprite.sprite_cli import peek_sprite_launch_endpoints
+    from application.chat.launch_args import peek_chat_launch_endpoints
 
-    launch_config = peek_sprite_launch_endpoints()
+    launch_config = peek_chat_launch_endpoints()
     return ChatBootstrapEndpoints(
         stream_endpoint=_early_launch_option(
             "--stream-endpoint",
@@ -211,12 +211,12 @@ def parse_launch_options(transport: ChatSessionTransport) -> ChatLaunchOptions:
             create_default_asr_adapter,
             system_config_to_asr_lang,
         )
-        from core.sprite.sprite_cli import load_sprite_launch_config, parse_sprite_args
+        from application.chat.launch_args import load_chat_launch_config, parse_chat_args
 
     with initialization.phase("i18n.init"):
         init_i18n(config.config.system_config.ui_language)
     with initialization.phase("args.parse"):
-        args = parse_sprite_args(tr, defaults=load_sprite_launch_config())
+        args = parse_chat_args(tr, defaults=load_chat_launch_config())
     if not args.stream_endpoint and not args.headless:
         raise SystemExit(
             "The Qt chat window has been retired; launch chat through React/Tauri "
@@ -666,7 +666,7 @@ def save_chat_history_and_delete_tmp(
         return True
     from ai.llm.history_manager import HistoryManager
     from application.chat.history_state import save_chat_history
-    from core.sprite.chat_branch_storage import chat_history_active_path
+    from core.chat_history.storage import chat_history_active_path
 
     history_file = str(chat_history_active_path(history_argument))
     success = save_chat_history(history_file, messages)

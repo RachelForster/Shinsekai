@@ -13,7 +13,7 @@ import tempfile
 from types import MappingProxyType
 from typing import Any
 
-from core.sprite.chat_branch_storage import STORY_SESSION_FILENAME
+from core.chat_history.storage import STORY_SESSION_FILENAME
 
 from core.story import (
     CanonFact,

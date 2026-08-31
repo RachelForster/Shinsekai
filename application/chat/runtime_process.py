@@ -34,7 +34,7 @@ from core.media.chat_attachments import (
     chat_attachment_display_text,
     resolve_chat_attachments,
 )
-from core.sprite.chat_branch_storage import (
+from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
     chat_history_active_path,
@@ -44,7 +44,7 @@ from core.sprite.chat_branch_storage import (
     remove_chat_history_storage,
     save_branch_state,
 )
-from core.sprite.chat_history_text import history_payload_to_plain_text, parse_assistant_dialog_content
+from core.chat_history.text import history_payload_to_plain_text, parse_assistant_dialog_content
 from ai.tools.chat_ui_tools import sanitize_user_display_name
 
 from application.chat.history_paths import (
@@ -75,7 +75,7 @@ from application.story.coordinator import (
 from application.story.session import StoryTurnCancelledError
 from config.feature_flags import FeatureFlag
 from core.story import SelectChoice
-from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
+from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from sdk.path_utils import reject_control_chars
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"

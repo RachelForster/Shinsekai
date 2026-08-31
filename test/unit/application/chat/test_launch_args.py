@@ -3,12 +3,12 @@ import os
 import unittest
 from unittest.mock import patch
 
-from core.sprite.sprite_cli import (
+from application.chat.launch_args import (
     CHAT_LAUNCH_CONFIG_ENV,
-    build_sprite_arg_parser,
-    load_sprite_launch_config,
-    peek_sprite_launch_config,
-    peek_sprite_launch_endpoints,
+    build_chat_arg_parser,
+    load_chat_launch_config,
+    peek_chat_launch_config,
+    peek_chat_launch_endpoints,
 )
 
 
@@ -16,9 +16,9 @@ def _tr(key, **_kwargs):
     return key
 
 
-class SpriteCliTests(unittest.TestCase):
+class ChatLaunchArgsTests(unittest.TestCase):
     def test_parser_accepts_mirror_stream_endpoint(self):
-        parser = build_sprite_arg_parser(_tr)
+        parser = build_chat_arg_parser(_tr)
 
         args = parser.parse_args(
             [
@@ -55,7 +55,7 @@ class SpriteCliTests(unittest.TestCase):
             {CHAT_LAUNCH_CONFIG_ENV: json.dumps(payload)},
             clear=False,
         ):
-            self.assertEqual(load_sprite_launch_config(), payload)
+            self.assertEqual(load_chat_launch_config(), payload)
             self.assertNotIn(CHAT_LAUNCH_CONFIG_ENV, os.environ)
 
     def test_bridge_launch_config_can_be_peeked_before_it_is_consumed(self):
@@ -69,9 +69,9 @@ class SpriteCliTests(unittest.TestCase):
             {CHAT_LAUNCH_CONFIG_ENV: json.dumps(payload)},
             clear=False,
         ):
-            self.assertEqual(peek_sprite_launch_config(), payload)
+            self.assertEqual(peek_chat_launch_config(), payload)
             self.assertIn(CHAT_LAUNCH_CONFIG_ENV, os.environ)
-            self.assertEqual(load_sprite_launch_config(), payload)
+            self.assertEqual(load_chat_launch_config(), payload)
             self.assertNotIn(CHAT_LAUNCH_CONFIG_ENV, os.environ)
 
     def test_endpoint_peek_survives_an_invalid_unrelated_launch_field(self):
@@ -88,11 +88,11 @@ class SpriteCliTests(unittest.TestCase):
             clear=False,
         ):
             self.assertEqual(
-                peek_sprite_launch_endpoints(),
+                peek_chat_launch_endpoints(),
                 {"init_stream_endpoint": ("ws://127.0.0.1:8788/ws?sessionId=init")},
             )
             with self.assertRaises(ValueError):
-                load_sprite_launch_config()
+                load_chat_launch_config()
 
     def test_bridge_launch_config_rejects_unknown_or_non_string_values(self):
         with patch.dict(
@@ -101,7 +101,7 @@ class SpriteCliTests(unittest.TestCase):
             clear=False,
         ):
             with self.assertRaises(ValueError):
-                load_sprite_launch_config()
+                load_chat_launch_config()
 
         with patch.dict(
             os.environ,
@@ -109,7 +109,7 @@ class SpriteCliTests(unittest.TestCase):
             clear=False,
         ):
             with self.assertRaises(ValueError):
-                load_sprite_launch_config()
+                load_chat_launch_config()
 
 
 if __name__ == "__main__":
