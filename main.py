@@ -1,4 +1,3 @@
-import copy
 import json
 import os
 from contextlib import contextmanager
@@ -119,10 +118,7 @@ from core.media.chat_attachments import resolve_chat_attachments
 from core.paths import resource_path
 from core.sprite.chat_branch_storage import (
     chat_history_active_path,
-    load_branch_state,
-    reconcile_active_branch_state,
     remove_chat_history_storage,
-    save_branch_state,
 )
 from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
 from config.config_manager import ConfigManager
@@ -131,15 +127,16 @@ from opencc import OpenCC
 from queue import Queue
 
 from application.chat.effects import build_selected_effect_context
+from application.chat.manage_branches import (
+    ConversationBranchBindings,
+    ConversationBranchManager,
+)
 from application.chat.history_state import (
-    canonical_user_turn_payload,
     chat_history,
     clear_chat_history,
     get_history,
     history_entry_stage_payload,
-    history_entry_plain_text,
     load_chat_history,
-    is_user_history_entry,
     pop_last_assistant_turn_payload,
     replay_history_entry,
     revert_chat_history,
@@ -721,42 +718,6 @@ def main():
                 else None
             )
         last_user_message: dict[str, object] = {"attachments": [], "text": ""}
-        def _default_branch_state() -> dict[str, object]:
-            now = int(time.time() * 1000)
-            return {
-                "active": "main",
-                "counter": 1,
-                "branches": {
-                    "main": {
-                        "createdAt": now,
-                        "forkedFromEntryId": "",
-                        "forkedFromText": "",
-                        "history": list(chat_history),
-                        "id": "main",
-                        "label": "Main",
-                        "messages": copy.deepcopy(llm_manager.get_messages()),
-                        "parentId": None,
-                        "updatedAt": now,
-                    }
-                },
-            }
-
-        def _load_initial_branch_state() -> dict[str, object]:
-            restored = load_branch_state(args.history) if args.history else None
-            if restored is None:
-                return _default_branch_state()
-            restored_messages, restored_history = reconcile_active_branch_state(
-                restored,
-                messages,
-                chat_history,
-                active_history_present=active_history_present,
-            )
-            messages[:] = restored_messages
-            chat_history[:] = restored_history
-            llm_manager.set_messages(restored_messages)
-            return restored
-
-        branch_state: dict[str, object] = _load_initial_branch_state()
 
         def submit_runtime_text(
             text: str,
@@ -791,6 +752,36 @@ def main():
             if notify_key:
                 ui_updates.post_notification(tr_i18n(notify_key))
             return True
+
+        branch_manager = ConversationBranchManager(
+            history_path=args.history,
+            chat_history=chat_history,
+            bindings=ConversationBranchBindings(
+                get_messages=llm_manager.get_messages,
+                set_messages=llm_manager.set_messages,
+                cancel_pending_batch=chat_turn_service.cancel_pending_batch,
+                persist_messages=lambda current_messages: (
+                    _save_chat_history_and_delete_tmp(args.history, current_messages)
+                ),
+                publish_tree=lambda tree: stream_sink.emit(
+                    {"type": "conversation.tree", "tree": tree}
+                ),
+                clear_options=lambda: stream_sink.emit({"type": "options.clear"}),
+                sync_history=lambda: (
+                    ui_updates.sync_history_entries()
+                    if hasattr(ui_updates, "sync_history_entries")
+                    else None
+                ),
+                replay_history=lambda entry: replay_history_entry(
+                    _StreamWindowProxy(ui_updates), str(entry)
+                ),
+                submit_text=submit_runtime_text,
+            ),
+        )
+        branch_manager.load(
+            messages,
+            active_history_present=active_history_present,
+        )
 
         from ai.asr.streaming_controller import StreamingASRController
 
@@ -841,188 +832,6 @@ def main():
 
         ui_updates.post_pause_asr = _post_pause_asr_for_reply
         ui_updates.post_llm_reply_finished = _post_llm_reply_finished_and_resume_asr
-
-        def _branch_messages() -> list:
-            return copy.deepcopy(llm_manager.get_messages())
-
-        def _branches() -> dict[str, dict[str, object]]:
-            return branch_state["branches"]  # type: ignore[return-value]
-
-        def _active_branch_id() -> str:
-            return str(branch_state.get("active") or "main")
-
-        def _branch_tree_payload() -> dict[str, object]:
-            public_branches = []
-            for branch in _branches().values():
-                public_branches.append(
-                    {
-                        "createdAt": branch.get("createdAt"),
-                        "forkedFromEntryId": branch.get("forkedFromEntryId") or "",
-                        "forkedFromText": branch.get("forkedFromText") or "",
-                        "id": str(branch.get("id") or ""),
-                        "label": str(branch.get("label") or ""),
-                        "parentId": branch.get("parentId"),
-                        "updatedAt": branch.get("updatedAt"),
-                    }
-                )
-            return {"activeBranchId": _active_branch_id(), "branches": public_branches}
-
-        def _emit_branch_tree() -> None:
-            stream_sink.emit({"type": "conversation.tree", "tree": _branch_tree_payload()})
-
-        def _save_active_branch() -> None:
-            branches = _branches()
-            active = _active_branch_id()
-            branch = branches.get(active)
-            if branch is None:
-                return
-            branch["history"] = list(chat_history)
-            branch["messages"] = _branch_messages()
-            branch["updatedAt"] = int(time.time() * 1000)
-
-        def _persist_branch_state() -> None:
-            if not args.history:
-                return
-            _save_active_branch()
-            _save_chat_history_and_delete_tmp(args.history, llm_manager.get_messages())
-            save_branch_state(args.history, branch_state)
-
-        def _reset_branch_state() -> None:
-            branch_state.clear()
-            branch_state.update(_default_branch_state())
-
-        def _user_history_position(user_index: int) -> int:
-            current_user_idx = -1
-            for idx, entry in enumerate(chat_history):
-                if is_user_history_entry(str(entry)):
-                    current_user_idx += 1
-                    if current_user_idx == user_index:
-                        return idx
-            return -1
-
-        def _messages_before_user(user_index: int) -> list:
-            new_messages = []
-            current_user_idx = -1
-            for message in llm_manager.get_messages():
-                role = message.get("role")
-                if role == "user":
-                    current_user_idx += 1
-                    if current_user_idx >= user_index:
-                        break
-                new_messages.append(copy.deepcopy(message))
-            return new_messages
-
-        def _user_message(user_index: int) -> dict[str, object] | None:
-            current_user_idx = -1
-            for message in llm_manager.get_messages():
-                if message.get("role") != "user":
-                    continue
-                current_user_idx += 1
-                if current_user_idx == user_index:
-                    return message
-            return None
-
-        def _plain_user_text(history_entry: object) -> str:
-            text = history_entry_plain_text(history_entry)
-            for separator in ("：", ":"):
-                if separator in text:
-                    speaker, body = text.split(separator, 1)
-                    if speaker.strip() in {"你", "User", "user"}:
-                        return body.strip()
-            return text.strip()
-
-        def _fork_history_branch(user_index: int, branch_id: str = "") -> None:
-            if user_index < 0:
-                raise ValueError("分支索引无效。")
-            user_pos = _user_history_position(user_index)
-            if user_pos < 0:
-                raise ValueError("找不到可分叉的历史记录。")
-            source_entry = chat_history[user_pos]
-            replay_payload = canonical_user_turn_payload(
-                _user_message(user_index),
-                fallback_text=_plain_user_text(source_entry),
-            )
-            user_text = str(replay_payload["text"] or "")
-            user_attachments = list(replay_payload["attachments"] or [])
-            if not user_text and not user_attachments:
-                raise ValueError("分支输入内容为空。")
-            chat_turn_service.cancel_pending_batch()
-            _save_active_branch()
-            prefix_history = list(chat_history[:user_pos])
-            prefix_messages = _messages_before_user(user_index)
-            requested_id = str(branch_id or "").strip()
-            if requested_id:
-                if requested_id in _branches():
-                    raise ValueError("对话分支已存在。")
-                suffix = requested_id[7:] if requested_id.startswith("branch-") else ""
-                if suffix.isdigit():
-                    branch_state["counter"] = max(
-                        int(branch_state.get("counter") or 1),
-                        int(suffix),
-                    )
-                next_id = requested_id
-            else:
-                branch_state["counter"] = int(branch_state.get("counter") or 1) + 1
-                next_id = f"branch-{branch_state['counter']}"
-            now = int(time.time() * 1000)
-            _branches()[next_id] = {
-                "createdAt": now,
-                "forkedFromEntryId": f"history-{user_pos}",
-                "forkedFromText": user_text,
-                "history": list(prefix_history),
-                "id": next_id,
-                "label": f"Branch {branch_state['counter']}",
-                "messages": copy.deepcopy(prefix_messages),
-                "parentId": _active_branch_id(),
-                "updatedAt": now,
-            }
-            branch_state["active"] = next_id
-            chat_history[:] = prefix_history
-            llm_manager.set_messages(copy.deepcopy(prefix_messages))
-            stream_sink.emit({"type": "options.clear"})
-            if hasattr(ui_updates, "sync_history_entries"):
-                ui_updates.sync_history_entries()
-            _emit_branch_tree()
-            _persist_branch_state()
-            submit_runtime_text(
-                user_text,
-                attachments=user_attachments,
-                ignore_unavailable_attachments=True,
-                notify_key=None,
-            )
-
-        def _switch_history_branch(branch_id: str) -> None:
-            target_id = str(branch_id or "").strip()
-            branches = _branches()
-            if not target_id or target_id not in branches:
-                raise ValueError("对话分支不存在。")
-            chat_turn_service.cancel_pending_batch()
-            _save_active_branch()
-            branch = branches[target_id]
-            branch_state["active"] = target_id
-            chat_history[:] = list(branch.get("history") or [])
-            llm_manager.set_messages(copy.deepcopy(branch.get("messages") or []))
-            stream_sink.emit({"type": "options.clear"})
-            if hasattr(ui_updates, "sync_history_entries"):
-                ui_updates.sync_history_entries()
-            if chat_history:
-                replay_history_entry(_StreamWindowProxy(ui_updates), str(chat_history[-1]))
-            _emit_branch_tree()
-            _persist_branch_state()
-            ui_updates.post_notification("已切换对话分支。")
-
-        def _rename_history_branch(branch_id: str, label: str) -> None:
-            target_id = str(branch_id or "").strip()
-            next_label = str(label or "").strip()
-            if not target_id or target_id not in _branches():
-                raise ValueError("对话分支不存在。")
-            if not next_label:
-                raise ValueError("分支名称不能为空。")
-            _branches()[target_id]["label"] = next_label[:64]
-            _branches()[target_id]["updatedAt"] = int(time.time() * 1000)
-            _emit_branch_tree()
-            _persist_branch_state()
-            ui_updates.post_notification("已重命名对话分支。")
 
         def handle_stream_command(command: dict[str, object]) -> None:
             command_type = str(command.get("type") or "").strip()
@@ -1213,12 +1022,12 @@ def main():
                     if args.history:
                         remove_chat_history_storage(args.history)
                     clear_chat_history(history_target, audio_path_queue, llm_manager)
-                    _reset_branch_state()
-                    _persist_branch_state()
+                    branch_manager.reset()
+                    branch_manager.persist()
                     stream_sink.emit({"type": "options.clear"})
                     if hasattr(ui_updates, "sync_history_entries"):
                         ui_updates.sync_history_entries()
-                    _emit_branch_tree()
+                    branch_manager.publish_tree()
                     emit_ack(ok=True)
                     return
                 if command_type == "change-voice-language":
@@ -1261,19 +1070,24 @@ def main():
                     return
                 if command_type == "fork-history":
                     raw_payload = payload if isinstance(payload, dict) else {"userIndex": payload}
-                    _fork_history_branch(
+                    branch_manager.fork(
                         int(raw_payload.get("userIndex")),
                         branch_id=str(raw_payload.get("branchId") or "").strip(),
                     )
                     emit_ack(ok=True)
                     return
                 if command_type == "switch-branch":
-                    _switch_history_branch(str(payload or ""))
+                    branch_manager.switch(str(payload or ""))
+                    ui_updates.post_notification("已切换对话分支。")
                     emit_ack(ok=True)
                     return
                 if command_type == "rename-branch":
                     raw_payload = payload if isinstance(payload, dict) else {}
-                    _rename_history_branch(str(raw_payload.get("branchId") or ""), str(raw_payload.get("label") or ""))
+                    branch_manager.rename(
+                        str(raw_payload.get("branchId") or ""),
+                        str(raw_payload.get("label") or ""),
+                    )
+                    ui_updates.post_notification("已重命名对话分支。")
                     emit_ack(ok=True)
                     return
                 raise ValueError(f"未知实时聊天命令：{command_type}")
@@ -1330,7 +1144,7 @@ def main():
                 ui_updates.post_dialog_html(_welcome_html, is_system=True, color="#84C2D5")
                 if len(get_history()) <= 1:
                     ui_updates.post_options([_option_start])
-            _emit_branch_tree()
+            branch_manager.publish_tree()
             ui_updates.post_notification(tr_i18n("main.notify_chat"))
 
             if not restored_sprite:
@@ -1372,7 +1186,7 @@ def main():
                 pre_shutdown=runtime_asr.close,
                 plugin_shutdown=_shutdown_plugins,
                 tts_shutdown=(lambda: tts_manager.shutdown()) if tts_manager else None,
-                save_history=_persist_branch_state,
+                save_history=branch_manager.persist,
                 save_background=lambda: save_bg(
                     bg_path=ui_updates.current_background_path,
                     bgm_path=ui_updates.current_bgm_path,

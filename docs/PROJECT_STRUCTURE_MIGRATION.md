@@ -236,6 +236,29 @@ Backgrounds 和 Characters。
 - 两个领域分别由架构守卫锁定唯一 use case 入口和禁止回迁的资源操作；
 - 架构 allowlist 保持为空。
 
+### O9：将 `main.py` 收敛为聊天进程入口
+
+状态：按职责拆分独立 PR；第一阶段迁移对话分支管理。
+
+迁移策略：保留 `main.py` 作为进程 composition root，按可独立测试的用户动作和
+生命周期逐步迁移，不把全部逻辑一次搬入另一个大文件。流程模块统一采用
+`动词_名词.py` 命名。
+
+第一阶段 PR 范围：
+
+- 将分支创建、切换、重命名、树投影和持久化迁到
+  `application/chat/manage_branches.py`；
+- `main.py` 只装配消息、UI、持久化和提交回调，不再持有 branch state；
+- 增加分支操作直接单测和入口架构守卫。
+
+后续阶段：
+
+- 实时命令分发迁到 `application/chat/dispatch_commands.py`；
+- provider、插件、模板和历史启动装配迁到
+  `application/chat/initialize_chat.py`；
+- streaming/headless 生命周期迁到 `application/chat/run_session.py`；
+- 完成后 `main.py` 只保留进程环境、transport 装配、模式选择和顶层异常处理。
+
 ## 4. 迁移映射
 
 | 当前路径 | 目标位置 | Objective | 说明 |
@@ -270,6 +293,7 @@ Backgrounds 和 Characters。
 | `frontend_bridge_core/effects.py` 主体实现 | `application/effects/management.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
 | `frontend_bridge_core/backgrounds.py` 资源变更 | `application/backgrounds/management.py` | O8 PR 2 | bridge 仅保留协议、翻译和简单标签写入 |
 | `frontend_bridge_core/characters.py` 资源变更 | `application/characters/management.py` | O8 PR 2 | 保存校验、文件操作和多步骤更新由 application 编排 |
+| `main.py` 对话分支闭包 | `application/chat/manage_branches.py` | O9/阶段 1 | 分支状态、操作和持久化归 application，入口只装配窄回调 |
 
 ## 5. 通用退出条件
 

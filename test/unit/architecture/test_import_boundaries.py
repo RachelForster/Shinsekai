@@ -679,6 +679,31 @@ def test_effect_bridge_remains_a_transport_adapter() -> None:
         "Effect routes must use EffectUseCase.execute as their single entry point."
     )
 
+def test_main_delegates_conversation_branch_management() -> None:
+    """Keep branch use cases testable outside the process entry point."""
+
+    entrypoint = REPO_ROOT / "main.py"
+    use_case = REPO_ROOT / "application" / "chat" / "manage_branches.py"
+    source = entrypoint.read_text(encoding="utf-8")
+    retired_implementations = {
+        "def _active_branch_id",
+        "def _branch_tree_payload",
+        "def _branches",
+        "def _default_branch_state",
+        "def _fork_history_branch",
+        "def _load_initial_branch_state",
+        "def _persist_branch_state",
+        "def _rename_history_branch",
+        "def _switch_history_branch",
+        "load_branch_state(",
+        "save_branch_state(",
+    }
+
+    assert use_case.is_file()
+    assert "ConversationBranchManager(" in source
+    assert not {item for item in retired_implementations if item in source}, (
+        "main.py must delegate branch state and operations to manage_branches.py."
+    )
 
 def test_package_export_results_remain_transport_independent() -> None:
     """Application export results must not encode the bridge's HTTP routes."""
