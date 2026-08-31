@@ -1,6 +1,7 @@
 import os
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -493,6 +494,63 @@ class ChatRuntimeModeTests(unittest.TestCase):
         )
         self.assertEqual(handler.server.state.chat_session["characterName"], "Alice")
         self.assertEqual(snapshot["characterName"], "Alice")
+
+    def test_quick_restart_uses_timestamped_scenario_without_removing_previous_history(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        config_manager = _ConfigManager()
+        config_manager.config.characters = [
+            SimpleNamespace(name="Alice", sprites=[SimpleNamespace(path="sprites/alice.png")]),
+        ]
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
+            root = Path(tmp_dir)
+            history_dir = root / "history"
+            history_dir.mkdir()
+            template_dir = root / "templates"
+            template_dir.mkdir()
+            previous_history = history_dir / _history_id_from_scenario("scene", ["Alice"])
+            previous_history.mkdir()
+            marker = previous_history / "active.json"
+            marker.write_text("previous", encoding="utf-8")
+            handler.server = SimpleNamespace(
+                state=SimpleNamespace(
+                    chat_session={},
+                    chat_stream=_ChatStreamStub(),
+                    config_manager=config_manager,
+                    history_dir=str(history_dir),
+                    template_dir_path=str(template_dir),
+                )
+            )
+            body = {
+                "characters": ["Alice"],
+                "resetHistory": True,
+                "scenario": "scene",
+                "system": "system",
+                "templateId": "template",
+                "templateName": "Template",
+            }
+            timestamp = "2026-08-30T20:45:00.123456"
+
+            with (
+                patch("frontend_bridge_core.routes.api._chat_process_running", return_value=False),
+                patch("frontend_bridge_core.routes.api._launch_chat", return_value="聊天进程已启动！PID: 12345") as launch_chat,
+                patch(
+                    "frontend_bridge_core.routes.api._repair_template_parts_from_session_if_needed",
+                    side_effect=lambda _state, scenario, system: (scenario, system),
+                ),
+                patch("frontend_bridge_core.routes.api.datetime") as mocked_datetime,
+            ):
+                mocked_datetime.now.return_value = datetime.fromisoformat(timestamp)
+                handler._launch_chat(body)
+            marker_survived = marker.is_file()
+
+        expected_scenario = f"scene\n\n[系统时间：{timestamp}]"
+        self.assertEqual(launch_chat.call_args.kwargs["user_scenario"], expected_scenario)
+        self.assertEqual(
+            Path(launch_chat.call_args.kwargs["history_file"]).name,
+            _history_id_from_scenario(expected_scenario, ["Alice"]),
+        )
+        self.assertTrue(marker_survived)
 
     def test_legacy_native_async_init_uses_react_stream_session(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)

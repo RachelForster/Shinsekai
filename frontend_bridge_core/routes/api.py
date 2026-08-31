@@ -7,6 +7,7 @@ import mimetypes
 import shutil
 import tempfile
 import threading
+from datetime import datetime
 from http.cookies import SimpleCookie
 from email.parser import BytesParser
 from email.policy import default as default_email_policy
@@ -56,7 +57,6 @@ from application.chat.runtime_process import (
     _chat_theme_payload,
     _handle_chat_command,
     _launch_chat,
-    remove_chat_history_storage,
     _sanitize_user_display_name,
 )
 from frontend_bridge_core.chat_themes import (
@@ -1529,18 +1529,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             characters,
         )
         room_id = str(body.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
-        normalized_history_payload = {**body, "characters": characters}
-        history_path = _chat_history_path(self.state, normalized_history_payload, row)
-        default_history_path = _chat_history_path(
-            self.state,
-            {"historyPath": "", "characters": characters},
-            row,
-        )
         reset_history = bool(body.get("resetHistory"))
-        if reset_history:
-            clear_story_session(self.state)
-            for item in {history_path, default_history_path}:
-                remove_chat_history_storage(item)
         user_scenario = _scenario_from_template_like(row)
         system_template = str(row.get("system") or "")
         user_scenario, system_template = _repair_template_parts_from_session_if_needed(
@@ -1548,11 +1537,21 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             user_scenario,
             system_template,
         )
+        if reset_history:
+            clear_story_session(self.state)
+            user_scenario = (
+                f"{user_scenario.rstrip()}\n\n[系统时间：{datetime.now().isoformat(timespec='microseconds')}]"
+            )
+        history_path = _chat_history_path(
+            self.state,
+            {**body, "characters": characters},
+            {**row, "scenario": user_scenario},
+        )
         user_display_name = _sanitize_user_display_name(body.get("userDisplayName"))
         session_base = {
             "backgroundName": str(body.get("backgroundName") or ""),
             "characterName": first_character,
-            "historyPath": (default_history_path if reset_history else history_path).as_posix(),
+            "historyPath": history_path.as_posix(),
             "sessionId": "",
             "templateId": template_id,
             "userDisplayName": user_display_name,
@@ -1588,7 +1587,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self.state,
             character_names=characters,
             effect_names=effect_names_str,
-            history_file=(default_history_path if reset_history else history_path).as_posix(),
+            history_file=history_path.as_posix(),
             init_sprite_path=init_sprite_path,
             room_id=room_id,
             selected_bg=str(body.get("backgroundName") or ""),
@@ -1628,7 +1627,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     "backgroundPath": _chat_snapshot(self.state).get("backgroundPath", ""),
                     "characterName": first_character,
                     "dialogText": "",
-                    "historyPath": (default_history_path if reset_history else history_path).as_posix(),
+                    "historyPath": history_path.as_posix(),
                     "status": "idle",
                     "statusMessage": message,
                     "userDisplayName": user_display_name,
