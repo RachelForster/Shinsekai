@@ -195,10 +195,10 @@ PR 范围：
 
 ### O8：让 Bridge 真正变薄
 
-状态：第一阶段（Effects）在本分支实现。
+状态：按功能拆分独立 PR。第一阶段 Effects 已完成；本分支实现第二阶段
+Backgrounds 和 Characters。
 
-迁移策略：按功能拆分独立 PR，不一次处理全部 bridge。第一阶段完成 Effects，
-后续阶段再处理 Backgrounds 和 Characters。
+迁移策略：按功能拆分独立 PR，不一次处理全部 bridge。
 
 第一阶段 PR 范围：
 
@@ -217,13 +217,24 @@ PR 范围：
 - 文件访问继续受 trusted roots、managed directory 和 archive path 校验约束；
 - Effect application、bridge adapter、HTTP 既有测试及 Tauri 资源验证通过。
 
-后续阶段：
+第二阶段 PR 范围：
 
-- `frontend_bridge_core/backgrounds.py` 的文件和多步骤配置操作迁到
-  `application/media/backgrounds.py`；
-- `frontend_bridge_core/characters.py` 中同时修改配置与资源、需要回滚或校验的操作
-  迁到 `application/characters/`；
-- 单一且稳定的简单配置读写不为迁移而迁移。
+- 将背景资源上传、删除、导入导出和配置与资源联合更新迁入
+  `application/backgrounds/management.py`；
+- 将角色保存校验、资源上传删除、语音校验和导入导出迁入
+  `application/characters/management.py`；
+- `backgrounds`、`characters` 和 `effects` 按业务领域建立 application
+  一级目录；`application/media/` 只保留跨领域媒体能力；
+- 每个领域只暴露一个 bridge 执行入口，由 application operation 明确区分用例；
+- 标签、缩放、翻译等简单配置读写继续保留在 bridge，不为机械转发增加空用例；
+- 上传临时目录仍由 HTTP transport 创建和清理，application 只接收获准访问的文件根目录。
+
+第二阶段完成条件：
+
+- Backgrounds 和 Characters bridge 不再直接调用资源 manager 或包导入导出实现；
+- HTTP 路由与响应字段保持不变，前端无需修改；
+- 两个领域分别由架构守卫锁定唯一 use case 入口和禁止回迁的资源操作；
+- 架构 allowlist 保持为空。
 
 ## 4. 迁移映射
 
@@ -257,6 +268,8 @@ PR 范围：
 | `core/sprite/initial_sprite.py` | `core/sprite/selection.py` + `application/chat/initial_sprite.py` | O7 | core 只做路径匹配，配置选择和 UI 呈现由 application 负责 |
 | main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/effects.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
 | `frontend_bridge_core/effects.py` 主体实现 | `application/effects/management.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
+| `frontend_bridge_core/backgrounds.py` 资源变更 | `application/backgrounds/management.py` | O8 PR 2 | bridge 仅保留协议、翻译和简单标签写入 |
+| `frontend_bridge_core/characters.py` 资源变更 | `application/characters/management.py` | O8 PR 2 | 保存校验、文件操作和多步骤更新由 application 编排 |
 
 ## 5. 通用退出条件
 
