@@ -78,10 +78,45 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
     return parser
 
 
-def load_sprite_launch_config() -> dict[str, Any]:
-    """Load bridge-provided argument defaults without placing them in subprocess argv."""
+def peek_sprite_launch_config() -> dict[str, Any]:
+    """Read bridge-provided defaults without consuming the process environment."""
 
-    raw = os.environ.pop(CHAT_LAUNCH_CONFIG_ENV, "").strip()
+    return _parse_sprite_launch_config(
+        os.environ.get(CHAT_LAUNCH_CONFIG_ENV, ""),
+    )
+
+
+def peek_sprite_launch_endpoints() -> dict[str, str]:
+    """Recover producer endpoints even when another launch field is invalid."""
+
+    raw = str(os.environ.get(CHAT_LAUNCH_CONFIG_ENV, "") or "").strip()
+    if not raw or len(raw) > _MAX_LAUNCH_CONFIG_CHARS:
+        return {}
+    try:
+        data = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    return {
+        key: str(data.get(key) or "").strip()
+        for key in ("stream_endpoint", "init_stream_endpoint")
+        if isinstance(data.get(key), str) and str(data.get(key) or "").strip()
+    }
+
+
+def load_sprite_launch_config() -> dict[str, Any]:
+    """Load and consume bridge-provided argument defaults."""
+
+    return _parse_sprite_launch_config(
+        os.environ.pop(CHAT_LAUNCH_CONFIG_ENV, ""),
+    )
+
+
+def _parse_sprite_launch_config(raw_value: str) -> dict[str, Any]:
+    """Validate one serialized bridge launch configuration."""
+
+    raw = str(raw_value or "").strip()
     if not raw:
         return {}
     if len(raw) > _MAX_LAUNCH_CONFIG_CHARS:
