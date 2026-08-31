@@ -31,6 +31,7 @@ export function DialogStageControls({
   asrEnabled,
   auto,
   bgmVolume,
+  effectVolume,
   closeLabel,
   configOpen,
   hideCloseButton,
@@ -38,6 +39,7 @@ export function DialogStageControls({
   locked,
   onAutoChange,
   onBgmVolumeChange,
+  onEffectVolumeChange,
   onCancelBatch,
   onCloseSurface,
   onCommand,
@@ -56,6 +58,7 @@ export function DialogStageControls({
   asrEnabled: boolean;
   auto: boolean;
   bgmVolume: number;
+  effectVolume: number;
   closeLabel: string;
   configOpen: boolean;
   hidden: boolean;
@@ -63,6 +66,7 @@ export function DialogStageControls({
   locked: boolean;
   onAutoChange: (auto: boolean) => void;
   onBgmVolumeChange: (value: number) => void;
+  onEffectVolumeChange: (value: number) => void;
   onCancelBatch: () => void;
   onCloseSurface: () => void;
   onCommand: (command: ChatCommand) => void;
@@ -238,7 +242,9 @@ export function DialogStageControls({
         </div>
         <ChatTurnSettingsPopover
           bgmVolume={bgmVolume}
+          effectVolume={effectVolume}
           onBgmVolumeChange={onBgmVolumeChange}
+          onEffectVolumeChange={onEffectVolumeChange}
           onCancelBatch={onCancelBatch}
           onClose={closeChatSettings}
           onFlushBatch={onFlushBatch}

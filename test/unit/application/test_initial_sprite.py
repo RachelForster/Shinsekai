@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from application.chat import session_restore
-from core.sprite.initial_sprite import (
+from application.chat.initial_sprite import (
     display_initial_sprite,
     find_character_sprite_by_path,
     initial_sprite_path_for_characters,

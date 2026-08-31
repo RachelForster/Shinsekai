@@ -5,8 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from application.media.auto_annotation import (
+    auto_label_background_images,
+    auto_label_character_sprites,
+)
 from core.media.asset_tags import normalize_generated_tags, tag_contents
-from core.media.auto_annotation import auto_label_background_images, auto_label_character_sprites
 
 
 class FakeConfigManager:
@@ -118,7 +121,9 @@ def test_asset_paths_cannot_escape_the_project_root(tmp_path: Path):
         emotion_tags="",
     )
     config = FakeConfigManager(character=character)
-    infer = lambda _image, _prompt: pytest.fail("out-of-project image must not be read")
+
+    def infer(_image, _prompt):
+        pytest.fail("out-of-project image must not be read")
 
     result = auto_label_character_sprites(config, "Nanami", project_root=tmp_path, infer=infer)
 

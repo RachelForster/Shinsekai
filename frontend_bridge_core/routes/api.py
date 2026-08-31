@@ -17,30 +17,23 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
+from application.chat.effects import build_selected_effect_context
+from application.characters import CharacterOperation
+from application.backgrounds import BackgroundOperation
 from sdk.logging import get_logger, log_context, new_log_id
 
 from frontend_bridge_core.backgrounds import (
-    _delete_all_background_bgm,
-    _delete_all_background_images,
-    _delete_background_bgm,
-    _delete_background_image,
-    _save_background,
+    _execute_background_request,
     _save_background_bgm_tags,
     _save_background_image_tags,
     _translate_background_fields,
-    _upload_background_bgm,
-    _upload_background_images,
+    background_response_payload,
 )
+from application.effects import EffectOperation
 from frontend_bridge_core.effects import (
-    _build_effect_usage_guide,
-    _delete_all_effect_audio,
-    _delete_effect,
-    _delete_effect_audio,
-    _effect_dir,
-    _save_effect,
-    _save_effect_audio_tags,
-    _upload_effect_audio,
-    _validate_effect_storage_name,
+    effect_response_payload,
+    effect_use_case,
+    parse_effect_request,
 )
 from application.chat.runtime_process import (
     _chat_history,
@@ -71,19 +64,12 @@ from frontend_bridge_core.chat_themes import (
 from application.chat.initialization import start_chat_init
 from application.chat.mobile_access import configure_mobile_access
 from frontend_bridge_core.characters import (
-    _as_character_config,
-    _delete_all_character_sprites,
-    _delete_character_sprite,
-    _delete_sprite_voice,
+    _execute_character_request,
     _generate_character_setting,
-    _save_character,
     _save_character_emotion_tags,
     _save_sprite_scale,
-    _save_sprite_voice_text,
-    _save_sprite_voice_type,
     _translate_character_fields,
-    _upload_character_sprites,
-    _upload_sprite_voice,
+    character_response_payload,
 )
 from frontend_bridge_core.memory import (
     _add_character_memory,
@@ -190,6 +176,7 @@ from application.runtime.tasks import (
     _run_background_task,
     _update_task,
 )
+from application.chat.initial_sprite import initial_sprite_path_for_characters
 from application.chat.templates import (
     NoValidCharactersError,
     _compose_for_llm,
@@ -203,7 +190,6 @@ from application.chat.templates import (
     _save_template_summary,
     _generate_template_summary,
     _load_template_session_payload,
-    initial_sprite_path_for_characters,
 )
 from application.media.attachments import stage_uploaded_chat_attachments
 from frontend_bridge_core.tools import (
@@ -890,7 +876,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 task_id = unquote(path[len("/api/tasks/") : -len("/cancel")])
                 self._send_json(_request_task_cancel(self.state, task_id))
             elif method in {"POST", "PUT"} and path == "/api/characters":
-                self._send_json(_save_character(self.state, body))
+                self._send_json(_execute_character_request(self.state, CharacterOperation.SAVE, body))
             elif method == "POST" and path == "/api/characters/ai-setting":
                 self._send_json(_generate_character_setting(self.state, body))
             elif method == "POST" and path == "/api/characters/translate":
@@ -969,9 +955,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/memory/forget":
                 self._send_json(_memory_tool_forget(str(body.get("memoryId") or body.get("memory_id") or "")))
             elif method == "POST" and path == "/api/characters/sprite-voice/upload":
-                self._send_json(_upload_sprite_voice(self.state, body))
+                self._send_json(
+                    _execute_character_request(self.state, CharacterOperation.UPLOAD_SPRITE_VOICE, body)
+                )
             elif method == "POST" and path == "/api/characters/sprites/upload":
-                self._send_json(_upload_character_sprites(self.state, body))
+                self._send_json(_execute_character_request(self.state, CharacterOperation.UPLOAD_SPRITES, body))
             elif method == "POST" and path == "/api/characters/sprites/auto-label":
                 name = str(body.get("name") or "").strip()
                 if not name:
@@ -985,66 +973,60 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/characters/emotion-tags":
                 self._send_json(_save_character_emotion_tags(self.state, body))
             elif method == "POST" and path == "/api/characters/sprites/delete":
-                self._send_json(_delete_character_sprite(self.state, body))
+                self._send_json(_execute_character_request(self.state, CharacterOperation.DELETE_SPRITE, body))
             elif method == "POST" and path == "/api/characters/sprites/delete-all":
-                self._send_json(_delete_all_character_sprites(self.state, body))
+                self._send_json(_execute_character_request(self.state, CharacterOperation.DELETE_ALL_SPRITES, body))
             elif method == "POST" and path == "/api/characters/sprite-scale":
                 self._send_json(_save_sprite_scale(self.state, body))
             elif method == "POST" and path == "/api/characters/sprite-voice/text":
-                self._send_json(_save_sprite_voice_text(self.state, body))
+                self._send_json(
+                    _execute_character_request(self.state, CharacterOperation.SAVE_SPRITE_VOICE_TEXT, body)
+                )
             elif method == "POST" and path == "/api/characters/sprite-voice/voice-type":
-                self._send_json(_save_sprite_voice_type(self.state, body))
+                self._send_json(
+                    _execute_character_request(self.state, CharacterOperation.SAVE_SPRITE_VOICE_TYPE, body)
+                )
             elif method == "POST" and path == "/api/characters/sprite-voice/delete":
-                self._send_json(_delete_sprite_voice(self.state, body))
+                self._send_json(
+                    _execute_character_request(self.state, CharacterOperation.DELETE_SPRITE_VOICE, body)
+                )
             elif method == "DELETE" and path.startswith("/api/chat/themes/"):
                 theme_id = unquote(path[len("/api/chat/themes/"):])
                 self._send_json(delete_chat_theme(self.state, theme_id))
             elif method == "DELETE" and path.startswith("/api/characters/"):
                 name = unquote(path.rsplit("/", 1)[-1])
-                message, names = self.state.character_manager.delete_character(name)
-                self._send_json({"message": message, "names": names})
+                self._send_json(
+                    _execute_character_request(self.state, CharacterOperation.DELETE, {"name": name})
+                )
             elif method == "POST" and path == "/api/characters/import":
-                paths = body.get("paths") or []
-                if not isinstance(paths, list):
-                    raise ValueError("paths must be a list")
-                import tools.file_util as file_util
-
-                imported = []
-                for item in paths:
-                    imported.extend(file_util.import_character(str(item)))
-                self.state.config_manager.reload()
-                self._send_json([item.__dict__ for item in imported])
+                self._send_json(_execute_character_request(self.state, CharacterOperation.IMPORT, body))
             elif method == "POST" and path == "/api/characters/import-upload":
                 temp_dir, paths = self._read_upload_files()
                 try:
-                    import tools.file_util as file_util
-
-                    imported = []
-                    for item in paths:
-                        imported.extend(file_util.import_character(str(item)))
-                    self.state.config_manager.reload()
-                    self._send_json([item.__dict__ for item in imported])
+                    self._send_json(
+                        _execute_character_request(
+                            self.state,
+                            CharacterOperation.IMPORT,
+                            {"paths": paths},
+                            extra_file_access_roots=(temp_dir,),
+                        )
+                    )
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/characters/export":
-                name = str(body.get("name") or "")
-                character = self.state.config_manager.get_character_by_name(name)
-                if character is None:
-                    raise KeyError(f"character not found: {name}")
-                output, output_relative = _safe_export_output_path(name, ".char")
-                import tools.file_util as file_util
-
-                file_util.export_character([_as_character_config(character)], output.as_posix(), open_folder=False)
                 self._send_json(
-                    {
-                        "downloadUrl": f"/api/download?path={output_relative}",
-                        "path": output_relative,
-                    }
+                    character_response_payload(
+                        _execute_character_request(
+                            self.state,
+                            CharacterOperation.EXPORT,
+                            body,
+                        )
+                    )
                 )
             elif method == "POST" and path == "/api/backgrounds/translate":
                 self._send_json(_translate_background_fields(self.state, body))
             elif method == "POST" and path == "/api/backgrounds/images/upload":
-                self._send_json(_upload_background_images(self.state, body))
+                self._send_json(_execute_background_request(self.state, BackgroundOperation.UPLOAD_IMAGES, body))
             elif method == "POST" and path == "/api/backgrounds/images/auto-label":
                 name = str(body.get("name") or "").strip()
                 if not name:
@@ -1056,93 +1038,93 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     worker=lambda task_id: run_background_image_auto_label(self.state, task_id, name),
                 )
             elif method == "POST" and path == "/api/backgrounds/bgm/upload":
-                self._send_json(_upload_background_bgm(self.state, body))
+                self._send_json(_execute_background_request(self.state, BackgroundOperation.UPLOAD_BGM, body))
             elif method == "POST" and path == "/api/backgrounds/images/delete":
-                self._send_json(_delete_background_image(self.state, body))
+                self._send_json(_execute_background_request(self.state, BackgroundOperation.DELETE_IMAGE, body))
             elif method == "POST" and path == "/api/backgrounds/images/delete-all":
-                self._send_json(_delete_all_background_images(self.state, body))
+                self._send_json(
+                    _execute_background_request(self.state, BackgroundOperation.DELETE_ALL_IMAGES, body)
+                )
             elif method == "POST" and path == "/api/backgrounds/bgm/delete":
-                self._send_json(_delete_background_bgm(self.state, body))
+                self._send_json(_execute_background_request(self.state, BackgroundOperation.DELETE_BGM, body))
             elif method == "POST" and path == "/api/backgrounds/bgm/delete-all":
-                self._send_json(_delete_all_background_bgm(self.state, body))
+                self._send_json(_execute_background_request(self.state, BackgroundOperation.DELETE_ALL_BGM, body))
             elif method == "POST" and path == "/api/backgrounds/tags":
                 self._send_json(_save_background_image_tags(self.state, body))
             elif method == "POST" and path == "/api/backgrounds/bgm-tags":
                 self._send_json(_save_background_bgm_tags(self.state, body))
             elif method in {"POST", "PUT"} and path == "/api/backgrounds":
-                self._send_json(_save_background(self.state, body))
+                self._send_json(_execute_background_request(self.state, BackgroundOperation.SAVE, body))
             elif method == "DELETE" and path.startswith("/api/backgrounds/"):
                 name = unquote(path.rsplit("/", 1)[-1])
-                message, names = self.state.background_manager.delete_background(name)
-                if message.startswith("找不到") or message.startswith("请选择") or "失败" in message:
-                    raise RuntimeError(message)
-                self._send_json({"message": message, "names": names})
+                self._send_json(
+                    _execute_background_request(self.state, BackgroundOperation.DELETE, {"name": name})
+                )
             elif method == "POST" and path == "/api/backgrounds/import":
-                paths = body.get("paths") or []
-                if not isinstance(paths, list):
-                    raise ValueError("paths must be a list")
-                self._send_json(self._import_background_paths([str(item) for item in paths]))
+                self._send_json(_execute_background_request(self.state, BackgroundOperation.IMPORT, body))
             elif method == "POST" and path == "/api/backgrounds/import-upload":
                 temp_dir, paths = self._read_upload_files()
                 try:
-                    self._send_json(self._import_background_paths([str(item) for item in paths]))
+                    self._send_json(
+                        _execute_background_request(
+                            self.state,
+                            BackgroundOperation.IMPORT,
+                            {"paths": paths},
+                            extra_file_access_roots=(temp_dir,),
+                        )
+                    )
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/backgrounds/export":
-                name = str(body.get("name") or "")
-                background = self.state.config_manager.get_background_by_name(name)
-                if background is None:
-                    raise KeyError(f"background not found: {name}")
-                output, output_relative = _safe_export_output_path(name, ".bg")
-                import tools.file_util as file_util
-
-                file_util.export_background([background], output.as_posix(), open_folder=False)
                 self._send_json(
-                    {
-                        "downloadUrl": f"/api/download?path={output_relative}",
-                        "path": output_relative,
-                    }
+                    background_response_payload(
+                        _execute_background_request(
+                            self.state,
+                            BackgroundOperation.EXPORT,
+                            body,
+                        )
+                    )
                 )
             # --- effects ---
             elif method == "POST" and path == "/api/effects/audio/upload":
-                self._send_json(_upload_effect_audio(self.state, body))
+                self._send_json(
+                    self._execute_effect_request(EffectOperation.UPLOAD_AUDIO, body)
+                )
             elif method == "POST" and path == "/api/effects/audio/delete":
-                self._send_json(_delete_effect_audio(self.state, body))
+                self._send_json(
+                    self._execute_effect_request(EffectOperation.DELETE_AUDIO, body)
+                )
             elif method == "POST" and path == "/api/effects/audio/delete-all":
-                self._send_json(_delete_all_effect_audio(self.state, body))
+                self._send_json(
+                    self._execute_effect_request(EffectOperation.DELETE_ALL_AUDIO, body)
+                )
             elif method == "POST" and path == "/api/effects/audio-tags":
-                self._send_json(_save_effect_audio_tags(self.state, body))
+                self._send_json(
+                    self._execute_effect_request(EffectOperation.SAVE_AUDIO_TAGS, body)
+                )
             elif method in {"POST", "PUT"} and path == "/api/effects":
-                self._send_json(_save_effect(self.state, body))
+                self._send_json(self._execute_effect_request(EffectOperation.SAVE, body))
             elif method == "DELETE" and path.startswith("/api/effects/"):
                 name = unquote(path.rsplit("/", 1)[-1])
-                self._send_json(_delete_effect(self.state, name))
+                self._send_json(
+                    self._execute_effect_request(EffectOperation.DELETE, name=name)
+                )
             elif method == "POST" and path == "/api/effects/import":
-                paths = body.get("paths") or []
-                if not isinstance(paths, list):
-                    raise ValueError("paths must be a list")
-                self._send_json(self._import_effect_paths([str(item) for item in paths]))
+                self._send_json(self._execute_effect_request(EffectOperation.IMPORT, body))
             elif method == "POST" and path == "/api/effects/import-upload":
                 temp_dir, paths = self._read_upload_files()
                 try:
-                    self._send_json(self._import_effect_paths([str(item) for item in paths]))
+                    self._send_json(
+                        self._execute_effect_request(
+                            EffectOperation.IMPORT,
+                            {"paths": [str(item) for item in paths]},
+                            additional_file_roots=(str(temp_dir),),
+                        )
+                    )
                 finally:
                     shutil.rmtree(temp_dir, ignore_errors=True)
             elif method == "POST" and path == "/api/effects/export":
-                name = _validate_effect_storage_name(str(body.get("name") or ""))
-                effect = self.state.config_manager.get_effect_by_name(name)
-                if effect is None:
-                    raise KeyError(f"effect not found: {name}")
-                output, output_relative = _safe_export_output_path(name, ".ef")
-                import tools.file_util as file_util
-
-                file_util.export_effect([effect], output.as_posix(), open_folder=False)
-                self._send_json(
-                    {
-                        "downloadUrl": f"/api/download?path={output_relative}",
-                        "path": output_relative,
-                    }
-                )
+                self._send_json(self._execute_effect_request(EffectOperation.EXPORT, body))
             # --- templates ---
             elif method in {"POST", "PUT"} and path == "/api/templates":
                 self._send_json(_save_template_summary(self.state, body))
@@ -1437,38 +1419,20 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self._log_request_exception(exc)
             self._send_exception_json(exc)
 
-    def _import_background_paths(self, paths: list[str]) -> list[dict[str, Any]]:
-        import tools.file_util as file_util
-
-        existing = self.state.config_manager.config.background_list
-        imported = []
-        for item in paths:
-            batch = file_util.import_background(str(item), existing)
-            imported.extend(batch)
-            for background in batch:
-                if background not in existing:
-                    existing.append(background)
-        self.state.config_manager.save_background_config()
-        self.state.config_manager.reload()
-        return [_jsonify(item) for item in imported]
-
-    def _import_effect_paths(self, paths: list[str]) -> list[dict[str, Any]]:
-        import tools.file_util as file_util
-
-        existing = self.state.config_manager.config.effect_list
-        imported = []
-        for item in paths:
-            batch = file_util.import_effect(str(item), existing)
-            imported.extend(batch)
-            for effect in batch:
-                if effect not in existing:
-                    existing.append(effect)
-                # Ensure managed directory exists for each imported effect
-                ef_dir = _effect_dir(effect.name)
-                ef_dir.mkdir(parents=True, exist_ok=True)
-        self.state.config_manager.save_effect_config()
-        self.state.config_manager.reload()
-        return [_jsonify(item) for item in imported]
+    def _execute_effect_request(
+        self,
+        operation: EffectOperation,
+        body: dict[str, Any] | None = None,
+        *,
+        name: str = "",
+        additional_file_roots: tuple[str, ...] = (),
+    ) -> Any:
+        request = parse_effect_request(operation, body, name=name)
+        result = effect_use_case(
+            self.state,
+            additional_file_roots=additional_file_roots,
+        ).execute(request)
+        return effect_response_payload(result)
 
     def _start_chat_init(self, body: dict[str, Any]) -> dict[str, Any]:
         mode = str(body.get("mode") or "").strip().lower()
@@ -1574,15 +1538,12 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if use_react_runtime and self.state.chat_stream is not None
             else {}
         )
-        effect_names_list = body.get("effectNames") or []
-        if isinstance(effect_names_list, list):
-            effect_names_str = ",".join(str(n) for n in effect_names_list)
-        else:
-            effect_names_str = ""
-        # 将选中特效方案的关键词和用法注入系统模板
-        effect_guide = _build_effect_usage_guide(self.state, effect_names_list if isinstance(effect_names_list, list) else [])
-        if effect_guide:
-            system_template = system_template.rstrip() + "\n\n" + effect_guide
+        effect_context = build_selected_effect_context(
+            self.state.config_manager,
+            body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
+        )
+        effect_names_str = ",".join(effect_context.selected_names)
+        system_template = effect_context.append_prompt_catalog(system_template)
         message = _launch_chat(
             self.state,
             character_names=characters,

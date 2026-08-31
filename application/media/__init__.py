@@ -1,1 +1,1 @@
-"""Media application use cases."""
+"""Cross-domain media application capabilities."""

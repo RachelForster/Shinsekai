@@ -4,7 +4,9 @@
 > 建立日期：2026-07-27
 > 稳定结构约定：见 [`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md)
 
-本文记录阶段性状态、兼容路径、PR 边界和可量化 OKR。每个 Objective 使用一个独立 PR，并按 O1 → O5 顺序合并。
+本文记录阶段性状态、兼容路径、PR 边界和可量化 OKR。O1 → O5 完成首次目录迁移；
+O6 锁定 `core/` 与 `application/` 的语义边界，O7 按该边界迁移现存的高置信度
+流程编排，O8 按功能逐个将 bridge 中的主体实现收口到 application。
 
 ## 1. 基线状态
 
@@ -148,6 +150,116 @@ PR 范围：
 - Windows 本地验证由本 PR 执行，macOS/Linux smoke test 由 CI 执行；
 - 实际目录、测试目录和目标结构一致。
 
+### O6：锁定 core 与 application 的职责边界
+
+状态：本分支实现。
+
+PR 范围：
+
+- 将 `core` 明确定义为 Host Capability，将 `application` 明确定义为 Use Case / Process Owner；
+- 说明 application runtime、当前会话、任务和 concrete manager 的所有权；
+- 明确 repository 只在存在可替换存储或事务边界时引入，不建立空泛的顶层 repository 层；
+- 将字面量动态导入纳入现有依赖矩阵，防止通过 `importlib` 或 `__import__` 绕过边界；
+- 禁止 `core/` 引用 `AppRuntime`、`BridgeState` 和 application runtime accessor；
+- 删除无生产引用的 `core.media.auto_annotation` 残留兼容入口，并将单测归位到 application。
+
+完成条件：
+
+- 新代码放置可以通过“流程所有权”与“独立能力”规则明确判断；
+- `core -> application` 的静态和字面量动态依赖都由同一架构测试阻止；
+- 架构 allowlist 继续为空；
+- 不迁移 O7 计划中的 chat wiring、演出编排等主体业务。
+
+### O7：迁移 chat wiring 与演出编排
+
+状态：本分支实现。
+
+PR 范围：
+
+- 将 chat turn service 的 config、queue、LLM/UI manager 装配从
+  `core/messaging/chat_turn_wiring.py` 迁到 `application/chat/turn_wiring.py`；
+- 将初始立绘的配置选择和 UI 更新迁到 `application/chat/initial_sprite.py`，
+  `core/sprite/selection.py` 只保留值输入的路径匹配；
+- 将特效方案选择、运行期 keyword map 和 LLM prompt catalog 迁到
+  `application/chat/effects.py`；
+- 将重复的音频标签解析收敛到 `core/media/effect_audio.py`，main 与 bridge
+  不再各自维护一份解析循环；
+- 将对应单测按职责归位，并禁止 core 再接收 LLM/UI manager 或新增 wiring 模块。
+
+完成条件：
+
+- `core/` 中不再出现 chat manager/queue composition 或 UI 演出调用；
+- main、bridge 只调用 application use case，不复制特效解析逻辑；
+- 纯路径匹配、turn policy 和标签解析可脱离 application 独立测试；
+- 架构 allowlist 保持为空，既有聊天行为和协议不变。
+
+### O8：让 Bridge 真正变薄
+
+状态：按功能拆分独立 PR。第一阶段 Effects 已完成；本分支实现第二阶段
+Backgrounds 和 Characters。
+
+迁移策略：按功能拆分独立 PR，不一次处理全部 bridge。
+
+第一阶段 PR 范围：
+
+- 将 Effect 配置增删改、音频文件复制和删除、标签保存、目录管理及包导入导出
+  迁到 `application/effects/management.py`；
+- 通过 `EffectRequest -> EffectUseCase.execute()` 提供单一 application 入口；
+- `frontend_bridge_core/effects.py` 只保留 request 解析、依赖装配和 response 投影；
+- HTTP 路径、请求 payload 和响应格式保持不变，前端无需修改；
+- 删除 `tools/file_util.py` 中不再使用的 Effect 导入导出重复实现；
+- 增加架构守卫，阻止 Effect 文件、归档和配置主体逻辑回流 bridge。
+
+第一阶段完成条件：
+
+- Effect bridge 不导入 `shutil`、`pathlib`、`yaml`、`zipfile` 或配置模型；
+- Effect route 不再直接调用文件工具或修改 config manager；
+- 文件访问继续受 trusted roots、managed directory 和 archive path 校验约束；
+- Effect application、bridge adapter、HTTP 既有测试及 Tauri 资源验证通过。
+
+第二阶段 PR 范围：
+
+- 将背景资源上传、删除、导入导出和配置与资源联合更新迁入
+  `application/backgrounds/management.py`；
+- 将角色保存校验、资源上传删除、语音校验和导入导出迁入
+  `application/characters/management.py`；
+- `backgrounds`、`characters` 和 `effects` 按业务领域建立 application
+  一级目录；`application/media/` 只保留跨领域媒体能力；
+- 每个领域只暴露一个 bridge 执行入口，由 application operation 明确区分用例；
+- 标签、缩放、翻译等简单配置读写继续保留在 bridge，不为机械转发增加空用例；
+- 上传临时目录仍由 HTTP transport 创建和清理，application 只接收获准访问的文件根目录。
+
+第二阶段完成条件：
+
+- Backgrounds 和 Characters bridge 不再直接调用资源 manager 或包导入导出实现；
+- HTTP 路由与响应字段保持不变，前端无需修改；
+- 两个领域分别由架构守卫锁定唯一 use case 入口和禁止回迁的资源操作；
+- 架构 allowlist 保持为空。
+
+### O9：将 `main.py` 收敛为聊天进程入口
+
+状态：按职责拆分独立 PR；第一阶段迁移对话分支管理。
+
+迁移策略：保留 `main.py` 作为进程 composition root，按可独立测试的用户动作和
+生命周期逐步迁移，不把全部逻辑一次搬入另一个大文件。流程模块统一采用
+`动词_名词.py` 命名。
+
+第一阶段 PR 范围：
+
+- 将分支创建、切换、重命名、树投影和持久化迁到
+  `application/chat/manage_branches.py`；
+- `main.py` 只装配消息、UI、持久化和提交回调，不再持有 branch state；
+- 增加分支操作直接单测和入口架构守卫。
+
+后续阶段：
+
+- 实时命令分发迁到 `application/chat/commands.py`，WebSocket envelope 与 ack
+  保留在 `frontend_bridge_core/transport/chat_commands.py`；
+- provider、插件、模板、历史和 memory hooks 启动装配迁到
+  `application/chat/startup.py`，统一返回 `ChatStartupContext`；
+- streaming/headless 生命周期迁到 `application/chat/run_session.py`；
+- 完成后 `main.py` 只保留进程环境、transport 装配、模式选择和顶层异常处理。
+
 ## 4. 迁移映射
 
 | 当前路径 | 目标位置 | Objective | 说明 |
@@ -175,7 +287,16 @@ PR 范围：
 | `frontend_bridge_core/plugin_*.py` | routes + `application/plugins/` | O2/O3 | O2 迁实现并保留兼容调用；O3 将 catalog/updates 收口到 application 门面 |
 | `frontend_bridge_core/model_assets.py`、`tts.py` | `application/model_assets/` | O3 | bridge 只创建 task 并转发结果 |
 | `frontend_bridge_core/logs.py` | `application/diagnostics/` | O3 | 诊断归档不在传输层实现 |
-| `core/media/auto_annotation.py` | `application/media/` | O3 | AI 能力由 application 编排 |
+| `core/media/auto_annotation.py` | `application/media/` | O3/O6 | AI 能力由 application 编排；O6 删除残留兼容入口并归位单测 |
+| `core/messaging/chat_turn_wiring.py` | `application/chat/turn_wiring.py` | O7 | manager、queue 与消息 port 装配属于 application |
+| `core/sprite/initial_sprite.py` | `core/sprite/selection.py` + `application/chat/initial_sprite.py` | O7 | core 只做路径匹配，配置选择和 UI 呈现由 application 负责 |
+| main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/effects.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
+| `frontend_bridge_core/effects.py` 主体实现 | `application/effects/management.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
+| `frontend_bridge_core/backgrounds.py` 资源变更 | `application/backgrounds/management.py` | O8 PR 2 | bridge 仅保留协议、翻译和简单标签写入 |
+| `frontend_bridge_core/characters.py` 资源变更 | `application/characters/management.py` | O8 PR 2 | 保存校验、文件操作和多步骤更新由 application 编排 |
+| `main.py` 对话分支闭包 | `application/chat/manage_branches.py` | O9/阶段 1 | 分支状态、操作和持久化归 application，入口只装配窄回调 |
+| `main.py` 实时命令分支 | `application/chat/commands.py` + `frontend_bridge_core/transport/chat_commands.py` | O9/阶段 2 | application 执行命令行为，transport 只解析 payload 并发送 ack |
+| `main.py` provider 与启动装配 | `application/chat/startup.py` | O9/阶段 3 | provider、模板、历史、memory hooks 和降级策略归 application，入口只消费 ChatStartupContext |
 
 ## 5. 通用退出条件
 

@@ -148,7 +148,11 @@ class SystemMiscUiHandler(UIOutputMessageHandler):
 
     def handle(self, out: TTSOutputMessage) -> None:
         _ui().hide_busy_bar()
-        _ui().update_dialog(out.name, out.text or "", "#84C2D5")
+        _ui().update_dialog(
+            out.name,
+            out.text or "",
+            "#84C2D5",
+        )
         _ui().resolve_effect(
             effect=out.effect, args={"character_name": out.name}, after_dialog=False
         )
@@ -211,7 +215,12 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             ui.post_notification(f"{character_name}正在回复……")
             if speech:
                 color = character_config.color if character_config else fallback_color
-                ui.update_dialog(character_name, speech, color, is_system=False)
+                ui.update_dialog(
+                    character_name,
+                    speech,
+                    color,
+                    is_system=False,
+                )
             ui.resolve_effect(
                 effect=effect, args={"character_name": character_name}, after_dialog=False
             )

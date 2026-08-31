@@ -13,8 +13,8 @@
 
   .dialog-stack {
     bottom: max(12px, var(--chat-dialog-stack-bottom), calc(var(--stage-control-stack-height) + 10px));
-    width: calc(100vw - 24px);
-    max-width: calc(100vw - 24px);
+    width: var(--chat-dialog-responsive-width, calc(100vw - 24px));
+    max-width: var(--chat-dialog-responsive-width, calc(100vw - 24px));
   }
 
   .dialog-toolbar-layer {

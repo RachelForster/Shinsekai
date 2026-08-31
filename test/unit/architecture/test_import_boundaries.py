@@ -112,6 +112,26 @@ DECLARED_LAYER_ROOTS = frozenset(
     }
 )
 
+CORE_FORBIDDEN_APPLICATION_RUNTIME_NAMES = frozenset(
+    {
+        "AppRuntime",
+        "BridgeState",
+        "get_app_runtime",
+        "set_app_runtime",
+        "try_get_app_runtime",
+    }
+)
+
+CORE_FORBIDDEN_APPLICATION_MANAGER_NAMES = frozenset(
+    {
+        "llm_manager",
+        "ui_playback",
+        "ui_update_manager",
+        "ui_updates",
+        "ui_worker",
+    }
+)
+
 
 @dataclass(frozen=True, order=True)
 class ImportViolation:
@@ -260,30 +280,64 @@ def _imported_roots(source: Path) -> set[str]:
             imported_roots.update(alias.name.partition(".")[0] for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
             imported_roots.add(node.module.partition(".")[0])
+    imported_roots.update(_literal_dynamic_imported_roots(tree))
     return imported_roots
 
 
-def _dynamic_imported_roots(source: Path) -> set[str]:
-    """Return literal roots passed to ``importlib.import_module``."""
+def _literal_dynamic_imported_roots(tree: ast.AST) -> set[str]:
+    """Return literal roots loaded through importlib or ``__import__``."""
 
-    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    importlib_aliases = {"importlib"}
+    import_module_aliases: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "importlib":
+                    importlib_aliases.add(alias.asname or alias.name)
+        elif isinstance(node, ast.ImportFrom) and node.module == "importlib":
+            for alias in node.names:
+                if alias.name == "import_module":
+                    import_module_aliases.add(alias.asname or alias.name)
+
     imported_roots: set[str] = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         function = node.func
-        if not (
+        is_importlib_call = (
             isinstance(function, ast.Attribute)
             and isinstance(function.value, ast.Name)
-            and function.value.id == "importlib"
+            and function.value.id in importlib_aliases
             and function.attr == "import_module"
-            and node.args
+        )
+        is_import_module_call = (
+            isinstance(function, ast.Name)
+            and function.id in import_module_aliases
+        )
+        is_builtin_import = (
+            isinstance(function, ast.Name) and function.id == "__import__"
+        )
+        if not node.args or not (
+            is_importlib_call or is_import_module_call or is_builtin_import
         ):
             continue
         module = node.args[0]
         if isinstance(module, ast.Constant) and isinstance(module.value, str):
             imported_roots.add(module.value.partition(".")[0])
     return imported_roots
+
+
+def _dynamic_imported_roots(source: Path) -> set[str]:
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    return _literal_dynamic_imported_roots(tree)
+
+
+def _referenced_names(tree: ast.AST) -> set[str]:
+    names = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name)}
+    names.update(
+        node.attr for node in ast.walk(tree) if isinstance(node, ast.Attribute)
+    )
+    return names
 
 
 def _violations() -> frozenset[ImportViolation]:
@@ -329,6 +383,91 @@ def test_import_boundaries_match_migration_allowlist() -> None:
         f"Unexpected violations: {unexpected}\n"
         f"Stale allowlist entries: {stale_allowlist}\n"
         "Do not add a new exception. Remove stale entries when a migration fixes them."
+    )
+
+
+def test_literal_dynamic_imports_are_dependency_edges(tmp_path: Path) -> None:
+    source = tmp_path / "dynamic_imports.py"
+    source.write_text(
+        "\n".join(
+            (
+                "import importlib as loader",
+                "from importlib import import_module as load",
+                'loader.import_module("application.runtime")',
+                'load("frontend_bridge_core.routes")',
+                '__import__("ai.llm")',
+                'load(variable_module)',
+            )
+        ),
+        encoding="utf-8",
+    )
+
+    assert _dynamic_imported_roots(source) == {
+        "ai",
+        "application",
+        "frontend_bridge_core",
+    }
+    assert _imported_roots(source) >= {
+        "ai",
+        "application",
+        "frontend_bridge_core",
+    }
+
+
+def test_core_does_not_reference_application_runtime_owners() -> None:
+    unexpected: list[str] = []
+    core_root = REPO_ROOT / "core"
+    for source in sorted(core_root.rglob("*.py")):
+        relative = source.relative_to(REPO_ROOT).as_posix()
+        tree = ast.parse(
+            source.read_text(encoding="utf-8"), filename=str(source)
+        )
+        referenced_names = _referenced_names(tree)
+        for name in sorted(
+            referenced_names & CORE_FORBIDDEN_APPLICATION_RUNTIME_NAMES
+        ):
+            unexpected.append(f"{relative}: {name}")
+
+    assert not unexpected, (
+        "Application runtime/session ownership must not move into core; pass a "
+        f"narrow protocol, callback, or value instead: {unexpected}"
+    )
+
+
+def test_core_does_not_receive_application_managers() -> None:
+    unexpected: list[str] = []
+    core_root = REPO_ROOT / "core"
+    for source in sorted(core_root.rglob("*.py")):
+        relative = source.relative_to(REPO_ROOT).as_posix()
+        tree = ast.parse(
+            source.read_text(encoding="utf-8"), filename=str(source)
+        )
+        for name in sorted(
+            _referenced_names(tree) & CORE_FORBIDDEN_APPLICATION_MANAGER_NAMES
+        ):
+            unexpected.append(f"{relative}: {name}")
+
+    assert not unexpected, (
+        "Core capabilities must receive narrow callbacks/protocols instead of "
+        f"application managers: {unexpected}"
+    )
+
+
+def test_application_owns_chat_composition_and_presentation() -> None:
+    expected_application_modules = (
+        REPO_ROOT / "application" / "chat" / "effects.py",
+        REPO_ROOT / "application" / "chat" / "initial_sprite.py",
+        REPO_ROOT / "application" / "chat" / "turn_wiring.py",
+    )
+    retired_core_modules = (
+        REPO_ROOT / "core" / "messaging" / "chat_turn_wiring.py",
+        REPO_ROOT / "core" / "sprite" / "initial_sprite.py",
+    )
+
+    assert all(path.is_file() for path in expected_application_modules)
+    assert not any(path.exists() for path in retired_core_modules)
+    assert not list((REPO_ROOT / "core").rglob("*wiring.py")), (
+        "Composition roots and manager wiring belong to application."
     )
 
 
@@ -497,6 +636,171 @@ def test_frontend_bridge_does_not_own_runtime_implementations() -> None:
     assert not offenders, (
         "Transport adapters must call application use cases instead of owning "
         f"process/archive implementations: {offenders}"
+    )
+
+
+def test_effect_bridge_remains_a_transport_adapter() -> None:
+    """O8 PR 1 keeps effect resource/config ownership in application."""
+
+    adapter = REPO_ROOT / "frontend_bridge_core" / "effects.py"
+    use_case = REPO_ROOT / "application" / "effects" / "management.py"
+    retired_use_case = REPO_ROOT / "application" / "media" / "effects.py"
+    forbidden_modules = {
+        "config",
+        "os",
+        "pathlib",
+        "shutil",
+        "tempfile",
+        "tools",
+        "yaml",
+        "zipfile",
+    }
+    route_source = (
+        REPO_ROOT / "frontend_bridge_core" / "routes" / "api.py"
+    ).read_text(encoding="utf-8")
+    retired_entries = {
+        "_delete_all_effect_audio",
+        "_delete_effect_audio",
+        "_effect_dir",
+        "_import_effect_paths",
+        "_save_effect_audio_tags",
+        "_upload_effect_audio",
+        "file_util.export_effect",
+        "file_util.import_effect",
+    }
+
+    assert use_case.is_file()
+    assert not retired_use_case.exists()
+    assert not (_imported_roots(adapter) & forbidden_modules), (
+        "Effect bridge code may parse/serialize requests but must not own file, "
+        "archive, or config implementations."
+    )
+    assert not {entry for entry in retired_entries if entry in route_source}, (
+        "Effect routes must use EffectUseCase.execute as their single entry point."
+    )
+
+def test_main_delegates_conversation_branch_management() -> None:
+    """Keep branch use cases testable outside the process entry point."""
+
+    entrypoint = REPO_ROOT / "main.py"
+    use_case = REPO_ROOT / "application" / "chat" / "manage_branches.py"
+    source = entrypoint.read_text(encoding="utf-8")
+    retired_implementations = {
+        "def _active_branch_id",
+        "def _branch_tree_payload",
+        "def _branches",
+        "def _default_branch_state",
+        "def _fork_history_branch",
+        "def _load_initial_branch_state",
+        "def _persist_branch_state",
+        "def _rename_history_branch",
+        "def _switch_history_branch",
+        "load_branch_state(",
+        "save_branch_state(",
+    }
+
+    assert use_case.is_file()
+    assert "ConversationBranchManager(" in source
+    assert not {item for item in retired_implementations if item in source}, (
+        "main.py must delegate branch state and operations to manage_branches.py."
+    )
+
+def test_package_export_results_remain_transport_independent() -> None:
+    """Application export results must not encode the bridge's HTTP routes."""
+
+    use_cases = (
+        REPO_ROOT / "application" / "backgrounds" / "management.py",
+        REPO_ROOT / "application" / "characters" / "management.py",
+    )
+    adapters = (
+        REPO_ROOT / "frontend_bridge_core" / "backgrounds.py",
+        REPO_ROOT / "frontend_bridge_core" / "characters.py",
+    )
+    route_source = (
+        REPO_ROOT / "frontend_bridge_core" / "routes" / "api.py"
+    ).read_text(encoding="utf-8")
+
+    for use_case in use_cases:
+        assert "/api/download" not in use_case.read_text(encoding="utf-8"), (
+            f"{use_case.relative_to(REPO_ROOT)} must return a path value object, "
+            "not an HTTP download URL."
+        )
+    for adapter in adapters:
+        assert "/api/download" in adapter.read_text(encoding="utf-8")
+    assert "background_response_payload(" in route_source
+    assert "character_response_payload(" in route_source
+
+
+def test_main_delegates_realtime_chat_commands() -> None:
+    """Keep command behavior in application and envelopes in transport."""
+
+    entrypoint = REPO_ROOT / "main.py"
+    use_case = REPO_ROOT / "application" / "chat" / "commands.py"
+    transport = (
+        REPO_ROOT
+        / "frontend_bridge_core"
+        / "transport"
+        / "chat_commands.py"
+    )
+    source = entrypoint.read_text(encoding="utf-8")
+    use_case_source = use_case.read_text(encoding="utf-8")
+    transport_source = transport.read_text(encoding="utf-8")
+    retired_implementations = {
+        'command_type == "send-message"',
+        'command_type == "clear-history"',
+        'command_type == "reroll"',
+        'command_type == "pause-asr"',
+        'command_type == "fork-history"',
+        'command_type == "switch-branch"',
+        'command_type == "rename-branch"',
+        '"type": "cmd.ack"',
+    }
+
+    assert use_case.is_file()
+    assert transport.is_file()
+    assert "request = parse_chat_command(command)" in source
+    assert "result = command_dispatcher.execute(request)" in source
+    assert "send_chat_command_ack(stream_sink.emit, request, result)" in source
+    assert not {item for item in retired_implementations if item in source}, (
+        "main.py must only compose the realtime command application use case."
+    )
+    assert "cmdId" not in use_case_source
+    assert "cmd.ack" not in use_case_source
+    assert '"type": "cmd.ack"' in transport_source
+
+
+def test_main_delegates_chat_startup_assembly() -> None:
+    """Keep providers, templates, hooks, and fallback policy out of main.py."""
+
+    entrypoint = REPO_ROOT / "main.py"
+    startup = REPO_ROOT / "application" / "chat" / "startup.py"
+    source = entrypoint.read_text(encoding="utf-8")
+    startup_source = startup.read_text(encoding="utf-8")
+    retired_implementations = {
+        "ensure_plugins_loaded(",
+        "LLMAdapterFactory.create_adapter(",
+        "TTSAdapterFactory.create_adapter(",
+        "T2IAdapterFactory.create_adapter(",
+        "install_memory_hooks(",
+        "get_llm_api_config(",
+        "get_gpt_sovits_config(",
+        "data/character_templates",
+    }
+
+    assert startup.is_file()
+    assert "class ChatStartupContext:" in startup_source
+    for field in (
+        "config:",
+        "llm_manager:",
+        "tts_manager:",
+        "t2i_manager:",
+        "plugin_manager:",
+        "messages:",
+    ):
+        assert field in startup_source
+    assert "startup = create_chat_startup_context(" in source
+    assert not {item for item in retired_implementations if item in source}, (
+        "main.py must consume ChatStartupContext instead of assembling providers."
     )
 
 

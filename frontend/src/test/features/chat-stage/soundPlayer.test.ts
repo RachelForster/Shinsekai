@@ -67,6 +67,19 @@ describe("SoundPlayer", () => {
     expect(audio[3].pause).toHaveBeenCalledOnce();
   });
 
+  it("applies the configured volume to new and active sound effects", async () => {
+    const { audio, player } = createHarness();
+
+    player.playEffect("impact.wav");
+    player.startLoopEffect("rain", "rain.wav");
+    player.setEffectVolume(0.35);
+    player.playEffect("typing.wav");
+    await Promise.resolve();
+
+    expect(audio).toHaveLength(3);
+    expect(audio.map((item) => item.volume)).toEqual([0.35, 0.35, 0.35]);
+  });
+
   it("reports autoplay blocking and retries active channels after unlock", async () => {
     const { audio, player } = createHarness();
     const lockStates: boolean[] = [];

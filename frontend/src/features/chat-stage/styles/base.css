@@ -60,6 +60,7 @@
   --chat-dialog-runtime-inverse-scale: 1;
   --chat-dialog-runtime-scale: 1;
   --chat-dialog-runtime-width: 1040px;
+  --chat-dialog-max-width: calc(100vw - 40px);
   --chat-dialog-width: min(86vw, 1040px);
   --chat-dialog-text-runtime-color: var(--chat-dialog-color);
   --chat-dialog-text-runtime-font-family: var(--font-chat);

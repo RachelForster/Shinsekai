@@ -359,6 +359,13 @@ class ChatRuntimeModeTests(unittest.TestCase):
         chat_stream = _ChatStreamStub()
         config_manager = _ConfigManager()
         config_manager.config.system_config.chat_ui_runtime_mode = "native"
+        config_manager.config.effect_list = [
+            SimpleNamespace(
+                name="Ambient",
+                audio_list=["impact.wav", "unused.wav", "notice.wav"],
+                audio_tags="Effect 1：impact\n\nEffect 3：notice\n",
+            )
+        ]
 
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
             root = Path(tmp_dir)
@@ -376,6 +383,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 )
             )
             body = {
+                "effectNames": ["Ambient"],
                 "scenario": "scene",
                 "system": "system",
                 "templateId": "native-template",
@@ -397,6 +405,13 @@ class ChatRuntimeModeTests(unittest.TestCase):
             "ws://127.0.0.1:8788/ws?sessionId=session-1&role=producer",
         )
         self.assertEqual(launch_chat.call_args.kwargs["init_stream_endpoint"], "")
+        self.assertEqual(launch_chat.call_args.kwargs["effect_names"], "Ambient")
+        self.assertIn("- impact", launch_chat.call_args.kwargs["system_template"])
+        self.assertIn("- notice", launch_chat.call_args.kwargs["system_template"])
+        self.assertEqual(
+            launch_chat.call_args.kwargs["system_template"].count("- impact"),
+            1,
+        )
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertEqual(snapshot["sessionId"], "session-1")
 

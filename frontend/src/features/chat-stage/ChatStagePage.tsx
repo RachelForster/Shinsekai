@@ -484,6 +484,9 @@ export function ChatStagePage() {
   const updateRuntimeBgmVolume = (bgmVolume: number) => {
     setRuntimeConfig((current) => ({ ...current, bgmVolume: Math.min(1, Math.max(0, bgmVolume)) }));
   };
+  const updateRuntimeEffectVolume = (effectVolume: number) => {
+    setRuntimeConfig((current) => ({ ...current, effectVolume: Math.min(1, Math.max(0, effectVolume)) }));
+  };
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
@@ -506,6 +509,10 @@ export function ChatStagePage() {
 
   const updateRuntimeDialogScale = (dialogScale: number) => {
     setRuntimeConfig((current) => ({ ...current, dialogScale }));
+  };
+
+  const updateRuntimeDialogWidthPct = (dialogWidthPct: number | null) => {
+    setRuntimeConfig((current) => ({ ...current, dialogWidthPct }));
   };
 
   const updateRuntimeSpriteOffsetX = (spriteOffsetX: number) => {
@@ -631,6 +638,7 @@ export function ChatStagePage() {
       asrEnabled={viewModel.asrEnabled}
       auto={runtimeConfig.auto}
       bgmVolume={runtimeConfig.bgmVolume}
+      effectVolume={runtimeConfig.effectVolume}
       closeLabel={t(standaloneDesktopWindow ? "desktop.titlebar.close" : "chat.toolbar.close")}
       configOpen={toolbarConfigOpen}
       hidden={!dialogSurfaceVisible}
@@ -638,6 +646,7 @@ export function ChatStagePage() {
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
       onBgmVolumeChange={updateRuntimeBgmVolume}
+      onEffectVolumeChange={updateRuntimeEffectVolume}
       onCancelBatch={() => void sendCommand({ type: "cancel-input-batch" })}
       onCloseSurface={closeSurface}
       onCommand={sendCommand}
@@ -696,6 +705,7 @@ export function ChatStagePage() {
         <ChatSoundPlayer
           bgmPath={viewModel.bgmPath}
           bgmVolume={runtimeConfig.bgmVolume}
+          effectVolume={runtimeConfig.effectVolume}
           commands={state.audioCommands}
           onPlaybackSignal={handlePlaybackSignal}
         />
@@ -828,6 +838,7 @@ export function ChatStagePage() {
           dialogText={runtimeConfig.dialogText}
           dialogOpacity={runtimeConfig.dialogOpacity}
           dialogScale={runtimeConfig.dialogScale}
+          dialogWidthPct={runtimeConfig.dialogWidthPct}
           effectiveDialogText={effectiveDialogText}
           effectiveNameText={effectiveNameText}
           immersiveMode={runtimeConfig.immersiveMode}
@@ -843,6 +854,7 @@ export function ChatStagePage() {
           onDialogFillChange={updateRuntimeDialogFill}
           onDialogOpacityChange={updateRuntimeDialogOpacity}
           onDialogScaleChange={updateRuntimeDialogScale}
+          onDialogWidthPctChange={updateRuntimeDialogWidthPct}
           onImmersiveModeChange={updateRuntimeImmersiveMode}
           onResetThemeAppearance={resetRuntimeThemeAppearance}
           onOpenPluginPage={openPluginPage}
