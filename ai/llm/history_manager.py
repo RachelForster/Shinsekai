@@ -5,7 +5,7 @@ import json
 import re
 import threading
 
-from core.sprite.chat_history_text import _repair_json_string, parse_assistant_dialog_content
+from core.chat_history.text import _repair_json_string, parse_assistant_dialog_content
 
 # 模块级写锁，保证临时文件写入的线程安全
 _tmp_write_lock = threading.Lock()

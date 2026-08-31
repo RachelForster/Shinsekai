@@ -119,6 +119,7 @@ Shinsekai/
 
   core/
     app_update/
+    chat_history/
     media/
     messaging/
     model_assets/
@@ -203,7 +204,7 @@ application/plugins/         插件安装、更新、发布等用例编排
 
 application 可以组合多个能力域，但不实现具体 HTTP 或 UI 控件。
 表示明确流程或动作的 application 模块优先使用 `动词_名词.py`，例如
-`manage_branches.py` 和 `run_session.py`。只有作为整个领域唯一稳定入口时才使用
+`manage_branches.py`。只有作为整个领域唯一稳定入口时才使用
 `management.py`；
 不得使用无法说明职责的通用 `service.py`、`helpers.py` 或 `utils.py` 承载流程。
 实时聊天命令统一通过稳定入口 `application/chat/commands.py` 分发；WebSocket
@@ -213,6 +214,12 @@ payload 解析与 ack 投影保留在 `frontend_bridge_core/transport/`。
 聊天启动时的历史目标选择统一由 `application/chat/launch_history.py` 负责；
 bridge 不得通过修改场景提示词来生成存储标识。快速重开必须保留原历史，并把
 后端选定的新路径写入运行时快照和上次启动会话。
+聊天 workflow、queues、`AppRuntime`、streaming/headless 模式和关闭持久化统一由
+`application/chat/session_runtime.py` 的 `StreamingChatSession` 与
+`HeadlessChatSession` 持有；背景、BGM、历史场景和初始立绘恢复集中在
+`application/chat/presentation.py`；实时输入、分支、ASR 和 command dispatcher 的
+适配集中在动词入口 `application/chat/wire_streaming_session.py`。`main.py` 只保留
+进程 bootstrap、launch options、transport 和 session 四步装配。
 application 是 `AppRuntime`、应用级 task、当前会话和 concrete manager 装配的唯一
 所有者；这些对象不能下沉到 `core/`。application 可以把结果投影为稳定的 SDK event
 或调用注入的 port，但不能直接构造 HTTP response、WebSocket frame 或 React DTO。
@@ -263,12 +270,13 @@ ai/tools/     向 LLM 暴露能力的薄 tool wrapper
 
 ```text
 core/app_update/    主程序版本检查、release 和更新包处理
+core/chat_history/  聊天记录归一化、分支状态和会话文件存储
 core/media/         文件、附件、媒体资源、安全格式和标签解析
 core/messaging/     消息模型、流解析、对话协议和框架无关的 turn policy
 core/model_assets/  模型下载、缓存、来源和进度
 core/runtime_env/   Python、pip、依赖检测和运行环境诊断
 core/security/      归档、下载来源等宿主安全校验及旧路径兼容入口
-core/sprite/        立绘路径归一化/匹配、聊天记录和分支存储
+core/sprite/        立绘路径归一化和角色立绘匹配
 core/story/         剧本 Schema、确定性规则、编译、事件、校验和路径模拟
 ```
 

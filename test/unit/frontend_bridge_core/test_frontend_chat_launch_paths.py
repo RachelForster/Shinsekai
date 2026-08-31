@@ -3,7 +3,7 @@ import signal
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from core.sprite.sprite_cli import CHAT_LAUNCH_CONFIG_ENV
+from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from application.chat import runtime_process as chat
 from application.runtime.dependencies import runtime_dependency_error_from_text
 

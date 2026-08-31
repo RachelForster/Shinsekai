@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from config.config_manager import character_name_key
-from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
+from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from application.chat.initial_sprite import initial_sprite_path_for_characters
 from ai.llm.template_generator import (
     NoValidCharactersError,

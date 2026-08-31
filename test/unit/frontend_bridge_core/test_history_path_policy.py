@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from core.sprite.chat_branch_storage import (
+from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
     remove_chat_history_storage,

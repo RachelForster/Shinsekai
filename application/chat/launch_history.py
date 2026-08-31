@@ -16,7 +16,7 @@ from application.chat.templates import (
     _history_id_from_scenario,
     _scenario_from_template_like,
 )
-from core.sprite.chat_branch_storage import (
+from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
 )

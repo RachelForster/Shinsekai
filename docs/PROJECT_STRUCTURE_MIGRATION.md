@@ -257,7 +257,9 @@ Backgrounds 和 Characters。
   保留在 `frontend_bridge_core/transport/chat_commands.py`；
 - provider、插件、模板、历史和 memory hooks 启动装配迁到
   `application/chat/startup.py`，统一返回 `ChatStartupContext`；
-- streaming/headless 生命周期迁到 `application/chat/run_session.py`；
+- streaming/headless 生命周期迁到 `application/chat/session_runtime.py`，初始场景
+  恢复迁到 `application/chat/presentation.py`，实时适配接线迁到
+  `application/chat/wire_streaming_session.py`；
 - 完成后 `main.py` 只保留进程环境、transport 装配、模式选择和顶层异常处理。
 
 ## 4. 迁移映射
@@ -290,6 +292,9 @@ Backgrounds 和 Characters。
 | `core/media/auto_annotation.py` | `application/media/` | O3/O6 | AI 能力由 application 编排；O6 删除残留兼容入口并归位单测 |
 | `core/messaging/chat_turn_wiring.py` | `application/chat/turn_wiring.py` | O7 | manager、queue 与消息 port 装配属于 application |
 | `core/sprite/initial_sprite.py` | `core/sprite/selection.py` + `application/chat/initial_sprite.py` | O7 | core 只做路径匹配，配置选择和 UI 呈现由 application 负责 |
+| `core/sprite/sprite_cli.py` | `application/chat/launch_args.py` | O9/阶段 5 | 聊天入口参数和 bridge 启动配置属于 application chat，而非立绘领域 |
+| `core/sprite/chat_history_text.py` | `core/chat_history/text.py` | O9/阶段 5 | 无框架依赖的聊天历史归一化独立归入 chat_history 领域 |
+| `core/sprite/chat_branch_storage.py` | `core/chat_history/storage.py` | O9/阶段 5 | 分支状态与会话文件存储独立归入 chat_history 领域 |
 | main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/effects.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
 | `frontend_bridge_core/effects.py` 主体实现 | `application/effects/management.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
 | `frontend_bridge_core/backgrounds.py` 资源变更 | `application/backgrounds/management.py` | O8 PR 2 | bridge 仅保留协议、翻译和简单标签写入 |
@@ -297,6 +302,7 @@ Backgrounds 和 Characters。
 | `main.py` 对话分支闭包 | `application/chat/manage_branches.py` | O9/阶段 1 | 分支状态、操作和持久化归 application，入口只装配窄回调 |
 | `main.py` 实时命令分支 | `application/chat/commands.py` + `frontend_bridge_core/transport/chat_commands.py` | O9/阶段 2 | application 执行命令行为，transport 只解析 payload 并发送 ack |
 | `main.py` provider 与启动装配 | `application/chat/startup.py` | O9/阶段 3 | provider、模板、历史、memory hooks 和降级策略归 application，入口只消费 ChatStartupContext |
+| `main.py` 会话生命周期 | `application/chat/session_runtime.py` + `application/chat/presentation.py` + `application/chat/wire_streaming_session.py` | O9/阶段 4 | Streaming/Headless session 持有 workflow、queues、AppRuntime、初始展示与关闭持久化；实时适配独立接线；main 只保留四步装配 |
 
 ## 5. 通用退出条件
 

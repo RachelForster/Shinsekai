@@ -684,7 +684,11 @@ def test_main_delegates_conversation_branch_management() -> None:
 
     entrypoint = REPO_ROOT / "main.py"
     use_case = REPO_ROOT / "application" / "chat" / "manage_branches.py"
+    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
+    streaming_wiring = REPO_ROOT / "application" / "chat" / "wire_streaming_session.py"
     source = entrypoint.read_text(encoding="utf-8")
+    session_source = session_runtime.read_text(encoding="utf-8")
+    wiring_source = streaming_wiring.read_text(encoding="utf-8")
     retired_implementations = {
         "def _active_branch_id",
         "def _branch_tree_payload",
@@ -700,10 +704,12 @@ def test_main_delegates_conversation_branch_management() -> None:
     }
 
     assert use_case.is_file()
-    assert "ConversationBranchManager(" in source
-    assert not {item for item in retired_implementations if item in source}, (
-        "main.py must delegate branch state and operations to manage_branches.py."
-    )
+    assert "ConversationBranchManager(" in wiring_source
+    assert not {
+        item
+        for item in retired_implementations
+        if item in source or item in session_source or item in wiring_source
+    }, "main.py must delegate branch state and operations to manage_branches.py."
 
 def test_package_export_results_remain_transport_independent() -> None:
     """Application export results must not encode the bridge's HTTP routes."""
@@ -736,15 +742,18 @@ def test_main_delegates_realtime_chat_commands() -> None:
 
     entrypoint = REPO_ROOT / "main.py"
     use_case = REPO_ROOT / "application" / "chat" / "commands.py"
-    transport = (
-        REPO_ROOT
-        / "frontend_bridge_core"
-        / "transport"
-        / "chat_commands.py"
+    transport = REPO_ROOT / "frontend_bridge_core" / "transport" / "chat_commands.py"
+    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
+    streaming_wiring = REPO_ROOT / "application" / "chat" / "wire_streaming_session.py"
+    session_transport = (
+        REPO_ROOT / "frontend_bridge_core" / "transport" / "chat_session.py"
     )
     source = entrypoint.read_text(encoding="utf-8")
     use_case_source = use_case.read_text(encoding="utf-8")
     transport_source = transport.read_text(encoding="utf-8")
+    session_source = session_runtime.read_text(encoding="utf-8")
+    wiring_source = streaming_wiring.read_text(encoding="utf-8")
+    session_transport_source = session_transport.read_text(encoding="utf-8")
     retired_implementations = {
         'command_type == "send-message"',
         'command_type == "clear-history"',
@@ -758,14 +767,22 @@ def test_main_delegates_realtime_chat_commands() -> None:
 
     assert use_case.is_file()
     assert transport.is_file()
-    assert "request = parse_chat_command(command)" in source
-    assert "result = command_dispatcher.execute(request)" in source
-    assert "send_chat_command_ack(stream_sink.emit, request, result)" in source
-    assert not {item for item in retired_implementations if item in source}, (
-        "main.py must only compose the realtime command application use case."
-    )
+    assert "wire_streaming_session(" in session_source
+    assert "ChatCommandDispatcher(" in wiring_source
+    assert "request = parse_chat_command(raw_command)" in session_transport_source
+    assert "result = dispatcher.execute(request)" in session_transport_source
+    assert "send_chat_command_ack(" in session_transport_source
+    assert not {
+        item
+        for item in retired_implementations
+        if item in source or item in session_source or item in wiring_source
+    }, "main.py must only compose the realtime command application use case."
     assert "cmdId" not in use_case_source
     assert "cmd.ack" not in use_case_source
+    assert "cmdId" not in session_source
+    assert "cmd.ack" not in session_source
+    assert "cmdId" not in wiring_source
+    assert "cmd.ack" not in wiring_source
     assert '"type": "cmd.ack"' in transport_source
 
 
@@ -774,8 +791,10 @@ def test_main_delegates_chat_startup_assembly() -> None:
 
     entrypoint = REPO_ROOT / "main.py"
     startup = REPO_ROOT / "application" / "chat" / "startup.py"
+    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
     source = entrypoint.read_text(encoding="utf-8")
     startup_source = startup.read_text(encoding="utf-8")
+    session_source = session_runtime.read_text(encoding="utf-8")
     retired_implementations = {
         "ensure_plugins_loaded(",
         "LLMAdapterFactory.create_adapter(",
@@ -798,10 +817,46 @@ def test_main_delegates_chat_startup_assembly() -> None:
         "messages:",
     ):
         assert field in startup_source
-    assert "startup = create_chat_startup_context(" in source
-    assert not {item for item in retired_implementations if item in source}, (
-        "main.py must consume ChatStartupContext instead of assembling providers."
-    )
+    assert "startup = create_chat_startup_context(" in session_source
+    assert not {
+        item
+        for item in retired_implementations
+        if item in source or item in session_source
+    }, "main.py must consume ChatStartupContext instead of assembling providers."
+
+
+def test_main_delegates_chat_session_lifecycle() -> None:
+    """Keep workflow, runtime, presentation, and shutdown outside main.py."""
+
+    entrypoint = REPO_ROOT / "main.py"
+    session_runtime = REPO_ROOT / "application" / "chat" / "session_runtime.py"
+    presentation = REPO_ROOT / "application" / "chat" / "presentation.py"
+    source = entrypoint.read_text(encoding="utf-8")
+    session_source = session_runtime.read_text(encoding="utf-8")
+    presentation_source = presentation.read_text(encoding="utf-8")
+    retired_lifecycle = {
+        "AppRuntime(",
+        "build_runtime_workflow(",
+        "shutdown_chat_runtime(",
+        "StreamingUIUpdateManager(",
+        "HeadlessUIUpdateManager(",
+        "restore_session_presentation(",
+        "display_initial_sprite(",
+        "ConversationBranchManager(",
+        "ChatCommandDispatcher(",
+    }
+
+    assert len(source.splitlines()) <= 150
+    assert "class StreamingChatSession(" in session_source
+    assert "class HeadlessChatSession(" in session_source
+    assert "session = create_chat_session(options, transport)" in source
+    assert "session.run()" in source
+    assert source.index(
+        "transport = create_initialization_transport(peek_launch_endpoints())"
+    ) < source.index("options = parse_launch_options(transport)")
+    assert "prepare_initial_presentation(" in session_source
+    assert "restore_session_presentation(" in presentation_source
+    assert not {item for item in retired_lifecycle if item in source}
 
 
 def test_mobile_access_respects_application_and_transport_boundaries() -> None:

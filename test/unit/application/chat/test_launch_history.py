@@ -15,7 +15,7 @@ from application.chat.session_store import (
     save_template_session,
 )
 from application.chat.templates import _history_id_from_scenario
-from core.sprite.chat_branch_storage import ACTIVE_HISTORY_FILENAME
+from core.chat_history.storage import ACTIVE_HISTORY_FILENAME
 
 
 def _state(tmp_path: Path) -> SimpleNamespace:

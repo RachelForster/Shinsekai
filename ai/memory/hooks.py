@@ -13,7 +13,7 @@ from ai.memory.chunking import DEFAULT_DIALOGUE_CHUNK_TOKENS
 from ai.memory.extraction import MemoryExtractor
 from ai.memory.operations import memory_search, memory_service_status
 from ai.memory.queue import MemoryWriteQueue
-from core.sprite.chat_history_text import history_payload_to_plain_text, parse_assistant_dialog_content
+from core.chat_history.text import history_payload_to_plain_text, parse_assistant_dialog_content
 from sdk.chat_init import InitChatContext
 from sdk.hooks import BeforeChatContext, MessageAddedContext, PluginHookDispatcher
 

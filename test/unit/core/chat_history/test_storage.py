@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from core.sprite.chat_branch_storage import (
+from core.chat_history.storage import (
     ACTIVE_HISTORY_FILENAME,
     BRANCH_TREE_FILENAME,
     STORY_SESSION_FILENAME,
