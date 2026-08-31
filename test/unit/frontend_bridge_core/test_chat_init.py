@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 import time
 from typing import Any
+from unittest.mock import Mock
 
 from application.chat.initialization import start_chat_init
 from application.runtime.state import BridgeState
@@ -105,6 +106,11 @@ def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
 def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
     state = _state()
     runtime = _patch_runtime(monkeypatch)
+    persist_history_path = Mock(return_value=True)
+    monkeypatch.setattr(
+        "application.chat.initialization.persist_confirmed_history_path",
+        persist_history_path,
+    )
     release_completion = threading.Event()
     launch_calls: list[str] = []
 
@@ -126,7 +132,11 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
             )
 
         threading.Thread(target=complete, daemon=True).start()
-        return {"status": "idle", "_chatInitStreamAttached": True}
+        return {
+            "status": "idle",
+            "_chatInitStreamAttached": True,
+            "_pendingHistoryPath": "history/new-chat",
+        }
 
     first = start_chat_init(state, mode="launch", launch=launch, timeout=2.0)
     running = _wait_for_task(state, first["id"], {"running"})
@@ -138,6 +148,7 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
     assert second["id"] == first["id"]
     assert running["progress"] == 0.45
     assert running["message"] == "Loading memory"
+    persist_history_path.assert_not_called()
 
     release_completion.set()
     finished = _wait_for_task(state, first["id"], {"succeeded"})
@@ -158,15 +169,25 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
     assert finished["result"]["chatProcessRunning"] is True
     assert state.chat_stream.deleted_sessions == []
     assert state.chat_init_task_id == ""
+    persist_history_path.assert_called_once_with(state, "history/new-chat")
 
 
 def test_producer_connection_without_init_terminal_event_times_out(monkeypatch):
     state = _state()
     runtime = _patch_runtime(monkeypatch)
+    persist_history_path = Mock(return_value=True)
+    monkeypatch.setattr(
+        "application.chat.initialization.persist_confirmed_history_path",
+        persist_history_path,
+    )
 
     def launch(_stream_info: dict[str, str]) -> dict[str, Any]:
         runtime["running"] = True
-        return {"status": "idle", "_chatInitStreamAttached": True}
+        return {
+            "status": "idle",
+            "_chatInitStreamAttached": True,
+            "_pendingHistoryPath": "history/failed-chat",
+        }
 
     task = start_chat_init(state, mode="launch", launch=launch, timeout=0.08)
     failed = _wait_for_task(state, task["id"], {"failed"})
@@ -174,6 +195,7 @@ def test_producer_connection_without_init_terminal_event_times_out(monkeypatch):
     assert "timed out" in failed["error"]
     assert runtime["closeReasons"] == ["Chat initialization did not complete."]
     assert state.chat_stream.deleted_sessions == ["init-session-1"]
+    persist_history_path.assert_not_called()
 
 
 def test_chat_init_does_not_treat_a_closing_runtime_as_ready(monkeypatch):

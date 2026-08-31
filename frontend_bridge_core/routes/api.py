@@ -1587,11 +1587,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             **session_base,
             "sessionId": str(stream_info.get("sessionId") or "") if use_react_runtime else "",
         }
-        if not persist_confirmed_history_path(self.state, history_path):
-            logger.warning(
-                "Chat launched but the selected history path could not be persisted",
-                extra={"history_path": history_path.as_posix()},
-            )
         if use_react_runtime and stream_info.get("sessionId") and self.state.chat_stream is not None:
             self.state.chat_stream.update_session_snapshot(
                 str(stream_info["sessionId"]),
@@ -1607,6 +1602,14 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                 },
             )
             self._wait_for_chat_runtime_ready(stream_info)
+        if init_stream_info is None and not persist_confirmed_history_path(
+            self.state,
+            history_path,
+        ):
+            logger.warning(
+                "Chat launched but the selected history path could not be persisted",
+                extra={"history_path": history_path.as_posix()},
+            )
         configure_mobile_access(
             self.state,
             enabled=mobile_access_enabled,
@@ -1618,6 +1621,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             extra={
                 "statusMessage": message,
                 **({"_chatInitStreamAttached": True} if init_stream_info else {}),
+                **(
+                    {"_pendingHistoryPath": history_path.as_posix()}
+                    if init_stream_info
+                    else {}
+                ),
             },
         )
 
