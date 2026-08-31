@@ -1,1 +1,1 @@
-"""Application core: bootstrap, messaging, handlers, runtime, plugins, sprite session."""
+"""Framework-independent domain services used by the host application."""

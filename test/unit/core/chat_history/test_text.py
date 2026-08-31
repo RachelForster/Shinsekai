@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.sprite.chat_history_text import (
+from core.chat_history.text import (
     chat_history_to_turns,
     history_payload_to_plain_text,
     history_payload_to_turns,

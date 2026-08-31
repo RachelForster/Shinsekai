@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
-from core.sprite.chat_branch_storage import chat_history_active_path
+from core.chat_history.storage import chat_history_active_path
 
 if TYPE_CHECKING:
     from ai.llm.llm_manager import LLMManager

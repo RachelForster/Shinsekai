@@ -292,6 +292,9 @@ Backgrounds 和 Characters。
 | `core/media/auto_annotation.py` | `application/media/` | O3/O6 | AI 能力由 application 编排；O6 删除残留兼容入口并归位单测 |
 | `core/messaging/chat_turn_wiring.py` | `application/chat/turn_wiring.py` | O7 | manager、queue 与消息 port 装配属于 application |
 | `core/sprite/initial_sprite.py` | `core/sprite/selection.py` + `application/chat/initial_sprite.py` | O7 | core 只做路径匹配，配置选择和 UI 呈现由 application 负责 |
+| `core/sprite/sprite_cli.py` | `application/chat/launch_args.py` | O9/阶段 5 | 聊天入口参数和 bridge 启动配置属于 application chat，而非立绘领域 |
+| `core/sprite/chat_history_text.py` | `core/chat_history/text.py` | O9/阶段 5 | 无框架依赖的聊天历史归一化独立归入 chat_history 领域 |
+| `core/sprite/chat_branch_storage.py` | `core/chat_history/storage.py` | O9/阶段 5 | 分支状态与会话文件存储独立归入 chat_history 领域 |
 | main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/effects.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
 | `frontend_bridge_core/effects.py` 主体实现 | `application/effects/management.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
 | `frontend_bridge_core/backgrounds.py` 资源变更 | `application/backgrounds/management.py` | O8 PR 2 | bridge 仅保留协议、翻译和简单标签写入 |

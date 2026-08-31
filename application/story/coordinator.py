@@ -8,7 +8,7 @@ from typing import Any
 
 from application.chat.history_paths import resolve_history_path_for_project
 from config.feature_flags import FeatureFlag
-from core.sprite.chat_branch_storage import (
+from core.chat_history.storage import (
     STORY_SESSION_FILENAME,
     chat_history_session_dir,
 )

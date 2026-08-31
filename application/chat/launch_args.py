@@ -13,7 +13,7 @@ CHAT_LAUNCH_CONFIG_ENV = "SHINSEKAI_CHAT_LAUNCH_CONFIG"
 _MAX_LAUNCH_CONFIG_CHARS = 64 * 1024
 
 
-def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParser:
+def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=tr_i18n("main.arg_desc"))
     parser.add_argument(
         "--template",
@@ -78,15 +78,15 @@ def build_sprite_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentPar
     return parser
 
 
-def peek_sprite_launch_config() -> dict[str, Any]:
+def peek_chat_launch_config() -> dict[str, Any]:
     """Read bridge-provided defaults without consuming the process environment."""
 
-    return _parse_sprite_launch_config(
+    return _parse_chat_launch_config(
         os.environ.get(CHAT_LAUNCH_CONFIG_ENV, ""),
     )
 
 
-def peek_sprite_launch_endpoints() -> dict[str, str]:
+def peek_chat_launch_endpoints() -> dict[str, str]:
     """Recover producer endpoints even when another launch field is invalid."""
 
     raw = str(os.environ.get(CHAT_LAUNCH_CONFIG_ENV, "") or "").strip()
@@ -105,15 +105,15 @@ def peek_sprite_launch_endpoints() -> dict[str, str]:
     }
 
 
-def load_sprite_launch_config() -> dict[str, Any]:
+def load_chat_launch_config() -> dict[str, Any]:
     """Load and consume bridge-provided argument defaults."""
 
-    return _parse_sprite_launch_config(
+    return _parse_chat_launch_config(
         os.environ.pop(CHAT_LAUNCH_CONFIG_ENV, ""),
     )
 
 
-def _parse_sprite_launch_config(raw_value: str) -> dict[str, Any]:
+def _parse_chat_launch_config(raw_value: str) -> dict[str, Any]:
     """Validate one serialized bridge launch configuration."""
 
     raw = str(raw_value or "").strip()
@@ -125,7 +125,7 @@ def _parse_sprite_launch_config(raw_value: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ValueError("chat launch config must be a JSON object")
 
-    parser = build_sprite_arg_parser(lambda key: key)
+    parser = build_chat_arg_parser(lambda key: key)
     allowed = {action.dest for action in parser._actions if action.dest != "help"}
     unknown = set(data) - allowed
     if unknown:
@@ -144,12 +144,12 @@ def _parse_sprite_launch_config(raw_value: str) -> dict[str, Any]:
     return normalized
 
 
-def parse_sprite_args(
+def parse_chat_args(
     tr_i18n: Callable[..., str],
     *,
     defaults: dict[str, Any] | None = None,
 ) -> Any:
-    parser = build_sprite_arg_parser(tr_i18n)
+    parser = build_chat_arg_parser(tr_i18n)
     if defaults:
         parser.set_defaults(**defaults)
     return parser.parse_args()

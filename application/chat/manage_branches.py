@@ -13,7 +13,7 @@ from application.chat.history_state import (
     history_entry_plain_text,
     is_user_history_entry,
 )
-from core.sprite.chat_branch_storage import (
+from core.chat_history.storage import (
     load_branch_state,
     reconcile_active_branch_state,
     save_branch_state,

@@ -16,7 +16,7 @@ from application.chat.manage_branches import (
     ConversationBranchManager,
     SubmitRuntimeText,
 )
-from core.sprite.chat_branch_storage import (
+from core.chat_history.storage import (
     chat_history_active_path,
     remove_chat_history_storage,
 )

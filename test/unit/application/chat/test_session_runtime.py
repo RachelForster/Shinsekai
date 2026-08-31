@@ -160,7 +160,7 @@ def test_early_launch_endpoints_prefer_cli_without_consuming_config(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
-        "core.sprite.sprite_cli.peek_sprite_launch_endpoints",
+        "application.chat.launch_args.peek_chat_launch_endpoints",
         lambda: {
             "init_stream_endpoint": "ws://config-init",
             "stream_endpoint": "ws://config-runtime",
@@ -202,11 +202,11 @@ def test_argument_error_is_reported_through_preparsed_transport(monkeypatch) -> 
     monkeypatch.setattr(session_runtime, "load_chat_config", lambda: config)
     monkeypatch.setattr("i18n.init_i18n", lambda _language: None)
     monkeypatch.setattr(
-        "core.sprite.sprite_cli.load_sprite_launch_config",
+        "application.chat.launch_args.load_chat_launch_config",
         lambda: {},
     )
     monkeypatch.setattr(
-        "core.sprite.sprite_cli.parse_sprite_args",
+        "application.chat.launch_args.parse_chat_args",
         Mock(side_effect=ValueError("invalid launch argument")),
     )
 
@@ -238,11 +238,11 @@ def test_argparse_system_exit_is_reported_as_failure(monkeypatch) -> None:
     monkeypatch.setattr(session_runtime, "load_chat_config", lambda: config)
     monkeypatch.setattr("i18n.init_i18n", lambda _language: None)
     monkeypatch.setattr(
-        "core.sprite.sprite_cli.load_sprite_launch_config",
+        "application.chat.launch_args.load_chat_launch_config",
         lambda: {},
     )
     monkeypatch.setattr(
-        "core.sprite.sprite_cli.parse_sprite_args",
+        "application.chat.launch_args.parse_chat_args",
         Mock(side_effect=SystemExit(2)),
     )
 
