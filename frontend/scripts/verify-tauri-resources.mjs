@@ -27,6 +27,7 @@ await assertExists(path.join(resourcesDir, "application", "chat", "mobile_access
 await assertExists(path.join(resourcesDir, "application", "chat", "runtime_process.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "commands.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "manage_branches.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "startup.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "effects.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "initial_sprite.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "turn_wiring.py"));
