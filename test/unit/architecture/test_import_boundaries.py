@@ -679,7 +679,6 @@ def test_effect_bridge_remains_a_transport_adapter() -> None:
         "Effect routes must use EffectUseCase.execute as their single entry point."
     )
 
-
 def test_main_delegates_conversation_branch_management() -> None:
     """Keep branch use cases testable outside the process entry point."""
 
@@ -705,6 +704,31 @@ def test_main_delegates_conversation_branch_management() -> None:
     assert not {item for item in retired_implementations if item in source}, (
         "main.py must delegate branch state and operations to manage_branches.py."
     )
+
+def test_package_export_results_remain_transport_independent() -> None:
+    """Application export results must not encode the bridge's HTTP routes."""
+
+    use_cases = (
+        REPO_ROOT / "application" / "backgrounds" / "management.py",
+        REPO_ROOT / "application" / "characters" / "management.py",
+    )
+    adapters = (
+        REPO_ROOT / "frontend_bridge_core" / "backgrounds.py",
+        REPO_ROOT / "frontend_bridge_core" / "characters.py",
+    )
+    route_source = (
+        REPO_ROOT / "frontend_bridge_core" / "routes" / "api.py"
+    ).read_text(encoding="utf-8")
+
+    for use_case in use_cases:
+        assert "/api/download" not in use_case.read_text(encoding="utf-8"), (
+            f"{use_case.relative_to(REPO_ROOT)} must return a path value object, "
+            "not an HTTP download URL."
+        )
+    for adapter in adapters:
+        assert "/api/download" in adapter.read_text(encoding="utf-8")
+    assert "background_response_payload(" in route_source
+    assert "character_response_payload(" in route_source
 
 
 def test_mobile_access_respects_application_and_transport_boundaries() -> None:
