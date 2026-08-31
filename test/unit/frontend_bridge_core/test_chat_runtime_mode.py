@@ -1,7 +1,6 @@
 import os
 import tempfile
 import unittest
-from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -510,7 +509,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(handler.server.state.chat_session["characterName"], "Alice")
         self.assertEqual(snapshot["characterName"], "Alice")
 
-    def test_quick_restart_uses_timestamped_scenario_without_removing_previous_history(self):
+    def test_quick_restart_uses_new_managed_history_without_changing_scenario(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         config_manager = _ConfigManager()
         config_manager.config.characters = [
@@ -538,13 +537,14 @@ class ChatRuntimeModeTests(unittest.TestCase):
             )
             body = {
                 "characters": ["Alice"],
+                "historyPath": previous_history.as_posix(),
                 "resetHistory": True,
                 "scenario": "scene",
                 "system": "system",
                 "templateId": "template",
                 "templateName": "Template",
             }
-            timestamp = "2026-08-30T20:45:00.123456"
+            instance_id = "20260830T204500123456Z-a1b2c3d4"
 
             with (
                 patch("frontend_bridge_core.routes.api._chat_process_running", return_value=False),
@@ -553,19 +553,80 @@ class ChatRuntimeModeTests(unittest.TestCase):
                     "frontend_bridge_core.routes.api._repair_template_parts_from_session_if_needed",
                     side_effect=lambda _state, scenario, system: (scenario, system),
                 ),
-                patch("frontend_bridge_core.routes.api.datetime") as mocked_datetime,
+                patch(
+                    "application.chat.launch_history._new_history_instance_id",
+                    return_value=instance_id,
+                ),
+                patch(
+                    "frontend_bridge_core.routes.api.persist_confirmed_history_path",
+                    return_value=True,
+                ) as persist_history_path,
             ):
-                mocked_datetime.now.return_value = datetime.fromisoformat(timestamp)
-                handler._launch_chat(body)
+                snapshot = handler._launch_chat(body)
             marker_survived = marker.is_file()
 
-        expected_scenario = f"scene\n\n[系统时间：{timestamp}]"
-        self.assertEqual(launch_chat.call_args.kwargs["user_scenario"], expected_scenario)
+        expected_history = f"{_history_id_from_scenario('scene', ['Alice'])}-{instance_id}"
+        self.assertEqual(launch_chat.call_args.kwargs["user_scenario"], "scene")
         self.assertEqual(
             Path(launch_chat.call_args.kwargs["history_file"]).name,
-            _history_id_from_scenario(expected_scenario, ["Alice"]),
+            expected_history,
+        )
+        self.assertEqual(Path(snapshot["historyPath"]).name, expected_history)
+        persist_history_path.assert_called_once_with(
+            handler.server.state,
+            Path(launch_chat.call_args.kwargs["history_file"]),
         )
         self.assertTrue(marker_survived)
+
+    def test_quick_restart_does_not_select_a_new_history_while_runtime_is_busy(self):
+        handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+        config_manager = _ConfigManager()
+        config_manager.config.characters = [SimpleNamespace(name="Alice", sprites=[])]
+
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
+            root = Path(tmp_dir)
+            history_dir = root / "history"
+            history_dir.mkdir()
+            template_dir = root / "templates"
+            template_dir.mkdir()
+            current_history = history_dir / "current"
+            handler.server = SimpleNamespace(
+                state=SimpleNamespace(
+                    chat_session={
+                        "characterName": "Alice",
+                        "historyPath": current_history.as_posix(),
+                        "sessionId": "",
+                    },
+                    chat_stream=None,
+                    config_manager=config_manager,
+                    history_dir=str(history_dir),
+                    mobile_access_service=None,
+                    template_dir_path=str(template_dir),
+                )
+            )
+            body = {
+                "characters": ["Alice"],
+                "resetHistory": True,
+                "scenario": "scene",
+                "system": "system",
+                "templateId": "template",
+                "templateName": "Template",
+            }
+
+            with (
+                patch("frontend_bridge_core.routes.api._chat_process_running", return_value=True),
+                patch("frontend_bridge_core.routes.api.plan_chat_history_launch") as plan_history,
+                patch("frontend_bridge_core.routes.api.clear_story_session") as clear_story,
+            ):
+                snapshot = handler._launch_chat(body)
+
+        plan_history.assert_not_called()
+        clear_story.assert_not_called()
+        self.assertEqual(snapshot["historyPath"], current_history.as_posix())
+        self.assertEqual(
+            handler.server.state.chat_session["historyPath"],
+            current_history.as_posix(),
+        )
 
     def test_legacy_native_async_init_uses_react_stream_session(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)

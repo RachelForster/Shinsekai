@@ -7,7 +7,6 @@ import mimetypes
 import shutil
 import tempfile
 import threading
-from datetime import datetime
 from http.cookies import SimpleCookie
 from email.parser import BytesParser
 from email.policy import default as default_email_policy
@@ -18,6 +17,11 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
 from application.chat.effects import build_selected_effect_context
+from application.chat.launch_history import (
+    persist_confirmed_history_path,
+    plan_chat_history_launch,
+    resolve_chat_history_path,
+)
 from application.characters import CharacterOperation
 from application.backgrounds import BackgroundOperation
 from sdk.logging import get_logger, log_context, new_log_id
@@ -40,7 +44,6 @@ from application.chat.runtime_process import (
     _chat_history_download_file,
     _close_chat,
     TRANSPARENT_BACKGROUND_NAME,
-    _chat_history_path,
     _chat_process_running,
     _chat_runtime_closing,
     _chat_runtime_mode,
@@ -1493,7 +1496,25 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             characters,
         )
         room_id = str(body.get("roomId") or self.state.config_manager.config.system_config.live_room_id or "")
-        reset_history = bool(body.get("resetHistory"))
+        if _chat_process_running():
+            configure_mobile_access(
+                self.state,
+                enabled=mobile_access_enabled,
+            )
+            return _chat_snapshot(
+                self.state,
+                None,
+                "",
+                extra={"statusMessage": "进程已经在运行中。"},
+            )
+        start_fresh_history = bool(body.get("resetHistory"))
+        history_target = plan_chat_history_launch(
+            self.state,
+            {**body, "characters": characters},
+            row,
+            start_fresh=start_fresh_history,
+        )
+        history_path = history_target.history_path
         user_scenario = _scenario_from_template_like(row)
         system_template = str(row.get("system") or "")
         user_scenario, system_template = _repair_template_parts_from_session_if_needed(
@@ -1501,16 +1522,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             user_scenario,
             system_template,
         )
-        if reset_history:
+        if start_fresh_history:
             clear_story_session(self.state)
-            user_scenario = (
-                f"{user_scenario.rstrip()}\n\n[系统时间：{datetime.now().isoformat(timespec='microseconds')}]"
-            )
-        history_path = _chat_history_path(
-            self.state,
-            {**body, "characters": characters},
-            {**row, "scenario": user_scenario},
-        )
         user_display_name = _sanitize_user_display_name(body.get("userDisplayName"))
         session_base = {
             "backgroundName": str(body.get("backgroundName") or ""),
@@ -1523,13 +1536,6 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             "workflowPath": str(body.get("workflowPath") or ""),
         }
         release_unbound_story_session(self.state, session_base["historyPath"])
-        if _chat_process_running():
-            self.state.chat_session = {**self.state.chat_session, **session_base}
-            configure_mobile_access(
-                self.state,
-                enabled=mobile_access_enabled,
-            )
-            return _chat_snapshot(self.state, None, "", extra={"statusMessage": "进程已经在运行中。"})
         self.state.chat_session = {**self.state.chat_session, **session_base}
         initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(self.state, "idle", ""))
         use_react_runtime = _chat_runtime_mode(self.state) == "react"
@@ -1581,6 +1587,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             **session_base,
             "sessionId": str(stream_info.get("sessionId") or "") if use_react_runtime else "",
         }
+        if not persist_confirmed_history_path(self.state, history_path):
+            logger.warning(
+                "Chat launched but the selected history path could not be persisted",
+                extra={"history_path": history_path.as_posix()},
+            )
         if use_react_runtime and stream_info.get("sessionId") and self.state.chat_stream is not None:
             self.state.chat_stream.update_session_snapshot(
                 str(stream_info["sessionId"]),
@@ -1623,7 +1634,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             configure_mobile_access(self.state, enabled=False)
         session_history_path = str(session.get("historyPath") or "").strip()
         history_path = (
-            _chat_history_path(self.state, {"historyPath": session_history_path}, session)
+            resolve_chat_history_path(
+                self.state,
+                {"historyPath": session_history_path},
+                session,
+            )
             if session_history_path
             else _latest_history_json(self.state.history_dir)
         )

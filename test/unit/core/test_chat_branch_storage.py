@@ -18,7 +18,6 @@ from core.sprite.chat_branch_storage import (
     remove_chat_history_storage,
     save_branch_state,
 )
-from application.chat.runtime_process import _chat_history_path
 from application.chat.templates import _latest_history_json
 
 
@@ -197,25 +196,6 @@ class ChatBranchStorageTests(unittest.TestCase):
             self.assertEqual(_latest_history_json(root.as_posix()), session)
         finally:
             shutil.rmtree(root, ignore_errors=True)
-
-    def test_bridge_history_path_prefers_session_directories_for_new_paths(self):
-        root = Path("data/chat_history/test-bridge-path")
-        remove_chat_history_storage(root)
-        root.mkdir(parents=True, exist_ok=True)
-        state = SimpleNamespace(history_dir=root.as_posix())
-        template = {"scenario": "scene", "system": "system"}
-        try:
-            default_path = _chat_history_path(state, {"historyPath": ""}, template)
-            explicit_path = _chat_history_path(state, {"historyPath": (root / "manual.json").as_posix()}, template)
-            legacy_path = root / "legacy.json"
-            legacy_path.write_text("[]", encoding="utf-8")
-
-            self.assertEqual(default_path.parent, root.resolve())
-            self.assertEqual(default_path.suffix, "")
-            self.assertEqual(explicit_path, root.resolve() / "manual")
-            self.assertEqual(_chat_history_path(state, {"historyPath": legacy_path.as_posix()}, template), legacy_path.resolve())
-        finally:
-            remove_chat_history_storage(root)
 
     def test_clear_removes_story_session_document(self):
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -16,10 +16,10 @@ from core.sprite.chat_branch_storage import (
     remove_chat_history_storage,
 )
 from frontend_bridge import _prepare_project_root
+from application.chat.launch_history import resolve_chat_history_path
 from application.chat.runtime_process import (
     _chat_history_download_file,
     _chat_history_entries,
-    _chat_history_path,
     _handle_chat_command,
     _issue_chat_history_download_capability,
 )
@@ -157,7 +157,7 @@ def test_unc_history_resolution_and_idle_snapshot_are_lexical(
         patch.object(Path, "iterdir", side_effect=no_path_io),
     ):
         resolved = resolve_history_path_for_project(state, raw)
-        selected = _chat_history_path(
+        selected = resolve_chat_history_path(
             state,
             {"historyPath": raw},
             {"scenario": "scene", "system": "system"},
@@ -196,7 +196,7 @@ def test_nonexistent_external_json_becomes_session_directory(tmp_path: Path) -> 
     project.mkdir()
     history = tmp_path / "external" / "new-session.json"
 
-    resolved = _chat_history_path(
+    resolved = resolve_chat_history_path(
         _state(project),
         {"historyPath": str(history)},
         {"scenario": "scene", "system": "system"},

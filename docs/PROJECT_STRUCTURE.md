@@ -210,6 +210,9 @@ application 可以组合多个能力域，但不实现具体 HTTP 或 UI 控件�
 payload 解析与 ack 投影保留在 `frontend_bridge_core/transport/`。
 聊天 provider、模板、历史、memory hooks 和可选能力降级统一由稳定组合入口
 `application/chat/startup.py` 创建并返回 `ChatStartupContext`。
+聊天启动时的历史目标选择统一由 `application/chat/launch_history.py` 负责；
+bridge 不得通过修改场景提示词来生成存储标识。快速重开必须保留原历史，并把
+后端选定的新路径写入运行时快照和上次启动会话。
 application 是 `AppRuntime`、应用级 task、当前会话和 concrete manager 装配的唯一
 所有者；这些对象不能下沉到 `core/`。application 可以把结果投影为稳定的 SDK event
 或调用注入的 port，但不能直接构造 HTTP response、WebSocket frame 或 React DTO。

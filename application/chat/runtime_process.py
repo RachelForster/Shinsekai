@@ -35,8 +35,6 @@ from core.media.chat_attachments import (
     resolve_chat_attachments,
 )
 from core.sprite.chat_branch_storage import (
-    ACTIVE_HISTORY_FILENAME,
-    BRANCH_TREE_FILENAME,
     chat_history_active_path,
     chat_history_download_path,
     chat_history_session_dir,
@@ -60,7 +58,6 @@ from application.chat.templates import (
     _compose_runtime_template,
     _effective_user_scenario,
     _history_id_from_scenario,
-    _scenario_from_template_like,
     _template_dir,
 )
 from application.runtime.dependencies import runtime_dependency_error_from_text
@@ -569,27 +566,6 @@ def _close_chat(
 
 def _resolve_history_file(state: BridgeState, raw_path: str | Path) -> Path:
     return resolve_history_path_for_project(state, raw_path)
-
-
-def _chat_history_path(state: BridgeState, payload: dict[str, Any], template: dict[str, Any]) -> Path:
-    raw = str(payload.get("historyPath") or "").strip()
-    if raw:
-        path = _resolve_history_file(state, raw)
-        if path.name in {ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME}:
-            return _resolve_history_file(state, path.parent)
-        if (
-            path.suffix.lower() == ".json"
-            and not is_unc_history_path(path)
-            and not path.is_file()
-        ):
-            return _resolve_history_file(state, path.with_suffix(""))
-        return path
-    characters = payload.get("characters")
-    if not isinstance(characters, list):
-        characters = template.get("selectedCharacters")
-    scenario = _scenario_from_template_like(template)
-    template_hash = _history_id_from_scenario(scenario, characters)
-    return _resolve_history_file(state, Path(state.history_dir) / template_hash)
 
 
 def _sprite_path(sprite: Any) -> str:

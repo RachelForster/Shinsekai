@@ -1182,7 +1182,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "template.mode.edit": "編集",
   "template.mode.generate": "生成",
   "template.noEffect": "エフェクトなし",
-  "template.quickRestart.body": "選択中または既定のチャット履歴を削除し、新しいチャットを開始しますか？",
+  "template.quickRestart.body": "以前のチャット履歴を残し、別の新しい履歴で会話を始めますか？",
   "template.quickRestart.title": "クイック再起動",
   "template.section.content": "テンプレート内容",
   "template.section.generate": "テンプレート生成",
