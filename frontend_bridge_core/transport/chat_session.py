@@ -53,19 +53,58 @@ class ChatSessionTransport:
             self.stream_sink.close()
 
 
-def create_transport(options: Any) -> ChatSessionTransport:
-    """Create runtime and initialization sinks from parsed launch options."""
+def create_initialization_transport(endpoints: Any) -> ChatSessionTransport:
+    """Connect the earliest available producer endpoint before config parsing."""
+
+    init_endpoint = str(getattr(endpoints, "init_stream_endpoint", "") or "").strip()
+    stream_endpoint = str(getattr(endpoints, "stream_endpoint", "") or "").strip()
+    endpoint = init_endpoint or stream_endpoint
+    sink = WSClientSink(endpoint) if endpoint else None
+    transport = ChatSessionTransport(init_sink=sink)
+    if sink is not None and not init_endpoint:
+        transport.emit_initialization({"type": "status.change", "status": "idle"})
+    return transport
+
+
+def create_transport(
+    options: Any,
+    transport: ChatSessionTransport | None = None,
+) -> ChatSessionTransport:
+    """Upgrade an initialization transport with the parsed runtime endpoint."""
 
     args = options.args
     stream_endpoint = str(getattr(args, "stream_endpoint", "") or "").strip()
     init_endpoint = str(getattr(args, "init_stream_endpoint", "") or "").strip()
-    stream_sink = WSClientSink(stream_endpoint) if stream_endpoint else None
-    init_sink = (
-        stream_sink
-        if init_endpoint and init_endpoint == stream_endpoint
-        else WSClientSink(init_endpoint) if init_endpoint else None
-    )
-    transport = ChatSessionTransport(stream_sink=stream_sink, init_sink=init_sink)
-    if stream_sink is not None:
+    transport = transport or ChatSessionTransport()
+    bootstrap_sink = transport.init_sink
+
+    if stream_endpoint:
+        transport.stream_sink = (
+            bootstrap_sink
+            if _sink_endpoint(bootstrap_sink) == stream_endpoint
+            else WSClientSink(stream_endpoint)
+        )
+    else:
+        transport.stream_sink = None
+
+    if init_endpoint:
+        if _sink_endpoint(bootstrap_sink) == init_endpoint:
+            transport.init_sink = bootstrap_sink
+        elif _sink_endpoint(transport.stream_sink) == init_endpoint:
+            transport.init_sink = transport.stream_sink
+        else:
+            transport.init_sink = WSClientSink(init_endpoint)
+    elif (
+        bootstrap_sink is not None and _sink_endpoint(bootstrap_sink) == stream_endpoint
+    ):
+        transport.init_sink = transport.stream_sink
+    else:
+        transport.init_sink = None
+
+    if transport.stream_sink is not None:
         transport.emit({"type": "status.change", "status": "idle"})
     return transport
+
+
+def _sink_endpoint(sink: Any | None) -> str:
+    return str(getattr(sink, "endpoint", "") or "").strip()

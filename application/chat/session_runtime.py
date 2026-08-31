@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 import logging
 import signal
+import sys
 import threading
 import time
 from typing import Any, Protocol
@@ -24,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 
 _CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
+    "config.load": (0.02, 0.06, "Loading configuration."),
+    "i18n.import": (0.06, 0.08, "Loading language support."),
+    "i18n.init": (0.08, 0.1, "Preparing translations."),
+    "args.parse": (0.1, 0.14, "Reading chat settings."),
     "plugins.import": (0.14, 0.17, "Loading plugin runtime."),
     "plugins.load": (0.17, 0.26, "Initializing plugins."),
     "t2i.init": (0.26, 0.32, "Preparing image generation."),
@@ -68,6 +73,14 @@ class ChatLaunchOptions:
     started_at: float
 
 
+@dataclass(frozen=True, slots=True)
+class ChatBootstrapEndpoints:
+    """Producer endpoints available before full launch option parsing."""
+
+    stream_endpoint: str = ""
+    init_stream_endpoint: str = ""
+
+
 @dataclass(slots=True)
 class _RuntimeComponents:
     workflow: Any
@@ -105,6 +118,15 @@ class _ChatInitialization:
         )
         try:
             yield
+        except SystemExit as exc:
+            if exc.code is None or exc.code == 0:
+                self.service.cancelled()
+            else:
+                self.service.failed(
+                    exc,
+                    message=f"Failed while {phase_message.rstrip('.').lower()}.",
+                )
+            raise
         except InitChatCancelled:
             self.service.cancelled()
             raise
@@ -149,10 +171,31 @@ class _ChatInitialization:
 _active_initialization: _ChatInitialization | None = None
 
 
-def parse_launch_options() -> ChatLaunchOptions:
+def peek_launch_endpoints() -> ChatBootstrapEndpoints:
+    """Read early producer endpoints without consuming bridge launch config."""
+
+    from core.sprite.sprite_cli import peek_sprite_launch_endpoints
+
+    launch_config = peek_sprite_launch_endpoints()
+    return ChatBootstrapEndpoints(
+        stream_endpoint=_early_launch_option(
+            "--stream-endpoint",
+            "stream_endpoint",
+            launch_config,
+        ),
+        init_stream_endpoint=_early_launch_option(
+            "--init-stream-endpoint",
+            "init_stream_endpoint",
+            launch_config,
+        ),
+    )
+
+
+def parse_launch_options(transport: ChatSessionTransport) -> ChatLaunchOptions:
     """Load process configuration, translations, and command-line launch options."""
 
     started_at = time.perf_counter()
+    initialization = _initialization_for(transport)
     from config.mirror_env import apply_mirror_environment_from_system_config
     from config.network_proxy import apply_network_proxy_environment_from_system_config
 
@@ -160,16 +203,20 @@ def parse_launch_options() -> ChatLaunchOptions:
     apply_mirror_environment_from_system_config()
     _import_builtin_tools()
 
-    config = load_chat_config()
-    from i18n import init_i18n, tr, tr_in_bundle
-    from ai.asr.asr_adapter import (
-        create_default_asr_adapter,
-        system_config_to_asr_lang,
-    )
-    from core.sprite.sprite_cli import load_sprite_launch_config, parse_sprite_args
+    with initialization.phase("config.load"):
+        config = load_chat_config()
+    with initialization.phase("i18n.import"):
+        from i18n import init_i18n, tr, tr_in_bundle
+        from ai.asr.asr_adapter import (
+            create_default_asr_adapter,
+            system_config_to_asr_lang,
+        )
+        from core.sprite.sprite_cli import load_sprite_launch_config, parse_sprite_args
 
-    init_i18n(config.config.system_config.ui_language)
-    args = parse_sprite_args(tr, defaults=load_sprite_launch_config())
+    with initialization.phase("i18n.init"):
+        init_i18n(config.config.system_config.ui_language)
+    with initialization.phase("args.parse"):
+        args = parse_sprite_args(tr, defaults=load_sprite_launch_config())
     if not args.stream_endpoint and not args.headless:
         raise SystemExit(
             "The Qt chat window has been retired; launch chat through React/Tauri "
@@ -192,9 +239,7 @@ def create_chat_session(
 ) -> StreamingChatSession | HeadlessChatSession:
     """Create the selected session after assembling provider dependencies."""
 
-    global _active_initialization
-    initialization = _ChatInitialization(transport)
-    _active_initialization = initialization
+    initialization = _initialization_for(transport)
 
     def bind_plugin_frontend(plugin_manager: Any | None) -> None:
         from plugin_system.host import bind_frontend_ui_runtime
@@ -237,6 +282,40 @@ def cancel_chat_initialization() -> None:
 def fail_chat_initialization(exc: BaseException) -> None:
     if _active_initialization is not None:
         _active_initialization.fail(exc)
+
+
+def _initialization_for(transport: ChatSessionTransport) -> _ChatInitialization:
+    global _active_initialization
+    current = _active_initialization
+    if current is not None and current.transport is transport:
+        status = str(current.service.snapshot().get("status") or "")
+        if status not in {"succeeded", "failed", "cancelled"}:
+            return current
+    current = _ChatInitialization(transport)
+    _active_initialization = current
+    return current
+
+
+def _early_launch_option(
+    cli_name: str,
+    config_name: str,
+    launch_config: dict[str, Any],
+) -> str:
+    args = sys.argv[1:]
+    cli_value: str | None = None
+    for index, argument in enumerate(args):
+        if (
+            argument == cli_name
+            and index + 1 < len(args)
+            and not args[index + 1].startswith("-")
+        ):
+            cli_value = str(args[index + 1] or "").strip()
+        prefix = f"{cli_name}="
+        if argument.startswith(prefix):
+            cli_value = str(argument[len(prefix) :] or "").strip()
+    if cli_value is not None:
+        return cli_value
+    return str(launch_config.get(config_name) or "").strip()
 
 
 class _BaseChatSession:

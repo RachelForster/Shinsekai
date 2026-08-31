@@ -851,6 +851,9 @@ def test_main_delegates_chat_session_lifecycle() -> None:
     assert "class HeadlessChatSession(" in session_source
     assert "session = create_chat_session(options, transport)" in source
     assert "session.run()" in source
+    assert source.index(
+        "transport = create_initialization_transport(peek_launch_endpoints())"
+    ) < source.index("options = parse_launch_options(transport)")
     assert "prepare_initial_presentation(" in session_source
     assert "restore_session_presentation(" in presentation_source
     assert not {item for item in retired_lifecycle if item in source}

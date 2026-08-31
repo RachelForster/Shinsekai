@@ -9,6 +9,11 @@ import pytest
 from application.chat import session_runtime
 
 
+@pytest.fixture(autouse=True)
+def _reset_active_initialization(monkeypatch):
+    monkeypatch.setattr(session_runtime, "_active_initialization", None)
+
+
 class _Transport:
     def __init__(self, *, streaming: bool) -> None:
         self.streaming = streaming
@@ -123,6 +128,156 @@ def test_factory_reports_missing_llm_as_initialization_failure(
     assert transport.initialization_events[-1]["type"] == "chat.init.failed"
     assert transport.closed_initialization == 1
     assert "main.err_select_llm" in capsys.readouterr().out
+
+
+def test_config_error_is_reported_through_preparsed_transport(monkeypatch) -> None:
+    transport = _Transport(streaming=False)
+    monkeypatch.setattr(
+        "config.network_proxy.apply_network_proxy_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "config.mirror_env.apply_mirror_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(session_runtime, "_import_builtin_tools", lambda: None)
+    monkeypatch.setattr(
+        session_runtime,
+        "load_chat_config",
+        Mock(side_effect=ValueError("invalid system yaml")),
+    )
+
+    with pytest.raises(ValueError, match="invalid system yaml"):
+        session_runtime.parse_launch_options(transport)
+
+    failed = transport.initialization_events[-1]
+    assert failed["type"] == "chat.init.failed"
+    assert failed["task"]["error"] == "invalid system yaml"
+    assert failed["task"]["message"] == "Failed while loading configuration."
+
+
+def test_early_launch_endpoints_prefer_cli_without_consuming_config(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "core.sprite.sprite_cli.peek_sprite_launch_endpoints",
+        lambda: {
+            "init_stream_endpoint": "ws://config-init",
+            "stream_endpoint": "ws://config-runtime",
+        },
+    )
+    monkeypatch.setattr(
+        session_runtime.sys,
+        "argv",
+        [
+            "main.py",
+            "--stream-endpoint=ws://ignored-runtime",
+            "--stream-endpoint",
+            "ws://cli-runtime",
+        ],
+    )
+
+    endpoints = session_runtime.peek_launch_endpoints()
+
+    assert endpoints.init_stream_endpoint == "ws://config-init"
+    assert endpoints.stream_endpoint == "ws://cli-runtime"
+
+
+def test_argument_error_is_reported_through_preparsed_transport(monkeypatch) -> None:
+    transport = _Transport(streaming=False)
+    config = SimpleNamespace(
+        config=SimpleNamespace(
+            system_config=SimpleNamespace(ui_language="zh_CN"),
+        )
+    )
+    monkeypatch.setattr(
+        "config.network_proxy.apply_network_proxy_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "config.mirror_env.apply_mirror_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(session_runtime, "_import_builtin_tools", lambda: None)
+    monkeypatch.setattr(session_runtime, "load_chat_config", lambda: config)
+    monkeypatch.setattr("i18n.init_i18n", lambda _language: None)
+    monkeypatch.setattr(
+        "core.sprite.sprite_cli.load_sprite_launch_config",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "core.sprite.sprite_cli.parse_sprite_args",
+        Mock(side_effect=ValueError("invalid launch argument")),
+    )
+
+    with pytest.raises(ValueError, match="invalid launch argument"):
+        session_runtime.parse_launch_options(transport)
+
+    failed = transport.initialization_events[-1]
+    assert failed["type"] == "chat.init.failed"
+    assert failed["task"]["error"] == "invalid launch argument"
+    assert failed["task"]["message"] == "Failed while reading chat settings."
+
+
+def test_argparse_system_exit_is_reported_as_failure(monkeypatch) -> None:
+    transport = _Transport(streaming=False)
+    config = SimpleNamespace(
+        config=SimpleNamespace(
+            system_config=SimpleNamespace(ui_language="zh_CN"),
+        )
+    )
+    monkeypatch.setattr(
+        "config.network_proxy.apply_network_proxy_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        "config.mirror_env.apply_mirror_environment_from_system_config",
+        lambda: None,
+    )
+    monkeypatch.setattr(session_runtime, "_import_builtin_tools", lambda: None)
+    monkeypatch.setattr(session_runtime, "load_chat_config", lambda: config)
+    monkeypatch.setattr("i18n.init_i18n", lambda _language: None)
+    monkeypatch.setattr(
+        "core.sprite.sprite_cli.load_sprite_launch_config",
+        lambda: {},
+    )
+    monkeypatch.setattr(
+        "core.sprite.sprite_cli.parse_sprite_args",
+        Mock(side_effect=SystemExit(2)),
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        session_runtime.parse_launch_options(transport)
+
+    assert raised.value.code == 2
+    failed = transport.initialization_events[-1]
+    assert failed["type"] == "chat.init.failed"
+    assert failed["task"]["error"] == "2"
+    assert failed["task"]["message"] == "Failed while reading chat settings."
+
+
+def test_session_factory_reuses_preparse_initialization_service(monkeypatch) -> None:
+    transport = _Transport(streaming=True)
+    initialization = session_runtime._initialization_for(transport)
+    events_before_factory = len(transport.initialization_events)
+    monkeypatch.setattr(
+        session_runtime,
+        "create_chat_startup_context",
+        lambda *_args, config, **_kwargs: _startup(config),
+    )
+
+    session = session_runtime.create_chat_session(_options(), transport)
+
+    assert session.initialization is initialization
+    assert len(transport.initialization_events) == events_before_factory
+    assert (
+        sum(
+            event["task"]["phase"] == "preparing"
+            for event in transport.initialization_events
+            if event["type"] == "chat.init.progress"
+        )
+        == 1
+    )
 
 
 def test_headless_session_owns_workflow_and_queue_assembly(monkeypatch) -> None:

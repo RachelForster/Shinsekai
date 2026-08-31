@@ -67,11 +67,16 @@ def main() -> None:
     from application.chat.session_runtime import (
         create_chat_session,
         parse_launch_options,
+        peek_launch_endpoints,
     )
-    from frontend_bridge_core.transport.chat_session import create_transport
+    from frontend_bridge_core.transport.chat_session import (
+        create_initialization_transport,
+        create_transport,
+    )
 
-    options = parse_launch_options()
-    transport = create_transport(options)
+    transport = create_initialization_transport(peek_launch_endpoints())
+    options = parse_launch_options(transport)
+    transport = create_transport(options, transport)
     session = create_chat_session(options, transport)
     session.run()
 

@@ -1,4 +1,5 @@
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 from application.chat.commands import ChatCommandResult
 from frontend_bridge_core.transport import chat_session
@@ -81,3 +82,51 @@ def test_factory_creates_runtime_and_initialization_sinks(monkeypatch) -> None:
     assert transport.stream_sink is sinks[0]
     assert transport.init_sink is sinks[1]
     assert sinks[0].events == [{"type": "status.change", "status": "idle"}]
+
+
+def test_initialization_transport_uses_bridge_endpoint_before_options_parse(
+    monkeypatch,
+) -> None:
+    sinks = []
+
+    def create_sink(endpoint):
+        sink = _Sink()
+        sink.endpoint = endpoint
+        sinks.append(sink)
+        return sink
+
+    monkeypatch.setattr(chat_session, "WSClientSink", create_sink)
+
+    transport = chat_session.create_initialization_transport(
+        SimpleNamespace(
+            init_stream_endpoint="ws://init",
+            stream_endpoint="ws://runtime",
+        )
+    )
+
+    assert transport.stream_sink is None
+    assert transport.init_sink is sinks[0]
+    assert sinks[0].endpoint == "ws://init"
+    assert sinks[0].events == []
+
+
+def test_runtime_transport_reuses_early_stream_connection(monkeypatch) -> None:
+    bootstrap_sink = _Sink()
+    bootstrap_sink.endpoint = "ws://runtime"
+    transport = ChatSessionTransport(init_sink=bootstrap_sink)
+    create_sink = Mock(side_effect=AssertionError("must reuse bootstrap sink"))
+    monkeypatch.setattr(chat_session, "WSClientSink", create_sink)
+    options = SimpleNamespace(
+        args=SimpleNamespace(
+            stream_endpoint="ws://runtime",
+            init_stream_endpoint="",
+        )
+    )
+
+    upgraded = chat_session.create_transport(options, transport)
+
+    assert upgraded is transport
+    assert upgraded.stream_sink is bootstrap_sink
+    assert upgraded.init_sink is bootstrap_sink
+    assert bootstrap_sink.events == [{"type": "status.change", "status": "idle"}]
+    create_sink.assert_not_called()
