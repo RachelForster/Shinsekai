@@ -731,6 +731,44 @@ def test_package_export_results_remain_transport_independent() -> None:
     assert "character_response_payload(" in route_source
 
 
+def test_main_delegates_realtime_chat_commands() -> None:
+    """Keep command behavior in application and envelopes in transport."""
+
+    entrypoint = REPO_ROOT / "main.py"
+    use_case = REPO_ROOT / "application" / "chat" / "commands.py"
+    transport = (
+        REPO_ROOT
+        / "frontend_bridge_core"
+        / "transport"
+        / "chat_commands.py"
+    )
+    source = entrypoint.read_text(encoding="utf-8")
+    use_case_source = use_case.read_text(encoding="utf-8")
+    transport_source = transport.read_text(encoding="utf-8")
+    retired_implementations = {
+        'command_type == "send-message"',
+        'command_type == "clear-history"',
+        'command_type == "reroll"',
+        'command_type == "pause-asr"',
+        'command_type == "fork-history"',
+        'command_type == "switch-branch"',
+        'command_type == "rename-branch"',
+        '"type": "cmd.ack"',
+    }
+
+    assert use_case.is_file()
+    assert transport.is_file()
+    assert "request = parse_chat_command(command)" in source
+    assert "result = command_dispatcher.execute(request)" in source
+    assert "send_chat_command_ack(stream_sink.emit, request, result)" in source
+    assert not {item for item in retired_implementations if item in source}, (
+        "main.py must only compose the realtime command application use case."
+    )
+    assert "cmdId" not in use_case_source
+    assert "cmd.ack" not in use_case_source
+    assert '"type": "cmd.ack"' in transport_source
+
+
 def test_mobile_access_respects_application_and_transport_boundaries() -> None:
     """Keep lifecycle in application and concrete listeners in the bridge."""
 

@@ -253,7 +253,8 @@ Backgrounds 和 Characters。
 
 后续阶段：
 
-- 实时命令分发迁到 `application/chat/dispatch_commands.py`；
+- 实时命令分发迁到 `application/chat/commands.py`，WebSocket envelope 与 ack
+  保留在 `frontend_bridge_core/transport/chat_commands.py`；
 - provider、插件、模板和历史启动装配迁到
   `application/chat/initialize_chat.py`；
 - streaming/headless 生命周期迁到 `application/chat/run_session.py`；
@@ -294,6 +295,7 @@ Backgrounds 和 Characters。
 | `frontend_bridge_core/backgrounds.py` 资源变更 | `application/backgrounds/management.py` | O8 PR 2 | bridge 仅保留协议、翻译和简单标签写入 |
 | `frontend_bridge_core/characters.py` 资源变更 | `application/characters/management.py` | O8 PR 2 | 保存校验、文件操作和多步骤更新由 application 编排 |
 | `main.py` 对话分支闭包 | `application/chat/manage_branches.py` | O9/阶段 1 | 分支状态、操作和持久化归 application，入口只装配窄回调 |
+| `main.py` 实时命令分支 | `application/chat/commands.py` + `frontend_bridge_core/transport/chat_commands.py` | O9/阶段 2 | application 执行命令行为，transport 只解析 payload 并发送 ack |
 
 ## 5. 通用退出条件
 
