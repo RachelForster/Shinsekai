@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from application.characters import generation
-from application.characters.generation import generate_character_setting
+from application.characters import generate_character as generation
+from application.characters.generate_character import generate_character
 from config.character_manager import CharacterManager
 from test.conftest import make_character
 
@@ -51,6 +51,36 @@ class _FakeLLMManager:
         return f"generated:{self.adapter.model}"
 
 
+def test_character_generation_accepts_fake_persistence_dependencies():
+    character = make_character(name="New", character_setting="seed")
+
+    class ConfigStore:
+        current = None
+
+        def get_character_by_name(self, _name):
+            return self.current
+
+        def get_llm_api_config(self):
+            return "", "", "", ""
+
+        def merged_llm_factory_kwargs(self, _provider, base_kwargs):
+            return base_kwargs
+
+        def save_characters_config(self):
+            raise AssertionError("incomplete LLM config must not be saved")
+
+    config = ConfigStore()
+
+    class Creator:
+        def add_character(self, **_values):
+            config.current = character
+
+    result = generate_character(Creator(), config, "New", "seed")
+
+    assert "LLM 配置不完整" in result.message
+    assert result.character_setting == "seed"
+
+
 def test_character_ai_writer_rebuilds_llm_when_model_config_changes(
     monkeypatch,
 ):
@@ -75,18 +105,18 @@ def test_character_ai_writer_rebuilds_llm_when_model_config_changes(
     manager = CharacterManager()
     manager._config_manager = config
 
-    status, setting = generate_character_setting(manager, "Alice", "seed")
-    assert status == "输出成功"
-    assert setting == "generated:model-a"
+    result = generate_character(manager, config, "Alice", "seed")
+    assert result.message == "输出成功"
+    assert result.character_setting == "generated:model-a"
 
     config.model = "model-b"
-    status, setting = generate_character_setting(manager, "Alice", "seed")
-    assert status == "输出成功"
-    assert setting == "generated:model-b"
+    result = generate_character(manager, config, "Alice", "seed")
+    assert result.message == "输出成功"
+    assert result.character_setting == "generated:model-b"
 
-    status, setting = generate_character_setting(manager, "Alice", "seed")
-    assert status == "输出成功"
-    assert setting == "generated:model-b"
+    result = generate_character(manager, config, "Alice", "seed")
+    assert result.message == "输出成功"
+    assert result.character_setting == "generated:model-b"
 
     assert created_models == ["model-a", "model-b"]
     assert config.saved == 3

@@ -5,7 +5,7 @@ import time
 from typing import Any
 from unittest.mock import Mock
 
-from application.chat.initialization import start_chat_init
+from application.chat.start_chat import start_chat
 from application.runtime.state import BridgeState
 from application.runtime.tasks import _get_task, _request_task_cancel
 
@@ -61,14 +61,18 @@ def _state() -> BridgeState:
     return state
 
 
-def _wait_for_task(state: BridgeState, task_id: str, statuses: set[str], timeout: float = 3.0) -> dict[str, Any]:
+def _wait_for_task(
+    state: BridgeState, task_id: str, statuses: set[str], timeout: float = 3.0
+) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         task = _get_task(state, task_id)
         if str(task.get("status") or "") in statuses:
             return task
         time.sleep(0.01)
-    raise AssertionError(f"task {task_id} did not reach {statuses}: {_get_task(state, task_id)}")
+    raise AssertionError(
+        f"task {task_id} did not reach {statuses}: {_get_task(state, task_id)}"
+    )
 
 
 def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
@@ -82,10 +86,14 @@ def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
     }
     runtime = {"running": False, "closeReasons": [], "sourceSnapshot": source_snapshot}
 
-    monkeypatch.setattr("application.chat.initialization._chat_process_running", lambda: runtime["running"])
-    monkeypatch.setattr("application.chat.initialization._chat_runtime_mode", lambda _state: mode)
     monkeypatch.setattr(
-        "application.chat.initialization._chat_snapshot",
+        "application.chat.start_chat._chat_process_running", lambda: runtime["running"]
+    )
+    monkeypatch.setattr(
+        "application.chat.start_chat._chat_runtime_mode", lambda _state: mode
+    )
+    monkeypatch.setattr(
+        "application.chat.start_chat._chat_snapshot",
         lambda _state, *_args, **_kwargs: {
             **source_snapshot,
             "chatProcessRunning": runtime["running"],
@@ -99,7 +107,7 @@ def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
         runtime["closeReasons"].append(reason)
         return {"status": "idle"}
 
-    monkeypatch.setattr("application.chat.initialization._close_chat", close_chat)
+    monkeypatch.setattr("application.chat.start_chat.stop_chat", close_chat)
     return runtime
 
 
@@ -108,7 +116,7 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
     runtime = _patch_runtime(monkeypatch)
     persist_history_path = Mock(return_value=True)
     monkeypatch.setattr(
-        "application.chat.initialization.persist_confirmed_history_path",
+        "application.chat.start_chat.persist_confirmed_history_path",
         persist_history_path,
     )
     release_completion = threading.Event()
@@ -121,14 +129,24 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
         state.chat_session = {"sessionId": session_id}
         state.chat_stream.set_init_task(
             session_id,
-            {"status": "running", "phase": "memory", "progress": 0.45, "message": "Loading memory"},
+            {
+                "status": "running",
+                "phase": "memory",
+                "progress": 0.45,
+                "message": "Loading memory",
+            },
         )
 
         def complete() -> None:
             release_completion.wait(timeout=2.0)
             state.chat_stream.set_init_task(
                 session_id,
-                {"status": "succeeded", "phase": "completed", "progress": 1, "message": "Ready"},
+                {
+                    "status": "succeeded",
+                    "phase": "completed",
+                    "progress": 1,
+                    "message": "Ready",
+                },
             )
 
         threading.Thread(target=complete, daemon=True).start()
@@ -138,13 +156,13 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
             "_pendingHistoryPath": "history/new-chat",
         }
 
-    first = start_chat_init(state, mode="launch", launch=launch, timeout=2.0)
+    first = start_chat(state, mode="launch", launch=launch, timeout=2.0)
     running = _wait_for_task(state, first["id"], {"running"})
     while running.get("phase") != "memory":
         time.sleep(0.01)
         running = _get_task(state, first["id"])
 
-    second = start_chat_init(state, mode="launch", launch=launch, timeout=2.0)
+    second = start_chat(state, mode="launch", launch=launch, timeout=2.0)
     assert second["id"] == first["id"]
     assert running["progress"] == 0.45
     assert running["message"] == "Loading memory"
@@ -163,7 +181,9 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
             "status": "idle",
         }
     ]
-    assert runtime["sourceSnapshot"]["sprites"] == [{"id": "stale", "label": "Stale", "path": "stale.png"}]
+    assert runtime["sourceSnapshot"]["sprites"] == [
+        {"id": "stale", "label": "Stale", "path": "stale.png"}
+    ]
     assert len(launch_calls) == 1
     assert finished["progress"] == 1
     assert finished["result"]["chatProcessRunning"] is True
@@ -177,7 +197,7 @@ def test_producer_connection_without_init_terminal_event_times_out(monkeypatch):
     runtime = _patch_runtime(monkeypatch)
     persist_history_path = Mock(return_value=True)
     monkeypatch.setattr(
-        "application.chat.initialization.persist_confirmed_history_path",
+        "application.chat.start_chat.persist_confirmed_history_path",
         persist_history_path,
     )
 
@@ -189,7 +209,7 @@ def test_producer_connection_without_init_terminal_event_times_out(monkeypatch):
             "_pendingHistoryPath": "history/failed-chat",
         }
 
-    task = start_chat_init(state, mode="launch", launch=launch, timeout=0.08)
+    task = start_chat(state, mode="launch", launch=launch, timeout=0.08)
     failed = _wait_for_task(state, task["id"], {"failed"})
 
     assert "timed out" in failed["error"]
@@ -210,7 +230,7 @@ def test_chat_init_does_not_treat_a_closing_runtime_as_ready(monkeypatch):
         launch_called = True
         return {"status": "idle", "_chatInitStreamAttached": True}
 
-    task = start_chat_init(state, mode="launch", launch=launch, timeout=1.0)
+    task = start_chat(state, mode="launch", launch=launch, timeout=1.0)
     failed = _wait_for_task(state, task["id"], {"failed"})
 
     assert "closing" in failed["error"]
@@ -237,7 +257,7 @@ def test_failed_init_event_fails_task_and_cleans_process_and_session(monkeypatch
         )
         return {"status": "idle", "_chatInitStreamAttached": True}
 
-    task = start_chat_init(state, mode="launch", launch=launch, timeout=1.0)
+    task = start_chat(state, mode="launch", launch=launch, timeout=1.0)
     failed = _wait_for_task(state, task["id"], {"failed"})
 
     assert failed["phase"] == "failed"
@@ -264,7 +284,7 @@ def test_runtime_dependency_error_is_a_successful_actionable_result(monkeypatch)
         "statusMessage": "Missing Python module: demo_runtime",
     }
 
-    task = start_chat_init(
+    task = start_chat(
         state,
         mode="launch",
         launch=lambda _stream_info: dict(dependency_snapshot),
@@ -286,7 +306,7 @@ def test_cancelled_chat_init_cleans_runtime(monkeypatch):
         launched.set()
         return {"status": "idle", "_chatInitStreamAttached": True}
 
-    task = start_chat_init(state, mode="resume-last", launch=launch, timeout=2.0)
+    task = start_chat(state, mode="resume-last", launch=launch, timeout=2.0)
     assert launched.wait(timeout=1.0)
     _request_task_cancel(state, task["id"])
     cancelled = _wait_for_task(state, task["id"], {"cancelled"})
@@ -304,11 +324,16 @@ def test_native_chat_init_deletes_hidden_progress_session_after_success(monkeypa
         runtime["running"] = True
         state.chat_stream.set_init_task(
             stream_info["sessionId"],
-            {"status": "succeeded", "phase": "completed", "progress": 1, "message": "Ready"},
+            {
+                "status": "succeeded",
+                "phase": "completed",
+                "progress": 1,
+                "message": "Ready",
+            },
         )
         return {"status": "idle", "_chatInitStreamAttached": True}
 
-    task = start_chat_init(state, mode="launch", launch=launch, timeout=1.0)
+    task = start_chat(state, mode="launch", launch=launch, timeout=1.0)
     finished = _wait_for_task(state, task["id"], {"succeeded"})
 
     assert finished["result"]["chatProcessRunning"] is True

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 from weakref import WeakKeyDictionary
 
 from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
@@ -16,6 +16,32 @@ class _GenerationRuntime:
 _RUNTIMES: WeakKeyDictionary[Any, _GenerationRuntime] = WeakKeyDictionary()
 
 
+@dataclass(frozen=True, slots=True)
+class GenerateCharacterResult:
+    message: str
+    character_setting: str
+
+
+class CharacterCreator(Protocol):
+    """Character persistence capability required when the target is missing."""
+
+    def add_character(self, **values: Any) -> Any: ...
+
+
+class CharacterConfigStore(Protocol):
+    """Narrow configuration surface used by character generation."""
+
+    def get_character_by_name(self, name: str) -> Any | None: ...
+
+    def get_llm_api_config(self) -> tuple[str, str, str, str]: ...
+
+    def merged_llm_factory_kwargs(
+        self, provider: str, base_kwargs: dict[str, Any]
+    ) -> dict[str, Any]: ...
+
+    def save_characters_config(self) -> None: ...
+
+
 def _runtime_for(character_manager: Any) -> _GenerationRuntime:
     runtime = _RUNTIMES.get(character_manager)
     if runtime is None:
@@ -24,20 +50,20 @@ def _runtime_for(character_manager: Any) -> _GenerationRuntime:
     return runtime
 
 
-def generate_character_setting(
-    character_manager: Any,
+def generate_character(
+    character_creator: CharacterCreator,
+    config_store: CharacterConfigStore,
     name: str,
     setting: str,
-) -> tuple[str, str]:
+) -> GenerateCharacterResult:
     """Generate and persist a character setting through the configured LLM."""
 
     if not name:
-        return "请选择或输入要生成的角色的名字！", setting
+        return GenerateCharacterResult("请选择或输入要生成的角色的名字！", setting)
 
-    config_manager = character_manager._config_manager
-    character = config_manager.get_character_by_name(name)
+    character = config_store.get_character_by_name(name)
     if character is None:
-        character_manager.add_character(
+        character_creator.add_character(
             name=name,
             color="",
             sprite_prefix="",
@@ -48,9 +74,9 @@ def generate_character_setting(
             prompt_lang="",
             character_setting=setting,
         )
-        character = config_manager.get_character_by_name(name)
+        character = config_store.get_character_by_name(name)
         if character is None:
-            return f"创建角色 {name} 失败。", setting
+            return GenerateCharacterResult(f"创建角色 {name} 失败。", setting)
 
     setting = "无" if not setting else setting
     template = f"""
@@ -75,15 +101,15 @@ def generate_character_setting(
 
     try:
         llm_provider, llm_model, llm_base_url, api_key = (
-            config_manager.get_llm_api_config()
+            config_store.get_llm_api_config()
         )
         if not llm_provider or not api_key or not llm_model:
-            return (
+            return GenerateCharacterResult(
                 "LLM 配置不完整，请先设定大语言模型供应商、模型和 API Key。",
                 setting,
             )
 
-        factory_kwargs = config_manager.merged_llm_factory_kwargs(
+        factory_kwargs = config_store.merged_llm_factory_kwargs(
             llm_provider,
             {
                 "llm_provider": llm_provider,
@@ -95,7 +121,7 @@ def generate_character_setting(
         signature = tuple(
             sorted((str(key), repr(value)) for key, value in factory_kwargs.items())
         )
-        runtime = _runtime_for(character_manager)
+        runtime = _runtime_for(character_creator)
         if runtime.manager is None or runtime.config_signature != signature:
             adapter = LLMAdapterFactory.create_adapter(**factory_kwargs)
             runtime.manager = LLMManager(
@@ -112,12 +138,12 @@ def generate_character_setting(
             include_local_time=False,
         )
         character.character_setting = generated
-        config_manager.save_characters_config()
-        return "输出成功", character.character_setting
+        config_store.save_characters_config()
+        return GenerateCharacterResult("输出成功", character.character_setting)
     except ImportError:
-        return (
+        return GenerateCharacterResult(
             "输出失败: LLM 模块依赖未找到 (LLMAdapterFactory, LLMManager)",
             setting,
         )
     except Exception as exc:
-        return f"输出失败:{exc}", setting
+        return GenerateCharacterResult(f"输出失败:{exc}", setting)

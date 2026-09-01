@@ -30,7 +30,7 @@ def _get_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
         dependency_error["status"] = "missing_dependency"
         return dependency_error
 
-    from application.memory.service import check_mem0_status
+    from application.memory.manage_memories import check_mem0_status
 
     return check_mem0_status(start_loading=start_loading)
 
@@ -46,7 +46,7 @@ def _list_character_memories(name: str) -> dict[str, Any]:
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from application.memory.service import list_memories
+    from application.memory.manage_memories import list_memories
 
     try:
         return list_memories(name)
@@ -60,7 +60,7 @@ def _memory_tool_search(query: str, character_name: str, limit: int = 10) -> dic
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from application.memory.service import search_memories
+    from application.memory.manage_memories import search_memories
 
     try:
         return search_memories(query, character_name=character_name, limit=limit)
@@ -74,7 +74,7 @@ def _memory_tool_remember(content: str, character_name: str) -> dict[str, Any]:
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from application.memory.service import remember_memory
+    from application.memory.manage_memories import remember_memory
 
     try:
         return remember_memory(content, character_name=character_name)
@@ -88,7 +88,7 @@ def _memory_tool_forget(memory_id: str) -> dict[str, Any]:
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from application.memory.service import forget_memory
+    from application.memory.manage_memories import forget_memory
 
     try:
         return forget_memory(memory_id)
@@ -102,7 +102,7 @@ def _add_character_memory(name: str, content: str) -> dict[str, Any]:
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from application.memory.service import remember_and_list
+    from application.memory.manage_memories import remember_and_list
 
     try:
         result = remember_and_list(content, character_name=name)
@@ -118,7 +118,7 @@ def _delete_character_memory(name: str, memory_id: str) -> dict[str, Any]:
         return dep_error
 
     from sdk.tool_registry import ToolNotReady
-    from application.memory.service import forget_and_list
+    from application.memory.manage_memories import forget_and_list
 
     try:
         result = forget_and_list(memory_id, character_name=name)
@@ -137,7 +137,7 @@ def _preview_character_memory_import(
 ) -> dict[str, Any]:
     """Thin bridge wrapper around the memory import preview service."""
 
-    from application.memory.service import preview_import
+    from application.memory.manage_memories import preview_import
 
     return preview_import(
         paths,
@@ -157,7 +157,7 @@ def _run_character_memory_import(
 ) -> dict[str, Any]:
     """Run extraction in a handler-owned background task."""
 
-    from application.memory.service import execute_import
+    from application.memory.manage_memories import execute_import
     from application.runtime.tasks import (
         TaskCancelled,
         _append_task_log,

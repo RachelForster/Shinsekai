@@ -1,10 +1,10 @@
 from types import SimpleNamespace
 
-from application.chat.effects import build_selected_effect_context
+from application.chat.build_effect_context import build_effect_context
 
 
 def _manager(*effects):
-    return SimpleNamespace(config=SimpleNamespace(effect_list=list(effects)))
+    return SimpleNamespace(list_effects=lambda: list(effects))
 
 
 def _effect(name: str, audio_tags: str, audio_list: list[str]):
@@ -12,7 +12,7 @@ def _effect(name: str, audio_tags: str, audio_list: list[str]):
 
 
 def test_selected_effect_context_is_empty_without_a_selection():
-    context = build_selected_effect_context(_manager(), [])
+    context = build_effect_context(_manager(), [])
 
     assert context.selected_names == ()
     assert context.labels == ()
@@ -23,10 +23,10 @@ def test_selected_effect_context_is_empty_without_a_selection():
 
 def test_selected_effect_context_builds_prompt_and_runtime_map_once(monkeypatch):
     monkeypatch.setattr(
-        "application.chat.effects.tr_i18n",
+        "application.chat.build_effect_context.tr_i18n",
         lambda key: "Available labels" if key == "template_gen.effects_header" else key,
     )
-    context = build_selected_effect_context(
+    context = build_effect_context(
         _manager(
             _effect(
                 "Ambient",
@@ -55,8 +55,10 @@ def test_selected_effect_context_builds_prompt_and_runtime_map_once(monkeypatch)
 
 
 def test_selected_effect_context_preserves_blank_tag_indexes(monkeypatch):
-    monkeypatch.setattr("application.chat.effects.tr_i18n", lambda _key: "Labels")
-    context = build_selected_effect_context(
+    monkeypatch.setattr(
+        "application.chat.build_effect_context.tr_i18n", lambda _key: "Labels"
+    )
+    context = build_effect_context(
         _manager(
             _effect(
                 "Ambient",
@@ -75,8 +77,10 @@ def test_selected_effect_context_preserves_blank_tag_indexes(monkeypatch):
 
 
 def test_selected_effect_context_does_not_invent_labels(monkeypatch):
-    monkeypatch.setattr("application.chat.effects.tr_i18n", lambda _key: "Labels")
-    context = build_selected_effect_context(
+    monkeypatch.setattr(
+        "application.chat.build_effect_context.tr_i18n", lambda _key: "Labels"
+    )
+    context = build_effect_context(
         _manager(
             _effect(
                 "Custom",

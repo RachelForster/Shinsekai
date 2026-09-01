@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from application.chat import runtime_process as chat
+from application.chat.stop_chat import stop_chat
 from application.runtime.dependencies import runtime_dependency_error_from_text
 
 
@@ -337,7 +338,7 @@ def test_close_chat_requests_graceful_runtime_shutdown_and_marks_session_closed(
         mobile_access_service=mobile_access,
     )
 
-    snapshot = chat._close_chat(state)
+    snapshot = stop_chat(state)
 
     assert process.signals == []
     assert chat_stream.commands[0][0] == "session-1"

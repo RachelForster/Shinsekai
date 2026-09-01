@@ -11,9 +11,9 @@ from application.chat.runtime_process import (
     _chat_runtime_mode,
     _chat_snapshot,
     _chat_stream_initial_snapshot,
-    _close_chat,
 )
 from application.chat.launch_history import persist_confirmed_history_path
+from application.chat.stop_chat import stop_chat
 from application.runtime.state import BridgeState
 from application.runtime.tasks import (
     TaskCancelled,
@@ -75,7 +75,9 @@ def _safe_task_changes(raw_task: dict[str, Any]) -> dict[str, Any]:
 
     logs = raw_task.get("logs")
     if isinstance(logs, list):
-        changes["logs"] = [str(line)[:4000] for line in logs[-120:] if str(line).strip()]
+        changes["logs"] = [
+            str(line)[:4000] for line in logs[-120:] if str(line).strip()
+        ]
     return changes
 
 
@@ -95,7 +97,7 @@ def _clear_chat_session_id(state: BridgeState, session_id: str) -> None:
 
 def _cleanup_chat_init(state: BridgeState, session_id: str, *, reason: str) -> None:
     try:
-        _close_chat(state, reason=reason)
+        stop_chat(state, reason=reason)
     except Exception:
         pass
     finally:
@@ -126,7 +128,9 @@ def _run_chat_init(
     if chat_stream is None:
         raise RuntimeError("chat stream service is unavailable")
 
-    stream_info = chat_stream.create_session(_chat_stream_initial_snapshot(_chat_snapshot(state, "idle", "")))
+    stream_info = chat_stream.create_session(
+        _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))
+    )
     session_id = str(stream_info.get("sessionId") or "").strip()
     if not session_id:
         raise RuntimeError("failed to create chat initialization session")
@@ -161,7 +165,11 @@ def _run_chat_init(
             return launch_result
         if str(launch_result.get("status") or "") == "error":
             raise ChatInitFailed(
-                str(launch_result.get("statusMessage") or launch_result.get("dialogText") or "chat launch failed")
+                str(
+                    launch_result.get("statusMessage")
+                    or launch_result.get("dialogText")
+                    or "chat launch failed"
+                )
             )
 
         # A concurrent legacy launch can win between the initial process check
@@ -171,7 +179,9 @@ def _run_chat_init(
             if _chat_process_running():
                 chat_stream.delete_session(session_id)
                 return _chat_snapshot(state)
-            raise ChatInitFailed("chat runtime did not attach its initialization stream")
+            raise ChatInitFailed(
+                "chat runtime did not attach its initialization stream"
+            )
 
         deadline = time.monotonic() + max(float(timeout), 0.1)
         last_changes: dict[str, Any] | None = None
@@ -201,22 +211,32 @@ def _run_chat_init(
                         chat_stream.delete_session(session_id)
                     return _chat_snapshot(state)
                 if status == "failed":
-                    raise ChatInitFailed(_terminal_error(init_task, "chat initialization failed"))
+                    raise ChatInitFailed(
+                        _terminal_error(init_task, "chat initialization failed")
+                    )
                 if status == "cancelled":
                     raise TaskCancelled()
 
             if not _chat_process_running():
                 detail = init_task if isinstance(init_task, dict) else {}
-                raise ChatInitFailed(_terminal_error(detail, "chat process exited before initialization completed"))
+                raise ChatInitFailed(
+                    _terminal_error(
+                        detail, "chat process exited before initialization completed"
+                    )
+                )
             time.sleep(CHAT_INIT_POLL_INTERVAL_SECONDS)
 
-        raise TimeoutError(f"chat initialization timed out after {int(max(float(timeout), 0.1))} seconds")
+        raise TimeoutError(
+            f"chat initialization timed out after {int(max(float(timeout), 0.1))} seconds"
+        )
     except BaseException:
-        _cleanup_chat_init(state, session_id, reason="Chat initialization did not complete.")
+        _cleanup_chat_init(
+            state, session_id, reason="Chat initialization did not complete."
+        )
         raise
 
 
-def start_chat_init(
+def start_chat(
     state: BridgeState,
     *,
     mode: str,

@@ -455,7 +455,7 @@ def test_core_does_not_receive_application_managers() -> None:
 
 def test_application_owns_chat_composition_and_presentation() -> None:
     expected_application_modules = (
-        REPO_ROOT / "application" / "chat" / "effects.py",
+        REPO_ROOT / "application" / "chat" / "build_effect_context.py",
         REPO_ROOT / "application" / "chat" / "initial_sprite.py",
         REPO_ROOT / "application" / "chat" / "turn_wiring.py",
     )
@@ -885,6 +885,64 @@ def test_mobile_access_respects_application_and_transport_boundaries() -> None:
         "Routes must call the application mobile-access use case instead of "
         "reaching through BridgeState to the transport adapter."
     )
+
+
+def test_bridge_facing_application_use_cases_have_explicit_action_names() -> None:
+    """Public use cases stay action-oriented and transport-independent."""
+
+    actions = {
+        "application/chat/start_chat.py": "def start_chat(",
+        "application/chat/stop_chat.py": "def stop_chat(",
+        "application/chat/build_effect_context.py": "def build_effect_context(",
+        "application/model_assets/download_model.py": "def download_model(",
+        "application/plugins/install_plugin.py": "def install_plugin(",
+        "application/characters/generate_character.py": "def generate_character(",
+    }
+    for relative, entrypoint in actions.items():
+        source = (REPO_ROOT / relative).read_text(encoding="utf-8")
+        assert entrypoint in source
+        assert "/api/" not in source
+        assert "downloadUrl" not in source
+
+    retired = {
+        "application/chat/effects.py",
+        "application/chat/initialization.py",
+        "application/characters/generation.py",
+        "application/memory/service.py",
+        "application/model_assets/service.py",
+        "application/plugins/updates.py",
+    }
+    assert not {relative for relative in retired if (REPO_ROOT / relative).exists()}
+
+    ambiguous_names = {"helpers.py", "manager.py", "service.py", "utils.py"}
+    assert not {
+        source.relative_to(REPO_ROOT).as_posix()
+        for source in (REPO_ROOT / "application").rglob("*.py")
+        if source.name in ambiguous_names
+    }
+
+    route_source = (
+        REPO_ROOT / "frontend_bridge_core" / "routes" / "api.py"
+    ).read_text(encoding="utf-8")
+    for public_action in (
+        "build_effect_context",
+        "download_model",
+        "install_plugin",
+        "start_chat",
+        "stop_chat",
+    ):
+        assert public_action in route_source
+    assert "application.model_assets.service" not in route_source
+    assert "application.plugins.updates" not in route_source
+
+    effect_source = (
+        REPO_ROOT / "application" / "chat" / "build_effect_context.py"
+    ).read_text(encoding="utf-8")
+    plugin_source = (
+        REPO_ROOT / "application" / "plugins" / "install_plugin.py"
+    ).read_text(encoding="utf-8")
+    assert "class EffectConfigReader(Protocol)" in effect_source
+    assert "class PluginInstallProgress(Protocol)" in plugin_source
 
 
 def test_active_host_code_does_not_import_legacy_ai_namespaces() -> None:

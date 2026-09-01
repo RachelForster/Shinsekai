@@ -31,9 +31,18 @@ await assertExists(path.join(resourcesDir, "application", "chat", "startup.py"))
 await assertExists(path.join(resourcesDir, "application", "chat", "session_runtime.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "presentation.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "wire_streaming_session.py"));
-await assertExists(path.join(resourcesDir, "application", "chat", "effects.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "build_effect_context.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "start_chat.py"));
+await assertExists(path.join(resourcesDir, "application", "chat", "stop_chat.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "initial_sprite.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "turn_wiring.py"));
+await assertExists(path.join(resourcesDir, "application", "characters", "generate_character.py"));
+await assertExists(path.join(resourcesDir, "application", "memory", "manage_memories.py"));
+await assertExists(path.join(resourcesDir, "application", "model_assets", "download_model.py"));
+await assertExists(path.join(resourcesDir, "application", "plugins", "install_plugin.py"));
+await assertExists(path.join(resourcesDir, "application", "plugins", "update_application.py"));
+await assertExists(path.join(resourcesDir, "frontend_bridge_core", "model_assets.py"));
+await assertExists(path.join(resourcesDir, "frontend_bridge_core", "plugin_install.py"));
 await assertExists(path.join(resourcesDir, "frontend_bridge_core", "transport", "chat_session.py"));
 await assertExists(path.join(resourcesDir, "application", "effects", "management.py"));
 await assertExists(path.join(resourcesDir, "application", "runtime", "dependencies.py"));
@@ -66,6 +75,12 @@ for (const retiredPath of [
   path.join("core", "messaging", "chat_turn_wiring.py"),
   path.join("core", "sprite", "initial_sprite.py"),
   path.join("application", "media", "effects.py"),
+  path.join("application", "characters", "generation.py"),
+  path.join("application", "chat", "effects.py"),
+  path.join("application", "chat", "initialization.py"),
+  path.join("application", "memory", "service.py"),
+  path.join("application", "model_assets", "service.py"),
+  path.join("application", "plugins", "updates.py"),
   path.join("frontend_bridge_core", "handler.py"),
 ]) {
   await assertMissing(path.join(resourcesDir, retiredPath));

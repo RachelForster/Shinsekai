@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import os
 import re
-import threading
-from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Callable
 
-from core.model_assets.service import ModelAssetSpec, download_model_asset, inspect_model_asset
+from core.model_assets.service import (
+    ModelAssetSpec,
+    download_model_asset,
+    inspect_model_asset,
+)
 
-from application.runtime.state import BridgeState
-from application.runtime.tasks import _update_task
 from sdk.path_utils import reject_control_chars
 
 _ASR_FASTER_WHISPER_ASSET_ID = "asr.faster-whisper"
@@ -57,7 +58,15 @@ _WINDOWS_RESERVED_DEVICE_RE = re.compile(
 )
 _URI_SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
 _MAX_MODEL_REFERENCE_LENGTH = 512
-_MODEL_ASSET_ENQUEUE_LOCK = threading.Lock()
+
+
+@dataclass(frozen=True, slots=True)
+class ModelAssetRequest:
+    """Transport-independent request for a configured or named model asset."""
+
+    asset_id: str
+    configured: bool = False
+    variant: str | None = None
 
 
 def _validated_model_reference(value: str) -> str:
@@ -150,17 +159,14 @@ def _faster_whisper_repo_id(model_name: str) -> str:
     )
 
 
-def _configured_asr_model(state: BridgeState) -> str:
-    config_manager = getattr(state, "config_manager", None)
-    config = getattr(config_manager, "config", None)
-    system_config = getattr(config, "system_config", None)
-    return str(getattr(system_config, "asr_whisper_model_size", "") or "small").strip() or "small"
-
-
-def _resolve_model_asset(state: BridgeState, payload: dict[str, Any]) -> ModelAssetSpec:
-    asset_id = str(payload.get("assetId") or "").strip()
+def resolve_model_asset(
+    request: ModelAssetRequest,
+    *,
+    configured_asr_model: str = "small",
+) -> ModelAssetSpec:
+    asset_id = str(request.asset_id or "").strip()
     if asset_id == _MEMORY_EMBEDDING_ASSET_ID:
-        if "configured" in payload or "variant" in payload or "modelName" in payload:
+        if request.configured or request.variant is not None:
             raise ValueError("memory embedding model requests do not accept a variant")
         from ai.memory.config import EMBEDDING_MODEL_ASSET
 
@@ -168,15 +174,10 @@ def _resolve_model_asset(state: BridgeState, payload: dict[str, Any]) -> ModelAs
     if asset_id != _ASR_FASTER_WHISPER_ASSET_ID:
         raise ValueError(f"Unsupported model asset: {asset_id or '<empty>'}")
 
-    configured = payload.get("configured", False)
-    if not isinstance(configured, bool):
-        raise ValueError("configured must be a boolean")
     # Security boundary: request variants are network identifiers only. Local
     # filesystem paths may come only from the persisted server-side config.
-    if not configured:
-        request_variant = _validated_model_reference(
-            str(payload.get("variant") or payload.get("modelName") or "small")
-        )
+    if not request.configured:
+        request_variant = _validated_model_reference(str(request.variant or "small"))
         if _looks_like_local_model_reference(request_variant):
             raise ValueError(
                 "local model paths must be saved before they can be checked"
@@ -186,7 +187,9 @@ def _resolve_model_asset(state: BridgeState, payload: dict[str, Any]) -> ModelAs
                 raise ValueError(
                     "custom Hugging Face model ids must be saved before they can be checked"
                 )
-            _faster_whisper_repo_id(request_variant)  # Raises the canonical unsupported-model error.
+            _faster_whisper_repo_id(
+                request_variant
+            )  # Raises the canonical unsupported-model error.
         return ModelAssetSpec(
             asset_id=asset_id,
             title=f"faster-whisper {request_variant}",
@@ -196,9 +199,9 @@ def _resolve_model_asset(state: BridgeState, payload: dict[str, Any]) -> ModelAs
             required_file_groups=_ASR_REQUIRED_FILE_GROUPS,
         )
 
-    if "variant" in payload or "modelName" in payload:
+    if request.variant is not None:
         raise ValueError("configured model asset requests must not include a variant")
-    variant = _validated_model_reference(_configured_asr_model(state))
+    variant = _validated_model_reference(configured_asr_model)
 
     title = f"faster-whisper {variant}"
     local_path: Path | None = None
@@ -231,51 +234,29 @@ def _resolve_model_asset(state: BridgeState, payload: dict[str, Any]) -> ModelAs
     )
 
 
-def _model_asset_status(state: BridgeState, payload: dict[str, Any]) -> dict[str, object]:
-    return inspect_model_asset(_resolve_model_asset(state, payload))
+def inspect_model(
+    request: ModelAssetRequest,
+    *,
+    configured_asr_model: str = "small",
+) -> dict[str, object]:
+    return inspect_model_asset(
+        resolve_model_asset(
+            request,
+            configured_asr_model=configured_asr_model,
+        )
+    )
 
 
-def _huggingface_token(state: BridgeState) -> str:
-    config_manager = getattr(state, "config_manager", None)
-    config = getattr(config_manager, "config", None)
-    api_config = getattr(config, "api_config", None)
-    return str(getattr(api_config, "hugging_face_access_token", "") or "").strip()
-
-
-def _download_model_asset(state: BridgeState, task_id: str, spec: ModelAssetSpec) -> dict[str, object]:
-    def update_task(**changes: Any) -> None:
-        _update_task(state, task_id, **changes)
+def download_model(
+    spec: ModelAssetSpec,
+    *,
+    update_task: Callable[..., None],
+    token: str = "",
+) -> dict[str, object]:
+    """Download one resolved model while reporting progress through a callback."""
 
     return download_model_asset(
         spec,
         update_task=update_task,
-        token=_huggingface_token(state),
+        token=str(token or "").strip(),
     )
-
-
-def _find_running_model_asset_task(state: BridgeState, task_key: str) -> dict[str, Any] | None:
-    with state.task_lock:
-        for task in state.tasks.values():
-            if task.get("assetKey") != task_key:
-                continue
-            if str(task.get("status") or "") not in {"queued", "running"}:
-                continue
-            return dict(task)
-    return None
-
-
-@contextmanager
-def _model_asset_enqueue_guard() -> Iterator[None]:
-    """Serialize check-and-enqueue so identical HTTP requests share a task."""
-
-    with _MODEL_ASSET_ENQUEUE_LOCK:
-        yield
-
-
-__all__ = [
-    "_download_model_asset",
-    "_find_running_model_asset_task",
-    "_model_asset_enqueue_guard",
-    "_model_asset_status",
-    "_resolve_model_asset",
-]

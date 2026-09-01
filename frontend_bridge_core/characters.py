@@ -45,12 +45,20 @@ def _character_json_after_reload(state: BridgeState, name: str) -> dict[str, Any
 
 
 def _generate_character_setting(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    from application.characters.generation import generate_character_setting
+    from application.characters.generate_character import generate_character
 
     name = str(payload.get("name") or "").strip()
     setting = str(payload.get("setting") or "")
-    message, character_setting = generate_character_setting(state.character_manager, name, setting)
-    return {"characterSetting": character_setting, "message": message}
+    result = generate_character(
+        state.character_manager,
+        state.config_manager,
+        name,
+        setting,
+    )
+    return {
+        "characterSetting": result.character_setting,
+        "message": result.message,
+    }
 
 
 def _translate_character_fields(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
