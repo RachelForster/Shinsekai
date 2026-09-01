@@ -392,6 +392,11 @@ class ConfigManager:
                 return ef
         return None
 
+    def list_effects(self) -> tuple[Effect, ...]:
+        """Return a stable read-only snapshot for application use cases."""
+
+        return tuple(self.config.effect_list)
+
     def get_character_by_name(self, name: str) -> Optional[Character]:
         """根据角色名称获取角色配置实体"""
         name_key = character_name_key(name)

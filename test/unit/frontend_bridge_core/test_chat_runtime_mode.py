@@ -875,7 +875,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 "frontend_bridge_core.routes.api._launch_chat",
                 return_value="聊天进程已启动！PID: 12345",
             ), patch(
-                "frontend_bridge_core.routes.api._close_chat",
+                "frontend_bridge_core.routes.api.stop_chat",
                 return_value={"status": "idle"},
             ) as close_chat:
                 with self.assertRaisesRegex(RuntimeError, "实时聊天会话未就绪"):

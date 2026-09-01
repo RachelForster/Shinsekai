@@ -320,7 +320,7 @@ def test_headless_session_owns_workflow_and_queue_assembly(monkeypatch) -> None:
         lambda *_args: SimpleNamespace(bgm_paths=[], background_sprites=[]),
     )
     monkeypatch.setattr(
-        "application.chat.effects.build_selected_effect_context",
+        "application.chat.build_effect_context.build_effect_context",
         lambda *_args: SimpleNamespace(keyword_map={"rain": "rain.mp3"}),
     )
     monkeypatch.setattr(

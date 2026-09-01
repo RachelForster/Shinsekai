@@ -3,7 +3,6 @@ from __future__ import annotations
 import html
 import json
 import os
-import re
 import signal
 import subprocess
 import sys
@@ -51,7 +50,6 @@ from application.chat.history_paths import (
 )
 from application.chat.mobile_access import (
     get_mobile_access_info,
-    stop_mobile_access,
 )
 from application.chat.templates import (
     TEMP_SPLIT_META,
@@ -514,54 +512,6 @@ def _launch_chat(
             return _chat_process_started_message(_main_chat_process)
         _close_chat_log_if_needed()
         return _failed_launch_message(exit_code, log_path)
-
-
-def _close_chat(
-    state: BridgeState,
-    *,
-    reason: str = "聊天会话已结束。",
-    wait_timeout: float = 4.0,
-) -> dict[str, Any]:
-    global _main_chat_process
-
-    session_id = str(state.chat_session.get("sessionId") or "").strip()
-    chat_stream = getattr(state, "chat_stream", None)
-    _set_chat_runtime_closing(state, True)
-    try:
-        graceful_shutdown_requested = False
-        if session_id and chat_stream is not None:
-            try:
-                graceful_shutdown_requested = bool(
-                    chat_stream.send_command(
-                        session_id,
-                        {"cmdId": uuid.uuid4().hex, "type": "close-session"},
-                    )
-                )
-            except Exception:
-                graceful_shutdown_requested = False
-        shutdown_active_chat_process(
-            wait_timeout=wait_timeout,
-            wait_before_signal=max(0.0, wait_timeout - 0.7) if graceful_shutdown_requested else 0.0,
-        )
-        if session_id and chat_stream is not None:
-            snapshot = chat_stream.get_snapshot(session_id)
-            if not isinstance(snapshot, dict) or not str(snapshot.get("sessionClosedReason") or "").strip():
-                chat_stream.close_session(session_id, reason=reason)
-    finally:
-        try:
-            stop_mobile_access(state)
-        finally:
-            _set_chat_runtime_closing(state, False)
-    closed_snapshot = _chat_snapshot(state, "idle", "")
-    if session_id:
-        if chat_stream is not None:
-            delete_session = getattr(chat_stream, "delete_session", None)
-            if callable(delete_session):
-                delete_session(session_id)
-        if str(state.chat_session.get("sessionId") or "").strip() == session_id:
-            state.chat_session = {**state.chat_session, "sessionId": ""}
-    clear_story_session(state)
-    return closed_snapshot
 
 
 def _resolve_history_file(state: BridgeState, raw_path: str | Path) -> Path:

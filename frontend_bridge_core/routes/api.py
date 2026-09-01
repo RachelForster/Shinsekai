@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
-from application.chat.effects import build_selected_effect_context
+from application.chat.build_effect_context import build_effect_context
 from application.chat.launch_history import (
     persist_confirmed_history_path,
     plan_chat_history_launch,
@@ -35,6 +35,7 @@ from frontend_bridge_core.backgrounds import (
 )
 from application.effects import EffectOperation
 from frontend_bridge_core.effects import (
+    EffectConfigAdapter,
     effect_response_payload,
     effect_use_case,
     parse_effect_request,
@@ -42,7 +43,6 @@ from frontend_bridge_core.effects import (
 from application.chat.runtime_process import (
     _chat_history,
     _chat_history_download_file,
-    _close_chat,
     TRANSPARENT_BACKGROUND_NAME,
     _chat_process_running,
     _chat_runtime_closing,
@@ -55,6 +55,7 @@ from application.chat.runtime_process import (
     _launch_chat,
     _sanitize_user_display_name,
 )
+from application.chat.stop_chat import stop_chat
 from frontend_bridge_core.chat_themes import (
     delete_chat_theme,
     get_active_chat_theme_id,
@@ -64,7 +65,7 @@ from frontend_bridge_core.chat_themes import (
     save_chat_theme,
     set_active_chat_theme,
 )
-from application.chat.initialization import start_chat_init
+from application.chat.start_chat import start_chat
 from application.chat.mobile_access import configure_mobile_access
 from frontend_bridge_core.characters import (
     _execute_character_request,
@@ -85,12 +86,18 @@ from frontend_bridge_core.memory import (
     _preview_character_memory_import,
     _run_character_memory_import,
 )
-from application.model_assets.service import (
-    _download_model_asset,
-    _find_running_model_asset_task,
-    _model_asset_enqueue_guard,
-    _model_asset_status,
-    _resolve_model_asset,
+from application.model_assets.download_model import (
+    download_model,
+    inspect_model,
+    resolve_model_asset,
+)
+from frontend_bridge_core.model_assets import (
+    configured_asr_model,
+    find_running_model_download,
+    huggingface_token,
+    model_download_enqueue_guard,
+    model_download_progress,
+    parse_model_asset_request,
 )
 from frontend_bridge_core.config import _app_config_response, _fetch_llm_models, _save_api_config, _test_llm_connection
 from application.diagnostics.logs import (
@@ -137,13 +144,14 @@ from frontend_bridge_core.plugin_ui import (
     _run_plugin_ui_action,
     _save_plugin_ui_config,
 )
-from application.plugins.updates import (
-    _app_update_info,
-    _app_update_tags,
-    _install_plugin_source,
-    _repo_tags,
-    _run_app_update,
+from application.plugins.install_plugin import install_plugin
+from application.plugins.update_application import (
+    get_application_update_info,
+    list_application_update_tags,
+    list_plugin_repository_tags,
+    update_application,
 )
+from frontend_bridge_core.plugin_install import BridgePluginInstallProgress
 from application.runtime.dependencies import (
     install_runtime_dependency,
     runtime_dependency_error_from_text,
@@ -509,7 +517,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
         if wait_for_producer(session_id, timeout=timeout):
             return
         try:
-            _close_chat(self.state, reason="聊天会话启动超时。")
+            stop_chat(self.state, reason="聊天会话启动超时。")
         finally:
             chat_stream.delete_session(session_id)
             self.state.chat_session = {**self.state.chat_session, "sessionId": ""}
@@ -637,7 +645,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     send_body=True,
                 )
             elif path == "/api/plugins/app-update/info":
-                self._send_json(_app_update_info())
+                self._send_json(get_application_update_info())
             elif path == "/api/plugins/registry":
                 self._send_json(_plugin_registry_rows())
             elif path == "/api/mcp/config":
@@ -856,11 +864,21 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     worker=lambda task_id: _download_tts_bundle(self.state, task_id, body),
                 )
             elif method == "POST" and path == "/api/model-assets/status":
-                self._send_json(_model_asset_status(self.state, body))
+                request = parse_model_asset_request(body)
+                self._send_json(
+                    inspect_model(
+                        request,
+                        configured_asr_model=configured_asr_model(self.state),
+                    )
+                )
             elif method == "POST" and path == "/api/model-assets/download":
-                spec = _resolve_model_asset(self.state, body)
-                with _model_asset_enqueue_guard():
-                    existing = _find_running_model_asset_task(self.state, spec.task_key)
+                request = parse_model_asset_request(body)
+                spec = resolve_model_asset(
+                    request,
+                    configured_asr_model=configured_asr_model(self.state),
+                )
+                with model_download_enqueue_guard():
+                    existing = find_running_model_download(self.state, spec.task_key)
                     if existing is not None:
                         self._send_json(existing, HTTPStatus.ACCEPTED)
                     else:
@@ -873,7 +891,11 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                                 "assetKey": spec.task_key,
                                 "variant": spec.variant,
                             },
-                            worker=lambda task_id: _download_model_asset(self.state, task_id, spec),
+                            worker=lambda task_id: download_model(
+                                spec,
+                                token=huggingface_token(self.state),
+                                update_task=model_download_progress(self.state, task_id),
+                            ),
                         )
             elif method == "POST" and path.startswith("/api/tasks/") and path.endswith("/cancel"):
                 task_id = unquote(path[len("/api/tasks/") : -len("/cancel")])
@@ -1202,9 +1224,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     message="插件安装任务已排队。",
                     title=f"安装插件 {plugin_id}",
                     task_updates={"source": plugin_id},
-                    worker=lambda task_id: _install_plugin_source(
-                        self.state,
-                        task_id,
+                    worker=lambda task_id: install_plugin(
+                        BridgePluginInstallProgress(self.state, task_id),
                         plugin_id,
                         ref_kind=ref_kind,
                         tag_name=tag_name,
@@ -1212,7 +1233,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     ),
                 )
             elif method == "POST" and path == "/api/plugins/repo-tags":
-                self._send_json(_repo_tags(body))
+                self._send_json(list_plugin_repository_tags(body))
             elif method == "POST" and path == "/api/plugins/publisher/scan":
                 self._send_json(_scan_local_plugin(body))
             elif method == "POST" and path == "/api/plugins/publisher/validate":
@@ -1222,7 +1243,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/plugins/publisher/copy-json":
                 self._send_json(_copy_plugin_submission_json(body))
             elif method == "POST" and path == "/api/plugins/app-update/tags":
-                self._send_json(_app_update_tags())
+                self._send_json(list_application_update_tags())
             elif method == "POST" and path == "/api/plugins/app-update/run":
                 ref_kind = str(body.get("refKind") or "latest").strip()
                 tag_name = str(body.get("tagName") or "").strip()
@@ -1231,7 +1252,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
                     message="主程序更新任务已排队。",
                     title="更新主程序",
                     task_updates={"refKind": ref_kind, "tagName": tag_name},
-                    worker=lambda task_id: _run_app_update(self.state, task_id, body),
+                    worker=lambda task_id: update_application(self.state, task_id, body),
                 )
             elif method == "POST" and path.startswith("/api/plugins/") and path.endswith("/enabled"):
                 plugin_id = unquote(path[len("/api/plugins/") : -len("/enabled")])
@@ -1295,7 +1316,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif method == "POST" and path == "/api/chat/init":
                 self._send_json(self._start_chat_init(body), HTTPStatus.ACCEPTED)
             elif method == "POST" and path == "/api/chat/close":
-                self._send_json(_close_chat(self.state))
+                self._send_json(stop_chat(self.state))
             elif method == "POST" and path == "/api/chat/command":
                 self._send_json(_handle_chat_command(self.state, body))
             elif method == "POST" and path == "/api/story/start":
@@ -1456,7 +1477,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             launch = resume_request
         else:
             raise ValueError("mode must be 'launch' or 'resume-last'")
-        return start_chat_init(self.state, mode=mode, launch=launch)
+        return start_chat(self.state, mode=mode, launch=launch)
 
     def _launch_chat(
         self,
@@ -1544,8 +1565,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if use_react_runtime and self.state.chat_stream is not None
             else {}
         )
-        effect_context = build_selected_effect_context(
-            self.state.config_manager,
+        effect_context = build_effect_context(
+            EffectConfigAdapter(self.state.config_manager),
             body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
         )
         effect_names_str = ",".join(effect_context.selected_names)

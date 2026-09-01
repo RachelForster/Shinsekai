@@ -181,7 +181,7 @@ PR 范围：
 - 将初始立绘的配置选择和 UI 更新迁到 `application/chat/initial_sprite.py`，
   `core/sprite/selection.py` 只保留值输入的路径匹配；
 - 将特效方案选择、运行期 keyword map 和 LLM prompt catalog 迁到
-  `application/chat/effects.py`；
+  `application/chat/build_effect_context.py`；
 - 将重复的音频标签解析收敛到 `core/media/effect_audio.py`，main 与 bridge
   不再各自维护一份解析循环；
 - 将对应单测按职责归位，并禁止 core 再接收 LLM/UI manager 或新增 wiring 模块。
@@ -262,6 +262,26 @@ Backgrounds 和 Characters。
   `application/chat/wire_streaming_session.py`；
 - 完成后 `main.py` 只保留进程环境、transport 装配、模式选择和顶层异常处理。
 
+### O10：整理 Application 公开用例
+
+状态：按动作入口整理，不引入通用 Repository 框架。
+
+- bridge 面向的聊天启动、停止、特效上下文、模型下载、插件安装和角色生成统一
+  调用 `动词_名词.py` 中的公开 action；
+- HTTP camelCase 请求解析与下载 URL 等响应投影继续留在 bridge；
+- Effect 配置和插件安装进度等可替换能力使用窄 `Protocol`，模型下载使用值对象与
+  进度回调，application 单测不需要构造 HTTP handler；
+- 删除 `application/memory/service.py`、`application/model_assets/service.py` 等
+  含糊入口；已有资源领域的唯一 `management.py` 入口继续保留；
+- 不为简单文件读写或单一稳定实现增加 Repository。
+
+完成条件：
+
+- bridge 调用明确、非私有的 application action；
+- action 可使用 fake dependency 或普通值对象直接单测；
+- application 不返回 HTTP 路由或 response DTO；
+- 没有无编排价值的空壳 service。
+
 ## 4. 迁移映射
 
 | 当前路径 | 目标位置 | Objective | 说明 |
@@ -295,7 +315,7 @@ Backgrounds 和 Characters。
 | `core/sprite/sprite_cli.py` | `application/chat/launch_args.py` | O9/阶段 5 | 聊天入口参数和 bridge 启动配置属于 application chat，而非立绘领域 |
 | `core/sprite/chat_history_text.py` | `core/chat_history/text.py` | O9/阶段 5 | 无框架依赖的聊天历史归一化独立归入 chat_history 领域 |
 | `core/sprite/chat_branch_storage.py` | `core/chat_history/storage.py` | O9/阶段 5 | 分支状态与会话文件存储独立归入 chat_history 领域 |
-| main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/effects.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
+| main/bridge 特效标签解析 | `core/media/effect_audio.py` + `application/chat/build_effect_context.py` | O7 | 单一解析能力，application 负责方案选择与 prompt/runtime 投影 |
 | `frontend_bridge_core/effects.py` 主体实现 | `application/effects/management.py` | O8/阶段 1 | bridge 只保留 HTTP adapter，配置与资源操作统一经过 EffectUseCase |
 | `frontend_bridge_core/backgrounds.py` 资源变更 | `application/backgrounds/management.py` | O8 PR 2 | bridge 仅保留协议、翻译和简单标签写入 |
 | `frontend_bridge_core/characters.py` 资源变更 | `application/characters/management.py` | O8 PR 2 | 保存校验、文件操作和多步骤更新由 application 编排 |

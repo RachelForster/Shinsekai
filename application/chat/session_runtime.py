@@ -344,7 +344,7 @@ class _BaseChatSession:
 
     def _build_runtime(self) -> _RuntimeComponents:
         from ai.llm.text_processor import TextProcessor, name_map
-        from application.chat.effects import build_selected_effect_context
+        from application.chat.build_effect_context import build_effect_context
         from application.chat.presentation import load_presentation_assets
         from application.runtime.workflow import (
             build_runtime_workflow,
@@ -360,7 +360,7 @@ class _BaseChatSession:
                 name_map.update(pronunciation_map)
 
         assets = load_presentation_assets(self.config, self.args.bg)
-        effect_context = build_selected_effect_context(
+        effect_context = build_effect_context(
             self.config,
             str(self.args.effect_names or "").strip(),
         )

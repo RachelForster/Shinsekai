@@ -103,13 +103,13 @@ def test_start_chat_init_forwards_launch_and_resume_callbacks(monkeypatch):
     handler._launch_chat = launch_chat
     handler._resume_last_chat = resume_chat
 
-    def start_chat_init(_state, *, mode, launch):
+    def start_chat(_state, *, mode, launch):
         stream_info = {"sessionId": "init-session"}
         result = launch(stream_info)
         calls.append(("coordinator", mode, result))
         return {"id": f"task-{mode}"}
 
-    monkeypatch.setattr("frontend_bridge_core.routes.api.start_chat_init", start_chat_init)
+    monkeypatch.setattr("frontend_bridge_core.routes.api.start_chat", start_chat)
 
     launch_task = handler._start_chat_init({"mode": "launch", "payload": {"templateId": "demo"}})
     resume_task = handler._start_chat_init({"mode": "resume-last"})

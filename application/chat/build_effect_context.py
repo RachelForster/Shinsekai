@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol, Sequence
 
 from core.media.effect_audio import parse_effect_audio_bindings
 from i18n import tr as tr_i18n
@@ -27,6 +27,12 @@ class SelectedEffectContext:
         )
 
 
+class EffectConfigReader(Protocol):
+    """Narrow configuration dependency required by the chat effect action."""
+
+    def list_effects(self) -> Sequence[Any]: ...
+
+
 def _selected_name_keys(selected_names: Any) -> set[str]:
     if isinstance(selected_names, str):
         values = selected_names.split(",")
@@ -37,8 +43,8 @@ def _selected_name_keys(selected_names: Any) -> set[str]:
     return {value.casefold() for item in values if (value := str(item or "").strip())}
 
 
-def build_selected_effect_context(
-    config_manager: Any,
+def build_effect_context(
+    config_reader: EffectConfigReader | None,
     selected_names: Any,
 ) -> SelectedEffectContext:
     """Build the sole normalized effect view used by prompt and runtime paths.
@@ -48,14 +54,14 @@ def build_selected_effect_context(
     """
 
     selected_keys = _selected_name_keys(selected_names)
-    if not selected_keys or config_manager is None:
+    if not selected_keys or config_reader is None:
         return SelectedEffectContext((), (), {}, "")
 
     canonical_names: list[str] = []
     labels: list[str] = []
     seen_labels: set[str] = set()
     keyword_map: dict[str, str] = {}
-    effects = getattr(getattr(config_manager, "config", None), "effect_list", []) or []
+    effects = config_reader.list_effects()
 
     for effect in effects:
         effect_name = str(getattr(effect, "name", "") or "").strip()

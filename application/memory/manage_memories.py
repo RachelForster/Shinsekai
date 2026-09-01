@@ -1,7 +1,7 @@
-"""Application-facing memory operations.
+"""Manage memory actions and compose configured import dependencies.
 
-Transport adapters call this module instead of depending on concrete AI
-implementations directly.
+Simple operations preserve the application boundary while import actions own
+chunk sizing, adapter selection, progress, and cancellation composition.
 """
 
 from __future__ import annotations

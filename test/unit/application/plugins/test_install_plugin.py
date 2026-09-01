@@ -3,19 +3,43 @@ from types import SimpleNamespace
 
 import pytest
 
-from plugin_system.install.package import PluginPackageNetworkError, PluginPackageNonFallbackError
+from plugin_system.install.package import (
+    PluginPackageNetworkError,
+    PluginPackageNonFallbackError,
+)
 from plugin_system.registry.catalog import RegistryPluginRecord
-from application.plugins import updates as plugin_updates
-from application.plugins.updates import (
+from application.plugins import install_plugin as plugin_updates
+from application.plugins.install_plugin import (
     _infer_plugin_entry,
-    _install_plugin_source,
     _is_repo_source,
     _lookup_registry_plugin,
     _plugin_class_from_file,
     _repo_slug_from_source,
     _synthetic_plugin_result,
+    install_plugin,
 )
 from application.runtime.state import BridgeState
+
+
+class _StateProgress:
+    def __init__(self, state: BridgeState, task_id: str) -> None:
+        self.state = state
+        self.task_id = task_id
+
+    def update(self, **changes) -> None:
+        self.state.tasks[self.task_id].update(changes)
+
+    def append_log(self, line: str) -> None:
+        self.state.tasks[self.task_id].setdefault("logs", []).append(line)
+
+
+def _install_plugin_source(
+    state: BridgeState,
+    task_id: str,
+    source: str,
+    **options,
+):
+    return install_plugin(_StateProgress(state, task_id), source, **options)
 
 
 def test_repo_slug_from_source_accepts_common_github_forms():
@@ -23,7 +47,10 @@ def test_repo_slug_from_source_accepts_common_github_forms():
     assert _repo_slug_from_source("https://github.com/owner/repo.git") == "owner/repo"
     assert _repo_slug_from_source("github.com/owner/repo/tree/main") == "owner/repo"
     assert _repo_slug_from_source("git@github.com:owner/repo.git") == "owner/repo"
-    assert _repo_slug_from_source("http://github.com/owner/repo/tree/main?x=1#readme") == "owner/repo"
+    assert (
+        _repo_slug_from_source("http://github.com/owner/repo/tree/main?x=1#readme")
+        == "owner/repo"
+    )
     assert _repo_slug_from_source("owner") == ""
 
 
@@ -33,6 +60,32 @@ def test_repo_source_rejects_manifest_entries():
     assert _is_repo_source("git@github.com:owner/repo.git") is True
     assert _is_repo_source("plugins.demo.plugin:DemoPlugin") is False
     assert _is_repo_source("not-enough") is False
+
+
+def test_install_plugin_accepts_fake_progress_dependency(monkeypatch):
+    updates = []
+    logs = []
+    progress = SimpleNamespace(
+        update=lambda **changes: updates.append(changes),
+        append_log=logs.append,
+    )
+    monkeypatch.setattr(
+        plugin_updates,
+        "_plugin_result_from_manifest",
+        lambda entry: {"entry": entry, "enabled": True},
+    )
+
+    result = install_plugin(progress, "plugins.demo.plugin:DemoPlugin")
+
+    assert result == {
+        "entry": "plugins.demo.plugin:DemoPlugin",
+        "enabled": True,
+    }
+    assert updates == [
+        {"message": "正在写入插件清单。", "phase": "manifest", "progress": 0.45},
+        {"message": "插件清单已更新。", "progress": 0.9},
+    ]
+    assert logs == []
 
 
 def test_plugin_class_from_file_detects_pluginbase_subclasses(tmp_path):
@@ -58,16 +111,23 @@ def test_plugin_class_from_file_detects_pluginbase_subclasses(tmp_path):
 def test_infer_plugin_entry_uses_top_level_or_nested_plugin_file(tmp_path):
     plugin_root = tmp_path / "demo_plugin"
     plugin_root.mkdir()
-    (plugin_root / "plugin.py").write_text("class DemoPlugin(PluginBase):\n    pass\n", encoding="utf-8")
+    (plugin_root / "plugin.py").write_text(
+        "class DemoPlugin(PluginBase):\n    pass\n", encoding="utf-8"
+    )
 
     assert _infer_plugin_entry(plugin_root) == "plugins.demo_plugin.plugin:DemoPlugin"
 
     nested_root = tmp_path / "nested_plugin"
     nested = nested_root / "package"
     nested.mkdir(parents=True)
-    (nested / "plugin.py").write_text("class NestedPlugin(shin.PluginBase):\n    pass\n", encoding="utf-8")
+    (nested / "plugin.py").write_text(
+        "class NestedPlugin(shin.PluginBase):\n    pass\n", encoding="utf-8"
+    )
 
-    assert _infer_plugin_entry(nested_root) == "plugins.nested_plugin.package.plugin:NestedPlugin"
+    assert (
+        _infer_plugin_entry(nested_root)
+        == "plugins.nested_plugin.package.plugin:NestedPlugin"
+    )
 
 
 def test_synthetic_plugin_result_uses_safe_defaults():
@@ -98,7 +158,9 @@ def test_synthetic_plugin_result_uses_safe_defaults():
 def test_infer_plugin_entry_ignores_non_identifier_module_parts(tmp_path):
     plugin_root = tmp_path / "bad-name"
     plugin_root.mkdir()
-    (plugin_root / "plugin.py").write_text("class DemoPlugin(PluginBase):\n    pass\n", encoding="utf-8")
+    (plugin_root / "plugin.py").write_text(
+        "class DemoPlugin(PluginBase):\n    pass\n", encoding="utf-8"
+    )
 
     assert _infer_plugin_entry(plugin_root) == ""
 
@@ -140,7 +202,9 @@ def _state_with_task() -> BridgeState:
 def _plugin_root(tmp_path: Path, name: str) -> Path:
     root = tmp_path / name
     root.mkdir()
-    (root / "plugin.py").write_text("class DemoPlugin(PluginBase):\n    pass\n", encoding="utf-8")
+    (root / "plugin.py").write_text(
+        "class DemoPlugin(PluginBase):\n    pass\n", encoding="utf-8"
+    )
     return root
 
 
@@ -171,13 +235,17 @@ def test_lookup_registry_plugin_matches_id_and_display_name(monkeypatch):
     assert _lookup_registry_plugin("Demo Plugin") is record
 
 
-def test_install_plugin_source_prefers_registry_package_over_github(tmp_path, monkeypatch):
+def test_install_plugin_source_prefers_registry_package_over_github(
+    tmp_path, monkeypatch
+):
     record = _registry_record()
     marks: list[dict] = []
     calls: list[tuple[str, object]] = []
     package_root = _plugin_root(tmp_path, "package-plugin")
 
-    monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
+    monkeypatch.setattr(
+        plugin_updates, "_lookup_registry_plugin", lambda _source: record
+    )
     _patch_manifest_and_state(monkeypatch, marks)
 
     def fake_package_install(rec, **kwargs):
@@ -202,7 +270,9 @@ def test_install_plugin_source_prefers_registry_package_over_github(tmp_path, mo
         lambda root, **_kwargs: calls.append(("pip", root)) or ("pip_ok", ""),
     )
 
-    result = _install_plugin_source(_state_with_task(), "task", "owner/demo", overwrite=True)
+    result = _install_plugin_source(
+        _state_with_task(), "task", "owner/demo", overwrite=True
+    )
 
     assert result["entry"] == "plugins.demo.plugin:DemoPlugin"
     assert result["enabled"] is True
@@ -225,13 +295,17 @@ def test_install_plugin_source_prefers_registry_package_over_github(tmp_path, mo
     assert marks[0]["install_metadata"] == result["install"]
 
 
-def test_install_plugin_source_does_not_mark_existing_directory_as_verified(tmp_path, monkeypatch):
+def test_install_plugin_source_does_not_mark_existing_directory_as_verified(
+    tmp_path, monkeypatch
+):
     record = _registry_record()
     marks: list[dict] = []
     calls: list[tuple[str, object]] = []
     package_root = _plugin_root(tmp_path, "package-plugin")
 
-    monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
+    monkeypatch.setattr(
+        plugin_updates, "_lookup_registry_plugin", lambda _source: record
+    )
     monkeypatch.setattr(
         "plugin_system.install.package.registry_package_target",
         lambda *_args, **_kwargs: package_root,
@@ -252,7 +326,9 @@ def test_install_plugin_source_does_not_mark_existing_directory_as_verified(tmp_
         lambda root, **_kwargs: calls.append(("pip", root)) or ("pip_ok", ""),
     )
 
-    result = _install_plugin_source(_state_with_task(), "task", "owner/demo", overwrite=False)
+    result = _install_plugin_source(
+        _state_with_task(), "task", "owner/demo", overwrite=False
+    )
 
     assert result["install"] == {
         "dependencyStatus": "pip_ok",
@@ -276,7 +352,9 @@ def test_install_plugin_source_falls_back_to_github_for_registry_package_network
     calls: list[str] = []
     github_root = _plugin_root(tmp_path, "github-plugin")
 
-    monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
+    monkeypatch.setattr(
+        plugin_updates, "_lookup_registry_plugin", lambda _source: record
+    )
     _patch_manifest_and_state(monkeypatch, marks)
 
     def fail_package(*_args, **_kwargs):
@@ -309,7 +387,10 @@ def test_install_plugin_source_falls_back_to_github_for_registry_package_network
     assert result == {"entry": "plugins.demo.plugin:DemoPlugin", "enabled": True}
     assert calls == ["package", "github"]
     assert marks[0]["manifest_entry"] == "plugins.demo.plugin:DemoPlugin"
-    assert any("官方包体暂时无法访问，正在自动尝试 GitHub 源码安装。" in line for line in state.tasks["task"]["logs"])
+    assert any(
+        "官方包体暂时无法访问，正在自动尝试 GitHub 源码安装。" in line
+        for line in state.tasks["task"]["logs"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -342,13 +423,17 @@ def test_install_plugin_source_does_not_fallback_to_github_for_package_safety_er
     expected_message,
 ):
     record = _registry_record()
-    monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
+    monkeypatch.setattr(
+        plugin_updates, "_lookup_registry_plugin", lambda _source: record
+    )
 
     def fail_package(*_args, **_kwargs):
         raise package_error
 
     def fail_github(*_args, **_kwargs):
-        raise AssertionError("checksum and package safety errors must not fallback to GitHub")
+        raise AssertionError(
+            "checksum and package safety errors must not fallback to GitHub"
+        )
 
     monkeypatch.setattr(
         "plugin_system.install.package.install_registry_package_under_plugins",
@@ -377,14 +462,18 @@ def test_install_plugin_source_does_not_fallback_to_github_when_package_dependen
 ):
     record = _registry_record()
     package_root = _plugin_root(tmp_path, "package-plugin")
-    monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
+    monkeypatch.setattr(
+        plugin_updates, "_lookup_registry_plugin", lambda _source: record
+    )
     monkeypatch.setattr(
         "plugin_system.install.package.install_registry_package_under_plugins",
         lambda *_args, **_kwargs: package_root,
     )
 
     def fail_github(*_args, **_kwargs):
-        raise AssertionError("dependency failures after package install must not fallback to GitHub")
+        raise AssertionError(
+            "dependency failures after package install must not fallback to GitHub"
+        )
 
     monkeypatch.setattr(
         "plugin_system.update.github.install_github_plugin_under_plugins",
@@ -397,7 +486,9 @@ def test_install_plugin_source_does_not_fallback_to_github_when_package_dependen
 
     state = _state_with_task()
 
-    with pytest.raises(RuntimeError, match="包体已通过校验，但依赖安装失败，请查看日志。"):
+    with pytest.raises(
+        RuntimeError, match="包体已通过校验，但依赖安装失败，请查看日志。"
+    ):
         _install_plugin_source(state, "task", "owner/demo")
 
     task = state.tasks["task"]
@@ -413,7 +504,9 @@ def test_install_plugin_source_treats_github_dependency_conflicts_as_failures(
 ):
     record = _registry_record(package_url="")
     github_root = _plugin_root(tmp_path, "github-plugin")
-    monkeypatch.setattr(plugin_updates, "_lookup_registry_plugin", lambda _source: record)
+    monkeypatch.setattr(
+        plugin_updates, "_lookup_registry_plugin", lambda _source: record
+    )
     monkeypatch.setattr(
         "plugin_system.update.github.install_github_plugin_under_plugins",
         lambda *_args, **_kwargs: github_root,

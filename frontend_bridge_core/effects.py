@@ -17,6 +17,17 @@ from application.runtime.state import BridgeState
 from .tools import _local_file_access_roots
 
 
+class EffectConfigAdapter:
+    """Adapt the concrete config manager to the narrow application reader."""
+
+    def __init__(self, config_manager: Any) -> None:
+        self._config_manager = config_manager
+
+    def list_effects(self) -> Sequence[Any]:
+        config = getattr(self._config_manager, "config", None)
+        return tuple(getattr(config, "effect_list", ()) or ())
+
+
 def parse_effect_request(
     operation: EffectOperation | str,
     body: Mapping[str, Any] | None = None,

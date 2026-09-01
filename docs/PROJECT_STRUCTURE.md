@@ -207,6 +207,13 @@ application 可以组合多个能力域，但不实现具体 HTTP 或 UI 控件�
 `manage_branches.py`。只有作为整个领域唯一稳定入口时才使用
 `management.py`；
 不得使用无法说明职责的通用 `service.py`、`helpers.py` 或 `utils.py` 承载流程。
+bridge 面向的公开用例使用动作模块和公开函数，例如
+`chat/start_chat.py`、`chat/stop_chat.py`、`chat/build_effect_context.py`、
+`model_assets/download_model.py`、`plugins/install_plugin.py` 和
+`characters/generate_character.py`。HTTP 字段解析和 response 投影留在 bridge；
+application 使用值对象、回调或按需定义的窄 `Protocol` 接收可替换依赖。
+不得为了形式给每个动作增加 Repository，也不得保留只转发一次下层调用、没有
+编排或策略价值的空壳 service。
 实时聊天命令统一通过稳定入口 `application/chat/commands.py` 分发；WebSocket
 payload 解析与 ack 投影保留在 `frontend_bridge_core/transport/`。
 聊天 provider、模板、历史、memory hooks 和可选能力降级统一由稳定组合入口
@@ -225,7 +232,8 @@ application 是 `AppRuntime`、应用级 task、当前会话和 concrete manager
 或调用注入的 port，但不能直接构造 HTTP response、WebSocket frame 或 React DTO。
 聊天 turn service 的 manager/queue 装配、初始立绘呈现、特效方案选择和 LLM 特效
 用法提示都属于 `application/chat/`；`core/` 只保留对应的 admission policy、路径匹配
-和标签解析能力。
+和标签解析能力；选中特效的统一上下文由
+`application/chat/build_effect_context.py` 构建。
 特效配置、音频文件、标签、目录和导入导出由 `application/effects/management.py` 统一
 管理；bridge 只解析请求并调用 `EffectUseCase.execute()`，不得另建文件操作入口。
 AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 application
