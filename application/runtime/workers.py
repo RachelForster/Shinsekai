@@ -21,7 +21,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 # 导入 ConfigManager 和 Pydantic 消息模型
-from config.repository.config_manager import ConfigManager
+from config.persistence.config_manager import ConfigManager
 from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
 from application.runtime.audio_playback_controller import (
     FrontendVoicePlaybackBackend,

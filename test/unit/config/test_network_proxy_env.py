@@ -12,7 +12,7 @@ from config.environment.network_proxy import (
     apply_network_proxy_environment_from_system_config,
     detect_network_proxy_configuration,
 )
-from config.domain.schema import SystemConfig
+from config.models.schema import SystemConfig
 
 
 def _clear_proxy_env(monkeypatch):

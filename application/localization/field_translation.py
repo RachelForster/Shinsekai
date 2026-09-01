@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any, Tuple
 
-from config.repository.config_manager import ConfigManager
+from config.persistence.config_manager import ConfigManager
 from sdk.lang import normalize_lang
 
 

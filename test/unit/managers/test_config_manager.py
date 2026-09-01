@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 
 import config.environment.network_proxy as network_proxy
-from config.repository.config_manager import ConfigManager
-from config.domain.feature_flags import FeatureFlag
-from config.domain.schema import AppConfig, ApiConfig, Background, Character, SystemConfig
-from config.domain.sprite_voice import normalize_sprite_voice_types
+from config.persistence.config_manager import ConfigManager
+from config.models.feature_flags import FeatureFlag
+from config.models.schema import AppConfig, ApiConfig, Background, Character, SystemConfig
+from config.models.sprite_voice import normalize_sprite_voice_types
 
 
 def _config_manager_with_api(**api_overrides) -> ConfigManager:
@@ -274,7 +274,7 @@ def test_save_system_config_applies_network_proxy_environment(monkeypatch):
     ):
         monkeypatch.delenv(name, raising=False)
         monkeypatch.setitem(network_proxy._ORIGINAL_PROXY_ENV, name, None)
-    monkeypatch.setattr("config.repository.config_manager.apply_mirror_environment", lambda _config: None)
+    monkeypatch.setattr("config.persistence.config_manager.apply_mirror_environment", lambda _config: None)
     manager = _config_manager_with_api()
     saved = {}
     manager._save_single_config = lambda _path, data: saved.update(data)

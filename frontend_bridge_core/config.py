@@ -93,7 +93,7 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
         provider = str(api_config.get("llm_provider") or "Deepseek").strip() or "Deepseek"
         if not str(api_config.get("llm_base_url") or "").strip():
             try:
-                from config.domain.llm_defaults import LLM_BASE_URLS
+                from config.models.llm_defaults import LLM_BASE_URLS
 
                 api_config["llm_base_url"] = str(LLM_BASE_URLS.get(provider) or "")
             except Exception:
@@ -156,7 +156,7 @@ def _validate_api_config_for_save(config: Any) -> None:
 
 
 def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
-    from config.domain.schema import ApiConfig
+    from config.models.schema import ApiConfig
 
     config = ApiConfig.model_validate(payload).model_copy(deep=True)
     config.tts_provider = normalize_tts_provider(config.tts_provider)

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from config.domain.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from config.models.feature_flags import FeatureFlag, FeatureFlagConfigManager
 
 from .generation import StoryGenerationService
 

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from ai.llm.llm_manager import LLMManager
     from ai.t2i.t2i_manager import T2IManager
     from ai.tts.tts_manager import TTSManager
-    from config.repository.config_manager import ConfigManager
+    from config.persistence.config_manager import ConfigManager
     from sdk.chat_init import ChatInitService
     from sdk.manager import PluginManager
 
@@ -52,7 +52,7 @@ class MissingLlmProviderError(RuntimeError):
 def load_chat_config() -> ConfigManager:
     """Load chat configuration without exposing its concrete constructor to main."""
 
-    from config.repository.config_manager import ConfigManager
+    from config.persistence.config_manager import ConfigManager
 
     return ConfigManager()
 

@@ -17,7 +17,7 @@ from config.environment.mirror_env import (
     mirror_github_url,
     system_config_payload_with_resolved_mirrors,
 )
-from config.domain.schema import SystemConfig
+from config.models.schema import SystemConfig
 
 
 def _clear_mirror_env(monkeypatch):

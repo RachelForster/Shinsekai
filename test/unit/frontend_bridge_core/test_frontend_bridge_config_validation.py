@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from config.domain.schema import ApiConfig, AppConfig, SystemConfig
+from config.models.schema import ApiConfig, AppConfig, SystemConfig
 from frontend_bridge_core.config import (
     _app_config_response,
     _save_api_config,

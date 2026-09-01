@@ -27,7 +27,7 @@ from application.story.generation_eval import (
     StoryGenerationEvalCase,
     StoryGenerationEvaluator,
 )
-from config.domain.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from config.models.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import parse_story_project
 from test.unit.core.story.story_fixtures import campus_mystery_source
 

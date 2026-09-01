@@ -14,8 +14,8 @@ from application.story.coordinator import (
     publish_story_transition,
     story_snapshot_patch,
 )
-from config.domain.feature_flags import FeatureFlag, FeatureFlagConfigManager
-from config.domain.schema import ApiConfig
+from config.models.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from config.models.schema import ApiConfig
 from core.story import StoryCompiler, StoryRuntime, parse_story_project
 from test.unit.core.story.story_fixtures import campus_mystery_source
 

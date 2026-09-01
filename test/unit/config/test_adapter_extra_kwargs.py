@@ -2,7 +2,7 @@
 
 import pytest
 
-from config.domain.adapter_extra_kwargs import filter_kwargs_for_ctor
+from config.models.adapter_extra_kwargs import filter_kwargs_for_ctor
 
 
 class TargetWithKnownParams:

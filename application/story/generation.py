@@ -23,7 +23,7 @@ import uuid
 
 import yaml
 
-from config.domain.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from config.models.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
     DiagnosticSeverity,
     StoryCompiler,

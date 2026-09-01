@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from config.repository.character_manager import CharacterManager
-from config.domain.schema import Character
+from config.persistence.character_manager import CharacterManager
+from config.models.schema import Character
 
 
 class FakeConfigManager:
@@ -103,7 +103,7 @@ def test_upload_voice_after_sprite_delete_does_not_overwrite_shifted_sprite_voic
     old_c.write_bytes(b"old-c")
     new_c = tmp_path / "new-c.wav"
     new_c.write_bytes(b"new-c")
-    monkeypatch.setattr("config.repository.character_manager.VOICE_DIR", str(voice_dir))
+    monkeypatch.setattr("config.persistence.character_manager.VOICE_DIR", str(voice_dir))
     character = Character(
         name="Mika",
         color="#66ccff",
@@ -137,7 +137,7 @@ def test_upload_voice_does_not_delete_original_voice_outside_character_voice_dir
     external_voice.write_bytes(b"external")
     new_voice = tmp_path / "new.wav"
     new_voice.write_bytes(b"new")
-    monkeypatch.setattr("config.repository.character_manager.VOICE_DIR", str(voice_dir))
+    monkeypatch.setattr("config.persistence.character_manager.VOICE_DIR", str(voice_dir))
     character = Character(
         name="Mika",
         color="#66ccff",

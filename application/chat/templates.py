@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from config.repository.config_manager import character_name_key
+from config.persistence.config_manager import character_name_key
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from application.chat.initial_sprite import initial_sprite_path_for_characters
 from ai.llm.template_generator import (

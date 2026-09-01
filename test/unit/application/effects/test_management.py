@@ -13,7 +13,7 @@ from application.effects import (
     EffectRequest,
     EffectUseCase,
 )
-from config.domain.schema import Effect
+from config.models.schema import Effect
 
 
 def _effect(name: str, *, audio_list=None, audio_tags: str = "", **values) -> Effect:

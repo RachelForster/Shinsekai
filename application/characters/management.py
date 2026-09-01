@@ -191,7 +191,7 @@ class CharacterUseCase:
             raise ValueError(error)
 
     def _save(self, payload: dict[str, Any]) -> dict[str, Any]:
-        from config.domain.schema import Character
+        from config.models.schema import Character
 
         body = payload.get("character", payload)
         if not isinstance(body, dict):
@@ -355,7 +355,7 @@ class CharacterUseCase:
     def _export_package(self, payload: dict[str, Any]) -> CharacterExportResult:
         name = str(payload.get("name") or "")
         character = self._character(name)
-        from config.repository.character_config import CharacterConfig
+        from config.persistence.character_config import CharacterConfig
         from tools.file_util import export_character
 
         data = character.model_dump(mode="json") if hasattr(character, "model_dump") else dict(character)

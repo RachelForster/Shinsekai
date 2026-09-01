@@ -599,21 +599,21 @@ def test_config_does_not_hide_forbidden_dynamic_imports() -> None:
     )
 
 
-def test_config_has_explicit_domain_repository_and_environment_boundaries() -> None:
+def test_config_has_explicit_models_persistence_and_environment_boundaries() -> None:
     """Keep configuration rules independent from persistence and side effects."""
 
     config_root = REPO_ROOT / "config"
     packages = {
-        "domain": config_root / "domain",
-        "repository": config_root / "repository",
+        "models": config_root / "models",
+        "persistence": config_root / "persistence",
         "environment": config_root / "environment",
     }
     assert sorted(path.name for path in config_root.glob("*.py")) == ["__init__.py"]
     assert all((path / "__init__.py").is_file() for path in packages.values())
 
     expected_files = {
-        "domain": {"schema.py", "feature_flags.py", "network_proxy.py"},
-        "repository": {
+        "models": {"schema.py", "feature_flags.py", "network_proxy.py"},
+        "persistence": {
             "config_manager.py",
             "character_manager.py",
             "background_manager.py",
@@ -628,23 +628,23 @@ def test_config_has_explicit_domain_repository_and_environment_boundaries() -> N
     for package, filenames in expected_files.items():
         assert all((packages[package] / filename).is_file() for filename in filenames)
 
-    domain_violations: list[tuple[str, str]] = []
-    for source in sorted(packages["domain"].glob("*.py")):
+    model_violations: list[tuple[str, str]] = []
+    for source in sorted(packages["models"].glob("*.py")):
         for module in sorted(_absolute_import_modules(source)):
-            if module.startswith(("config.repository", "config.environment")):
-                domain_violations.append((source.name, module))
-    assert not domain_violations, (
-        "config/domain must remain independent from persistence and process adapters: "
-        f"{domain_violations}"
+            if module.startswith(("config.persistence", "config.environment")):
+                model_violations.append((source.name, module))
+    assert not model_violations, (
+        "config/models must remain independent from persistence and process adapters: "
+        f"{model_violations}"
     )
 
     environment_violations: list[tuple[str, str]] = []
     for source in sorted(packages["environment"].glob("*.py")):
         for module in sorted(_absolute_import_modules(source)):
-            if module.startswith("config.repository"):
+            if module.startswith("config.persistence"):
                 environment_violations.append((source.name, module))
     assert not environment_violations, (
-        "config/environment must not construct repositories: "
+        "config/environment must not construct persistence implementations: "
         f"{environment_violations}"
     )
 

@@ -14,7 +14,7 @@ from collections.abc import Callable, Coroutine
 from pathlib import Path
 from typing import Any, TypeVar
 
-from config.repository.mcp_config import (
+from config.persistence.mcp_config import (
     DEFAULT_MCP_CONFIG_PATH as _DEFAULT_CONFIG_PATH,
     read_mcp_config,
 )

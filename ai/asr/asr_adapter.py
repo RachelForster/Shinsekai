@@ -217,8 +217,8 @@ def create_default_asr_adapter(callback: TranscriptionCallback) -> ASRAdapter:
     """按 system_config.asr_provider 创建 ASR；Whisper 等由插件注册进 ``ASRAdapterFactory._adapters``。"""
     from ai.asr.asr_manager import ASRAdapterFactory
 
-    from config.domain.adapter_extra_kwargs import filter_kwargs_for_ctor
-    from config.repository.config_manager import ConfigManager
+    from config.models.adapter_extra_kwargs import filter_kwargs_for_ctor
+    from config.persistence.config_manager import ConfigManager
 
     sys_cfg = ConfigManager().config.system_config
     lang = system_config_to_asr_lang(sys_cfg)

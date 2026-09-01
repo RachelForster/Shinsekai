@@ -784,7 +784,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if method in {"POST", "PUT"} and path == "/api/config/api":
                 self._send_json(_save_api_config(self.state, body))
             elif method in {"POST", "PUT"} and path == "/api/config/system":
-                from config.domain.schema import SystemConfig
+                from config.models.schema import SystemConfig
                 from config.environment.mirror_env import REGION_AUTO
 
                 config = SystemConfig.model_validate(body)

@@ -14,7 +14,7 @@ project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root))
 
 from openai import OpenAI
-from config.repository.config_manager import ConfigManager
+from config.persistence.config_manager import ConfigManager
 
 
 def main():

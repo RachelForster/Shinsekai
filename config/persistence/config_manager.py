@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from pydantic import ValidationError
-from config.domain.schema import (
+from config.models.schema import (
     AppConfig,
     Character,
     ApiConfig,
@@ -20,11 +20,11 @@ from config.environment.tts_provider_config import (
     tts_server_url_or_default,
     uses_shared_tts_server_config,
 )
-from config.domain.llm_defaults import LLM_BASE_URLS
-from config.domain.feature_flags import FeatureFlagConfigManager
+from config.models.llm_defaults import LLM_BASE_URLS
+from config.models.feature_flags import FeatureFlagConfigManager
 from config.environment.mirror_env import apply_mirror_environment
 from config.environment.network_proxy import apply_network_proxy_environment
-from config.domain.sprite_voice import normalize_sprite_voice_types
+from config.models.sprite_voice import normalize_sprite_voice_types
 import traceback
 
 

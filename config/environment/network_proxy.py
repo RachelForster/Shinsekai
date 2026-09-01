@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from config.domain.network_proxy import normalize_proxy_url
+from config.models.network_proxy import normalize_proxy_url
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def apply_network_proxy_environment_from_system_config(path: str | Path | None =
     """Apply proxy env early without constructing the full ConfigManager."""
     try:
         import yaml
-        from config.domain.schema import SystemConfig
+        from config.models.schema import SystemConfig
 
         config_path = Path(path or "data/config/system_config.yaml")
         raw = {}

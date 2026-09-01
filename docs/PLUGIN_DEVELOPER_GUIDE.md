@@ -434,7 +434,7 @@ ship a parallel config format for the same secrets. Optional plugin-specific dat
 - **Factory merge** — Host builds adapters with `merged_*_factory_kwargs`: **base**
   kwargs from `api.yaml` / `system_config.yaml` plus `llm_extra_configs` /
   `tts_extra_configs` / `asr_extra_configs` / `t2i_extra_configs`, filtered by
-  `config.domain.adapter_extra_kwargs.filter_kwargs_for_ctor` (or full dict if `__init__` has
+  `config.models.adapter_extra_kwargs.filter_kwargs_for_ctor` (or full dict if `__init__` has
   `**kwargs`).
 - **Subclass** `sdk/adapters` ABCs and register the **class**, not an instance.
 - LLM adapters may also override `get_unsupported_chat_params(provider) -> set[str]` to
@@ -1265,7 +1265,7 @@ downloaded, ignored, or user-local plugin directory.
 | Host wiring                  | `plugin_system/host/service.py`                              |
 | Requirements install         | `plugin_system/requirements/install.py`, `core/runtime_env/pip_index.py` |
 | Publisher metadata/validation | `plugin_system/publisher/`                                 |
-| Extra ctor kwargs            | `config/domain/adapter_extra_kwargs.py`, `config/repository/config_manager.py` |
+| Extra ctor kwargs            | `config/models/adapter_extra_kwargs.py`, `config/persistence/config_manager.py` |
 | CLI                          | `sdk/cli/`                                                   |
 
 This guide stays aligned with `PluginCapabilityRegistry` in `sdk/register.py`; if APIs

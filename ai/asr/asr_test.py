@@ -7,7 +7,7 @@ print("project_root", project_root)
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from config.repository.config_manager import ConfigManager
+from config.persistence.config_manager import ConfigManager
 from plugin_system.host import ensure_plugins_loaded
 
 ensure_plugins_loaded(ConfigManager())

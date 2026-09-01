@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from config.domain.schema import (
+from config.models.schema import (
     Sprite,
     Character,
     Background,

@@ -2,7 +2,7 @@
 Curated, read-only surfaces for third-party plugins.
 
 Plugins run in-process and are not a security boundary; the goal is to avoid
-handing out :class:`~config.repository.config_manager.ConfigManager` or full
+handing out :class:`~config.persistence.config_manager.ConfigManager` or full
 :class:`~ui.settings_ui.context.SettingsUIContext`, which allow mutating API keys,
 saving YAML, and accessing every manager.
 """

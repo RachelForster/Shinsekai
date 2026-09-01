@@ -338,7 +338,7 @@ def revert_chat_history(user_index: int, llm_manager: Any, hist: list, window: A
 
 
 def save_bg(bg_path: str | None, bgm_path: str | None) -> None:
-    from config.repository.config_manager import ConfigManager
+    from config.persistence.config_manager import ConfigManager
 
     config = ConfigManager()
     config.config.system_config.background_path = bg_path

@@ -4,12 +4,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from config.domain.feature_flags import (
+from config.models.feature_flags import (
     FeatureDisabledError,
     FeatureFlag,
     FeatureFlagConfigManager,
 )
-from config.domain.schema import SystemConfig
+from config.models.schema import SystemConfig
 
 
 def test_story_system_is_disabled_by_default() -> None:

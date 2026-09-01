@@ -6,7 +6,7 @@ import traceback
 from collections.abc import Callable
 from typing import Any
 
-from config.repository.config_manager import ConfigManager
+from config.persistence.config_manager import ConfigManager
 from core.messaging.dialog_tokens import is_option_history_name
 from application.chat.history_state import extract_valid_dialog_from_messages
 from sdk.messages import TTSOutputMessage

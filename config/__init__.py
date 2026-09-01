@@ -1,1 +1,1 @@
-"""Configuration domain, persistence, and process-environment boundaries."""
+"""Configuration models, persistence, and process-environment boundaries."""

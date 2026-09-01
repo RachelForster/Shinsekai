@@ -13,7 +13,7 @@
 - 跨领域用例和进程生命周期放在 `application/`，不写进 bridge 或通用 `core/`。
 - `sdk/` 是插件和外部扩展可依赖的公共契约，不能反向依赖宿主实现。
 - `plugins/` 保存用户插件或本地插件内容；宿主插件平台源码放在 `plugin_system/`。
-- `config/` 将配置领域规则、具体持久化和运行环境适配分开，不依赖 AI 或界面实现。
+- `config/` 将配置模型规则、具体持久化和运行环境适配分开，不依赖 AI 或界面实现。
 - 命名空间迁移先更新实现和内部引用，再按发布策略删除兼容入口。
 - 产品 UI 只由 React/Tauri 承载；Qt 设置页、Qt 聊天窗和历史 Python UI 入口已退出。
 
@@ -100,10 +100,10 @@ Shinsekai/
     localization/
 
   config/
-    domain/
+    models/
       schema.py
       feature_flags.py
-    repository/
+    persistence/
       config_manager.py
       character_manager.py
       background_manager.py
@@ -241,14 +241,14 @@ AI、插件等下层能力需要通知宿主时，必须通过 `sdk/` 契约和 
 
 负责：
 
-- `config/domain/`：schema、默认值、feature flag、校验和纯规范化规则；
-- `config/repository/`：`data/config/` YAML、MCP 配置及角色/背景受管资源的具体持久化；
+- `config/models/`：schema、默认值、feature flag、校验和纯规范化规则；
+- `config/persistence/`：`data/config/` YAML、MCP 配置及角色/背景受管资源的具体持久化；
 - `config/environment/`：proxy、mirror、TTS 本地运行路径和进程环境变量适配。
 
-这里的 `repository/` 是真实文件存储实现目录，不是要求每个模型都定义 Repository
-接口。application 只有在需要替换后端、隔离事务或使用 fake 时才定义窄 Protocol；
-简单配置读取可以直接使用具体 repository。`domain/` 不得导入 `repository/` 或
-`environment/`，`environment/` 也不得反向依赖 `repository/`。
+`persistence/` 只表示真实文件存储实现，不要求每个模型都定义 Repository 接口。
+application 只有在需要替换后端、隔离事务或使用 fake 时才定义窄 Protocol；简单
+配置读取可以直接使用具体 persistence 实现。`models/` 不得导入 `persistence/` 或
+`environment/`，`environment/` 也不得反向依赖 `persistence/`。
 
 配置层不得导入 AI manager、bridge route、插件宿主或 UI。
 

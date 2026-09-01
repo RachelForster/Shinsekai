@@ -365,9 +365,9 @@ def run(
     apply_mirror_environment_from_system_config()
     os.environ["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "1"
 
-    from config.repository.background_manager import BackgroundManager
-    from config.repository.character_manager import CharacterManager
-    from config.repository.config_manager import ConfigManager
+    from config.persistence.background_manager import BackgroundManager
+    from config.persistence.character_manager import CharacterManager
+    from config.persistence.config_manager import ConfigManager
     from i18n import init_i18n
     from ai.llm.template_generator import TemplateGenerator
 
@@ -542,9 +542,9 @@ def check_runtime(
     apply_mirror_environment_from_system_config()
     _check_runtime_requirements(repo_root, requirements_file, profile)
 
-    from config.repository.background_manager import BackgroundManager
-    from config.repository.character_manager import CharacterManager
-    from config.repository.config_manager import ConfigManager
+    from config.persistence.background_manager import BackgroundManager
+    from config.persistence.character_manager import CharacterManager
+    from config.persistence.config_manager import ConfigManager
     from i18n import init_i18n
     from ai.llm.template_generator import TemplateGenerator
 
