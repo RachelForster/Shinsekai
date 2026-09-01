@@ -4,6 +4,7 @@ import hmac
 import ipaddress
 import json
 import threading
+from contextlib import nullcontext
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler
@@ -278,7 +279,7 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
         if required and hmac.compare_digest(query_token, required):
             self.send_header(
                 "Set-Cookie",
-                f"{BRIDGE_AUTH_COOKIE}={safe_header_value(query_token)}; "
+                f"{BRIDGE_AUTH_COOKIE}={safe_header_value(required)}; "
                 "Path=/; HttpOnly; SameSite=Strict",
             )
 
@@ -411,19 +412,35 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
             )
             response = matched.route.handler(request)
             if isinstance(response, TaskResponse):
-                cleanup = uploads.transfer_cleanup() if uploads is not None else None
-                self._enqueue_background_task(
-                    kind=response.kind,
-                    title=response.title,
-                    message=response.message,
-                    worker=response.worker,
-                    task_updates=(
-                        dict(response.task_updates)
-                        if response.task_updates is not None
-                        else None
-                    ),
-                    cleanup=cleanup,
+                guard = (
+                    response.enqueue_guard()
+                    if response.enqueue_guard is not None
+                    else nullcontext()
                 )
+                with guard:
+                    existing = (
+                        response.find_existing()
+                        if response.find_existing is not None
+                        else None
+                    )
+                    if existing is not None:
+                        self._send_json(existing, HTTPStatus.ACCEPTED)
+                    else:
+                        cleanup = (
+                            uploads.transfer_cleanup() if uploads is not None else None
+                        )
+                        self._enqueue_background_task(
+                            kind=response.kind,
+                            title=response.title,
+                            message=response.message,
+                            worker=response.worker,
+                            task_updates=(
+                                dict(response.task_updates)
+                                if response.task_updates is not None
+                                else None
+                            ),
+                            cleanup=cleanup,
+                        )
             else:
                 self._send_json(response.data, response.status)
         finally:

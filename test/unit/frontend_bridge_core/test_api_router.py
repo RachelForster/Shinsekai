@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import json
 import threading
 from http import HTTPStatus
@@ -19,6 +20,7 @@ from frontend_bridge_core.routes.router import (
     Route,
     Router,
 )
+from frontend_bridge_core.routes.story_routes import STORY_ROUTES
 from frontend_bridge_core.routes.system_routes import SYSTEM_ROUTES
 
 
@@ -110,6 +112,12 @@ def test_router_rejects_duplicate_contracts_and_invalid_patterns() -> None:
         )
 
 
+def test_api_handler_contains_no_feature_route_literals() -> None:
+    from frontend_bridge_core.routes import api
+
+    assert '"/api/' not in inspect.getsource(api)
+
+
 def test_router_prefers_static_path_over_dynamic_path() -> None:
     dynamic = Route(
         methods=frozenset({"GET"}),
@@ -152,6 +160,19 @@ def test_registered_system_route_contracts_remain_stable() -> None:
     }
 
     assert actual == expected
+
+
+def test_registered_story_route_contracts_match_main() -> None:
+    assert {
+        (method, route.pattern) for route in STORY_ROUTES for method in route.methods
+    } == {
+        ("GET", "/api/story/generation/{generation_task_id}"),
+        ("POST", "/api/story/generation/start"),
+        ("POST", "/api/story/generation/{generation_task_id}/cancel"),
+        ("POST", "/api/story/generation/{generation_task_id}/regenerate"),
+        ("POST", "/api/story/generation/{generation_task_id}/resume"),
+        ("POST", "/api/story/start"),
+    }
 
 
 def test_task_routes_preserve_get_and_cancel_behavior() -> None:

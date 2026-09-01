@@ -573,11 +573,15 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(handler.server.state.chat_session["characterName"], "Alice")
         self.assertEqual(snapshot["characterName"], "Alice")
 
-    def test_direct_quick_restart_persists_new_managed_history_without_changing_scenario(self):
+    def test_direct_quick_restart_persists_new_managed_history_without_changing_scenario(
+        self,
+    ):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         config_manager = _ConfigManager()
         config_manager.config.characters = [
-            SimpleNamespace(name="Alice", sprites=[SimpleNamespace(path="sprites/alice.png")]),
+            SimpleNamespace(
+                name="Alice", sprites=[SimpleNamespace(path="sprites/alice.png")]
+            ),
         ]
 
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as tmp_dir:
@@ -586,7 +590,9 @@ class ChatRuntimeModeTests(unittest.TestCase):
             history_dir.mkdir()
             template_dir = root / "templates"
             template_dir.mkdir()
-            previous_history = history_dir / _history_id_from_scenario("scene", ["Alice"])
+            previous_history = history_dir / _history_id_from_scenario(
+                "scene", ["Alice"]
+            )
             previous_history.mkdir()
             marker = previous_history / "active.json"
             marker.write_text("previous", encoding="utf-8")
@@ -611,10 +617,16 @@ class ChatRuntimeModeTests(unittest.TestCase):
             instance_id = "20260830T204500123456Z-a1b2c3d4"
 
             with (
-                patch("frontend_bridge_core.routes.api._chat_process_running", return_value=False),
-                patch("frontend_bridge_core.routes.api._launch_chat", return_value="聊天进程已启动！PID: 12345") as launch_chat,
                 patch(
-                    "frontend_bridge_core.routes.api._repair_template_parts_from_session_if_needed",
+                    "frontend_bridge_core.chat_session._chat_process_running",
+                    return_value=False,
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session._launch_runtime_chat",
+                    return_value="聊天进程已启动！PID: 12345",
+                ) as launch_chat,
+                patch(
+                    "frontend_bridge_core.chat_session._repair_template_parts_from_session_if_needed",
                     side_effect=lambda _state, scenario, system: (scenario, system),
                 ),
                 patch(
@@ -622,14 +634,16 @@ class ChatRuntimeModeTests(unittest.TestCase):
                     return_value=instance_id,
                 ),
                 patch(
-                    "frontend_bridge_core.routes.api.persist_confirmed_history_path",
+                    "frontend_bridge_core.chat_session.persist_confirmed_history_path",
                     return_value=True,
                 ) as persist_history_path,
             ):
                 snapshot = handler._launch_chat(body)
             marker_survived = marker.is_file()
 
-        expected_history = f"{_history_id_from_scenario('scene', ['Alice'])}-{instance_id}"
+        expected_history = (
+            f"{_history_id_from_scenario('scene', ['Alice'])}-{instance_id}"
+        )
         self.assertEqual(launch_chat.call_args.kwargs["user_scenario"], "scene")
         self.assertEqual(
             Path(launch_chat.call_args.kwargs["history_file"]).name,
@@ -678,9 +692,16 @@ class ChatRuntimeModeTests(unittest.TestCase):
             }
 
             with (
-                patch("frontend_bridge_core.routes.api._chat_process_running", return_value=True),
-                patch("frontend_bridge_core.routes.api.plan_chat_history_launch") as plan_history,
-                patch("frontend_bridge_core.routes.api.clear_story_session") as clear_story,
+                patch(
+                    "frontend_bridge_core.chat_session._chat_process_running",
+                    return_value=True,
+                ),
+                patch(
+                    "frontend_bridge_core.chat_session.plan_chat_history_launch"
+                ) as plan_history,
+                patch(
+                    "frontend_bridge_core.chat_session.clear_story_session"
+                ) as clear_story,
             ):
                 snapshot = handler._launch_chat(body)
 

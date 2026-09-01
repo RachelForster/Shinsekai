@@ -1,18 +1,12 @@
 from __future__ import annotations
 
+from application.characters import CharacterOperation
 from frontend_bridge_core.characters import (
-    _delete_all_character_sprites,
-    _delete_character_sprite,
-    _delete_sprite_voice,
+    _execute_character_request,
     _generate_character_setting,
-    _save_character,
     _save_character_emotion_tags,
     _save_sprite_scale,
-    _save_sprite_voice_text,
-    _save_sprite_voice_type,
     _translate_character_fields,
-    _upload_character_sprites,
-    _upload_sprite_voice,
 )
 from frontend_bridge_core.image_annotations import run_character_sprite_auto_label
 from frontend_bridge_core.routes.router import (
@@ -29,7 +23,9 @@ def _list_characters(request: ApiRequest) -> JsonResponse:
 
 
 def _save_character_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_save_character(request.state, request.body))
+    return JsonResponse(
+        _execute_character_request(request.state, CharacterOperation.SAVE, request.body)
+    )
 
 
 def _generate_character_setting_route(request: ApiRequest) -> JsonResponse:
@@ -41,11 +37,23 @@ def _translate_character_fields_route(request: ApiRequest) -> JsonResponse:
 
 
 def _upload_sprite_voice_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_upload_sprite_voice(request.state, request.body))
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.UPLOAD_SPRITE_VOICE,
+            request.body,
+        )
+    )
 
 
 def _upload_character_sprites_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_upload_character_sprites(request.state, request.body))
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.UPLOAD_SPRITES,
+            request.body,
+        )
+    )
 
 
 def _save_character_emotion_tags_route(request: ApiRequest) -> JsonResponse:
@@ -53,11 +61,23 @@ def _save_character_emotion_tags_route(request: ApiRequest) -> JsonResponse:
 
 
 def _delete_character_sprite_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_delete_character_sprite(request.state, request.body))
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.DELETE_SPRITE,
+            request.body,
+        )
+    )
 
 
 def _delete_all_character_sprites_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_delete_all_character_sprites(request.state, request.body))
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.DELETE_ALL_SPRITES,
+            request.body,
+        )
+    )
 
 
 def _save_sprite_scale_route(request: ApiRequest) -> JsonResponse:
@@ -65,22 +85,43 @@ def _save_sprite_scale_route(request: ApiRequest) -> JsonResponse:
 
 
 def _save_sprite_voice_text_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_save_sprite_voice_text(request.state, request.body))
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.SAVE_SPRITE_VOICE_TEXT,
+            request.body,
+        )
+    )
 
 
 def _save_sprite_voice_type_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_save_sprite_voice_type(request.state, request.body))
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.SAVE_SPRITE_VOICE_TYPE,
+            request.body,
+        )
+    )
 
 
 def _delete_sprite_voice_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_delete_sprite_voice(request.state, request.body))
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.DELETE_SPRITE_VOICE,
+            request.body,
+        )
+    )
 
 
 def _delete_character_route(request: ApiRequest) -> JsonResponse:
-    message, names = request.state.character_manager.delete_character(
-        request.params["name"]
+    return JsonResponse(
+        _execute_character_request(
+            request.state,
+            CharacterOperation.DELETE,
+            {"name": request.params["name"]},
+        )
     )
-    return JsonResponse({"message": message, "names": names})
 
 
 def _auto_label_character_sprites(request: ApiRequest) -> TaskResponse:

@@ -62,12 +62,13 @@ def test_effect_upload_uses_multipart_dispatch_and_cleans_after_response(
 ) -> None:
     uploaded = _uploaded_files(tmp_path, "effect.ef")
     state = object()
-    received: list[tuple[object, list[str]]] = []
+    received: list[tuple[object, list[object], tuple[str, ...]]] = []
     monkeypatch.setattr(
         transfer_routes,
         "_import_effects",
-        lambda request_state, paths: (
-            received.append((request_state, paths)) or [{"name": "Spark"}]
+        lambda request_state, paths, *, additional_file_roots=(): (
+            received.append((request_state, paths, additional_file_roots))
+            or [{"name": "Spark"}]
         ),
     )
     handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
@@ -84,6 +85,6 @@ def test_effect_upload_uses_multipart_dispatch_and_cleans_after_response(
 
     handler.do_POST()
 
-    assert received == [(state, [str(uploaded.paths[0])])]
+    assert received == [(state, list(uploaded.paths), (str(uploaded.root),))]
     assert sent == [([{"name": "Spark"}], HTTPStatus.OK)]
     assert not uploaded.root.exists()

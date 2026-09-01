@@ -39,7 +39,6 @@ def test_operation_route_contracts_remain_stable() -> None:
         ("POST", "/api/mcp/config/apply"),
         ("POST", "/api/mcp/config/open"),
         ("POST", "/api/mcp/preview"),
-        ("POST", "/api/model-assets/status"),
         ("POST", "/api/music-cover/config"),
         ("POST", "/api/music-cover/run"),
         ("POST", "/api/music-cover/search"),

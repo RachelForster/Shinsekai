@@ -1,12 +1,10 @@
 from __future__ import annotations
 
+from application.effects import EffectOperation
 from frontend_bridge_core.effects import (
-    _delete_all_effect_audio,
-    _delete_effect,
-    _delete_effect_audio,
-    _save_effect,
-    _save_effect_audio_tags,
-    _upload_effect_audio,
+    effect_response_payload,
+    effect_use_case,
+    parse_effect_request,
 )
 from frontend_bridge_core.routes.router import (
     ApiRequest,
@@ -20,28 +18,43 @@ def _list_effects(request: ApiRequest) -> JsonResponse:
     return JsonResponse(request.state.config_manager.config.effect_list)
 
 
+def _execute_effect(
+    request: ApiRequest,
+    operation: EffectOperation,
+    *,
+    name: str = "",
+) -> JsonResponse:
+    parsed = parse_effect_request(operation, request.body, name=name)
+    result = effect_use_case(request.state).execute(parsed)
+    return JsonResponse(effect_response_payload(result))
+
+
 def _upload_effect_audio_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_upload_effect_audio(request.state, request.body))
+    return _execute_effect(request, EffectOperation.UPLOAD_AUDIO)
 
 
 def _delete_effect_audio_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_delete_effect_audio(request.state, request.body))
+    return _execute_effect(request, EffectOperation.DELETE_AUDIO)
 
 
 def _delete_all_effect_audio_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_delete_all_effect_audio(request.state, request.body))
+    return _execute_effect(request, EffectOperation.DELETE_ALL_AUDIO)
 
 
 def _save_effect_audio_tags_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_save_effect_audio_tags(request.state, request.body))
+    return _execute_effect(request, EffectOperation.SAVE_AUDIO_TAGS)
 
 
 def _save_effect_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_save_effect(request.state, request.body))
+    return _execute_effect(request, EffectOperation.SAVE)
 
 
 def _delete_effect_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_delete_effect(request.state, request.params["name"]))
+    return _execute_effect(
+        request,
+        EffectOperation.DELETE,
+        name=request.params["name"],
+    )
 
 
 EFFECT_ROUTES = (

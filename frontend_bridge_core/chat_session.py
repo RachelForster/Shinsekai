@@ -2,21 +2,26 @@ from __future__ import annotations
 
 from typing import Any
 
-from application.chat.initialization import start_chat_init
+from application.chat.build_effect_context import build_effect_context
+from application.chat.initial_sprite import initial_sprite_path_for_characters
+from application.chat.launch_history import (
+    persist_confirmed_history_path,
+    plan_chat_history_launch,
+    resolve_chat_history_path,
+)
 from application.chat.mobile_access import configure_mobile_access
 from application.chat.runtime_process import (
     TRANSPARENT_BACKGROUND_NAME,
-    _chat_history_path,
     _chat_process_running,
     _chat_runtime_closing,
     _chat_runtime_mode,
     _chat_snapshot,
     _chat_stream_initial_snapshot,
-    _close_chat,
     _launch_chat as _launch_runtime_chat,
     _sanitize_user_display_name,
-    remove_chat_history_storage,
 )
+from application.chat.start_chat import start_chat
+from application.chat.stop_chat import stop_chat
 from application.chat.templates import (
     _compose_for_llm,
     _latest_history_json,
@@ -26,11 +31,18 @@ from application.chat.templates import (
     _resolve_template_character_names,
     _resume_template_parts,
     _scenario_from_template_like,
-    initial_sprite_path_for_characters,
 )
 from application.runtime.dependencies import runtime_dependency_error_from_text
 from application.runtime.state import BridgeState
-from frontend_bridge_core.effects import _build_effect_usage_guide
+from application.story.coordinator import (
+    clear_story_session,
+    release_unbound_story_session,
+)
+from frontend_bridge_core.effects import EffectConfigAdapter
+from sdk.logging import get_logger
+
+
+logger = get_logger(__name__)
 
 CHAT_RUNTIME_READY_TIMEOUT_SECONDS = 20.0
 
@@ -51,7 +63,7 @@ def wait_for_chat_runtime_ready(
     if wait_for_producer(session_id, timeout=timeout):
         return
     try:
-        _close_chat(state, reason="聊天会话启动超时。")
+        stop_chat(state, reason="聊天会话启动超时。")
     finally:
         chat_stream.delete_session(session_id)
         state.chat_session = {**state.chat_session, "sessionId": ""}
@@ -80,7 +92,7 @@ def start_chat_initialization(
         launch = resume_request
     else:
         raise ValueError("mode must be 'launch' or 'resume-last'")
-    return start_chat_init(state, mode=mode, launch=launch)
+    return start_chat(state, mode=mode, launch=launch)
 
 
 def launch_chat(
@@ -125,40 +137,7 @@ def launch_chat(
         or state.config_manager.config.system_config.live_room_id
         or ""
     )
-    normalized_history_payload = {**body, "characters": characters}
-    history_path = _chat_history_path(state, normalized_history_payload, row)
-    default_history_path = _chat_history_path(
-        state,
-        {"historyPath": "", "characters": characters},
-        row,
-    )
-    reset_history = bool(body.get("resetHistory"))
-    if reset_history:
-        for item in {history_path, default_history_path}:
-            remove_chat_history_storage(item)
-    user_scenario = _scenario_from_template_like(row)
-    system_template = str(row.get("system") or "")
-    user_scenario, system_template = _repair_template_parts_from_session_if_needed(
-        state,
-        user_scenario,
-        system_template,
-    )
-    user_display_name = _sanitize_user_display_name(body.get("userDisplayName"))
-    active_history_path = default_history_path if reset_history else history_path
-    session_base = {
-        "backgroundName": str(body.get("backgroundName") or ""),
-        "characterName": first_character,
-        "historyPath": active_history_path.as_posix(),
-        "sessionId": "",
-        "templateId": template_id,
-        "userDisplayName": user_display_name,
-        "voiceLanguage": str(
-            state.config_manager.config.system_config.voice_language or "ja"
-        ),
-        "workflowPath": str(body.get("workflowPath") or ""),
-    }
     if _chat_process_running():
-        state.chat_session = {**state.chat_session, **session_base}
         configure_mobile_access(
             state,
             enabled=mobile_access_enabled,
@@ -169,6 +148,37 @@ def launch_chat(
             "",
             extra={"statusMessage": "进程已经在运行中。"},
         )
+    start_fresh_history = bool(body.get("resetHistory"))
+    history_target = plan_chat_history_launch(
+        state,
+        {**body, "characters": characters},
+        row,
+        start_fresh=start_fresh_history,
+    )
+    history_path = history_target.history_path
+    user_scenario = _scenario_from_template_like(row)
+    system_template = str(row.get("system") or "")
+    user_scenario, system_template = _repair_template_parts_from_session_if_needed(
+        state,
+        user_scenario,
+        system_template,
+    )
+    if start_fresh_history:
+        clear_story_session(state)
+    user_display_name = _sanitize_user_display_name(body.get("userDisplayName"))
+    session_base = {
+        "backgroundName": str(body.get("backgroundName") or ""),
+        "characterName": first_character,
+        "historyPath": history_path.as_posix(),
+        "sessionId": "",
+        "templateId": template_id,
+        "userDisplayName": user_display_name,
+        "voiceLanguage": str(
+            state.config_manager.config.system_config.voice_language or "ja"
+        ),
+        "workflowPath": str(body.get("workflowPath") or ""),
+    }
+    release_unbound_story_session(state, session_base["historyPath"])
     state.chat_session = {**state.chat_session, **session_base}
     initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))
     use_react_runtime = _chat_runtime_mode(state) == "react"
@@ -177,22 +187,17 @@ def launch_chat(
         if use_react_runtime and state.chat_stream is not None
         else {}
     )
-    effect_names_list = body.get("effectNames") or []
-    if isinstance(effect_names_list, list):
-        effect_names_str = ",".join(str(name) for name in effect_names_list)
-    else:
-        effect_names_str = ""
-    effect_guide = _build_effect_usage_guide(
-        state,
-        effect_names_list if isinstance(effect_names_list, list) else [],
+    effect_context = build_effect_context(
+        EffectConfigAdapter(state.config_manager),
+        body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
     )
-    if effect_guide:
-        system_template = system_template.rstrip() + "\n\n" + effect_guide
+    effect_names_str = ",".join(effect_context.selected_names)
+    system_template = effect_context.append_prompt_catalog(system_template)
     message = _launch_runtime_chat(
         state,
         character_names=characters,
         effect_names=effect_names_str,
-        history_file=active_history_path.as_posix(),
+        history_file=history_path.as_posix(),
         init_sprite_path=init_sprite_path,
         room_id=room_id,
         selected_bg=str(body.get("backgroundName") or ""),
@@ -244,7 +249,7 @@ def launch_chat(
                 "backgroundPath": _chat_snapshot(state).get("backgroundPath", ""),
                 "characterName": first_character,
                 "dialogText": "",
-                "historyPath": active_history_path.as_posix(),
+                "historyPath": history_path.as_posix(),
                 "status": "idle",
                 "statusMessage": message,
                 "userDisplayName": user_display_name,
@@ -256,6 +261,14 @@ def launch_chat(
         state,
         enabled=mobile_access_enabled,
     )
+    if init_stream_info is None and not persist_confirmed_history_path(
+        state,
+        history_path,
+    ):
+        logger.warning(
+            "Chat launched but the selected history path could not be persisted",
+            extra={"history_path": history_path.as_posix()},
+        )
     return _chat_snapshot(
         state,
         "idle",
@@ -263,6 +276,11 @@ def launch_chat(
         extra={
             "statusMessage": message,
             **({"_chatInitStreamAttached": True} if init_stream_info else {}),
+            **(
+                {"_pendingHistoryPath": history_path.as_posix()}
+                if init_stream_info
+                else {}
+            ),
         },
     )
 
@@ -280,7 +298,11 @@ def resume_last_chat(
         configure_mobile_access(state, enabled=False)
     session_history_path = str(session.get("historyPath") or "").strip()
     history_path = (
-        _chat_history_path(state, {"historyPath": session_history_path}, session)
+        resolve_chat_history_path(
+            state,
+            {"historyPath": session_history_path},
+            session,
+        )
         if session_history_path
         else _latest_history_json(state.history_dir)
     )
@@ -331,6 +353,7 @@ def resume_last_chat(
         ),
         "workflowPath": str(session.get("workflowPath") or ""),
     }
+    release_unbound_story_session(state, session_base["historyPath"])
     if _chat_process_running():
         state.chat_session = {**state.chat_session, **session_base}
         configure_mobile_access(

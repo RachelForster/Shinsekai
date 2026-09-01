@@ -7,9 +7,9 @@ from application.chat.runtime_process import (
     _chat_runtime_status,
     _chat_snapshot,
     _chat_theme_payload,
-    _close_chat,
     _handle_chat_command,
 )
+from application.chat.stop_chat import stop_chat
 from frontend_bridge_core.chat_session import (
     launch_chat,
     resume_last_chat,
@@ -78,7 +78,7 @@ def _initialize(request: ApiRequest) -> JsonResponse:
 
 
 def _close(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_close_chat(request.state))
+    return JsonResponse(stop_chat(request.state))
 
 
 def _command(request: ApiRequest) -> JsonResponse:

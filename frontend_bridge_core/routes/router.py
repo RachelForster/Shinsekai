@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, field
 from enum import Enum
 from http import HTTPStatus
@@ -32,6 +33,8 @@ class TaskResponse:
     message: str
     worker: Callable[[str], Any]
     task_updates: Mapping[str, Any] | None = None
+    find_existing: Callable[[], Any | None] | None = None
+    enqueue_guard: Callable[[], AbstractContextManager[None]] | None = None
 
 
 @dataclass(frozen=True, slots=True)

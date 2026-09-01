@@ -1,16 +1,11 @@
 from __future__ import annotations
 
+from application.backgrounds import BackgroundOperation
 from frontend_bridge_core.backgrounds import (
-    _delete_all_background_bgm,
-    _delete_all_background_images,
-    _delete_background_bgm,
-    _delete_background_image,
-    _save_background,
+    _execute_background_request,
     _save_background_bgm_tags,
     _save_background_image_tags,
     _translate_background_fields,
-    _upload_background_bgm,
-    _upload_background_images,
 )
 from frontend_bridge_core.image_annotations import run_background_image_auto_label
 from frontend_bridge_core.routes.router import (
@@ -31,27 +26,63 @@ def _translate_background_fields_route(request: ApiRequest) -> JsonResponse:
 
 
 def _upload_background_images_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_upload_background_images(request.state, request.body))
+    return JsonResponse(
+        _execute_background_request(
+            request.state,
+            BackgroundOperation.UPLOAD_IMAGES,
+            request.body,
+        )
+    )
 
 
 def _upload_background_bgm_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_upload_background_bgm(request.state, request.body))
+    return JsonResponse(
+        _execute_background_request(
+            request.state,
+            BackgroundOperation.UPLOAD_BGM,
+            request.body,
+        )
+    )
 
 
 def _delete_background_image_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_delete_background_image(request.state, request.body))
+    return JsonResponse(
+        _execute_background_request(
+            request.state,
+            BackgroundOperation.DELETE_IMAGE,
+            request.body,
+        )
+    )
 
 
 def _delete_all_background_images_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_delete_all_background_images(request.state, request.body))
+    return JsonResponse(
+        _execute_background_request(
+            request.state,
+            BackgroundOperation.DELETE_ALL_IMAGES,
+            request.body,
+        )
+    )
 
 
 def _delete_background_bgm_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_delete_background_bgm(request.state, request.body))
+    return JsonResponse(
+        _execute_background_request(
+            request.state,
+            BackgroundOperation.DELETE_BGM,
+            request.body,
+        )
+    )
 
 
 def _delete_all_background_bgm_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_delete_all_background_bgm(request.state, request.body))
+    return JsonResponse(
+        _execute_background_request(
+            request.state,
+            BackgroundOperation.DELETE_ALL_BGM,
+            request.body,
+        )
+    )
 
 
 def _save_background_image_tags_route(request: ApiRequest) -> JsonResponse:
@@ -63,20 +94,23 @@ def _save_background_bgm_tags_route(request: ApiRequest) -> JsonResponse:
 
 
 def _save_background_route(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_save_background(request.state, request.body))
+    return JsonResponse(
+        _execute_background_request(
+            request.state,
+            BackgroundOperation.SAVE,
+            request.body,
+        )
+    )
 
 
 def _delete_background_route(request: ApiRequest) -> JsonResponse:
-    message, names = request.state.background_manager.delete_background(
-        request.params["name"]
+    return JsonResponse(
+        _execute_background_request(
+            request.state,
+            BackgroundOperation.DELETE,
+            {"name": request.params["name"]},
+        )
     )
-    if (
-        message.startswith("找不到")
-        or message.startswith("请选择")
-        or "失败" in message
-    ):
-        raise RuntimeError(message)
-    return JsonResponse({"message": message, "names": names})
 
 
 def _auto_label_background_images(request: ApiRequest) -> TaskResponse:

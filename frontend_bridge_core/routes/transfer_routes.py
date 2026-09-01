@@ -1,14 +1,27 @@
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
+from application.backgrounds import BackgroundOperation
+from application.characters import CharacterOperation
 from application.diagnostics.logs import _log_snapshot
+from application.effects import EffectOperation
 from application.media.attachments import stage_uploaded_chat_attachments
-from application.runtime.state import BridgeState, _jsonify
-from frontend_bridge_core.characters import _as_character_config
+from application.runtime.state import BridgeState
+from frontend_bridge_core.backgrounds import (
+    _execute_background_request,
+    background_response_payload,
+)
+from frontend_bridge_core.characters import (
+    _execute_character_request,
+    character_response_payload,
+)
 from frontend_bridge_core.chat_themes import install_theme_from_zip
-from frontend_bridge_core.effects import _effect_dir, _validate_effect_storage_name
+from frontend_bridge_core.effects import (
+    effect_response_payload,
+    effect_use_case,
+    parse_effect_request,
+)
 from frontend_bridge_core.memory import (
     _preview_character_memory_import,
     _run_character_memory_import,
@@ -21,7 +34,6 @@ from frontend_bridge_core.routes.router import (
     TaskResponse,
 )
 from frontend_bridge_core.routes.uploads import UploadedFiles
-from sdk.path_utils import safe_child_path, safe_filename, safe_project_path
 
 
 def _uploads(request: ApiRequest) -> UploadedFiles:
@@ -39,31 +51,18 @@ def _request_paths(request: ApiRequest) -> list[str]:
     return [str(item) for item in paths]
 
 
-def _safe_export_output_path(name: str, suffix: str) -> tuple[Path, str]:
-    project_root = Path.cwd().resolve(strict=False)
-    output_root = safe_project_path("output", root=project_root)
-    output_root.mkdir(parents=True, exist_ok=True)
-    output = safe_child_path(output_root, safe_filename(f"{name}{suffix}"))
-    return output, output.relative_to(project_root).as_posix()
-
-
-def _export_response(output_relative: str) -> JsonResponse:
-    return JsonResponse(
-        {
-            "downloadUrl": f"/api/download?path={output_relative}",
-            "path": output_relative,
-        }
+def _import_characters(
+    state: BridgeState,
+    paths: list[Any],
+    *,
+    extra_file_access_roots: tuple[Any, ...] = (),
+) -> Any:
+    return _execute_character_request(
+        state,
+        CharacterOperation.IMPORT,
+        {"paths": paths},
+        extra_file_access_roots=extra_file_access_roots,
     )
-
-
-def _import_characters(state: BridgeState, paths: list[str]) -> list[dict[str, Any]]:
-    import tools.file_util as file_util
-
-    imported = []
-    for item in paths:
-        imported.extend(file_util.import_character(str(item)))
-    state.config_manager.reload()
-    return [item.__dict__ for item in imported]
 
 
 def _import_characters_from_paths(request: ApiRequest) -> JsonResponse:
@@ -73,40 +72,38 @@ def _import_characters_from_paths(request: ApiRequest) -> JsonResponse:
 def _import_uploaded_characters(request: ApiRequest) -> JsonResponse:
     uploads = _uploads(request)
     return JsonResponse(
-        _import_characters(request.state, [str(path) for path in uploads.paths])
+        _import_characters(
+            request.state,
+            list(uploads.paths),
+            extra_file_access_roots=(uploads.root,),
+        )
     )
 
 
 def _export_character(request: ApiRequest) -> JsonResponse:
-    name = str(request.body.get("name") or "")
-    character = request.state.config_manager.get_character_by_name(name)
-    if character is None:
-        raise KeyError(f"character not found: {name}")
-    output, output_relative = _safe_export_output_path(name, ".char")
-    import tools.file_util as file_util
-
-    file_util.export_character(
-        [_as_character_config(character)],
-        output.as_posix(),
-        open_folder=False,
+    return JsonResponse(
+        character_response_payload(
+            _execute_character_request(
+                request.state,
+                CharacterOperation.EXPORT,
+                request.body,
+            )
+        )
     )
-    return _export_response(output_relative)
 
 
-def _import_backgrounds(state: BridgeState, paths: list[str]) -> list[dict[str, Any]]:
-    import tools.file_util as file_util
-
-    existing = state.config_manager.config.background_list
-    imported = []
-    for item in paths:
-        batch = file_util.import_background(str(item), existing)
-        imported.extend(batch)
-        for background in batch:
-            if background not in existing:
-                existing.append(background)
-    state.config_manager.save_background_config()
-    state.config_manager.reload()
-    return [_jsonify(item) for item in imported]
+def _import_backgrounds(
+    state: BridgeState,
+    paths: list[Any],
+    *,
+    extra_file_access_roots: tuple[Any, ...] = (),
+) -> Any:
+    return _execute_background_request(
+        state,
+        BackgroundOperation.IMPORT,
+        {"paths": paths},
+        extra_file_access_roots=extra_file_access_roots,
+    )
 
 
 def _import_backgrounds_from_paths(request: ApiRequest) -> JsonResponse:
@@ -116,38 +113,53 @@ def _import_backgrounds_from_paths(request: ApiRequest) -> JsonResponse:
 def _import_uploaded_backgrounds(request: ApiRequest) -> JsonResponse:
     uploads = _uploads(request)
     return JsonResponse(
-        _import_backgrounds(request.state, [str(path) for path in uploads.paths])
+        _import_backgrounds(
+            request.state,
+            list(uploads.paths),
+            extra_file_access_roots=(uploads.root,),
+        )
     )
 
 
 def _export_background(request: ApiRequest) -> JsonResponse:
-    name = str(request.body.get("name") or "")
-    background = request.state.config_manager.get_background_by_name(name)
-    if background is None:
-        raise KeyError(f"background not found: {name}")
-    output, output_relative = _safe_export_output_path(name, ".bg")
-    import tools.file_util as file_util
+    return JsonResponse(
+        background_response_payload(
+            _execute_background_request(
+                request.state,
+                BackgroundOperation.EXPORT,
+                request.body,
+            )
+        )
+    )
 
-    file_util.export_background([background], output.as_posix(), open_folder=False)
-    return _export_response(output_relative)
+
+def _execute_effect(
+    state: BridgeState,
+    operation: EffectOperation,
+    body: dict[str, Any],
+    *,
+    additional_file_roots: tuple[str, ...] = (),
+) -> Any:
+    parsed = parse_effect_request(operation, body)
+    result = effect_use_case(
+        state,
+        additional_file_roots=additional_file_roots,
+    ).execute(parsed)
+    return effect_response_payload(result)
 
 
-def _import_effects(state: BridgeState, paths: list[str]) -> list[dict[str, Any]]:
-    import tools.file_util as file_util
-
-    existing = state.config_manager.config.effect_list
-    imported = []
-    for item in paths:
-        batch = file_util.import_effect(str(item), existing)
-        imported.extend(batch)
-        for effect in batch:
-            if effect not in existing:
-                existing.append(effect)
-            effect_dir = _effect_dir(effect.name)
-            effect_dir.mkdir(parents=True, exist_ok=True)
-    state.config_manager.save_effect_config()
-    state.config_manager.reload()
-    return [_jsonify(item) for item in imported]
+def _import_effects(
+    state: BridgeState,
+    paths: list[Any],
+    *,
+    additional_file_roots: tuple[str, ...] = (),
+) -> Any:
+    return _execute_effect(
+        state,
+        EffectOperation.IMPORT,
+        {"paths": [str(path) for path in paths]},
+        additional_file_roots=additional_file_roots,
+    )
 
 
 def _import_effects_from_paths(request: ApiRequest) -> JsonResponse:
@@ -157,20 +169,22 @@ def _import_effects_from_paths(request: ApiRequest) -> JsonResponse:
 def _import_uploaded_effects(request: ApiRequest) -> JsonResponse:
     uploads = _uploads(request)
     return JsonResponse(
-        _import_effects(request.state, [str(path) for path in uploads.paths])
+        _import_effects(
+            request.state,
+            list(uploads.paths),
+            additional_file_roots=(str(uploads.root),),
+        )
     )
 
 
 def _export_effect(request: ApiRequest) -> JsonResponse:
-    name = _validate_effect_storage_name(str(request.body.get("name") or ""))
-    effect = request.state.config_manager.get_effect_by_name(name)
-    if effect is None:
-        raise KeyError(f"effect not found: {name}")
-    output, output_relative = _safe_export_output_path(name, ".ef")
-    import tools.file_util as file_util
-
-    file_util.export_effect([effect], output.as_posix(), open_folder=False)
-    return _export_response(output_relative)
+    return JsonResponse(
+        _execute_effect(
+            request.state,
+            EffectOperation.EXPORT,
+            request.body,
+        )
+    )
 
 
 def _preview_uploaded_character_memories(request: ApiRequest) -> JsonResponse:

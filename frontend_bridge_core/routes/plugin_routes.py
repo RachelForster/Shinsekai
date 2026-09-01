@@ -9,12 +9,12 @@ from application.plugins.catalog import (
     _set_plugin_enabled,
     _uninstall_plugin,
 )
-from application.plugins.updates import (
-    _app_update_info,
-    _app_update_tags,
-    _install_plugin_source,
-    _repo_tags,
-    _run_app_update,
+from application.plugins.install_plugin import install_plugin
+from application.plugins.update_application import (
+    get_application_update_info,
+    list_application_update_tags,
+    list_plugin_repository_tags,
+    update_application,
 )
 from application.runtime.state import plugin_load_snapshot
 from application.runtime.tasks import _is_running_task
@@ -24,6 +24,7 @@ from frontend_bridge_core.plugin_publisher import (
     _scan_local_plugin,
     _validate_plugin_submission,
 )
+from frontend_bridge_core.plugin_install import BridgePluginInstallProgress
 from frontend_bridge_core.plugin_ui import (
     _frontend_chat_ui_contribution_payloads,
     _plugin_ui_detail,
@@ -74,7 +75,7 @@ def _plugin_ui(request: ApiRequest) -> JsonResponse:
 
 
 def _get_app_update_info(_request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_app_update_info())
+    return JsonResponse(get_application_update_info())
 
 
 def _get_plugin_registry(_request: ApiRequest) -> JsonResponse:
@@ -103,9 +104,8 @@ def _install_plugin(request: ApiRequest) -> JsonResponse | TaskResponse:
         title=f"安装插件 {plugin_id}",
         message="插件安装任务已排队。",
         task_updates={"source": plugin_id},
-        worker=lambda task_id: _install_plugin_source(
-            request.state,
-            task_id,
+        worker=lambda task_id: install_plugin(
+            BridgePluginInstallProgress(request.state, task_id),
             plugin_id,
             ref_kind=ref_kind,
             tag_name=tag_name,
@@ -115,7 +115,7 @@ def _install_plugin(request: ApiRequest) -> JsonResponse | TaskResponse:
 
 
 def _get_repo_tags(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_repo_tags(request.body))
+    return JsonResponse(list_plugin_repository_tags(request.body))
 
 
 def _scan_plugin(request: ApiRequest) -> JsonResponse:
@@ -135,7 +135,7 @@ def _copy_submission_json(request: ApiRequest) -> JsonResponse:
 
 
 def _get_app_update_tags(_request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_app_update_tags())
+    return JsonResponse(list_application_update_tags())
 
 
 def _run_app_update_route(request: ApiRequest) -> TaskResponse:
@@ -146,7 +146,7 @@ def _run_app_update_route(request: ApiRequest) -> TaskResponse:
         title="更新主程序",
         message="主程序更新任务已排队。",
         task_updates={"refKind": ref_kind, "tagName": tag_name},
-        worker=lambda task_id: _run_app_update(
+        worker=lambda task_id: update_application(
             request.state,
             task_id,
             request.body,

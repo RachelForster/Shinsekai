@@ -21,6 +21,22 @@ SOURCE_DIRECTORIES = (
     "tools",
 )
 
+
+def _frontend_route_source(*, include_chat_session: bool = False) -> str:
+    route_root = REPO_ROOT / "frontend_bridge_core" / "routes"
+    sources = [
+        path.read_text(encoding="utf-8")
+        for path in sorted(route_root.glob("*.py"))
+    ]
+    if include_chat_session:
+        sources.append(
+            (REPO_ROOT / "frontend_bridge_core" / "chat_session.py").read_text(
+                encoding="utf-8"
+            )
+        )
+    return "\n".join(sources)
+
+
 FORBIDDEN_IMPORTS = {
     "sdk": frozenset(
         {
@@ -655,16 +671,14 @@ def test_effect_bridge_remains_a_transport_adapter() -> None:
         "yaml",
         "zipfile",
     }
-    route_source = (
-        REPO_ROOT / "frontend_bridge_core" / "routes" / "api.py"
-    ).read_text(encoding="utf-8")
+    route_source = _frontend_route_source()
     retired_entries = {
-        "_delete_all_effect_audio",
-        "_delete_effect_audio",
-        "_effect_dir",
-        "_import_effect_paths",
-        "_save_effect_audio_tags",
-        "_upload_effect_audio",
+        "_delete_all_effect_audio(",
+        "_delete_effect_audio(",
+        "_effect_dir(",
+        "_import_effect_paths(",
+        "_save_effect_audio_tags(",
+        "_upload_effect_audio(",
         "file_util.export_effect",
         "file_util.import_effect",
     }
@@ -722,9 +736,7 @@ def test_package_export_results_remain_transport_independent() -> None:
         REPO_ROOT / "frontend_bridge_core" / "backgrounds.py",
         REPO_ROOT / "frontend_bridge_core" / "characters.py",
     )
-    route_source = (
-        REPO_ROOT / "frontend_bridge_core" / "routes" / "api.py"
-    ).read_text(encoding="utf-8")
+    route_source = _frontend_route_source()
 
     for use_case in use_cases:
         assert "/api/download" not in use_case.read_text(encoding="utf-8"), (
@@ -921,9 +933,7 @@ def test_bridge_facing_application_use_cases_have_explicit_action_names() -> Non
         if source.name in ambiguous_names
     }
 
-    route_source = (
-        REPO_ROOT / "frontend_bridge_core" / "routes" / "api.py"
-    ).read_text(encoding="utf-8")
+    route_source = _frontend_route_source(include_chat_session=True)
     for public_action in (
         "build_effect_context",
         "download_model",

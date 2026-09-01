@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from application.model_assets.service import _model_asset_status
 from application.model_assets.tts_bundle import _download_tts_bundle
 from application.runtime.dependencies import install_runtime_dependency
 from frontend_bridge_core.mcp import (
@@ -61,10 +60,6 @@ def _download_tts_bundle_route(request: ApiRequest) -> TaskResponse:
             request.body,
         ),
     )
-
-
-def _get_model_asset_status(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_model_asset_status(request.state, request.body))
 
 
 def _generate_prompts(request: ApiRequest) -> TaskResponse:
@@ -198,12 +193,6 @@ OPERATION_ROUTES = (
         pattern="/api/config/tts-bundle/download",
         handler=_download_tts_bundle_route,
         name="config.tts_bundle.download",
-    ),
-    Route(
-        methods=frozenset({"POST"}),
-        pattern="/api/model-assets/status",
-        handler=_get_model_asset_status,
-        name="model_assets.status",
     ),
     Route(
         methods=frozenset({"POST"}),

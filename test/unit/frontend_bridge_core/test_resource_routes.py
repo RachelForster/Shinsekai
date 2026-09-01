@@ -5,11 +5,18 @@ from types import SimpleNamespace
 
 import pytest
 
+from application.characters import CharacterOperation
+from application.effects import EffectOperation
 from frontend_bridge_core.routes.api import FrontendBridgeHandler
 from frontend_bridge_core.routes.background_routes import BACKGROUND_ROUTES
 from frontend_bridge_core.routes.character_routes import CHARACTER_ROUTES
 from frontend_bridge_core.routes.effect_routes import EFFECT_ROUTES
-from frontend_bridge_core.routes.router import ApiRequest, BodyKind, Router
+from frontend_bridge_core.routes.router import (
+    ApiRequest,
+    BodyKind,
+    JsonResponse,
+    Router,
+)
 
 RESOURCE_ROUTES = (
     *CHARACTER_ROUTES,
@@ -127,11 +134,11 @@ def test_character_json_route_forwards_the_unchanged_body(monkeypatch) -> None:
     state = object()
     body = {"name": "Alice", "avatar": "alice.png"}
     saved = {"name": "Alice"}
-    received: list[tuple[object, dict]] = []
+    received: list[tuple[object, CharacterOperation, dict]] = []
     monkeypatch.setattr(
-        "frontend_bridge_core.routes.character_routes._save_character",
-        lambda request_state, request_body: (
-            received.append((request_state, request_body)) or saved
+        "frontend_bridge_core.routes.character_routes._execute_character_request",
+        lambda request_state, operation, request_body: (
+            received.append((request_state, operation, request_body)) or saved
         ),
     )
     router = Router(list(CHARACTER_ROUTES))
@@ -142,7 +149,7 @@ def test_character_json_route_forwards_the_unchanged_body(monkeypatch) -> None:
     response = matched.route.handler(request)
 
     assert response.data == saved
-    assert received == [(state, body)]
+    assert received == [(state, CharacterOperation.SAVE, body)]
 
 
 def test_handler_dispatches_registered_resource_route() -> None:
@@ -167,11 +174,12 @@ def test_handler_dispatches_registered_resource_route() -> None:
 
 def test_handler_delete_resource_route_does_not_read_a_json_body(monkeypatch) -> None:
     state = SimpleNamespace()
-    deleted: list[tuple[object, str]] = []
+    deleted: list[tuple[object, EffectOperation, str]] = []
     monkeypatch.setattr(
-        "frontend_bridge_core.routes.effect_routes._delete_effect",
-        lambda request_state, name: (
-            deleted.append((request_state, name)) or {"message": "deleted"}
+        "frontend_bridge_core.routes.effect_routes._execute_effect",
+        lambda request, operation, *, name="": (
+            deleted.append((request.state, operation, name))
+            or JsonResponse({"message": "deleted"})
         ),
     )
     handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
@@ -184,7 +192,7 @@ def test_handler_delete_resource_route_does_not_read_a_json_body(monkeypatch) ->
 
     handler._handle_write("DELETE")
 
-    assert deleted == [(state, "Thunder Clap")]
+    assert deleted == [(state, EffectOperation.DELETE, "Thunder Clap")]
     assert sent == [({"message": "deleted"}, HTTPStatus.OK)]
 
 
@@ -205,9 +213,9 @@ def test_dynamic_delete_routes_decode_names_and_do_not_require_bodies(
         ),
     )
     monkeypatch.setattr(
-        "frontend_bridge_core.routes.effect_routes._delete_effect",
-        lambda request_state, name: (
-            deleted.append(("effect", name)) or {"message": "deleted"}
+        "frontend_bridge_core.routes.effect_routes._execute_effect",
+        lambda request, operation, *, name="": (
+            deleted.append(("effect", name)) or JsonResponse({"message": "deleted"})
         ),
     )
     router = Router(list(RESOURCE_ROUTES))

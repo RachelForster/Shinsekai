@@ -5,12 +5,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from application.model_assets.service import (
-    _download_model_asset,
-    _find_running_model_asset_task,
-    _model_asset_enqueue_guard,
-    _resolve_model_asset,
-)
 from frontend_bridge_core.chat_session import (
     CHAT_RUNTIME_READY_TIMEOUT_SECONDS,
     launch_chat as launch_chat_session,
@@ -33,22 +27,33 @@ from frontend_bridge_core.routes.http_handler import (
     BridgeHttpHandler,
 )
 from frontend_bridge_core.routes.memory_routes import MEMORY_ROUTES
+from frontend_bridge_core.routes.model_asset_routes import MODEL_ASSET_ROUTES
 from frontend_bridge_core.routes.operation_routes import OPERATION_ROUTES
 from frontend_bridge_core.routes.plugin_routes import PLUGIN_ROUTES
 from frontend_bridge_core.routes.router import Router
 from frontend_bridge_core.routes.system_routes import SYSTEM_ROUTES
+from frontend_bridge_core.routes.story_routes import STORY_ROUTES
 from frontend_bridge_core.routes.template_routes import TEMPLATE_ROUTES
 from frontend_bridge_core.routes.transfer_routes import TRANSFER_ROUTES
 from frontend_bridge_core.routes.utility_routes import UTILITY_ROUTES
 
+__all__ = [
+    "BRIDGE_AUTH_COOKIE",
+    "BRIDGE_AUTH_HEADER",
+    "BRIDGE_AUTH_QUERY",
+    "FrontendBridgeHandler",
+]
+
 _API_ROUTER = Router(
     [
         *SYSTEM_ROUTES,
+        *STORY_ROUTES,
         *CHARACTER_ROUTES,
         *CHAT_ROUTES,
         *BACKGROUND_ROUTES,
         *EFFECT_ROUTES,
         *MEMORY_ROUTES,
+        *MODEL_ASSET_ROUTES,
         *TEMPLATE_ROUTES,
         *OPERATION_ROUTES,
         *PLUGIN_ROUTES,
@@ -129,29 +134,7 @@ class FrontendBridgeHandler(BridgeHttpHandler):
             self._require_authorized_write(path)
             if self._try_dispatch_registered_route(method, path, parsed.query):
                 return
-            body = {} if method == "DELETE" else self._read_json()
-            if method == "POST" and path == "/api/model-assets/download":
-                spec = _resolve_model_asset(self.state, body)
-                with _model_asset_enqueue_guard():
-                    existing = _find_running_model_asset_task(self.state, spec.task_key)
-                    if existing is not None:
-                        self._send_json(existing, HTTPStatus.ACCEPTED)
-                    else:
-                        self._enqueue_background_task(
-                            kind="model-download",
-                            title=spec.title,
-                            message=f"{spec.title} download queued.",
-                            task_updates={
-                                "assetId": spec.asset_id,
-                                "assetKey": spec.task_key,
-                                "variant": spec.variant,
-                            },
-                            worker=lambda task_id: _download_model_asset(
-                                self.state, task_id, spec
-                            ),
-                        )
-            else:
-                self._send_error_json(FileNotFoundError(path), HTTPStatus.NOT_FOUND)
+            self._send_error_json(FileNotFoundError(path), HTTPStatus.NOT_FOUND)
         except Exception as exc:
             if self._is_client_disconnect(exc):
                 return
