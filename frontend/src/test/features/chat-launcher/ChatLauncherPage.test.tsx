@@ -69,8 +69,9 @@ function LocationProbe() {
 }
 
 function renderPage() {
-  return render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const result = render(
+    <QueryClientProvider client={queryClient}>
       <ToastProvider>
         <I18nProvider language="en">
           <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
@@ -81,6 +82,7 @@ function renderPage() {
       </ToastProvider>
     </QueryClientProvider>,
   );
+  return { ...result, queryClient };
 }
 
 async function expectTemplateSelectToShow(templateName: string) {
@@ -438,10 +440,19 @@ describe("ChatLauncherPage", () => {
     ]);
     mocks.listBackgrounds.mockResolvedValue([]);
     mocks.listCharacters.mockResolvedValue([{ name: "Mio" }]);
+    mocks.launchChat.mockResolvedValueOnce({
+      dialogText: "Ready",
+      historyPath: "D:/history/confirmed.json",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+    });
 
-    renderPage();
+    const { queryClient } = renderPage();
 
     await expectTemplateSelectToShow("Default Template");
+    fireEvent.change(screen.getByLabelText("History"), { target: { value: "D:/history/previous.json" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
     expect(mocks.launchChat).not.toHaveBeenCalled();
@@ -451,6 +462,11 @@ describe("ChatLauncherPage", () => {
 
     await waitFor(() => expect(mocks.launchChat).toHaveBeenCalledTimes(1));
     expect(mocks.launchChat).toHaveBeenCalledWith(expect.objectContaining({ resetHistory: true }));
+    await waitFor(() => expect(screen.getByDisplayValue("D:/history/confirmed.json")).toBeInTheDocument());
+    expect(queryClient.getQueryData<TemplateLaunchSession>(["templates", "session"])?.historyPath).toBe(
+      "D:/history/confirmed.json",
+    );
+    expect(mocks.saveTemplateSession).toHaveBeenCalledTimes(1);
   });
 
   it("disables launch actions while an existing chat process is still running", async () => {

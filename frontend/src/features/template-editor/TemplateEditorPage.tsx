@@ -52,6 +52,7 @@ import {
   getCharacterChipStyle,
   normalizeTemplateSummary,
   synchronizeChatLaunchPayloadWithSession,
+  synchronizeTemplateLaunchSessionWithSnapshot,
   templateVoiceLanguages,
 } from "./templateFlow";
 import "./TemplateEditorPage.css";
@@ -549,6 +550,11 @@ export function TemplateEditorPage() {
           ),
           progressOptions,
         );
+        const confirmedSession = synchronizeTemplateLaunchSessionWithSnapshot(savedSession, snapshot);
+        if (confirmedSession !== savedSession) {
+          queryClient.setQueryData([...templatesQueryKey, "session"], confirmedSession);
+          setHistoryPath(confirmedSession.historyPath);
+        }
         return { snapshot, template };
       });
     },
