@@ -19,7 +19,10 @@ import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
-import { synchronizeChatLaunchPayloadWithSession } from "../template-editor/templateFlow";
+import {
+  synchronizeChatLaunchPayloadWithSession,
+  synchronizeTemplateLaunchSessionWithSnapshot,
+} from "../template-editor/templateFlow";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
@@ -223,7 +226,13 @@ export function ChatLauncherPage() {
         const session = buildSession();
         const savedSession = await saveTemplateSession(session);
         queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
-        return launchChat(synchronizeChatLaunchPayloadWithSession(payload, savedSession), options);
+        const snapshot = await launchChat(synchronizeChatLaunchPayloadWithSession(payload, savedSession), options);
+        const confirmedSession = synchronizeTemplateLaunchSessionWithSnapshot(savedSession, snapshot);
+        if (confirmedSession !== savedSession) {
+          queryClient.setQueryData([...templatesQueryKey, "session"], confirmedSession);
+          setHistoryPath(confirmedSession.historyPath);
+        }
+        return snapshot;
       });
     },
     onError(error) {

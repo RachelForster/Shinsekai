@@ -1180,7 +1180,7 @@ export const enMessages: Record<MessageKey, string> = {
   "template.mode.edit": "Edit",
   "template.mode.generate": "Generate",
   "template.noEffect": "No effect",
-  "template.quickRestart.body": "Clear the selected/default chat history and launch a fresh chat?",
+  "template.quickRestart.body": "Keep the previous chat history and start a new conversation in a separate history?",
   "template.quickRestart.title": "Quick restart",
   "template.section.content": "Template content",
   "template.section.generate": "Generate template",

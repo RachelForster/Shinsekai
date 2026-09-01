@@ -184,6 +184,18 @@ def replay_history_entry(window: Any, history_entry: str) -> None:
         window.setDisplayWords(history_entry)
 
 
+def replay_latest_dialog_entry(window: Any, history: list[Any]) -> None:
+    """Replay the latest visible dialog while skipping user and option rows."""
+
+    for history_entry in reversed(history):
+        if is_user_history_entry(history_entry) or is_option_history_entry(
+            history_entry
+        ):
+            continue
+        replay_history_entry(window, history_entry)
+        return
+
+
 def is_option_history_entry(history_entry: str) -> bool:
     if not isinstance(history_entry, str):
         return False
@@ -333,8 +345,7 @@ def revert_chat_history(user_index: int, llm_manager: Any, hist: list, window: A
 
     llm_manager.set_messages(new_messages)
 
-    if hist:
-        replay_history_entry(window, hist[-1])
+    replay_latest_dialog_entry(window, hist)
 
 
 def save_bg(bg_path: str | None, bgm_path: str | None) -> None:
