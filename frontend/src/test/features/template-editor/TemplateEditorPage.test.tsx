@@ -88,7 +88,7 @@ function renderPage() {
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
 
-  return render(
+  const result = render(
     <QueryClientProvider client={client}>
       <ToastProvider>
         <I18nProvider language="en">
@@ -97,6 +97,7 @@ function renderPage() {
       </ToastProvider>
     </QueryClientProvider>,
   );
+  return { ...result, queryClient: client };
 }
 
 describe("TemplateEditorPage", () => {
@@ -346,8 +347,12 @@ describe("TemplateEditorPage", () => {
       useTranslation: true,
       voiceLanguage: "en",
     } satisfies TemplateLaunchSession);
+    mockLaunchChat.mockResolvedValueOnce({
+      dialogText: "launched",
+      historyPath: "D:/history/confirmed.json",
+    });
 
-    renderPage();
+    const { queryClient } = renderPage();
 
     await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("Session Draft"));
     fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
@@ -386,6 +391,11 @@ describe("TemplateEditorPage", () => {
         useCg: true,
       }),
     );
+    await waitFor(() => expect(screen.getByDisplayValue("D:/history/confirmed.json")).toBeInTheDocument());
+    expect(queryClient.getQueryData<TemplateLaunchSession>(["templates", "session"])?.historyPath).toBe(
+      "D:/history/confirmed.json",
+    );
+    expect(mockSaveTemplateSession).toHaveBeenCalledTimes(1);
   });
 
   it("shows a QR code after launching with mobile access enabled", async () => {

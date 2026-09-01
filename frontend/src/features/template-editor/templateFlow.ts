@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import type {
   ChatLaunchPayload,
+  ChatSnapshot,
   TemplateGenerateInput,
   TemplateLaunchSession,
   TemplateSummary,
@@ -201,4 +202,18 @@ export function synchronizeChatLaunchPayloadWithSession(
     templateName: session.filenameStub,
     useCg: session.useCg,
   };
+}
+
+export function synchronizeTemplateLaunchSessionWithSnapshot(
+  session: TemplateLaunchSession,
+  snapshot: ChatSnapshot,
+): TemplateLaunchSession {
+  if (snapshot.runtimeDependencyError) {
+    return session;
+  }
+  const confirmedHistoryPath = snapshot.historyPath?.trim();
+  if (!confirmedHistoryPath || confirmedHistoryPath === session.historyPath) {
+    return session;
+  }
+  return { ...session, historyPath: confirmedHistoryPath };
 }

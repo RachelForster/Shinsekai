@@ -13,6 +13,7 @@ from application.chat.runtime_process import (
     _chat_stream_initial_snapshot,
     _close_chat,
 )
+from application.chat.launch_history import persist_confirmed_history_path
 from application.runtime.state import BridgeState
 from application.runtime.tasks import (
     TaskCancelled,
@@ -23,6 +24,10 @@ from application.runtime.tasks import (
     _run_background_task,
     _update_task,
 )
+from sdk.logging import get_logger
+
+
+logger = get_logger(__name__)
 
 CHAT_INIT_TIMEOUT_SECONDS = 15 * 60.0
 CHAT_INIT_POLL_INTERVAL_SECONDS = 0.12
@@ -140,6 +145,9 @@ def _run_chat_init(
         launch_result = launch(stream_info)
         if not isinstance(launch_result, dict):
             raise RuntimeError("chat launch returned an invalid result")
+        pending_history_path = str(
+            launch_result.pop("_pendingHistoryPath", "") or ""
+        ).strip()
         if str(launch_result.get("status") or "") == "error" and isinstance(
             launch_result.get("runtimeDependencyError"),
             dict,
@@ -181,6 +189,14 @@ def _run_chat_init(
 
                 status = str(init_task.get("status") or "").strip().lower()
                 if status == "succeeded":
+                    if pending_history_path and not persist_confirmed_history_path(
+                        state,
+                        pending_history_path,
+                    ):
+                        logger.warning(
+                            "Chat initialized but the selected history path could not be persisted",
+                            extra={"history_path": pending_history_path},
+                        )
                     if not keep_session:
                         chat_stream.delete_session(session_id)
                     return _chat_snapshot(state)

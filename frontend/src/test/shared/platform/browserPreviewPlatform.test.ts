@@ -909,4 +909,36 @@ describe("browser preview platform chat themes", () => {
     expect(events).toContain("snapshot");
     unsubscribeEvents();
   });
+
+  it("isolates quick-restart history and resumes the confirmed preview path", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    const previousHistoryPath = "/tmp/previous.json";
+    await resolvePreview(
+      platform.templates.saveSession(
+        templateSession({
+          historyPath: previousHistoryPath,
+          templateFileDropdown: "default",
+        }),
+      ),
+    );
+
+    const launched = await resolvePreview(
+      platform.chat.launch({
+        backgroundName: "默认房间",
+        characters: ["Nanami"],
+        historyPath: previousHistoryPath,
+        resetHistory: true,
+        templateId: "default",
+        templateName: "Default",
+      }),
+    );
+
+    expect(launched.historyPath).toMatch(/^\/tmp\/previous-quick-restart-\d+$/);
+    expect(launched.historyPath).not.toBe(previousHistoryPath);
+    expect((await resolvePreview(platform.templates.getSession()))?.historyPath).toBe(launched.historyPath);
+
+    const resumed = await resolvePreview(platform.chat.resumeLast());
+    expect(resumed.historyPath).toBe(launched.historyPath);
+  });
 });

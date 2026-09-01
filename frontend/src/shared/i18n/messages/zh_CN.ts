@@ -1151,7 +1151,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "template.mode.edit": "编辑",
   "template.mode.generate": "生成",
   "template.noEffect": "不使用特效",
-  "template.quickRestart.body": "清空当前/默认聊天记录并启动一局新聊天？",
+  "template.quickRestart.body": "保留之前的聊天记录，并在一份新的历史记录中开始对话。继续吗？",
   "template.quickRestart.title": "快速重开",
   "template.section.content": "模板内容",
   "template.section.generate": "生成模板",
