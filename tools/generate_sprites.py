@@ -13,7 +13,7 @@ project_root = current_script.parent.parent
 if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
-from config.config_manager import ConfigManager
+from config.repository.config_manager import ConfigManager
 
 config = ConfigManager()
 IMAGE_MODEL = 'gemini-2.5-flash-image'

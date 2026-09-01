@@ -4,7 +4,7 @@ from pydub import AudioSegment
 from pyannote.audio import Pipeline
 import torchaudio
 
-from config.config_manager import ConfigManager
+from config.repository.config_manager import ConfigManager
 
 config = ConfigManager()
 

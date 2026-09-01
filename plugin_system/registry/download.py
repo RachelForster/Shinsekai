@@ -13,7 +13,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
-from config.mirror_env import mirror_github_url
+from config.environment.mirror_env import mirror_github_url
 
 logger = logging.getLogger(__name__)
 _PLUGINS_DIR = Path("plugins")

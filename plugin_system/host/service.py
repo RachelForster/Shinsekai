@@ -2,7 +2,7 @@
 Host integration for :mod:`sdk` plugins: load manifest, merge factories/tools/handlers,
 and expose contributions for Settings / Tools / Chat UI.
 
-Call :func:`ensure_plugins_loaded` once per process after :class:`~config.config_manager.ConfigManager`
+Call :func:`ensure_plugins_loaded` once per process after :class:`~config.repository.config_manager.ConfigManager`
 is available (``main`` entry and/or Settings UI). Safe to call multiple times (idempotent).
 """
 
@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Callable, List, Optional
 
 import yaml
 
-from config.config_manager import ConfigManager
+from config.repository.config_manager import ConfigManager
 from sdk.messages import UserInputMessage
 from plugin_system.requirements.install import (
     ensure_plugin_site_packages_on_syspath,

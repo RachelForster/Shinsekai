@@ -73,7 +73,7 @@ from application.story.coordinator import (
     story_snapshot_patch,
 )
 from application.story.session import StoryTurnCancelledError
-from config.feature_flags import FeatureFlag
+from config.domain.feature_flags import FeatureFlag
 from core.story import SelectChoice
 from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from sdk.path_utils import reject_control_chars

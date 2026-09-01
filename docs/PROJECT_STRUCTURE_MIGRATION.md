@@ -262,13 +262,33 @@ Backgrounds 和 Characters。
   `application/chat/wire_streaming_session.py`；
 - 完成后 `main.py` 只保留进程环境、transport 装配、模式选择和顶层异常处理。
 
+### O10：拆分配置领域、持久化与运行环境
+
+状态：本 PR 完成。
+
+迁移范围：
+
+- `config/domain/` 保存 schema、feature flag、provider 默认值和纯规范化规则；
+- `config/repository/` 保存 YAML、MCP 配置及角色/背景受管资源的具体文件实现；
+- `config/environment/` 保存 proxy、mirror、TTS 运行路径和进程环境适配；
+- 更新所有生产、测试和 Tauri 资源引用，不保留根目录兼容转发模块；
+- 增加子目录依赖守卫，禁止 domain 反向依赖 repository/environment，禁止
+  environment 依赖 repository。
+
+完成条件：
+
+- `config/` 根目录不再混放 schema、文件存储和环境副作用模块；
+- 不增加通用 Repository 基类或一对一空壳接口；
+- 既有 Python import、配置文件格式、HTTP 协议和前端行为不变；
+- 单元、架构和 Tauri 资源校验通过。
+
 ## 4. 迁移映射
 
 | 当前路径 | 目标位置 | Objective | 说明 |
 | --- | --- | --- | --- |
 | `llm/tools/memory_tools.py` | `ai/tools/memory_tools.py` | O4/O5 | 已完成；旧路径已删除 |
 | `llm/tools/file_tools.py` | `core/media/file_operations.py` + `ai/tools/file_tools.py` | O4/O5 | 已完成；旧路径已删除 |
-| `llm/tools/mcp_config_file.py` | `config/mcp_config.py` | O4/O5 | 已完成；旧路径已删除 |
+| `llm/tools/mcp_config_file.py` | `config/repository/mcp_config.py` | O4/O5 | 已完成；旧路径已删除 |
 | `llm/*` | `ai/llm/` | O4/O5 | 已完成；旧路径已删除 |
 | `asr/*` | `ai/asr/` | O4/O5 | 已完成；SDK adapter 保持稳定 |
 | `tts/*` | `ai/tts/` | O4/O5 | 已完成；旧路径已删除 |

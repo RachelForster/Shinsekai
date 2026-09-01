@@ -225,7 +225,7 @@ def apply_mirror_environment_from_system_config(path: str | Path | None = None) 
     """Apply mirror env early without constructing the full ConfigManager."""
     try:
         import yaml
-        from config.schema import SystemConfig
+        from config.domain.schema import SystemConfig
 
         config_path = Path(path or "data/config/system_config.yaml")
         raw = {}

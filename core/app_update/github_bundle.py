@@ -16,7 +16,7 @@ from typing import Any, Callable, Literal
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from config.mirror_env import mirror_github_url
+from config.environment.mirror_env import mirror_github_url
 
 logger = logging.getLogger(__name__)
 

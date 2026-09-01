@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from config.background_manager import BackgroundManager
-from config.schema import Background
+from config.repository.background_manager import BackgroundManager
+from config.domain.schema import Background
 
 
 class FakeConfigManager:

@@ -105,7 +105,7 @@ BASIC_CHAR = {
 
 class TestImport:
     def test_character_config_parse_preserves_explicit_preset_voice(self):
-        from config.character_config import CharacterConfig
+        from config.repository.character_config import CharacterConfig
 
         data = dict(BASIC_CHAR)
         data["sprites"] = [{"path": "smile.png", "voice_path": "greet.wav", "voice_type": "preset"}]
@@ -329,7 +329,7 @@ class TestExport:
 
     def test_export_accepts_open_folder_false(self, tmp_path, monkeypatch):
         """React bridge exports should not open a native folder."""
-        from config.character_config import CharacterConfig
+        from config.repository.character_config import CharacterConfig
 
         def fail_open_folder(output_path):
             pytest.fail(f"export opened folder for {output_path}")
@@ -346,7 +346,7 @@ class TestExport:
 
 def _run_export(char_data: dict, tmp_path: Path, output: str | None = None) -> str:
     """Export a CharacterConfig and return the path."""
-    from config.character_config import CharacterConfig
+    from config.repository.character_config import CharacterConfig
     cc = CharacterConfig.parse_dic(char_data=char_data)
     out = output or str(tmp_path / "out.char")
     file_util.export_character([cc], out, open_folder=False)
@@ -513,7 +513,7 @@ class TestBackwardCompat:
 class TestRoundTrip:
     def test_export_then_import(self, tmp_path):
         """Export a character, then import it back; data must match."""
-        from config.character_config import CharacterConfig
+        from config.repository.character_config import CharacterConfig
 
         with _mock_dirs(tmp_path):
             # create real files under mocked dirs

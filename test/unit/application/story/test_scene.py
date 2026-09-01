@@ -17,7 +17,7 @@ from application.story import (
     StoryTurnCancelledError,
     ValidatedCastPlanner,
 )
-from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from config.domain.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
     SelectChoice,
     StoryCompiler,

@@ -196,8 +196,8 @@ def parse_launch_options(transport: ChatSessionTransport) -> ChatLaunchOptions:
 
     started_at = time.perf_counter()
     initialization = _initialization_for(transport)
-    from config.mirror_env import apply_mirror_environment_from_system_config
-    from config.network_proxy import apply_network_proxy_environment_from_system_config
+    from config.environment.mirror_env import apply_mirror_environment_from_system_config
+    from config.environment.network_proxy import apply_network_proxy_environment_from_system_config
 
     apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import logging
 
-from config.mirror_env import (
+from config.environment.mirror_env import (
     DEFAULT_GITHUB_MIRROR_URL,
     DEFAULT_HUGGINGFACE_CACHE_DIR,
     DEFAULT_HUGGINGFACE_MIRROR_URL,
@@ -17,7 +17,7 @@ from config.mirror_env import (
     mirror_github_url,
     system_config_payload_with_resolved_mirrors,
 )
-from config.schema import SystemConfig
+from config.domain.schema import SystemConfig
 
 
 def _clear_mirror_env(monkeypatch):
@@ -41,7 +41,7 @@ def _clear_mirror_env(monkeypatch):
         "SHINSEKAI_MIRROR_REGION",
     ):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr("config.mirror_env._DETECT_CACHE", None)
+    monkeypatch.setattr("config.environment.mirror_env._DETECT_CACHE", None)
 
 
 def test_apply_mirror_environment_uses_china_defaults(monkeypatch):
@@ -160,7 +160,7 @@ def test_resolved_payload_keeps_user_mirror_fields_blank(monkeypatch):
 def test_detect_china_network_prefers_ip_geo_over_locale(monkeypatch):
     _clear_mirror_env(monkeypatch)
     monkeypatch.setenv("LANG", "zh_CN.UTF-8")
-    monkeypatch.setattr("config.mirror_env._fetch_ip_country", lambda *args, **kwargs: "US")
+    monkeypatch.setattr("config.environment.mirror_env._fetch_ip_country", lambda *args, **kwargs: "US")
 
     assert detect_china_network() is False
 
@@ -168,15 +168,15 @@ def test_detect_china_network_prefers_ip_geo_over_locale(monkeypatch):
 def test_detect_china_network_uses_locale_only_as_fallback(monkeypatch):
     _clear_mirror_env(monkeypatch)
     monkeypatch.setenv("LANG", "zh_CN.UTF-8")
-    monkeypatch.setattr("config.mirror_env._detect_china_by_ip", lambda *args, **kwargs: None)
-    monkeypatch.setattr("config.mirror_env._probe_china_network", lambda *args, **kwargs: None)
+    monkeypatch.setattr("config.environment.mirror_env._detect_china_by_ip", lambda *args, **kwargs: None)
+    monkeypatch.setattr("config.environment.mirror_env._probe_china_network", lambda *args, **kwargs: None)
 
     assert detect_china_network() is True
 
 
 def test_apply_mirror_environment_logs_applied_values(monkeypatch, caplog):
     _clear_mirror_env(monkeypatch)
-    caplog.set_level(logging.INFO, logger="config.mirror_env")
+    caplog.set_level(logging.INFO, logger="config.environment.mirror_env")
 
     apply_mirror_environment(
         SystemConfig(
@@ -200,7 +200,7 @@ def test_apply_mirror_environment_logs_applied_values(monkeypatch, caplog):
 
 def test_apply_mirror_environment_logs_official_sources(monkeypatch, caplog):
     _clear_mirror_env(monkeypatch)
-    caplog.set_level(logging.INFO, logger="config.mirror_env")
+    caplog.set_level(logging.INFO, logger="config.environment.mirror_env")
 
     apply_mirror_environment(SystemConfig(mirror_auto_detect_china=False))
 

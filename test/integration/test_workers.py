@@ -29,8 +29,8 @@ pytestmark = pytest.mark.integration
 
 def _make_runtime_for_workers(mock_llm_adapter=None, **overrides):
     """Build a minimal AppRuntime suitable for worker testing."""
-    from config.schema import AppConfig, ApiConfig, SystemConfig, Character, Background
-    from config.config_manager import ConfigManager
+    from config.domain.schema import AppConfig, ApiConfig, SystemConfig, Character, Background
+    from config.repository.config_manager import ConfigManager
     from ai.llm.llm_manager import LLMManager
     from test.conftest import make_app_config
 

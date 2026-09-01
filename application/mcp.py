@@ -21,7 +21,7 @@ def _as_str_list(value: Any) -> list[str]:
 
 
 def _mcp_config_response(data: dict[str, Any] | None = None) -> dict[str, Any]:
-    from config.mcp_config import DEFAULT_MCP_CONFIG_PATH, read_mcp_config
+    from config.repository.mcp_config import DEFAULT_MCP_CONFIG_PATH, read_mcp_config
 
     cfg = read_mcp_config(DEFAULT_MCP_CONFIG_PATH) if data is None else data
     servers: list[dict[str, Any]] = []
@@ -137,7 +137,7 @@ def _preview_mcp_tools_from_payload(
     state: BridgeState, task_id: str, payload: dict[str, Any]
 ) -> list[dict[str, Any]]:
     from ai.tools.mcp_tool_setup import preview_mcp_tools_from_config
-    from config.mcp_config import write_mcp_config
+    from config.repository.mcp_config import write_mcp_config
 
     cfg = _validate_mcp_config_payload(payload)
     _update_task(
@@ -171,7 +171,7 @@ def _save_and_apply_mcp_config(
 ) -> dict[str, Any]:
     from ai.tools.mcp_tool_setup import reload_mcp_tools_from_config
     from ai.tools.tool_manager import ToolManager
-    from config.mcp_config import DEFAULT_MCP_CONFIG_PATH, write_mcp_config
+    from config.repository.mcp_config import DEFAULT_MCP_CONFIG_PATH, write_mcp_config
 
     cfg = _validate_mcp_config_payload(payload)
     _update_task(
@@ -192,7 +192,7 @@ def _save_and_apply_mcp_config(
 def ensure_mcp_config_file() -> Path:
     """Create the MCP configuration when missing and return its path."""
 
-    from config.mcp_config import (
+    from config.repository.mcp_config import (
         DEFAULT_MCP_CONFIG_PATH,
         default_mcp_config,
         write_mcp_config,

@@ -4,7 +4,7 @@ from http import HTTPStatus
 from pathlib import Path
 from types import SimpleNamespace
 
-from config.schema import Character
+from config.domain.schema import Character
 from frontend_bridge_core.routes.api import FrontendBridgeHandler
 
 

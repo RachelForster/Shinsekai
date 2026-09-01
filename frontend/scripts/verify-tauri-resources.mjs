@@ -23,6 +23,20 @@ for (const requiredFile of runtimeMarker.requiredFiles ?? []) {
 await assertExists(path.join(resourcesDir, "runtime_manifest.json"));
 await assertExists(path.join(resourcesDir, "main.py"));
 await assertExists(path.join(resourcesDir, "frontend_bridge.py"));
+await assertExists(path.join(resourcesDir, "config", "domain", "schema.py"));
+await assertExists(path.join(resourcesDir, "config", "domain", "feature_flags.py"));
+await assertExists(path.join(resourcesDir, "config", "domain", "network_proxy.py"));
+await assertExists(path.join(resourcesDir, "config", "domain", "adapter_extra_kwargs.py"));
+await assertExists(path.join(resourcesDir, "config", "domain", "llm_defaults.py"));
+await assertExists(path.join(resourcesDir, "config", "domain", "sprite_voice.py"));
+await assertExists(path.join(resourcesDir, "config", "repository", "config_manager.py"));
+await assertExists(path.join(resourcesDir, "config", "repository", "character_manager.py"));
+await assertExists(path.join(resourcesDir, "config", "repository", "background_manager.py"));
+await assertExists(path.join(resourcesDir, "config", "repository", "character_config.py"));
+await assertExists(path.join(resourcesDir, "config", "repository", "mcp_config.py"));
+await assertExists(path.join(resourcesDir, "config", "environment", "mirror_env.py"));
+await assertExists(path.join(resourcesDir, "config", "environment", "network_proxy.py"));
+await assertExists(path.join(resourcesDir, "config", "environment", "tts_provider_config.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "mobile_access.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "runtime_process.py"));
 await assertExists(path.join(resourcesDir, "application", "chat", "commands.py"));
@@ -63,6 +77,19 @@ for (const retiredPath of [
   path.join("core", "runtime"),
   path.join("core", "plugins"),
   path.join("core", "mobile_access"),
+  path.join("config", "schema.py"),
+  path.join("config", "feature_flags.py"),
+  path.join("config", "adapter_extra_kwargs.py"),
+  path.join("config", "llm_defaults.py"),
+  path.join("config", "sprite_voice.py"),
+  path.join("config", "config_manager.py"),
+  path.join("config", "character_manager.py"),
+  path.join("config", "background_manager.py"),
+  path.join("config", "character_config.py"),
+  path.join("config", "mcp_config.py"),
+  path.join("config", "mirror_env.py"),
+  path.join("config", "network_proxy.py"),
+  path.join("config", "tts_provider_config.py"),
   path.join("core", "messaging", "chat_turn_wiring.py"),
   path.join("core", "sprite", "initial_sprite.py"),
   path.join("application", "media", "effects.py"),

@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 def _get_config_manager():
     global _config_manager
     if _config_manager is None:
-        from config.config_manager import ConfigManager
+        from config.repository.config_manager import ConfigManager
 
         _config_manager = ConfigManager()
     return _config_manager

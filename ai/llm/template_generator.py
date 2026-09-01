@@ -5,7 +5,7 @@ from typing import Any
 
 from i18n import tr as tr_i18n
 from sdk.lang import normalize_lang
-from config.config_manager import ConfigManager, character_name_key
+from config.repository.config_manager import ConfigManager, character_name_key
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
 from ai.tools.tool_manager import ToolManager
 from sdk.tool_registry import apply_registered_tools

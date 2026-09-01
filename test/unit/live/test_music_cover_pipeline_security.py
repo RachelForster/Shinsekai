@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from config.schema import SystemConfig
+from config.domain.schema import SystemConfig
 from live.music_cover_pipeline import (
     _run_yt_dlp_download,
     _yt_dlp_environment,

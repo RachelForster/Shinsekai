@@ -133,11 +133,11 @@ def test_factory_reports_missing_llm_as_initialization_failure(
 def test_config_error_is_reported_through_preparsed_transport(monkeypatch) -> None:
     transport = _Transport(streaming=False)
     monkeypatch.setattr(
-        "config.network_proxy.apply_network_proxy_environment_from_system_config",
+        "config.environment.network_proxy.apply_network_proxy_environment_from_system_config",
         lambda: None,
     )
     monkeypatch.setattr(
-        "config.mirror_env.apply_mirror_environment_from_system_config",
+        "config.environment.mirror_env.apply_mirror_environment_from_system_config",
         lambda: None,
     )
     monkeypatch.setattr(session_runtime, "_import_builtin_tools", lambda: None)
@@ -191,11 +191,11 @@ def test_argument_error_is_reported_through_preparsed_transport(monkeypatch) -> 
         )
     )
     monkeypatch.setattr(
-        "config.network_proxy.apply_network_proxy_environment_from_system_config",
+        "config.environment.network_proxy.apply_network_proxy_environment_from_system_config",
         lambda: None,
     )
     monkeypatch.setattr(
-        "config.mirror_env.apply_mirror_environment_from_system_config",
+        "config.environment.mirror_env.apply_mirror_environment_from_system_config",
         lambda: None,
     )
     monkeypatch.setattr(session_runtime, "_import_builtin_tools", lambda: None)
@@ -227,11 +227,11 @@ def test_argparse_system_exit_is_reported_as_failure(monkeypatch) -> None:
         )
     )
     monkeypatch.setattr(
-        "config.network_proxy.apply_network_proxy_environment_from_system_config",
+        "config.environment.network_proxy.apply_network_proxy_environment_from_system_config",
         lambda: None,
     )
     monkeypatch.setattr(
-        "config.mirror_env.apply_mirror_environment_from_system_config",
+        "config.environment.mirror_env.apply_mirror_environment_from_system_config",
         lambda: None,
     )
     monkeypatch.setattr(session_runtime, "_import_builtin_tools", lambda: None)

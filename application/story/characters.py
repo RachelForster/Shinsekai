@@ -17,7 +17,7 @@ from typing import Any, Protocol
 
 import yaml
 
-from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from config.domain.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
     CastResolutionPlan,
     CharacterDefinition,

@@ -185,7 +185,7 @@ class OpenAIAdapter(LLMAdapter):
         try:
             kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
             # 各提供商在 OpenAI 兼容通道下可能不支持某些参数
-            from config.config_manager import ConfigManager
+            from config.repository.config_manager import ConfigManager
             _unsupported = self.get_unsupported_chat_params(
                 ConfigManager().config.api_config.llm_provider or ""
             )

@@ -4,8 +4,8 @@ import hashlib
 import re
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
-from config.schema import Character, Sprite
-from config.config_manager import ConfigManager
+from config.domain.schema import Character, Sprite
+from config.repository.config_manager import ConfigManager
 import yaml
 
 UPLOAD_DIR = "data/sprite"

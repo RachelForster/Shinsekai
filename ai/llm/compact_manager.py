@@ -6,7 +6,7 @@ import tiktoken
 from typing import List, Dict, Any
 import logging
 
-from config.schema import clamp_compact_target_ratio
+from config.domain.schema import clamp_compact_target_ratio
 from sdk.hooks import BeforeCompactContext, PluginHookDispatcher, PluginHookEvent
 
 logger = logging.getLogger(__name__)

@@ -5,9 +5,9 @@ import yaml
 import json
 import re
 from pathlib import Path, PurePosixPath
-from config.character_config import CharacterConfig
-from config.schema import Background
-from config.config_manager import ConfigManager
+from config.repository.character_config import CharacterConfig
+from config.domain.schema import Background
+from config.repository.config_manager import ConfigManager
 from typing import List
 import platform
 import subprocess

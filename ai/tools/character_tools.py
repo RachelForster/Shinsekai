@@ -1,7 +1,7 @@
 """Character lookup tool wrappers."""
 
 from sdk.tool_registry import tool
-from config.config_manager import ConfigManager
+from config.repository.config_manager import ConfigManager
 
 config_manager = ConfigManager()
 

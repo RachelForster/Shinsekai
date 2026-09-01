@@ -220,7 +220,7 @@ class LLMAdapterFactory:
             raise ValueError(f"Unsupported LLM adapter: '{llm_provider}'. Supported adapters are: {list(LLMAdapterFactory._adapters.keys())}")
 
         try:
-            from config.adapter_extra_kwargs import filter_kwargs_for_ctor
+            from config.domain.adapter_extra_kwargs import filter_kwargs_for_ctor
 
             return adapter_class(**filter_kwargs_for_ctor(adapter_class, kwargs))
         except TypeError as e:
@@ -963,7 +963,7 @@ class LLMManager:
 
         # Gemini's OpenAI-compatible streaming endpoint omits thought_signature from
         # tool call deltas. Fall back to non-streaming so the field is preserved.
-        from config.config_manager import ConfigManager
+        from config.repository.config_manager import ConfigManager
         if tools_defs and ConfigManager().config.api_config.llm_provider == "Gemini":
             yield from self._chat_with_tools_sync(
                 _dialog_output_required=dialog_output_required,

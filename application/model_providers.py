@@ -9,7 +9,7 @@ from ai.llm.claude_url import (
     claude_models_endpoint_url,
 )
 from application.runtime.state import _jsonify
-from config.llm_defaults import LLM_BASE_URLS
+from config.domain.llm_defaults import LLM_BASE_URLS
 
 _TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
     ("genie-tts", "Genie TTS"),

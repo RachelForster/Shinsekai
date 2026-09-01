@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from config.schema import Background
+from config.domain.schema import Background
 from tools import file_util
 
 

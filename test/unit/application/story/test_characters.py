@@ -23,7 +23,7 @@ from application.story import (
     materialize_imported_character,
     migrate_selected_characters,
 )
-from config.feature_flags import (
+from config.domain.feature_flags import (
     FeatureDisabledError,
     FeatureFlag,
     FeatureFlagConfigManager,
