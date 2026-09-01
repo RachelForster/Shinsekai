@@ -208,6 +208,9 @@ export function synchronizeTemplateLaunchSessionWithSnapshot(
   session: TemplateLaunchSession,
   snapshot: ChatSnapshot,
 ): TemplateLaunchSession {
+  if (snapshot.runtimeDependencyError) {
+    return session;
+  }
   const confirmedHistoryPath = snapshot.historyPath?.trim();
   if (!confirmedHistoryPath || confirmedHistoryPath === session.historyPath) {
     return session;

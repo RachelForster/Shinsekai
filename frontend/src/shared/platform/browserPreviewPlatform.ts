@@ -473,6 +473,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   let mcpConfig = clone(sampleMcpConfig);
   let chat = clone(sampleChatSnapshot);
   let previewBranchCounter = 1;
+  let previewHistoryCounter = 0;
   const previewBranches = new Map<string, ChatConversationBranch & { historyEntries: ChatHistoryEntry[] }>();
   previewBranches.set("main", {
     id: "main",
@@ -1275,7 +1276,13 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         await delay(null, 80);
         const character = config.characters.find((item) => payload.characters.includes(item.name));
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
-        const historyPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
+        const requestedHistoryPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
+        const historyBase = requestedHistoryPath.toLowerCase().endsWith(".json")
+          ? requestedHistoryPath.slice(0, -".json".length)
+          : requestedHistoryPath;
+        const historyPath = payload.resetHistory
+          ? `${historyBase}-quick-restart-${(previewHistoryCounter += 1)}`
+          : requestedHistoryPath;
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
@@ -1291,6 +1298,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           status: "idle",
           statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
         };
+        if (templateSession) {
+          templateSession = { ...templateSession, historyPath };
+        }
         emitChat();
         previewTask<ChatSnapshot>(
           taskId,

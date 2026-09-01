@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse, urlunparse
 
 from application.chat.effects import build_selected_effect_context
 from application.chat.launch_history import (
+    persist_confirmed_history_path,
     plan_chat_history_launch,
     resolve_chat_history_path,
 )
@@ -1605,6 +1606,14 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             self.state,
             enabled=mobile_access_enabled,
         )
+        if init_stream_info is None and not persist_confirmed_history_path(
+            self.state,
+            history_path,
+        ):
+            logger.warning(
+                "Chat launched but the selected history path could not be persisted",
+                extra={"history_path": history_path.as_posix()},
+            )
         return _chat_snapshot(
             self.state,
             "idle",

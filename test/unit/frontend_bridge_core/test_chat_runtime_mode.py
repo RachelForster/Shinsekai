@@ -509,7 +509,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(handler.server.state.chat_session["characterName"], "Alice")
         self.assertEqual(snapshot["characterName"], "Alice")
 
-    def test_quick_restart_uses_new_managed_history_without_changing_scenario(self):
+    def test_direct_quick_restart_persists_new_managed_history_without_changing_scenario(self):
         handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
         config_manager = _ConfigManager()
         config_manager.config.characters = [
@@ -558,7 +558,8 @@ class ChatRuntimeModeTests(unittest.TestCase):
                     return_value=instance_id,
                 ),
                 patch(
-                    "application.chat.launch_history.persist_confirmed_history_path",
+                    "frontend_bridge_core.routes.api.persist_confirmed_history_path",
+                    return_value=True,
                 ) as persist_history_path,
             ):
                 snapshot = handler._launch_chat(body)
@@ -571,7 +572,10 @@ class ChatRuntimeModeTests(unittest.TestCase):
             expected_history,
         )
         self.assertEqual(Path(snapshot["historyPath"]).name, expected_history)
-        persist_history_path.assert_not_called()
+        persist_history_path.assert_called_once_with(
+            handler.server.state,
+            Path(snapshot["historyPath"]),
+        )
         self.assertTrue(marker_survived)
 
     def test_quick_restart_does_not_select_a_new_history_while_runtime_is_busy(self):
