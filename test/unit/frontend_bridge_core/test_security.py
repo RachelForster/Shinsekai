@@ -22,7 +22,9 @@ def test_validated_http_url_rejects_control_chars_and_special_use_ips():
         validated_http_url("https://example.com\r\nX-Test: bad")
 
     with pytest.raises(ValueError):
-        validated_http_url("http://169.254.169.254/latest/meta-data", allow_private_hosts=True)
+        validated_http_url(
+            "http://169.254.169.254/latest/meta-data", allow_private_hosts=True
+        )
 
 
 def test_validated_http_url_allows_local_llm_when_requested():
@@ -44,10 +46,14 @@ def test_validated_http_url_respects_allowed_hosts_accepts_matching_host():
 
 def test_validated_http_url_respects_allowed_hosts_rejects_lookalike_domains():
     with pytest.raises(ValueError):
-        validated_http_url("https://example.com.evil.com/path", allowed_hosts={"example.com"})
+        validated_http_url(
+            "https://example.com.evil.com/path", allowed_hosts={"example.com"}
+        )
 
     with pytest.raises(ValueError):
-        validated_http_url("https://evil-example.com/path", allowed_hosts={"example.com"})
+        validated_http_url(
+            "https://evil-example.com/path", allowed_hosts={"example.com"}
+        )
 
 
 def test_validated_http_url_rejects_localhost_by_default():
@@ -170,6 +176,26 @@ def test_cors_drops_crlf_origin():
     assert not any(key == "Access-Control-Allow-Origin" for key, _value in headers)
 
 
+def test_cors_cookie_uses_the_server_side_token_after_query_authentication(
+    monkeypatch,
+):
+    handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+    headers: list[tuple[str, str]] = []
+    handler.server = SimpleNamespace(state=SimpleNamespace(auth_token="server-secret"))
+    handler.path = "/?shinsekai_bridge_token=user-controlled"
+    handler.headers = {}
+    handler.send_header = lambda key, value: headers.append((key, value))  # type: ignore[method-assign]
+    monkeypatch.setattr(
+        "frontend_bridge_core.routes.http_handler.hmac.compare_digest",
+        lambda _supplied, _required: True,
+    )
+
+    handler._send_cors()
+
+    cookie = next(value for key, value in headers if key == "Set-Cookie")
+    assert cookie.startswith("shinsekai_bridge_token=server-secret;")
+
+
 def _handler_with_auth_token(token: str) -> FrontendBridgeHandler:
     handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
     handler.server = SimpleNamespace(state=SimpleNamespace(auth_token=token))  # type: ignore[assignment]
@@ -180,15 +206,21 @@ def test_inject_bridge_token_appends_token_to_frontend_urls():
     handler = _handler_with_auth_token("secret-token")
     detail = {
         "pages": [
-            {"frontendUrl": "/api/plugins/demo/frontend/page/?pluginId=demo&pageId=page"},
+            {
+                "frontendUrl": "/api/plugins/demo/frontend/page/?pluginId=demo&pageId=page"
+            },
             {"frontendUrl": "/api/plugins/demo/frontend/bare/"},
         ]
     }
 
     result = handler._inject_bridge_token(detail)
 
-    assert result["pages"][0]["frontendUrl"].endswith("&shinsekai_bridge_token=secret-token")
-    assert result["pages"][1]["frontendUrl"].endswith("?shinsekai_bridge_token=secret-token")
+    assert result["pages"][0]["frontendUrl"].endswith(
+        "&shinsekai_bridge_token=secret-token"
+    )
+    assert result["pages"][1]["frontendUrl"].endswith(
+        "?shinsekai_bridge_token=secret-token"
+    )
 
 
 def test_inject_bridge_token_leaves_non_api_frontend_urls_unchanged():
