@@ -1,6 +1,6 @@
 import yaml
 
-from config.sprite_voice import normalize_sprite_voice_types
+from config.models.sprite_voice import normalize_sprite_voice_types
 
 
 class CharacterConfig:

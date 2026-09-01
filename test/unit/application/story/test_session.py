@@ -13,7 +13,7 @@ from application.story import (
     StorySession,
 )
 from application.story.persistence import global_progress_filename
-from config.feature_flags import (
+from config.models.feature_flags import (
     FeatureDisabledError,
     FeatureFlag,
     FeatureFlagConfigManager,

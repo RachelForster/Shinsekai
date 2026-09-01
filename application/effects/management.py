@@ -14,7 +14,7 @@ import zipfile
 
 import yaml
 
-from config.schema import Effect
+from config.models.schema import Effect
 from sdk.path_utils import (
     safe_child_path,
     safe_existing_file_path,

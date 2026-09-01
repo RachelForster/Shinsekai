@@ -13,7 +13,7 @@ from ai.tools.story_tools import (
     openai_tools_from_protocol,
     scene_tool_protocol_definitions,
 )
-from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from config.models.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
     ApplySemanticSignals,
     CastResolutionContext,

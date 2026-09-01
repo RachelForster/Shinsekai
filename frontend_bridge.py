@@ -358,16 +358,16 @@ def run(
 
     configure_logging("frontend-bridge", project_root=Path(resolved_project_root))
     logger = get_logger(__name__)
-    from config.mirror_env import apply_mirror_environment_from_system_config
-    from config.network_proxy import apply_network_proxy_environment_from_system_config
+    from config.environment.mirror_env import apply_mirror_environment_from_system_config
+    from config.environment.network_proxy import apply_network_proxy_environment_from_system_config
 
     apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
     os.environ["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "1"
 
-    from config.background_manager import BackgroundManager
-    from config.character_manager import CharacterManager
-    from config.config_manager import ConfigManager
+    from config.persistence.background_manager import BackgroundManager
+    from config.persistence.character_manager import CharacterManager
+    from config.persistence.config_manager import ConfigManager
     from i18n import init_i18n
     from ai.llm.template_generator import TemplateGenerator
 
@@ -535,16 +535,16 @@ def check_runtime(
     from sdk.logging import configure_logging
 
     configure_logging("frontend-bridge", project_root=Path(resolved_project_root))
-    from config.mirror_env import apply_mirror_environment_from_system_config
-    from config.network_proxy import apply_network_proxy_environment_from_system_config
+    from config.environment.mirror_env import apply_mirror_environment_from_system_config
+    from config.environment.network_proxy import apply_network_proxy_environment_from_system_config
 
     apply_network_proxy_environment_from_system_config()
     apply_mirror_environment_from_system_config()
     _check_runtime_requirements(repo_root, requirements_file, profile)
 
-    from config.background_manager import BackgroundManager
-    from config.character_manager import CharacterManager
-    from config.config_manager import ConfigManager
+    from config.persistence.background_manager import BackgroundManager
+    from config.persistence.character_manager import CharacterManager
+    from config.persistence.config_manager import ConfigManager
     from i18n import init_i18n
     from ai.llm.template_generator import TemplateGenerator
 

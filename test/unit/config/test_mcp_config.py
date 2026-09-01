@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from config.mcp_config import (
+from config.persistence.mcp_config import (
     default_mcp_config,
     read_mcp_config,
     write_mcp_config,

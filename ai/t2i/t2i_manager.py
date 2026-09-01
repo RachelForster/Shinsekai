@@ -38,7 +38,7 @@ class T2IAdapterFactory:
 
         try:
             # Instantiate the correct adapter class with the provided kwargs
-            from config.adapter_extra_kwargs import filter_kwargs_for_ctor
+            from config.models.adapter_extra_kwargs import filter_kwargs_for_ctor
 
             return adapter_class(
                 **filter_kwargs_for_ctor(adapter_class, kwargs)

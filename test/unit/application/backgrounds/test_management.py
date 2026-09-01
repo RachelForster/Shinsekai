@@ -7,7 +7,7 @@ from application.backgrounds import (
     BackgroundUseCase,
     parse_background_request,
 )
-from config.schema import Background
+from config.models.schema import Background
 
 
 class FakeConfigManager:

@@ -596,7 +596,7 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             elif path == "/api/config":
                 self._send_json(_app_config_response(self.state))
             elif path == "/api/config/network-proxy/detect":
-                from config.network_proxy import detect_network_proxy_configuration
+                from config.environment.network_proxy import detect_network_proxy_configuration
 
                 self._send_json(detect_network_proxy_configuration().as_payload())
             elif path == "/api/config/tts-bundle/recommendation":
@@ -787,8 +787,8 @@ class FrontendBridgeHandler(BaseHTTPRequestHandler):
             if method in {"POST", "PUT"} and path == "/api/config/api":
                 self._send_json(_save_api_config(self.state, body))
             elif method in {"POST", "PUT"} and path == "/api/config/system":
-                from config.schema import SystemConfig
-                from config.mirror_env import REGION_AUTO
+                from config.models.schema import SystemConfig
+                from config.environment.mirror_env import REGION_AUTO
 
                 config = SystemConfig.model_validate(body)
                 config.mirror_region = REGION_AUTO

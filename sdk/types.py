@@ -53,7 +53,7 @@ class SettingsUIContribution:
 
     ``build`` receives :class:`~sdk.plugin_host_context.PluginSettingsUIContext` only
     (read-only app snapshot + paths / name lists). It does **not** receive
-    :class:`~config.config_manager.ConfigManager` or full :class:`~ui.settings_ui.context.SettingsUIContext`.
+    :class:`~config.persistence.config_manager.ConfigManager` or full :class:`~ui.settings_ui.context.SettingsUIContext`.
 
     ``nav_label`` is shown on the sidebar (or host may map it through i18n).
     ``page_id`` must be unique across all plugins (and ideally across the app).

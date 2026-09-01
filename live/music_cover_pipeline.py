@@ -18,7 +18,7 @@ from typing import Callable, List, Optional, Tuple
 
 import requests
 
-from config.schema import SystemConfig
+from config.models.schema import SystemConfig
 from frontend_bridge_core.security import (
     safe_search_query,
     validated_http_url,

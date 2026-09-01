@@ -4,8 +4,8 @@ import os
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Dict, Any, Tuple, Optional, Union
-from config.schema import Background, Sprite # 确保导入了 Background 和 Sprite
-from config.config_manager import ConfigManager
+from config.models.schema import Background, Sprite # 确保导入了 Background 和 Sprite
+from config.persistence.config_manager import ConfigManager
 import tools.file_util as fu
 import yaml
 

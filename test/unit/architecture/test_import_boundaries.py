@@ -284,6 +284,17 @@ def _imported_roots(source: Path) -> set[str]:
     return imported_roots
 
 
+def _absolute_import_modules(source: Path) -> set[str]:
+    tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+    modules: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            modules.add(node.module)
+    return modules
+
+
 def _literal_dynamic_imported_roots(tree: ast.AST) -> set[str]:
     """Return literal roots loaded through importlib or ``__import__``."""
 
@@ -585,6 +596,56 @@ def test_config_does_not_hide_forbidden_dynamic_imports() -> None:
     assert not unexpected, (
         "Config must not hide forbidden dependencies behind importlib: "
         f"{unexpected}"
+    )
+
+
+def test_config_has_explicit_models_persistence_and_environment_boundaries() -> None:
+    """Keep configuration rules independent from persistence and side effects."""
+
+    config_root = REPO_ROOT / "config"
+    packages = {
+        "models": config_root / "models",
+        "persistence": config_root / "persistence",
+        "environment": config_root / "environment",
+    }
+    assert sorted(path.name for path in config_root.glob("*.py")) == ["__init__.py"]
+    assert all((path / "__init__.py").is_file() for path in packages.values())
+
+    expected_files = {
+        "models": {"schema.py", "feature_flags.py", "network_proxy.py"},
+        "persistence": {
+            "config_manager.py",
+            "character_manager.py",
+            "background_manager.py",
+            "mcp_config.py",
+        },
+        "environment": {
+            "mirror_env.py",
+            "network_proxy.py",
+            "tts_provider_config.py",
+        },
+    }
+    for package, filenames in expected_files.items():
+        assert all((packages[package] / filename).is_file() for filename in filenames)
+
+    model_violations: list[tuple[str, str]] = []
+    for source in sorted(packages["models"].glob("*.py")):
+        for module in sorted(_absolute_import_modules(source)):
+            if module.startswith(("config.persistence", "config.environment")):
+                model_violations.append((source.name, module))
+    assert not model_violations, (
+        "config/models must remain independent from persistence and process adapters: "
+        f"{model_violations}"
+    )
+
+    environment_violations: list[tuple[str, str]] = []
+    for source in sorted(packages["environment"].glob("*.py")):
+        for module in sorted(_absolute_import_modules(source)):
+            if module.startswith("config.persistence"):
+                environment_violations.append((source.name, module))
+    assert not environment_violations, (
+        "config/environment must not construct persistence implementations: "
+        f"{environment_violations}"
     )
 
 

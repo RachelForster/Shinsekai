@@ -18,7 +18,7 @@ import random
 import time
 
 from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
-from config.config_manager import ConfigManager
+from config.persistence.config_manager import ConfigManager
 
 config = ConfigManager()
 USER_TEMPLATE = """

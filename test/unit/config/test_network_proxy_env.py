@@ -6,13 +6,13 @@ import pytest
 from pydantic import ValidationError
 from requests.utils import get_environ_proxies, should_bypass_proxies
 
-import config.network_proxy as network_proxy
-from config.network_proxy import (
+import config.environment.network_proxy as network_proxy
+from config.environment.network_proxy import (
     apply_network_proxy_environment,
     apply_network_proxy_environment_from_system_config,
     detect_network_proxy_configuration,
 )
-from config.schema import SystemConfig
+from config.models.schema import SystemConfig
 
 
 def _clear_proxy_env(monkeypatch):

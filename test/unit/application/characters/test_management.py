@@ -10,7 +10,7 @@ from application.characters import (
     parse_character_request,
     validate_character_payload,
 )
-from config.schema import Character
+from config.models.schema import Character
 
 
 def _character_payload(**overrides):

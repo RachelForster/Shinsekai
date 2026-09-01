@@ -14,7 +14,7 @@ from typing import List
 from urllib.parse import urlparse
 
 import yaml
-from config.config_manager import ConfigManager
+from config.persistence.config_manager import ConfigManager
 from sdk.handlers import MessageHandler
 from core.messaging.dialog_tokens import (
     match_bgm_name,

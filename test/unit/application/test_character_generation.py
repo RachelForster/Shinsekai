@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from application.characters import generation
 from application.characters.generation import generate_character_setting
-from config.character_manager import CharacterManager
+from config.persistence.character_manager import CharacterManager
 from test.conftest import make_character
 
 

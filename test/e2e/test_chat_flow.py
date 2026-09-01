@@ -10,8 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from config.config_manager import ConfigManager
-from config.schema import (
+from config.persistence.config_manager import ConfigManager
+from config.models.schema import (
     Sprite, Character, Background, ApiConfig, SystemConfig, AppConfig,
 )
 from core.messaging.stream_parser import LlmResponseStreamParser

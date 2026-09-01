@@ -15,7 +15,7 @@ from application.chat.runtime_process import _handle_chat_command
 from frontend_bridge_core.chat_stream import ChatStreamService
 from application.runtime.event_sink import fold_event_into_snapshot
 from frontend_bridge_core.transport.ws_client import WSClientSink
-from config.schema import ApiConfig
+from config.models.schema import ApiConfig
 
 
 class _StubChatStream:

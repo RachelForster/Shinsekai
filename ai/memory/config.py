@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from config.config_manager import ConfigManager
+from config.persistence.config_manager import ConfigManager
 from core.model_assets.service import ModelAssetSpec, find_cached_huggingface_snapshot
 
 from ai.memory.constants import EMBEDDING_DIMS, EMBEDDING_MODEL, VECTOR_COLLECTION

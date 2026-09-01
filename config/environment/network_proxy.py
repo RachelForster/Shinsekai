@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from config.models.network_proxy import normalize_proxy_url
+
 logger = logging.getLogger(__name__)
 
 _HTTP_PROXY_ENV_NAMES = ("HTTP_PROXY", "http_proxy")
@@ -55,22 +57,6 @@ class NetworkProxyDetection:
         }
 
 
-def normalize_proxy_url(value: Any, *, allowed_schemes: set[str], field_name: str) -> str:
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    parsed = urlparse(raw)
-    scheme = parsed.scheme.lower()
-    if scheme not in allowed_schemes or not parsed.netloc:
-        allowed = "/".join(sorted(allowed_schemes))
-        example_scheme = next(iter(sorted(allowed_schemes)))
-        raise ValueError(
-            f"{field_name} must be a {allowed} URL, "
-            f"for example {example_scheme}://127.0.0.1:7890"
-        )
-    return raw
-
-
 def resolved_network_proxy_values(config: Any) -> NetworkProxyValues:
     if not bool(getattr(config, "network_proxy_enabled", False)):
         return NetworkProxyValues(http="", https="", socks5="")
@@ -103,7 +89,7 @@ def apply_network_proxy_environment_from_system_config(path: str | Path | None =
     """Apply proxy env early without constructing the full ConfigManager."""
     try:
         import yaml
-        from config.schema import SystemConfig
+        from config.models.schema import SystemConfig
 
         config_path = Path(path or "data/config/system_config.yaml")
         raw = {}

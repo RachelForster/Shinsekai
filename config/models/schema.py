@@ -3,8 +3,8 @@ from collections.abc import Mapping
 from pydantic import BaseModel, Field, HttpUrl, FilePath, BeforeValidator, field_validator, model_validator
 from pydantic_core import PydanticUseDefault
 from typing import List, Dict, Optional, Union, Any, Annotated, TypeVar
-from config.feature_flags import FeatureFlagConfigManager
-from config.network_proxy import normalize_proxy_url
+from config.models.feature_flags import FeatureFlagConfigManager
+from config.models.network_proxy import normalize_proxy_url
 
 # ----------------- 解决 YAML None 问题的工具 -----------------
 def default_if_none(value: Any) -> Any:

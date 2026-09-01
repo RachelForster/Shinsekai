@@ -8,7 +8,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-from config.tts_provider_config import (
+from config.environment.tts_provider_config import (
     default_tts_work_path,
     installed_tts_bundle_paths,
     is_http_url,
@@ -82,7 +82,7 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
         return {}
     project_root = _state_project_root(state)
     try:
-        from config.mirror_env import system_config_payload_with_resolved_mirrors
+        from config.environment.mirror_env import system_config_payload_with_resolved_mirrors
 
         payload["system_config"] = system_config_payload_with_resolved_mirrors(state.config_manager.config.system_config)
     except Exception:
@@ -93,7 +93,7 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
         provider = str(api_config.get("llm_provider") or "Deepseek").strip() or "Deepseek"
         if not str(api_config.get("llm_base_url") or "").strip():
             try:
-                from config.llm_defaults import LLM_BASE_URLS
+                from config.models.llm_defaults import LLM_BASE_URLS
 
                 api_config["llm_base_url"] = str(LLM_BASE_URLS.get(provider) or "")
             except Exception:
@@ -156,7 +156,7 @@ def _validate_api_config_for_save(config: Any) -> None:
 
 
 def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
-    from config.schema import ApiConfig
+    from config.models.schema import ApiConfig
 
     config = ApiConfig.model_validate(payload).model_copy(deep=True)
     config.tts_provider = normalize_tts_provider(config.tts_provider)

@@ -64,7 +64,7 @@ from test.mocks import MockLLMAdapter, MockTTSAdapter, MockT2IAdapter, MockASRAd
 # Test Data Factories — create valid Pydantic model instances with defaults
 # =========================================================================
 
-from config.schema import (
+from config.models.schema import (
     Sprite,
     Character,
     Background,
@@ -242,7 +242,7 @@ def mock_app_runtime(mock_llm_adapter, sample_app_config):
 
     All queues are real queue.Queue instances so worker-like tests can push/pop.
     """
-    from config.config_manager import ConfigManager
+    from config.persistence.config_manager import ConfigManager
 
     # Build a ConfigManager that returns our sample config
     config_mgr = MagicMock(spec=ConfigManager)

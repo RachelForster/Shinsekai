@@ -8,7 +8,7 @@ import threading
 from types import MappingProxyType
 from typing import Any
 
-from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
+from config.models.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
     EffectSpec,
     CastResolutionPlan,
