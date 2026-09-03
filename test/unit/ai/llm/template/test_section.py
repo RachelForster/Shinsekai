@@ -91,3 +91,39 @@ def test_section_copies_child_collection_and_rejects_ambiguous_ids():
         Section("root", children=(TextSection("same"), TextSection("same")))
     with pytest.raises(ValueError, match="must not be empty"):
         Section(" ")
+
+
+def test_disabled_node_skips_content_context_hooks_and_entire_subtree():
+    class UnreachableSection(Section):
+        def render_content(self, context):
+            pytest.fail("disabled content must not run")
+
+        def context_for_children(self, context):
+            pytest.fail("disabled context hook must not run")
+
+    disabled = UnreachableSection(
+        "disabled",
+        enabled=False,
+        children=(UnreachableSection("nested"),),
+    )
+    context = TemplateContext()
+    assert disabled.render(context) == ""
+    assert (
+        Section(
+            "root",
+            separator="|",
+            children=(
+                TextSection("before", text="before"),
+                disabled,
+                TextSection("after", text="after"),
+            ),
+        ).render(context)
+        == "before|after"
+    )
+
+
+def test_enabled_is_keyword_only_and_can_be_toggled_without_mutating_the_node():
+    node = TextSection("literal", (), 10, "", "text")
+    assert node.enabled is True
+    assert replace(node, enabled=False).render(TemplateContext()) == ""
+    assert node.render(TemplateContext()) == "text"

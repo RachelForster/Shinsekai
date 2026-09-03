@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Generic, TypeVar
 
 from .context import TemplateContext
@@ -19,13 +19,15 @@ class Section(Generic[ContextT]):
     IDs are nonempty and unique among siblings. Empty output is omitted, but
     whitespace in nonempty output is preserved. Override ``render_content``
     for a leaf or a composite heading, and ``context_for_children`` to scope
-    context changes to a subtree. The default composite has no own content.
+    context changes to a subtree. Disabled nodes skip their content, context
+    hooks and entire subtree. The default composite has no own content.
     """
 
     id: str
     children: tuple[Section[ContextT], ...] = ()
     priority: float = 100.0
     separator: str = ""
+    enabled: bool = field(default=True, kw_only=True)
 
     def __post_init__(self) -> None:
         if not self.id.strip():
@@ -42,6 +44,8 @@ class Section(Generic[ContextT]):
         return context
 
     def render(self, context: ContextT) -> str:
+        if not self.enabled:
+            return ""
         parts = [self.render_content(context)]
         if self.children:
             child_context = self.context_for_children(context)

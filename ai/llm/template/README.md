@@ -1,10 +1,13 @@
 # Composite prompt templates
 
 `Section` is both the base node and a composite. Each node has an `id`, a
-`priority`, child `children`, and `render(context) -> str`. Lower priorities
+`priority`, boolean `enabled` (default `True`), child `children`, and
+`render(context) -> str`. Lower priorities
 render first; equal priorities retain insertion order. IDs must be nonempty
 and unique among siblings. A parent renders its own content, then its children.
 Empty output is omitted; nonempty text and whitespace are preserved.
+Setting `enabled=False` skips the node's content, context hooks and entire
+subtree. The flag is keyword-only to preserve existing positional constructors.
 
 `TemplateContext` is a frozen dataclass base with no prescribed business fields.
 Subclasses define the data needed by their sections. By default, a parent passes
@@ -96,6 +99,13 @@ remain the responsibility of their existing callers.
 
 ## Patch compatibility
 
+`dialog/requirements.py` declares all rule nodes with their priorities and
+`enabled` values. Disabled features remain visible in the node list and do not
+render or translate their rule text. Localized arguments and the SDK patch
+bridge live in `requirement_arguments.py` and `requirement_section.py`.
+The bridge preserves the old distinction: a patch to an unavailable feature's
+rule is a no-op, while `add_requirements` may explicitly introduce that rule.
+
 `dialog/patches.py` applies the existing SDK `OutputContractPatch` objects to output
 fields and requirements. Patch priority is ascending and ties preserve input
 order, independently of section ordering. Each render starts from fresh base
@@ -125,6 +135,8 @@ template/
     catalogs.py
     fields.py
     requirements.py
+    requirement_arguments.py
+    requirement_section.py
     patches.py
   prompts/              # System and user text assembly
     composition.py
