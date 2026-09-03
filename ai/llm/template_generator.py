@@ -11,7 +11,7 @@ from config.config_manager import ConfigManager
 from i18n import tr as tr_i18n
 from sdk.types import OutputContractPatch
 
-from .template.dialog import DialogTemplateContext, build_dialog_section
+from .template.dialog import DialogTemplateContext, DialogTemplateSection
 from .template.integrations.characters import (
     resolve_chat_template_characters as _resolve_characters,
 )
@@ -138,4 +138,4 @@ class TemplateGenerator:
             max_speech_chars=max_speech_chars,
             max_dialog_items=max_dialog_items,
         )
-        return build_dialog_section().render(context), ""
+        return DialogTemplateSection().render(context), ""

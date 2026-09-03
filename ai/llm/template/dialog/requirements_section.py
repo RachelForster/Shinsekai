@@ -1,4 +1,6 @@
-"""Declarative requirement nodes with feature selection carried by enabled."""
+"""Tool guidance, declarative rules and closing constraints for dialog output."""
+
+from dataclasses import dataclass
 
 from sdk.types import RequirementSpec
 
@@ -49,10 +51,14 @@ def build_requirements(context: DialogTemplateContext) -> list[RequirementSpec]:
     return resolve_requirement_specs(build_requirement_sections(context), context)
 
 
+@dataclass(frozen=True)
 class RequirementsSection(Section[DialogTemplateContext]):
+    id: str = "requirements"
+
     def render_content(self, context: DialogTemplateContext) -> str:
-        tree = TextSection(
-            self.id,
+        rules = TextSection(
+            "rules",
+            priority=20,
             text=context.translate("requirements_header"),
             children=tuple(
                 TextSection(
@@ -62,6 +68,30 @@ class RequirementsSection(Section[DialogTemplateContext]):
                     text=f"- {item.text}\n",
                 )
                 for item in build_requirements(context)
+            ),
+        )
+        extra_bgm = TextSection(
+            "extra_bgm",
+            enabled=context.has_real_background,
+            text=lambda ctx: ctx.translate("closing_extra_bgm"),
+        )
+        tree = Section(
+            self.id,
+            children=(
+                TextSection("tools", text=lambda ctx: ctx.tools_block, priority=10),
+                rules,
+                TextSection(
+                    "closing",
+                    priority=30,
+                    text=lambda ctx: ctx.translate(
+                        "closing", extra=extra_bgm.render(ctx)
+                    ),
+                ),
+                TextSection(
+                    "json_reminder",
+                    priority=40,
+                    text=lambda ctx: f"{ctx.json_reminder}\n",
+                ),
             ),
         )
         return tree.render(context)

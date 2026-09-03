@@ -47,25 +47,28 @@ or a callable receiving the current context. User text is never processed with
 
 ## Dialog system prompts
 
-`dialog.build_dialog_section()` builds this reusable tree:
+`dialog.DialogTemplateSection` is the root and directly owns four major
+sections, each defined in its own file:
 
 ```text
-dialog.system
-  preamble
-  output
-    example
-    fields
-  characters
-    sprites
-    profiles
-  background
-    scenes
-    music
-  tools
-  requirements
-  closing
-  json_reminder
+DialogTemplateSection             dialog_template_section.py
+  JsonSchemaSection               json_schema_section.py
+  CharacterSection                character_section.py
+  BackgroundSection               background_section.py
+  RequirementsSection             requirements_section.py
 ```
+
+The root renders the preamble, then its four children in priority order.
+`JsonSchemaSection` owns the JSON example and patched field contract;
+`CharacterSection` owns sprites and character profiles; `BackgroundSection`
+owns scene and music catalogs; `RequirementsSection` owns tool guidance,
+patched rules, closing text and the final JSON reminder. Small text nodes
+within each section use `enabled` for optional content.
+
+All five classes are exported from `ai.llm.template.dialog` and can be
+constructed without arguments. Customize `root.children` with
+`dataclasses.replace` to disable, reorder or replace a major section.
+`build_dialog_section()` remains a compatibility factory returning the named root.
 
 Render it with `dialog.DialogTemplateContext`. Character resources,
 background, translation callback, tool text and patches are supplied explicitly.
@@ -99,7 +102,7 @@ remain the responsibility of their existing callers.
 
 ## Patch compatibility
 
-`dialog/requirements.py` declares all rule nodes with their priorities and
+`dialog/requirements_section.py` declares all rule nodes with their priorities and
 `enabled` values. Disabled features remain visible in the node list and do not
 render or translate their rule text. Localized arguments and the SDK patch
 bridge live in `requirement_arguments.py` and `requirement_section.py`.
@@ -130,11 +133,12 @@ template/
     context.py
     section.py
   dialog/               # Dialog system prompt and output-contract patches
-    builder.py
+    dialog_template_section.py
+    json_schema_section.py
+    character_section.py
+    background_section.py
+    requirements_section.py
     context.py
-    catalogs.py
-    fields.py
-    requirements.py
     requirement_arguments.py
     requirement_section.py
     patches.py
@@ -147,7 +151,7 @@ template/
 ```
 
 Each subpackage has an `__init__.py`. The `template` package exports the core
-primitives, `dialog` exports its context and builder, and `prompts` exports its
+primitives, `dialog` exports its context and named sections, and `prompts` exports its
 contexts and builders. The existing facade remains at
 `ai/llm/template_generator.py`. `integrations` does not eagerly import adapters,
 so importing the core or prompt builders does not initialize tool registries.
