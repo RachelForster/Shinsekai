@@ -21,11 +21,16 @@ def test_nested_sections_order_siblings_stably_and_preserve_whitespace():
         separator="\n",
         children=(
             TextSection("last", priority=20, text=" end "),
-            Section("group", priority=10, separator="/", children=(
-                TextSection("b", text="B"),
-                TextSection("a", text="A"),
-                TextSection("empty", text=""),
-            )),
+            Section(
+                "group",
+                priority=10,
+                separator="/",
+                children=(
+                    TextSection("b", text="B"),
+                    TextSection("a", text="A"),
+                    TextSection("empty", text=""),
+                ),
+            ),
             TextSection("first", priority=0, text="start"),
         ),
     )
@@ -41,13 +46,20 @@ def test_context_is_inherited_and_subtree_override_does_not_leak():
         seen.append(context)
         return context.name
 
-    prompt = Section("user", separator=",", children=(
-        TextSection("before", text=greet),
-        ScopedSection("scope", children=(
-            Section("nested", children=(TextSection("greeting", text=greet),)),
-        )),
-        TextSection("after", text=greet),
-    ))
+    prompt = Section(
+        "user",
+        separator=",",
+        children=(
+            TextSection("before", text=greet),
+            ScopedSection(
+                "scope",
+                children=(
+                    Section("nested", children=(TextSection("greeting", text=greet),)),
+                ),
+            ),
+            TextSection("after", text=greet),
+        ),
+    )
     context = GreetingContext("global")
 
     assert prompt.render(context) == "global,local,global"
@@ -57,9 +69,12 @@ def test_context_is_inherited_and_subtree_override_does_not_leak():
 
 
 def test_content_and_children_compose_without_interpreting_user_text():
-    prompt = TextSection("input", text="Context", separator="\n", children=(
-        TextSection("text", text=lambda context: context.name),
-    ))
+    prompt = TextSection(
+        "input",
+        text="Context",
+        separator="\n",
+        children=(TextSection("text", text=lambda context: context.name),),
+    )
 
     assert prompt.render(GreetingContext('{"raw": "{name}"}')) == (
         'Context\n{"raw": "{name}"}'
