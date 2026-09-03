@@ -34,6 +34,25 @@ class LLMAdapter(ABC):
         """
         return False
 
+    @property
+    def response_protocol(self) -> str:
+        """Wire-response family returned by :meth:`chat`.
+
+        Most adapters expose OpenAI-compatible response objects. Adapters with
+        another wire format override this capability instead of forcing the
+        conversation transport to inspect concrete adapter types.
+        """
+        return "openai"
+
+    @property
+    def supports_streaming_tools(self) -> bool:
+        """Whether streamed responses preserve all fields needed for tool replay."""
+        return True
+
+    def assistant_message_kwargs(self, reasoning: str) -> dict[str, str]:
+        """Provider fields that must be replayed on an assistant history entry."""
+        return {}
+
     @classmethod
     def get_config_schema(cls) -> dict[str, dict]:
         """Metadata for adapter-specific options; empty ``{}`` means none."""

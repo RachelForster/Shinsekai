@@ -111,7 +111,7 @@ class TestLLMManagerMessageManagement:
         def fail_deepcopy(_value):
             raise AssertionError("deepcopy should not run without message_added hooks")
 
-        monkeypatch.setattr("ai.llm.llm_manager.copy.deepcopy", fail_deepcopy)
+        monkeypatch.setattr("ai.llm.manager_state.copy.deepcopy", fail_deepcopy)
 
         mgr.add_message("user", "Hello")
 
@@ -775,7 +775,7 @@ class TestLLMManagerCompact:
         def fail_deepcopy(_value):
             raise AssertionError("deepcopy should not run without before_chat hooks")
 
-        monkeypatch.setattr("ai.llm.llm_manager.copy.deepcopy", fail_deepcopy)
+        monkeypatch.setattr("ai.llm.manager_state.copy.deepcopy", fail_deepcopy)
 
         context = mgr._before_chat_context(
             stream=False,

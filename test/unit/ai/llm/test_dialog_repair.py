@@ -3,8 +3,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from ai.llm.dialog_repair import repair_dialog_output
+from ai.llm.dialog_repair import repair_dialog_output as legacy_repair_dialog_output
 from ai.llm.llm_manager import LLMManager
+from ai.llm.repair import repair_dialog_output, repair_if_needed
 from test.mocks import MockLLMAdapter
 
 VALID_DIALOG = '{"dialog":[{"character_name":"Alice","sprite":"0","speech":"Hi"}]}'
@@ -36,6 +37,27 @@ def test_invalid_final_answer_is_repaired_without_tools() -> None:
         "content": "Hello, this is plain text.",
     }
     assert call["messages"][-1]["role"] == "user"
+
+
+def test_legacy_repair_import_remains_compatible() -> None:
+    assert legacy_repair_dialog_output is repair_dialog_output
+
+
+def test_repair_policy_reports_when_content_was_replaced() -> None:
+    adapter = MockLLMAdapter(responses=[VALID_DIALOG])
+
+    outcome = repair_if_needed(
+        required=True,
+        adapter=adapter,
+        content="plain text answer",
+        messages=[{"role": "user", "content": "hi"}],
+        generation_kwargs={},
+        cancelled=lambda: False,
+        event_logger=MagicMock(),
+    )
+
+    assert outcome.content == VALID_DIALOG
+    assert outcome.repaired is True
 
 
 def test_invalid_final_answer_retries_with_escalated_instruction() -> None:

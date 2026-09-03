@@ -72,6 +72,11 @@ class DeepSeekAdapter(LLMAdapter):
     def supports_native_vision(self) -> bool:
         return False
 
+    def assistant_message_kwargs(self, reasoning: str) -> dict[str, str]:
+        if self.thinking_enabled and (reasoning or "").strip():
+            return {"reasoning_content": reasoning}
+        return {}
+
     @classmethod
     def get_config_schema(cls) -> dict[str, dict]:
         return {
@@ -164,6 +169,12 @@ class OpenAIAdapter(LLMAdapter):
             )
         )
 
+    @property
+    def supports_streaming_tools(self) -> bool:
+        # Gemini's OpenAI-compatible stream omits thought_signature, which is
+        # required when the assistant tool call is replayed.
+        return self.provider != "Gemini"
+
     def cancel(self) -> None:
         """Close the active OpenAI stream/response to abort an in-flight request."""
         if self._current_stream is not None:
@@ -184,11 +195,8 @@ class OpenAIAdapter(LLMAdapter):
         """Sends a message to the OpenAI LLM."""
         try:
             kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
-            # 各提供商在 OpenAI 兼容通道下可能不支持某些参数
-            from config.config_manager import ConfigManager
-            _unsupported = self.get_unsupported_chat_params(
-                ConfigManager().config.api_config.llm_provider or ""
-            )
+            # 各提供商在 OpenAI 兼容通道下可能不支持某些参数。
+            _unsupported = self.get_unsupported_chat_params(self.provider)
             if _unsupported:
                 kwargs = {k: v for k, v in kwargs.items() if k not in _unsupported}
             use_tools = bool(kwargs.get("tools"))
@@ -288,6 +296,10 @@ class ClaudeAdapter(LLMAdapter):
         )
         self.model = model
         self.system_prompt = ''
+
+    @property
+    def response_protocol(self) -> str:
+        return "anthropic"
 
     def cancel(self) -> None:
         """Close the active Claude stream/response to abort an in-flight request."""
