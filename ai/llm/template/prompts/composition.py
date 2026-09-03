@@ -2,8 +2,7 @@
 
 from dataclasses import dataclass
 
-from .context import TemplateContext
-from .section import Section, TextSection
+from ..core import Section, TemplateContext, TextSection
 
 
 @dataclass(frozen=True)

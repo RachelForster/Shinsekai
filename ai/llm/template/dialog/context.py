@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 from sdk.types import OutputContractPatch
 
-from .context import TemplateContext
+from ..core import TemplateContext
 
 
 @dataclass(frozen=True)

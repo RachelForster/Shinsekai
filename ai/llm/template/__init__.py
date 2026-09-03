@@ -1,6 +1,5 @@
 """Reusable prompt composition primitives, without application initialization."""
 
-from .context import TemplateContext
-from .section import Section, TextSection
+from .core import Section, TemplateContext, TextSection
 
 __all__ = ["Section", "TemplateContext", "TextSection"]

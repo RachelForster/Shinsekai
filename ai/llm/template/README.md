@@ -64,7 +64,7 @@ dialog.system
   json_reminder
 ```
 
-Render it with `dialog_context.DialogTemplateContext`. Character resources,
+Render it with `dialog.DialogTemplateContext`. Character resources,
 background, translation callback, tool text and patches are supplied explicitly.
 The renderer does not load configuration, discover plugins or query tools.
 The existing `ai.llm.template_generator.TemplateGenerator` remains the application
@@ -96,7 +96,7 @@ remain the responsibility of their existing callers.
 
 ## Patch compatibility
 
-`patches.py` applies the existing SDK `OutputContractPatch` objects to output
+`dialog/patches.py` applies the existing SDK `OutputContractPatch` objects to output
 fields and requirements. Patch priority is ascending and ties preserve input
 order, independently of section ordering. Each render starts from fresh base
 fields and requirements; patches are never accumulated in the context.
@@ -112,10 +112,33 @@ fields and requirements; patches are never accumulated in the context.
 
 ## Files and verification
 
-`context.py` and `section.py` provide the reusable core. `dialog_context.py` and
-`dialog.py` define the dialog inputs and tree. `catalogs.py`, `fields.py` and
-`requirements.py` own the business sections. `characters.py`, `localization.py`
-and `tools.py` support the application facade. `prompts.py` provides text assembly.
+Files are grouped by responsibility:
+
+```text
+template/
+  core/                 # Reusable Composite primitives
+    context.py
+    section.py
+  dialog/               # Dialog system prompt and output-contract patches
+    builder.py
+    context.py
+    catalogs.py
+    fields.py
+    requirements.py
+    patches.py
+  prompts/              # System and user text assembly
+    composition.py
+  integrations/         # Application configuration and external registries
+    characters.py
+    localization.py
+    tools.py
+```
+
+Each subpackage has an `__init__.py`. The `template` package exports the core
+primitives, `dialog` exports its context and builder, and `prompts` exports its
+contexts and builders. The existing facade remains at
+`ai/llm/template_generator.py`. `integrations` does not eagerly import adapters,
+so importing the core or prompt builders does not initialize tool registries.
 
 Run `python -m pytest test/unit/ai/llm/template test/unit/sdk/test_output_contracts.py
 test/unit/application/test_chat_templates.py`. The compatibility fixture digests

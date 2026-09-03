@@ -2,9 +2,9 @@
 
 from sdk.types import OutputFieldSpec
 
-from .dialog_context import DialogTemplateContext
+from ..core import Section
+from .context import DialogTemplateContext
 from .patches import apply_field_patches
-from .section import Section
 
 
 def build_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:

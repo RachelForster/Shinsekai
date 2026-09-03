@@ -8,10 +8,10 @@ from .catalogs import (
     SceneCatalogSection,
     SpritesSection,
 )
-from .dialog_context import DialogTemplateContext
+from ..core import Section, TextSection
+from .context import DialogTemplateContext
 from .fields import FieldContractSection
 from .requirements import RequirementsSection
-from .section import Section, TextSection
 
 
 def _json_string_content(value: str) -> str:

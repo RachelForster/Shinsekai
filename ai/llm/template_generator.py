@@ -11,16 +11,17 @@ from config.config_manager import ConfigManager
 from i18n import tr as tr_i18n
 from sdk.types import OutputContractPatch
 
-from .template.characters import resolve_chat_template_characters as _resolve_characters
-from .template.dialog import build_dialog_section
-from .template.dialog_context import DialogTemplateContext
-from .template.localization import (
+from .template.dialog import DialogTemplateContext, build_dialog_section
+from .template.integrations.characters import (
+    resolve_chat_template_characters as _resolve_characters,
+)
+from .template.integrations.localization import (
     TRANSPARENT_BG,
     _target_voice_display_name as _voice_display_name,
     _ui_voice_same_lang as _same_voice_language,
     is_transparent_background,
 )
-from .template.tools import format_llm_tools_block
+from .template.integrations.tools import format_llm_tools_block
 
 
 config_manager = ConfigManager()

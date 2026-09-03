@@ -3,9 +3,9 @@
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
 from sdk.types import RequirementSpec
 
-from .dialog_context import DialogTemplateContext
+from ..core import Section, TextSection
+from .context import DialogTemplateContext
 from .patches import apply_requirement_patches
-from .section import Section, TextSection
 
 
 def build_requirements(context: DialogTemplateContext) -> list[RequirementSpec]:

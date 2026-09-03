@@ -1,7 +1,7 @@
 """Character and background context sections for dialog templates."""
 
-from .dialog_context import DialogTemplateContext
-from .section import Section
+from ..core import Section
+from .context import DialogTemplateContext
 
 
 class SpritesSection(Section[DialogTemplateContext]):
