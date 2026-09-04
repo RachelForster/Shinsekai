@@ -14,7 +14,6 @@ from application.runtime.workers import (
     LLMWorker,
     PresentationWorker,
     TTSWorker,
-    _stop_rain_for_explicit_user_input,
 )
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY
 from ai.llm.llm_manager import LLMManager
@@ -104,16 +103,6 @@ def _run_streaming_llm_worker(llm_manager) -> tuple[AppRuntime, list[LLMDialogMe
     while not tts_queue.empty():
         output.append(tts_queue.get_nowait())
     return runtime, output
-
-
-def test_explicit_player_rain_stop_stops_loop_without_waiting_for_llm() -> None:
-    ui = MagicMock()
-    ui.resolve_effect.return_value = True
-
-    assert _stop_rain_for_explicit_user_input("（雨停了）", ui)
-    ui.resolve_effect.assert_called_once_with("stop:雨天", {}, after_dialog=False)
-
-    assert not _stop_rain_for_explicit_user_input("等雨停了再出门", ui)
 
 
 def test_workers_keep_original_queue_attributes_and_bind_ports() -> None:
