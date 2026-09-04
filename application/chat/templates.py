@@ -8,6 +8,12 @@ from typing import Any
 from config.config_manager import character_name_key
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from application.chat.initial_sprite import initial_sprite_path_for_characters
+from ai.llm.template.prompts import (
+    RuntimePromptContext,
+    UserPromptContext,
+    build_runtime_prompt_section,
+    build_user_prompt_section,
+)
 from ai.llm.template_generator import (
     NoValidCharactersError,
     json_format_reminder,
@@ -53,11 +59,11 @@ def _parse_stored_template(raw: str) -> tuple[str, str]:
 
 
 def _compose_for_llm(scenario: str, system: str) -> str:
-    a = (scenario or "").strip()
-    b = (system or "").strip()
-    if a and b:
-        return f"{a}\n\n{b}"
-    return a or b
+    context = UserPromptContext(
+        prefix=(scenario or "").strip(),
+        user_input=(system or "").strip(),
+    )
+    return build_user_prompt_section().render(context)
 
 
 def _effective_user_scenario(user_scenario: str) -> str:
@@ -65,12 +71,12 @@ def _effective_user_scenario(user_scenario: str) -> str:
 
 
 def _compose_runtime_template(system_template: str, user_scenario: str) -> str:
-    parts = [
-        (system_template or "").rstrip(),
-        _effective_user_scenario(user_scenario),
-        json_format_reminder(),
-    ]
-    return "\n".join(part for part in parts if part) + "\n"
+    context = RuntimePromptContext(
+        system_template=(system_template or "").rstrip(),
+        user_scenario=_effective_user_scenario(user_scenario),
+        json_reminder=json_format_reminder(),
+    )
+    return build_runtime_prompt_section().render(context) + "\n"
 
 
 def _normalize_hash_character_names(character_names: Any = None) -> list[str]:
