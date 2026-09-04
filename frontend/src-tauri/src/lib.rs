@@ -453,6 +453,7 @@ pub fn run() {
                     .plugin(tauri_plugin_updater::Builder::new().build())?;
                 app.manage(DesktopUpdateState::new());
             }
+            app.handle().plugin(tauri_plugin_dialog::init())?;
 
             let source_root = resolve_source_root(app)?;
             let app_root = resolve_app_root(app, &source_root)?;

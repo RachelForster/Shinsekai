@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import tempfile
 from pathlib import Path
@@ -16,11 +17,28 @@ from sdk.path_utils import reject_control_chars, safe_existing_path
 
 
 def _local_input_roots() -> tuple[Path, ...]:
+    """Trusted roots for form fields that reference local files.
+
+    Cover the whole local machine like the file picker does (all existing
+    drives on Windows, the filesystem anchor elsewhere), otherwise saving a
+    form whose paths live outside cwd/temp/home fails with "outside the
+    allowed roots".
+    """
+
     roots = [Path.cwd(), Path(tempfile.gettempdir())]
     try:
         roots.append(Path.home())
     except RuntimeError:
         pass
+    if os.name == "nt":
+        for code in range(ord("A"), ord("Z") + 1):
+            drive = Path(f"{chr(code)}:/")
+            if drive.exists():
+                roots.append(drive)
+    else:
+        anchor = Path("/")
+        if anchor.exists():
+            roots.append(anchor)
     return tuple(dict.fromkeys(roots))
 
 

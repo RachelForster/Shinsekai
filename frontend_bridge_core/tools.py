@@ -19,7 +19,13 @@ MAX_FILE_BROWSER_ENTRIES = 2000
 
 
 def _local_file_access_roots(state: BridgeState) -> tuple[Path, ...]:
-    """Roots exposed to authenticated local-file tool operations."""
+    """Roots exposed to authenticated local-file tool operations.
+
+    The roots must cover everything the file-browser sidebar advertises
+    (project, app, home, downloads, and the local drive roots), otherwise
+    navigating the picker to a listed root — and saving paths picked there —
+    fails with "outside the allowed roots".
+    """
 
     root_raw = os.environ.get("EASYAI_PROJECT_ROOT") or str(Path.cwd())
     project_root = _resolve_path(Path(root_raw).expanduser())
@@ -28,6 +34,15 @@ def _local_file_access_roots(state: BridgeState) -> tuple[Path, ...]:
     downloads_dir = _user_downloads_dir()
     if downloads_dir is not None:
         roots.append(downloads_dir)
+    if os.name == "nt":
+        for code in range(ord("A"), ord("Z") + 1):
+            drive = Path(f"{chr(code)}:/")
+            if drive.exists():
+                roots.append(drive)
+    else:
+        anchor = Path("/")
+        if anchor.exists():
+            roots.append(anchor)
     return tuple(dict.fromkeys(_resolve_path(root) for root in roots))
 
 

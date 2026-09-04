@@ -7,6 +7,23 @@ import { AlertDialog, FileBrowserProvider, FilePicker } from "../../../shared/ui
 
 const browseFiles = vi.fn();
 
+const { isTauriMock, openMock } = vi.hoisted(() => ({
+  isTauriMock: vi.fn(() => false),
+  openMock: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: openMock,
+}));
+
+vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../shared/desktop/desktopApi")>();
+  return {
+    ...actual,
+    isTauriDesktop: isTauriMock,
+  };
+});
+
 function renderWithFileBrowser(children: ReactNode) {
   return render(
     <I18nProvider language="zh_CN">
@@ -47,6 +64,7 @@ describe("AlertDialog", () => {
 
 describe("FilePicker", () => {
   beforeEach(() => {
+    isTauriMock.mockReturnValue(false);
     browseFiles.mockResolvedValue({
       cwd: "/tmp",
       entries: [
@@ -144,5 +162,79 @@ describe("FilePicker", () => {
       expect((input as HTMLInputElement).selectionStart).toBe(0);
       expect((input as HTMLInputElement).selectionEnd).toBe(cwd.length);
     });
+  });
+});
+
+describe("FilePicker on the Tauri desktop", () => {
+  beforeEach(() => {
+    isTauriMock.mockReturnValue(true);
+    browseFiles.mockResolvedValue({
+      cwd: "/tmp",
+      entries: [],
+      parent: "/",
+      roots: [],
+    });
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("opens the OS-native file dialog and reports the picked path", async () => {
+    const onPathChange = vi.fn();
+    openMock.mockResolvedValueOnce("C:/assets/mio.png");
+
+    renderWithFileBrowser(<FilePicker onPathChange={onPathChange} pickLabel="选择素材" value="" />);
+
+    fireEvent.click(screen.getByLabelText("选择素材"));
+
+    await waitFor(() => {
+      expect(onPathChange).toHaveBeenCalledWith("C:/assets/mio.png");
+    });
+    expect(openMock).toHaveBeenCalledWith(expect.objectContaining({ directory: false, multiple: false }));
+    expect(browseFiles).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: "选择素材" })).not.toBeInTheDocument();
+  });
+
+  it("opens a directory dialog for directory mode", async () => {
+    const onPathChange = vi.fn();
+    openMock.mockResolvedValueOnce("D:/models/asr");
+
+    renderWithFileBrowser(
+      <FilePicker onPathChange={onPathChange} pickLabel="选择目录" pickerMode="directory" value="" />,
+    );
+
+    fireEvent.click(screen.getByLabelText("选择目录"));
+
+    await waitFor(() => {
+      expect(onPathChange).toHaveBeenCalledWith("D:/models/asr");
+    });
+    expect(openMock).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
+  });
+
+  it("keeps the value unchanged when the native dialog is cancelled", async () => {
+    const onPathChange = vi.fn();
+    openMock.mockResolvedValueOnce(null);
+
+    renderWithFileBrowser(<FilePicker onPathChange={onPathChange} pickLabel="选择素材" value="" />);
+
+    fireEvent.click(screen.getByLabelText("选择素材"));
+
+    await waitFor(() => {
+      expect(openMock).toHaveBeenCalledTimes(1);
+    });
+    expect(onPathChange).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the in-app browser when the native dialog fails", async () => {
+    const onPathChange = vi.fn();
+    openMock.mockRejectedValueOnce(new Error("plugin unavailable"));
+
+    renderWithFileBrowser(<FilePicker onPathChange={onPathChange} pickLabel="选择素材" value="" />);
+
+    fireEvent.click(screen.getByLabelText("选择素材"));
+
+    expect(await screen.findByRole("dialog", { name: "选择素材" })).toBeInTheDocument();
+    expect(onPathChange).not.toHaveBeenCalled();
   });
 });
