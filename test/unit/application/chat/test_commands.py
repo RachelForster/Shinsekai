@@ -16,6 +16,7 @@ from application.chat.commands import (
     ChatCommandUiBindings,
 )
 from core.messaging.chat_turn_service import ChatTurnOptions
+from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 
 
 @dataclass
@@ -380,6 +381,30 @@ def test_reverts_history_inside_application(monkeypatch, command_runtime) -> Non
         ("clear-options", None),
         ("sync-history", None),
     ]
+
+
+def test_revert_history_in_story_mode_truncates_memory_without_ui_events(
+    monkeypatch, command_runtime
+) -> None:
+    runtime = command_runtime
+    runtime.config.feature_flags = FeatureFlagConfigManager(
+        environ={},
+        overrides={FeatureFlag.STORY_SYSTEM: True},
+    )
+    revert = Mock()
+    monkeypatch.setattr("application.chat.commands.revert_chat_history", revert)
+
+    result = _execute(runtime, "revert-history", "2")
+
+    assert result.ok
+    revert.assert_called_once_with(
+        2,
+        llm_manager=runtime.llm_manager,
+        hist=runtime.dispatcher.chat_history,
+        window=None,
+    )
+    assert runtime.turn_service.calls[-1] == ("cancel", None)
+    assert runtime.ui_calls == []
 
 
 def test_dispatches_branch_commands(command_runtime) -> None:

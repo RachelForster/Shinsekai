@@ -14,6 +14,7 @@ from application.story.coordinator import (
     publish_story_transition,
     story_snapshot_patch,
 )
+from application.story.session import SceneTurnCommand
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from config.schema import ApiConfig
 from core.story import StoryCompiler, StoryRuntime, parse_story_project
@@ -85,13 +86,31 @@ class _ChatStream:
 
 
 class _SceneService:
+    def __init__(self, session: StorySession | None = None) -> None:
+        self.session = session
+
     def handle_free_text(self, text: str, *, command_id: str, message_id: str):
-        return SceneTurnResult(
+        result = SceneTurnResult(
             command_id=command_id,
             revision=2,
             dialogue=(SceneDialogueItem("ling", f"收到：{text}"),),
             tool_results=(),
         )
+        if self.session is not None:
+            scope = self.session.begin_scene_turn()
+            try:
+                self.session.record_scene_turn(
+                    SceneTurnCommand(
+                        command_id=command_id,
+                        message_id=message_id,
+                        text=text,
+                    ),
+                    result_payload=result.to_payload(),
+                    scene_scope=scope,
+                )
+            finally:
+                self.session.end_scene_turn(scope)
+        return result
 
 
 def _state(*, enabled: bool, fork: bool = False, flowchart: bool = False) -> SimpleNamespace:
@@ -295,6 +314,75 @@ def test_publish_story_transition_is_noop_when_flag_is_off() -> None:
     assert state.chat_stream.published == []
     assert state.chat_stream.snapshot["eventSeq"] == 0
     assert "story" not in state.chat_stream.snapshot
+
+
+def test_revert_history_restores_story_and_publishes_matching_ui(tmp_path) -> None:
+    import json
+
+    from core.chat_history.storage import chat_history_active_path
+
+    state = _state(enabled=True)
+    session = _story_session(state.config_manager.feature_flags)
+    state.story_session = session
+    state.chat_session["historyPath"] = str(tmp_path / "session.json")
+    _handle_chat_command(
+        state,
+        {
+            "cmdId": "choice-1",
+            "payload": {
+                "choiceId": "prepare-investigation",
+                "expectedNodeId": "transfer-day",
+                "expectedRevision": 1,
+                "kind": "story-choice",
+            },
+            "type": "submit-option",
+        },
+    )
+    state.story_scene_service = _SceneService(session)
+    for text in ("去调查旧校舍", "去图书馆"):
+        _handle_chat_command(
+            state,
+            {"cmdId": f"msg-{text}", "payload": {"text": text}, "type": "send-message"},
+        )
+    assert len(session.active_branch.history_entries) == 5
+
+    snapshot = _handle_chat_command(
+        state,
+        {"payload": 2, "type": "revert-history"},
+    )
+
+    assert session.active_branch.generation == 3
+    restored = [dict(item) for item in session.active_branch.history_entries]
+    assert [item["role"] for item in restored] == ["user", "user", "assistant"]
+    assert "去调查旧校舍" in restored[1]["text"]
+    assert "去图书馆" not in str(restored)
+    assert snapshot["status"] == "idle"
+    assert [item["role"] for item in snapshot["historyEntries"]] == [
+        "user",
+        "user",
+        "assistant",
+    ]
+    assert snapshot["dialogText"] == "ling: 收到：去调查旧校舍"
+    assert snapshot["characterName"] == "ling"
+    published_types = [event["type"] for event in state.chat_stream.published]
+    assert published_types.count("history.replace") >= 3
+    replay_events = [
+        event for event in state.chat_stream.published if event["type"] == "dialog.end"
+    ]
+    assert replay_events[-1]["speaker"] == "ling"
+    assert "收到：去调查旧校舍" in replay_events[-1]["fullHtml"]
+    assert "收到：去图书馆" not in str(
+        state.chat_stream.snapshot.get("historyEntries")
+    )
+    # The legacy runtime still receives the command so its memory and the
+    # shutdown save match the restored story branch.
+    assert state.chat_stream.command[1]["type"] == "revert-history"
+    assert state.chat_stream.command[1]["payload"] == 2
+    active_file = chat_history_active_path(tmp_path / "session.json")
+    persisted = json.loads(active_file.read_text(encoding="utf-8"))
+    assert [item["role"] for item in persisted] == ["user", "user", "assistant"]
+    assert "去调查旧校舍" in persisted[1]["content"]
+    assert "去图书馆" not in str(persisted)
 
 
 def test_free_text_uses_scene_service_only_when_story_flag_is_enabled() -> None:

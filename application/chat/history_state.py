@@ -345,7 +345,8 @@ def revert_chat_history(user_index: int, llm_manager: Any, hist: list, window: A
 
     llm_manager.set_messages(new_messages)
 
-    replay_latest_dialog_entry(window, hist)
+    if window is not None:
+        replay_latest_dialog_entry(window, hist)
 
 
 def save_bg(bg_path: str | None, bgm_path: str | None) -> None:

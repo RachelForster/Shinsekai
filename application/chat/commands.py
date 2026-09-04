@@ -16,6 +16,7 @@ from application.chat.manage_branches import (
     ConversationBranchManager,
     SubmitRuntimeText,
 )
+from config.feature_flags import FeatureFlag
 from core.chat_history.storage import (
     chat_history_active_path,
     remove_chat_history_storage,
@@ -324,12 +325,20 @@ class ChatCommandDispatcher:
     def _revert_history(self, payload: object) -> None:
         index = int(payload)
         self.chat_turn_service.cancel_pending_batch()
+        flags = getattr(self.config, "feature_flags", None)
+        story_mode = flags is not None and flags.is_enabled(FeatureFlag.STORY_SYSTEM)
         revert_chat_history(
             index,
             llm_manager=self.llm_manager,
             hist=self.chat_history,
-            window=self.history_presenter,
+            window=None if story_mode else self.history_presenter,
         )
+        if story_mode:
+            # The story session is authoritative for the live history list; the
+            # bridge publishes the restored entries after this command. Only
+            # truncate local memory here so the next save matches the restored
+            # story branch instead of clobbering the UI with legacy rows.
+            return
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
 

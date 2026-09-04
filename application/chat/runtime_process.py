@@ -11,7 +11,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import quote
 
@@ -48,6 +48,7 @@ from application.chat.history_paths import (
     is_unc_history_path,
     resolve_history_path_for_project,
 )
+from application.chat.history_state import is_user_history_entry
 from application.chat.mobile_access import (
     get_mobile_access_info,
 )
@@ -1112,10 +1113,135 @@ def _sync_story_session_branch_command(
         session.restore_generation(generation)
 
 
-def _publish_bound_story_transition(state: BridgeState) -> None:
+def _story_replay_dialog_patch(
+    entries: Sequence[Mapping[str, Any]],
+) -> tuple[dict[str, Any] | None, dict[str, Any]]:
+    """Build a dialog.end replay event and its snapshot patch for restored entries.
+
+    Mirrors ``replay_latest_dialog_entry``: the last visible (non-user,
+    non-option) row is replayed so the stage matches the restored history list.
+    """
+    for entry in reversed(entries):
+        if not isinstance(entry, Mapping):
+            continue
+        role = str(entry.get("role") or "")
+        if role in {"user", "options"}:
+            continue
+        text = str(entry.get("text") or "").strip()
+        if not text:
+            continue
+        speaker = ""
+        positions = [
+            position for position in (text.find("："), text.find(":")) if position >= 0
+        ]
+        if positions:
+            speaker = text[: min(positions)].strip()
+        is_system = role != "assistant"
+        full_html = f"<p>{html.escape(text)}</p>"
+        event = {
+            "type": "dialog.end",
+            "speaker": speaker,
+            "color": "",
+            "isSystem": is_system,
+            "fullHtml": full_html,
+        }
+        patch: dict[str, Any] = {
+            "dialogHtml": full_html,
+            "dialogText": text,
+        }
+        if is_system and not speaker:
+            patch["characterName"] = ""
+            patch["systemMessageText"] = text
+        else:
+            patch["characterName"] = speaker
+            patch["systemMessageText"] = ""
+        return event, patch
+    return None, {}
+
+
+def _truncate_story_history_storage(state: BridgeState, user_index: int) -> None:
+    """Drop persisted rows from ``user_index`` on, matching the restored branch.
+
+    Story turns are persisted by the bridge, so after ``restore_generation``
+    the history file and the legacy branch state must be truncated to the same
+    user turn — otherwise relaunches rebuild the reverted-away rows.
+    """
+    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    if not history_raw or is_unc_history_path(history_raw):
+        return
+    history_path = _resolve_history_file(state, history_raw)
+    if is_unc_history_path(history_path):
+        return
+    active = chat_history_active_path(history_path)
+    messages: list[Any] = []
+    if active.is_file():
+        loaded = _read_history_file(active)
+        if isinstance(loaded, list):
+            messages = loaded
+    kept: list[Any] = []
+    user_count = -1
+    for message in messages:
+        if not isinstance(message, dict):
+            kept.append(message)
+            continue
+        if str(message.get("role") or "") == "user":
+            text = str(
+                message.get("display_content") or message.get("content") or ""
+            ).strip()
+            if not text:
+                kept.append(message)
+                continue
+            user_count += 1
+            if user_count >= user_index:
+                break
+        kept.append(message)
+    active.parent.mkdir(parents=True, exist_ok=True)
+    with active.open("w", encoding="utf-8") as file:
+        json.dump(kept, file, ensure_ascii=False, indent=4)
+    branch_state = load_branch_state(history_path)
+    if branch_state is None:
+        return
+    branches = branch_state.get("branches")
+    if not isinstance(branches, dict):
+        return
+    branch = branches.get(str(branch_state.get("active") or "main"))
+    if not isinstance(branch, dict):
+        return
+    history_rows = list(branch.get("history") or [])
+    cut = len(history_rows)
+    user_count = -1
+    for index, row in enumerate(history_rows):
+        if not is_user_history_entry(row):
+            continue
+        user_count += 1
+        if user_count >= user_index:
+            cut = index
+            break
+    branch["history"] = history_rows[:cut]
+    branch["messages"] = list(kept)
+    save_branch_state(history_path, branch_state)
+
+
+def _publish_bound_story_transition(
+    state: BridgeState,
+    *,
+    history_entries: Sequence[Mapping[str, Any]] | None = None,
+    presentation_events: Sequence[Mapping[str, Any]] = (),
+    extra_patch: Mapping[str, Any] | None = None,
+) -> None:
     if bound_story_session(state) is None:
         return
-    publish_story_transition(state, story_snapshot_patch(state))
+    patch = story_snapshot_patch(state)
+    if extra_patch:
+        patch.update(dict(extra_patch))
+    publish_story_transition(
+        state,
+        patch,
+        history_entries=[dict(item) for item in history_entries]
+        if history_entries is not None
+        else None,
+        presentation_events=tuple(presentation_events),
+    )
 
 
 def _discard_bound_story_session(state: BridgeState) -> None:
@@ -1490,13 +1616,30 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         return _forward_runtime_command("generating", "正在请求重新生成。")
     if command == "revert-history":
         try:
-            int(body.get("payload"))
+            user_index = int(body.get("payload"))
         except (TypeError, ValueError) as exc:
             raise ValueError("回溯索引无效。") from exc
         _sync_story_session_branch_command(state, command, body)
+        story_session = bound_story_session(state)
         result = _forward_runtime_command("idle")
-        _publish_bound_story_transition(state)
-        return result
+        if story_session is None:
+            return result
+        restored_entries = [
+            dict(item) for item in story_session.active_branch.history_entries
+        ]
+        replay_event, replay_patch = _story_replay_dialog_patch(restored_entries)
+        _truncate_story_history_storage(state, user_index)
+        _publish_bound_story_transition(
+            state,
+            history_entries=restored_entries,
+            presentation_events=(replay_event,) if replay_event is not None else (),
+            extra_patch=replay_patch,
+        )
+        return _chat_snapshot(
+            state,
+            "idle",
+            extra={"historyEntries": restored_entries},
+        )
     if command == "fork-history":
         if not _chat_experimental_features(state)["forkHistory"]:
             raise PermissionError("React Chat UI Fork 实验功能未启用。")
