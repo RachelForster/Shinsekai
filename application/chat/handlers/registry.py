@@ -7,10 +7,13 @@
 
 from __future__ import annotations
 
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.messages import LLMDialogMessage, TTSOutputMessage
+
+if TYPE_CHECKING:
+    from application.chat.tts import SpriteLookupStrategy, TtsGenerationStrategy
 
 
 class TtsMessageDispatcher:
@@ -55,12 +58,21 @@ class UiOutputMessageDispatcher:
         )
 
 
-def default_tts_handler_chain() -> TtsMessageDispatcher:
+def default_tts_handler_chain(
+    *,
+    sprite_lookup_strategy: SpriteLookupStrategy | None = None,
+    tts_generation_strategy: TtsGenerationStrategy | None = None,
+) -> TtsMessageDispatcher:
     """插件 handler 在前，内置链在后（先匹配先处理）。"""
     from plugin_system.host import get_plugin_tts_handlers
     from application.chat.handlers.tts import get_tts_handlers
 
-    chain = list(get_plugin_tts_handlers()) + list(get_tts_handlers())
+    chain = list(get_plugin_tts_handlers()) + list(
+        get_tts_handlers(
+            sprite_lookup_strategy=sprite_lookup_strategy,
+            tts_generation_strategy=tts_generation_strategy,
+        )
+    )
     return TtsMessageDispatcher(chain)
 
 

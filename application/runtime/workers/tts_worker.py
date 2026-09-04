@@ -5,6 +5,7 @@ from queue import Queue
 from typing import Optional
 
 from application.chat.handlers.registry import default_tts_handler_chain
+from application.chat.tts import SpriteLookupStrategy, TtsGenerationStrategy
 from sdk.graph import Port
 from sdk.logging import get_logger
 from sdk.logging.timing import tracker
@@ -51,12 +52,16 @@ class TTSWorker(ThreadDagNode):
         parent=None,
         *,
         name: str = "tts_worker",
+        sprite_lookup_strategy: SpriteLookupStrategy | None = None,
+        tts_generation_strategy: TtsGenerationStrategy | None = None,
     ):
         super().__init__(name, parent=parent)
         self._app_inited = False
         self.tts_queue = input_queue
         self.audio_path_queue = output_queue
         self.tts_message_dispatcher = None
+        self.sprite_lookup_strategy = sprite_lookup_strategy
+        self.tts_generation_strategy = tts_generation_strategy
         self._cancel_event = threading.Event()  # 新增：取消当前合成用
         if input_queue is not None:
             self.bind_input(self.PORT_LLM_OUTPUT, input_queue)
@@ -68,7 +73,10 @@ class TTSWorker(ThreadDagNode):
             return
         self.tts_queue = self.inq(self.PORT_LLM_OUTPUT)
         self.audio_path_queue = self.outq(self.PORT_TTS_OUTPUT)
-        self.tts_message_dispatcher = default_tts_handler_chain()
+        self.tts_message_dispatcher = default_tts_handler_chain(
+            sprite_lookup_strategy=self.sprite_lookup_strategy,
+            tts_generation_strategy=self.tts_generation_strategy,
+        )
         self.tts_message_dispatcher.init_handlers()
         self._app_inited = True
 

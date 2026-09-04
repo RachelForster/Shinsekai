@@ -13,6 +13,7 @@ from application.chat.tts import (
     SpriteMatch,
     TtsGenerationRequest,
 )
+from application.runtime.workers import TTSWorker
 from sdk.messages import LLMDialogMessage, TTSOutputMessage
 
 
@@ -222,3 +223,28 @@ def test_character_handler_delegates_to_injected_strategies(mock_app_runtime):
     generation_request = generation.generate.call_args.args[0]
     assert generation_request.sprite is sprite
     assert mock_app_runtime.audio_path_queue.get_nowait() is expected
+
+
+def test_tts_worker_passes_injected_strategies_to_handler_chain(monkeypatch):
+    sprite_lookup = MagicMock()
+    generation = MagicMock()
+    dispatcher = MagicMock()
+    chain_factory = MagicMock(return_value=dispatcher)
+    monkeypatch.setattr(
+        "application.runtime.workers.tts_worker.default_tts_handler_chain",
+        chain_factory,
+    )
+    worker = TTSWorker(
+        input_queue=MagicMock(),
+        output_queue=MagicMock(),
+        sprite_lookup_strategy=sprite_lookup,
+        tts_generation_strategy=generation,
+    )
+
+    worker._init_app()
+
+    chain_factory.assert_called_once_with(
+        sprite_lookup_strategy=sprite_lookup,
+        tts_generation_strategy=generation,
+    )
+    dispatcher.init_handlers.assert_called_once_with()
