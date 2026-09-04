@@ -22,32 +22,24 @@ class TestDefaultCharacterTtsHandler:
         assert handler.can_handle(msg) is True
 
     def test_none_asset_id_uses_default_sprite_and_continues_tts(
-        self, mock_app_runtime, monkeypatch
+        self, mock_app_runtime
     ):
         runtime = mock_app_runtime
         runtime.tts_manager = MagicMock()
         runtime.tts_manager.generate_tts.return_value = "voice.wav"
-        monkeypatch.setattr(
-            "application.chat.handlers.tts._config", runtime.config
-        )
-        emit = MagicMock()
-        monkeypatch.setattr(
-            "application.chat.handlers.tts.tts_emit_to_ui_queue", emit
-        )
 
         DefaultCharacterTtsHandler().handle(
             LLMDialogMessage(name="TestChar", text="Hello", asset_id=None)
         )
 
         runtime.tts_manager.generate_tts.assert_called_once()
-        emit.assert_called_once_with(
-            "TestChar",
-            "Hello",
-            "-1",
-            "voice.wav",
-            is_system_message=False,
-            effect="",
-        )
+        output = runtime.audio_path_queue.get_nowait()
+        assert output.name == "TestChar"
+        assert output.text == "Hello"
+        assert output.asset_id == "-1"
+        assert output.audio_path == "voice.wav"
+        assert output.is_system_message is False
+        assert output.effect == ""
 
 
 class TestSpecializedHandlers:
