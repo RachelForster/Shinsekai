@@ -25,20 +25,6 @@ from .base import ThreadDagNode
 logger = get_logger(__name__)
 
 
-_RAIN_STOP_INPUT_RE = re.compile(
-    r"^\s*[（(]?\s*(?:"
-    r"(?:(?:现在|外面)的?雨|雨声|雨)\s*(?:已经)?(?:停下来了|停了|不下了)"
-    r"|不下雨了)\s*[）)]?\s*[。！？!?]*\s*$"
-)
-
-
-def _stop_rain_for_explicit_user_input(text: str, ui_updates) -> bool:
-    """Stop the active rain loop for a direct player state change, before LLM output."""
-    if not _RAIN_STOP_INPUT_RE.fullmatch(str(text or "")):
-        return False
-    return bool(ui_updates.resolve_effect("stop:雨天", {}, after_dialog=False))
-
-
 def _busy_preview_reasoning(raw: str, max_len: int = 200) -> str:
     """压成单行摘要供底栏显示（与 ui_message_handler 中 COT 预览一致）。"""
     s = re.sub(r"<[^>]+>", " ", raw or "")
@@ -129,7 +115,6 @@ class LLMWorker(ThreadDagNode):
                 )
                 tracker.start_cross("e2e")
                 self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
-                _stop_rain_for_explicit_user_input(message.text, self.ui_update_manager)
 
                 if hasattr(self.ui_update_manager, "record_user_message"):
                     self.ui_update_manager.record_user_message(

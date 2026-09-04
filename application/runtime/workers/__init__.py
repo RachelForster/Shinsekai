@@ -2,7 +2,7 @@
 
 from .base import ThreadDagNode, getCharacter
 from .headless_sink import HeadlessSinkNode
-from .llm_worker import LLMWorker, _stop_rain_for_explicit_user_input
+from .llm_worker import LLMWorker
 from .presentation_worker import PresentationWorker
 from .tts_worker import TTSWorker
 
@@ -12,6 +12,5 @@ __all__ = [
     "PresentationWorker",
     "TTSWorker",
     "ThreadDagNode",
-    "_stop_rain_for_explicit_user_input",
     "getCharacter",
 ]
