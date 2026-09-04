@@ -1,7 +1,10 @@
 from dataclasses import replace
 
 from ai.llm.template.dialog import DialogTemplateContext, build_dialog_section
-from ai.llm.template.dialog.patches import apply_field_patches, apply_requirement_patches
+from ai.llm.template.dialog.contracts.patches import (
+    apply_field_patches,
+    apply_requirement_patches,
+)
 from sdk.types import (
     FieldPatch,
     OutputContractPatch,

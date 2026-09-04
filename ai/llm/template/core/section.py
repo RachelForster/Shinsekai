@@ -20,7 +20,9 @@ class Section(Generic[ContextT]):
     whitespace in nonempty output is preserved. Override ``render_content``
     for a leaf or a composite heading, and ``context_for_children`` to scope
     context changes to a subtree. Disabled nodes skip their content, context
-    hooks and entire subtree. The default composite has no own content.
+    hooks and entire subtree. Override ``children_for_context`` when child
+    availability or content depends on render-time context. The default
+    composite has no own content.
     """
 
     id: str
@@ -43,16 +45,23 @@ class Section(Generic[ContextT]):
     def context_for_children(self, context: ContextT) -> ContextT:
         return context
 
+    def children_for_context(self, context: ContextT) -> tuple[Section[ContextT], ...]:
+        """Return render-time children; static composites return ``children``."""
+        return self.children
+
     def render(self, context: ContextT) -> str:
         if not self.enabled:
             return ""
         parts = [self.render_content(context)]
-        if self.children:
-            child_context = self.context_for_children(context)
-            parts.extend(
-                child.render(child_context)
-                for child in sorted(self.children, key=lambda child: child.priority)
-            )
+        child_context = self.context_for_children(context)
+        children = tuple(self.children_for_context(child_context))
+        ids = [child.id for child in children]
+        if len(ids) != len(set(ids)):
+            raise ValueError(f"duplicate render-time child section id in {self.id!r}")
+        parts.extend(
+            child.render(child_context)
+            for child in sorted(children, key=lambda child: child.priority)
+        )
         return self.separator.join(part for part in parts if part)
 
 

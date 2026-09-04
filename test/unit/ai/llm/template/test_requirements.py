@@ -1,7 +1,7 @@
 from dataclasses import replace
 
 from ai.llm.template.dialog import DialogTemplateContext
-from ai.llm.template.dialog.requirements_section import (
+from ai.llm.template.dialog.sections.requirements import (
     RequirementsSection,
     build_requirement_sections,
     build_requirements,

@@ -12,6 +12,7 @@ from ai.llm.template.dialog import (
     RequirementsSection,
     build_dialog_section,
 )
+from ai.llm.template.dialog.sections.requirement import RequirementSection
 
 
 @pytest.fixture
@@ -111,3 +112,31 @@ def test_root_can_be_reused_with_new_context_and_disabled_as_a_whole(context):
         replace(root, enabled=False).render(replace(context, translate=unreachable))
         == ""
     )
+
+
+def test_major_sections_expose_their_runtime_composite_children(context):
+    json_children = JsonSchemaSection().children_for_context(context)
+    character_children = CharacterSection().children_for_context(context)
+    background_children = BackgroundSection().children_for_context(context)
+    requirement_children = RequirementsSection().children_for_context(context)
+
+    assert [child.id for child in json_children] == [
+        "head",
+        "speech",
+        "effect",
+        "translation",
+        "foot",
+        "fields",
+    ]
+    assert [child.id for child in character_children] == ["sprites", "profiles"]
+    assert [child.id for child in background_children] == ["scenes", "music"]
+    assert [child.id for child in requirement_children] == [
+        "tools",
+        "rules",
+        "closing",
+        "json_reminder",
+    ]
+    rules = next(child for child in requirement_children if child.id == "rules")
+    assert rules.children
+    assert all(isinstance(child, RequirementSection) for child in rules.children)
+    assert any(not child.enabled for child in rules.children)

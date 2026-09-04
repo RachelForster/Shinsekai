@@ -127,3 +127,33 @@ def test_enabled_is_keyword_only_and_can_be_toggled_without_mutating_the_node():
     assert node.enabled is True
     assert replace(node, enabled=False).render(TemplateContext()) == ""
     assert node.render(TemplateContext()) == "text"
+
+
+def test_contextual_children_are_exposed_after_context_scoping():
+    seen = []
+
+    class DynamicSection(ScopedSection):
+        def children_for_context(self, context):
+            seen.append(context)
+            return (
+                TextSection("dynamic", priority=20, text=context.name),
+                *self.children,
+            )
+
+    node = DynamicSection(
+        "dynamic_root",
+        separator="|",
+        children=(TextSection("extension", priority=10, text="extension"),),
+    )
+
+    assert node.render(GreetingContext("global")) == "extension|local"
+    assert seen == [GreetingContext("local")]
+
+
+def test_contextual_children_reject_duplicate_ids_at_render_time():
+    class DuplicateSection(Section):
+        def children_for_context(self, context):
+            return TextSection("same"), TextSection("same")
+
+    with pytest.raises(ValueError, match="duplicate render-time child"):
+        DuplicateSection("root").render(TemplateContext())

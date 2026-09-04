@@ -1,16 +1,18 @@
-"""Background scene and music catalogs as one major dialog section."""
+"""Background scene and music catalogs."""
 
 from dataclasses import dataclass
 
-from ..core import Section, TextSection
-from .context import DialogTemplateContext
+from ...core import Section, TextSection
+from ..context import DialogTemplateContext
 
 
 @dataclass(frozen=True)
 class BackgroundSection(Section[DialogTemplateContext]):
     id: str = "background"
 
-    def render_content(self, context: DialogTemplateContext) -> str:
+    def children_for_context(
+        self, context: DialogTemplateContext
+    ) -> tuple[Section[DialogTemplateContext], ...]:
         background = context.background
         available = context.has_real_background and bool(background)
         scenes = TextSection(
@@ -31,4 +33,4 @@ class BackgroundSection(Section[DialogTemplateContext]):
                 + f"{background.bgm_tags}\n\n"
             ),
         )
-        return Section(self.id, children=(scenes, music)).render(context)
+        return scenes, music, *self.children

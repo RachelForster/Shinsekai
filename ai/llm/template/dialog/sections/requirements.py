@@ -1,13 +1,17 @@
-"""Tool guidance, declarative rules and closing constraints for dialog output."""
+"""Tool guidance, dialog rules and final output constraints."""
 
 from dataclasses import dataclass
 
 from sdk.types import RequirementSpec
 
-from ..core import Section, TextSection
-from .context import DialogTemplateContext
-from .requirement_arguments import requirement_arguments
-from .requirement_section import RequirementSection, resolve_requirement_specs
+from ...core import Section, TextSection
+from ..context import DialogTemplateContext
+from ..contracts.arguments import requirement_arguments
+from ..contracts.requirements import (
+    resolve_requirement_sections,
+    resolve_requirement_specs,
+)
+from .requirement import RequirementSection
 
 
 def build_requirement_sections(
@@ -55,19 +59,15 @@ def build_requirements(context: DialogTemplateContext) -> list[RequirementSpec]:
 class RequirementsSection(Section[DialogTemplateContext]):
     id: str = "requirements"
 
-    def render_content(self, context: DialogTemplateContext) -> str:
+    def children_for_context(
+        self, context: DialogTemplateContext
+    ) -> tuple[Section[DialogTemplateContext], ...]:
         rules = TextSection(
             "rules",
             priority=20,
             text=context.translate("requirements_header"),
-            children=tuple(
-                TextSection(
-                    item.id,
-                    priority=item.order,
-                    enabled=item.enabled,
-                    text=f"- {item.text}\n",
-                )
-                for item in build_requirements(context)
+            children=resolve_requirement_sections(
+                build_requirement_sections(context), context
             ),
         )
         extra_bgm = TextSection(
@@ -75,23 +75,18 @@ class RequirementsSection(Section[DialogTemplateContext]):
             enabled=context.has_real_background,
             text=lambda ctx: ctx.translate("closing_extra_bgm"),
         )
-        tree = Section(
-            self.id,
-            children=(
-                TextSection("tools", text=lambda ctx: ctx.tools_block, priority=10),
-                rules,
-                TextSection(
-                    "closing",
-                    priority=30,
-                    text=lambda ctx: ctx.translate(
-                        "closing", extra=extra_bgm.render(ctx)
-                    ),
-                ),
-                TextSection(
-                    "json_reminder",
-                    priority=40,
-                    text=lambda ctx: f"{ctx.json_reminder}\n",
-                ),
+        generated = (
+            TextSection("tools", text=lambda ctx: ctx.tools_block, priority=10),
+            rules,
+            TextSection(
+                "closing",
+                priority=30,
+                text=lambda ctx: ctx.translate("closing", extra=extra_bgm.render(ctx)),
+            ),
+            TextSection(
+                "json_reminder",
+                priority=40,
+                text=lambda ctx: f"{ctx.json_reminder}\n",
             ),
         )
-        return tree.render(context)
+        return *generated, *self.children

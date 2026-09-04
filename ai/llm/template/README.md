@@ -13,7 +13,9 @@ subtree. The flag is keyword-only to preserve existing positional constructors.
 Subclasses define the data needed by their sections. By default, a parent passes
 the same context object to every child. Override `context_for_children` and use
 `dataclasses.replace` for a subtree-specific context; sibling contexts are not
-changed. Sections do not retain context or rendered text between requests.
+changed. Override `children_for_context` when a section's children depend on the
+current request. The core renderer still validates, orders and renders those
+children. Sections do not retain context or rendered text between requests.
 
 ## Custom sections and contexts
 
@@ -51,11 +53,11 @@ or a callable receiving the current context. User text is never processed with
 sections, each defined in its own file:
 
 ```text
-DialogTemplateSection             dialog_template_section.py
-  JsonSchemaSection               json_schema_section.py
-  CharacterSection                character_section.py
-  BackgroundSection               background_section.py
-  RequirementsSection             requirements_section.py
+DialogTemplateSection             sections/dialog_template.py
+  JsonSchemaSection               sections/json_schema.py
+  CharacterSection                sections/character.py
+  BackgroundSection               sections/background.py
+  RequirementsSection             sections/requirements.py
 ```
 
 The root renders the preamble, then its four children in priority order.
@@ -63,7 +65,9 @@ The root renders the preamble, then its four children in priority order.
 `CharacterSection` owns sprites and character profiles; `BackgroundSection`
 owns scene and music catalogs; `RequirementsSection` owns tool guidance,
 patched rules, closing text and the final JSON reminder. Small text nodes
-within each section use `enabled` for optional content.
+within each section use `enabled` for optional content. Context-dependent child
+nodes are returned by `children_for_context`, so callers can inspect the same
+Composite nodes that the renderer uses.
 
 All five classes are exported from `ai.llm.template.dialog` and can be
 constructed without arguments. Customize `root.children` with
@@ -102,17 +106,18 @@ remain the responsibility of their existing callers.
 
 ## Patch compatibility
 
-`dialog/requirements_section.py` declares all rule nodes with their priorities and
-`enabled` values. Disabled features remain visible in the node list and do not
-render or translate their rule text. Localized arguments and the SDK patch
-bridge live in `requirement_arguments.py` and `requirement_section.py`.
+`dialog/sections/requirements.py` declares all rule nodes with their priorities
+and `enabled` values. Disabled features remain visible in the node list and do
+not render or translate their rule text. Localized arguments and the SDK patch
+bridge live under `dialog/contracts/`; the renderable rule leaf is
+`dialog/sections/requirement.py`.
 The bridge preserves the old distinction: a patch to an unavailable feature's
 rule is a no-op, while `add_requirements` may explicitly introduce that rule.
 
-`dialog/patches.py` applies the existing SDK `OutputContractPatch` objects to output
-fields and requirements. Patch priority is ascending and ties preserve input
-order, independently of section ordering. Each render starts from fresh base
-fields and requirements; patches are never accumulated in the context.
+`dialog/contracts/patches.py` applies the existing SDK `OutputContractPatch`
+objects to output fields and requirements. Patch priority is ascending and ties
+preserve input order, independently of section ordering. Each render starts from
+fresh base fields and requirements; patches are never accumulated in the context.
 
 - Field removal cannot remove `character_name`, `speech` or `sprite`.
 - Field overrides retain aliases; empty descriptions keep the existing text.
@@ -132,18 +137,23 @@ template/
   core/                 # Reusable Composite primitives
     context.py
     section.py
-  dialog/               # Dialog system prompt and output-contract patches
-    dialog_template_section.py
-    json_schema_section.py
-    character_section.py
-    background_section.py
-    requirements_section.py
+  dialog/               # Dialog prompt domain
     context.py
-    requirement_arguments.py
-    requirement_section.py
-    patches.py
+    sections/            # Composite nodes; one Section subclass per file
+      dialog_template.py
+      json_schema.py
+      character.py
+      background.py
+      requirements.py
+      requirement.py
+    contracts/           # Output-contract construction and patch adapters
+      arguments.py
+      fields.py
+      requirements.py
+      patches.py
   prompts/              # System and user text assembly
-    composition.py
+    system.py
+    user.py
   integrations/         # Application configuration and external registries
     characters.py
     localization.py

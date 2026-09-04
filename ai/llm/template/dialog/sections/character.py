@@ -1,16 +1,18 @@
-"""Character sprite catalog and profiles as one major dialog section."""
+"""Character sprite catalog and profiles."""
 
 from dataclasses import dataclass
 from typing import Any
 
-from ..core import Section, TextSection
-from .context import DialogTemplateContext
+from ...core import Section, TextSection
+from ..context import DialogTemplateContext
 
 
-def _profile_node(name: str, character: Any) -> TextSection[DialogTemplateContext]:
+def _profile_node(
+    index: int, name: str, character: Any
+) -> TextSection[DialogTemplateContext]:
     setting = str(getattr(character, "character_setting", "") or "")
     return TextSection(
-        name,
+        f"profile.{index}",
         enabled=bool(setting),
         text=lambda context: context.translate("profile_for", name=name)
         + f"{setting}\n\n",
@@ -21,13 +23,15 @@ def _profile_node(name: str, character: Any) -> TextSection[DialogTemplateContex
 class CharacterSection(Section[DialogTemplateContext]):
     id: str = "characters"
 
-    def render_content(self, context: DialogTemplateContext) -> str:
+    def children_for_context(
+        self, context: DialogTemplateContext
+    ) -> tuple[Section[DialogTemplateContext], ...]:
         sprites = TextSection(
             "sprites",
             text=context.translate("sprites_header"),
             children=tuple(
                 TextSection(
-                    name,
+                    f"sprite.{index}",
                     text=(
                         context.translate(
                             "sprites_count",
@@ -37,14 +41,15 @@ class CharacterSection(Section[DialogTemplateContext]):
                         + f"{getattr(character, 'emotion_tags', '') or ''}\n\n"
                     ),
                 )
-                for name, character in context.characters
+                for index, (name, character) in enumerate(context.characters)
             ),
         )
         profiles = TextSection(
             "profiles",
             text=context.translate("profile_header"),
             children=tuple(
-                _profile_node(name, character) for name, character in context.characters
+                _profile_node(index, name, character)
+                for index, (name, character) in enumerate(context.characters)
             ),
         )
-        return Section(self.id, children=(sprites, profiles)).render(context)
+        return sprites, profiles, *self.children

@@ -4,8 +4,8 @@ from typing import Any
 
 from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
 
-from ..core import Section, TextSection
-from .context import DialogTemplateContext
+from ...core import Section, TextSection
+from ..context import DialogTemplateContext
 
 
 def requirement_arguments(context: DialogTemplateContext) -> dict[str, dict[str, Any]]:

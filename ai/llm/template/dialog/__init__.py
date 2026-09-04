@@ -1,11 +1,11 @@
 """Default dialog system prompt, its context and patch-compatible sections."""
 
-from .background_section import BackgroundSection
-from .character_section import CharacterSection
 from .context import DialogTemplateContext
-from .dialog_template_section import DialogTemplateSection
-from .json_schema_section import JsonSchemaSection
-from .requirements_section import RequirementsSection
+from .sections.background import BackgroundSection
+from .sections.character import CharacterSection
+from .sections.dialog_template import DialogTemplateSection
+from .sections.json_schema import JsonSchemaSection
+from .sections.requirements import RequirementsSection
 
 
 def build_dialog_section() -> DialogTemplateSection:
