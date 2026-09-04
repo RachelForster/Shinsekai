@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -8,6 +9,7 @@ from frontend_bridge_core.tools import (
     _display_path,
     _file_browser_root_key,
     _file_browser_root_label,
+    _local_file_access_roots,
     _strip_windows_verbatim_prefix,
 )
 
@@ -107,8 +109,33 @@ def test_file_browser_rejects_paths_outside_local_access_roots(tmp_path, monkeyp
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
 
+    if os.name == "nt":
+        # Every existing local drive is a root (matching the sidebar), so only
+        # network/UNC locations remain outside the allowed roots.
+        outside_path = "\\\\server\\share\\folder"
+    else:
+        outside_path = str(outside)
+
     with pytest.raises(PermissionError, match="outside the allowed roots"):
         _browse_local_files(
             SimpleNamespace(app_root_dir=str(app_root)),
-            {"path": str(outside)},
+            {"path": outside_path},
         )
+
+
+def test_local_file_access_roots_include_existing_drives(tmp_path, monkeypatch):
+    if os.name != "nt":
+        return
+
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "Shinsekai"
+    project_root.mkdir()
+    app_root.mkdir()
+
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
+    roots = _local_file_access_roots(SimpleNamespace(app_root_dir=str(app_root)))
+
+    for code in range(ord("A"), ord("Z") + 1):
+        drive = Path(f"{chr(code)}:/")
+        if drive.exists():
+            assert drive.resolve(strict=False) in roots
