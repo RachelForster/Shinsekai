@@ -85,8 +85,8 @@ class ChatBootstrapEndpoints:
 class _RuntimeComponents:
     workflow: Any
     input_queue: Any | None
-    tts_queue: Any | None
-    audio_queue: Any | None
+    dialog_queue: Any | None
+    presentation_queue: Any | None
     ui_worker: Any | None
     presentation_assets: Any
     effect_keyword_map: dict[str, str]
@@ -376,8 +376,8 @@ class _BaseChatSession:
         self.runtime = _RuntimeComponents(
             workflow=workflow,
             input_queue=handles.input_queue,
-            tts_queue=handles.tts_queue,
-            audio_queue=handles.audio_queue,
+            dialog_queue=handles.dialog_queue,
+            presentation_queue=handles.presentation_queue,
             ui_worker=handles.ui_worker,
             presentation_assets=assets,
             effect_keyword_map=effect_context.keyword_map,
@@ -397,8 +397,8 @@ class _BaseChatSession:
         self.chat_turn_service = create_chat_turn_service(
             config=self.config,
             user_input_queue=runtime.input_queue,
-            tts_queue=runtime.tts_queue,
-            audio_queue=runtime.audio_queue,
+            dialog_queue=runtime.dialog_queue,
+            presentation_queue=runtime.presentation_queue,
             llm_manager=self.startup.llm_manager,
             ui_worker=runtime.ui_worker,
             ui_updates=self.ui_updates,
@@ -420,8 +420,8 @@ class _BaseChatSession:
                 bgm_list=runtime.presentation_assets.bgm_paths,
                 effect_keyword_map=runtime.effect_keyword_map,
                 user_input_queue=runtime.input_queue,
-                tts_queue=runtime.tts_queue,
-                audio_path_queue=runtime.audio_queue,
+                dialog_queue=runtime.dialog_queue,
+                presentation_queue=runtime.presentation_queue,
                 text_processor=runtime.text_processor,
                 opencc=runtime.opencc,
                 chat_turn_service=self.chat_turn_service,
@@ -553,7 +553,7 @@ class StreamingChatSession(_BaseChatSession):
                 messages=self.startup.messages,
                 config=self.config,
                 ui_updates=self.ui_updates,
-                audio_path_queue=self._require_runtime().audio_queue,
+                presentation_queue=self._require_runtime().presentation_queue,
                 assets=self._require_runtime().presentation_assets,
                 initial_sprite_path=self.args.init_sprite_path,
                 welcome_html=welcome_html,

@@ -195,7 +195,7 @@ def test_restore_session_ui_applies_background_without_messages():
 
     restored = session_restore.restore_session_presentation(
         [],
-        audio_path_queue=queue,
+        presentation_queue=queue,
         presenter=window,
         config=_config(bgm_path="data/bgm/theme.ogg", background_path="data/bg/classroom.webp"),
         tr_i18n=lambda key, **kwargs: key,
@@ -221,7 +221,7 @@ def test_restore_session_ui_reports_restored_character_sprite(monkeypatch):
 
     restored = session_restore.restore_session_presentation(
         [{"role": "assistant"}],
-        audio_path_queue=queue,
+        presentation_queue=queue,
         presenter=window,
         config=_config(),
         tr_i18n=lambda key, **kwargs: key,

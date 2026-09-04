@@ -5,16 +5,16 @@ from unittest.mock import MagicMock
 
 import yaml
 
-from application.chat.handlers.tts import DefaultCharacterTtsHandler
-from application.chat.tts import (
+from application.chat.handlers.dialog_media import CharacterMediaHandler
+from application.chat.dialog_media import (
     ConfigSpriteLookupStrategy,
     DefaultTtsGenerationStrategy,
     SpriteLookupRequest,
     SpriteMatch,
     TtsGenerationRequest,
 )
-from application.runtime.workers import TTSWorker
-from sdk.messages import LLMDialogMessage, TTSOutputMessage
+from application.runtime.workers import DialogMediaWorker
+from sdk.messages import LLMDialogMessage, PresentationMessage
 
 
 def _character(**overrides):
@@ -205,7 +205,7 @@ def test_character_handler_delegates_to_injected_strategies(mock_app_runtime):
     sprite = SpriteMatch(asset_id="7", index=6, sprite={"path": "chosen.png"})
     sprite_lookup = MagicMock()
     sprite_lookup.lookup.return_value = sprite
-    expected = TTSOutputMessage(
+    expected = PresentationMessage(
         audio_path="chosen.wav",
         name="TestChar",
         text="Hello",
@@ -213,7 +213,7 @@ def test_character_handler_delegates_to_injected_strategies(mock_app_runtime):
     )
     generation = MagicMock()
     generation.generate.return_value = [expected]
-    handler = DefaultCharacterTtsHandler(sprite_lookup, generation)
+    handler = CharacterMediaHandler(sprite_lookup, generation)
     message = LLMDialogMessage(name="TestChar", text="Hello", asset_id="1")
 
     handler.handle(message)
@@ -222,19 +222,19 @@ def test_character_handler_delegates_to_injected_strategies(mock_app_runtime):
     assert lookup_request.message is message
     generation_request = generation.generate.call_args.args[0]
     assert generation_request.sprite is sprite
-    assert mock_app_runtime.audio_path_queue.get_nowait() is expected
+    assert mock_app_runtime.presentation_queue.get_nowait() is expected
 
 
-def test_tts_worker_passes_injected_strategies_to_handler_chain(monkeypatch):
+def test_dialog_media_worker_passes_injected_strategies_to_handler_chain(monkeypatch):
     sprite_lookup = MagicMock()
     generation = MagicMock()
     dispatcher = MagicMock()
     chain_factory = MagicMock(return_value=dispatcher)
     monkeypatch.setattr(
-        "application.runtime.workers.tts_worker.default_tts_handler_chain",
+        "application.runtime.workers.dialog_media_worker.default_dialog_media_handler_chain",
         chain_factory,
     )
-    worker = TTSWorker(
+    worker = DialogMediaWorker(
         input_queue=MagicMock(),
         output_queue=MagicMock(),
         sprite_lookup_strategy=sprite_lookup,

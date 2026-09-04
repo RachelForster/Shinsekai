@@ -13,7 +13,7 @@ def _create_wiring(**overrides):
         "startup": SimpleNamespace(llm_manager=SimpleNamespace(), tts_manager=None),
         "transport": SimpleNamespace(emit=Mock(), bind_command_dispatcher=Mock()),
         "runtime": SimpleNamespace(
-            input_queue=object(), audio_queue=object(), ui_worker=None
+            input_queue=object(), presentation_queue=object(), ui_worker=None
         ),
         "ui_updates": SimpleNamespace(
             post_notification=Mock(),

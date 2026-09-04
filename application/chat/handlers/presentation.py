@@ -26,7 +26,7 @@ from core.messaging.dialog_tokens import (
     match_stat_name,
 )
 from sdk.handlers import UIOutputMessageHandler
-from sdk.messages import TTSOutputMessage
+from sdk.messages import PresentationMessage
 
 _config = ConfigManager()
 
@@ -55,10 +55,10 @@ def _busy_preview_cot(raw: str, max_len: int = 200) -> str:
 class ChainOfThoughtUiHandler(UIOutputMessageHandler):
     """思维链（COT）仅更新底栏 busy bar，不进入对白/ TTS。"""
 
-    def can_handle(self, out: TTSOutputMessage) -> bool:
+    def can_handle(self, out: PresentationMessage) -> bool:
         return out.is_system_message and match_cot_name(out.name or "")
 
-    def handle(self, out: TTSOutputMessage) -> None:
+    def handle(self, out: PresentationMessage) -> None:
         preview = _busy_preview_cot(out.text or "")
         label = tr_i18n("desktop.cot_busy_prefix")
         text = f"{label} · {preview}" if preview else label
@@ -66,10 +66,10 @@ class ChainOfThoughtUiHandler(UIOutputMessageHandler):
 
 
 class OptionsUiHandler(UIOutputMessageHandler):
-    def can_handle(self, out: TTSOutputMessage) -> bool:
+    def can_handle(self, out: PresentationMessage) -> bool:
         return out.is_system_message and match_choice_name(out.name or "")
 
-    def handle(self, out: TTSOutputMessage) -> None:
+    def handle(self, out: PresentationMessage) -> None:
         _ui().hide_busy_bar()
         sp = out.text or ""
         label = tr_i18n("dialog.option_badge")
@@ -83,19 +83,19 @@ class OptionsUiHandler(UIOutputMessageHandler):
 
 
 class NumericUiHandler(UIOutputMessageHandler):
-    def can_handle(self, out: TTSOutputMessage) -> bool:
+    def can_handle(self, out: PresentationMessage) -> bool:
         return out.is_system_message and match_stat_name(out.name or "")
 
-    def handle(self, out: TTSOutputMessage) -> None:
+    def handle(self, out: PresentationMessage) -> None:
         _ui().hide_busy_bar()
         _ui().post_numeric_value(out.text or "")
 
 
 class SceneUiHandler(UIOutputMessageHandler):
-    def can_handle(self, out: TTSOutputMessage) -> bool:
+    def can_handle(self, out: PresentationMessage) -> bool:
         return out.is_system_message and match_scene_name(out.name or "")
 
-    def handle(self, out: TTSOutputMessage) -> None:
+    def handle(self, out: PresentationMessage) -> None:
         _ui().hide_busy_bar()
         try:
             idx = int(out.asset_id) - 1
@@ -110,19 +110,19 @@ class SceneUiHandler(UIOutputMessageHandler):
 
 
 class BgmUiHandler(UIOutputMessageHandler):
-    def can_handle(self, out: TTSOutputMessage) -> bool:
+    def can_handle(self, out: PresentationMessage) -> bool:
         return out.is_system_message and match_bgm_name(out.name or "")
 
-    def handle(self, out: TTSOutputMessage) -> None:
+    def handle(self, out: PresentationMessage) -> None:
         _ui().hide_busy_bar()
         _ui().switch_bgm(out.audio_path or "")
 
 
 class CgUiHandler(UIOutputMessageHandler):
-    def can_handle(self, out: TTSOutputMessage) -> bool:
+    def can_handle(self, out: PresentationMessage) -> bool:
         return out.is_system_message and match_cg_name(out.name or "")
 
-    def handle(self, out: TTSOutputMessage) -> None:
+    def handle(self, out: PresentationMessage) -> None:
         _ui().hide_busy_bar()
         try:
             path = out.audio_path or ""
@@ -138,7 +138,7 @@ class CgUiHandler(UIOutputMessageHandler):
 class SystemMiscUiHandler(UIOutputMessageHandler):
     """NARR 等其余 system 消息（有对话等待）。"""
 
-    def can_handle(self, out: TTSOutputMessage) -> bool:
+    def can_handle(self, out: PresentationMessage) -> bool:
         if not out.is_system_message:
             return False
         name = out.name or ""
@@ -146,7 +146,7 @@ class SystemMiscUiHandler(UIOutputMessageHandler):
             return False
         return True
 
-    def handle(self, out: TTSOutputMessage) -> None:
+    def handle(self, out: PresentationMessage) -> None:
         _ui().hide_busy_bar()
         _ui().update_dialog(
             out.name,
@@ -161,7 +161,7 @@ class SystemMiscUiHandler(UIOutputMessageHandler):
             sp = out.text or ""
             ev.wait(timeout=max(len(sp) / 10, 0.5))
 
-    def post_process(self, out: TTSOutputMessage) -> None:
+    def post_process(self, out: PresentationMessage) -> None:
         if not out.is_final_segment:
             return
         get_app_runtime().ui_update_manager.resolve_effect(
@@ -177,10 +177,10 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         self._last_character = None
         self._last_sprite = None
 
-    def can_handle(self, out: TTSOutputMessage) -> bool:
+    def can_handle(self, out: PresentationMessage) -> bool:
         return not out.is_system_message
 
-    def handle(self, out: TTSOutputMessage) -> None:
+    def handle(self, out: PresentationMessage) -> None:
         rt = get_app_runtime()
         ui = rt.ui_update_manager
         ui.hide_busy_bar()
@@ -265,7 +265,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             # not initialize UIWorker and therefore have no playback backend.
             ev.wait(timeout=min_stop_time)
 
-    def post_process(self, out: TTSOutputMessage) -> None:
+    def post_process(self, out: PresentationMessage) -> None:
         if not out.is_final_segment:
             return
         get_app_runtime().ui_update_manager.resolve_effect(

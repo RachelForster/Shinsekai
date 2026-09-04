@@ -17,7 +17,7 @@ from core.messaging.dialog_tokens import (
     SCENE_ALIASES,
     STAT,
     STAT_ALIASES,
-    SYSTEM_DIALOG_TTS_ALIASES,
+    SYSTEM_DIALOG_MEDIA_ALIASES,
     SYSTEM_UI_SKIP,
     match_bgm_name,
     match_cg_name,
@@ -166,9 +166,9 @@ class TestAliasSets:
         assert SCENE in SCENE_ALIASES
         assert "场景" in SCENE_ALIASES
 
-    def test_system_dialog_tts_covers_narr_choice_stat_scene(self):
+    def test_system_dialog_media_covers_narr_choice_stat_scene(self):
         combined = NARR_ALIASES | CHOICE_ALIASES | STAT_ALIASES | SCENE_ALIASES
-        assert SYSTEM_DIALOG_TTS_ALIASES == combined
+        assert SYSTEM_DIALOG_MEDIA_ALIASES == combined
 
     def test_system_ui_skip_excludes_narr(self):
         assert NARR not in SYSTEM_UI_SKIP

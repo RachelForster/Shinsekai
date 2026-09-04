@@ -28,13 +28,27 @@ def _deprecated_qt_builder_must_not_run(_context):
 def test_deprecated_qt_contribution_exports_remain_importable() -> None:
     from sdk import (
         ChatUIContribution as RootChatUIContribution,
+        PresentationMessage,
         SettingsUIContribution as RootSettingsUIContribution,
+        TTSOutputMessage,
         ToolsTabContribution as RootToolsTabContribution,
     )
 
     assert RootSettingsUIContribution is SettingsUIContribution
     assert RootToolsTabContribution is ToolsTabContribution
     assert RootChatUIContribution is ChatUIContribution
+    assert TTSOutputMessage is PresentationMessage
+
+
+def test_legacy_tts_handler_keyword_registers_dialog_media_handler() -> None:
+    registry = PluginCapabilityRegistry()
+    handler = object()
+
+    registry.register_message_handler(tts_handler=handler)  # type: ignore[arg-type]
+
+    dialog_media_handlers, ui_handlers = registry.message_handlers
+    assert dialog_media_handlers == [handler]
+    assert ui_handlers == []
 
 
 class _BasePlugin(PluginBase):
@@ -82,7 +96,9 @@ class _DemoPlugin(_BasePlugin):
             lambda: True,
             priority=25,
         )
-        register.register_message_handler(tts_handler="tts", ui_handler="ui")  # type: ignore[arg-type]
+        register.register_message_handler(
+            dialog_media_handler="dialog-media", ui_handler="ui"
+        )  # type: ignore[arg-type]
         register.register_user_input_trigger(lambda emit: emit("triggered"))
         register.register_user_input_processor(lambda text: text.upper())
         register.register_llm_tool(lambda tool_manager: tool_manager.register("demo"))
@@ -171,8 +187,8 @@ def test_plugin_manager_collects_every_registered_capability(tmp_path: Path) -> 
     assert vision_fallbacks[0].priority == 25
     assert vision_fallbacks[0].available() is True
 
-    tts_handlers, ui_handlers = manager.collect_message_handlers()
-    assert tts_handlers == ["tts"]
+    dialog_media_handlers, ui_handlers = manager.collect_message_handlers()
+    assert dialog_media_handlers == ["dialog-media"]
     assert ui_handlers == ["ui"]
 
     emitted: list[str] = []

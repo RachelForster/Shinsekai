@@ -142,7 +142,7 @@ def command_runtime() -> SimpleNamespace:
         branch_manager=branch_manager,
         chat_history=[],
         last_user_message={},
-        audio_path_queue=SimpleNamespace(put=Mock()),
+        presentation_queue=SimpleNamespace(put=Mock()),
         history_presenter=object(),
         tts_manager=tts_manager,
     )

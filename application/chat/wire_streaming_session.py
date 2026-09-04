@@ -289,7 +289,7 @@ class _StreamingSessionWiring:
             branch_manager=self.branch_manager,
             chat_history=chat_history,
             last_user_message=self.last_user_message,
-            audio_path_queue=self.runtime.audio_queue,
+            presentation_queue=self.runtime.presentation_queue,
             history_argument=self.args.history,
             history_presenter=StreamingHistoryPresenter(self.ui_updates),
             tts_manager=self.startup.tts_manager,

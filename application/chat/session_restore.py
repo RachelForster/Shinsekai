@@ -9,13 +9,13 @@ from typing import Any
 from config.config_manager import ConfigManager
 from core.messaging.dialog_tokens import is_option_history_name
 from application.chat.history_state import extract_valid_dialog_from_messages
-from sdk.messages import TTSOutputMessage
+from sdk.messages import PresentationMessage
 
 
 def restore_session_presentation(
     messages: list,
     *,
-    audio_path_queue: Any,
+    presentation_queue: Any,
     presenter: Any,
     config: ConfigManager,
     tr_i18n: Callable[..., str],
@@ -29,8 +29,8 @@ def restore_session_presentation(
         bgm_path = config.config.system_config.bgm_path
         bg_path = config.config.system_config.background_path
         if bgm_path:
-            audio_path_queue.put(
-                TTSOutputMessage(
+            presentation_queue.put(
+                PresentationMessage(
                     audio_path=bgm_path,
                     character_name="bgm",
                     sprite="-1",
@@ -62,8 +62,8 @@ def restore_session_presentation(
             trailing_system.append(dialog.pop())
 
         for item in reversed(trailing_system):
-            audio_path_queue.put(
-                TTSOutputMessage(
+            presentation_queue.put(
+                PresentationMessage(
                     audio_path="",
                     character_name=item.get("character_name", ""),
                     speech=item.get("speech"),
@@ -75,8 +75,8 @@ def restore_session_presentation(
         restored_character_sprite = False
         if dialog:
             last = dialog[-1]
-            audio_path_queue.put(
-                TTSOutputMessage(
+            presentation_queue.put(
+                PresentationMessage(
                     audio_path="",
                     character_name=last.get("character_name", ""),
                     speech=last.get("speech", ""),
@@ -88,8 +88,8 @@ def restore_session_presentation(
             restored_character_sprite = True
 
         if last_choice is not None:
-            audio_path_queue.put(
-                TTSOutputMessage(
+            presentation_queue.put(
+                PresentationMessage(
                     audio_path="",
                     name=last_choice.get("character_name", "CHOICE"),
                     text=last_choice.get("speech", ""),

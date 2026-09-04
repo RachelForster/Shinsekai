@@ -13,11 +13,11 @@ from application.runtime.context import AppRuntime, get_app_runtime, set_app_run
 from application.runtime.workers import (
     LLMWorker,
     PresentationWorker,
-    TTSWorker,
+    DialogMediaWorker,
 )
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY
 from ai.llm.llm_manager import LLMManager
-from sdk.messages import LLMDialogMessage, TTSOutputMessage, UserInputMessage
+from sdk.messages import LLMDialogMessage, PresentationMessage, UserInputMessage
 from test.mocks import MockLLMAdapter
 
 
@@ -67,8 +67,8 @@ def _isolate_app_runtime() -> None:
 
 
 def _make_app_runtime(
-    tts_queue: Queue | None = None,
-    audio_path_queue: Queue | None = None,
+    dialog_queue: Queue | None = None,
+    presentation_queue: Queue | None = None,
     ui_manager: MagicMock | None = None,
 ) -> AppRuntime:
     runtime = AppRuntime(
@@ -79,8 +79,8 @@ def _make_app_runtime(
         t2i_manager=None,
         bgm_list=[],
         user_input_queue=Queue(),
-        tts_queue=tts_queue or CountingQueue(),
-        audio_path_queue=audio_path_queue or CountingQueue(),
+        dialog_queue=dialog_queue or CountingQueue(),
+        presentation_queue=presentation_queue or CountingQueue(),
         text_processor=MagicMock(),
         opencc=SimpleNamespace(convert=lambda value: f"converted:{value}"),
     )
@@ -90,50 +90,50 @@ def _make_app_runtime(
 
 def _run_streaming_llm_worker(llm_manager) -> tuple[AppRuntime, list[LLMDialogMessage]]:
     user_input_queue = CountingQueue()
-    tts_queue = CountingQueue()
+    dialog_queue = CountingQueue()
     user_input_queue.put(UserInputMessage(text="hello"))
     user_input_queue.put(None)
-    runtime = _make_app_runtime(tts_queue=tts_queue)
+    runtime = _make_app_runtime(dialog_queue=dialog_queue)
     runtime.config.config.api_config.is_streaming = True
     runtime.llm_manager = llm_manager
 
-    LLMWorker(user_input_queue, tts_queue).run()
+    LLMWorker(user_input_queue, dialog_queue).run()
 
     output = []
-    while not tts_queue.empty():
-        output.append(tts_queue.get_nowait())
+    while not dialog_queue.empty():
+        output.append(dialog_queue.get_nowait())
     return runtime, output
 
 
 def test_workers_keep_original_queue_attributes_and_bind_ports() -> None:
     _make_app_runtime()
     user_input_queue = Queue()
-    tts_queue = Queue()
-    audio_path_queue = Queue()
+    dialog_queue = Queue()
+    presentation_queue = Queue()
 
-    llm_worker = LLMWorker(user_input_queue, tts_queue)
-    tts_worker = TTSWorker(tts_queue, audio_path_queue)
-    ui_worker = PresentationWorker(audio_path_queue)
+    llm_worker = LLMWorker(user_input_queue, dialog_queue)
+    dialog_media_worker = DialogMediaWorker(dialog_queue, presentation_queue)
+    ui_worker = PresentationWorker(presentation_queue)
 
     assert llm_worker.user_input_queue is user_input_queue
-    assert llm_worker.tts_queue is tts_queue
+    assert llm_worker.dialog_queue is dialog_queue
     assert llm_worker.inq(LLMWorker.PORT_USER_INPUT) is user_input_queue
-    assert llm_worker.outq(LLMWorker.PORT_LLM_OUTPUT) is tts_queue
+    assert llm_worker.outq(LLMWorker.PORT_DIALOG) is dialog_queue
 
-    assert tts_worker.tts_queue is tts_queue
-    assert tts_worker.audio_path_queue is audio_path_queue
-    assert tts_worker.inq(TTSWorker.PORT_LLM_OUTPUT) is tts_queue
-    assert tts_worker.outq(TTSWorker.PORT_TTS_OUTPUT) is audio_path_queue
+    assert dialog_media_worker.dialog_queue is dialog_queue
+    assert dialog_media_worker.presentation_queue is presentation_queue
+    assert dialog_media_worker.inq(DialogMediaWorker.PORT_DIALOG) is dialog_queue
+    assert dialog_media_worker.outq(DialogMediaWorker.PORT_PRESENTATION) is presentation_queue
 
-    assert ui_worker.audio_path_queue is audio_path_queue
-    assert ui_worker.inq(PresentationWorker.PORT_TTS_OUTPUT) is audio_path_queue
+    assert ui_worker.presentation_queue is presentation_queue
+    assert ui_worker.inq(PresentationWorker.PORT_PRESENTATION) is presentation_queue
 
 
 def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     monkeypatch,
 ) -> None:
     user_input_queue = CountingQueue()
-    tts_queue = CountingQueue()
+    dialog_queue = CountingQueue()
     user_input_queue.put(UserInputMessage(text="hello"))
     user_input_queue.put(None)
 
@@ -143,14 +143,14 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
         '{"character_name":"Alice","speech":"Hi","sprite":"0"}'
     )
 
-    worker = LLMWorker(user_input_queue, tts_queue)
+    worker = LLMWorker(user_input_queue, dialog_queue)
     monkeypatch.setattr(worker, "_init_app", lambda: None)
     worker.ui_update_manager = runtime.ui_update_manager
     worker.llm_manager = runtime.llm_manager
 
     worker.run()
 
-    output = tts_queue.get_nowait()
+    output = dialog_queue.get_nowait()
     assert isinstance(output, LLMDialogMessage)
     assert output.name == "Alice"
     assert output.text == "Hi"
@@ -212,7 +212,7 @@ def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_
     document = tmp_path / "notes.txt"
     document.write_text("notes", encoding="utf-8")
     user_input_queue = CountingQueue()
-    tts_queue = CountingQueue()
+    dialog_queue = CountingQueue()
     user_input_queue.put(
         UserInputMessage(
             text="Inspect these",
@@ -228,7 +228,7 @@ def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_
     runtime.config.config.api_config.is_streaming = False
     runtime.llm_manager.llm_adapter.supports_native_vision = True
     runtime.llm_manager.chat.return_value = '{"character_name":"Alice","speech":"Done","sprite":"0"}'
-    worker = LLMWorker(user_input_queue, tts_queue)
+    worker = LLMWorker(user_input_queue, dialog_queue)
     worker.run()
 
     content = runtime.llm_manager.chat.call_args.args[0]
@@ -251,35 +251,35 @@ def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_
     )
 
 
-def test_tts_worker_exception_path_uses_original_put_data_fallback(
+def test_dialog_media_worker_exception_path_emits_fallback(
     monkeypatch,
 ) -> None:
-    tts_queue = CountingQueue()
-    audio_path_queue = CountingQueue()
-    tts_queue.put(LLMDialogMessage(name="Alice", text="broken", asset_id="2", effect="shake"))
-    tts_queue.put(None)
-    _make_app_runtime(tts_queue=tts_queue, audio_path_queue=audio_path_queue)
+    dialog_queue = CountingQueue()
+    presentation_queue = CountingQueue()
+    dialog_queue.put(LLMDialogMessage(name="Alice", text="broken", asset_id="2", effect="shake"))
+    dialog_queue.put(None)
+    _make_app_runtime(dialog_queue=dialog_queue, presentation_queue=presentation_queue)
 
-    worker = TTSWorker(tts_queue, audio_path_queue)
+    worker = DialogMediaWorker(dialog_queue, presentation_queue)
     monkeypatch.setattr(worker, "_init_app", lambda: None)
-    worker.tts_message_dispatcher = SimpleNamespace(
+    worker.dialog_media_dispatcher = SimpleNamespace(
         dispatch=MagicMock(side_effect=RuntimeError("tts failed"))
     )
 
     worker.run()
 
-    output = audio_path_queue.get_nowait()
-    assert isinstance(output, TTSOutputMessage)
+    output = presentation_queue.get_nowait()
+    assert isinstance(output, PresentationMessage)
     assert output.name == "converted:Alice"
     assert output.text == "broken"
     assert output.asset_id == "2"
     assert output.effect == "shake"
-    assert tts_queue.task_done_calls == 2
-    assert tts_queue.unfinished_tasks == 0
+    assert dialog_queue.task_done_calls == 2
+    assert dialog_queue.unfinished_tasks == 0
 
 
-def test_tts_worker_start_clears_previous_cancel_state(monkeypatch) -> None:
-    worker = TTSWorker(Queue(), Queue())
+def test_dialog_media_worker_start_clears_previous_cancel_state(monkeypatch) -> None:
+    worker = DialogMediaWorker(Queue(), Queue())
     worker._cancel_event.set()
     starts = []
 
@@ -294,14 +294,14 @@ def test_tts_worker_start_clears_previous_cancel_state(monkeypatch) -> None:
     assert starts == [worker]
 
 
-def test_tts_worker_drops_message_scoped_to_interrupted_turn(monkeypatch) -> None:
-    tts_queue = CountingQueue()
-    audio_path_queue = CountingQueue()
-    runtime = _make_app_runtime(tts_queue=tts_queue, audio_path_queue=audio_path_queue)
+def test_dialog_media_worker_drops_message_scoped_to_interrupted_turn(monkeypatch) -> None:
+    dialog_queue = CountingQueue()
+    presentation_queue = CountingQueue()
+    runtime = _make_app_runtime(dialog_queue=dialog_queue, presentation_queue=presentation_queue)
     interrupted_turn = runtime.chat_turn_service.begin_turn()
     runtime.chat_turn_service.interrupt()
     current_turn = runtime.chat_turn_service.begin_turn()
-    tts_queue.put(
+    dialog_queue.put(
         LLMDialogMessage(
             name="Alice",
             text="stale reply",
@@ -309,23 +309,23 @@ def test_tts_worker_drops_message_scoped_to_interrupted_turn(monkeypatch) -> Non
             turn_id=interrupted_turn.id,
         )
     )
-    tts_queue.put(None)
-    worker = TTSWorker(tts_queue, audio_path_queue)
+    dialog_queue.put(None)
+    worker = DialogMediaWorker(dialog_queue, presentation_queue)
     monkeypatch.setattr(worker, "_init_app", lambda: None)
-    worker.tts_message_dispatcher = SimpleNamespace(dispatch=MagicMock())
+    worker.dialog_media_dispatcher = SimpleNamespace(dispatch=MagicMock())
 
     worker.run()
 
     assert current_turn.id != interrupted_turn.id
-    worker.tts_message_dispatcher.dispatch.assert_not_called()
-    assert audio_path_queue.empty()
-    assert tts_queue.task_done_calls == 2
+    worker.dialog_media_dispatcher.dispatch.assert_not_called()
+    assert presentation_queue.empty()
+    assert dialog_queue.task_done_calls == 2
 
 
-def test_tts_worker_drops_dispatch_output_after_cancel() -> None:
-    audio_path_queue = CountingQueue()
-    _make_app_runtime(audio_path_queue=audio_path_queue)
-    worker = TTSWorker(CountingQueue(), audio_path_queue)
+def test_dialog_media_worker_drops_dispatch_output_after_cancel() -> None:
+    presentation_queue = CountingQueue()
+    _make_app_runtime(presentation_queue=presentation_queue)
+    worker = DialogMediaWorker(CountingQueue(), presentation_queue)
     started = threading.Event()
     release = threading.Event()
     attempted_emit = threading.Event()
@@ -333,8 +333,8 @@ def test_tts_worker_drops_dispatch_output_after_cancel() -> None:
     def dispatch(_item):
         started.set()
         assert release.wait(timeout=1)
-        get_app_runtime().audio_path_queue.put(
-            TTSOutputMessage(
+        get_app_runtime().presentation_queue.put(
+            PresentationMessage(
                 audio_path="late.wav",
                 name="Alice",
                 text="late",
@@ -343,7 +343,7 @@ def test_tts_worker_drops_dispatch_output_after_cancel() -> None:
         )
         attempted_emit.set()
 
-    worker.tts_message_dispatcher = SimpleNamespace(dispatch=dispatch)
+    worker.dialog_media_dispatcher = SimpleNamespace(dispatch=dispatch)
     runner = threading.Thread(
         target=worker._dispatch_with_cancel,
         args=(LLMDialogMessage(name="Alice", text="hello", asset_id="-1"),),
@@ -357,19 +357,19 @@ def test_tts_worker_drops_dispatch_output_after_cancel() -> None:
     runner.join(timeout=1)
 
     assert not runner.is_alive()
-    assert audio_path_queue.empty()
+    assert presentation_queue.empty()
     for _ in range(20):
-        if get_app_runtime().audio_path_queue is audio_path_queue:
+        if get_app_runtime().presentation_queue is presentation_queue:
             break
         time.sleep(0.01)
-    assert get_app_runtime().audio_path_queue is audio_path_queue
+    assert get_app_runtime().presentation_queue is presentation_queue
 
 
-def test_tts_worker_drops_dispatch_output_after_runtime_cancel() -> None:
-    audio_path_queue = CountingQueue()
-    runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
+def test_dialog_media_worker_drops_dispatch_output_after_runtime_cancel() -> None:
+    presentation_queue = CountingQueue()
+    runtime = _make_app_runtime(presentation_queue=presentation_queue)
     turn = runtime.chat_turn_service.begin_turn()
-    worker = TTSWorker(CountingQueue(), audio_path_queue)
+    worker = DialogMediaWorker(CountingQueue(), presentation_queue)
     started = threading.Event()
     release = threading.Event()
     attempted_emit = threading.Event()
@@ -377,8 +377,8 @@ def test_tts_worker_drops_dispatch_output_after_runtime_cancel() -> None:
     def dispatch(_item):
         started.set()
         assert release.wait(timeout=1)
-        get_app_runtime().audio_path_queue.put(
-            TTSOutputMessage(
+        get_app_runtime().presentation_queue.put(
+            PresentationMessage(
                 audio_path="late.wav",
                 name="Alice",
                 text="late",
@@ -387,7 +387,7 @@ def test_tts_worker_drops_dispatch_output_after_runtime_cancel() -> None:
         )
         attempted_emit.set()
 
-    worker.tts_message_dispatcher = SimpleNamespace(dispatch=dispatch)
+    worker.dialog_media_dispatcher = SimpleNamespace(dispatch=dispatch)
     runner = threading.Thread(
         target=worker._dispatch_with_cancel,
         args=(LLMDialogMessage(name="Alice", text="hello", asset_id="-1"),),
@@ -401,18 +401,18 @@ def test_tts_worker_drops_dispatch_output_after_runtime_cancel() -> None:
     runner.join(timeout=1)
 
     assert not runner.is_alive()
-    assert audio_path_queue.empty()
+    assert presentation_queue.empty()
     for _ in range(20):
-        if get_app_runtime().audio_path_queue is audio_path_queue:
+        if get_app_runtime().presentation_queue is presentation_queue:
             break
         time.sleep(0.01)
-    assert get_app_runtime().audio_path_queue is audio_path_queue
+    assert get_app_runtime().presentation_queue is presentation_queue
 
 
 def test_ui_worker_skip_speech_is_noop_when_no_dialog_or_audio_is_active() -> None:
-    audio_path_queue = Queue()
-    runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
-    worker = PresentationWorker(audio_path_queue)
+    presentation_queue = Queue()
+    runtime = _make_app_runtime(presentation_queue=presentation_queue)
+    worker = PresentationWorker(presentation_queue)
     worker.task_done_requested = FakeEvent()
     worker.current_audio_path = None
     runtime.ui_playback.current_audio_path = None
@@ -432,7 +432,7 @@ def test_ui_worker_finishes_turn_after_all_system_output_is_drained() -> None:
     runtime = _make_app_runtime(ui_manager=ui_manager)
     turn = runtime.chat_turn_service.begin_turn()
     runtime.chat_turn_service.mark_generation_complete(turn)
-    worker = PresentationWorker(runtime.audio_path_queue)
+    worker = PresentationWorker(runtime.presentation_queue)
     worker.ui_update_manager = ui_manager
     worker.dialog_channel = MagicMock()
     worker.dialog_channel.get_busy.return_value = False
@@ -447,8 +447,8 @@ def test_ui_worker_does_not_finish_while_tts_work_is_still_inflight() -> None:
     runtime = _make_app_runtime(ui_manager=ui_manager)
     turn = runtime.chat_turn_service.begin_turn()
     runtime.chat_turn_service.mark_generation_complete(turn)
-    runtime.tts_queue.put(LLMDialogMessage(name="NARR", text="pending", asset_id="-1"))
-    worker = PresentationWorker(runtime.audio_path_queue)
+    runtime.dialog_queue.put(LLMDialogMessage(name="NARR", text="pending", asset_id="-1"))
+    worker = PresentationWorker(runtime.presentation_queue)
     worker.ui_update_manager = ui_manager
     worker.dialog_channel = MagicMock()
     worker.dialog_channel.get_busy.return_value = False
@@ -466,7 +466,7 @@ def test_ui_worker_does_not_finish_while_shared_playback_is_active() -> None:
     controller = MagicMock()
     controller.is_active.return_value = True
     runtime.ui_playback.playback_controller = controller
-    worker = PresentationWorker(runtime.audio_path_queue)
+    worker = PresentationWorker(runtime.presentation_queue)
     worker.ui_update_manager = ui_manager
     worker.dialog_channel = None
 
@@ -480,7 +480,7 @@ def test_ui_worker_skip_speech_interrupts_shared_playback_controller() -> None:
     controller = MagicMock()
     controller.is_active.return_value = True
     runtime.ui_playback.playback_controller = controller
-    worker = PresentationWorker(runtime.audio_path_queue)
+    worker = PresentationWorker(runtime.presentation_queue)
     worker._dialog_active = False
 
     worker.skip_speech()
@@ -490,9 +490,9 @@ def test_ui_worker_skip_speech_interrupts_shared_playback_controller() -> None:
 
 
 def test_ui_worker_skip_speech_stops_busy_channel_without_queued_audio() -> None:
-    audio_path_queue = Queue()
-    runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
-    worker = PresentationWorker(audio_path_queue)
+    presentation_queue = Queue()
+    runtime = _make_app_runtime(presentation_queue=presentation_queue)
+    worker = PresentationWorker(presentation_queue)
     worker.task_done_requested = FakeEvent()
     worker.current_audio_path = None
     runtime.ui_playback.current_audio_path = None
@@ -509,9 +509,9 @@ def test_ui_worker_skip_speech_stops_busy_channel_without_queued_audio() -> None
 
 
 def test_ui_worker_skip_speech_stops_active_audio_and_emits_tts_skip() -> None:
-    audio_path_queue = Queue()
-    runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
-    worker = PresentationWorker(audio_path_queue)
+    presentation_queue = Queue()
+    runtime = _make_app_runtime(presentation_queue=presentation_queue)
+    worker = PresentationWorker(presentation_queue)
     worker.task_done_requested = FakeEvent()
     worker.current_audio_path = "current.wav"
     runtime.ui_playback.current_audio_path = "current.wav"
@@ -528,9 +528,9 @@ def test_ui_worker_skip_speech_stops_active_audio_and_emits_tts_skip() -> None:
 
 
 def test_ui_worker_skip_speech_advances_waiting_dialog_without_emitting_tts_skip() -> None:
-    audio_path_queue = Queue()
-    runtime = _make_app_runtime(audio_path_queue=audio_path_queue)
-    worker = PresentationWorker(audio_path_queue)
+    presentation_queue = Queue()
+    runtime = _make_app_runtime(presentation_queue=presentation_queue)
+    worker = PresentationWorker(presentation_queue)
     worker.task_done_requested = FakeEvent()
     worker.current_audio_path = None
     runtime.ui_playback.current_audio_path = None
@@ -548,9 +548,9 @@ def test_ui_worker_skip_speech_advances_waiting_dialog_without_emitting_tts_skip
 def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(
     monkeypatch,
 ) -> None:
-    audio_path_queue = CountingQueue()
-    audio_path_queue.put(
-        TTSOutputMessage(
+    presentation_queue = CountingQueue()
+    presentation_queue.put(
+        PresentationMessage(
             audio_path="",
             name="Alice",
             text="1234567890",
@@ -558,11 +558,11 @@ def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(
             effect="",
         )
     )
-    audio_path_queue.put(None)
+    presentation_queue.put(None)
     ui_manager = MagicMock()
-    _make_app_runtime(audio_path_queue=audio_path_queue, ui_manager=ui_manager)
+    _make_app_runtime(presentation_queue=presentation_queue, ui_manager=ui_manager)
 
-    worker = PresentationWorker(audio_path_queue)
+    worker = PresentationWorker(presentation_queue)
     fake_event = FakeEvent()
     monkeypatch.setattr(worker, "_init_app", lambda: None)
     worker.task_done_requested = fake_event
@@ -575,5 +575,5 @@ def test_ui_worker_exception_branch_keeps_original_wait_and_task_done(
 
     ui_manager.post_notification.assert_called_once()
     assert fake_event.wait_calls == [1.0]
-    assert audio_path_queue.task_done_calls == 2
-    assert audio_path_queue.unfinished_tasks == 0
+    assert presentation_queue.task_done_calls == 2
+    assert presentation_queue.unfinished_tasks == 0

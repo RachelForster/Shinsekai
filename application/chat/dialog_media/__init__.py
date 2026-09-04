@@ -1,8 +1,8 @@
-"""Pluggable sprite lookup and speech generation strategies."""
+"""Strategies used while preparing dialog media for presentation."""
 
-from .generation import DefaultTtsGenerationStrategy, TtsGenerationStrategy
 from .models import SpriteLookupRequest, SpriteMatch, TtsGenerationRequest
 from .sprite_lookup import ConfigSpriteLookupStrategy, SpriteLookupStrategy
+from .tts_generation import DefaultTtsGenerationStrategy, TtsGenerationStrategy
 
 __all__ = [
     "ConfigSpriteLookupStrategy",

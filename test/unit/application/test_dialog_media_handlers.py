@@ -1,23 +1,23 @@
-"""Unit tests for the application TTS handler chain."""
+"""Unit tests for the application dialog-media handler chain."""
 
 from unittest.mock import MagicMock
 
 import pytest
 
 from sdk.messages import LLMDialogMessage
-from application.chat.handlers.registry import TtsMessageDispatcher
-from application.chat.handlers.tts import (
-    DefaultCharacterTtsHandler,
-    BgmTtsHandler,
-    CgTtsHandler,
-    get_tts_handlers,
+from application.chat.handlers.registry import DialogMediaDispatcher
+from application.chat.handlers.dialog_media import (
+    CharacterMediaHandler,
+    BgmMediaHandler,
+    CgMediaHandler,
+    get_dialog_media_handlers,
 )
 
 
-class TestDefaultCharacterTtsHandler:
+class TestCharacterMediaHandler:
     def test_can_handle_any_message(self, mock_app_runtime):
-        """DefaultCharacterTtsHandler is the catch-all — always returns True."""
-        handler = DefaultCharacterTtsHandler()
+        """CharacterMediaHandler is the catch-all — always returns True."""
+        handler = CharacterMediaHandler()
         msg = LLMDialogMessage(name="TestChar", text="Hello", asset_id="0")
         assert handler.can_handle(msg) is True
 
@@ -28,12 +28,12 @@ class TestDefaultCharacterTtsHandler:
         runtime.tts_manager = MagicMock()
         runtime.tts_manager.generate_tts.return_value = "voice.wav"
 
-        DefaultCharacterTtsHandler().handle(
+        CharacterMediaHandler().handle(
             LLMDialogMessage(name="TestChar", text="Hello", asset_id=None)
         )
 
         runtime.tts_manager.generate_tts.assert_called_once()
-        output = runtime.audio_path_queue.get_nowait()
+        output = runtime.presentation_queue.get_nowait()
         assert output.name == "TestChar"
         assert output.text == "Hello"
         assert output.asset_id == "-1"
@@ -44,25 +44,25 @@ class TestDefaultCharacterTtsHandler:
 
 class TestSpecializedHandlers:
     def test_bgm_handler_matches_bgm(self, mock_app_runtime):
-        handler = BgmTtsHandler()
+        handler = BgmMediaHandler()
         msg = LLMDialogMessage(name="BGM", text="...", asset_id="0")
         assert handler.can_handle(msg) is True
 
     def test_cg_handler_matches_cg(self, mock_app_runtime):
-        handler = CgTtsHandler()
+        handler = CgMediaHandler()
         msg = LLMDialogMessage(name="CG", text="...", asset_id="0")
         assert handler.can_handle(msg) is True
 
     def test_handler_chain_has_default_last(self):
-        handlers = list(get_tts_handlers())
+        handlers = list(get_dialog_media_handlers())
         assert len(handlers) > 0
-        assert isinstance(handlers[-1], DefaultCharacterTtsHandler)
+        assert isinstance(handlers[-1], CharacterMediaHandler)
 
 
-class TestTtsMessageDispatcher:
+class TestDialogMediaDispatcher:
     def test_dispatcher_requires_at_least_one_handler(self):
         with pytest.raises(ValueError, match="至少需要一个"):
-            TtsMessageDispatcher([])
+            DialogMediaDispatcher([])
 
     def test_dispatcher_calls_first_matching_handler(self):
         handler1 = MagicMock()
@@ -70,7 +70,7 @@ class TestTtsMessageDispatcher:
         handler2 = MagicMock()
         handler2.can_handle.return_value = True
 
-        dispatcher = TtsMessageDispatcher([handler1, handler2])
+        dispatcher = DialogMediaDispatcher([handler1, handler2])
         msg = LLMDialogMessage(name="Test", text="Hi", asset_id="0")
         dispatcher.dispatch(msg)
 
@@ -86,7 +86,7 @@ class TestTtsMessageDispatcher:
         handler2 = MagicMock()
         handler2.can_handle.return_value = True
 
-        dispatcher = TtsMessageDispatcher([handler1, handler2])
+        dispatcher = DialogMediaDispatcher([handler1, handler2])
         msg = LLMDialogMessage(name="Test", text="Hi", asset_id="0")
         dispatcher.dispatch(msg)
 
@@ -96,16 +96,16 @@ class TestTtsMessageDispatcher:
     def test_dispatcher_raises_when_no_handler_matches(self):
         handler = MagicMock()
         handler.can_handle.return_value = False
-        dispatcher = TtsMessageDispatcher([handler])
+        dispatcher = DialogMediaDispatcher([handler])
         msg = LLMDialogMessage(name="Test", text="Hi", asset_id="0")
 
-        with pytest.raises(RuntimeError, match="无 TTS handler 匹配"):
+        with pytest.raises(RuntimeError, match="无 dialog media handler 匹配"):
             dispatcher.dispatch(msg)
 
     def test_init_handlers_called_on_all(self):
         handler1 = MagicMock()
         handler2 = MagicMock()
-        dispatcher = TtsMessageDispatcher([handler1, handler2])
+        dispatcher = DialogMediaDispatcher([handler1, handler2])
         dispatcher.init_handlers()
         handler1.init.assert_called_once()
         handler2.init.assert_called_once()

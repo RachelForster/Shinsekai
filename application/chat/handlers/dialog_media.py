@@ -1,5 +1,5 @@
 """
-TTS worker 用 LLM dialog 处理器（见 handler_registry.MessageHandler）。
+dialog media worker 用 LLM dialog 处理器（见 handler_registry.MessageHandler）。
 
 依赖从 :mod:`application.runtime.context` 取得，不引用 worker 类型。
 """
@@ -9,7 +9,7 @@ from __future__ import annotations
 import traceback
 from typing import List
 
-from application.chat.tts import (
+from application.chat.dialog_media import (
     ConfigSpriteLookupStrategy,
     DefaultTtsGenerationStrategy,
     SpriteLookupRequest,
@@ -20,24 +20,24 @@ from application.chat.tts import (
 from core.messaging.dialog_tokens import (
     match_bgm_name,
     match_cg_name,
-    match_cot_tts,
-    match_system_dialog_tts,
+    match_cot_dialog,
+    match_system_dialog,
     normalize_character_name,
 )
-from application.runtime.context import get_app_runtime, tts_emit_to_ui_queue
+from application.runtime.context import get_app_runtime, emit_presentation_message
 from i18n import tr as tr_i18n
 from sdk.handlers import MessageHandler
 from sdk.messages import LLMDialogMessage
 
 
-def _post_tts_busy(text: str) -> None:
+def _post_media_busy(text: str) -> None:
     try:
         get_app_runtime().ui_update_manager.post_busy_bar(text, 0.0)
     except Exception:
         pass
 
 
-def _hide_tts_busy() -> None:
+def _hide_media_busy() -> None:
     try:
         get_app_runtime().ui_update_manager.hide_busy_bar()
     except Exception:
@@ -48,13 +48,13 @@ def _cc():
     return get_app_runtime().opencc
 
 
-class ChainOfThoughtTtsHandler(MessageHandler):
+class ChainOfThoughtMediaHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return match_cot_tts(_cc(), msg.name)
+        return match_cot_dialog(_cc(), msg.name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
         disp_name = _cc().convert(normalize_character_name(msg.name))
-        tts_emit_to_ui_queue(
+        emit_presentation_message(
             disp_name,
             msg.text or "",
             str(msg.asset_id if msg.asset_id is not None else "-1"),
@@ -64,13 +64,13 @@ class ChainOfThoughtTtsHandler(MessageHandler):
         )
 
 
-class SystemDialogTtsHandler(MessageHandler):
+class SystemDialogMediaHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
-        return match_system_dialog_tts(_cc(), msg.name)
+        return match_system_dialog(_cc(), msg.name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
         disp_name = _cc().convert(normalize_character_name(msg.name))
-        tts_emit_to_ui_queue(
+        emit_presentation_message(
             disp_name,
             msg.text,
             str(msg.asset_id),
@@ -80,7 +80,7 @@ class SystemDialogTtsHandler(MessageHandler):
         )
 
 
-class BgmTtsHandler(MessageHandler):
+class BgmMediaHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
         return match_bgm_name(msg.name)
 
@@ -94,7 +94,7 @@ class BgmTtsHandler(MessageHandler):
             print("无法得到bgm path", e)
             traceback.print_exc()
         finally:
-            tts_emit_to_ui_queue(
+            emit_presentation_message(
                 "bgm",
                 "",
                 str(msg.asset_id),
@@ -104,28 +104,28 @@ class BgmTtsHandler(MessageHandler):
             )
 
 
-class CgTtsHandler(MessageHandler):
+class CgMediaHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
         return match_cg_name(msg.name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
-        _post_tts_busy(tr_i18n("desktop.tts_busy_cg"))
+        _post_media_busy(tr_i18n("desktop.tts_busy_cg"))
         try:
             cg_path = get_app_runtime().t2i_manager.t2i(
                 prompt=msg.text, prompt_processor=None
             )
-            tts_emit_to_ui_queue(
+            emit_presentation_message(
                 msg.name, msg.text, "-1", cg_path, is_system_message=True
             )
         except Exception as e:
             print(f"生成CG失败，{e}")
             traceback.print_exc()
         finally:
-            _hide_tts_busy()
+            _hide_media_busy()
 
 
-class DefaultCharacterTtsHandler(MessageHandler):
-    """有角色立绘的常规 TTS 路径（末项，始终匹配）。"""
+class CharacterMediaHandler(MessageHandler):
+    """处理带角色立绘的常规对话（末项，始终匹配）。"""
 
     def __init__(
         self,
@@ -165,26 +165,26 @@ class DefaultCharacterTtsHandler(MessageHandler):
         )
         show_busy = rt.tts_manager is not None
         if show_busy:
-            _post_tts_busy(tr_i18n("desktop.tts_busy_synthesizing", name=name_s))
+            _post_media_busy(tr_i18n("desktop.tts_busy_synthesizing", name=name_s))
         try:
             for output in self.tts_generation_strategy.generate(generation_request):
-                rt.audio_path_queue.put(output)
+                rt.presentation_queue.put(output)
         finally:
             if show_busy:
-                _hide_tts_busy()
+                _hide_media_busy()
 
 
-def get_tts_handlers(
+def get_dialog_media_handlers(
     *,
     sprite_lookup_strategy: SpriteLookupStrategy | None = None,
     tts_generation_strategy: TtsGenerationStrategy | None = None,
 ) -> List[MessageHandler]:
     return [
-        ChainOfThoughtTtsHandler(),
-        SystemDialogTtsHandler(),
-        BgmTtsHandler(),
-        CgTtsHandler(),
-        DefaultCharacterTtsHandler(
+        ChainOfThoughtMediaHandler(),
+        SystemDialogMediaHandler(),
+        BgmMediaHandler(),
+        CgMediaHandler(),
+        CharacterMediaHandler(
             sprite_lookup_strategy=sprite_lookup_strategy,
             tts_generation_strategy=tts_generation_strategy,
         ),

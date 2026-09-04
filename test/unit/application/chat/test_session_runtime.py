@@ -297,8 +297,8 @@ def test_headless_session_owns_workflow_and_queue_assembly(monkeypatch) -> None:
     workflow = SimpleNamespace(start=Mock(), stop=Mock())
     handles = SimpleNamespace(
         input_queue="input",
-        tts_queue="tts",
-        audio_queue="audio",
+        dialog_queue="tts",
+        presentation_queue="audio",
         ui_worker="ui-worker",
     )
     captured = {}
@@ -339,8 +339,8 @@ def test_headless_session_owns_workflow_and_queue_assembly(monkeypatch) -> None:
     assert captured["workflow_path"].endswith("assets/system/workflow/headless.yaml")
     assert runtime.workflow is workflow
     assert runtime.input_queue == "input"
-    assert runtime.tts_queue == "tts"
-    assert runtime.audio_queue == "audio"
+    assert runtime.dialog_queue == "tts"
+    assert runtime.presentation_queue == "audio"
     assert runtime.effect_keyword_map == {"rain": "rain.mp3"}
 
 
@@ -362,8 +362,8 @@ def test_install_app_runtime_projects_all_session_dependencies(monkeypatch) -> N
     session.runtime = session_runtime._RuntimeComponents(
         workflow=SimpleNamespace(),
         input_queue="input",
-        tts_queue="tts",
-        audio_queue="audio",
+        dialog_queue="tts",
+        presentation_queue="audio",
         ui_worker="worker",
         presentation_assets=SimpleNamespace(bgm_paths=["bgm.mp3"]),
         effect_keyword_map={"rain": "rain.mp3"},
@@ -397,8 +397,8 @@ def test_headless_shutdown_omits_history_callback_without_history(monkeypatch) -
     session.runtime = session_runtime._RuntimeComponents(
         workflow=SimpleNamespace(stop=Mock()),
         input_queue=None,
-        tts_queue=None,
-        audio_queue=None,
+        dialog_queue=None,
+        presentation_queue=None,
         ui_worker=None,
         presentation_assets=SimpleNamespace(bgm_paths=[]),
         effect_keyword_map={},
@@ -431,8 +431,8 @@ def test_headless_run_orders_runtime_start_wait_and_shutdown(monkeypatch) -> Non
     runtime = session_runtime._RuntimeComponents(
         workflow=SimpleNamespace(),
         input_queue=None,
-        tts_queue=None,
-        audio_queue=None,
+        dialog_queue=None,
+        presentation_queue=None,
         ui_worker=None,
         presentation_assets=SimpleNamespace(bgm_paths=[]),
         effect_keyword_map={},
@@ -497,8 +497,8 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
     session.runtime = session_runtime._RuntimeComponents(
         workflow=workflow,
         input_queue=None,
-        tts_queue=None,
-        audio_queue=None,
+        dialog_queue=None,
+        presentation_queue=None,
         ui_worker=None,
         presentation_assets=SimpleNamespace(bgm_paths=[]),
         effect_keyword_map={},

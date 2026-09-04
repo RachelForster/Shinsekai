@@ -8,7 +8,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from urllib.parse import urlparse
 
-from sdk.messages import TTSOutputMessage
+from sdk.messages import PresentationMessage
 
 from .models import TtsGenerationRequest
 
@@ -17,14 +17,14 @@ class TtsGenerationStrategy(ABC):
     """Create the audio outputs for one character dialog message."""
 
     @abstractmethod
-    def generate(self, request: TtsGenerationRequest) -> Iterable[TTSOutputMessage]:
+    def generate(self, request: TtsGenerationRequest) -> Iterable[PresentationMessage]:
         """Return audio outputs in playback order."""
 
 
 class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
     """Use configured fixed audio when available, otherwise synthesize speech."""
 
-    def generate(self, request: TtsGenerationRequest) -> Iterator[TTSOutputMessage]:
+    def generate(self, request: TtsGenerationRequest) -> Iterator[PresentationMessage]:
         manager = request.runtime.tts_manager
         if manager is None:
             yield self._fallback_output(request)
@@ -98,7 +98,7 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                 timeout=None if first else 0,
             )
 
-    def _fallback_output(self, request: TtsGenerationRequest) -> TTSOutputMessage:
+    def _fallback_output(self, request: TtsGenerationRequest) -> PresentationMessage:
         sprite = request.sprite
         audio_path = ""
         if sprite.voice_type in {"fallback", "preset"} and sprite.voice_path:
@@ -173,9 +173,9 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
         effect: str | None = None,
         is_final_segment: bool = True,
         timeout: float | None = None,
-    ) -> TTSOutputMessage:
+    ) -> PresentationMessage:
         output_effect = request.message.effect or "" if effect is None else effect
-        return TTSOutputMessage(
+        return PresentationMessage(
             audio_path=audio_path,
             name=request.character_name,
             text=text,
