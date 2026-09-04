@@ -191,9 +191,7 @@ describe("FilePicker on the Tauri desktop", () => {
     await waitFor(() => {
       expect(onPathChange).toHaveBeenCalledWith("C:/assets/mio.png");
     });
-    expect(openMock).toHaveBeenCalledWith(
-      expect.objectContaining({ directory: false, multiple: false }),
-    );
+    expect(openMock).toHaveBeenCalledWith(expect.objectContaining({ directory: false, multiple: false }));
     expect(browseFiles).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog", { name: "选择素材" })).not.toBeInTheDocument();
   });
@@ -211,9 +209,7 @@ describe("FilePicker on the Tauri desktop", () => {
     await waitFor(() => {
       expect(onPathChange).toHaveBeenCalledWith("D:/models/asr");
     });
-    expect(openMock).toHaveBeenCalledWith(
-      expect.objectContaining({ directory: true, multiple: false }),
-    );
+    expect(openMock).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
   });
 
   it("keeps the value unchanged when the native dialog is cancelled", async () => {

@@ -97,7 +97,7 @@ def test_file_browser_relative_paths_still_resolve_from_project_root(tmp_path, m
     assert snapshot["cwd"] == _display_path(target)
 
 
-def test_file_browser_rejects_paths_outside_local_access_roots(tmp_path, monkeypatch):
+def test_file_browser_allows_paths_outside_project_root(tmp_path, monkeypatch):
     project_root = tmp_path / "project"
     app_root = tmp_path / "Shinsekai"
     home = tmp_path / "home"
@@ -109,24 +109,32 @@ def test_file_browser_rejects_paths_outside_local_access_roots(tmp_path, monkeyp
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
 
-    if os.name == "nt":
-        # Every existing local drive is a root (matching the sidebar), so only
-        # network/UNC locations remain outside the allowed roots.
-        outside_path = "\\\\server\\share\\folder"
-    else:
-        outside_path = str(outside)
+    snapshot = _browse_local_files(
+        SimpleNamespace(app_root_dir=str(app_root)),
+        {"path": str(outside)},
+    )
+
+    assert snapshot["cwd"] == _display_path(outside)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="UNC paths are Windows-specific")
+def test_file_browser_rejects_unc_paths(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "Shinsekai"
+    project_root.mkdir()
+    app_root.mkdir()
+
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
 
     with pytest.raises(PermissionError, match="outside the allowed roots"):
         _browse_local_files(
             SimpleNamespace(app_root_dir=str(app_root)),
-            {"path": outside_path},
+            {"path": "\\\\server\\share\\folder"},
         )
 
 
+@pytest.mark.skipif(os.name != "nt", reason="drive roots are Windows-specific")
 def test_local_file_access_roots_include_existing_drives(tmp_path, monkeypatch):
-    if os.name != "nt":
-        return
-
     project_root = tmp_path / "project"
     app_root = tmp_path / "Shinsekai"
     project_root.mkdir()
@@ -139,3 +147,16 @@ def test_local_file_access_roots_include_existing_drives(tmp_path, monkeypatch):
         drive = Path(f"{chr(code)}:/")
         if drive.exists():
             assert drive.resolve(strict=False) in roots
+
+
+@pytest.mark.skipif(os.name == "nt", reason="filesystem anchor is POSIX-specific")
+def test_local_file_access_roots_include_posix_anchor(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    app_root = tmp_path / "Shinsekai"
+    project_root.mkdir()
+    app_root.mkdir()
+
+    monkeypatch.setenv("EASYAI_PROJECT_ROOT", str(project_root))
+    roots = _local_file_access_roots(SimpleNamespace(app_root_dir=str(app_root)))
+
+    assert Path("/").resolve(strict=False) in roots

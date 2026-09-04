@@ -197,17 +197,13 @@ export interface DesktopNativePickOptions {
 export async function pickDesktopNativePath(options: DesktopNativePickOptions = {}): Promise<string[] | null> {
   const { open } = await import("@tauri-apps/plugin-dialog");
   const directory = options.mode === "directory";
-  const extensions = (options.extensions ?? [])
-    .map((item) => item.trim().replace(/^\.+/, ""))
-    .filter(Boolean);
+  const extensions = (options.extensions ?? []).map((item) => item.trim().replace(/^\.+/, "")).filter(Boolean);
   const rawDefaultPath = options.defaultPath?.trim() || "";
   // The native dialog requires an existing absolute path; project-relative
   // initial paths (e.g. "plugins") are simply left to the dialog's own
   // starting location.
   const defaultPath =
-    rawDefaultPath.startsWith("/") ||
-    rawDefaultPath.startsWith("~") ||
-    /^[A-Za-z]:[\\/]/.test(rawDefaultPath)
+    rawDefaultPath.startsWith("/") || rawDefaultPath.startsWith("~") || /^[A-Za-z]:[\\/]/.test(rawDefaultPath)
       ? rawDefaultPath
       : undefined;
   const result = await open({
