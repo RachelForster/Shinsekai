@@ -3,12 +3,12 @@
 from dataclasses import dataclass, field, replace
 from typing import Any
 
+from core.messaging.dialog_tokens import BGM, CG, CHOICE, COT, SCENE, STAT
 from sdk.types import RequirementSpec
 
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
-from ..contracts.arguments import requirement_arguments
-from ..contracts.requirements import resolve_requirement_specs
+from ..patches import apply_requirement_patches
 
 
 @dataclass(frozen=True)
@@ -27,10 +27,65 @@ class _RequirementRuleSection(Section[DialogTemplateContext]):
         return f"- {self.requirement_text(context)}\n"
 
 
+def _requirement_arguments(
+    context: DialogTemplateContext,
+) -> dict[str, dict[str, Any]]:
+    tokens = {
+        "narr": context.translate("narr_token"),
+        "choice": CHOICE,
+        "stat": STAT,
+        "scn": SCENE,
+        "bgm_t": BGM,
+        "cg": CG,
+        "cot": COT,
+    }
+    fixed_roles = Section(
+        "fixed_roles",
+        separator="、",
+        children=(
+            TextSection("narr", text=tokens["narr"], enabled=context.use_narration),
+            TextSection("choice", text=CHOICE, enabled=context.use_choice),
+            TextSection("stat", text=STAT, enabled=context.use_stat),
+        ),
+    ).render(context)
+    optional_tokens = (
+        TextSection("cot_part", text=f"{COT},", enabled=context.use_cot),
+        TextSection("fixed_roles", text=f" {fixed_roles}", enabled=bool(fixed_roles)),
+        TextSection(
+            "opt_scene", text=f", {SCENE}", enabled=context.has_real_background
+        ),
+        TextSection("opt_bgm", text=f", {BGM}", enabled=context.has_real_background),
+        TextSection("opt_cg", text=f", {CG}", enabled=context.use_cg),
+    )
+    token_rules = (
+        "r_scene",
+        "r_bgm",
+        "r_narration",
+        "r_choice_pos",
+        "r_choice_format",
+        "r_choice_balance",
+        "r_stats",
+        "r_cg",
+        "r_cot",
+    )
+    return {
+        **dict.fromkeys(token_rules, tokens),
+        "r_cname": {
+            "names": context.names,
+            **{section.id: section.render(context) for section in optional_tokens},
+        },
+        "r_non_sprite": {"fixed_roles_non_sprite": fixed_roles},
+        "r_speech": {"speech_lang_name": context.translate("speech_lang_name")},
+        "r_speech_max_chars": {"n": context.max_speech_chars},
+        "r_dialog_max_items": {"n": context.max_dialog_items},
+        "r_translate": {"target_voice_name": context.target_voice_name},
+    }
+
+
 def build_requirement_sections(
     context: DialogTemplateContext,
 ) -> tuple[_RequirementRuleSection, ...]:
-    arguments = requirement_arguments(context)
+    arguments = _requirement_arguments(context)
     definitions = (
         ("r_cot", 5, context.use_cot),
         ("r_format", 10, True),
@@ -64,11 +119,23 @@ def build_requirement_sections(
     )
 
 
+def _resolve_requirement_specs(
+    sections: tuple[_RequirementRuleSection, ...],
+    context: DialogTemplateContext,
+) -> list[RequirementSpec]:
+    specs = [
+        RequirementSpec(section.id, section.requirement_text(context), section.priority)
+        for section in sections
+        if section.enabled
+    ]
+    return apply_requirement_patches(specs, context.output_contract_patches)
+
+
 def _resolve_requirement_sections(
     sections: tuple[_RequirementRuleSection, ...],
     context: DialogTemplateContext,
 ) -> tuple[_RequirementRuleSection, ...]:
-    specs = resolve_requirement_specs(sections, context)
+    specs = _resolve_requirement_specs(sections, context)
     resolved = tuple(
         _RequirementRuleSection(
             id=spec.id,
@@ -88,7 +155,7 @@ def _resolve_requirement_sections(
 
 
 def build_requirements(context: DialogTemplateContext) -> list[RequirementSpec]:
-    return resolve_requirement_specs(build_requirement_sections(context), context)
+    return _resolve_requirement_specs(build_requirement_sections(context), context)
 
 
 @dataclass(frozen=True)

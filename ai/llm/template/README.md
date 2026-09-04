@@ -107,15 +107,14 @@ remain the responsibility of their existing callers.
 
 ## Patch compatibility
 
-`dialog/sections/requirements.py` declares all rule nodes with their priorities
-and `enabled` values. Disabled features remain visible in the node list and do
-not render or translate their rule text. Localized arguments and the SDK patch
-bridge live under `dialog/contracts/`. The private rule leaf stays beside its
-owning `RequirementsSection` instead of introducing a second, ambiguous module.
-The bridge preserves the old distinction: a patch to an unavailable feature's
-rule is a no-op, while `add_requirements` may explicitly introduce that rule.
+`dialog/sections/requirements.py` owns its rule nodes, localized arguments and
+conversion to SDK `RequirementSpec` values. Disabled features remain visible in
+the node list and do not render or translate their rule text. Its private rule
+leaf stays beside `RequirementsSection` instead of introducing a second,
+ambiguous module. A patch to an unavailable feature's rule remains a no-op,
+while `add_requirements` may explicitly introduce that rule.
 
-`dialog/contracts/patches.py` applies the existing SDK `OutputContractPatch`
+`dialog/patches.py` applies the existing SDK `OutputContractPatch`
 objects to output fields and requirements. Patch priority is ascending and ties
 preserve input order, independently of section ordering. Each render starts from
 fresh base fields and requirements; patches are never accumulated in the context.
@@ -140,17 +139,13 @@ template/
     section.py
   dialog/               # Dialog prompt domain
     context.py
-    sections/            # Composite nodes; one Section subclass per file
+    sections/            # Composite nodes; one major section per file
       dialog_template.py
       json_schema.py
       character.py
       background.py
       requirements.py
-    contracts/           # Output-contract construction and patch adapters
-      arguments.py
-      fields.py
-      requirements.py
-      patches.py
+    patches.py            # Shared SDK OutputContractPatch reducers
   prompts/              # System and user text assembly
     system.py
     user.py

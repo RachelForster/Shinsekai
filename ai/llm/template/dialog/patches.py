@@ -1,4 +1,4 @@
-"""Pure reducers preserving the SDK OutputContractPatch behavior and order."""
+"""Apply SDK output-contract patches without coupling them to prompt sections."""
 
 import logging
 from collections.abc import Sequence
