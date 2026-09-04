@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from ai.llm.template import Section
 from ai.llm.template.dialog import (
     BackgroundSection,
     CharacterSection,
@@ -12,7 +13,6 @@ from ai.llm.template.dialog import (
     RequirementsSection,
     build_dialog_section,
 )
-from ai.llm.template.dialog.sections.requirement import RequirementSection
 
 
 @pytest.fixture
@@ -138,5 +138,5 @@ def test_major_sections_expose_their_runtime_composite_children(context):
     ]
     rules = next(child for child in requirement_children if child.id == "rules")
     assert rules.children
-    assert all(isinstance(child, RequirementSection) for child in rules.children)
+    assert all(isinstance(child, Section) for child in rules.children)
     assert any(not child.enabled for child in rules.children)

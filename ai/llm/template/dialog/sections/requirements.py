@@ -1,22 +1,35 @@
-"""Tool guidance, dialog rules and final output constraints."""
+"""Requirement leaves and their dialog-level Composite section."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
+from typing import Any
 
 from sdk.types import RequirementSpec
 
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
 from ..contracts.arguments import requirement_arguments
-from ..contracts.requirements import (
-    resolve_requirement_sections,
-    resolve_requirement_specs,
-)
-from .requirement import RequirementSection
+from ..contracts.requirements import resolve_requirement_specs
+
+
+@dataclass(frozen=True)
+class _RequirementRuleSection(Section[DialogTemplateContext]):
+    """Private leaf for one localized or patch-resolved rule."""
+
+    arguments: dict[str, Any] = field(default_factory=dict)
+    resolved_text: str | None = None
+
+    def requirement_text(self, context: DialogTemplateContext) -> str:
+        if self.resolved_text is not None:
+            return self.resolved_text
+        return context.translate(self.id, **self.arguments)
+
+    def _render_self(self, context: DialogTemplateContext) -> str:
+        return f"- {self.requirement_text(context)}\n"
 
 
 def build_requirement_sections(
     context: DialogTemplateContext,
-) -> tuple[RequirementSection, ...]:
+) -> tuple[_RequirementRuleSection, ...]:
     arguments = requirement_arguments(context)
     definitions = (
         ("r_cot", 5, context.use_cot),
@@ -41,7 +54,7 @@ def build_requirement_sections(
         ("r_effect", 170, context.use_effect),
     )
     return tuple(
-        RequirementSection(
+        _RequirementRuleSection(
             id=rule_id,
             priority=priority,
             enabled=enabled,
@@ -49,6 +62,29 @@ def build_requirement_sections(
         )
         for rule_id, priority, enabled in definitions
     )
+
+
+def _resolve_requirement_sections(
+    sections: tuple[_RequirementRuleSection, ...],
+    context: DialogTemplateContext,
+) -> tuple[_RequirementRuleSection, ...]:
+    specs = resolve_requirement_specs(sections, context)
+    resolved = tuple(
+        _RequirementRuleSection(
+            id=spec.id,
+            priority=spec.order,
+            enabled=spec.enabled,
+            resolved_text=spec.text,
+        )
+        for spec in specs
+    )
+    resolved_ids = {section.id for section in resolved}
+    disabled = tuple(
+        replace(section, enabled=False)
+        for section in sections
+        if section.id not in resolved_ids
+    )
+    return *resolved, *disabled
 
 
 def build_requirements(context: DialogTemplateContext) -> list[RequirementSpec]:
@@ -66,7 +102,7 @@ class RequirementsSection(Section[DialogTemplateContext]):
             "rules",
             priority=20,
             text=context.translate("requirements_header"),
-            children=resolve_requirement_sections(
+            children=_resolve_requirement_sections(
                 build_requirement_sections(context), context
             ),
         )

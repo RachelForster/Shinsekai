@@ -110,8 +110,8 @@ remain the responsibility of their existing callers.
 `dialog/sections/requirements.py` declares all rule nodes with their priorities
 and `enabled` values. Disabled features remain visible in the node list and do
 not render or translate their rule text. Localized arguments and the SDK patch
-bridge live under `dialog/contracts/`; the renderable rule leaf is
-`dialog/sections/requirement.py`.
+bridge live under `dialog/contracts/`. The private rule leaf stays beside its
+owning `RequirementsSection` instead of introducing a second, ambiguous module.
 The bridge preserves the old distinction: a patch to an unavailable feature's
 rule is a no-op, while `add_requirements` may explicitly introduce that rule.
 
@@ -146,7 +146,6 @@ template/
       character.py
       background.py
       requirements.py
-      requirement.py
     contracts/           # Output-contract construction and patch adapters
       arguments.py
       fields.py
