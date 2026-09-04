@@ -121,11 +121,9 @@ def test_default_tts_generation_uses_fixed_sprite_voice_without_synthesis(tmp_pa
         ),
     )
 
-    outputs = list(DefaultTtsGenerationStrategy().generate(request))
+    audio_paths = list(DefaultTtsGenerationStrategy().generate(request))
 
-    assert len(outputs) == 1
-    assert outputs[0].audio_path == voice_path.resolve().as_posix()
-    assert outputs[0].text == "Recorded line"
+    assert audio_paths == [voice_path.resolve().as_posix()]
     manager.switch_model.assert_called_once()
     manager.generate_tts.assert_not_called()
 
@@ -149,11 +147,9 @@ def test_default_tts_generation_uses_fixed_voice_when_manager_is_unavailable(
         ),
     )
 
-    outputs = list(DefaultTtsGenerationStrategy().generate(request))
+    audio_paths = list(DefaultTtsGenerationStrategy().generate(request))
 
-    assert len(outputs) == 1
-    assert outputs[0].audio_path == voice_path.resolve().as_posix()
-    assert outputs[0].text == "Hello"
+    assert audio_paths == [voice_path.resolve().as_posix()]
 
 
 def test_default_tts_generation_preserves_segment_output_order(tmp_path):
@@ -190,29 +186,26 @@ def test_default_tts_generation_preserves_segment_output_order(tmp_path):
         sprite=SpriteMatch(asset_id="1"),
     )
 
-    outputs = list(DefaultTtsGenerationStrategy().generate(request))
+    generated_paths = list(DefaultTtsGenerationStrategy().generate(request))
 
-    assert [output.audio_path for output in outputs] == [
-        path.resolve().as_posix() for path in audio_paths
-    ]
-    assert [output.text for output in outputs] == ["Hi.Bye.", ""]
-    assert [output.effect for output in outputs] == ["shake", ""]
-    assert [output.is_final_segment for output in outputs] == [False, True]
-    assert [output.timeout for output in outputs] == [None, 0]
+    assert generated_paths == [path.resolve().as_posix() for path in audio_paths]
 
 
-def test_character_handler_delegates_to_injected_strategies(mock_app_runtime):
-    sprite = SpriteMatch(asset_id="7", index=6, sprite={"path": "chosen.png"})
+def test_character_handler_builds_presentation_from_injected_path_strategy(
+    mock_app_runtime,
+):
+    sprite = SpriteMatch(
+        asset_id="7",
+        index=6,
+        sprite={"path": "chosen.png"},
+        voice_type="preset",
+        voice_path="recorded.wav",
+        voice_text="Recorded line",
+    )
     sprite_lookup = MagicMock()
     sprite_lookup.lookup.return_value = sprite
-    expected = PresentationMessage(
-        audio_path="chosen.wav",
-        name="TestChar",
-        text="Hello",
-        asset_id="7",
-    )
     generation = MagicMock()
-    generation.generate.return_value = [expected]
+    generation.generate.return_value = ["first.wav", "second.wav"]
     handler = CharacterMediaHandler(sprite_lookup, generation)
     message = LLMDialogMessage(name="TestChar", text="Hello", asset_id="1")
 
@@ -222,7 +215,22 @@ def test_character_handler_delegates_to_injected_strategies(mock_app_runtime):
     assert lookup_request.message is message
     generation_request = generation.generate.call_args.args[0]
     assert generation_request.sprite is sprite
-    assert mock_app_runtime.presentation_queue.get_nowait() is expected
+    assert mock_app_runtime.presentation_queue.get_nowait() == PresentationMessage(
+        audio_path="first.wav",
+        name="TestChar",
+        text="Recorded line",
+        asset_id="7",
+        is_final_segment=False,
+    )
+    assert mock_app_runtime.presentation_queue.get_nowait() == PresentationMessage(
+        audio_path="second.wav",
+        name="TestChar",
+        text="",
+        asset_id="7",
+        effect="",
+        is_final_segment=True,
+        timeout=0,
+    )
 
 
 def test_dialog_media_worker_passes_injected_strategies_to_handler_chain(monkeypatch):

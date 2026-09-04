@@ -8,26 +8,24 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from urllib.parse import urlparse
 
-from sdk.messages import PresentationMessage
-
 from .models import TtsGenerationRequest
 
 
 class TtsGenerationStrategy(ABC):
-    """Create the audio outputs for one character dialog message."""
+    """Resolve the audio paths for one character dialog message."""
 
     @abstractmethod
-    def generate(self, request: TtsGenerationRequest) -> Iterable[PresentationMessage]:
-        """Return audio outputs in playback order."""
+    def generate(self, request: TtsGenerationRequest) -> Iterable[str]:
+        """Return audio paths in playback order."""
 
 
 class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
     """Use configured fixed audio when available, otherwise synthesize speech."""
 
-    def generate(self, request: TtsGenerationRequest) -> Iterator[PresentationMessage]:
+    def generate(self, request: TtsGenerationRequest) -> Iterator[str]:
         manager = request.runtime.tts_manager
         if manager is None:
-            yield self._fallback_output(request)
+            yield self._fallback_audio_path(request)
             return
 
         character = request.character
@@ -42,13 +40,8 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
         )
 
         sprite = request.sprite
-        speech = request.message.text or ""
         if sprite.voice_type == "preset" and sprite.voice_path:
-            yield self._output(
-                request,
-                audio_path=self._absolute(sprite.voice_path),
-                text=sprite.voice_text or speech,
-            )
+            yield self._absolute(sprite.voice_path)
             return
 
         speech_text, text_processor = self._speech_input(request)
@@ -72,10 +65,10 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                 character_name=request.character_name,
                 speed_factor=character.speech_speed,
             )
-            yield self._output(request, audio_path=audio_path or "", text=speech)
+            yield audio_path or ""
             return
 
-        for index, sentence in enumerate(sentences):
+        for sentence in sentences:
             audio_path = manager.generate_tts(
                 sentence,
                 text_processor=text_processor,
@@ -86,28 +79,15 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
                 speed_factor=character.speech_speed,
             )
             if not self._is_audio_file(audio_path):
-                yield self._output(request, audio_path="", text=speech)
+                yield ""
                 return
-            first = index == 0
-            yield self._output(
-                request,
-                audio_path=audio_path,
-                text=speech if first else "",
-                effect=(request.message.effect or "") if first else "",
-                is_final_segment=index == len(sentences) - 1,
-                timeout=None if first else 0,
-            )
+            yield audio_path
 
-    def _fallback_output(self, request: TtsGenerationRequest) -> PresentationMessage:
+    def _fallback_audio_path(self, request: TtsGenerationRequest) -> str:
         sprite = request.sprite
-        audio_path = ""
         if sprite.voice_type in {"fallback", "preset"} and sprite.voice_path:
-            audio_path = self._absolute(sprite.voice_path)
-        return self._output(
-            request,
-            audio_path=audio_path,
-            text=request.message.text or "",
-        )
+            return self._absolute(sprite.voice_path)
+        return ""
 
     @staticmethod
     def _speech_input(request: TtsGenerationRequest):
@@ -162,28 +142,6 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
         return provider == "kaggle-gpt-sovits" or (
             provider == "gpt-sovits"
             and host not in {"", "127.0.0.1", "localhost", "0.0.0.0", "::1"}
-        )
-
-    @staticmethod
-    def _output(
-        request: TtsGenerationRequest,
-        *,
-        audio_path: str,
-        text: str,
-        effect: str | None = None,
-        is_final_segment: bool = True,
-        timeout: float | None = None,
-    ) -> PresentationMessage:
-        output_effect = request.message.effect or "" if effect is None else effect
-        return PresentationMessage(
-            audio_path=audio_path,
-            name=request.character_name,
-            text=text,
-            asset_id=request.sprite.asset_id,
-            effect=output_effect,
-            is_system_message=False,
-            is_final_segment=is_final_segment,
-            timeout=timeout,
         )
 
     @staticmethod

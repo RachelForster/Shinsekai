@@ -7,6 +7,7 @@ dialog media worker 用 LLM dialog 处理器（见 handler_registry.MessageHandl
 from __future__ import annotations
 
 import traceback
+from collections.abc import Iterable, Iterator
 from typing import List
 
 from application.chat.dialog_media import (
@@ -14,6 +15,7 @@ from application.chat.dialog_media import (
     DefaultTtsGenerationStrategy,
     SpriteLookupRequest,
     SpriteLookupStrategy,
+    SpriteMatch,
     TtsGenerationRequest,
     TtsGenerationStrategy,
 )
@@ -27,7 +29,7 @@ from core.messaging.dialog_tokens import (
 from application.runtime.context import get_app_runtime, emit_presentation_message
 from i18n import tr as tr_i18n
 from sdk.handlers import MessageHandler
-from sdk.messages import LLMDialogMessage
+from sdk.messages import LLMDialogMessage, PresentationMessage
 
 
 def _post_media_busy(text: str) -> None:
@@ -146,6 +148,47 @@ class CharacterMediaHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
         return True
 
+    @staticmethod
+    def _audio_segments(audio_paths: Iterable[str]) -> Iterator[tuple[str, bool]]:
+        iterator = iter(audio_paths)
+        try:
+            current = next(iterator)
+        except StopIteration:
+            yield "", True
+            return
+
+        for following in iterator:
+            yield current, False
+            current = following
+        yield current, True
+
+    @staticmethod
+    def _presentation_messages(
+        *,
+        character_name: str,
+        message: LLMDialogMessage,
+        sprite: SpriteMatch,
+        audio_paths: Iterable[str],
+    ) -> Iterator[PresentationMessage]:
+        speech = message.text or ""
+        if sprite.voice_type == "preset" and sprite.voice_path:
+            speech = sprite.voice_text or speech
+
+        for index, (audio_path, is_final) in enumerate(
+            CharacterMediaHandler._audio_segments(audio_paths)
+        ):
+            first = index == 0
+            yield PresentationMessage(
+                audio_path=audio_path or "",
+                name=character_name,
+                text=speech if first else "",
+                asset_id=sprite.asset_id,
+                effect=(message.effect or "") if first else "",
+                is_system_message=False,
+                is_final_segment=is_final,
+                timeout=None if first else 0,
+            )
+
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
         name_s = _cc().convert(msg.name)
@@ -167,7 +210,13 @@ class CharacterMediaHandler(MessageHandler):
         if show_busy:
             _post_media_busy(tr_i18n("desktop.tts_busy_synthesizing", name=name_s))
         try:
-            for output in self.tts_generation_strategy.generate(generation_request):
+            audio_paths = self.tts_generation_strategy.generate(generation_request)
+            for output in self._presentation_messages(
+                character_name=name_s,
+                message=msg,
+                sprite=sprite,
+                audio_paths=audio_paths,
+            ):
                 rt.presentation_queue.put(output)
         finally:
             if show_busy:
