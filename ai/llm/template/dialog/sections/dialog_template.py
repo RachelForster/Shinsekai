@@ -24,5 +24,5 @@ class DialogTemplateSection(Section[DialogTemplateContext]):
         )
     )
 
-    def render_content(self, context: DialogTemplateContext) -> str:
+    def _render_self(self, context: DialogTemplateContext) -> str:
         return context.translate("preamble", names=context.names)

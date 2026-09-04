@@ -115,10 +115,10 @@ def test_root_can_be_reused_with_new_context_and_disabled_as_a_whole(context):
 
 
 def test_major_sections_expose_their_runtime_composite_children(context):
-    json_children = JsonSchemaSection().children_for_context(context)
-    character_children = CharacterSection().children_for_context(context)
-    background_children = BackgroundSection().children_for_context(context)
-    requirement_children = RequirementsSection().children_for_context(context)
+    json_children = JsonSchemaSection()._resolve_children(context)
+    character_children = CharacterSection()._resolve_children(context)
+    background_children = BackgroundSection()._resolve_children(context)
+    requirement_children = RequirementsSection()._resolve_children(context)
 
     assert [child.id for child in json_children] == [
         "head",

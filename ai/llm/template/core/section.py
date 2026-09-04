@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Generic, TypeVar
+from typing import Callable, Generic, TypeVar, final
 
 from .context import TemplateContext
 
@@ -17,12 +17,10 @@ class Section(Generic[ContextT]):
 
     Lower priorities render first; equal priorities retain insertion order.
     IDs are nonempty and unique among siblings. Empty output is omitted, but
-    whitespace in nonempty output is preserved. Override ``render_content``
-    for a leaf or a composite heading, and ``context_for_children`` to scope
-    context changes to a subtree. Disabled nodes skip their content, context
-    hooks and entire subtree. Override ``children_for_context`` when child
-    availability or content depends on render-time context. The default
-    composite has no own content.
+    whitespace in nonempty output is preserved. ``render`` is the only public
+    operation. Subclasses may implement ``_render_self`` for their own text and
+    ``_resolve_children`` for context-dependent children. Disabled nodes skip
+    both hooks and their entire subtree. The default composite has no own text.
     """
 
     id: str
@@ -39,27 +37,24 @@ class Section(Generic[ContextT]):
         if len(ids) != len(set(ids)):
             raise ValueError(f"duplicate child section id in {self.id!r}")
 
-    def render_content(self, context: ContextT) -> str:
+    def _render_self(self, context: ContextT) -> str:
         return ""
 
-    def context_for_children(self, context: ContextT) -> ContextT:
-        return context
-
-    def children_for_context(self, context: ContextT) -> tuple[Section[ContextT], ...]:
-        """Return render-time children; static composites return ``children``."""
+    def _resolve_children(self, context: ContextT) -> tuple[Section[ContextT], ...]:
+        """Return context-dependent children; static composites use ``children``."""
         return self.children
 
+    @final
     def render(self, context: ContextT) -> str:
         if not self.enabled:
             return ""
-        parts = [self.render_content(context)]
-        child_context = self.context_for_children(context)
-        children = tuple(self.children_for_context(child_context))
+        parts = [self._render_self(context)]
+        children = tuple(self._resolve_children(context))
         ids = [child.id for child in children]
         if len(ids) != len(set(ids)):
             raise ValueError(f"duplicate render-time child section id in {self.id!r}")
         parts.extend(
-            child.render(child_context)
+            child.render(context)
             for child in sorted(children, key=lambda child: child.priority)
         )
         return self.separator.join(part for part in parts if part)
@@ -71,5 +66,5 @@ class TextSection(Section[ContextT]):
 
     text: str | Callable[[ContextT], str] = ""
 
-    def render_content(self, context: ContextT) -> str:
+    def _render_self(self, context: ContextT) -> str:
         return self.text(context) if callable(self.text) else self.text

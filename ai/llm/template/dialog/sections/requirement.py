@@ -18,5 +18,5 @@ class RequirementSection(Section[DialogTemplateContext]):
             return self.resolved_text
         return context.translate(self.id, **self.arguments)
 
-    def render_content(self, context: DialogTemplateContext) -> str:
+    def _render_self(self, context: DialogTemplateContext) -> str:
         return f"- {self.requirement_text(context)}\n"

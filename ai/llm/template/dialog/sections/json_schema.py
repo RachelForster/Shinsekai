@@ -16,7 +16,7 @@ def _json_string_content(value: str) -> str:
 class JsonSchemaSection(Section[DialogTemplateContext]):
     id: str = "json_schema"
 
-    def children_for_context(
+    def _resolve_children(
         self, context: DialogTemplateContext
     ) -> tuple[Section[DialogTemplateContext], ...]:
         translate = context.translate

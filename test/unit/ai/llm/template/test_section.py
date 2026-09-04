@@ -10,11 +10,6 @@ class GreetingContext(TemplateContext):
     name: str
 
 
-class ScopedSection(Section[GreetingContext]):
-    def context_for_children(self, context: GreetingContext) -> GreetingContext:
-        return replace(context, name="local")
-
-
 def test_nested_sections_order_siblings_stably_and_preserve_whitespace():
     prompt = Section(
         "system",
@@ -39,7 +34,7 @@ def test_nested_sections_order_siblings_stably_and_preserve_whitespace():
     assert [child.id for child in prompt.children] == ["last", "group", "first"]
 
 
-def test_context_is_inherited_and_subtree_override_does_not_leak():
+def test_context_is_inherited_without_being_retained_between_renders():
     seen = []
 
     def greet(context: GreetingContext) -> str:
@@ -51,7 +46,7 @@ def test_context_is_inherited_and_subtree_override_does_not_leak():
         separator=",",
         children=(
             TextSection("before", text=greet),
-            ScopedSection(
+            Section(
                 "scope",
                 children=(
                     Section("nested", children=(TextSection("greeting", text=greet),)),
@@ -62,10 +57,10 @@ def test_context_is_inherited_and_subtree_override_does_not_leak():
     )
     context = GreetingContext("global")
 
-    assert prompt.render(context) == "global,local,global"
-    assert seen[0] is context and seen[2] is context
+    assert prompt.render(context) == "global,global,global"
+    assert all(item is context for item in seen)
     assert context.name == "global"
-    assert prompt.render(GreetingContext("next")) == "next,local,next"
+    assert prompt.render(GreetingContext("next")) == "next,next,next"
 
 
 def test_content_and_children_compose_without_interpreting_user_text():
@@ -93,13 +88,13 @@ def test_section_copies_child_collection_and_rejects_ambiguous_ids():
         Section(" ")
 
 
-def test_disabled_node_skips_content_context_hooks_and_entire_subtree():
+def test_disabled_node_skips_both_rendering_hooks_and_entire_subtree():
     class UnreachableSection(Section):
-        def render_content(self, context):
+        def _render_self(self, context):
             pytest.fail("disabled content must not run")
 
-        def context_for_children(self, context):
-            pytest.fail("disabled context hook must not run")
+        def _resolve_children(self, context):
+            pytest.fail("disabled children hook must not run")
 
     disabled = UnreachableSection(
         "disabled",
@@ -129,11 +124,11 @@ def test_enabled_is_keyword_only_and_can_be_toggled_without_mutating_the_node():
     assert node.render(TemplateContext()) == "text"
 
 
-def test_contextual_children_are_exposed_after_context_scoping():
+def test_contextual_children_use_the_current_render_context():
     seen = []
 
-    class DynamicSection(ScopedSection):
-        def children_for_context(self, context):
+    class DynamicSection(Section[GreetingContext]):
+        def _resolve_children(self, context):
             seen.append(context)
             return (
                 TextSection("dynamic", priority=20, text=context.name),
@@ -146,13 +141,13 @@ def test_contextual_children_are_exposed_after_context_scoping():
         children=(TextSection("extension", priority=10, text="extension"),),
     )
 
-    assert node.render(GreetingContext("global")) == "extension|local"
-    assert seen == [GreetingContext("local")]
+    assert node.render(GreetingContext("global")) == "extension|global"
+    assert seen == [GreetingContext("global")]
 
 
 def test_contextual_children_reject_duplicate_ids_at_render_time():
     class DuplicateSection(Section):
-        def children_for_context(self, context):
+        def _resolve_children(self, context):
             return TextSection("same"), TextSection("same")
 
     with pytest.raises(ValueError, match="duplicate render-time child"):

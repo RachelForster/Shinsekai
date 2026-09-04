@@ -6,21 +6,21 @@
 render first; equal priorities retain insertion order. IDs must be nonempty
 and unique among siblings. A parent renders its own content, then its children.
 Empty output is omitted; nonempty text and whitespace are preserved.
-Setting `enabled=False` skips the node's content, context hooks and entire
-subtree. The flag is keyword-only to preserve existing positional constructors.
+Setting `enabled=False` skips both rendering hooks and the entire subtree. The
+flag is keyword-only to preserve existing positional constructors.
 
 `TemplateContext` is a frozen dataclass base with no prescribed business fields.
-Subclasses define the data needed by their sections. By default, a parent passes
-the same context object to every child. Override `context_for_children` and use
-`dataclasses.replace` for a subtree-specific context; sibling contexts are not
-changed. Override `children_for_context` when a section's children depend on the
-current request. The core renderer still validates, orders and renders those
-children. Sections do not retain context or rendered text between requests.
+Subclasses define the data needed by their sections. A parent passes the same
+context object to every child. `render()` is the only public rendering method.
+Subclasses implement `_render_self()` for their own text and `_resolve_children()`
+when their children depend on the current request. The core renderer validates,
+orders and renders those children. Sections do not retain context or rendered
+text between requests.
 
 ## Custom sections and contexts
 
 ```python
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from ai.llm.template import Section, TemplateContext, TextSection
 
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ class SceneContext(TemplateContext):
     user_input: str
 
 class SpeakerSection(Section[SceneContext]):
-    def render_content(self, context: SceneContext) -> str:
+    def _render_self(self, context: SceneContext) -> str:
         return f"Current speaker: {context.speaker}"
 
 prompt = Section("system", separator="\n", children=(
@@ -40,8 +40,9 @@ context = SceneContext(speaker="Alice", user_input="Tell me about the town.")
 text = prompt.render(context)
 ```
 
-Override `render_content` to keep automatic child traversal and ordering.
-`render` can also be overridden when a section needs complete rendering control.
+Implement `_render_self` to keep automatic child traversal and ordering. Use
+`_resolve_children` only for context-dependent child collections; do not override
+`render`.
 Use `dataclasses.replace(prompt, children=(...))` to customize a tree; sections
 and their child tuples are immutable. A `TextSection` accepts a literal string
 or a callable receiving the current context. User text is never processed with
@@ -66,8 +67,8 @@ The root renders the preamble, then its four children in priority order.
 owns scene and music catalogs; `RequirementsSection` owns tool guidance,
 patched rules, closing text and the final JSON reminder. Small text nodes
 within each section use `enabled` for optional content. Context-dependent child
-nodes are returned by `children_for_context`, so callers can inspect the same
-Composite nodes that the renderer uses.
+nodes are returned internally by `_resolve_children`, then handled by the same
+Composite renderer as static children.
 
 All five classes are exported from `ai.llm.template.dialog` and can be
 constructed without arguments. Customize `root.children` with

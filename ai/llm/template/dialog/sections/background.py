@@ -10,7 +10,7 @@ from ..context import DialogTemplateContext
 class BackgroundSection(Section[DialogTemplateContext]):
     id: str = "background"
 
-    def children_for_context(
+    def _resolve_children(
         self, context: DialogTemplateContext
     ) -> tuple[Section[DialogTemplateContext], ...]:
         background = context.background

@@ -59,7 +59,7 @@ def build_requirements(context: DialogTemplateContext) -> list[RequirementSpec]:
 class RequirementsSection(Section[DialogTemplateContext]):
     id: str = "requirements"
 
-    def children_for_context(
+    def _resolve_children(
         self, context: DialogTemplateContext
     ) -> tuple[Section[DialogTemplateContext], ...]:
         rules = TextSection(

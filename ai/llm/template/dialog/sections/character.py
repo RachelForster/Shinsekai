@@ -23,7 +23,7 @@ def _profile_node(
 class CharacterSection(Section[DialogTemplateContext]):
     id: str = "characters"
 
-    def children_for_context(
+    def _resolve_children(
         self, context: DialogTemplateContext
     ) -> tuple[Section[DialogTemplateContext], ...]:
         sprites = TextSection(
