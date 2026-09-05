@@ -174,6 +174,7 @@ export function ChatLauncherPage() {
     initSpritePath: initSpritePath.trim(),
     maxDialogItems: launchSession?.maxDialogItems ?? 0,
     maxSpeechChars: launchSession?.maxSpeechChars ?? 0,
+    mediaSelectionMode: launchSession?.mediaSelectionMode ?? "indexed",
     primaryCharacters: launchSession?.primaryCharacters,
     roomId: launchSession?.roomId ?? "",
     scenario: selectedTemplate?.scenario ?? "",
