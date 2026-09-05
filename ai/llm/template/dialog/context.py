@@ -28,7 +28,12 @@ class DialogTemplateContext(TemplateContext):
     use_stat: bool = True
     max_speech_chars: int = 0
     max_dialog_items: int = 0
+    media_selection_mode: str = "indexed"
 
     @property
     def names(self) -> str:
         return self.translate("name_sep").join(name for name, _ in self.characters)
+
+    @property
+    def uses_vibe(self) -> bool:
+        return self.media_selection_mode == "semantic"

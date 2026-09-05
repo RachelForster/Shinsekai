@@ -7,7 +7,8 @@ from typing import Any
 
 from sdk.messages import LLMDialogMessage
 
-_REQUIRED_DIALOG_FIELDS = frozenset({"character_name", "speech", "sprite"})
+_REQUIRED_DIALOG_FIELDS = frozenset({"character_name", "speech"})
+_MEDIA_SELECTION_FIELDS = frozenset({"sprite", "vibe"})
 
 
 def has_valid_dialog_output(content: Any) -> bool:
@@ -24,7 +25,11 @@ def has_valid_dialog_output(content: Any) -> bool:
     if not isinstance(dialog, list) or not dialog:
         return False
     for item in dialog:
-        if not isinstance(item, dict) or not _REQUIRED_DIALOG_FIELDS.issubset(item):
+        if (
+            not isinstance(item, dict)
+            or not _REQUIRED_DIALOG_FIELDS.issubset(item)
+            or not _MEDIA_SELECTION_FIELDS.intersection(item)
+        ):
             return False
         try:
             LLMDialogMessage.model_validate(item)

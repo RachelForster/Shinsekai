@@ -109,6 +109,7 @@ class TemplateGenerator:
         max_speech_chars: int = 0,
         max_dialog_items: int = 0,
         primary_characters: Any = None,
+        media_selection_mode: str = "indexed",
     ):
         if not selected_characters:
             raise NoValidCharactersError()
@@ -148,5 +149,8 @@ class TemplateGenerator:
             use_stat=use_stat,
             max_speech_chars=max_speech_chars,
             max_dialog_items=max_dialog_items,
+            media_selection_mode=(
+                "semantic" if media_selection_mode == "semantic" else "indexed"
+            ),
         )
         return DialogTemplateSection().render(context), ""

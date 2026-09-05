@@ -61,6 +61,7 @@ class CharacterSection(Section[DialogTemplateContext]):
         )
         sprites = TextSection(
             "sprites",
+            enabled=not context.uses_vibe,
             text=context.translate("sprites_header"),
             children=tuple(
                 TextSection(
