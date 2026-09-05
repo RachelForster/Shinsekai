@@ -1,16 +1,17 @@
-"""Worker that turns dialog messages into synthesized audio output."""
+"""Resolve dialog messages into presentation-ready media."""
 
 import threading
 from queue import Queue
 from typing import Optional
 
-from application.chat.handlers.registry import default_tts_handler_chain
+from application.chat.dialog_media import SpriteLookupStrategy, TtsGenerationStrategy
+from application.chat.handlers.registry import default_dialog_media_handler_chain
 from sdk.graph import Port
 from sdk.logging import get_logger
 from sdk.logging.timing import tracker
-from sdk.messages import LLMDialogMessage, TTSOutputMessage
+from sdk.messages import LLMDialogMessage, PresentationMessage
 
-from ..context import get_app_runtime, try_get_app_runtime, tts_emit_to_ui_queue
+from ..context import emit_presentation_message, get_app_runtime, try_get_app_runtime
 from .base import ThreadDagNode
 
 logger = get_logger(__name__)
@@ -40,39 +41,46 @@ class _CancelAwareQueue:
         return getattr(self._queue, name)
 
 
-class TTSWorker(ThreadDagNode):
-    PORT_LLM_OUTPUT = "llm_output"
-    PORT_TTS_OUTPUT = "tts_output"
+class DialogMediaWorker(ThreadDagNode):
+    PORT_DIALOG = "dialog"
+    PORT_PRESENTATION = "presentation"
 
     def __init__(
         self,
         input_queue: Queue[LLMDialogMessage] | None = None,
-        output_queue: Queue[TTSOutputMessage] | None = None,
+        output_queue: Queue[PresentationMessage] | None = None,
         parent=None,
         *,
-        name: str = "tts_worker",
+        name: str = "dialog_media_worker",
+        sprite_lookup_strategy: SpriteLookupStrategy | None = None,
+        tts_generation_strategy: TtsGenerationStrategy | None = None,
     ):
         super().__init__(name, parent=parent)
         self._app_inited = False
-        self.tts_queue = input_queue
-        self.audio_path_queue = output_queue
-        self.tts_message_dispatcher = None
-        self._cancel_event = threading.Event()  # 新增：取消当前合成用
+        self.dialog_queue = input_queue
+        self.presentation_queue = output_queue
+        self.dialog_media_dispatcher = None
+        self.sprite_lookup_strategy = sprite_lookup_strategy
+        self.tts_generation_strategy = tts_generation_strategy
+        self._cancel_event = threading.Event()
         if input_queue is not None:
-            self.bind_input(self.PORT_LLM_OUTPUT, input_queue)
+            self.bind_input(self.PORT_DIALOG, input_queue)
         if output_queue is not None:
-            self.bind_output(self.PORT_TTS_OUTPUT, output_queue)
+            self.bind_output(self.PORT_PRESENTATION, output_queue)
 
     def _init_app(self):
         if self._app_inited:
             return
-        self.tts_queue = self.inq(self.PORT_LLM_OUTPUT)
-        self.audio_path_queue = self.outq(self.PORT_TTS_OUTPUT)
-        self.tts_message_dispatcher = default_tts_handler_chain()
-        self.tts_message_dispatcher.init_handlers()
+        self.dialog_queue = self.inq(self.PORT_DIALOG)
+        self.presentation_queue = self.outq(self.PORT_PRESENTATION)
+        self.dialog_media_dispatcher = default_dialog_media_handler_chain(
+            sprite_lookup_strategy=self.sprite_lookup_strategy,
+            tts_generation_strategy=self.tts_generation_strategy,
+        )
+        self.dialog_media_dispatcher.init_handlers()
         self._app_inited = True
 
-    def put_data(
+    def _emit_fallback(
         self,
         character_name: str,
         speech: str,
@@ -81,8 +89,8 @@ class TTSWorker(ThreadDagNode):
         is_system_message: bool = False,
         effect: str = "",
     ):
-        """与 handler 中 tts_emit_to_ui_queue 一致，供本 worker 异常路径使用。"""
-        tts_emit_to_ui_queue(
+        """Keep the original dialog visible when media preparation fails."""
+        emit_presentation_message(
             character_name,
             speech,
             sprite,
@@ -92,10 +100,10 @@ class TTSWorker(ThreadDagNode):
         )
 
     def inputs(self) -> dict[str, Port]:
-        return {self.PORT_LLM_OUTPUT: Port(self.PORT_LLM_OUTPUT)}
+        return {self.PORT_DIALOG: Port(self.PORT_DIALOG)}
 
     def outputs(self) -> dict[str, Port]:
-        return {self.PORT_TTS_OUTPUT: Port(self.PORT_TTS_OUTPUT)}
+        return {self.PORT_PRESENTATION: Port(self.PORT_PRESENTATION)}
 
     def start(self) -> None:
         if self.isRunning():
@@ -122,30 +130,30 @@ class TTSWorker(ThreadDagNode):
             )
 
         def work():
-            original_audio_queue = None
-            guarded_audio_queue = None
+            original_presentation_queue = None
+            guarded_presentation_queue = None
             try:
                 if rt is not None:
-                    original_audio_queue = rt.audio_path_queue
-                    guarded_audio_queue = _CancelAwareQueue(
-                        original_audio_queue,
+                    original_presentation_queue = rt.presentation_queue
+                    guarded_presentation_queue = _CancelAwareQueue(
+                        original_presentation_queue,
                         self._cancel_event,
                         runtime_cancel_event,
                     )
-                    rt.audio_path_queue = guarded_audio_queue
+                    rt.presentation_queue = guarded_presentation_queue
                 if cancelled():
                     return
-                self.tts_message_dispatcher.dispatch(item)
+                self.dialog_media_dispatcher.dispatch(item)
             except Exception as e:
                 if not cancelled():
                     error[0] = e
             finally:
                 if (
                     rt is not None
-                    and guarded_audio_queue is not None
-                    and rt.audio_path_queue is guarded_audio_queue
+                    and guarded_presentation_queue is not None
+                    and rt.presentation_queue is guarded_presentation_queue
                 ):
-                    rt.audio_path_queue = original_audio_queue
+                    rt.presentation_queue = original_presentation_queue
                 done.set()
 
         t = threading.Thread(target=work, daemon=True)
@@ -167,7 +175,7 @@ class TTSWorker(ThreadDagNode):
             turn = None
             got_item = False
             try:
-                item = self.tts_queue.get()
+                item = self.dialog_queue.get()
                 got_item = True
                 if item is None:
                     break
@@ -177,13 +185,14 @@ class TTSWorker(ThreadDagNode):
                     continue
                 if turn.is_cancelled():
                     continue
-                with tracker.track("TTS dispatch"):
+                with tracker.track("Dialog media dispatch"):
                     self._dispatch_with_cancel(item, turn)
                 if turn.is_cancelled():
-                    self.audio_path_queue.clear()
+                    self.presentation_queue.clear()
             except Exception:
                 logger.exception(
-                    "TTS worker task failed", extra={"event": "tts.worker.failed"}
+                    "dialog media worker task failed",
+                    extra={"event": "dialog_media.worker.failed"},
                 )
                 current_turn = get_app_runtime().chat_turn_service.current_turn()
                 if (
@@ -192,7 +201,7 @@ class TTSWorker(ThreadDagNode):
                     and turn.id == current_turn.id
                     and not turn.is_cancelled()
                 ):
-                    self.put_data(
+                    self._emit_fallback(
                         get_app_runtime().opencc.convert(item.name),
                         item.text,
                         str(item.asset_id) if item.asset_id is not None else "-1",
@@ -202,10 +211,10 @@ class TTSWorker(ThreadDagNode):
                     )
             finally:
                 if got_item:
-                    self.tts_queue.task_done()
+                    self.dialog_queue.task_done()
 
     def stop(self):
-        self._cancel_event.set()  # 通知取消当前合成
+        self._cancel_event.set()
         self.running = False
-        self.tts_queue.put(None)  # 唤醒 queue.get()
+        self.dialog_queue.put(None)  # 唤醒 queue.get()
         super().stop()

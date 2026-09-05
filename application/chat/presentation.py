@@ -74,7 +74,7 @@ def prepare_initial_presentation(
     messages: list[Any],
     config: Any,
     ui_updates: Any,
-    audio_path_queue: Any | None,
+    presentation_queue: Any | None,
     assets: ChatPresentationAssets,
     initial_sprite_path: str,
     welcome_html: str,
@@ -98,10 +98,10 @@ def prepare_initial_presentation(
     ui_updates.switch_bgm(assets.bgm_paths[0] if assets.bgm_paths else "")
 
     restored_sprite = False
-    if audio_path_queue is not None:
+    if presentation_queue is not None:
         restored_sprite = restore_session_presentation(
             messages,
-            audio_path_queue=audio_path_queue,
+            presentation_queue=presentation_queue,
             presenter=StreamingHistoryPresenter(ui_updates),
             config=config,
             tr_i18n=translate,

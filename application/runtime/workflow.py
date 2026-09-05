@@ -43,8 +43,8 @@ class ChatWorkflowHandles:
     """Optional handles used by the desktop chat surface."""
 
     input_queue: Any | None = None
-    tts_queue: Any | None = None
-    audio_queue: Any | None = None
+    dialog_queue: Any | None = None
+    presentation_queue: Any | None = None
     ui_worker: Any | None = None
 
 
@@ -87,10 +87,26 @@ def _resolve_workflow_path(workflow_path: str) -> str:
     return str(resource_path(path))
 
 
+def _get_first_export(workflow: RuntimeWorkflow, *names: str) -> Any | None:
+    for name in names:
+        value = workflow.get_export(name)
+        if value is not None:
+            return value
+    return None
+
+
 def get_chat_workflow_handles(workflow: RuntimeWorkflow) -> ChatWorkflowHandles:
     return ChatWorkflowHandles(
         input_queue=workflow.get_export("chat.input"),
-        tts_queue=workflow.get_export("chat.tts_input"),
-        audio_queue=workflow.get_export("chat.audio_output"),
+        dialog_queue=_get_first_export(
+            workflow,
+            "chat.dialog_input",
+            "chat.tts_input",
+        ),
+        presentation_queue=_get_first_export(
+            workflow,
+            "chat.presentation_input",
+            "chat.audio_output",
+        ),
         ui_worker=workflow.get_export("chat.ui_worker"),
     )

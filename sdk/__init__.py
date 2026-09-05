@@ -11,7 +11,7 @@ minimal environments. Use explicit submodule imports when possible, e.g.
 
 Quick reference
 ---------------
-- :mod:`sdk.messages` — 队列消息模型 (UserInputMessage, LLMDialogMessage, TTSOutputMessage)
+- :mod:`sdk.messages` — 队列消息模型 (UserInputMessage, LLMDialogMessage, PresentationMessage)
 - :mod:`sdk.handlers` — 抽象处理器基类 (MessageHandler, UIOutputMessageHandler)
 - :mod:`sdk.adapters` — 适配器抽象 (LLMAdapter, ASRAdapter, TTSAdapter, T2IAdapter, VisionAdapter)
 - :mod:`sdk.plugin` — 插件入口 (PluginBase)
@@ -72,6 +72,7 @@ __all__ = [
     "PluginManager",
     "PluginRegister",
     "PluginSettingsUIContext",
+    "PresentationMessage",
     "registered_tool_entries",
     "register_shutdown_hook",
     "RequirementPatch",
@@ -131,6 +132,7 @@ _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     "VisionFallbackContribution": ("sdk.adapters", "VisionFallbackContribution"),
     # ── messages ──
     "LLMDialogMessage": ("sdk.messages", "LLMDialogMessage"),
+    "PresentationMessage": ("sdk.messages", "PresentationMessage"),
     "TTSOutputMessage": ("sdk.messages", "TTSOutputMessage"),
     "UserInputMessage": ("sdk.messages", "UserInputMessage"),
     # ── handlers ──

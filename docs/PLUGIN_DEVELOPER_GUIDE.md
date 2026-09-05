@@ -675,12 +675,14 @@ must not import the host's `ai.tools` implementation.
 
 ---
 
-### `register_message_handler(tts_handler=..., ui_handler=...)`
+### `register_message_handler(dialog_media_handler=..., ui_handler=...)`
 
-Extend the TTS pipeline (`MessageHandler` for `LLMDialogMessage`) and/or UI output
-(`UIOutputMessageHandler` for `TTSOutputMessage`). First handler with `can_handle` wins.
+Extend dialog-media preparation (`MessageHandler` for `LLMDialogMessage`) and/or UI output
+(`UIOutputMessageHandler` for `PresentationMessage`). First handler with `can_handle` wins.
 Import the ABCs and message models from the SDK (`sdk.handlers`, `sdk.messages`) rather
 than host-internal modules.
+
+The former `tts_handler` keyword remains accepted for existing plugins.
 
 Note the SDK field names: `LLMDialogMessage` exposes `name` / `text` / `asset_id` (with
 aliases `character_name` / `speech` / `sprite` accepted when parsing LLM JSON).
@@ -701,11 +703,11 @@ class LogDialogHandler(MessageHandler):
 
 
 def initialize(self, register: PluginCapabilityRegistry, plugin_root, host) -> None:
-    register.register_message_handler(tts_handler=LogDialogHandler())
+    register.register_message_handler(dialog_media_handler=LogDialogHandler())
 ```
 
 Handlers also have optional `pre_process` / `post_process` / `init()` hooks; `init()`
-runs once after the TTS worker builds its dispatcher.
+runs once after the dialog media worker builds its dispatcher.
 
 ---
 

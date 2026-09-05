@@ -11,8 +11,8 @@ def create_chat_turn_service(
     *,
     config: object,
     user_input_queue: object | None,
-    tts_queue: object | None,
-    audio_queue: object | None,
+    dialog_queue: object | None,
+    presentation_queue: object | None,
     llm_manager: object | None,
     ui_worker: object | None,
     ui_updates: object | None,
@@ -45,7 +45,7 @@ def create_chat_turn_service(
         return clear
 
     def has_pending_work() -> bool:
-        return any(queue is not None and not queue.empty() for queue in (tts_queue, audio_queue))
+        return any(queue is not None and not queue.empty() for queue in (dialog_queue, presentation_queue))
 
     return ChatTurnService(
         sink=deliver,
@@ -53,7 +53,7 @@ def create_chat_turn_service(
         on_state_change=on_state_change,
         cancel_current=getattr(llm_manager, "cancel_current_chat", None),
         clear_buffered_delivery=clear_queue(user_input_queue),
-        clear_pending=(clear_queue(tts_queue), clear_queue(audio_queue)),
+        clear_pending=(clear_queue(dialog_queue), clear_queue(presentation_queue)),
         stop_playback=getattr(ui_worker, "skip_speech", None),
         hide_status=getattr(ui_updates, "hide_busy_bar", None),
         has_pending_work=has_pending_work,

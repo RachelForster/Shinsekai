@@ -2,12 +2,13 @@
 LLM JSON 中 character_name 的固定保留字（新代号 + 旧版中文同义）。
 
 - 新代号用于模板提示；老存档与旧提示仍用中文保留字，handlers 同时识别。
-- TTS 路径里需与 OpenCC 结果比较时用 match_*_tts(cc, name)。
+- 对话媒体路径里需与 OpenCC 结果比较时用 match_*_dialog(cc, name)。
 """
 
 from __future__ import annotations
 
 from typing import Callable, cast
+
 # --- 新代号（与 template_generator 一致） ---
 COT = "COT"
 NARR = "NARR"
@@ -26,9 +27,11 @@ SCENE_ALIASES: frozenset[str] = frozenset({SCENE, "场景"})
 BGM_ALIASES: frozenset[str] = frozenset({BGM, "bgm"})  # 仅小写
 CG_ALIASES: frozenset[str] = frozenset({CG, "cg"})  # 允许小写
 
-SYSTEM_DIALOG_TTS_ALIASES: frozenset[str] = (
+SYSTEM_DIALOG_MEDIA_ALIASES: frozenset[str] = (
     NARR_ALIASES | CHOICE_ALIASES | STAT_ALIASES | SCENE_ALIASES
 )
+# Compatibility alias for code using the former TTS-stage name.
+SYSTEM_DIALOG_TTS_ALIASES = SYSTEM_DIALOG_MEDIA_ALIASES
 
 # 已由专用 UI 处理、或 COT 需忽略，不应进 SystemMisc（旁白 NARR 不在此列）
 SYSTEM_UI_SKIP: frozenset[str] = (
@@ -42,7 +45,7 @@ SYSTEM_UI_SKIP: frozenset[str] = (
 
 
 def _as_convert(cc) -> Callable[[str], str]:
-    """TTS 侧传入的 `cc` 为 OpenCC 实例（.convert）或 callable。"""
+    """接受 OpenCC 实例（.convert）或 callable。"""
     if hasattr(cc, "convert") and callable(getattr(cc, "convert")):
         return cast(Callable[[str], str], cc.convert)
     if callable(cc):
@@ -80,7 +83,7 @@ def _cc_match(cc, name: str, aliases: frozenset[str]) -> bool:
     return False
 
 
-def match_cot_tts(cc, name: str) -> bool:
+def match_cot_dialog(cc, name: str) -> bool:
     return _cc_match(cc, name, COT_ALIASES)
 
 
@@ -92,14 +95,19 @@ def match_cot_name(name: str) -> bool:
     return (name or "").strip() in COT_ALIASES
 
 
-def match_system_dialog_tts(cc, name: str) -> bool:
+def match_system_dialog(cc, name: str) -> bool:
     cfn = _as_convert(cc)
     s = normalize_character_name(name)
     t = cfn(s)
-    for a in SYSTEM_DIALOG_TTS_ALIASES:
+    for a in SYSTEM_DIALOG_MEDIA_ALIASES:
         if cfn(a) == t:
             return True
     return False
+
+
+# Compatibility aliases for integrations using the former TTS-stage names.
+match_cot_tts = match_cot_dialog
+match_system_dialog_tts = match_system_dialog
 
 
 def match_bgm_name(name: str) -> bool:

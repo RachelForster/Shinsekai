@@ -6,7 +6,7 @@ exports:
     node: scripted_live_bridge
     port: user_input
     direction: input
-  chat.audio_output:
+  chat.presentation_input:
     node: scripted_live_bridge
     port: audio_output
     direction: output

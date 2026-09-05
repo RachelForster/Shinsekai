@@ -1,22 +1,28 @@
 """
-消息处理器调度器 — TtsMessageDispatcher 和 UiOutputMessageDispatcher。
+消息处理器调度器 — DialogMediaDispatcher 和 UiOutputMessageDispatcher。
 
 处理器抽象类在 :mod:`sdk.handlers`；具体实现见
-:mod:`application.chat.handlers.tts` / :mod:`application.chat.handlers.presentation`。
+:mod:`application.chat.handlers.dialog_media` / :mod:`application.chat.handlers.presentation`。
 """
 
 from __future__ import annotations
 
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
-from sdk.messages import LLMDialogMessage, TTSOutputMessage
+from sdk.messages import LLMDialogMessage, PresentationMessage
+
+if TYPE_CHECKING:
+    from application.chat.dialog_media import (
+        SpriteLookupStrategy,
+        TtsGenerationStrategy,
+    )
 
 
-class TtsMessageDispatcher:
+class DialogMediaDispatcher:
     def __init__(self, handlers: List[MessageHandler]) -> None:
         if not handlers:
-            raise ValueError("至少需要一个 TTS handler（末项应为缺省）")
+            raise ValueError("至少需要一个 dialog media handler（末项应为缺省）")
         self._handlers = list(handlers)
 
     def init_handlers(self) -> None:
@@ -30,7 +36,7 @@ class TtsMessageDispatcher:
                 h.handle(msg)
                 h.post_process(msg)
                 return
-        raise RuntimeError(f"无 TTS handler 匹配: {msg.name!r}")
+        raise RuntimeError(f"无 dialog media handler 匹配: {msg.name!r}")
 
 
 class UiOutputMessageDispatcher:
@@ -43,7 +49,7 @@ class UiOutputMessageDispatcher:
         for h in self._handlers:
             h.init()
 
-    def dispatch(self, out: TTSOutputMessage) -> None:
+    def dispatch(self, out: PresentationMessage) -> None:
         for h in self._handlers:
             if h.can_handle(out):
                 h.pre_process(out)
@@ -55,13 +61,22 @@ class UiOutputMessageDispatcher:
         )
 
 
-def default_tts_handler_chain() -> TtsMessageDispatcher:
+def default_dialog_media_handler_chain(
+    *,
+    sprite_lookup_strategy: SpriteLookupStrategy | None = None,
+    tts_generation_strategy: TtsGenerationStrategy | None = None,
+) -> DialogMediaDispatcher:
     """插件 handler 在前，内置链在后（先匹配先处理）。"""
-    from plugin_system.host import get_plugin_tts_handlers
-    from application.chat.handlers.tts import get_tts_handlers
+    from plugin_system.host import get_plugin_dialog_media_handlers
+    from application.chat.handlers.dialog_media import get_dialog_media_handlers
 
-    chain = list(get_plugin_tts_handlers()) + list(get_tts_handlers())
-    return TtsMessageDispatcher(chain)
+    chain = list(get_plugin_dialog_media_handlers()) + list(
+        get_dialog_media_handlers(
+            sprite_lookup_strategy=sprite_lookup_strategy,
+            tts_generation_strategy=tts_generation_strategy,
+        )
+    )
+    return DialogMediaDispatcher(chain)
 
 
 def default_presentation_handler_chain() -> UiOutputMessageDispatcher:

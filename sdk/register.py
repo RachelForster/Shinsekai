@@ -150,7 +150,7 @@ class PluginCapabilityRegistry:
         self._t2i_adapters: dict[str, Type[T2IAdapter]] = {}
         self._vision_fallbacks: dict[str, VisionFallbackContribution] = {}
         self._llm_tool_registrars: list[Callable[[ToolManager], None]] = []
-        self._tts_handlers: list[MessageHandler] = []
+        self._dialog_media_handlers: list[MessageHandler] = []
         self._ui_handlers: list[UIOutputMessageHandler] = []
         self._user_input_triggers: list[Callable[[Callable[[str], None]], None]] = []
         self._user_input_processors: list[Callable[[str], str | None]] = []
@@ -207,11 +207,21 @@ class PluginCapabilityRegistry:
     def register_message_handler(
         self,
         *,
+        dialog_media_handler: MessageHandler | None = None,
         tts_handler: MessageHandler | None = None,
         ui_handler: UIOutputMessageHandler | None = None,
     ) -> None:
-        if tts_handler is not None:
-            self._tts_handlers.append(tts_handler)
+        if dialog_media_handler is not None and tts_handler is not None:
+            raise ValueError(
+                "dialog_media_handler and legacy tts_handler cannot both be set"
+            )
+        media_handler = (
+            dialog_media_handler
+            if dialog_media_handler is not None
+            else tts_handler
+        )
+        if media_handler is not None:
+            self._dialog_media_handlers.append(media_handler)
         if ui_handler is not None:
             self._ui_handlers.append(ui_handler)
 
@@ -476,7 +486,7 @@ class PluginCapabilityRegistry:
 
     @property
     def message_handlers(self) -> tuple[list[MessageHandler], list[UIOutputMessageHandler]]:
-        return list(self._tts_handlers), list(self._ui_handlers)
+        return list(self._dialog_media_handlers), list(self._ui_handlers)
 
     @property
     def user_input_hooks(

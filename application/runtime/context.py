@@ -1,6 +1,6 @@
 """
 应用运行期共享上下文：在 main 中 set_app_runtime 后，各模块通过 get_app_runtime() 访问
-配置、管理器、队列、繁简转换、TTS 入 UI 队列等。Handler 不依赖 worker 类型。
+配置、管理器、队列、繁简转换、展示消息发送等。Handler 不依赖 worker 类型。
 """
 
 from __future__ import annotations
@@ -76,8 +76,8 @@ class AppRuntime:
     t2i_manager: Optional[Any]  # T2IManager | None
     bgm_list: List[Any]
     user_input_queue: Any
-    tts_queue: Any
-    audio_path_queue: Any
+    dialog_queue: Any
+    presentation_queue: Any
     text_processor: Any  # TextProcessor
     opencc: Any  # OpenCC
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
@@ -128,7 +128,7 @@ def resolve_pending_tool_confirmation(
     return get_tool_confirmation_controller().resolve(confirmation_id, action)
 
 
-def tts_emit_to_ui_queue(
+def emit_presentation_message(
     character_name: str,
     speech: str,
     sprite: str,
@@ -137,12 +137,12 @@ def tts_emit_to_ui_queue(
     is_system_message: bool = False,
     effect: str = "",
 ) -> None:
-    """Emit one TTS result to the UI queue."""
-    from sdk.messages import TTSOutputMessage
+    """Emit one presentation-ready dialog media message."""
+    from sdk.messages import PresentationMessage
 
     rt = get_app_runtime()
     audio_path = audio_path or ""
-    out = TTSOutputMessage(
+    out = PresentationMessage(
         audio_path=audio_path,
         name=character_name,
         asset_id=sprite,
@@ -150,7 +150,7 @@ def tts_emit_to_ui_queue(
         is_system_message=is_system_message,
         effect=effect,
     )
-    rt.audio_path_queue.put(out)
+    rt.presentation_queue.put(out)
 
 
 def is_generating() -> bool:
@@ -273,7 +273,7 @@ class _ApplicationLLMHostRuntime:
         if not message or try_get_app_runtime() is None:
             return
         try:
-            tts_emit_to_ui_queue(
+            emit_presentation_message(
                 character_name="",
                 speech=message,
                 sprite="",

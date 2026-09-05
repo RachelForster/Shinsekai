@@ -55,12 +55,12 @@ def load_chat_history(file_path: str) -> Any:
 
 def clear_chat_history(history_file: str, ui_queue: Any, llm_manager: Any) -> None:
     from i18n import tr
-    from sdk.messages import TTSOutputMessage
+    from sdk.messages import PresentationMessage
 
     _get_history_manager().clear_chat_history(history_file)
     llm_manager.clear_messages()
     ui_queue.put(
-        TTSOutputMessage(
+        PresentationMessage(
             audio_path="",
             character_name=tr("main.system_name"),
             speech=tr("main.history_cleared"),
