@@ -12,6 +12,7 @@ import { ToastProvider } from "../../../shared/ui";
 
 const mockListBackgrounds = vi.fn();
 const mockListCharacters = vi.fn();
+const mockEnsureCharacterBriefs = vi.fn();
 const mockLaunchChat = vi.fn();
 const mockGetChatSnapshot = vi.fn();
 const mockInstallMissingRuntimeDependency = vi.fn();
@@ -35,6 +36,7 @@ vi.mock("../../../entities/background/repository", () => ({
 
 vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
+  ensureCharacterBriefs: (names: string[]) => mockEnsureCharacterBriefs(names),
   listCharacters: () => mockListCharacters(),
 }));
 
@@ -115,6 +117,7 @@ describe("TemplateEditorPage", () => {
       { color: "#66ccff", name: "Nanami" },
       { color: "#ff99aa", name: "Mika" },
     ]);
+    mockEnsureCharacterBriefs.mockResolvedValue({ characters: [], generatedNames: [] });
     mockListBackgrounds.mockResolvedValue([{ name: "默认房间" }]);
     mockListEffects.mockResolvedValue([]);
     mockSaveTemplate.mockImplementation(async (input) => ({ ...template, ...(input as object), id: "opening" }));
@@ -173,6 +176,43 @@ describe("TemplateEditorPage", () => {
       ),
     );
     expect(await screen.findByDisplayValue("Generated scenario")).toBeInTheDocument();
+  });
+
+  it("asks for primary characters above the threshold and generates missing supporting briefs", async () => {
+    const largeCast = Array.from({ length: 5 }, (_, index) => ({
+      character_brief: index === 4 ? "Existing brief" : "",
+      color: "#66ccff",
+      name: `Character ${index + 1}`,
+    }));
+    mockListCharacters.mockResolvedValue(largeCast);
+    mockEnsureCharacterBriefs.mockResolvedValue({
+      characters: largeCast.slice(2).map((character) => ({
+        ...character,
+        character_brief: character.character_brief || `Generated brief for ${character.name}`,
+      })),
+      generatedNames: ["Character 3", "Character 4"],
+    });
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Choose primary characters" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Character 2/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate with roles" }));
+
+    await waitFor(() =>
+      expect(mockEnsureCharacterBriefs).toHaveBeenCalledWith(["Character 3", "Character 4", "Character 5"]),
+    );
+    await waitFor(() =>
+      expect(mockGenerateTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          characterPromptMode: "compact",
+          characters: largeCast.map((character) => character.name),
+          primaryCharacters: ["Character 1", "Character 2"],
+        }),
+      ),
+    );
   });
 
   it("auto-generates only when character selection changes and puts the default RPG brief in scenario", async () => {

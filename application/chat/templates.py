@@ -263,6 +263,19 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         state.config_manager.save_system_config()
     max_speech_chars = max(0, int(payload.get("maxSpeechChars") or 0))
     max_dialog_items = max(0, int(payload.get("maxDialogItems") or 0))
+    prompt_mode = str(payload.get("characterPromptMode") or "").strip().lower()
+    primary_characters = (
+        _resolve_template_character_names(state, payload.get("primaryCharacters") or [])
+        if prompt_mode == "compact"
+        else None
+    )
+    if primary_characters is not None:
+        selected_keys = {character_name_key(name) for name in resolved_names}
+        primary_characters = [
+            name
+            for name in primary_characters
+            if character_name_key(name) in selected_keys
+        ]
     content, result = state.template_generator.generate_chat_template(
         resolved_names,
         background,
@@ -275,6 +288,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         bool(payload.get("useStat", True)),
         max_speech_chars=max_speech_chars,
         max_dialog_items=max_dialog_items,
+        primary_characters=primary_characters,
     )
     output_name = str(result or "").strip()
     name = str(output_name or payload.get("name") or "generated").strip()
@@ -320,7 +334,7 @@ def _session_string_list(value: Any) -> list[str]:
 def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] | None:
     if not raw:
         return None
-    return {
+    payload = {
         "background": str(raw.get("background") or ""),
         "effectNames": _session_string_list(raw.get("effect_names")),
         "enableMobileAccess": bool(raw.get("enable_mobile_access", False)),
@@ -344,6 +358,13 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         "useTranslation": bool(raw.get("use_tr_yes", True)),
         "voiceLanguage": str(raw.get("voice_lang") or ""),
     }
+    prompt_mode = str(raw.get("character_prompt_mode") or "").strip().lower()
+    if prompt_mode in {"compact", "full"}:
+        payload["characterPromptMode"] = prompt_mode
+        payload["primaryCharacters"] = _session_string_list(
+            raw.get("primary_characters")
+        )
+    return payload
 
 
 def _persist_template_session_repair(state: BridgeState, raw: dict[str, Any]) -> None:
@@ -366,6 +387,10 @@ def _reconcile_template_session_characters(
         return raw
     repaired = dict(raw)
     repaired["selected_characters"] = resolved_names
+    primary = _session_string_list(raw.get("primary_characters"))
+    repaired["primary_characters"] = [
+        name for name in primary if name in resolved_names
+    ]
     repaired["init_sprite_path"] = initial_sprite_path_for_characters(
         state.config_manager,
         str(raw.get("init_sprite_path") or ""),
@@ -401,6 +426,11 @@ def _rename_template_session_character(
         return
     repaired = dict(raw)
     repaired["selected_characters"] = renamed
+    primary = _session_string_list(raw.get("primary_characters"))
+    repaired["primary_characters"] = [
+        saved_name if character_name_key(name) == original_key else name
+        for name in primary
+    ]
     reconciled = _reconcile_template_session_characters(state, repaired)
     if reconciled is repaired:
         _persist_template_session_repair(state, repaired)
@@ -427,8 +457,23 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         str(payload.get("initSpritePath") or ""),
         selected_characters,
     )
+    prompt_mode = str(payload.get("characterPromptMode") or "").strip().lower()
+    if prompt_mode not in {"compact", "full"}:
+        prompt_mode = "full" if len(selected_characters) <= 4 else ""
+    primary_characters = _resolve_template_character_names(
+        state,
+        payload.get("primaryCharacters") or [],
+    )
+    selected_keys = {character_name_key(name) for name in selected_characters}
+    primary_characters = [
+        name
+        for name in primary_characters
+        if character_name_key(name) in selected_keys
+    ]
     data = {
         "selected_characters": selected_characters,
+        "character_prompt_mode": prompt_mode,
+        "primary_characters": primary_characters,
         "background": str(payload.get("background") or ""),
         "effect_names": _session_string_list(payload.get("effectNames")),
         "enable_mobile_access": bool(payload.get("enableMobileAccess", False)),
@@ -481,6 +526,12 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
             bool(raw.get("use_stat_yes", True)),
             max_speech_chars=_safe_session_int(raw.get("max_speech_chars")),
             max_dialog_items=_safe_session_int(raw.get("max_dialog_items")),
+            primary_characters=(
+                _session_string_list(raw.get("primary_characters"))
+                if str(raw.get("character_prompt_mode") or "").strip().lower()
+                == "compact"
+                else None
+            ),
         )
     except NoValidCharactersError:
         return raw

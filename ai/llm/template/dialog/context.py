@@ -14,6 +14,7 @@ class DialogTemplateContext(TemplateContext):
     translate: Callable[..., str]
     target_voice_name: str
     json_reminder: str
+    primary_character_names: frozenset[str] | None = None
     tools_block: str = ""
     background: Any = None
     has_real_background: bool = False

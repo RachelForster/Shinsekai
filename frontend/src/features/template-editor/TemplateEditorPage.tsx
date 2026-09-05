@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCw, Save, Sparkles, Users } from "lucide-react";
 
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
-import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
+import { charactersQueryKey, ensureCharacterBriefs, listCharacters } from "../../entities/character/repository";
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
 import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
@@ -26,7 +26,12 @@ import { TRANSPARENT_BACKGROUND_NAME } from "../../shared/constants";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import { platformErrorCode } from "../../shared/platform/errors";
-import type { ChatSnapshot, MobileAccessInfo, TemplateLaunchSession } from "../../shared/platform/types";
+import type {
+  CharacterPromptMode,
+  ChatSnapshot,
+  MobileAccessInfo,
+  TemplateLaunchSession,
+} from "../../shared/platform/types";
 import {
   AlertDialog,
   AsyncButton,
@@ -55,6 +60,7 @@ import {
   synchronizeTemplateLaunchSessionWithSnapshot,
   templateVoiceLanguages,
 } from "./templateFlow";
+import { PrimaryCharacterDialog } from "./PrimaryCharacterDialog";
 import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
@@ -96,6 +102,9 @@ export function TemplateEditorPage() {
   const [draft, setDraft] = useState<TemplateSummary>(() => createTemplateDraft(t("template.defaultName")));
   const [nameError, setNameError] = useState("");
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
+  const [characterPromptMode, setCharacterPromptMode] = useState<CharacterPromptMode>();
+  const [primaryCharacters, setPrimaryCharacters] = useState<string[]>([]);
+  const [primaryCharacterDialogOpen, setPrimaryCharacterDialogOpen] = useState(false);
   const [selectedBackground, setSelectedBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
   const [selectedEffects, setSelectedEffects] = useState<string[]>([]);
   const [voiceLanguage, setVoiceLanguage] = useState("ja");
@@ -129,6 +138,10 @@ export function TemplateEditorPage() {
     return names.includes(TRANSPARENT_BACKGROUND_NAME) ? names : [...names, TRANSPARENT_BACKGROUND_NAME];
   }, [backgrounds]);
   const selectedCharacterNames = useMemo(() => new Set(selectedCharacters), [selectedCharacters]);
+  const selectedCharacterRecords = useMemo(
+    () => characters.filter((character) => selectedCharacterNames.has(character.name)),
+    [characters, selectedCharacterNames],
+  );
   const selectedEffectNames = useMemo(() => new Set(selectedEffects), [selectedEffects]);
 
   const effectHintText = useMemo(() => {
@@ -217,6 +230,8 @@ export function TemplateEditorPage() {
     }
     setSessionDraftActive(true);
     setSelectedCharacters(Array.isArray(launchSession.selectedCharacters) ? launchSession.selectedCharacters : []);
+    setCharacterPromptMode(launchSession.characterPromptMode);
+    setPrimaryCharacters(Array.isArray(launchSession.primaryCharacters) ? launchSession.primaryCharacters : []);
     setSelectedBackground(launchSession.background || TRANSPARENT_BACKGROUND_NAME);
     setSelectedEffects(Array.isArray(launchSession.effectNames) ? launchSession.effectNames : []);
     setVoiceLanguage(launchSession.voiceLanguage || "ja");
@@ -314,6 +329,14 @@ export function TemplateEditorPage() {
     voiceLanguage,
   };
   const selectedCharactersKey = selectedCharacters.join("\n");
+  const primaryCharactersKey = primaryCharacters.join("\n");
+  const generationCharactersKey = `${selectedCharactersKey}\n--${characterPromptMode ?? "pending"}\n${primaryCharactersKey}`;
+
+  useEffect(() => {
+    if (sessionRestored && selectedCharacters.length > 4 && !characterPromptMode) {
+      setPrimaryCharacterDialogOpen(true);
+    }
+  }, [characterPromptMode, selectedCharacters.length, sessionRestored]);
 
   const scenarioForSelectedCharacters = () => {
     const currentScenario = String(draft.scenario ?? "");
@@ -404,16 +427,22 @@ export function TemplateEditorPage() {
     },
   });
 
+  const ensureBriefsMutation = useMutation({
+    mutationFn: ensureCharacterBriefs,
+  });
+
   const generateMutation = useMutation({
     mutationFn: async (options?: { scenario?: string; silent?: boolean }) => {
       const scenario = options?.scenario ?? scenarioForSelectedCharacters();
       return generateTemplate(
         buildTemplateGenerateInput({
           backgroundName: selectedBackground,
+          characterPromptMode: characterPromptMode ?? "full",
           draft: { ...draft, scenario },
           effectNames: selectedEffects,
           options: templateOptionsState,
           runtime: runtimeOptionsState,
+          primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
           selectedCharacters,
         }),
       );
@@ -440,8 +469,10 @@ export function TemplateEditorPage() {
       const resolvedCharactersKey = resolvedCharacters.join("\n");
       if (resolvedCharactersKey !== selectedCharactersKey) {
         suppressNextAutoGenerateRef.current = true;
-        lastAutoGeneratedCharactersRef.current = resolvedCharactersKey;
-        updateSelectedCharacters(resolvedCharacters);
+        const resolvedPrimary = primaryCharacters.filter((name) => resolvedCharacters.includes(name));
+        lastAutoGeneratedCharactersRef.current = `${resolvedCharactersKey}\n--${characterPromptMode ?? "full"}\n${resolvedPrimary.join("\n")}`;
+        setPrimaryCharacters(resolvedPrimary);
+        updateSelectedCharacters(resolvedCharacters, { preservePromptMode: true });
       }
       const normalized = normalizeTemplateSummary(template);
       setIsCreating(true);
@@ -487,10 +518,13 @@ export function TemplateEditorPage() {
     if (generateMutation.isPending) {
       return;
     }
-    if (selectedCharactersKey === lastAutoGeneratedCharactersRef.current) {
+    if (selectedCharacters.length > 4 && !characterPromptMode) {
       return;
     }
-    lastAutoGeneratedCharactersRef.current = selectedCharactersKey;
+    if (generationCharactersKey === lastAutoGeneratedCharactersRef.current) {
+      return;
+    }
+    lastAutoGeneratedCharactersRef.current = generationCharactersKey;
     const scenario = scenarioForSelectedCharacters();
     if (scenario !== draft.scenario) {
       lastAutoScenarioRef.current = scenario;
@@ -499,7 +533,7 @@ export function TemplateEditorPage() {
     const timer = window.setTimeout(() => generateMutation.mutate({ scenario, silent: true }), 160);
     return () => window.clearTimeout(timer);
   }, [
-    selectedCharactersKey,
+    generationCharactersKey,
     selectedBackground,
     selectedEffects,
     voiceLanguage,
@@ -524,10 +558,12 @@ export function TemplateEditorPage() {
         const template = buildTemplateSummary(draft);
         const session: TemplateLaunchSession = buildTemplateLaunchSession({
           backgroundName: selectedBackground,
+          characterPromptMode: characterPromptMode ?? "full",
           draft,
           effectNames: selectedEffects,
           mobileAccessEnabled,
           options: templateOptionsState,
+          primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
           runtime: runtimeOptionsState,
           selectedCharacters,
           selectedTemplateId: selectedId,
@@ -588,8 +624,12 @@ export function TemplateEditorPage() {
     },
   });
 
-  const updateSelectedCharacters = (next: string[]) => {
+  const updateSelectedCharacters = (next: string[], options?: { preservePromptMode?: boolean }) => {
     setSelectedCharacters(next);
+    if (!options?.preservePromptMode) {
+      setCharacterPromptMode(next.length <= 4 ? "full" : undefined);
+      setPrimaryCharacters((current) => (next.length <= 4 ? next : current.filter((name) => next.includes(name))));
+    }
     setInitSpritePath((path) =>
       compatibleInitialSpritePath({
         characters,
@@ -598,6 +638,35 @@ export function TemplateEditorPage() {
         selectedCharacters: next,
       }),
     );
+  };
+
+  const useAllCharactersAsPrimary = () => {
+    setPrimaryCharacters(selectedCharacters);
+    setCharacterPromptMode("full");
+    setPrimaryCharacterDialogOpen(false);
+  };
+
+  const confirmPrimaryCharacters = async (nextPrimaryCharacters: string[]) => {
+    const primary = nextPrimaryCharacters.filter((name) => selectedCharacters.includes(name));
+    const secondary = selectedCharacters.filter((name) => !primary.includes(name));
+    try {
+      const result = await ensureBriefsMutation.mutateAsync(secondary);
+      if (result.characters.length) {
+        const updated = new Map(result.characters.map((character) => [character.name, character]));
+        queryClient.setQueryData(charactersQueryKey, (current: typeof characters = []) =>
+          current.map((character) => updated.get(character.name) ?? character),
+        );
+      }
+      setPrimaryCharacters(primary);
+      setCharacterPromptMode("compact");
+      setPrimaryCharacterDialogOpen(false);
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.error.aiFallback"),
+        title: t("template.primaryCharacters.title"),
+      });
+    }
   };
 
   const toggleCharacter = (name: string, checked: boolean) => {
@@ -644,6 +713,10 @@ export function TemplateEditorPage() {
         message: t("template.validation.charactersRequired"),
         title: t("template.mode.generate"),
       });
+      return;
+    }
+    if (selectedCharacters.length > 4 && !characterPromptMode) {
+      setPrimaryCharacterDialogOpen(true);
       return;
     }
     const scenario = scenarioForSelectedCharacters();
@@ -974,6 +1047,14 @@ export function TemplateEditorPage() {
         }}
         open={quickRestartOpen}
         title={t("template.quickRestart.title")}
+      />
+      <PrimaryCharacterDialog
+        characters={selectedCharacterRecords}
+        initialPrimaryCharacters={primaryCharacters}
+        onConfirm={(names) => void confirmPrimaryCharacters(names)}
+        onUseAll={useAllCharactersAsPrimary}
+        open={primaryCharacterDialogOpen}
+        pending={ensureBriefsMutation.isPending}
       />
       <ChatInitializationDialog
         error={initializationError}
