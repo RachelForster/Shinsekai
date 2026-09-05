@@ -44,7 +44,7 @@ describe("PrimaryCharacterDialog", () => {
     }
     expect(screen.getByText("6 primary of 6 characters")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Generate with roles" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply roles" }));
 
     expect(props.onConfirm).toHaveBeenCalledWith(characters.map((character) => character.name));
   });
