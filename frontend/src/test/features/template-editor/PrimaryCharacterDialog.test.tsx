@@ -60,4 +60,15 @@ describe("PrimaryCharacterDialog", () => {
 
     expect(props.onUseAll).toHaveBeenCalledTimes(2);
   });
+
+  it("cannot be dismissed while brief generation is pending", () => {
+    const props = renderDialog({ pending: true });
+    const dialog = screen.getByRole("dialog", { name: "Choose primary characters" });
+
+    expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
+    fireEvent.keyDown(dialog, { key: "Escape" });
+
+    expect(props.onUseAll).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Use all as primary" })).toBeDisabled();
+  });
 });

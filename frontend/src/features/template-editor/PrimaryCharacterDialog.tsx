@@ -50,6 +50,7 @@ export function PrimaryCharacterDialog({
       bodyClassName="primary-character-dialog__body"
       className="primary-character-dialog"
       closeLabel={t("common.close")}
+      dismissible={!pending}
       footer={
         <>
           <Button disabled={pending} onClick={onUseAll}>

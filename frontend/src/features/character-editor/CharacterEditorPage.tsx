@@ -175,6 +175,9 @@ export function CharacterEditorPage() {
           current
             ? {
                 ...current,
+                primaryCharacters: current.primaryCharacters?.map((name) =>
+                  name === variables.originalName ? character.name : name,
+                ),
                 selectedCharacters: current.selectedCharacters.map((name) =>
                   name === variables.originalName ? character.name : name,
                 ),
@@ -190,14 +193,21 @@ export function CharacterEditorPage() {
     mutationFn: deleteCharacter,
     onSuccess(_result, deletedName) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
-        current
-          ? {
-              ...current,
-              selectedCharacters: current.selectedCharacters.filter((name) => name !== deletedName),
-            }
-          : current,
-      );
+      queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) => {
+        if (!current) {
+          return current;
+        }
+        const primaryCharacters = current.primaryCharacters?.filter((name) => name !== deletedName);
+        return {
+          ...current,
+          characterPromptMode:
+            current.characterPromptMode === "compact" && !primaryCharacters?.length
+              ? undefined
+              : current.characterPromptMode,
+          primaryCharacters,
+          selectedCharacters: current.selectedCharacters.filter((name) => name !== deletedName),
+        };
+      });
       setPendingDelete(null);
       showToast({ kind: "success", title: t("character.toast.deleted") });
     },
