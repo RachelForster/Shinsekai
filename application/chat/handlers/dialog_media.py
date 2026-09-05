@@ -11,11 +11,12 @@ from collections.abc import Iterable, Iterator
 from typing import List
 
 from application.chat.dialog_media import (
-    ConfigSpriteLookupStrategy,
+    AssetLookupRequest,
+    AssetLookupStrategy,
     DefaultTtsGenerationStrategy,
-    SpriteLookupRequest,
-    SpriteLookupStrategy,
-    SpriteMatch,
+    MessageAssetIdLookupStrategy,
+    ResolvedSpriteAsset,
+    SpriteAssetResolver,
     TtsGenerationRequest,
     TtsGenerationStrategy,
 )
@@ -131,14 +132,16 @@ class CharacterMediaHandler(MessageHandler):
 
     def __init__(
         self,
-        sprite_lookup_strategy: SpriteLookupStrategy | None = None,
+        asset_lookup_strategy: AssetLookupStrategy | None = None,
         tts_generation_strategy: TtsGenerationStrategy | None = None,
+        sprite_resolver: SpriteAssetResolver | None = None,
     ) -> None:
-        self.sprite_lookup_strategy = (
-            ConfigSpriteLookupStrategy()
-            if sprite_lookup_strategy is None
-            else sprite_lookup_strategy
+        self.asset_lookup_strategy = (
+            MessageAssetIdLookupStrategy()
+            if asset_lookup_strategy is None
+            else asset_lookup_strategy
         )
+        self.sprite_resolver = sprite_resolver or SpriteAssetResolver()
         self.tts_generation_strategy = (
             DefaultTtsGenerationStrategy()
             if tts_generation_strategy is None
@@ -167,7 +170,7 @@ class CharacterMediaHandler(MessageHandler):
         *,
         character_name: str,
         message: LLMDialogMessage,
-        sprite: SpriteMatch,
+        sprite: ResolvedSpriteAsset,
         audio_paths: Iterable[str],
     ) -> Iterator[PresentationMessage]:
         speech = message.text or ""
@@ -196,8 +199,20 @@ class CharacterMediaHandler(MessageHandler):
         if character_config is None:
             raise ValueError(f"未找到角色配置: {name_s}")
 
-        sprite = self.sprite_lookup_strategy.lookup(
-            SpriteLookupRequest(character=character_config, message=msg)
+        candidates = self.sprite_resolver.candidates(character_config)
+        lookup_result = self.asset_lookup_strategy.lookup(
+            AssetLookupRequest(
+                scope=f"sprite:{name_s}",
+                candidates=candidates,
+                explicit_asset_id=str(
+                    msg.asset_id if msg.asset_id is not None else "-1"
+                ),
+            )
+        )
+        sprite = self.sprite_resolver.resolve(
+            character_config,
+            candidates,
+            lookup_result,
         )
         generation_request = TtsGenerationRequest(
             runtime=rt,
@@ -225,7 +240,8 @@ class CharacterMediaHandler(MessageHandler):
 
 def get_dialog_media_handlers(
     *,
-    sprite_lookup_strategy: SpriteLookupStrategy | None = None,
+    asset_lookup_strategy: AssetLookupStrategy | None = None,
+    sprite_resolver: SpriteAssetResolver | None = None,
     tts_generation_strategy: TtsGenerationStrategy | None = None,
 ) -> List[MessageHandler]:
     return [
@@ -234,7 +250,8 @@ def get_dialog_media_handlers(
         BgmMediaHandler(),
         CgMediaHandler(),
         CharacterMediaHandler(
-            sprite_lookup_strategy=sprite_lookup_strategy,
+            asset_lookup_strategy=asset_lookup_strategy,
+            sprite_resolver=sprite_resolver,
             tts_generation_strategy=tts_generation_strategy,
         ),
     ]
