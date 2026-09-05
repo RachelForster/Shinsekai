@@ -61,6 +61,7 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
       dialogHtml?: string;
       dialogText: string;
       error?: string;
+      asrUtteranceId?: string | null;
       inputDraft: string;
       inputAttachments: ChatAttachmentInput[];
       notificationText?: string;

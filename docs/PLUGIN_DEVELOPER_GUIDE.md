@@ -505,6 +505,22 @@ Align your real `__init__` signature with what `merged_tts_factory_kwargs` suppl
 **Base signature:** `__init__(self, language: str, callback: TranscriptionCallback)`.
 All five abstract methods are required.
 
+The experimental `asr_continuous_during_reply_experimental_enabled` setting keeps
+streaming capture running during replies. Completed speech waits for the full
+current turn, including the existing presentation pacing. Capture is stopped and
+recreated across history resets/switches to reject callbacks from the old context.
+
+The legacy callback remains `(text, is_partial)`; it does **not** provide a source
+utterance ID. After the existing silence fallback, the controller suppresses the
+next final and related (equal/prefix-normalized) partials until that final or a
+dissimilar partial arrives. This avoids common duplicate submissions but cannot
+distinguish an immediate identical new utterance from a delayed partial, nor every
+late spelling correction from new speech. Such inputs may be suppressed or
+submitted twice. A new identical utterance after the previous engine final works
+normally. Controller-generated `utteranceId` values identify UI draft ownership,
+not authoritative engine utterance boundaries. This is an explicit experimental
+limitation; no echo cancellation is provided.
+
 ```python
 from sdk.adapters.asr import ASRAdapter
 from sdk.register import PluginCapabilityRegistry

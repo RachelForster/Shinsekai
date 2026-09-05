@@ -432,6 +432,130 @@ class EventSinkSnapshotTests(unittest.TestCase):
         self.assertEqual(next_snapshot.get("inputDraft"), "")
         self.assertEqual(next_snapshot.get("options"), [])
 
+    def test_ided_asr_final_only_clears_the_matching_utterance_draft(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "seq": 1,
+                "text": "hello",
+                "ts": 1,
+                "type": "asr.partial",
+                "utteranceId": "u-old",
+                "v": 1,
+            },
+        )
+        snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 2,
+                "text": "hello there",
+                "ts": 2,
+                "type": "asr.partial",
+                "utteranceId": "u-new",
+                "v": 1,
+            },
+        )
+
+        older_final = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 3,
+                "text": "hello",
+                "ts": 3,
+                "type": "asr.final",
+                "utteranceId": "u-old",
+                "v": 1,
+            },
+        )
+        self.assertEqual(older_final.get("inputDraft"), "hello there")
+        self.assertEqual(older_final.get("asrUtteranceId"), "u-new")
+
+        matching_final = fold_event_into_snapshot(
+            older_final,
+            {
+                "seq": 4,
+                "text": "hello there",
+                "ts": 4,
+                "type": "asr.final",
+                "utteranceId": "u-new",
+                "v": 1,
+            },
+        )
+        self.assertEqual(matching_final.get("inputDraft"), "")
+        self.assertIsNone(matching_final.get("asrUtteranceId"))
+
+    def test_ided_asr_final_preserves_a_non_asr_owned_draft(self):
+        snapshot = make_empty_chat_snapshot()
+        snapshot["inputDraft"] = "manual draft"
+        snapshot["asrUtteranceId"] = None
+
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 2,
+                "text": "voice draft",
+                "ts": 2,
+                "type": "asr.final",
+                "utteranceId": "u-voice",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(next_snapshot.get("inputDraft"), "manual draft")
+        self.assertIsNone(next_snapshot.get("asrUtteranceId"))
+
+    def test_ided_empty_asr_partial_starts_a_fresh_owned_draft(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "seq": 1,
+                "text": "old voice",
+                "ts": 1,
+                "type": "asr.partial",
+                "utteranceId": "u-old",
+                "v": 1,
+            },
+        )
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 2,
+                "text": "",
+                "ts": 2,
+                "type": "asr.partial",
+                "utteranceId": "u-reset",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(next_snapshot.get("inputDraft"), "")
+        self.assertEqual(next_snapshot.get("asrUtteranceId"), "u-reset")
+
+    def test_legacy_asr_final_still_clears_a_corrected_transcript_draft(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "seq": 1,
+                "text": "hello word",
+                "ts": 1,
+                "type": "asr.partial",
+                "v": 1,
+            },
+        )
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 2,
+                "text": "hello world",
+                "ts": 2,
+                "type": "asr.final",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(next_snapshot.get("inputDraft"), "")
+        self.assertIsNone(next_snapshot.get("asrUtteranceId"))
+
     def test_asr_state_preserves_reply_status_while_listening_is_temporarily_paused(
         self,
     ):
@@ -458,6 +582,38 @@ class EventSinkSnapshotTests(unittest.TestCase):
         self.assertFalse(next_snapshot.get("asrRunning"))
         self.assertEqual(next_snapshot.get("status"), "generating")
 
+    def test_asr_partial_and_running_state_preserve_active_reply_status(self):
+        for status in ("generating", "streaming", "speaking"):
+            snapshot = make_empty_chat_snapshot()
+            snapshot["status"] = status
+
+            with_partial = fold_event_into_snapshot(
+                snapshot,
+                {
+                    "seq": 5,
+                    "text": "next message",
+                    "ts": 5,
+                    "type": "asr.partial",
+                    "v": 1,
+                },
+            )
+            with_running_state = fold_event_into_snapshot(
+                with_partial,
+                {
+                    "enabled": True,
+                    "loading": False,
+                    "running": True,
+                    "seq": 6,
+                    "ts": 6,
+                    "type": "asr.state",
+                    "v": 1,
+                },
+            )
+
+            self.assertEqual(with_partial.get("inputDraft"), "next message")
+            self.assertEqual(with_partial.get("status"), status)
+            self.assertEqual(with_running_state.get("status"), status)
+
     def test_reply_finished_clears_stale_notification_text_in_snapshot(self):
         snapshot = make_empty_chat_snapshot()
         snapshot["notificationText"] = "您的消息已提交，正在等待 LLM 处理..."
@@ -475,6 +631,25 @@ class EventSinkSnapshotTests(unittest.TestCase):
 
         self.assertEqual(next_snapshot.get("notificationText"), "")
         self.assertEqual(next_snapshot.get("status"), "idle")
+
+    def test_admitted_asr_final_preserves_a_newer_voice_draft(self):
+        snapshot = make_empty_chat_snapshot()
+        snapshot["inputDraft"] = "newer phrase"
+        snapshot["asrUtteranceId"] = "u-newer"
+
+        next_snapshot = fold_event_into_snapshot(
+            snapshot,
+            {
+                "seq": 5,
+                "text": "earlier phrase",
+                "ts": 5,
+                "type": "asr.final",
+                "utteranceId": "u-earlier",
+                "v": 1,
+            },
+        )
+
+        self.assertEqual(next_snapshot.get("inputDraft"), "newer phrase")
 
     def test_user_display_name_change_updates_snapshot(self):
         snapshot = make_empty_chat_snapshot()

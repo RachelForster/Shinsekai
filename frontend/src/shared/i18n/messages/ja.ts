@@ -1078,6 +1078,9 @@ export const jaMessages: Record<MessageKey, string> = {
   "plugin.trust.verifiedHint": "メンテナーが手動レビュー済み",
   "system.asr.computeAuto": "自動（デバイスに合わせる）",
   "system.asr.computeType": "計算精度 (compute_type)",
+  "system.asr.continuousDuringReply": "実験的：応答中も音声認識を継続",
+  "system.asr.continuousDuringReplyHint":
+    "キャラクターの応答中も音声認識を続け、発話完了後の入力を現在のターン終了後に自動送信します。キャラクター音声も認識される可能性があるため、音声は無効にしてください。",
   "system.asr.device": "推論デバイス",
   "system.asr.deviceAuto": "自動",
   "system.asr.followUi": "表示言語に合わせる",

@@ -35,3 +35,31 @@ def test_user_input_processor_reports_rejected_input(monkeypatch) -> None:
 
     assert accepted is False
     assert queue.empty()
+
+
+def test_user_input_pipeline_forwards_deferred_admission_policy(monkeypatch) -> None:
+    calls: list[tuple[str, dict]] = []
+    on_admit = lambda _text, _attachments: None
+    monkeypatch.setattr(plugin_host, "_plugin_manager", _PluginManager())
+    emit = plugin_host.wire_user_input_plugins(
+        Queue(),
+        sink=lambda text, **kwargs: calls.append((text, kwargs)),
+    )
+
+    assert emit(
+        "voice",
+        interrupt_current=False,
+        defer_until_idle=True,
+        on_admit=on_admit,
+    )
+    assert calls == [
+        (
+            "processed:voice",
+            {
+                "attachments": [],
+                "defer_until_idle": True,
+                "interrupt_current": False,
+                "on_admit": on_admit,
+            },
+        )
+    ]

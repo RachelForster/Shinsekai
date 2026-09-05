@@ -160,10 +160,10 @@ class PresentationWorker(ThreadDagNode):
             return False
         if self.dialog_channel is not None and self.dialog_channel.get_busy():
             return False
-        if not rt.chat_turn_service.mark_idle(turn):
-            return False
-        self.ui_update_manager.post_llm_reply_finished()
-        return True
+        return rt.chat_turn_service.finish_turn(
+            turn,
+            before_next=self.ui_update_manager.post_llm_reply_finished,
+        )
 
     def run(self):
         self._init_app()

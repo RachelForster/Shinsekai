@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Any
+from uuid import uuid4
 
 from sdk.adapters.asr import ASRAdapter, TranscriptionCallback
 
@@ -14,6 +17,14 @@ _log = logging.getLogger(__name__)
 
 EventEmitter = Callable[[dict[str, Any]], None]
 AdapterFactory = Callable[[TranscriptionCallback], ASRAdapter]
+
+
+@dataclass(frozen=True)
+class ASRSubmissionResult:
+    """Whether a final transcript was accepted and admitted immediately."""
+
+    accepted: bool
+    admitted: bool
 
 
 class StreamingASRController:
@@ -30,19 +41,23 @@ class StreamingASRController:
         *,
         adapter_factory: AdapterFactory,
         emit_event: EventEmitter,
-        submit_final: Callable[[str], bool | None],
+        submit_final: Callable[[str], bool | None | ASRSubmissionResult],
+        submit_utterance: Callable[[str, str], bool | None | ASRSubmissionResult] | None = None,
         on_loading_changed: Callable[[bool], None] | None = None,
         on_error: Callable[[str, BaseException], None] | None = None,
         resume_delay_seconds: float = 0.5,
         silence_submit_seconds: float = 3.5,
+        continuous_listening: bool = False,
     ) -> None:
         self._adapter_factory = adapter_factory
         self._emit_event = emit_event
         self._submit_final = submit_final
+        self._submit_utterance = submit_utterance
         self._on_loading_changed = on_loading_changed
         self._on_error = on_error
         self._resume_delay_seconds = max(0.0, float(resume_delay_seconds))
         self._silence_submit_seconds = max(0.0, float(silence_submit_seconds))
+        self._continuous_listening = bool(continuous_listening)
 
         self._lock = threading.RLock()
         # Serialize callbacks with close(). Once close() returns, no callback
@@ -63,6 +78,42 @@ class StreamingASRController:
         self._silence_generation = 0
         self._original_text = ""
         self._current_text = ""
+        self._utterance_id = uuid4().hex
+        self._fallback_text: str | None = None
+        self._input_epoch = 0
+        self._boundary_depth = 0
+
+    @contextmanager
+    def input_boundary(self) -> Iterator[None]:
+        """Invalidate old capture callbacks for the entire history mutation.
+
+        Recreate capture to fence delayed callbacks from the old adapter. Never
+        hold the callback lock while stopping an adapter (stop may join it).
+        """
+        with self._callback_lock:
+            with self._lock:
+                self._boundary_depth += 1
+                self._input_epoch += 1
+                self._generation += 1
+                self._active = False
+                self._cancel_resume_timer_locked()
+                self._cancel_silence_timer_locked()
+                self._original_text = self._current_text = ""
+                self._fallback_text = None
+                self._utterance_id = uuid4().hex
+                adapter = self._adapter
+                self._adapter = None
+                self._started = False
+                self._clear_on_activation = False
+            self._emit_transcript("asr.partial", "", self._utterance_id)
+        self._stop_adapter(adapter)
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._boundary_depth -= 1
+            self._emit_state()
+            self._activate_async()
 
     @property
     def enabled(self) -> bool:
@@ -84,17 +135,18 @@ class StreamingASRController:
 
     def user_pause(self) -> None:
         """Disable ASR and release capture until the user enables it again."""
-        with self._lock:
-            if self._closed:
-                return
-            self._enabled = False
-            self._active = False
-            self._turn_paused = False
-            self._clear_on_activation = False
-            self._cancel_resume_timer_locked()
-            self._cancel_silence_timer_locked()
-            adapter = self._adapter if self._started else None
-            self._started = False
+        with self._callback_lock:
+            with self._lock:
+                if self._closed:
+                    return
+                self._enabled = False
+                self._active = False
+                self._turn_paused = False
+                self._clear_on_activation = False
+                self._cancel_resume_timer_locked()
+                self._cancel_silence_timer_locked()
+                adapter = self._adapter if self._started else None
+                self._started = False
         self._stop_adapter(adapter)
         self._emit_state()
 
@@ -102,6 +154,8 @@ class StreamingASRController:
         """Temporarily pause an enabled adapter while a chat turn is processed."""
         with self._lock:
             if self._closed or not self._enabled:
+                return False
+            if self._continuous_listening:
                 return False
             self._turn_paused = True
             self._active = False
@@ -115,15 +169,27 @@ class StreamingASRController:
     def reply_finished(self) -> None:
         """Resume a turn-paused adapter after the same delay used by the Qt UI."""
         with self._lock:
-            if self._closed or not self._enabled or not self._turn_paused:
+            if self._closed or not self._enabled:
                 return
-            self._cancel_resume_timer_locked()
-            timer = threading.Timer(
-                self._resume_delay_seconds, self._resume_after_delay
-            )
-            timer.daemon = True
-            self._resume_timer = timer
-        timer.start()
+            if self._continuous_listening:
+                publish_running_state = True
+            elif not self._turn_paused:
+                return
+            else:
+                publish_running_state = False
+            if publish_running_state:
+                timer = None
+            else:
+                self._cancel_resume_timer_locked()
+                timer = threading.Timer(
+                    self._resume_delay_seconds, self._resume_after_delay
+                )
+                timer.daemon = True
+                self._resume_timer = timer
+        if publish_running_state:
+            self._emit_state()
+        elif timer is not None:
+            timer.start()
 
     def close(self) -> None:
         """Stop the adapter and discard any in-flight lazy initialization."""
@@ -163,6 +229,7 @@ class StreamingASRController:
                 or self._turn_paused
                 or self._active
                 or self._activating
+                or self._boundary_depth
             ):
                 return
             self._activating = True
@@ -183,10 +250,15 @@ class StreamingASRController:
             should_load = adapter is None
             if should_load:
                 self._loading = True
+            input_epoch = self._input_epoch
         if should_load:
             self._notify_loading(True)
             try:
-                adapter = self._adapter_factory(self._handle_transcription)
+                adapter = self._adapter_factory(
+                    lambda text, is_partial: self._handle_transcription(
+                        text, is_partial, input_epoch=input_epoch
+                    )
+                )
             except BaseException as exc:
                 with self._lock:
                     if generation == self._generation:
@@ -211,6 +283,7 @@ class StreamingASRController:
                         and self._enabled
                         and not self._turn_paused
                         and not self._active
+                        and not self._boundary_depth
                     )
                 self._stop_adapter(adapter, report=False)
                 if retry_activation:
@@ -226,6 +299,7 @@ class StreamingASRController:
                 and generation == self._generation
                 and self._enabled
                 and not self._turn_paused
+                and not self._boundary_depth
             )
             started = self._started
         if not should_activate:
@@ -237,6 +311,7 @@ class StreamingASRController:
                     and self._enabled
                     and not self._turn_paused
                     and not self._active
+                    and not self._boundary_depth
                 )
             if retry_activation:
                 self._activate_async()
@@ -265,21 +340,36 @@ class StreamingASRController:
             self._emit_state()
             return
 
-        with self._lock:
-            self._started = True
-            self._activating = False
-            should_remain_active = (
-                not self._closed
-                and generation == self._generation
-                and self._enabled
-                and not self._turn_paused
-            )
-            self._active = should_remain_active
-            clear_transcript = should_remain_active and self._clear_on_activation
-            if clear_transcript:
-                self._clear_on_activation = False
-                self._original_text = ""
-                self._current_text = ""
+        with self._callback_lock:
+            with self._lock:
+                stale_activation = generation != self._generation or self._closed
+                should_remain_active = (
+                    not stale_activation
+                    and self._enabled
+                    and not self._turn_paused
+                    and not self._boundary_depth
+                )
+                self._started = not stale_activation
+                self._activating = False
+                self._active = should_remain_active
+                clear_transcript = should_remain_active and self._clear_on_activation
+                if clear_transcript:
+                    self._clear_on_activation = False
+                    self._original_text = ""
+                    self._current_text = ""
+                    self._fallback_text = None
+                    self._utterance_id = uuid4().hex
+            if should_remain_active:
+                # Publish reset before accepting any callback from live capture.
+                if clear_transcript:
+                    self._emit_transcript("asr.partial", "", self._utterance_id)
+                self._emit_state()
+                return
+
+        if stale_activation:
+            self._stop_adapter(adapter, report=False)
+            self._activate_async()
+            return
 
         if not should_remain_active:
             with self._lock:
@@ -293,21 +383,38 @@ class StreamingASRController:
                 self._pause_adapter(adapter)
             self._emit_state()
             return
-        if clear_transcript:
-            self._emit_event_safe({"type": "asr.partial", "text": ""})
-        self._emit_state()
 
-    def _handle_transcription(self, text: str, is_partial: bool) -> None:
+    def _handle_transcription(
+        self, text: str, is_partial: bool, *, input_epoch: int | None = None
+    ) -> None:
         with self._callback_lock:
+            with self._lock:
+                if input_epoch is not None and input_epoch != self._input_epoch:
+                    return
             self._process_transcription(text, is_partial)
 
-    def _process_transcription(self, text: str, is_partial: bool) -> None:
+    def _process_transcription(self, text: str, is_partial: bool, *, fallback: bool = False) -> None:
         raw_text = str(text or "")
         with self._lock:
-            if self._closed or not self._enabled or self._turn_paused:
+            if self._closed or not self._enabled or not self._active or self._turn_paused or self._boundary_depth:
                 return
+            if self._continuous_listening and self._fallback_text is not None and not fallback:
+                # Legacy adapters expose no source utterance ID. This bounded
+                # tombstone suppresses a late final and related partials after
+                # fallback, not repeated text globally. An immediate identical
+                # new utterance without an intervening final is ambiguous; a
+                # dissimilar late correction can also look like new speech.
+                if not is_partial:
+                    self._fallback_text = None
+                    return
+                normalized = "".join(raw_text.split()).casefold()
+                previous = "".join(self._fallback_text.split()).casefold()
+                if not normalized or normalized.startswith(previous) or previous.startswith(normalized):
+                    return
+                self._fallback_text = None
             adapter = self._adapter
             language = str(getattr(adapter, "language", "") or "").strip().lower()
+            utterance_id = self._utterance_id
             if is_partial:
                 if not raw_text:
                     return
@@ -340,23 +447,62 @@ class StreamingASRController:
                     self._current_text = built
                     self._original_text = built
                 displayed = self._current_text.strip()
-                self._turn_paused = True
-                self._active = False
-                active_adapter = adapter
+                if self._continuous_listening:
+                    self._original_text = ""
+                    self._current_text = ""
+                    self._utterance_id = uuid4().hex
+                    if fallback:
+                        self._fallback_text = displayed
+                    active_adapter = None
+                else:
+                    self._turn_paused = True
+                    self._active = False
+                    active_adapter = adapter
 
-        self._emit_event_safe(
-            {"type": "asr.partial" if is_partial else "asr.final", "text": displayed}
-        )
         if is_partial:
+            self._emit_transcript("asr.partial", displayed, utterance_id)
             return
 
+        if self._continuous_listening:
+            # A final heard during a reply remains a draft until the turn
+            # service actually admits it. This keeps the input visible and
+            # avoids presenting a user turn that can still be rejected.
+            with self._lock:
+                if self._closed or not self._enabled:
+                    return
+            # Publish before admission: finish_turn may admit on another thread
+            # immediately after submit returns. A later partial would resurrect
+            # the draft after its final has already consumed it.
+            self._emit_transcript("asr.partial", displayed, utterance_id)
+            try:
+                result = self._submit_transcript(displayed, utterance_id)
+            except BaseException as exc:
+                self._report_error("submit", exc)
+                result = ASRSubmissionResult(accepted=False, admitted=False)
+            if isinstance(result, ASRSubmissionResult):
+                accepted = result.accepted
+            else:
+                accepted = result is not False
+                if accepted:
+                    # Backward-compatible callback contract used by embedders:
+                    # a truthy/None result means admission completed inline.
+                    self._emit_transcript("asr.final", displayed, utterance_id)
+            if accepted is False:
+                with self._lock:
+                    if not self._closed and self._enabled:
+                        self._fallback_text = None
+            return
+
+        self._emit_transcript("asr.final", displayed, utterance_id)
         with self._lock:
             if self._closed or not self._enabled or not self._turn_paused:
                 return
         self._pause_adapter(active_adapter)
         self._emit_state()
         try:
-            accepted = self._submit_final(displayed)
+            accepted = self._submit_transcript(displayed, utterance_id)
+            if isinstance(accepted, ASRSubmissionResult):
+                accepted = accepted.accepted
         except BaseException as exc:
             self._report_error("submit", exc)
             accepted = False
@@ -366,6 +512,14 @@ class StreamingASRController:
                     self._turn_paused = False
                     self._clear_on_activation = True
             self._activate_async()
+
+    def _submit_transcript(self, text: str, utterance_id: str) -> bool | None | ASRSubmissionResult:
+        if self._submit_utterance is not None:
+            return self._submit_utterance(text, utterance_id)
+        return self._submit_final(text)
+
+    def _emit_transcript(self, event_type: str, text: str, utterance_id: str) -> None:
+        self._emit_event_safe({"type": event_type, "text": text, "utteranceId": utterance_id})
 
     def _pause_adapter(self, adapter: ASRAdapter | None) -> None:
         if adapter is None:
@@ -460,6 +614,10 @@ class StreamingASRController:
         timer.start()
 
     def _submit_after_silence(self, generation: int) -> None:
+        with self._callback_lock:
+            self._process_silence(generation)
+
+    def _process_silence(self, generation: int) -> None:
         with self._lock:
             if generation != self._silence_generation:
                 return
@@ -469,6 +627,7 @@ class StreamingASRController:
                 or not self._enabled
                 or not self._active
                 or self._turn_paused
+                or self._boundary_depth
             ):
                 return
             displayed = self._current_text.strip()
@@ -478,7 +637,7 @@ class StreamingASRController:
             "Streaming ASR finalized transcript after %.1fs of silence",
             self._silence_submit_seconds,
         )
-        self._handle_transcription(displayed, False)
+        self._process_transcription(displayed, False, fallback=True)
 
     def _cancel_silence_timer_locked(self) -> None:
         self._silence_generation += 1

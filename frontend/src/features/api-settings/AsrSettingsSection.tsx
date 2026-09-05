@@ -6,7 +6,7 @@ import { openExternal } from "../../entities/files/repository";
 import { downloadModelAsset, getModelAssetStatus } from "../../entities/model-assets/repository";
 import { useI18n } from "../../shared/i18n";
 import type { ModelAssetStatus, TaskSnapshot } from "../../shared/platform/types";
-import { Button, FilePicker, ModelDownloadDialog, Select, TextInput } from "../../shared/ui";
+import { Button, FilePicker, ModelDownloadDialog, Select, Switch, TextInput } from "../../shared/ui";
 import { AdapterExtraForm } from "./AdapterExtraForm";
 import {
   asrWhisperModelPresets,
@@ -335,6 +335,30 @@ export function AsrSettingsSection({
           values={draft.asr_extra_configs?.[activeAsrProvider] ?? {}}
         />
       ) : null}
+      <div className="form-grid form-grid--two api-extra-grid">
+        <div className="field-row">
+          <label className="field-row__label" htmlFor="asr-continuous-during-reply-experimental">
+            {t("system.asr.continuousDuringReply")}
+          </label>
+          <div className="field-row__control asr-continuous-control">
+            <Switch
+              aria-describedby="asr-continuous-during-reply-experimental-help"
+              aria-label={t("system.asr.continuousDuringReply")}
+              checked={systemDraft.asr_continuous_during_reply_experimental_enabled}
+              disabled={disabled}
+              id="asr-continuous-during-reply-experimental"
+              onChange={(event) =>
+                onSystemPatch({
+                  asr_continuous_during_reply_experimental_enabled: event.currentTarget.checked,
+                })
+              }
+            />
+            <div className="field-row__help" id="asr-continuous-during-reply-experimental-help">
+              {t("system.asr.continuousDuringReplyHint")}
+            </div>
+          </div>
+        </div>
+      </div>
       <ModelDownloadDialog
         cancelLabel={t("common.cancel")}
         closeLabel={t("common.close")}

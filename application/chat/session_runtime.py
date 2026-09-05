@@ -595,9 +595,18 @@ class StreamingChatSession(_BaseChatSession):
         from application.runtime.shutdown import shutdown_chat_runtime
 
         runtime = self._require_runtime()
+
+        def quiesce_input() -> None:
+            # Close admission first; ASR callbacks already in flight then cannot
+            # queue or publish a new user turn while capture is shutting down.
+            try:
+                self.chat_turn_service.close()
+            finally:
+                self.streaming_bindings.runtime_asr.close()
+
         shutdown_chat_runtime(
             workflow=runtime.workflow,
-            pre_shutdown=self.streaming_bindings.runtime_asr.close,
+            pre_shutdown=quiesce_input,
             plugin_shutdown=self._shutdown_plugins,
             tts_shutdown=self._tts_shutdown(),
             save_history=self.streaming_bindings.branch_manager.persist,

@@ -84,6 +84,243 @@ describe("chatStageReducer", () => {
     expect(state.optimisticSubmission?.text).toBe("hello world");
   });
 
+  it.each(["generating", "streaming", "speaking"] as const)(
+    "keeps %s reply presentation until deferred ASR is admitted",
+    (status) => {
+      const replying = {
+        ...emptyChatState,
+        asrEnabled: true,
+        asrRunning: true,
+        characterName: "Aoi",
+        dialogText: "current reply",
+        status,
+      };
+      const withPartial = chatStageReducer(replying, {
+        event: {
+          seq: 1,
+          text: "queued voice",
+          ts: 1,
+          type: "asr.partial",
+          utteranceId: "u-queued",
+          v: 1,
+        },
+        type: "event",
+      });
+      const replyFinished = chatStageReducer(withPartial, {
+        event: {
+          seq: 2,
+          ts: 2,
+          type: "reply.finished",
+          v: 1,
+        },
+        type: "event",
+      });
+      const admitted = chatStageReducer(replyFinished, {
+        event: {
+          seq: 3,
+          text: "queued voice",
+          ts: 3,
+          type: "asr.final",
+          utteranceId: "u-queued",
+          v: 1,
+        },
+        type: "event",
+      });
+
+      expect(withPartial.inputDraft).toBe("queued voice");
+      expect(withPartial.status).toBe(status);
+      expect(replyFinished.inputDraft).toBe("queued voice");
+      expect(replyFinished.status).toBe("idle");
+      expect(admitted.inputDraft).toBe("");
+      expect(admitted.status).toBe("generating");
+      expect(admitted.dialogText).toBe("queued voice");
+      expect(admitted.optimisticSubmission?.text).toBe("queued voice");
+    },
+  );
+
+  it("preserves a newer voice draft when an earlier deferred utterance is admitted", () => {
+    const replying = {
+      ...emptyChatState,
+      asrEnabled: true,
+      asrRunning: true,
+      status: "streaming" as const,
+    };
+    const firstPending = chatStageReducer(replying, {
+      event: { seq: 1, text: "first phrase", ts: 1, type: "asr.partial", utteranceId: "u-first", v: 1 },
+      type: "event",
+    });
+    const newerPending = chatStageReducer(firstPending, {
+      event: { seq: 2, text: "second phrase", ts: 2, type: "asr.partial", utteranceId: "u-second", v: 1 },
+      type: "event",
+    });
+    const finished = chatStageReducer(newerPending, {
+      event: { seq: 3, ts: 3, type: "reply.finished", v: 1 },
+      type: "event",
+    });
+    const firstAdmitted = chatStageReducer(finished, {
+      event: { seq: 4, text: "first phrase", ts: 4, type: "asr.final", utteranceId: "u-first", v: 1 },
+      type: "event",
+    });
+
+    expect(firstAdmitted.inputDraft).toBe("second phrase");
+    expect(firstAdmitted.dialogText).toBe("first phrase");
+    expect(firstAdmitted.optimisticSubmission?.text).toBe("first phrase");
+  });
+
+  it("applies ASR corrections with the same utterance ownership", () => {
+    const partial = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        text: "hello word",
+        ts: 1,
+        type: "asr.partial",
+        utteranceId: "u-correction",
+        v: 1,
+      },
+      type: "event",
+    });
+    const corrected = chatStageReducer(partial, {
+      event: {
+        seq: 2,
+        text: "hello world",
+        ts: 2,
+        type: "asr.partial",
+        utteranceId: "u-correction",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(corrected.inputDraft).toBe("hello world");
+    expect(corrected.asrUtteranceId).toBe("u-correction");
+
+    const final = chatStageReducer(corrected, {
+      event: {
+        seq: 3,
+        text: "hello world",
+        ts: 3,
+        type: "asr.final",
+        utteranceId: "u-correction",
+        v: 1,
+      },
+      type: "event",
+    });
+
+    expect(final.inputDraft).toBe("");
+    expect(final.asrUtteranceId).toBeNull();
+  });
+
+  it("does not let an older ID'd final clear a newer draft with the same prefix", () => {
+    const newer = chatStageReducer(
+      chatStageReducer(emptyChatState, {
+        event: { seq: 1, text: "hello", ts: 1, type: "asr.partial", utteranceId: "u-old", v: 1 },
+        type: "event",
+      }),
+      {
+        event: { seq: 2, text: "hello there", ts: 2, type: "asr.partial", utteranceId: "u-new", v: 1 },
+        type: "event",
+      },
+    );
+
+    const admitted = chatStageReducer(newer, {
+      event: { seq: 3, text: "hello", ts: 3, type: "asr.final", utteranceId: "u-old", v: 1 },
+      type: "event",
+    });
+
+    expect(admitted.inputDraft).toBe("hello there");
+    expect(admitted.asrUtteranceId).toBe("u-new");
+  });
+
+  it("does not let an ID'd final erase a user-edited draft", () => {
+    const asr = chatStageReducer(emptyChatState, {
+      event: { seq: 1, text: "voice draft", ts: 1, type: "asr.partial", utteranceId: "u-edit", v: 1 },
+      type: "event",
+    });
+    const edited = chatStageReducer(asr, { text: "manual draft", type: "setDraft" });
+    const admitted = chatStageReducer(edited, {
+      event: { seq: 2, text: "voice draft", ts: 2, type: "asr.final", utteranceId: "u-edit", v: 1 },
+      type: "event",
+    });
+
+    expect(edited.asrUtteranceId).toBeNull();
+    expect(admitted.inputDraft).toBe("manual draft");
+    expect(admitted.asrUtteranceId).toBeNull();
+  });
+
+  it("clears an ASR-owned draft after reconnect when its final was missed", () => {
+    const asr = chatStageReducer(emptyChatState, {
+      event: { seq: 1, text: "missed final", ts: 1, type: "asr.partial", utteranceId: "u-missed", v: 1 },
+      type: "event",
+    });
+    const hydrated = chatStageReducer(asr, {
+      snapshot: {
+        asrEnabled: true,
+        asrRunning: true,
+        asrUtteranceId: null,
+        dialogText: "missed final",
+        eventSeq: 3,
+        inputDraft: "",
+        options: [],
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+
+    expect(hydrated.inputDraft).toBe("");
+    expect(hydrated.asrUtteranceId).toBeNull();
+  });
+
+  it("preserves a manually edited draft during reconnect hydration", () => {
+    const edited = chatStageReducer(
+      chatStageReducer(emptyChatState, {
+        event: { seq: 1, text: "voice draft", ts: 1, type: "asr.partial", utteranceId: "u-manual", v: 1 },
+        type: "event",
+      }),
+      { text: "manual draft", type: "setDraft" },
+    );
+    const hydrated = chatStageReducer(edited, {
+      snapshot: {
+        asrEnabled: true,
+        asrRunning: true,
+        asrUtteranceId: null,
+        dialogText: "reply",
+        eventSeq: 3,
+        inputDraft: "",
+        options: [],
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+
+    expect(hydrated.inputDraft).toBe("manual draft");
+    expect(hydrated.asrUtteranceId).toBeNull();
+  });
+
+  it("uses an empty fresh partial as an ASR reset without erasing a manual draft", () => {
+    const owned = chatStageReducer(emptyChatState, {
+      event: { seq: 1, text: "old voice", ts: 1, type: "asr.partial", utteranceId: "u-old", v: 1 },
+      type: "event",
+    });
+    const resetOwned = chatStageReducer(owned, {
+      event: { seq: 2, text: "", ts: 2, type: "asr.partial", utteranceId: "u-reset", v: 1 },
+      type: "event",
+    });
+
+    expect(resetOwned.inputDraft).toBe("");
+    expect(resetOwned.asrUtteranceId).toBe("u-reset");
+
+    const manual = chatStageReducer(owned, { text: "manual draft", type: "setDraft" });
+    const resetManual = chatStageReducer(manual, {
+      event: { seq: 2, text: "", ts: 2, type: "asr.partial", utteranceId: "u-reset", v: 1 },
+      type: "event",
+    });
+
+    expect(resetManual.inputDraft).toBe("manual draft");
+    expect(resetManual.asrUtteranceId).toBeNull();
+  });
+
   it("keeps ASR enabled while a character reply temporarily pauses capture", () => {
     const generating = {
       ...emptyChatState,
@@ -125,7 +362,7 @@ describe("chatStageReducer", () => {
 
     expect(resumed.asrEnabled).toBe(true);
     expect(resumed.asrRunning).toBe(true);
-    expect(resumed.status).toBe("listening");
+    expect(resumed.status).toBe("generating");
   });
 
   it("hydrates an ASR-final snapshot without restoring a sendable draft", () => {

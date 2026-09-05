@@ -128,7 +128,17 @@ class ChatCommandDispatcher:
             handler = self._handlers.get(request.type)
             if handler is None:
                 raise ValueError(f"未知实时聊天命令：{request.type}")
-            handler(request.payload)
+            # Quiesce old recognition callbacks for the entire history mutation,
+            # including any replay/new turn created by fork or revert.
+            boundary = getattr(self.runtime_asr, "input_boundary", None)
+            if request.type in {
+                "clear-history", "revert-history", "fork-history", "switch-branch"
+            } and boundary is not None:
+                with boundary():
+                    self.chat_turn_service.cancel_pending_batch()
+                    handler(request.payload)
+            else:
+                handler(request.payload)
             return ChatCommandResult(ok=True)
         except Exception as exc:
             error = str(exc)

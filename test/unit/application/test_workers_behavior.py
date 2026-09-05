@@ -15,6 +15,7 @@ from application.runtime.workers import (
     PresentationWorker,
     TTSWorker,
 )
+from core.messaging.chat_turn_service import ChatTurnOptions, ChatTurnService
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY
 from ai.llm.llm_manager import LLMManager
 from sdk.messages import LLMDialogMessage, TTSOutputMessage, UserInputMessage
@@ -440,6 +441,31 @@ def test_ui_worker_finishes_turn_after_all_system_output_is_drained() -> None:
     assert worker._finish_turn_if_drained(turn) is True
     assert runtime.chat_turn_service.is_active() is False
     ui_manager.post_llm_reply_finished.assert_called_once_with()
+
+
+def test_ui_worker_publishes_reply_finished_before_admitting_deferred_input() -> None:
+    events: list[str] = []
+    ui_manager = MagicMock()
+    ui_manager.post_llm_reply_finished.side_effect = lambda: events.append("reply.finished")
+    runtime = _make_app_runtime(ui_manager=ui_manager)
+    runtime.chat_turn_service = ChatTurnService(
+        sink=lambda text: events.append(f"admit:{text}"),
+        options=ChatTurnOptions(interrupt_enabled=True),
+    )
+    turn = runtime.chat_turn_service.begin_turn()
+    runtime.chat_turn_service.submit(
+        "queued voice",
+        interrupt_current=False,
+        defer_until_idle=True,
+    )
+    runtime.chat_turn_service.mark_generation_complete(turn)
+    worker = PresentationWorker(runtime.audio_path_queue)
+    worker.ui_update_manager = ui_manager
+    worker.dialog_channel = MagicMock()
+    worker.dialog_channel.get_busy.return_value = False
+
+    assert worker._finish_turn_if_drained(turn) is True
+    assert events == ["reply.finished", "admit:queued voice"]
 
 
 def test_ui_worker_does_not_finish_while_tts_work_is_still_inflight() -> None:

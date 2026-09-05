@@ -158,6 +158,7 @@ export const sampleConfig: AppConfig = {
     asr_whisper_model_size: "small",
     asr_whisper_device: "auto",
     asr_whisper_compute_type: "",
+    asr_continuous_during_reply_experimental_enabled: false,
     music_volumn: 30,
     theme_color: "#d4788e",
     bgm_path: "",
