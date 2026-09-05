@@ -15,6 +15,10 @@ class CompositeAssetLookupStrategy(AssetLookupStrategy):
             raise ValueError("at least one asset lookup strategy is required")
         self._strategies = tuple(strategies)
 
+    @property
+    def strategies(self) -> tuple[AssetLookupStrategy, ...]:
+        return self._strategies
+
     def lookup(self, request: AssetLookupRequest) -> AssetLookupResult:
         for strategy in self._strategies:
             result = strategy.lookup(request)

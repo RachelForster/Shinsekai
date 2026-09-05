@@ -346,6 +346,7 @@ class _BaseChatSession:
         from ai.llm.text_processor import TextProcessor, name_map
         from application.chat.build_effect_context import build_effect_context
         from application.chat.presentation import load_presentation_assets
+        from application.chat.dialog_media import create_asset_lookup_strategy
         from application.runtime.workflow import (
             build_runtime_workflow,
             get_chat_workflow_handles,
@@ -373,6 +374,18 @@ class _BaseChatSession:
                 queue_factory=ClearableQueue,
             )
             handles = get_chat_workflow_handles(workflow)
+            media_selection_mode = str(
+                getattr(self.args, "media_selection_mode", "indexed") or "indexed"
+            ).strip().lower()
+            if media_selection_mode == "semantic":
+                if handles.dialog_media_worker is None:
+                    raise RuntimeError(
+                        "Semantic media selection requires the workflow export "
+                        "chat.dialog_media_worker."
+                    )
+                handles.dialog_media_worker.asset_lookup_strategy = (
+                    create_asset_lookup_strategy(media_selection_mode)
+                )
         self.runtime = _RuntimeComponents(
             workflow=workflow,
             input_queue=handles.input_queue,

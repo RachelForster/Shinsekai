@@ -7,6 +7,7 @@ from .lookup import (
     AssetLookupResult,
     AssetLookupStrategy,
     CompositeAssetLookupStrategy,
+    create_asset_lookup_strategy,
     MessageAssetIdLookupStrategy,
     VectorDatabaseAssetLookupStrategy,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "AssetResolver",
     "asset_candidates",
     "CompositeAssetLookupStrategy",
+    "create_asset_lookup_strategy",
     "DefaultTtsGenerationStrategy",
     "MessageAssetIdLookupStrategy",
     "ResolvedAsset",

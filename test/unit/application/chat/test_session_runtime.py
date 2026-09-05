@@ -58,6 +58,7 @@ def _options(**overrides):
         "headless": False,
         "history": "history.json",
         "init_sprite_path": "sprite.png",
+        "media_selection_mode": "indexed",
         "room_id": "",
         "stream_endpoint": "ws://chat",
         "template": "default",
@@ -342,6 +343,55 @@ def test_headless_session_owns_workflow_and_queue_assembly(monkeypatch) -> None:
     assert runtime.dialog_queue == "tts"
     assert runtime.presentation_queue == "audio"
     assert runtime.effect_keyword_map == {"rain": "rain.mp3"}
+
+
+def test_semantic_mode_injects_lookup_strategy_before_workflow_start(
+    monkeypatch,
+) -> None:
+    config = SimpleNamespace(config=SimpleNamespace(characters=[]))
+    options = _options(media_selection_mode="semantic")
+    workflow = SimpleNamespace(start=Mock(), stop=Mock())
+    dialog_media_worker = SimpleNamespace(asset_lookup_strategy=None)
+    handles = SimpleNamespace(
+        input_queue="input",
+        dialog_queue="dialog",
+        presentation_queue="presentation",
+        ui_worker="ui",
+        dialog_media_worker=dialog_media_worker,
+    )
+    strategy = object()
+    monkeypatch.setattr(
+        "application.runtime.workflow.build_runtime_workflow",
+        lambda **_kwargs: workflow,
+    )
+    monkeypatch.setattr(
+        "application.runtime.workflow.get_chat_workflow_handles",
+        lambda _workflow: handles,
+    )
+    monkeypatch.setattr(
+        "application.chat.presentation.load_presentation_assets",
+        lambda *_args: SimpleNamespace(bgm_paths=[], background_sprites=[]),
+    )
+    monkeypatch.setattr(
+        "application.chat.build_effect_context.build_effect_context",
+        lambda *_args: SimpleNamespace(keyword_map={}),
+    )
+    factory = Mock(return_value=strategy)
+    monkeypatch.setattr(
+        "application.chat.dialog_media.create_asset_lookup_strategy",
+        factory,
+    )
+    session = session_runtime.StreamingChatSession(
+        options,
+        _startup(config),
+        _Transport(streaming=True),
+        _Initialization(),
+    )
+
+    session._build_runtime()
+
+    factory.assert_called_once_with("semantic")
+    assert dialog_media_worker.asset_lookup_strategy is strategy
 
 
 def test_install_app_runtime_projects_all_session_dependencies(monkeypatch) -> None:

@@ -43,6 +43,13 @@ class ChatLaunchArgsTests(unittest.TestCase):
             "ws://127.0.0.1:8788/ws?sessionId=s1&role=producer",
         )
 
+    def test_parser_accepts_semantic_media_selection(self):
+        parser = build_chat_arg_parser(_tr)
+
+        args = parser.parse_args(["--media-selection-mode", "semantic"])
+
+        self.assertEqual(args.media_selection_mode, "semantic")
+
     def test_bridge_launch_config_is_loaded_from_json_environment(self):
         payload = {
             "history": "data/chat_history/session",

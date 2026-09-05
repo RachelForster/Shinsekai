@@ -269,6 +269,12 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         if prompt_mode == "compact"
         else None
     )
+    media_selection_mode = (
+        "semantic"
+        if str(payload.get("mediaSelectionMode") or "").strip().lower()
+        == "semantic"
+        else "indexed"
+    )
     if primary_characters is not None:
         selected_keys = {character_name_key(name) for name in resolved_names}
         primary_characters = [
@@ -289,6 +295,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         max_speech_chars=max_speech_chars,
         max_dialog_items=max_dialog_items,
         primary_characters=primary_characters,
+        media_selection_mode=media_selection_mode,
     )
     output_name = str(result or "").strip()
     name = str(output_name or payload.get("name") or "generated").strip()
@@ -357,6 +364,12 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         "useStat": bool(raw.get("use_stat_yes", True)),
         "useTranslation": bool(raw.get("use_tr_yes", True)),
         "voiceLanguage": str(raw.get("voice_lang") or ""),
+        "mediaSelectionMode": (
+            "semantic"
+            if str(raw.get("media_selection_mode") or "").strip().lower()
+            == "semantic"
+            else "indexed"
+        ),
     }
     prompt_mode = str(raw.get("character_prompt_mode") or "").strip().lower()
     if prompt_mode in {"compact", "full"}:
@@ -516,6 +529,12 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         "history_file": str(payload.get("historyPath") or ""),
         "room_id": str(payload.get("roomId") or ""),
         "workflow_path": str(payload.get("workflowPath") or ""),
+        "media_selection_mode": (
+            "semantic"
+            if str(payload.get("mediaSelectionMode") or "").strip().lower()
+            == "semantic"
+            else "indexed"
+        ),
     }
     save_template_session(state.template_dir_path, data)
     loaded = _load_template_session_payload(state)
@@ -552,6 +571,12 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
                 if str(raw.get("character_prompt_mode") or "").strip().lower()
                 == "compact"
                 else None
+            ),
+            media_selection_mode=(
+                "semantic"
+                if str(raw.get("media_selection_mode") or "").strip().lower()
+                == "semantic"
+                else "indexed"
             ),
         )
     except NoValidCharactersError:

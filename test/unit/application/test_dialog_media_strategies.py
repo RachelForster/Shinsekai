@@ -16,6 +16,7 @@ from application.chat.dialog_media import (
     AssetLookupRequest,
     AssetLookupResult,
     CompositeAssetLookupStrategy,
+    create_asset_lookup_strategy,
     DefaultTtsGenerationStrategy,
     MessageAssetIdLookupStrategy,
     ResolvedSpriteAsset,
@@ -120,6 +121,18 @@ def test_composite_asset_lookup_falls_back_to_explicit_id():
     )
 
     assert result.best == AssetIdMatch("03")
+
+
+def test_asset_lookup_factory_uses_vector_then_direct_fallback():
+    strategy = create_asset_lookup_strategy("semantic")
+
+    assert isinstance(strategy, CompositeAssetLookupStrategy)
+    assert isinstance(strategy.strategies[0], VectorDatabaseAssetLookupStrategy)
+    assert isinstance(strategy.strategies[1], MessageAssetIdLookupStrategy)
+    assert isinstance(
+        create_asset_lookup_strategy("indexed"),
+        MessageAssetIdLookupStrategy,
+    )
 
 
 def test_sprite_resolver_refreshes_mutable_voice_metadata_from_yaml(tmp_path):
