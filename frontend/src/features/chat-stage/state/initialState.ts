@@ -6,6 +6,7 @@ export const emptyChatState: ChatStageState = {
   audioCommands: [],
   asrEnabled: false,
   asrLoading: false,
+  asrSourceUtteranceId: null,
   asrRunning: false,
   asrUtteranceId: null,
   dialogText: "",

@@ -167,6 +167,25 @@ def _execute(runtime: SimpleNamespace, command_type: str, payload: object = None
 
 
 @pytest.mark.parametrize("command", ["clear-history", "revert-history", "fork-history", "switch-branch"])
+def test_history_invalidated_before_handler_even_without_asr_boundary(command_runtime, command):
+    from core.messaging.chat_turn_service import ChatTurnService
+
+    events = []
+    service = ChatTurnService()
+    turn = service.begin_turn()
+    command_runtime.dispatcher.chat_turn_service = service
+    command_runtime.llm_manager.invalidate_history = lambda: events.append("invalidated")
+
+    def mutate(payload):
+        assert turn.is_cancelled()
+        events.append("mutated")
+
+    command_runtime.dispatcher._handlers[command] = mutate
+    assert _execute(command_runtime, command, 0).ok
+    assert events == ["invalidated", "mutated"]
+
+
+@pytest.mark.parametrize("command", ["clear-history", "revert-history", "fork-history", "switch-branch"])
 def test_history_commands_quiesce_asr_before_mutation(command_runtime, command):
     from contextlib import contextmanager
     events = []

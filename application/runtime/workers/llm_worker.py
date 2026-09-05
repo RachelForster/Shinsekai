@@ -1,6 +1,7 @@
 """Worker that turns user input into streamed dialog messages."""
 
 import re
+from contextlib import nullcontext
 from queue import Queue
 
 from ai.vision.service import ChatVisionService
@@ -83,6 +84,8 @@ class LLMWorker(ThreadDagNode):
         while self.running:
             got_item = False
             turn_scope = None
+            history_scope = None
+            raw_response = None
             turn = None
             try:
                 message: UserInputMessage = self.user_input_queue.get()
@@ -91,10 +94,18 @@ class LLMWorker(ThreadDagNode):
                     break
 
                 rt = get_app_runtime()
-                turn = rt.chat_turn_service.begin_turn()
+                turn = rt.chat_turn_service.begin_turn(
+                    expected_revision=message.admission_revision,
+                    utterance_id=message.utterance_id,
+                )
 
                 if turn.is_cancelled():
                     continue
+
+                scope_factory = getattr(self.llm_manager, "history_scope", None)
+                if scope_factory is not None:
+                    history_scope = scope_factory(message.history_epoch)
+                    history_scope.__enter__()
 
                 turn_scope = log_context(turn_id=new_log_id("turn_"))
                 turn_scope.__enter__()
@@ -104,6 +115,8 @@ class LLMWorker(ThreadDagNode):
                     attachments,
                     adapter=self.llm_manager.llm_adapter,
                 )
+                if turn.is_cancelled():
+                    continue
                 logger.info(
                     "LLM worker processing user message",
                     extra={
@@ -114,18 +127,21 @@ class LLMWorker(ThreadDagNode):
                     },
                 )
                 tracker.start_cross("e2e")
-                self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
-
-                if hasattr(self.ui_update_manager, "record_user_message"):
-                    self.ui_update_manager.record_user_message(
-                        prepared_input.display_text
-                    )
-                else:
-                    formatted_user_message = (
-                        "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
-                        f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
-                    )
-                    self.ui_update_manager.chat_history.append(formatted_user_message)
+                publication = getattr(rt.chat_turn_service, "turn_publication", None)
+                with publication(turn) if publication else nullcontext(True) as current:
+                    if not current:
+                        continue
+                    self.ui_update_manager.post_notification("发送成功，正在等待回复中...")
+                    if hasattr(self.ui_update_manager, "record_user_message"):
+                        self.ui_update_manager.record_user_message(
+                            prepared_input.display_text
+                        )
+                    else:
+                        formatted_user_message = (
+                            "<p style='line-height: 135%; letter-spacing: 2px; color:white;'>"
+                            f"<b style='color:white;'>你</b>: {prepared_input.display_text}</p>"
+                        )
+                        self.ui_update_manager.chat_history.append(formatted_user_message)
 
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
                 with tracker.track("LLM chat total"):
@@ -274,6 +290,8 @@ class LLMWorker(ThreadDagNode):
                     print(f"LLMWorker: {_warn}")
 
             except Exception as e:
+                if turn is not None and turn.is_cancelled():
+                    continue
                 error_info = classify_exception(e)
                 logger.exception(
                     "LLM worker task failed",
@@ -306,6 +324,16 @@ class LLMWorker(ThreadDagNode):
                 except Exception:
                     pass
             finally:
+                # Close a cancelled stream while its history identity is still
+                # installed, including the generator's chat-scope teardown.
+                close_response = getattr(raw_response, "close", None)
+                if callable(close_response):
+                    try:
+                        close_response()
+                    except Exception:
+                        logger.debug("LLM response cleanup failed", exc_info=True)
+                if history_scope is not None:
+                    history_scope.__exit__(None, None, None)
                 if turn is not None:
                     get_app_runtime().chat_turn_service.mark_generation_complete(turn)
                 if turn_scope is not None:

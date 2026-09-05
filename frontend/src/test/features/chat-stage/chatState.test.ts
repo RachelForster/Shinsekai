@@ -229,6 +229,7 @@ describe("chatStageReducer", () => {
 
     expect(admitted.inputDraft).toBe("hello there");
     expect(admitted.asrUtteranceId).toBe("u-new");
+    expect(admitted.asrSourceUtteranceId).toBe("u-new");
   });
 
   it("does not let an ID'd final erase a user-edited draft", () => {
@@ -243,8 +244,39 @@ describe("chatStageReducer", () => {
     });
 
     expect(edited.asrUtteranceId).toBeNull();
+    expect(edited.asrSourceUtteranceId).toBe("u-edit");
     expect(admitted.inputDraft).toBe("manual draft");
     expect(admitted.asrUtteranceId).toBeNull();
+    expect(admitted.asrSourceUtteranceId).toBeNull();
+  });
+
+  it("keeps ASR provenance through a manual edit and clears it when the draft is cleared", () => {
+    const asr = chatStageReducer(emptyChatState, {
+      event: { seq: 1, text: "voice draft", ts: 1, type: "asr.partial", utteranceId: "u-provenance", v: 1 },
+      type: "event",
+    });
+    const edited = chatStageReducer(asr, { text: "edited voice draft", type: "setDraft" });
+
+    expect(edited.asrUtteranceId).toBeNull();
+    expect(edited.asrSourceUtteranceId).toBe("u-provenance");
+
+    const cleared = chatStageReducer(edited, { text: "", type: "setDraft" });
+    expect(cleared.inputDraft).toBe("");
+    expect(cleared.asrSourceUtteranceId).toBeNull();
+  });
+
+  it("restores ASR provenance when an optimistic submission fails", () => {
+    const asr = chatStageReducer(emptyChatState, {
+      event: { seq: 1, text: "retry voice", ts: 1, type: "asr.partial", utteranceId: "u-retry", v: 1 },
+      type: "event",
+    });
+    const submitted = chatStageReducer(asr, { text: "submit voice", type: "submitUserMessage" });
+    expect(submitted.inputDraft).toBe("");
+    expect(submitted.asrSourceUtteranceId).toBeNull();
+
+    const restored = chatStageReducer(submitted, { source: "send-message", type: "rollbackUserSubmission" });
+    expect(restored.inputDraft).toBe("retry voice");
+    expect(restored.asrSourceUtteranceId).toBe("u-retry");
   });
 
   it("clears an ASR-owned draft after reconnect when its final was missed", () => {
@@ -296,6 +328,43 @@ describe("chatStageReducer", () => {
 
     expect(hydrated.inputDraft).toBe("manual draft");
     expect(hydrated.asrUtteranceId).toBeNull();
+    expect(hydrated.asrSourceUtteranceId).toBe("u-manual");
+  });
+
+  it("hydrates ASR provenance only when the snapshot still contains a draft", () => {
+    const hydratedDraft = chatStageReducer(emptyChatState, {
+      snapshot: {
+        asrEnabled: true,
+        asrRunning: true,
+        asrUtteranceId: "u-snapshot",
+        dialogText: "reply",
+        eventSeq: 2,
+        inputDraft: "snapshot voice",
+        options: [],
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+    expect(hydratedDraft.asrSourceUtteranceId).toBe("u-snapshot");
+
+    const hydratedFinal = chatStageReducer(hydratedDraft, {
+      snapshot: {
+        asrEnabled: true,
+        asrRunning: true,
+        asrUtteranceId: "u-stale",
+        dialogText: "reply",
+        eventSeq: 3,
+        inputDraft: "",
+        options: [],
+        sprites: [],
+        status: "idle",
+      },
+      type: "hydrate",
+    });
+    expect(hydratedFinal.inputDraft).toBe("");
+    expect(hydratedFinal.asrUtteranceId).toBeNull();
+    expect(hydratedFinal.asrSourceUtteranceId).toBeNull();
   });
 
   it("uses an empty fresh partial as an ASR reset without erasing a manual draft", () => {

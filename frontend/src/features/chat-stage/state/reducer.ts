@@ -14,6 +14,7 @@ function preserveOptimisticPresentation(state: ChatStageState, next: ChatStageSt
     inputAttachments: state.inputAttachments,
     inputDraft: state.inputDraft,
     asrUtteranceId: state.asrUtteranceId,
+    asrSourceUtteranceId: state.asrSourceUtteranceId,
     optimisticSubmission: state.optimisticSubmission,
     options: [...state.options],
     sessionClosedReason: state.sessionClosedReason,
@@ -83,6 +84,7 @@ function submitUserMessageState(
       dialogText: state.dialogText,
       error: state.error,
       asrUtteranceId: state.asrUtteranceId,
+      asrSourceUtteranceId: state.asrSourceUtteranceId,
       inputDraft: state.inputDraft,
       inputAttachments: state.inputAttachments.map((attachment) => ({ ...attachment })),
       notificationText: state.notificationText,
@@ -98,11 +100,13 @@ function submitUserMessageState(
   const preservedInput = preserveInput
     ? {
         asrUtteranceId: state.asrUtteranceId,
+        asrSourceUtteranceId: state.asrSourceUtteranceId,
         inputAttachments: state.inputAttachments,
         inputDraft: state.inputDraft,
       }
     : {
         asrUtteranceId: null,
+        asrSourceUtteranceId: null,
         inputAttachments: [],
         inputDraft: "",
       };
@@ -193,6 +197,9 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       const asrUtteranceId = optimistic.draftEditedAfterSubmission
         ? state.asrUtteranceId
         : optimistic.previous.asrUtteranceId;
+      const asrSourceUtteranceId = optimistic.draftEditedAfterSubmission
+        ? state.asrSourceUtteranceId
+        : optimistic.previous.asrSourceUtteranceId;
       const inputAttachments = optimistic.attachmentsEditedAfterSubmission
         ? state.inputAttachments
         : optimistic.previous.inputAttachments;
@@ -200,6 +207,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         ...state,
         ...optimistic.previous,
         asrUtteranceId,
+        asrSourceUtteranceId,
         inputDraft,
         inputAttachments: inputAttachments.map((attachment) => ({ ...attachment })),
         options: [...optimistic.previous.options],
@@ -231,6 +239,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       return withResolvedLayers({
         ...state,
         asrUtteranceId: null,
+        asrSourceUtteranceId: action.text.trim() ? state.asrSourceUtteranceId : null,
         inputDraft: action.text,
         optimisticSubmission: state.optimisticSubmission
           ? { ...state.optimisticSubmission, draftEditedAfterSubmission: true }

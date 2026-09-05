@@ -1008,6 +1008,7 @@ export interface ChatAttachmentInput {
 }
 
 export interface ChatSendPayload {
+  asrUtteranceId?: string;
   attachments: ChatAttachmentInput[];
   text: string;
 }

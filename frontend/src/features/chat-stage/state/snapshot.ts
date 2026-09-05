@@ -32,7 +32,7 @@ function asrUtteranceId(value: unknown): string | null {
 function hydratedInputDraft(
   state: ChatStageState,
   snapshot: ChatSnapshot,
-): Pick<ChatStageState, "asrUtteranceId" | "inputDraft"> {
+): Pick<ChatStageState, "asrSourceUtteranceId" | "asrUtteranceId" | "inputDraft"> {
   const localUtteranceId = asrUtteranceId(state.asrUtteranceId);
   const snapshotUtteranceId = asrUtteranceId(snapshot.asrUtteranceId);
 
@@ -41,10 +41,16 @@ function hydratedInputDraft(
   // ASR draft). An ASR-owned value, however, must yield to the authoritative
   // snapshot so a final consumed while disconnected cannot reappear.
   if (!localUtteranceId && state.inputDraft) {
-    return { asrUtteranceId: null, inputDraft: state.inputDraft };
+    return {
+      asrSourceUtteranceId: state.asrSourceUtteranceId,
+      asrUtteranceId: null,
+      inputDraft: state.inputDraft,
+    };
   }
+  const snapshotHasDraft = Boolean(snapshot.inputDraft);
   return {
-    asrUtteranceId: snapshotUtteranceId,
+    asrSourceUtteranceId: snapshotHasDraft ? snapshotUtteranceId : null,
+    asrUtteranceId: snapshotHasDraft ? snapshotUtteranceId : null,
     inputDraft: snapshot.inputDraft,
   };
 }

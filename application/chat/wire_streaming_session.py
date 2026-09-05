@@ -140,6 +140,8 @@ class _StreamingSessionWiring:
         interrupt_current: bool | None = None,
         defer_until_idle: bool = False,
         on_admit: Callable[[str, list[dict[str, object]]], None] | None = None,
+        utterance_id: str | None = None,
+        replace_utterance_id: str | None = None,
     ) -> bool:
         value = str(text or "").strip()
         try:
@@ -167,12 +169,18 @@ class _StreamingSessionWiring:
             if on_admit is not None:
                 on_admit(text, attachments)
 
+        identity_kwargs = {}
+        if utterance_id:
+            identity_kwargs["utterance_id"] = utterance_id
+        if replace_utterance_id:
+            identity_kwargs["replace_utterance_id"] = replace_utterance_id
         accepted = self.emit_user_text(
             value,
             attachments=payloads,
             interrupt_current=interrupt_current,
             defer_until_idle=defer_until_idle,
             on_admit=admitted,
+            **identity_kwargs,
         )
         if accepted is False:
             return False
@@ -242,6 +250,7 @@ class _StreamingSessionWiring:
             interrupt_current=False if self.continuous_asr else None,
             defer_until_idle=self.continuous_asr,
             on_admit=on_admit if self.continuous_asr else None,
+            utterance_id=utterance_id if self.continuous_asr else None,
         )
         if not accepted:
             return False

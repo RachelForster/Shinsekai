@@ -28,6 +28,7 @@ class SubmitRuntimeText(Protocol):
         attachments: list[dict[str, object]] | None = None,
         ignore_unavailable_attachments: bool = False,
         notify_key: str | None = "main.notify_submitted",
+        replace_utterance_id: str | None = None,
     ) -> bool: ...
 
 

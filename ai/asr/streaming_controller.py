@@ -120,6 +120,42 @@ class StreamingASRController:
         with self._lock:
             return self._enabled and not self._closed
 
+    @contextmanager
+    def manual_submission(self, utterance_id: str):
+        """Serialize manual replacement with final/fallback callbacks.
+
+        The caller commits only after input plugins accept the manual message.
+        Retiring an active utterance recreates capture, fencing even corrected
+        late finals; replacing an older deferred draft leaves new capture alone.
+        """
+        retired_adapter = None
+        restart = False
+        def commit():
+            nonlocal retired_adapter, restart
+            with self._lock:
+                if self._closed or not self._continuous_listening or utterance_id != self._utterance_id:
+                    return
+                self._input_epoch += 1
+                self._generation += 1
+                self._cancel_silence_timer_locked()
+                self._original_text = self._current_text = ""
+                self._fallback_text = None
+                self._utterance_id = uuid4().hex
+                self._active = False
+                retired_adapter = self._adapter
+                self._adapter = None
+                self._started = False
+                restart = True
+            self._emit_transcript("asr.partial", "", self._utterance_id)
+
+        try:
+            with self._callback_lock:
+                yield commit
+        finally:
+            if restart:
+                self._stop_adapter(retired_adapter)
+                self._activate_async()
+
     def user_resume(self) -> None:
         """Enable ASR, loading the selected adapter lazily on first use."""
         with self._lock:

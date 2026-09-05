@@ -9,6 +9,7 @@ runtime.
 from __future__ import annotations
 
 from collections import deque
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 import logging
 import math
@@ -64,6 +65,7 @@ class _Admission:
     attachments: list[dict[str, Any]]
     on_admit: tuple[AdmissionCallback, ...] = field(default=(), compare=False, repr=False)
     cancellation_revision: int = field(default=0, compare=False, repr=False)
+    utterance_id: str | None = None
 
 
 class ChatTurnService:
@@ -78,6 +80,7 @@ class ChatTurnService:
         self,
         *,
         sink: Callable[..., None] | None = None,
+        revision_sink: Callable[[str, list[dict[str, Any]], int, str | None], None] | None = None,
         options: ChatTurnOptions | None = None,
         on_state_change: Callable[[BatchState], None] | None = None,
         cancel_current: Callable[[], None] | None = None,
@@ -88,6 +91,7 @@ class ChatTurnService:
         has_pending_work: Callable[[], bool] | None = None,
     ) -> None:
         self._sink = sink or (lambda _text: None)
+        self._revision_sink = revision_sink
         self.options = options or ChatTurnOptions(interrupt_enabled=False)
         self._on_state_change = on_state_change
         self._cancel_current = cancel_current
@@ -121,6 +125,8 @@ class ChatTurnService:
         self._delivery_lock = threading.RLock()
         self._closed_event = threading.Event()
         self._cancellation_revision = 0
+        self._retired_utterances: set[str] = set()
+        self._utterance_batch_prefixes: dict[str, _Admission] = {}
 
         self._batch: list[_Admission] = []
         self._batch_deadline: float | None = None
@@ -137,6 +143,8 @@ class ChatTurnService:
         interrupt_current: bool | None = None,
         defer_until_idle: bool = False,
         on_admit: AdmissionCallback | None = None,
+        utterance_id: str | None = None,
+        replace_utterance_id: str | None = None,
     ) -> BatchState:
         """Accept one processed user message.
 
@@ -150,12 +158,38 @@ class ChatTurnService:
             return self.batch_state()
 
         admission_callbacks = (on_admit,) if on_admit is not None else ()
+        if replace_utterance_id:
+            # Same gate as delivery: even a popped deferred admission cannot
+            # escape retirement and appear after the manual replacement.
+            with self._delivery_lock:
+                with self._lock:
+                    self._retired_utterances.add(replace_utterance_id)
+                    # A final may have absorbed earlier typed batch fragments.
+                    # Transfer those fragments to the manual replacement rather
+                    # than discarding unrelated accepted input with the voice.
+                    prefix = self._utterance_batch_prefixes.pop(replace_utterance_id, None)
+                    if prefix is not None:
+                        value = self.options.batch_separator.join(
+                            part for part in (prefix.text, value) if part
+                        )
+                        attachment_payloads = prefix.attachments + attachment_payloads
+                        admission_callbacks = prefix.on_admit + admission_callbacks
+                    self._deferred = deque(
+                        item for item in self._deferred
+                        if item.utterance_id != replace_utterance_id
+                    )
         if defer_until_idle:
             flushed_batch = False
             with self._lock:
                 if self._closed or self._closed_event.is_set():
                     return self._batch_state_locked()
                 if self._batch:
+                    if utterance_id:
+                        self._utterance_batch_prefixes[utterance_id] = self._new_admission_locked(
+                            self.options.batch_separator.join(item.text for item in self._batch if item.text),
+                            [attachment for item in self._batch for attachment in item.attachments],
+                            tuple(callback for item in self._batch for callback in item.on_admit),
+                        )
                     texts = [item.text for item in self._batch if item.text]
                     if value:
                         texts.append(value)
@@ -178,6 +212,7 @@ class ChatTurnService:
                     value,
                     attachment_payloads,
                     admission_callbacks,
+                    utterance_id=utterance_id,
                 )
                 state = self._batch_state_locked()
             self._defer_or_deliver(admission)
@@ -313,6 +348,8 @@ class ChatTurnService:
                 # sections.  Tagging it with this generation prevents that
                 # stale object from being delivered after the reset returns.
                 self._cancellation_revision += 1
+                self._retired_utterances.clear()
+                self._utterance_batch_prefixes.clear()
                 self._cancel_batch_timer_locked()
                 self._batch.clear()
                 self._deferred.clear()
@@ -331,6 +368,18 @@ class ChatTurnService:
                     logger.debug("chat turn buffered-delivery cleanup failed", exc_info=True)
         self._publish_state(state)
         return state
+
+    @contextmanager
+    def history_boundary(self):
+        """Quiesce input admission and active work throughout history mutation."""
+        with self._delivery_lock:
+            with self._lock:
+                self._current_turn.cancelled.set()
+                self._current_turn.pipeline_complete.set()
+                self._active.clear()
+            self.cancel_pending_batch()
+            self._run_interrupt_callbacks()
+            yield
 
     def update_options(self, options: ChatTurnOptions) -> BatchState:
         """Apply a new admission policy without replacing the service.
@@ -385,9 +434,12 @@ class ChatTurnService:
         with self._lock:
             return self._batch_state_locked()
 
-    def begin_turn(self) -> TurnHandle:
+    def begin_turn(self, *, expected_revision: int | None = None, utterance_id: str | None = None) -> TurnHandle:
         """Create and activate a cancellation identity for a worker turn."""
-        with self._lock:
+        # Closed workers must return immediately even while close is waiting
+        # for a buffered-delivery cleanup callback.
+        gate = nullcontext() if self._closed_event.is_set() else self._delivery_lock
+        with gate, self._lock:
             self._turn_counter += 1
             handle = TurnHandle(
                 self._turn_counter,
@@ -395,13 +447,21 @@ class ChatTurnService:
                 threading.Event(),
                 threading.Event(),
             )
-            self._current_turn = handle
-            if self._closed or self._closed_event.is_set():
+            if self._closed or self._closed_event.is_set() or (
+                expected_revision is not None and expected_revision != self._cancellation_revision
+            ) or utterance_id in self._retired_utterances:
                 # A worker can dequeue its last input concurrently with close.
                 # It must observe cancellation rather than revive service state.
                 handle.cancelled.set()
                 handle.pipeline_complete.set()
+                if utterance_id:
+                    self._delivery_pending = deque(
+                        item for item in self._delivery_pending if item.utterance_id != utterance_id
+                    )
                 return handle
+            self._current_turn = handle
+            if utterance_id:
+                self._utterance_batch_prefixes.pop(utterance_id, None)
             self._clear_admission_reservation_locked()
             if self._delivery_pending:
                 self._delivery_pending.popleft()
@@ -414,6 +474,12 @@ class ChatTurnService:
     def current_turn(self) -> TurnHandle:
         with self._lock:
             return self._current_turn
+
+    @contextmanager
+    def turn_publication(self, turn: TurnHandle):
+        """Serialize a short UI-history write with history replacement."""
+        with self._delivery_lock:
+            yield not turn.is_cancelled()
 
     def mark_generation_complete(self, turn: TurnHandle) -> None:
         """Record that the LLM stage is no longer producing downstream work."""
@@ -557,6 +623,8 @@ class ChatTurnService:
                     return
                 self._closed = True
                 self._cancellation_revision += 1
+                self._utterance_batch_prefixes.clear()
+                self._retired_utterances.clear()
                 self._active.clear()
                 self._cancel_batch_timer_locked()
                 self._batch.clear()
@@ -577,6 +645,8 @@ class ChatTurnService:
         text: str,
         attachments: list[dict[str, Any]],
         on_admit: tuple[AdmissionCallback, ...],
+        *,
+        utterance_id: str | None = None,
     ) -> _Admission:
         """Capture the branch-generation that accepted this input."""
         return _Admission(
@@ -584,6 +654,7 @@ class ChatTurnService:
             attachments,
             on_admit,
             cancellation_revision=self._cancellation_revision,
+            utterance_id=utterance_id,
         )
 
     def _admission_is_current_locked(self, admission: _Admission) -> bool:
@@ -591,6 +662,7 @@ class ChatTurnService:
             not self._closed
             and not self._closed_event.is_set()
             and admission.cancellation_revision == self._cancellation_revision
+            and admission.utterance_id not in self._retired_utterances
         )
 
     def _admission_is_current(self, admission: _Admission) -> bool:
@@ -691,7 +763,9 @@ class ChatTurnService:
                 if not self._admission_is_current(admission):
                     self._discard_delivery_pending(admission)
                     return False
-                if admission.attachments:
+                if self._revision_sink is not None:
+                    self._revision_sink(admission.text, admission.attachments, admission.cancellation_revision, admission.utterance_id)
+                elif admission.attachments:
                     self._sink(admission.text, attachments=admission.attachments)
                 else:
                     self._sink(admission.text)

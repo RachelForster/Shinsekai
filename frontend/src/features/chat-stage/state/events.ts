@@ -375,6 +375,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
         asrTranscript: event.text,
         eventSeq: Math.max(state.eventSeq, event.seq),
         inputDraft: acceptsDraft ? event.text : state.inputDraft,
+        asrSourceUtteranceId: acceptsDraft ? utteranceId : state.asrSourceUtteranceId,
         asrUtteranceId: acceptsDraft ? utteranceId : null,
         status: replyInProgress ? state.status : "listening",
       });
@@ -382,11 +383,13 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent): C
     case "asr.final": {
       const utteranceId = asrUtteranceId(event.utteranceId);
       const ownsCurrentDraft = !utteranceId || state.asrUtteranceId === utteranceId;
+      const matchesCurrentSource = !utteranceId || state.asrSourceUtteranceId === utteranceId;
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
         asrTranscript: event.text,
         eventSeq: Math.max(state.eventSeq, event.seq),
         inputDraft: ownsCurrentDraft ? "" : state.inputDraft,
+        asrSourceUtteranceId: matchesCurrentSource ? null : state.asrSourceUtteranceId,
         asrUtteranceId: ownsCurrentDraft ? null : state.asrUtteranceId,
         options: [],
       });
