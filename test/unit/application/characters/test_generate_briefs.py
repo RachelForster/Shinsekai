@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.characters import briefs
+from application.characters import generate_briefs
 from test.conftest import make_character
 
 
@@ -24,10 +24,10 @@ class _ConfigStore:
 def test_normalize_character_brief_flattens_and_limits_text():
     raw = '"' + ("人物关系清晰\n性格坚定 " * 20) + '"'
 
-    result = briefs.normalize_character_brief(raw)
+    result = generate_briefs.normalize_character_brief(raw)
 
     assert "\n" not in result
-    assert len(result) == briefs.MAX_CHARACTER_BRIEF_LENGTH
+    assert len(result) == generate_briefs.MAX_CHARACTER_BRIEF_LENGTH
 
 
 def test_generate_character_brief_uses_name_and_setting(monkeypatch):
@@ -38,9 +38,11 @@ def test_generate_character_brief_uses_name_and_setting(monkeypatch):
         captured.user = user
         return "冷静可靠，重视与米卡的约定。"
 
-    monkeypatch.setattr(briefs, "_chat", fake_chat)
+    monkeypatch.setattr(generate_briefs, "_chat", fake_chat)
 
-    result = briefs.generate_character_brief(object(), "奈奈美", "学生会长，与米卡是挚友。")
+    result = generate_briefs.generate_character_brief(
+        object(), "奈奈美", "学生会长，与米卡是挚友。"
+    )
 
     assert result == "冷静可靠，重视与米卡的约定。"
     assert "100" in captured.system
@@ -62,9 +64,9 @@ def test_ensure_character_briefs_generates_only_missing_and_saves_once(monkeypat
         assert "Mika full setting" in user
         return '```json\n{"briefs":[{"name":"Mika","brief":"安静敏锐，是 Alice 的重要伙伴。"}]}\n```'
 
-    monkeypatch.setattr(briefs, "_chat", fake_chat)
+    monkeypatch.setattr(generate_briefs, "_chat", fake_chat)
 
-    characters, generated_names = briefs.ensure_character_briefs(
+    characters, generated_names = generate_briefs.ensure_character_briefs(
         store,
         ["Alice", "Mika", "mika", "Missing"],
     )
@@ -81,13 +83,13 @@ def test_ensure_character_briefs_does_not_save_partial_results(monkeypatch):
     mika = make_character(name="Mika", character_setting="Mika setting")
     store = _ConfigStore([alice, mika])
     monkeypatch.setattr(
-        briefs,
+        generate_briefs,
         "_chat",
         lambda *_args: '{"briefs":[{"name":"Alice","brief":"Only Alice"}]}',
     )
 
     with pytest.raises(ValueError, match="Mika"):
-        briefs.ensure_character_briefs(store, ["Alice", "Mika"])
+        generate_briefs.ensure_character_briefs(store, ["Alice", "Mika"])
 
     assert alice.character_brief == ""
     assert mika.character_brief == ""

@@ -63,7 +63,7 @@ def _generate_character_setting(state: BridgeState, payload: dict[str, Any]) -> 
 
 
 def _generate_character_brief(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    from application.characters.briefs import generate_character_brief
+    from application.characters.generate_briefs import generate_character_brief
 
     name = str(payload.get("name") or "").strip()
     if not name:
@@ -77,7 +77,7 @@ def _generate_character_brief(state: BridgeState, payload: dict[str, Any]) -> di
 
 
 def _ensure_character_briefs(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
-    from application.characters.briefs import ensure_character_briefs
+    from application.characters.generate_briefs import ensure_character_briefs
 
     names = payload.get("names")
     if not isinstance(names, list):

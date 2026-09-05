@@ -139,7 +139,7 @@ def generate_character(
             response_format={"type": "text"},
             include_local_time=False,
         )
-        from application.characters.briefs import (
+        from application.characters.generate_briefs import (
             CHARACTER_BRIEF_PROMPT,
             normalize_character_brief,
         )
