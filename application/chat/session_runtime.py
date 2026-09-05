@@ -92,6 +92,7 @@ class _RuntimeComponents:
     effect_keyword_map: dict[str, str]
     text_processor: Any
     opencc: Any
+    dialog_media_worker: Any | None = None
 
 
 class _ChatInitialization:
@@ -383,6 +384,7 @@ class _BaseChatSession:
             effect_keyword_map=effect_context.keyword_map,
             text_processor=TextProcessor(),
             opencc=OpenCC("t2s"),
+            dialog_media_worker=getattr(handles, "dialog_media_worker", None),
         )
         return self.runtime
 
@@ -407,9 +409,19 @@ class _BaseChatSession:
         return self.chat_turn_service
 
     def _install_app_runtime(self) -> None:
+        from application.chat.dialog_media import ConfigSpriteLookupStrategy
         from application.runtime.context import AppRuntime, set_app_runtime
 
         runtime = self._require_runtime()
+        sprite_lookup_strategy = getattr(
+            runtime.dialog_media_worker,
+            "sprite_lookup_strategy",
+            None,
+        )
+        if sprite_lookup_strategy is None:
+            sprite_lookup_strategy = ConfigSpriteLookupStrategy()
+        if runtime.dialog_media_worker is not None:
+            runtime.dialog_media_worker.sprite_lookup_strategy = sprite_lookup_strategy
         set_app_runtime(
             AppRuntime(
                 config=self.config,
@@ -424,6 +436,7 @@ class _BaseChatSession:
                 presentation_queue=runtime.presentation_queue,
                 text_processor=runtime.text_processor,
                 opencc=runtime.opencc,
+                sprite_lookup_strategy=sprite_lookup_strategy,
                 chat_turn_service=self.chat_turn_service,
             )
         )
@@ -535,6 +548,7 @@ class StreamingChatSession(_BaseChatSession):
 
     def _present_initial_ui(self) -> None:
         from application.chat.presentation import prepare_initial_presentation
+        from application.runtime.context import get_app_runtime
 
         if self.options.asr_language(self.config.config.system_config) == "zh":
             welcome_html = self.options.translate_bundle(
@@ -549,6 +563,7 @@ class StreamingChatSession(_BaseChatSession):
             welcome_html = self.options.translate("main.welcome_html")
             initial_option = self.options.translate("main.option_start")
         with self.initialization.phase("stream.initial_ui"):
+            app_runtime = get_app_runtime()
             prepare_initial_presentation(
                 messages=self.startup.messages,
                 config=self.config,
@@ -561,6 +576,8 @@ class StreamingChatSession(_BaseChatSession):
                 ready_notification=self.options.translate("main.notify_chat"),
                 publish_branch_tree=self.streaming_bindings.branch_manager.publish_tree,
                 translate=self.options.translate,
+                sprite_lookup_strategy=app_runtime.sprite_lookup_strategy,
+                character_name_converter=app_runtime.opencc.convert,
             )
 
     def _start_live_comments(self) -> None:

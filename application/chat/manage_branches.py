@@ -43,6 +43,7 @@ class ConversationBranchBindings:
     clear_options: Callable[[], None]
     sync_history: Callable[[], None]
     replay_history: Callable[[object], None]
+    replay_sprite: Callable[[list[Any]], None]
     submit_text: SubmitRuntimeText
 
 
@@ -182,6 +183,7 @@ class ConversationBranchManager:
         self.bindings.sync_history()
         if self.chat_history:
             self.bindings.replay_history(self.chat_history[-1])
+        self.bindings.replay_sprite(self.bindings.get_messages())
         self.publish_tree()
         self.persist()
 

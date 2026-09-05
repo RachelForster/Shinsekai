@@ -4,7 +4,6 @@ import re
 from queue import Queue
 
 from ai.vision.service import ChatVisionService
-from application.chat.dialog_media.history import DialogHistoryBinding
 from core.media.chat_attachments import resolve_chat_attachments
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
 from core.messaging.stream_events import (
@@ -154,7 +153,6 @@ class LLMWorker(ThreadDagNode):
                     response_stream = [raw_response]
 
                 parser = LlmResponseStreamParser()
-                history_binding = DialogHistoryBinding()
                 reasoning_shown = ""
                 message_count = 0
                 delivered_dialogs: list[LLMDialogMessage] = []
@@ -189,16 +187,12 @@ class LLMWorker(ThreadDagNode):
                             )
                             appended_messages = 0
                             for llm_dialog in reconciliation.messages_to_append:
-                                dialog_index = message_count
                                 message_count += 1
                                 appended_messages += 1
                                 delivered_dialogs.append(llm_dialog)
-                                queued_dialog = llm_dialog.model_copy(
-                                    update={"turn_id": turn.id}
+                                self.dialog_queue.put(
+                                    llm_dialog.model_copy(update={"turn_id": turn.id})
                                 )
-                                queued_dialog._dialog_index = dialog_index
-                                queued_dialog._history_binding = history_binding
-                                self.dialog_queue.put(queued_dialog)
                             logger.info(
                                 "Reconciled repaired dialogue with streamed messages",
                                 extra={
@@ -219,15 +213,11 @@ class LLMWorker(ThreadDagNode):
                         )
                         raw_chunks.append(chunk_message)
                         for llm_dialog in parser.feed(chunk_message):
-                            dialog_index = message_count
                             message_count += 1
                             delivered_dialogs.append(llm_dialog)
-                            queued_dialog = llm_dialog.model_copy(
-                                update={"turn_id": turn.id}
+                            self.dialog_queue.put(
+                                llm_dialog.model_copy(update={"turn_id": turn.id})
                             )
-                            queued_dialog._dialog_index = dialog_index
-                            queued_dialog._history_binding = history_binding
-                            self.dialog_queue.put(queued_dialog)
 
                 # --- Interrupted: write committed context, discard the rest ---
                 if turn.is_cancelled():
@@ -245,10 +235,7 @@ class LLMWorker(ThreadDagNode):
                             )
                         except Exception:
                             pass
-                    history_binding.bind(self.llm_manager)
                     continue
-
-                history_binding.bind(self.llm_manager)
 
                 if message_count == 0:
                     _msg = tr("desktop.llm_parse_empty")

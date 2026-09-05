@@ -359,6 +359,10 @@ def test_install_app_runtime_projects_all_session_dependencies(monkeypatch) -> N
     )
     session.ui_updates = "ui-updates"
     session.chat_turn_service = "turn-service"
+    sprite_lookup_strategy = object()
+    dialog_media_worker = SimpleNamespace(
+        sprite_lookup_strategy=sprite_lookup_strategy,
+    )
     session.runtime = session_runtime._RuntimeComponents(
         workflow=SimpleNamespace(),
         input_queue="input",
@@ -369,6 +373,7 @@ def test_install_app_runtime_projects_all_session_dependencies(monkeypatch) -> N
         effect_keyword_map={"rain": "rain.mp3"},
         text_processor="processor",
         opencc="opencc",
+        dialog_media_worker=dialog_media_worker,
     )
     captured = []
     monkeypatch.setattr("application.runtime.context.set_app_runtime", captured.append)
@@ -384,6 +389,7 @@ def test_install_app_runtime_projects_all_session_dependencies(monkeypatch) -> N
     assert runtime.bgm_list == ["bgm.mp3"]
     assert runtime.user_input_queue == "input"
     assert runtime.chat_turn_service == "turn-service"
+    assert runtime.sprite_lookup_strategy is sprite_lookup_strategy
 
 
 def test_headless_shutdown_omits_history_callback_without_history(monkeypatch) -> None:

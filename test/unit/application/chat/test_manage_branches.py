@@ -21,6 +21,7 @@ class _BranchHarness:
         self.persisted_messages: list[list[Any]] = []
         self.published_trees: list[dict[str, object]] = []
         self.replayed_history: list[object] = []
+        self.replayed_sprite_messages: list[list[Any]] = []
         self.submitted: list[dict[str, object]] = []
         self.synced_history = 0
 
@@ -69,6 +70,9 @@ class _BranchHarness:
                 self.synced_history + 1,
             ),
             replay_history=self.replayed_history.append,
+            replay_sprite=lambda messages: self.replayed_sprite_messages.append(
+                copy.deepcopy(messages)
+            ),
             submit_text=submit_text,
         )
 
@@ -156,6 +160,7 @@ def test_switch_restores_branch_messages_history_and_latest_presentation(
     ]
     assert harness.messages == messages
     assert harness.replayed_history == ["Mio：last"]
+    assert harness.replayed_sprite_messages == [messages]
     assert harness.cancelled == 2
     assert harness.cleared_options == 2
     assert harness.published_trees[-1]["activeBranchId"] == "main"

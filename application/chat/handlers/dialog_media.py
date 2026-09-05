@@ -199,16 +199,6 @@ class CharacterMediaHandler(MessageHandler):
         sprite = self.sprite_lookup_strategy.lookup(
             SpriteLookupRequest(character=character_config, message=msg)
         )
-        msg.asset_id = sprite.asset_id
-        history_binding = msg._history_binding
-        dialog_index = msg._dialog_index
-        if history_binding is not None and dialog_index is not None:
-            history_binding.record(
-                dialog_index,
-                asset_id=sprite.asset_id,
-                character_name=msg.name,
-                speech=msg.text,
-            )
         generation_request = TtsGenerationRequest(
             runtime=rt,
             character=character_config,

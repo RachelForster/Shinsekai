@@ -17,8 +17,9 @@ from application.chat.manage_branches import (
     ConversationBranchManager,
 )
 from application.chat.presentation import StreamingHistoryPresenter
+from application.chat.session_restore import replay_latest_dialog_sprite
 from application.chat.startup import chat_history_is_present
-from application.runtime.context import resolve_pending_tool_confirmation
+from application.runtime.context import get_app_runtime, resolve_pending_tool_confirmation
 from core.media.chat_attachments import resolve_chat_attachments
 
 
@@ -161,6 +162,16 @@ class _StreamingSessionWiring:
         return True
 
     def _create_branch_manager(self) -> ConversationBranchManager:
+        def replay_sprite(messages: list[Any]) -> None:
+            runtime = get_app_runtime()
+            replay_latest_dialog_sprite(
+                messages,
+                presentation_queue=runtime.presentation_queue,
+                config=runtime.config,
+                sprite_lookup_strategy=runtime.sprite_lookup_strategy,
+                character_name_converter=runtime.opencc.convert,
+            )
+
         manager = ConversationBranchManager(
             history_path=self.args.history,
             chat_history=chat_history,
@@ -181,6 +192,7 @@ class _StreamingSessionWiring:
                     StreamingHistoryPresenter(self.ui_updates),
                     str(entry),
                 ),
+                replay_sprite=replay_sprite,
                 submit_text=self.submit_runtime_text,
             ),
         )

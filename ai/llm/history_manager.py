@@ -1,10 +1,9 @@
-import copy
+import traceback
+from typing import Any, Optional
+from pathlib import Path
 import json
 import re
 import threading
-import traceback
-from pathlib import Path
-from typing import Any, Optional
 
 from core.chat_history.text import _repair_json_string, parse_assistant_dialog_content
 
@@ -44,43 +43,6 @@ class HistoryManager:
                     f.write(line)
         except Exception:
             pass  # 增量保存失败不应影响聊天
-
-    @staticmethod
-    def replace_message_in_tmp(
-        history_file: str,
-        previous_message: dict,
-        updated_message: dict,
-    ) -> bool:
-        """Replace the newest matching incremental entry without appending a duplicate."""
-        if not history_file:
-            return False
-        tmp = HistoryManager._tmp_path(history_file)
-        rewrite = tmp.with_name(f"{tmp.name}.rewrite")
-        try:
-            with _tmp_write_lock:
-                if not tmp.exists():
-                    return False
-                raw = tmp.read_text(encoding="utf-8").strip().rstrip(",\n\r")
-                messages = json.loads(f"[{raw}]") if raw else []
-                for index in range(len(messages) - 1, -1, -1):
-                    if messages[index] != previous_message:
-                        continue
-                    messages[index] = copy.deepcopy(updated_message)
-                    serialized = "".join(
-                        f"{json.dumps(message, ensure_ascii=False)},\n"
-                        for message in messages
-                    )
-                    rewrite.write_text(serialized, encoding="utf-8")
-                    rewrite.replace(tmp)
-                    return True
-                return False
-        except Exception:
-            return False
-        finally:
-            try:
-                rewrite.unlink(missing_ok=True)
-            except Exception:
-                pass
 
     def get_history(self):
         return self.chat_history

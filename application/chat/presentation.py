@@ -82,6 +82,8 @@ def prepare_initial_presentation(
     ready_notification: str,
     publish_branch_tree: Any,
     translate: Any,
+    sprite_lookup_strategy: Any = None,
+    character_name_converter: Any = None,
 ) -> None:
     """Restore background, BGM, dialog, options, and initial character sprite."""
 
@@ -105,6 +107,8 @@ def prepare_initial_presentation(
             presenter=StreamingHistoryPresenter(ui_updates),
             config=config,
             tr_i18n=translate,
+            sprite_lookup_strategy=sprite_lookup_strategy,
+            character_name_converter=character_name_converter,
         )
 
     if not messages:

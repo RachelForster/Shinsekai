@@ -7,9 +7,8 @@
 
 from __future__ import annotations
 
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Any, Optional, Union
-
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 
 class UserInputMessage(BaseModel):
@@ -50,8 +49,6 @@ class LLMDialogMessage(BaseModel):
         repr=False,
         description="Internal runtime turn identity",
     )
-    _dialog_index: Optional[int] = PrivateAttr(default=None)
-    _history_binding: Any = PrivateAttr(default=None)
 
 
 class PresentationMessage(BaseModel):
