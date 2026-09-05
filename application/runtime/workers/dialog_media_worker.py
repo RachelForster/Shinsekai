@@ -4,11 +4,7 @@ import threading
 from queue import Queue
 from typing import Optional
 
-from application.chat.dialog_media import (
-    ConfigSpriteLookupStrategy,
-    SpriteLookupStrategy,
-    TtsGenerationStrategy,
-)
+from application.chat.dialog_media import SpriteLookupStrategy, TtsGenerationStrategy
 from application.chat.handlers.registry import default_dialog_media_handler_chain
 from sdk.graph import Port
 from sdk.logging import get_logger
@@ -77,14 +73,6 @@ class DialogMediaWorker(ThreadDagNode):
             return
         self.dialog_queue = self.inq(self.PORT_DIALOG)
         self.presentation_queue = self.outq(self.PORT_PRESENTATION)
-        rt = try_get_app_runtime()
-        runtime_strategy = getattr(rt, "sprite_lookup_strategy", None)
-        if self.sprite_lookup_strategy is None:
-            self.sprite_lookup_strategy = runtime_strategy
-        if self.sprite_lookup_strategy is None:
-            self.sprite_lookup_strategy = ConfigSpriteLookupStrategy()
-        if rt is not None:
-            rt.sprite_lookup_strategy = self.sprite_lookup_strategy
         self.dialog_media_dispatcher = default_dialog_media_handler_chain(
             sprite_lookup_strategy=self.sprite_lookup_strategy,
             tts_generation_strategy=self.tts_generation_strategy,

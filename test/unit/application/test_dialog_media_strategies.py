@@ -233,10 +233,7 @@ def test_character_handler_builds_presentation_from_injected_path_strategy(
     )
 
 
-def test_dialog_media_worker_passes_injected_strategies_to_handler_chain(
-    monkeypatch,
-    mock_app_runtime,
-):
+def test_dialog_media_worker_passes_injected_strategies_to_handler_chain(monkeypatch):
     sprite_lookup = MagicMock()
     generation = MagicMock()
     dispatcher = MagicMock()
@@ -258,5 +255,4 @@ def test_dialog_media_worker_passes_injected_strategies_to_handler_chain(
         sprite_lookup_strategy=sprite_lookup,
         tts_generation_strategy=generation,
     )
-    assert mock_app_runtime.sprite_lookup_strategy is sprite_lookup
     dispatcher.init_handlers.assert_called_once_with()

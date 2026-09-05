@@ -30,6 +30,3 @@ exports:
   chat.ui_worker:
     node: headless_sink
     direction: node
-  chat.dialog_media_worker:
-    node: dialog_media_worker
-    direction: node

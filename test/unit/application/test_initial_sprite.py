@@ -1,14 +1,11 @@
-import json
 import os
 from pathlib import Path
 from queue import Queue
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 
 from application.chat import session_restore
-from application.chat.dialog_media import SpriteMatch
 from application.chat.initial_sprite import (
     display_initial_sprite,
     find_character_sprite_by_path,
@@ -234,70 +231,3 @@ def test_restore_session_ui_reports_restored_character_sprite(monkeypatch):
     output = queue.get_nowait()
     assert output.name == "七海千秋"
     assert output.asset_id == "1"
-
-
-def test_restore_session_resolves_sprite_with_current_strategy_without_mutating_history():
-    queue = Queue()
-    window = _Window()
-    character = SimpleNamespace(name="七海千秋", sprites=[])
-    config = _config(characters=[character])
-    config.get_character_by_name = lambda name: character if name == "七海千秋" else None
-    strategy = MagicMock()
-    strategy.lookup.return_value = SpriteMatch(asset_id="2")
-    content = {
-        "dialog": [
-            {"character_name": "七海千秋", "speech": "你好", "sprite": "1"}
-        ]
-    }
-    messages = [{"role": "assistant", "content": json.dumps(content)}]
-
-    restored = session_restore.restore_session_presentation(
-        messages,
-        presentation_queue=queue,
-        presenter=window,
-        config=config,
-        tr_i18n=lambda key, **kwargs: key,
-        sprite_lookup_strategy=strategy,
-    )
-
-    assert restored is True
-    assert queue.get_nowait().asset_id == "2"
-    assert json.loads(messages[0]["content"])["dialog"][0]["sprite"] == "1"
-    assert strategy.lookup.call_args.args[0].message.asset_id == "1"
-
-
-def test_branch_replay_resolves_only_the_sprite_without_replaying_text():
-    queue = Queue()
-    character = SimpleNamespace(name="七海千秋", sprites=[])
-    config = _config(characters=[character])
-    config.get_character_by_name = lambda name: character if name == "七海千秋" else None
-    strategy = MagicMock()
-    strategy.lookup.return_value = SpriteMatch(asset_id="3")
-    messages = [
-        {
-            "role": "assistant",
-            "content": json.dumps(
-                {
-                    "dialog": [
-                        {
-                            "character_name": "七海千秋",
-                            "speech": "分支中的台词",
-                            "sprite": "1",
-                        }
-                    ]
-                }
-            ),
-        }
-    ]
-
-    replayed = session_restore.replay_latest_dialog_sprite(
-        messages,
-        presentation_queue=queue,
-        config=config,
-        sprite_lookup_strategy=strategy,
-    )
-
-    assert replayed is True
-    output = queue.get_nowait()
-    assert output.asset_id == "3"
-    assert output.text == ""

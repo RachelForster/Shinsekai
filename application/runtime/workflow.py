@@ -46,7 +46,6 @@ class ChatWorkflowHandles:
     dialog_queue: Any | None = None
     presentation_queue: Any | None = None
     ui_worker: Any | None = None
-    dialog_media_worker: Any | None = None
 
 
 def _resolve_exports(dag: Dag) -> dict[str, Any]:
@@ -110,5 +109,4 @@ def get_chat_workflow_handles(workflow: RuntimeWorkflow) -> ChatWorkflowHandles:
             "chat.audio_output",
         ),
         ui_worker=workflow.get_export("chat.ui_worker"),
-        dialog_media_worker=workflow.get_export("chat.dialog_media_worker"),
     )
