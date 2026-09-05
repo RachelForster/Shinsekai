@@ -9,6 +9,8 @@ from typing import Any, Sequence
 
 import yaml
 
+from core.media.asset_tags import tag_contents
+
 from ..lookup import AssetCandidate, AssetLookupResult
 from .asset import AssetResolver, ResolvedAsset, asset_candidates
 
@@ -38,7 +40,9 @@ class SpriteAssetResolver:
         self._resolver = AssetResolver()
 
     def candidates(self, character: Any) -> tuple[AssetCandidate, ...]:
-        return asset_candidates(getattr(character, "sprites", None) or [])
+        sprites = getattr(character, "sprites", None) or []
+        tags = tag_contents(getattr(character, "emotion_tags", ""), len(sprites))
+        return asset_candidates(sprites, tags=tags)
 
     def resolve(
         self,

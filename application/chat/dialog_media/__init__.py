@@ -6,10 +6,18 @@ from .lookup import (
     AssetLookupRequest,
     AssetLookupResult,
     AssetLookupStrategy,
+    CompositeAssetLookupStrategy,
     MessageAssetIdLookupStrategy,
+    VectorDatabaseAssetLookupStrategy,
 )
 from .models import TtsGenerationRequest
-from .resolver import AssetResolver, ResolvedAsset, ResolvedSpriteAsset, SpriteAssetResolver
+from .resolver import (
+    AssetResolver,
+    ResolvedAsset,
+    ResolvedSpriteAsset,
+    SpriteAssetResolver,
+    asset_candidates,
+)
 from .tts_generation import DefaultTtsGenerationStrategy, TtsGenerationStrategy
 
 __all__ = [
@@ -19,6 +27,8 @@ __all__ = [
     "AssetLookupResult",
     "AssetLookupStrategy",
     "AssetResolver",
+    "asset_candidates",
+    "CompositeAssetLookupStrategy",
     "DefaultTtsGenerationStrategy",
     "MessageAssetIdLookupStrategy",
     "ResolvedAsset",
@@ -26,4 +36,5 @@ __all__ = [
     "SpriteAssetResolver",
     "TtsGenerationRequest",
     "TtsGenerationStrategy",
+    "VectorDatabaseAssetLookupStrategy",
 ]

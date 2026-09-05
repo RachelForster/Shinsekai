@@ -424,6 +424,7 @@ class _BaseChatSession:
                 presentation_queue=runtime.presentation_queue,
                 text_processor=runtime.text_processor,
                 opencc=runtime.opencc,
+                background=getattr(runtime.presentation_assets, "background", None),
                 chat_turn_service=self.chat_turn_service,
             )
         )

@@ -39,6 +39,10 @@ class LLMDialogMessage(BaseModel):
         alias="sprite",
         description="资源编号（立绘索引 / BGM 索引等），-1 表示无需变化",
     )
+    vibe: Optional[str] = Field(
+        "",
+        description="用于语义选择立绘、场景或 BGM 的简短氛围描述",
+    )
     translate: Optional[str] = Field(
         "", description="可选的翻译文本，如果存在则用于 TTS"
     )

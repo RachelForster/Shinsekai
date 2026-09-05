@@ -33,6 +33,12 @@ def search_memories(
     return memory_search(query, character_name=character_name, limit=limit)
 
 
+def search_media_assets(payload: dict[str, Any]) -> dict[str, Any]:
+    from ai.memory.media_assets import media_asset_search_response
+
+    return media_asset_search_response(payload)
+
+
 def remember_memory(content: str, *, character_name: str) -> dict[str, Any]:
     from ai.memory.operations import memory_remember
 

@@ -7,7 +7,9 @@ from .base import (
     AssetLookupResult,
     AssetLookupStrategy,
 )
+from .composite import CompositeAssetLookupStrategy
 from .message_asset_id import MessageAssetIdLookupStrategy
+from .vector_database import VectorDatabaseAssetLookupStrategy
 
 __all__ = [
     "AssetCandidate",
@@ -15,5 +17,7 @@ __all__ = [
     "AssetLookupRequest",
     "AssetLookupResult",
     "AssetLookupStrategy",
+    "CompositeAssetLookupStrategy",
     "MessageAssetIdLookupStrategy",
+    "VectorDatabaseAssetLookupStrategy",
 ]

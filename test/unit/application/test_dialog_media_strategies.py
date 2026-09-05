@@ -5,14 +5,23 @@ from unittest.mock import MagicMock
 
 import yaml
 
-from application.chat.handlers.dialog_media import CharacterMediaHandler
+from application.chat.handlers.dialog_media import (
+    BgmMediaHandler,
+    CharacterMediaHandler,
+    SceneMediaHandler,
+)
 from application.chat.dialog_media import (
+    AssetCandidate,
+    AssetIdMatch,
     AssetLookupRequest,
+    AssetLookupResult,
+    CompositeAssetLookupStrategy,
     DefaultTtsGenerationStrategy,
     MessageAssetIdLookupStrategy,
     ResolvedSpriteAsset,
     SpriteAssetResolver,
     TtsGenerationRequest,
+    VectorDatabaseAssetLookupStrategy,
 )
 from application.runtime.workers import DialogMediaWorker
 from sdk.messages import LLMDialogMessage, PresentationMessage
@@ -62,6 +71,55 @@ def test_message_asset_id_lookup_and_sprite_resolver_resolve_voice_metadata(tmp_
     assert match.voice_type == "preset"
     assert match.voice_path == "happy.wav"
     assert match.voice_text == "A happy line"
+
+
+def test_vector_database_asset_lookup_returns_ranked_current_candidates():
+    search = MagicMock(
+        return_value=[
+            {"asset_id": "2", "score": 0.91},
+            {"asset_id": "stale", "score": 0.85},
+            {"asset_id": "1", "score": 0.62},
+        ]
+    )
+    candidates = (
+        AssetCandidate("1", 0, "first.png", tags="calm"),
+        AssetCandidate("2", 1, "second.png", tags="angry"),
+    )
+
+    result = VectorDatabaseAssetLookupStrategy(search).lookup(
+        AssetLookupRequest(
+            scope="sprite:alice",
+            candidates=candidates,
+            vibe="furious",
+        )
+    )
+
+    assert result.matches == (
+        AssetIdMatch("2", 0.91),
+        AssetIdMatch("1", 0.62),
+    )
+    search.assert_called_once_with(
+        scope="sprite:alice",
+        vibe="furious",
+        candidates=candidates,
+        limit=2,
+    )
+
+
+def test_composite_asset_lookup_falls_back_to_explicit_id():
+    empty = MagicMock()
+    empty.lookup.return_value = AssetLookupResult()
+    strategy = CompositeAssetLookupStrategy((empty, MessageAssetIdLookupStrategy()))
+
+    result = strategy.lookup(
+        AssetLookupRequest(
+            scope="scene:school",
+            candidates=(),
+            explicit_asset_id="03",
+        )
+    )
+
+    assert result.best == AssetIdMatch("03")
 
 
 def test_sprite_resolver_refreshes_mutable_voice_metadata_from_yaml(tmp_path):
@@ -243,6 +301,54 @@ def test_character_handler_builds_presentation_from_injected_path_strategy(
         is_final_segment=True,
         timeout=0,
     )
+
+
+def test_scene_handler_resolves_vibe_match_through_shared_asset_strategy(
+    mock_app_runtime,
+):
+    mock_app_runtime.background = SimpleNamespace(
+        name="School",
+        sprites=[{"path": "day.png"}, {"path": "rain.png"}],
+        bg_tags="daylight\nrainy, lonely",
+    )
+    lookup = MagicMock(
+        return_value=AssetLookupResult(matches=(AssetIdMatch("2", 0.9),))
+    )
+    lookup.lookup = lookup
+    handler = SceneMediaHandler(lookup)
+
+    handler.handle(LLMDialogMessage(name="scene", text="", vibe="lonely rain"))
+
+    request = lookup.call_args.args[0]
+    assert request.scope == "scene:School"
+    assert request.vibe == "lonely rain"
+    assert request.candidates[1].tags == "rainy, lonely"
+    assert mock_app_runtime.presentation_queue.get_nowait().asset_id == "2"
+
+
+def test_bgm_handler_resolves_vibe_match_through_shared_asset_strategy(
+    mock_app_runtime,
+):
+    mock_app_runtime.background = SimpleNamespace(
+        name="School",
+        bgm_tags="quiet\ntense pursuit",
+    )
+    mock_app_runtime.bgm_list = ["quiet.mp3", "chase.mp3"]
+    lookup = MagicMock(
+        return_value=AssetLookupResult(matches=(AssetIdMatch("2", 0.88),))
+    )
+    lookup.lookup = lookup
+    handler = BgmMediaHandler(lookup)
+
+    handler.handle(LLMDialogMessage(name="bgm", text="", vibe="danger"))
+
+    request = lookup.call_args.args[0]
+    assert request.scope == "bgm:School"
+    assert request.vibe == "danger"
+    assert request.candidates[1].tags == "tense pursuit"
+    output = mock_app_runtime.presentation_queue.get_nowait()
+    assert output.asset_id == "2"
+    assert output.audio_path == "chase.mp3"
 
 
 def test_dialog_media_worker_passes_injected_strategies_to_handler_chain(monkeypatch):
