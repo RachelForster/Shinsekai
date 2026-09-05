@@ -304,12 +304,14 @@ describe("ChatLauncherPage", () => {
     mocks.listCharacters.mockResolvedValue([{ name: "Mio" }, { name: "Aki" }]);
     mocks.getTemplateSession.mockResolvedValue({
       background: "school",
+      characterPromptMode: "compact",
       effectNames: [],
       filenameStub: "Session Template",
       historyPath: " D:/history/session.json ",
       initSpritePath: " D:/sprites/init.png ",
       maxDialogItems: 12,
       maxSpeechChars: 160,
+      primaryCharacters: ["Mio"],
       roomId: "room-7",
       scenario: "old scenario",
       selectedCharacters: ["Mio", "Aki"],
@@ -337,9 +339,11 @@ describe("ChatLauncherPage", () => {
     expect(mocks.saveTemplateSession).toHaveBeenCalledWith(
       expect.objectContaining({
         background: "school",
+        characterPromptMode: "compact",
         effectNames: [],
         historyPath: "D:/history/session.json",
         initSpritePath: "D:/sprites/init.png",
+        primaryCharacters: ["Mio"],
         roomId: "room-7",
         selectedCharacters: ["Mio", "Aki"],
         templateFileDropdown: "tpl-session",

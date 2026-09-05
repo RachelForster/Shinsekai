@@ -166,6 +166,7 @@ export function ChatLauncherPage() {
 
   const buildSession = (): TemplateLaunchSession => ({
     background: backgroundName,
+    characterPromptMode: launchSession?.characterPromptMode,
     enableMobileAccess: launchSession?.enableMobileAccess ?? false,
     effectNames: selectedEffects,
     filenameStub: selectedTemplate?.name ?? "",
@@ -173,6 +174,7 @@ export function ChatLauncherPage() {
     initSpritePath: initSpritePath.trim(),
     maxDialogItems: launchSession?.maxDialogItems ?? 0,
     maxSpeechChars: launchSession?.maxSpeechChars ?? 0,
+    primaryCharacters: launchSession?.primaryCharacters,
     roomId: launchSession?.roomId ?? "",
     scenario: selectedTemplate?.scenario ?? "",
     selectedCharacters,

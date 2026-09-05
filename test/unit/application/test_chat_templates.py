@@ -322,6 +322,8 @@ def test_loading_template_session_removes_historical_stale_names(monkeypatch):
     character = SimpleNamespace(name="B", sprites=[])
     stored = {
         "selected_characters": ["A", "B"],
+        "character_prompt_mode": "compact",
+        "primary_characters": ["A"],
         "init_sprite_path": "sprites/a.png",
         "scenario_text": "scene",
     }
@@ -340,8 +342,47 @@ def test_loading_template_session_removes_historical_stale_names(monkeypatch):
     restored = _load_template_session_payload(state)
 
     assert stored["selected_characters"] == ["B"]
+    assert stored["character_prompt_mode"] == ""
+    assert stored["primary_characters"] == []
     assert restored is not None
     assert restored["selectedCharacters"] == ["B"]
+    assert "characterPromptMode" not in restored
+    assert "primaryCharacters" not in restored
+
+
+def test_loading_template_session_canonicalizes_primary_character_names(monkeypatch):
+    characters = {
+        "alice": SimpleNamespace(name="Alice", sprites=[]),
+        "b": SimpleNamespace(name="B", sprites=[]),
+    }
+    stored = {
+        "selected_characters": ["alice", "B"],
+        "character_prompt_mode": "compact",
+        "primary_characters": [" ALICE "],
+        "init_sprite_path": "",
+        "scenario_text": "scene",
+    }
+    storage_module = ModuleType("application.chat.session_store")
+    storage_module.load_template_session = lambda _path: dict(stored)
+    storage_module.save_template_session = lambda _path, data: stored.update(data)
+    monkeypatch.setitem(sys.modules, "application.chat.session_store", storage_module)
+    state = SimpleNamespace(
+        config_manager=SimpleNamespace(
+            config=SimpleNamespace(characters=list(characters.values())),
+            get_character_by_name=lambda name: characters.get(
+                str(name).strip().casefold()
+            ),
+        ),
+        template_dir_path="unused",
+    )
+
+    restored = _load_template_session_payload(state)
+
+    assert stored["selected_characters"] == ["Alice", "B"]
+    assert stored["primary_characters"] == ["Alice"]
+    assert stored["character_prompt_mode"] == "compact"
+    assert restored is not None
+    assert restored["primaryCharacters"] == ["Alice"]
 
 
 def test_safe_session_int_and_untranslated_key_detection():

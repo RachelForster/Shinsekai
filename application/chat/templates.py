@@ -383,14 +383,35 @@ def _reconcile_template_session_characters(
     selected = _session_string_list(raw.get("selected_characters"))
     resolved = resolve_chat_template_characters(selected, state.config_manager)
     resolved_names = [name for name, _character in resolved]
-    if resolved_names == selected:
+    resolved_by_key = {
+        character_name_key(name): name
+        for name in resolved_names
+        if character_name_key(name)
+    }
+    primary = _session_string_list(raw.get("primary_characters"))
+    resolved_primary: list[str] = []
+    seen_primary_keys: set[str] = set()
+    for name in primary:
+        key = character_name_key(name)
+        canonical_name = resolved_by_key.get(key)
+        if canonical_name and key not in seen_primary_keys:
+            resolved_primary.append(canonical_name)
+            seen_primary_keys.add(key)
+
+    prompt_mode = str(raw.get("character_prompt_mode") or "").strip().lower()
+    if prompt_mode == "compact" and not resolved_primary:
+        prompt_mode = ""
+    if (
+        resolved_names == selected
+        and resolved_primary == primary
+        and prompt_mode == str(raw.get("character_prompt_mode") or "")
+    ):
         return raw
+
     repaired = dict(raw)
     repaired["selected_characters"] = resolved_names
-    primary = _session_string_list(raw.get("primary_characters"))
-    repaired["primary_characters"] = [
-        name for name in primary if name in resolved_names
-    ]
+    repaired["primary_characters"] = resolved_primary
+    repaired["character_prompt_mode"] = prompt_mode
     repaired["init_sprite_path"] = initial_sprite_path_for_characters(
         state.config_manager,
         str(raw.get("init_sprite_path") or ""),
