@@ -56,8 +56,39 @@ def _generate_character_setting(state: BridgeState, payload: dict[str, Any]) -> 
         setting,
     )
     return {
+        "characterBrief": result.character_brief,
         "characterSetting": result.character_setting,
         "message": result.message,
+    }
+
+
+def _generate_character_brief(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    from application.characters.generate_briefs import generate_character_brief
+
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise ValueError("角色名称不能为空")
+    brief = generate_character_brief(
+        state.config_manager,
+        name,
+        str(payload.get("setting") or ""),
+    )
+    return {"characterBrief": brief, "message": "输出成功"}
+
+
+def _ensure_character_briefs(state: BridgeState, payload: dict[str, Any]) -> dict[str, Any]:
+    from application.characters.generate_briefs import ensure_character_briefs
+
+    names = payload.get("names")
+    if not isinstance(names, list):
+        raise ValueError("names must be a list")
+    characters, generated_names = ensure_character_briefs(
+        state.config_manager,
+        names,
+    )
+    return {
+        "characters": [_jsonify(character) for character in characters],
+        "generatedNames": generated_names,
     }
 
 

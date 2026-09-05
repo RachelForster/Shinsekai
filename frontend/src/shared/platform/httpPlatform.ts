@@ -24,6 +24,8 @@ import type {
   Background,
   BackgroundTranslateResult,
   Character,
+  CharacterBriefBatchResult,
+  CharacterBriefResult,
   CharacterMemory,
   CharacterMemoryImportPreview,
   CharacterMemoryImportResult,
@@ -892,6 +894,16 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         openDownload(apiBase, result.path);
         return result.path;
       },
+      ensureBriefs: (names) =>
+        requestJson<CharacterBriefBatchResult>(apiBase, "/api/characters/ensure-briefs", {
+          body: JSON.stringify({ names }),
+          method: "POST",
+        }),
+      generateBrief: (input) =>
+        requestJson<CharacterBriefResult>(apiBase, "/api/characters/ai-brief", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
       generateSetting: (input) =>
         requestJson<CharacterSettingResult>(apiBase, "/api/characters/ai-setting", {
           body: JSON.stringify(input),

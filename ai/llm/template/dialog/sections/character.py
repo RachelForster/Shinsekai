@@ -19,6 +19,20 @@ def _profile_node(
     )
 
 
+def _brief_node(
+    index: int, name: str, character: Any
+) -> TextSection[DialogTemplateContext]:
+    brief = str(getattr(character, "character_brief", "") or "").strip()
+    setting = str(getattr(character, "character_setting", "") or "")
+    content = brief or setting
+    return TextSection(
+        f"brief.{index}",
+        enabled=bool(content),
+        text=lambda context: context.translate("brief_for", name=name)
+        + f"{content}\n\n",
+    )
+
+
 @dataclass(frozen=True)
 class CharacterSection(Section[DialogTemplateContext]):
     id: str = "characters"
@@ -26,6 +40,25 @@ class CharacterSection(Section[DialogTemplateContext]):
     def _resolve_children(
         self, context: DialogTemplateContext
     ) -> tuple[Section[DialogTemplateContext], ...]:
+        primary_names = context.primary_character_names
+        primary_characters = (
+            context.characters
+            if primary_names is None
+            else tuple(
+                (name, character)
+                for name, character in context.characters
+                if name in primary_names
+            )
+        )
+        supporting_characters = (
+            ()
+            if primary_names is None
+            else tuple(
+                (name, character)
+                for name, character in context.characters
+                if name not in primary_names
+            )
+        )
         sprites = TextSection(
             "sprites",
             text=context.translate("sprites_header"),
@@ -49,7 +82,16 @@ class CharacterSection(Section[DialogTemplateContext]):
             text=context.translate("profile_header"),
             children=tuple(
                 _profile_node(index, name, character)
-                for index, (name, character) in enumerate(context.characters)
+                for index, (name, character) in enumerate(primary_characters)
             ),
         )
-        return sprites, profiles, *self.children
+        briefs = TextSection(
+            "briefs",
+            enabled=bool(supporting_characters),
+            text=context.translate("brief_header"),
+            children=tuple(
+                _brief_node(index, name, character)
+                for index, (name, character) in enumerate(supporting_characters)
+            ),
+        )
+        return sprites, profiles, briefs, *self.children

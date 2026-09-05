@@ -215,6 +215,7 @@ class CharacterUseCase:
             pronunciation_map=character.pronunciation_map,
             edit_as_name=original_name,
             emotion_tags=str(character.emotion_tags or ""),
+            character_brief=str(character.character_brief or "").strip(),
         )
         if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
             raise RuntimeError(message)

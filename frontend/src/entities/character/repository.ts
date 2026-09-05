@@ -29,6 +29,14 @@ export function exportCharacter(name: string) {
   return getPlatform().characters.export(name);
 }
 
+export function ensureCharacterBriefs(names: string[]) {
+  return getPlatform().characters.ensureBriefs(names);
+}
+
+export function generateCharacterBrief(input: { name: string; setting: string }) {
+  return getPlatform().characters.generateBrief(input);
+}
+
 export function generateCharacterSetting(input: { name: string; setting: string }) {
   return getPlatform().characters.generateSetting(input);
 }

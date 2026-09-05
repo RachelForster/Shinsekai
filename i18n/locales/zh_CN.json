@@ -674,6 +674,8 @@
     "sprites_count": "{name}有{n}张立绘：\n",
     "profile_header": "\n角色说明：\n",
     "profile_for": "以下是{name}的角色设定：\n",
+    "brief_header": "\n次要角色简介：\n",
+    "brief_for": "{name}：",
     "scene_block_header": "场景说明：\n",
     "scene_count": "现在有{n}个可用场景：\n",
     "bgm_block_header": "BGM说明：\n",

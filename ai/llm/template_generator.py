@@ -108,6 +108,7 @@ class TemplateGenerator:
         use_stat=True,
         max_speech_chars: int = 0,
         max_dialog_items: int = 0,
+        primary_characters: Any = None,
     ):
         if not selected_characters:
             raise NoValidCharactersError()
@@ -120,6 +121,16 @@ class TemplateGenerator:
             translate=_T,
             target_voice_name=_target_voice_display_name(),
             json_reminder=json_format_reminder(),
+            primary_character_names=(
+                None
+                if primary_characters is None
+                else frozenset(
+                    name
+                    for name, _character in self.resolve_chat_template_characters(
+                        primary_characters
+                    )
+                )
+            ),
             tools_block=_format_llm_tools_block(),
             background=(
                 config_manager.get_background_by_name(bg_name)

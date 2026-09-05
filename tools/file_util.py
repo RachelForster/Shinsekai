@@ -11,6 +11,7 @@ from config.config_manager import ConfigManager
 from typing import List
 import platform
 import subprocess
+import tempfile
 
 # 定义项目的基础数据路径
 BASE_DATA_PATH = Path('./data')
@@ -149,6 +150,7 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                 'sprite_scale': config.sprite_scale,
                 'sprites': config.sprites,
                 'emotion_tags': config.emotion_tags,
+                'character_brief': getattr(config, 'character_brief', '') or '',
                 'character_setting': config.character_setting,
                 'speech_speed': getattr(config, 'speech_speed', 1.0),
                 'speech_volume': getattr(config, 'speech_volume', 1.0),
@@ -320,6 +322,14 @@ def import_character(input_path: str) -> list[CharacterConfig]:
 
         if not yaml_data:
             raise ValueError("YAML配置文件为空或格式错误。")
+        if not isinstance(yaml_data, list) or not all(
+            isinstance(char_data, dict) for char_data in yaml_data
+        ):
+            raise ValueError("YAML人物配置必须是对象列表。")
+
+        # Validate every package entry before copying any assets or changing config.
+        for char_data in yaml_data:
+            CharacterConfig.parse_dic(char_data=dict(char_data))
 
         # 读取现有配置，用于检测冲突
         existing_names = set()
@@ -448,8 +458,23 @@ def import_character(input_path: str) -> list[CharacterConfig]:
         new_data_list = [config.__dict__ for config in imported_configs]
         existing_data.extend(new_data_list)
         
-        with open(CHARACTERS_CONFIG_PATH, 'w', encoding='utf-8') as f:
-            yaml.dump(existing_data, f, allow_unicode=True, sort_keys=False)
+        temp_config_path = None
+        try:
+            with tempfile.NamedTemporaryFile(
+                "w",
+                delete=False,
+                dir=CONFIG_DIR,
+                encoding="utf-8",
+                prefix="characters-",
+                suffix=".yaml.tmp",
+            ) as f:
+                temp_config_path = Path(f.name)
+                yaml.dump(existing_data, f, allow_unicode=True, sort_keys=False)
+            os.replace(temp_config_path, CHARACTERS_CONFIG_PATH)
+            temp_config_path = None
+        finally:
+            if temp_config_path is not None:
+                temp_config_path.unlink(missing_ok=True)
 
         print(f"人物成功从 {input_path} 导入，并已将配置追加到 {CHARACTERS_CONFIG_PATH}。")
         return imported_configs

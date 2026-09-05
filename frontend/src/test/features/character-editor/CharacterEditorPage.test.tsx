@@ -346,6 +346,8 @@ describe("CharacterEditorPage", () => {
       initSpritePath: "",
       maxDialogItems: 0,
       maxSpeechChars: 0,
+      characterPromptMode: "compact",
+      primaryCharacters: ["Mika"],
       roomId: "",
       scenario: "",
       selectedCharacters: ["Mika", "B"],
@@ -375,6 +377,7 @@ describe("CharacterEditorPage", () => {
         "B",
       ]),
     );
+    expect(client.getQueryData<TemplateLaunchSession>(["templates", "session"])?.primaryCharacters).toEqual(["C"]);
   });
 
   it("auto-saves a new character before uploading sprites", async () => {
@@ -668,7 +671,34 @@ describe("CharacterEditorPage", () => {
   });
 
   it("confirms deleting the selected character", async () => {
-    renderPage();
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+    });
+    client.setQueryData<TemplateLaunchSession>(["templates", "session"], {
+      background: "",
+      characterPromptMode: "compact",
+      effectNames: [],
+      filenameStub: "Session",
+      historyPath: "",
+      initSpritePath: "",
+      maxDialogItems: 0,
+      maxSpeechChars: 0,
+      primaryCharacters: ["Mika"],
+      roomId: "",
+      scenario: "",
+      selectedCharacters: ["Mika", "B"],
+      system: "",
+      templateFileDropdown: "",
+      useCg: false,
+      useChoice: true,
+      useCot: false,
+      useEffect: true,
+      useNarration: true,
+      useStat: true,
+      useTranslation: false,
+      voiceLanguage: "ja",
+    });
+    renderPage(client);
 
     await screen.findByDisplayValue("Mika");
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
@@ -676,6 +706,12 @@ describe("CharacterEditorPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete" }));
 
     await waitFor(() => expect(mockDeleteCharacter).toHaveBeenCalledWith("Mika"));
+    await waitFor(() => {
+      const session = client.getQueryData<TemplateLaunchSession>(["templates", "session"]);
+      expect(session?.selectedCharacters).toEqual(["B"]);
+      expect(session?.primaryCharacters).toEqual([]);
+      expect(session?.characterPromptMode).toBeUndefined();
+    });
   });
 
   it("locks cloud voice reference controls when Kaggle GPT-SoVITS is selected", async () => {

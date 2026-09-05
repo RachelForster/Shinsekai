@@ -12,6 +12,7 @@ import { ToastProvider } from "../../../shared/ui";
 
 const mockListBackgrounds = vi.fn();
 const mockListCharacters = vi.fn();
+const mockEnsureCharacterBriefs = vi.fn();
 const mockLaunchChat = vi.fn();
 const mockGetChatSnapshot = vi.fn();
 const mockInstallMissingRuntimeDependency = vi.fn();
@@ -35,6 +36,7 @@ vi.mock("../../../entities/background/repository", () => ({
 
 vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
+  ensureCharacterBriefs: (names: string[]) => mockEnsureCharacterBriefs(names),
   listCharacters: () => mockListCharacters(),
 }));
 
@@ -115,6 +117,7 @@ describe("TemplateEditorPage", () => {
       { color: "#66ccff", name: "Nanami" },
       { color: "#ff99aa", name: "Mika" },
     ]);
+    mockEnsureCharacterBriefs.mockResolvedValue({ characters: [], generatedNames: [] });
     mockListBackgrounds.mockResolvedValue([{ name: "默认房间" }]);
     mockListEffects.mockResolvedValue([]);
     mockSaveTemplate.mockImplementation(async (input) => ({ ...template, ...(input as object), id: "opening" }));
@@ -173,6 +176,78 @@ describe("TemplateEditorPage", () => {
       ),
     );
     expect(await screen.findByDisplayValue("Generated scenario")).toBeInTheDocument();
+  });
+
+  it("asks for primary characters above the threshold and generates missing supporting briefs", async () => {
+    const largeCast = Array.from({ length: 6 }, (_, index) => ({
+      character_brief: index === 4 ? "Existing brief" : "",
+      color: "#66ccff",
+      name: `Character ${index + 1}`,
+    }));
+    mockListCharacters.mockResolvedValue(largeCast);
+    mockEnsureCharacterBriefs.mockResolvedValue({
+      characters: largeCast.slice(2).map((character) => ({
+        ...character,
+        character_brief: character.character_brief || `Generated brief for ${character.name}`,
+      })),
+      generatedNames: ["Character 3", "Character 4", "Character 6"],
+    });
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+
+    expect(await screen.findByText("6 selected · roles need to be set")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Choose primary characters" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose primary characters" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Character 2/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply roles" }));
+
+    await waitFor(() =>
+      expect(mockEnsureCharacterBriefs).toHaveBeenCalledWith([
+        "Character 3",
+        "Character 4",
+        "Character 5",
+        "Character 6",
+      ]),
+    );
+    await waitFor(() =>
+      expect(mockGenerateTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          characterPromptMode: "compact",
+          characters: largeCast.map((character) => character.name),
+          primaryCharacters: ["Character 1", "Character 2"],
+        }),
+      ),
+    );
+    expect(screen.getByText("2 primary · 4 supporting")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Character 6" }));
+    expect(await screen.findByText("2 primary · 3 supporting")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Choose primary characters" })).not.toBeInTheDocument();
+  });
+
+  it("finishes a deferred launch after character roles are applied", async () => {
+    const largeCast = Array.from({ length: 5 }, (_, index) => ({
+      character_brief: "Existing brief",
+      color: "#66ccff",
+      name: `Character ${index + 1}`,
+    }));
+    mockListCharacters.mockResolvedValue(largeCast);
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Choose primary characters" });
+    expect(mockLaunchChat).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply roles" }));
+
+    await waitFor(() => expect(mockGenerateTemplate).toHaveBeenCalled());
+    await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
   });
 
   it("auto-generates only when character selection changes and puts the default RPG brief in scenario", async () => {

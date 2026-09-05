@@ -52,7 +52,9 @@ def test_character_route_contracts_remain_stable() -> None:
     assert _contracts(CHARACTER_ROUTES) == {
         ("GET", "/api/characters"),
         ("POST", "/api/characters"),
+        ("POST", "/api/characters/ai-brief"),
         ("POST", "/api/characters/ai-setting"),
+        ("POST", "/api/characters/ensure-briefs"),
         ("POST", "/api/characters/emotion-tags"),
         ("POST", "/api/characters/sprite-scale"),
         ("POST", "/api/characters/sprite-voice/delete"),
