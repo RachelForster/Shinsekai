@@ -105,6 +105,52 @@ def test_generate_template_summary_returns_canonical_resolved_characters(monkeyp
     assert "Deleted" not in summary["system"]
 
 
+def test_generate_template_summary_uses_full_primary_profile_and_supporting_brief(monkeypatch):
+    characters = {
+        "alice": SimpleNamespace(
+            name="Alice",
+            sprites=[],
+            emotion_tags="",
+            character_brief="Alice brief",
+            character_setting="Alice full profile",
+        ),
+        "mika": SimpleNamespace(
+            name="Mika",
+            sprites=[],
+            emotion_tags="",
+            character_brief="Mika short brief",
+            character_setting="Mika full profile",
+        ),
+    }
+    config_manager = SimpleNamespace(
+        get_character_by_name=lambda name: characters.get(str(name).strip().lower()),
+    )
+    monkeypatch.setattr("ai.llm.template_generator.config_manager", config_manager)
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **kwargs: f"{key}:{kwargs}\n",
+    )
+    state = SimpleNamespace(
+        config_manager=config_manager,
+        template_generator=TemplateGenerator(output_contract_patches=[]),
+    )
+
+    summary = _generate_template_summary(
+        state,
+        {
+            "backgroundName": "",
+            "characterPromptMode": "compact",
+            "characters": ["Alice", "Mika"],
+            "primaryCharacters": ["Alice", "Deleted"],
+            "useTranslation": False,
+        },
+    )
+
+    assert "Alice full profile" in summary["system"]
+    assert "Mika short brief" in summary["system"]
+    assert "Mika full profile" not in summary["system"]
+
+
 def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
     config_manager = SimpleNamespace(get_character_by_name=lambda _name: None)
     monkeypatch.setattr(
@@ -164,6 +210,8 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
             "enableMobileAccess": True,
             "effectNames": [" Rain ", ""],
             "initSpritePath": "",
+            "characterPromptMode": "compact",
+            "primaryCharacters": [" alice ", "Deleted"],
             "scenario": "Restored scenario",
             "selectedCharacters": ["Deleted", " alice "],
             "system": "Generated system",
@@ -174,9 +222,13 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     assert saved["effect_names"] == ["Rain"]
     assert saved["enable_mobile_access"] is True
     assert saved["init_sprite_path"] == "sprites/alice.png"
+    assert saved["character_prompt_mode"] == "compact"
+    assert saved["primary_characters"] == ["Alice"]
     assert restored["effectNames"] == ["Rain"]
     assert restored["selectedCharacters"] == ["Alice"]
     assert restored["initSpritePath"] == "sprites/alice.png"
+    assert restored["characterPromptMode"] == "compact"
+    assert restored["primaryCharacters"] == ["Alice"]
 
 
 def test_scenario_from_template_like_falls_back_only_for_none():
@@ -245,6 +297,7 @@ def test_character_rename_updates_persisted_template_selection(monkeypatch):
     }
     stored = {
         "selected_characters": ["A", "B"],
+        "primary_characters": ["A"],
         "init_sprite_path": "",
         "scenario_text": "scene",
     }
@@ -262,12 +315,15 @@ def test_character_rename_updates_persisted_template_selection(monkeypatch):
     _rename_template_session_character(state, "A", "C")
 
     assert stored["selected_characters"] == ["C", "B"]
+    assert stored["primary_characters"] == ["C"]
 
 
 def test_loading_template_session_removes_historical_stale_names(monkeypatch):
     character = SimpleNamespace(name="B", sprites=[])
     stored = {
         "selected_characters": ["A", "B"],
+        "character_prompt_mode": "compact",
+        "primary_characters": ["A"],
         "init_sprite_path": "sprites/a.png",
         "scenario_text": "scene",
     }
@@ -286,8 +342,47 @@ def test_loading_template_session_removes_historical_stale_names(monkeypatch):
     restored = _load_template_session_payload(state)
 
     assert stored["selected_characters"] == ["B"]
+    assert stored["character_prompt_mode"] == ""
+    assert stored["primary_characters"] == []
     assert restored is not None
     assert restored["selectedCharacters"] == ["B"]
+    assert "characterPromptMode" not in restored
+    assert "primaryCharacters" not in restored
+
+
+def test_loading_template_session_canonicalizes_primary_character_names(monkeypatch):
+    characters = {
+        "alice": SimpleNamespace(name="Alice", sprites=[]),
+        "b": SimpleNamespace(name="B", sprites=[]),
+    }
+    stored = {
+        "selected_characters": ["alice", "B"],
+        "character_prompt_mode": "compact",
+        "primary_characters": [" ALICE "],
+        "init_sprite_path": "",
+        "scenario_text": "scene",
+    }
+    storage_module = ModuleType("application.chat.session_store")
+    storage_module.load_template_session = lambda _path: dict(stored)
+    storage_module.save_template_session = lambda _path, data: stored.update(data)
+    monkeypatch.setitem(sys.modules, "application.chat.session_store", storage_module)
+    state = SimpleNamespace(
+        config_manager=SimpleNamespace(
+            config=SimpleNamespace(characters=list(characters.values())),
+            get_character_by_name=lambda name: characters.get(
+                str(name).strip().casefold()
+            ),
+        ),
+        template_dir_path="unused",
+    )
+
+    restored = _load_template_session_payload(state)
+
+    assert stored["selected_characters"] == ["Alice", "B"]
+    assert stored["primary_characters"] == ["Alice"]
+    assert stored["character_prompt_mode"] == "compact"
+    assert restored is not None
+    assert restored["primaryCharacters"] == ["Alice"]
 
 
 def test_safe_session_int_and_untranslated_key_detection():

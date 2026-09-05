@@ -100,14 +100,18 @@ export function buildTemplateGenerateInput(input: {
   options: TemplateFlowOptions;
   runtime: Pick<TemplateRuntimeOptions, "maxDialogItems" | "maxSpeechChars" | "voiceLanguage">;
   selectedCharacters: string[];
+  characterPromptMode?: "compact" | "full";
+  primaryCharacters?: string[];
 }): TemplateGenerateInput {
   return {
     backgroundName: input.backgroundName,
+    characterPromptMode: input.characterPromptMode,
     characters: input.selectedCharacters,
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
     maxDialogItems: input.runtime.maxDialogItems,
     maxSpeechChars: input.runtime.maxSpeechChars,
     name: input.draft.name.trim(),
+    primaryCharacters: input.primaryCharacters,
     scenario: String(input.draft.scenario ?? ""),
     useCg: input.options.useCg,
     useChoice: input.options.useChoice,
@@ -128,10 +132,13 @@ export function buildTemplateLaunchSession(input: {
   options: TemplateFlowOptions;
   runtime: TemplateRuntimeOptions;
   selectedCharacters: string[];
+  characterPromptMode?: "compact" | "full";
+  primaryCharacters?: string[];
   selectedTemplateId: string;
 }): TemplateLaunchSession {
   return {
     background: input.backgroundName,
+    characterPromptMode: input.characterPromptMode,
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames ?? [],
     filenameStub: input.draft.name.trim(),
@@ -141,6 +148,7 @@ export function buildTemplateLaunchSession(input: {
     maxSpeechChars: input.runtime.maxSpeechChars,
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.draft.scenario ?? ""),
+    primaryCharacters: input.primaryCharacters,
     selectedCharacters: input.selectedCharacters,
     system: String(input.draft.system ?? ""),
     templateFileDropdown: input.selectedTemplateId,

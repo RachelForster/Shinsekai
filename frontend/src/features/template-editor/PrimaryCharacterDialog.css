@@ -1,0 +1,76 @@
+.primary-character-dialog {
+  width: min(760px, calc(100vw - 32px));
+}
+
+.primary-character-dialog__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.primary-character-dialog__description,
+.primary-character-dialog__count {
+  margin: 0;
+}
+
+.primary-character-dialog__description {
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.primary-character-dialog__count {
+  font-weight: 700;
+}
+
+.primary-character-dialog__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-2);
+  max-height: min(52vh, 480px);
+  overflow: auto;
+}
+
+.primary-character-dialog__card {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--template-character-color) 30%, var(--color-border));
+  border-radius: var(--radius-md);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.primary-character-dialog__card:hover,
+.primary-character-dialog__card--selected {
+  border-color: var(--template-character-color);
+  background: color-mix(in srgb, var(--template-character-color) 10%, var(--color-surface-raised));
+}
+
+.primary-character-dialog__card:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.primary-character-dialog__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.primary-character-dialog__star {
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-muted);
+}
+
+.primary-character-dialog__card--selected .primary-character-dialog__star {
+  fill: var(--template-character-color);
+  color: var(--template-character-color);
+}
+
+.primary-character-dialog__status {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}

@@ -296,8 +296,12 @@ describe("entity repositories", () => {
         deleteMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
         deleteSprite: vi.fn().mockResolvedValue(character),
         deleteSpriteVoice: vi.fn().mockResolvedValue(character),
+        ensureBriefs: vi.fn().mockResolvedValue({ characters: [character], generatedNames: [] }),
         export: vi.fn().mockResolvedValue("/tmp/nanami.zip"),
-        generateSetting: vi.fn().mockResolvedValue({ characterSetting: "kind", message: "ok" }),
+        generateBrief: vi.fn().mockResolvedValue({ characterBrief: "brief", message: "ok" }),
+        generateSetting: vi
+          .fn()
+          .mockResolvedValue({ characterBrief: "brief", characterSetting: "kind", message: "ok" }),
         getMem0Status: vi.fn().mockResolvedValue({ status: "ready" }),
         import: vi.fn().mockResolvedValue([character]),
         importMemories: vi.fn().mockResolvedValue({

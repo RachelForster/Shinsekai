@@ -48,6 +48,31 @@ def test_add_character_updates_existing_emotion_tags():
     assert manager._config_manager.save_count == 1
 
 
+def test_legacy_character_update_preserves_existing_brief():
+    character = Character(
+        name="Mika",
+        color="#66ccff",
+        sprite_prefix="mika",
+        character_brief="Existing brief",
+    )
+    manager = build_manager([character])
+
+    manager.add_character(
+        "Mika",
+        "#66ccff",
+        "mika",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "Updated full setting.",
+        edit_as_name="Mika",
+    )
+
+    assert character.character_brief == "Existing brief"
+
+
 def test_add_character_applies_emotion_tags_to_new_character():
     manager = build_manager([])
 

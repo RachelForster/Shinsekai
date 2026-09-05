@@ -674,6 +674,8 @@
     "sprites_count": "{name}の立ち絵は合計 {n} 枚：\n",
     "profile_header": "\nキャラ設定：\n",
     "profile_for": "{name}の設定：\n",
+    "brief_header": "\nサブキャラクター紹介：\n",
+    "brief_for": "{name}：",
     "scene_block_header": "背景・シーン：\n",
     "scene_count": "利用可能なシーン数は {n} です：\n",
     "bgm_block_header": "BGM：\n",
