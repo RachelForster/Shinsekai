@@ -155,6 +155,10 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     assert output.name == "Alice"
     assert output.text == "Hi"
     assert output.turn_id == runtime.chat_turn_service.current_turn().id
+    assert output._dialog_index == 0
+    assert output._history_binding is not None
+    assert "dialog_index" not in output.model_dump(by_alias=True)
+    assert "history_binding" not in output.model_dump(by_alias=True)
     assert user_input_queue.task_done_calls == 2
     assert user_input_queue.unfinished_tasks == 0
     runtime.llm_manager.chat.assert_called_once_with(
@@ -204,6 +208,7 @@ def test_llm_worker_appends_repaired_suffix_with_turn_identity() -> None:
     assert {message.turn_id for message in output} == {
         runtime.chat_turn_service.current_turn().id
     }
+    assert [message._dialog_index for message in output] == [0, 1]
 
 
 def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_path) -> None:

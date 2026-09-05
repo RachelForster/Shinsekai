@@ -1,11 +1,11 @@
 """Tests for replaceable sprite lookup and TTS generation strategies."""
 
+import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import yaml
 
-from application.chat.handlers.dialog_media import CharacterMediaHandler
 from application.chat.dialog_media import (
     ConfigSpriteLookupStrategy,
     DefaultTtsGenerationStrategy,
@@ -13,6 +13,9 @@ from application.chat.dialog_media import (
     SpriteMatch,
     TtsGenerationRequest,
 )
+from application.chat.dialog_media.history import DialogHistoryBinding
+from application.chat.handlers.dialog_media import CharacterMediaHandler
+from application.chat.session_restore import restore_session_presentation
 from application.runtime.workers import DialogMediaWorker
 from sdk.messages import LLMDialogMessage, PresentationMessage
 
@@ -215,6 +218,7 @@ def test_character_handler_builds_presentation_from_injected_path_strategy(
     assert lookup_request.message is message
     generation_request = generation.generate.call_args.args[0]
     assert generation_request.sprite is sprite
+    assert message.asset_id == "7"
     assert mock_app_runtime.presentation_queue.get_nowait() == PresentationMessage(
         audio_path="first.wav",
         name="TestChar",
@@ -231,6 +235,80 @@ def test_character_handler_builds_presentation_from_injected_path_strategy(
         is_final_segment=True,
         timeout=0,
     )
+
+
+def test_resolved_sprite_is_persisted_for_restore_and_crash_recovery(
+    mock_app_runtime,
+    tmp_path,
+):
+    runtime = mock_app_runtime
+    history_file = tmp_path / "history.json"
+    runtime.llm_manager._history_file = str(history_file)
+    runtime.llm_manager.add_message(
+        "assistant",
+        json.dumps(
+            {
+                "dialog": [
+                    {
+                        "character_name": "TestChar",
+                        "speech": "Hello",
+                        "sprite": "1",
+                    }
+                ]
+            }
+        ),
+    )
+    binding = DialogHistoryBinding()
+    binding.bind(runtime.llm_manager)
+    sprite_lookup = MagicMock()
+    sprite_lookup.lookup.return_value = SpriteMatch(asset_id="2")
+    generation = MagicMock()
+    generation.generate.return_value = []
+
+    message = LLMDialogMessage(name="TestChar", text="Hello", asset_id="1")
+    message._dialog_index = 0
+    message._history_binding = binding
+    CharacterMediaHandler(sprite_lookup, generation).handle(message)
+
+    persisted = json.loads(runtime.llm_manager.get_messages()[-1]["content"])
+    assert persisted["dialog"][0]["sprite"] == "2"
+
+    tmp_raw = (tmp_path / "history.json.tmp").read_text(encoding="utf-8")
+    tmp_messages = json.loads(f"[{tmp_raw.strip().rstrip(',')}]")
+    tmp_content = json.loads(tmp_messages[-1]["content"])
+    assert tmp_content["dialog"][0]["sprite"] == "2"
+
+    runtime.presentation_queue.get_nowait()
+    assert restore_session_presentation(
+        runtime.llm_manager.get_messages(),
+        presentation_queue=runtime.presentation_queue,
+        presenter=MagicMock(),
+        config=runtime.config,
+        tr_i18n=lambda key, **kwargs: key,
+    )
+    assert runtime.presentation_queue.get_nowait().asset_id == "2"
+
+
+def test_pending_sprite_resolution_is_applied_after_assistant_is_persisted(
+    mock_app_runtime,
+):
+    runtime = mock_app_runtime
+    binding = DialogHistoryBinding()
+    binding.record(
+        0,
+        asset_id="3",
+        character_name="TestChar",
+        speech="Hello",
+    )
+    runtime.llm_manager.add_message(
+        "assistant",
+        '{"dialog":[{"character_name":"TestChar","speech":"Hello","sprite":"1"}]}',
+    )
+
+    binding.bind(runtime.llm_manager)
+
+    persisted = json.loads(runtime.llm_manager.get_messages()[-1]["content"])
+    assert persisted["dialog"][0]["sprite"] == "3"
 
 
 def test_dialog_media_worker_passes_injected_strategies_to_handler_chain(monkeypatch):
