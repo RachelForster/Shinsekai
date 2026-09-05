@@ -278,7 +278,16 @@ def wire_user_input_plugins(
     mgr = _plugin_manager
     processors: list[Callable[[str], str | None]] = []
 
-    def emit_user_text(text: str, *, attachments: list[dict[str, Any]] | None = None) -> bool:
+    def emit_user_text(
+        text: str,
+        *,
+        attachments: list[dict[str, Any]] | None = None,
+        interrupt_current: bool | None = None,
+        defer_until_idle: bool = False,
+        on_admit: Callable[[str, list[dict[str, Any]]], None] | None = None,
+        utterance_id: str | None = None,
+        replace_utterance_id: str | None = None,
+    ) -> bool:
         t = text
         for proc in processors:
             try:
@@ -291,7 +300,18 @@ def wire_user_input_plugins(
             t = out
         attachment_payloads = list(attachments or [])
         if sink is not None:
-            sink(t, attachments=attachment_payloads)
+            sink_kwargs: dict[str, Any] = {"attachments": attachment_payloads}
+            if interrupt_current is not None:
+                sink_kwargs["interrupt_current"] = interrupt_current
+            if defer_until_idle:
+                sink_kwargs["defer_until_idle"] = True
+            if on_admit is not None:
+                sink_kwargs["on_admit"] = on_admit
+            if utterance_id:
+                sink_kwargs["utterance_id"] = utterance_id
+            if replace_utterance_id:
+                sink_kwargs["replace_utterance_id"] = replace_utterance_id
+            sink(t, **sink_kwargs)
         else:
             user_input_queue.put(UserInputMessage(text=t, attachments=attachment_payloads))
         return True

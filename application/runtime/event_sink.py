@@ -37,6 +37,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "asrEnabled": False,
         "asrLoading": False,
         "asrRunning": False,
+        "asrUtteranceId": None,
         "dialogText": "",
         "eventSeq": 0,
         "historyEntries": [],
@@ -529,18 +530,35 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "asr.partial":
         _clear_transient_notification_state(next_snapshot)
+        current_status = str(next_snapshot.get("status") or "idle")
+        utterance_id = event.get("utteranceId")
+        has_utterance_id = isinstance(utterance_id, str) and bool(utterance_id)
         next_snapshot["asrEnabled"] = True
         next_snapshot["asrLoading"] = False
         next_snapshot["asrRunning"] = True
         next_snapshot["inputDraft"] = str(event.get("text") or "")
-        next_snapshot["status"] = "listening"
+        next_snapshot["asrUtteranceId"] = utterance_id if has_utterance_id else None
+        if current_status not in {"generating", "streaming", "speaking"}:
+            next_snapshot["status"] = "listening"
         return next_snapshot
 
     if event_type == "asr.final":
         _clear_transient_notification_state(next_snapshot)
         # The final transcript has already entered the chat turn pipeline.
         # Persist its consumed presentation state for reconnect hydration.
-        next_snapshot["inputDraft"] = ""
+        utterance_id = event.get("utteranceId")
+        has_utterance_id = isinstance(utterance_id, str) and bool(utterance_id)
+        current_utterance_id = next_snapshot.get("asrUtteranceId")
+        owns_current_draft = (
+            not has_utterance_id
+            or (
+                isinstance(current_utterance_id, str)
+                and current_utterance_id == utterance_id
+            )
+        )
+        if owns_current_draft:
+            next_snapshot["inputDraft"] = ""
+            next_snapshot["asrUtteranceId"] = None
         next_snapshot["options"] = []
         return next_snapshot
 
@@ -552,7 +570,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["asrLoading"] = bool(event.get("loading")) and enabled
         next_snapshot["asrRunning"] = running and enabled
         current_status = str(next_snapshot.get("status") or "idle")
-        if running:
+        if running and current_status not in {"generating", "streaming", "speaking"}:
             next_snapshot["status"] = "listening"
         elif current_status not in {"generating", "streaming", "speaking"}:
             next_snapshot["status"] = "paused"

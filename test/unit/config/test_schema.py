@@ -99,6 +99,15 @@ class TestSystemConfig:
         assert SystemConfig().story_system_enabled is False
         assert SystemConfig().story_system_enabled_diagnostic is None
 
+    def test_continuous_asr_during_reply_is_experimental_and_opt_in(self):
+        assert SystemConfig().asr_continuous_during_reply_experimental_enabled is False
+        assert (
+            SystemConfig(
+                asr_continuous_during_reply_experimental_enabled=True
+            ).asr_continuous_during_reply_experimental_enabled
+            is True
+        )
+
     @pytest.mark.parametrize(
         ("raw", "expected"),
         [

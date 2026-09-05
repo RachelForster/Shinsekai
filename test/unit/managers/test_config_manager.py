@@ -279,6 +279,7 @@ def test_save_system_config_applies_network_proxy_environment(monkeypatch):
     saved = {}
     manager._save_single_config = lambda _path, data: saved.update(data)
     manager.config.system_config = SystemConfig(
+        asr_continuous_during_reply_experimental_enabled=True,
         http_proxy_url="http://127.0.0.1:7890",
         https_proxy_url="http://127.0.0.1:7890",
         mirror_auto_detect_china=False,
@@ -289,6 +290,7 @@ def test_save_system_config_applies_network_proxy_environment(monkeypatch):
     manager.save_system_config()
 
     assert saved["network_proxy_enabled"] is True
+    assert saved["asr_continuous_during_reply_experimental_enabled"] is True
     assert saved["http_proxy_url"] == "http://127.0.0.1:7890"
     assert saved["https_proxy_url"] == "http://127.0.0.1:7890"
     assert saved["socks5_proxy_url"] == "socks5://127.0.0.1:7891"

@@ -13,6 +13,8 @@ function preserveOptimisticPresentation(state: ChatStageState, next: ChatStageSt
     dialogText: state.dialogText,
     inputAttachments: state.inputAttachments,
     inputDraft: state.inputDraft,
+    asrUtteranceId: state.asrUtteranceId,
+    asrSourceUtteranceId: state.asrSourceUtteranceId,
     optimisticSubmission: state.optimisticSubmission,
     options: [...state.options],
     sessionClosedReason: state.sessionClosedReason,
@@ -61,11 +63,13 @@ function snapshotReplacesOptimisticPresentation(
 function submitUserMessageState(
   state: ChatStageState,
   {
+    preserveInput = false,
     queued,
     source = "send-message",
     text,
   }: {
     queued?: boolean;
+    preserveInput?: boolean;
     source?: "send-message" | "submit-option";
     text: string;
   },
@@ -79,6 +83,8 @@ function submitUserMessageState(
       dialogHtml: state.dialogHtml,
       dialogText: state.dialogText,
       error: state.error,
+      asrUtteranceId: state.asrUtteranceId,
+      asrSourceUtteranceId: state.asrSourceUtteranceId,
       inputDraft: state.inputDraft,
       inputAttachments: state.inputAttachments.map((attachment) => ({ ...attachment })),
       notificationText: state.notificationText,
@@ -91,6 +97,19 @@ function submitUserMessageState(
     source,
     text,
   };
+  const preservedInput = preserveInput
+    ? {
+        asrUtteranceId: state.asrUtteranceId,
+        asrSourceUtteranceId: state.asrSourceUtteranceId,
+        inputAttachments: state.inputAttachments,
+        inputDraft: state.inputDraft,
+      }
+    : {
+        asrUtteranceId: null,
+        asrSourceUtteranceId: null,
+        inputAttachments: [],
+        inputDraft: "",
+      };
   if (queued) {
     // Batch/queued submissions must still show the user's own message instead of
     // leaving the previous turn's reply on screen (which reads as the dialogue
@@ -101,8 +120,7 @@ function submitUserMessageState(
       characterName: normalizedUserDisplayName(state.userDisplayName),
       dialogHtml: undefined,
       dialogText: text,
-      inputAttachments: [],
-      inputDraft: "",
+      ...preservedInput,
       optimisticSubmission,
       options: [],
     });
@@ -113,8 +131,7 @@ function submitUserMessageState(
     dialogHtml: undefined,
     dialogText: text,
     error: undefined,
-    inputDraft: "",
-    inputAttachments: [],
+    ...preservedInput,
     optimisticSubmission,
     options: [],
     sessionClosedReason: undefined,
@@ -132,9 +149,11 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         next !== state &&
         action.event.type === "asr.final" &&
         action.event.text.trim() &&
-        !state.optimisticSubmission
+        !state.optimisticSubmission &&
+        !["generating", "streaming", "speaking"].includes(state.status)
       ) {
         return submitUserMessageState(next, {
+          preserveInput: Boolean(next.inputDraft),
           queued: next.turnOptions.batchEnabled,
           text: action.event.text.trim(),
         });
@@ -175,12 +194,20 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         return state;
       }
       const inputDraft = optimistic.draftEditedAfterSubmission ? state.inputDraft : optimistic.previous.inputDraft;
+      const asrUtteranceId = optimistic.draftEditedAfterSubmission
+        ? state.asrUtteranceId
+        : optimistic.previous.asrUtteranceId;
+      const asrSourceUtteranceId = optimistic.draftEditedAfterSubmission
+        ? state.asrSourceUtteranceId
+        : optimistic.previous.asrSourceUtteranceId;
       const inputAttachments = optimistic.attachmentsEditedAfterSubmission
         ? state.inputAttachments
         : optimistic.previous.inputAttachments;
       return withResolvedLayers({
         ...state,
         ...optimistic.previous,
+        asrUtteranceId,
+        asrSourceUtteranceId,
         inputDraft,
         inputAttachments: inputAttachments.map((attachment) => ({ ...attachment })),
         options: [...optimistic.previous.options],
@@ -211,6 +238,8 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
     case "setDraft":
       return withResolvedLayers({
         ...state,
+        asrUtteranceId: null,
+        asrSourceUtteranceId: action.text.trim() ? state.asrSourceUtteranceId : null,
         inputDraft: action.text,
         optimisticSubmission: state.optimisticSubmission
           ? { ...state.optimisticSubmission, draftEditedAfterSubmission: true }

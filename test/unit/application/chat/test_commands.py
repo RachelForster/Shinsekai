@@ -166,6 +166,96 @@ def _execute(runtime: SimpleNamespace, command_type: str, payload: object = None
     return runtime.dispatcher.execute(ChatCommandRequest(command_type, payload))
 
 
+@pytest.mark.parametrize("command", ["clear-history", "revert-history", "fork-history", "switch-branch"])
+def test_history_invalidated_before_handler_even_without_asr_boundary(command_runtime, command):
+    from core.messaging.chat_turn_service import ChatTurnService
+
+    events = []
+    service = ChatTurnService()
+    turn = service.begin_turn()
+    command_runtime.dispatcher.chat_turn_service = service
+    command_runtime.llm_manager.invalidate_history = lambda: events.append("invalidated")
+
+    def mutate(payload):
+        assert turn.is_cancelled()
+        events.append("mutated")
+
+    command_runtime.dispatcher._handlers[command] = mutate
+    assert _execute(command_runtime, command, 0).ok
+    assert events == ["invalidated", "mutated"]
+
+
+@pytest.mark.parametrize("command", ["clear-history", "revert-history", "fork-history", "switch-branch"])
+def test_history_commands_quiesce_asr_before_mutation(command_runtime, command):
+    from contextlib import contextmanager
+    events = []
+
+    @contextmanager
+    def boundary():
+        events.append("quiesced")
+        try:
+            yield
+        finally:
+            events.append("resumed")
+
+    command_runtime.runtime_asr.input_boundary = boundary
+    command_runtime.turn_service.cancel_pending_batch = lambda: events.append("cancelled")
+    command_runtime.dispatcher._handlers[command] = lambda payload: events.append("mutated")
+    assert _execute(command_runtime, command, 0).ok
+    assert events == ["quiesced", "cancelled", "mutated", "resumed"]
+
+
+@pytest.mark.parametrize("command", ["clear-history", "revert-history", "fork-history", "switch-branch"])
+def test_history_commands_discard_live_transcript_and_deferred_admission(command_runtime, command):
+    from ai.asr.streaming_controller import ASRSubmissionResult, StreamingASRController
+    from core.messaging.chat_turn_service import ChatTurnService
+    from test.unit.adapters.test_streaming_asr_controller import _FakeASRAdapter, _wait_until
+
+    delivered = []
+    service = ChatTurnService(sink=delivered.append)
+    turn = service.begin_turn()
+
+    def submit(text):
+        service.submit(text, defer_until_idle=True)
+        return ASRSubmissionResult(True, False)
+
+    controller = StreamingASRController(
+        adapter_factory=_FakeASRAdapter,
+        emit_event=lambda event: None,
+        submit_final=submit,
+        continuous_listening=True,
+        silence_submit_seconds=300,
+    )
+    command_runtime.dispatcher.runtime_asr = controller
+    command_runtime.dispatcher.chat_turn_service = service
+    try:
+        controller.user_resume()
+        _wait_until(lambda: controller._active)
+        old_adapter = controller._adapter
+        old_adapter.callback("old completed speech", False)
+        old_adapter.callback("old unfinished speech", True)
+        old_timer = controller._silence_timer
+
+        def mutate(_payload):
+            old_adapter.callback("late old final during mutation", False)
+            assert delivered == []
+
+        command_runtime.dispatcher._handlers[command] = mutate
+        assert _execute(command_runtime, command, 0).ok
+        _wait_until(lambda: controller._active)
+        old_timer.function(*old_timer.args, **old_timer.kwargs)
+        old_adapter.callback("late old final after mutation", False)
+        service.mark_generation_complete(turn)
+        service.finish_turn(turn)
+        assert delivered == []
+        controller._adapter.callback("new history speech", True)
+        controller._adapter.callback("new history speech", False)
+        assert delivered == ["new history speech"]
+    finally:
+        service.close()
+        controller.close()
+
+
 def test_dispatches_close_send_message_and_option_commands(command_runtime) -> None:
     runtime = command_runtime
 

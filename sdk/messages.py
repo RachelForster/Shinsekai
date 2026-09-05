@@ -15,6 +15,9 @@ class UserInputMessage(BaseModel):
     """用户输入队列的消息格式 (user_input_queue)。"""
 
     text: str = Field(..., description="用户输入的聊天文本")
+    admission_revision: Optional[int] = Field(default=None, exclude=True, repr=False)
+    history_epoch: Optional[int] = Field(default=None, exclude=True, repr=False)
+    utterance_id: Optional[str] = Field(default=None, exclude=True, repr=False)
     attachments: list[dict[str, Any]] = Field(
         default_factory=list,
         description="User-selected chat attachments validated by core.media before processing.",

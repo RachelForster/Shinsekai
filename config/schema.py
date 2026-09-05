@@ -183,6 +183,10 @@ class SystemConfig(BaseModel):
         default="",
         description="faster-whisper / RealtimeSTT compute_type，留空则按设备自动选择",
     )
+    asr_continuous_during_reply_experimental_enabled: DefaultIfNone[bool] = Field(
+        default=False,
+        description="实验性功能：角色回复期间保持语音识别，并将完成的语音输入排队自动发送",
+    )
     music_volumn: DefaultIfNone[int] =Field(default=30,description="bgm 音量")
     theme_color: DefaultIfNone[str] = Field(default='#d4788e',description="主题色")
     bgm_path: DefaultIfNone[str] = Field(default="",description="BGM 的路径")

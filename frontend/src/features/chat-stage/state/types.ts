@@ -42,6 +42,8 @@ export type ChatAudioCommand =
 
 export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
   audioCommands: ChatAudioCommand[];
+  /** ID of the ASR utterance that contributed to the current draft, even after a manual edit. */
+  asrSourceUtteranceId: string | null;
   asrTranscript?: string;
   busyDurationSeconds?: number;
   busyText?: string;
@@ -61,6 +63,8 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
       dialogHtml?: string;
       dialogText: string;
       error?: string;
+      asrUtteranceId?: string | null;
+      asrSourceUtteranceId: string | null;
       inputDraft: string;
       inputAttachments: ChatAttachmentInput[];
       notificationText?: string;

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, MutableSequence
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol
@@ -128,7 +129,25 @@ class ChatCommandDispatcher:
             handler = self._handlers.get(request.type)
             if handler is None:
                 raise ValueError(f"未知实时聊天命令：{request.type}")
-            handler(request.payload)
+            # Quiesce old recognition callbacks for the entire history mutation,
+            # including any replay/new turn created by fork or revert.
+            boundary = getattr(self.runtime_asr, "input_boundary", None)
+            if request.type in {
+                "clear-history", "revert-history", "fork-history", "switch-branch"
+            }:
+                with boundary() if boundary is not None else nullcontext():
+                    history_boundary = getattr(self.chat_turn_service, "history_boundary", None)
+                    if history_boundary is not None:
+                        with history_boundary():
+                            invalidate_history = getattr(self.llm_manager, "invalidate_history", None)
+                            if invalidate_history is not None:
+                                invalidate_history()
+                            handler(request.payload)
+                    else:
+                        self.chat_turn_service.cancel_pending_batch()
+                        handler(request.payload)
+            else:
+                handler(request.payload)
             return ChatCommandResult(ok=True)
         except Exception as exc:
             error = str(exc)
@@ -142,13 +161,22 @@ class ChatCommandDispatcher:
         self.runtime_asr.pause_for_turn()
         if isinstance(payload, Mapping):
             raw_attachments = payload.get("attachments")
-            self.bindings.submit_text(
-                str(payload.get("text") or ""),
-                attachments=(
-                    list(raw_attachments) if isinstance(raw_attachments, list) else []
-                ),
-                notify_key=None,
-            )
+            raw_id = payload.get("asrUtteranceId")
+            utterance_id = raw_id if isinstance(raw_id, str) and len(raw_id) <= 128 else ""
+            manual_submission = getattr(self.runtime_asr, "manual_submission", None)
+            scope = manual_submission(utterance_id) if utterance_id and manual_submission else nullcontext(None)
+            identity_kwargs = {"replace_utterance_id": utterance_id} if utterance_id else {}
+            with scope as retire:
+                accepted = self.bindings.submit_text(
+                    str(payload.get("text") or ""),
+                    attachments=(
+                        list(raw_attachments) if isinstance(raw_attachments, list) else []
+                    ),
+                    notify_key=None,
+                    **identity_kwargs,
+                )
+                if accepted and retire is not None:
+                    retire()
             return
         self.bindings.submit_text(str(payload or ""), notify_key=None)
 

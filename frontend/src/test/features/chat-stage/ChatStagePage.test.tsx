@@ -584,6 +584,129 @@ describe("ChatStagePage", () => {
     });
   });
 
+  it("includes the ASR source ID when submitting an untouched voice draft", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next: (event: ChatStageEvent) => void) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+
+    const input = await screen.findByRole("textbox");
+    act(() => {
+      listener?.({
+        seq: 1,
+        text: "voice draft",
+        ts: 1,
+        type: "asr.partial",
+        utteranceId: "u-send",
+        v: 1,
+      });
+    });
+    expect(input).toHaveValue("voice draft");
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: { asrUtteranceId: "u-send", attachments: [], text: "voice draft" },
+        type: "send-message",
+      }),
+    );
+  });
+
+  it("keeps the ASR source ID when the voice draft is manually edited", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next: (event: ChatStageEvent) => void) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+
+    const input = await screen.findByRole("textbox");
+    act(() => {
+      listener?.({
+        seq: 1,
+        text: "voice draft",
+        ts: 1,
+        type: "asr.partial",
+        utteranceId: "u-edited-send",
+        v: 1,
+      });
+    });
+    fireEvent.change(input, { target: { value: "edited voice draft" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: { asrUtteranceId: "u-edited-send", attachments: [], text: "edited voice draft" },
+        type: "send-message",
+      }),
+    );
+  });
+
+  it("does not attach an old ASR source after the draft is cleared", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next: (event: ChatStageEvent) => void) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+
+    const input = await screen.findByRole("textbox");
+    act(() => {
+      listener?.({
+        seq: 1,
+        text: "old voice",
+        ts: 1,
+        type: "asr.partial",
+        utteranceId: "u-cleared",
+        v: 1,
+      });
+    });
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.change(input, { target: { value: "typed after clear" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenCalledWith({
+        payload: "typed after clear",
+        type: "send-message",
+      }),
+    );
+  });
+
+  it("restores the ASR source ID when a voice submission fails", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next: (event: ChatStageEvent) => void) => {
+      listener = next;
+      return vi.fn();
+    });
+    mocks.sendChatCommand.mockRejectedValueOnce(new Error("offline"));
+    renderPage();
+
+    const input = await screen.findByRole("textbox");
+    act(() => {
+      listener?.({
+        seq: 1,
+        text: "retry voice",
+        ts: 1,
+        type: "asr.partial",
+        utteranceId: "u-retry-send",
+        v: 1,
+      });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(input).toHaveValue("retry voice"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() =>
+      expect(mocks.sendChatCommand).toHaveBeenNthCalledWith(2, {
+        payload: { asrUtteranceId: "u-retry-send", attachments: [], text: "retry voice" },
+        type: "send-message",
+      }),
+    );
+  });
+
   it.each([
     { inputTag: "TEXTAREA", layout: "default" as const },
     { inputTag: "INPUT", layout: "pill" as const },

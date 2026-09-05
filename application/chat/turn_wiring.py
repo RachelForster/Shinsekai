@@ -44,11 +44,24 @@ def create_chat_turn_service(
 
         return clear
 
+    def deliver_revision(text: str, attachments: list[dict[str, object]], revision: int, utterance_id: str | None) -> None:
+        if user_input_queue is None:
+            return
+        from sdk.messages import UserInputMessage
+
+        epoch = getattr(llm_manager, "history_epoch", None)
+        user_input_queue.put(UserInputMessage(
+            text=text, attachments=list(attachments), admission_revision=revision,
+            history_epoch=epoch if isinstance(epoch, int) else None,
+            utterance_id=utterance_id,
+        ))
+
     def has_pending_work() -> bool:
         return any(queue is not None and not queue.empty() for queue in (tts_queue, audio_queue))
 
     return ChatTurnService(
         sink=deliver,
+        revision_sink=deliver_revision,
         options=options,
         on_state_change=on_state_change,
         cancel_current=getattr(llm_manager, "cancel_current_chat", None),

@@ -1079,6 +1079,9 @@ export const enMessages: Record<MessageKey, string> = {
   "plugin.trust.verifiedHint": "Manually reviewed by maintainers",
   "system.asr.computeAuto": "Auto (follow device)",
   "system.asr.computeType": "Compute precision",
+  "system.asr.continuousDuringReply": "Experimental: keep listening during replies",
+  "system.asr.continuousDuringReplyHint":
+    "Keeps speech recognition active while the character replies. Completed utterances are sent automatically after the active turn finishes. Character audio may be transcribed, so keep character voice disabled.",
   "system.asr.device": "Device",
   "system.asr.deviceAuto": "Auto",
   "system.asr.followUi": "Follow interface language",

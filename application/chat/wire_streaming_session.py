@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 import logging
+import threading
 from typing import Any
 
 from application.chat.commands import (
@@ -101,6 +103,10 @@ class _StreamingSessionWiring:
         self.emit_user_text: Any | None = None
         self.branch_manager: Any | None = None
         self.runtime_asr: Any | None = None
+        system_config = getattr(getattr(config, "config", None), "system_config", None)
+        self.continuous_asr = bool(
+            getattr(system_config, "asr_continuous_during_reply_experimental_enabled", False)
+        )
 
     def wire(self) -> StreamingSessionBindings:
         from plugin_system.host import wire_user_input_plugins
@@ -131,6 +137,11 @@ class _StreamingSessionWiring:
         attachments: list[dict[str, object]] | None = None,
         ignore_unavailable_attachments: bool = False,
         notify_key: str | None = "main.notify_submitted",
+        interrupt_current: bool | None = None,
+        defer_until_idle: bool = False,
+        on_admit: Callable[[str, list[dict[str, object]]], None] | None = None,
+        utterance_id: str | None = None,
+        replace_utterance_id: str | None = None,
     ) -> bool:
         value = str(text or "").strip()
         try:
@@ -147,13 +158,30 @@ class _StreamingSessionWiring:
         if not value and not resolved:
             return False
         payloads = [attachment.to_payload() for attachment in resolved]
-        self.last_user_message["text"] = value
-        self.last_user_message["attachments"] = payloads
         if self.emit_user_text is None:
             if notify_key:
                 self.ui_updates.post_notification(self.translate("main.notify_chat"))
             return False
-        accepted = self.emit_user_text(value, attachments=payloads)
+
+        def admitted(text: str, attachments: list[dict[str, object]]) -> None:
+            self.last_user_message["text"] = text
+            self.last_user_message["attachments"] = list(attachments)
+            if on_admit is not None:
+                on_admit(text, attachments)
+
+        identity_kwargs = {}
+        if utterance_id:
+            identity_kwargs["utterance_id"] = utterance_id
+        if replace_utterance_id:
+            identity_kwargs["replace_utterance_id"] = replace_utterance_id
+        accepted = self.emit_user_text(
+            value,
+            attachments=payloads,
+            interrupt_current=interrupt_current,
+            defer_until_idle=defer_until_idle,
+            on_admit=admitted,
+            **identity_kwargs,
+        )
         if accepted is False:
             return False
         if notify_key:
@@ -197,15 +225,37 @@ class _StreamingSessionWiring:
             adapter_factory=self.create_asr_adapter,
             emit_event=self.transport.emit,
             submit_final=self._submit_asr_text,
+            submit_utterance=self._submit_asr_text,
             on_loading_changed=self._set_asr_loading,
             on_error=self._report_asr_error,
             resume_delay_seconds=0.5,
+            continuous_listening=self.continuous_asr,
         )
 
-    def _submit_asr_text(self, text: str) -> bool:
-        accepted = self.submit_runtime_text(text, notify_key=None)
+    def _submit_asr_text(self, text: str, utterance_id: str = "") -> Any:
+        from ai.asr.streaming_controller import ASRSubmissionResult
+
+        admitted = threading.Event()
+
+        def on_admit(value: str, _attachments: list[dict[str, object]]) -> None:
+            admitted.set()
+            self.transport.emit(
+                {"type": "asr.final", "text": value, "utteranceId": utterance_id}
+            )
+            self.transport.emit({"type": "status.change", "status": "generating"})
+
+        accepted = self.submit_runtime_text(
+            text,
+            notify_key=None,
+            interrupt_current=False if self.continuous_asr else None,
+            defer_until_idle=self.continuous_asr,
+            on_admit=on_admit if self.continuous_asr else None,
+            utterance_id=utterance_id if self.continuous_asr else None,
+        )
         if not accepted:
             return False
+        if self.continuous_asr:
+            return ASRSubmissionResult(accepted=True, admitted=admitted.is_set())
         if self.chat_turn_service.options.batch_enabled:
             self.chat_turn_service.flush()
         self.transport.emit({"type": "status.change", "status": "generating"})

@@ -1054,6 +1054,9 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "plugin.trust.verifiedHint": "维护者已人工复核",
   "system.asr.computeAuto": "自动（跟随设备）",
   "system.asr.computeType": "计算精度",
+  "system.asr.continuousDuringReply": "实验性：回复期间持续识别",
+  "system.asr.continuousDuringReplyHint":
+    "角色回复期间保持语音识别，完整语句会在当前回合结束后自动发送。角色语音可能被再次识别，建议关闭角色语音。",
   "system.asr.device": "推理设备",
   "system.asr.deviceAuto": "自动",
   "system.asr.followUi": "跟随界面语言",

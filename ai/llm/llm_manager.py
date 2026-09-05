@@ -1,10 +1,11 @@
 from asyncio import Queue
 import copy
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 import json
 import time
 from datetime import datetime
-from threading import Thread
+from threading import RLock, Thread, local
 from typing import Any, Dict, Generator, List, Optional, Union
 
 from openai import OpenAI
@@ -65,6 +66,24 @@ class _ChatTurnState:
             and self.first_turn_tool_call_limit >= 0
             and self.tool_call_attempts >= self.first_turn_tool_call_limit
         )
+
+
+@dataclass
+class _HistoryScopeState:
+    """Thread-local view of one version of the conversation history.
+
+    A chat worker holds this view for its entire turn.  Replacing or clearing
+    history swaps the global list and advances its epoch, so an older worker
+    keeps operating on its detached list instead of appending a late result to
+    the newly selected conversation.
+    """
+
+    epoch: int
+    messages: list[dict]
+    stale_on_enter: bool = False
+
+
+_history_state_init_lock = RLock()
 
 
 def _tool_result_status(result: str) -> str:
@@ -245,8 +264,15 @@ class LLMManager:
         history_file: str = "",
         hook_dispatcher: PluginHookDispatcher | None = None,
     ):
+        # Keep the backing list separate from the public ``messages`` property.
+        # The property can then return a worker's thread-local history view
+        # while an old turn is being cancelled during a history replacement.
+        self._history_local = local()
+        self._history_epoch = 0
+        self._messages: list[dict] = []
+        self._history_cancel_requested = False
+        self._history_lock = RLock()
         self.llm_adapter = adapter
-        self.messages = []
         self.user_template = user_template
         self.hook_dispatcher = hook_dispatcher
         self.max_context_tokens = int(max_tokens)
@@ -275,12 +301,239 @@ class LLMManager:
             "estimated_total_tokens": 0,
         }
         self._chat_depth = 0
-        self._cancel_requested = False
         self._turn_state: Optional[_ChatTurnState] = None
         self._history_file = history_file
 
         # 设置日志
         self.logger = logger
+
+    # ``LLMManager`` is occasionally constructed by lightweight test doubles
+    # with ``__new__``.  Keep the epoch machinery lazy so those callers remain
+    # compatible instead of requiring every fixture to know these internals.
+    def _ensure_history_state(self) -> None:
+        if "_history_lock" in self.__dict__:
+            return
+        with _history_state_init_lock:
+            if "_history_lock" in self.__dict__:
+                return
+            legacy_messages = self.__dict__.pop("messages", [])
+            legacy_cancel = self.__dict__.pop("_cancel_requested", False)
+            history_lock = RLock()
+            self.__dict__["_history_local"] = local()
+            self.__dict__["_history_epoch"] = 0
+            self.__dict__["_messages"] = (
+                legacy_messages if isinstance(legacy_messages, list) else []
+            )
+            self.__dict__["_history_cancel_requested"] = bool(legacy_cancel)
+            # Publish the lock last: another thread uses its presence as the
+            # signal that every companion state field is ready.
+            self.__dict__["_history_lock"] = history_lock
+
+    def _history_scope_stack(self) -> list[_HistoryScopeState]:
+        self._ensure_history_state()
+        history_local = self.__dict__["_history_local"]
+        stack = getattr(history_local, "scope_stack", None)
+        if stack is None:
+            stack = []
+            history_local.scope_stack = stack
+        return stack
+
+    def _active_history_scope(self) -> _HistoryScopeState | None:
+        stack = self._history_scope_stack()
+        return stack[-1] if stack else None
+
+    def _scope_is_current_locked(
+        self, scope: _HistoryScopeState | None
+    ) -> bool:
+        if scope is None:
+            return True
+        return (
+            not scope.stale_on_enter
+            and scope.epoch == self.__dict__["_history_epoch"]
+            and scope.messages is self.__dict__["_messages"]
+        )
+
+    def _target_is_current_locked(
+        self,
+        scope: _HistoryScopeState | None,
+        target_messages: list[dict],
+        captured_epoch: int,
+    ) -> bool:
+        if scope is not None:
+            return self._scope_is_current_locked(scope)
+        return (
+            captured_epoch == self.__dict__["_history_epoch"]
+            and target_messages is self.__dict__["_messages"]
+        )
+
+    def _replace_scoped_messages_locked(
+        self, scope: _HistoryScopeState, replacement: list[dict]
+    ) -> None:
+        """Replace a live scoped list without invalidating its outer scopes."""
+        previous = scope.messages
+        self.__dict__["_messages"] = replacement
+        for active_scope in self._history_scope_stack():
+            if (
+                not active_scope.stale_on_enter
+                and active_scope.epoch == scope.epoch
+                and active_scope.messages is previous
+            ):
+                active_scope.messages = replacement
+
+    def _history_scope_is_stale(self) -> bool:
+        self._ensure_history_state()
+        scope = self._active_history_scope()
+        if scope is None:
+            return False
+        with self.__dict__["_history_lock"]:
+            return not self._scope_is_current_locked(scope)
+
+    @property
+    def history_epoch(self) -> int:
+        """Monotonically increasing identity of the globally selected history."""
+        self._ensure_history_state()
+        with self.__dict__["_history_lock"]:
+            return int(self.__dict__["_history_epoch"])
+
+    @contextmanager
+    def history_scope(self, expected_epoch: int | None = None):
+        """Bind this thread to one immutable *history identity* for a turn.
+
+        A mismatched expected epoch is deliberately a stale scope from the
+        outset.  It exposes only a detached list and makes cancellation reads
+        true, so a queue item taken immediately before a history switch cannot
+        start a request against the newly selected history.
+        """
+        self._ensure_history_state()
+        with self.__dict__["_history_lock"]:
+            parent_scope = self._active_history_scope()
+            if parent_scope is not None:
+                # A nested scope is part of the same turn.  It must inherit a
+                # stale outer identity rather than capture the replacement
+                # history and accidentally make that turn live again.
+                epoch = parent_scope.epoch
+                stale_on_enter = (
+                    not self._scope_is_current_locked(parent_scope)
+                    or (
+                        expected_epoch is not None
+                        and expected_epoch != parent_scope.epoch
+                    )
+                )
+                messages = (
+                    copy.deepcopy(parent_scope.messages)
+                    if stale_on_enter
+                    else parent_scope.messages
+                )
+            else:
+                epoch = int(self.__dict__["_history_epoch"])
+                stale_on_enter = (
+                    expected_epoch is not None and expected_epoch != epoch
+                )
+                messages = (
+                    copy.deepcopy(self.__dict__["_messages"])
+                    if stale_on_enter
+                    else self.__dict__["_messages"]
+                )
+            scope = _HistoryScopeState(
+                epoch=epoch,
+                messages=messages,
+                stale_on_enter=stale_on_enter,
+            )
+        stack = self._history_scope_stack()
+        stack.append(scope)
+        try:
+            yield scope
+        finally:
+            # Nested scopes are supported.  Normal context-manager use exits
+            # in LIFO order; keep a defensive fallback for unusual teardown.
+            if stack and stack[-1] is scope:
+                stack.pop()
+            else:
+                try:
+                    stack.remove(scope)
+                except ValueError:
+                    pass
+
+    def invalidate_history(self) -> int:
+        """Fence active turns before a history file/UI transition.
+
+        The content is retained, but copied into a new backing list.  Existing
+        scopes still point at the old list and observe a stale epoch.  The
+        caller can therefore delete or replace temporary history storage after
+        this method returns without a late stream recreating it.
+        """
+        self._ensure_history_state()
+        with self.__dict__["_history_lock"]:
+            try:
+                detached_messages = copy.deepcopy(self.__dict__["_messages"])
+            except Exception:
+                # A malformed plugin payload should not prevent the history
+                # boundary itself.  A list copy still fences normal append/
+                # replacement mutations.
+                detached_messages = list(self.__dict__["_messages"])
+            self.__dict__["_messages"] = detached_messages
+            self.__dict__["_history_epoch"] += 1
+            return int(self.__dict__["_history_epoch"])
+
+    def _replace_global_history(self, messages: list[dict], *, bump_epoch: bool) -> int:
+        """Atomically install a new backing list without running callbacks."""
+        self._ensure_history_state()
+        with self.__dict__["_history_lock"]:
+            self.__dict__["_messages"] = messages
+            if bump_epoch:
+                self.__dict__["_history_epoch"] += 1
+            return int(self.__dict__["_history_epoch"])
+
+    @property
+    def messages(self) -> list[dict]:
+        """Current thread's scoped messages, or the globally selected history."""
+        self._ensure_history_state()
+        scope = self._active_history_scope()
+        if scope is not None:
+            return scope.messages
+        with self.__dict__["_history_lock"]:
+            return self.__dict__["_messages"]
+
+    @messages.setter
+    def messages(self, value: list[dict]) -> None:
+        """Preserve direct legacy assignments without letting stale turns win.
+
+        A direct assignment in a live scope is a same-turn replacement (for
+        example auto-compaction).  In a stale scope it changes only the local
+        detached view.  Outside a scope it is a new global history identity.
+        """
+        self._ensure_history_state()
+        replacement = value if isinstance(value, list) else []
+        scope = self._active_history_scope()
+        with self.__dict__["_history_lock"]:
+            if scope is not None:
+                if self._scope_is_current_locked(scope):
+                    self._replace_scoped_messages_locked(scope, replacement)
+                else:
+                    scope.messages = replacement
+                return
+            self.__dict__["_messages"] = replacement
+            self.__dict__["_history_epoch"] += 1
+
+    @property
+    def _cancel_requested(self) -> bool:
+        self._ensure_history_state()
+        scope = self._active_history_scope()
+        with self.__dict__["_history_lock"]:
+            if not self._scope_is_current_locked(scope):
+                return True
+            return bool(self.__dict__["_history_cancel_requested"])
+
+    @_cancel_requested.setter
+    def _cancel_requested(self, value: bool) -> None:
+        self._ensure_history_state()
+        scope = self._active_history_scope()
+        with self.__dict__["_history_lock"]:
+            # ``chat`` starts by clearing this flag.  An old scope must never
+            # turn a cancellation back off after a replacement history wins.
+            if not self._scope_is_current_locked(scope):
+                return
+            self.__dict__["_history_cancel_requested"] = bool(value)
 
     def cancel_current_chat(self) -> None:
         """Request cancellation of the current :meth:`chat` call.
@@ -288,6 +541,10 @@ class LLMManager:
         Sets the internal flag so stream loops exit early, and calls the
         adapter's ``cancel()`` to close the underlying HTTP connection.
         """
+        # Do not let a stale worker cancel a newer request that was started
+        # after the user selected another history.
+        if self._history_scope_is_stale():
+            return
         self._cancel_requested = True
         if self.llm_adapter is not None:
             try:
@@ -315,15 +572,17 @@ class LLMManager:
         self.llm_adapter = adapter
         self.compact_manager.llm_adapter = adapter
         print(f"LLM adapter switched to {type(self.llm_adapter).__name__}.")
-        self.messages = []
+        self._replace_global_history([], bump_epoch=True)
 
     def set_user_template(self, template: str):
         """Sets the system prompt/user template and resets the messages list."""
-        self.messages = [{"role": "system", "content": template}]
         self.user_template = template
+        self._replace_global_history(
+            [{"role": "system", "content": template}], bump_epoch=True
+        )
         self.llm_adapter.set_user_template(template)
 
-    def add_message(self, role: str, content: Optional[str], **kwargs):
+    def add_message(self, role: str, content: Optional[str], **kwargs) -> bool:
         """
         通用消息添加方法。
         集成了 Auto-Compact 逻辑：每当消息增加，自动检查并压缩。
@@ -332,30 +591,48 @@ class LLMManager:
             content = self._prepare_tool_result_for_history(content)
         msg = {"role": role, "content": content}
         msg.update(kwargs)
-        self.messages.append(msg)
+        self._ensure_history_state()
+        scope = self._active_history_scope()
+        hook_dispatcher = getattr(self, "hook_dispatcher", None)
+        hook_enabled = bool(
+            hook_dispatcher is not None
+            and hook_dispatcher.has_hooks(PluginHookEvent.MESSAGE_ADDED)
+        )
 
-        # --- 增量写入临时文件 ---
-        if self._history_file:
-            from ai.llm.history_manager import HistoryManager
-            HistoryManager.append_message_to_tmp(self._history_file, msg)
+        # The append and its crash-recovery record are one history-version
+        # operation.  A history boundary waits on this short lock, then fences
+        # every old scope before deleting/replacing its temporary storage.
+        with self.__dict__["_history_lock"]:
+            if not self._scope_is_current_locked(scope):
+                return False
+            target_messages = (
+                scope.messages if scope is not None else self.__dict__["_messages"]
+            )
+            captured_epoch = int(self.__dict__["_history_epoch"])
+            target_messages.append(msg)
+            history_file = getattr(self, "_history_file", "")
+            if history_file:
+                from ai.llm.history_manager import HistoryManager
 
-        if (
-            self.hook_dispatcher is not None
-            and self.hook_dispatcher.has_hooks(PluginHookEvent.MESSAGE_ADDED)
-        ):
+                HistoryManager.append_message_to_tmp(history_file, msg)
+
+        # Plugin callbacks and compaction may run arbitrary or network-backed
+        # work.  They must stay outside the history lock; a version/identity
+        # check below prevents their late result from replacing new history.
+        if hook_enabled:
             self.hook_dispatcher.dispatch_message_added(
                 MessageAddedContext(
                     role=role,
                     message=copy.deepcopy(msg),
-                    messages=copy.deepcopy(self.messages),
+                    messages=copy.deepcopy(target_messages),
                 )
             )
 
         # --- Auto-Compact 逻辑 ---
         # 自动调用 compact_manager 检查 token 是否超限并执行压缩
-        compacted_messages = self.compact_manager.auto_compact_if_needed(self.messages)
-        if compacted_messages is not self.messages:
-            before_tokens = self.compact_manager.count_tokens(self.messages)
+        compacted_messages = self.compact_manager.auto_compact_if_needed(target_messages)
+        if compacted_messages is not target_messages:
+            before_tokens = self.compact_manager.count_tokens(target_messages)
             after_tokens = self.compact_manager.count_tokens(compacted_messages)
             self.logger.info(
                 "Auto-compact triggered: messages %s -> %s, tokens %s -> %s",
@@ -364,10 +641,21 @@ class LLMManager:
                 before_tokens,
                 after_tokens,
             )
-            self.messages = compacted_messages
+            with self.__dict__["_history_lock"]:
+                if not self._target_is_current_locked(
+                    scope, target_messages, captured_epoch
+                ):
+                    return False
+                if scope is not None:
+                    self._replace_scoped_messages_locked(scope, compacted_messages)
+                else:
+                    self.__dict__["_messages"] = compacted_messages
+        return True
 
     def clear_messages(self):
-        self.messages = [{"role": "system", "content": self.user_template}]
+        self._replace_global_history(
+            [{"role": "system", "content": self.user_template}], bump_epoch=True
+        )
 
     def _prepare_tool_result_for_history(self, result: Any) -> str:
         """Bound tool output before it becomes permanent prompt history."""
@@ -674,10 +962,24 @@ class LLMManager:
             self._reset_active_tool_groups()
 
     def _stream_with_chat_scope(self, stream: Generator[Union[str, dict[str, str]], None, None]):
-        try:
-            yield from stream
-        finally:
-            self._finish_chat_scope()
+        def scoped_stream():
+            try:
+                # Arm the finally block without consuming the provider stream.
+                # A worker can cancel between chat() and its first iteration;
+                # closing an entirely unstarted generator skips its finally.
+                yield None
+                yield from stream
+            finally:
+                self._finish_chat_scope()
+
+        result = scoped_stream()
+        next(result)
+        return result
+
+    def _empty_chat_stream(self) -> Generator[Union[str, dict[str, str]], None, None]:
+        """A real generator used when a stale history scope is suppressed."""
+        if False:  # pragma: no cover - keeps the function a generator
+            yield ""
 
     def _persist_plain_assistant_turn(self, content: str, reasoning: str) -> bool:
         """无 tool_calls 的一轮：把 assistant 正文与（若存在）思考写入历史，供下游 API 与存档。"""
@@ -686,8 +988,7 @@ class LLMManager:
         extra = _deepseek_reasoning_message_kwargs(self.llm_adapter, reasoning)
         if not (content or "").strip() and not extra:
             return False
-        self.add_message("assistant", content or "", **extra)
-        return True
+        return self.add_message("assistant", content or "", **extra)
 
     def get_messages(self):
         """Returns the current list of messages."""
@@ -696,10 +997,18 @@ class LLMManager:
     def set_messages(self, new_messages: list):
         """Sets the conversation history to a new list of messages."""
         if isinstance(new_messages, list):
-            self.messages = list(new_messages)
-            self._strip_orphaned_tool_calls()
-            self.messages = self._trim_loaded_history_if_needed(self.messages)
-            self.compact_manager.set_token_count(self.compact_manager.count_tokens(self.messages))
+            # The caller commonly passes a list it still holds for UI/history
+            # bookkeeping.  Detach nested message dicts too, otherwise an old
+            # retained reference can mutate the newly installed history.
+            replacement = copy.deepcopy(new_messages)
+            # These are deterministic in-memory transforms.  Do them before
+            # the short atomic replacement so plugin/network work cannot hold
+            # the history lock.
+            strip_orphaned_tool_calls(replacement)
+            replacement = self._trim_loaded_history_if_needed(replacement)
+            token_count = self.compact_manager.count_tokens(replacement)
+            self._replace_global_history(replacement, bump_epoch=True)
+            self.compact_manager.set_token_count(token_count)
             print("Chat history has been updated.")
         else:
             print("Error: new_messages must be a list.")
@@ -721,12 +1030,23 @@ class LLMManager:
         ``dialog_output_required`` is enabled by the chat runtime only. Generic
         callers keep their provider response unchanged.
         """
+        # A queue item may have been dequeued just before history replacement.
+        # Do not even enter the chat bookkeeping/request path for that stale
+        # scope; the worker can safely consume this empty result.
+        if self._history_scope_is_stale():
+            return self._empty_chat_stream() if stream else ""
+
         outer_chat = self._chat_depth == 0
         first_user_turn = outer_chat and user_input is not None and not self._has_conversation_history()
         if outer_chat:
             self._begin_chat_turn(first_user_turn=first_user_turn)
         self._chat_depth += 1
         self._cancel_requested = False
+        if self._cancel_requested:
+            if stream:
+                return self._stream_with_chat_scope(self._empty_chat_stream())
+            self._finish_chat_scope()
+            return ""
         # 清理孤立的 tool_calls（必须在加 user 消息之前，否则占位 tool 回执会插在 user 后面）
         self._strip_orphaned_tool_calls()
 
@@ -750,11 +1070,16 @@ class LLMManager:
                     user_metadata["input_text"] = str(user_input_text or "")
                 if isinstance(user_attachments, list):
                     user_metadata["attachments"] = copy.deepcopy(user_attachments)
-                self.add_message(
+                if not self.add_message(
                     "user",
                     user_input,
                     **user_metadata,
-                )
+                ):
+                    if stream:
+                        return self._stream_with_chat_scope(
+                            self._empty_chat_stream()
+                        )
+                    return ""
 
             if stream:
                 return self._stream_with_chat_scope(
@@ -958,6 +1283,8 @@ class LLMManager:
     # llm_manager.py 修正核心片段
 
     def _chat_with_tools_stream(self, **kwargs) -> Generator[Union[str, dict[str, str]], None, None]:
+        if self._cancel_requested:
+            return
         dialog_output_required = bool(kwargs.pop("_dialog_output_required", False))
         tools_defs = self._current_tool_definitions()
 
@@ -1106,17 +1433,25 @@ class LLMManager:
 
             # --- 关键：必须先添加 Assistant 消息（DeepSeek 思考模式须含 reasoning_content） ---
             assistant_kw = _deepseek_reasoning_message_kwargs(self.llm_adapter, collected_reasoning)
-            self.add_message("assistant", collected_content, tool_calls=formatted_calls, **assistant_kw)
+            if not self.add_message(
+                "assistant", collected_content, tool_calls=formatted_calls, **assistant_kw
+            ):
+                return
 
             # --- 然后添加 Tool 结果消息 ---
             for call in formatted_calls:
+                if self._cancel_requested:
+                    return
                 try:
                     func_name, result = self._execute_formatted_tool_call(call)
                 except Exception as e:
                     self.logger.error(f"Tool execution failed: {e}")
                     result = json.dumps({"error": str(e)})
                     func_name = call['function']['name']
-                self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
+                if not self.add_message(
+                    "tool", result, tool_call_id=call['id'], name=func_name
+                ):
+                    return
 
             if self._cancel_requested:
                 return
@@ -1144,6 +1479,8 @@ class LLMManager:
                 yield {STREAM_DIALOG_REPAIR_KEY: collected_content}
 
     def _chat_with_tools_sync(self, **kwargs) -> str:
+        if self._cancel_requested:
+            return ""
         dialog_output_required = bool(kwargs.pop("_dialog_output_required", False))
         tools_defs = self._current_tool_definitions()
         merged_kwargs = dict(self.generation_config)
@@ -1233,15 +1570,23 @@ class LLMManager:
 
             # --- 关键：先 Assistant 再 Tool ---
             assistant_sync_kw = _deepseek_reasoning_message_kwargs(self.llm_adapter, reasoning)
-            self.add_message("assistant", content, tool_calls=formatted_calls, **assistant_sync_kw)
+            if not self.add_message(
+                "assistant", content, tool_calls=formatted_calls, **assistant_sync_kw
+            ):
+                return ""
             for call in formatted_calls:
+                if self._cancel_requested:
+                    return ""
                 try:
                     func_name, result = self._execute_formatted_tool_call(call)
                 except Exception as e:
                     self.logger.error(f"Tool execution failed: {e}")
                     result = json.dumps({"error": str(e)})
                     func_name = call['function']['name']
-                self.add_message("tool", result, tool_call_id=call['id'], name=func_name)
+                if not self.add_message(
+                    "tool", result, tool_call_id=call['id'], name=func_name
+                ):
+                    return ""
 
             if self._cancel_requested:
                 return ""

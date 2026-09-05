@@ -25,6 +25,36 @@ function shouldPreserveTransportState(state: ChatStageState) {
   return state.transportMode !== emptyChatState.transportMode || state.transportState !== emptyChatState.transportState;
 }
 
+function asrUtteranceId(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function hydratedInputDraft(
+  state: ChatStageState,
+  snapshot: ChatSnapshot,
+): Pick<ChatStageState, "asrSourceUtteranceId" | "asrUtteranceId" | "inputDraft"> {
+  const localUtteranceId = asrUtteranceId(state.asrUtteranceId);
+  const snapshotUtteranceId = asrUtteranceId(snapshot.asrUtteranceId);
+
+  // A non-ASR-owned local value is a genuine user edit. Keep it across a
+  // reconnect even when the runtime snapshot has no draft (or has a newer
+  // ASR draft). An ASR-owned value, however, must yield to the authoritative
+  // snapshot so a final consumed while disconnected cannot reappear.
+  if (!localUtteranceId && state.inputDraft) {
+    return {
+      asrSourceUtteranceId: state.asrSourceUtteranceId,
+      asrUtteranceId: null,
+      inputDraft: state.inputDraft,
+    };
+  }
+  const snapshotHasDraft = Boolean(snapshot.inputDraft);
+  return {
+    asrSourceUtteranceId: snapshotHasDraft ? snapshotUtteranceId : null,
+    asrUtteranceId: snapshotHasDraft ? snapshotUtteranceId : null,
+    inputDraft: snapshot.inputDraft,
+  };
+}
+
 function recoveryAudioCommands(state: ChatStageState, snapshot: ChatSnapshot, snapshotSeq: number): ChatAudioCommand[] {
   const commands: ChatAudioCommand[] = [];
   const previousPlayback = state.activePlayback;
@@ -73,6 +103,7 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
     ? { transportMode: state.transportMode, transportState: state.transportState }
     : transportFromSnapshot(snapshot);
   const audioCommands = recoveryAudioCommands(state, snapshot, nextEventSeq);
+  const draft = hydratedInputDraft(state, snapshot);
   return withResolvedLayers({
     ...emptyChatState,
     ...snapshot,
@@ -81,7 +112,7 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
     error: undefined,
     eventSeq: nextEventSeq,
     inputAttachments: state.inputAttachments,
-    inputDraft: state.inputDraft || snapshot.inputDraft,
+    ...draft,
     pluginPagePresentations: (snapshot.pluginPagePresentations ?? []).map((presentation) => ({
       ...presentation,
       payload: { ...presentation.payload },

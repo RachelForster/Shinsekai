@@ -506,6 +506,13 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
         opencc=None,
     )
     runtime_asr = SimpleNamespace(close=Mock())
+    from core.messaging.chat_turn_service import ChatTurnService
+    admitted = []
+    turn_service = ChatTurnService(sink=admitted.append)
+    session.chat_turn_service = turn_service
+    active_turn = turn_service.begin_turn()
+    turn_service.submit("pending speech", defer_until_idle=True)
+    turn_service.mark_generation_complete(active_turn)
     branch_manager = SimpleNamespace(persist=Mock())
     session.streaming_bindings = SimpleNamespace(
         runtime_asr=runtime_asr,
@@ -527,11 +534,15 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
     )
 
     session._shutdown()
+    captured["pre_shutdown"]()
     captured["save_background"]()
     captured["emit_session_closed"]()
 
     assert captured["workflow"] is workflow
-    assert captured["pre_shutdown"] == runtime_asr.close
+    runtime_asr.close.assert_called_once_with()
+    turn_service.finish_turn(active_turn)
+    turn_service.submit("late speech", defer_until_idle=True)
+    assert admitted == []
     assert captured["save_history"] == branch_manager.persist
     assert captured["close_stream_sink"] == transport.close
     assert saved_background == [{"bg_path": "bg.png", "bgm_path": "bgm.mp3"}]
