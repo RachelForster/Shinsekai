@@ -121,4 +121,38 @@ def test_character_ai_writer_rebuilds_llm_when_model_config_changes(
     assert result.character_setting == "generated:model-b"
 
     assert created_models == ["model-a", "model-b"]
-    assert config.saved == 3
+    assert config.saved == 6
+
+
+def test_character_generation_keeps_saved_setting_when_brief_generation_fails(
+    monkeypatch,
+):
+    class BriefFailureLLMManager(_FakeLLMManager):
+        def __init__(self, adapter, user_template=""):
+            super().__init__(adapter, user_template)
+            self.calls = 0
+
+        def chat(self, *_args, **_kwargs):
+            self.calls += 1
+            if self.calls == 2:
+                raise TimeoutError("brief timed out")
+            return "generated setting"
+
+    monkeypatch.setattr(
+        generation.LLMAdapterFactory,
+        "create_adapter",
+        lambda **kwargs: _FakeAdapter(kwargs["model"]),
+    )
+    monkeypatch.setattr(generation, "LLMManager", BriefFailureLLMManager)
+
+    config = _FakeConfigManager()
+    manager = CharacterManager()
+    manager._config_manager = config
+
+    result = generate_character(manager, config, "Alice", "seed")
+
+    assert "角色设定输出成功" in result.message
+    assert "人物简介生成失败" in result.message
+    assert result.character_setting == "generated setting"
+    assert config.character.character_setting == "generated setting"
+    assert config.saved == 1

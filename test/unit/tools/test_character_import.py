@@ -114,6 +114,27 @@ class TestImport:
 
         assert result.sprites[0]["voice_type"] == "preset"
 
+    def test_imports_legacy_oversized_brief_without_truncating(self, tmp_path):
+        brief = "x" * 101
+        data = dict(BASIC_CHAR, character_brief=brief)
+        with tempfile.TemporaryDirectory() as td:
+            z = _make_export_zip(
+                Path(td),
+                data,
+                sprites={"smile.png": "png"},
+                speeches={"greet.wav": "wav"},
+            )
+            with _mock_dirs(tmp_path):
+                imported = file_util.import_character(str(z))
+
+                saved = yaml.safe_load(
+                    file_util.CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8")
+                )
+                assert imported[0].character_brief == brief
+                assert saved[0]["character_brief"] == brief
+                assert (file_util.SPRITE_DIR / "alice" / "smile.png").is_file()
+                assert (file_util.SPEECH_DIR / "alice" / "greet.wav").is_file()
+
     def test_sprite_paths_rewritten(self, tmp_path):
         """Imported sprite paths point to the local data/sprite/{prefix}/ dir."""
         with tempfile.TemporaryDirectory() as td:

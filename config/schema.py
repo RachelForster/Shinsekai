@@ -55,8 +55,7 @@ class Character(BaseModel):
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="角色的立绘和对应语音的列表")
     character_brief: DefaultIfNone[str] = Field(
         default="",
-        max_length=100,
-        description="100 字以内的角色简介，用于次要角色的精简提示词",
+        description="用于次要角色精简提示词的角色简介",
     )
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")

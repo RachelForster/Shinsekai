@@ -10,7 +10,7 @@ class CharacterConfig:
         self.color = color
         self.sprite_prefix = sprite_prefix
         self.sprites = sprites
-        self.character_brief = character_brief
+        self.character_brief = "" if character_brief is None else character_brief
         self.character_setting = character_setting
         self.sprite_scale = sprite_scale
         self.emotion_tags = emotion_tags

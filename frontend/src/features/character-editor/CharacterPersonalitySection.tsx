@@ -55,7 +55,7 @@ export function CharacterPersonalitySection({
           <label className="field-row__label" htmlFor={briefId}>
             {t("character.field.characterBrief")}
             <span aria-hidden className="field-row__hint">
-              {(draft.character_brief ?? "").length}/100
+              {(draft.character_brief ?? "").length}
             </span>
           </label>
           <span className="field-row__control">
@@ -63,7 +63,6 @@ export function CharacterPersonalitySection({
               aria-label={t("character.field.characterBrief")}
               className="character-personality-section__brief"
               id={briefId}
-              maxLength={100}
               onChange={(event) => onChange("character_brief", event.target.value)}
               value={draft.character_brief ?? ""}
             />

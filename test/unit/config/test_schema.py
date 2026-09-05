@@ -67,14 +67,16 @@ class TestCharacter:
         assert c.character_brief == ""
         assert c.sprite_scale == 1.0
 
-    def test_character_brief_is_limited_to_100_characters(self):
-        with pytest.raises(ValidationError):
-            Character(
-                name="Alice",
-                color="#fff",
-                sprite_prefix="alice",
-                character_brief="x" * 101,
-            )
+    def test_character_brief_accepts_legacy_long_text(self):
+        brief = "x" * 101
+        character = Character(
+            name="Alice",
+            color="#fff",
+            sprite_prefix="alice",
+            character_brief=brief,
+        )
+
+        assert character.character_brief == brief
 
 
 class TestApiConfig:
