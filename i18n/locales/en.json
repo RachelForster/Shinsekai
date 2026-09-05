@@ -677,6 +677,8 @@
     "sprites_count": "Sprites for {name} ({n}): \n",
     "profile_header": "\nCharacter profiles:\n",
     "profile_for": "Profile for {name}:\n",
+    "brief_header": "\nSupporting character briefs:\n",
+    "brief_for": "{name}: ",
     "scene_block_header": "Scenes:\n",
     "scene_count": "There are {n} available scenes: \n",
     "bgm_block_header": "BGM:\n",

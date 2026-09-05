@@ -1572,8 +1572,27 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(character);
       },
       export: (name) => delay(`./data/export/${name}.char`),
+      async ensureBriefs(names) {
+        const wanted = new Set(names);
+        const selected = config.characters.filter((character) => wanted.has(character.name));
+        const generatedNames: string[] = [];
+        for (const character of selected) {
+          if (!character.character_brief?.trim()) {
+            character.character_brief = `${character.name}的精简人物简介。`;
+            generatedNames.push(character.name);
+          }
+        }
+        return delay({ characters: selected, generatedNames });
+      },
+      async generateBrief(input) {
+        return delay({
+          characterBrief: `${input.name || "角色"}的精简人物简介。`,
+          message: "输出成功",
+        });
+      },
       async generateSetting(input) {
         return delay({
+          characterBrief: `${input.name || "角色"}的精简人物简介。`,
           characterSetting: `${input.name || "角色"}的背景信息：\n1. 浏览器预览生成的设定。\n\n语言习惯：\n1. 温和且简洁。`,
           message: "输出成功",
         });
@@ -1582,6 +1601,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         const imported = items.map<Character>((item, index) => {
           const label = item instanceof File ? item.name : item.split("/").pop() || `character-${index + 1}`;
           return {
+            character_brief: "",
             character_setting: "导入预览角色",
             color: DEFAULT_CHARACTER_COLOR,
             emotion_tags: "",

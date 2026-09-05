@@ -108,6 +108,8 @@ def test_character_ai_writer_rebuilds_llm_when_model_config_changes(
     result = generate_character(manager, config, "Alice", "seed")
     assert result.message == "输出成功"
     assert result.character_setting == "generated:model-a"
+    assert result.character_brief == "generated:model-a"
+    assert config.character.character_brief == "generated:model-a"
 
     config.model = "model-b"
     result = generate_character(manager, config, "Alice", "seed")

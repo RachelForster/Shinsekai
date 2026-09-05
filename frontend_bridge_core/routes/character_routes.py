@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from application.characters import CharacterOperation
 from frontend_bridge_core.characters import (
+    _ensure_character_briefs,
     _execute_character_request,
+    _generate_character_brief,
     _generate_character_setting,
     _save_character_emotion_tags,
     _save_sprite_scale,
@@ -30,6 +32,14 @@ def _save_character_route(request: ApiRequest) -> JsonResponse:
 
 def _generate_character_setting_route(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_generate_character_setting(request.state, request.body))
+
+
+def _generate_character_brief_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_generate_character_brief(request.state, request.body))
+
+
+def _ensure_character_briefs_route(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_ensure_character_briefs(request.state, request.body))
 
 
 def _translate_character_fields_route(request: ApiRequest) -> JsonResponse:
@@ -159,6 +169,18 @@ CHARACTER_ROUTES = (
         pattern="/api/characters/ai-setting",
         handler=_generate_character_setting_route,
         name="characters.ai_setting",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/ai-brief",
+        handler=_generate_character_brief_route,
+        name="characters.ai_brief",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/characters/ensure-briefs",
+        handler=_ensure_character_briefs_route,
+        name="characters.ensure_briefs",
     ),
     Route(
         methods=frozenset({"POST"}),

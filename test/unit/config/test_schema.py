@@ -40,6 +40,7 @@ class TestCharacter:
     def test_minimal_character(self):
         c = Character(name="Alice", color="#fff", sprite_prefix="alice")
         assert c.name == "Alice"
+        assert c.character_brief == ""
         assert c.character_setting == ""
         assert c.sprite_scale == 1.0
         assert c.sprites == []
@@ -63,7 +64,17 @@ class TestCharacter:
         """None values for DefaultIfNone fields should fall back to defaults."""
         c = Character(name="Bob", color="#000", sprite_prefix="bob", character_setting=None, sprite_scale=None)
         assert c.character_setting == ""
+        assert c.character_brief == ""
         assert c.sprite_scale == 1.0
+
+    def test_character_brief_is_limited_to_100_characters(self):
+        with pytest.raises(ValidationError):
+            Character(
+                name="Alice",
+                color="#fff",
+                sprite_prefix="alice",
+                character_brief="x" * 101,
+            )
 
 
 class TestApiConfig:

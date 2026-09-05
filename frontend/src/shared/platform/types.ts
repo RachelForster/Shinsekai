@@ -15,6 +15,7 @@ export interface Character {
   color: string;
   sprite_prefix: string;
   sprites: Sprite[];
+  character_brief?: string;
   character_setting: string;
   sprite_scale: number;
   emotion_tags: string;
@@ -521,11 +522,13 @@ export interface ChatLaunchPayload {
 
 export interface TemplateGenerateInput {
   backgroundName: string;
+  characterPromptMode?: CharacterPromptMode;
   characters: string[];
   effectNames?: string[];
   maxDialogItems?: number;
   maxSpeechChars?: number;
   name: string;
+  primaryCharacters?: string[];
   scenario?: string;
   useCg?: boolean;
   useChoice?: boolean;
@@ -537,8 +540,11 @@ export interface TemplateGenerateInput {
   voiceLanguage?: string;
 }
 
+export type CharacterPromptMode = "compact" | "full";
+
 export interface TemplateLaunchSession {
   background: string;
+  characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;
   effectNames: string[];
   filenameStub: string;
@@ -548,6 +554,7 @@ export interface TemplateLaunchSession {
   maxSpeechChars: number;
   roomId: string;
   scenario: string;
+  primaryCharacters?: string[];
   selectedCharacters: string[];
   system: string;
   templateFileDropdown: string;
@@ -661,8 +668,19 @@ export interface DiagnosticBundleResult {
 }
 
 export interface CharacterSettingResult {
+  characterBrief?: string;
   characterSetting: string;
   message: string;
+}
+
+export interface CharacterBriefResult {
+  characterBrief: string;
+  message: string;
+}
+
+export interface CharacterBriefBatchResult {
+  characters: Character[];
+  generatedNames: string[];
 }
 
 export interface CharacterTranslateResult {
@@ -1371,7 +1389,9 @@ export interface ShinsekaiPlatform {
     delete: (name: string) => Promise<void>;
     deleteMemory: (name: string, memoryId: string) => Promise<CharacterMemoryList>;
     deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;
+    ensureBriefs: (names: string[]) => Promise<CharacterBriefBatchResult>;
     export: (name: string) => Promise<string>;
+    generateBrief: (input: { name: string; setting: string }) => Promise<CharacterBriefResult>;
     generateSetting: (input: { name: string; setting: string }) => Promise<CharacterSettingResult>;
     import: (items: File[] | string[]) => Promise<Character[]>;
     list: () => Promise<Character[]>;
