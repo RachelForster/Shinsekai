@@ -36,6 +36,7 @@ _CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
     "template.load": (0.46, 0.54, "Loading the chat template and history."),
     "llm.init": (0.54, 0.68, "Preparing the language model."),
     "chat.init_hooks": (0.68, 0.82, "Running chat initialization hooks."),
+    "media.index": (0.82, 0.84, "Preparing semantic media indexes."),
     "workflow.build": (0.84, 0.9, "Building the chat workflow."),
     "stream.runtime.setup": (0.9, 0.93, "Connecting the chat interface."),
     "workflow.start": (0.93, 0.96, "Starting the chat workflow."),
@@ -346,7 +347,10 @@ class _BaseChatSession:
         from ai.llm.text_processor import TextProcessor, name_map
         from application.chat.build_effect_context import build_effect_context
         from application.chat.presentation import load_presentation_assets
-        from application.chat.dialog_media import create_asset_lookup_strategy
+        from application.chat.dialog_media import (
+            build_session_asset_catalogs,
+            create_asset_lookup_strategy,
+        )
         from application.runtime.workflow import (
             build_runtime_workflow,
             get_chat_workflow_handles,
@@ -361,6 +365,19 @@ class _BaseChatSession:
                 name_map.update(pronunciation_map)
 
         assets = load_presentation_assets(self.config, self.args.bg)
+        media_selection_mode = str(
+            getattr(self.args, "media_selection_mode", "indexed") or "indexed"
+        ).strip().lower()
+        if media_selection_mode == "semantic":
+            from ai.memory.media_assets import ensure_media_asset_indexes
+
+            catalogs = build_session_asset_catalogs(
+                self.config,
+                getattr(self.startup, "character_names", ()),
+                getattr(assets, "background", None),
+            )
+            with self.initialization.phase("media.index"):
+                ensure_media_asset_indexes(catalogs)
         effect_context = build_effect_context(
             self.config,
             str(self.args.effect_names or "").strip(),
@@ -374,9 +391,6 @@ class _BaseChatSession:
                 queue_factory=ClearableQueue,
             )
             handles = get_chat_workflow_handles(workflow)
-            media_selection_mode = str(
-                getattr(self.args, "media_selection_mode", "indexed") or "indexed"
-            ).strip().lower()
             if media_selection_mode == "semantic":
                 if handles.dialog_media_worker is None:
                     raise RuntimeError(

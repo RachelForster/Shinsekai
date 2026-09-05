@@ -2,6 +2,7 @@
 
 from .base import (
     AssetCandidate,
+    AssetCatalog,
     AssetIdMatch,
     AssetLookupRequest,
     AssetLookupResult,
@@ -14,6 +15,7 @@ from .vector_database import VectorDatabaseAssetLookupStrategy
 
 __all__ = [
     "AssetCandidate",
+    "AssetCatalog",
     "AssetIdMatch",
     "AssetLookupRequest",
     "AssetLookupResult",

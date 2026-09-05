@@ -5,8 +5,9 @@ from frontend_bridge_core.memory import (
     _delete_character_memory,
     _get_mem0_status,
     _list_character_memories,
-    _memory_tool_forget,
+    _memory_asset_index,
     _memory_asset_search,
+    _memory_tool_forget,
     _memory_tool_remember,
     _memory_tool_search,
 )
@@ -92,7 +93,17 @@ def _memory_asset_lookup(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_memory_asset_search(request.body))
 
 
+def _memory_asset_prepare(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_memory_asset_index(request.body))
+
+
 MEMORY_ROUTES = (
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/memory/asset-index",
+        handler=_memory_asset_prepare,
+        name="memory.asset-index",
+    ),
     Route(
         methods=frozenset({"POST"}),
         pattern="/api/memory/asset-search",

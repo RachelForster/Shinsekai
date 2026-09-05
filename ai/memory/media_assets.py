@@ -74,7 +74,9 @@ def _filters(scope_id: str, fingerprint: str | None = None) -> dict[str, str]:
     return filters
 
 
-def _ensure_index(mem: Any, scope_id: str, rows: Sequence[dict[str, str]]) -> str:
+def _ensure_index(
+    mem: Any, scope_id: str, rows: Sequence[dict[str, str]]
+) -> tuple[str, int]:
     fingerprint = _fingerprint(rows)
     current_filters = _filters(scope_id, fingerprint)
     existing = _results(
@@ -83,6 +85,7 @@ def _ensure_index(mem: Any, scope_id: str, rows: Sequence[dict[str, str]]) -> st
     existing_ids = {
         str(_metadata(row).get("asset_id") or "").strip() for row in existing
     }
+    added_count = 0
     for row in rows:
         if row["asset_id"] in existing_ids:
             continue
@@ -98,7 +101,73 @@ def _ensure_index(mem: Any, scope_id: str, rows: Sequence[dict[str, str]]) -> st
             },
             infer=False,
         )
-    return fingerprint
+        added_count += 1
+    return fingerprint, added_count
+
+
+def _catalog_payload(catalog: Any) -> dict[str, Any]:
+    if isinstance(catalog, dict):
+        scope = catalog.get("scope")
+        candidates = catalog.get("candidates")
+    else:
+        scope = getattr(catalog, "scope", "")
+        candidates = getattr(catalog, "candidates", ())
+    return {
+        "scope": str(scope or ""),
+        "candidates": _candidate_rows(
+            candidates if isinstance(candidates, (list, tuple)) else ()
+        ),
+    }
+
+
+def _local_index_catalogs(catalogs: Sequence[Any]) -> dict[str, int]:
+    normalized = [
+        catalog
+        for catalog in (_catalog_payload(item) for item in catalogs)
+        if catalog["scope"] and catalog["candidates"]
+    ]
+    if not normalized:
+        return {"catalogCount": 0, "assetCount": 0, "addedCount": 0}
+    mem = ensure_mem0()
+    asset_count = 0
+    added_count = 0
+    with _mem0_operation_lock:
+        for catalog in normalized:
+            rows = catalog["candidates"]
+            asset_count += len(rows)
+            _fingerprint_value, added = _ensure_index(
+                mem,
+                _scope_id(catalog["scope"]),
+                rows,
+            )
+            added_count += added
+    return {
+        "catalogCount": len(normalized),
+        "assetCount": asset_count,
+        "addedCount": added_count,
+    }
+
+
+def ensure_media_asset_indexes(catalogs: Sequence[Any]) -> dict[str, int]:
+    """Ensure all tagged catalogs exist before semantic lookup begins."""
+
+    payload = {"catalogs": [_catalog_payload(catalog) for catalog in catalogs]}
+    service_result = _memory_service_request("asset-index", payload)
+    if service_result is not None:
+        error = str(service_result.get("error") or "").strip()
+        status = str(service_result.get("status") or "").strip()
+        if error or status in {"error", "loading", "missing_dependency"}:
+            message = str(service_result.get("message") or error or status).strip()
+            raise RuntimeError(message or "semantic media indexing failed")
+        count_fields = {"catalogCount", "assetCount", "addedCount"}
+        if not count_fields.issubset(service_result):
+            raise RuntimeError("memory service returned an invalid asset index response")
+        return {
+            "catalogCount": int(service_result.get("catalogCount") or 0),
+            "assetCount": int(service_result.get("assetCount") or 0),
+            "addedCount": int(service_result.get("addedCount") or 0),
+        }
+    return _local_index_catalogs(payload["catalogs"])
 
 
 def _local_search(
@@ -115,7 +184,7 @@ def _local_search(
     mem = ensure_mem0()
     scope_id = _scope_id(scope)
     with _mem0_operation_lock:
-        fingerprint = _ensure_index(mem, scope_id, rows)
+        fingerprint, _added_count = _ensure_index(mem, scope_id, rows)
         raw = mem.search(
             query,
             filters=_filters(scope_id, fingerprint),
@@ -163,3 +232,10 @@ def media_asset_search_response(payload: dict[str, Any]) -> dict[str, Any]:
         limit=max(1, min(int(payload.get("limit") or 3), 20)),
     )
     return {"matches": matches}
+
+
+def media_asset_index_response(payload: dict[str, Any]) -> dict[str, int]:
+    """Ensure bridge-owned indexes for a batch of catalogs."""
+
+    catalogs = payload.get("catalogs")
+    return _local_index_catalogs(catalogs if isinstance(catalogs, list) else [])

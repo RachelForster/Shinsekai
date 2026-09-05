@@ -19,6 +19,14 @@ class AssetCandidate:
 
 
 @dataclass(frozen=True, slots=True)
+class AssetCatalog:
+    """One independently versioned group of media candidates."""
+
+    scope: str
+    candidates: tuple[AssetCandidate, ...]
+
+
+@dataclass(frozen=True, slots=True)
 class AssetIdMatch:
     """One strategy result, ordered ahead of less relevant matches."""
 

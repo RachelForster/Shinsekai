@@ -43,6 +43,7 @@ class ChatStartupContext:
     t2i_manager: T2IManager | None
     plugin_manager: PluginManager | None
     messages: list[Any]
+    character_names: tuple[str, ...]
 
 
 class MissingLlmProviderError(RuntimeError):
@@ -200,6 +201,7 @@ def create_chat_startup_context(
         t2i_manager=t2i_manager,
         plugin_manager=plugin_manager,
         messages=messages,
+        character_names=tuple(character_names),
     )
 
 

@@ -110,6 +110,20 @@ def _memory_asset_search(payload: dict[str, Any]) -> dict[str, Any]:
         return {"status": "loading", "message": exc.message}
 
 
+def _memory_asset_index(payload: dict[str, Any]) -> dict[str, Any]:
+    dep_error = _check_mem0_before_call()
+    if dep_error is not None:
+        return dep_error
+
+    from sdk.tool_registry import ToolNotReady
+    from application.memory.manage_memories import index_media_assets
+
+    try:
+        return index_media_assets(payload)
+    except ToolNotReady as exc:
+        return {"status": "loading", "message": exc.message}
+
+
 def _add_character_memory(name: str, content: str) -> dict[str, Any]:
     dep_error = _check_mem0_before_call()
     if dep_error is not None:
