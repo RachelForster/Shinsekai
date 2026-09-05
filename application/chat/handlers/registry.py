@@ -14,7 +14,8 @@ from sdk.messages import LLMDialogMessage, PresentationMessage
 
 if TYPE_CHECKING:
     from application.chat.dialog_media import (
-        SpriteLookupStrategy,
+        AssetLookupStrategy,
+        SpriteAssetResolver,
         TtsGenerationStrategy,
     )
 
@@ -63,7 +64,8 @@ class UiOutputMessageDispatcher:
 
 def default_dialog_media_handler_chain(
     *,
-    sprite_lookup_strategy: SpriteLookupStrategy | None = None,
+    asset_lookup_strategy: AssetLookupStrategy | None = None,
+    sprite_resolver: SpriteAssetResolver | None = None,
     tts_generation_strategy: TtsGenerationStrategy | None = None,
 ) -> DialogMediaDispatcher:
     """插件 handler 在前，内置链在后（先匹配先处理）。"""
@@ -72,7 +74,8 @@ def default_dialog_media_handler_chain(
 
     chain = list(get_plugin_dialog_media_handlers()) + list(
         get_dialog_media_handlers(
-            sprite_lookup_strategy=sprite_lookup_strategy,
+            asset_lookup_strategy=asset_lookup_strategy,
+            sprite_resolver=sprite_resolver,
             tts_generation_strategy=tts_generation_strategy,
         )
     )

@@ -4,6 +4,7 @@ import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import type {
   ChatLaunchPayload,
   ChatSnapshot,
+  MediaSelectionMode,
   TemplateGenerateInput,
   TemplateLaunchSession,
   TemplateSummary,
@@ -102,6 +103,7 @@ export function buildTemplateGenerateInput(input: {
   selectedCharacters: string[];
   characterPromptMode?: "compact" | "full";
   primaryCharacters?: string[];
+  mediaSelectionMode: MediaSelectionMode;
 }): TemplateGenerateInput {
   return {
     backgroundName: input.backgroundName,
@@ -110,6 +112,7 @@ export function buildTemplateGenerateInput(input: {
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
     maxDialogItems: input.runtime.maxDialogItems,
     maxSpeechChars: input.runtime.maxSpeechChars,
+    mediaSelectionMode: input.mediaSelectionMode,
     name: input.draft.name.trim(),
     primaryCharacters: input.primaryCharacters,
     scenario: String(input.draft.scenario ?? ""),
@@ -134,6 +137,7 @@ export function buildTemplateLaunchSession(input: {
   selectedCharacters: string[];
   characterPromptMode?: "compact" | "full";
   primaryCharacters?: string[];
+  mediaSelectionMode: MediaSelectionMode;
   selectedTemplateId: string;
 }): TemplateLaunchSession {
   return {
@@ -146,6 +150,7 @@ export function buildTemplateLaunchSession(input: {
     initSpritePath: input.runtime.initSpritePath.trim(),
     maxDialogItems: input.runtime.maxDialogItems,
     maxSpeechChars: input.runtime.maxSpeechChars,
+    mediaSelectionMode: input.mediaSelectionMode,
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.draft.scenario ?? ""),
     primaryCharacters: input.primaryCharacters,
@@ -172,6 +177,7 @@ export function buildChatLaunchPayload(input: {
   selectedCharacters: string[];
   template: TemplateSummary;
   useCg: boolean;
+  mediaSelectionMode: MediaSelectionMode;
 }): ChatLaunchPayload {
   return {
     backgroundName: input.backgroundName,
@@ -180,6 +186,7 @@ export function buildChatLaunchPayload(input: {
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
     historyPath: input.runtime.historyPath.trim(),
     initSpritePath: input.runtime.initSpritePath.trim(),
+    mediaSelectionMode: input.mediaSelectionMode,
     resetHistory: input.resetHistory,
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.template.scenario ?? ""),
@@ -203,6 +210,7 @@ export function synchronizeChatLaunchPayloadWithSession(
     effectNames: effectNames.length ? effectNames : undefined,
     historyPath: session.historyPath.trim(),
     initSpritePath: session.initSpritePath.trim(),
+    mediaSelectionMode: session.mediaSelectionMode ?? "indexed",
     roomId: session.roomId.trim(),
     scenario: session.scenario,
     system: session.system,

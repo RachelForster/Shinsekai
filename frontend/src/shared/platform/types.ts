@@ -511,6 +511,7 @@ export interface ChatLaunchPayload {
   effectNames?: string[];
   historyPath: string;
   initSpritePath?: string;
+  mediaSelectionMode?: MediaSelectionMode;
   resetHistory?: boolean;
   roomId?: string;
   scenario?: string;
@@ -527,6 +528,7 @@ export interface TemplateGenerateInput {
   effectNames?: string[];
   maxDialogItems?: number;
   maxSpeechChars?: number;
+  mediaSelectionMode?: MediaSelectionMode;
   name: string;
   primaryCharacters?: string[];
   scenario?: string;
@@ -541,6 +543,7 @@ export interface TemplateGenerateInput {
 }
 
 export type CharacterPromptMode = "compact" | "full";
+export type MediaSelectionMode = "indexed" | "semantic";
 
 export interface TemplateLaunchSession {
   background: string;
@@ -552,6 +555,7 @@ export interface TemplateLaunchSession {
   initSpritePath: string;
   maxDialogItems: number;
   maxSpeechChars: number;
+  mediaSelectionMode?: MediaSelectionMode;
   roomId: string;
   scenario: string;
   primaryCharacters?: string[];

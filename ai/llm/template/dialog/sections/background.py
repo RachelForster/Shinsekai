@@ -17,7 +17,11 @@ class BackgroundSection(Section[DialogTemplateContext]):
         available = context.has_real_background and bool(background)
         scenes = TextSection(
             "scenes",
-            enabled=available and bool(getattr(background, "sprites", None)),
+            enabled=(
+                not context.uses_vibe
+                and available
+                and bool(getattr(background, "sprites", None))
+            ),
             text=lambda ctx: (
                 ctx.translate("scene_block_header")
                 + ctx.translate("scene_count", n=len(background.sprites))
@@ -26,7 +30,11 @@ class BackgroundSection(Section[DialogTemplateContext]):
         )
         music = TextSection(
             "music",
-            enabled=available and bool(getattr(background, "bgm_list", None)),
+            enabled=(
+                not context.uses_vibe
+                and available
+                and bool(getattr(background, "bgm_list", None))
+            ),
             text=lambda ctx: (
                 ctx.translate("bgm_block_header")
                 + ctx.translate("bgm_count", n=len(background.bgm_list))

@@ -1,81 +1,88 @@
-"""Strategies for resolving a dialog message to a configured sprite."""
+"""Resolve character sprites and their mutable voice metadata."""
 
 from __future__ import annotations
 
 import logging
-from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import yaml
 
-from .models import SpriteLookupRequest, SpriteMatch
+from core.media.asset_tags import tag_contents
+
+from ..lookup import AssetCandidate, AssetLookupResult
+from .asset import AssetResolver, ResolvedAsset, asset_candidates
 
 logger = logging.getLogger(__name__)
 
 
-class SpriteLookupStrategy(ABC):
-    """Select a sprite for a character dialog message."""
+@dataclass(frozen=True, slots=True)
+class ResolvedSpriteAsset(ResolvedAsset):
+    """A configured sprite enriched with voice playback metadata."""
 
-    @abstractmethod
-    def lookup(self, request: SpriteLookupRequest) -> SpriteMatch:
-        """Return the selected sprite and its voice metadata."""
+    voice_type: str | None = None
+    voice_path: str = ""
+    voice_text: str = ""
+
+    @property
+    def sprite(self) -> Any | None:
+        return self.value
 
 
-class ConfigSpriteLookupStrategy(SpriteLookupStrategy):
-    """Resolve the one-based sprite id stored in the dialog message."""
+class SpriteAssetResolver:
+    """Resolve a sprite id and attach its current voice configuration."""
 
     def __init__(
         self, characters_path: str | Path = "data/config/characters.yaml"
     ) -> None:
         self._characters_path = Path(characters_path)
+        self._resolver = AssetResolver()
 
-    def lookup(self, request: SpriteLookupRequest) -> SpriteMatch:
-        asset_id = str(
-            request.message.asset_id if request.message.asset_id is not None else "-1"
-        )
-        sprites = getattr(request.character, "sprites", None) or []
-        try:
-            index = int(asset_id) - 1
-            if index < 0 or index >= len(sprites):
-                raise IndexError
-            sprite = sprites[index]
-        except (TypeError, ValueError, IndexError):
-            return SpriteMatch(asset_id=asset_id)
+    def candidates(self, character: Any) -> tuple[AssetCandidate, ...]:
+        sprites = getattr(character, "sprites", None) or []
+        tags = tag_contents(getattr(character, "emotion_tags", ""), len(sprites))
+        return asset_candidates(sprites, tags=tags)
 
+    def resolve(
+        self,
+        character: Any,
+        candidates: Sequence[AssetCandidate],
+        result: AssetLookupResult,
+    ) -> ResolvedSpriteAsset:
+        resolved = self._resolver.resolve(candidates, result)
+        if not resolved.found:
+            return ResolvedSpriteAsset(asset_id=resolved.asset_id)
+
+        sprite = resolved.value
         voice_type = self._value(sprite, "voice_type")
         voice_path = str(self._value(sprite, "voice_path", "") or "").strip()
         voice_text = str(self._value(sprite, "voice_text", "") or "")
-
         yaml_voice = self._read_voice_config(
-            str(getattr(request.character, "name", "")), index
+            str(getattr(character, "name", "")), int(resolved.index)
         )
         if yaml_voice is not None and yaml_voice[1]:
             voice_type, voice_path, voice_text = yaml_voice
-
-        return SpriteMatch(
-            asset_id=asset_id,
-            index=index,
-            sprite=sprite,
+        return ResolvedSpriteAsset(
+            asset_id=resolved.asset_id,
+            index=resolved.index,
+            value=sprite,
+            path=resolved.path,
             voice_type=voice_type,
-            voice_path=str(voice_path or "").strip(),
-            voice_text=str(voice_text or ""),
+            voice_path=voice_path,
+            voice_text=voice_text,
         )
 
     def _read_voice_config(
         self, character_name: str, sprite_index: int
     ) -> tuple[str | None, str, str] | None:
-        """Read mutable voice fields from disk instead of a process-local cache."""
         if not self._characters_path.is_file():
             return None
         try:
             with self._characters_path.open("r", encoding="utf-8") as file:
                 characters = yaml.safe_load(file) or []
             for character in characters:
-                if (
-                    not isinstance(character, dict)
-                    or character.get("name") != character_name
-                ):
+                if not isinstance(character, dict) or character.get("name") != character_name:
                     continue
                 sprites = character.get("sprites") or []
                 if 0 <= sprite_index < len(sprites):

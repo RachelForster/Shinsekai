@@ -39,6 +39,8 @@ def test_memory_route_contracts_remain_stable() -> None:
         ("POST", "/api/memory/remember"),
         ("POST", "/api/memory/search"),
         ("POST", "/api/memory/status"),
+        ("POST", "/api/memory/asset-index"),
+        ("POST", "/api/memory/asset-search"),
     }
 
 

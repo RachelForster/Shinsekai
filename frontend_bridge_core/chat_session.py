@@ -213,6 +213,7 @@ def launch_chat(
             else ""
         ),
         workflow_path=str(body.get("workflowPath") or ""),
+        media_selection_mode=str(body.get("mediaSelectionMode") or "indexed"),
     )
     dependency_error = runtime_dependency_error_from_text(message)
     if dependency_error:
@@ -393,6 +394,7 @@ def resume_last_chat(
             else ""
         ),
         workflow_path=str(session.get("workflowPath") or ""),
+        media_selection_mode=str(session.get("mediaSelectionMode") or "indexed"),
     )
     dependency_error = runtime_dependency_error_from_text(message)
     if dependency_error:

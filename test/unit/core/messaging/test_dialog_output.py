@@ -18,3 +18,18 @@ def test_dialog_output_requires_a_non_empty_complete_dialog_contract() -> None:
         has_valid_dialog_output('{"character_name":"Alice","sprite":"0","speech":"Hi"}')
         is False
     )
+
+
+def test_dialog_output_accepts_vibe_as_the_media_selection_field() -> None:
+    assert (
+        has_valid_dialog_output(
+            '{"dialog":[{"character_name":"Alice","vibe":"quiet smile","speech":"Hi"}]}'
+        )
+        is True
+    )
+    assert (
+        has_valid_dialog_output(
+            '{"dialog":[{"character_name":"Alice","speech":"Hi"}]}'
+        )
+        is False
+    )

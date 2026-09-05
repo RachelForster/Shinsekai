@@ -5,13 +5,24 @@ from unittest.mock import MagicMock
 
 import yaml
 
-from application.chat.handlers.dialog_media import CharacterMediaHandler
+from application.chat.handlers.dialog_media import (
+    BgmMediaHandler,
+    CharacterMediaHandler,
+    SceneMediaHandler,
+)
 from application.chat.dialog_media import (
-    ConfigSpriteLookupStrategy,
+    AssetCandidate,
+    AssetIdMatch,
+    AssetLookupRequest,
+    AssetLookupResult,
+    CompositeAssetLookupStrategy,
+    create_asset_lookup_strategy,
     DefaultTtsGenerationStrategy,
-    SpriteLookupRequest,
-    SpriteMatch,
+    MessageAssetIdLookupStrategy,
+    ResolvedSpriteAsset,
+    SpriteAssetResolver,
     TtsGenerationRequest,
+    VectorDatabaseAssetLookupStrategy,
 )
 from application.runtime.workers import DialogMediaWorker
 from sdk.messages import LLMDialogMessage, PresentationMessage
@@ -32,7 +43,7 @@ def _character(**overrides):
     return SimpleNamespace(**values)
 
 
-def test_config_sprite_lookup_resolves_message_asset_and_voice_metadata(tmp_path):
+def test_message_asset_id_lookup_and_sprite_resolver_resolve_voice_metadata(tmp_path):
     character = _character(
         sprites=[
             {
@@ -43,12 +54,16 @@ def test_config_sprite_lookup_resolves_message_asset_and_voice_metadata(tmp_path
             }
         ]
     )
-    request = SpriteLookupRequest(
-        character=character,
-        message=LLMDialogMessage(name="Alice", text="Hello", asset_id="1"),
+    resolver = SpriteAssetResolver(tmp_path / "missing.yaml")
+    candidates = resolver.candidates(character)
+    result = MessageAssetIdLookupStrategy().lookup(
+        AssetLookupRequest(
+            scope="sprite:Alice",
+            candidates=candidates,
+            explicit_asset_id="1",
+        )
     )
-
-    match = ConfigSpriteLookupStrategy(tmp_path / "missing.yaml").lookup(request)
+    match = resolver.resolve(character, candidates, result)
 
     assert match.found is True
     assert match.asset_id == "1"
@@ -59,7 +74,68 @@ def test_config_sprite_lookup_resolves_message_asset_and_voice_metadata(tmp_path
     assert match.voice_text == "A happy line"
 
 
-def test_config_sprite_lookup_refreshes_mutable_voice_metadata_from_yaml(tmp_path):
+def test_vector_database_asset_lookup_returns_ranked_current_candidates():
+    search = MagicMock(
+        return_value=[
+            {"asset_id": "2", "score": 0.91},
+            {"asset_id": "stale", "score": 0.85},
+            {"asset_id": "1", "score": 0.62},
+        ]
+    )
+    candidates = (
+        AssetCandidate("1", 0, "first.png", tags="calm"),
+        AssetCandidate("2", 1, "second.png", tags="angry"),
+    )
+
+    result = VectorDatabaseAssetLookupStrategy(search).lookup(
+        AssetLookupRequest(
+            scope="sprite:alice",
+            candidates=candidates,
+            vibe="furious",
+        )
+    )
+
+    assert result.matches == (
+        AssetIdMatch("2", 0.91),
+        AssetIdMatch("1", 0.62),
+    )
+    search.assert_called_once_with(
+        scope="sprite:alice",
+        vibe="furious",
+        candidates=candidates,
+        limit=2,
+    )
+
+
+def test_composite_asset_lookup_falls_back_to_explicit_id():
+    empty = MagicMock()
+    empty.lookup.return_value = AssetLookupResult()
+    strategy = CompositeAssetLookupStrategy((empty, MessageAssetIdLookupStrategy()))
+
+    result = strategy.lookup(
+        AssetLookupRequest(
+            scope="scene:school",
+            candidates=(),
+            explicit_asset_id="03",
+        )
+    )
+
+    assert result.best == AssetIdMatch("03")
+
+
+def test_asset_lookup_factory_uses_vector_then_direct_fallback():
+    strategy = create_asset_lookup_strategy("semantic")
+
+    assert isinstance(strategy, CompositeAssetLookupStrategy)
+    assert isinstance(strategy.strategies[0], VectorDatabaseAssetLookupStrategy)
+    assert isinstance(strategy.strategies[1], MessageAssetIdLookupStrategy)
+    assert isinstance(
+        create_asset_lookup_strategy("indexed"),
+        MessageAssetIdLookupStrategy,
+    )
+
+
+def test_sprite_resolver_refreshes_mutable_voice_metadata_from_yaml(tmp_path):
     characters_path = tmp_path / "characters.yaml"
     characters_path.write_text(
         yaml.safe_dump(
@@ -89,12 +165,16 @@ def test_config_sprite_lookup_refreshes_mutable_voice_metadata_from_yaml(tmp_pat
         ]
     )
 
-    match = ConfigSpriteLookupStrategy(characters_path).lookup(
-        SpriteLookupRequest(
-            character=character,
-            message=LLMDialogMessage(name="Alice", text="Hello", asset_id="1"),
+    resolver = SpriteAssetResolver(characters_path)
+    candidates = resolver.candidates(character)
+    result = MessageAssetIdLookupStrategy().lookup(
+        AssetLookupRequest(
+            scope="sprite:Alice",
+            candidates=candidates,
+            explicit_asset_id="1",
         )
     )
+    match = resolver.resolve(character, candidates, result)
 
     assert match.voice_type == "reference"
     assert match.voice_path == "fresh.wav"
@@ -111,10 +191,10 @@ def test_default_tts_generation_uses_fixed_sprite_voice_without_synthesis(tmp_pa
         character=_character(),
         character_name="Alice",
         message=LLMDialogMessage(name="Alice", text="Hello", asset_id="1"),
-        sprite=SpriteMatch(
+        sprite=ResolvedSpriteAsset(
             asset_id="1",
             index=0,
-            sprite={},
+            value={},
             voice_type="preset",
             voice_path=str(voice_path),
             voice_text="Recorded line",
@@ -138,10 +218,10 @@ def test_default_tts_generation_uses_fixed_voice_when_manager_is_unavailable(
         character=_character(),
         character_name="Alice",
         message=LLMDialogMessage(name="Alice", text="Hello", asset_id="1"),
-        sprite=SpriteMatch(
+        sprite=ResolvedSpriteAsset(
             asset_id="1",
             index=0,
-            sprite={},
+            value={},
             voice_type="fallback",
             voice_path=str(voice_path),
         ),
@@ -183,7 +263,7 @@ def test_default_tts_generation_preserves_segment_output_order(tmp_path):
         message=LLMDialogMessage(
             name="Alice", text="Hi.Bye.", asset_id="1", effect="shake"
         ),
-        sprite=SpriteMatch(asset_id="1"),
+        sprite=ResolvedSpriteAsset(asset_id="1"),
     )
 
     generated_paths = list(DefaultTtsGenerationStrategy().generate(request))
@@ -194,25 +274,28 @@ def test_default_tts_generation_preserves_segment_output_order(tmp_path):
 def test_character_handler_builds_presentation_from_injected_path_strategy(
     mock_app_runtime,
 ):
-    sprite = SpriteMatch(
+    sprite = ResolvedSpriteAsset(
         asset_id="7",
         index=6,
-        sprite={"path": "chosen.png"},
+        value={"path": "chosen.png"},
         voice_type="preset",
         voice_path="recorded.wav",
         voice_text="Recorded line",
     )
-    sprite_lookup = MagicMock()
-    sprite_lookup.lookup.return_value = sprite
+    asset_lookup = MagicMock()
+    sprite_resolver = MagicMock()
+    sprite_resolver.candidates.return_value = ()
+    sprite_resolver.resolve.return_value = sprite
     generation = MagicMock()
     generation.generate.return_value = ["first.wav", "second.wav"]
-    handler = CharacterMediaHandler(sprite_lookup, generation)
+    handler = CharacterMediaHandler(asset_lookup, generation, sprite_resolver)
     message = LLMDialogMessage(name="TestChar", text="Hello", asset_id="1")
 
     handler.handle(message)
 
-    lookup_request = sprite_lookup.lookup.call_args.args[0]
-    assert lookup_request.message is message
+    lookup_request = asset_lookup.lookup.call_args.args[0]
+    assert lookup_request.explicit_asset_id == "1"
+    assert lookup_request.scope == "sprite:TestChar"
     generation_request = generation.generate.call_args.args[0]
     assert generation_request.sprite is sprite
     assert mock_app_runtime.presentation_queue.get_nowait() == PresentationMessage(
@@ -233,8 +316,57 @@ def test_character_handler_builds_presentation_from_injected_path_strategy(
     )
 
 
+def test_scene_handler_resolves_vibe_match_through_shared_asset_strategy(
+    mock_app_runtime,
+):
+    mock_app_runtime.background = SimpleNamespace(
+        name="School",
+        sprites=[{"path": "day.png"}, {"path": "rain.png"}],
+        bg_tags="daylight\nrainy, lonely",
+    )
+    lookup = MagicMock(
+        return_value=AssetLookupResult(matches=(AssetIdMatch("2", 0.9),))
+    )
+    lookup.lookup = lookup
+    handler = SceneMediaHandler(lookup)
+
+    handler.handle(LLMDialogMessage(name="scene", text="", vibe="lonely rain"))
+
+    request = lookup.call_args.args[0]
+    assert request.scope == "scene:School"
+    assert request.vibe == "lonely rain"
+    assert request.candidates[1].tags == "rainy, lonely"
+    assert mock_app_runtime.presentation_queue.get_nowait().asset_id == "2"
+
+
+def test_bgm_handler_resolves_vibe_match_through_shared_asset_strategy(
+    mock_app_runtime,
+):
+    mock_app_runtime.background = SimpleNamespace(
+        name="School",
+        bgm_tags="quiet\ntense pursuit",
+    )
+    mock_app_runtime.bgm_list = ["quiet.mp3", "chase.mp3"]
+    lookup = MagicMock(
+        return_value=AssetLookupResult(matches=(AssetIdMatch("2", 0.88),))
+    )
+    lookup.lookup = lookup
+    handler = BgmMediaHandler(lookup)
+
+    handler.handle(LLMDialogMessage(name="bgm", text="", vibe="danger"))
+
+    request = lookup.call_args.args[0]
+    assert request.scope == "bgm:School"
+    assert request.vibe == "danger"
+    assert request.candidates[1].tags == "tense pursuit"
+    output = mock_app_runtime.presentation_queue.get_nowait()
+    assert output.asset_id == "2"
+    assert output.audio_path == "chase.mp3"
+
+
 def test_dialog_media_worker_passes_injected_strategies_to_handler_chain(monkeypatch):
-    sprite_lookup = MagicMock()
+    asset_lookup = MagicMock()
+    sprite_resolver = MagicMock()
     generation = MagicMock()
     dispatcher = MagicMock()
     chain_factory = MagicMock(return_value=dispatcher)
@@ -245,14 +377,16 @@ def test_dialog_media_worker_passes_injected_strategies_to_handler_chain(monkeyp
     worker = DialogMediaWorker(
         input_queue=MagicMock(),
         output_queue=MagicMock(),
-        sprite_lookup_strategy=sprite_lookup,
+        asset_lookup_strategy=asset_lookup,
+        sprite_resolver=sprite_resolver,
         tts_generation_strategy=generation,
     )
 
     worker._init_app()
 
     chain_factory.assert_called_once_with(
-        sprite_lookup_strategy=sprite_lookup,
+        asset_lookup_strategy=asset_lookup,
+        sprite_resolver=sprite_resolver,
         tts_generation_strategy=generation,
     )
     dispatcher.init_handlers.assert_called_once_with()

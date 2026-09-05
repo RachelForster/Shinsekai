@@ -12,13 +12,15 @@ from core.messaging.dialog_output import has_valid_dialog_output
 _DIALOG_FORMAT_REPAIR_PROMPT = (
     "Reformat your immediately preceding answer as the application's dialogue JSON. "
     "Return only a JSON object with a non-empty `dialog` array. Each item must have "
-    "`character_name`, `sprite`, and `speech`. Do not call tools or add markdown."
+    "`character_name`, `speech`, and either `sprite` or `vibe`. Do not call tools "
+    "or add markdown."
 )
 
 _DIALOG_FORMAT_RETRY_PROMPT = (
     "That reply is STILL not valid. You MUST answer with ONLY a JSON object — a "
-    "non-empty `dialog` array whose items each have `character_name`, `sprite`, and "
-    "`speech`. Output that JSON and nothing else: no prose, no markdown fences, no tool calls."
+    "non-empty `dialog` array whose items each have `character_name`, `speech`, and "
+    "either `sprite` or `vibe`. Output that JSON and nothing else: no prose, no "
+    "markdown fences, no tool calls."
 )
 
 

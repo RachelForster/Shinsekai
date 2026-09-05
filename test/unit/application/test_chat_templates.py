@@ -141,6 +141,7 @@ def test_generate_template_summary_uses_full_primary_profile_and_supporting_brie
             "backgroundName": "",
             "characterPromptMode": "compact",
             "characters": ["Alice", "Mika"],
+            "mediaSelectionMode": "semantic",
             "primaryCharacters": ["Alice", "Deleted"],
             "useTranslation": False,
         },
@@ -149,6 +150,8 @@ def test_generate_template_summary_uses_full_primary_profile_and_supporting_brie
     assert "Alice full profile" in summary["system"]
     assert "Mika short brief" in summary["system"]
     assert "Mika full profile" not in summary["system"]
+    assert "vibe (string, required)" in summary["system"]
+    assert "sprite (string, required)" not in summary["system"]
 
 
 def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
@@ -211,6 +214,7 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
             "effectNames": [" Rain ", ""],
             "initSpritePath": "",
             "characterPromptMode": "compact",
+            "mediaSelectionMode": "semantic",
             "primaryCharacters": [" alice ", "Deleted"],
             "scenario": "Restored scenario",
             "selectedCharacters": ["Deleted", " alice "],
@@ -224,11 +228,13 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     assert saved["init_sprite_path"] == "sprites/alice.png"
     assert saved["character_prompt_mode"] == "compact"
     assert saved["primary_characters"] == ["Alice"]
+    assert saved["media_selection_mode"] == "semantic"
     assert restored["effectNames"] == ["Rain"]
     assert restored["selectedCharacters"] == ["Alice"]
     assert restored["initSpritePath"] == "sprites/alice.png"
     assert restored["characterPromptMode"] == "compact"
     assert restored["primaryCharacters"] == ["Alice"]
+    assert restored["mediaSelectionMode"] == "semantic"
 
 
 def test_scenario_from_template_like_falls_back_only_for_none():
@@ -273,6 +279,7 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
         "initSpritePath": "/tmp/sprite.png",
         "maxDialogItems": 8,
         "maxSpeechChars": 0,
+        "mediaSelectionMode": "indexed",
         "roomId": "123",
         "scenario": "场景",
         "selectedCharacters": ["Alice", "42"],

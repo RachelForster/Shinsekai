@@ -11,11 +11,14 @@ from collections.abc import Iterable, Iterator
 from typing import List
 
 from application.chat.dialog_media import (
-    ConfigSpriteLookupStrategy,
+    AssetResolver,
+    AssetLookupRequest,
+    AssetLookupStrategy,
+    asset_candidates,
     DefaultTtsGenerationStrategy,
-    SpriteLookupRequest,
-    SpriteLookupStrategy,
-    SpriteMatch,
+    MessageAssetIdLookupStrategy,
+    ResolvedSpriteAsset,
+    SpriteAssetResolver,
     TtsGenerationRequest,
     TtsGenerationStrategy,
 )
@@ -24,12 +27,14 @@ from core.messaging.dialog_tokens import (
     match_cg_name,
     match_cot_dialog,
     match_system_dialog,
+    match_scene_name,
     normalize_character_name,
 )
 from application.runtime.context import get_app_runtime, emit_presentation_message
 from i18n import tr as tr_i18n
 from sdk.handlers import MessageHandler
 from sdk.messages import LLMDialogMessage, PresentationMessage
+from core.media.asset_tags import tag_contents
 
 
 def _post_media_busy(text: str) -> None:
@@ -66,6 +71,58 @@ class ChainOfThoughtMediaHandler(MessageHandler):
         )
 
 
+def _lookup_request(
+    msg: LLMDialogMessage,
+    *,
+    scope: str,
+    candidates,
+) -> AssetLookupRequest:
+    return AssetLookupRequest(
+        scope=scope,
+        candidates=tuple(candidates),
+        explicit_asset_id=str(msg.asset_id if msg.asset_id is not None else "-1"),
+        vibe=str(msg.vibe or ""),
+    )
+
+
+class SceneMediaHandler(MessageHandler):
+    def __init__(
+        self,
+        asset_lookup_strategy: AssetLookupStrategy | None = None,
+        asset_resolver: AssetResolver | None = None,
+    ) -> None:
+        self.asset_lookup_strategy = (
+            asset_lookup_strategy or MessageAssetIdLookupStrategy()
+        )
+        self.asset_resolver = asset_resolver or AssetResolver()
+
+    def can_handle(self, msg: LLMDialogMessage) -> bool:
+        return match_scene_name(msg.name)
+
+    def handle(self, msg: LLMDialogMessage) -> None:
+        rt = get_app_runtime()
+        background = rt.background
+        sprites = list(getattr(background, "sprites", None) or [])
+        tags = tag_contents(getattr(background, "bg_tags", ""), len(sprites))
+        candidates = asset_candidates(sprites, tags=tags)
+        result = self.asset_lookup_strategy.lookup(
+            _lookup_request(
+                msg,
+                scope=f"scene:{getattr(background, 'name', '')}",
+                candidates=candidates,
+            )
+        )
+        resolved = self.asset_resolver.resolve(candidates, result)
+        emit_presentation_message(
+            normalize_character_name(msg.name),
+            msg.text,
+            resolved.asset_id,
+            "",
+            is_system_message=True,
+            effect=msg.effect,
+        )
+
+
 class SystemDialogMediaHandler(MessageHandler):
     def can_handle(self, msg: LLMDialogMessage) -> bool:
         return match_system_dialog(_cc(), msg.name)
@@ -83,27 +140,45 @@ class SystemDialogMediaHandler(MessageHandler):
 
 
 class BgmMediaHandler(MessageHandler):
+    def __init__(
+        self,
+        asset_lookup_strategy: AssetLookupStrategy | None = None,
+        asset_resolver: AssetResolver | None = None,
+    ) -> None:
+        self.asset_lookup_strategy = (
+            asset_lookup_strategy or MessageAssetIdLookupStrategy()
+        )
+        self.asset_resolver = asset_resolver or AssetResolver()
+
     def can_handle(self, msg: LLMDialogMessage) -> bool:
         return match_bgm_name(msg.name)
 
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
-        bgm_path = ""
-        try:
-            sid = int(msg.asset_id) - 1
-            bgm_path = rt.bgm_list[sid]
-        except Exception as e:
-            print("无法得到bgm path", e)
-            traceback.print_exc()
-        finally:
-            emit_presentation_message(
-                "bgm",
-                "",
-                str(msg.asset_id),
-                bgm_path,
-                is_system_message=True,
-                effect=msg.effect,
+        background = rt.background
+        paths = list(rt.bgm_list or [])
+        tags = tag_contents(getattr(background, "bgm_tags", ""), len(paths))
+        candidates = asset_candidates(
+            paths,
+            tags=tags,
+            path_of=lambda path: str(path or ""),
+        )
+        result = self.asset_lookup_strategy.lookup(
+            _lookup_request(
+                msg,
+                scope=f"bgm:{getattr(background, 'name', '')}",
+                candidates=candidates,
             )
+        )
+        resolved = self.asset_resolver.resolve(candidates, result)
+        emit_presentation_message(
+            "bgm",
+            "",
+            resolved.asset_id,
+            resolved.path,
+            is_system_message=True,
+            effect=msg.effect,
+        )
 
 
 class CgMediaHandler(MessageHandler):
@@ -131,14 +206,16 @@ class CharacterMediaHandler(MessageHandler):
 
     def __init__(
         self,
-        sprite_lookup_strategy: SpriteLookupStrategy | None = None,
+        asset_lookup_strategy: AssetLookupStrategy | None = None,
         tts_generation_strategy: TtsGenerationStrategy | None = None,
+        sprite_resolver: SpriteAssetResolver | None = None,
     ) -> None:
-        self.sprite_lookup_strategy = (
-            ConfigSpriteLookupStrategy()
-            if sprite_lookup_strategy is None
-            else sprite_lookup_strategy
+        self.asset_lookup_strategy = (
+            MessageAssetIdLookupStrategy()
+            if asset_lookup_strategy is None
+            else asset_lookup_strategy
         )
+        self.sprite_resolver = sprite_resolver or SpriteAssetResolver()
         self.tts_generation_strategy = (
             DefaultTtsGenerationStrategy()
             if tts_generation_strategy is None
@@ -167,7 +244,7 @@ class CharacterMediaHandler(MessageHandler):
         *,
         character_name: str,
         message: LLMDialogMessage,
-        sprite: SpriteMatch,
+        sprite: ResolvedSpriteAsset,
         audio_paths: Iterable[str],
     ) -> Iterator[PresentationMessage]:
         speech = message.text or ""
@@ -196,8 +273,18 @@ class CharacterMediaHandler(MessageHandler):
         if character_config is None:
             raise ValueError(f"未找到角色配置: {name_s}")
 
-        sprite = self.sprite_lookup_strategy.lookup(
-            SpriteLookupRequest(character=character_config, message=msg)
+        candidates = self.sprite_resolver.candidates(character_config)
+        lookup_result = self.asset_lookup_strategy.lookup(
+            _lookup_request(
+                msg,
+                scope=f"sprite:{name_s}",
+                candidates=candidates,
+            )
+        )
+        sprite = self.sprite_resolver.resolve(
+            character_config,
+            candidates,
+            lookup_result,
         )
         generation_request = TtsGenerationRequest(
             runtime=rt,
@@ -225,16 +312,21 @@ class CharacterMediaHandler(MessageHandler):
 
 def get_dialog_media_handlers(
     *,
-    sprite_lookup_strategy: SpriteLookupStrategy | None = None,
+    asset_lookup_strategy: AssetLookupStrategy | None = None,
+    sprite_resolver: SpriteAssetResolver | None = None,
     tts_generation_strategy: TtsGenerationStrategy | None = None,
 ) -> List[MessageHandler]:
+    lookup = asset_lookup_strategy or MessageAssetIdLookupStrategy()
+    resolver = AssetResolver()
     return [
         ChainOfThoughtMediaHandler(),
+        SceneMediaHandler(lookup, resolver),
         SystemDialogMediaHandler(),
-        BgmMediaHandler(),
+        BgmMediaHandler(lookup, resolver),
         CgMediaHandler(),
         CharacterMediaHandler(
-            sprite_lookup_strategy=sprite_lookup_strategy,
+            asset_lookup_strategy=lookup,
+            sprite_resolver=sprite_resolver,
             tts_generation_strategy=tts_generation_strategy,
         ),
     ]

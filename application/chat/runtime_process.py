@@ -408,6 +408,7 @@ def _launch_chat(
     stream_endpoint: str = "",
     init_stream_endpoint: str = "",
     workflow_path: str = "",
+    media_selection_mode: str = "indexed",
 ) -> str:
     global _main_chat_process
 
@@ -453,6 +454,9 @@ def _launch_chat(
             "t2i": "ComfyUI" if use_cg else "",
             "room_id": room_id,
             "tts": tts_slug,
+            "media_selection_mode": (
+                "semantic" if media_selection_mode == "semantic" else "indexed"
+            ),
         }
         if character_names:
             launch_config["characters"] = json.dumps(character_names, ensure_ascii=False)

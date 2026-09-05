@@ -4,7 +4,11 @@ import threading
 from queue import Queue
 from typing import Optional
 
-from application.chat.dialog_media import SpriteLookupStrategy, TtsGenerationStrategy
+from application.chat.dialog_media import (
+    AssetLookupStrategy,
+    SpriteAssetResolver,
+    TtsGenerationStrategy,
+)
 from application.chat.handlers.registry import default_dialog_media_handler_chain
 from sdk.graph import Port
 from sdk.logging import get_logger
@@ -52,7 +56,8 @@ class DialogMediaWorker(ThreadDagNode):
         parent=None,
         *,
         name: str = "dialog_media_worker",
-        sprite_lookup_strategy: SpriteLookupStrategy | None = None,
+        asset_lookup_strategy: AssetLookupStrategy | None = None,
+        sprite_resolver: SpriteAssetResolver | None = None,
         tts_generation_strategy: TtsGenerationStrategy | None = None,
     ):
         super().__init__(name, parent=parent)
@@ -60,7 +65,8 @@ class DialogMediaWorker(ThreadDagNode):
         self.dialog_queue = input_queue
         self.presentation_queue = output_queue
         self.dialog_media_dispatcher = None
-        self.sprite_lookup_strategy = sprite_lookup_strategy
+        self.asset_lookup_strategy = asset_lookup_strategy
+        self.sprite_resolver = sprite_resolver
         self.tts_generation_strategy = tts_generation_strategy
         self._cancel_event = threading.Event()
         if input_queue is not None:
@@ -74,7 +80,8 @@ class DialogMediaWorker(ThreadDagNode):
         self.dialog_queue = self.inq(self.PORT_DIALOG)
         self.presentation_queue = self.outq(self.PORT_PRESENTATION)
         self.dialog_media_dispatcher = default_dialog_media_handler_chain(
-            sprite_lookup_strategy=self.sprite_lookup_strategy,
+            asset_lookup_strategy=self.asset_lookup_strategy,
+            sprite_resolver=self.sprite_resolver,
             tts_generation_strategy=self.tts_generation_strategy,
         )
         self.dialog_media_dispatcher.init_handlers()

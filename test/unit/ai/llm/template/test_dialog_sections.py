@@ -189,3 +189,21 @@ def test_character_section_falls_back_to_setting_when_a_brief_is_missing(context
     )
 
     assert "Mika fallback profile" in CharacterSection().render(compact)
+
+
+def test_semantic_media_mode_uses_vibe_and_omits_numbered_asset_catalogs(context):
+    semantic = replace(context, media_selection_mode="semantic")
+
+    rendered = DialogTemplateSection().render(semantic)
+
+    assert "<json_vibe_head_top>" in rendered
+    assert "vibe (string, required)" in rendered
+    assert "sprite (string, required)" not in rendered
+    assert "<r_vibe>" in rendered
+    assert "<r_non_vibe>" in rendered
+    assert "<r_scene_vibe>" in rendered
+    assert "<r_bgm_vibe>" in rendered
+    assert "<sprites_header>" not in rendered
+    assert "<scene_block_header>" not in rendered
+    assert "<bgm_block_header>" not in rendered
+    assert "Alice profile" in rendered
