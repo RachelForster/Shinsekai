@@ -23,6 +23,12 @@ import uuid
 
 import yaml
 
+from application.random_requests import RandomRequestExecutor
+from application.story.author_tool_loop import (
+    AUTHOR_RANDOM_TOOL_PROMPT,
+    AuthorToolLoopError,
+    run_author_tool_loop,
+)
 from config.feature_flags import FeatureFlag, FeatureFlagConfigManager
 from core.story import (
     DiagnosticSeverity,
@@ -140,6 +146,19 @@ class ConfigStoryAuthorModel:
         self._signature: tuple[tuple[str, str], ...] = ()
 
     def complete(self, request: Mapping[str, Any]) -> Mapping[str, Any]:
+        return self.complete_with_tools(
+            request,
+            executor=RandomRequestExecutor(scope="author-preview"),
+        )
+
+    def complete_with_tools(
+        self,
+        request: Mapping[str, Any],
+        *,
+        executor: RandomRequestExecutor,
+        before_call: Callable[[], None] = lambda: None,
+        on_call: Callable[[list[dict[str, Any]], Any], None] = lambda messages, response: None,
+    ) -> Mapping[str, Any]:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
         manager = self._llm_manager()
         adapter = getattr(manager, "llm_adapter", None)
@@ -148,16 +167,27 @@ class ConfigStoryAuthorModel:
                 "generation.model_not_configured",
                 "story author LLM adapter is missing",
             )
-        prompt = json.dumps(request, ensure_ascii=False, separators=(",", ":"))
+        prompt_request = dict(request)
+        resolved_requests = executor.resolved_requests()
+        if resolved_requests:
+            prompt_request["resolvedRandomRequests"] = resolved_requests
+        prompt = json.dumps(prompt_request, ensure_ascii=False, separators=(",", ":"))
         messages = [
-            {"role": "system", "content": AUTHOR_COMPILER_TEMPLATE},
+            {
+                "role": "system",
+                "content": AUTHOR_COMPILER_TEMPLATE + "\n" + AUTHOR_RANDOM_TOOL_PROMPT,
+            },
             {"role": "user", "content": prompt},
         ]
-        chat_kwargs: dict[str, Any] = {}
-        if type(adapter).__name__ in _NATIVE_JSON_ADAPTERS:
-            chat_kwargs["response_format"] = {"type": "json_object"}
-        response = adapter.chat(messages, stream=False, **chat_kwargs)
-        return _parse_json_mapping(_adapter_text_content(response))
+        response = run_author_tool_loop(
+            adapter,
+            messages,
+            executor=executor,
+            before_call=before_call,
+            on_call=on_call,
+            native_json=type(adapter).__name__ in _NATIVE_JSON_ADAPTERS,
+        )
+        return _parse_json_mapping(response)
 
     def _llm_manager(self) -> Any:
         provider, model, base_url, api_key = self.config_manager.get_llm_api_config()
@@ -322,6 +352,16 @@ class StoryGenerationRepository:
     def task_directory(self, task_id: str) -> Path:
         self.flags.require(FeatureFlag.STORY_SYSTEM)
         return self._task_dir(task_id)
+
+    def random_request_executor(self, task_id: str) -> RandomRequestExecutor:
+        """Called within the generation service's exclusive run for this task."""
+        with self._save_lock:
+            path = self._task_dir(task_id) / "random-requests.json"
+            return RandomRequestExecutor(
+                scope=f"story-author:{task_id}",
+                state=self._read_json(path) if path.exists() else None,
+                save=lambda value: self._write_json(path, value),
+            )
 
     def _task_dir(self, task_id: str) -> Path:
         safe = _safe_id(task_id, "task id")
@@ -855,7 +895,7 @@ class StoryGenerationService:
                 self._notify(on_progress, task, stage)
                 request = self._stage_request(task, stage)
                 response = {}
-                response = self._complete(task, request)
+                response = self._complete(task, request, is_cancelled=is_cancelled)
                 self._check_cancel(task_id, is_cancelled)
                 artifact = self._validate_stage_response(
                     stage,
@@ -896,7 +936,7 @@ class StoryGenerationService:
                 task = self.repository.save(task)
                 self._notify(on_progress, task, None)
                 response = {}
-                response = self._complete(task, request)
+                response = self._complete(task, request, is_cancelled=is_cancelled)
                 self._check_cancel(task_id, is_cancelled)
                 source = self.patch_applier.apply(
                     source, response, base_version=int(source["version"])
@@ -972,13 +1012,36 @@ class StoryGenerationService:
             raise
 
     def _complete(
-        self, task: dict[str, Any], request: Mapping[str, Any]
+        self,
+        task: dict[str, Any],
+        request: Mapping[str, Any],
+        *,
+        is_cancelled: Callable[[], bool] | None = None,
     ) -> Mapping[str, Any]:
         # Count unsuccessful author calls as well as accepted artifacts.
         response: Mapping[str, Any] = {}
+        complete_with_tools = getattr(self.model, "complete_with_tools", None)
+        scoped = callable(complete_with_tools)
+
+        def record_call(messages: list[dict[str, Any]], response: Any) -> None:
+            task["cost"] = _updated_cost(
+                task.get("cost"), {"messages": messages}, {"response": response}
+            )
+            self.repository.save(task)
+
         try:
-            response = self.model.complete(request)
+            if scoped:
+                response = complete_with_tools(
+                    request,
+                    executor=self.repository.random_request_executor(str(task["id"])),
+                    before_call=lambda: self._check_cancel(str(task["id"]), is_cancelled),
+                    on_call=record_call,
+                )
+            else:
+                response = self.model.complete(request)
             return response
+        except AuthorToolLoopError as error:
+            raise StoryGenerationError(error.code, str(error)) from error
         except StoryGenerationError:
             raise
         except Exception as error:
@@ -988,7 +1051,8 @@ class StoryGenerationService:
                 "generation.model_request_failed", str(error)
             ) from error
         finally:
-            task["cost"] = _updated_cost(task.get("cost"), request, response)
+            if not scoped:
+                task["cost"] = _updated_cost(task.get("cost"), request, response)
             self.repository.save(task)
 
     def _stage_request(

@@ -455,7 +455,10 @@ def test_author_model_uses_stateless_adapter_calls(monkeypatch) -> None:
     class OpenAIAdapter:
         def chat(self, messages, stream=False, **kwargs):
             captured.append(json.loads(json.dumps(messages)))
-            assert kwargs.get("response_format") == {"type": "json_object"}
+            assert {tool["function"]["name"] for tool in kwargs["tools"]} == {
+                "random_sample", "random_shuffle", "random_roll_dice", "random_assign",
+            }
+            assert "response_format" not in kwargs
             return {"artifact": {"ok": True}}
 
     manager = SimpleNamespace(
