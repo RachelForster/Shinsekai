@@ -1,4 +1,5 @@
 from application.reminders import ReminderStore
+from application.reminders.presentation import ReminderPresenter
 from frontend_bridge_core.routes.router import ApiRequest, BodyKind, JsonResponse, Route
 
 
@@ -11,13 +12,27 @@ def _list(request: ApiRequest):
 
 
 def _manage(request: ApiRequest):
-    allowed = {"action", "reminder_id", "character_name", "title", "message", "remind_at", "delay_minutes", "recurrence"}
+    allowed = {
+        "action",
+        "reminder_id",
+        "character_name",
+        "title",
+        "message",
+        "remind_at",
+        "delay_minutes",
+        "recurrence",
+    }
     if set(request.body) - allowed or "action" not in request.body:
         raise ValueError("Invalid reminder fields")
-    return JsonResponse(_store(request).manage(
-        character_names=[character.name for character in request.state.config_manager.config.characters],
-        **request.body,
-    ))
+    return JsonResponse(
+        _store(request).manage(
+            character_names=[
+                character.name
+                for character in request.state.config_manager.config.characters
+            ],
+            **request.body,
+        )
+    )
 
 
 def _claim(request: ApiRequest):
@@ -25,7 +40,28 @@ def _claim(request: ApiRequest):
 
 
 def _ack(request: ApiRequest):
-    return JsonResponse(_store(request).acknowledge(request.body.get("reminder_id", ""), request.body.get("claim_token", "")))
+    return JsonResponse(
+        _store(request).acknowledge(
+            request.body.get("reminder_id", ""), request.body.get("claim_token", "")
+        )
+    )
+
+
+def _presenter(request):
+    with request.state.task_lock:
+        if request.state.reminder_presenter is None:
+            request.state.reminder_presenter = ReminderPresenter(
+                request.state.config_manager, request.state.project_root_dir
+            )
+        return request.state.reminder_presenter
+
+
+def _presentation(request: ApiRequest):
+    return JsonResponse(_presenter(request).render(request.body))
+
+
+def _speech(request: ApiRequest):
+    return JsonResponse(_presenter(request).speech(request.body))
 
 
 REMINDER_ROUTES = (
@@ -33,4 +69,13 @@ REMINDER_ROUTES = (
     Route(frozenset({"POST"}), "/api/reminders", _manage, name="reminders.manage"),
     Route(frozenset({"POST"}), "/api/reminders/claim", _claim, name="reminders.claim"),
     Route(frozenset({"POST"}), "/api/reminders/ack", _ack, name="reminders.ack"),
+    Route(
+        frozenset({"POST"}),
+        "/api/reminders/presentation",
+        _presentation,
+        name="reminders.presentation",
+    ),
+    Route(
+        frozenset({"POST"}), "/api/reminders/speech", _speech, name="reminders.speech"
+    ),
 )

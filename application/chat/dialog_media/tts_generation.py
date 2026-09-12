@@ -8,6 +8,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from urllib.parse import urlparse
 
+from ai.tts.model_session import tts_model_session
 from .models import TtsGenerationRequest
 
 
@@ -23,6 +24,21 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
     """Use configured fixed audio when available, otherwise synthesize speech."""
 
     def generate(self, request: TtsGenerationRequest) -> Iterator[str]:
+        manager = request.runtime.tts_manager
+        adapter = getattr(manager, "tts_adapter", None)
+        if adapter is None:
+            yield from self._generate(request)
+            return
+        config = getattr(request.runtime, "config", None)
+        api = getattr(getattr(config, "config", None), "api_config", None)
+        endpoint = str(getattr(api, "gpt_sovits_url", "") or "")
+        get_config = getattr(config, "get_gpt_sovits_config", None)
+        if callable(get_config):
+            endpoint = str(get_config()[0])
+        with tts_model_session(adapter, endpoint):
+            yield from self._generate(request)
+
+    def _generate(self, request: TtsGenerationRequest) -> Iterator[str]:
         manager = request.runtime.tts_manager
         if manager is None:
             yield self._fallback_audio_path(request)
