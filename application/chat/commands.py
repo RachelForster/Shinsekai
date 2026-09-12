@@ -82,7 +82,7 @@ class ChatCommandDispatcher:
         branch_manager: ConversationBranchManager,
         chat_history: MutableSequence[Any],
         last_user_message: Mapping[str, object],
-        audio_path_queue: Any,
+        presentation_queue: Any,
         history_argument: str = "",
         history_presenter: Any = None,
         tts_manager: Any = None,
@@ -95,7 +95,7 @@ class ChatCommandDispatcher:
         self.branch_manager = branch_manager
         self.chat_history = chat_history
         self.last_user_message = last_user_message
-        self.audio_path_queue = audio_path_queue
+        self.presentation_queue = presentation_queue
         self.history_argument = str(history_argument or "")
         self.history_presenter = history_presenter
         self.tts_manager = tts_manager
@@ -308,7 +308,7 @@ class ChatCommandDispatcher:
             self.bindings.ui.notify(self.bindings.translate("main.notify_reroll"))
 
     def _clear_history(self, _payload: object) -> None:
-        if self.audio_path_queue is None:
+        if self.presentation_queue is None:
             raise RuntimeError("聊天历史清理队列未就绪。")
         self.chat_turn_service.cancel_pending_batch()
         if self.history_argument:
@@ -316,7 +316,7 @@ class ChatCommandDispatcher:
             remove_chat_history_storage(self.history_argument)
         else:
             history_target = str(Path("data/chat_history") / "_temp.json")
-        clear_chat_history(history_target, self.audio_path_queue, self.llm_manager)
+        clear_chat_history(history_target, self.presentation_queue, self.llm_manager)
         self.branch_manager.reset()
         self.branch_manager.persist()
         self.bindings.ui.clear_options()
@@ -358,6 +358,10 @@ class ChatCommandDispatcher:
             hist=self.chat_history,
             window=self.history_presenter,
         )
+        replay_media = getattr(self.branch_manager, "replay_media", None)
+        if callable(replay_media):
+            replay_media(self.llm_manager.get_messages())
+        self.branch_manager.persist()
         self.bindings.ui.clear_options()
         self.bindings.ui.sync_history()
 

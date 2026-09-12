@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
 import { buildDefaultTemplateScenario } from "../../../features/template-editor/templateFlow";
@@ -12,10 +12,12 @@ import { ToastProvider } from "../../../shared/ui";
 
 const mockListBackgrounds = vi.fn();
 const mockListCharacters = vi.fn();
+const mockEnsureCharacterBriefs = vi.fn();
 const mockLaunchChat = vi.fn();
 const mockGetChatSnapshot = vi.fn();
 const mockInstallMissingRuntimeDependency = vi.fn();
 const mockGetAppConfig = vi.fn();
+const mockGetMemoryStatus = vi.fn();
 const mockSaveSystemConfig = vi.fn();
 const mockGenerateTemplate = vi.fn();
 const mockGetTemplateSession = vi.fn();
@@ -35,6 +37,7 @@ vi.mock("../../../entities/background/repository", () => ({
 
 vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
+  ensureCharacterBriefs: (names: string[]) => mockEnsureCharacterBriefs(names),
   listCharacters: () => mockListCharacters(),
 }));
 
@@ -52,6 +55,7 @@ vi.mock("../../../features/chat-startup/useChatLaunchGuard", () => ({
 vi.mock("../../../entities/config/repository", () => ({
   configQueryKey: ["config"],
   getAppConfig: () => mockGetAppConfig(),
+  getMemoryStatus: (options: unknown) => mockGetMemoryStatus(options),
   saveSystemConfig: (input: unknown) => mockSaveSystemConfig(input),
 }));
 
@@ -83,10 +87,13 @@ const template = {
   updatedAt: "now",
 };
 
+const queryClients = new Set<QueryClient>();
+
 function renderPage() {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
+  queryClients.add(client);
 
   const result = render(
     <QueryClientProvider client={client}>
@@ -100,9 +107,15 @@ function renderPage() {
   return { ...result, queryClient: client };
 }
 
+async function clickButton(button: HTMLElement) {
+  await act(async () => {
+    fireEvent.click(button);
+  });
+}
+
 describe("TemplateEditorPage", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     mockUseChatLaunchGuard.mockReturnValue({
       refreshRuntimeStatus: mockRefreshRuntimeStatus,
       runtimeLaunchDisabled: false,
@@ -111,10 +124,12 @@ describe("TemplateEditorPage", () => {
     mockListTemplates.mockResolvedValue([template]);
     mockGetTemplateSession.mockResolvedValue(null);
     mockGetAppConfig.mockResolvedValue(structuredClone(sampleConfig));
+    mockGetMemoryStatus.mockResolvedValue({ modelCached: true, status: "ready" });
     mockListCharacters.mockResolvedValue([
       { color: "#66ccff", name: "Nanami" },
       { color: "#ff99aa", name: "Mika" },
     ]);
+    mockEnsureCharacterBriefs.mockResolvedValue({ characters: [], generatedNames: [] });
     mockListBackgrounds.mockResolvedValue([{ name: "默认房间" }]);
     mockListEffects.mockResolvedValue([]);
     mockSaveTemplate.mockImplementation(async (input) => ({ ...template, ...(input as object), id: "opening" }));
@@ -137,6 +152,14 @@ describe("TemplateEditorPage", () => {
     mockSaveTemplateSession.mockImplementation(async (session) => session);
     mockSaveSystemConfig.mockResolvedValue(sampleConfig.system_config);
     mockShowChatSurface.mockResolvedValue(undefined);
+  });
+
+  afterEach(async () => {
+    await act(async () => {
+      cleanup();
+      for (const client of queryClients) client.clear();
+      queryClients.clear();
+    });
   });
 
   it("saves edited scenario text and generates with selected characters", async () => {
@@ -173,6 +196,109 @@ describe("TemplateEditorPage", () => {
       ),
     );
     expect(await screen.findByDisplayValue("Generated scenario")).toBeInTheDocument();
+  });
+
+  it("shows an options heading and enables vibe generation after mem0 is ready", async () => {
+    renderPage();
+
+    expect(await screen.findByText("Prompt options")).toHaveClass("template-side-field__label");
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Smart sprite matching" }));
+
+    await waitFor(() => expect(mockGetMemoryStatus).toHaveBeenCalledWith({ startLoading: true }));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).toBeChecked());
+    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+
+    await waitFor(() =>
+      expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ mediaSelectionMode: "semantic" })),
+    );
+  });
+
+  it("downgrades a restored semantic template when mem0 installation is declined", async () => {
+    mockListTemplates.mockResolvedValue([{ ...template, mediaSelectionMode: "semantic" }]);
+    mockGetMemoryStatus.mockResolvedValue({
+      moduleName: "mem0",
+      packageName: "mem0ai",
+      status: "missing_dependency",
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    renderPage();
+    const toggle = await screen.findByRole("checkbox", { name: "Smart sprite matching" });
+    await waitFor(() => expect(window.confirm).toHaveBeenCalled());
+    await waitFor(() => expect(toggle).not.toBeChecked());
+  });
+
+  it("asks for primary characters above the threshold and generates missing supporting briefs", async () => {
+    const largeCast = Array.from({ length: 6 }, (_, index) => ({
+      character_brief: index === 4 ? "Existing brief" : "",
+      color: "#66ccff",
+      name: `Character ${index + 1}`,
+    }));
+    mockListCharacters.mockResolvedValue(largeCast);
+    mockEnsureCharacterBriefs.mockResolvedValue({
+      characters: largeCast.slice(2).map((character) => ({
+        ...character,
+        character_brief: character.character_brief || `Generated brief for ${character.name}`,
+      })),
+      generatedNames: ["Character 3", "Character 4", "Character 6"],
+    });
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+
+    expect(await screen.findByText("6 selected · roles need to be set")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Choose primary characters" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose primary characters" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Character 2/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply roles" }));
+
+    await waitFor(() =>
+      expect(mockEnsureCharacterBriefs).toHaveBeenCalledWith([
+        "Character 3",
+        "Character 4",
+        "Character 5",
+        "Character 6",
+      ]),
+    );
+    await waitFor(() =>
+      expect(mockGenerateTemplate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          characterPromptMode: "compact",
+          characters: largeCast.map((character) => character.name),
+          primaryCharacters: ["Character 1", "Character 2"],
+        }),
+      ),
+    );
+    expect(screen.getByText("2 primary · 4 supporting")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Character 6" }));
+    expect(await screen.findByText("2 primary · 3 supporting")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Choose primary characters" })).not.toBeInTheDocument();
+  });
+
+  it("finishes a deferred launch after character roles are applied", async () => {
+    const largeCast = Array.from({ length: 5 }, (_, index) => ({
+      character_brief: "Existing brief",
+      color: "#66ccff",
+      name: `Character ${index + 1}`,
+    }));
+    mockListCharacters.mockResolvedValue(largeCast);
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Choose primary characters" });
+    expect(mockLaunchChat).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply roles" }));
+
+    await waitFor(() => expect(mockGenerateTemplate).toHaveBeenCalled());
+    await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
   });
 
   it("auto-generates only when character selection changes and puts the default RPG brief in scenario", async () => {
@@ -254,21 +380,23 @@ describe("TemplateEditorPage", () => {
       } as TemplateLaunchSession;
     });
 
-    renderPage();
+    await act(async () => {
+      renderPage();
+    });
 
     expect(await screen.findByDisplayValue("Restored scene")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Generate" }));
+    await clickButton(screen.getByRole("button", { name: "Generate" }));
 
     await waitFor(() =>
       expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ characters: ["Deleted", "Nanami"] })),
     );
-    fireEvent.click(screen.getByRole("button", { name: "System template" }));
+    await clickButton(screen.getByRole("button", { name: "System template" }));
     expect(await screen.findByDisplayValue("Generated system")).toBeInTheDocument();
     expect(mockGenerateTemplate).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
+    await clickButton(screen.getByRole("button", { name: "Quick restart" }));
     const dialog = screen.getByRole("dialog", { name: "Quick restart" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Quick restart" }));
+    await clickButton(within(dialog).getByRole("button", { name: "Quick restart" }));
 
     await waitFor(() =>
       expect(mockSaveTemplateSession).toHaveBeenCalledWith(
@@ -278,11 +406,13 @@ describe("TemplateEditorPage", () => {
         }),
       ),
     );
-    expect(mockLaunchChat).toHaveBeenCalledWith(
-      expect.objectContaining({
-        characters: ["Nanami"],
-        initSpritePath: "D:/sprites/nanami.png",
-      }),
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          characters: ["Nanami"],
+          initSpritePath: "D:/sprites/nanami.png",
+        }),
+      ),
     );
   });
 
@@ -355,11 +485,11 @@ describe("TemplateEditorPage", () => {
     const { queryClient } = renderPage();
 
     await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("Session Draft"));
-    fireEvent.click(screen.getByRole("button", { name: "Quick restart" }));
+    await clickButton(screen.getByRole("button", { name: "Quick restart" }));
     expect(mockLaunchChat).not.toHaveBeenCalled();
 
     const dialog = screen.getByRole("dialog", { name: "Quick restart" });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Quick restart" }));
+    await clickButton(within(dialog).getByRole("button", { name: "Quick restart" }));
 
     await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
     expect(mockUpdateRuntimeStatusFromSnapshot).toHaveBeenCalledWith(
@@ -486,11 +616,14 @@ describe("TemplateEditorPage", () => {
     await waitFor(() => expect(mockListTemplates).toHaveBeenCalledTimes(callsBeforeRetry + 1));
   });
 
-  it("injects selected effect hints, persists runtime controls, and handles runtime dependency installs", async () => {
+  it("persists selected effects and handles runtime dependency installs", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     mockListEffects.mockResolvedValue([
       {
         audio_tags: "特效 1：雨声\n特效 2: 雷声",
+        image_list: [],
+        image_tags: "",
+        image_audio_list: [],
         color: "#4455aa",
         name: "Rain",
       },
@@ -507,9 +640,6 @@ describe("TemplateEditorPage", () => {
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rain" }));
-    fireEvent.click(screen.getByRole("button", { name: "System template" }));
-    await waitFor(() => expect(screen.getByDisplayValue(/可用音效/)).toBeInTheDocument());
-    expect(screen.getByDisplayValue(/Rain有2条特效音频/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "English" }));
     await waitFor(() =>
@@ -541,5 +671,39 @@ describe("TemplateEditorPage", () => {
     );
     expect(mockInstallMissingRuntimeDependency).toHaveBeenCalledWith({ moduleName: "mem0" });
     expect(mockShowChatSurface).not.toHaveBeenCalled();
+  });
+
+  it("preserves authored prompt sections when restoring and selecting effects", async () => {
+    mockListTemplates.mockResolvedValue([
+      {
+        ...template,
+        system:
+          'System rules\n\nOutput field contract:\n- character_name (string): 内置\n- camera (string): 插件字段\n\n立绘说明:\n角色\n\n已选特效提示：\n旧音频和图片\n\n音效触发时机与模式：\n- loop:旧关键词\n循环示例：开始时 {"effect": "loop:雨声"}\n\n音效触发时机与模式：\n- stop:旧关键词\n\n可用音效：\n旧音效\n\n音效触发时机与模式：\n- before:旧关键词\n\n可调用工具\n- search',
+      },
+    ]);
+    mockListEffects.mockResolvedValue([
+      {
+        audio_tags: "特效 1：雨声\n特效 2: 雷声",
+        image_list: [],
+        image_tags: "",
+        image_audio_list: [],
+        color: "#4455aa",
+        name: "Rain",
+      },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "System template" }));
+    const systemTemplate = screen.getByDisplayValue(/System rules/) as HTMLTextAreaElement;
+    const authoredSystem = (await mockListTemplates.mock.results[0].value)[0].system;
+    expect(systemTemplate).toHaveValue(authoredSystem);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rain" }));
+    expect(systemTemplate).toHaveValue(authoredSystem);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rain" }));
+    expect(systemTemplate).toHaveValue(authoredSystem);
   });
 });

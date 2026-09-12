@@ -45,6 +45,7 @@ class ConversationBranchBindings:
     sync_history: Callable[[], None]
     replay_history: Callable[[object], None]
     submit_text: SubmitRuntimeText
+    replay_media: Callable[[list[Any]], None] = lambda _messages: None
 
 
 class ConversationBranchManager:
@@ -118,6 +119,10 @@ class ConversationBranchManager:
         self.bindings.persist_messages(self.bindings.get_messages())
         save_branch_state(self.history_path, self.state)
 
+    def replay_media(self, messages: list[Any] | None = None) -> None:
+        source = self.bindings.get_messages() if messages is None else messages
+        self.bindings.replay_media(copy.deepcopy(source))
+
     def reset(self) -> None:
         self.state = self._default_state()
 
@@ -178,11 +183,13 @@ class ConversationBranchManager:
         branch = branches[target_id]
         self.state["active"] = target_id
         self.chat_history[:] = list(branch.get("history") or [])
-        self.bindings.set_messages(copy.deepcopy(branch.get("messages") or []))
+        branch_messages = copy.deepcopy(branch.get("messages") or [])
+        self.bindings.set_messages(branch_messages)
         self.bindings.clear_options()
         self.bindings.sync_history()
         if self.chat_history:
             self.bindings.replay_history(self.chat_history[-1])
+        self.replay_media(branch_messages)
         self.publish_tree()
         self.persist()
 

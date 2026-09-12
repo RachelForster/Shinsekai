@@ -27,8 +27,8 @@ def test_wiring_honors_disabled_interrupt_option() -> None:
     service = create_chat_turn_service(
         config=make_config(interrupt_enabled=False),
         user_input_queue=input_queue,
-        tts_queue=ClearableQueue(),
-        audio_queue=ClearableQueue(),
+        dialog_queue=ClearableQueue(),
+        presentation_queue=ClearableQueue(),
         llm_manager=llm_manager,
         ui_worker=MagicMock(),
         ui_updates=MagicMock(),
@@ -47,8 +47,8 @@ def test_wiring_preserves_attachment_payloads() -> None:
     service = create_chat_turn_service(
         config=make_config(interrupt_enabled=False),
         user_input_queue=input_queue,
-        tts_queue=ClearableQueue(),
-        audio_queue=ClearableQueue(),
+        dialog_queue=ClearableQueue(),
+        presentation_queue=ClearableQueue(),
         llm_manager=MagicMock(),
         ui_worker=MagicMock(),
         ui_updates=MagicMock(),
@@ -64,18 +64,18 @@ def test_wiring_preserves_attachment_payloads() -> None:
 
 def test_wiring_clears_downstream_ports_on_interrupt() -> None:
     input_queue = Queue()
-    tts_queue = ClearableQueue()
-    audio_queue = ClearableQueue()
+    dialog_queue = ClearableQueue()
+    presentation_queue = ClearableQueue()
     llm_manager = MagicMock()
     ui_worker = MagicMock()
     ui_updates = MagicMock()
-    tts_queue.put("pending tts")
-    audio_queue.put("pending audio")
+    dialog_queue.put("pending tts")
+    presentation_queue.put("pending audio")
     service = create_chat_turn_service(
         config=make_config(interrupt_enabled=True),
         user_input_queue=input_queue,
-        tts_queue=tts_queue,
-        audio_queue=audio_queue,
+        dialog_queue=dialog_queue,
+        presentation_queue=presentation_queue,
         llm_manager=llm_manager,
         ui_worker=ui_worker,
         ui_updates=ui_updates,
@@ -85,8 +85,8 @@ def test_wiring_clears_downstream_ports_on_interrupt() -> None:
     service.submit("next")
 
     assert old_turn.is_cancelled()
-    assert tts_queue.empty()
-    assert audio_queue.empty()
+    assert dialog_queue.empty()
+    assert presentation_queue.empty()
     llm_manager.cancel_current_chat.assert_called_once_with()
     ui_worker.skip_speech.assert_called_once_with()
     ui_updates.hide_busy_bar.assert_called_once_with()
@@ -98,8 +98,8 @@ def test_wiring_clears_flushed_batch_delivery_when_batch_is_cancelled() -> None:
     service = create_chat_turn_service(
         config=make_config(interrupt_enabled=False, batch_enabled=True),
         user_input_queue=input_queue,
-        tts_queue=ClearableQueue(),
-        audio_queue=ClearableQueue(),
+        dialog_queue=ClearableQueue(),
+        presentation_queue=ClearableQueue(),
         llm_manager=MagicMock(),
         ui_worker=MagicMock(),
         ui_updates=MagicMock(),

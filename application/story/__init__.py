@@ -8,7 +8,6 @@ from .idempotency import (
 )
 from .project_loader import StoryProjectLoader, load_story_project
 from .coordinator import (
-    apply_story_resource_bindings,
     start_or_recover_story_session,
     story_snapshot_patch,
 )
@@ -82,7 +81,6 @@ __all__ = [
     "JsonStorySessionRepository",
     "StoryPersistenceError",
     "StoryProgramMismatchError",
-    "apply_story_resource_bindings",
     "start_or_recover_story_session",
     "story_snapshot_patch",
     "ActorContext",

@@ -9,17 +9,20 @@ from typing import Any, Protocol
 
 from core.messaging.dialog_output import has_valid_dialog_output
 
-_DIALOG_FORMAT_REPAIR_PROMPT = (
-    "Reformat your immediately preceding answer as the application's dialogue JSON. "
-    "Return only a JSON object with a non-empty `dialog` array. Each item must have "
-    "`character_name`, `sprite`, and `speech`. Do not call tools or add markdown."
-)
 
-_DIALOG_FORMAT_RETRY_PROMPT = (
-    "That reply is STILL not valid. You MUST answer with ONLY a JSON object — a "
-    "non-empty `dialog` array whose items each have `character_name`, `sprite`, and "
-    "`speech`. Output that JSON and nothing else: no prose, no markdown fences, no tool calls."
-)
+def _repair_prompt(media_field: str, *, retry: bool) -> str:
+    prefix = (
+        "That reply is STILL not valid. You MUST answer with ONLY"
+        if retry
+        else "Reformat your immediately preceding answer as"
+    )
+    return (
+        f"{prefix} the application's dialogue JSON. Return only a JSON object "
+        f"with a non-empty `dialog` array. Each character, scene, and BGM item "
+        f"must have `character_name`, `speech`, and `{media_field}`. Fixed "
+        "system items such as COT, NARR, CHOICE, STAT, and CG may omit the media "
+        "field. Do not call tools or add markdown."
+    )
 
 
 class ChatAdapter(Protocol):
@@ -60,9 +63,10 @@ def repair_dialog_output(
     cancelled: Callable[[], bool],
     event_logger: logging.Logger,
     max_attempts: int = 2,
+    media_selection_mode: str = "indexed",
 ) -> str:
     """Repair malformed dialogue JSON without mutating persisted chat history."""
-    if has_valid_dialog_output(content):
+    if has_valid_dialog_output(content, media_selection_mode=media_selection_mode):
         return content
 
     attempts = max(1, int(max_attempts))
@@ -74,7 +78,12 @@ def repair_dialog_output(
     for attempt in range(attempts):
         if cancelled():
             return content
-        prompt = _DIALOG_FORMAT_REPAIR_PROMPT if attempt == 0 else _DIALOG_FORMAT_RETRY_PROMPT
+        media_field = (
+            "vibe"
+            if str(media_selection_mode or "").strip().lower() == "semantic"
+            else "sprite"
+        )
+        prompt = _repair_prompt(media_field, retry=attempt > 0)
         repair_messages.append({"role": "user", "content": prompt})
         try:
             response = adapter.chat(
@@ -100,7 +109,10 @@ def repair_dialog_output(
             )
             return content
 
-        if has_valid_dialog_output(repaired):
+        if has_valid_dialog_output(
+            repaired,
+            media_selection_mode=media_selection_mode,
+        ):
             event_logger.warning(
                 "Recovered malformed LLM dialogue output with a tool-free JSON repair request",
                 extra={

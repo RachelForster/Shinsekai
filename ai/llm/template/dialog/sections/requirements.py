@@ -17,11 +17,12 @@ class _RequirementRuleSection(Section[DialogTemplateContext]):
 
     arguments: dict[str, Any] = field(default_factory=dict)
     resolved_text: str | None = None
+    translation_key: str | None = None
 
     def requirement_text(self, context: DialogTemplateContext) -> str:
         if self.resolved_text is not None:
             return self.resolved_text
-        return context.translate(self.id, **self.arguments)
+        return context.translate(self.translation_key or self.id, **self.arguments)
 
     def _render_self(self, context: DialogTemplateContext) -> str:
         return f"- {self.requirement_text(context)}\n"
@@ -75,6 +76,7 @@ def _requirement_arguments(
             **{section.id: section.render(context) for section in optional_tokens},
         },
         "r_non_sprite": {"fixed_roles_non_sprite": fixed_roles},
+        "r_vibe": {},
         "r_speech": {"speech_lang_name": context.translate("speech_lang_name")},
         "r_speech_max_chars": {"n": context.max_speech_chars},
         "r_dialog_max_items": {"n": context.max_dialog_items},
@@ -87,26 +89,42 @@ def build_requirement_sections(
 ) -> tuple[_RequirementRuleSection, ...]:
     arguments = _requirement_arguments(context)
     definitions = (
-        ("r_cot", 5, context.use_cot),
-        ("r_format", 10, True),
-        ("r_user_display_name_tool", 15, True),
-        ("r_cname", 20, True),
-        ("r_sprite", 30, True),
-        ("r_non_sprite", 40, True),
-        ("r_scene", 50, context.has_real_background),
-        ("r_bgm", 60, context.has_real_background),
-        ("r_speech", 70, True),
-        ("r_array", 80, True),
-        ("r_speech_max_chars", 90, context.max_speech_chars > 0),
-        ("r_dialog_max_items", 95, context.max_dialog_items > 0),
-        ("r_narration", 100, context.use_narration),
-        ("r_choice_pos", 110, context.use_choice),
-        ("r_choice_format", 120, context.use_choice),
-        ("r_choice_balance", 130, context.use_choice),
-        ("r_stats", 140, context.use_stat),
-        ("r_cg", 150, context.use_cg),
-        ("r_translate", 160, context.use_llm_translation),
-        ("r_effect", 170, context.use_effect),
+        ("r_cot", 5, context.use_cot, None),
+        ("r_format", 10, True, None),
+        ("r_user_display_name_tool", 15, True, None),
+        ("r_cname", 20, True, None),
+        ("r_sprite", 30, not context.uses_vibe, None),
+        ("r_vibe", 30, context.uses_vibe, None),
+        (
+            "r_non_sprite",
+            40,
+            True,
+            "r_non_vibe" if context.uses_vibe else None,
+        ),
+        (
+            "r_scene",
+            50,
+            context.has_real_background,
+            "r_scene_vibe" if context.uses_vibe else None,
+        ),
+        (
+            "r_bgm",
+            60,
+            context.has_real_background,
+            "r_bgm_vibe" if context.uses_vibe else None,
+        ),
+        ("r_speech", 70, True, None),
+        ("r_array", 80, True, None),
+        ("r_speech_max_chars", 90, context.max_speech_chars > 0, None),
+        ("r_dialog_max_items", 95, context.max_dialog_items > 0, None),
+        ("r_narration", 100, context.use_narration, None),
+        ("r_choice_pos", 110, context.use_choice, None),
+        ("r_choice_format", 120, context.use_choice, None),
+        ("r_choice_balance", 130, context.use_choice, None),
+        ("r_stats", 140, context.use_stat, None),
+        ("r_cg", 150, context.use_cg, None),
+        ("r_translate", 160, context.use_llm_translation, None),
+        ("r_effect", 170, context.use_effect, None),
     )
     return tuple(
         _RequirementRuleSection(
@@ -114,8 +132,9 @@ def build_requirement_sections(
             priority=priority,
             enabled=enabled,
             arguments=arguments.get(rule_id, {}),
+            translation_key=translation_key,
         )
-        for rule_id, priority, enabled in definitions
+        for rule_id, priority, enabled, translation_key in definitions
     )
 
 

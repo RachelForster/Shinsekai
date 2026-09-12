@@ -32,6 +32,7 @@ _MEDIA_EVENT_TYPES = {
     "cg.show",
     "effect.loop.start",
     "effect.play",
+    "effect.image.show",
     "sprite.show",
     "tts.play",
 }
@@ -273,7 +274,7 @@ class ChatStreamService:
                 return None
             if renderer_id:
                 self._claim_renderer_locked(session, renderer_id)
-            return dict(session.snapshot)
+            return {**session.snapshot, "serverTimeMs": int(time.time() * 1000)}
 
     def delete_session(self, session_id: str) -> None:
         with self._lock:
@@ -768,7 +769,7 @@ class ChatStreamService:
             if session is None:
                 return
             self._claim_renderer_locked(session, connection.renderer_id)
-            snapshot = dict(session.snapshot)
+            snapshot = {**session.snapshot, "serverTimeMs": int(time.time() * 1000)}
             seq = session.last_seq
         if connection.advertised_ws_url:
             snapshot["wsUrl"] = connection.advertised_ws_url

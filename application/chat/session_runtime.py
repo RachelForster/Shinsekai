@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 import signal
 import sys
@@ -12,6 +12,7 @@ import threading
 import time
 from typing import Any, Protocol
 
+from core.media.effect_image import ImageEffectAsset
 from application.chat.startup import (
     ChatStartupContext,
     MissingLlmProviderError,
@@ -36,6 +37,7 @@ _CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
     "template.load": (0.46, 0.54, "Loading the chat template and history."),
     "llm.init": (0.54, 0.68, "Preparing the language model."),
     "chat.init_hooks": (0.68, 0.82, "Running chat initialization hooks."),
+    "media.index": (0.82, 0.84, "Preparing semantic media indexes."),
     "workflow.build": (0.84, 0.9, "Building the chat workflow."),
     "stream.runtime.setup": (0.9, 0.93, "Connecting the chat interface."),
     "workflow.start": (0.93, 0.96, "Starting the chat workflow."),
@@ -85,13 +87,14 @@ class ChatBootstrapEndpoints:
 class _RuntimeComponents:
     workflow: Any
     input_queue: Any | None
-    tts_queue: Any | None
-    audio_queue: Any | None
+    dialog_queue: Any | None
+    presentation_queue: Any | None
     ui_worker: Any | None
     presentation_assets: Any
     effect_keyword_map: dict[str, str]
     text_processor: Any
     opencc: Any
+    effect_image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)
 
 
 class _ChatInitialization:
@@ -346,6 +349,10 @@ class _BaseChatSession:
         from ai.llm.text_processor import TextProcessor, name_map
         from application.chat.build_effect_context import build_effect_context
         from application.chat.presentation import load_presentation_assets
+        from application.chat.dialog_media import (
+            build_session_asset_catalogs,
+            create_asset_lookup_strategy,
+        )
         from application.runtime.workflow import (
             build_runtime_workflow,
             get_chat_workflow_handles,
@@ -360,6 +367,19 @@ class _BaseChatSession:
                 name_map.update(pronunciation_map)
 
         assets = load_presentation_assets(self.config, self.args.bg)
+        media_selection_mode = str(
+            getattr(self.args, "media_selection_mode", "indexed") or "indexed"
+        ).strip().lower()
+        if media_selection_mode == "semantic":
+            from ai.memory.media_assets import ensure_media_asset_indexes
+
+            catalogs = build_session_asset_catalogs(
+                self.config,
+                getattr(self.startup, "character_names", ()),
+                getattr(assets, "background", None),
+            )
+            with self.initialization.phase("media.index"):
+                ensure_media_asset_indexes(catalogs)
         effect_context = build_effect_context(
             self.config,
             str(self.args.effect_names or "").strip(),
@@ -373,16 +393,26 @@ class _BaseChatSession:
                 queue_factory=ClearableQueue,
             )
             handles = get_chat_workflow_handles(workflow)
+            if media_selection_mode == "semantic":
+                if handles.dialog_media_worker is None:
+                    raise RuntimeError(
+                        "Semantic media selection requires the workflow export "
+                        "chat.dialog_media_worker."
+                    )
+                handles.dialog_media_worker.asset_lookup_strategy = (
+                    create_asset_lookup_strategy(media_selection_mode)
+                )
         self.runtime = _RuntimeComponents(
             workflow=workflow,
             input_queue=handles.input_queue,
-            tts_queue=handles.tts_queue,
-            audio_queue=handles.audio_queue,
+            dialog_queue=handles.dialog_queue,
+            presentation_queue=handles.presentation_queue,
             ui_worker=handles.ui_worker,
             presentation_assets=assets,
             effect_keyword_map=effect_context.keyword_map,
             text_processor=TextProcessor(),
             opencc=OpenCC("t2s"),
+            effect_image_keyword_map=getattr(effect_context, "image_keyword_map", {}),
         )
         return self.runtime
 
@@ -397,8 +427,8 @@ class _BaseChatSession:
         self.chat_turn_service = create_chat_turn_service(
             config=self.config,
             user_input_queue=runtime.input_queue,
-            tts_queue=runtime.tts_queue,
-            audio_queue=runtime.audio_queue,
+            dialog_queue=runtime.dialog_queue,
+            presentation_queue=runtime.presentation_queue,
             llm_manager=self.startup.llm_manager,
             ui_worker=runtime.ui_worker,
             ui_updates=self.ui_updates,
@@ -419,11 +449,13 @@ class _BaseChatSession:
                 t2i_manager=self.startup.t2i_manager,
                 bgm_list=runtime.presentation_assets.bgm_paths,
                 effect_keyword_map=runtime.effect_keyword_map,
+                effect_image_keyword_map=runtime.effect_image_keyword_map,
                 user_input_queue=runtime.input_queue,
-                tts_queue=runtime.tts_queue,
-                audio_path_queue=runtime.audio_queue,
+                dialog_queue=runtime.dialog_queue,
+                presentation_queue=runtime.presentation_queue,
                 text_processor=runtime.text_processor,
                 opencc=runtime.opencc,
+                background=getattr(runtime.presentation_assets, "background", None),
                 chat_turn_service=self.chat_turn_service,
             )
         )
@@ -534,6 +566,7 @@ class StreamingChatSession(_BaseChatSession):
         )
 
     def _present_initial_ui(self) -> None:
+        from application.chat.dialog_media.replay import enqueue_latest_media_replay
         from application.chat.presentation import prepare_initial_presentation
 
         if self.options.asr_language(self.config.config.system_config) == "zh":
@@ -553,7 +586,7 @@ class StreamingChatSession(_BaseChatSession):
                 messages=self.startup.messages,
                 config=self.config,
                 ui_updates=self.ui_updates,
-                audio_path_queue=self._require_runtime().audio_queue,
+                presentation_queue=self._require_runtime().presentation_queue,
                 assets=self._require_runtime().presentation_assets,
                 initial_sprite_path=self.args.init_sprite_path,
                 welcome_html=welcome_html,
@@ -561,6 +594,11 @@ class StreamingChatSession(_BaseChatSession):
                 ready_notification=self.options.translate("main.notify_chat"),
                 publish_branch_tree=self.streaming_bindings.branch_manager.publish_tree,
                 translate=self.options.translate,
+                replay_media=lambda messages: enqueue_latest_media_replay(
+                    messages,
+                    dialog_queue=self._require_runtime().dialog_queue,
+                    opencc=self._require_runtime().opencc,
+                ),
             )
 
     def _start_live_comments(self) -> None:

@@ -950,6 +950,30 @@ describe("ChatStagePage", () => {
     pause.mockRestore();
   });
 
+  it("shows image effects at the top of the chat stage", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+    await screen.findByText("Ready");
+
+    act(() => {
+      listener?.({
+        durationMs: 8800,
+        label: "Obtained key",
+        seq: 1,
+        ts: Date.now(),
+        type: "effect.image.show",
+        url: "asset://key.png",
+        v: 1,
+      });
+    });
+
+    expect(await screen.findByRole("img", { name: "Obtained key" })).toHaveAttribute("src", "asset://key.png");
+  });
+
   it("replays owned voice and loop effects from a recovery snapshot", async () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
     const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
@@ -2592,12 +2616,28 @@ describe("ChatStagePage", () => {
     expect(screen.queryByText("聊天会话已结束。")).not.toBeInTheDocument();
   });
 
-  it("closes the chat surface explicitly from the toolbar", async () => {
+  it.each([false, true])("closes the chat surface and returns to its mode (story: %s)", async (storyMode) => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
         runtimeMode: "react",
         sessionId: "session-1",
         wsUrl: "ws://127.0.0.1:8788/ws",
+        story: storyMode
+          ? {
+              storyId: "story-1",
+              storyVersion: 1,
+              revision: 1,
+              currentNodeId: "opening",
+              currentNodeTitle: "Opening",
+              currentNodeType: "limited_turn_node",
+              activeCast: [],
+              castRevision: 0,
+              objectives: [],
+              options: [],
+              unlockedNotifications: [],
+              visibleVariables: [],
+            }
+          : undefined,
       }),
     );
 
@@ -2611,6 +2651,7 @@ describe("ChatStagePage", () => {
     expect(options).toEqual(
       expect.objectContaining({
         closeRuntime: expect.any(Function),
+        webPath: storyMode ? "/settings/templates?mode=story&view=library" : undefined,
         navigate: expect.any(Function),
         snapshot: expect.objectContaining({
           runtimeMode: "react",

@@ -18,6 +18,7 @@ from .diagnostics import (
 )
 from .models import (
     CandidateConditionSpec,
+    CastConstraints,
     CastMode,
     CastPolicy,
     CompiledStoryNode,
@@ -30,6 +31,8 @@ from .models import (
     RuleNodeSchema,
     StoryProgram,
     StoryProject,
+    StoryNode,
+    StoryNodeType,
     StoryVariableDefinition,
     VariableScope,
     VariableType,
@@ -259,33 +262,62 @@ class StoryCompiler:
         diagnostics.sort(key=lambda item: (item.path, item.code, item.message))
         if any(item.severity == DiagnosticSeverity.ERROR for item in diagnostics):
             return CompileResult(program=None, diagnostics=tuple(diagnostics))
+        hash_source = _primitive(project)
+        # Empty background suggestions do not change a project. Preserve hashes
+        # written before this optional metadata field existed.
+        if not project.metadata.backgrounds:
+            hash_source["metadata"].pop("backgrounds", None)
         source_hash = hashlib.sha256(
-            canonical_json(project).encode("utf-8")
+            canonical_json(hash_source).encode("utf-8")
         ).hexdigest()
+        simple_cast_policy = CastPolicy(
+            required=project.character_registry.initial_cast,
+            constraints=CastConstraints(
+                max_active=project.character_registry.defaults.max_active,
+                preserve_current_cast=project.character_registry.defaults.preserve_current_cast,
+            ),
+        )
         nodes = tuple(
             CompiledStoryNode(
                 id=node.id,
                 title=node.title,
-                type=node.type,
-                enter_when=node.enter_when,
-                on_enter=node.on_enter,
-                choices=node.choices,
-                freeform_intents=node.freeform_intents,
-                cast_policy=node.cast_policy,
-                exposed_context=node.exposed_context,
+                type=(node.type.value if isinstance(node.type, Enum) else node.type),
+                enter_when=getattr(node, "enter_when", ConditionSpec("true")),
+                on_enter=getattr(node, "on_enter", ()),
+                choices=getattr(node, "choices", ()),
+                freeform_intents=getattr(node, "freeform_intents", ()),
+                cast_policy=getattr(
+                    node,
+                    "cast_policy",
+                    simple_cast_policy,
+                ),
+                exposed_context=getattr(node, "exposed_context", {}),
+                instruction=getattr(node, "instruction", ""),
+                background=getattr(node, "background", None),
+                max_rounds=getattr(node, "max_rounds", None),
+                transitions=getattr(node, "transitions", ()),
+                default_to=getattr(node, "default_to", None),
             )
             for node in project.narrative_graph.nodes
         )
         source_map: dict[str, str] = {}
         for index, node in enumerate(project.narrative_graph.nodes):
             source_map[f"node:{node.id}"] = f"$.narrativeGraph.nodes[{index}]"
-            for choice_index, choice in enumerate(node.choices):
+            for choice_index, choice in enumerate(getattr(node, "choices", ())):
                 source_map[f"choice:{node.id}/{choice.id}"] = (
                     f"$.narrativeGraph.nodes[{index}].choices[{choice_index}]"
                 )
-            for intent_index, intent in enumerate(node.freeform_intents):
+            for intent_index, intent in enumerate(
+                getattr(node, "freeform_intents", ())
+            ):
                 source_map[f"intent:{node.id}/{intent.id}"] = (
                     f"$.narrativeGraph.nodes[{index}].freeformIntents[{intent_index}]"
+                )
+            for transition_index, _transition in enumerate(
+                getattr(node, "transitions", ())
+            ):
+                source_map[f"transition:{node.id}/{transition_index}"] = (
+                    f"$.narrativeGraph.nodes[{index}].transitions[{transition_index}]"
                 )
         for index, node in enumerate(project.rule_graph.nodes):
             source_map[f"rule:{node.id}"] = f"$.logicGraph.nodes[{index}]"
@@ -304,6 +336,7 @@ class StoryCompiler:
                 story_version=project.version,
                 source_hash=source_hash,
                 start_node_id=project.narrative_graph.start_node_id,
+                backgrounds=project.metadata.backgrounds,
                 variables=project.variables,
                 semantic_signals=project.semantic_signals,
                 character_registry=project.character_registry,
@@ -341,6 +374,15 @@ class StoryCompiler:
         self._validate_registry(project, diagnostics)
         for node_index, node in enumerate(project.narrative_graph.nodes):
             node_path = f"$.narrativeGraph.nodes[{node_index}]"
+            if isinstance(node, StoryNode):
+                self._validate_simple_node(
+                    node,
+                    nodes,
+                    project.metadata.backgrounds,
+                    diagnostics,
+                    node_path,
+                )
+                continue
             self._validate_condition(
                 node.enter_when,
                 variables,
@@ -418,6 +460,82 @@ class StoryCompiler:
                     f"{intent_path}.effects",
                 )
         self._validate_rule_graph(project, diagnostics)
+
+    def _validate_simple_node(
+        self,
+        node: StoryNode,
+        nodes: Mapping[str, Any],
+        backgrounds: tuple[str, ...],
+        diagnostics: list[StoryDiagnostic],
+        path: str,
+    ) -> None:
+        simple_types = {item.value for item in StoryNodeType}
+        if node.type not in simple_types:
+            return
+        if node.type != StoryNodeType.ENDING.value and not node.instruction.strip():
+            self._error(
+                diagnostics,
+                "narrative.missing_instruction",
+                "interactive nodes require an instruction",
+                f"{path}.instruction",
+            )
+        # Background is narrative context. Template chat owns media selection,
+        # so story nodes neither require nor whitelist installed backgrounds.
+        if node.type == StoryNodeType.LIMITED_TURN.value:
+            if node.max_rounds is None:
+                self._error(
+                    diagnostics,
+                    "narrative.missing_max_rounds",
+                    "limited_turn_node requires maxRounds",
+                    f"{path}.maxRounds",
+                )
+            if not node.transitions:
+                self._error(
+                    diagnostics,
+                    "narrative.missing_transition",
+                    "limited_turn_node requires at least one transition",
+                    f"{path}.transitions",
+                )
+        elif node.max_rounds is not None:
+            self._error(
+                diagnostics,
+                "narrative.unexpected_max_rounds",
+                "maxRounds is only valid for limited_turn_node",
+                f"{path}.maxRounds",
+            )
+
+        targets = {transition.to_node_id for transition in node.transitions}
+        for index, transition in enumerate(node.transitions):
+            if transition.to_node_id not in nodes:
+                self._error(
+                    diagnostics,
+                    "narrative.missing_target",
+                    f"target node {transition.to_node_id!r} does not exist",
+                    f"{path}.transitions[{index}].to",
+                )
+            if not transition.when.strip():
+                self._error(
+                    diagnostics,
+                    "narrative.missing_transition_condition",
+                    "transition requires a natural-language condition",
+                    f"{path}.transitions[{index}].when",
+                )
+        if node.default_to is not None and node.default_to not in targets:
+            self._error(
+                diagnostics,
+                "narrative.invalid_default_target",
+                "defaultTo must name one of the node transitions",
+                f"{path}.defaultTo",
+            )
+        if node.type == StoryNodeType.ENDING.value and (
+            node.transitions or node.default_to is not None
+        ):
+            self._error(
+                diagnostics,
+                "narrative.ending_transition",
+                "ending_node cannot define transitions",
+                f"{path}.transitions",
+            )
 
     def _validate_variables(
         self,

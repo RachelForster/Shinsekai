@@ -128,7 +128,12 @@ def test_major_sections_expose_their_runtime_composite_children(context):
         "foot",
         "fields",
     ]
-    assert [child.id for child in character_children] == ["sprites", "profiles"]
+    assert [child.id for child in character_children] == [
+        "sprites",
+        "profiles",
+        "briefs",
+    ]
+    assert character_children[-1].enabled is False
     assert [child.id for child in background_children] == ["scenes", "music"]
     assert [child.id for child in requirement_children] == [
         "tools",
@@ -140,3 +145,65 @@ def test_major_sections_expose_their_runtime_composite_children(context):
     assert rules.children
     assert all(isinstance(child, Section) for child in rules.children)
     assert any(not child.enabled for child in rules.children)
+
+
+def test_character_section_uses_briefs_only_for_supporting_characters(context):
+    alice = context.characters[0]
+    mika = (
+        "Mika",
+        SimpleNamespace(
+            sprites=[],
+            emotion_tags="",
+            character_brief="Mika brief",
+            character_setting="Mika full profile",
+        ),
+    )
+    compact = replace(
+        context,
+        characters=(alice, mika),
+        primary_character_names=frozenset({"Alice"}),
+    )
+
+    children = CharacterSection()._resolve_children(compact)
+    rendered = CharacterSection().render(compact)
+
+    assert [child.id for child in children] == ["sprites", "profiles", "briefs"]
+    assert "Alice profile" in rendered
+    assert "Mika brief" in rendered
+    assert "Mika full profile" not in rendered
+
+
+def test_character_section_falls_back_to_setting_when_a_brief_is_missing(context):
+    mika = (
+        "Mika",
+        SimpleNamespace(
+            sprites=[],
+            emotion_tags="",
+            character_setting="Mika fallback profile",
+        ),
+    )
+    compact = replace(
+        context,
+        characters=(context.characters[0], mika),
+        primary_character_names=frozenset({"Alice"}),
+    )
+
+    assert "Mika fallback profile" in CharacterSection().render(compact)
+
+
+def test_semantic_media_mode_uses_vibe_and_omits_numbered_asset_catalogs(context):
+    semantic = replace(context, media_selection_mode="semantic")
+
+    rendered = DialogTemplateSection().render(semantic)
+
+    assert "<json_vibe_head_top>" in rendered
+    assert "vibe (string, required)" in rendered
+    assert "sprite (string, required)" not in rendered
+    assert "<r_vibe>" in rendered
+    assert "<r_non_vibe>" in rendered
+    assert "<r_scene_vibe>" in rendered
+    assert "<r_bgm_vibe>" in rendered
+    assert "<sprites_header>" not in rendered
+    assert "<scene_block_header>" not in rendered
+    assert "<bgm_block_header>" not in rendered
+    assert "Alice profile" in rendered

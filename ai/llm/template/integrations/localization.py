@@ -1,10 +1,15 @@
-"""Background and voice-language compatibility helpers."""
+"""Shared template translation and language compatibility helpers."""
 
+from i18n import tr
 from sdk.lang import normalize_lang
 
 # 与配置中的背景名一致，勿翻译（UI 默认选此项；旧名「透明背景」仍识别）
 TRANSPARENT_BG = "透明场景"
 _TRANSPARENT_ALIAS = "透明背景"
+
+
+def translate_template(key: str, **kwargs) -> str:
+    return tr(f"template_gen.{key}", **kwargs)
 
 
 def is_transparent_background(name: str | None) -> bool:

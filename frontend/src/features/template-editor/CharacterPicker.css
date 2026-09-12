@@ -1,0 +1,120 @@
+/* Character picker */
+.template-character-picker {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.template-character-picker__header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.template-character-picker__header .button {
+  min-height: 28px;
+  flex: 0 0 auto;
+  padding-block: 3px;
+}
+
+.template-character-grid {
+  display: flex;
+  max-height: 82px;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: var(--space-2);
+  overflow: auto;
+  padding: 0;
+  background: transparent;
+}
+
+.template-character-card {
+  display: inline-flex;
+  min-width: 104px;
+  max-width: min(220px, 100%);
+  min-height: 31px;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--color-border-hover) 54%, var(--color-border));
+  border-radius: 4px;
+  color: color-mix(in srgb, var(--color-text-primary) 76%, var(--color-text-muted));
+  background: color-mix(in srgb, var(--color-control-hover) 38%, var(--color-bg-panel));
+  cursor: pointer;
+  transition:
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    box-shadow var(--transition-fast),
+    color var(--transition-fast);
+  user-select: none;
+}
+
+.template-character-card:hover {
+  border-color: color-mix(in srgb, var(--template-character-color) 55%, var(--color-border-hover));
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--template-character-color) 9%, var(--color-control-hover));
+}
+
+.template-character-card:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+
+.template-character-card--selected {
+  border-color: color-mix(in srgb, var(--template-character-color) 82%, var(--color-accent-border-strong));
+  color: var(--color-text-primary);
+  background: color-mix(in srgb, var(--template-character-color) 16%, var(--color-control-hover));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--template-character-color) 30%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--template-character-color) 10%, transparent);
+}
+
+.template-character-card--selected:hover {
+  border-color: var(--template-character-color);
+  background: color-mix(in srgb, var(--template-character-color) 20%, var(--color-control-hover));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--template-character-color) 38%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--template-character-color) 14%, transparent);
+}
+
+.template-character-card__dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--template-character-color);
+  opacity: 0.72;
+}
+
+.template-character-card--selected .template-character-card__dot {
+  opacity: 1;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--template-character-color) 18%, transparent);
+}
+
+.template-character-card__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.template-character-picker__label {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.template-character-card:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+@media (max-width: 640px) {
+  .template-character-picker__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .template-character-picker__header .button,
+  .template-character-card {
+    width: 100%;
+  }
+}

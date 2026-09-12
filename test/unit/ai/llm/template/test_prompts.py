@@ -9,6 +9,23 @@ from ai.llm.template.prompts import (
 from application.chat.templates import _compose_for_llm, _compose_runtime_template
 
 
+def test_user_prompt_orders_sections_and_omits_empty_context():
+    tree = build_user_prompt_section()
+    context = UserPromptContext(
+        user_input='  {"question": "{name}"}\n继续  ',
+        prefix="前文",
+        background={"背景组": "街道", "背景编号": 2},
+        attachments=("文件说明", "", "图片说明"),
+        suffix="后文",
+    )
+    assert tree.render(context) == (
+        '前文\n\n[当前显示背景]\n{"背景组": "街道", "背景编号": 2}\n[/当前显示背景]'
+        '\n\n  {"question": "{name}"}\n继续  \n\n文件说明\n\n图片说明\n\n后文'
+    )
+    assert tree.render(UserPromptContext("仅原文", attachments=("",))) == "仅原文"
+    assert tree.render(UserPromptContext("", background={}, attachments=("附件",))) == "附件"
+
+
 def test_user_prompt_preserves_literal_text_and_is_reusable():
     tree = build_user_prompt_section()
     context = UserPromptContext(

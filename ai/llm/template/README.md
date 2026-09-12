@@ -84,6 +84,23 @@ and `(template, warning)` return value are unchanged.
 
 ## System and user prompt assembly
 
+`dialog/sections/effects.py` owns `EffectCatalogSection`, which renders the
+selected runtime catalog as one child of `prompts.build_runtime_prompt_section()`,
+between the authored system text and scenario. The application prepares labels
+and resource types;
+`integrations/localization.py` supplies the shared translation entry point used
+by both template generation and runtime catalogs. The application resolves each
+alias against the final playback bindings before projecting resource types and
+supported modes into catalog entries. Rendering
+does not infer resource capabilities. Dialog and runtime contexts contain an
+optional `EffectCatalogContext`; neither inherits from this feature context. Empty
+selections add nothing. Generated templates contain the output contract; the
+runtime catalog is neither saved into authored templates nor composed twice.
+
+Effect choice belongs to the dialogue model. The worker forwards its `effect`
+field unchanged; resource lookup and presentation execute that choice. It does
+not infer image events from language-specific action keywords.
+
 `prompts.build_runtime_prompt_section()` composes system rules, the user scenario,
 then the JSON reminder. `application.chat.templates` retains its existing empty
 scenario fallback and newline policy at the application boundary.

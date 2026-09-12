@@ -30,7 +30,8 @@ def _build_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:
                 "opt_cg": "",
             },
         ),
-        ("sprite", "r_sprite", True, True, {}),
+        ("sprite", "r_sprite", True, not context.uses_vibe, {}),
+        ("vibe", "r_vibe", True, context.uses_vibe, {}),
         (
             "speech",
             "r_speech",
@@ -56,7 +57,12 @@ def _build_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:
         for key, rule, required, enabled, arguments in definitions
         if enabled
     }
-    return apply_field_patches(fields, context.output_contract_patches)
+    selection_field = "vibe" if context.uses_vibe else "sprite"
+    return apply_field_patches(
+        fields,
+        context.output_contract_patches,
+        protected_fields=frozenset({"character_name", "speech", selection_field}),
+    )
 
 
 def _build_field_contract_section(
@@ -99,7 +105,12 @@ class JsonSchemaSection(Section[DialogTemplateContext]):
     ) -> tuple[Section[DialogTemplateContext], ...]:
         translate = context.translate
         generated = (
-            TextSection("head", text=translate("json_head_top")),
+            TextSection(
+                "head",
+                text=translate(
+                    "json_vibe_head_top" if context.uses_vibe else "json_head_top"
+                ),
+            ),
             TextSection(
                 "speech",
                 text=translate(

@@ -147,6 +147,39 @@ def test_delete_audio_preserves_external_file_and_rebuilds_tags(tmp_path: Path) 
     assert result.audio_tags == "特效 1：missing\n"
 
 
+def test_image_upload_audio_and_delete_keep_entries_aligned(tmp_path: Path) -> None:
+    image = tmp_path / "item.png"
+    audio = tmp_path / "item.wav"
+    image.write_bytes(b"image")
+    audio.write_bytes(b"audio")
+    use_case, manager = _use_case(tmp_path, (_effect("Items"),), roots=(tmp_path,))
+
+    uploaded = _execute(
+        use_case,
+        EffectOperation.UPLOAD_IMAGES,
+        name="Items",
+        paths=[image.as_posix()],
+    )
+    paired = _execute(
+        use_case,
+        EffectOperation.UPLOAD_IMAGE_AUDIO,
+        name="Items",
+        index=0,
+        path=audio.as_posix(),
+    )
+
+    assert len(uploaded.image_list) == 1
+    assert paired.image_tags == "图片 1：\n"
+    assert Path(paired.image_audio_list[0]).read_bytes() == b"audio"
+
+    deleted = _execute(use_case, EffectOperation.DELETE_IMAGE, name="Items", index=0)
+
+    assert deleted.image_list == []
+    assert deleted.image_audio_list == []
+    assert deleted.image_tags == ""
+    assert manager.saved == 3
+
+
 def test_import_validates_names_and_uses_one_config_commit(tmp_path: Path) -> None:
     archive = tmp_path / "effect.ef"
     with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as package:
@@ -216,6 +249,37 @@ def test_export_packages_managed_and_allowed_external_audio(tmp_path: Path) -> N
         assert package.read("audio/external.wav") == b"external"
 
 
+def test_effect_package_round_trips_images_and_bound_audio(tmp_path: Path) -> None:
+    effect_dir = tmp_path / "data" / "effects" / "Items"
+    effect_dir.mkdir(parents=True)
+    image = effect_dir / "letter.png"
+    bound_audio = effect_dir / "paper.wav"
+    image.write_bytes(b"image")
+    bound_audio.write_bytes(b"audio")
+    effect = _effect(
+        "Items",
+        image_list=[image.as_posix()],
+        image_tags="图片 1：letter\n",
+        image_audio_list=[bound_audio.as_posix()],
+    )
+    use_case, _ = _use_case(tmp_path, (effect,), roots=(tmp_path,))
+
+    exported = _execute(use_case, EffectOperation.EXPORT, name="Items")
+    imported = _execute(
+        use_case,
+        EffectOperation.IMPORT,
+        paths=[(tmp_path / exported.path).as_posix()],
+    )
+
+    assert imported[0].name == "Items_1"
+    assert imported[0].image_tags == "图片 1：letter\n"
+    assert Path(imported[0].image_list[0]).read_bytes() == b"image"
+    assert Path(imported[0].image_audio_list[0]).read_bytes() == b"audio"
+    with zipfile.ZipFile(tmp_path / exported.path) as package:
+        assert "images/letter.png" in package.namelist()
+        assert "image-audio/paper.wav" in package.namelist()
+
+
 def test_export_renames_colliding_audio_filenames(tmp_path: Path) -> None:
     managed = tmp_path / "data" / "effects" / "Impact" / "hit.wav"
     managed.parent.mkdir(parents=True)
@@ -250,3 +314,22 @@ def test_export_rejects_missing_audio_instead_of_writing_dangling_path(
         _execute(use_case, EffectOperation.EXPORT, name="Impact")
 
     assert not (tmp_path / "output" / "Impact.ef").exists()
+
+
+@pytest.mark.parametrize("media", ["audio", "image"])
+def test_upload_keeps_existing_blank_rows_and_handles_missing_trailing_newline(tmp_path, media):
+    source = tmp_path / ("new.png" if media == "image" else "new.wav")
+    source.write_bytes(b"asset")
+    effect = _effect("Rows", **{
+        f"{media}_list": ["a.png", "b.png", "c.png"],
+        f"{media}_tags": "Row 1: first\n\nRow 3: third：detail",
+    })
+    use_case, _ = _use_case(tmp_path, (effect,))
+    operation = EffectOperation.UPLOAD_IMAGES if media == "image" else EffectOperation.UPLOAD_AUDIO
+    uploaded = _execute(use_case, operation, name="Rows", paths=[str(source)])
+    lines = getattr(uploaded, f"{media}_tags").splitlines()
+    assert len(lines) == 4
+    assert lines[0].endswith("：first")
+    assert lines[1].endswith("：")
+    assert lines[2].endswith("：third：detail")
+    assert lines[3].endswith("：")

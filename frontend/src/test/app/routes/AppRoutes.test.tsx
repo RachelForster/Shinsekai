@@ -3,6 +3,7 @@ import { Outlet, MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppRoutes } from "../../../app/routes/AppRoutes";
+import { I18nProvider } from "../../../shared/i18n";
 
 vi.mock("../../../app/shell/AppShell", () => ({
   AppShell: () => (
@@ -83,7 +84,9 @@ vi.mock("../../../features/onboarding/onboardingState", () => ({
 function renderRoute(path: string) {
   return render(
     <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }} initialEntries={[path]}>
-      <AppRoutes />
+      <I18nProvider language="en">
+        <AppRoutes />
+      </I18nProvider>
     </MemoryRouter>,
   );
 }

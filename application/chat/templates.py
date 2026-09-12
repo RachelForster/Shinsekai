@@ -8,6 +8,9 @@ from typing import Any
 from config.config_manager import character_name_key
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from application.chat.initial_sprite import initial_sprite_path_for_characters
+from ai.llm.template.integrations.localization import translate_template
+from ai.llm.template.dialog.context import EffectCatalogContext, EffectCatalogEntry
+from application.chat.build_effect_context import SelectedEffectContext
 from ai.llm.template.prompts import (
     RuntimePromptContext,
     UserPromptContext,
@@ -25,6 +28,7 @@ from sdk.path_utils import safe_child_path, safe_filename
 
 MARK_SCENARIO = "<<<EASYAI_USER_SCENARIO>>>"
 MARK_SYSTEM = "<<<EASYAI_SYSTEM_TEMPLATE>>>"
+MARK_METADATA = "<<<EASYAI_TEMPLATE_METADATA>>>"
 TEMP_SPLIT_META = "_temp_split.json"
 DEFAULT_EMPTY_SCENARIO = "你扮演一个RPG系统。"
 
@@ -39,10 +43,45 @@ def _template_id(path: Path) -> str:
     return path.name
 
 
-def _compose_stored_template(scenario: str, system: str) -> str:
+def _normalize_media_selection_mode(value: object) -> str:
+    return (
+        "semantic"
+        if str(value or "").strip().lower() == "semantic"
+        else "indexed"
+    )
+
+
+def _compose_stored_template(
+    scenario: str,
+    system: str,
+    *,
+    media_selection_mode: str = "indexed",
+) -> str:
     a = (scenario or "").replace("\r\n", "\n").rstrip()
     b = (system or "").replace("\r\n", "\n").rstrip()
-    return f"{MARK_SCENARIO}\n{a}\n{MARK_SYSTEM}\n{b}\n"
+    metadata = json.dumps(
+        {"mediaSelectionMode": _normalize_media_selection_mode(media_selection_mode)},
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+    return f"{MARK_METADATA}\n{metadata}\n{MARK_SCENARIO}\n{a}\n{MARK_SYSTEM}\n{b}\n"
+
+
+def _parse_stored_template_metadata(raw: str) -> dict[str, str]:
+    text = (raw or "").replace("\r\n", "\n")
+    if MARK_METADATA not in text:
+        return {"mediaSelectionMode": "indexed"}
+    try:
+        start = text.index(MARK_METADATA) + len(MARK_METADATA)
+        end = text.index(MARK_SCENARIO, start)
+        parsed = json.loads(text[start:end].strip())
+    except (ValueError, json.JSONDecodeError):
+        parsed = {}
+    return {
+        "mediaSelectionMode": _normalize_media_selection_mode(
+            parsed.get("mediaSelectionMode") if isinstance(parsed, dict) else None
+        )
+    }
 
 
 def _parse_stored_template(raw: str) -> tuple[str, str]:
@@ -70,11 +109,25 @@ def _effective_user_scenario(user_scenario: str) -> str:
     return (user_scenario or "").strip() or DEFAULT_EMPTY_SCENARIO
 
 
-def _compose_runtime_template(system_template: str, user_scenario: str) -> str:
+def _compose_runtime_template(
+    system_template: str,
+    user_scenario: str,
+    effect_context: SelectedEffectContext | None = None,
+) -> str:
+    catalog = None
+    if effect_context is not None:
+        catalog = EffectCatalogContext(
+            effects=tuple(
+                EffectCatalogEntry(item.label, item.kind, item.modes)
+                for item in effect_context.catalog
+            ),
+            translate=translate_template,
+        )
     context = RuntimePromptContext(
         system_template=(system_template or "").rstrip(),
         user_scenario=_effective_user_scenario(user_scenario),
         json_reminder=json_format_reminder(),
+        effect_catalog=catalog,
     )
     return build_runtime_prompt_section().render(context) + "\n"
 
@@ -215,6 +268,7 @@ def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
         except OSError:
             continue
         scenario, system = _parse_stored_template(raw)
+        metadata = _parse_stored_template_metadata(raw)
         rows.append(
             {
                 "content": _compose_for_llm(scenario, system),
@@ -223,6 +277,7 @@ def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
                 "path": path.as_posix(),
                 "scenario": scenario,
                 "system": system,
+                "mediaSelectionMode": metadata["mediaSelectionMode"],
                 "updatedAt": str(int(path.stat().st_mtime)),
             }
         )
@@ -238,9 +293,16 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
         raise ValueError("template name is required")
     scenario = _scenario_from_template_like(template)
     system = str(template.get("system") or "")
+    media_selection_mode = _normalize_media_selection_mode(
+        template.get("mediaSelectionMode")
+    )
     file_name = safe_filename(name, default_suffix=".txt")
     safe_child_path(_template_dir(state), file_name).write_text(
-        _compose_stored_template(scenario, system),
+        _compose_stored_template(
+            scenario,
+            system,
+            media_selection_mode=media_selection_mode,
+        ),
         encoding="utf-8",
     )
     for row in _list_templates(state):
@@ -263,6 +325,25 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         state.config_manager.save_system_config()
     max_speech_chars = max(0, int(payload.get("maxSpeechChars") or 0))
     max_dialog_items = max(0, int(payload.get("maxDialogItems") or 0))
+    prompt_mode = str(payload.get("characterPromptMode") or "").strip().lower()
+    primary_characters = (
+        _resolve_template_character_names(state, payload.get("primaryCharacters") or [])
+        if prompt_mode == "compact"
+        else None
+    )
+    media_selection_mode = (
+        "semantic"
+        if str(payload.get("mediaSelectionMode") or "").strip().lower()
+        == "semantic"
+        else "indexed"
+    )
+    if primary_characters is not None:
+        selected_keys = {character_name_key(name) for name in resolved_names}
+        primary_characters = [
+            name
+            for name in primary_characters
+            if character_name_key(name) in selected_keys
+        ]
     content, result = state.template_generator.generate_chat_template(
         resolved_names,
         background,
@@ -275,6 +356,8 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         bool(payload.get("useStat", True)),
         max_speech_chars=max_speech_chars,
         max_dialog_items=max_dialog_items,
+        primary_characters=primary_characters,
+        media_selection_mode=media_selection_mode,
     )
     output_name = str(result or "").strip()
     name = str(output_name or payload.get("name") or "generated").strip()
@@ -286,6 +369,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         "path": "",
         "scenario": scenario,
         "system": content,
+        "mediaSelectionMode": media_selection_mode,
         "updatedAt": "",
         "resolvedCharacters": resolved_names,
     }
@@ -320,7 +404,7 @@ def _session_string_list(value: Any) -> list[str]:
 def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] | None:
     if not raw:
         return None
-    return {
+    payload = {
         "background": str(raw.get("background") or ""),
         "effectNames": _session_string_list(raw.get("effect_names")),
         "enableMobileAccess": bool(raw.get("enable_mobile_access", False)),
@@ -343,7 +427,20 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         "useStat": bool(raw.get("use_stat_yes", True)),
         "useTranslation": bool(raw.get("use_tr_yes", True)),
         "voiceLanguage": str(raw.get("voice_lang") or ""),
+        "mediaSelectionMode": (
+            "semantic"
+            if str(raw.get("media_selection_mode") or "").strip().lower()
+            == "semantic"
+            else "indexed"
+        ),
     }
+    prompt_mode = str(raw.get("character_prompt_mode") or "").strip().lower()
+    if prompt_mode in {"compact", "full"}:
+        payload["characterPromptMode"] = prompt_mode
+        payload["primaryCharacters"] = _session_string_list(
+            raw.get("primary_characters")
+        )
+    return payload
 
 
 def _persist_template_session_repair(state: BridgeState, raw: dict[str, Any]) -> None:
@@ -362,10 +459,35 @@ def _reconcile_template_session_characters(
     selected = _session_string_list(raw.get("selected_characters"))
     resolved = resolve_chat_template_characters(selected, state.config_manager)
     resolved_names = [name for name, _character in resolved]
-    if resolved_names == selected:
+    resolved_by_key = {
+        character_name_key(name): name
+        for name in resolved_names
+        if character_name_key(name)
+    }
+    primary = _session_string_list(raw.get("primary_characters"))
+    resolved_primary: list[str] = []
+    seen_primary_keys: set[str] = set()
+    for name in primary:
+        key = character_name_key(name)
+        canonical_name = resolved_by_key.get(key)
+        if canonical_name and key not in seen_primary_keys:
+            resolved_primary.append(canonical_name)
+            seen_primary_keys.add(key)
+
+    prompt_mode = str(raw.get("character_prompt_mode") or "").strip().lower()
+    if prompt_mode == "compact" and not resolved_primary:
+        prompt_mode = ""
+    if (
+        resolved_names == selected
+        and resolved_primary == primary
+        and prompt_mode == str(raw.get("character_prompt_mode") or "")
+    ):
         return raw
+
     repaired = dict(raw)
     repaired["selected_characters"] = resolved_names
+    repaired["primary_characters"] = resolved_primary
+    repaired["character_prompt_mode"] = prompt_mode
     repaired["init_sprite_path"] = initial_sprite_path_for_characters(
         state.config_manager,
         str(raw.get("init_sprite_path") or ""),
@@ -401,6 +523,11 @@ def _rename_template_session_character(
         return
     repaired = dict(raw)
     repaired["selected_characters"] = renamed
+    primary = _session_string_list(raw.get("primary_characters"))
+    repaired["primary_characters"] = [
+        saved_name if character_name_key(name) == original_key else name
+        for name in primary
+    ]
     reconciled = _reconcile_template_session_characters(state, repaired)
     if reconciled is repaired:
         _persist_template_session_repair(state, repaired)
@@ -427,8 +554,23 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         str(payload.get("initSpritePath") or ""),
         selected_characters,
     )
+    prompt_mode = str(payload.get("characterPromptMode") or "").strip().lower()
+    if prompt_mode not in {"compact", "full"}:
+        prompt_mode = "full" if len(selected_characters) <= 4 else ""
+    primary_characters = _resolve_template_character_names(
+        state,
+        payload.get("primaryCharacters") or [],
+    )
+    selected_keys = {character_name_key(name) for name in selected_characters}
+    primary_characters = [
+        name
+        for name in primary_characters
+        if character_name_key(name) in selected_keys
+    ]
     data = {
         "selected_characters": selected_characters,
+        "character_prompt_mode": prompt_mode,
+        "primary_characters": primary_characters,
         "background": str(payload.get("background") or ""),
         "effect_names": _session_string_list(payload.get("effectNames")),
         "enable_mobile_access": bool(payload.get("enableMobileAccess", False)),
@@ -450,6 +592,12 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         "history_file": str(payload.get("historyPath") or ""),
         "room_id": str(payload.get("roomId") or ""),
         "workflow_path": str(payload.get("workflowPath") or ""),
+        "media_selection_mode": (
+            "semantic"
+            if str(payload.get("mediaSelectionMode") or "").strip().lower()
+            == "semantic"
+            else "indexed"
+        ),
     }
     save_template_session(state.template_dir_path, data)
     loaded = _load_template_session_payload(state)
@@ -481,6 +629,18 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
             bool(raw.get("use_stat_yes", True)),
             max_speech_chars=_safe_session_int(raw.get("max_speech_chars")),
             max_dialog_items=_safe_session_int(raw.get("max_dialog_items")),
+            primary_characters=(
+                _session_string_list(raw.get("primary_characters"))
+                if str(raw.get("character_prompt_mode") or "").strip().lower()
+                == "compact"
+                else None
+            ),
+            media_selection_mode=(
+                "semantic"
+                if str(raw.get("media_selection_mode") or "").strip().lower()
+                == "semantic"
+                else "indexed"
+            ),
         )
     except NoValidCharactersError:
         return raw

@@ -23,6 +23,10 @@ export function deleteEffectAudio(name: string, index: number) {
   return getPlatform().effects.deleteAudio(name, index);
 }
 
+export function deleteEffectImage(name: string, index: number) {
+  return getPlatform().effects.deleteImage(name, index);
+}
+
 export function deleteAllEffectAudio(name: string) {
   return getPlatform().effects.deleteAllAudio(name);
 }
@@ -37,4 +41,16 @@ export function exportEffect(name: string) {
 
 export function uploadEffectAudio(input: { audioTags: string; name: string; paths: string[] }) {
   return getPlatform().effects.uploadAudio(input);
+}
+
+export function saveEffectImageTags(input: { imageTags: string; name: string }) {
+  return getPlatform().effects.saveImageTags(input);
+}
+
+export function uploadEffectImages(input: { imageTags: string; name: string; paths: string[] }) {
+  return getPlatform().effects.uploadImages(input);
+}
+
+export function uploadEffectImageAudio(input: { index: number; name: string; path: string }) {
+  return getPlatform().effects.uploadImageAudio(input);
 }

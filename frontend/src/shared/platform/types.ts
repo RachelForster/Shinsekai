@@ -15,6 +15,7 @@ export interface Character {
   color: string;
   sprite_prefix: string;
   sprites: Sprite[];
+  character_brief?: string;
   character_setting: string;
   sprite_scale: number;
   emotion_tags: string;
@@ -43,6 +44,9 @@ export interface Effect {
   prompt_text: string;
   audio_list: string[];
   audio_tags: string;
+  image_list: string[];
+  image_tags: string;
+  image_audio_list: string[];
 }
 
 export interface ApiConfig {
@@ -495,6 +499,7 @@ export interface TemplateSummary {
   id: string;
   name: string;
   path: string;
+  mediaSelectionMode?: MediaSelectionMode;
   scenario?: string;
   system?: string;
   updatedAt: string;
@@ -511,6 +516,7 @@ export interface ChatLaunchPayload {
   effectNames?: string[];
   historyPath: string;
   initSpritePath?: string;
+  mediaSelectionMode?: MediaSelectionMode;
   resetHistory?: boolean;
   roomId?: string;
   scenario?: string;
@@ -522,11 +528,14 @@ export interface ChatLaunchPayload {
 
 export interface TemplateGenerateInput {
   backgroundName: string;
+  characterPromptMode?: CharacterPromptMode;
   characters: string[];
   effectNames?: string[];
   maxDialogItems?: number;
   maxSpeechChars?: number;
+  mediaSelectionMode?: MediaSelectionMode;
   name: string;
+  primaryCharacters?: string[];
   scenario?: string;
   useCg?: boolean;
   useChoice?: boolean;
@@ -538,8 +547,12 @@ export interface TemplateGenerateInput {
   voiceLanguage?: string;
 }
 
+export type CharacterPromptMode = "compact" | "full";
+export type MediaSelectionMode = "indexed" | "semantic";
+
 export interface TemplateLaunchSession {
   background: string;
+  characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;
   effectNames: string[];
   filenameStub: string;
@@ -547,8 +560,10 @@ export interface TemplateLaunchSession {
   initSpritePath: string;
   maxDialogItems: number;
   maxSpeechChars: number;
+  mediaSelectionMode?: MediaSelectionMode;
   roomId: string;
   scenario: string;
+  primaryCharacters?: string[];
   selectedCharacters: string[];
   system: string;
   templateFileDropdown: string;
@@ -662,8 +677,19 @@ export interface DiagnosticBundleResult {
 }
 
 export interface CharacterSettingResult {
+  characterBrief?: string;
   characterSetting: string;
   message: string;
+}
+
+export interface CharacterBriefResult {
+  characterBrief: string;
+  message: string;
+}
+
+export interface CharacterBriefBatchResult {
+  characters: Character[];
+  generatedNames: string[];
 }
 
 export interface CharacterTranslateResult {
@@ -901,12 +927,16 @@ export type ChatOption = string | ChatStoryOption;
 
 export interface ChatStoryState {
   activeCast: Array<{ id: string; roles: string[] }>;
+  background?: string | null;
   castRevision: number;
   currentNodeId: string;
   currentNodeTitle: string;
+  currentNodeType?: string;
   ending?: { id: string; title: string } | null;
   lastEvent?: { payload: Record<string, unknown>; revision?: number; type: string };
   objectives: unknown[];
+  maxRounds?: number | null;
+  nodeTurnCount?: number;
   options: ChatStoryOption[];
   revision: number;
   storyId: string;
@@ -948,6 +978,15 @@ export interface ChatSnapshot {
   dialogText: string;
   /** 后端已折叠进该 snapshot 的最新事件 seq，用于重连恢复幂等处理。 */
   eventSeq?: number;
+  /** Server wall-clock time when this snapshot was prepared for delivery. */
+  serverTimeMs?: number;
+  effectImage?: {
+    durationMs: number;
+    expiresAt: number;
+    label: string;
+    seq: number;
+    url: string;
+  } | null;
   experimentalFeatures?: ChatExperimentalFeatures;
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
@@ -1129,6 +1168,7 @@ export type ChatStageEvent =
     })
   | (ChatEventBase & { type: "tts.skip"; playbackId?: string })
   | (ChatEventBase & { type: "effect.play"; url: string })
+  | (ChatEventBase & { type: "effect.image.show"; durationMs: number; label: string; url: string })
   | (ChatEventBase & { type: "effect.loop.start"; key: string; url: string })
   | (ChatEventBase & { type: "effect.loop.stop"; key: string })
   | (ChatEventBase & { type: "effect.loop.stop-all" })
@@ -1200,14 +1240,7 @@ export interface TaskProgressOptions<TResult = unknown> {
   onTaskUpdate?: (task: TaskSnapshot<TResult>) => void;
 }
 
-export type StoryGenerationStage =
-  | "requirements"
-  | "bible"
-  | "characters"
-  | "state"
-  | "narrative"
-  | "logic"
-  | "resources";
+export type StoryGenerationStage = "foundation" | "characters" | "narrative";
 
 export interface StoryGenerationValidationIssue {
   code: string;
@@ -1246,6 +1279,13 @@ export interface StoryGenerationTask {
   id: string;
   options: Record<string, unknown>;
   repairAttempts: number;
+  recovery?: {
+    state: "resuming" | "working" | "correcting" | "waiting";
+    attempt?: number;
+    message: string;
+    nextRetryAt?: number | null;
+    lastError?: { code: string; message: string };
+  } | null;
   resourceCatalog: Record<string, unknown>;
   status: "cancelled" | "failed" | "queued" | "running" | "succeeded";
   synopsis: string;
@@ -1257,6 +1297,17 @@ export interface StoryGenerationInput {
   options?: Record<string, unknown>;
   resourceCatalog?: Record<string, unknown>;
   synopsis: string;
+}
+
+export interface StoryLibraryEntry {
+  id: string;
+  title: string;
+  storyPath: string;
+  characters: string[];
+  backgrounds: string[];
+  historyPath: string;
+  currentNodeTitle: string;
+  updatedAt: number;
 }
 
 export interface ImageAutoLabelFailure {
@@ -1320,12 +1371,16 @@ export interface ShinsekaiPlatform {
     delete: (name: string) => Promise<void>;
     deleteAllAudio: (name: string) => Promise<Effect>;
     deleteAudio: (name: string, index: number) => Promise<Effect>;
+    deleteImage: (name: string, index: number) => Promise<Effect>;
     export: (name: string) => Promise<string>;
     import: (items: File[] | string[]) => Promise<Effect[]>;
     list: () => Promise<Effect[]>;
     save: (effect: Effect, originalName?: string) => Promise<Effect>;
     saveAudioTags: (input: { audioTags: string; name: string }) => Promise<Effect>;
+    saveImageTags: (input: { imageTags: string; name: string }) => Promise<Effect>;
     uploadAudio: (input: { audioTags: string; name: string; paths: string[] }) => Promise<Effect>;
+    uploadImages: (input: { imageTags: string; name: string; paths: string[] }) => Promise<Effect>;
+    uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
     close: () => Promise<ChatSnapshot>;
@@ -1354,6 +1409,10 @@ export interface ShinsekaiPlatform {
     subscribeEvents: (listener: (event: ChatStageEvent) => void) => () => void;
   };
   story: {
+    list: () => Promise<StoryLibraryEntry[]>;
+    prepareLaunch: (storyPath: string, historyPath?: string) => Promise<ChatLaunchPayload>;
+    getPreview: (id: string) => Promise<import("./storyPreviewTypes").StoryGenerationPreview>;
+    startSession: (storyPath: string) => Promise<ChatSnapshot>;
     cancelGeneration: (id: string) => Promise<StoryGenerationTask>;
     getGeneration: (id: string) => Promise<StoryGenerationTask>;
     regenerateGeneration: (
@@ -1375,7 +1434,9 @@ export interface ShinsekaiPlatform {
     delete: (name: string) => Promise<void>;
     deleteMemory: (name: string, memoryId: string) => Promise<CharacterMemoryList>;
     deleteSpriteVoice: (name: string, spriteIndex: number) => Promise<Character>;
+    ensureBriefs: (names: string[]) => Promise<CharacterBriefBatchResult>;
     export: (name: string) => Promise<string>;
+    generateBrief: (input: { name: string; setting: string }) => Promise<CharacterBriefResult>;
     generateSetting: (input: { name: string; setting: string }) => Promise<CharacterSettingResult>;
     import: (items: File[] | string[]) => Promise<Character[]>;
     list: () => Promise<Character[]>;

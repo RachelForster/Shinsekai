@@ -418,6 +418,9 @@ def run(
     server.state = state  # type: ignore[attr-defined]
     _restart_debug_log(f"server listening host={host} port={port} frontend_dist={resolved_frontend_dist}")
     _start_plugin_loader(state, logger)
+    from application.story.generation_recovery import recover_story_generations
+
+    recover_story_generations(state)
     logger.info(
         "Frontend bridge listening",
         extra={
@@ -454,6 +457,10 @@ def run(
         _restart_debug_log("serve_forever exit")
         with contextlib.suppress(Exception):
             server.server_close()
+        generation_service = getattr(state, "story_generation_service", None)
+        recovery = getattr(generation_service, "_recovery", None)
+        if recovery is not None:
+            recovery.stop()
         _shutdown_bridge_runtime("server exit")
         _set_bridge_state(None)
 

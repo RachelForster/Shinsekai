@@ -1,0 +1,81 @@
+.story-graph__scroll {
+  overflow: auto;
+  max-height: 580px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  background: var(--color-bg-app);
+}
+.story-graph__canvas {
+  position: relative;
+  transform-origin: top left;
+}
+.story-graph__canvas svg {
+  position: absolute;
+  inset: 0;
+  color: var(--color-text-muted);
+}
+.story-graph__canvas svg > path {
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-width: 1.5;
+}
+.story-graph__canvas svg > path.selected {
+  stroke: var(--color-accent-primary);
+  stroke-width: 2.5;
+}
+.story-graph__node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: var(--space-2);
+  text-align: left;
+  color: var(--color-text-primary);
+  background: var(--color-bg-panel);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-accent-primary);
+}
+.story-graph__node small {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+.story-graph__node strong {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.story-graph__node--ending_node {
+  border-left-color: var(--color-success);
+}
+.story-graph__node[aria-pressed="true"] {
+  outline: 2px solid var(--color-accent-primary);
+  outline-offset: 3px;
+}
+.story-graph__zoom {
+  display: flex;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+.story-graph__detail {
+  margin-top: var(--space-5);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.story-graph__node {
+  font: inherit;
+  border-radius: var(--radius-control);
+  padding: var(--space-3);
+  cursor: pointer;
+}
+.story-graph__node:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+@media (max-width: 760px) {
+  .story-graph__header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

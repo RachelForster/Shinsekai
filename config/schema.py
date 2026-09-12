@@ -53,6 +53,10 @@ class Character(BaseModel):
     
     # 列表中可能包含 Sprite 模型，也可能只是原始字典
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="角色的立绘和对应语音的列表")
+    character_brief: DefaultIfNone[str] = Field(
+        default="",
+        description="用于次要角色精简提示词的角色简介",
+    )
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
     emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
@@ -390,6 +394,12 @@ class Effect(BaseModel):
     prompt_text: DefaultIfNone[str] = Field(default="", description="通用提示词")
     audio_list: Optional[List[str]] = Field(default_factory=list, description="特效音频列表")
     audio_tags: DefaultIfNone[str] = Field(default="", description="特效音频信息")
+    image_list: Optional[List[str]] = Field(default_factory=list, description="特效图片列表")
+    image_tags: DefaultIfNone[str] = Field(default="", description="特效图片信息")
+    image_audio_list: Optional[List[str]] = Field(
+        default_factory=list,
+        description="图片特效绑定音频列表",
+    )
 
 # Main Config Model
 class AppConfig(BaseModel):

@@ -20,6 +20,7 @@ _RUNTIMES: WeakKeyDictionary[Any, _GenerationRuntime] = WeakKeyDictionary()
 class GenerateCharacterResult:
     message: str
     character_setting: str
+    character_brief: str = ""
 
 
 class CharacterCreator(Protocol):
@@ -73,6 +74,7 @@ def generate_character(
             prompt_text="",
             prompt_lang="",
             character_setting=setting,
+            character_brief="",
         )
         character = config_store.get_character_by_name(name)
         if character is None:
@@ -139,11 +141,47 @@ def generate_character(
         )
         character.character_setting = generated
         config_store.save_characters_config()
-        return GenerateCharacterResult("输出成功", character.character_setting)
+
+        from application.characters.generate_briefs import (
+            CHARACTER_BRIEF_PROMPT,
+            normalize_character_brief,
+        )
+
+        try:
+            runtime.manager.set_user_template(CHARACTER_BRIEF_PROMPT)
+            generated_brief = normalize_character_brief(
+                runtime.manager.chat(
+                    f"人物名称：{name}\n人物设定：\n{generated or '无详细设定'}",
+                    stream=False,
+                    response_format={"type": "text"},
+                    include_local_time=False,
+                )
+            )
+            if not generated_brief:
+                raise ValueError("人物简介生成结果为空")
+        except Exception as exc:
+            return GenerateCharacterResult(
+                f"角色设定输出成功，人物简介生成失败:{exc}",
+                character.character_setting,
+                str(getattr(character, "character_brief", "") or ""),
+            )
+
+        character.character_brief = generated_brief
+        config_store.save_characters_config()
+        return GenerateCharacterResult(
+            "输出成功",
+            character.character_setting,
+            character.character_brief,
+        )
     except ImportError:
         return GenerateCharacterResult(
             "输出失败: LLM 模块依赖未找到 (LLMAdapterFactory, LLMManager)",
             setting,
+            str(getattr(character, "character_brief", "") or ""),
         )
     except Exception as exc:
-        return GenerateCharacterResult(f"输出失败:{exc}", setting)
+        return GenerateCharacterResult(
+            f"输出失败:{exc}",
+            setting,
+            str(getattr(character, "character_brief", "") or ""),
+        )

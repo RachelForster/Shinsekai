@@ -86,7 +86,8 @@ class CharacterManager:
                      speech_volume: float = 1.0,
                      pronunciation_map: dict = None,
                      edit_as_name: Optional[str] = None,
-                     emotion_tags: Optional[str] = None) -> Tuple[str, List[str]]:
+                     emotion_tags: Optional[str] = None,
+                     character_brief: Optional[str] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
 
@@ -136,6 +137,8 @@ class CharacterManager:
                 target.prompt_text = prompt_text
                 target.prompt_lang = prompt_lang
                 target.refer_audio_path = refer_audio_path
+                if character_brief is not None:
+                    target.character_brief = character_brief
                 target.character_setting = character_setting
                 target.speech_speed = speech_speed
                 target.speech_volume = speech_volume
@@ -162,6 +165,7 @@ class CharacterManager:
                 sprites=[],
                 sprite_scale=1.0,
                 emotion_tags=emotion_tags or "",
+                character_brief=character_brief or "",
                 character_setting=character_setting,
                 speech_speed=speech_speed,
                 speech_volume=speech_volume,
@@ -180,6 +184,8 @@ class CharacterManager:
             existing_character.prompt_text = prompt_text
             existing_character.prompt_lang = prompt_lang
             existing_character.refer_audio_path = refer_audio_path
+            if character_brief is not None:
+                existing_character.character_brief = character_brief
             existing_character.character_setting = character_setting
             existing_character.speech_speed = speech_speed
             existing_character.speech_volume = speech_volume

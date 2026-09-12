@@ -54,7 +54,7 @@ import pytest
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
+from sdk.messages import UserInputMessage, LLMDialogMessage, PresentationMessage
 
 # Re-export mock adapters from the importable module so fixtures work
 from test.mocks import MockLLMAdapter, MockTTSAdapter, MockT2IAdapter, MockASRAdapter
@@ -164,15 +164,15 @@ def make_llm_dialog(
     )
 
 
-def make_tts_output(
+def make_presentation_message(
     audio_path: str = "/tmp/fake.wav",
     name: str = "TestChar",
     text: str = "Spoken text",
     asset_id: str = "-1",
     is_system_message: bool = False,
     is_final_segment: bool = True,
-) -> TTSOutputMessage:
-    return TTSOutputMessage(
+) -> PresentationMessage:
+    return PresentationMessage(
         audio_path=audio_path,
         name=name,
         text=text,
@@ -220,8 +220,8 @@ def sample_llm_dialog():
 
 
 @pytest.fixture
-def sample_tts_output():
-    return make_tts_output()
+def sample_presentation_message():
+    return make_presentation_message()
 
 
 @pytest.fixture
@@ -266,8 +266,8 @@ def mock_app_runtime(mock_llm_adapter, sample_app_config):
         t2i_manager=None,
         bgm_list=[],
         user_input_queue=Queue(),
-        tts_queue=Queue(),
-        audio_path_queue=Queue(),
+        dialog_queue=Queue(),
+        presentation_queue=Queue(),
         text_processor=MagicMock(),
         opencc=MagicMock(),
     )

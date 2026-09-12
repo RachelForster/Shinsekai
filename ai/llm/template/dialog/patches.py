@@ -73,11 +73,15 @@ def _apply_requirement_patch(
 def apply_field_patches(
     fields: dict[str, OutputFieldSpec],
     contract_patches: Sequence[OutputContractPatch],
+    *,
+    protected_fields: frozenset[str] = frozenset(
+        {"character_name", "speech", "sprite"}
+    ),
 ) -> dict[str, OutputFieldSpec]:
     fields = dict(fields)
     for patch in sorted(contract_patches, key=lambda p: p.priority):
         for key in patch.remove_fields:
-            if key not in {"character_name", "speech", "sprite"}:
+            if key not in protected_fields:
                 fields.pop(key, None)
         for key, field_patch in patch.field_patches.items():
             existing = fields.get(key)

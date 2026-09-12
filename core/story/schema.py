@@ -28,6 +28,7 @@ from .models import (
     ConditionSpec,
     EffectSpec,
     FreeformIntent,
+    LegacyStoryNode,
     NarrativeGraph,
     PortRef,
     RequiredRole,
@@ -37,7 +38,9 @@ from .models import (
     StoryChoice,
     StoryMetadata,
     StoryNode,
+    StoryNodeType,
     StoryProject,
+    StoryTransition,
     StoryVariableDefinition,
     VariableScope,
     VariableType,
@@ -710,6 +713,125 @@ def _parse_intent(parser: _Parser, value: Any, path: str) -> FreeformIntent:
     )
 
 
+def _parse_transition(parser: _Parser, value: Any, path: str) -> StoryTransition:
+    source = parser.mapping(value, path)
+    return StoryTransition(
+        to_node_id=parser.story_id(source.get("to"), f"{path}.to"),
+        when=parser.string(
+            source.get("when"),
+            f"{path}.when",
+            required=True,
+        ),
+    )
+
+
+def _parse_simple_node(
+    parser: _Parser,
+    item: Mapping[str, Any],
+    path: str,
+) -> StoryNode:
+    for legacy_field in ("choices", "freeformIntents", "castPolicy", "characters"):
+        if legacy_field in item:
+            parser.error(
+                "schema.simple_node_field",
+                f"{legacy_field} is not valid for simple story nodes",
+                f"{path}.{legacy_field}",
+            )
+    raw_transitions = parser.sequence(
+        item.get("transitions", ()), f"{path}.transitions"
+    )
+    return StoryNode(
+        id=parser.story_id(item.get("id"), f"{path}.id"),
+        title=parser.string(item.get("title"), f"{path}.title", required=True),
+        type=parser.enum(
+            StoryNodeType,
+            item.get("type"),
+            f"{path}.type",
+            default=StoryNodeType.FREE_CHAT,
+        ),
+        instruction=parser.string(item.get("instruction"), f"{path}.instruction"),
+        background=parser.string(item.get("background"), f"{path}.background") or None,
+        max_rounds=(
+            parser.integer(
+                item.get("maxRounds"),
+                f"{path}.maxRounds",
+                minimum=1,
+            )
+            if item.get("maxRounds") is not None
+            else None
+        ),
+        transitions=tuple(
+            _parse_transition(
+                parser,
+                transition,
+                f"{path}.transitions[{transition_index}]",
+            )
+            for transition_index, transition in enumerate(raw_transitions)
+        ),
+        default_to=parser.string(item.get("defaultTo"), f"{path}.defaultTo") or None,
+    )
+
+
+def _parse_legacy_node(
+    parser: _Parser,
+    item: Mapping[str, Any],
+    path: str,
+    default_max_cast: int,
+    default_preserve_current_cast: bool,
+) -> LegacyStoryNode:
+    raw_choices = parser.sequence(item.get("choices", ()), f"{path}.choices")
+    raw_intents = parser.sequence(
+        item.get("freeformIntents", ()),
+        f"{path}.freeformIntents",
+    )
+    parser.unique_ids(raw_choices, f"{path}.choices")
+    parser.unique_ids(raw_intents, f"{path}.freeformIntents")
+    return LegacyStoryNode(
+        id=parser.story_id(item.get("id"), f"{path}.id"),
+        title=parser.string(item.get("title"), f"{path}.title", required=True),
+        type=parser.string(item.get("type"), f"{path}.type", default="story"),
+        chapter_id=parser.string(item.get("chapterId"), f"{path}.chapterId") or None,
+        commitment=parser.enum(
+            Commitment,
+            item.get("commitment", Commitment.DRAFT.value),
+            f"{path}.commitment",
+            default=Commitment.DRAFT,
+        ),
+        enter_when=_parse_condition(
+            parser,
+            item.get("enterWhen", True),
+            f"{path}.enterWhen",
+        ),
+        on_enter=tuple(
+            _parse_effect(parser, effect, f"{path}.onEnter[{effect_index}]")
+            for effect_index, effect in enumerate(
+                parser.sequence(item.get("onEnter", ()), f"{path}.onEnter")
+            )
+        ),
+        choices=tuple(
+            _parse_choice(parser, choice, f"{path}.choices[{choice_index}]")
+            for choice_index, choice in enumerate(raw_choices)
+        ),
+        freeform_intents=tuple(
+            _parse_intent(parser, intent, f"{path}.freeformIntents[{intent_index}]")
+            for intent_index, intent in enumerate(raw_intents)
+        ),
+        cast_policy=_parse_cast_policy(
+            parser,
+            item.get("castPolicy"),
+            f"{path}.castPolicy",
+            default_max_cast,
+            default_preserve_current_cast,
+        ),
+        exposed_context=parser.json_mapping(
+            item.get("exposedContext", {}), f"{path}.exposedContext"
+        ),
+        locked_context=parser.json_mapping(
+            item.get("lockedContext", {}), f"{path}.lockedContext"
+        ),
+    )
+
+
 def _parse_narrative_graph(
     parser: _Parser,
     value: Any,
@@ -722,78 +844,23 @@ def _parse_narrative_graph(
     source = parser.mapping(value, path)
     raw_nodes = parser.sequence(source.get("nodes", ()), f"{path}.nodes")
     parser.unique_ids(raw_nodes, f"{path}.nodes")
-    nodes: list[StoryNode] = []
+    nodes: list[StoryNode | LegacyStoryNode] = []
     for index, raw_node in enumerate(raw_nodes):
         item_path = f"{path}.nodes[{index}]"
         item = parser.mapping(raw_node, item_path)
-        raw_choices = parser.sequence(item.get("choices", ()), f"{item_path}.choices")
-        raw_intents = parser.sequence(
-            item.get("freeformIntents", ()),
-            f"{item_path}.freeformIntents",
-        )
-        parser.unique_ids(raw_choices, f"{item_path}.choices")
-        parser.unique_ids(raw_intents, f"{item_path}.freeformIntents")
-        nodes.append(
-            StoryNode(
-                id=parser.story_id(item.get("id"), f"{item_path}.id"),
-                title=parser.string(
-                    item.get("title"), f"{item_path}.title", required=True
-                ),
-                type=parser.string(
-                    item.get("type"), f"{item_path}.type", default="story"
-                ),
-                chapter_id=parser.string(
-                    item.get("chapterId"), f"{item_path}.chapterId"
-                )
-                or None,
-                commitment=parser.enum(
-                    Commitment,
-                    item.get("commitment", Commitment.DRAFT.value),
-                    f"{item_path}.commitment",
-                    default=Commitment.DRAFT,
-                ),
-                enter_when=_parse_condition(
+        node_type = str(item.get("type") or "story")
+        if node_type in {item.value for item in StoryNodeType}:
+            nodes.append(_parse_simple_node(parser, item, item_path))
+        else:
+            nodes.append(
+                _parse_legacy_node(
                     parser,
-                    item.get("enterWhen", True),
-                    f"{item_path}.enterWhen",
-                ),
-                on_enter=tuple(
-                    _parse_effect(
-                        parser, effect, f"{item_path}.onEnter[{effect_index}]"
-                    )
-                    for effect_index, effect in enumerate(
-                        parser.sequence(item.get("onEnter", ()), f"{item_path}.onEnter")
-                    )
-                ),
-                choices=tuple(
-                    _parse_choice(
-                        parser, choice, f"{item_path}.choices[{choice_index}]"
-                    )
-                    for choice_index, choice in enumerate(raw_choices)
-                ),
-                freeform_intents=tuple(
-                    _parse_intent(
-                        parser,
-                        intent,
-                        f"{item_path}.freeformIntents[{intent_index}]",
-                    )
-                    for intent_index, intent in enumerate(raw_intents)
-                ),
-                cast_policy=_parse_cast_policy(
-                    parser,
-                    item.get("castPolicy"),
-                    f"{item_path}.castPolicy",
+                    item,
+                    item_path,
                     default_max_cast,
                     default_preserve_current_cast,
-                ),
-                exposed_context=parser.json_mapping(
-                    item.get("exposedContext", {}), f"{item_path}.exposedContext"
-                ),
-                locked_context=parser.json_mapping(
-                    item.get("lockedContext", {}), f"{item_path}.lockedContext"
-                ),
+                )
             )
-        )
     start_node_id = parser.story_id(
         source.get("startNodeId", fallback_start_node_id),
         f"{path}.startNodeId",
@@ -862,9 +929,7 @@ def _parse_rule_graph(parser: _Parser, value: Any, path: str) -> RuleGraph:
     )
 
 
-def _parse_resource_bindings(
-    parser: _Parser, value: Any, path: str
-) -> dict[str, Any]:
+def _parse_resource_bindings(parser: _Parser, value: Any, path: str) -> dict[str, Any]:
     if value is None:
         return {}
     source = parser.mapping(value, path)
@@ -938,6 +1003,10 @@ def parse_story_project(source: Mapping[str, Any]) -> StoryProject:
                 metadata_source.get("generationMode"),
                 "$.metadata.generationMode",
                 default="manual",
+            ),
+            backgrounds=parser.strings(
+                metadata_source.get("backgrounds"),
+                "$.metadata.backgrounds",
             ),
             resource_bindings=_parse_resource_bindings(
                 parser,

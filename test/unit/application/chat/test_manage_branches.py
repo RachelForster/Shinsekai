@@ -21,6 +21,7 @@ class _BranchHarness:
         self.persisted_messages: list[list[Any]] = []
         self.published_trees: list[dict[str, object]] = []
         self.replayed_history: list[object] = []
+        self.replayed_media: list[list[Any]] = []
         self.submitted: list[dict[str, object]] = []
         self.synced_history = 0
 
@@ -70,6 +71,9 @@ class _BranchHarness:
             ),
             replay_history=self.replayed_history.append,
             submit_text=submit_text,
+            replay_media=lambda messages: self.replayed_media.append(
+                copy.deepcopy(messages)
+            ),
         )
 
 
@@ -130,7 +134,7 @@ def test_fork_preserves_main_and_replays_canonical_user_turn(tmp_path: Path) -> 
     assert load_branch_state(tmp_path / "session")["active"] == "branch-2"
 
 
-def test_switch_restores_branch_messages_history_and_latest_presentation(
+def test_switch_replays_media_from_the_restored_branch_messages(
     tmp_path: Path,
 ) -> None:
     history, messages = _conversation()
@@ -156,6 +160,7 @@ def test_switch_restores_branch_messages_history_and_latest_presentation(
     ]
     assert harness.messages == messages
     assert harness.replayed_history == ["Mio：last"]
+    assert harness.replayed_media == [messages]
     assert harness.cancelled == 2
     assert harness.cleared_options == 2
     assert harness.published_trees[-1]["activeBranchId"] == "main"

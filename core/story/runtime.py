@@ -15,6 +15,7 @@ from .cast import (
     CharacterRuntimeStatus,
 )
 from .commands import (
+    AdvanceStoryTurn,
     ApplySemanticSignals,
     CompleteNode,
     EnterNode,
@@ -30,6 +31,7 @@ from .events import StoryEvent, StoryEventType
 from .models import (
     EffectSpec,
     StoryProgram,
+    StoryNodeType,
     StoryVariableDefinition,
     VariableScope,
     VariableType,
@@ -93,6 +95,7 @@ class _Transaction:
         self.failed = set(state.failed_node_ids)
         self.unlocked = set(state.unlocked_node_ids)
         self.current_node_id = state.current_node_id
+        self.node_turn_count = state.node_turn_count
         self.canon = list(state.canon)
         self.semantic_state = state.semantic_signal_state
         self.active_cast = list(state.cast_state.active_character_ids)
@@ -260,6 +263,7 @@ class _Transaction:
                 f"enter condition for node {node_id!r} is not satisfied",
             )
         self.current_node_id = node_id
+        self.node_turn_count = 0
         self.unlock_node(node_id)
         self.apply_effects(node.on_enter)
         resolution_context = replace(
@@ -286,7 +290,7 @@ class _Transaction:
             unresolvedRoles=resolution.unresolved_roles,
         )
         self.emit(StoryEventType.NODE_ENTERED, nodeId=node_id)
-        if node.type == "ending":
+        if node.type in {"ending", StoryNodeType.ENDING.value}:
             self.emit(StoryEventType.ENDING_REACHED, nodeId=node_id)
         self.recompute_unlocks()
 
@@ -506,6 +510,7 @@ class _Transaction:
             program_source_hash=self.program.source_hash,
             revision=new_revision,
             current_node_id=self.current_node_id,
+            node_turn_count=self.node_turn_count,
             variables=freeze_mapping(self.variables),
             completed_node_ids=frozenset(self.completed),
             failed_node_ids=frozenset(self.failed),
@@ -526,6 +531,7 @@ class _Transaction:
         return replace(
             self.original,
             current_node_id=self.current_node_id,
+            node_turn_count=self.node_turn_count,
             variables=freeze_mapping(self.variables),
             completed_node_ids=frozenset(self.completed),
             unlocked_node_ids=frozenset(self.unlocked),
@@ -645,6 +651,7 @@ class StoryRuntime:
             program_source_hash=self.program.source_hash,
             revision=0,
             current_node_id=self.program.start_node_id,
+            node_turn_count=0,
             variables=freeze_mapping(variables),
             unlocked_node_ids=frozenset(),
             cast_state=CastState(
@@ -669,7 +676,9 @@ class StoryRuntime:
             cast_context or CastResolutionContext(),
             self._prepare_global_variables(global_variables),
         )
-        if isinstance(command, SelectChoice):
+        if isinstance(command, AdvanceStoryTurn):
+            self._advance_story_turn(transaction, command)
+        elif isinstance(command, SelectChoice):
             self._select_choice(transaction, command)
         elif isinstance(command, PerformIntent):
             self._perform_intent(transaction, command)
@@ -707,6 +716,55 @@ class StoryRuntime:
             raise StoryRuntimeError("runtime.command", "unsupported command")
         transaction.recompute_unlocks()
         return transaction.commit()
+
+    def _advance_story_turn(
+        self,
+        transaction: _Transaction,
+        command: AdvanceStoryTurn,
+    ) -> None:
+        self._require_current_node(transaction.original, command.expected_node_id)
+        node = self.program.nodes_by_id[transaction.current_node_id]
+        interactive_types = {
+            StoryNodeType.LIMITED_TURN.value,
+            StoryNodeType.FREE_CHAT.value,
+        }
+        if node.type not in interactive_types:
+            raise StoryRuntimeError(
+                "runtime.node_type",
+                f"node {node.id!r} does not accept generated story turns",
+            )
+
+        next_turn_count = transaction.node_turn_count + 1
+        target = command.next_node_id
+        allowed_targets = {transition.to_node_id for transition in node.transitions}
+        if target is not None and target not in allowed_targets:
+            raise StoryRuntimeError(
+                "runtime.transition_target",
+                f"node {node.id!r} cannot transition to {target!r}",
+            )
+        if (
+            target is None
+            and node.type == StoryNodeType.LIMITED_TURN.value
+            and node.max_rounds is not None
+            and next_turn_count >= node.max_rounds
+        ):
+            target = node.default_to
+            if target is None:
+                raise StoryRuntimeError(
+                    "runtime.transition_required",
+                    f"node {node.id!r} reached maxRounds and requires a transition",
+                )
+
+        transaction.node_turn_count = next_turn_count
+        transaction.emit(
+            StoryEventType.NODE_TURN_COMPLETED,
+            nodeId=node.id,
+            turnCount=next_turn_count,
+            nextNodeId=target,
+        )
+        if target is not None:
+            transaction.complete_node(node.id)
+            transaction.enter_node(target)
 
     def _select_choice(
         self,

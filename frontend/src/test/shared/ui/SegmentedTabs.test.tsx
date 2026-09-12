@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 
 import { SegmentedTabs } from "../../../shared/ui";
 
@@ -32,5 +33,20 @@ describe("SegmentedTabs", () => {
   it("sets aria-label when provided", () => {
     render(<SegmentedTabs ariaLabel="子页面" items={items} onChange={() => {}} value="a" />);
     expect(screen.getByRole("tablist")).toHaveAttribute("aria-label", "子页面");
+  });
+
+  it("moves focus and selection together with keyboard wraparound and panel links", () => {
+    function Tabs() {
+      const [value, setValue] = useState("a");
+      return <SegmentedTabs idPrefix="example" items={items} onChange={setValue} value={value} />;
+    }
+    render(<Tabs />);
+    fireEvent.keyDown(screen.getByRole("tab", { name: "标签A" }), { key: "ArrowLeft" });
+    const last = screen.getByRole("tab", { name: "标签C", selected: true });
+    expect(last).toHaveFocus();
+    expect(last).toHaveAttribute("aria-controls", "example-panel-c");
+    fireEvent.keyDown(last, { key: "Home" });
+    expect(screen.getByRole("tab", { name: "标签A", selected: true })).toHaveFocus();
+    expect(last).toHaveAttribute("tabindex", "-1");
   });
 });

@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 _MANIFEST = Path("data/config/plugins.yaml")
 _loaded: bool = False
 _plugin_manager: PluginManager | None = None
-_plugin_tts_handlers: List["MessageHandler"] = []
+_plugin_dialog_media_handlers: List["MessageHandler"] = []
 _plugin_ui_handlers: List["UIOutputMessageHandler"] = []
 _plugin_dag_yaml_paths: list[str] = []
 _plugin_workflow_contributions: list["WorkflowContribution"] = []
@@ -82,8 +82,13 @@ def get_plugin_hook_dispatcher() -> "PluginHookDispatcher | None":
     return mgr.hook_dispatcher
 
 
+def get_plugin_dialog_media_handlers() -> List["MessageHandler"]:
+    return list(_plugin_dialog_media_handlers)
+
+
 def get_plugin_tts_handlers() -> List["MessageHandler"]:
-    return list(_plugin_tts_handlers)
+    """Compatibility alias for the former dialog-media extension name."""
+    return get_plugin_dialog_media_handlers()
 
 
 def get_plugin_ui_handlers() -> List["UIOutputMessageHandler"]:
@@ -175,7 +180,8 @@ def ensure_plugins_loaded(
     providers and vision fallbacks, register tools on the global ToolManager, and
     cache message handlers for :mod:`application.chat.handlers.registry`.
     """
-    global _loaded, _plugin_manager, _plugin_tts_handlers, _plugin_ui_handlers
+    global _loaded, _plugin_manager
+    global _plugin_dialog_media_handlers, _plugin_ui_handlers
     global _plugin_dag_yaml_paths
     global _plugin_workflow_contributions, _plugin_output_contract_patches
     if _loaded:
@@ -232,12 +238,12 @@ def ensure_plugins_loaded(
         except Exception:
             logger.exception("apply_llm_tools failed")
     try:
-        tts, ui = mgr.collect_message_handlers()
-        _plugin_tts_handlers = tts
+        dialog_media, ui = mgr.collect_message_handlers()
+        _plugin_dialog_media_handlers = dialog_media
         _plugin_ui_handlers = ui
     except Exception:
         logger.exception("collect_message_handlers failed")
-        _plugin_tts_handlers = []
+        _plugin_dialog_media_handlers = []
         _plugin_ui_handlers = []
     try:
         _plugin_dag_yaml_paths = mgr.collect_dag_yaml_paths()

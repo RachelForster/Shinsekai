@@ -76,7 +76,7 @@ def test_prepare_initial_presentation_restores_media_and_falls_back_to_sprite(
         messages=[],
         config=config,
         ui_updates=ui,
-        audio_path_queue=object(),
+        presentation_queue=object(),
         assets=assets,
         initial_sprite_path="sprite.png",
         welcome_html="welcome",

@@ -14,6 +14,7 @@ from .cast import (
     CharacterRuntimeStatus,
 )
 from .commands import (
+    AdvanceStoryTurn,
     ApplySemanticSignals,
     CompleteNode,
     EnterNode,
@@ -50,6 +51,7 @@ from .models import (
     ConditionSpec,
     EffectSpec,
     FreeformIntent,
+    LegacyStoryNode,
     NarrativeGraph,
     PortRef,
     PortSchema,
@@ -62,8 +64,10 @@ from .models import (
     StoryChoice,
     StoryMetadata,
     StoryNode,
+    StoryNodeType,
     StoryProgram,
     StoryProject,
+    StoryTransition,
     StoryVariableDefinition,
     VariableScope,
     VariableType,
@@ -96,6 +100,7 @@ from .state import (
 
 __all__ = [
     "AdHocPolicy",
+    "AdvanceStoryTurn",
     "ApplySemanticSignals",
     "CanonFact",
     "CandidateConditionSpec",
@@ -124,6 +129,7 @@ __all__ = [
     "EffectSpec",
     "EnterNode",
     "FreeformIntent",
+    "LegacyStoryNode",
     "NarrativeGraph",
     "PortRef",
     "PortSchema",
@@ -163,8 +169,10 @@ __all__ = [
     "StoryEventType",
     "StoryMetadata",
     "StoryNode",
+    "StoryNodeType",
     "StoryProgram",
     "StoryProject",
+    "StoryTransition",
     "StoryRuntime",
     "StoryRuntimeError",
     "StorySimulator",

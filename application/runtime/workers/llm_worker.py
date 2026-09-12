@@ -5,6 +5,7 @@ from contextlib import nullcontext
 from queue import Queue
 
 from ai.vision.service import ChatVisionService
+from application.chat.background_prompt import current_background_context
 from core.media.chat_attachments import resolve_chat_attachments
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
 from core.messaging.stream_events import (
@@ -43,7 +44,7 @@ def _format_llm_worker_error(exc: BaseException) -> str:
 
 class LLMWorker(ThreadDagNode):
     PORT_USER_INPUT = "user_input"
-    PORT_LLM_OUTPUT = "llm_output"
+    PORT_DIALOG = "dialog"
 
     def __init__(
         self,
@@ -57,11 +58,11 @@ class LLMWorker(ThreadDagNode):
         self._app_inited = False
         self.chat_vision_service = ChatVisionService()
         self.user_input_queue = input_queue
-        self.tts_queue = output_queue
+        self.dialog_queue = output_queue
         if input_queue is not None:
             self.bind_input(self.PORT_USER_INPUT, input_queue)
         if output_queue is not None:
-            self.bind_output(self.PORT_LLM_OUTPUT, output_queue)
+            self.bind_output(self.PORT_DIALOG, output_queue)
 
     def _init_app(self):
         if self._app_inited:
@@ -70,14 +71,14 @@ class LLMWorker(ThreadDagNode):
         self.ui_update_manager = rt.ui_update_manager
         self.llm_manager = rt.llm_manager
         self.user_input_queue = self.inq(self.PORT_USER_INPUT)
-        self.tts_queue = self.outq(self.PORT_LLM_OUTPUT)
+        self.dialog_queue = self.outq(self.PORT_DIALOG)
         self._app_inited = True
 
     def inputs(self) -> dict[str, Port]:
         return {self.PORT_USER_INPUT: Port(self.PORT_USER_INPUT)}
 
     def outputs(self) -> dict[str, Port]:
-        return {self.PORT_LLM_OUTPUT: Port(self.PORT_LLM_OUTPUT)}
+        return {self.PORT_DIALOG: Port(self.PORT_DIALOG)}
 
     def run(self):
         self._init_app()
@@ -153,10 +154,12 @@ class LLMWorker(ThreadDagNode):
                             attachment.to_payload() for attachment in attachments
                         ],
                     }
-                    if attachments:
+                    background = current_background_context(rt)
+                    if attachments or background:
                         chat_kwargs["user_display_text"] = prepared_input.display_text
                     raw_response = self.llm_manager.chat(
-                        prepared_input.content, **chat_kwargs
+                        prepared_input.render_content(background=background),
+                        **chat_kwargs,
                     )
 
                 if turn.is_cancelled():
@@ -206,7 +209,7 @@ class LLMWorker(ThreadDagNode):
                                 message_count += 1
                                 appended_messages += 1
                                 delivered_dialogs.append(llm_dialog)
-                                self.tts_queue.put(
+                                self.dialog_queue.put(
                                     llm_dialog.model_copy(update={"turn_id": turn.id})
                                 )
                             logger.info(
@@ -231,7 +234,7 @@ class LLMWorker(ThreadDagNode):
                         for llm_dialog in parser.feed(chunk_message):
                             message_count += 1
                             delivered_dialogs.append(llm_dialog)
-                            self.tts_queue.put(
+                            self.dialog_queue.put(
                                 llm_dialog.model_copy(update={"turn_id": turn.id})
                             )
 
@@ -273,10 +276,10 @@ class LLMWorker(ThreadDagNode):
                         },
                     )
                     self.ui_update_manager.post_busy_bar(_msg, 0.0)
-                    from sdk.messages import TTSOutputMessage
+                    from sdk.messages import PresentationMessage
 
-                    get_app_runtime().audio_path_queue.put(
-                        TTSOutputMessage(
+                    get_app_runtime().presentation_queue.put(
+                        PresentationMessage(
                             audio_path="",
                             name="system",
                             asset_id="-1",
@@ -308,11 +311,11 @@ class LLMWorker(ThreadDagNode):
                     },
                 )
                 try:
-                    from sdk.messages import TTSOutputMessage
+                    from sdk.messages import PresentationMessage
 
                     _err = _format_llm_worker_error(e)
-                    get_app_runtime().audio_path_queue.put(
-                        TTSOutputMessage(
+                    get_app_runtime().presentation_queue.put(
+                        PresentationMessage(
                             audio_path="",
                             name="system",
                             asset_id="-1",

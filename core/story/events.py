@@ -13,6 +13,7 @@ class StoryEventType(str, Enum):
     STORY_STARTED = "StoryStarted"
     CHOICE_SELECTED = "ChoiceSelected"
     INTENT_PERFORMED = "IntentPerformed"
+    NODE_TURN_COMPLETED = "NodeTurnCompleted"
     VARIABLE_CHANGED = "VariableChanged"
     SET_VALUE_ADDED = "SetValueAdded"
     SET_VALUE_REMOVED = "SetValueRemoved"

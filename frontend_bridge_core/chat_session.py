@@ -27,6 +27,7 @@ from application.chat.templates import (
     _latest_history_json,
     _list_templates,
     _load_template_session_payload,
+    _save_template_session_payload,
     _repair_template_parts_from_session_if_needed,
     _resolve_template_character_names,
     _resume_template_parts,
@@ -45,6 +46,51 @@ from sdk.logging import get_logger
 logger = get_logger(__name__)
 
 CHAT_RUNTIME_READY_TIMEOUT_SECONDS = 20.0
+
+
+def _usable_media_selection_mode(requested: object) -> str:
+    mode = (
+        "semantic"
+        if str(requested or "").strip().lower() == "semantic"
+        else "indexed"
+    )
+    if mode != "semantic":
+        return mode
+    try:
+        from frontend_bridge_core.memory import _get_mem0_status
+
+        status = _get_mem0_status(start_loading=False)
+    except Exception:
+        return "indexed"
+    return "semantic" if status.get("status") == "ready" else "indexed"
+
+
+def _generate_system_template_for_mode(
+    state: BridgeState,
+    *,
+    characters: list[str],
+    background: str,
+    source: dict[str, Any],
+    media_selection_mode: str,
+) -> str:
+    prompt_mode = str(source.get("characterPromptMode") or "").strip().lower()
+    primary = source.get("primaryCharacters") if prompt_mode == "compact" else None
+    content, _ = state.template_generator.generate_chat_template(
+        characters,
+        background,
+        bool(source.get("useEffect", True)),
+        bool(source.get("useCg", False)),
+        bool(source.get("useTranslation", True)),
+        bool(source.get("useCot", False)),
+        bool(source.get("useChoice", True)),
+        bool(source.get("useNarration", True)),
+        bool(source.get("useStat", True)),
+        max_speech_chars=max(0, int(source.get("maxSpeechChars") or 0)),
+        max_dialog_items=max(0, int(source.get("maxDialogItems") or 0)),
+        primary_characters=primary,
+        media_selection_mode=media_selection_mode,
+    )
+    return content
 
 
 def wait_for_chat_runtime_ready(
@@ -122,6 +168,10 @@ def launch_chat(
         }
     elif row is None:
         raise KeyError(f"template not found: {template_id}")
+    requested_media_mode = body.get("mediaSelectionMode")
+    if requested_media_mode is None:
+        requested_media_mode = row.get("mediaSelectionMode")
+    media_selection_mode = _usable_media_selection_mode(requested_media_mode)
     characters = _resolve_template_character_names(
         state,
         body.get("characters") or [],
@@ -163,6 +213,30 @@ def launch_chat(
         user_scenario,
         system_template,
     )
+    saved_session = _load_template_session_payload(state) or {}
+    launch_source = {**saved_session, **body}
+    requested_mode = (
+        "semantic"
+        if str(requested_media_mode or "").strip().lower() == "semantic"
+        else "indexed"
+    )
+    if media_selection_mode != requested_mode:
+        system_template = _generate_system_template_for_mode(
+            state,
+            characters=characters,
+            background=str(body.get("backgroundName") or ""),
+            source=launch_source,
+            media_selection_mode=media_selection_mode,
+        )
+        if saved_session:
+            _save_template_session_payload(
+                state,
+                {
+                    **launch_source,
+                    "mediaSelectionMode": media_selection_mode,
+                    "system": system_template,
+                },
+            )
     if start_fresh_history:
         clear_story_session(state)
     user_display_name = _sanitize_user_display_name(body.get("userDisplayName"))
@@ -192,11 +266,11 @@ def launch_chat(
         body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
     )
     effect_names_str = ",".join(effect_context.selected_names)
-    system_template = effect_context.append_prompt_catalog(system_template)
     message = _launch_runtime_chat(
         state,
         character_names=characters,
         effect_names=effect_names_str,
+        effect_context=effect_context,
         history_file=history_path.as_posix(),
         init_sprite_path=init_sprite_path,
         room_id=room_id,
@@ -213,6 +287,7 @@ def launch_chat(
             else ""
         ),
         workflow_path=str(body.get("workflowPath") or ""),
+        media_selection_mode=media_selection_mode,
     )
     dependency_error = runtime_dependency_error_from_text(message)
     if dependency_error:
@@ -326,6 +401,8 @@ def resume_last_chat(
         state,
         session.get("selectedCharacters") or [],
     )
+    requested_media_mode = session.get("mediaSelectionMode")
+    media_selection_mode = _usable_media_selection_mode(requested_media_mode)
     first_character = selected_characters[0] if selected_characters else ""
     init_sprite_path = initial_sprite_path_for_characters(
         state.config_manager,
@@ -338,6 +415,27 @@ def resume_last_chat(
         or ""
     )
     selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
+    requested_mode = (
+        "semantic"
+        if str(requested_media_mode or "").strip().lower() == "semantic"
+        else "indexed"
+    )
+    if media_selection_mode != requested_mode:
+        system_template = _generate_system_template_for_mode(
+            state,
+            characters=selected_characters,
+            background=selected_bg,
+            source=session,
+            media_selection_mode=media_selection_mode,
+        )
+        session = _save_template_session_payload(
+            state,
+            {
+                **session,
+                "mediaSelectionMode": media_selection_mode,
+                "system": system_template,
+            },
+        )
     user_display_name = _sanitize_user_display_name(session.get("userDisplayName"))
     session_base = {
         "backgroundName": selected_bg,
@@ -393,6 +491,7 @@ def resume_last_chat(
             else ""
         ),
         workflow_path=str(session.get("workflowPath") or ""),
+        media_selection_mode=media_selection_mode,
     )
     dependency_error = runtime_dependency_error_from_text(message)
     if dependency_error:

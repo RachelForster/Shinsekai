@@ -1,189 +1,135 @@
-.story-generator-page {
-  margin: 0 auto;
-  max-width: 1120px;
-  padding: 42px 28px 72px;
-}
-
-.story-generator-header {
-  margin-bottom: 28px;
-}
-
-.story-generator-header h1 {
-  font-size: clamp(28px, 4vw, 44px);
-  letter-spacing: -0.04em;
-  margin: 4px 0 10px;
-}
-
-.story-generator-header p,
-.story-generator-card p {
-  color: var(--text-secondary, #687083);
-}
-
-.story-generator-eyebrow {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.18em;
-}
-
-.story-generator-card {
-  background: var(--surface-primary, #fff);
-  border: 1px solid var(--border-subtle, #e4e7ec);
-  border-radius: 18px;
-  box-shadow: 0 12px 36px rgba(27, 35, 52, 0.06);
-  margin-bottom: 20px;
-  padding: 24px;
-}
-
-.story-generator-card h2 {
-  font-size: 18px;
-  margin: 0 0 14px;
-}
-
-.story-generator-card textarea {
-  background: var(--surface-secondary, #f7f8fa);
-  border: 1px solid var(--border-subtle, #d8dce5);
-  border-radius: 12px;
-  box-sizing: border-box;
-  color: inherit;
-  font: inherit;
-  line-height: 1.65;
-  padding: 15px;
-  resize: vertical;
-  width: 100%;
-}
-
-.story-generator-actions,
-.story-generator-regenerate,
-.story-generator-section-heading {
-  align-items: center;
+/* Embedded in the template workspace: shared page typography without a second sticky bar. */
+.story-library-header {
   display: flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.story-library-header {
   justify-content: space-between;
 }
-
-.story-generator-actions {
-  justify-content: flex-start;
-  margin-top: 14px;
-}
-
-.story-generator-card button,
-.story-generator-card select {
-  border: 0;
-  border-radius: 10px;
-  font: inherit;
-  padding: 10px 16px;
-}
-
-.story-generator-card button {
-  background: var(--accent-primary, #635bff);
-  color: #fff;
-  cursor: pointer;
-  font-weight: 700;
-}
-
-.story-generator-card button.secondary {
-  background: var(--surface-secondary, #eef0f4);
-  color: inherit;
-}
-
-.story-generator-card button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.story-generator-section-heading code {
-  color: var(--text-secondary, #687083);
-  font-size: 11px;
-}
-
-.story-generator-stages {
+.story-library-grid {
   display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
-  list-style: none;
-  margin: 22px 0 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+.story-library-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: var(--space-4);
+  overflow-wrap: anywhere;
+}
+.story-library-card h3 {
+  margin-top: 0;
+}
+.story-generator-page > .page__header {
+  position: static;
+  margin: 0;
   padding: 0;
 }
-
-.story-generator-stages li {
-  background: var(--surface-secondary, #f3f4f7);
-  border-radius: 10px;
-  color: var(--text-secondary, #687083);
-  padding: 10px 12px;
+.story-generator-page > .page__header::before {
+  display: none;
 }
-
-.story-generator-stages li.active {
-  box-shadow: inset 0 0 0 2px var(--accent-primary, #635bff);
-  color: inherit;
+.story-generator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
-
-.story-generator-stages li.completed {
-  background: rgba(39, 174, 96, 0.12);
-  color: #197944;
+.story-generator-actions:empty {
+  display: none;
 }
-
-.story-generator-stages span {
-  display: inline-block;
-  font-weight: 800;
-  width: 20px;
+.story-generator-actions > .custom-select {
+  width: min(100%, 240px);
 }
-
-.story-generator-grid {
+.story-setup-field {
   display: grid;
-  gap: 20px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.story-generator-grid .story-generator-card {
-  margin: 0 0 20px;
-}
-
-.story-generator-metrics {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.story-generator-metrics div {
-  background: var(--surface-secondary, #f5f6f8);
-  border-radius: 10px;
-  padding: 12px;
-}
-
-.story-generator-metrics dt {
-  color: var(--text-secondary, #687083);
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  color: var(--color-text-muted);
   font-size: 12px;
 }
-
-.story-generator-metrics dd {
-  font-size: 22px;
-  font-weight: 800;
-  margin: 4px 0 0;
-}
-
 .story-generator-error {
-  color: #b42318 !important;
+  color: var(--color-danger);
 }
-
 .story-generator-pass {
-  color: #197944 !important;
-  font-weight: 700;
+  color: var(--color-success);
+  font-weight: 600;
 }
-
-.story-generator-regenerate {
+.story-generator-stages {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  gap: var(--space-2);
+  grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  list-style: none;
+  margin: var(--space-4) 0 0;
+  padding: 0;
 }
-
-@media (max-width: 720px) {
-  .story-generator-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .story-generator-regenerate,
-  .story-generator-section-heading {
-    align-items: stretch;
-    display: flex;
-    flex-direction: column;
-  }
+.story-generator-stages li {
+  background: var(--color-bg-app);
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  padding: var(--space-3);
+}
+.story-generator-stages li.active {
+  box-shadow: inset 0 0 0 2px var(--color-accent-primary);
+  color: var(--color-text-primary);
+}
+.story-generator-stages li.completed {
+  background: color-mix(in srgb, var(--color-success) 12%, transparent);
+  color: var(--color-success);
+}
+.story-generator-stages span {
+  display: inline-block;
+  font-weight: 700;
+  width: 20px;
+}
+.story-generator-stages small {
+  display: block;
+  margin: var(--space-1) 0 0 20px;
+  font-size: 11px;
+}
+.story-stage-artifacts {
+  margin-top: var(--space-5);
+}
+.story-stage-artifacts > details {
+  border-top: 1px solid var(--color-border);
+  padding: var(--space-4) 0;
+}
+.story-generator-page summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.story-stage-artifacts summary small {
+  display: block;
+  color: var(--color-text-muted);
+  font-weight: 400;
+  margin-top: var(--space-1);
+}
+.story-generator-page pre {
+  max-height: 360px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.story-artifact {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.story-artifact dt {
+  font-weight: 600;
+  margin-top: var(--space-3);
+}
+.story-artifact dd {
+  margin: var(--space-1) 0 0;
+}
+.story-regenerate {
+  margin-top: var(--space-5);
+}
+.story-generator-page summary:focus-visible {
+  outline: 0;
+  box-shadow: var(--focus-ring);
 }

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from sdk.messages import LLMDialogMessage
 
 
-_DialogDeliveryKey = tuple[str, str, str | None, str, str]
+_DialogDeliveryKey = tuple[str, str, str | None, str, str, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +26,7 @@ def _dialog_delivery_key(message: LLMDialogMessage) -> _DialogDeliveryKey:
         message.name,
         message.text or "",
         asset_id,
+        message.vibe or "",
         message.translate or "",
         message.effect or "",
     )

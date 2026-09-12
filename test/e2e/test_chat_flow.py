@@ -16,7 +16,7 @@ from config.schema import (
 )
 from core.messaging.stream_parser import LlmResponseStreamParser
 from application.runtime.context import AppRuntime, set_app_runtime
-from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
+from sdk.messages import UserInputMessage, LLMDialogMessage, PresentationMessage
 from test.mocks import MockLLMAdapter, MockTTSAdapter
 
 pytestmark = pytest.mark.e2e
@@ -59,8 +59,8 @@ def _make_runtime(mock_llm, char=None):
         t2i_manager=None,
         bgm_list=[],
         user_input_queue=Queue(),
-        tts_queue=Queue(),
-        audio_path_queue=Queue(),
+        dialog_queue=Queue(),
+        presentation_queue=Queue(),
         text_processor=MagicMock(),
         opencc=MagicMock(),
     )

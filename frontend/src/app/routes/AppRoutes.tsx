@@ -70,19 +70,14 @@ const SystemSettingsPage = lazy(() =>
     default: SystemSettingsPage,
   })),
 );
-const TemplateEditorPage = lazy(() =>
-  import("../../features/template-editor/TemplateEditorPage").then(({ TemplateEditorPage }) => ({
-    default: TemplateEditorPage,
+const TemplateWorkspacePage = lazy(() =>
+  import("../../features/template-workspace/TemplateWorkspacePage").then(({ TemplateWorkspacePage }) => ({
+    default: TemplateWorkspacePage,
   })),
 );
 const ToolsPage = lazy(() =>
   import("../../features/tools/ToolsPage").then(({ ToolsPage }) => ({
     default: ToolsPage,
-  })),
-);
-const StoryGeneratorPage = lazy(() =>
-  import("../../features/story-generator/StoryGeneratorPage").then(({ StoryGeneratorPage }) => ({
-    default: StoryGeneratorPage,
   })),
 );
 
@@ -116,14 +111,14 @@ export function AppRoutes() {
         <Route element={lazyRouteElement(<CharacterEditorPage />)} path="characters" />
         <Route element={lazyRouteElement(<BackgroundManagerPage />)} path="backgrounds" />
         <Route element={lazyRouteElement(<EffectManagerPage />)} path="effects" />
-        <Route element={lazyRouteElement(<TemplateEditorPage />)} path="templates" />
+        <Route element={lazyRouteElement(<TemplateWorkspacePage />)} path="templates" />
         <Route element={lazyRouteElement(<PluginManagerPage />)} path="plugins" />
         <Route element={lazyRouteElement(<LogsPage />)} path="logs" />
         <Route element={lazyRouteElement(<ToolsPage />)} path="tools" />
         <Route element={lazyRouteElement(<MusicCoverPage />)} path="music-cover" />
         <Route element={lazyRouteElement(<ChatLauncherPage />)} path="launch" />
         <Route element={lazyRouteElement(<SystemSettingsPage />)} path="system" />
-        <Route element={lazyRouteElement(<StoryGeneratorPage />)} path="stories/new" />
+        <Route element={<Navigate replace to="/settings/templates?mode=story" />} path="stories/new" />
         <Route element={lazyRouteElement(<ChatThemeManagementPage />)} path="system/chat-themes" />
         <Route element={lazyRouteElement(<ChatThemeCustomizerPage />)} path="system/chat-themes/customize" />
       </Route>

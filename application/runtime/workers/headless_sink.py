@@ -4,34 +4,34 @@ from queue import Queue
 from typing import Optional
 
 from sdk.graph import Port
-from sdk.messages import TTSOutputMessage
+from sdk.messages import PresentationMessage
 
 from .base import ThreadDagNode
 
 
 class HeadlessSinkNode(ThreadDagNode):
-    """Consumes TTS output messages silently; no audio, no UI, no pygame.
+    """Consumes presentation messages silently; no audio, no UI, no pygame.
 
     Intended as the terminal node in ``headless.yaml`` so that
     ``--headless`` mode avoids dragging in PresentationWorker / pygame audio channels.
     """
 
-    PORT_TTS_OUTPUT = "tts_output"
+    PORT_PRESENTATION = "presentation"
 
     def __init__(
         self,
-        input_queue: Queue[TTSOutputMessage] | None = None,
+        input_queue: Queue[PresentationMessage] | None = None,
         parent=None,
         *,
         name: str = "headless_sink",
     ):
         super().__init__(name, parent=parent)
-        self.audio_path_queue = input_queue
+        self.presentation_queue = input_queue
         if input_queue is not None:
-            self.bind_input(self.PORT_TTS_OUTPUT, input_queue)
+            self.bind_input(self.PORT_PRESENTATION, input_queue)
 
     def inputs(self) -> dict[str, Port]:
-        return {self.PORT_TTS_OUTPUT: Port(self.PORT_TTS_OUTPUT)}
+        return {self.PORT_PRESENTATION: Port(self.PORT_PRESENTATION)}
 
     def outputs(self) -> dict[str, Port]:
         return {}
@@ -39,16 +39,16 @@ class HeadlessSinkNode(ThreadDagNode):
     def _init_app(self):
         if getattr(self, "_app_inited", False):
             return
-        self.audio_path_queue = self.inq(self.PORT_TTS_OUTPUT)
+        self.presentation_queue = self.inq(self.PORT_PRESENTATION)
         self._app_inited = True
 
     def run(self):
         self._init_app()
         while self.running:
-            item: Optional[TTSOutputMessage] = None
+            item: Optional[PresentationMessage] = None
             got_item = False
             try:
-                item = self.audio_path_queue.get()
+                item = self.presentation_queue.get()
                 got_item = True
                 if item is None:
                     break
@@ -58,9 +58,9 @@ class HeadlessSinkNode(ThreadDagNode):
                 pass
             finally:
                 if got_item:
-                    self.audio_path_queue.task_done()
+                    self.presentation_queue.task_done()
 
     def stop(self):
         self.running = False
-        self.audio_path_queue.put(None)
+        self.presentation_queue.put(None)
         super().stop()

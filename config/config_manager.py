@@ -169,6 +169,23 @@ class ConfigManager:
     def reload(self) -> None:
         """重新加载所有配置文件"""
         self._load_all_configs()
+
+    def refresh_media_catalogs(self) -> None:
+        """Reload editable character/background assets without resetting runtime config."""
+        characters_data = self._load_yaml(self._CHARACTERS_CONFIG_PATH)
+        background_data = self._load_yaml(self._BACKGOUND_CONFIG_PATH)
+        if not isinstance(characters_data, list):
+            characters_data = []
+        if not isinstance(background_data, list):
+            background_data = []
+        characters = [
+            Character.model_validate(normalize_sprite_voice_types(item))
+            for item in characters_data
+        ]
+        backgrounds = [Background.model_validate(item) for item in background_data]
+        self._config = self.config.model_copy(
+            update={"characters": characters, "background_list": backgrounds}
+        )
         
     def save_api_config(self) -> None:
         """独立保存 API 配置到 api.yaml"""

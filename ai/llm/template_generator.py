@@ -8,7 +8,6 @@ method signatures and the ``(template, warning)`` result remain supported.
 from typing import Any
 
 from config.config_manager import ConfigManager
-from i18n import tr as tr_i18n
 from sdk.types import OutputContractPatch
 
 from .template.dialog import DialogTemplateContext, DialogTemplateSection
@@ -20,6 +19,7 @@ from .template.integrations.localization import (
     _target_voice_display_name as _voice_display_name,
     _ui_voice_same_lang as _same_voice_language,
     is_transparent_background,
+    translate_template,
 )
 from .template.integrations.tools import format_llm_tools_block
 
@@ -29,7 +29,7 @@ DEFAULT_DIALOG_CONTRACT_ID = "default.dialog.v1"
 
 
 def _T(key: str, **kwargs) -> str:
-    return tr_i18n(f"template_gen.{key}", **kwargs)
+    return translate_template(key, **kwargs)
 
 
 def no_valid_characters_message() -> str:
@@ -108,6 +108,8 @@ class TemplateGenerator:
         use_stat=True,
         max_speech_chars: int = 0,
         max_dialog_items: int = 0,
+        primary_characters: Any = None,
+        media_selection_mode: str = "indexed",
     ):
         if not selected_characters:
             raise NoValidCharactersError()
@@ -120,6 +122,16 @@ class TemplateGenerator:
             translate=_T,
             target_voice_name=_target_voice_display_name(),
             json_reminder=json_format_reminder(),
+            primary_character_names=(
+                None
+                if primary_characters is None
+                else frozenset(
+                    name
+                    for name, _character in self.resolve_chat_template_characters(
+                        primary_characters
+                    )
+                )
+            ),
             tools_block=_format_llm_tools_block(),
             background=(
                 config_manager.get_background_by_name(bg_name)
@@ -137,5 +149,8 @@ class TemplateGenerator:
             use_stat=use_stat,
             max_speech_chars=max_speech_chars,
             max_dialog_items=max_dialog_items,
+            media_selection_mode=(
+                "semantic" if media_selection_mode == "semantic" else "indexed"
+            ),
         )
         return DialogTemplateSection().render(context), ""

@@ -92,6 +92,7 @@ def normalize_openai_messages(
         message.pop("display_content", None)
         message.pop("input_text", None)
         message.pop("attachments", None)
+        message.pop("_storyTurnId", None)
         content = message.get("content")
         if not isinstance(content, list):
             continue

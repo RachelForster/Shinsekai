@@ -43,6 +43,7 @@ class ChatStartupContext:
     t2i_manager: T2IManager | None
     plugin_manager: PluginManager | None
     messages: list[Any]
+    character_names: tuple[str, ...]
 
 
 class MissingLlmProviderError(RuntimeError):
@@ -164,6 +165,9 @@ def create_chat_startup_context(
             hook_dispatcher=(
                 plugin_manager.hook_dispatcher if plugin_manager is not None else None
             ),
+            media_selection_mode=str(
+                getattr(args, "media_selection_mode", "indexed") or "indexed"
+            ),
         )
         if plugin_manager is not None:
             runtime.install_memory_hooks(
@@ -171,6 +175,17 @@ def create_chat_startup_context(
                 llm_adapter=llm_adapter,
                 character_names=character_names,
             )
+
+    from application.story.prompt_runtime import install_story_prompt_hooks
+
+    install_story_prompt_hooks(llm_manager, config, str(args.history or ""))
+    story_hooks = getattr(llm_manager, "story_prompt_hooks", None)
+    if story_hooks is not None and story_hooks.journal.load() is not None:
+        story_hooks.recover_pending()
+        # Recovery can restore a reply whose append was interrupted. Reload it
+        # before branches and the UI consume startup history.
+        from application.chat.history_state import load_chat_history
+        messages = load_chat_history(str(chat_history_active_path(args.history)))
 
     with startup_phase("chat.init_hooks"):
         if plugin_manager is not None:
@@ -200,6 +215,7 @@ def create_chat_startup_context(
         t2i_manager=t2i_manager,
         plugin_manager=plugin_manager,
         messages=messages,
+        character_names=tuple(character_names),
     )
 
 

@@ -12,6 +12,7 @@ import {
   deleteCharacterSprite,
   deleteSpriteVoice,
   exportCharacter,
+  generateCharacterBrief,
   generateCharacterSetting,
   importCharacters,
   listCharacters,
@@ -174,6 +175,9 @@ export function CharacterEditorPage() {
           current
             ? {
                 ...current,
+                primaryCharacters: current.primaryCharacters?.map((name) =>
+                  name === variables.originalName ? character.name : name,
+                ),
                 selectedCharacters: current.selectedCharacters.map((name) =>
                   name === variables.originalName ? character.name : name,
                 ),
@@ -189,14 +193,21 @@ export function CharacterEditorPage() {
     mutationFn: deleteCharacter,
     onSuccess(_result, deletedName) {
       queryClient.invalidateQueries({ queryKey: charactersQueryKey });
-      queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) =>
-        current
-          ? {
-              ...current,
-              selectedCharacters: current.selectedCharacters.filter((name) => name !== deletedName),
-            }
-          : current,
-      );
+      queryClient.setQueryData<TemplateLaunchSession | null>([...templatesQueryKey, "session"], (current) => {
+        if (!current) {
+          return current;
+        }
+        const primaryCharacters = current.primaryCharacters?.filter((name) => name !== deletedName);
+        return {
+          ...current,
+          characterPromptMode:
+            current.characterPromptMode === "compact" && !primaryCharacters?.length
+              ? undefined
+              : current.characterPromptMode,
+          primaryCharacters,
+          selectedCharacters: current.selectedCharacters.filter((name) => name !== deletedName),
+        };
+      });
       setPendingDelete(null);
       showToast({ kind: "success", title: t("character.toast.deleted") });
     },
@@ -253,8 +264,27 @@ export function CharacterEditorPage() {
       });
     },
     onSuccess(result) {
-      update("character_setting", result.characterSetting);
+      setDraft((current) => ({
+        ...current,
+        character_brief: result.characterBrief ?? current.character_brief ?? "",
+        character_setting: result.characterSetting,
+      }));
       showToast({ kind: "success", message: result.message, title: t("character.action.aiWrite") });
+    },
+  });
+
+  const aiBriefMutation = useMutation({
+    mutationFn: () => generateCharacterBrief({ name: draft.name.trim(), setting: draft.character_setting }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("character.error.aiFallback"),
+        title: t("character.action.aiBrief"),
+      });
+    },
+    onSuccess(result) {
+      update("character_brief", result.characterBrief);
+      showToast({ kind: "success", message: result.message, title: t("character.action.aiBrief") });
     },
   });
 
@@ -790,6 +820,18 @@ export function CharacterEditorPage() {
     aiSettingMutation.mutate();
   };
 
+  const generateBrief = () => {
+    if (!draft.name.trim() || !draft.character_setting.trim()) {
+      showToast({
+        kind: "error",
+        message: t("character.validation.briefSourceRequired"),
+        title: t("common.validationFailed"),
+      });
+      return;
+    }
+    aiBriefMutation.mutate();
+  };
+
   const translateDraft = () => {
     if (!draft.name.trim() && !draft.character_setting.trim() && !draft.emotion_tags.trim()) {
       showToast({
@@ -973,8 +1015,10 @@ export function CharacterEditorPage() {
 
           <CharacterPersonalitySection
             aiPending={aiSettingMutation.isPending}
+            briefPending={aiBriefMutation.isPending}
             draft={draft}
             id="character-personality"
+            onAiBrief={generateBrief}
             onAiWrite={generateSetting}
             onChange={update}
             onTranslate={translateDraft}

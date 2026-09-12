@@ -4,6 +4,7 @@ import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import type {
   ChatLaunchPayload,
   ChatSnapshot,
+  MediaSelectionMode,
   TemplateGenerateInput,
   TemplateLaunchSession,
   TemplateSummary,
@@ -63,6 +64,7 @@ export function createTemplateDraft(name: string): TemplateSummary {
     id: "",
     name,
     path: "",
+    mediaSelectionMode: "indexed",
     scenario: "",
     system: "",
     updatedAt: "",
@@ -75,6 +77,7 @@ export function normalizeTemplateSummary(template: TemplateSummary): TemplateSum
   return {
     ...template,
     content: composeTemplateContent(scenario, system),
+    mediaSelectionMode: template.mediaSelectionMode ?? "indexed",
     scenario,
     system,
   };
@@ -100,14 +103,20 @@ export function buildTemplateGenerateInput(input: {
   options: TemplateFlowOptions;
   runtime: Pick<TemplateRuntimeOptions, "maxDialogItems" | "maxSpeechChars" | "voiceLanguage">;
   selectedCharacters: string[];
+  characterPromptMode?: "compact" | "full";
+  primaryCharacters?: string[];
+  mediaSelectionMode: MediaSelectionMode;
 }): TemplateGenerateInput {
   return {
     backgroundName: input.backgroundName,
+    characterPromptMode: input.characterPromptMode,
     characters: input.selectedCharacters,
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
     maxDialogItems: input.runtime.maxDialogItems,
     maxSpeechChars: input.runtime.maxSpeechChars,
+    mediaSelectionMode: input.mediaSelectionMode,
     name: input.draft.name.trim(),
+    primaryCharacters: input.primaryCharacters,
     scenario: String(input.draft.scenario ?? ""),
     useCg: input.options.useCg,
     useChoice: input.options.useChoice,
@@ -128,10 +137,14 @@ export function buildTemplateLaunchSession(input: {
   options: TemplateFlowOptions;
   runtime: TemplateRuntimeOptions;
   selectedCharacters: string[];
+  characterPromptMode?: "compact" | "full";
+  primaryCharacters?: string[];
+  mediaSelectionMode: MediaSelectionMode;
   selectedTemplateId: string;
 }): TemplateLaunchSession {
   return {
     background: input.backgroundName,
+    characterPromptMode: input.characterPromptMode,
     enableMobileAccess: input.mobileAccessEnabled,
     effectNames: input.effectNames ?? [],
     filenameStub: input.draft.name.trim(),
@@ -139,8 +152,10 @@ export function buildTemplateLaunchSession(input: {
     initSpritePath: input.runtime.initSpritePath.trim(),
     maxDialogItems: input.runtime.maxDialogItems,
     maxSpeechChars: input.runtime.maxSpeechChars,
+    mediaSelectionMode: input.mediaSelectionMode,
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.draft.scenario ?? ""),
+    primaryCharacters: input.primaryCharacters,
     selectedCharacters: input.selectedCharacters,
     system: String(input.draft.system ?? ""),
     templateFileDropdown: input.selectedTemplateId,
@@ -164,6 +179,7 @@ export function buildChatLaunchPayload(input: {
   selectedCharacters: string[];
   template: TemplateSummary;
   useCg: boolean;
+  mediaSelectionMode: MediaSelectionMode;
 }): ChatLaunchPayload {
   return {
     backgroundName: input.backgroundName,
@@ -172,6 +188,7 @@ export function buildChatLaunchPayload(input: {
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
     historyPath: input.runtime.historyPath.trim(),
     initSpritePath: input.runtime.initSpritePath.trim(),
+    mediaSelectionMode: input.mediaSelectionMode,
     resetHistory: input.resetHistory,
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.template.scenario ?? ""),
@@ -195,6 +212,7 @@ export function synchronizeChatLaunchPayloadWithSession(
     effectNames: effectNames.length ? effectNames : undefined,
     historyPath: session.historyPath.trim(),
     initSpritePath: session.initSpritePath.trim(),
+    mediaSelectionMode: session.mediaSelectionMode ?? "indexed",
     roomId: session.roomId.trim(),
     scenario: session.scenario,
     system: session.system,

@@ -8,9 +8,16 @@ from types import MappingProxyType
 from typing import Mapping
 
 from .cast import CastResolutionContext, CastResolutionError
-from .commands import EnterNode, PerformIntent, SelectChoice, StartStory
+from .commands import (
+    AdvanceStoryTurn,
+    EnterNode,
+    PerformIntent,
+    SelectChoice,
+    StartStory,
+)
 from .compiler import canonical_json
 from .runtime import StoryRuntime, StoryRuntimeError
+from .models import StoryNodeType
 from .state import StoryState
 
 
@@ -82,7 +89,7 @@ class StorySimulator:
             visited.add(signature)
             reachable.add(state.current_node_id)
             node = self.runtime.program.nodes_by_id[state.current_node_id]
-            if node.type == "ending":
+            if node.type in {"ending", StoryNodeType.ENDING.value}:
                 endings.setdefault(node.id, path)
                 continue
             if depth >= self.max_depth:
@@ -90,6 +97,20 @@ class StorySimulator:
                 continue
 
             next_states: list[tuple[StoryState, tuple[str, ...], int]] = []
+            for index, target in enumerate(
+                dict.fromkeys(transition.to_node_id for transition in node.transitions)
+            ):
+                command = AdvanceStoryTurn(
+                    command_id=f"sim-{len(visited)}-transition-{index}",
+                    expected_revision=state.revision,
+                    expected_node_id=state.current_node_id,
+                    next_node_id=target,
+                )
+                result = self._try_execute(state, command, cast_context)
+                if result is not None:
+                    next_states.append(
+                        (result, (*path, f"transition:{node.id}/{target}"), depth + 1)
+                    )
             for index, choice in enumerate(node.choices):
                 command = SelectChoice(
                     command_id=f"sim-{len(visited)}-choice-{index}",
@@ -159,7 +180,7 @@ class StorySimulator:
     def _try_execute(
         self,
         state: StoryState,
-        command: SelectChoice | PerformIntent | EnterNode,
+        command: AdvanceStoryTurn | SelectChoice | PerformIntent | EnterNode,
         cast_context: CastResolutionContext | None,
     ) -> StoryState | None:
         try:
@@ -176,6 +197,7 @@ class StorySimulator:
         return canonical_json(
             {
                 "node": state.current_node_id,
+                "nodeTurnCount": state.node_turn_count,
                 "variables": state.variables,
                 "completed": sorted(state.completed_node_ids),
                 "unlocked": sorted(state.unlocked_node_ids),

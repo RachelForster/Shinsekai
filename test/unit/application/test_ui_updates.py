@@ -1,8 +1,13 @@
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
+from types import SimpleNamespace
+from core.media.effect_image import ImageEffectAsset
+
+from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
 from application.chat.ui_updates import (
     HeadlessUIUpdateManager,
     StreamingUIUpdateManager,
@@ -190,6 +195,62 @@ def test_streaming_presenter_resolves_explicit_configured_effects(tmp_path) -> N
     ]
 
 
+def test_streaming_presenter_resolves_image_and_audio_for_the_same_keyword(tmp_path) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    audio = tmp_path / "item.wav"
+    image = tmp_path / "item.png"
+    bound_audio = tmp_path / "bound-item.wav"
+    audio.write_bytes(b"wav")
+    image.write_bytes(b"png")
+    bound_audio.write_bytes(b"wav")
+    runtime = type(
+        "Runtime",
+        (),
+        {
+            "effect_keyword_map": {"获得钥匙": str(audio)},
+            "effect_image_keyword_map": {"获得钥匙": ImageEffectAsset(str(image), str(bound_audio))},
+        },
+    )()
+
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        assert presenter.resolve_effect("获得钥匙", {}, after_dialog=False)
+
+    assert [event["type"] for event in sink.events] == ["effect.play", "effect.image.show"]
+    assert "bound-item.wav" in sink.events[0]["url"]
+    assert sink.events[-1]["durationMs"] == 8_800
+    assert sink.events[-1]["label"] == "获得钥匙"
+
+
+def test_exact_audio_label_is_not_replaced_by_a_substring_image():
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    runtime = SimpleNamespace(
+        effect_keyword_map={"keyboard": "typing.wav"},
+        effect_image_keyword_map={"key": ImageEffectAsset("key.png", "pickup.wav")},
+    )
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        assert presenter.resolve_effect("  KEYBOARD  ", {}, after_dialog=False)
+        assert not presenter.resolve_effect("获得了key", {}, after_dialog=False)
+    assert sink.events == [{"type": "effect.play", "url": "media://typing.wav"}]
+
+
+@pytest.mark.parametrize("timing", ["before", "after"])
+def test_image_and_bound_audio_follow_explicit_timing_once(timing):
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    runtime = SimpleNamespace(effect_image_keyword_map={
+        "key": ImageEffectAsset("key.png", "pickup.wav"),
+    })
+    with patch("application.runtime.context.get_app_runtime", return_value=runtime):
+        presenter.resolve_effect(f"{timing}:key", {}, after_dialog=False)
+        assert len(sink.events) == (2 if timing == "before" else 0)
+        presenter.resolve_effect(f"{timing}:key", {}, after_dialog=True)
+        assert len(sink.events) == 2
+        assert not presenter.resolve_effect("loop:key", {}, after_dialog=False)
+        assert len(sink.events) == 2
+
+
 def test_streaming_presenter_keeps_character_slot_across_expression_changes() -> None:
     sink = _Sink()
     presenter = StreamingUIUpdateManager(sink)
@@ -207,6 +268,34 @@ def test_streaming_presenter_keeps_character_slot_across_expression_changes() ->
 
     assert [event["slot"] for event in sink.events] == [0, 0]
     assert sink.events[-1]["url"] == "media://happy.png"
+
+
+@pytest.mark.parametrize("next_background", ["street.png", ""])
+def test_background_switch_clears_reconnect_sprites_and_reassigns_slots(next_background) -> None:
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink)
+    presenter.post_background("room.png")
+    presenter.update_sprite_from_path("mio.png", character_name="Mio")
+    presenter.update_sprite_from_path("ren.png", character_name="Ren")
+    presenter.post_background("room.png")
+    presenter.update_sprite_from_path("aoi.png", character_name="Aoi")
+    assert [event["slot"] for event in sink.events if event["type"] == "sprite.show"] == [0, 1, 2]
+
+    snapshot = make_empty_chat_snapshot()
+    for event in sink.events:
+        snapshot = fold_event_into_snapshot(snapshot, event)
+    assert len(snapshot["sprites"]) == 3
+
+    presenter.post_background(next_background)
+    cleared = fold_event_into_snapshot(snapshot, sink.events[-1])
+    assert cleared["sprites"] == []
+    assert len(snapshot["sprites"]) == 3
+
+    presenter.update_sprite_from_path("ren-happy.png", character_name="Ren")
+    returned = fold_event_into_snapshot(cleared, sink.events[-1])
+    assert [(sprite["characterName"], sprite["slot"]) for sprite in returned["sprites"]] == [("Ren", 0)]
+    presenter.update_sprite_from_path("mio.png", character_name="Mio")
+    assert sink.events[-1]["slot"] == 1
 
 
 def test_headless_presenter_records_framework_neutral_history() -> None:

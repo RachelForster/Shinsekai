@@ -119,6 +119,7 @@ class StoryState:
     revision: int
     current_node_id: str
     variables: Mapping[str, Any]
+    node_turn_count: int = 0
     completed_node_ids: frozenset[str] = frozenset()
     failed_node_ids: frozenset[str] = frozenset()
     unlocked_node_ids: frozenset[str] = frozenset()

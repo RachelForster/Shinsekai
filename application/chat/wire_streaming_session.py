@@ -21,6 +21,7 @@ from application.chat.manage_branches import (
 from application.chat.presentation import StreamingHistoryPresenter
 from application.chat.startup import chat_history_is_present
 from application.runtime.context import resolve_pending_tool_confirmation
+from application.chat.dialog_media.replay import enqueue_latest_media_replay
 from core.media.chat_attachments import resolve_chat_attachments
 
 
@@ -119,7 +120,12 @@ class _StreamingSessionWiring:
             if self.runtime.input_queue is not None
             else None
         )
+        story_hooks = getattr(self.startup.llm_manager, "story_prompt_hooks", None)
+        if story_hooks is not None:
+            story_hooks.publish = lambda story: self.transport.emit({"type": "story.state.replace", "story": story})
         self.branch_manager = self._create_branch_manager()
+        if story_hooks is not None:
+            story_hooks.branch_id = lambda: self.branch_manager.active_branch_id
         self.runtime_asr = self._create_streaming_asr()
         self._bind_asr_presentation_hooks()
         self.transport.bind_command_dispatcher(self._create_command_dispatcher())
@@ -210,6 +216,11 @@ class _StreamingSessionWiring:
                     str(entry),
                 ),
                 submit_text=self.submit_runtime_text,
+                replay_media=lambda messages: enqueue_latest_media_replay(
+                    messages,
+                    dialog_queue=self.runtime.dialog_queue,
+                    opencc=self.runtime.opencc,
+                ),
             ),
         )
         manager.load(
@@ -339,7 +350,7 @@ class _StreamingSessionWiring:
             branch_manager=self.branch_manager,
             chat_history=chat_history,
             last_user_message=self.last_user_message,
-            audio_path_queue=self.runtime.audio_queue,
+            presentation_queue=self.runtime.presentation_queue,
             history_argument=self.args.history,
             history_presenter=StreamingHistoryPresenter(self.ui_updates),
             tts_manager=self.startup.tts_manager,

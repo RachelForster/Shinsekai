@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import base64
+from copy import deepcopy
 from pathlib import Path
+
+import pytest
 
 from ai.vision.message_content import normalize_anthropic_user_content, normalize_openai_messages
 from ai.vision.service import ChatVisionService
@@ -46,6 +49,41 @@ def test_chat_vision_service_prefers_native_image_blocks(tmp_path: Path):
     assert prepared.content[1]["type"] == "local_image"
     assert prepared.content[1]["path"] == str(image.path)
     assert prepared.content[1]["data"] == base64.b64encode(b"image-bytes").decode("ascii")
+
+
+@pytest.mark.parametrize("mode", ["text", "native", "fallback", "unavailable"])
+def test_turn_sections_rerender_background_without_losing_attachments(tmp_path, mode):
+    image = _image_attachment(tmp_path)
+    document = tmp_path / "facts.txt"
+    document.write_text("literal {facts}", encoding="utf-8")
+    files = resolve_chat_attachments([{"kind": "file", "path": str(document)}])
+    service = ChatVisionService(
+        lambda: _FallbackVision(), fallback_available=lambda: mode != "unavailable",
+        file_reader=lambda _: {"content": "literal {facts}"},
+    )
+    prepared = service.prepare(
+        "检查 {input}", files + ([image] if mode != "text" else []),
+        adapter=_NativeAdapter() if mode == "native" else _TextAdapter(),
+    )
+    original = deepcopy(prepared.content)
+    assert prepared.mode == mode
+    assert prepared.prompt_context.user_input == "检查 {input}"
+    assert "literal {facts}" in prepared.prompt_context.attachments[0]
+    first = prepared.render_content(background={"图片": "old.png"})
+    second = prepared.render_content(background={"图片": "new.png"})
+    text = second[0]["text"] if isinstance(second, list) else second
+    assert "new.png" in text and "old.png" not in text
+    assert text.index("[当前显示背景]") < text.index("检查 {input}") < text.index("literal {facts}")
+    assert text.count("literal {facts}") == 1
+    if mode == "native":
+        assert first[1:] == second[1:] == original[1:]
+    elif mode == "fallback":
+        assert "a moon over a quiet lake" in text
+    elif mode == "unavailable":
+        assert "could not be inspected" in text
+    assert prepared.content == original
+    assert prepared.render_content() == original
+    assert "当前显示背景" not in prepared.display_text
 
 
 def test_chat_vision_service_falls_back_to_moondream_for_text_only_adapter(tmp_path: Path):

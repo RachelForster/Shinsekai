@@ -17,6 +17,7 @@ export type CharacterResourceDeleteTarget =
 
 export function createCharacter(): Character {
   return {
+    character_brief: "",
     character_setting: "",
     color: DEFAULT_CHARACTER_COLOR,
     emotion_tags: "",

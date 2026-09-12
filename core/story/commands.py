@@ -31,6 +31,14 @@ class PerformIntent(StoryCommand):
 
 
 @dataclass(frozen=True, slots=True)
+class AdvanceStoryTurn(StoryCommand):
+    """Finish one generated scene round and optionally enter an allowed target."""
+
+    expected_node_id: str
+    next_node_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ApplySemanticSignals(StoryCommand):
     candidates: tuple[SemanticSignalCandidate, ...]
     context: SemanticSignalContext
@@ -69,7 +77,8 @@ class RequestCharacterReplace(StoryCommand):
 
 
 RuntimeCommand = (
-    SelectChoice
+    AdvanceStoryTurn
+    | SelectChoice
     | PerformIntent
     | ApplySemanticSignals
     | EnterNode

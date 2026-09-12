@@ -1,0 +1,11 @@
+.template-workspace {
+  width: min(100%, 1060px);
+  min-width: 0;
+  margin: 0 auto;
+}
+.template-workspace__tabs {
+  margin-bottom: var(--space-5);
+}
+.template-workspace [hidden] {
+  display: none;
+}

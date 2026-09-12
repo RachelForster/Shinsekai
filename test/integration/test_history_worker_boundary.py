@@ -34,11 +34,11 @@ def test_old_worker_cannot_publish_or_persist_after_history_change(phase, mutati
     rt.config.config.api_config.is_batch_input_enabled = False
     rt.chat_turn_service = create_chat_turn_service(
         config=rt.config, user_input_queue=rt.user_input_queue,
-        tts_queue=rt.tts_queue, audio_queue=rt.audio_path_queue,
+        dialog_queue=rt.dialog_queue, presentation_queue=rt.presentation_queue,
         llm_manager=rt.llm_manager, ui_worker=None, ui_updates=rt.ui_update_manager,
     )
     set_app_runtime(rt)
-    worker = LLMWorker(input_queue=rt.user_input_queue, output_queue=rt.tts_queue)
+    worker = LLMWorker(input_queue=rt.user_input_queue, output_queue=rt.dialog_queue)
     original_prepare = worker.chat_vision_service.prepare
 
     def prepare(*args, **kwargs):
@@ -64,10 +64,10 @@ def test_old_worker_cannot_publish_or_persist_after_history_change(phase, mutati
         assert _wait_for_unfinished_tasks(rt.user_input_queue)
         assert rt.llm_manager.get_messages() == expected
         assert rt.llm_manager._chat_depth == 0
-        assert rt.tts_queue.empty()
+        assert rt.dialog_queue.empty()
         rt.ui_update_manager.record_user_message.assert_not_called()
         rt.chat_turn_service.submit("fresh voice", defer_until_idle=True, utterance_id="fresh")
-        assert rt.tts_queue.get(timeout=5).text == "reply"
+        assert rt.dialog_queue.get(timeout=5).text == "reply"
         assert _wait_for_unfinished_tasks(rt.user_input_queue)
         assert any("fresh voice" in str(item.get("content")) for item in rt.llm_manager.get_messages())
     finally:

@@ -1,4 +1,4 @@
-"""Integration tests: LLMWorker → TTSWorker → PresentationWorker pipeline with mock adapters."""
+"""Integration tests: LLMWorker → DialogMediaWorker → PresentationWorker pipeline with mock adapters."""
 
 import json
 import time
@@ -6,7 +6,7 @@ from queue import Queue
 
 import pytest
 
-from sdk.messages import UserInputMessage, LLMDialogMessage, TTSOutputMessage
+from sdk.messages import UserInputMessage, LLMDialogMessage, PresentationMessage
 
 
 @pytest.mark.integration
@@ -34,7 +34,7 @@ class TestWorkerPipeline:
         assert len(chunks) > 0
 
     def test_queue_flow_user_to_tts(self, mock_app_runtime, mock_llm_adapter):
-        """Simulate the worker pipeline: user_input → llm → tts_queue entries."""
+        """Simulate the worker pipeline: user_input → llm → dialog_queue entries."""
         mock_llm_adapter.responses = [
             json.dumps({"character_name": "TestChar", "speech": "Hello!", "sprite": "0"})
         ]
@@ -50,11 +50,11 @@ class TestWorkerPipeline:
         dialogs = list(parser.feed(response))
 
         for d in dialogs:
-            mock_app_runtime.tts_queue.put(d)
+            mock_app_runtime.dialog_queue.put(d)
 
-        # Verify the dialog reached the tts_queue
-        assert mock_app_runtime.tts_queue.qsize() == 1
-        msg = mock_app_runtime.tts_queue.get()
+        # Verify the dialog reached the dialog_queue
+        assert mock_app_runtime.dialog_queue.qsize() == 1
+        msg = mock_app_runtime.dialog_queue.get()
         assert isinstance(msg, LLMDialogMessage)
         assert msg.name == "TestChar"
         assert msg.text == "Hello!"
@@ -77,28 +77,28 @@ class TestWorkerPipeline:
 
         parser = LlmResponseStreamParser()
         for dialog in parser.feed(response):
-            mock_app_runtime.tts_queue.put(dialog)
+            mock_app_runtime.dialog_queue.put(dialog)
 
-        # Step 3: Simulate TTS processing (normally TTSWorker)
-        tts_msg = mock_app_runtime.tts_queue.get()
-        assert tts_msg.name == "Alice"
+        # Step 3: Simulate dialog media preparation (normally DialogMediaWorker)
+        dialog_message = mock_app_runtime.dialog_queue.get()
+        assert dialog_message.name == "Alice"
 
         # For testing, write a fake audio file
         audio_file = tmp_path / "output.wav"
         audio_file.write_text("fake wav")
 
-        tts_out = TTSOutputMessage(
+        presentation_message = PresentationMessage(
             audio_path=str(audio_file),
-            name=tts_msg.name,
-            text=tts_msg.text,
-            asset_id=tts_msg.asset_id or "-1",
+            name=dialog_message.name,
+            text=dialog_message.text,
+            asset_id=dialog_message.asset_id or "-1",
         )
-        mock_app_runtime.audio_path_queue.put(tts_out)
-        mock_app_runtime.tts_queue.task_done()
+        mock_app_runtime.presentation_queue.put(presentation_message)
+        mock_app_runtime.dialog_queue.task_done()
 
-        # Step 4: Verify the audio_path_queue received the output
-        ui_msg = mock_app_runtime.audio_path_queue.get()
-        assert isinstance(ui_msg, TTSOutputMessage)
+        # Step 4: Verify the presentation_queue received the output
+        ui_msg = mock_app_runtime.presentation_queue.get()
+        assert isinstance(ui_msg, PresentationMessage)
         assert ui_msg.name == "Alice"
         assert ui_msg.text == "Hey there!"
         assert ui_msg.asset_id == "1"

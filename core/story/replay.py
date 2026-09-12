@@ -41,6 +41,7 @@ class StoryEventReplayer:
         unlocked = set(initial.unlocked_node_ids)
         canon = list(initial.canon)
         current_node_id = initial.current_node_id
+        node_turn_count = initial.node_turn_count
         semantic_sequence = initial.semantic_signal_state.sequence
         semantic_usage = dict(initial.semantic_signal_state.usage)
         semantic_turn_id = initial.semantic_signal_state.turn_id
@@ -109,6 +110,7 @@ class StoryEventReplayer:
                 StoryEventType.COMMAND_PROCESSED,
                 StoryEventType.CHOICE_SELECTED,
                 StoryEventType.INTENT_PERFORMED,
+                StoryEventType.NODE_TURN_COMPLETED,
                 StoryEventType.NODE_COMPLETED,
                 StoryEventType.SEMANTIC_SIGNAL_ACCEPTED,
                 StoryEventType.SEMANTIC_SIGNAL_REJECTED,
@@ -167,8 +169,21 @@ class StoryEventReplayer:
                     start_node_unlocked = True
             elif event.type == StoryEventType.NODE_ENTERED:
                 current_node_id = self._node_id(payload, program)
+                node_turn_count = 0
                 if startup_pending and current_node_id == program.start_node_id:
                     start_node_entered = True
+            elif event.type == StoryEventType.NODE_TURN_COMPLETED:
+                node_id = self._node_id(payload, program)
+                if node_id != current_node_id:
+                    raise StoryEventReplayError(
+                        "NodeTurnCompleted targets a node that is not current"
+                    )
+                turn_count = int(payload.get("turnCount") or 0)
+                if turn_count != node_turn_count + 1:
+                    raise StoryEventReplayError(
+                        "NodeTurnCompleted turnCount is not sequential"
+                    )
+                node_turn_count = turn_count
             elif event.type == StoryEventType.NODE_COMPLETED:
                 completed.add(self._node_id(payload, program))
             elif event.type == StoryEventType.CANON_APPENDED:
@@ -301,6 +316,7 @@ class StoryEventReplayer:
             initial,
             revision=revision,
             current_node_id=current_node_id,
+            node_turn_count=node_turn_count,
             variables=freeze_mapping(variables),
             completed_node_ids=frozenset(completed),
             failed_node_ids=frozenset(failed),

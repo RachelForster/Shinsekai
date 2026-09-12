@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import importlib.util
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Iterable, Mapping, Protocol
 
+from ai.llm.template.prompts import UserPromptContext, build_user_prompt_section
 from ai.vision.fallback_registry import active_vision_fallback
 from ai.vision.message_content import local_image_block
 from ai.vision.moondream_adapter import MoondreamPluginUnavailable, installed_moondream_directory
@@ -26,6 +27,36 @@ class PreparedChatInput:
     content: str | list[dict[str, Any]]
     display_text: str
     mode: str
+    prompt_context: UserPromptContext | None = None
+
+    def render_content(
+        self, *, background: Mapping[str, str | int] | None = None
+    ) -> str | list[dict[str, Any]]:
+        """Render turn sections while keeping native image blocks intact."""
+        context = self.prompt_context
+        if context is None:
+            text = self.content if isinstance(self.content, str) else next(
+                (block.get("text", "") for block in self.content if block.get("type") == "text"), ""
+            )
+            context = UserPromptContext(user_input=text)
+        text = build_user_prompt_section().render(replace(context, background=background))
+        if isinstance(self.content, str):
+            return text
+        blocks = [dict(block) for block in self.content]
+        for block in blocks:
+            if block.get("type") == "text":
+                block["text"] = text
+                return blocks
+        return [{"type": "text", "text": text}, *blocks]
+
+
+def _prepared_input(
+    context: UserPromptContext, display_text: str, mode: str,
+    image_blocks: list[dict[str, Any]] | None = None,
+) -> PreparedChatInput:
+    text = build_user_prompt_section().render(context)
+    content = [{"type": "text", "text": text}, *image_blocks] if image_blocks else text
+    return PreparedChatInput(content=content, display_text=display_text, mode=mode, prompt_context=context)
 
 
 class VisionDescriber(Protocol):
@@ -83,22 +114,21 @@ class ChatVisionService:
 
     @staticmethod
     def _fallback_unavailable_input(
-        prompt_parts: list[str],
+        context: UserPromptContext,
         images: list[ResolvedChatAttachment],
         display_text: str,
     ) -> PreparedChatInput:
         names = ", ".join(image.name for image in images)
-        prompt_parts.append(
+        notice = (
             "Image attachments could not be inspected. The current language model does not support "
             "native image input, and no vision fallback is currently available. "
             f"Uninspected attachments: {names}. Explain this to the user and offer these options: "
             "install or enable a vision fallback plugin (for example local Moondream), "
             "switch to a vision-capable model, or describe the images in text."
         )
-        return PreparedChatInput(
-            content="\n\n".join(prompt_parts),
-            display_text=display_text,
-            mode="unavailable",
+        return _prepared_input(
+            replace(context, attachments=(*context.attachments, notice)),
+            display_text, "unavailable",
         )
 
     def _read_file_attachments(self, attachments: Iterable[ResolvedChatAttachment]) -> str:
@@ -131,25 +161,17 @@ class ChatVisionService:
         display_text = chat_attachment_display_text(text, resolved)
         file_contents = self._read_file_attachments(resolved)
         user_text = str(text or "").strip() or "Please inspect the attached items and respond to the user."
-        prompt_parts = [user_text]
-        if file_contents:
-            prompt_parts.append(file_contents)
+        context = UserPromptContext(user_input=user_text, attachments=(file_contents,) if file_contents else ())
 
         if not images:
-            return PreparedChatInput(
-                content="\n\n".join(prompt_parts),
-                display_text=display_text,
-                mode="text",
-            )
+            return _prepared_input(context, display_text, "text")
 
         if self.supports_native_images(adapter):
-            prompt_parts.append("Image attachments: " + ", ".join(image.name for image in images))
-            content: list[dict[str, Any]] = [{"type": "text", "text": "\n\n".join(prompt_parts)}]
-            content.extend(local_image_block(image) for image in images)
-            return PreparedChatInput(
-                content=content,
-                display_text=display_text,
-                mode="native",
+            context = replace(context, attachments=(
+                *context.attachments, "Image attachments: " + ", ".join(image.name for image in images),
+            ))
+            return _prepared_input(
+                context, display_text, "native", [local_image_block(image) for image in images],
             )
 
         try:
@@ -157,7 +179,7 @@ class ChatVisionService:
         except Exception:
             fallback_available = False
         if not fallback_available:
-            return self._fallback_unavailable_input(prompt_parts, images, display_text)
+            return self._fallback_unavailable_input(context, images, display_text)
 
         try:
             fallback = self._fallback_factory()
@@ -168,10 +190,8 @@ class ChatVisionService:
         except (MoondreamPluginUnavailable, ImportError):
             # Fallback plugin present but not runnable (e.g. missing torch): degrade
             # to the guidance prompt instead of crashing the chat turn.
-            return self._fallback_unavailable_input(prompt_parts, images, display_text)
-        prompt_parts.append("\n\n".join(descriptions))
-        return PreparedChatInput(
-            content="\n\n".join(prompt_parts),
-            display_text=display_text,
-            mode="fallback",
+            return self._fallback_unavailable_input(context, images, display_text)
+        return _prepared_input(
+            replace(context, attachments=(*context.attachments, *descriptions)),
+            display_text, "fallback",
         )

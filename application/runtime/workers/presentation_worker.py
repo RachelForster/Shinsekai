@@ -9,7 +9,7 @@ import pygame
 from application.chat.handlers.registry import default_presentation_handler_chain
 from sdk.graph import Port
 from sdk.logging import get_logger
-from sdk.messages import TTSOutputMessage
+from sdk.messages import PresentationMessage
 
 from ..audio_playback_controller import (
     FrontendVoicePlaybackBackend,
@@ -25,33 +25,33 @@ logger = get_logger(__name__)
 
 
 class PresentationWorker(ThreadDagNode):
-    PORT_TTS_OUTPUT = "tts_output"
+    PORT_PRESENTATION = "presentation"
     DIALOG_CHANNEL_ID = 7
 
     def __init__(
         self,
-        input_queue: Queue[TTSOutputMessage] | None = None,
+        input_queue: Queue[PresentationMessage] | None = None,
         parent=None,
         *,
         name: str = "ui_worker",
     ):
         super().__init__(name, parent=parent)
         self._app_inited = False
-        self.audio_path_queue = input_queue
+        self.presentation_queue = input_queue
         self.task_done_requested = threading.Event()
         self._dialog_active = False
         self.current_audio_path = None
         self.DIALOG_CHANNEL_ID = 7
         self.ui_out_dispatcher = default_presentation_handler_chain()
         if input_queue is not None:
-            self.bind_input(self.PORT_TTS_OUTPUT, input_queue)
+            self.bind_input(self.PORT_PRESENTATION, input_queue)
 
     def _init_app(self):
         if self._app_inited:
             return
         rt = get_app_runtime()
         self.ui_update_manager = rt.ui_update_manager
-        self.audio_path_queue = self.inq(self.PORT_TTS_OUTPUT)
+        self.presentation_queue = self.inq(self.PORT_PRESENTATION)
         self._init_channel()
         br = get_app_runtime().ui_playback
         if (
@@ -78,7 +78,7 @@ class PresentationWorker(ThreadDagNode):
         self._app_inited = True
 
     def inputs(self) -> dict[str, Port]:
-        return {self.PORT_TTS_OUTPUT: Port(self.PORT_TTS_OUTPUT)}
+        return {self.PORT_PRESENTATION: Port(self.PORT_PRESENTATION)}
 
     def outputs(self) -> dict[str, Port]:
         return {}
@@ -151,8 +151,8 @@ class PresentationWorker(ThreadDagNode):
         rt = get_app_runtime()
         if turn.is_cancelled() or not turn.generation_complete.is_set():
             return False
-        if not self._queue_drained(rt.tts_queue) or not self._queue_drained(
-            rt.audio_path_queue
+        if not self._queue_drained(rt.dialog_queue) or not self._queue_drained(
+            rt.presentation_queue
         ):
             return False
         controller = getattr(rt.ui_playback, "playback_controller", None)
@@ -169,7 +169,7 @@ class PresentationWorker(ThreadDagNode):
         self._init_app()
         idle_count = 0
         while self.running:
-            output_data: Optional[TTSOutputMessage] = None
+            output_data: Optional[PresentationMessage] = None
             turn = None
             got_item = False
             try:
@@ -183,7 +183,7 @@ class PresentationWorker(ThreadDagNode):
                 else:
                     self.task_done_requested.clear()
                 try:
-                    output_data = self.audio_path_queue.get(timeout=0.4)
+                    output_data = self.presentation_queue.get(timeout=0.4)
                     got_item = True
                     idle_count = 0
                 except Empty:
@@ -191,7 +191,7 @@ class PresentationWorker(ThreadDagNode):
                     idle_count += 1
                     if idle_count >= 1:
                         rt = get_app_runtime()
-                        if rt.tts_queue.empty() and rt.audio_path_queue.empty():
+                        if rt.dialog_queue.empty() and rt.presentation_queue.empty():
                             controller = getattr(
                                 rt.ui_playback, "playback_controller", None
                             )
@@ -233,7 +233,7 @@ class PresentationWorker(ThreadDagNode):
             finally:
                 self._dialog_active = False
                 if got_item:
-                    self.audio_path_queue.task_done()
+                    self.presentation_queue.task_done()
                 if output_data is not None and turn is not None:
                     self._finish_turn_if_drained(turn)
 
@@ -244,7 +244,7 @@ class PresentationWorker(ThreadDagNode):
             controller.shutdown()
         else:
             self.task_done_requested.set()
-        self.audio_path_queue.put(None)
+        self.presentation_queue.put(None)
         super().stop()
 
     def handle_playback_signal(

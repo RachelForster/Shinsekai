@@ -52,7 +52,9 @@ def test_character_route_contracts_remain_stable() -> None:
     assert _contracts(CHARACTER_ROUTES) == {
         ("GET", "/api/characters"),
         ("POST", "/api/characters"),
+        ("POST", "/api/characters/ai-brief"),
         ("POST", "/api/characters/ai-setting"),
+        ("POST", "/api/characters/ensure-briefs"),
         ("POST", "/api/characters/emotion-tags"),
         ("POST", "/api/characters/sprite-scale"),
         ("POST", "/api/characters/sprite-voice/delete"),
@@ -96,6 +98,10 @@ def test_effect_route_contracts_remain_stable() -> None:
         ("POST", "/api/effects/audio/delete"),
         ("POST", "/api/effects/audio/delete-all"),
         ("POST", "/api/effects/audio/upload"),
+        ("POST", "/api/effects/image-tags"),
+        ("POST", "/api/effects/images/audio/upload"),
+        ("POST", "/api/effects/images/delete"),
+        ("POST", "/api/effects/images/upload"),
         ("PUT", "/api/effects"),
         ("DELETE", "/api/effects/{name}"),
     }

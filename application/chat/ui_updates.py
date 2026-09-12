@@ -13,7 +13,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, MutableSequence, Optional
 if TYPE_CHECKING:
     from application.runtime.event_sink import ChatEventSink
 
-from core.messaging.stat_payload import format_stats_html, parse_stat_payload
+from core.media.effect_bindings import effect_modes
+from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
 from application.chat.history_state import serialize_chat_history_entries
 
@@ -22,6 +23,8 @@ SOUND_EFFECTS_PATH = {
     "SHOCKED": "./assets/system/sound/shocked.wav",
     "ATTENTION": "./assets/system/sound/attention.wav",
 }
+
+IMAGE_EFFECT_DURATION_MS = 8_800
 
 _config_manager = None
 logger = logging.getLogger(__name__)
@@ -278,6 +281,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             normalized_slot_count = 3
         self.max_sprite_slots = max(1, normalized_slot_count)
         self._sprite_lru: OrderedDict[str, int] = OrderedDict()
+        self._background_url = ""
         self._looping_effects: dict[str, str] = {}
         self.audio_playback_owner = "frontend"
 
@@ -362,8 +366,12 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._sink.emit({"type": "numeric.update", "html": format_context_token_estimate(estimate)})
 
     def post_background(self, path: str) -> None:
+        url = self._media_url(path)
+        if url != self._background_url:
+            self._sprite_lru.clear()
+        self._background_url = url
         self.current_background_path = path or None
-        self._sink.emit({"type": "background.change", "url": self._media_url(path)})
+        self._sink.emit({"type": "background.change", "url": url})
 
     def switch_bgm(self, new_bgm_path: str) -> None:
         path = str(new_bgm_path or "").strip()
@@ -425,6 +433,20 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             return
         path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
         self._sink.emit({"type": "effect.play", "url": self._media_url(str(path))})
+
+    def show_image_effect(self, keyword: str, image_effect_path: str) -> None:
+        raw_path = str(image_effect_path or "").strip()
+        if not raw_path:
+            return
+        path = resource_path(raw_path) if Path(raw_path).is_absolute() else raw_path
+        self._sink.emit(
+            {
+                "type": "effect.image.show",
+                "url": self._media_url(str(path)),
+                "label": str(keyword or "").strip(),
+                "durationMs": IMAGE_EFFECT_DURATION_MS,
+            }
+        )
 
     def start_loop_effect(self, keyword: str, audio_path: str) -> None:
         key = str(keyword or "").strip()
@@ -595,34 +617,44 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         if not keyword:
             return
         audio_path = str(SOUND_EFFECTS_PATH.get(keyword.upper()) or "").strip()
-        if not audio_path:
-            try:
-                from application.runtime.context import get_app_runtime
+        image_path = ""
+        image_audio_path = ""
+        try:
+            from application.runtime.context import get_app_runtime
 
-                keyword_map = getattr(get_app_runtime(), "effect_keyword_map", {}) or {}
-                audio_path = next(
-                    (
-                        str(path or "").strip()
-                        for configured_keyword, path in keyword_map.items()
-                        if str(configured_keyword or "").strip().lower()
-                        == keyword.lower()
-                    ),
-                    "",
+            runtime = get_app_runtime()
+            if not audio_path:
+                audio_path = (getattr(runtime, "effect_keyword_map", {}) or {}).get(
+                    keyword.casefold(), ""
                 )
-            except Exception:
-                audio_path = ""
-        if mode != "stop" and not audio_path:
+            image = (getattr(runtime, "effect_image_keyword_map", {}) or {}).get(
+                keyword.casefold()
+            )
+            if image is not None:
+                image_path = image.image_path
+                image_audio_path = image.audio_path
+        except Exception:
+            image_path = ""
+            image_audio_path = ""
+        if image_audio_path:
+            audio_path = image_audio_path
+        if mode != "stop" and not audio_path and not image_path:
             logger.warning("chat.effect.unresolved effect=%r keyword=%r", effect, keyword)
             return False
         if mode == "loop":
+            if mode not in effect_modes(has_image=bool(image_path)):
+                return False
             self.start_loop_effect(keyword, audio_path)
             emitted = keyword in self._looping_effects
         elif mode == "stop":
             emitted = keyword in self._looping_effects
             self.stop_loop_effect(keyword)
         else:
-            self.play_sound_effect(audio_path)
-            emitted = True
+            if audio_path:
+                self.play_sound_effect(audio_path)
+            if image_path:
+                self.show_image_effect(keyword, image_path)
+            emitted = bool(audio_path or image_path)
         if emitted:
             logger.info(
                 "chat.effect.emitted effect=%r mode=%s keyword=%r path=%r",

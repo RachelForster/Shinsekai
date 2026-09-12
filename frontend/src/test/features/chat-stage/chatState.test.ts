@@ -1,9 +1,112 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
 import { chatStageSpriteAxisCenter, limitChatStageSpritesToSlots } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("preserves ASR draft identity and reply status across a locally timed image event", () => {
+    const speaking = chatStageReducer(
+      { ...emptyChatState, status: "streaming" },
+      {
+        type: "event",
+        event: { type: "asr.partial", text: "blue umbrella", utteranceId: "voice-1", seq: 1, ts: 1, v: 1 },
+      },
+    );
+    const showing = chatStageReducer(speaking, {
+      type: "event",
+      receivedAt: 500,
+      event: { type: "effect.image.show", v: 1, seq: 2, ts: 100_000, durationMs: 8800, label: "key", url: "key.png" },
+    });
+    expect(showing).toMatchObject({
+      status: "streaming",
+      inputDraft: "blue umbrella",
+      asrUtteranceId: "voice-1",
+      asrSourceUtteranceId: "voice-1",
+      effectImage: { deadline: 9300 },
+    });
+    const finished = chatStageReducer(showing, {
+      type: "event",
+      event: { type: "asr.final", text: "blue umbrella", utteranceId: "voice-1", seq: 3, ts: 2, v: 1 },
+    });
+    expect(finished).toMatchObject({
+      status: "streaming",
+      inputDraft: "",
+      asrSourceUtteranceId: null,
+      effectImage: { deadline: 9300 },
+    });
+  });
+
+  it.each([-30_000, 30_000])("times image events locally despite a wall-clock offset of %s", (offset) => {
+    vi.spyOn(Date, "now").mockReturnValue(100_000 + offset);
+    vi.spyOn(performance, "now").mockReturnValue(500);
+    const state = chatStageReducer(emptyChatState, {
+      type: "event",
+      receivedAt: 500,
+      event: { type: "effect.image.show", v: 1, seq: 1, ts: 100_000, durationMs: 8800, label: "key", url: "key.png" },
+    });
+    expect(state.effectImage).toMatchObject({ deadline: 9300, durationMs: 8800 });
+  });
+
+  it("restores only the remaining image duration and never extends it on repeated snapshots", () => {
+    const clock = vi.spyOn(performance, "now").mockReturnValue(500);
+    vi.spyOn(Date, "now").mockReturnValue(9_000_000);
+    const snapshot = {
+      ...emptyChatState,
+      sessionId: "session",
+      eventSeq: 1,
+      serverTimeMs: 108_000,
+      effectImage: { expiresAt: 108_800, durationMs: 8800, seq: 1, label: "key", url: "key.png" },
+    };
+    const restored = chatStageReducer(emptyChatState, { type: "hydrate", snapshot, receivedAt: 500 });
+    expect(restored.effectImage?.deadline).toBe(1300);
+    clock.mockReturnValue(900);
+    const repeated = chatStageReducer(restored, { type: "hydrate", snapshot, receivedAt: 900 });
+    expect(repeated.effectImage?.deadline).toBe(1300);
+    const expired = chatStageReducer(repeated, { type: "hydrate", snapshot: { ...snapshot, serverTimeMs: 109_000 } });
+    expect(expired.effectImage).toBeNull();
+  });
+
+  it.each(["asset://street.png", ""])("clears old sprites on background switch to %s and reallocates slots", (url) => {
+    const oldScene = {
+      ...emptyChatState,
+      backgroundPath: "asset://room.png",
+      sprites: [
+        { id: "Mio:0", label: "Mio", characterName: "Mio", path: "mio.png", slot: 0 },
+        { id: "Ren:1", label: "Ren", characterName: "Ren", path: "ren.png", slot: 1 },
+      ],
+    };
+    const unchanged = chatStageReducer(oldScene, {
+      type: "event",
+      event: { type: "background.change", url: oldScene.backgroundPath, seq: 1, ts: 1, v: 1 },
+    });
+    expect(unchanged.sprites).toEqual(oldScene.sprites);
+
+    const cleared = chatStageReducer(unchanged, {
+      type: "event",
+      event: { type: "background.change", url, seq: 2, ts: 2, v: 1 },
+    });
+    expect(cleared.sprites).toEqual([]);
+    expect(oldScene.sprites).toHaveLength(2);
+
+    const returned = chatStageReducer(cleared, {
+      type: "event",
+      event: {
+        type: "sprite.show",
+        characterName: "Ren",
+        url: "ren-happy.png",
+        scale: 1,
+        slot: 0,
+        seq: 3,
+        ts: 3,
+        v: 1,
+      },
+    });
+    expect(returned.sprites).toHaveLength(1);
+    expect(returned.sprites[0]).toMatchObject({ characterName: "Ren", slot: 0, path: "ren-happy.png" });
+  });
+
   it("applies background and BGM changes from the runtime stream", () => {
     const withBackground = chatStageReducer(emptyChatState, {
       event: {
@@ -501,7 +604,7 @@ describe("chatStageReducer", () => {
     expect(restored.optimisticSubmission).toBeUndefined();
   });
 
-  it("clears an optimistic story choice when the next story state is published", () => {
+  it("keeps normal chat presentation while story progress changes", () => {
     const submitted = chatStageReducer(
       {
         ...emptyChatState,
@@ -559,12 +662,12 @@ describe("chatStageReducer", () => {
       type: "event",
     });
 
-    expect(replaced.optimisticSubmission).toBeUndefined();
+    expect(replaced.optimisticSubmission).toEqual(submitted.optimisticSubmission);
     expect(replaced.story?.currentNodeId).toBe("ending");
     expect(replaced.options).toEqual([]);
   });
 
-  it("replaces optimistic story presentation when a polled snapshot reaches an ending", () => {
+  it("keeps normal chat presentation when a story-only snapshot reaches an ending", () => {
     const submitted = chatStageReducer(
       {
         ...emptyChatState,
@@ -624,7 +727,7 @@ describe("chatStageReducer", () => {
       type: "event",
     });
 
-    expect(polled.optimisticSubmission).toBeUndefined();
+    expect(polled.optimisticSubmission).toEqual(submitted.optimisticSubmission);
     expect(polled.story?.ending).toEqual({ id: "ending", title: "Rain" });
   });
 

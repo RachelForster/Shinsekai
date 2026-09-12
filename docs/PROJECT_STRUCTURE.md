@@ -192,7 +192,8 @@ frontend/src-tauri     Tauri 壳、打包配置和 Rust 侧能力
 ```text
 application/bootstrap/       进程启动、组合根、运行模式选择
 application/chat/            聊天启动、停止、恢复和历史用例
-application/chat/handlers/   LLM 输出到 TTS/UI event 的应用处理链
+application/chat/handlers/   对话媒体与 UI 展示的应用处理链
+application/chat/dialog_media/  立绘查找与语音生成策略
 application/diagnostics/     日志快照与诊断包用例
 application/effects/         特效配置与资源管理用例
 application/media/           媒体标注等跨领域共享能力

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Event, Thread
+from unittest.mock import Mock
 
 import pytest
 
@@ -54,6 +55,35 @@ def test_stale_scope_before_chat_never_calls_adapter_or_writes_new_history():
         {"role": "system", "content": "replacement"},
         {"role": "user", "content": "new conversation"},
     ]
+
+
+@pytest.mark.parametrize("handled", [False, True])
+def test_current_history_scope_preserves_story_persistence_fallback(tmp_path, handled):
+    history_file = str(tmp_path / "story.json")
+    manager = _manager(history_file=history_file)
+    manager.story_prompt_hooks = Mock()
+    manager.story_prompt_hooks.persist_message.return_value = handled
+
+    with manager.history_scope(manager.history_epoch):
+        assert manager.add_message("assistant", "current story reply") is True
+
+    manager.story_prompt_hooks.persist_message.assert_called_once_with(
+        {"role": "assistant", "content": "current story reply"}
+    )
+    assert Path(history_file + ".tmp").exists() is not handled
+
+
+def test_stale_history_scope_cannot_invoke_story_persistence(tmp_path):
+    history_file = str(tmp_path / "story.json")
+    manager = _manager(history_file=history_file)
+    manager.story_prompt_hooks = Mock()
+
+    with manager.history_scope(manager.history_epoch):
+        manager.invalidate_history()
+        assert manager.add_message("assistant", "late story reply") is False
+
+    manager.story_prompt_hooks.persist_message.assert_not_called()
+    assert not Path(history_file + ".tmp").exists()
 
 
 @pytest.mark.parametrize("transition", ["clear", "replace"])

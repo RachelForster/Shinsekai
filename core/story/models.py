@@ -82,6 +82,14 @@ class Commitment(str, Enum):
     FROZEN = "frozen"
 
 
+class StoryNodeType(str, Enum):
+    """Small set of scene behaviours understood by the story runtime."""
+
+    LIMITED_TURN = "limited_turn_node"
+    FREE_CHAT = "free_chat_node"
+    ENDING = "ending_node"
+
+
 class PortType(str, Enum):
     ANY = "Any"
     BOOLEAN = "Boolean"
@@ -257,7 +265,17 @@ class FreeformIntent:
 
 
 @dataclass(frozen=True, slots=True)
-class StoryNode:
+class StoryTransition:
+    """An LLM-readable route whose target is enforced by the runtime."""
+
+    to_node_id: str
+    when: str
+
+
+@dataclass(frozen=True, slots=True)
+class LegacyStoryNode:
+    """Compatibility model for story projects created before simple nodes."""
+
     id: str
     title: str
     type: str = "story"
@@ -277,12 +295,29 @@ class StoryNode:
 
 
 @dataclass(frozen=True, slots=True)
+class StoryNode:
+    """One LLM-played scene and its allowed exits."""
+
+    id: str
+    title: str
+    type: StoryNodeType
+    instruction: str = ""
+    background: str | None = None
+    max_rounds: int | None = None
+    transitions: tuple[StoryTransition, ...] = ()
+    default_to: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "transitions", tuple(self.transitions))
+
+
+@dataclass(frozen=True, slots=True)
 class NarrativeGraph:
     start_node_id: str
-    nodes: tuple[StoryNode, ...]
+    nodes: tuple[StoryNode | LegacyStoryNode, ...]
 
     @property
-    def by_id(self) -> Mapping[str, StoryNode]:
+    def by_id(self) -> Mapping[str, StoryNode | LegacyStoryNode]:
         return {node.id: node for node in self.nodes}
 
 
@@ -328,9 +363,11 @@ class StoryMetadata:
     language: str = "zh-CN"
     estimated_minutes: int | None = None
     generation_mode: str = "manual"
+    backgrounds: tuple[str, ...] = ()
     resource_bindings: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "backgrounds", tuple(self.backgrounds))
         object.__setattr__(
             self, "resource_bindings", FrozenDict(self.resource_bindings)
         )
@@ -387,6 +424,11 @@ class CompiledStoryNode:
     freeform_intents: tuple[FreeformIntent, ...]
     cast_policy: CastPolicy
     exposed_context: Mapping[str, Any] = field(default_factory=dict)
+    instruction: str = ""
+    background: str | None = None
+    max_rounds: int | None = None
+    transitions: tuple[StoryTransition, ...] = ()
+    default_to: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "exposed_context", FrozenDict(self.exposed_context))
@@ -399,6 +441,7 @@ class StoryProgram:
     story_version: int
     source_hash: str
     start_node_id: str
+    backgrounds: tuple[str, ...]
     variables: tuple[StoryVariableDefinition, ...]
     semantic_signals: tuple[SemanticSignalDefinition, ...]
     character_registry: CharacterRegistry
@@ -407,6 +450,7 @@ class StoryProgram:
     source_map: Mapping[str, str]
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "backgrounds", tuple(self.backgrounds))
         object.__setattr__(self, "source_map", FrozenDict(self.source_map))
 
     @property

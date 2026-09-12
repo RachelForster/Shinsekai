@@ -75,6 +75,7 @@
 
 .character-personality-section__body {
   height: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
 }
 
 .character-personality-section__field {
@@ -84,6 +85,31 @@
 
 .character-personality-section__textarea {
   height: 100%;
+}
+
+.character-personality-section__brief-field {
+  grid-template-rows: auto auto;
+}
+
+.character-personality-section__brief-field .field-row__label {
+  display: flex;
+  justify-content: space-between;
+}
+
+.character-personality-section__brief-field .field-row__control {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: var(--space-2);
+}
+
+.character-personality-section__brief {
+  min-height: 72px !important;
+}
+
+.field-row__hint {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .character-page__top-grid .form-grid--two,

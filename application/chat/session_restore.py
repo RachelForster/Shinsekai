@@ -7,18 +7,28 @@ from collections.abc import Callable
 from typing import Any
 
 from config.config_manager import ConfigManager
-from core.messaging.dialog_tokens import is_option_history_name
+from core.messaging.dialog_tokens import (
+    BGM_ALIASES,
+    CG_ALIASES,
+    COT_ALIASES,
+    NARR_ALIASES,
+    SCENE_ALIASES,
+    STAT_ALIASES,
+    is_option_history_name,
+    normalize_character_name,
+)
 from application.chat.history_state import extract_valid_dialog_from_messages
-from sdk.messages import TTSOutputMessage
+from sdk.messages import PresentationMessage
 
 
 def restore_session_presentation(
     messages: list,
     *,
-    audio_path_queue: Any,
+    presentation_queue: Any,
     presenter: Any,
     config: ConfigManager,
     tr_i18n: Callable[..., str],
+    replay_media: Callable[[list[Any]], bool] | None = None,
 ) -> bool:
     """Re-queue the last dialog, BGM, and background after loading history."""
 
@@ -29,8 +39,8 @@ def restore_session_presentation(
         bgm_path = config.config.system_config.bgm_path
         bg_path = config.config.system_config.background_path
         if bgm_path:
-            audio_path_queue.put(
-                TTSOutputMessage(
+            presentation_queue.put(
+                PresentationMessage(
                     audio_path=bgm_path,
                     character_name="bgm",
                     sprite="-1",
@@ -56,14 +66,26 @@ def restore_session_presentation(
             last_choice = dialog.pop()
 
         trailing_system: list = []
-        while dialog and dialog[-1].get("sprite", "-1") in {"-1", -1}:
+        system_names = (
+            BGM_ALIASES
+            | CG_ALIASES
+            | COT_ALIASES
+            | NARR_ALIASES
+            | SCENE_ALIASES
+            | STAT_ALIASES
+        )
+        while dialog and (
+            dialog[-1].get("sprite", "-1") in {"-1", -1}
+            and normalize_character_name(dialog[-1].get("character_name", ""))
+            in system_names
+        ):
             if is_option_history_name(dialog[-1].get("character_name", "")):
                 break
             trailing_system.append(dialog.pop())
 
         for item in reversed(trailing_system):
-            audio_path_queue.put(
-                TTSOutputMessage(
+            presentation_queue.put(
+                PresentationMessage(
                     audio_path="",
                     character_name=item.get("character_name", ""),
                     speech=item.get("speech"),
@@ -75,21 +97,26 @@ def restore_session_presentation(
         restored_character_sprite = False
         if dialog:
             last = dialog[-1]
-            audio_path_queue.put(
-                TTSOutputMessage(
+            presentation_queue.put(
+                PresentationMessage(
                     audio_path="",
                     character_name=last.get("character_name", ""),
                     speech=last.get("speech", ""),
-                    sprite=last.get("sprite", "-1"),
+                    sprite=(None if replay_media is not None else last.get("sprite", "-1")),
                     is_system_message=False,
                     timeout=0,
                 )
             )
             restored_character_sprite = True
 
+        if replay_media is not None:
+            restored_character_sprite = (
+                replay_media(messages) or restored_character_sprite
+            )
+
         if last_choice is not None:
-            audio_path_queue.put(
-                TTSOutputMessage(
+            presentation_queue.put(
+                PresentationMessage(
                     audio_path="",
                     name=last_choice.get("character_name", "CHOICE"),
                     text=last_choice.get("speech", ""),

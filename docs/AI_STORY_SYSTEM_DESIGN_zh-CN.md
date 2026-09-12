@@ -2,7 +2,9 @@
 
 > 状态：草案
 > 更新日期：2026-08-06
-> 适用范围：AI 剧本生成、剧情节点运行时、剧情状态、对话分支存档与 React 创作界面
+> 历史设计参考。当前默认生成与运行的简化节点协议见
+> [SIMPLE_STORY_NODES_zh-CN.md](./SIMPLE_STORY_NODES_zh-CN.md)。本文中的
+> choice、freeformIntent 和复杂规则图不再是新剧情节点的生成格式。
 > 相关规范：[`PROJECT_STRUCTURE.md`](PROJECT_STRUCTURE.md)、[`CHAT_UI_THEME_GUIDE_zh-CN.md`](CHAT_UI_THEME_GUIDE_zh-CN.md)
 
 ## 1. 摘要

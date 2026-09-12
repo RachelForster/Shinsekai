@@ -296,8 +296,12 @@ describe("entity repositories", () => {
         deleteMemory: vi.fn().mockResolvedValue({ agentId: "Nanami", count: 0, memories: [] }),
         deleteSprite: vi.fn().mockResolvedValue(character),
         deleteSpriteVoice: vi.fn().mockResolvedValue(character),
+        ensureBriefs: vi.fn().mockResolvedValue({ characters: [character], generatedNames: [] }),
         export: vi.fn().mockResolvedValue("/tmp/nanami.zip"),
-        generateSetting: vi.fn().mockResolvedValue({ characterSetting: "kind", message: "ok" }),
+        generateBrief: vi.fn().mockResolvedValue({ characterBrief: "brief", message: "ok" }),
+        generateSetting: vi
+          .fn()
+          .mockResolvedValue({ characterBrief: "brief", characterSetting: "kind", message: "ok" }),
         getMem0Status: vi.fn().mockResolvedValue({ status: "ready" }),
         import: vi.fn().mockResolvedValue([character]),
         importMemories: vi.fn().mockResolvedValue({
@@ -423,12 +427,16 @@ describe("entity repositories", () => {
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllAudio: vi.fn().mockResolvedValue(effect),
         deleteAudio: vi.fn().mockResolvedValue(effect),
+        deleteImage: vi.fn().mockResolvedValue(effect),
         export: vi.fn().mockResolvedValue("/tmp/effect.zip"),
         import: vi.fn().mockResolvedValue([effect]),
         list: vi.fn().mockResolvedValue([effect]),
         save: vi.fn().mockResolvedValue(effect),
         saveAudioTags: vi.fn().mockResolvedValue(effect),
+        saveImageTags: vi.fn().mockResolvedValue(effect),
         uploadAudio: vi.fn().mockResolvedValue(effect),
+        uploadImages: vi.fn().mockResolvedValue(effect),
+        uploadImageAudio: vi.fn().mockResolvedValue(effect),
       },
       logs: {
         exportDiagnostics: vi.fn().mockResolvedValue("/tmp/diagnostics.zip"),

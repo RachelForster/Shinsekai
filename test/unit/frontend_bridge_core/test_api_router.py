@@ -167,6 +167,9 @@ def test_registered_story_route_contracts_match_main() -> None:
         (method, route.pattern) for route in STORY_ROUTES for method in route.methods
     } == {
         ("GET", "/api/story/generation/{generation_task_id}"),
+        ("GET", "/api/story/generation/{generation_task_id}/preview"),
+        ("GET", "/api/story/library"),
+        ("POST", "/api/story/launch-payload"),
         ("POST", "/api/story/generation/start"),
         ("POST", "/api/story/generation/{generation_task_id}/cancel"),
         ("POST", "/api/story/generation/{generation_task_id}/regenerate"),

@@ -52,7 +52,7 @@ def story_state_view(
             }
         )
     ending = None
-    if node.type == "ending":
+    if node.type in {"ending", "ending_node"}:
         ending = {"id": node.id, "title": node.title}
     return {
         "storyId": program.story_id,
@@ -60,6 +60,10 @@ def story_state_view(
         "revision": state.revision,
         "currentNodeId": node.id,
         "currentNodeTitle": node.title,
+        "currentNodeType": node.type,
+        "background": node.background,
+        "nodeTurnCount": state.node_turn_count,
+        "maxRounds": node.max_rounds,
         "activeCast": [
             {
                 "id": character_id,
