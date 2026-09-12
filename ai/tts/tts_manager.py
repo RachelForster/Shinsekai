@@ -1,7 +1,6 @@
 import requests
 import threading
 import queue
-import subprocess
 import time
 import uuid
 from ai.tts.tts_adapter import (
@@ -13,6 +12,7 @@ from ai.tts.tts_adapter import (
     GenieTTSAdapter,
 )
 from pathlib import Path
+from ai.tts.server_process import start_server_process
 
 class TTSAdapterFactory:
     """
@@ -232,7 +232,7 @@ class TTSManager:
         os_path = gpt_sovits_work_path
         embeded_python_path = os_path + "\\runtime\\python.exe"
         path = os_path + "\\api_v2.py"
-        subprocess.Popen([embeded_python_path, path], cwd=os_path)
+        start_server_process(embeded_python_path, path, cwd=os_path)
 
     def shutdown(self, *, stop_server=True):
         """Shuts down the queue, worker thread, and TTS server process."""
