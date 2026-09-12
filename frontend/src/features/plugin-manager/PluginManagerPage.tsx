@@ -416,7 +416,7 @@ export function PluginManagerPage() {
       if (isTauriDesktop()) {
         setPluginReloadPending(true);
         try {
-          await reloadPluginService();
+          await reloadPluginService(queryClient);
         } catch (error) {
           await writeDesktopRestartDebugLog(
             `PluginManagerPage install reload catch: ${desktopRestartErrorMessage(error)}`,
@@ -547,7 +547,7 @@ export function PluginManagerPage() {
   const handleReloadPlugins = async () => {
     setPluginReloadPending(true);
     try {
-      await reloadPluginService();
+      await reloadPluginService(queryClient);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: pluginsQueryKey }),
         queryClient.invalidateQueries({ queryKey: pluginCatalogQueryKey }),
