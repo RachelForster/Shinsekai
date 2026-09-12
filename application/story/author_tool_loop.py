@@ -16,19 +16,6 @@ MAX_AUTHOR_ROUNDS = 8
 MAX_AUTHOR_TOOL_CALLS = 24
 MAX_TOOL_ARGUMENT_CHARS = 32_000
 
-AUTHOR_RANDOM_TOOL_PROMPT = (
-    "You may call the supplied random tools to sample, shuffle, roll dice, or assign labels. "
-    "Use their actual results instead of inventing random outcomes. Give each decision a stable "
-    "requestId and reuse identical arguments when retrying or repairing the same decision. "
-    "resolvedRandomRequests contains previously committed decisions for this task; treat those "
-    "results as authoritative and do not use a new requestId to reroll an existing decision. "
-    "Tool results here belong to AUTHORING: any outcomes written into the artifact become fixed "
-    "story facts. They are NOT new-game identity assignments. Per-session execution is not enabled "
-    "yet; do not claim that these results will be rerolled at game start or invent executable triggers. "
-    "Keep secrets only in the fields permitted by the stage schema. After tool use return exactly "
-    "the requested JSON artifact, without tool transcripts, seeds, or extra protocol fields."
-)
-
 
 class AuthorToolLoopError(RuntimeError):
     code = "generation.tool_loop_failed"

@@ -26,11 +26,11 @@ import yaml
 from ai.llm.template.story import (
     AUTHOR_COMPILER_TEMPLATE,
     StoryRequestContext,
+    build_story_author_system_section,
     build_story_author_user_section,
 )
 from application.random_requests import RandomRequestExecutor
 from application.story.author_tool_loop import (
-    AUTHOR_RANDOM_TOOL_PROMPT,
     AuthorToolLoopError,
     run_author_tool_loop,
 )
@@ -169,11 +169,14 @@ class ConfigStoryAuthorModel:
         resolved_requests = executor.resolved_requests()
         if resolved_requests:
             prompt_request["resolvedRandomRequests"] = resolved_requests
-        prompt = build_story_author_user_section().render(StoryRequestContext(prompt_request))
+        context = StoryRequestContext(prompt_request)
+        prompt = build_story_author_user_section().render(context)
         messages = [
             {
                 "role": "system",
-                "content": AUTHOR_COMPILER_TEMPLATE + "\n" + AUTHOR_RANDOM_TOOL_PROMPT,
+                "content": build_story_author_system_section(
+                    include_random_tools=True
+                ).render(context),
             },
             {"role": "user", "content": prompt},
         ]

@@ -30,6 +30,7 @@ LLM 可以调用：
 | `application/random_requests.py` | 宿主拥有的作用域、随机种子、幂等执行和保存接口 |
 | `ai/tools/random_tools.py` | 显式 JSON Schema 与工具名称到操作的转换 |
 | `ai/tools/call_protocol.py` | 归一化 OpenAI 兼容与 Claude 的工具响应 |
+| `ai/llm/template/story/author.py` | 用 Section 拼接作者规则、可选随机工具说明和请求 JSON |
 | `application/story/author_tool_loop.py` | 剧本作者专用工具循环、取消和调用预算 |
 | `application/story/generation.py` | 为生成任务绑定结果存储，并接回阶段生成和编译流程 |
 

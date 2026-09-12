@@ -1,9 +1,16 @@
 from copy import deepcopy
+from dataclasses import replace
 import json
 from types import SimpleNamespace
 
 import pytest
 
+from ai.llm.template.core import TextSection
+from ai.llm.template.story import (
+    build_story_author_system_section,
+    build_story_author_user_section,
+)
+from application.story import generation
 from ai.tools.random_tools import random_tool_definitions
 from application.random_requests import RandomRequestExecutor
 from application.story.author_tool_loop import (
@@ -62,6 +69,53 @@ def call_reply(name="random_assign", arguments=None, *, provider="openai"):
             )
         ]
     )
+
+
+@pytest.mark.parametrize("stage", ["foundation", "repair"])
+def test_author_renders_shared_sections_with_committed_decisions(monkeypatch, stage):
+    executor = RandomRequestExecutor(scope="test")
+    executor.execute("shuffle", "roles", {"items": ["A", "B"]})
+    request = {"stage": stage, "synopsis": 'literal {braces} and "quotes"'}
+    original = deepcopy(request)
+    contexts = []
+
+    def system_section(**kwargs):
+        section = build_story_author_system_section(**kwargs)
+        return replace(
+            section,
+            children=section.children
+            + (TextSection(id="extension", text="EXTENSION"),),
+        )
+
+    def user_section():
+        section = build_story_author_user_section()
+        leaf = section.children[0]
+
+        def render(context):
+            contexts.append(context)
+            return leaf.render(context)
+
+        return replace(section, children=(TextSection(id="request", text=render),))
+
+    def chat(messages, **kwargs):
+        assert messages[0]["content"].endswith("EXTENSION")
+        assert "resolvedRandomRequests" in messages[0]["content"]
+        payload = json.loads(messages[1]["content"])
+        assert payload == {
+            **request,
+            "resolvedRandomRequests": executor.resolved_requests(),
+        }
+        return {"artifact": {"ok": True}}
+
+    monkeypatch.setattr(generation, "build_story_author_system_section", system_section)
+    monkeypatch.setattr(generation, "build_story_author_user_section", user_section)
+    model = ConfigStoryAuthorModel(enabled_flags(), SimpleNamespace())
+    model._llm_manager = lambda: SimpleNamespace(llm_adapter=SimpleNamespace(chat=chat))
+    assert model.complete_with_tools(request, executor=executor) == {
+        "artifact": {"ok": True}
+    }
+    assert len(contexts) == 1
+    assert request == original
 
 
 @pytest.mark.parametrize("provider", ["openai", "claude"])
