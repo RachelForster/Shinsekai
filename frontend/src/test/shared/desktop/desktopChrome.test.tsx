@@ -21,6 +21,11 @@ const desktopApi = vi.hoisted(() => ({
 }));
 
 vi.mock("../../../shared/desktop/desktopApi", () => desktopApi);
+vi.mock("../../../shared/desktop/windowCloseApi", () => ({
+  getCloseRequestStatus: async () => ({ requested: false, trayAvailable: true }),
+  onCloseRequested: async () => () => {},
+  resolveCloseRequest: vi.fn(),
+}));
 
 import { DesktopChrome } from "../../../shared/desktop/DesktopChrome";
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";

@@ -1,5 +1,6 @@
 import json
 import signal
+import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -112,22 +113,32 @@ class _ChatStreamForClose:
         self.deleted.append(session_id)
 
 
-def test_semantic_mode_is_downgraded_before_launch_while_mem0_is_loading(monkeypatch):
+def test_semantic_mode_waits_for_existing_initializer_without_downgrading(monkeypatch):
+    initialize = MagicMock()
+    monkeypatch.setattr("ai.memory.runtime.get_mem0", initialize)
+    probe = MagicMock(return_value={"status": "loading"})
     monkeypatch.setattr(
         "frontend_bridge_core.memory._get_mem0_status",
-        lambda *, start_loading: {"status": "loading"},
+        probe,
     )
-
-    assert _usable_media_selection_mode("semantic") == "indexed"
-
-
-def test_semantic_mode_is_kept_when_mem0_is_ready(monkeypatch):
-    monkeypatch.setattr(
-        "frontend_bridge_core.memory._get_mem0_status",
-        lambda *, start_loading: {"status": "ready"},
-    )
-
     assert _usable_media_selection_mode("semantic") == "semantic"
+    initialize.assert_called_once_with()
+    probe.assert_not_called()
+
+
+@pytest.mark.parametrize("error", [TimeoutError("loading timed out"), ModuleNotFoundError("mem0")])
+def test_failed_semantic_initialization_is_reported_instead_of_switching_strategy(monkeypatch, error):
+    monkeypatch.setattr("ai.memory.runtime.get_mem0", MagicMock(side_effect=error))
+    with pytest.raises(type(error), match=str(error)):
+        _usable_media_selection_mode("semantic")
+
+
+@pytest.mark.parametrize("requested,expected", [(None, "indexed"), ("indexed", "indexed"), (" SEMANTIC ", "semantic")])
+def test_media_mode_keeps_existing_normalization(monkeypatch, requested, expected):
+    initialize = MagicMock()
+    monkeypatch.setattr("ai.memory.runtime.get_mem0", initialize)
+    assert _usable_media_selection_mode(requested) == expected
+    assert initialize.call_count == (1 if expected == "semantic" else 0)
 
 
 def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch):

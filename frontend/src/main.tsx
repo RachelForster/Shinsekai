@@ -2,9 +2,8 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 
-import { AppRootProviders, AppRuntimeProviders } from "./app/providers/AppProviders";
-import { AppRoutes } from "./app/routes/AppRoutes";
-import { DesktopChrome } from "./shared/desktop/DesktopChrome";
+import { AppRootProviders } from "./app/providers/AppProviders";
+import { AppWindowRoutes } from "./app/routes/AppWindowRoutes";
 import {
   desktopRestartErrorMessage,
   isDesktopBridgeConnectionError,
@@ -105,11 +104,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ErrorBoundary>
       <AppRootProviders>
         <HashRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-          <DesktopChrome>
-            <AppRuntimeProviders>
-              <AppRoutes />
-            </AppRuntimeProviders>
-          </DesktopChrome>
+          <AppWindowRoutes />
         </HashRouter>
       </AppRootProviders>
     </ErrorBoundary>

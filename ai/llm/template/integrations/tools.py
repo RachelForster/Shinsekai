@@ -7,6 +7,7 @@ from sdk.tool_registry import apply_registered_tools
 
 # Keep builtin registration at module import for existing application callers.
 import ai.tools.character_tools  # noqa: F401
+import ai.tools.reminder_tools  # noqa: F401
 import ai.tools.memory_tools  # noqa: F401
 import ai.tools.tool_search  # noqa: F401
 import ai.tools.file_tools  # noqa: F401

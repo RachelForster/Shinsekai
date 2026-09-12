@@ -110,6 +110,9 @@ def _shutdown_bridge_runtime(reason: str) -> None:
     with _bridge_state_lock:
         state = _bridge_state
     if state is not None:
+        presenter = getattr(state, "reminder_presenter", None)
+        if presenter is not None:
+            presenter.close()
         try:
             from application.chat.mobile_access import stop_mobile_access
 

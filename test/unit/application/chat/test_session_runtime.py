@@ -1,12 +1,50 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from pathlib import Path
+import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
 from application.chat import session_runtime
+
+
+def test_chat_child_registers_reminders_before_templates_are_loaded(tmp_path, monkeypatch):
+    # A fresh interpreter avoids registrations leaked by other tests or the bridge.
+    monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(tmp_path))
+    result = subprocess.run(
+        [sys.executable, "-X", "utf8", "-c", """
+import json
+import sys
+from types import SimpleNamespace
+from application.chat.session_runtime import _import_builtin_tools
+from ai.tools.tool_manager import ToolManager
+from sdk.tool_registry import apply_registered_tools
+
+assert 'ai.llm.template.integrations.tools' not in sys.modules
+_import_builtin_tools()
+manager = ToolManager()
+# The same one-time registry application performed by plugin startup.
+apply_registered_tools(manager)
+names = {entry['function']['name'] for entry in manager.get_definitions(groups='default')}
+assert 'manage_reminders' in names, names
+sys.modules['ai.tools.reminder_tools'].get_llm_host_runtime = lambda: SimpleNamespace(
+    manage_reminders=lambda payload: {'ok': True, 'action': payload['action']}
+)
+assert json.loads(manager.execute('manage_reminders', '{"action":"list"}')) == {
+    'ok': True, 'action': 'list'
+}
+"""],
+        cwd=Path(__file__).resolve().parents[4],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 @pytest.fixture(autouse=True)

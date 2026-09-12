@@ -16,8 +16,8 @@ class _PlainTextParser(HTMLParser):
 
 class TextProcessor:
     """独立的文本处理工具类"""
-    def __init__(self):
-        pass
+    def __init__(self, pronunciation_map=None):
+        self.pronunciation_map = pronunciation_map
 
     def decide_language(self, text: str) -> str:
         """根据文本内容判断语言（日语、中文、英语）"""
@@ -68,7 +68,8 @@ class TextProcessor:
 
     def replace_names(self, text):
         """替换文本中的角色名为对应的日语名"""
-        for name, japanese_name in name_map.items():
+        mapping = name_map if self.pronunciation_map is None else self.pronunciation_map
+        for name, japanese_name in mapping.items():
             text = text.replace(name, japanese_name)
         return text
 

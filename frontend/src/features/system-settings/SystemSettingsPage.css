@@ -1,5 +1,37 @@
 /* System settings inherit the SVG-style settings surface while keeping current theme colors. */
 
+.desktop-background-settings {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.desktop-background-settings .section__header,
+.desktop-background-settings .section__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.desktop-background-settings__switches {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.desktop-background-settings .field-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.desktop-background-settings input[type="time"] {
+  width: 150px;
+}
+
+.desktop-background-settings p {
+  margin: 0;
+}
+
 .system-page > .settings-grid {
   gap: var(--space-4);
 }
