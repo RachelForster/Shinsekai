@@ -455,10 +455,13 @@ def test_author_model_uses_stateless_adapter_calls(monkeypatch) -> None:
     class OpenAIAdapter:
         def chat(self, messages, stream=False, **kwargs):
             captured.append(json.loads(json.dumps(messages)))
-            assert {tool["function"]["name"] for tool in kwargs["tools"]} == {
-                "random_sample", "random_shuffle", "random_roll_dice", "random_assign",
-            }
-            assert "response_format" not in kwargs
+            if len(captured) % 2:
+                assert {tool["function"]["name"] for tool in kwargs["tools"]} == {
+                    "random_sample", "random_shuffle", "random_roll_dice", "random_assign",
+                }
+                assert "response_format" not in kwargs
+            else:
+                assert kwargs == {"response_format": {"type": "json_object"}}
             return {"artifact": {"ok": True}}
 
     manager = SimpleNamespace(
@@ -475,12 +478,14 @@ def test_author_model_uses_stateless_adapter_calls(monkeypatch) -> None:
 
     assert first["artifact"]["ok"] is True
     assert second["artifact"]["ok"] is True
-    assert len(captured) == 2
+    assert len(captured) == 4
+    assert captured[0] == captured[1]
+    assert captured[2] == captured[3]
     assert captured[0][0]["role"] == "system"
     assert "task-a-secret" in captured[0][1]["content"]
-    assert "task-a-secret" not in captured[1][1]["content"]
-    assert "task-b-public" in captured[1][1]["content"]
-    assert len(captured[1]) == 2
+    assert "task-a-secret" not in captured[2][1]["content"]
+    assert "task-b-public" in captured[2][1]["content"]
+    assert len(captured[2]) == 2
 
 
 def test_save_merges_cancel_requested_from_disk(tmp_path: Path) -> None:

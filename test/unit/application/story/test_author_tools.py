@@ -211,6 +211,61 @@ def test_loop_is_bounded_and_disables_tools_on_final_request():
     assert calls[-1] == {"stream": False, "response_format": {"type": "json_object"}}
 
 
+@pytest.mark.parametrize("tool_rounds", [0, 1, MAX_AUTHOR_ROUNDS - 2])
+def test_early_completion_gets_json_finalization_with_original_context(tool_rounds):
+    calls = []
+    recorded = []
+    executor = RandomRequestExecutor(scope="test")
+    messages = [{"role": "user", "content": "Generate the JSON artifact"}]
+    provisional = 'Here is the artifact: {"artifact": {"provisional": true}}'
+
+    def chat(conversation, **kwargs):
+        calls.append((deepcopy(conversation), kwargs))
+        if len(calls) <= tool_rounds:
+            return call_reply()
+        if "tools" in kwargs:
+            return provisional
+        assert kwargs == {"stream": False, "response_format": {"type": "json_object"}}
+        assert conversation == calls[-2][0]
+        assert provisional not in json.dumps(conversation)
+        if tool_rounds:
+            assert json.loads(conversation[-1]["content"])["result"] == (
+                executor.resolved_requests()["roles"]["result"]
+            )
+        return '{"artifact": {"final": true}}'
+
+    result = run_author_tool_loop(
+        SimpleNamespace(chat=chat),
+        messages,
+        executor=executor,
+        native_json=True,
+        on_call=lambda conversation, response: recorded.append(response),
+    )
+    assert json.loads(result) == {"artifact": {"final": True}}
+    assert len(calls) == len(recorded) == tool_rounds + 2
+    assert recorded[-2] == provisional
+    assert messages == [{"role": "user", "content": "Generate the JSON artifact"}]
+
+
+def test_cancellation_before_json_finalization_prevents_another_model_request():
+    recorded = []
+
+    def check_cancel():
+        if recorded:
+            raise StoryGenerationCancelled()
+
+    with pytest.raises(StoryGenerationCancelled):
+        run_author_tool_loop(
+            SimpleNamespace(chat=lambda *args, **kwargs: "provisional response"),
+            [],
+            executor=RandomRequestExecutor(scope="test"),
+            native_json=True,
+            before_call=check_cancel,
+            on_call=lambda conversation, response: recorded.append(response),
+        )
+    assert recorded == ["provisional response"]
+
+
 def test_cancel_after_model_reply_prevents_tool_execution():
     cancelled = False
     saved = []
@@ -232,7 +287,10 @@ def test_cancel_after_model_reply_prevents_tool_execution():
     assert len(saved) == 1  # No random decision was committed.
 
 
-def test_generation_persists_random_choices_and_counts_each_model_request(tmp_path):
+@pytest.mark.parametrize("native_json", [False, True])
+def test_generation_persists_random_choices_and_counts_each_model_request(
+    tmp_path, native_json
+):
     artifacts = stage_artifacts()
     model = ConfigStoryAuthorModel(enabled_flags(), SimpleNamespace())
     requests = []
@@ -242,15 +300,20 @@ def test_generation_persists_random_choices_and_counts_each_model_request(tmp_pa
         requests.append(request["stage"])
         if request["stage"] == "foundation" and messages[-1]["role"] != "tool":
             return call_reply()
+        if native_json and "tools" in kwargs:
+            return 'Here is the artifact: {"artifact": {}}'
         return {"artifact": artifacts[request["stage"]]}
 
-    model._manager = SimpleNamespace(llm_adapter=SimpleNamespace(chat=chat))
+    adapter_type = type("OpenAIAdapter" if native_json else "TextAdapter", (), {})
+    adapter = adapter_type()
+    adapter.chat = chat
+    model._manager = SimpleNamespace(llm_adapter=adapter)
     model._llm_manager = lambda: model._manager
     service, repository = service_at(tmp_path, model)
     task = service.create("Random story", task_id="random-story")
     result = service.run(task["id"])
     assert result["validation"]["valid"]
-    assert result["cost"]["requests"] == len(requests) == 4
+    assert result["cost"]["requests"] == len(requests) == (7 if native_json else 4)
     path = repository.task_directory(task["id"]) / "random-requests.json"
     saved = json.loads(path.read_text(encoding="utf-8"))
     assert "roles" in saved["requests"]

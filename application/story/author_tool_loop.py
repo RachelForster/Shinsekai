@@ -27,17 +27,21 @@ def run_author_tool_loop(
     *,
     executor: RandomRequestExecutor,
     before_call: Callable[[], None] = lambda: None,
-    on_call: Callable[[list[dict[str, Any]], Any], None] = lambda messages,
-    response: None,
+    on_call: Callable[
+        [list[dict[str, Any]], Any], None
+    ] = lambda messages, response: None,
     native_json: bool = False,
 ) -> Any:
     conversation = copy.deepcopy(messages)
     used_calls = 0
+    final_response_only = False
     for round_index in range(MAX_AUTHOR_ROUNDS):
         before_call()
-        # Give the model one final response-only turn when the budget is used.
+        # Reserve a response-only turn even if the model keeps requesting tools.
         allow_tools = (
-            round_index < MAX_AUTHOR_ROUNDS - 1 and used_calls < MAX_AUTHOR_TOOL_CALLS
+            not final_response_only
+            and round_index < MAX_AUTHOR_ROUNDS - 1
+            and used_calls < MAX_AUTHOR_TOOL_CALLS
         )
         kwargs = {"tools": random_tool_definitions()} if allow_tools else {}
         if not allow_tools and native_json:
@@ -50,6 +54,12 @@ def run_author_tool_loop(
         finally:
             on_call(conversation, recorded_response)
         if assistant is None:
+            if allow_tools and native_json:
+                # Tool-enabled calls disable JSON mode in the existing adapters.
+                # Generate the artifact from the same request and tool results in
+                # JSON mode; provisional prose must not become authoring context.
+                final_response_only = True
+                continue
             return content
         calls = assistant["tool_calls"]
         if not allow_tools or used_calls + len(calls) > MAX_AUTHOR_TOOL_CALLS:
