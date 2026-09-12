@@ -206,6 +206,15 @@ def create_chat_startup_context(
             plugin_manager.hook_dispatcher.dispatch_init_chat(init_context)
 
     if messages:
+        from application.chat.media_prompt import align_history_media_prompt
+
+        messages = align_history_media_prompt(
+            messages,
+            config=config,
+            character_names=character_names,
+            mode=str(getattr(args, "media_selection_mode", "indexed") or "indexed"),
+            background_name=str(getattr(args, "bg", "") or ""),
+        )
         llm_manager.set_messages(messages)
 
     return ChatStartupContext(
