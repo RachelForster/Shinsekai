@@ -118,7 +118,7 @@ impl BackgroundState {
                 .map_err(|error| error.to_string())?;
             file.sync_all().map_err(|error| error.to_string())?;
             drop(file);
-            fs::rename(&temp, &self.path).map_err(|error| error.to_string())
+            crate::atomic_file::commit(&temp, &self.path).map_err(|error| error.to_string())
         })();
         if result.is_err() {
             let _ = fs::remove_file(&temp);
@@ -611,8 +611,13 @@ mod tests {
         saved.preferences.close_to_tray = true;
         saved.preferences.remember_close_action = true;
         saved.preferences.minimize_to_tray = true;
+        saved.last_delivered_date = Some(at("2026-09-12 23:45:00").date());
         state.persist(&saved).unwrap();
         let restored = BackgroundState::load(state.path.clone());
+        assert_eq!(
+            due_date(&restored.saved.lock().unwrap(), at("2026-09-12 23:45:15")),
+            None
+        );
         assert_eq!(
             restored.saved.lock().unwrap().preferences.bedtime_time,
             "23:45"
@@ -683,5 +688,22 @@ mod tests {
         assert!(state.remember_close_action(CloseAction::Exit).is_err());
         assert_eq!(state.remembered_close_action(), None);
         fs::remove_file(&dir).unwrap();
+    }
+
+    #[test]
+    fn failed_settings_replacement_cleans_temporary_file_and_keeps_memory_unchanged() {
+        let dir = std::env::temp_dir().join(format!(
+            "shinsekai-background-fail-{}",
+            random_index(usize::MAX).unwrap()
+        ));
+        let path = dir.join("background.json");
+        fs::create_dir_all(&path).unwrap();
+        let state = BackgroundState::load(path.clone());
+        assert!(state.remember_close_action(CloseAction::Exit).is_err());
+        assert_eq!(state.remembered_close_action(), None);
+        assert!(path.is_dir());
+        assert_eq!(fs::read_dir(&dir).unwrap().count(), 1);
+        fs::remove_dir(path).unwrap();
+        fs::remove_dir(dir).unwrap();
     }
 }

@@ -28,6 +28,7 @@ use std::os::unix::process::CommandExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+mod atomic_file;
 mod background;
 mod desktop_files;
 mod project_root;

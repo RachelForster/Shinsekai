@@ -21,7 +21,6 @@ use std::os::fd::AsRawFd;
 #[cfg(windows)]
 #[link(name = "kernel32")]
 unsafe extern "system" {
-    fn MoveFileExW(existing_file_name: *const u16, new_file_name: *const u16, flags: u32) -> i32;
     fn LockFileEx(
         file: *mut std::ffi::c_void,
         flags: u32,
@@ -56,10 +55,6 @@ unsafe extern "system" {
     ) -> i32;
 }
 
-#[cfg(windows)]
-const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
-#[cfg(windows)]
-const MOVEFILE_WRITE_THROUGH: u32 = 0x8;
 #[cfg(windows)]
 const LOCKFILE_EXCLUSIVE_LOCK: u32 = 0x2;
 #[cfg(windows)]
@@ -1143,15 +1138,12 @@ fn persist_locator(
         )? {
             return Ok(());
         }
-        atomic_replace_file(&temp_path, locator_path).map_err(|error| {
+        crate::atomic_file::commit(&temp_path, locator_path).map_err(|error| {
             format!(
                 "failed to atomically publish project root locator {}: {error}",
                 locator_path.display()
             )
         })?;
-        if let Ok(directory) = fs::File::open(parent) {
-            let _ = directory.sync_all();
-        }
         Ok(())
     })();
     let _ = fs::remove_file(&temp_path);
@@ -1269,33 +1261,6 @@ fn lock_locator_file(file: &fs::File) -> std::io::Result<()> {
             1,
             0,
             &mut overlapped,
-        )
-    };
-    if result == 0 {
-        Err(std::io::Error::last_os_error())
-    } else {
-        Ok(())
-    }
-}
-
-#[cfg(not(windows))]
-fn atomic_replace_file(source: &Path, destination: &Path) -> std::io::Result<()> {
-    fs::rename(source, destination)
-}
-
-#[cfg(windows)]
-fn atomic_replace_file(source: &Path, destination: &Path) -> std::io::Result<()> {
-    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
-    let destination: Vec<u16> = destination
-        .as_os_str()
-        .encode_wide()
-        .chain(Some(0))
-        .collect();
-    let result = unsafe {
-        MoveFileExW(
-            source.as_ptr(),
-            destination.as_ptr(),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
         )
     };
     if result == 0 {
