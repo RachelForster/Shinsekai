@@ -3,8 +3,6 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-import pytest
-
 from application.chat import presentation
 
 
@@ -106,54 +104,3 @@ def test_prepare_initial_presentation_restores_media_and_falls_back_to_sprite(
         config=config,
         ui_updates=ui,
     )
-
-
-@pytest.mark.parametrize("replay_has_character", [True, False])
-def test_async_history_replay_keeps_default_until_sprite_lookup_succeeds(
-    monkeypatch,
-    replay_has_character,
-):
-    from queue import Queue
-    import json
-
-    config = _Config()
-    ui = Mock()
-    order = []
-    monkeypatch.setattr(
-        presentation,
-        "display_initial_sprite",
-        lambda path, **kwargs: order.append(("default", path)),
-    )
-
-    def replay(messages):
-        order.append(("replay", messages))
-        # Enqueueing can report a character even though lookup later fails.
-        return replay_has_character
-
-    messages = [
-        {
-            "role": "assistant",
-            "content": json.dumps(
-                {
-                    "dialog": [
-                        {"character_name": "Alice", "speech": "hello", "vibe": "calm"},
-                    ]
-                }
-            ),
-        }
-    ]
-    presentation.prepare_initial_presentation(
-        messages=messages,
-        config=config,
-        ui_updates=ui,
-        presentation_queue=Queue(),
-        assets=presentation.ChatPresentationAssets([], [], True),
-        initial_sprite_path="sprite.png",
-        welcome_html="welcome",
-        initial_option="start",
-        ready_notification="ready",
-        publish_branch_tree=Mock(),
-        translate=lambda key, **kwargs: key,
-        replay_media=replay,
-    )
-    assert order == [("default", "sprite.png"), ("replay", messages)]

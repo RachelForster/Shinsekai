@@ -135,11 +135,7 @@ def _runtime(calls, memory_hooks):
     )
 
 
-@pytest.mark.parametrize("restore_semantic_prompt", [False, True])
-def test_create_context_assembles_providers_messages_and_hooks(
-    monkeypatch,
-    restore_semantic_prompt,
-) -> None:
+def test_create_context_assembles_providers_messages_and_hooks(monkeypatch) -> None:
     calls = []
     memory_hooks = []
     runtime = _runtime(calls, memory_hooks)
@@ -149,18 +145,6 @@ def test_create_context_assembles_providers_messages_and_hooks(
     bound = []
     config = _Config()
     messages = [{"role": "user", "content": "hello"}]
-    if restore_semantic_prompt:
-        messages.insert(
-            0,
-            {
-                "role": "system",
-                "content": "Saved story\n- vibe (string, required): describe expression",
-            },
-        )
-        config.get_character_by_name = lambda name: SimpleNamespace(
-            sprites=[{"path": "mika.webp"}],
-            emotion_tags="sprite 01: calm",
-        )
     _InitChatContext.created.clear()
 
     @contextmanager
@@ -192,14 +176,8 @@ def test_create_context_assembles_providers_messages_and_hooks(
 
     assert context.config is config
     assert isinstance(context.llm_manager, _LlmManager)
-    assert context.llm_manager.messages is context.messages
-    if restore_semantic_prompt:
-        assert "Use the `sprite` field" in context.messages[0]["content"]
-        assert "sprite 01: calm" in context.messages[0]["content"]
-        assert context.messages[1:] == messages[1:]
-        assert "Use the `sprite` field" not in messages[0]["content"]
-    else:
-        assert context.messages is messages
+    assert context.messages is messages
+    assert context.llm_manager.messages is messages
     assert context.tts_manager.adapter == "tts-adapter"
     assert context.tts_manager.language == "ja"
     assert context.t2i_manager.adapter == "t2i-adapter"

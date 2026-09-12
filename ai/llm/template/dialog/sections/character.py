@@ -7,30 +7,6 @@ from ...core import Section, TextSection
 from ..context import DialogTemplateContext
 
 
-def build_sprite_catalog_section(
-    context: DialogTemplateContext,
-) -> TextSection[DialogTemplateContext]:
-    return TextSection(
-        "sprites",
-        enabled=not context.uses_vibe,
-        text=context.translate("sprites_header"),
-        children=tuple(
-            TextSection(
-                f"sprite.{index}",
-                text=(
-                    context.translate(
-                        "sprites_count",
-                        name=name,
-                        n=len(getattr(character, "sprites", None) or []),
-                    )
-                    + f"{getattr(character, 'emotion_tags', '') or ''}\n\n"
-                ),
-            )
-            for index, (name, character) in enumerate(context.characters)
-        ),
-    )
-
-
 def _profile_node(
     index: int, name: str, character: Any
 ) -> TextSection[DialogTemplateContext]:
@@ -83,7 +59,25 @@ class CharacterSection(Section[DialogTemplateContext]):
                 if name not in primary_names
             )
         )
-        sprites = build_sprite_catalog_section(context)
+        sprites = TextSection(
+            "sprites",
+            enabled=not context.uses_vibe,
+            text=context.translate("sprites_header"),
+            children=tuple(
+                TextSection(
+                    f"sprite.{index}",
+                    text=(
+                        context.translate(
+                            "sprites_count",
+                            name=name,
+                            n=len(getattr(character, "sprites", None) or []),
+                        )
+                        + f"{getattr(character, 'emotion_tags', '') or ''}\n\n"
+                    ),
+                )
+                for index, (name, character) in enumerate(context.characters)
+            ),
+        )
         profiles = TextSection(
             "profiles",
             text=context.translate("profile_header"),
