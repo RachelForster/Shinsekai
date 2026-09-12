@@ -10,8 +10,10 @@ import {
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { reminderWindow } from "../../shared/desktop/remindersApi";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, Button, Switch, TextInput } from "../../shared/ui";
+import { AsyncButton, Button, Select, Switch, TextInput } from "../../shared/ui";
 import { backgroundCopy } from "../../shared/i18n/backgroundCopy";
+import { windowCloseCopy } from "../../shared/i18n/windowCloseCopy";
+import { closePreferenceChangedEvent } from "../../shared/desktop/windowCloseApi";
 
 export function DesktopBackgroundSection() {
   return isTauriDesktop() ? <BackgroundSettings /> : null;
@@ -20,6 +22,7 @@ export function DesktopBackgroundSection() {
 function BackgroundSettings() {
   const { language } = useI18n();
   const copy = backgroundCopy[language];
+  const closeCopy = windowCloseCopy[language];
   const [draft, setDraft] = useState<BackgroundPreferences | null>(null);
   const [trayAvailable, setTrayAvailable] = useState(false);
   const [busy, setBusy] = useState<"save" | "test" | null>(null);
@@ -44,6 +47,33 @@ function BackgroundSettings() {
       stopped = true;
     };
   }, [loadAttempt]);
+
+  useEffect(() => {
+    let stopped = false;
+    const refreshClosePreference = () => {
+      void getBackgroundPreferences()
+        .then((status) => {
+          if (stopped) return;
+          setDraft((current) =>
+            current
+              ? {
+                  ...current,
+                  closeToTray: status.preferences.closeToTray,
+                  rememberCloseAction: status.preferences.rememberCloseAction,
+                }
+              : current,
+          );
+        })
+        .catch((reason: unknown) => {
+          if (!stopped) setError(String(reason));
+        });
+    };
+    window.addEventListener(closePreferenceChangedEvent, refreshClosePreference);
+    return () => {
+      stopped = true;
+      window.removeEventListener(closePreferenceChangedEvent, refreshClosePreference);
+    };
+  }, []);
 
   const edit = (update: Partial<BackgroundPreferences>) => {
     setDraft((current) => (current ? { ...current, ...update } : current));
@@ -107,13 +137,28 @@ function BackgroundSettings() {
       {draft ? (
         <>
           <div className="desktop-background-settings__switches">
-            <Switch
-              checked={draft.closeToTray}
-              disabled={busy !== null || !trayAvailable}
-              onChange={(event) => edit({ closeToTray: event.target.checked })}
-            >
-              {copy.close}
-            </Switch>
+            <div className="field-row">
+              <label className="field-row__label-text" htmlFor="desktop-close-behavior">
+                {closeCopy.behavior}
+              </label>
+              <Select
+                id="desktop-close-behavior"
+                value={!draft.rememberCloseAction ? "ask" : draft.closeToTray ? "tray" : "exit"}
+                disabled={busy !== null}
+                onChange={(event) =>
+                  edit({
+                    rememberCloseAction: event.target.value !== "ask",
+                    closeToTray: event.target.value === "tray",
+                  })
+                }
+              >
+                <option value="ask">{closeCopy.ask}</option>
+                <option value="tray" disabled={!trayAvailable}>
+                  {closeCopy.tray}
+                </option>
+                <option value="exit">{closeCopy.exit}</option>
+              </Select>
+            </div>
             <Switch
               checked={draft.minimizeToTray}
               disabled={busy !== null || !trayAvailable}

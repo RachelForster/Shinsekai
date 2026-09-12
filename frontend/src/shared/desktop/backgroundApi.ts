@@ -2,6 +2,7 @@ import type { FrontendLanguage } from "../i18n/messages";
 
 export interface BackgroundPreferences {
   closeToTray: boolean;
+  rememberCloseAction: boolean;
   minimizeToTray: boolean;
   bedtimeEnabled: boolean;
   bedtimeTime: string;

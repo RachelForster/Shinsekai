@@ -1,0 +1,17 @@
+.desktop-close-dialog {
+  width: min(460px, calc(100vw - 32px));
+}
+
+.desktop-close-dialog__remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  cursor: pointer;
+}
+
+.desktop-close-dialog__remember input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-accent-primary);
+}

@@ -2,10 +2,9 @@ export const backgroundCopy = {
   zh_CN: {
     panel: "打开提醒面板",
     title: "托盘与睡觉提醒",
-    close: "关闭主窗口后驻留托盘",
     minimize: "最小化主窗口到托盘",
     trayHint: "从托盘打开主窗口，或选择「退出 Shinsekai」结束程序。聊天窗口保持原有关闭行为。",
-    unavailable: "当前系统托盘不可用，窗口将使用普通关闭和最小化行为。",
+    unavailable: "当前系统托盘不可用，无法驻留托盘。仍可选择每次询问或退出程序。",
     enabled: "每天提醒我睡觉",
     time: "提醒时间（本机时间）",
     reminderHint: "每次随机选择已有角色，使用本地晚安文案；没有角色时由 Shinsekai 提醒。",
@@ -23,11 +22,10 @@ export const backgroundCopy = {
   en: {
     panel: "Open reminder panel",
     title: "Tray & bedtime reminders",
-    close: "Keep running in the tray when the main window closes",
     minimize: "Minimize the main window to the tray",
     trayHint:
       "Open the main window from the tray, or choose “Quit Shinsekai” to exit. Closing chat windows keeps its existing behavior.",
-    unavailable: "The system tray is unavailable. Windows will close and minimize normally.",
+    unavailable: "The system tray is unavailable. Choose to ask each time or quit the app.",
     enabled: "Remind me to sleep every day",
     time: "Reminder time (local time)",
     reminderHint:
@@ -47,10 +45,9 @@ export const backgroundCopy = {
   ja: {
     panel: "通知パネルを開く",
     title: "トレイとおやすみ通知",
-    close: "メインウィンドウを閉じてもトレイに常駐する",
     minimize: "メインウィンドウをトレイに最小化する",
     trayHint: "トレイからメイン画面を開くか、「Shinsekai を終了」で終了できます。チャット画面の閉じ方は変わりません。",
-    unavailable: "システムトレイを利用できません。通常どおり閉じる・最小化の動作になります。",
+    unavailable: "システムトレイを利用できません。毎回確認するか、アプリを終了する設定を選べます。",
     enabled: "毎日おやすみ通知を送る",
     time: "通知時刻（端末の時刻）",
     reminderHint:

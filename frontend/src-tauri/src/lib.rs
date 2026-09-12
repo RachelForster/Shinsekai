@@ -404,6 +404,8 @@ pub fn run() {
             background::desktop_background_get,
             background::desktop_background_save,
             background::desktop_background_test,
+            background::desktop_window_close_status,
+            background::desktop_window_resolve_close,
             reminders::desktop_reminders_inbox,
             reminders::desktop_reminders_dismiss,
             reminders::desktop_reminders_window,
@@ -452,14 +454,9 @@ pub fn run() {
                     "main" => {
                         api.prevent_close();
                         let app = window.app_handle().clone();
-                        if app.state::<background::BackgroundState>().close_to_tray() {
-                            if let Err(error) = window.hide() {
-                                restart_debug_log(format!("close to tray failed: {error}"));
-                            }
-                            return;
+                        if let Err(error) = background::request_main_close(&app) {
+                            restart_debug_log(format!("main close request failed: {error}"));
                         }
-                        let state = app.state::<DesktopState>();
-                        shutdown_desktop_app(&app, state.inner(), "main window close requested");
                     }
                     "chat" => {
                         api.prevent_close();
@@ -1415,11 +1412,7 @@ fn desktop_window_close(
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
     if window.label() == "main" {
-        if app.state::<background::BackgroundState>().close_to_tray() {
-            return window.hide().map_err(|error| error.to_string());
-        }
-        shutdown_desktop_app(&app, state.inner(), "desktop_window_close command");
-        return Ok(());
+        return background::request_main_close(&app);
     }
     if window.label() == "chat" {
         request_bridge_chat_close(state.inner(), "desktop_window_close command");

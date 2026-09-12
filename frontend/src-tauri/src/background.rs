@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, State,
+    AppHandle, Emitter, Manager, State, WebviewWindow,
 };
 
 use crate::{restart_debug_log, shutdown_desktop_app, DesktopState};
@@ -25,6 +25,7 @@ use crate::{restart_debug_log, shutdown_desktop_app, DesktopState};
 #[serde(default, rename_all = "camelCase")]
 pub struct BackgroundPreferences {
     close_to_tray: bool,
+    remember_close_action: bool,
     minimize_to_tray: bool,
     bedtime_enabled: bool,
     bedtime_time: String,
@@ -35,6 +36,7 @@ impl Default for BackgroundPreferences {
     fn default() -> Self {
         Self {
             close_to_tray: false,
+            remember_close_action: false,
             minimize_to_tray: false,
             bedtime_enabled: false,
             bedtime_time: "23:00".into(),
@@ -64,6 +66,7 @@ pub struct BackgroundState {
     path: PathBuf,
     saved: Mutex<SavedBackground>,
     tray_available: AtomicBool,
+    close_requested: AtomicBool,
 }
 
 #[derive(Serialize)]
@@ -96,6 +99,7 @@ impl BackgroundState {
             path,
             saved: Mutex::new(saved),
             tray_available: AtomicBool::new(false),
+            close_requested: AtomicBool::new(false),
         }
     }
 
@@ -122,13 +126,31 @@ impl BackgroundState {
         result
     }
 
-    pub fn close_to_tray(&self) -> bool {
-        self.tray_available.load(Ordering::Relaxed)
-            && self
-                .saved
-                .lock()
-                .map(|s| s.preferences.close_to_tray)
-                .unwrap_or(false)
+    fn remembered_close_action(&self) -> Option<CloseAction> {
+        let saved = self.saved.lock().ok()?;
+        if !saved.preferences.remember_close_action {
+            return None;
+        }
+        if saved.preferences.close_to_tray {
+            self.tray_available
+                .load(Ordering::Relaxed)
+                .then_some(CloseAction::Tray)
+        } else {
+            Some(CloseAction::Exit)
+        }
+    }
+
+    fn remember_close_action(&self, action: CloseAction) -> Result<(), String> {
+        if action == CloseAction::Cancel {
+            return Ok(());
+        }
+        let mut saved = self.saved.lock().map_err(|error| error.to_string())?;
+        let mut updated = saved.clone();
+        updated.preferences.remember_close_action = true;
+        updated.preferences.close_to_tray = action == CloseAction::Tray;
+        self.persist(&updated)?;
+        *saved = updated;
+        Ok(())
     }
 
     pub fn minimize_to_tray(&self) -> bool {
@@ -139,6 +161,94 @@ impl BackgroundState {
                 .map(|s| s.preferences.minimize_to_tray)
                 .unwrap_or(false)
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum CloseAction {
+    Exit,
+    Tray,
+    Cancel,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloseRequestStatus {
+    requested: bool,
+    tray_available: bool,
+}
+
+#[tauri::command]
+pub fn desktop_window_close_status(
+    window: WebviewWindow,
+    state: State<'_, BackgroundState>,
+) -> CloseRequestStatus {
+    CloseRequestStatus {
+        requested: window.label() == "main" && state.close_requested.load(Ordering::Relaxed),
+        tray_available: state.tray_available.load(Ordering::Relaxed),
+    }
+}
+
+/// Both the title-bar command and native close events share this entry point.
+pub fn request_main_close(app: &AppHandle) -> Result<(), String> {
+    let state = app.state::<BackgroundState>();
+    if let Some(action) = state.remembered_close_action() {
+        return finish_main_close(app, action);
+    }
+    // Keep a pending request so closing during WebView startup is not lost.
+    state.close_requested.store(true, Ordering::Relaxed);
+    let window = app
+        .get_webview_window("main")
+        .ok_or("Main window is unavailable")?;
+    window
+        .emit_to(
+            "main",
+            "shinsekai:close-requested",
+            CloseRequestStatus {
+                requested: true,
+                tray_available: state.tray_available.load(Ordering::Relaxed),
+            },
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn finish_main_close(app: &AppHandle, action: CloseAction) -> Result<(), String> {
+    match action {
+        CloseAction::Tray => app
+            .get_webview_window("main")
+            .ok_or("Main window is unavailable")?
+            .hide()
+            .map_err(|error| error.to_string())?,
+        CloseAction::Exit => {
+            let desktop = app.state::<DesktopState>();
+            shutdown_desktop_app(app, desktop.inner(), "main window close confirmed");
+        }
+        CloseAction::Cancel => {}
+    }
+    app.state::<BackgroundState>()
+        .close_requested
+        .store(false, Ordering::Relaxed);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn desktop_window_resolve_close(
+    window: WebviewWindow,
+    app: AppHandle,
+    state: State<'_, BackgroundState>,
+    action: CloseAction,
+    remember: bool,
+) -> Result<(), String> {
+    if window.label() != "main" || !state.close_requested.load(Ordering::Relaxed) {
+        return Err("No pending main-window close request".into());
+    }
+    if action == CloseAction::Tray && !state.tray_available.load(Ordering::Relaxed) {
+        return Err("System tray is unavailable".into());
+    }
+    if remember {
+        state.remember_close_action(action)?;
+    }
+    finish_main_close(&app, action)
 }
 
 #[tauri::command]
@@ -497,6 +607,7 @@ mod tests {
         state.persist(&enabled("22:30")).unwrap();
         let mut saved = enabled("23:45");
         saved.preferences.close_to_tray = true;
+        saved.preferences.remember_close_action = true;
         saved.preferences.minimize_to_tray = true;
         state.persist(&saved).unwrap();
         let restored = BackgroundState::load(state.path.clone());
@@ -504,12 +615,71 @@ mod tests {
             restored.saved.lock().unwrap().preferences.bedtime_time,
             "23:45"
         );
-        assert!(!restored.close_to_tray());
+        assert_eq!(restored.remembered_close_action(), None);
         assert!(!restored.minimize_to_tray());
         restored.tray_available.store(true, Ordering::Relaxed);
-        assert!(restored.close_to_tray());
+        assert_eq!(restored.remembered_close_action(), Some(CloseAction::Tray));
         assert!(restored.minimize_to_tray());
         fs::remove_file(&state.path).unwrap();
         fs::remove_dir(&dir).unwrap();
+    }
+
+    #[test]
+    fn close_defaults_ask_and_legacy_preferences_do_not_imply_remembering() {
+        let legacy: SavedBackground =
+            serde_json::from_str(r#"{"preferences":{"closeToTray":true,"bedtimeEnabled":true}}"#)
+                .unwrap();
+        assert!(!legacy.preferences.remember_close_action);
+        assert!(legacy.preferences.bedtime_enabled);
+        let state = BackgroundState::load(PathBuf::new());
+        assert_eq!(state.remembered_close_action(), None);
+        assert!(!state.close_requested.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn remembered_exit_and_tray_can_be_reset_without_touching_reminders() {
+        let dir = std::env::temp_dir().join(format!(
+            "shinsekai-close-{}",
+            random_index(usize::MAX).unwrap()
+        ));
+        let state = BackgroundState::load(dir.join("background.json"));
+        *state.saved.lock().unwrap() = enabled("22:30");
+        state.remember_close_action(CloseAction::Cancel).unwrap();
+        assert!(!state.path.exists());
+        state.remember_close_action(CloseAction::Exit).unwrap();
+        assert_eq!(
+            BackgroundState::load(state.path.clone()).remembered_close_action(),
+            Some(CloseAction::Exit)
+        );
+        state.remember_close_action(CloseAction::Tray).unwrap();
+        assert_eq!(state.remembered_close_action(), None); // Tray unavailable: ask again.
+        state.tray_available.store(true, Ordering::Relaxed);
+        assert_eq!(state.remembered_close_action(), Some(CloseAction::Tray));
+        {
+            let mut saved = state.saved.lock().unwrap();
+            assert!(saved.preferences.bedtime_enabled);
+            assert_eq!(saved.preferences.bedtime_time, "22:30");
+            saved.preferences.remember_close_action = false;
+            state.persist(&saved).unwrap();
+        }
+        assert_eq!(
+            BackgroundState::load(state.path.clone()).remembered_close_action(),
+            None
+        );
+        fs::remove_file(&state.path).unwrap();
+        fs::remove_dir(&dir).unwrap();
+    }
+
+    #[test]
+    fn failed_choice_save_keeps_asking() {
+        let dir = std::env::temp_dir().join(format!(
+            "shinsekai-close-fail-{}",
+            random_index(usize::MAX).unwrap()
+        ));
+        fs::write(&dir, "not a directory").unwrap();
+        let state = BackgroundState::load(dir.join("background.json"));
+        assert!(state.remember_close_action(CloseAction::Exit).is_err());
+        assert_eq!(state.remembered_close_action(), None);
+        fs::remove_file(&dir).unwrap();
     }
 }
