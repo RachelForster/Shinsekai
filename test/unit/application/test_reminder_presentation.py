@@ -1,7 +1,11 @@
 import json
+import threading
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import pytest
 
@@ -210,6 +214,43 @@ def configure_tts(monkeypatch):
     return adapter
 
 
+@pytest.mark.parametrize("byte_range", [None, "bytes=0-3"])
+def test_reminder_audio_is_readable_through_authenticated_media_endpoint(
+    presenter, tmp_path, monkeypatch, byte_range
+):
+    from frontend_bridge_core.routes.api import FrontendBridgeHandler
+
+    configure_tts(monkeypatch)
+    result = presenter.speech({"dialog": dialog()})
+    # The desktop bridge serves project-relative media without registering it
+    # in a chat session's external-media allowlist.
+    monkeypatch.chdir(tmp_path)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), FrontendBridgeHandler)
+    server.state = SimpleNamespace(auth_token="reminder-test-token")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        query = urlencode(
+            {
+                "path": result["audio_path"],
+                "shinsekai_bridge_token": server.state.auth_token,
+            }
+        )
+        request = Request(f"http://127.0.0.1:{server.server_port}/api/media?{query}")
+        if byte_range:
+            request.add_header("Range", byte_range)
+        with urlopen(request, timeout=5) as response:
+            assert response.status == (206 if byte_range else 200)
+            assert response.headers.get_content_type() in {"audio/wav", "audio/x-wav"}
+            assert response.read() == (b"RIFF" if byte_range else b"RIFF-test-audio")
+            if byte_range:
+                assert response.headers["Content-Range"] == "bytes 0-3/15"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
 def test_shared_tts_uses_translate_cleanup_pronunciation_and_unique_audio(
     presenter, monkeypatch
 ):
@@ -221,7 +262,10 @@ def test_shared_tts_uses_translate_cleanup_pronunciation_and_unique_audio(
     payload = {"dialog": dialog(translate="（笑）澪、水を飲んで。")}
     first, second = presenter.speech(payload), presenter.speech(payload)
     assert first["audio_path"] != second["audio_path"]
-    assert Path(first["audio_path"]).read_bytes() == b"RIFF-test-audio"
+    assert not Path(first["audio_path"]).is_absolute()
+    assert (
+        (presenter.project_root / first["audio_path"]).read_bytes() == b"RIFF-test-audio"
+    )
     assert first["audio_volume"] == 0.7
     args = adapter.generate_speech.call_args.kwargs
     assert args["text"] == "ミオ、水を飲んで。"

@@ -17,7 +17,8 @@ class ReminderPresenter:
     def __init__(self, config, project_root):
         self.config = config
         self.workflow = ReminderDialogWorkflow(config)
-        self.audio_dir = Path(project_root).resolve() / "cache" / "reminder_audio"
+        self.project_root = Path(project_root).resolve()
+        self.audio_dir = self.project_root / "cache" / "reminder_audio"
         self._slots = threading.BoundedSemaphore(1)
         self._tts_manager = None
         self._tts_signature = None
@@ -168,7 +169,11 @@ class ReminderPresenter:
             if old.stat().st_mtime < time.time() - 7 * 86400:
                 old.unlink(missing_ok=True)
         return {
-            "audio_path": Path(paths[0]).as_posix(),
+            # /api/media serves project-relative files; absolute paths require
+            # external-media approval that reminders do not register.
+            "audio_path": (
+                Path(paths[0]).resolve().relative_to(self.project_root).as_posix()
+            ),
             "audio_volume": min(1.0, max(0.0, character.speech_volume)),
         }
 
@@ -176,4 +181,4 @@ class ReminderPresenter:
         value = str(value or "")
         if not value or Path(value).is_absolute() or value.startswith("/"):
             return value
-        return (self.audio_dir.parent.parent / value).resolve().as_posix()
+        return (self.project_root / value).resolve().as_posix()
