@@ -129,3 +129,66 @@ def test_long_offline_does_not_flood_and_keeps_recurring_schedule(scheduler):
     items = store.manage("list")["reminders"]
     assert {item["status"] for item in items} == {"active", "missed"}
     assert datetime.fromisoformat(next(item for item in items if item["status"] == "active")["due_at"]).timestamp() > clock[0]
+
+
+def test_random_character_is_selected_per_occurrence_without_rewriting_schedule(scheduler):
+    store, clock = scheduler
+    item = store.manage("create", ["澪"], character_name="*", title="休息", message="休息一下",
+                        delay_minutes="1", recurrence="daily")["reminder"]
+    clock[0] += 60
+    assert store.claim(character_names=[]) == []
+    first = store.claim(character_names=["澪"])[0]
+    assert first["character_name"] == "澪"
+    assert store.acknowledge(item["id"], first["claim_token"])["ok"]
+    saved = store.manage("list")["reminders"][0]
+    assert saved["character_name"] == "*"
+    clock[0] = datetime.fromisoformat(saved["due_at"]).timestamp()
+    assert store.claim(character_names=["新角色"])[0]["character_name"] == "新角色"
+
+
+def test_delete_removes_schedule_and_invalidates_claim(scheduler):
+    store, clock = scheduler
+    item = create(store)
+    clock[0] += 600
+    claim = store.claim()[0]
+    assert store.manage("delete", reminder_id=item["id"])["ok"]
+    assert not store.acknowledge(item["id"], claim["claim_token"])["ok"]
+    assert store.manage("list")["reminders"] == []
+
+
+def test_random_schedule_rejects_an_empty_character_library(scheduler):
+    store, _ = scheduler
+    with pytest.raises(ValueError, match="at least one"):
+        store.manage("create", [], character_name="*", title="休息", message="休息一下", delay_minutes="1")
+
+
+def test_legacy_migration_is_idempotent_even_after_deletion(scheduler):
+    from application.reminders.migration import migrate_bedtime
+
+    store, _ = scheduler
+    payload = dict(bedtime_time="23:00", title="睡觉", message="晚安")
+    assert migrate_bedtime(store, **payload)["ok"]
+    assert migrate_bedtime(store, **payload)["ok"]
+    items = store.manage("list")["reminders"]
+    assert len(items) == 1
+    assert items[0]["character_name"] == "*"
+    assert items[0]["recurrence"] == "daily"
+    store.manage("delete", reminder_id=items[0]["id"])
+    assert migrate_bedtime(store, **payload)["ok"]
+    assert store.manage("list")["reminders"] == []
+
+
+@pytest.mark.parametrize("now,last,expected", [
+    ("2026-09-12T23:55:00", None, "2026-09-12T23:50:00"),
+    ("2026-09-13T00:10:00", None, "2026-09-12T23:50:00"),
+    ("2026-09-13T00:10:00", "2026-09-12", "2026-09-13T23:50:00"),
+    ("2026-09-13T01:10:00", None, "2026-09-13T23:50:00"),
+])
+def test_migration_preserves_grace_window_and_last_delivery(scheduler, now, last, expected):
+    from application.reminders.migration import migrate_bedtime
+
+    store, clock = scheduler
+    clock[0] = datetime.fromisoformat(now).timestamp()
+    migrate_bedtime(store, bedtime_time="23:50", last_delivered_date=last, title="睡觉", message="晚安")
+    item = store.manage("list")["reminders"][0]
+    assert datetime.fromisoformat(item["due_at"]).timestamp() == datetime.fromisoformat(expected).timestamp()

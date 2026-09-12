@@ -1,5 +1,6 @@
 from application.reminders import ReminderStore
 from application.reminders.presentation import ReminderPresenter
+from application.reminders.migration import migrate_bedtime
 from frontend_bridge_core.routes.router import ApiRequest, BodyKind, JsonResponse, Route
 
 
@@ -36,7 +37,9 @@ def _manage(request: ApiRequest):
 
 
 def _claim(request: ApiRequest):
-    return JsonResponse(_store(request).claim())
+    return JsonResponse(_store(request).claim(
+        character_names=[character.name for character in request.state.config_manager.config.characters]
+    ))
 
 
 def _ack(request: ApiRequest):
@@ -45,6 +48,13 @@ def _ack(request: ApiRequest):
             request.body.get("reminder_id", ""), request.body.get("claim_token", "")
         )
     )
+
+
+def _migrate_bedtime(request: ApiRequest):
+    required = {"bedtime_time", "title", "message"}
+    if not required <= request.body.keys() or request.body.keys() - required - {"last_delivered_date"}:
+        raise ValueError("Invalid bedtime migration fields")
+    return JsonResponse(migrate_bedtime(_store(request), **request.body))
 
 
 def _presenter(request):
@@ -69,6 +79,7 @@ REMINDER_ROUTES = (
     Route(frozenset({"POST"}), "/api/reminders", _manage, name="reminders.manage"),
     Route(frozenset({"POST"}), "/api/reminders/claim", _claim, name="reminders.claim"),
     Route(frozenset({"POST"}), "/api/reminders/ack", _ack, name="reminders.ack"),
+    Route(frozenset({"POST"}), "/api/reminders/migrate-bedtime", _migrate_bedtime, name="reminders.migrate"),
     Route(
         frozenset({"POST"}),
         "/api/reminders/presentation",

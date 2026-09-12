@@ -2,6 +2,7 @@
 
 import math
 import os
+import random
 import sqlite3
 import time
 import uuid
@@ -88,20 +89,23 @@ class ReminderStore:
         now = self.clock()
         if action == "list":
             with self.connect() as db:
-                rows = db.execute("SELECT * FROM reminders ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, due_at LIMIT 200").fetchall()
+                rows = db.execute("SELECT * FROM reminders ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, due_at").fetchall()
                 heartbeat = db.execute("SELECT seen_at FROM heartbeat WHERE id=1").fetchone()
             return {"ok": True, "now": datetime.fromtimestamp(now).astimezone().isoformat(timespec="seconds"),
                     "desktop_connected": bool(heartbeat and 0 <= now - heartbeat[0] < 60),
                     "reminders": [self.public(row) for row in rows],
                     "delivery_note": "Desktop app must stay running. Reminders over 30 minutes late are missed; recurring schedules advance to the next occurrence."}
-        if action not in {"create", "update", "cancel"}:
-            raise ValueError("action must be list, create, update or cancel")
+        if action not in {"create", "update", "cancel", "delete"}:
+            raise ValueError("action must be list, create, update, cancel or delete")
         with self.connect() as db:
             old = None
             if action != "create":
                 old = db.execute("SELECT * FROM reminders WHERE id=?", (reminder_id,)).fetchone()
                 if not old:
                     raise ValueError("Reminder not found")
+                if action == "delete":
+                    db.execute("DELETE FROM reminders WHERE id=?", (reminder_id,))
+                    return {"ok": True}
                 if action == "cancel":
                     db.execute("UPDATE reminders SET status='cancelled', claim_token=NULL, claim_until=0, updated_at=? WHERE id=?", (now, reminder_id))
                     return {"ok": True, "reminder": self.public(db.execute("SELECT * FROM reminders WHERE id=?", (reminder_id,)).fetchone())}
@@ -111,8 +115,11 @@ class ReminderStore:
             for key, value, limit in [("character_name", character_name, 120), ("title", title, 120), ("message", message, 2000)]:
                 if value or not old:
                     values[key] = self.text(value, key, limit)
-            if values["character_name"] not in character_names:
-                raise ValueError("Unknown character_name; use an existing character's exact name")
+            if values["character_name"] == "*":
+                if not character_names:
+                    raise ValueError("Random reminders require at least one configured character")
+            elif values["character_name"] not in character_names:
+                raise ValueError("Unknown character_name; use an existing character's exact name or * for random")
             if recurrence:
                 values["recurrence"] = recurrence
             if values["recurrence"] not in {"once", "daily", "weekly"}:
@@ -139,7 +146,7 @@ class ReminderStore:
             candidate += timedelta(days=days)
         return candidate.timestamp()
 
-    def claim(self):
+    def claim(self, character_names=()):
         now = self.clock()
         result = []
         with self.connect() as db:
@@ -154,9 +161,14 @@ class ReminderStore:
                     continue
                 if len(result) >= 5:
                     break
+                character_name = row["character_name"]
+                if character_name == "*":
+                    if not character_names:
+                        continue
+                    character_name = random.choice(character_names)
                 token = uuid.uuid4().hex
                 db.execute("UPDATE reminders SET claim_token=?,claim_until=? WHERE id=?", (token, now + 60, row["id"]))
-                result.append({**self.public(row), "claim_token": token})
+                result.append({**self.public(row), "character_name": character_name, "claim_token": token})
         return result
 
     def acknowledge(self, reminder_id, claim_token):
