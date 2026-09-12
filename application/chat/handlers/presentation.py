@@ -234,6 +234,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                     color,
                     is_system=False,
                 )
+        if not is_continuation or str(effect or "").strip():
             ui.resolve_effect(
                 effect=effect, args={"character_name": character_name}, after_dialog=False
             )

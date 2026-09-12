@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 from queue import Queue
@@ -8,6 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+
+from core.media.effect_image import ImageEffectAsset
 
 from application.runtime.context import AppRuntime, get_app_runtime, set_app_runtime
 from application.runtime.workers import (
@@ -123,7 +126,10 @@ def test_workers_keep_original_queue_attributes_and_bind_ports() -> None:
     assert dialog_media_worker.dialog_queue is dialog_queue
     assert dialog_media_worker.presentation_queue is presentation_queue
     assert dialog_media_worker.inq(DialogMediaWorker.PORT_DIALOG) is dialog_queue
-    assert dialog_media_worker.outq(DialogMediaWorker.PORT_PRESENTATION) is presentation_queue
+    assert (
+        dialog_media_worker.outq(DialogMediaWorker.PORT_PRESENTATION)
+        is presentation_queue
+    )
 
     assert ui_worker.presentation_queue is presentation_queue
     assert ui_worker.inq(PresentationWorker.PORT_PRESENTATION) is presentation_queue
@@ -164,6 +170,39 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
         user_attachments=[],
         user_input_text="hello",
     )
+
+
+@pytest.mark.parametrize("effect", ["", "笔记本", "after:笔记本"])
+@pytest.mark.parametrize(
+    "user_text", ["（拿起笔记本）", "我拿起杯子，笔记本还锁在柜子里。"]
+)
+def test_llm_worker_preserves_model_effect_decisions(effect, user_text) -> None:
+    user_input_queue = CountingQueue()
+    dialog_queue = CountingQueue()
+    user_input_queue.put(UserInputMessage(text=user_text))
+    user_input_queue.put(None)
+
+    runtime = _make_app_runtime(dialog_queue=dialog_queue)
+    runtime.effect_image_keyword_map = {
+        "笔记本": ImageEffectAsset("data/effects/custom/item.png"),
+        "笔记": ImageEffectAsset("data/effects/custom/item.png"),
+        "笔记本，笔记": ImageEffectAsset("data/effects/custom/item.png"),
+    }
+    runtime.config.config.api_config.is_streaming = False
+    runtime.llm_manager.chat.return_value = (
+        '{"dialog":['
+        '{"character_name":"旁白","speech":"她看向笔记本的位置。","sprite":"-1",'
+        f'"effect":{json.dumps(effect)}}},'
+        '{"character_name":"Alice","speech":"看看里面吧。","sprite":"01"}'
+        "]}"
+    )
+
+    LLMWorker(user_input_queue, dialog_queue).run()
+
+    first = dialog_queue.get_nowait()
+    second = dialog_queue.get_nowait()
+    assert first.effect == effect
+    assert second.effect == ""
 
 
 def test_llm_worker_reads_background_each_send_and_keeps_user_display_text() -> None:
@@ -231,7 +270,9 @@ def test_llm_worker_appends_repaired_suffix_with_turn_identity() -> None:
     }
 
 
-def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_path) -> None:
+def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(
+    tmp_path,
+) -> None:
     image = tmp_path / "scene.png"
     image.write_bytes(b"image")
     document = tmp_path / "notes.txt"
@@ -266,9 +307,14 @@ def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(tmp_
     assert runtime.llm_manager.chat.call_args.kwargs["user_display_text"] == (
         "Inspect these\n[image: scene.png] [file: notes.txt]"
     )
-    assert runtime.llm_manager.chat.call_args.kwargs["user_input_text"] == "Inspect these"
+    assert (
+        runtime.llm_manager.chat.call_args.kwargs["user_input_text"] == "Inspect these"
+    )
     assert runtime.llm_manager.chat.call_args.kwargs["dialog_output_required"] is True
-    assert [item["kind"] for item in runtime.llm_manager.chat.call_args.kwargs["user_attachments"]] == [
+    assert [
+        item["kind"]
+        for item in runtime.llm_manager.chat.call_args.kwargs["user_attachments"]
+    ] == [
         "image",
         "file",
     ]
@@ -283,7 +329,9 @@ def test_dialog_media_worker_exception_path_emits_fallback(
 ) -> None:
     dialog_queue = CountingQueue()
     presentation_queue = CountingQueue()
-    dialog_queue.put(LLMDialogMessage(name="Alice", text="broken", asset_id="2", effect="shake"))
+    dialog_queue.put(
+        LLMDialogMessage(name="Alice", text="broken", asset_id="2", effect="shake")
+    )
     dialog_queue.put(None)
     _make_app_runtime(dialog_queue=dialog_queue, presentation_queue=presentation_queue)
 
@@ -321,10 +369,14 @@ def test_dialog_media_worker_start_clears_previous_cancel_state(monkeypatch) -> 
     assert starts == [worker]
 
 
-def test_dialog_media_worker_drops_message_scoped_to_interrupted_turn(monkeypatch) -> None:
+def test_dialog_media_worker_drops_message_scoped_to_interrupted_turn(
+    monkeypatch,
+) -> None:
     dialog_queue = CountingQueue()
     presentation_queue = CountingQueue()
-    runtime = _make_app_runtime(dialog_queue=dialog_queue, presentation_queue=presentation_queue)
+    runtime = _make_app_runtime(
+        dialog_queue=dialog_queue, presentation_queue=presentation_queue
+    )
     interrupted_turn = runtime.chat_turn_service.begin_turn()
     runtime.chat_turn_service.interrupt()
     current_turn = runtime.chat_turn_service.begin_turn()
@@ -474,7 +526,9 @@ def test_ui_worker_does_not_finish_while_tts_work_is_still_inflight() -> None:
     runtime = _make_app_runtime(ui_manager=ui_manager)
     turn = runtime.chat_turn_service.begin_turn()
     runtime.chat_turn_service.mark_generation_complete(turn)
-    runtime.dialog_queue.put(LLMDialogMessage(name="NARR", text="pending", asset_id="-1"))
+    runtime.dialog_queue.put(
+        LLMDialogMessage(name="NARR", text="pending", asset_id="-1")
+    )
     worker = PresentationWorker(runtime.presentation_queue)
     worker.ui_update_manager = ui_manager
     worker.dialog_channel = MagicMock()
@@ -554,7 +608,9 @@ def test_ui_worker_skip_speech_stops_active_audio_and_emits_tts_skip() -> None:
     assert worker.task_done_requested.set_calls == 1
 
 
-def test_ui_worker_skip_speech_advances_waiting_dialog_without_emitting_tts_skip() -> None:
+def test_ui_worker_skip_speech_advances_waiting_dialog_without_emitting_tts_skip() -> (
+    None
+):
     presentation_queue = Queue()
     runtime = _make_app_runtime(presentation_queue=presentation_queue)
     worker = PresentationWorker(presentation_queue)

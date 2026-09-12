@@ -9,8 +9,9 @@ function extractTagContent(line: string) {
   return index >= 0 ? line.slice(index + 1).trim() : line.trim();
 }
 
-export function tagContents(block: string, count: number) {
-  const lines = block.split(/\r?\n/).filter(Boolean);
+export function tagContents(block: string, count: number, preserveBlankLines = false) {
+  const rawLines = block.split(/\r?\n/);
+  const lines = preserveBlankLines ? rawLines : rawLines.filter(Boolean);
   return Array.from({ length: count }, (_, index) => extractTagContent(lines[index] ?? ""));
 }
 

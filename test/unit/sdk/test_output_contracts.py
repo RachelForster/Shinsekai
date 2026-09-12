@@ -6,6 +6,7 @@ import pytest
 
 from core.messaging.dialog_tokens import BGM, SCENE
 from ai.llm.template_generator import DEFAULT_DIALOG_CONTRACT_ID, NoValidCharactersError, TemplateGenerator
+from i18n import tr_in_bundle
 from sdk.register import PluginCapabilityRegistry
 from sdk.types import (
     ChatOutputContract,
@@ -168,6 +169,54 @@ def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
 
     assert warning == ""
     assert template.endswith("Begin the scene.\nMUST_USE_REQUIRED_JSON_FORMAT\n")
+
+
+def test_template_generator_preserves_effect_toggle_and_field_contract(monkeypatch) -> None:
+    character = SimpleNamespace(
+        sprites=[object()],
+        emotion_tags="happy: 01",
+        character_setting="A test character.",
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator.config_manager",
+        SimpleNamespace(get_character_by_name=lambda _name: character),
+    )
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **_kwargs: f"<{key}>\n",
+    )
+    generator = TemplateGenerator(output_contract_patches=[])
+
+    disabled, _ = generator.generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=False,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+    enabled, _ = generator.generate_chat_template(
+        selected_characters=["Alice"],
+        bg_name=None,
+        use_effect=True,
+        use_cg=False,
+        use_llm_translation=False,
+    )
+
+    for marker in ("<json_line_effect>", "<r_effect>"):
+        assert marker not in disabled
+        assert marker in enabled
+    for template in (disabled, enabled):
+        assert "<effects_header>" not in template
+        assert "Output field contract" in template
+
+
+def test_effect_requirement_retains_audio_modes_and_image_aliases() -> None:
+    requirement = tr_in_bundle("template_gen.r_effect", "zh_CN")
+
+    assert "同行逗号分隔项为别名" in requirement
+    assert "不用于图片" in requirement
+    for prefix in ("before:", "after:", "loop:", "stop:"):
+        assert prefix in requirement
 
 
 def test_template_generator_skips_characters_missing_from_restored_selection(

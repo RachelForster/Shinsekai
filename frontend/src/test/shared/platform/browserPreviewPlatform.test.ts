@@ -942,3 +942,24 @@ describe("browser preview platform chat themes", () => {
     expect(resumed.historyPath).toBe(launched.historyPath);
   });
 });
+
+it("deletes image rows in preview without shifting tags across blank lines", async () => {
+  vi.useFakeTimers();
+  try {
+    const platform = createBrowserPreviewPlatform();
+    const effect = {
+      ...sampleConfig.effect_list[0],
+      name: "Aligned",
+      image_list: ["a.png", "b.png", "c.png"],
+      image_tags: "Image 1: first\n\nImage 3: third\n",
+      image_audio_list: ["a.wav", "", "c.wav"],
+    };
+    await resolvePreview(platform.effects.save(effect));
+    const result = await resolvePreview(platform.effects.deleteImage("Aligned", 0));
+    expect(result.image_list).toEqual(["b.png", "c.png"]);
+    expect(result.image_tags).toBe("图片 1：\n图片 2：third\n");
+    expect(result.image_audio_list).toEqual(["", "c.wav"]);
+  } finally {
+    vi.useRealTimers();
+  }
+});

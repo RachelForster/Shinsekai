@@ -170,6 +170,65 @@ def test_generate_template_summary_uses_full_primary_profile_and_supporting_brie
     assert "sprite (string, required)" not in summary["system"]
 
 
+def test_generated_template_keeps_effect_rules_independent_of_runtime_selection(monkeypatch):
+    character = SimpleNamespace(
+        name="Alice",
+        sprites=[],
+        emotion_tags="",
+        character_setting="Alice profile",
+    )
+    effect = SimpleNamespace(
+        name="Items",
+        audio_tags="特效 1：rain\n",
+        audio_list=["rain.wav"],
+        image_tags="图片 1：letter\n",
+        image_list=["letter.png"],
+        image_audio_list=[],
+    )
+    config_manager = SimpleNamespace(
+        get_character_by_name=lambda _name: character,
+        list_effects=lambda: [effect],
+    )
+    monkeypatch.setattr("ai.llm.template_generator.config_manager", config_manager)
+    monkeypatch.setattr(
+        "ai.llm.template_generator._T",
+        lambda key, **_kwargs: f"<{key}>\n",
+    )
+    state = SimpleNamespace(
+        config_manager=config_manager,
+        template_generator=TemplateGenerator(output_contract_patches=[]),
+    )
+
+    selected = _generate_template_summary(
+        state,
+        {
+            "backgroundName": "",
+            "characters": ["Alice"],
+            "effectNames": ["Items", "Missing"],
+            "useEffect": True,
+            "useTranslation": False,
+        },
+    )
+    unselected = _generate_template_summary(
+        state,
+        {
+            "backgroundName": "",
+            "characters": ["Alice"],
+            "effectNames": [],
+            "useEffect": True,
+            "useTranslation": False,
+        },
+    )
+
+    assert "- rain\n- letter" not in selected["system"]
+    assert selected["system"] == unselected["system"]
+    assert "<json_line_effect>" in selected["system"]
+    assert "<r_effect>" in selected["system"]
+    assert "<effects_header>" not in unselected["system"]
+    assert "<json_line_effect>" in unselected["system"]
+    assert "<r_effect>" in unselected["system"]
+
+
 def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
     config_manager = SimpleNamespace(get_character_by_name=lambda _name: None)
     monkeypatch.setattr(
@@ -414,3 +473,29 @@ def test_safe_session_int_and_untranslated_key_detection():
     assert _safe_session_int("bad", default=9) == 9
     assert _has_untranslated_template_keys("template_gen.foo") is True
     assert _has_untranslated_template_keys("normal", None) is False
+
+
+def test_runtime_catalog_projects_types_and_does_not_modify_authored_template(monkeypatch):
+    from application.chat.build_effect_context import SelectedEffectContext
+    from core.media.effect_image import ImageEffectAsset
+
+    monkeypatch.setattr("application.chat.templates.json_format_reminder", lambda: "REMINDER")
+    monkeypatch.setattr("application.chat.templates.translate_template", lambda key: key)
+    selected = SelectedEffectContext(
+        selected_names=("Items",), labels=("rain", "letter", "key"),
+        keyword_map={"rain": "rain.wav"},
+        image_keyword_map={
+            "letter": ImageEffectAsset("letter.png"),
+            "key": ImageEffectAsset("key.png", "key.wav"),
+        },
+    )
+    authored = 'Rules {literal}\n- camera: plugin contract'
+    result = _compose_runtime_template(authored, "SCENARIO", selected)
+    assert result == (
+        authored + "\n\neffects_header"
+        "\n- rain [effect_type_audio; before, after, loop, stop]"
+        "\n- letter [effect_type_image; before, after]"
+        "\n- key [effect_type_image_audio; before, after]"
+        "\nSCENARIO\nREMINDER\n"
+    )
+    assert _compose_runtime_template(authored, "SCENARIO") == authored + "\nSCENARIO\nREMINDER\n"

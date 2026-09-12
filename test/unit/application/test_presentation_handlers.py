@@ -152,6 +152,42 @@ class TestCharacterDialogUiHandler:
         assert h.can_handle(_presentation_message("Alice", is_system=True)) is False
         assert h.can_handle(_presentation_message("NARR", is_system=True)) is False
 
+    def test_empty_speech_still_triggers_its_effect(self):
+        ui = MagicMock()
+        controller = MagicMock()
+        playback = SimpleNamespace(
+            task_done_requested=SimpleNamespace(
+                is_set=lambda: False,
+                wait=lambda timeout=None: False,
+            ),
+            playback_controller=controller,
+        )
+        runtime = SimpleNamespace(ui_update_manager=ui, ui_playback=playback)
+        out = PresentationMessage(
+            audio_path="",
+            name="Alice",
+            text="",
+            asset_id="1",
+            effect="狼的印记",
+            is_system_message=False,
+        )
+
+        with patch(
+            "application.chat.handlers.presentation.get_app_runtime",
+            return_value=runtime,
+        ), patch(
+            "application.chat.handlers.presentation.get_character_by_name",
+            return_value=None,
+        ):
+            CharacterDialogUiHandler().handle(out)
+
+        ui.resolve_effect.assert_called_once_with(
+            effect="狼的印记",
+            args={"character_name": "Alice"},
+            after_dialog=False,
+        )
+        ui.update_dialog.assert_not_called()
+
     def test_delegates_blocking_playback_to_shared_controller(self, tmp_path):
         audio_path = tmp_path / "alice.wav"
         audio_path.write_bytes(b"wav")

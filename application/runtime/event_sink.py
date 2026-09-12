@@ -41,6 +41,7 @@ def make_empty_chat_snapshot() -> Dict[str, Any]:
         "eventSeq": 0,
         "historyEntries": [],
         "inputDraft": "",
+        "effectImage": None,
         "loopingEffects": [],
         "options": [],
         "pluginPagePresentations": [],
@@ -132,6 +133,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     next_snapshot.setdefault("dialogText", "")
     next_snapshot.setdefault("eventSeq", 0)
     next_snapshot.setdefault("historyEntries", [])
+    next_snapshot.setdefault("effectImage", None)
     next_snapshot.setdefault("inputDraft", "")
     next_snapshot.setdefault("activePlayback", None)
     next_snapshot.setdefault("loopingEffects", [])
@@ -521,6 +523,22 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         ]
         return next_snapshot
 
+    if event_type == "effect.image.show":
+        try:
+            duration_ms = max(0, int(event.get("durationMs") or 0))
+            triggered_at = int(event.get("ts") or 0)
+        except (TypeError, ValueError):
+            duration_ms = 0
+            triggered_at = 0
+        next_snapshot["effectImage"] = {
+            "expiresAt": triggered_at + duration_ms,
+            "durationMs": duration_ms,
+            "label": str(event.get("label") or ""),
+            "seq": int(event.get("seq") or 0),
+            "url": str(event.get("url") or ""),
+        }
+        return next_snapshot
+
     if event_type == "effect.loop.stop-all":
         next_snapshot["loopingEffects"] = []
         return next_snapshot
@@ -564,6 +582,7 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "session.closed":
         next_snapshot["activePlayback"] = None
+        next_snapshot["effectImage"] = None
         next_snapshot["busyText"] = ""
         next_snapshot["busyDurationSeconds"] = 0.0
         next_snapshot["loopingEffects"] = []

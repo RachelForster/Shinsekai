@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import yaml
+import pytest
 
 from application.chat.handlers.dialog_media import (
     BgmMediaHandler,
@@ -270,6 +271,60 @@ def test_default_tts_generation_uses_fixed_voice_when_manager_is_unavailable(
     audio_paths = list(DefaultTtsGenerationStrategy().generate(request))
 
     assert audio_paths == [voice_path.resolve().as_posix()]
+
+
+def test_default_tts_generation_skips_empty_effect_only_message():
+    manager = MagicMock()
+    request = TtsGenerationRequest(
+        runtime=SimpleNamespace(tts_manager=manager),
+        character=_character(),
+        character_name="Alice",
+        message=LLMDialogMessage(
+            name="Alice", text="", asset_id="1", effect="狼的印记"
+        ),
+        sprite=ResolvedSpriteAsset(asset_id="1"),
+    )
+
+    assert list(DefaultTtsGenerationStrategy().generate(request)) == [""]
+    manager.switch_model.assert_not_called()
+    manager.generate_tts.assert_not_called()
+
+
+@pytest.mark.parametrize("manager_available", [False, True])
+def test_empty_speech_preserves_preset_voice_and_its_display_text(tmp_path, manager_available):
+    voice = tmp_path / "preset.wav"
+    voice.write_bytes(b"audio")
+    manager = MagicMock() if manager_available else None
+    request = TtsGenerationRequest(
+        runtime=SimpleNamespace(tts_manager=manager),
+        character=_character(), character_name="Alice",
+        message=LLMDialogMessage(name="Alice", text="", asset_id="1"),
+        sprite=ResolvedSpriteAsset(asset_id="1", voice_type="preset", voice_path=str(voice), voice_text="Recorded line"),
+    )
+    messages = list(CharacterMediaHandler._presentation_messages(
+        character_name="Alice", message=request.message, sprite=request.sprite,
+        audio_paths=DefaultTtsGenerationStrategy().generate(request),
+    ))
+    assert [(item.text, item.audio_path) for item in messages] == [("Recorded line", voice.resolve().as_posix())]
+    if manager is not None:
+        manager.generate_tts.assert_not_called()
+
+
+def test_empty_speech_still_synthesizes_available_translation():
+    manager = MagicMock()
+    manager.generate_tts.return_value = "translated.wav"
+    processor = SimpleNamespace(remove_parentheses=lambda text: text, replace_names=lambda text: text)
+    request = TtsGenerationRequest(
+        runtime=SimpleNamespace(
+            tts_manager=manager, text_processor=processor,
+            config=SimpleNamespace(config=SimpleNamespace(api_config=SimpleNamespace(tts_split_enabled=False))),
+        ),
+        character=_character(), character_name="Alice",
+        message=LLMDialogMessage(name="Alice", text="", translate="Hello", asset_id="1"),
+        sprite=ResolvedSpriteAsset(asset_id="1"),
+    )
+    assert list(DefaultTtsGenerationStrategy().generate(request)) == ["translated.wav"]
+    assert manager.generate_tts.call_args.args[0] == "Hello"
 
 
 def test_default_tts_generation_preserves_segment_output_order(tmp_path):

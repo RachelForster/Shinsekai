@@ -125,6 +125,9 @@ export const sampleConfig: AppConfig = {
       prompt_text: "通用场景音效",
       audio_list: [],
       audio_tags: "",
+      image_list: [],
+      image_tags: "",
+      image_audio_list: [],
     },
   ],
   characters: [

@@ -119,7 +119,7 @@ function submitUserMessageState(
 export function chatStageReducer(state: ChatStageState, action: ChatStageAction): ChatStageState {
   switch (action.type) {
     case "event": {
-      const next = applyStageEvent(state, action.event);
+      const next = applyStageEvent(state, action.event, action.receivedAt);
       if (
         next !== state &&
         action.event.type === "asr.final" &&
@@ -149,7 +149,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       return next;
     }
     case "hydrate": {
-      const next = hydrateFromSnapshot(state, action.snapshot);
+      const next = hydrateFromSnapshot(state, action.snapshot, action.receivedAt);
       if (!state.optimisticSubmission || next === state) {
         return next;
       }

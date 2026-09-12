@@ -98,6 +98,10 @@ def test_effect_route_contracts_remain_stable() -> None:
         ("POST", "/api/effects/audio/delete"),
         ("POST", "/api/effects/audio/delete-all"),
         ("POST", "/api/effects/audio/upload"),
+        ("POST", "/api/effects/image-tags"),
+        ("POST", "/api/effects/images/audio/upload"),
+        ("POST", "/api/effects/images/delete"),
+        ("POST", "/api/effects/images/upload"),
         ("PUT", "/api/effects"),
         ("DELETE", "/api/effects/{name}"),
     }

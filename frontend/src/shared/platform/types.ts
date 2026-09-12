@@ -44,6 +44,9 @@ export interface Effect {
   prompt_text: string;
   audio_list: string[];
   audio_tags: string;
+  image_list: string[];
+  image_tags: string;
+  image_audio_list: string[];
 }
 
 export interface ApiConfig {
@@ -972,6 +975,15 @@ export interface ChatSnapshot {
   dialogText: string;
   /** 后端已折叠进该 snapshot 的最新事件 seq，用于重连恢复幂等处理。 */
   eventSeq?: number;
+  /** Server wall-clock time when this snapshot was prepared for delivery. */
+  serverTimeMs?: number;
+  effectImage?: {
+    durationMs: number;
+    expiresAt: number;
+    label: string;
+    seq: number;
+    url: string;
+  } | null;
   experimentalFeatures?: ChatExperimentalFeatures;
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
@@ -1152,6 +1164,7 @@ export type ChatStageEvent =
     })
   | (ChatEventBase & { type: "tts.skip"; playbackId?: string })
   | (ChatEventBase & { type: "effect.play"; url: string })
+  | (ChatEventBase & { type: "effect.image.show"; durationMs: number; label: string; url: string })
   | (ChatEventBase & { type: "effect.loop.start"; key: string; url: string })
   | (ChatEventBase & { type: "effect.loop.stop"; key: string })
   | (ChatEventBase & { type: "effect.loop.stop-all" })
@@ -1354,12 +1367,16 @@ export interface ShinsekaiPlatform {
     delete: (name: string) => Promise<void>;
     deleteAllAudio: (name: string) => Promise<Effect>;
     deleteAudio: (name: string, index: number) => Promise<Effect>;
+    deleteImage: (name: string, index: number) => Promise<Effect>;
     export: (name: string) => Promise<string>;
     import: (items: File[] | string[]) => Promise<Effect[]>;
     list: () => Promise<Effect[]>;
     save: (effect: Effect, originalName?: string) => Promise<Effect>;
     saveAudioTags: (input: { audioTags: string; name: string }) => Promise<Effect>;
+    saveImageTags: (input: { imageTags: string; name: string }) => Promise<Effect>;
     uploadAudio: (input: { audioTags: string; name: string; paths: string[] }) => Promise<Effect>;
+    uploadImages: (input: { imageTags: string; name: string; paths: string[] }) => Promise<Effect>;
+    uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
     close: () => Promise<ChatSnapshot>;

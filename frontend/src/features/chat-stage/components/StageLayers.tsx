@@ -2,6 +2,7 @@ import {
   createElement,
   useEffect,
   useRef,
+  useState,
   type CSSProperties,
   type KeyboardEvent,
   type MouseEvent,
@@ -16,6 +17,7 @@ import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/Plugin
 import type { ChatOption, ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
+import type { ChatStageEffectImage } from "../state/types";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
 import type { DialogHtmlNode, DialogHtmlStyleProperty } from "../dialogTypewriter";
 import { chatStageSpriteAxisCenter, chatStageSpriteCharacterName } from "../state/sprites";
@@ -61,6 +63,32 @@ export function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
     <div aria-hidden={hidden} className={layerClassName("chat-stage__cg", hidden)} hidden={hidden}>
       {src ? <img alt="" onError={hideBrokenStageAsset} src={src} /> : null}
     </div>
+  );
+}
+
+export function EffectImageLayer({ effect }: { effect?: ChatStageEffectImage | null }) {
+  const [timing, setTiming] = useState<{ seq: number; elapsed: number } | null>(null);
+  useEffect(() => {
+    const remaining = (effect?.deadline ?? 0) - performance.now();
+    if (!effect?.url || remaining <= 0) {
+      setTiming(null);
+      return;
+    }
+    setTiming({ seq: effect.seq, elapsed: Math.max(0, effect.durationMs - remaining) });
+    const timer = window.setTimeout(() => setTiming(null), remaining);
+    return () => window.clearTimeout(timer);
+  }, [effect?.deadline, effect?.durationMs, effect?.seq, effect?.url]);
+
+  if (!effect?.url || !timing || timing.seq !== effect.seq) return null;
+  return (
+    <aside
+      className="effect-image-layer"
+      key={effect.seq}
+      role="status"
+      style={{ animationDuration: `${effect.durationMs}ms`, animationDelay: `-${timing.elapsed}ms` }}
+    >
+      <img alt={effect.label} onError={hideBrokenStageAsset} src={stageAssetUrl(effect.url)} />
+    </aside>
   );
 }
 

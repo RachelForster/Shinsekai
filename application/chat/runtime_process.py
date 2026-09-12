@@ -48,6 +48,7 @@ from application.chat.history_paths import (
     is_unc_history_path,
     resolve_history_path_for_project,
 )
+from application.chat.build_effect_context import SelectedEffectContext
 from application.chat.mobile_access import (
     get_mobile_access_info,
 )
@@ -396,6 +397,7 @@ def _launch_chat(
     *,
     character_names: list[str] | None = None,
     effect_names: str = "",
+    effect_context: SelectedEffectContext | None = None,
     history_file: str,
     init_sprite_path: str,
     room_id: str,
@@ -418,7 +420,9 @@ def _launch_chat(
 
         # 把用户情景放在系统模板末尾（紧跟 closing 提示后）
         effective_user_scenario = _effective_user_scenario(user_scenario)
-        template = _compose_runtime_template(system_template, effective_user_scenario)
+        template = _compose_runtime_template(
+            system_template, effective_user_scenario, effect_context
+        )
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
         (template_dir / TEMP_SPLIT_META).write_text(

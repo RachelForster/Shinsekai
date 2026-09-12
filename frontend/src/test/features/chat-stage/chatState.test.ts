@@ -1,9 +1,41 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
 import { chatStageSpriteAxisCenter, limitChatStageSpritesToSlots } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each([-30_000, 30_000])("times image events locally despite a wall-clock offset of %s", (offset) => {
+    vi.spyOn(Date, "now").mockReturnValue(100_000 + offset);
+    vi.spyOn(performance, "now").mockReturnValue(500);
+    const state = chatStageReducer(emptyChatState, {
+      type: "event",
+      receivedAt: 500,
+      event: { type: "effect.image.show", v: 1, seq: 1, ts: 100_000, durationMs: 8800, label: "key", url: "key.png" },
+    });
+    expect(state.effectImage).toMatchObject({ deadline: 9300, durationMs: 8800 });
+  });
+
+  it("restores only the remaining image duration and never extends it on repeated snapshots", () => {
+    const clock = vi.spyOn(performance, "now").mockReturnValue(500);
+    vi.spyOn(Date, "now").mockReturnValue(9_000_000);
+    const snapshot = {
+      ...emptyChatState,
+      sessionId: "session",
+      eventSeq: 1,
+      serverTimeMs: 108_000,
+      effectImage: { expiresAt: 108_800, durationMs: 8800, seq: 1, label: "key", url: "key.png" },
+    };
+    const restored = chatStageReducer(emptyChatState, { type: "hydrate", snapshot, receivedAt: 500 });
+    expect(restored.effectImage?.deadline).toBe(1300);
+    clock.mockReturnValue(900);
+    const repeated = chatStageReducer(restored, { type: "hydrate", snapshot, receivedAt: 900 });
+    expect(repeated.effectImage?.deadline).toBe(1300);
+    const expired = chatStageReducer(repeated, { type: "hydrate", snapshot: { ...snapshot, serverTimeMs: 109_000 } });
+    expect(expired.effectImage).toBeNull();
+  });
+
   it.each(["asset://street.png", ""])("clears old sprites on background switch to %s and reallocates slots", (url) => {
     const oldScene = {
       ...emptyChatState,

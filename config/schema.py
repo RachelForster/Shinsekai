@@ -390,6 +390,12 @@ class Effect(BaseModel):
     prompt_text: DefaultIfNone[str] = Field(default="", description="通用提示词")
     audio_list: Optional[List[str]] = Field(default_factory=list, description="特效音频列表")
     audio_tags: DefaultIfNone[str] = Field(default="", description="特效音频信息")
+    image_list: Optional[List[str]] = Field(default_factory=list, description="特效图片列表")
+    image_tags: DefaultIfNone[str] = Field(default="", description="特效图片信息")
+    image_audio_list: Optional[List[str]] = Field(
+        default_factory=list,
+        description="图片特效绑定音频列表",
+    )
 
 # Main Config Model
 class AppConfig(BaseModel):

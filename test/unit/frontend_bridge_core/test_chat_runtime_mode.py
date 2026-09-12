@@ -459,11 +459,10 @@ class ChatRuntimeModeTests(unittest.TestCase):
         )
         self.assertEqual(launch_chat.call_args.kwargs["init_stream_endpoint"], "")
         self.assertEqual(launch_chat.call_args.kwargs["effect_names"], "Ambient")
-        self.assertIn("- impact", launch_chat.call_args.kwargs["system_template"])
-        self.assertIn("- notice", launch_chat.call_args.kwargs["system_template"])
+        self.assertEqual(launch_chat.call_args.kwargs["system_template"], "system")
         self.assertEqual(
-            launch_chat.call_args.kwargs["system_template"].count("- impact"),
-            1,
+            launch_chat.call_args.kwargs["effect_context"].labels,
+            ("impact", "notice"),
         )
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertEqual(snapshot["sessionId"], "session-1")

@@ -45,6 +45,22 @@ def _save_effect_audio_tags_route(request: ApiRequest) -> JsonResponse:
     return _execute_effect(request, EffectOperation.SAVE_AUDIO_TAGS)
 
 
+def _upload_effect_images_route(request: ApiRequest) -> JsonResponse:
+    return _execute_effect(request, EffectOperation.UPLOAD_IMAGES)
+
+
+def _delete_effect_image_route(request: ApiRequest) -> JsonResponse:
+    return _execute_effect(request, EffectOperation.DELETE_IMAGE)
+
+
+def _save_effect_image_tags_route(request: ApiRequest) -> JsonResponse:
+    return _execute_effect(request, EffectOperation.SAVE_IMAGE_TAGS)
+
+
+def _upload_effect_image_audio_route(request: ApiRequest) -> JsonResponse:
+    return _execute_effect(request, EffectOperation.UPLOAD_IMAGE_AUDIO)
+
+
 def _save_effect_route(request: ApiRequest) -> JsonResponse:
     return _execute_effect(request, EffectOperation.SAVE)
 
@@ -88,6 +104,30 @@ EFFECT_ROUTES = (
         pattern="/api/effects/audio-tags",
         handler=_save_effect_audio_tags_route,
         name="effects.audio_tags.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/effects/images/upload",
+        handler=_upload_effect_images_route,
+        name="effects.images.upload",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/effects/images/delete",
+        handler=_delete_effect_image_route,
+        name="effects.images.delete",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/effects/image-tags",
+        handler=_save_effect_image_tags_route,
+        name="effects.image_tags.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/effects/images/audio/upload",
+        handler=_upload_effect_image_audio_route,
+        name="effects.images.audio.upload",
     ),
     Route(
         methods=frozenset({"POST", "PUT"}),

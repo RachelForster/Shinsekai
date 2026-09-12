@@ -13,11 +13,15 @@ const mockListEffects = vi.fn();
 const mockSaveEffect = vi.fn();
 const mockDeleteEffect = vi.fn();
 const mockDeleteEffectAudio = vi.fn();
+const mockDeleteEffectImage = vi.fn();
 const mockDeleteAllEffectAudio = vi.fn();
 const mockExportEffect = vi.fn();
 const mockImportEffects = vi.fn();
 const mockSaveEffectAudioTags = vi.fn();
+const mockSaveEffectImageTags = vi.fn();
 const mockUploadEffectAudio = vi.fn();
+const mockUploadEffectImages = vi.fn();
+const mockUploadEffectImageAudio = vi.fn();
 const mockOpenExternal = vi.fn();
 
 vi.mock("../../../shared/ui", async () => {
@@ -69,18 +73,25 @@ vi.mock("../../../entities/effect/repository", () => ({
   deleteAllEffectAudio: (name: string) => mockDeleteAllEffectAudio(name),
   deleteEffect: (name: string) => mockDeleteEffect(name),
   deleteEffectAudio: (name: string, index: number) => mockDeleteEffectAudio(name, index),
+  deleteEffectImage: (name: string, index: number) => mockDeleteEffectImage(name, index),
   effectsQueryKey: ["effects"],
   exportEffect: (name: string) => mockExportEffect(name),
   importEffects: (paths: string[]) => mockImportEffects(paths),
   listEffects: () => mockListEffects(),
   saveEffect: (effect: Effect, originalName?: string) => mockSaveEffect(effect, originalName),
   saveEffectAudioTags: (input: { audioTags: string; name: string }) => mockSaveEffectAudioTags(input),
+  saveEffectImageTags: (input: { imageTags: string; name: string }) => mockSaveEffectImageTags(input),
   uploadEffectAudio: (input: { audioTags: string; name: string; paths: string[] }) => mockUploadEffectAudio(input),
+  uploadEffectImages: (input: { imageTags: string; name: string; paths: string[] }) => mockUploadEffectImages(input),
+  uploadEffectImageAudio: (input: { index: number; name: string; path: string }) => mockUploadEffectImageAudio(input),
 }));
 
 const effect: Effect = {
   audio_list: ["D:/effects/chime.wav", "D:/effects/boom.mp3"],
   audio_tags: "Effect 1: bright\nEffect 2: loud\n",
+  image_list: [],
+  image_tags: "",
+  image_audio_list: [],
   color: "#123456",
   name: "Spark",
   prompt_text: "",
@@ -124,6 +135,12 @@ describe("EffectManagerPage", () => {
       audio_tags: "",
       name,
     }));
+    mockDeleteEffectImage.mockImplementation(async (name: string, index: number) => ({
+      ...structuredClone(effect),
+      image_list: effect.image_list.filter((_, itemIndex) => itemIndex !== index),
+      image_audio_list: effect.image_audio_list.filter((_, itemIndex) => itemIndex !== index),
+      name,
+    }));
     mockExportEffect.mockResolvedValue("D:/exports/Spark.ef");
     mockImportEffects.mockImplementation(async (paths: string[]) =>
       paths.map((path, index) => ({
@@ -137,12 +154,29 @@ describe("EffectManagerPage", () => {
       audio_tags: audioTags,
       name,
     }));
+    mockSaveEffectImageTags.mockImplementation(async ({ imageTags, name }) => ({
+      ...structuredClone(effect),
+      image_tags: imageTags,
+      name,
+    }));
     mockUploadEffectAudio.mockImplementation(async ({ audioTags, name, paths }) => ({
       ...structuredClone(effect),
       audio_list: [...effect.audio_list, ...paths],
       audio_tags: `${audioTags}Effect 3: uploaded\n`,
       name,
     }));
+    mockUploadEffectImages.mockImplementation(async ({ imageTags, name, paths }) => ({
+      ...structuredClone(effect),
+      image_list: paths,
+      image_audio_list: paths.map(() => ""),
+      image_tags: imageTags,
+      name,
+    }));
+    mockUploadEffectImageAudio.mockImplementation(async ({ index, name, path }) => {
+      const imageAudio = [...effect.image_audio_list];
+      imageAudio[index] = path;
+      return { ...structuredClone(effect), image_audio_list: imageAudio, name };
+    });
   });
 
   it("saves edits, exports the selected effect, and opens community resources", async () => {
@@ -270,6 +304,136 @@ describe("EffectManagerPage", () => {
       }),
     );
     expect(await screen.findByText("new-hit.wav")).toBeInTheDocument();
+  });
+
+  it("uploads an image effect through the image picker", async () => {
+    pickerState.paths = ["D:/effects/key.png"];
+    renderPage();
+    await screen.findByDisplayValue("Spark");
+
+    fireEvent.click(screen.getByRole("button", { name: "Upload Image" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Upload Image" })).getByText("Choose mocked paths"));
+
+    await waitFor(() =>
+      expect(mockUploadEffectImages).toHaveBeenCalledWith({
+        imageTags: "",
+        name: "Spark",
+        paths: ["D:/effects/key.png"],
+      }),
+    );
+    expect(await screen.findByText("key.png")).toBeInTheDocument();
+
+    pickerState.paths = ["D:/effects/knife.wav"];
+    fireEvent.click(screen.getByRole("button", { name: "Insert audio" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Insert audio" })).getByText("Choose mocked paths"));
+
+    await waitFor(() =>
+      expect(mockUploadEffectImageAudio).toHaveBeenCalledWith({
+        index: 0,
+        name: "Spark",
+        path: "D:/effects/knife.wav",
+      }),
+    );
+  });
+
+  it.each(["upload", "save tags", "delete", "attach audio"] as const)(
+    "shows an error when image %s fails and preserves the draft",
+    async (operation) => {
+      mockListEffects.mockResolvedValue([
+        {
+          ...structuredClone(effect),
+          image_list: ["D:/effects/key.png"],
+          image_tags: "Image 1: key\n",
+          image_audio_list: [""],
+        },
+      ]);
+      const mutation = {
+        upload: mockUploadEffectImages,
+        "save tags": mockSaveEffectImageTags,
+        delete: mockDeleteEffectImage,
+        "attach audio": mockUploadEffectImageAudio,
+      }[operation];
+      mutation.mockRejectedValueOnce(new Error("Image operation failed"));
+      renderPage();
+      await screen.findByText("key.png");
+      if (operation === "upload" || operation === "attach audio") {
+        const title = operation === "upload" ? "Upload Image" : "Insert audio";
+        fireEvent.click(screen.getByRole("button", { name: title }));
+        fireEvent.click(within(screen.getByRole("dialog", { name: title })).getByText("Choose mocked paths"));
+      } else {
+        const row = screen.getByAltText("key").closest(".effect-image-row") as HTMLElement;
+        fireEvent.click(
+          within(row).getByRole("button", { name: operation === "delete" ? "Delete" : "Save image prompts" }),
+        );
+      }
+      expect(await screen.findByText("Image operation failed")).toBeInTheDocument();
+      expect(mutation).toHaveBeenCalledTimes(1);
+      expect(screen.getByText("key.png")).toBeInTheDocument();
+      expect(screen.getByDisplayValue("key")).toBeInTheDocument();
+    },
+  );
+
+  it("preserves blank image tag rows when editing and saving", async () => {
+    mockListEffects.mockResolvedValue([
+      {
+        ...structuredClone(effect),
+        image_list: ["first.png", "second.png", "third.png"],
+        image_tags: "Image 1: first\n\nImage 3: third\n",
+        image_audio_list: [],
+      },
+    ]);
+    renderPage();
+    await screen.findByText("third.png");
+    const first = screen.getByAltText("first").closest(".effect-image-row") as HTMLElement;
+    const second = screen.getByAltText("second.png").closest(".effect-image-row") as HTMLElement;
+    const third = screen.getByAltText("third").closest(".effect-image-row") as HTMLElement;
+    expect(within(second).getByRole("textbox")).toHaveValue("");
+    expect(within(third).getByRole("textbox")).toHaveValue("third");
+    fireEvent.change(within(first).getByRole("textbox"), { target: { value: "edited" } });
+    fireEvent.click(within(first).getByRole("button", { name: "Save image prompts" }));
+    await waitFor(() =>
+      expect(mockSaveEffectImageTags).toHaveBeenCalledWith({
+        name: "Spark",
+        imageTags: "图片 1：edited\n图片 2：\n图片 3：third\n",
+      }),
+    );
+  });
+
+  it("attaches one audio file to all selected image effects", async () => {
+    mockListEffects.mockResolvedValue([
+      {
+        ...structuredClone(effect),
+        image_audio_list: ["", "", ""],
+        image_list: ["D:/effects/document.png", "D:/effects/book.png", "D:/effects/note.png"],
+        image_tags: "图片 1：获得文档\n图片 2：获得书籍\n图片 3：获得笔记\n",
+      },
+    ]);
+    pickerState.paths = ["D:/effects/paper.wav"];
+    renderPage();
+
+    expect(await screen.findByText("document.png")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Select all images"));
+    fireEvent.click(screen.getByRole("button", { name: "Insert audio in batch" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Insert audio in batch" })).getByText("Choose mocked paths"),
+    );
+
+    await waitFor(() => expect(mockUploadEffectImageAudio).toHaveBeenCalledTimes(3));
+    expect(mockUploadEffectImageAudio).toHaveBeenNthCalledWith(1, {
+      index: 0,
+      name: "Spark",
+      path: "D:/effects/paper.wav",
+    });
+    expect(mockUploadEffectImageAudio).toHaveBeenNthCalledWith(2, {
+      index: 1,
+      name: "Spark",
+      path: "D:/effects/paper.wav",
+    });
+    expect(mockUploadEffectImageAudio).toHaveBeenNthCalledWith(3, {
+      index: 2,
+      name: "Spark",
+      path: "D:/effects/paper.wav",
+    });
   });
 
   it("saves audio prompts and confirms selected and bulk audio deletion", async () => {

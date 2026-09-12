@@ -31,3 +31,7 @@ describe("asset text helpers", () => {
     );
   });
 });
+
+it("keeps explicit empty rows for index-aligned effect resources", () => {
+  expect(tagContents("Image 1: first\n\nImage 3: third：detail\n", 3, true)).toEqual(["first", "", "third：detail"]);
+});

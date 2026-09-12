@@ -8,7 +8,6 @@ method signatures and the ``(template, warning)`` result remain supported.
 from typing import Any
 
 from config.config_manager import ConfigManager
-from i18n import tr as tr_i18n
 from sdk.types import OutputContractPatch
 
 from .template.dialog import DialogTemplateContext, DialogTemplateSection
@@ -20,6 +19,7 @@ from .template.integrations.localization import (
     _target_voice_display_name as _voice_display_name,
     _ui_voice_same_lang as _same_voice_language,
     is_transparent_background,
+    translate_template,
 )
 from .template.integrations.tools import format_llm_tools_block
 
@@ -29,7 +29,7 @@ DEFAULT_DIALOG_CONTRACT_ID = "default.dialog.v1"
 
 
 def _T(key: str, **kwargs) -> str:
-    return tr_i18n(f"template_gen.{key}", **kwargs)
+    return translate_template(key, **kwargs)
 
 
 def no_valid_characters_message() -> str:

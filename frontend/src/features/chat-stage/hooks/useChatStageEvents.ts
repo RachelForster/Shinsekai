@@ -23,7 +23,7 @@ export function useChatStageEvents({
     getChatSnapshot()
       .then((snapshot: ChatSnapshot) => {
         if (mounted) {
-          dispatch({ snapshot, type: "hydrate" });
+          dispatch({ snapshot, type: "hydrate", receivedAt: performance.now() });
         }
       })
       .catch((error) => {
@@ -38,7 +38,7 @@ export function useChatStageEvents({
           });
         }
       }
-      dispatch({ event, type: "event" });
+      dispatch({ event, type: "event", receivedAt: performance.now() });
     });
     return () => {
       mounted = false;

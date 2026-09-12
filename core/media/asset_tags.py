@@ -6,15 +6,22 @@ import re
 _TAG_PREFIX_RE = re.compile(r"^\s*(?:tags?|标签|標籤)\s*[:：]\s*", re.IGNORECASE)
 
 
-def tag_contents(block: str, count: int) -> list[str]:
+def tag_content(line: str) -> str:
+    """Strip the first numbered-label separator, preserving later punctuation."""
+    indexes = [index for index in (line.find("："), line.find(":")) if index >= 0]
+    return line[min(indexes) + 1 :].strip() if indexes else line.strip()
+
+
+def tag_contents(
+    block: str, count: int, *, preserve_blank_lines: bool = False
+) -> list[str]:
     """Return one tag value per asset while accepting legacy numbered blocks."""
-    lines = [line for line in str(block or "").splitlines() if line.strip()]
+    lines = str(block or "").splitlines()
+    if not preserve_blank_lines:
+        lines = [line for line in lines if line.strip()]
     values: list[str] = []
     for line in lines[: max(0, count)]:
-        full_width = line.find("：")
-        ascii_colon = line.find(":")
-        indexes = [index for index in (full_width, ascii_colon) if index >= 0]
-        values.append(line[min(indexes) + 1 :].strip() if indexes else line.strip())
+        values.append(tag_content(line))
     values.extend([""] * (max(0, count) - len(values)))
     return values
 

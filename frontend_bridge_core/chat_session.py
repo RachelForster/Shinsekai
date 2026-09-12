@@ -266,11 +266,11 @@ def launch_chat(
         body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
     )
     effect_names_str = ",".join(effect_context.selected_names)
-    system_template = effect_context.append_prompt_catalog(system_template)
     message = _launch_runtime_chat(
         state,
         character_names=characters,
         effect_names=effect_names_str,
+        effect_context=effect_context,
         history_file=history_path.as_posix(),
         init_sprite_path=init_sprite_path,
         room_id=room_id,

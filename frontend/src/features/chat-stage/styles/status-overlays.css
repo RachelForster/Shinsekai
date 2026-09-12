@@ -11,6 +11,47 @@
   transform: translateX(-50%);
 }
 
+.effect-image-layer {
+  position: absolute;
+  top: var(--stage-safe-top);
+  left: var(--stage-safe-x);
+  z-index: 12;
+  pointer-events: none;
+  animation-name: effect-image-show;
+  animation-timing-function: ease;
+  animation-fill-mode: both;
+}
+
+.chat-stage[data-stat-visible="true"] .effect-image-layer {
+  left: calc(var(--stage-safe-x) + min(320px, calc(100vw - 48px)) + 12px);
+}
+
+.effect-image-layer img {
+  display: block;
+  width: auto;
+  max-width: min(240px, calc(100vw - 32px));
+  height: auto;
+  max-height: min(160px, 28vh);
+  object-fit: contain;
+  filter: drop-shadow(0 12px 24px rgba(0, 0, 0, 0.38));
+}
+
+@keyframes effect-image-show {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  3.41%,
+  94.32% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
 .chat-stage__busy {
   top: var(--stage-safe-top);
   min-height: 36px;
@@ -255,5 +296,17 @@
   .chat-stage[data-token-visible="true"] .chat-stage__busy,
   .chat-stage[data-token-visible="true"] .chat-stage__notification {
     top: var(--stage-token-offset-top);
+  }
+}
+
+@media (max-width: 860px) {
+  .effect-image-layer {
+    top: 66px;
+    left: 12px;
+  }
+
+  .chat-stage[data-stat-visible="true"] .effect-image-layer {
+    top: 154px;
+    left: 12px;
   }
 }
