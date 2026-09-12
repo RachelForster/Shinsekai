@@ -65,6 +65,8 @@ export interface ChatThemeTokens {
     widthPct?: number;
     /** 固定对话区高度（px），clamp 96–260。 */
     heightPx?: number;
+    /** 正文左右内边距（px），不影响上下内边距。 */
+    paddingInlinePx?: number;
     /** 名牌装饰中心线到输入框顶部的目标距离（svh）；不填写则使用基础布局。 */
     nameInputGapVh?: number;
     /** 垂直偏移（px），clamp -240–240。 */
@@ -94,6 +96,10 @@ export interface ChatThemeTokens {
     widthMode?: "fixed" | "content";
   };
   input?: FrameVisualBlock & {
+    /** 输入栏距舞台底边的留白（px），clamp 0–96。 */
+    bottomInsetPx?: number;
+    /** 麦克风按钮图标，主题目录内相对路径。 */
+    microphoneImage?: string;
     fieldBackground?: string;
     fieldBorderRadius?: string;
     layout?: "default" | "pill";
@@ -177,6 +183,8 @@ export interface ResolvedChatTheme {
   fontFaces: string;
   /** 前端打字机参数。 */
   typewriter: { cps: number; soundUrl?: string };
+  /** Control artwork must load successfully before replacing fallback icons. */
+  controlArtwork?: { send?: string; microphone?: string };
 }
 
 /** 打字机默认速率（字/秒），与原生 TypingLabel 体感对齐。 */
@@ -520,6 +528,9 @@ function resolveThemeAssetUrl(rel: unknown, assetUrl: (rel: string) => string) {
 export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: string) => string): ResolvedChatTheme {
   const tokens = manifest.tokens ?? {};
   const style: ChatStageStyle = {};
+  const controlArtwork: NonNullable<ResolvedChatTheme["controlArtwork"]> = {};
+  style["--chat-send-icon-opacity"] = "1";
+  style["--chat-input-microphone-icon-opacity"] = "1";
 
   if (isSafeCssValue(tokens.global?.themeColor)) {
     style["--chat-theme-color"] = tokens.global.themeColor;
@@ -533,6 +544,12 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
 
   const dialog = tokens.dialog;
   applyVisualBlock(style, "dialog", dialog, assetUrl, true);
+  if (typeof dialog?.padding === "number") {
+    style["--chat-dialog-padding-inline"] = style["--chat-dialog-padding"];
+  }
+  if (typeof dialog?.paddingInlinePx === "number") {
+    style["--chat-dialog-padding-inline"] = `${clampNumber(dialog.paddingInlinePx, 64, 8, 128)}px`;
+  }
   if (typeof dialog?.heightPx === "number" || dialog?.chrome === "none") {
     style["--chat-dialog-height"] = `${clampNumber(dialog?.heightPx, 156, 96, 260)}px`;
     style["--chat-dialog-body-height"] = "100%";
@@ -586,6 +603,12 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   applyVisualBlock(style, "option", options, assetUrl, true);
   applyVisualBlock(style, "option-active", options?.active, assetUrl);
   applyVisualBlock(style, "option-hover", options?.hover, assetUrl);
+  if (options?.hover?.boxShadow === "none") {
+    style["--chat-option-hover-base-shadow"] = "none";
+  }
+  if (options?.active?.boxShadow === "none") {
+    style["--chat-option-focus-outline"] = "none";
+  }
   if (isSafeCssValue(options?.color)) {
     style["--chat-options-color"] = options.color;
   }
@@ -632,6 +655,16 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
   }
 
   const input = tokens.input;
+  if (typeof input?.bottomInsetPx === "number") {
+    style["--stage-safe-bottom"] = `max(${clampNumber(input.bottomInsetPx, 12, 0, 96)}px, env(safe-area-inset-bottom))`;
+  }
+  if (input?.microphoneImage) {
+    const microphoneImage = resolveThemeAssetUrl(input.microphoneImage, assetUrl);
+    if (microphoneImage) {
+      style["--chat-input-microphone-image"] = `url("${microphoneImage}")`;
+      controlArtwork.microphone = microphoneImage;
+    }
+  }
   if (input?.layout === "pill") {
     style["--chat-input-layout"] = "pill";
     style["--chat-input-max-width"] = `${clampNumber(input.maxWidthPx, 640, 320, 900)}px`;
@@ -728,7 +761,16 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     }
   }
   applyVisualBlock(style, "send", tokens.send, assetUrl);
+  const sendImage = resolveThemeAssetUrl(tokens.send?.backgroundImage, assetUrl);
+  if (sendImage) {
+    style["--chat-send-button-height"] = "46px";
+    style["--chat-send-button-width"] = "112px";
+    controlArtwork.send = sendImage;
+  }
   applyVisualBlock(style, "name", tokens.name, assetUrl, true);
+  if (tokens.name?.background?.includes("gradient")) {
+    style["--chat-name-sheen"] = "none";
+  }
   if (isSafeCssValue(tokens.name?.color)) {
     style["--chat-name-theme-color"] = tokens.name.color.trim();
   }
@@ -846,7 +888,7 @@ export function resolveChatTheme(manifest: ChatThemeManifest, assetUrl: (rel: st
     soundUrl: resolveThemeAssetUrl(tokens.typewriter?.sound, assetUrl) || undefined,
   };
 
-  return { style, fontFaces, typewriter };
+  return { style, fontFaces, typewriter, controlArtwork };
 }
 
 /** 选择 manifest 名称的本地化文本，缺失时回退 id。 */

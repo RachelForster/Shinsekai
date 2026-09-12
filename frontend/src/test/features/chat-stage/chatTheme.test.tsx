@@ -324,6 +324,60 @@ describe("chat theme runtime", () => {
     expect(resolved.fontFaces).toContain('url("asset://assets/fonts/mio.woff2")');
   });
 
+  it("maps optional artwork controls and spacing without changing themes that omit them", () => {
+    const resolved = resolveChatTheme(
+      {
+        schema: 1,
+        id: "artwork-controls",
+        name: { en: "Artwork Controls" },
+        tokens: {
+          dialog: { paddingInlinePx: 92 },
+          input: { bottomInsetPx: 0, borderRadius: "0px", layout: "pill", microphoneImage: "mic.png" },
+          name: { background: "linear-gradient(90deg, transparent, #111, transparent)" },
+          options: { active: { boxShadow: "none" }, hover: { boxShadow: "none" } },
+          send: { backgroundImage: "send.png" },
+        },
+      },
+      (rel) => `asset://${rel}`,
+    );
+
+    expect(resolved.style["--chat-dialog-padding-inline"]).toBe("92px");
+    expect(resolved.style["--stage-safe-bottom"]).toBe("max(0px, env(safe-area-inset-bottom))");
+    expect(resolved.style["--chat-input-border-radius"]).toBe("0px");
+    expect(resolved.style["--chat-input-microphone-image"]).toBe('url("asset://mic.png")');
+    expect(resolved.style["--chat-input-microphone-icon-opacity"]).toBe("1");
+    expect(resolved.style["--chat-option-hover-base-shadow"]).toBe("none");
+    expect(resolved.style["--chat-option-focus-outline"]).toBe("none");
+    expect(resolved.style["--chat-send-button-width"]).toBe("112px");
+    expect(resolved.style["--chat-send-button-height"]).toBe("46px");
+    expect(resolved.style["--chat-send-icon-opacity"]).toBe("1");
+    expect(resolved.controlArtwork).toEqual({ send: "asset://send.png", microphone: "asset://mic.png" });
+    expect(resolved.style["--chat-name-sheen"]).toBe("none");
+  });
+
+  it.each([undefined, "", "   ", "0px", "18px"])("preserves pill radius defaults for %j", (borderRadius) => {
+    const resolved = resolveChatTheme(
+      { schema: 1, id: "pill", name: { en: "Pill" }, tokens: { input: { layout: "pill", borderRadius } } },
+      (rel) => rel,
+    );
+    expect(resolved.style["--chat-input-border-radius"]).toBe(
+      borderRadius?.trim() || "calc(var(--stage-input-height) / 2)",
+    );
+  });
+
+  it.each([
+    [{ padding: 28 }, "28px"],
+    [{ padding: 28, paddingInlinePx: 92 }, "92px"],
+    [{ padding: 2 }, "8px"],
+    [{}, undefined],
+  ])("preserves dialog padding for %j", (dialog, expected) => {
+    const resolved = resolveChatTheme(
+      { schema: 1, id: "padding", name: { en: "Padding" }, tokens: { dialog } },
+      (rel) => rel,
+    );
+    expect(resolved.style["--chat-dialog-padding-inline"]).toBe(expected);
+  });
+
   it("falls back to an asymmetric frameSlice for a nine-slice background", () => {
     const resolved = resolveChatTheme(
       {

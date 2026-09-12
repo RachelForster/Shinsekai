@@ -65,6 +65,7 @@ EXTRA_BLOCK_PROPS = {
             "nameInputGapVh",
             "widthPct",
             "offsetY",
+            "paddingInlinePx",
             "textAlign",
             "textShadow",
             "textSizePx",
@@ -92,7 +93,7 @@ EXTRA_BLOCK_PROPS = {
             "widthMode",
         }
     ),
-    "input": frozenset({"fieldBackground", "fieldBorderRadius", "layout", "maxWidthPx", "sendPlacement"}),
+    "input": frozenset({"bottomInsetPx", "fieldBackground", "fieldBorderRadius", "layout", "maxWidthPx", "microphoneImage", "sendPlacement"}),
     "line": frozenset({"expanded", "hover"}),
     "name": frozenset(
         {
@@ -146,6 +147,7 @@ NUMERIC_BOUNDS = {
     "heightPx": (96, 260),
     "nameInputGapVh": (12, 32),
     "offsetY": (-240, 240),
+    "paddingInlinePx": (8, 128),
     "gap": (0, 36),
     "cps": (1, 200),
     "backgroundSlice": (1, 200),
@@ -157,6 +159,7 @@ NUMERIC_BOUNDS = {
     "minWidthVw": (12, 42),
     "maxWidthVw": (20, 60),
     "maxWidthPx": (320, 900),
+    "bottomInsetPx": (0, 96),
     "nameClearanceVh": (2, 12),
     "overlapPx": (0, 48),
     "textSizeVh": (1, 4),
@@ -472,7 +475,7 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
         block = tokens[block_name] if isinstance(tokens[block_name], dict) else {}
         # 额外字段语义校验
         if block_name == "dialog":
-            _copy_numeric_fields(out, block, ("heightPx", "widthPct", "offsetY"), errors, "tokens.dialog")
+            _copy_numeric_fields(out, block, ("heightPx", "widthPct", "offsetY", "paddingInlinePx"), errors, "tokens.dialog")
             _copy_number_fields(out, block, ("nameInputGapVh",), errors, "tokens.dialog")
             if "chrome" in block:
                 val = _validate_enum(block["chrome"], frozenset({"panel", "none"}), errors, "tokens.dialog.chrome")
@@ -525,6 +528,13 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
                     out["widthMode"] = val
             _copy_safe_css_field(out, block, "textShadow", errors, "tokens.options.textShadow")
         if block_name == "input":
+            _copy_numeric_fields(out, block, ("bottomInsetPx", "maxWidthPx"), errors, "tokens.input")
+            if "microphoneImage" in block:
+                image = block["microphoneImage"]
+                if isinstance(image, str) and _is_safe_asset_ref(image):
+                    out["microphoneImage"] = image
+                else:
+                    errors.append("tokens.input.microphoneImage 必须是主题目录内相对路径")
             if "fieldBackground" in block:
                 fb = block["fieldBackground"]
                 if isinstance(fb, str) and _is_safe_css_value(fb):
@@ -547,7 +557,6 @@ def validate_manifest(data: Any) -> ThemeValidationResult:
                 val = _validate_enum(block["layout"], frozenset({"default", "pill"}), errors, "tokens.input.layout")
                 if val is not None:
                     out["layout"] = val
-            _copy_numeric_fields(out, block, ("maxWidthPx",), errors, "tokens.input")
         if block_name == "toolbar":
             if "placement" in block:
                 val = _validate_enum(
@@ -659,6 +668,9 @@ def _iter_background_image_refs(value: Any):
             ref = value.get(key)
             if isinstance(ref, str) and ref:
                 yield ref
+        microphone_image = value.get("microphoneImage")
+        if isinstance(microphone_image, str) and microphone_image:
+            yield microphone_image
         for child in value.values():
             yield from _iter_background_image_refs(child)
     elif isinstance(value, list):

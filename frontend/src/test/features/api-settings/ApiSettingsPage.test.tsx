@@ -3,7 +3,9 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { configQueryKey } from "../../../entities/config/repository";
 import { ApiSettingsPage } from "../../../features/api-settings/ApiSettingsPage";
+import { reloadPluginService } from "../../../features/plugin-manager/pluginReload";
 import { AppStateProvider } from "../../../shared/app-state/AppState";
 import { I18nProvider } from "../../../shared/i18n";
 import { sampleConfig } from "../../../shared/platform/sampleData";
@@ -20,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   getTtsBundleRecommendation: vi.fn(),
   installMissingRuntimeDependency: vi.fn(),
   refreshRuntimeStatus: vi.fn(),
+  restartDesktopBridge: vi.fn(),
   resumeLastChat: vi.fn(),
   saveApiConfig: vi.fn(),
   saveSystemConfig: vi.fn(),
@@ -63,10 +66,16 @@ vi.mock("../../../shared/desktop/chatWindow", () => ({
   showChatSurface: (...args: unknown[]) => mocks.showChatSurface(...args),
 }));
 
-function renderPage(children: ReactNode = <ApiSettingsPage />, language: "en" | "ja" | "zh_CN" = "zh_CN") {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
+vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../shared/desktop/desktopApi")>()),
+  restartDesktopBridge: () => mocks.restartDesktopBridge(),
+}));
+
+function renderPage(
+  children: ReactNode = <ApiSettingsPage />,
+  language: "en" | "ja" | "zh_CN" = "zh_CN",
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return render(
     <QueryClientProvider client={client}>
       <ToastProvider>
@@ -142,6 +151,63 @@ describe("ApiSettingsPage", () => {
     mocks.resumeLastChat.mockResolvedValue({ sessionId: "session-1" });
     mocks.saveApiConfig.mockResolvedValue(sampleConfig.api_config);
     mocks.saveSystemConfig.mockResolvedValue(sampleConfig.system_config);
+  });
+
+  it("shows a newly loaded ASR adapter and its fields when returning to settings after plugin reload", async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 5 * 60 * 1000 } },
+    });
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue(config);
+    await client.prefetchQuery({ queryKey: configQueryKey, queryFn: () => mocks.getAppConfig() });
+
+    const initialPage = renderPage(<ApiSettingsPage />, "zh_CN", client);
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByText("语音输入（ASR）", { selector: "summary" }));
+    const initialProviderField = screen.getByText("识别引擎").closest("label")!;
+    fireEvent.click(within(initialProviderField).getByRole("combobox"));
+    expect(screen.queryByRole("option", { name: "Plugin Speech" })).not.toBeInTheDocument();
+    initialPage.unmount();
+
+    mocks.getAppConfig.mockResolvedValue({
+      ...config,
+      adapter_catalog: {
+        ...config.adapter_catalog,
+        asr: [
+          ...config.adapter_catalog!.asr,
+          {
+            label: "Plugin Speech",
+            schema: {
+              endpoint: { default: "http://localhost:9000", label: "Plugin speech endpoint", type: "str" },
+            },
+            value: "plugin_speech",
+          },
+        ],
+      },
+    });
+    mocks.restartDesktopBridge.mockResolvedValue({ bridgeUrl: "http://127.0.0.1:8787" });
+    const healthFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      json: async () => ({ ok: true, plugins: { status: "ready" } }),
+      ok: true,
+      status: 200,
+    } as Response);
+
+    try {
+      await reloadPluginService(client);
+      renderPage(<ApiSettingsPage />, "zh_CN", client);
+
+      await screen.findByRole("heading", { name: "AI 服务设置" });
+      fireEvent.click(screen.getByText("语音输入（ASR）", { selector: "summary" }));
+      const providerField = screen.getByText("识别引擎").closest("label")!;
+      fireEvent.click(within(providerField).getByRole("combobox"));
+      fireEvent.click(await screen.findByRole("option", { name: "Plugin Speech" }));
+
+      expect(await screen.findByLabelText("Plugin speech endpoint")).toHaveValue("http://localhost:9000");
+      expect(screen.getByLabelText("Plugin speech endpoint")).toBeVisible();
+    } finally {
+      healthFetch.mockRestore();
+      client.clear();
+    }
   });
 
   it.each([

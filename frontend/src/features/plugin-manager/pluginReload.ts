@@ -1,9 +1,13 @@
+import type { QueryClient } from "@tanstack/react-query";
+
+import { configQueryKey } from "../../entities/config/repository";
 import { restartDesktopBridge } from "../../shared/desktop/desktopApi";
 
-export async function reloadPluginService() {
+export async function reloadPluginService(queryClient: QueryClient) {
   await waitForReloadAnimationFrame();
   const runtime = await restartDesktopBridge();
   await waitForPluginBridgeReady(runtime.bridgeUrl);
+  await queryClient.invalidateQueries({ queryKey: configQueryKey, exact: true });
   return runtime;
 }
 

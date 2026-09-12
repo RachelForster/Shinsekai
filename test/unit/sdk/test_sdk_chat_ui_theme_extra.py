@@ -42,6 +42,7 @@ def _valid_manifest() -> dict:
                 "nameInputGapVh": 20,
                 "offsetY": -10,
                 "padding": 16,
+                "paddingInlinePx": 64,
                 "textAlign": "left",
                 "textShadow": "0 1px 2px rgba(0,0,0,0.3)",
                 "widthPct": 80,
@@ -55,9 +56,11 @@ def _valid_manifest() -> dict:
                 "widthMode": "fixed",
             },
             "input": {
+                "bottomInsetPx": 8,
                 "fieldBackground": "rgba(20,20,20,0.7)",
                 "fieldBorderRadius": "10px",
                 "layout": "default",
+                "microphoneImage": "assets/microphone.png",
                 "sendPlacement": "outside",
             },
             "toolbar": {"placement": "input-top", "reveal": "always"},
@@ -99,7 +102,15 @@ def _write_theme(root: Path, manifest: dict | None = None) -> Path:
     assets.mkdir(parents=True)
     data = manifest or _valid_manifest()
     (theme_dir / MANIFEST_NAME).write_text(json.dumps(data), encoding="utf-8")
-    for name in ("preview.png", "demo.woff2", "dialog-frame.svg", "dialog.png", "logs-frame.svg", "type.wav"):
+    for name in (
+        "preview.png",
+        "demo.woff2",
+        "dialog-frame.svg",
+        "dialog.png",
+        "logs-frame.svg",
+        "microphone.png",
+        "type.wav",
+    ):
         (assets / name).write_bytes(b"asset")
     return theme_dir
 
@@ -116,8 +127,11 @@ def test_slugify_and_validate_manifest_normalizes_rich_theme() -> None:
     assert result.normalized["tokens"]["dialog"]["chrome"] == "panel"
     assert result.normalized["tokens"]["dialog"]["frameOutsetPx"] == 5
     assert result.normalized["tokens"]["dialog"]["frameWidthPx"] == 14
+    assert result.normalized["tokens"]["dialog"]["paddingInlinePx"] == 64
     assert result.normalized["tokens"]["options"]["active"]["background"] == "rgba(40,40,40,0.9)"
     assert result.normalized["tokens"]["input"]["sendPlacement"] == "outside"
+    assert result.normalized["tokens"]["input"]["bottomInsetPx"] == 8
+    assert result.normalized["tokens"]["input"]["microphoneImage"] == "assets/microphone.png"
     assert result.normalized["tokens"]["name"]["overlapPx"] == 14
     assert result.normalized["tokens"]["name"]["decoration"] == "arrow-fade"
     assert result.normalized["tokens"]["logs"]["levels"]["warn"]["color"] == "#ffee88"

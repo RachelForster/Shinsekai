@@ -42,9 +42,16 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 theme_index = {item["id"]: item for item in themes}
                 self.assertEqual(
                     list(theme_index),
-                    ["neon-night-city", "sakura-dream", "spiritron-command", "windborne-adventure"],
+                    [
+                        "neon-night-city",
+                        "raging-loop-simple",
+                        "sakura-dream",
+                        "spiritron-command",
+                        "windborne-adventure",
+                    ],
                 )
                 self.assertEqual(theme_index["neon-night-city"]["source"], "builtin")
+                self.assertEqual(theme_index["raging-loop-simple"]["source"], "builtin")
                 self.assertEqual(theme_index["sakura-dream"]["source"], "builtin")
                 self.assertEqual(theme_index["spiritron-command"]["source"], "builtin")
                 self.assertEqual(theme_index["windborne-adventure"]["source"], "builtin")
@@ -52,6 +59,7 @@ class ChatThemeBridgeTests(unittest.TestCase):
                     {theme_id: theme["version"] for theme_id, theme in theme_index.items()},
                     {
                         "neon-night-city": "1.3.4",
+                        "raging-loop-simple": "1.0.0",
                         "sakura-dream": "1.0.3",
                         "spiritron-command": "1.0.1",
                         "windborne-adventure": "1.0.2",
@@ -71,6 +79,9 @@ class ChatThemeBridgeTests(unittest.TestCase):
                 )
                 self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "windborne-adventure" / "theme.json").is_file()
+                )
+                self.assertTrue(
+                    (Path(tempdir) / "data" / "chat_ui_themes" / "raging-loop-simple" / "theme.json").is_file()
                 )
                 self.assertTrue(
                     (Path(tempdir) / "data" / "chat_ui_themes" / "sakura-dream" / "preview.png").is_file()

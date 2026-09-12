@@ -29,6 +29,7 @@ import type {
   SaveChatThemeInput,
 } from "../../../shared/theme/chatTheme";
 import { resetPersistedChatStageRuntimeThemeAppearance } from "../runtimeConfig";
+import { useControlArtwork } from "./useControlArtwork";
 
 export interface ChatThemeContextValue {
   /** 可选主题列表（含内置 + 用户 mod）。 */
@@ -159,7 +160,7 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
     };
   }, [applyManifest, refresh]);
 
-  const resolved = useMemo(() => {
+  const baseResolved = useMemo(() => {
     const fallbackStyle = parseChatChromeTheme(legacyTheme);
     if (!manifest) {
       return {
@@ -174,6 +175,7 @@ export function ChatThemeProvider({ children }: { children: ReactNode }) {
       style: { ...fallbackStyle, ...next.style },
     } satisfies ResolvedChatTheme;
   }, [legacyTheme, manifest]);
+  const resolved = useControlArtwork(baseResolved);
 
   useEffect(() => {
     if (typeof document === "undefined") {

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import neonNightCityFrameDialogUrl from "../../../../../assets/chat_ui_themes/neon-night-city/frame-dialog.svg?url";
 import neonNightCityPreviewUrl from "../../../../../assets/chat_ui_themes/neon-night-city/preview.png?url";
+import ragingLoopSimplePreviewUrl from "../../../../../assets/chat_ui_themes/raging-loop-simple/preview.svg?url";
 import sakuraDreamPreviewUrl from "../../../../../assets/chat_ui_themes/sakura-dream/preview.png?url";
 import spiritronCommandPreviewUrl from "../../../../../assets/chat_ui_themes/spiritron-command/preview.png?url";
 import windborneAdventurePreviewUrl from "../../../../../assets/chat_ui_themes/windborne-adventure/preview.png?url";
@@ -144,12 +145,14 @@ describe("browser preview platform chat themes", () => {
     expect(themes.map((theme) => theme.id)).toEqual([
       "windborne-adventure",
       "neon-night-city",
+      "raging-loop-simple",
       "sakura-dream",
       "spiritron-command",
     ]);
     expect(themes.map((theme) => theme.previewUrl)).toEqual([
       windborneAdventurePreviewUrl,
       neonNightCityPreviewUrl,
+      ragingLoopSimplePreviewUrl,
       sakuraDreamPreviewUrl,
       spiritronCommandPreviewUrl,
     ]);
