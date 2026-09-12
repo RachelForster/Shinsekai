@@ -3,6 +3,7 @@ import threading
 import queue
 import subprocess
 import time
+import uuid
 from ai.tts.tts_adapter import (
     TTSAdapter,
     GPTSoVitsAdapter,
@@ -68,8 +69,9 @@ class TTSAdapterFactory:
 
 #  TTS管理器
 class TTSManager:
-    def __init__(self, character_ui_url="http://localhost:7888/alive", tts_server_url="http://127.0.0.1:9880/"):
-        self.audio_cache_dir = Path("cache") / "audio"
+    def __init__(self, character_ui_url="http://localhost:7888/alive", tts_server_url="http://127.0.0.1:9880/", *, audio_cache_dir=None, unique_cache_files=False):
+        self.audio_cache_dir = Path(audio_cache_dir) if audio_cache_dir else Path("cache") / "audio"
+        self.unique_cache_files = unique_cache_files
         self.character_ui_url = character_ui_url
         self.cache_num = 100
         self.index = 0
@@ -121,7 +123,8 @@ class TTSManager:
             return ''
 
         # 最终文件路径
-        final_path = self.audio_cache_dir / f"{self.index % self.cache_num}.wav"
+        filename = uuid.uuid4().hex if self.unique_cache_files else str(self.index % self.cache_num)
+        final_path = self.audio_cache_dir / f"{filename}.wav"
         self.index += 1
         tmp_path = final_path.with_suffix(final_path.suffix + ".part")
 
@@ -231,9 +234,9 @@ class TTSManager:
         path = os_path + "\\api_v2.py"
         subprocess.Popen([embeded_python_path, path], cwd=os_path)
 
-    def shutdown(self):
+    def shutdown(self, *, stop_server=True):
         """Shuts down the queue, worker thread, and TTS server process."""
         self.task_queue.put(None)
         self.worker_thread.join()
-        if hasattr(self.tts_adapter, "stop_server"):
+        if stop_server and hasattr(self.tts_adapter, "stop_server"):
             self.tts_adapter.stop_server()

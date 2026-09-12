@@ -56,10 +56,8 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
         manager.switch_model(
             {
                 "character_name": request.character_name,
-                "sovits_model_path": Path(character.sovits_model_path)
-                .resolve()
-                .as_posix(),
-                "gpt_model_path": Path(character.gpt_model_path).resolve().as_posix(),
+                "sovits_model_path": self._absolute(character.sovits_model_path),
+                "gpt_model_path": self._absolute(character.gpt_model_path),
             }
         )
 
@@ -169,7 +167,11 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
 
     @staticmethod
     def _absolute(path: str | Path | None) -> str:
-        return Path(path or "").resolve().as_posix()
+        if not path:
+            return ""
+        if str(path).startswith("/kaggle/"):
+            return str(path)
+        return Path(path).resolve().as_posix()
 
     @staticmethod
     def _is_audio_file(path: str | None) -> bool:

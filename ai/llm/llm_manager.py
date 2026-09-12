@@ -245,6 +245,7 @@ class LLMManager:
         history_file: str = "",
         hook_dispatcher: PluginHookDispatcher | None = None,
         media_selection_mode: str = "indexed",
+        tools_enabled: bool = True,
     ):
         self.llm_adapter = adapter
         self.messages = []
@@ -264,7 +265,8 @@ class LLMManager:
         )
         self.generation_config = generation_config or {}
         self.set_user_template(user_template)
-        self.tools_definitions = tool_manager.get_definitions(groups="default")  # 初始仅 default 组
+        self.tools_enabled = tools_enabled
+        self.tools_definitions = tool_manager.get_definitions(groups="default") if tools_enabled else []
         self._active_tool_groups: list = ["default"]  # LRU: most recent first
         self._max_active_groups = max(1, int(max_active_tool_groups))
         self.tools_manager = tool_manager
@@ -518,6 +520,8 @@ class LLMManager:
         }
 
     def _current_tool_definitions(self) -> list[dict]:
+        if not self.tools_enabled:
+            return []
         state = self._turn_state
         if state is not None and state.tool_budget_exhausted():
             self.logger.info(
@@ -875,6 +879,8 @@ class LLMManager:
         )
 
     def _execute_formatted_tool_call(self, call: dict) -> tuple[str, str]:
+        if not self.tools_enabled:
+            raise ValueError("Tools are disabled for this LLM workflow")
         func_name = call["function"]["name"]
         func_args = call["function"]["arguments"]
         if isinstance(func_args, str) and not func_args.strip():
@@ -1097,6 +1103,8 @@ class LLMManager:
             return
 
         if has_tool_use:
+            if not self.tools_enabled:
+                raise ValueError("Unexpected tool call in a dialog-only workflow")
             formatted_calls = []
             for idx in sorted(full_tool_calls.keys()):
                 tc = full_tool_calls[idx]
@@ -1227,6 +1235,8 @@ class LLMManager:
         )
 
         if tool_calls:
+            if not self.tools_enabled:
+                raise ValueError("Unexpected tool call in a dialog-only workflow")
             # Gemini 的 thought_signature 会被 OpenAI SDK Pydantic 模型丢弃，
             # 从原始 HTTP 响应体中捞出补齐
             _raw_extras = _raw_response_tool_call_extras(response)
