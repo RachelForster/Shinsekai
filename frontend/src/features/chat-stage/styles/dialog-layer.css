@@ -25,6 +25,7 @@
   min-width: 0;
   min-height: var(--chat-dialog-min-height);
   padding: var(--chat-dialog-padding);
+  padding-inline: var(--chat-dialog-padding-inline, 24px);
   border: var(--chat-dialog-border);
   border-color: var(--chat-dialog-border-color);
   border-radius: var(--chat-dialog-border-radius);
@@ -228,6 +229,12 @@
 .dialog-layer__text strong {
   color: var(--chat-name-color, var(--stage-accent));
   font-weight: 800;
+}
+
+.dialog-layer[data-narration="true"] .dialog-layer__text,
+.dialog-layer[data-narration="true"] .dialog-layer__text b,
+.dialog-layer[data-narration="true"] .dialog-layer__text strong {
+  color: inherit;
 }
 
 .dialog-layer__html,

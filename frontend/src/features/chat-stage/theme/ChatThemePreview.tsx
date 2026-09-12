@@ -7,6 +7,7 @@ import { Button, SegmentedTabs, ThemeFrame } from "../../../shared/ui";
 import { DialogLayer, OptionsLayer } from "../components/StageLayers";
 import "../chat-stage.css";
 import { chatThemeAssetUrl } from "./ChatThemeProvider";
+import { useControlArtwork } from "./useControlArtwork";
 
 export type ChatThemePreviewMode = "dialog" | "options";
 
@@ -65,10 +66,11 @@ export function ChatThemePreview({
   onModeChange: (mode: ChatThemePreviewMode) => void;
 }) {
   const { t } = useI18n();
-  const resolved = useMemo(
+  const baseResolved = useMemo(
     () => resolveChatTheme(manifest, (rel) => chatThemeAssetUrl(assetThemeId, rel)),
     [assetThemeId, manifest],
   );
+  const resolved = useControlArtwork(baseResolved);
   const inputLayout = resolved.style["--chat-input-layout"] === "pill" ? "pill" : "default";
 
   return (

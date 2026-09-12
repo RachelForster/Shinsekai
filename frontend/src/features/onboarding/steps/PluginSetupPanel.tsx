@@ -243,7 +243,7 @@ export function PluginSetupPanel({ copy, onInstalled }: PluginSetupPanelProps) {
         if (isTauriDesktop()) {
           setReloadStatus("reloading");
           try {
-            await reloadPluginService();
+            await reloadPluginService(queryClient);
           } catch (error) {
             const message = desktopRestartErrorMessage(error);
             setReloadStatus("failed");

@@ -1,4 +1,5 @@
 import neonNightCityThemeJson from "../../../../assets/chat_ui_themes/neon-night-city/theme.json";
+import ragingLoopSimpleThemeJson from "../../../../assets/chat_ui_themes/raging-loop-simple/theme.json";
 import sakuraDreamThemeJson from "../../../../assets/chat_ui_themes/sakura-dream/theme.json";
 import spiritronCommandThemeJson from "../../../../assets/chat_ui_themes/spiritron-command/theme.json";
 import windborneAdventureThemeJson from "../../../../assets/chat_ui_themes/windborne-adventure/theme.json";
@@ -24,6 +25,7 @@ function bundledThemeManifest(value: unknown): ChatThemeManifest {
 const bundledThemeManifests = [
   bundledThemeManifest(windborneAdventureThemeJson),
   bundledThemeManifest(neonNightCityThemeJson),
+  bundledThemeManifest(ragingLoopSimpleThemeJson),
   bundledThemeManifest(sakuraDreamThemeJson),
   bundledThemeManifest(spiritronCommandThemeJson),
 ];

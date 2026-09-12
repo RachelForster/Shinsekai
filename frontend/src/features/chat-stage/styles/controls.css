@@ -305,16 +305,34 @@
 .chat-stage .input-layer__extra-toggle.icon-button {
   border-color: transparent;
   border-radius: 50%;
-  background: transparent;
+  background-color: transparent;
   box-shadow: none;
 }
 
 .chat-stage .input-layer__quick-submit.icon-button {
+  width: var(--chat-send-button-width, var(--chat-input-button-size));
+  min-width: var(--chat-send-button-width, var(--chat-input-button-size));
+  height: var(--chat-send-button-height, var(--chat-input-button-size));
   border: 1px solid var(--chat-send-border-color, transparent);
   border-radius: var(--chat-send-border-radius, 50%);
   color: var(--chat-send-color, var(--chat-input-color, #fff));
-  background: var(--chat-send-sheen, none), var(--chat-send-background, transparent);
+  background:
+    var(--chat-send-background-image, none) center / 100% 100% no-repeat,
+    var(--chat-send-sheen, none),
+    var(--chat-send-background, transparent);
   box-shadow: var(--chat-send-box-shadow, none);
+}
+
+.chat-stage .input-layer__quick-submit.icon-button .icon-button__icon {
+  opacity: var(--chat-send-icon-opacity, 1);
+}
+
+.chat-stage .input-layer__press.icon-button,
+.chat-stage .input-layer__press.icon-button:hover:not(:disabled) {
+  background-image: var(--chat-input-microphone-image, none);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 38px 38px;
 }
 
 .chat-stage .input-layer__press.icon-button:hover:not(:disabled),
@@ -322,8 +340,15 @@
 .chat-stage .input-layer__extra-toggle.icon-button:hover:not(:disabled),
 .chat-stage .input-layer__extra-toggle.icon-button[aria-expanded="true"],
 .chat-stage .input-layer__press.icon-button[data-active="true"] {
-  background: rgba(255, 255, 255, 0.13);
+  background-color: rgba(255, 255, 255, 0.13);
   transform: translateY(-1px);
+}
+
+.chat-stage .input-layer__quick-submit.icon-button:hover:not(:disabled) {
+  background:
+    var(--chat-send-background-image, none) center / 100% 100% no-repeat,
+    var(--chat-send-sheen, none),
+    var(--chat-send-background, transparent);
 }
 
 .chat-stage .input-layer__press.icon-button:active:not(:disabled),

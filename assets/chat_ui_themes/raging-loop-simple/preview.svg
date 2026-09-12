@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#1f3745"/><stop offset="1" stop-color="#071015"/></linearGradient>
+    <linearGradient id="dialog" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#172229" stop-opacity=".92"/><stop offset="1" stop-color="#06090c" stop-opacity=".92"/></linearGradient>
+  </defs>
+  <rect width="960" height="540" fill="url(#sky)"/>
+  <path d="M0 280 160 165l135 108 154-152 135 150 165-130 211 160v240H0Z" fill="#0c1a20" opacity=".8"/>
+  <rect x="0" y="314" width="960" height="226" fill="url(#dialog)"/>
+  <rect x="48" y="276" width="260" height="58" fill="#0a1014" fill-opacity=".9"/>
+  <rect x="48" y="276" width="4" height="58" fill="#62c3ff"/>
+  <text x="76" y="314" fill="#fff" font-family="Microsoft YaHei, sans-serif" font-size="25">房石 阳明</text>
+  <text x="52" y="394" fill="#fff" font-family="Microsoft YaHei, sans-serif" font-size="34">「这里是人狼村风格的简易聊天主题。」</text>
+  <text x="52" y="448" fill="#fff" font-family="Microsoft YaHei, sans-serif" font-size="30">半透明台词框与浅蓝操作高亮。</text>
+  <g fill="#62c3ff" font-family="Segoe UI, sans-serif" font-size="20"><text x="600" y="510">▣ LOG</text><text x="740" y="510">▶ AUTO</text><text x="870" y="510">≫ SKIP</text></g>
+</svg>

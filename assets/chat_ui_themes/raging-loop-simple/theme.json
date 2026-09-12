@@ -1,0 +1,111 @@
+{
+  "$schema": "../theme.schema.json",
+  "schema": 1,
+  "id": "raging-loop-simple",
+  "name": {
+    "zh_CN": "人狼村简易",
+    "en": "Raging Loop Simple",
+    "ja": "レイジングループ・シンプル"
+  },
+  "author": "Shinsekai",
+  "version": "1.0.0",
+  "preview": "preview.svg",
+  "description": {
+    "zh_CN": "以深色半透明台词框、左侧角色名与浅蓝操作高亮构成的简易人狼村风格主题。",
+    "en": "A minimal Raging Loop-inspired theme with a dark dialogue panel and cool-blue highlights.",
+    "ja": "半透明の台詞枠、左寄せの名前、淡い青のアクセントで構成したシンプルなテーマ。"
+  },
+  "tokens": {
+    "global": {
+      "themeColor": "#62c3ff",
+      "fontFamily": "Microsoft YaHei, Yu Gothic UI, Segoe UI, sans-serif"
+    },
+    "dialog": {
+      "background": "linear-gradient(90deg, transparent 0%, rgba(8, 13, 15, 0.24) 28%, rgba(8, 13, 15, 0.24) 72%, transparent 100%)",
+      "borderColor": "rgba(220, 239, 247, 0)",
+      "borderRadius": "0px",
+      "boxShadow": "none",
+      "chrome": "none",
+      "color": "#ffffff",
+      "heightPx": 226,
+      "padding": 28,
+      "paddingInlinePx": 92,
+      "textAlign": "left",
+      "textShadow": "0 2px 3px rgba(0,0,0,0.92)",
+      "textSizePx": 32,
+      "textWeight": 500,
+      "widthPct": 100
+    },
+    "name": {
+      "align": "left",
+      "background": "linear-gradient(90deg, transparent 0%, rgba(8, 13, 15, 0.24) 8%, rgba(8, 13, 15, 0.24) 92%, transparent 100%)",
+      "borderColor": "rgba(220, 239, 247, 0)",
+      "borderRadius": "0px",
+      "boxShadow": "none",
+      "color": "#ffffff",
+      "decoration": "accent",
+      "overlapPx": 0,
+      "padding": 4,
+      "textShadow": "0 2px 3px rgba(0,0,0,0.92)",
+      "textSizePx": 25,
+      "textWeight": 600
+    },
+    "options": {
+      "background": "transparent",
+      "backgroundImage": "select_bar_on.png",
+      "backgroundSlice": [16, 30, 16, 30],
+      "borderColor": "transparent",
+      "borderRadius": "0px",
+      "color": "#f7fcff",
+      "frameWidthPx": 16,
+      "gap": 10,
+      "hover": {
+        "background": "transparent",
+        "boxShadow": "none",
+        "borderColor": "transparent",
+        "color": "#ffffff"
+      },
+      "active": {
+        "background": "transparent",
+        "boxShadow": "none",
+        "borderColor": "transparent",
+        "color": "#ffffff"
+      },
+      "icon": "none",
+      "placement": "right",
+      "textSizePx": 20,
+      "textWeight": 600
+    },
+    "input": {
+      "background": "linear-gradient(90deg, transparent 0%, rgba(8, 13, 15, 0.24) 8%, rgba(8, 13, 15, 0.24) 92%, transparent 100%)",
+      "bottomInsetPx": 0,
+      "borderColor": "transparent",
+      "borderRadius": "0px",
+      "boxShadow": "none",
+      "color": "#ffffff",
+      "fieldBackground": "transparent",
+      "layout": "pill",
+      "maxWidthPx": 760,
+      "microphoneImage": "log_vo_off.png"
+    },
+    "toolbar": {
+      "background": "rgba(7, 17, 27, 0.82)",
+      "borderColor": "rgba(136, 204, 240, 0.58)",
+      "borderRadius": "8px",
+      "color": "#ffffff",
+      "placement": "input-top",
+      "reveal": "always"
+    },
+    "send": {
+      "background": "transparent",
+      "backgroundImage": "b02b_off.png",
+      "borderColor": "transparent",
+      "borderRadius": "0px",
+      "boxShadow": "none",
+      "color": "#ffffff"
+    },
+    "typewriter": {
+      "cps": 32
+    }
+  }
+}
