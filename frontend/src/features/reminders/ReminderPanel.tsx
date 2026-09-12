@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Bell, Check, ChevronRight, Home, SlidersHorizontal, X } from "lucide-react";
+import { Bell, Check, ChevronLeft, ChevronRight, Home, SlidersHorizontal, X } from "lucide-react";
 
 import { listCharacters } from "../../entities/character/repository";
 import { getAppConfig } from "../../entities/config/repository";
@@ -9,6 +9,7 @@ import { cancelReminder, dismissReminder, getReminderInbox, listReminders } from
 import type { ReminderNotice, ScheduledReminder } from "../../entities/reminder/types";
 import { onRemindersChanged, reminderWindow } from "../../shared/desktop/remindersApi";
 import { applyThemeColor } from "../../shared/theme/appTheme";
+import { CompactReminderCard } from "./CompactReminderCard";
 import "./ReminderPanel.css";
 
 import { reminderPanelCopy as copy } from "../../shared/i18n/reminderPanelCopy";
@@ -31,6 +32,7 @@ export function ReminderPanel() {
   const [tab, setTab] = useState<"upcoming" | "inbox">("upcoming");
   const [crop, setCrop] = useState(initialCrop);
   const [customize, setCustomize] = useState(false);
+  const [management, setManagement] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -90,6 +92,7 @@ export function ReminderPanel() {
     syncScheme();
     window.addEventListener("storage", syncScheme);
     void onRemindersChanged(() => {
+      setManagement(false);
       syncScheme();
       void refresh();
     })
@@ -127,7 +130,8 @@ export function ReminderPanel() {
       setBusy(false);
     }
   };
-  const current = selected ?? inbox[0] ?? schedules[0];
+  const activeNotice = inbox.find((item) => item.id === selected?.id && item.due_at === selected?.due_at) ?? inbox[0];
+  const current = management ? (selected ?? inbox[0] ?? schedules[0]) : activeNotice;
   const character = current ? characters.find((item) => item.name === current.character_name) : characters[0];
   const portrait = character?.sprites[0]?.path;
   const received = !!current && inbox.some((item) => item.id === current.id && item.due_at === current.due_at);
@@ -140,10 +144,71 @@ export function ReminderPanel() {
       minute: "2-digit",
     });
 
+  const changeView = (expanded: boolean) =>
+    void run(async () => {
+      await reminderWindow(expanded ? "manage" : "compact");
+      setManagement(expanded);
+    });
+  const portraitElement = (
+    <div className="reminder-panel__portrait" style={{ "--portrait-crop": crop } as CSSProperties}>
+      <span aria-hidden>{(character?.name ?? current?.character_name ?? "S").slice(0, 1)}</span>
+      {portrait && (
+        <img
+          key={portrait}
+          src={fileUrl(portrait)}
+          alt={character?.name ?? ""}
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      )}
+    </div>
+  );
+
+  if (!management) {
+    const index = activeNotice ? inbox.indexOf(activeNotice) : 0;
+    return (
+      <CompactReminderCard
+        portrait={portraitElement}
+        name={character?.name ?? current?.character_name ?? "Shinsekai"}
+        message={current?.message ?? (loading ? text.load : text.hello)}
+        time={
+          current
+            ? new Date(current.due_at).toLocaleTimeString(language === "zh_CN" ? "zh-CN" : language, {
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : ""
+        }
+        index={index}
+        count={inbox.length}
+        busy={busy}
+        error={error}
+        text={text}
+        onClose={() => void run(() => reminderWindow("hide"))}
+        onDismiss={() =>
+          void run(async () => {
+            if (!activeNotice) return;
+            await dismissReminder(activeNotice);
+            setSelected(null);
+            if (inbox.length === 1) await reminderWindow("hide");
+          })
+        }
+        onManage={() => changeView(true)}
+        onPrevious={() => setSelected(inbox[(index - 1 + inbox.length) % inbox.length])}
+        onNext={() => setSelected(inbox[(index + 1) % inbox.length])}
+        onRetry={() => void refresh()}
+      />
+    );
+  }
+
   return (
     <main className="reminder-panel" aria-label={text.title}>
       <header className="reminder-panel__header">
         <span>
+          <button aria-label={text.back} title={text.back} disabled={busy} onClick={() => changeView(false)}>
+            <ChevronLeft size={15} />
+          </button>
           <Bell size={15} /> Shinsekai <span className="reminder-panel__muted">/ {text.title}</span>
         </span>
         <button aria-label={text.close} onClick={() => void run(() => reminderWindow("hide"))}>

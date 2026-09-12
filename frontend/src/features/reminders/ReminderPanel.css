@@ -222,3 +222,73 @@ html.reminder-surface,
   overflow-wrap: anywhere;
   flex: 1;
 }
+
+.reminder-panel--compact {
+  height: calc(100vh - 16px);
+  margin: 8px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 14px;
+  border-radius: 20px;
+}
+.reminder-panel--compact .reminder-panel__portrait {
+  min-height: 0;
+  border-radius: 13px;
+}
+.reminder-card__body {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reminder-card__header,
+.reminder-card__actions,
+.reminder-card__actions > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.reminder-card__header h1 {
+  min-width: 0;
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-accent-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reminder-card__header button {
+  flex-shrink: 0;
+}
+.reminder-card__speech {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.reminder-card__speech:focus-visible {
+  outline: 1px solid var(--color-accent-primary);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+.reminder-card__actions {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  font-size: 10px;
+  min-height: 28px;
+}
+.reminder-card__pager {
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.reminder-panel--compact .reminder-panel__error {
+  flex-shrink: 0;
+  max-height: 30px;
+}

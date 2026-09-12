@@ -64,6 +64,11 @@ scheduled date; editing the time does not cause a second one that day. Quitting
 stops reminders; the app does not wake a sleeping computer or launch itself.
 Left-click the tray icon or choose **Open reminder panel** in settings to open
 the custom panel. It shares the main app's theme color and light/dark preference.
+The default notification is a compact 420×184 card showing only the portrait,
+character name and message, with small close/read controls. Multiple arrivals
+can be browsed with arrows; long messages scroll inside the card. The ellipsis
+opens the larger management view for schedules and portrait cropping. New
+notifications and reopening from the tray always return to the compact card.
 The left portrait shows the upper 50% of the character's first sprite by default;
 the crop control adjusts this from 25% to 75% and remembers the preference.
 Arriving reminders open the panel without requesting keyboard focus. Multiple

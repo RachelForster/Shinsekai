@@ -56,6 +56,9 @@ describe("character reminder panel", () => {
     expect(await screen.findByRole("img", { name: "澪" })).toHaveAttribute("src", "/files/portrait.png");
     expect(document.documentElement.style.getPropertyValue("--theme-accent")).toBe("#5599aa");
     expect(document.documentElement.dataset.colorScheme).toBe("dark");
+    fireEvent.click(screen.getByRole("button", { name: "管理提醒" }));
+    await screen.findByRole("button", { name: "返回小卡片" });
+    expect(mocks.window).toHaveBeenCalledWith("manage");
     fireEvent.click(screen.getByRole("button", { name: "头像裁切" }));
     expect(screen.getByRole("slider")).toHaveValue("0.5");
     fireEvent.change(screen.getByRole("slider"), { target: { value: "0.35" } });
@@ -65,17 +68,21 @@ describe("character reminder panel", () => {
   it("loads arrivals recorded before the webview subscribed and dismisses only that arrival", async () => {
     mocks.inbox.mockResolvedValue([notice]);
     render(<ReminderPanel />);
-    await screen.findByRole("heading", { name: notice.title });
-    expect(screen.getByRole("button", { name: "收到的提醒 1" })).toHaveAttribute("aria-pressed", "true");
+    await screen.findByText(notice.message);
+    expect(screen.getByRole("heading", { name: notice.character_name })).toBeInTheDocument();
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(screen.queryByText(scheduled.title)).not.toBeInTheDocument();
     mocks.inbox.mockResolvedValue([]);
     fireEvent.click(screen.getByRole("button", { name: "知道啦" }));
     await waitFor(() => expect(mocks.dismiss).toHaveBeenCalledWith(notice));
     expect(mocks.cancel).not.toHaveBeenCalled();
-    await screen.findByRole("heading", { name: scheduled.title });
+    await waitFor(() => expect(mocks.window).toHaveBeenCalledWith("hide"));
+    expect(screen.queryByText(scheduled.title)).not.toBeInTheDocument();
   });
 
   it("cancels the chosen saved schedule and refreshes the pending list", async () => {
     render(<ReminderPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: "管理提醒" }));
     const cancel = await screen.findByRole("button", { name: `取消日程: ${scheduled.title}` });
     mocks.list.mockResolvedValue({ reminders: [] });
     fireEvent.click(cancel);
@@ -87,7 +94,7 @@ describe("character reminder panel", () => {
     mocks.inbox.mockResolvedValue([notice]);
     mocks.list.mockRejectedValue(new Error("Bridge unavailable"));
     render(<ReminderPanel />);
-    await screen.findByRole("heading", { name: notice.title });
+    await screen.findByText(notice.message);
     expect(await screen.findByRole("alert")).toHaveTextContent("Bridge unavailable");
     mocks.list.mockResolvedValue({ reminders: [] });
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
@@ -95,15 +102,33 @@ describe("character reminder panel", () => {
   });
 
   it("preserves selection on refresh and focuses a newly arriving reminder", async () => {
-    mocks.inbox.mockResolvedValue([notice, { ...notice, id: "test-2", title: "早一点睡" }]);
+    mocks.inbox.mockResolvedValue([notice, { ...notice, id: "test-2", message: "早一点睡" }]);
     render(<ReminderPanel />);
-    const choose = await screen.findByRole("button", { name: /早一点睡.*澪/ });
+    const choose = await screen.findByRole("button", { name: "下一条提醒" });
     fireEvent.click(choose);
-    await screen.findByRole("heading", { name: "早一点睡" });
+    await screen.findByText("早一点睡");
+    expect(screen.getByText("2/2")).toBeInTheDocument();
     await act(async () => mocks.listen.mock.calls[0][0]());
-    expect(screen.getByRole("heading", { name: "早一点睡" })).toBeInTheDocument();
-    mocks.inbox.mockResolvedValue([{ ...notice, id: "test-3", title: "新的提醒" }, notice]);
+    expect(screen.getByText("早一点睡")).toBeInTheDocument();
+    mocks.inbox.mockResolvedValue([{ ...notice, id: "test-3", message: "新的提醒" }, notice]);
     await act(async () => mocks.listen.mock.calls[0][0]());
-    await screen.findByRole("heading", { name: "新的提醒" });
+    await screen.findByText("新的提醒");
+  });
+
+  it("keeps upcoming messages out of the card and returns to compact mode on arrival", async () => {
+    render(<ReminderPanel />);
+    await screen.findByText("把要记住的事，交给我吧。");
+    expect(screen.queryByText(scheduled.message)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "管理提醒" }));
+    await screen.findByRole("heading", { name: scheduled.title });
+    fireEvent.click(screen.getByRole("button", { name: "返回小卡片" }));
+    await screen.findByRole("button", { name: "管理提醒" });
+    expect(mocks.window).toHaveBeenCalledWith("compact");
+    fireEvent.click(screen.getByRole("button", { name: "管理提醒" }));
+    await screen.findByRole("heading", { name: scheduled.title });
+    mocks.inbox.mockResolvedValue([notice]);
+    await act(async () => mocks.listen.mock.calls[0][0]());
+    await screen.findByText(notice.message);
+    expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   });
 });

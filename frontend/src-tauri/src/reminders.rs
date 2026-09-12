@@ -4,11 +4,15 @@ use std::{collections::VecDeque, sync::Mutex, time::Duration};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::{
-    AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State, WebviewUrl,
+    WebviewWindowBuilder,
 };
 use tauri_plugin_notification::NotificationExt;
 
 use crate::{app_window_url_for_route, background, restart_debug_log, DesktopState};
+
+const CARD_WIDTH: f64 = 420.0;
+const CARD_HEIGHT: f64 = 184.0;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Notice {
@@ -35,7 +39,7 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     );
     let window = WebviewWindowBuilder::new(app, "reminders", WebviewUrl::App(url.into()))
         .title("Shinsekai · 提醒")
-        .inner_size(500.0, 500.0)
+        .inner_size(CARD_WIDTH, CARD_HEIGHT)
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -56,10 +60,16 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
-pub fn show_panel(app: &AppHandle, focus: bool) -> Result<(), String> {
+fn resize_panel(app: &AppHandle, expanded: bool) -> Result<(), String> {
     let window = app
         .get_webview_window("reminders")
         .ok_or("Reminder panel is unavailable")?;
+    let size = if expanded {
+        LogicalSize::new(500.0, 500.0)
+    } else {
+        LogicalSize::new(CARD_WIDTH, CARD_HEIGHT)
+    };
+    window.set_size(size).map_err(|e| e.to_string())?;
     let monitor = app
         .get_webview_window("main")
         .and_then(|main| main.current_monitor().ok().flatten())
@@ -74,6 +84,14 @@ pub fn show_panel(app: &AppHandle, focus: bool) -> Result<(), String> {
             .set_position(PhysicalPosition::new(x, y))
             .map_err(|e| e.to_string())?;
     }
+    Ok(())
+}
+
+pub fn show_panel(app: &AppHandle, focus: bool) -> Result<(), String> {
+    resize_panel(app, false)?;
+    let window = app
+        .get_webview_window("reminders")
+        .ok_or("Reminder panel is unavailable")?;
     window.show().map_err(|e| e.to_string())?;
     if focus {
         window.set_focus().map_err(|e| e.to_string())?;
@@ -183,6 +201,8 @@ pub fn desktop_reminders_dismiss(
 pub fn desktop_reminders_window(app: AppHandle, action: String) -> Result<(), String> {
     match action.as_str() {
         "open" => show_panel(&app, true),
+        "manage" => resize_panel(&app, true),
+        "compact" => resize_panel(&app, false),
         "hide" => app
             .get_webview_window("reminders")
             .ok_or("Reminder panel is unavailable")?

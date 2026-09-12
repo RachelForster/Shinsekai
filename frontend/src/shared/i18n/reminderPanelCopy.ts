@@ -1,5 +1,9 @@
 export const reminderPanelCopy = {
   zh_CN: {
+    manage: "管理提醒",
+    back: "返回小卡片",
+    previous: "上一条提醒",
+    next: "下一条提醒",
     title: "角色提醒",
     upcoming: "接下来的日程",
     inbox: "收到的提醒",
@@ -20,6 +24,10 @@ export const reminderPanelCopy = {
     retry: "重试",
   },
   en: {
+    manage: "Manage reminders",
+    back: "Back to card",
+    previous: "Previous reminder",
+    next: "Next reminder",
     title: "Character reminders",
     upcoming: "Upcoming",
     inbox: "Received",
@@ -40,6 +48,10 @@ export const reminderPanelCopy = {
     retry: "Retry",
   },
   ja: {
+    manage: "通知を管理",
+    back: "カードに戻る",
+    previous: "前の通知",
+    next: "次の通知",
     title: "キャラクターの通知",
     upcoming: "これからの予定",
     inbox: "届いた通知",
