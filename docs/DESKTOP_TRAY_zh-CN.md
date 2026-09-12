@@ -22,8 +22,15 @@
 ## 角色台词和语音
 
 睡觉提醒和角色工具创建的日程到点后，先显示原有文字，随后使用当前配置的 LLM，
-根据该角色的性格、简介和本次日程生成简短台词。提示词由 `ai/llm/template/reminder.py`
-中的 Section 拼接。界面文字使用界面语言，朗读台词使用系统语音语言，保持相同意思。
+根据该角色的设定和本次日程生成一句台词。提醒复用聊天的 `DialogTemplateSection`，
+在 `ai/llm/template/reminder.py` 中追加提醒约束，并设置 `max_dialog_items=1`。
+输出仍是原来的 `{"dialog": [{"character_name": "角色名", "speech": "显示台词", "translate": "语音翻译", "sprite": "-1"}]}`。
+界面和语音语言不同时生成 `translate`，相同时沿用不含翻译的普通 dialog 格式。
+
+生成使用原有 `LLMManager` 的格式修复和 `LlmResponseStreamParser` 解析。
+每次提醒使用独立的单轮上下文，仅接受指定角色的一条发言，关闭工具调用、旁白、选项和状态输出。
+语音复用 `DefaultTtsGenerationStrategy` 与 `TTSManager`：优先使用 `translate`，
+缺少翻译时走原有的文本清理、翻译和人名读音处理。每条提醒合成一个独立语音文件。
 
 语音通过当前 TTS 服务合成，沿用角色的模型、参考音频、语速和音量配置；无需打开聊天。
 服务未配置、超时或生成失败时保留文字提醒。冷启动服务可能需要等待，文字投递不受影响。

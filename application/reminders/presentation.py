@@ -1,52 +1,35 @@
-"""Character reminder text and speech, independent of an active chat session."""
+"""Present one standard chat dialog as a desktop reminder, without a chat window."""
 
-from collections.abc import Mapping
-import json
+import copy
 import logging
 from pathlib import Path
 import threading
 import time
-import uuid
+from types import SimpleNamespace
 
-from ai.llm.template.reminder import (
-    ReminderContext,
-    build_reminder_system_section,
-    build_reminder_user_section,
-)
-from ai.tts.model_session import tts_model_session
+from application.reminders.workflow import ReminderDialogWorkflow
+from sdk.messages import LLMDialogMessage
 
 logger = logging.getLogger(__name__)
-
-
-def _text_response(response):
-    if isinstance(response, (str, Mapping)):
-        return response
-    choices = getattr(response, "choices", None)
-    if choices:
-        return choices[0].message.content
-    content = getattr(response, "content", None)
-    if isinstance(content, list):
-        return "".join(
-            getattr(block, "text", "")
-            for block in content
-            if getattr(block, "type", "") == "text"
-        )
-    return content or getattr(response, "text", "")
 
 
 class ReminderPresenter:
     def __init__(self, config, project_root):
         self.config = config
+        self.workflow = ReminderDialogWorkflow(config)
         self.audio_dir = Path(project_root).resolve() / "cache" / "reminder_audio"
         self._slots = threading.BoundedSemaphore(1)
-        self._tts_adapter = None
+        self._tts_manager = None
         self._tts_signature = None
         self._tts_adapters = []
 
     def close(self):
+        if self._tts_manager is not None:
+            # The presenter owns adapter cleanup, including adapters retained
+            # across configuration changes. Stop the manager's idle THA queue.
+            self._tts_manager.shutdown(stop_server=False)
         for adapter in self._tts_adapters:
             try:
-                # Built-in adapters only terminate subprocesses they started.
                 stop = getattr(adapter, "stop_server", None)
                 if callable(stop):
                     stop()
@@ -70,60 +53,22 @@ class ReminderPresenter:
             result[field] = value
         return result
 
+    @staticmethod
+    def _presentation(dialog):
+        return {"message": dialog.text, "dialog": dialog.model_dump(by_alias=True)}
+
     def render(self, payload):
         data = self.validate(payload)
-        system = self.config.config.system_config
-        display_language = str(getattr(system, "ui_language", "zh_CN"))
-        voice_language = str(getattr(system, "voice_language", "ja"))
-        fallback = {
-            "message": data["message"],
-            "speech": data["message"],
-            "speech_language": (
-                "zh" if display_language == "zh_CN" else display_language
-            ),
-        }
+        fallback = self._presentation(
+            LLMDialogMessage(
+                character_name=data["character_name"], speech=data["message"]
+            )
+        )
         character = self.config.get_character_by_name(data["character_name"])
         if character is None or not self._slots.acquire(blocking=False):
             return fallback
         try:
-            context = ReminderContext(
-                {
-                    **data,
-                    "character_setting": str(
-                        getattr(character, "character_setting", "")
-                    )[:12000],
-                    "character_brief": str(getattr(character, "character_brief", ""))[
-                        :1000
-                    ],
-                    "display_language": display_language,
-                    "voice_language": voice_language,
-                }
-            )
-            raw = self._complete(
-                [
-                    {
-                        "role": "system",
-                        "content": build_reminder_system_section().render(context),
-                    },
-                    {
-                        "role": "user",
-                        "content": build_reminder_user_section().render(context),
-                    },
-                ]
-            )
-            parsed = raw if isinstance(raw, Mapping) else json.loads(str(raw).strip())
-            for key in ("message", "speech"):
-                if (
-                    not isinstance(parsed.get(key), str)
-                    or not parsed[key].strip()
-                    or len(parsed[key]) > 400
-                ):
-                    raise ValueError("Invalid generated reminder dialogue")
-            return {
-                "message": parsed["message"].strip(),
-                "speech": parsed["speech"].strip(),
-                "speech_language": voice_language,
-            }
+            return self._presentation(self.workflow.generate(data, character))
         except Exception:
             logger.warning(
                 "Reminder dialogue generation failed; using saved text", exc_info=True
@@ -132,59 +77,23 @@ class ReminderPresenter:
         finally:
             self._slots.release()
 
-    def _complete(self, messages):
-        from ai.llm.llm_manager import LLMAdapterFactory
-
-        provider, model, base_url, api_key = self.config.get_llm_api_config()
-        if not provider or not model or (not api_key and provider != "Ollama"):
-            raise ValueError("Reminder LLM is not configured")
-        adapter = LLMAdapterFactory.create_adapter(
-            **self.config.merged_llm_factory_kwargs(
-                provider,
-                {
-                    "llm_provider": provider,
-                    "model": model,
-                    "base_url": base_url,
-                    "api_key": api_key or "ollama",
-                },
-            )
-        )
-        client = getattr(adapter, "client", None)
-        if callable(getattr(client, "with_options", None)):
-            adapter.client = client.with_options(timeout=25, max_retries=0)
-        try:
-            return _text_response(
-                adapter.chat(
-                    messages, stream=False, response_format={"type": "json_object"}
-                )
-            )
-        finally:
-            close = getattr(getattr(adapter, "client", None), "close", None)
-            if callable(close):
-                close()
-
     def speech(self, payload):
-        if not isinstance(payload, dict):
-            raise ValueError("Reminder speech must be an object")
-        name, text, language = (
-            payload.get(key) for key in ("character_name", "speech", "speech_language")
-        )
+        if not isinstance(payload, dict) or not isinstance(payload.get("dialog"), dict):
+            raise ValueError("Reminder speech requires a dialog object")
+        dialog = LLMDialogMessage.model_validate(payload["dialog"])
         if (
-            not isinstance(name, str)
-            or len(name) > 120
-            or not isinstance(text, str)
-            or not 0 < len(text) <= 2000
+            not dialog.name.strip()
+            or len(dialog.name) > 120
+            or not (dialog.text or "").strip()
+            or len(dialog.text) > 2000
+            or len(dialog.translate or "") > 2000
         ):
-            raise ValueError("Invalid reminder speech")
-        if language not in {"zh_CN", "zh", "en", "ja", "ko", "yue", "auto"}:
-            raise ValueError("Invalid reminder speech language")
-        character = self.config.get_character_by_name(name)
+            raise ValueError("Invalid reminder dialog")
+        character = self.config.get_character_by_name(dialog.name)
         if character is None or not self._slots.acquire(blocking=False):
             return {"audio_path": None}
         try:
-            return self._synthesize(
-                character, text, "zh" if language == "zh_CN" else language
-            )
+            return self._synthesize(character, dialog)
         except Exception:
             logger.warning(
                 "Reminder voice unavailable; keeping text reminder", exc_info=True
@@ -193,68 +102,78 @@ class ReminderPresenter:
         finally:
             self._slots.release()
 
-    def _synthesize(self, character, text, language):
-        from ai.tts.tts_manager import TTSAdapterFactory
+    def _synthesize(self, character, dialog):
+        from ai.llm.text_processor import TextProcessor
+        from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
+        from application.chat.dialog_media.models import TtsGenerationRequest
+        from application.chat.dialog_media.resolver import ResolvedSpriteAsset
+        from application.chat.dialog_media.tts_generation import (
+            DefaultTtsGenerationStrategy,
+        )
 
         url, work_path, provider = self.config.get_gpt_sovits_config()
         if not provider or provider == "none":
             return {"audio_path": None}
         kwargs = self.config.merged_tts_factory_kwargs(
-            provider,
-            {
-                "gpt_sovits_work_path": work_path,
-                "tts_server_url": url,
-            },
+            provider, {"gpt_sovits_work_path": work_path, "tts_server_url": url}
         )
         signature = (provider, repr(sorted(kwargs.items())))
-        if signature != self._tts_signature:
-            self._tts_adapter = TTSAdapterFactory.create_adapter(
-                adapter_name=provider, **kwargs
+        if self._tts_manager is None:
+            self._tts_manager = TTSManager(
+                audio_cache_dir=self.audio_dir, unique_cache_files=True
             )
-            self._tts_adapters.append(self._tts_adapter)
+        manager = self._tts_manager
+        if signature != self._tts_signature:
+            adapter = TTSAdapterFactory.create_adapter(adapter_name=provider, **kwargs)
+            self._tts_adapters.append(adapter)
+            manager.set_tts_adapter(adapter)
             self._tts_signature = signature
-        adapter = self._tts_adapter
-        self.audio_dir.mkdir(parents=True, exist_ok=True)
-        path = self.audio_dir / f"{uuid.uuid4().hex}.wav"
+        manager.tts_adapter.wait_until_ready(timeout_seconds=30)
+        manager.set_language(self.config.config.system_config.voice_language)
+        pronunciation = {}
+        for configured in getattr(self.config.config, "characters", [character]):
+            pronunciation.update(getattr(configured, "pronunciation_map", None) or {})
+        # One reminder utterance produces one replayable file. Preserve the
+        # shared speech/translate selection, cleanup and translation fallback.
+        api = copy.copy(self.config.config.api_config)
+        api.tts_split_enabled = False
+        runtime = SimpleNamespace(
+            tts_manager=manager,
+            text_processor=TextProcessor(pronunciation_map=pronunciation),
+            config=SimpleNamespace(
+                config=SimpleNamespace(api_config=api),
+                get_gpt_sovits_config=self.config.get_gpt_sovits_config,
+            ),
+        )
+        voice_character = copy.copy(character)
+        for field in ("gpt_model_path", "sovits_model_path", "refer_audio_path"):
+            setattr(
+                voice_character, field, self._voice_path(getattr(character, field, ""))
+            )
+        request = TtsGenerationRequest(
+            runtime=runtime,
+            character=voice_character,
+            character_name=dialog.name,
+            message=dialog,
+            sprite=ResolvedSpriteAsset(asset_id=str(dialog.asset_id)),
+        )
         try:
-            adapter.wait_until_ready(timeout_seconds=30)
-            with tts_model_session(adapter, str(url), timeout=15):
-                adapter.switch_model(
-                    {
-                        "character_name": character.name,
-                        "gpt_model_path": self._voice_path(character.gpt_model_path),
-                        "sovits_model_path": self._voice_path(
-                            character.sovits_model_path
-                        ),
-                    }
-                )
-                result = adapter.generate_speech(
-                    text=text,
-                    file_path=str(path),
-                    ref_audio_path=self._voice_path(character.refer_audio_path),
-                    prompt_text=character.prompt_text or "",
-                    prompt_lang=character.prompt_lang or language,
-                    text_lang=language,
-                    character_name=character.name,
-                    speed_factor=character.speech_speed,
-                )
-            if not result or not path.is_file() or path.stat().st_size == 0:
-                path.unlink(missing_ok=True)
-                return {"audio_path": None}
-        except Exception:
-            path.unlink(missing_ok=True)
-            raise
+            paths = list(DefaultTtsGenerationStrategy().generate(request))
+        finally:
+            for partial in self.audio_dir.glob("*.wav.part"):
+                partial.unlink(missing_ok=True)
+        if not paths or not paths[0] or not Path(paths[0]).is_file():
+            return {"audio_path": None}
         for old in self.audio_dir.glob("*.wav"):
             if old.stat().st_mtime < time.time() - 7 * 86400:
                 old.unlink(missing_ok=True)
         return {
-            "audio_path": path.as_posix(),
+            "audio_path": Path(paths[0]).as_posix(),
             "audio_volume": min(1.0, max(0.0, character.speech_volume)),
         }
 
     def _voice_path(self, value):
         value = str(value or "")
-        # Preserve server-side POSIX paths such as /kaggle/... on Windows.
         if not value or Path(value).is_absolute() or value.startswith("/"):
             return value
         return (self.audio_dir.parent.parent / value).resolve().as_posix()

@@ -273,8 +273,7 @@ fn enrich_notice(app: &AppHandle, mut notice: Notice) -> Result<(), String> {
         app,
         "/speech",
         Some(json!({
-            "character_name": notice.character_name,
-            "speech": result["speech"], "speech_language": result["speech_language"],
+            "dialog": result["dialog"],
         })),
         120,
     )?;
