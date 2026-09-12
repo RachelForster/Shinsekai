@@ -5,6 +5,7 @@ import { HashRouter } from "react-router-dom";
 import { AppRootProviders, AppRuntimeProviders } from "./app/providers/AppProviders";
 import { AppRoutes } from "./app/routes/AppRoutes";
 import { DesktopChrome } from "./shared/desktop/DesktopChrome";
+import { ReminderPanel } from "./features/reminders/ReminderPanel";
 import {
   desktopRestartErrorMessage,
   isDesktopBridgeConnectionError,
@@ -105,11 +106,15 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <ErrorBoundary>
       <AppRootProviders>
         <HashRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }}>
-          <DesktopChrome>
-            <AppRuntimeProviders>
-              <AppRoutes />
-            </AppRuntimeProviders>
-          </DesktopChrome>
+          {window.location.hash.startsWith("#/reminders") ? (
+            <ReminderPanel />
+          ) : (
+            <DesktopChrome>
+              <AppRuntimeProviders>
+                <AppRoutes />
+              </AppRuntimeProviders>
+            </DesktopChrome>
+          )}
         </HashRouter>
       </AppRootProviders>
     </ErrorBoundary>

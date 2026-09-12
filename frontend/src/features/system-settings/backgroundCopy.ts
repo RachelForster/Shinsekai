@@ -1,0 +1,70 @@
+export const backgroundCopy = {
+  zh_CN: {
+    panel: "打开提醒面板",
+    title: "托盘与睡觉提醒",
+    close: "关闭主窗口后驻留托盘",
+    minimize: "最小化主窗口到托盘",
+    trayHint: "从托盘打开主窗口，或选择「退出 Shinsekai」结束程序。聊天窗口保持原有关闭行为。",
+    unavailable: "当前系统托盘不可用，窗口将使用普通关闭和最小化行为。",
+    enabled: "每天提醒我睡觉",
+    time: "提醒时间（本机时间）",
+    reminderHint: "每次随机选择已有角色，使用本地晚安文案；没有角色时由 Shinsekai 提醒。",
+    runningHint:
+      "程序运行期间有效，最小化或驻留托盘后仍会提醒。每天最多一次；启动或唤醒时仅补发 30 分钟内错过的提醒。完全退出后停止。",
+    notificationHint: "左键点击托盘打开角色提醒面板，右键打开系统菜单。在聊天中请角色设置日程，面板中可查看和取消。",
+    save: "保存托盘与提醒设置",
+    saved: "托盘与提醒设置已保存。",
+    test: "测试通知",
+    tested: "已打开角色提醒面板；测试不影响每日提醒。",
+    invalidTime: "请输入有效时间（00:00–23:59）。",
+    loading: "正在加载托盘与提醒设置…",
+    retry: "重新加载",
+  },
+  en: {
+    panel: "Open reminder panel",
+    title: "Tray & bedtime reminders",
+    close: "Keep running in the tray when the main window closes",
+    minimize: "Minimize the main window to the tray",
+    trayHint:
+      "Open the main window from the tray, or choose “Quit Shinsekai” to exit. Closing chat windows keeps its existing behavior.",
+    unavailable: "The system tray is unavailable. Windows will close and minimize normally.",
+    enabled: "Remind me to sleep every day",
+    time: "Reminder time (local time)",
+    reminderHint:
+      "Choose a random existing character and a local goodnight message. Shinsekai speaks when no characters are available.",
+    runningHint:
+      "Works while the app is running, including when minimized or in the tray. At most once daily; reminders missed within 30 minutes are sent on launch or resume. Quitting stops reminders.",
+    notificationHint:
+      "Left-click the tray for character reminders; right-click for the system menu. Ask characters to schedule reminders in chat, then view or cancel them in the panel.",
+    save: "Save tray & reminder settings",
+    saved: "Tray and reminder settings saved.",
+    test: "Test notification",
+    tested: "Character reminder panel opened. The daily reminder is unaffected.",
+    invalidTime: "Enter a valid time (00:00–23:59).",
+    loading: "Loading tray and reminder settings…",
+    retry: "Reload",
+  },
+  ja: {
+    panel: "通知パネルを開く",
+    title: "トレイとおやすみ通知",
+    close: "メインウィンドウを閉じてもトレイに常駐する",
+    minimize: "メインウィンドウをトレイに最小化する",
+    trayHint: "トレイからメイン画面を開くか、「Shinsekai を終了」で終了できます。チャット画面の閉じ方は変わりません。",
+    unavailable: "システムトレイを利用できません。通常どおり閉じる・最小化の動作になります。",
+    enabled: "毎日おやすみ通知を送る",
+    time: "通知時刻（端末の時刻）",
+    reminderHint:
+      "登録済みキャラクターとローカルのおやすみ文をランダムに選びます。キャラクターがいない場合は Shinsekai が通知します。",
+    runningHint:
+      "最小化・トレイ常駐を含め、アプリの実行中に動作します。1 日 1 回まで。起動・スリープ解除時は 30 分以内に逃した通知のみ送信します。終了すると停止します。",
+    notificationHint:
+      "トレイを左クリックで通知パネル、右クリックでメニューを開きます。チャットでキャラクターに予定を頼み、パネルで確認・取り消しができます。",
+    save: "トレイと通知設定を保存",
+    saved: "トレイと通知設定を保存しました。",
+    test: "通知をテスト",
+    tested: "キャラクターの通知パネルを開きました。毎日の通知には影響しません。",
+    invalidTime: "有効な時刻（00:00–23:59）を入力してください。",
+    loading: "トレイと通知設定を読み込み中…",
+    retry: "再読み込み",
+  },
+};

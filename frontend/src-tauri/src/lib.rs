@@ -28,8 +28,10 @@ use std::os::unix::process::CommandExt;
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+mod background;
 mod desktop_files;
 mod project_root;
+mod reminders;
 mod runtime;
 
 type DesktopResult<T> = Result<T, Box<dyn Error>>;
@@ -392,10 +394,21 @@ pub fn run() {
     let protocol_frontend_dist = Arc::new(Mutex::new(None::<PathBuf>));
     let protocol_frontend_dist_for_handler = Arc::clone(&protocol_frontend_dist);
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            background::show_main(app)
+        }))
         .register_uri_scheme_protocol(LIVE_FRONTEND_SCHEME, move |_ctx, request| {
             serve_live_frontend_protocol(&protocol_frontend_dist_for_handler, request.uri().path())
         })
         .invoke_handler(tauri::generate_handler![
+            background::desktop_background_get,
+            background::desktop_background_save,
+            background::desktop_background_test,
+            reminders::desktop_reminders_inbox,
+            reminders::desktop_reminders_dismiss,
+            reminders::desktop_reminders_window,
+            reminders::desktop_reminders_list,
+            reminders::desktop_reminders_cancel,
             desktop_runtime_state,
             desktop_runtime_repair,
             desktop_runtime_install_profile,
@@ -424,11 +437,27 @@ pub fn run() {
             desktop_update_install
         ])
         .on_window_event(|window, event| {
+            if matches!(event, WindowEvent::Resized(_)) && window.label() == "main" {
+                if let Some(background) = window
+                    .app_handle()
+                    .try_state::<background::BackgroundState>()
+                {
+                    if background.minimize_to_tray() && window.is_minimized().unwrap_or(false) {
+                        let _ = window.hide();
+                    }
+                }
+            }
             if let WindowEvent::CloseRequested { api, .. } = event {
                 match window.label() {
                     "main" => {
                         api.prevent_close();
                         let app = window.app_handle().clone();
+                        if app.state::<background::BackgroundState>().close_to_tray() {
+                            if let Err(error) = window.hide() {
+                                restart_debug_log(format!("close to tray failed: {error}"));
+                            }
+                            return;
+                        }
                         let state = app.state::<DesktopState>();
                         shutdown_desktop_app(&app, state.inner(), "main window close requested");
                     }
@@ -454,6 +483,7 @@ pub fn run() {
                 app.manage(DesktopUpdateState::new());
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
+            app.handle().plugin(tauri_plugin_notification::init())?;
 
             let source_root = resolve_source_root(app)?;
             let app_root = resolve_app_root(app, &source_root)?;
@@ -499,6 +529,11 @@ pub fn run() {
                 .shadow(true)
                 .center()
                 .build()?;
+
+            if let Err(error) = reminders::setup(app.handle()) {
+                restart_debug_log(format!("reminder panel setup failed: {error}"));
+            }
+            background::setup(app.handle())?;
 
             if should_bootstrap_runtime(project_root_requires_selection) {
                 let app_handle = app.handle().clone();
@@ -1290,6 +1325,14 @@ fn desktop_chat_window_destroy(window: WebviewWindow) -> Result<(), String> {
 
 #[tauri::command]
 fn desktop_window_minimize(window: WebviewWindow) -> Result<(), String> {
+    if window.label() == "main"
+        && window
+            .app_handle()
+            .state::<background::BackgroundState>()
+            .minimize_to_tray()
+    {
+        return window.hide().map_err(|error| error.to_string());
+    }
     window.minimize().map_err(|error| error.to_string())
 }
 
@@ -1372,6 +1415,9 @@ fn desktop_window_close(
     state: State<'_, DesktopState>,
 ) -> Result<(), String> {
     if window.label() == "main" {
+        if app.state::<background::BackgroundState>().close_to_tray() {
+            return window.hide().map_err(|error| error.to_string());
+        }
         shutdown_desktop_app(&app, state.inner(), "desktop_window_close command");
         return Ok(());
     }
@@ -1617,6 +1663,11 @@ fn navigate_main_window_to_live_frontend(
     bridge_port: u16,
     auth_token: &str,
 ) -> Result<(), String> {
+    navigate_window_to_live_frontend(
+        app,
+        "reminders",
+        &live_frontend_url_for_route(bridge_port, auth_token, "/reminders"),
+    )?;
     navigate_window_to_live_frontend(app, "main", &live_frontend_url(bridge_port, auth_token))
 }
 
@@ -1633,10 +1684,14 @@ fn navigate_chat_window_to_live_frontend(
     )
 }
 
-fn live_frontend_reload_targets(bridge_port: u16, auth_token: &str) -> [(&'static str, String); 2] {
+fn live_frontend_reload_targets(bridge_port: u16, auth_token: &str) -> [(&'static str, String); 3] {
     [
         ("main", live_frontend_url(bridge_port, auth_token)),
         ("chat", live_chat_frontend_url(bridge_port, auth_token)),
+        (
+            "reminders",
+            live_frontend_url_for_route(bridge_port, auth_token, "/reminders"),
+        ),
     ]
 }
 
@@ -2021,6 +2076,8 @@ mod tests {
         assert!(targets[0].1.contains("#/settings/api"));
         assert_eq!(targets[1].0, "chat");
         assert!(targets[1].1.contains("#/chat-stage"));
+        assert_eq!(targets[2].0, "reminders");
+        assert!(targets[2].1.contains("#/reminders"));
     }
 
     #[test]

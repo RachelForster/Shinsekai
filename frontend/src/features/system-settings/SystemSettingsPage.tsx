@@ -31,6 +31,8 @@ import {
   useToast,
 } from "../../shared/ui";
 import { DesktopRuntimeSection } from "./DesktopRuntimeSection";
+import { DesktopBackgroundSection } from "./DesktopBackgroundSection";
+import { backgroundCopy } from "./backgroundCopy";
 // Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css
 import "./SystemSettingsPage.css";
 
@@ -97,6 +99,7 @@ export function SystemSettingsPage() {
     "";
   const systemSectionNavItems = [
     ...(isTauriDesktop() ? [{ id: "system-runtime", label: t("system.runtime.title") }] : []),
+    ...(isTauriDesktop() ? [{ id: "system-background", label: backgroundCopy[language].title }] : []),
     ...systemGeneralGroups.map((group) => ({ id: `system-${group.id}`, label: group.title })),
     { id: "system-chat-theme", label: t("chat.theme.title") },
     ...(systemNetworkProxyGroup ? [{ id: "system-network-proxy", label: systemNetworkProxyGroup.title }] : []),
@@ -247,6 +250,7 @@ export function SystemSettingsPage() {
         <PageSectionNav ariaLabel={t("system.title")} items={systemSectionNavItems} />
       </header>
       <DesktopRuntimeSection />
+      <DesktopBackgroundSection />
       <SchemaDrivenForm
         disabled={saveMutation.isPending}
         errors={errors}
