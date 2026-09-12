@@ -1,5 +1,16 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
-import { Bell, Check, ChevronLeft, ChevronRight, Home, SlidersHorizontal, X } from "lucide-react";
+import {
+  Bell,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Home,
+  SlidersHorizontal,
+  Volume2,
+  VolumeX,
+  Play,
+  X,
+} from "lucide-react";
 
 import { listCharacters } from "../../entities/character/repository";
 import { getAppConfig } from "../../entities/config/repository";
@@ -7,9 +18,10 @@ import type { Character } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { cancelReminder, dismissReminder, getReminderInbox, listReminders } from "../../entities/reminder/repository";
 import type { ReminderNotice, ScheduledReminder } from "../../entities/reminder/types";
-import { onRemindersChanged, reminderWindow } from "../../shared/desktop/remindersApi";
+import { onRemindersChanged, onRemindersUpdated, reminderWindow } from "../../shared/desktop/remindersApi";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { CompactReminderCard } from "./CompactReminderCard";
+import { useReminderAudio } from "./useReminderAudio";
 import "./ReminderPanel.css";
 
 import { reminderPanelCopy as copy } from "../../shared/i18n/reminderPanelCopy";
@@ -39,6 +51,12 @@ export function ReminderPanel() {
   const text = copy[language];
   const latestNotice = useRef("");
   const refreshVersion = useRef(0);
+  const voice = useReminderAudio(inbox);
+
+  useEffect(() => {
+    const speaking = inbox.find((notice) => `${notice.id}:${notice.due_at}` === voice.playing);
+    if (speaking) setSelected(speaking);
+  }, [voice.playing]);
 
   const refresh = useCallback(async () => {
     const version = ++refreshVersion.current;
@@ -81,6 +99,7 @@ export function ReminderPanel() {
     document.documentElement.classList.add("reminder-surface");
     let stopped = false;
     let unlisten: (() => void) | undefined;
+    let unlistenUpdates: (() => void) | undefined;
     const syncScheme = () => {
       try {
         const scheme = localStorage.getItem("shinsekai-color-scheme");
@@ -101,16 +120,26 @@ export function ReminderPanel() {
         else unlisten = cleanup;
       })
       .catch((reason: unknown) => setError(String(reason)));
+    void onRemindersUpdated(() => void refresh())
+      .then((cleanup) => {
+        if (stopped) cleanup();
+        else unlistenUpdates = cleanup;
+      })
+      .catch((reason: unknown) => setError(String(reason)));
     void refresh();
     const timer = window.setInterval(() => void refresh(), 15000);
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") void reminderWindow("hide");
+      if (event.key === "Escape") {
+        voice.stop();
+        void reminderWindow("hide");
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => {
       ++refreshVersion.current;
       stopped = true;
       unlisten?.();
+      unlistenUpdates?.();
       window.clearInterval(timer);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("storage", syncScheme);
@@ -149,6 +178,27 @@ export function ReminderPanel() {
       await reminderWindow(expanded ? "manage" : "compact");
       setManagement(expanded);
     });
+  const voiceControls = (
+    <>
+      {current?.audio_path && (
+        <button
+          aria-label={text.playVoice}
+          title={text.playVoice}
+          disabled={voice.muted}
+          onClick={() => voice.replay(current)}
+        >
+          <Play size={15} />
+        </button>
+      )}
+      <button
+        aria-label={voice.muted ? text.unmuteVoice : text.muteVoice}
+        title={voice.muted ? text.unmuteVoice : text.muteVoice}
+        onClick={voice.toggleMute}
+      >
+        {voice.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
+      </button>
+    </>
+  );
   const portraitElement = (
     <div className="reminder-panel__portrait" style={{ "--portrait-crop": crop } as CSSProperties}>
       <span aria-hidden>{(character?.name ?? current?.character_name ?? "S").slice(0, 1)}</span>
@@ -184,11 +234,16 @@ export function ReminderPanel() {
         count={inbox.length}
         busy={busy}
         error={error}
+        voiceControls={voiceControls}
         text={text}
-        onClose={() => void run(() => reminderWindow("hide"))}
+        onClose={() => {
+          voice.stop();
+          void run(() => reminderWindow("hide"));
+        }}
         onDismiss={() =>
           void run(async () => {
             if (!activeNotice) return;
+            voice.stop();
             await dismissReminder(activeNotice);
             setSelected(null);
             if (inbox.length === 1) await reminderWindow("hide");
@@ -211,7 +266,14 @@ export function ReminderPanel() {
           </button>
           <Bell size={15} /> Shinsekai <span className="reminder-panel__muted">/ {text.title}</span>
         </span>
-        <button aria-label={text.close} onClick={() => void run(() => reminderWindow("hide"))}>
+        {voiceControls}
+        <button
+          aria-label={text.close}
+          onClick={() => {
+            voice.stop();
+            void run(() => reminderWindow("hide"));
+          }}
+        >
           <X size={17} />
         </button>
       </header>

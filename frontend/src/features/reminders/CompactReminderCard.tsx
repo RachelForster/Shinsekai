@@ -11,6 +11,7 @@ interface CompactReminderCardProps {
   count: number;
   busy: boolean;
   error: string;
+  voiceControls?: ReactNode;
   text: (typeof reminderPanelCopy)[keyof typeof reminderPanelCopy];
   onClose: () => void;
   onDismiss: () => void;
@@ -58,6 +59,7 @@ export function CompactReminderCard(props: CompactReminderCardProps) {
             <span className="reminder-card__time">{props.time}</span>
           )}
           <div>
+            {props.voiceControls}
             {props.count > 0 && (
               <button aria-label={text.done} title={text.done} disabled={props.busy} onClick={props.onDismiss}>
                 <Check size={15} />

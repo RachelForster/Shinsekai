@@ -409,6 +409,8 @@ fn show_notification(app: &AppHandle, title: String, body: String) -> Result<(),
             title: label.into(),
             message: body,
             due_at: Local::now().to_rfc3339(),
+            audio_path: None,
+            audio_volume: 1.0,
         },
     )
 }

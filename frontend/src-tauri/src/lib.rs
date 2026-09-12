@@ -407,6 +407,7 @@ pub fn run() {
             background::desktop_window_close_status,
             background::desktop_window_resolve_close,
             reminders::desktop_reminders_inbox,
+            reminders::desktop_reminders_visible,
             reminders::desktop_reminders_dismiss,
             reminders::desktop_reminders_window,
             reminders::desktop_reminders_list,

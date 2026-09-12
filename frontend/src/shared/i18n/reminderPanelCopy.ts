@@ -1,5 +1,8 @@
 export const reminderPanelCopy = {
   zh_CN: {
+    playVoice: "播放角色语音",
+    muteVoice: "静音提醒",
+    unmuteVoice: "开启提醒语音",
     manage: "管理提醒",
     back: "返回小卡片",
     previous: "上一条提醒",
@@ -24,6 +27,9 @@ export const reminderPanelCopy = {
     retry: "重试",
   },
   en: {
+    playVoice: "Play character voice",
+    muteVoice: "Mute reminders",
+    unmuteVoice: "Unmute reminders",
     manage: "Manage reminders",
     back: "Back to card",
     previous: "Previous reminder",
@@ -48,6 +54,9 @@ export const reminderPanelCopy = {
     retry: "Retry",
   },
   ja: {
+    playVoice: "キャラクター音声を再生",
+    muteVoice: "通知音声をミュート",
+    unmuteVoice: "通知音声を有効化",
     manage: "通知を管理",
     back: "カードに戻る",
     previous: "前の通知",

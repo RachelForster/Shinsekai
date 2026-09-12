@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   dismiss: vi.fn(),
   window: vi.fn(),
   listen: vi.fn(),
+  updates: vi.fn(),
   people: vi.fn(),
   config: vi.fn(),
 }));
@@ -21,6 +22,9 @@ vi.mock("../../../entities/reminder/repository", () => ({
 vi.mock("../../../shared/desktop/remindersApi", () => ({
   reminderWindow: mocks.window,
   onRemindersChanged: mocks.listen,
+  onRemindersUpdated: mocks.updates,
+  onReminderWindowHidden: vi.fn().mockResolvedValue(vi.fn()),
+  isReminderWindowVisible: vi.fn().mockResolvedValue(true),
 }));
 vi.mock("../../../entities/character/repository", () => ({ listCharacters: mocks.people }));
 vi.mock("../../../entities/config/repository", () => ({ getAppConfig: mocks.config }));
@@ -45,6 +49,7 @@ describe("character reminder panel", () => {
     mocks.people.mockResolvedValue([{ name: "澪", sprites: [{ path: "portrait.png" }] }]);
     mocks.config.mockResolvedValue({ system_config: { theme_color: "#5599aa", ui_language: "zh_CN" } });
     mocks.listen.mockResolvedValue(vi.fn());
+    mocks.updates.mockResolvedValue(vi.fn());
     mocks.window.mockResolvedValue(undefined);
     mocks.cancel.mockResolvedValue(undefined);
     mocks.dismiss.mockResolvedValue(undefined);
@@ -88,6 +93,18 @@ describe("character reminder panel", () => {
     fireEvent.click(cancel);
     await waitFor(() => expect(mocks.cancel).toHaveBeenCalledWith(scheduled.id));
     await screen.findByText("暂时没有日程");
+  });
+
+  it("updates generated dialogue without leaving schedule management", async () => {
+    mocks.inbox.mockResolvedValue([notice]);
+    render(<ReminderPanel />);
+    await screen.findByText(notice.message);
+    fireEvent.click(screen.getByRole("button", { name: "管理提醒" }));
+    await screen.findByRole("button", { name: "返回小卡片" });
+    mocks.inbox.mockResolvedValue([{ ...notice, message: "还不去休息？" }]);
+    await act(async () => mocks.updates.mock.calls[0][0]());
+    expect(screen.getByRole("button", { name: "返回小卡片" })).toBeInTheDocument();
+    expect(screen.getByText("还不去休息？")).toBeInTheDocument();
   });
 
   it("keeps the native reminder readable during a backend failure and recovers", async () => {

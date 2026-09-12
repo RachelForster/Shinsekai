@@ -7,7 +7,7 @@ export const backgroundCopy = {
     unavailable: "当前系统托盘不可用，无法驻留托盘。仍可选择每次询问或退出程序。",
     enabled: "每天提醒我睡觉",
     time: "提醒时间（本机时间）",
-    reminderHint: "每次随机选择已有角色，使用本地晚安文案；没有角色时由 Shinsekai 提醒。",
+    reminderHint: "每次随机选择已有角色，由 LLM 根据性格生成台词，并用已配置的 TTS 合成语音；生成失败时保留本地文案。",
     runningHint:
       "程序运行期间有效，最小化或驻留托盘后仍会提醒。每天最多一次；启动或唤醒时仅补发 30 分钟内错过的提醒。完全退出后停止。",
     notificationHint: "左键点击托盘打开角色提醒面板，右键打开系统菜单。在聊天中请角色设置日程，面板中可查看和取消。",
@@ -29,7 +29,7 @@ export const backgroundCopy = {
     enabled: "Remind me to sleep every day",
     time: "Reminder time (local time)",
     reminderHint:
-      "Choose a random existing character and a local goodnight message. Shinsekai speaks when no characters are available.",
+      "A random character speaks with LLM-generated dialogue and configured TTS. Local text remains available if generation fails.",
     runningHint:
       "Works while the app is running, including when minimized or in the tray. At most once daily; reminders missed within 30 minutes are sent on launch or resume. Quitting stops reminders.",
     notificationHint:
@@ -51,7 +51,7 @@ export const backgroundCopy = {
     enabled: "毎日おやすみ通知を送る",
     time: "通知時刻（端末の時刻）",
     reminderHint:
-      "登録済みキャラクターとローカルのおやすみ文をランダムに選びます。キャラクターがいない場合は Shinsekai が通知します。",
+      "ランダムなキャラクターの性格に合わせて LLM が台詞を生成し、設定済みの TTS で読み上げます。生成に失敗した場合は定型文を表示します。",
     runningHint:
       "最小化・トレイ常駐を含め、アプリの実行中に動作します。1 日 1 回まで。起動・スリープ解除時は 30 分以内に逃した通知のみ送信します。終了すると停止します。",
     notificationHint:

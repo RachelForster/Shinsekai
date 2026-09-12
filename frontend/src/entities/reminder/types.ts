@@ -4,6 +4,8 @@ export interface ReminderNotice {
   title: string;
   message: string;
   due_at: string;
+  audio_path?: string | null;
+  audio_volume?: number;
 }
 
 export interface ScheduledReminder extends ReminderNotice {
