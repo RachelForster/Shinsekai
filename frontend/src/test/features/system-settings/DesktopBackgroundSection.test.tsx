@@ -6,17 +6,23 @@ import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import type { BackgroundPreferences } from "../../../shared/desktop/backgroundApi";
 import { closePreferenceChangedEvent } from "../../../shared/desktop/windowCloseApi";
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn(), test: vi.fn(), desktop: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  get: vi.fn(),
+  save: vi.fn(),
+  autoGet: vi.fn(),
+  autoSet: vi.fn(),
+  window: vi.fn(),
+  desktop: vi.fn(),
+}));
 vi.mock("../../../shared/desktop/backgroundApi", () => ({
   getBackgroundPreferences: mocks.get,
   saveBackgroundPreferences: mocks.save,
-  testBedtimeNotification: mocks.test,
 }));
+vi.mock("../../../shared/desktop/autostartApi", () => ({ getAutostart: mocks.autoGet, setAutostart: mocks.autoSet }));
+vi.mock("../../../shared/desktop/remindersApi", () => ({ reminderWindow: mocks.window }));
 vi.mock("../../../shared/desktop/desktopApi", () => ({ isTauriDesktop: mocks.desktop }));
 
 const preferences: BackgroundPreferences = {
-  bedtimeEnabled: false,
-  bedtimeTime: "23:00",
   closeToTray: false,
   rememberCloseAction: false,
   minimizeToTray: false,
@@ -37,7 +43,9 @@ describe("desktop background settings", () => {
     mocks.desktop.mockReturnValue(true);
     mocks.get.mockResolvedValue({ preferences, trayAvailable: true });
     mocks.save.mockImplementation(async (next) => ({ preferences: next, trayAvailable: true }));
-    mocks.test.mockResolvedValue(undefined);
+    mocks.autoGet.mockResolvedValue(false);
+    mocks.autoSet.mockImplementation(async (enabled) => enabled);
+    mocks.window.mockResolvedValue(undefined);
   });
 
   it("does not expose desktop actions in the browser", () => {
@@ -49,53 +57,59 @@ describe("desktop background settings", () => {
 
   it("loads saved preferences and saves independent tray and reminder controls", async () => {
     renderSection();
-    const enable = await screen.findByRole("checkbox", { name: "每天提醒我睡觉" });
+    const enable = await screen.findByRole("checkbox", { name: "最小化主窗口到托盘" });
     expect(enable).not.toBeChecked();
-    expect(screen.getByLabelText("提醒时间（本机时间）")).toBeDisabled();
     fireEvent.click(enable);
     fireEvent.click(screen.getByRole("combobox", { name: "关闭主窗口时" }));
     fireEvent.click(screen.getByRole("option", { name: "最小化到托盘" }));
-    fireEvent.change(screen.getByLabelText("提醒时间（本机时间）"), { target: { value: "22:30" } });
     fireEvent.click(screen.getByRole("button", { name: "保存托盘与提醒设置" }));
     await screen.findByText("托盘与提醒设置已保存。");
     expect(mocks.save).toHaveBeenCalledWith({
       ...preferences,
-      bedtimeEnabled: true,
-      bedtimeTime: "22:30",
+      minimizeToTray: true,
       closeToTray: true,
       rememberCloseAction: true,
     });
   });
 
-  it("tests a notification without enabling or saving the daily reminder", async () => {
+  it("opens all schedules and exposes no bedtime-specific controls", async () => {
     renderSection();
-    await screen.findByRole("checkbox", { name: "每天提醒我睡觉" });
-    fireEvent.click(screen.getByRole("button", { name: "测试通知" }));
-    await screen.findByText(/已打开角色提醒面板/);
-    expect(mocks.test).toHaveBeenCalledWith("zh_CN");
+    fireEvent.click(await screen.findByRole("button", { name: "查看所有提醒安排" }));
+    expect(mocks.window).toHaveBeenCalledWith("manage");
+    expect(screen.queryByText("每天提醒我睡觉")).not.toBeInTheDocument();
+  });
+
+  it("reads OS autostart state and applies changes immediately", async () => {
+    mocks.autoGet.mockResolvedValue(true);
+    renderSection();
+    const toggle = await screen.findByRole("checkbox", { name: "登录系统时自动启动" });
+    await waitFor(() => expect(toggle).toBeChecked());
+    fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).not.toBeChecked());
+    expect(mocks.autoSet).toHaveBeenCalledWith(false);
     expect(mocks.save).not.toHaveBeenCalled();
-    expect(screen.getByRole("checkbox", { name: "每天提醒我睡觉" })).not.toBeChecked();
   });
 
   it("preserves the draft after a failed save and allows retry", async () => {
     mocks.save.mockRejectedValueOnce("磁盘不可写");
     renderSection();
-    fireEvent.click(await screen.findByRole("checkbox", { name: "每天提醒我睡觉" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "最小化主窗口到托盘" }));
     fireEvent.click(screen.getByRole("button", { name: "保存托盘与提醒设置" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("磁盘不可写");
-    expect(screen.getByRole("checkbox", { name: "每天提醒我睡觉" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "最小化主窗口到托盘" })).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "保存托盘与提醒设置" }));
     await screen.findByText("托盘与提醒设置已保存。");
     expect(mocks.save).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects empty times without sending settings to the desktop", async () => {
+  it("keeps the previous autostart state after a failed OS write", async () => {
+    mocks.autoSet.mockRejectedValueOnce(new Error("Access denied"));
     renderSection();
-    fireEvent.click(await screen.findByRole("checkbox", { name: "每天提醒我睡觉" }));
-    fireEvent.change(screen.getByLabelText("提醒时间（本机时间）"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存托盘与提醒设置" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("请输入有效时间");
-    expect(mocks.save).not.toHaveBeenCalled();
+    const toggle = await screen.findByRole("checkbox", { name: "登录系统时自动启动" });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    fireEvent.click(toggle);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Access denied");
+    expect(toggle).not.toBeChecked();
   });
 
   it("keeps tray controls disabled when native tray creation failed", async () => {
@@ -104,7 +118,7 @@ describe("desktop background settings", () => {
     expect(await screen.findByLabelText("关闭主窗口时")).toBeEnabled();
     expect(screen.getByRole("option", { name: "最小化到托盘", hidden: true })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "最小化主窗口到托盘" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "每天提醒我睡觉" })).toBeEnabled();
+    expect(screen.getByRole("checkbox", { name: "登录系统时自动启动" })).toBeEnabled();
   });
 
   it("recovers from a failed initial load", async () => {
@@ -112,7 +126,7 @@ describe("desktop background settings", () => {
     renderSection();
     expect(await screen.findByRole("alert")).toHaveTextContent("无法读取设置");
     fireEvent.click(screen.getByRole("button", { name: "重新加载" }));
-    await screen.findByRole("checkbox", { name: "每天提醒我睡觉" });
+    await screen.findByRole("checkbox", { name: "最小化主窗口到托盘" });
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
   });
 
@@ -133,7 +147,7 @@ describe("desktop background settings", () => {
 
   it("refreshes a remembered close choice without discarding other unsaved settings", async () => {
     renderSection();
-    fireEvent.click(await screen.findByRole("checkbox", { name: "每天提醒我睡觉" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "最小化主窗口到托盘" }));
     mocks.get.mockResolvedValue({
       preferences: { ...preferences, rememberCloseAction: true, closeToTray: true },
       trayAvailable: true,
@@ -145,7 +159,7 @@ describe("desktop background settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存托盘与提醒设置" }));
     await screen.findByText("托盘与提醒设置已保存。");
     expect(mocks.save).toHaveBeenCalledWith(
-      expect.objectContaining({ bedtimeEnabled: true, rememberCloseAction: true, closeToTray: true }),
+      expect.objectContaining({ minimizeToTray: true, rememberCloseAction: true, closeToTray: true }),
     );
   });
 });

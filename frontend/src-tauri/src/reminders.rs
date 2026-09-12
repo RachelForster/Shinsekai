@@ -42,6 +42,7 @@ pub struct ReminderState {
     notices: Mutex<VecDeque<Notice>>,
     delivered: Mutex<VecDeque<String>>,
     enrichment: Mutex<EnrichmentQueue>,
+    management: Mutex<bool>,
 }
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
@@ -106,6 +107,10 @@ fn resize_panel(app: &AppHandle, expanded: bool) -> Result<(), String> {
 
 pub fn show_panel(app: &AppHandle, focus: bool) -> Result<(), String> {
     resize_panel(app, false)?;
+    *app.state::<ReminderState>()
+        .management
+        .lock()
+        .map_err(|e| e.to_string())? = false;
     let window = app
         .get_webview_window("reminders")
         .ok_or("Reminder panel is unavailable")?;
@@ -299,6 +304,31 @@ pub fn poll(app: &AppHandle) -> Result<(), String> {
     )
 }
 
+pub fn migrate_bedtime(
+    app: &AppHandle,
+    time: &str,
+    last_date: Option<String>,
+    language: &str,
+) -> Result<(), String> {
+    let (title, message) = match language {
+        "en" => ("Time for bed", "It's time to rest. Good night!"),
+        "ja" => ("おやすみの時間", "そろそろ休む時間だよ。おやすみ！"),
+        _ => ("该睡觉啦", "该休息啦，早点睡，晚安！"),
+    };
+    let result = bridge(
+        app,
+        "/migrate-bedtime",
+        Some(json!({
+            "bedtime_time": time, "last_delivered_date": last_date, "title": title, "message": message,
+        })),
+    )?;
+    if result["ok"] == true {
+        Ok(())
+    } else {
+        Err("Bedtime migration failed".into())
+    }
+}
+
 fn poll_with(
     mut request: impl FnMut(&str, Option<Value>) -> Result<Value, String>,
     mut deliver: impl FnMut(Notice) -> Result<(), String>,
@@ -350,8 +380,24 @@ pub fn desktop_reminders_dismiss(
 pub fn desktop_reminders_window(app: AppHandle, action: String) -> Result<(), String> {
     match action.as_str() {
         "open" => show_panel(&app, true),
-        "manage" => resize_panel(&app, true),
-        "compact" => resize_panel(&app, false),
+        "manage" | "compact" => {
+            let expanded = action == "manage";
+            resize_panel(&app, expanded)?;
+            *app.state::<ReminderState>()
+                .management
+                .lock()
+                .map_err(|e| e.to_string())? = expanded;
+            let window = app
+                .get_webview_window("reminders")
+                .ok_or("Reminder panel is unavailable")?;
+            window.show().map_err(|e| e.to_string())?;
+            if expanded {
+                window.set_focus().map_err(|e| e.to_string())?;
+            }
+            window
+                .emit_to("reminders", "shinsekai:reminders-view", expanded)
+                .map_err(|e| e.to_string())
+        }
         "hide" => {
             app.get_webview_window("reminders")
                 .ok_or("Reminder panel is unavailable")?
@@ -366,6 +412,46 @@ pub fn desktop_reminders_window(app: AppHandle, action: String) -> Result<(), St
         }
         _ => Err("Unknown reminder window action".into()),
     }
+}
+
+#[tauri::command]
+pub fn desktop_reminders_view(state: State<'_, ReminderState>) -> Result<bool, String> {
+    Ok(*state.management.lock().map_err(|e| e.to_string())?)
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct ReminderEdit {
+    character_name: String,
+    title: String,
+    message: String,
+    recurrence: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    remind_at: Option<String>,
+}
+
+#[tauri::command]
+pub async fn desktop_reminders_update(
+    app: AppHandle,
+    id: String,
+    changes: ReminderEdit,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut body = serde_json::to_value(changes).map_err(|e| e.to_string())?;
+        body["action"] = json!("update");
+        body["reminder_id"] = json!(id);
+        bridge(&app, "", Some(body))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn desktop_reminders_delete(app: AppHandle, id: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        bridge(&app, "", Some(json!({"action":"delete", "reminder_id":id})))
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

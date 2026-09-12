@@ -6,6 +6,9 @@ const mocks = vi.hoisted(() => ({
   inbox: vi.fn(),
   list: vi.fn(),
   cancel: vi.fn(),
+  update: vi.fn(),
+  view: vi.fn(),
+  viewChanged: vi.fn(),
   dismiss: vi.fn(),
   window: vi.fn(),
   listen: vi.fn(),
@@ -16,11 +19,14 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../../../entities/reminder/repository", () => ({
   getReminderInbox: mocks.inbox,
   listReminders: mocks.list,
-  cancelReminder: mocks.cancel,
+  deleteReminder: mocks.cancel,
+  updateReminder: mocks.update,
   dismissReminder: mocks.dismiss,
 }));
 vi.mock("../../../shared/desktop/remindersApi", () => ({
   reminderWindow: mocks.window,
+  getReminderView: mocks.view,
+  onReminderViewChanged: mocks.viewChanged,
   onRemindersChanged: mocks.listen,
   onRemindersUpdated: mocks.updates,
   onReminderWindowHidden: vi.fn().mockResolvedValue(vi.fn()),
@@ -52,7 +58,45 @@ describe("character reminder panel", () => {
     mocks.updates.mockResolvedValue(vi.fn());
     mocks.window.mockResolvedValue(undefined);
     mocks.cancel.mockResolvedValue(undefined);
+    mocks.update.mockResolvedValue(undefined);
+    mocks.view.mockResolvedValue(false);
+    mocks.viewChanged.mockResolvedValue(vi.fn());
     mocks.dismiss.mockResolvedValue(undefined);
+  });
+
+  it("restores a management request made before the webview subscribed", async () => {
+    mocks.view.mockResolvedValue(true);
+    render(<ReminderPanel />);
+    await screen.findByRole("button", { name: `编辑日程: ${scheduled.title}` });
+    expect(screen.getByRole("navigation")).toHaveTextContent("全部日程");
+  });
+
+  it("edits a reminder to use a random character and preserves the draft on failure", async () => {
+    mocks.view.mockResolvedValue(true);
+    mocks.update.mockRejectedValueOnce(new Error("Save failed"));
+    render(<ReminderPanel />);
+    fireEvent.click(await screen.findByRole("button", { name: `编辑日程: ${scheduled.title}` }));
+    fireEvent.change(screen.getByLabelText("日程标题"), { target: { value: "新的安排" } });
+    fireEvent.change(screen.getByLabelText("提醒人物"), { target: { value: "*" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Save failed");
+    expect(screen.getByLabelText("日程标题")).toHaveValue("新的安排");
+    expect(mocks.update).toHaveBeenCalledWith(scheduled.id, {
+      title: "新的安排",
+      character_name: "*",
+      message: scheduled.message,
+      recurrence: "daily",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+  });
+
+  it("shows completed schedules for deletion without allowing edits", async () => {
+    mocks.view.mockResolvedValue(true);
+    mocks.list.mockResolvedValue({ reminders: [{ ...scheduled, status: "completed" }] });
+    render(<ReminderPanel />);
+    await screen.findByRole("button", { name: `删除日程: ${scheduled.title}` });
+    expect(screen.queryByRole("button", { name: `编辑日程: ${scheduled.title}` })).not.toBeInTheDocument();
   });
 
   it("uses the app theme and remembers a top-half portrait crop", async () => {
@@ -85,10 +129,10 @@ describe("character reminder panel", () => {
     expect(screen.queryByText(scheduled.title)).not.toBeInTheDocument();
   });
 
-  it("cancels the chosen saved schedule and refreshes the pending list", async () => {
+  it("deletes the chosen saved schedule and refreshes the pending list", async () => {
     render(<ReminderPanel />);
     fireEvent.click(await screen.findByRole("button", { name: "管理提醒" }));
-    const cancel = await screen.findByRole("button", { name: `取消日程: ${scheduled.title}` });
+    const cancel = await screen.findByRole("button", { name: `删除日程: ${scheduled.title}` });
     mocks.list.mockResolvedValue({ reminders: [] });
     fireEvent.click(cancel);
     await waitFor(() => expect(mocks.cancel).toHaveBeenCalledWith(scheduled.id));

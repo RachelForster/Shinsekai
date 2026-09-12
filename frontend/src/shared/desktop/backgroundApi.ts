@@ -4,8 +4,6 @@ export interface BackgroundPreferences {
   closeToTray: boolean;
   rememberCloseAction: boolean;
   minimizeToTray: boolean;
-  bedtimeEnabled: boolean;
-  bedtimeTime: string;
   language: FrontendLanguage;
 }
 
@@ -22,9 +20,4 @@ export async function getBackgroundPreferences() {
 export async function saveBackgroundPreferences(preferences: BackgroundPreferences) {
   const { invoke } = await import("@tauri-apps/api/core");
   return invoke<BackgroundStatus>("desktop_background_save", { preferences });
-}
-
-export async function testBedtimeNotification(language: FrontendLanguage) {
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<void>("desktop_background_test", { language });
 }

@@ -1,16 +1,16 @@
-import { useEffect, useState } from "react";
-import { Bell, Save } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Save } from "lucide-react";
 
 import {
   getBackgroundPreferences,
   saveBackgroundPreferences,
-  testBedtimeNotification,
   type BackgroundPreferences,
 } from "../../shared/desktop/backgroundApi";
+import { getAutostart, setAutostart } from "../../shared/desktop/autostartApi";
 import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { reminderWindow } from "../../shared/desktop/remindersApi";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, Button, Select, Switch, TextInput } from "../../shared/ui";
+import { AsyncButton, Button, Select, Switch } from "../../shared/ui";
 import { closePreferenceChangedEvent } from "../../shared/desktop/windowCloseApi";
 
 export function DesktopBackgroundSection() {
@@ -20,8 +20,12 @@ export function DesktopBackgroundSection() {
 function BackgroundSettings() {
   const { language, t } = useI18n();
   const [draft, setDraft] = useState<BackgroundPreferences | null>(null);
+  const [autostart, setAutoState] = useState<boolean | null>(null);
+  const [autoError, setAutoError] = useState("");
+  const autoRevision = useRef(0);
+  const autoWriting = useRef(false);
   const [trayAvailable, setTrayAvailable] = useState(false);
-  const [busy, setBusy] = useState<"save" | "test" | null>(null);
+  const [busy, setBusy] = useState<"save" | "autostart" | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [loadAttempt, setLoadAttempt] = useState(0);
@@ -43,6 +47,49 @@ function BackgroundSettings() {
       stopped = true;
     };
   }, [loadAttempt]);
+
+  useEffect(() => {
+    let stopped = false;
+    const refresh = () => {
+      if (autoWriting.current) return;
+      const revision = ++autoRevision.current;
+      void getAutostart()
+        .then((enabled) => {
+          if (!stopped && revision === autoRevision.current) {
+            setAutoState(enabled);
+            setAutoError("");
+          }
+        })
+        .catch((reason: unknown) => {
+          if (!stopped && revision === autoRevision.current) {
+            setAutoState(null);
+            setAutoError(String(reason));
+          }
+        });
+    };
+    refresh();
+    window.addEventListener("focus", refresh);
+    return () => {
+      stopped = true;
+      window.removeEventListener("focus", refresh);
+    };
+  }, [loadAttempt]);
+
+  const toggleAutostart = async (enabled: boolean) => {
+    if (busy || autoWriting.current) return;
+    autoWriting.current = true;
+    ++autoRevision.current;
+    setBusy("autostart");
+    setAutoError("");
+    try {
+      setAutoState(await setAutostart(enabled));
+    } catch (reason) {
+      setAutoError(String(reason));
+    } finally {
+      autoWriting.current = false;
+      setBusy(null);
+    }
+  };
 
   useEffect(() => {
     let stopped = false;
@@ -77,27 +124,18 @@ function BackgroundSettings() {
     setError("");
   };
 
-  const runAction = async (action: "save" | "test") => {
+  const save = async () => {
     if (!draft || busy) return;
     setMessage("");
     setError("");
-    if (action === "save" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.bedtimeTime)) {
-      setError(t("desktop.background.invalidTime"));
-      return;
-    }
-    setBusy(action);
+    setBusy("save");
     try {
-      if (action === "save") {
-        const status = await saveBackgroundPreferences({ ...draft, language });
-        setDraft(status.preferences);
-        setTrayAvailable(status.trayAvailable);
-        setMessage(t("desktop.background.saved"));
-      } else {
-        await testBedtimeNotification(language);
-        setMessage(t("desktop.background.tested"));
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : String(error));
+      const status = await saveBackgroundPreferences({ ...draft, language });
+      setDraft(status.preferences);
+      setTrayAvailable(status.trayAvailable);
+      setMessage(t("desktop.background.saved"));
+    } catch (reason) {
+      setError(String(reason));
     } finally {
       setBusy(null);
     }
@@ -108,28 +146,34 @@ function BackgroundSettings() {
       <div className="section__header">
         <h2 className="section__title">{t("desktop.background.title")}</h2>
         <div className="section__actions">
-          <Button onClick={() => void reminderWindow("open").catch((reason: unknown) => setError(String(reason)))}>
+          <Button onClick={() => void reminderWindow("manage").catch((reason: unknown) => setError(String(reason)))}>
             {t("desktop.background.panel")}
           </Button>
-          <AsyncButton
-            disabled={!draft || busy !== null}
-            loading={busy === "test"}
-            icon={<Bell aria-hidden className="button__icon" />}
-            onClick={() => void runAction("test")}
-          >
-            {t("desktop.background.test")}
-          </AsyncButton>
           <AsyncButton
             disabled={!draft || busy !== null}
             loading={busy === "save"}
             variant="primary"
             icon={<Save aria-hidden className="button__icon" />}
-            onClick={() => void runAction("save")}
+            onClick={() => void save()}
           >
             {t("desktop.background.save")}
           </AsyncButton>
         </div>
       </div>
+      <Switch
+        checked={autostart ?? false}
+        disabled={autostart === null || busy !== null}
+        onChange={(event) => void toggleAutostart(event.target.checked)}
+      >
+        {t("desktop.background.autostart")}
+      </Switch>
+      <p className="field-row__help">{t("desktop.background.autostartHint")}</p>
+      {autoError && (
+        <div role="alert" className="field-error">
+          {autoError}
+          <Button onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t("desktop.background.retry")}</Button>
+        </div>
+      )}
       {draft ? (
         <>
           <div className="desktop-background-settings__switches">
@@ -166,26 +210,6 @@ function BackgroundSettings() {
           <p className="field-row__help">
             {trayAvailable ? t("desktop.background.trayHint") : t("desktop.background.unavailable")}
           </p>
-          <Switch
-            checked={draft.bedtimeEnabled}
-            disabled={busy !== null}
-            onChange={(event) => edit({ bedtimeEnabled: event.target.checked })}
-          >
-            {t("desktop.background.enabled")}
-          </Switch>
-          <div className="field-row">
-            <label className="field-row__label-text" htmlFor="desktop-bedtime-time">
-              {t("desktop.background.time")}
-            </label>
-            <TextInput
-              id="desktop-bedtime-time"
-              type="time"
-              value={draft.bedtimeTime}
-              required
-              disabled={busy !== null || !draft.bedtimeEnabled}
-              onChange={(event) => edit({ bedtimeTime: event.target.value })}
-            />
-          </div>
           <p className="field-row__help">{t("desktop.background.reminderHint")}</p>
           <p className="field-row__help">{t("desktop.background.runningHint")}</p>
           <p className="field-row__help">{t("desktop.background.notificationHint")}</p>

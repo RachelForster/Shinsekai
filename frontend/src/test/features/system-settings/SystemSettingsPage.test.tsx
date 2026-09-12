@@ -1,3 +1,7 @@
+vi.mock("../../../shared/desktop/autostartApi", () => ({
+  getAutostart: vi.fn().mockResolvedValue(false),
+  setAutostart: vi.fn(),
+}));
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";

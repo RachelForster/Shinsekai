@@ -3,6 +3,55 @@ html.reminder-surface,
   background: transparent;
 }
 
+.reminder-editor {
+  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.reminder-editor h1 {
+  margin: 0;
+  font-size: 18px;
+}
+.reminder-editor fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+.reminder-editor label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+.reminder-editor input,
+.reminder-editor select,
+.reminder-editor textarea {
+  width: 100%;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-bg-panel);
+  color: var(--color-text-primary);
+  font: inherit;
+}
+.reminder-editor p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+.reminder-editor [role="alert"] {
+  color: var(--color-danger);
+}
+.reminder-editor footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .reminder-panel {
   height: calc(100vh - 24px);
   margin: 12px;

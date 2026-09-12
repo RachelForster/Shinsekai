@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   Bell,
+  Pencil,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -16,11 +17,24 @@ import { listCharacters } from "../../entities/character/repository";
 import { getAppConfig } from "../../entities/config/repository";
 import type { Character } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
-import { cancelReminder, dismissReminder, getReminderInbox, listReminders } from "../../entities/reminder/repository";
+import {
+  deleteReminder,
+  updateReminder,
+  dismissReminder,
+  getReminderInbox,
+  listReminders,
+} from "../../entities/reminder/repository";
 import type { ReminderNotice, ScheduledReminder } from "../../entities/reminder/types";
-import { onRemindersChanged, onRemindersUpdated, reminderWindow } from "../../shared/desktop/remindersApi";
+import {
+  getReminderView,
+  onReminderViewChanged,
+  onRemindersChanged,
+  onRemindersUpdated,
+  reminderWindow,
+} from "../../shared/desktop/remindersApi";
 import { translateMessage, type FrontendLanguage, type MessageKey } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
+import { ReminderEditor } from "./ReminderEditor";
 import { CompactReminderCard } from "./CompactReminderCard";
 import { useReminderAudio } from "./useReminderAudio";
 import "./ReminderPanel.css";
@@ -44,6 +58,7 @@ export function ReminderPanel() {
   const [crop, setCrop] = useState(initialCrop);
   const [customize, setCustomize] = useState(false);
   const [management, setManagement] = useState(false);
+  const [editing, setEditing] = useState<ScheduledReminder | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -81,8 +96,7 @@ export function ReminderPanel() {
         );
       });
     }
-    if (pending.status === "fulfilled")
-      setSchedules(pending.value.reminders.filter((item) => item.status === "active"));
+    if (pending.status === "fulfilled") setSchedules(pending.value.reminders);
     if (people.status === "fulfilled") setCharacters(people.value);
     if (config.status === "fulfilled") {
       applyThemeColor(config.value.system_config.theme_color);
@@ -143,6 +157,36 @@ export function ReminderPanel() {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("storage", syncScheme);
       document.documentElement.classList.remove("reminder-surface");
+    };
+  }, [refresh]);
+
+  useEffect(() => {
+    let stopped = false;
+    let revision = 0;
+    let dispose: (() => void) | undefined;
+    const applyView = (expanded: boolean) => {
+      setManagement(expanded);
+      if (expanded) setTab("upcoming");
+      void refresh();
+    };
+    void (async () => {
+      dispose = await onReminderViewChanged((expanded) => {
+        ++revision;
+        if (!stopped) applyView(expanded);
+      });
+      if (stopped) {
+        dispose();
+        return;
+      }
+      const before = revision;
+      const expanded = await getReminderView();
+      if (!stopped && before === revision) applyView(expanded);
+    })().catch((reason: unknown) => {
+      if (!stopped) setError(String(reason));
+    });
+    return () => {
+      stopped = true;
+      dispose?.();
     };
   }, [refresh]);
 
@@ -213,6 +257,25 @@ export function ReminderPanel() {
       )}
     </div>
   );
+
+  if (management && editing) {
+    return (
+      <main className="reminder-panel">
+        <ReminderEditor
+          key={editing.id}
+          reminder={editing}
+          characters={characters}
+          t={t}
+          onCancel={() => setEditing(null)}
+          onSave={async (changes) => {
+            await updateReminder(editing.id, changes);
+            setEditing(null);
+            await refresh();
+          }}
+        />
+      </main>
+    );
+  }
 
   if (!management) {
     const index = activeNotice ? inbox.indexOf(activeNotice) : 0;
@@ -342,18 +405,30 @@ export function ReminderPanel() {
                 <span>
                   <strong>{item.title}</strong>
                   <small>
-                    {item.character_name} · {formatTime(item.due_at)}
-                    {"recurrence" in item ? ` · ${t(`reminder.${(item as ScheduledReminder).recurrence}`)}` : ""}
+                    {item.character_name === "*" ? t("reminder.random") : item.character_name} ·{" "}
+                    {formatTime(item.due_at)}
+                    {"recurrence" in item
+                      ? ` · ${t(`reminder.${(item as ScheduledReminder).recurrence}`)} · ${t(`reminder.status.${(item as ScheduledReminder).status}`)}`
+                      : ""}
                   </small>
                 </span>
                 <ChevronRight size={14} />
               </button>
+              {tab === "upcoming" && "status" in item && item.status === "active" && (
+                <button
+                  aria-label={`${t("reminder.edit")}: ${item.title}`}
+                  disabled={busy}
+                  onClick={() => setEditing(item as ScheduledReminder)}
+                >
+                  <Pencil size={14} />
+                </button>
+              )}
               <button
-                aria-label={`${tab === "upcoming" ? t("reminder.cancel") : t("reminder.done")}: ${item.title}`}
+                aria-label={`${tab === "upcoming" ? t("reminder.delete") : t("reminder.done")}: ${item.title}`}
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
-                    if (tab === "upcoming") await cancelReminder(item.id);
+                    if (tab === "upcoming") await deleteReminder(item.id);
                     else await dismissReminder(item);
                     setSelected(null);
                   })

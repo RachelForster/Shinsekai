@@ -29,6 +29,7 @@ use std::os::unix::process::CommandExt;
 use std::os::windows::process::CommandExt;
 
 mod atomic_file;
+mod autostart;
 mod background;
 mod desktop_files;
 mod project_root;
@@ -404,7 +405,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             background::desktop_background_get,
             background::desktop_background_save,
-            background::desktop_background_test,
+            autostart::desktop_autostart_get,
+            autostart::desktop_autostart_set,
             background::desktop_window_close_status,
             background::desktop_window_resolve_close,
             reminders::desktop_reminders_inbox,
@@ -413,6 +415,9 @@ pub fn run() {
             reminders::desktop_reminders_window,
             reminders::desktop_reminders_list,
             reminders::desktop_reminders_cancel,
+            reminders::desktop_reminders_update,
+            reminders::desktop_reminders_delete,
+            reminders::desktop_reminders_view,
             desktop_runtime_state,
             desktop_runtime_repair,
             desktop_runtime_install_profile,
@@ -483,6 +488,7 @@ pub fn run() {
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
             app.handle().plugin(tauri_plugin_notification::init())?;
+            app.handle().plugin(tauri_plugin_autostart::Builder::new().build())?;
 
             let source_root = resolve_source_root(app)?;
             let app_root = resolve_app_root(app, &source_root)?;

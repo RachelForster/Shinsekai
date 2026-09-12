@@ -40,52 +40,39 @@ The script syncs the app version into `package.json`, Tauri `Cargo.toml`, the
 generated `src-tauri/resources/VERSION` file when it exists. Avoid global
 search-and-replace so dependency versions are not changed accidentally.
 
-## Desktop tray and bedtime reminders
+## Desktop tray and schedules
 
-In the Tauri desktop app, open **System Settings → Tray & bedtime reminders**.
-The tray can reopen or hide the main window and fully quit Shinsekai (including
-the Python bridge). Closing to tray and minimizing to tray are separate opt-in
-settings; closing a chat window still ends that chat as before.
-Launching Shinsekai again restores the existing window instead of starting a
-second tray icon or reminder scheduler.
+In the Tauri desktop app, open **System Settings → Tray & schedules**. Enable
+**Start when I sign in** to register Shinsekai for the current user's login.
+Changes apply immediately and the switch reads the OS registration. Disabling
+it removes the registration. Autostart does not wake or power on the computer.
 
-Enable the daily reminder, choose a local time, and use **Save tray & reminder
-settings**. The default time is 23:00 and reminders are initially disabled.
-**Test notification** sends immediately without saving or consuming the daily
-reminder. Notifications choose an existing character from the bridge and a local
-goodnight message; they do not generate dialogue with an LLM. An empty character
-list falls back to Shinsekai. Settings and the last delivered date are stored in
-`background.json` in Tauri's application config directory.
+**View all reminders** opens the full schedule list. Edit active reminders'
+character, title, content, next local time and recurrence, or delete any schedule,
+including completed and cancelled records. The old bedtime preset is imported
+once as a normal daily random-character reminder, preserving delivery dates.
+An independent migration marker prevents deleted reminders from being reimported.
 
-Scheduling runs in Rust while the app is running, including when hidden or
-minimized. Launch/resume catches up only within 30 minutes of the scheduled time
-(including across midnight). At most one scheduled notification is sent per
-scheduled date; editing the time does not cause a second one that day. Quitting
-stops reminders; the app does not wake a sleeping computer or launch itself.
-Left-click the tray icon or choose **Open reminder panel** in settings to open
-the custom panel. It shares the main app's theme color and light/dark preference.
-The default notification is a compact 420×184 card showing only the portrait,
-character name and message, with small close/read controls. Multiple arrivals
-can be browsed with arrows; long messages scroll inside the card. The ellipsis
-opens the larger management view for schedules and portrait cropping. New
-notifications and reopening from the tray always return to the compact card.
-The left portrait shows the upper 50% of the character's first sprite by default;
-the crop control adjusts this from 25% to 75% and remembers the preference.
-Arriving reminders open the panel without requesting keyboard focus. Multiple
-arrivals remain in its inbox (up to 30 for the current session). If the native
-panel cannot open, delivery falls back to a system notification, which can be
-suppressed by notification permissions or Do Not Disturb. The custom panel itself
-does not follow OS Do Not Disturb. Right-click retains the native tray menu.
+Ask characters to create reminders with `manage_reminders`, for example
+“Remind me to rest in ten minutes.” Actions are `list`, `create`, `update`,
+`cancel` and `delete`. Use an exact configured `character_name`, or `"*"` to choose
+a random configured character at each occurrence. The saved schedule keeps `"*"`;
+the delivered card, generated dialogue and voice share the selected character.
+Create requires `title`, `message`, and either a future ISO `remind_at` or
+`delay_minutes`. Recurrence is `once`, `daily` or `weekly`, following local time.
 
-Characters have the default LLM tool `manage_reminders`, with `list`, `create`,
-`update`, and `cancel` actions. For example, ask a character “Remind me to rest in
-ten minutes” or “Remind me to sleep every day at 23:00”. A create call takes an
-existing `character_name`, `title`, `message`, either `remind_at` (future ISO local
-datetime, optionally with an offset) or `delay_minutes`, and `recurrence`
-(`once`, `daily`, or `weekly`). List returns the local current time and exact
-scheduled times; update/cancel use the returned `id` as `reminder_id`. The tool
-only reports success after committing the schedule. The reminder text is saved
-when scheduled; delivery does not make another LLM request.
+Reminders run while the app is running, including in the tray. Launch/resume
+catches up within 30 minutes; quitting stops reminders. Closing the main window
+asks whether to quit, stay in the tray or cancel, with an optional remembered
+choice. Closing chat windows keeps their existing behavior.
+
+Arrivals show a compact 420×184 card with portrait, character name and dialogue.
+The portrait shows its top half by default. The menu opens schedule management;
+new arrivals return to the compact card. The card shares the app's theme.
+Scheduled text is displayed first, followed by one character-specific dialogue
+using the existing LLM workflow and configured TTS. Generation failure preserves
+the saved text. Audio supports mute and replay; hiding stops playback. System
+notifications are used if the custom panel cannot open.
 
 Schedules live in the active project's `data/reminders.sqlite3`. The authenticated
 bridge exposes `GET/POST /api/reminders` and internal claim/ack endpoints. The

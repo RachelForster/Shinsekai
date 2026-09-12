@@ -1,4 +1,4 @@
-//! Native tray and daily reminders, independent of WebView timers and visibility.
+//! Native tray preferences and polling, independent of WebView visibility.
 use std::{
     fs,
     io::Write,
@@ -11,7 +11,9 @@ use std::{
     time::Duration,
 };
 
-use chrono::{Local, NaiveDate, NaiveDateTime, NaiveTime};
+#[cfg(test)]
+use chrono::NaiveDateTime;
+use chrono::{NaiveDate, NaiveTime};
 use serde::{Deserialize, Serialize};
 use tauri::{
     menu::{Menu, MenuItem},
@@ -265,10 +267,13 @@ pub fn desktop_background_get(
 #[tauri::command]
 pub fn desktop_background_save(
     state: State<'_, BackgroundState>,
-    preferences: BackgroundPreferences,
+    mut preferences: BackgroundPreferences,
 ) -> Result<BackgroundStatus, String> {
     preferences.validate()?;
     let mut saved = state.saved.lock().map_err(|error| error.to_string())?;
+    // Legacy fields are owned by migration, never by a stale settings draft.
+    preferences.bedtime_enabled = saved.preferences.bedtime_enabled;
+    preferences.bedtime_time = saved.preferences.bedtime_time.clone();
     let updated = SavedBackground {
         preferences,
         ..saved.clone()
@@ -282,20 +287,6 @@ pub fn desktop_background_save(
     })
 }
 
-#[tauri::command]
-pub async fn desktop_background_test(app: AppHandle, language: String) -> Result<(), String> {
-    let preferences = BackgroundPreferences {
-        language,
-        ..Default::default()
-    };
-    preferences.validate()?;
-    tauri::async_runtime::spawn_blocking(move || {
-        send_bedtime_notification(&app, &preferences.language)
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
 fn parse_bedtime(time: &str) -> Result<NaiveTime, String> {
     let bytes = time.as_bytes();
     if bytes.len() != 5
@@ -306,113 +297,6 @@ fn parse_bedtime(time: &str) -> Result<NaiveTime, String> {
     }
     NaiveTime::parse_from_str(time, "%H:%M")
         .map_err(|_| "Bedtime must be HH:MM (00:00–23:59)".into())
-}
-
-/// A 30-minute grace window also covers late starts and resume across midnight.
-/// Record the scheduled date, not the delivery date, for restart/DST deduplication.
-fn due_date(saved: &SavedBackground, now: NaiveDateTime) -> Option<NaiveDate> {
-    if !saved.preferences.bedtime_enabled {
-        return None;
-    }
-    let time = parse_bedtime(&saved.preferences.bedtime_time).ok()?;
-    let today = now.date();
-    for date in [Some(today), today.pred_opt()].into_iter().flatten() {
-        let late = now.signed_duration_since(date.and_time(time));
-        if late >= chrono::Duration::zero()
-            && late <= chrono::Duration::minutes(30)
-            && saved.last_delivered_date.is_none_or(|last| last < date)
-        {
-            return Some(date);
-        }
-    }
-    None
-}
-
-#[derive(Deserialize)]
-struct ReminderCharacter {
-    name: String,
-}
-
-fn character_names(app: &AppHandle) -> Result<Vec<String>, String> {
-    let desktop = app.state::<DesktopState>();
-    let response = reqwest::blocking::Client::builder()
-        .no_proxy()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .map_err(|error| error.to_string())?
-        .get(format!("{}/api/characters", desktop.bridge_url()))
-        .header("X-Shinsekai-Bridge-Token", &desktop.bridge_auth_token)
-        .send()
-        .and_then(|response| response.error_for_status())
-        .and_then(|response| response.text())
-        .map_err(|error| error.to_string())?;
-    let characters: Vec<ReminderCharacter> =
-        serde_json::from_str(&response).map_err(|error| error.to_string())?;
-    let mut names: Vec<String> = characters
-        .into_iter()
-        .map(|c| c.name.trim().to_owned())
-        .filter(|name| !name.is_empty())
-        .collect();
-    names.sort();
-    names.dedup();
-    Ok(names)
-}
-
-fn random_index(len: usize) -> Result<usize, String> {
-    if len == 0 {
-        return Err("Cannot choose from an empty list".into());
-    }
-    let mut bytes = [0u8; 8];
-    getrandom::fill(&mut bytes).map_err(|error| error.to_string())?;
-    Ok((u64::from_ne_bytes(bytes) % len as u64) as usize)
-}
-
-fn send_bedtime_notification(app: &AppHandle, language: &str) -> Result<(), String> {
-    let (title, body) = bedtime_message(app, language)?;
-    show_notification(app, title, body)
-}
-
-fn bedtime_message(app: &AppHandle, language: &str) -> Result<(String, String), String> {
-    let names = character_names(app)?;
-    let name = if names.is_empty() {
-        "Shinsekai"
-    } else {
-        &names[random_index(names.len())?]
-    };
-    let (title, messages) = match language {
-        "en" => (format!("{name} · Time for bed"), [
-            "It's getting late. Put today on pause and get some rest. Good night!",
-            "Time to recharge! Put down the screen; we'll continue tomorrow. Sweet dreams.",
-            "You've done enough for today. Get comfortable and sleep well. I'll see you tomorrow!",
-        ]),
-        "ja" => (format!("{name} · おやすみの時間"), [
-            "もう遅いよ。今日はここまでにして、ゆっくり休もう。おやすみ！",
-            "そろそろ充電の時間だよ。画面を閉じて、続きはまた明日。いい夢を！",
-            "今日もおつかれさま。あたたかくして、ぐっすり眠ってね。また明日！",
-        ]),
-        _ => (format!("{name} · 该睡觉啦"), [
-            "已经很晚啦，今天就先到这里吧。快去洗漱休息，晚安，做个好梦！",
-            "该给自己充充电了。放下屏幕，剩下的事情明天再说，好不好？晚安。",
-            "今天也辛苦了！记得早点钻进被窝，盖好被子。明天再来找我玩吧。",
-        ]),
-    };
-    Ok((title, messages[random_index(messages.len())?].into()))
-}
-
-fn show_notification(app: &AppHandle, title: String, body: String) -> Result<(), String> {
-    let (name, label) = title.rsplit_once(" · ").unwrap_or(("Shinsekai", &title));
-    crate::reminders::deliver(
-        app,
-        crate::reminders::Notice {
-            id: format!("bedtime-{}", Local::now().timestamp_millis()),
-            character_name: name.into(),
-            title: label.into(),
-            message: body,
-            due_at: Local::now().to_rfc3339(),
-            audio_path: None,
-            audio_volume: 1.0,
-        },
-    )
 }
 
 pub(crate) fn show_main(app: &AppHandle) {
@@ -496,44 +380,30 @@ pub fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let app = app.clone();
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(15));
-        // This runs even when the daily bedtime preset is disabled.
-        // The bridge may still be booting; retry on the next tick without log spam.
-        let _ = crate::reminders::poll(&app);
+        // Retry migration after bridge startup or transient failure. Its database
+        // marker prevents duplicates if the native settings commit is interrupted.
         let state = app.state::<BackgroundState>();
-        let snapshot = {
-            let Ok(saved) = state.saved.lock() else {
-                continue;
-            };
-            if due_date(&saved, Local::now().naive_local()).is_none() {
-                continue;
-            }
-            saved.clone()
-        };
-        // Fetch outside the settings lock, keeping window actions responsive when
-        // the bridge is slow. Recheck after fetching so disabling cancels delivery.
-        let message = bedtime_message(&app, &snapshot.preferences.language);
-        let Ok(mut saved) = state.saved.lock() else {
-            continue;
-        };
-        if saved.preferences != snapshot.preferences {
-            continue;
-        }
-        let Some(date) = due_date(&saved, Local::now().naive_local()) else {
-            continue;
-        };
-        match message.and_then(|(title, body)| show_notification(&app, title, body)) {
-            Ok(()) => {
-                saved.last_delivered_date = Some(date);
-                if let Err(error) = state.persist(&saved) {
-                    restart_debug_log(format!("reminder delivery persistence failed: {error}"));
+        let snapshot = state.saved.lock().ok().map(|saved| saved.clone());
+        if let Some(snapshot) = snapshot.filter(|saved| saved.preferences.bedtime_enabled) {
+            if crate::reminders::migrate_bedtime(
+                &app,
+                &snapshot.preferences.bedtime_time,
+                snapshot.last_delivered_date.map(|date| date.to_string()),
+                &snapshot.preferences.language,
+            )
+            .is_ok()
+            {
+                if let Ok(mut saved) = state.saved.lock() {
+                    let mut updated = saved.clone();
+                    updated.preferences.bedtime_enabled = false;
+                    if state.persist(&updated).is_ok() {
+                        *saved = updated;
+                    }
                 }
             }
-            Err(error) => {
-                restart_debug_log(format!("bedtime reminder failed: {error}"));
-                drop(saved);
-                thread::sleep(Duration::from_secs(45));
-            }
         }
+        // The bridge may still be booting; retry on the next tick.
+        let _ = crate::reminders::poll(&app);
     });
     Ok(())
 }
@@ -541,6 +411,12 @@ pub fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn random_index(len: usize) -> Result<usize, String> {
+        let mut bytes = [0u8; 8];
+        getrandom::fill(&mut bytes).map_err(|error| error.to_string())?;
+        Ok((u64::from_ne_bytes(bytes) % len as u64) as usize)
+    }
 
     fn at(value: &str) -> NaiveDateTime {
         NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S").unwrap()
@@ -568,34 +444,7 @@ mod tests {
         let saved = SavedBackground::default();
         assert!(!saved.preferences.close_to_tray);
         assert!(!saved.preferences.minimize_to_tray);
-        assert_eq!(due_date(&saved, at("2026-09-12 23:00:00")), None);
-    }
-
-    #[test]
-    fn daily_reminder_has_bounded_catch_up_and_survives_midnight() {
-        let saved = enabled("23:50");
-        let day = at("2026-09-12 23:50:00").date();
-        assert_eq!(due_date(&saved, at("2026-09-12 23:49:59")), None);
-        assert_eq!(due_date(&saved, at("2026-09-12 23:50:00")), Some(day));
-        assert_eq!(due_date(&saved, at("2026-09-13 00:20:00")), Some(day));
-        assert_eq!(due_date(&saved, at("2026-09-13 00:20:01")), None);
-        assert_eq!(due_date(&saved, at("2026-09-13 09:00:00")), None);
-    }
-
-    #[test]
-    fn persisted_delivery_deduplicates_restarts_clock_rollback_and_time_edits() {
-        let mut saved = enabled("23:00");
-        saved.last_delivered_date = Some(at("2026-09-12 23:00:00").date());
-        let mut restored: SavedBackground =
-            serde_json::from_slice(&serde_json::to_vec(&saved).unwrap()).unwrap();
-        assert_eq!(due_date(&restored, at("2026-09-12 23:00:15")), None);
-        assert_eq!(due_date(&restored, at("2026-09-11 23:00:00")), None);
-        restored.preferences.bedtime_time = "23:10".into();
-        assert_eq!(due_date(&restored, at("2026-09-12 23:10:00")), None);
-        assert_eq!(
-            due_date(&restored, at("2026-09-13 23:10:00")),
-            Some(at("2026-09-13 23:10:00").date())
-        );
+        assert!(!saved.preferences.bedtime_enabled);
     }
 
     #[test]
@@ -615,8 +464,8 @@ mod tests {
         state.persist(&saved).unwrap();
         let restored = BackgroundState::load(state.path.clone());
         assert_eq!(
-            due_date(&restored.saved.lock().unwrap(), at("2026-09-12 23:45:15")),
-            None
+            restored.saved.lock().unwrap().last_delivered_date,
+            saved.last_delivered_date
         );
         assert_eq!(
             restored.saved.lock().unwrap().preferences.bedtime_time,
