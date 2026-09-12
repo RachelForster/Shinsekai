@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 
 from ai.tools import reminder_tools
+from application.reminders import management
+from application.runtime.context import _ApplicationLLMHostRuntime
+from sdk.llm_runtime import NullLLMHostRuntime
 from sdk.tool_registry import iter_registered_tools
 from frontend_bridge_core.routes.api import FrontendBridgeHandler
 from frontend_bridge_core.routes.router import ApiRequest
@@ -9,7 +12,8 @@ from frontend_bridge_core.routes.router import ApiRequest
 def test_character_tool_and_bridge_share_schedules(tmp_path, monkeypatch):
     monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(tmp_path))
     config = SimpleNamespace(config=SimpleNamespace(characters=[SimpleNamespace(name="澪")]))
-    monkeypatch.setattr(reminder_tools, "ConfigManager", lambda: config)
+    monkeypatch.setattr(management, "ConfigManager", lambda: config)
+    monkeypatch.setattr(reminder_tools, "get_llm_host_runtime", _ApplicationLLMHostRuntime)
     state = SimpleNamespace(project_root_dir=str(tmp_path), config_manager=config)
 
     def call(method, path, body=None):
@@ -37,7 +41,13 @@ def test_scheduling_tool_is_available_to_every_character_without_search():
 
 def test_tool_returns_failure_instead_of_claiming_unsaved_reminder(tmp_path, monkeypatch):
     monkeypatch.setenv("SHINSEKAI_PROJECT_ROOT", str(tmp_path))
-    monkeypatch.setattr(reminder_tools, "ConfigManager", lambda: SimpleNamespace(config=SimpleNamespace(characters=[])))
+    monkeypatch.setattr(management, "ConfigManager", lambda: SimpleNamespace(config=SimpleNamespace(characters=[])))
+    monkeypatch.setattr(reminder_tools, "get_llm_host_runtime", _ApplicationLLMHostRuntime)
     result = reminder_tools.manage_reminders("create", character_name="不存在", title="睡觉", message="晚安", delay_minutes="10")
     assert result["ok"] is False
     assert reminder_tools.manage_reminders("list")["reminders"] == []
+
+
+def test_tool_without_host_reports_unavailable(monkeypatch):
+    monkeypatch.setattr(reminder_tools, "get_llm_host_runtime", NullLLMHostRuntime)
+    assert reminder_tools.manage_reminders("list") == {"ok": False, "error": "reminder host is not available"}

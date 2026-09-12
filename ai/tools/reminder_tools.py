@@ -1,8 +1,6 @@
 """Character-accessible scheduling, independent of chat window timers."""
 
-import sqlite3
-from application.reminders import ReminderStore
-from config.config_manager import ConfigManager
+from sdk.llm_runtime import get_llm_host_runtime
 from sdk.tool_registry import tool
 
 
@@ -16,10 +14,8 @@ from sdk.tool_registry import tool
 ))
 def manage_reminders(action: str, reminder_id: str = "", character_name: str = "", title: str = "",
                      message: str = "", remind_at: str = "", delay_minutes: str = "", recurrence: str = ""):
-    try:
-        return ReminderStore().manage(
-            action, [character.name for character in ConfigManager().config.characters],
-            reminder_id, character_name, title, message, remind_at, delay_minutes, recurrence,
-        )
-    except (ValueError, OSError, sqlite3.Error) as error:
-        return {"ok": False, "error": str(error)}
+    return get_llm_host_runtime().manage_reminders({
+        "action": action, "reminder_id": reminder_id, "character_name": character_name,
+        "title": title, "message": message, "remind_at": remind_at,
+        "delay_minutes": delay_minutes, "recurrence": recurrence,
+    })

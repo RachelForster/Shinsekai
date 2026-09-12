@@ -9,6 +9,19 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from config.config_manager import ConfigManager
+
+
+def manage_character_reminders(request: dict[str, str]) -> dict:
+    """Resolve available characters and commit a tool-requested schedule."""
+    try:
+        return ReminderStore().manage(
+            character_names=[character.name for character in ConfigManager().config.characters],
+            **request,
+        )
+    except (ValueError, OSError, sqlite3.Error) as error:
+        return {"ok": False, "error": str(error)}
+
 
 class ReminderStore:
     def __init__(self, project_root=None, clock=time.time):

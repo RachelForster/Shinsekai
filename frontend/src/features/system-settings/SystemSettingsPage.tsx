@@ -32,7 +32,7 @@ import {
 } from "../../shared/ui";
 import { DesktopRuntimeSection } from "./DesktopRuntimeSection";
 import { DesktopBackgroundSection } from "./DesktopBackgroundSection";
-import { backgroundCopy } from "./backgroundCopy";
+import { backgroundCopy } from "../../shared/i18n/backgroundCopy";
 // Shared page layout classes (.page, .section, .form-grid, .field-row) come from shared/theme/settings-base.css
 import "./SystemSettingsPage.css";
 

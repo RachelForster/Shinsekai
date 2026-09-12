@@ -12,11 +12,13 @@ const mocks = vi.hoisted(() => ({
   people: vi.fn(),
   config: vi.fn(),
 }));
-vi.mock("../../../shared/desktop/remindersApi", () => ({
+vi.mock("../../../entities/reminder/repository", () => ({
   getReminderInbox: mocks.inbox,
   listReminders: mocks.list,
   cancelReminder: mocks.cancel,
   dismissReminder: mocks.dismiss,
+}));
+vi.mock("../../../shared/desktop/remindersApi", () => ({
   reminderWindow: mocks.window,
   onRemindersChanged: mocks.listen,
 }));

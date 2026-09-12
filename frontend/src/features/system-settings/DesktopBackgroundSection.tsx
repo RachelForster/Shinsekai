@@ -11,7 +11,7 @@ import { isTauriDesktop } from "../../shared/desktop/desktopApi";
 import { reminderWindow } from "../../shared/desktop/remindersApi";
 import { useI18n } from "../../shared/i18n";
 import { AsyncButton, Button, Switch, TextInput } from "../../shared/ui";
-import { backgroundCopy } from "./backgroundCopy";
+import { backgroundCopy } from "../../shared/i18n/backgroundCopy";
 
 export function DesktopBackgroundSection() {
   return isTauriDesktop() ? <BackgroundSettings /> : null;
