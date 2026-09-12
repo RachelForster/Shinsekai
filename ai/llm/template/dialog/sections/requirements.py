@@ -9,6 +9,7 @@ from sdk.types import RequirementSpec
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
 from ..patches import apply_requirement_patches
+from .field_requirements import build_field_requirements
 
 
 @dataclass(frozen=True)
@@ -188,9 +189,9 @@ class RequirementsSection(Section[DialogTemplateContext]):
             "rules",
             priority=20,
             text=context.translate("requirements_header"),
-            children=_resolve_requirement_sections(
+            children=(*_resolve_requirement_sections(
                 build_requirement_sections(context), context
-            ),
+            ), build_field_requirements(context)),
         )
         extra_bgm = TextSection(
             "extra_bgm",

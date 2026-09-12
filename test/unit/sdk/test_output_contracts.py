@@ -171,7 +171,7 @@ def test_template_generator_ends_with_json_format_reminder(monkeypatch) -> None:
     assert template.endswith("Begin the scene.\nMUST_USE_REQUIRED_JSON_FORMAT\n")
 
 
-def test_template_generator_preserves_effect_toggle_and_field_contract(monkeypatch) -> None:
+def test_template_generator_preserves_effect_toggle_without_duplicate_field_contract(monkeypatch) -> None:
     character = SimpleNamespace(
         sprites=[object()],
         emotion_tags="happy: 01",
@@ -207,7 +207,8 @@ def test_template_generator_preserves_effect_toggle_and_field_contract(monkeypat
         assert marker in enabled
     for template in (disabled, enabled):
         assert "<effects_header>" not in template
-        assert "Output field contract" in template
+        assert "Output field contract" not in template
+        assert template.count("<r_speech>") == 1
 
 
 def test_effect_requirement_retains_audio_modes_and_image_aliases() -> None:

@@ -144,6 +144,9 @@ fresh base fields and requirements; patches are never accumulated in the context
 - Unknown requirement modes log a warning and retain the existing requirement.
 - JSON examples retain their existing behavior; patches affect field notes and
   requirements, not the illustrative JSON example.
+- Builtin field descriptions appear only in requirements. There is no separate
+  `Output field contract` block. Only added or changed plugin fields contribute
+  extra field notes through `RequirementsSection`.
 
 ## Files and verification
 
@@ -162,6 +165,7 @@ template/
       character.py
       background.py
       requirements.py
+      field_requirements.py # Plugin-only field additions/overrides
     patches.py            # Shared SDK OutputContractPatch reducers
   prompts/              # System and user text assembly
     system.py
@@ -184,3 +188,14 @@ were captured from the original renderer at `d8677c71`, before replacement, for
 all 128 combinations of the seven feature flags in Chinese, English and Japanese.
 They also exercise voice-language suppression, background aliases, character
 deduplication and length limits. Do not regenerate them merely to accept a diff.
+
+
+The duplicate field-contract removal updates these digests after verifying all
+384 outputs against the original digests: removing that exact block is the only
+change. JSON examples, media selection rules and other requirements are unchanged.
+
+Tool prompt projection reads current plugin manifest enable flags. Disabled
+plugin callables (including stale imported decorators) and groups with no visible
+tools are omitted; enabled tools in shared groups remain discoverable. Generating
+a template does not re-register disabled decorators. This affects newly generated
+prompts, not saved chat history or the runtime tool execution policy.

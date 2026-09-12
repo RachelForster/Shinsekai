@@ -166,7 +166,8 @@ def test_generate_template_summary_uses_full_primary_profile_and_supporting_brie
     assert "Alice full profile" in summary["system"]
     assert "Mika short brief" in summary["system"]
     assert "Mika full profile" not in summary["system"]
-    assert "vibe (string, required)" in summary["system"]
+    assert "r_vibe:" in summary["system"]
+    assert "Output field contract" not in summary["system"]
     assert "sprite (string, required)" not in summary["system"]
 
 
