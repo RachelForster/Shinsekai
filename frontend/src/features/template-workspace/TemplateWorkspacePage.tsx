@@ -1,3 +1,4 @@
+import { useI18n } from "../../shared/i18n";
 import { SegmentedTabs } from "../../shared/ui/SegmentedTabs";
 import { lazy, Suspense, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -10,11 +11,12 @@ const StoryMode = lazy(() =>
   import("../story-generator/StoryGeneratorPage").then(({ StoryGeneratorPage }) => ({ default: StoryGeneratorPage })),
 );
 const modes = [
-  { id: "normal", label: "正常模式" },
-  { id: "story", label: "剧本模式" },
+  { id: "normal", label: "template.workspace.normal" },
+  { id: "story", label: "template.workspace.story" },
 ] as const;
 
 export function TemplateWorkspacePage() {
+  const { t } = useI18n();
   const [params, setParams] = useSearchParams();
   const mode = params.get("mode") === "story" ? "story" : "normal";
   const [visited, setVisited] = useState(() => new Set([mode]));
@@ -28,10 +30,10 @@ export function TemplateWorkspacePage() {
   return (
     <div className="template-workspace">
       <SegmentedTabs
-        ariaLabel="创作模式"
+        ariaLabel={t("template.workspace.label")}
         className="template-workspace__tabs"
         idPrefix="mode"
-        items={modes}
+        items={modes.map((item) => ({ ...item, label: t(item.label) }))}
         value={mode}
         onChange={select}
       />
@@ -44,7 +46,7 @@ export function TemplateWorkspacePage() {
           hidden={mode !== item.id}
         >
           {(visited.has(item.id) || mode === item.id) && (
-            <Suspense fallback={<p role="status">正在加载…</p>}>
+            <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
               {item.id === "normal" ? <NormalMode /> : <StoryMode />}
             </Suspense>
           )}

@@ -341,7 +341,9 @@ class LLMManager:
         # --- 增量写入临时文件 ---
         if self._history_file:
             from ai.llm.history_manager import HistoryManager
-            HistoryManager.append_message_to_tmp(self._history_file, msg)
+            story_hooks = getattr(self, "story_prompt_hooks", None)
+            if story_hooks is None or not story_hooks.persist_message(msg):
+                HistoryManager.append_message_to_tmp(self._history_file, msg)
 
         if (
             self.hook_dispatcher is not None

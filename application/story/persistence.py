@@ -10,8 +10,10 @@ import os
 from pathlib import Path
 import re
 import tempfile
-from types import MappingProxyType
+import uuid
 from typing import Any
+
+from filelock import FileLock
 
 from core.chat_history.storage import STORY_SESSION_FILENAME
 
@@ -52,6 +54,10 @@ class StoryPersistenceError(ValueError):
 
 class StoryProgramMismatchError(StoryPersistenceError):
     pass
+
+
+class StoryConcurrentWriteError(StoryPersistenceError):
+    """The caller must reload; its branch document has been superseded."""
 
 
 def _json_value(value: Any) -> Any:
@@ -356,9 +362,11 @@ class JsonStorySessionRepository:
     def __init__(self, session_root: str | Path) -> None:
         self.session_root = Path(session_root).resolve(strict=False)
         self.path = self.session_root / STORY_SESSION_FILENAME
+        self.document_revision: str | None = None
 
     def load(self) -> dict[str, Any] | None:
         if not self.path.is_file():
+            self.document_revision = None
             return None
         try:
             with self.path.open(encoding="utf-8") as file:
@@ -371,13 +379,38 @@ class JsonStorySessionRepository:
             raise StoryPersistenceError("story session document must be an object")
         if int(payload.get("version") or 0) != STORY_SESSION_STORAGE_VERSION:
             raise StoryPersistenceError("unsupported story session storage version")
+        self.document_revision = self._revision(payload)
         return payload
+
+    @staticmethod
+    def _revision(payload: Mapping[str, Any]) -> str:
+        return str(
+            payload.get("documentRevision")
+            or hashlib.sha256(
+                json.dumps(payload, sort_keys=True, ensure_ascii=False).encode()
+            ).hexdigest()
+        )
 
     def save(self, payload: Mapping[str, Any]) -> None:
         document = dict(payload)
         document["version"] = STORY_SESSION_STORAGE_VERSION
         self.session_root.mkdir(parents=True, exist_ok=True)
-        _atomic_write_json(self.path, document)
+        # The runtime and bridge are separate processes. Hold an OS-backed lock
+        # across comparison and replace; a second read alone is not a CAS.
+        with FileLock(str(self.path) + ".lock"):
+            current = None
+            if self.path.exists():
+                current = self._revision(
+                    json.loads(self.path.read_text(encoding="utf-8"))
+                )
+            if current != self.document_revision:
+                raise StoryConcurrentWriteError(
+                    "story branch changed before commit; reload the session"
+                )
+            revision = uuid.uuid4().hex
+            document["documentRevision"] = revision
+            _atomic_write_json(self.path, document)
+            self.document_revision = revision
 
 
 class JsonGlobalStoryProgressStore:

@@ -775,6 +775,25 @@ class ChatStreamCommandTests(unittest.TestCase):
             "renderer-mobile",
         )
 
+    def test_http_and_websocket_snapshots_stamp_delivery_time_without_restarting_images(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
+        session = service.create_session()
+        session_id = session["sessionId"]
+        with patch("frontend_bridge_core.chat_stream.time.time", return_value=100):
+            asyncio.run(service._publish_event(session_id, {
+                "type": "effect.image.show", "ts": 100000, "durationMs": 8800, "label": "key", "url": "key.png",
+            }))
+        with patch("frontend_bridge_core.chat_stream.time.time", return_value=108):
+            delivered = service.get_snapshot(session_id)
+            viewer = _FakeConnection(session_id=session_id)
+            asyncio.run(service._send_snapshot(viewer))
+        self.assertEqual(delivered["serverTimeMs"], 108000)
+        self.assertEqual(delivered["effectImage"]["expiresAt"], 108800)
+        self.assertEqual(delivered["effectImage"]["durationMs"], 8800)
+        self.assertEqual(viewer.messages[-1]["snapshot"]["serverTimeMs"], 108000)
+        self.assertEqual(viewer.messages[-1]["snapshot"]["effectImage"], delivered["effectImage"])
+        self.assertNotIn("serverTimeMs", service._sessions[session_id].snapshot)
+
     def test_polling_snapshot_renderer_can_own_and_recover_active_voice(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
         session = service.create_session()

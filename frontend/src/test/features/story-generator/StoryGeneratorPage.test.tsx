@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { sampleConfig } from "../../../shared/platform/sampleData";
 import { previewStoryGraph } from "../../../shared/platform/previewStoryGraph";
-import { I18nProvider } from "../../../shared/i18n";
+import { I18nProvider, type FrontendLanguage } from "../../../shared/i18n";
+import { TRANSPARENT_BACKGROUND_NAME } from "../../../shared/constants";
+import { GenerationStages } from "../../../features/story-generator/components/GenerationStages";
 
 import { StoryGeneratorPage } from "../../../features/story-generator/StoryGeneratorPage";
 import type { StoryGenerationTask } from "../../../entities/story/types";
@@ -37,19 +39,21 @@ vi.mock("../../../entities/character/repository", () => ({
   ensureCharacterBriefs: (...args: unknown[]) => ensureCharacterBriefs(...args),
 }));
 
-function renderPage() {
+function renderPage(language: FrontendLanguage = "zh_CN") {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
-  return render(
+  const page = (locale: FrontendLanguage) => (
     <QueryClientProvider client={client}>
-      <I18nProvider language="zh_CN">
+      <I18nProvider language={locale}>
         <MemoryRouter>
           <StoryGeneratorPage />
         </MemoryRouter>
       </I18nProvider>
-    </QueryClientProvider>,
+    </QueryClientProvider>
   );
+  const view = render(page(language));
+  return { ...view, changeLanguage: (locale: FrontendLanguage) => view.rerender(page(locale)) };
 }
 
 vi.mock("../../../entities/background/repository", () => ({
@@ -110,6 +114,96 @@ function generatedTask(status: StoryGenerationTask["status"] = "succeeded"): Sto
 }
 
 describe("StoryGeneratorPage", () => {
+  it("switches UI language while preserving the synopsis, cast, background value, and generated story", async () => {
+    startStoryGeneration.mockResolvedValue(generatedTask());
+    const page = renderPage("en");
+    fireEvent.click(await screen.findByRole("button", { name: "小玲" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Synopsis" }), { target: { value: "我的新故事" } });
+    const start = screen.getByRole("button", { name: "Generate story" });
+    await waitFor(() => expect(start).toBeEnabled());
+    fireEvent.click(start);
+    expect(await screen.findByText("Reachable endings: 100% · Path states checked: 18")).toBeVisible();
+    expect(startStoryGeneration).toHaveBeenCalledWith(
+      expect.objectContaining({
+        synopsis: "我的新故事",
+        options: expect.objectContaining({ characters: ["小玲"], backgroundName: TRANSPARENT_BACKGROUND_NAME }),
+      }),
+      expect.anything(),
+    );
+    expect(await screen.findByRole("heading", { name: "Story graph" })).toBeVisible();
+    expect(screen.getByText("Maximum conversation turns: 3")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Play story" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Ending 重逢的约定" }));
+    expect(screen.getByText("The story ends here.")).toBeVisible();
+
+    page.changeLanguage("ja");
+    expect(screen.getByRole("textbox", { name: "あらすじ" })).toHaveValue("我的新故事");
+    expect(screen.getByRole("button", { name: "小玲" })).toHaveClass("template-character-card--selected");
+    expect(screen.getByRole("heading", { name: "シナリオ図" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "結末 重逢的约定" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("物語はここで終わります。")).toBeVisible();
+    expect(screen.getByText("到達可能な結末：100% · 検証済み経路状態：18")).toBeVisible();
+    expect(screen.getByRole("button", { name: "シナリオをプレイ" })).toBeEnabled();
+    expect(startStoryGeneration).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["resuming", "Automatically resuming from saved progress", "保存済みの進行状況から自動再開しています"],
+    ["working", "Generating and automatically checking the story", "シナリオを生成し、自動検証しています"],
+    ["correcting", "Automatically correcting compilation errors", "コンパイルエラーをもとに自動修正しています"],
+    ["waiting", "The model is temporarily unavailable", "モデルを一時的に利用できません"],
+  ] as const)("translates %s recovery from its state instead of the server message", (state, english, japanese) => {
+    const task = generatedTask("running");
+    task.recovery = {
+      state,
+      message: "后端中文状态消息",
+      attempt: 2,
+      nextRetryAt: 1800000000000,
+      lastError: { code: "provider.error", message: "Provider error details" },
+    };
+    const content = (language: FrontendLanguage) => (
+      <I18nProvider language={language}>
+        <GenerationStages task={task} preview={previewStoryGraph} />
+      </I18nProvider>
+    );
+    const view = render(content("en"));
+    expect(screen.getByText(english, { exact: false })).toBeVisible();
+    expect(screen.queryByText(/后端中文状态消息/)).not.toBeInTheDocument();
+    expect(screen.getByText("Automatic resumptions: 2 · Repair attempts: 0")).toBeVisible();
+    expect(screen.getByText(`Next automatic retry: ${new Date(1800000000000).toLocaleTimeString("en")}`)).toBeVisible();
+    expect(screen.getByText("Provider error details")).toBeInTheDocument();
+    expect(screen.getByText("Premise")).toBeInTheDocument();
+    view.rerender(content("ja"));
+    expect(screen.getByText(japanese, { exact: false })).toBeVisible();
+    expect(screen.getByText("自動復旧：2 回 · 修正の試行：0 回")).toBeVisible();
+    expect(screen.getByText(`次の自動再試行：${new Date(1800000000000).toLocaleTimeString("ja")}`)).toBeVisible();
+    expect(screen.getByText("物語の前提")).toBeInTheDocument();
+  });
+
+  it("localizes saved story metadata and actions while retaining story and resource names", async () => {
+    listStories.mockResolvedValue([
+      {
+        id: "saved",
+        storyPath: "saved/draft.json",
+        title: "旧校舍谜案",
+        characters: ["小玲", "小明"],
+        backgrounds: ["旧校舍", TRANSPARENT_BACKGROUND_NAME],
+        historyPath: "data/chat_history/saved",
+        currentNodeTitle: "调查教室",
+        updatedAt: 2,
+      },
+    ]);
+    const page = renderPage("en");
+    fireEvent.click(await screen.findByRole("tab", { name: "Saved stories" }));
+    expect(await screen.findByText("旧校舍谜案")).toBeVisible();
+    expect(screen.getByText("Last progress: 调查教室")).toBeVisible();
+    expect(screen.getByText("小玲, 小明")).toBeVisible();
+    expect(screen.getByText("Background: 旧校舍, Transparent scene")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Continue playing" })).toBeEnabled();
+    page.changeLanguage("ja");
+    expect(screen.getByText("前回の進行状況：调查教室")).toBeVisible();
+    expect(screen.getByRole("button", { name: "プレイを再開" })).toBeEnabled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();

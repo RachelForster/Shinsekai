@@ -17,6 +17,7 @@ anthropic
 mcp>=1.2.0
 PySide6
 pyyaml
+filelock>=3.13,<4
 qrcode>=7.4,<9
 vosk; sys_platform != "win32" or platform_machine != "ARM64"
 gpu-list

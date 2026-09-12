@@ -616,11 +616,14 @@ describe("TemplateEditorPage", () => {
     await waitFor(() => expect(mockListTemplates).toHaveBeenCalledTimes(callsBeforeRetry + 1));
   });
 
-  it("injects selected effect hints, persists runtime controls, and handles runtime dependency installs", async () => {
+  it("persists selected effects and handles runtime dependency installs", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     mockListEffects.mockResolvedValue([
       {
         audio_tags: "特效 1：雨声\n特效 2: 雷声",
+        image_list: [],
+        image_tags: "",
+        image_audio_list: [],
         color: "#4455aa",
         name: "Rain",
       },
@@ -637,9 +640,6 @@ describe("TemplateEditorPage", () => {
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Rain" }));
-    fireEvent.click(screen.getByRole("button", { name: "System template" }));
-    await waitFor(() => expect(screen.getByDisplayValue(/可用音效/)).toBeInTheDocument());
-    expect(screen.getByDisplayValue(/Rain有2条特效音频/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "English" }));
     await waitFor(() =>
@@ -671,5 +671,39 @@ describe("TemplateEditorPage", () => {
     );
     expect(mockInstallMissingRuntimeDependency).toHaveBeenCalledWith({ moduleName: "mem0" });
     expect(mockShowChatSurface).not.toHaveBeenCalled();
+  });
+
+  it("preserves authored prompt sections when restoring and selecting effects", async () => {
+    mockListTemplates.mockResolvedValue([
+      {
+        ...template,
+        system:
+          'System rules\n\nOutput field contract:\n- character_name (string): 内置\n- camera (string): 插件字段\n\n立绘说明:\n角色\n\n已选特效提示：\n旧音频和图片\n\n音效触发时机与模式：\n- loop:旧关键词\n循环示例：开始时 {"effect": "loop:雨声"}\n\n音效触发时机与模式：\n- stop:旧关键词\n\n可用音效：\n旧音效\n\n音效触发时机与模式：\n- before:旧关键词\n\n可调用工具\n- search',
+      },
+    ]);
+    mockListEffects.mockResolvedValue([
+      {
+        audio_tags: "特效 1：雨声\n特效 2: 雷声",
+        image_list: [],
+        image_tags: "",
+        image_audio_list: [],
+        color: "#4455aa",
+        name: "Rain",
+      },
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "System template" }));
+    const systemTemplate = screen.getByDisplayValue(/System rules/) as HTMLTextAreaElement;
+    const authoredSystem = (await mockListTemplates.mock.results[0].value)[0].system;
+    expect(systemTemplate).toHaveValue(authoredSystem);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rain" }));
+    expect(systemTemplate).toHaveValue(authoredSystem);
+
+    fireEvent.click(screen.getByRole("button", { name: "Rain" }));
+    expect(systemTemplate).toHaveValue(authoredSystem);
   });
 });

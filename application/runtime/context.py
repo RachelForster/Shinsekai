@@ -11,6 +11,7 @@ import threading
 from dataclasses import dataclass, field
 from typing import Any, List, Optional
 
+from core.media.effect_image import ImageEffectAsset
 from core.messaging.chat_turn_service import ChatTurnService
 from sdk.llm_runtime import set_llm_host_runtime
 
@@ -82,6 +83,7 @@ class AppRuntime:
     opencc: Any  # OpenCC
     background: Any = None
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
+    effect_image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)
     ui_playback: UiPlaybackBridge = field(default_factory=UiPlaybackBridge)
     chat_turn_service: ChatTurnService = field(default_factory=ChatTurnService)
     tool_confirmations: ToolConfirmationController = field(

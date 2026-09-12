@@ -118,6 +118,8 @@ class _StreamingSessionWiring:
         if story_hooks is not None:
             story_hooks.publish = lambda story: self.transport.emit({"type": "story.state.replace", "story": story})
         self.branch_manager = self._create_branch_manager()
+        if story_hooks is not None:
+            story_hooks.branch_id = lambda: self.branch_manager.active_branch_id
         self.runtime_asr = self._create_streaming_asr()
         self._bind_asr_presentation_hooks()
         self.transport.bind_command_dispatcher(self._create_command_dispatcher())

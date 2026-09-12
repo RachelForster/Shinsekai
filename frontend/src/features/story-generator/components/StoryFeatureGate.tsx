@@ -1,14 +1,16 @@
+import { useI18n } from "../../../shared/i18n";
 import { Button } from "../../../shared/ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../../entities/config/repository";
 
 export function StoryFeatureGate({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
   const client = useQueryClient();
   const config = useQuery({ queryKey: configQueryKey, queryFn: getAppConfig });
   const enable = useMutation({
     mutationFn: async () => {
-      if (!config.data) throw new Error("请先加载设置");
+      if (!config.data) throw new Error(t("story.enable.loadFirst"));
       await saveSystemConfig({ ...config.data.system_config, story_system_enabled: true });
     },
     onSuccess: () => client.invalidateQueries({ queryKey: configQueryKey }),
@@ -16,11 +18,11 @@ export function StoryFeatureGate({ children }: { children: ReactNode }) {
   if (config.data?.system_config.story_system_enabled) return children;
   return (
     <section className="section">
-      <h2 className="section__title">启用剧本模式</h2>
-      <p className="section__description">选择人物和背景创作互动故事，或继续已有剧本。生成需要使用已配置的语言模型。</p>
+      <h2 className="section__title">{t("story.enable.action")}</h2>
+      <p className="section__description">{t("story.enable.hint")}</p>
       {config.isPending ? (
         <p className="section__description" role="status">
-          正在读取设置…
+          {t("story.enable.loading")}
         </p>
       ) : (
         <Button
@@ -29,7 +31,7 @@ export function StoryFeatureGate({ children }: { children: ReactNode }) {
           onClick={() => enable.mutate()}
           type="button"
         >
-          {enable.isPending ? "正在启用…" : "启用剧本模式"}
+          {enable.isPending ? t("story.enable.pending") : t("story.enable.action")}
         </Button>
       )}
       {(enable.error || config.error) && (
@@ -39,7 +41,7 @@ export function StoryFeatureGate({ children }: { children: ReactNode }) {
       )}
       {config.isError && (
         <Button type="button" onClick={() => void config.refetch()}>
-          重试
+          {t("common.retry")}
         </Button>
       )}
     </section>

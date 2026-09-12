@@ -1,12 +1,19 @@
+import { useI18n } from "../../../shared/i18n";
+import { TRANSPARENT_BACKGROUND_NAME } from "../../../shared/constants";
 import { Button } from "../../../shared/ui";
 import { useId, useMemo, useState } from "react";
 import type { StoryGraph } from "../../../shared/platform/storyPreviewTypes";
 import { layoutStoryGraph, NODE_HEIGHT, NODE_WIDTH } from "./layout";
 import "./StoryGraphView.css";
 
-const nodeLabels = { limited_turn_node: "限轮剧情", free_chat_node: "自由对话", ending_node: "结局" };
+const nodeLabels = {
+  limited_turn_node: "story.graph.limited",
+  free_chat_node: "story.graph.free",
+  ending_node: "story.graph.ending",
+} as const;
 
 export function StoryGraphView({ graph }: { graph: StoryGraph }) {
+  const { t } = useI18n();
   const [selectedId, setSelectedId] = useState(graph.startNodeId);
   const [zoom, setZoom] = useState(1);
   const marker = useId().replace(/:/g, "");
@@ -45,23 +52,33 @@ export function StoryGraphView({ graph }: { graph: StoryGraph }) {
       <div className="section__header story-graph__header">
         <div>
           <h2 className="section__title" id="story-graph-title">
-            剧本图
+            {t("story.graph.title")}
           </h2>
-          <p className="section__description">选择节点查看剧情与跳转条件。箭头表示可进入的下一段剧情。</p>
+          <p className="section__description">{t("story.graph.hint")}</p>
         </div>
-        <div className="story-graph__zoom" role="group" aria-label="图缩放">
-          <Button type="button" aria-label="缩小" disabled={zoom <= 0.5} onClick={() => setZoom(zoom - 0.25)}>
+        <div className="story-graph__zoom" role="group" aria-label={t("story.graph.zoom")}>
+          <Button
+            type="button"
+            aria-label={t("story.graph.zoomOut")}
+            disabled={zoom <= 0.5}
+            onClick={() => setZoom(zoom - 0.25)}
+          >
             −
           </Button>
-          <Button type="button" aria-label="重置缩放" onClick={() => setZoom(1)}>
+          <Button type="button" aria-label={t("story.graph.zoomReset")} onClick={() => setZoom(1)}>
             {Math.round(zoom * 100)}%
           </Button>
-          <Button type="button" aria-label="放大" disabled={zoom >= 1.5} onClick={() => setZoom(zoom + 0.25)}>
+          <Button
+            type="button"
+            aria-label={t("story.graph.zoomIn")}
+            disabled={zoom >= 1.5}
+            onClick={() => setZoom(zoom + 0.25)}
+          >
             +
           </Button>
         </div>
       </div>
-      <div className="story-graph__scroll" tabIndex={0} role="region" aria-label="剧情节点关系图">
+      <div className="story-graph__scroll" tabIndex={0} role="region" aria-label={t("story.graph.region")}>
         <div style={{ width: layout.width * zoom, height: layout.height * zoom }}>
           <div
             className="story-graph__canvas"
@@ -93,8 +110,8 @@ export function StoryGraphView({ graph }: { graph: StoryGraph }) {
                 onClick={() => setSelectedId(node.id)}
               >
                 <small>
-                  {node.id === graph.startNodeId ? "起点 · " : ""}
-                  {nodeLabels[node.type]}
+                  {node.id === graph.startNodeId ? t("story.graph.start") : ""}
+                  {t(nodeLabels[node.type])}
                 </small>
                 <strong>{node.title || node.id}</strong>
               </button>
@@ -103,11 +120,22 @@ export function StoryGraphView({ graph }: { graph: StoryGraph }) {
         </div>
       </div>
       {selected && (
-        <article className="story-graph__detail" aria-label="节点详情">
+        <article className="story-graph__detail" aria-label={t("story.graph.details")}>
           <h3>{selected.title}</h3>
-          <p className="section__description">{selected.instruction || "故事在此结束。"}</p>
-          {selected.background && <p className="section__description">地点：{selected.background}</p>}
-          {selected.maxRounds !== undefined && <p className="section__description">最多 {selected.maxRounds} 轮对话</p>}
+          <p className="section__description">{selected.instruction || t("story.graph.endHint")}</p>
+          {selected.background && (
+            <p className="section__description">
+              {t("story.graph.location", {
+                background:
+                  selected.background === TRANSPARENT_BACKGROUND_NAME
+                    ? t("template.transparentBackground")
+                    : selected.background,
+              })}
+            </p>
+          )}
+          {selected.maxRounds !== undefined && (
+            <p className="section__description">{t("story.graph.rounds", { count: selected.maxRounds })}</p>
+          )}
           <ul>
             {selected.transitions?.map((transition, index) => (
               <li key={`${transition.to}-${index}`}>
@@ -119,7 +147,7 @@ export function StoryGraphView({ graph }: { graph: StoryGraph }) {
             ))}
           </ul>
           {selected.defaultTo && (
-            <p className="section__description">达到轮数上限时，默认进入：{title(selected.defaultTo)}</p>
+            <p className="section__description">{t("story.graph.default", { title: title(selected.defaultTo) })}</p>
           )}
         </article>
       )}

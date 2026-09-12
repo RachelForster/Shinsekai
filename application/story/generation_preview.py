@@ -23,7 +23,15 @@ def _read_preview(service: StoryGenerationService, task_id: str) -> dict[str, An
     }
     # A repaired draft is authoritative. Earlier checkpoints can still be viewed
     # while generation is running, but must not replace the final graph.
-    draft = service.repository.load_draft(task_id)
+    complete = all(
+        stage.value in task["completedStages"] for stage in GENERATION_STAGES
+    )
+    draft = service.repository.load_draft(task_id) if complete else None
+    if draft and any(
+        artifact != artifacts.get(stage.value)
+        for stage, artifact in service._artifacts_from_source(task_id, draft).items()
+    ):
+        draft = None
     narrative = (draft or {}).get("narrativeGraph") or artifacts.get("narrative")
     return {
         "artifacts": artifacts,

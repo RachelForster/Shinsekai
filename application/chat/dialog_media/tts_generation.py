@@ -28,6 +28,14 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
             yield self._fallback_audio_path(request)
             return
 
+        sprite = request.sprite
+        if not (sprite.voice_type == "preset" and sprite.voice_path) and not (
+            str(request.message.text or "").strip()
+            or str(request.message.translate or "").strip()
+        ):
+            yield ""
+            return
+
         character = request.character
         manager.switch_model(
             {
@@ -39,7 +47,6 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
             }
         )
 
-        sprite = request.sprite
         if sprite.voice_type == "preset" and sprite.voice_path:
             yield self._absolute(sprite.voice_path)
             return

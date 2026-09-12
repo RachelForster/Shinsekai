@@ -1,3 +1,4 @@
+import { useI18n } from "../../../shared/i18n";
 import { CharacterPicker } from "../../template-editor/CharacterPicker";
 import { Button, Select, TextArea } from "../../../shared/ui";
 import { useMemo, useState } from "react";
@@ -17,6 +18,7 @@ export function StorySetupForm({
   pending: boolean;
   onStart: (input: StoryGenerationInput) => void;
 }) {
+  const { t } = useI18n();
   const client = useQueryClient();
   const [selected, setSelected] = useState<string[]>([]);
   const [primary, setPrimary] = useState<string[]>([]);
@@ -57,11 +59,11 @@ export function StorySetupForm({
   return (
     <section className="section" aria-labelledby="story-setup-title">
       <h2 className="section__title" id="story-setup-title">
-        选择人物和背景
+        {t("story.setup.title")}
       </h2>
-      {characters.isPending && <p role="status">正在加载人物…</p>}
+      {characters.isPending && <p role="status">{t("story.setup.loadingCharacters")}</p>}
       {characters.isSuccess && !characters.data.length && (
-        <p className="section__description">还没有人物，请先到人物页创建人物。</p>
+        <p className="section__description">{t("story.setup.noCharacters")}</p>
       )}
       <CharacterPicker
         characters={characters.data ?? []}
@@ -81,14 +83,14 @@ export function StorySetupForm({
         primaryCount={mode === "full" ? selected.length : primary.length}
       />
       <label className="story-setup-field">
-        故事背景
+        {t("story.setup.background")}
         <Select
-          aria-label="故事背景"
+          aria-label={t("story.setup.background")}
           value={background}
           disabled={busy || !backgrounds.isSuccess}
           onChange={(event) => setBackground(event.target.value)}
         >
-          <option value={TRANSPARENT_BACKGROUND_NAME}>透明背景</option>
+          <option value={TRANSPARENT_BACKGROUND_NAME}>{t("template.transparentBackground")}</option>
           {backgrounds.data
             ?.filter((item) => item.name !== TRANSPARENT_BACKGROUND_NAME)
             .map((item) => (
@@ -99,15 +101,15 @@ export function StorySetupForm({
         </Select>
       </label>
       <label className="story-setup-field">
-        剧情梗概（选填）
+        {t("story.setup.synopsisOptional")}
         <TextArea
-          aria-label="剧情梗概"
+          aria-label={t("story.setup.synopsis")}
           disabled={busy}
           maxLength={20000}
           rows={5}
           value={synopsis}
           onChange={(event) => setSynopsis(event.target.value)}
-          placeholder="写下故事的起点、冲突或结局方向，也可以让 AI 根据人物和背景创作。"
+          placeholder={t("story.setup.synopsisPlaceholder")}
         />
       </label>
       {[characters, backgrounds].map(
@@ -115,7 +117,7 @@ export function StorySetupForm({
           query.isError && (
             <p key={index} className="story-generator-error" role="alert">
               {query.error.message}
-              <Button onClick={() => void query.refetch()}>重试</Button>
+              <Button onClick={() => void query.refetch()}>{t("common.retry")}</Button>
             </p>
           ),
       )}
@@ -141,9 +143,9 @@ export function StorySetupForm({
             });
           }}
         >
-          {pending ? "生成中…" : "开始生成"}
+          {pending ? t("story.setup.generating") : t("story.setup.start")}
         </Button>
-        <small>生成后自动保存在已有剧本中。</small>
+        <small>{t("story.setup.savedHint")}</small>
       </div>
       <PrimaryCharacterDialog
         characters={selectedCharacters}

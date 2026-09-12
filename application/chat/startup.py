@@ -179,6 +179,13 @@ def create_chat_startup_context(
     from application.story.prompt_runtime import install_story_prompt_hooks
 
     install_story_prompt_hooks(llm_manager, config, str(args.history or ""))
+    story_hooks = getattr(llm_manager, "story_prompt_hooks", None)
+    if story_hooks is not None and story_hooks.journal.load() is not None:
+        story_hooks.recover_pending()
+        # Recovery can restore a reply whose append was interrupted. Reload it
+        # before branches and the UI consume startup history.
+        from application.chat.history_state import load_chat_history
+        messages = load_chat_history(str(chat_history_active_path(args.history)))
 
     with startup_phase("chat.init_hooks"):
         if plugin_manager is not None:

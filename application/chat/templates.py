@@ -8,6 +8,9 @@ from typing import Any
 from config.config_manager import character_name_key
 from core.chat_history.storage import ACTIVE_HISTORY_FILENAME, BRANCH_TREE_FILENAME
 from application.chat.initial_sprite import initial_sprite_path_for_characters
+from ai.llm.template.integrations.localization import translate_template
+from ai.llm.template.dialog.context import EffectCatalogContext, EffectCatalogEntry
+from application.chat.build_effect_context import SelectedEffectContext
 from ai.llm.template.prompts import (
     RuntimePromptContext,
     UserPromptContext,
@@ -106,11 +109,25 @@ def _effective_user_scenario(user_scenario: str) -> str:
     return (user_scenario or "").strip() or DEFAULT_EMPTY_SCENARIO
 
 
-def _compose_runtime_template(system_template: str, user_scenario: str) -> str:
+def _compose_runtime_template(
+    system_template: str,
+    user_scenario: str,
+    effect_context: SelectedEffectContext | None = None,
+) -> str:
+    catalog = None
+    if effect_context is not None:
+        catalog = EffectCatalogContext(
+            effects=tuple(
+                EffectCatalogEntry(item.label, item.kind, item.modes)
+                for item in effect_context.catalog
+            ),
+            translate=translate_template,
+        )
     context = RuntimePromptContext(
         system_template=(system_template or "").rstrip(),
         user_scenario=_effective_user_scenario(user_scenario),
         json_reminder=json_format_reminder(),
+        effect_catalog=catalog,
     )
     return build_runtime_prompt_section().render(context) + "\n"
 

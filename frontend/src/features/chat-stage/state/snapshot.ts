@@ -64,7 +64,21 @@ function recoveryAudioCommands(state: ChatStageState, snapshot: ChatSnapshot, sn
   return commands;
 }
 
-export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapshot): ChatStageState {
+function restoreEffectImage(state: ChatStageState, snapshot: ChatSnapshot, receivedAt: number) {
+  const image = snapshot.effectImage;
+  if (!image || !Number.isFinite(snapshot.serverTimeMs)) return null;
+  const remaining = Math.min(image.durationMs, Math.max(0, image.expiresAt - snapshot.serverTimeMs!));
+  if (!Number.isFinite(remaining) || remaining <= 0) return null;
+  let deadline = receivedAt + remaining;
+  const previous = state.effectImage;
+  if (state.sessionId === snapshot.sessionId && previous?.seq === image.seq && previous.url === image.url) {
+    // Repeated snapshots cannot restart or extend an already displayed image.
+    deadline = Math.min(deadline, previous.deadline);
+  }
+  return { deadline, durationMs: image.durationMs, label: image.label, seq: image.seq, url: image.url };
+}
+
+export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapshot, receivedAt = 0): ChatStageState {
   const nextEventSeq = snapshotEventSeq(snapshot);
   if (nextEventSeq < state.eventSeq) {
     return state;
@@ -76,6 +90,7 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
   return withResolvedLayers({
     ...emptyChatState,
     ...snapshot,
+    effectImage: restoreEffectImage(state, snapshot, receivedAt),
     audioCommands,
     asrTranscript: undefined,
     error: undefined,

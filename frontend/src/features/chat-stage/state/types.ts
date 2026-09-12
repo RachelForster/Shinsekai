@@ -40,7 +40,16 @@ export type ChatAudioCommand =
   | { kind: "effect-loop-stop-all"; seq: number }
   | { kind: "all-stop"; seq: number };
 
-export interface ChatStageState extends Omit<ChatSnapshot, "sprites"> {
+export interface ChatStageEffectImage {
+  deadline: number;
+  durationMs: number;
+  label: string;
+  seq: number;
+  url: string;
+}
+
+export interface ChatStageState extends Omit<ChatSnapshot, "sprites" | "effectImage"> {
+  effectImage?: ChatStageEffectImage | null;
   audioCommands: ChatAudioCommand[];
   asrTranscript?: string;
   busyDurationSeconds?: number;
@@ -113,8 +122,8 @@ export interface ChatStageViewModel {
 }
 
 export type ChatStageAction =
-  | { type: "event"; event: ChatStageEvent }
-  | { type: "hydrate"; snapshot: ChatSnapshot }
+  | { type: "event"; event: ChatStageEvent; receivedAt?: number }
+  | { type: "hydrate"; snapshot: ChatSnapshot; receivedAt?: number }
   | { type: "addAttachments"; attachments: ChatAttachmentInput[] }
   | { type: "submitUserMessage"; text: string; queued?: boolean; source?: "send-message" | "submit-option" }
   | { type: "rollbackUserSubmission"; source: "send-message" | "submit-option" }

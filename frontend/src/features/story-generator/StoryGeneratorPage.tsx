@@ -1,3 +1,4 @@
+import { useI18n } from "../../shared/i18n";
 import { Button, Select } from "../../shared/ui";
 import { useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -15,6 +16,7 @@ import { stages } from "./state/stages";
 import "./StoryGeneratorPage.css";
 
 function StoryWorkspace() {
+  const { t } = useI18n();
   const [params] = useSearchParams();
   const [view, setView] = useState<"create" | "library">(() =>
     params.get("view") === "library" ? "library" : "create",
@@ -25,13 +27,13 @@ function StoryWorkspace() {
   return (
     <>
       <SegmentedTabs
-        ariaLabel="剧本入口"
+        ariaLabel={t("story.entry")}
         idPrefix="story-view"
         value={view}
         onChange={setView}
         items={[
-          { id: "create", label: "创作新剧本" },
-          { id: "library", label: "已有剧本" },
+          { id: "create", label: t("story.create") },
+          { id: "library", label: t("story.library") },
         ]}
       />
       <div
@@ -55,7 +57,7 @@ function StoryWorkspace() {
             <div className="story-generator-actions">
               {pending && (
                 <Button type="button" disabled={task.cancelRequested} onClick={() => void generation.cancel()}>
-                  {task.cancelRequested ? "正在取消…" : "取消生成"}
+                  {task.cancelRequested ? t("story.cancelling") : t("story.cancel")}
                 </Button>
               )}
             </div>
@@ -63,26 +65,26 @@ function StoryWorkspace() {
             <GenerationValidation task={task} />
             {task.status === "succeeded" && (
               <section className="section">
-                <h2 className="section__title">{preview?.title || "生成的剧本"}</h2>
-                <p className="section__description">剧本已保存，可立即游玩或稍后从已有剧本中继续。</p>
+                <h2 className="section__title">{preview?.title || t("story.generated")}</h2>
+                <p className="section__description">{t("story.savedHint")}</p>
                 <StoryLaunchButton
                   key={`${task.id}-${task.updatedAt}`}
                   storyPath={task.draftPath}
                   disabled={pending || !task.validation?.valid || !task.draftPath}
                 />
                 <details className="story-regenerate">
-                  <summary>调整并重新生成</summary>
-                  <p className="section__description">重做所选阶段及后续阶段，之前的内容会保留。</p>
+                  <summary>{t("story.regenerate.title")}</summary>
+                  <p className="section__description">{t("story.regenerate.hint")}</p>
                   <div className="story-generator-actions">
                     <Select
-                      aria-label="重新生成阶段"
+                      aria-label={t("story.regenerate.stage")}
                       value={regenerationStage}
                       disabled={pending}
                       onChange={(event) => setRegenerationStage(event.target.value as StoryGenerationStage)}
                     >
                       {stages.map((stage) => (
                         <option key={stage.id} value={stage.id}>
-                          {stage.label}
+                          {t(stage.label)}
                         </option>
                       ))}
                     </Select>
@@ -91,7 +93,7 @@ function StoryWorkspace() {
                       type="button"
                       onClick={() => void generation.regenerate(regenerationStage)}
                     >
-                      重新生成
+                      {t("story.regenerate.action")}
                     </Button>
                   </div>
                 </details>
@@ -105,12 +107,13 @@ function StoryWorkspace() {
 }
 
 export function StoryGeneratorPage() {
+  const { t } = useI18n();
   return (
     <div className="page story-generator-page">
       <header className="page__header">
         <div>
-          <h1 className="page__title">让故事成为可游玩的剧本</h1>
-          <p className="section__description">选择人物和背景创作新剧本，或从已有剧本继续你的故事。</p>
+          <h1 className="page__title">{t("story.title")}</h1>
+          <p className="section__description">{t("story.description")}</p>
         </div>
       </header>
       <StoryFeatureGate>

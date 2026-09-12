@@ -66,7 +66,7 @@ const logFiles: LogFileList = {
 
 function renderPage() {
   const client = new QueryClient({
-    defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
+    defaultOptions: { mutations: { retry: false }, queries: { retry: false, retryDelay: 0 } },
   });
 
   return render(
@@ -172,19 +172,29 @@ describe("LogsPage", () => {
   });
 
   it("shows retryable default-log errors while still rendering file list failures", async () => {
+    let rejectFileList!: (reason: Error) => void;
+    const pendingFileList = new Promise<LogFileList>((_, reject) => {
+      rejectFileList = reject;
+    });
     mockGetDefaultLog
       .mockRejectedValueOnce(new Error("default missing"))
       .mockRejectedValueOnce(new Error("default missing"))
       .mockResolvedValueOnce(structuredClone(defaultLog));
-    mockListLogFiles.mockRejectedValueOnce(new Error("list failed")).mockRejectedValueOnce(new Error("list failed"));
+    mockListLogFiles.mockRejectedValueOnce(new Error("list failed")).mockReturnValueOnce(pendingFileList);
     renderPage();
 
     expect(await screen.findByText("无法读取默认日志", {}, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.getByText("default missing")).toBeInTheDocument();
-    expect(screen.getByText("日志列表读取失败。")).toBeInTheDocument();
+    await waitFor(() => expect(mockListLogFiles).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("日志列表读取失败。")).not.toBeInTheDocument();
+    rejectFileList(new Error("list failed"));
+    expect(await screen.findByText("日志列表读取失败。")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "重试" }));
 
     await waitFor(() => expect(mockGetDefaultLog).toHaveBeenCalledTimes(3));
+    expect(await within(screen.getByLabelText("日志内容")).findByText("Boom")).toBeInTheDocument();
+    expect(screen.queryByText("无法读取默认日志")).not.toBeInTheDocument();
+    expect(screen.getByText("日志列表读取失败。")).toBeInTheDocument();
   });
 });

@@ -1,23 +1,27 @@
+import { useI18n } from "../../../shared/i18n";
 import type { StoryGenerationTask } from "../../../entities/story/types";
 
 export function GenerationValidation({ task }: { task: StoryGenerationTask }) {
+  const { t } = useI18n();
   return (
     <section className="section" aria-labelledby="story-validation-title">
       <h2 className="section__title" id="story-validation-title">
-        可运行检查
+        {t("story.validation.title")}
       </h2>
       {task.validation ? (
         <>
           <p className={task.validation.valid ? "story-generator-pass" : "story-generator-error"}>
             {task.validation.valid
-              ? "已通过确定性校验"
+              ? t("story.validation.passed")
               : task.cancelRequested || task.status === "cancelled"
-                ? "已停止修复，当前剧本尚未通过检查"
-                : "正在自动修复问题，通过检查后即可游玩"}
+                ? t("story.validation.stopped")
+                : t("story.validation.repairing")}
           </p>
           <p className="section__description">
-            可达结局 {Math.round(task.validation.endingCoverage * 100)}% · 检查了 {task.validation.exploredStates}{" "}
-            个路径状态
+            {t("story.validation.metrics", {
+              coverage: Math.round(task.validation.endingCoverage * 100),
+              states: task.validation.exploredStates,
+            })}
           </p>
           {!!task.validation.issues.length && (
             <ul>
@@ -28,11 +32,11 @@ export function GenerationValidation({ task }: { task: StoryGenerationTask }) {
           )}
         </>
       ) : (
-        <p className="section__description">剧情节点生成后，将检查跳转目标、人物资源与结局路径。</p>
+        <p className="section__description">{t("story.validation.hint")}</p>
       )}
       {!!task.assumptions.length && (
         <details>
-          <summary>创作假设</summary>
+          <summary>{t("story.artifact.assumptions")}</summary>
           <ul>
             {task.assumptions.map((item, index) => (
               <li key={index}>{item}</li>

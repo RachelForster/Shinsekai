@@ -506,6 +506,11 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ index, name }),
           method: "POST",
         }),
+      deleteImage: (name, index) =>
+        requestJson<Effect>(apiBase, "/api/effects/images/delete", {
+          body: JSON.stringify({ index, name }),
+          method: "POST",
+        }),
       export: async (name) => {
         const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/effects/export", {
           body: JSON.stringify({ name }),
@@ -534,8 +539,23 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify(input),
           method: "POST",
         }),
+      saveImageTags: (input) =>
+        requestJson<Effect>(apiBase, "/api/effects/image-tags", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
       uploadAudio: (input) =>
         requestJson<Effect>(apiBase, "/api/effects/audio/upload", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      uploadImages: (input) =>
+        requestJson<Effect>(apiBase, "/api/effects/images/upload", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      uploadImageAudio: (input) =>
+        requestJson<Effect>(apiBase, "/api/effects/images/audio/upload", {
           body: JSON.stringify(input),
           method: "POST",
         }),

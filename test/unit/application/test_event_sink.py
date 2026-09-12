@@ -7,6 +7,30 @@ from application.runtime.event_sink import (
 
 
 class EventSinkSnapshotTests(unittest.TestCase):
+    def test_image_effect_is_folded_with_an_expiry_time(self):
+        snapshot = fold_event_into_snapshot(
+            make_empty_chat_snapshot(),
+            {
+                "durationMs": 8800,
+                "label": "item",
+                "seq": 3,
+                "ts": 1000,
+                "type": "effect.image.show",
+                "url": "/api/media?path=item.png",
+            },
+        )
+
+        self.assertEqual(
+            snapshot["effectImage"],
+            {
+                "expiresAt": 9800,
+                "durationMs": 8800,
+                "label": "item",
+                "seq": 3,
+                "url": "/api/media?path=item.png",
+            },
+        )
+
     def test_active_voice_and_loop_effects_are_folded_for_recovery(self):
         snapshot = fold_event_into_snapshot(
             make_empty_chat_snapshot(),

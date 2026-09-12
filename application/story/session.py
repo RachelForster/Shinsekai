@@ -74,11 +74,13 @@ class StoryCheckpoint:
     event_count: int
     history_entries: tuple[Mapping[str, Any], ...] = ()
     idempotency_payload: tuple[Mapping[str, Any], ...] = ()
+    user_count: int | None = None
 
     def to_payload(self) -> dict[str, Any]:
         return {
             "generation": self.generation,
             "messageCount": self.message_count,
+            "userCount": self.user_count,
             "state": story_state_to_payload(self.state),
             "headEventId": self.head_event_id,
             "eventCount": self.event_count,
@@ -384,6 +386,8 @@ class StorySession:
         with self._lock:
             self._require_enabled()
             branch = self.active_branch
+            if user_index < 0:
+                raise ValueError("user index must be nonnegative")
             prefix = len(branch.history_entries)
             seen = 0
             for index, entry in enumerate(branch.history_entries):
@@ -393,12 +397,18 @@ class StorySession:
                     prefix = index
                     break
                 seen += 1
+            if user_index > seen:
+                raise KeyError("user index is not present in the story branch history")
             for checkpoint in reversed(branch.checkpoints):
-                if checkpoint.message_count <= prefix:
+                if (
+                    checkpoint.user_count <= user_index
+                    if checkpoint.user_count is not None
+                    else checkpoint.message_count <= prefix
+                ):
                     return checkpoint.generation
             if not branch.checkpoints:
                 raise KeyError("story branch has no checkpoint")
-            return branch.checkpoints[0].generation
+            raise KeyError("the selected history predates available story checkpoints")
 
     def fork(self, branch_id: str, *, generation: int | None = None) -> StoryBranch:
         with self._lock:
@@ -541,6 +551,9 @@ class StorySession:
                     latest,
                     message_count=len(branch.history_entries),
                     history_entries=branch.history_entries,
+                    user_count=sum(
+                        item.get("role") == "user" for item in branch.history_entries
+                    ),
                 )
             self._save()
 
@@ -698,9 +711,11 @@ class StorySession:
                 idempotency_payload=tuple(
                     MappingProxyType(item) for item in branch.idempotency.to_payload()
                 ),
+                user_count=sum(
+                    item.get("role") == "user" for item in branch.history_entries
+                ),
             )
         )
-        branch.checkpoints = branch.checkpoints[-128:]
         self._save()
         if scene_turn is not None:
             scene_turn.committed = True
@@ -854,6 +869,9 @@ class StorySession:
         return StoryCheckpoint(
             generation=int(raw.get("generation") or 0),
             message_count=int(raw.get("messageCount") or 0),
+            user_count=(
+                int(raw["userCount"]) if raw.get("userCount") is not None else None
+            ),
             state=story_state_from_payload(state_raw, program=self.runtime.program),
             head_event_id=_optional_text(raw.get("headEventId")),
             event_count=int(raw.get("eventCount") or 0),

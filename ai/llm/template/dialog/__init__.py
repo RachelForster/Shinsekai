@@ -1,6 +1,11 @@
 """Default dialog system prompt, its context and patch-compatible sections."""
 
-from .context import DialogTemplateContext
+from ai.llm.template.dialog.context import (
+    DialogTemplateContext,
+    EffectCatalogContext,
+    EffectCatalogEntry,
+)
+from ai.llm.template.dialog.sections.effects import EffectCatalogSection
 from .sections.background import BackgroundSection
 from .sections.character import CharacterSection
 from .sections.dialog_template import DialogTemplateSection
@@ -18,6 +23,9 @@ __all__ = [
     "CharacterSection",
     "DialogTemplateContext",
     "DialogTemplateSection",
+    "EffectCatalogContext",
+    "EffectCatalogEntry",
+    "EffectCatalogSection",
     "JsonSchemaSection",
     "RequirementsSection",
     "build_dialog_section",

@@ -3,19 +3,31 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StoryFeatureGate } from "../../../features/story-generator/components/StoryFeatureGate";
 import { sampleConfig } from "../../../shared/platform/sampleData";
+import { I18nProvider, type FrontendLanguage } from "../../../shared/i18n";
 
 const { getAppConfig, saveSystemConfig } = vi.hoisted(() => ({ getAppConfig: vi.fn(), saveSystemConfig: vi.fn() }));
 vi.mock("../../../entities/config/repository", () => ({ configQueryKey: ["config"], getAppConfig, saveSystemConfig }));
-function renderGate() {
+function renderGate(language: FrontendLanguage = "zh_CN") {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <StoryFeatureGate>
-        <p>创作工作区</p>
-      </StoryFeatureGate>
+      <I18nProvider language={language}>
+        <StoryFeatureGate>
+          <p>创作工作区</p>
+        </StoryFeatureGate>
+      </I18nProvider>
     </QueryClientProvider>,
   );
 }
 describe("story feature activation", () => {
+  it("localizes activation and retry actions when settings fail to load", async () => {
+    getAppConfig.mockRejectedValue(new Error("Connection lost"));
+    renderGate("en");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Connection lost");
+    expect(screen.getByRole("button", { name: "Enable story mode" })).toBeDisabled();
+    getAppConfig.mockResolvedValue(sampleConfig);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("heading", { name: "Enable story mode" })).toBeVisible();
+  });
   beforeEach(() => {
     vi.resetAllMocks();
     getAppConfig.mockResolvedValue(sampleConfig);

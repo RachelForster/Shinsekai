@@ -9,12 +9,16 @@ import {
   deleteAllEffectAudio,
   deleteEffect,
   deleteEffectAudio,
+  deleteEffectImage,
   exportEffect,
   importEffects,
   listEffects,
   saveEffect,
   saveEffectAudioTags,
+  saveEffectImageTags,
   uploadEffectAudio,
+  uploadEffectImages,
+  uploadEffectImageAudio,
 } from "../../entities/effect/repository";
 import type { Effect } from "../../entities/config/types";
 import type { MessageKey } from "../../shared/i18n";
@@ -44,6 +48,9 @@ function createEffect(): Effect {
     prompt_text: "",
     audio_list: [],
     audio_tags: "",
+    image_list: [],
+    image_tags: "",
+    image_audio_list: [],
   };
 }
 
@@ -96,8 +103,12 @@ export function EffectManagerPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<EffectDeleteTarget | null>(null);
   const [selectedAudioIndexes, setSelectedAudioIndexes] = useState<number[]>([]);
+  const [selectedImageIndexes, setSelectedImageIndexes] = useState<number[]>([]);
   const [importPickerOpen, setImportPickerOpen] = useState(false);
   const [audioUploadPickerOpen, setAudioUploadPickerOpen] = useState(false);
+  const [imageUploadPickerOpen, setImageUploadPickerOpen] = useState(false);
+  const [imageAudioBatchPickerOpen, setImageAudioBatchPickerOpen] = useState(false);
+  const [imageAudioTargetIndex, setImageAudioTargetIndex] = useState<number | null>(null);
   const [nameError, setNameError] = useState("");
   const colorInputRef = useRef<HTMLInputElement | null>(null);
   const colorPickerValue = /^#[0-9a-fA-F]{6}$/.test(draft.color || "") ? draft.color : DEFAULT_CHARACTER_COLOR;
@@ -116,6 +127,7 @@ export function EffectManagerPage() {
       setSelectedName(selected.name);
       setDraft(structuredClone(selected));
       setSelectedAudioIndexes([]);
+      setSelectedImageIndexes([]);
       setNameError("");
     }
   }, [selected]);
@@ -220,6 +232,112 @@ export function EffectManagerPage() {
     },
   });
 
+  const imageUploadMutation = useMutation({
+    mutationFn: (paths: string[]) =>
+      uploadEffectImages({ imageTags: draft.image_tags, name: currentEffectName, paths }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+        title: t("effect.asset.uploadImage"),
+      });
+    },
+    onSuccess(effect) {
+      queryClient.invalidateQueries({ queryKey: effectsQueryKey });
+      setDraft((current) => ({
+        ...current,
+        image_list: effect.image_list,
+        image_tags: effect.image_tags,
+        image_audio_list: effect.image_audio_list,
+      }));
+      showToast({ kind: "success", title: t("effect.asset.uploadImage") });
+    },
+  });
+
+  const imageTagsSaveMutation = useMutation({
+    mutationFn: () => saveEffectImageTags({ imageTags: draft.image_tags, name: currentEffectName }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.error.saveFallback"),
+        title: t("common.saveFailed"),
+      });
+    },
+    onSuccess(effect) {
+      queryClient.invalidateQueries({ queryKey: effectsQueryKey });
+      setDraft((current) => ({ ...current, image_tags: effect.image_tags }));
+      showToast({ kind: "success", title: t("effect.action.saveImageTags") });
+    },
+  });
+
+  const imageDeleteMutation = useMutation({
+    mutationFn: (index: number) => deleteEffectImage(currentEffectName, index),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.error.deleteFallback"),
+        title: t("common.deleteFailed"),
+      });
+    },
+    onSuccess(effect) {
+      queryClient.invalidateQueries({ queryKey: effectsQueryKey });
+      setDraft((current) => ({
+        ...current,
+        image_list: effect.image_list,
+        image_tags: effect.image_tags,
+        image_audio_list: effect.image_audio_list,
+      }));
+      setSelectedImageIndexes([]);
+    },
+  });
+
+  const imageAudioUploadMutation = useMutation({
+    mutationFn: ({ index, path }: { index: number; path: string }) =>
+      uploadEffectImageAudio({ index, name: currentEffectName, path }),
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+        title: t("effect.asset.insertAudio"),
+      });
+    },
+    onSuccess(effect) {
+      queryClient.invalidateQueries({ queryKey: effectsQueryKey });
+      setDraft((current) => ({ ...current, image_audio_list: effect.image_audio_list }));
+      setImageAudioTargetIndex(null);
+    },
+  });
+
+  const imageAudioBatchUploadMutation = useMutation({
+    mutationFn: async ({ indexes, path }: { indexes: number[]; path: string }) => {
+      let effect: Effect | null = null;
+      for (const index of indexes) {
+        effect = await uploadEffectImageAudio({ index, name: currentEffectName, path });
+      }
+      if (!effect) throw new Error(t("effect.asset.noSelectedImage"));
+      return effect;
+    },
+    onError(error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("effect.asset.uploadError"),
+        title: t("effect.asset.batchInsertAudio"),
+      });
+    },
+    onSuccess(effect, variables) {
+      setDraft((current) => ({ ...current, image_audio_list: effect.image_audio_list }));
+      setSelectedImageIndexes([]);
+      setImageAudioBatchPickerOpen(false);
+      showToast({
+        kind: "success",
+        title: t("effect.asset.batchInsertAudioComplete", { count: variables.indexes.length }),
+      });
+    },
+    onSettled() {
+      queryClient.invalidateQueries({ queryKey: effectsQueryKey });
+    },
+  });
+
   const audioBatchDeleteMutation = useMutation({
     mutationFn: async ({ indexes, name }: { indexes: number[]; name: string }) => {
       let effect: Effect | null = null;
@@ -272,9 +390,17 @@ export function EffectManagerPage() {
 
   const updateAudioRowTag = useCallback((index: number, value: string) => {
     setDraft((current) => {
-      const tags = tagContents(current.audio_tags, current.audio_list.length);
+      const tags = tagContents(current.audio_tags, current.audio_list.length, true);
       tags[index] = value;
       return { ...current, audio_tags: numberedTags("特效", tags) };
+    });
+  }, []);
+
+  const updateImageRowTag = useCallback((index: number, value: string) => {
+    setDraft((current) => {
+      const tags = tagContents(current.image_tags, current.image_list.length, true);
+      tags[index] = value;
+      return { ...current, image_tags: numberedTags("图片", tags) };
     });
   }, []);
 
@@ -294,6 +420,21 @@ export function EffectManagerPage() {
       return allSelected ? [] : draft.audio_list.map((_, index) => index);
     });
   }, [draft.audio_list]);
+
+  const toggleImageSelection = useCallback((index: number, checked: boolean) => {
+    setSelectedImageIndexes((current) => {
+      if (checked) return current.includes(index) ? current : [...current, index];
+      return current.filter((item) => item !== index);
+    });
+  }, []);
+
+  const toggleAllImageSelection = useCallback(() => {
+    setSelectedImageIndexes((current) => {
+      const validSelection = current.filter((index) => index >= 0 && index < draft.image_list.length);
+      const allSelected = draft.image_list.length > 0 && validSelection.length === draft.image_list.length;
+      return allSelected ? [] : draft.image_list.map((_, index) => index);
+    });
+  }, [draft.image_list]);
 
   const confirmPendingDelete = () => {
     if (!pendingDelete) {
@@ -362,14 +503,36 @@ export function EffectManagerPage() {
     setAudioUploadPickerOpen(true);
   }, [currentEffectName, draft, saveMutation, showToast, t]);
 
+  const handleUploadImage = useCallback(() => {
+    const trimmed = draft.name.trim();
+    if (!trimmed) {
+      setNameError(t("effect.validation.nameRequired"));
+      return;
+    }
+    if (!currentEffectName) {
+      saveMutation.mutate(
+        { effect: { ...draft, name: trimmed }, originalName: undefined },
+        { onSuccess: () => setImageUploadPickerOpen(true) },
+      );
+      return;
+    }
+    setImageUploadPickerOpen(true);
+  }, [currentEffectName, draft, saveMutation, t]);
+
   const audioRowTags = useMemo(
-    () => tagContents(draft.audio_tags, draft.audio_list.length),
+    () => tagContents(draft.audio_tags, draft.audio_list.length, true),
     [draft.audio_list.length, draft.audio_tags],
+  );
+  const imageRowTags = useMemo(
+    () => tagContents(draft.image_tags, draft.image_list.length, true),
+    [draft.image_list.length, draft.image_tags],
   );
 
   const selectedAudioIndexSet = useMemo(() => new Set(selectedAudioIndexes), [selectedAudioIndexes]);
+  const selectedImageIndexSet = useMemo(() => new Set(selectedImageIndexes), [selectedImageIndexes]);
 
   const allAudioSelected = draft.audio_list.length > 0 && selectedAudioIndexes.length === draft.audio_list.length;
+  const allImagesSelected = draft.image_list.length > 0 && selectedImageIndexes.length === draft.image_list.length;
 
   const canDeleteSelected = currentEffectName && selectedAudioIndexes.length > 0;
 
@@ -529,6 +692,106 @@ export function EffectManagerPage() {
           </div>
         </section>
 
+        <section className="section">
+          <div className="section__header">
+            <h2 className="section__title">{t("effect.section.image")}</h2>
+            <div className="page__actions">
+              <label className="effect-image-batch-select">
+                <input
+                  checked={allImagesSelected}
+                  disabled={!draft.image_list.length}
+                  onChange={toggleAllImageSelection}
+                  type="checkbox"
+                />
+                <span>{t("effect.asset.selectAllImages")}</span>
+              </label>
+              <AsyncButton
+                disabled={!selectedImageIndexes.length}
+                icon={<Music aria-hidden className="button__icon" />}
+                loading={imageAudioBatchUploadMutation.isPending}
+                onClick={() => setImageAudioBatchPickerOpen(true)}
+                variant="ghost"
+              >
+                {t("effect.asset.batchInsertAudio")}
+              </AsyncButton>
+              <AsyncButton
+                icon={<Upload aria-hidden className="button__icon" />}
+                loading={saveMutation.isPending || imageUploadMutation.isPending}
+                onClick={handleUploadImage}
+              >
+                {t("effect.asset.uploadImage")}
+              </AsyncButton>
+            </div>
+          </div>
+          {draft.image_list.length === 0 ? (
+            <EmptyState title={t("effect.asset.emptyImage")} />
+          ) : (
+            <div className="effect-image-list">
+              {draft.image_list.map((path, index) => {
+                const audioPath = draft.image_audio_list[index] ?? "";
+                const imageName = baseName(path);
+                const audioName = baseName(audioPath);
+                const isSelected = selectedImageIndexSet.has(index);
+                return (
+                  <div className="effect-image-row" key={`${path}-${index}`}>
+                    <label className="effect-image-row__check">
+                      <input
+                        aria-label={t("effect.asset.selectImage", { index: index + 1 })}
+                        checked={isSelected}
+                        onChange={(event) => toggleImageSelection(index, event.target.checked)}
+                        type="checkbox"
+                      />
+                    </label>
+                    <figure className="effect-image-row__image">
+                      <img alt={imageRowTags[index] || imageName} src={fileUrl(path)} />
+                      <figcaption title={path}>{imageName}</figcaption>
+                    </figure>
+                    <div className="effect-image-row__controls">
+                      <TextInput
+                        onChange={(event) => updateImageRowTag(index, event.target.value)}
+                        value={imageRowTags[index] ?? ""}
+                      />
+                      <AsyncButton
+                        icon={<Save aria-hidden className="button__icon" />}
+                        loading={imageTagsSaveMutation.isPending}
+                        onClick={() => imageTagsSaveMutation.mutate()}
+                        variant="ghost"
+                      >
+                        {t("effect.action.saveImageTags")}
+                      </AsyncButton>
+                      <Button
+                        icon={<Music aria-hidden className="button__icon" />}
+                        onClick={() => setImageAudioTargetIndex(index)}
+                        variant="ghost"
+                      >
+                        {t("effect.asset.insertAudio")}
+                      </Button>
+                      {audioPath ? (
+                        <span className="effect-image-row__audio" title={audioPath}>
+                          <small>{audioName}</small>
+                          <AudioPlayer
+                            compact
+                            label={`${t("effect.asset.preview")} ${audioName}`}
+                            src={fileUrl(audioPath)}
+                          />
+                        </span>
+                      ) : null}
+                      <AsyncButton
+                        icon={<Trash2 aria-hidden className="button__icon" />}
+                        loading={imageDeleteMutation.isPending}
+                        onClick={() => imageDeleteMutation.mutate(index)}
+                        variant="danger"
+                      >
+                        {t("common.delete")}
+                      </AsyncButton>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
         {/* Audio section */}
         <section className="section">
           <div className="section__header">
@@ -661,6 +924,34 @@ export function EffectManagerPage() {
         onSelectMany={(paths) => audioUploadMutation.mutate(paths)}
         open={audioUploadPickerOpen}
         title={t("effect.asset.uploadAudio")}
+      />
+      <PathPickerDialog
+        acceptedExtensions={[".jpeg", ".jpg", ".png"]}
+        multiple
+        onClose={() => setImageUploadPickerOpen(false)}
+        onSelect={(path) => imageUploadMutation.mutate([path])}
+        onSelectMany={(paths) => imageUploadMutation.mutate(paths)}
+        open={imageUploadPickerOpen}
+        title={t("effect.asset.uploadImage")}
+      />
+      <PathPickerDialog
+        acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
+        onClose={() => setImageAudioBatchPickerOpen(false)}
+        onSelect={(path) => {
+          const indexes = selectedImageIndexes.filter((index) => index >= 0 && index < draft.image_list.length);
+          if (indexes.length) imageAudioBatchUploadMutation.mutate({ indexes, path });
+        }}
+        open={imageAudioBatchPickerOpen}
+        title={t("effect.asset.batchInsertAudio")}
+      />
+      <PathPickerDialog
+        acceptedExtensions={[".flac", ".m4a", ".mp3", ".ogg", ".wav"]}
+        onClose={() => setImageAudioTargetIndex(null)}
+        onSelect={(path) => {
+          if (imageAudioTargetIndex !== null) imageAudioUploadMutation.mutate({ index: imageAudioTargetIndex, path });
+        }}
+        open={imageAudioTargetIndex !== null}
+        title={t("effect.asset.insertAudio")}
       />
 
       <AlertDialog
