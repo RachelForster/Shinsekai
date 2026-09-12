@@ -293,15 +293,30 @@ pub fn desktop_reminders_visible(app: AppHandle) -> bool {
 }
 
 pub fn poll(app: &AppHandle) -> Result<(), String> {
-    let claims = bridge(app, "/claim", Some(json!({})))?;
+    poll_with(
+        |route, body| bridge(app, route, body),
+        |notice| deliver(app, notice),
+    )
+}
+
+fn poll_with(
+    mut request: impl FnMut(&str, Option<Value>) -> Result<Value, String>,
+    mut deliver: impl FnMut(Notice) -> Result<(), String>,
+) -> Result<(), String> {
+    let claims = request("/claim", Some(json!({})))?;
     for claim in claims.as_array().ok_or("Invalid reminder response")? {
         let notice: Notice = serde_json::from_value(claim.clone()).map_err(|e| e.to_string())?;
-        deliver(app, notice)?;
-        bridge(
-            app,
+        // Cancellation, editing or a newer lease can invalidate this snapshot.
+        // Commit its claim before exposing it to the inbox, UI or voice worker.
+        let acknowledgement = request(
             "/ack",
             Some(json!({"reminder_id": claim["id"], "claim_token": claim["claim_token"]})),
         )?;
+        match acknowledgement["ok"].as_bool() {
+            Some(true) => deliver(notice)?,
+            Some(false) => continue,
+            None => return Err("Invalid reminder acknowledgement".into()),
+        }
     }
     Ok(())
 }
@@ -372,6 +387,67 @@ pub async fn desktop_reminders_cancel(app: AppHandle, id: String) -> Result<Valu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn claimed(id: &str) -> Value {
+        json!({
+            "id": id, "character_name": "澪", "title": "休息",
+            "message": "该睡觉了", "due_at": "2026-09-12T23:00:00+08:00",
+            "claim_token": format!("lease-{id}")
+        })
+    }
+
+    #[test]
+    fn invalidated_claim_is_skipped_before_inbox_and_valid_claim_follows_ack() {
+        use std::cell::RefCell;
+        let events = RefCell::new(Vec::new());
+        poll_with(
+            |route, body| match route {
+                "/claim" => Ok(json!([
+                    claimed("cancelled"),
+                    claimed("updated"),
+                    claimed("valid")
+                ])),
+                "/ack" => {
+                    let body = body.unwrap();
+                    let id = body["reminder_id"].as_str().unwrap();
+                    assert_eq!(body["claim_token"], format!("lease-{id}"));
+                    events.borrow_mut().push(format!("ack:{id}"));
+                    Ok(json!({"ok": id == "valid"}))
+                }
+                _ => panic!("Unexpected route: {route}"),
+            },
+            |notice| {
+                events.borrow_mut().push(format!("show:{}", notice.id));
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(
+            *events.borrow(),
+            ["ack:cancelled", "ack:updated", "ack:valid", "show:valid"]
+        );
+    }
+
+    #[test]
+    fn failed_or_malformed_acknowledgement_never_displays_a_claim() {
+        for response in [
+            Err("bridge disconnected".to_string()),
+            Ok(json!({})),
+            Ok(json!({"ok": "true"})),
+        ] {
+            let result = poll_with(
+                |route, _| {
+                    if route == "/claim" {
+                        Ok(json!([claimed("pending")]))
+                    } else {
+                        response.clone()
+                    }
+                },
+                |_| panic!("Unvalidated reminder must not be delivered"),
+            );
+            assert!(result.is_err());
+        }
+    }
 
     #[test]
     fn persisted_schedule_claims_are_deliverable_before_voice_is_generated() {

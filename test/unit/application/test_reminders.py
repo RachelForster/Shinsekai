@@ -87,6 +87,26 @@ def test_cancel_and_update_invalidate_claim(scheduler):
     assert store.claim() == []
 
 
+@pytest.mark.parametrize("action", ["cancel", "update"])
+def test_other_store_invalidates_claim_before_delivery_commit(scheduler, action):
+    store, clock = scheduler
+    item = create(store)
+    clock[0] += 600
+    claimed = store.claim()[0]
+    other = ReminderStore(store.path.parent.parent, clock=lambda: clock[0])
+    changes = {"message": "Updated reminder", "delay_minutes": "1"} if action == "update" else {}
+    assert other.manage(action, ["澪"], reminder_id=item["id"], **changes)["ok"]
+    assert store.acknowledge(item["id"], claimed["claim_token"]) == {"ok": False}
+    clock[0] += 60
+    if action == "cancel":
+        assert store.claim() == []
+    else:
+        refreshed = store.claim()[0]
+        assert refreshed["message"] == "Updated reminder"
+        assert refreshed["claim_token"] != claimed["claim_token"]
+        assert store.acknowledge(item["id"], refreshed["claim_token"])["ok"]
+
+
 @pytest.mark.parametrize("recurrence,days", [("daily", 1), ("weekly", 7)])
 def test_recurring_schedule_uses_next_local_occurrence(scheduler, recurrence, days):
     store, clock = scheduler
