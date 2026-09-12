@@ -19,12 +19,11 @@ import { fileUrl } from "../../entities/files/repository";
 import { cancelReminder, dismissReminder, getReminderInbox, listReminders } from "../../entities/reminder/repository";
 import type { ReminderNotice, ScheduledReminder } from "../../entities/reminder/types";
 import { onRemindersChanged, onRemindersUpdated, reminderWindow } from "../../shared/desktop/remindersApi";
+import { translateMessage, type FrontendLanguage, type MessageKey } from "../../shared/i18n";
 import { applyThemeColor } from "../../shared/theme/appTheme";
 import { CompactReminderCard } from "./CompactReminderCard";
 import { useReminderAudio } from "./useReminderAudio";
 import "./ReminderPanel.css";
-
-import { reminderPanelCopy as copy } from "../../shared/i18n/reminderPanelCopy";
 
 function initialCrop() {
   try {
@@ -39,7 +38,7 @@ export function ReminderPanel() {
   const [inbox, setInbox] = useState<ReminderNotice[]>([]);
   const [schedules, setSchedules] = useState<ScheduledReminder[]>([]);
   const [characters, setCharacters] = useState<Character[]>([]);
-  const [language, setLanguage] = useState<keyof typeof copy>("zh_CN");
+  const [language, setLanguage] = useState<FrontendLanguage>("zh_CN");
   const [selected, setSelected] = useState<ReminderNotice | null>(null);
   const [tab, setTab] = useState<"upcoming" | "inbox">("upcoming");
   const [crop, setCrop] = useState(initialCrop);
@@ -48,7 +47,7 @@ export function ReminderPanel() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const text = copy[language];
+  const t = (key: MessageKey) => translateMessage(language, key);
   const latestNotice = useRef("");
   const refreshVersion = useRef(0);
   const voice = useReminderAudio(inbox);
@@ -182,8 +181,8 @@ export function ReminderPanel() {
     <>
       {current?.audio_path && (
         <button
-          aria-label={text.playVoice}
-          title={text.playVoice}
+          aria-label={t("reminder.playVoice")}
+          title={t("reminder.playVoice")}
           disabled={voice.muted}
           onClick={() => voice.replay(current)}
         >
@@ -191,8 +190,8 @@ export function ReminderPanel() {
         </button>
       )}
       <button
-        aria-label={voice.muted ? text.unmuteVoice : text.muteVoice}
-        title={voice.muted ? text.unmuteVoice : text.muteVoice}
+        aria-label={voice.muted ? t("reminder.unmuteVoice") : t("reminder.muteVoice")}
+        title={voice.muted ? t("reminder.unmuteVoice") : t("reminder.muteVoice")}
         onClick={voice.toggleMute}
       >
         {voice.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
@@ -221,7 +220,7 @@ export function ReminderPanel() {
       <CompactReminderCard
         portrait={portraitElement}
         name={character?.name ?? current?.character_name ?? "Shinsekai"}
-        message={current?.message ?? (loading ? text.load : text.hello)}
+        message={current?.message ?? (loading ? t("reminder.load") : t("reminder.hello"))}
         time={
           current
             ? new Date(current.due_at).toLocaleTimeString(language === "zh_CN" ? "zh-CN" : language, {
@@ -235,7 +234,7 @@ export function ReminderPanel() {
         busy={busy}
         error={error}
         voiceControls={voiceControls}
-        text={text}
+        t={t}
         onClose={() => {
           voice.stop();
           void run(() => reminderWindow("hide"));
@@ -258,17 +257,22 @@ export function ReminderPanel() {
   }
 
   return (
-    <main className="reminder-panel" aria-label={text.title}>
+    <main className="reminder-panel" aria-label={t("reminder.title")}>
       <header className="reminder-panel__header">
         <span>
-          <button aria-label={text.back} title={text.back} disabled={busy} onClick={() => changeView(false)}>
+          <button
+            aria-label={t("reminder.back")}
+            title={t("reminder.back")}
+            disabled={busy}
+            onClick={() => changeView(false)}
+          >
             <ChevronLeft size={15} />
           </button>
-          <Bell size={15} /> Shinsekai <span className="reminder-panel__muted">/ {text.title}</span>
+          <Bell size={15} /> Shinsekai <span className="reminder-panel__muted">/ {t("reminder.title")}</span>
         </span>
         {voiceControls}
         <button
-          aria-label={text.close}
+          aria-label={t("reminder.close")}
           onClick={() => {
             voice.stop();
             void run(() => reminderWindow("hide"));
@@ -298,8 +302,8 @@ export function ReminderPanel() {
           <span className="reminder-panel__eyebrow">
             {current ? formatTime(current.due_at) : "SHINSEKAI · WITH YOU"}
           </span>
-          <h1>{current?.title ?? text.hello}</h1>
-          <p>{current?.message ?? text.hint}</p>
+          <h1>{current?.title ?? t("reminder.hello")}</h1>
+          <p>{current?.message ?? t("reminder.hint")}</p>
           {received && current && (
             <button
               className="reminder-panel__ack"
@@ -312,23 +316,25 @@ export function ReminderPanel() {
               }
             >
               <Check size={14} />
-              {text.done}
+              {t("reminder.done")}
             </button>
           )}
         </div>
       </section>
-      <nav className="reminder-panel__tabs" aria-label={text.title}>
+      <nav className="reminder-panel__tabs" aria-label={t("reminder.title")}>
         {(["upcoming", "inbox"] as const).map((value) => (
           <button key={value} aria-pressed={tab === value} onClick={() => setTab(value)}>
-            {text[value]} <small>{value === "upcoming" ? schedules.length : inbox.length}</small>
+            {t(`reminder.${value}`)} <small>{value === "upcoming" ? schedules.length : inbox.length}</small>
           </button>
         ))}
       </nav>
       <div className="reminder-panel__list">
         {loading ? (
-          <p className="reminder-panel__empty">{text.load}</p>
+          <p className="reminder-panel__empty">{t("reminder.load")}</p>
         ) : rows.length === 0 ? (
-          <p className="reminder-panel__empty">{tab === "upcoming" ? text.empty : text.inbox + " · 0"}</p>
+          <p className="reminder-panel__empty">
+            {tab === "upcoming" ? t("reminder.empty") : t("reminder.inbox") + " · 0"}
+          </p>
         ) : (
           rows.map((item) => (
             <div className="reminder-panel__row" key={`${item.id}:${item.due_at}`}>
@@ -337,13 +343,13 @@ export function ReminderPanel() {
                   <strong>{item.title}</strong>
                   <small>
                     {item.character_name} · {formatTime(item.due_at)}
-                    {"recurrence" in item ? ` · ${text[(item as ScheduledReminder).recurrence]}` : ""}
+                    {"recurrence" in item ? ` · ${t(`reminder.${(item as ScheduledReminder).recurrence}`)}` : ""}
                   </small>
                 </span>
                 <ChevronRight size={14} />
               </button>
               <button
-                aria-label={`${tab === "upcoming" ? text.cancel : text.done}: ${item.title}`}
+                aria-label={`${tab === "upcoming" ? t("reminder.cancel") : t("reminder.done")}: ${item.title}`}
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
@@ -362,14 +368,14 @@ export function ReminderPanel() {
       {error && (
         <div role="alert" className="reminder-panel__error">
           <span>{error}</span>
-          <button onClick={() => void refresh()}>{text.retry}</button>
+          <button onClick={() => void refresh()}>{t("reminder.retry")}</button>
         </div>
       )}
       {customize && (
         <label className="reminder-panel__crop">
-          {text.top} {Math.round(crop * 100)}%
+          {t("reminder.top")} {Math.round(crop * 100)}%
           <input
-            aria-label={text.crop}
+            aria-label={t("reminder.crop")}
             type="range"
             min="0.25"
             max="0.75"
@@ -390,10 +396,10 @@ export function ReminderPanel() {
       <footer className="reminder-panel__footer">
         <button onClick={() => void run(() => reminderWindow("main"))}>
           <Home size={14} />
-          {text.main}
+          {t("reminder.main")}
         </button>
-        <span>{text.running}</span>
-        <button aria-label={text.crop} aria-expanded={customize} onClick={() => setCustomize(!customize)}>
+        <span>{t("reminder.running")}</span>
+        <button aria-label={t("reminder.crop")} aria-expanded={customize} onClick={() => setCustomize(!customize)}>
           <SlidersHorizontal size={15} />
         </button>
       </footer>

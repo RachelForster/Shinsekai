@@ -1,14 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 
 import { useI18n } from "../i18n";
-import { windowCloseCopy } from "../i18n/windowCloseCopy";
 import { Button, Dialog } from "../ui";
 import { getCloseRequestStatus, onCloseRequested, resolveCloseRequest, type CloseAction } from "./windowCloseApi";
 import "./DesktopCloseDialog.css";
 
 export function DesktopCloseDialog() {
-  const { language } = useI18n();
-  const copy = windowCloseCopy[language];
+  const { t } = useI18n();
   const [status, setStatus] = useState({ requested: false, trayAvailable: false });
   const [remember, setRemember] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -57,27 +55,27 @@ export function DesktopCloseDialog() {
   return (
     <Dialog
       className="desktop-close-dialog"
-      title={copy.title}
+      title={t("desktop.windowClose.title")}
       open={status.requested}
       dismissible={!busy}
-      closeLabel={copy.cancel}
+      closeLabel={t("desktop.windowClose.cancel")}
       onClose={() => void choose("cancel")}
       footer={
         <>
           <Button disabled={busy} onClick={() => void choose("cancel")}>
-            {copy.cancel}
+            {t("desktop.windowClose.cancel")}
           </Button>
           <Button disabled={busy} variant="danger" onClick={() => void choose("exit")}>
-            {copy.exit}
+            {t("desktop.windowClose.exit")}
           </Button>
           <Button disabled={busy || !status.trayAvailable} variant="primary" onClick={() => void choose("tray")}>
-            {copy.tray}
+            {t("desktop.windowClose.tray")}
           </Button>
         </>
       }
     >
-      <p>{copy.body}</p>
-      {!status.trayAvailable ? <p className="field-row__help">{copy.unavailable}</p> : null}
+      <p>{t("desktop.windowClose.body")}</p>
+      {!status.trayAvailable ? <p className="field-row__help">{t("desktop.windowClose.unavailable")}</p> : null}
       <label className="desktop-close-dialog__remember">
         <input
           type="checkbox"
@@ -85,9 +83,9 @@ export function DesktopCloseDialog() {
           disabled={busy}
           onChange={(event) => setRemember(event.target.checked)}
         />
-        {copy.remember}
+        {t("desktop.windowClose.remember")}
       </label>
-      <p className="field-row__help">{copy.hint}</p>
+      <p className="field-row__help">{t("desktop.windowClose.hint")}</p>
       {error ? (
         <p role="alert" className="field-error">
           {error}
