@@ -21,7 +21,17 @@ def _repair_prompt(media_field: str, *, retry: bool) -> str:
         f"with a non-empty `dialog` array. Each character, scene, and BGM item "
         f"must have `character_name`, `speech`, and `{media_field}`. Fixed "
         "system items such as COT, NARR, CHOICE, STAT, and CG may omit the media "
-        "field. Do not call tools or add markdown."
+        "field. Preserve the original item order, names, speech, translations, "
+        "and all already valid fields; correct only invalid or missing fields. "
+        "Do not call tools or add markdown. "
+        + (
+            "`sprite` must be a numeric ID from the supplied asset catalog, "
+            'for example "01" or "05"; "-1" means no media change. '
+            'Names or expression labels such as "Alice/smile" are invalid IDs. '
+            "Choose the catalog ID matching the expression instead."
+            if media_field == "sprite"
+            else "`vibe` must describe the expression or mood, not an asset ID."
+        )
     )
 
 

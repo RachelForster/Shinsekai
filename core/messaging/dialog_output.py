@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from sdk.messages import LLMDialogMessage
@@ -19,6 +20,31 @@ _REQUIRED_DIALOG_FIELDS = frozenset({"character_name", "speech"})
 _NON_MEDIA_SYSTEM_NAMES = (
     CG_ALIASES | CHOICE_ALIASES | COT_ALIASES | NARR_ALIASES | STAT_ALIASES
 )
+
+
+def has_valid_dialog_item(item: Any, *, media_selection_mode: str = "indexed") -> bool:
+    """Validate one wire-format item before sending it to media/TTS workers."""
+    if not isinstance(item, dict) or not _REQUIRED_DIALOG_FIELDS.issubset(item):
+        return False
+    media_is_optional = (
+        normalize_character_name(item.get("character_name", ""))
+        in _NON_MEDIA_SYSTEM_NAMES
+    )
+    semantic = str(media_selection_mode or "").strip().lower() == "semantic"
+    field = "vibe" if semantic else "sprite"
+    if not media_is_optional:
+        if field not in item:
+            return False
+        if (
+            not semantic
+            and re.fullmatch(r"(?:-1|[0-9]+)", str(item[field]).strip()) is None
+        ):
+            return False
+    try:
+        LLMDialogMessage.model_validate(item)
+    except (TypeError, ValueError):
+        return False
+    return True
 
 
 def has_valid_dialog_output(
@@ -38,26 +64,7 @@ def has_valid_dialog_output(
     dialog = payload.get("dialog")
     if not isinstance(dialog, list) or not dialog:
         return False
-    required_media_field = (
-        "vibe"
-        if str(media_selection_mode or "").strip().lower() == "semantic"
-        else "sprite"
+    return all(
+        has_valid_dialog_item(item, media_selection_mode=media_selection_mode)
+        for item in dialog
     )
-    for item in dialog:
-        name = (
-            normalize_character_name(item.get("character_name", ""))
-            if isinstance(item, dict)
-            else ""
-        )
-        media_is_optional = name in _NON_MEDIA_SYSTEM_NAMES
-        if (
-            not isinstance(item, dict)
-            or not _REQUIRED_DIALOG_FIELDS.issubset(item)
-            or (not media_is_optional and required_media_field not in item)
-        ):
-            return False
-        try:
-            LLMDialogMessage.model_validate(item)
-        except (TypeError, ValueError):
-            return False
-    return True
