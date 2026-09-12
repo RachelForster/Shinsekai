@@ -16,6 +16,13 @@ def check_mem0_status(*, start_loading: bool = True) -> dict[str, Any]:
     return _check_mem0_status(start_loading=start_loading)
 
 
+def wait_for_memory_ready() -> None:
+    """Wait for the existing memory runtime before launching semantic media."""
+    from ai.memory.runtime import get_mem0
+
+    get_mem0()
+
+
 def list_memories(character_name: str) -> dict[str, Any]:
     from ai.memory.operations import memory_list
 

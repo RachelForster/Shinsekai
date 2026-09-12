@@ -27,7 +27,6 @@ from application.chat.templates import (
     _latest_history_json,
     _list_templates,
     _load_template_session_payload,
-    _save_template_session_payload,
     _repair_template_parts_from_session_if_needed,
     _resolve_template_character_names,
     _resume_template_parts,
@@ -54,15 +53,13 @@ def _usable_media_selection_mode(requested: object) -> str:
         if str(requested or "").strip().lower() == "semantic"
         else "indexed"
     )
-    if mode != "semantic":
-        return mode
-    try:
-        from frontend_bridge_core.memory import _get_mem0_status
+    if mode == "semantic":
+        # Wait through the existing initializer instead of changing the
+        # selected strategy (and persisted template) on a cold start.
+        from application.memory.manage_memories import wait_for_memory_ready
 
-        status = _get_mem0_status(start_loading=False)
-    except Exception:
-        return "indexed"
-    return "semantic" if status.get("status") == "ready" else "indexed"
+        wait_for_memory_ready()
+    return mode
 
 
 def _generate_system_template_for_mode(
@@ -213,30 +210,6 @@ def launch_chat(
         user_scenario,
         system_template,
     )
-    saved_session = _load_template_session_payload(state) or {}
-    launch_source = {**saved_session, **body}
-    requested_mode = (
-        "semantic"
-        if str(requested_media_mode or "").strip().lower() == "semantic"
-        else "indexed"
-    )
-    if media_selection_mode != requested_mode:
-        system_template = _generate_system_template_for_mode(
-            state,
-            characters=characters,
-            background=str(body.get("backgroundName") or ""),
-            source=launch_source,
-            media_selection_mode=media_selection_mode,
-        )
-        if saved_session:
-            _save_template_session_payload(
-                state,
-                {
-                    **launch_source,
-                    "mediaSelectionMode": media_selection_mode,
-                    "system": system_template,
-                },
-            )
     if start_fresh_history:
         clear_story_session(state)
     user_display_name = _sanitize_user_display_name(body.get("userDisplayName"))
@@ -415,27 +388,6 @@ def resume_last_chat(
         or ""
     )
     selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
-    requested_mode = (
-        "semantic"
-        if str(requested_media_mode or "").strip().lower() == "semantic"
-        else "indexed"
-    )
-    if media_selection_mode != requested_mode:
-        system_template = _generate_system_template_for_mode(
-            state,
-            characters=selected_characters,
-            background=selected_bg,
-            source=session,
-            media_selection_mode=media_selection_mode,
-        )
-        session = _save_template_session_payload(
-            state,
-            {
-                **session,
-                "mediaSelectionMode": media_selection_mode,
-                "system": system_template,
-            },
-        )
     user_display_name = _sanitize_user_display_name(session.get("userDisplayName"))
     session_base = {
         "backgroundName": selected_bg,
