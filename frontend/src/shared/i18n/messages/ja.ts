@@ -21,15 +21,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "desktop.background.panel": "すべての予定を表示",
   "desktop.background.title": "トレイと予定",
   "desktop.background.minimize": "メインウィンドウをトレイに最小化する",
-  "desktop.background.trayHint":
-    "トレイからメイン画面を開くか、「Shinsekai を終了」で終了できます。チャット画面の閉じ方は変わりません。",
   "desktop.background.unavailable": "システムトレイを利用できません。毎回確認するか、アプリを終了する設定を選べます。",
-  "desktop.background.reminderHint":
-    "チャットでキャラクターに通知を頼み、予定一覧で編集・削除できます。「ランダムなキャラクター」は通知のたびに選び直します。",
-  "desktop.background.runningHint":
-    "トレイ常駐を含むアプリの実行中に通知します。起動・スリープ解除時は30分以内に逃した通知を送ります。終了すると停止します。",
-  "desktop.background.notificationHint":
-    "トレイを左クリックで通知パネル、右クリックでメニューを開きます。チャットでキャラクターに予定を頼み、パネルで確認・取り消しができます。",
   "desktop.background.save": "トレイと通知設定を保存",
   "desktop.background.saved": "トレイと通知設定を保存しました。",
   "desktop.background.loading": "トレイと通知設定を読み込み中…",

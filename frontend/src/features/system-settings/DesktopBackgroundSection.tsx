@@ -207,12 +207,7 @@ function BackgroundSettings() {
               {t("desktop.background.minimize")}
             </Switch>
           </div>
-          <p className="field-row__help">
-            {trayAvailable ? t("desktop.background.trayHint") : t("desktop.background.unavailable")}
-          </p>
-          <p className="field-row__help">{t("desktop.background.reminderHint")}</p>
-          <p className="field-row__help">{t("desktop.background.runningHint")}</p>
-          <p className="field-row__help">{t("desktop.background.notificationHint")}</p>
+          {!trayAvailable && <p className="field-row__help">{t("desktop.background.unavailable")}</p>}
         </>
       ) : !error ? (
         <p role="status">{t("desktop.background.loading")}</p>

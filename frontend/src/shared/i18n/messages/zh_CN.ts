@@ -20,14 +20,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "desktop.background.panel": "查看所有提醒安排",
   "desktop.background.title": "托盘与日程",
   "desktop.background.minimize": "最小化主窗口到托盘",
-  "desktop.background.trayHint": "从托盘打开主窗口，或选择「退出 Shinsekai」结束程序。聊天窗口保持原有关闭行为。",
   "desktop.background.unavailable": "当前系统托盘不可用，无法驻留托盘。仍可选择每次询问或退出程序。",
-  "desktop.background.reminderHint":
-    "在聊天中请角色安排提醒，可在日程列表中编辑或删除。人物选择“随机角色”时，每次到期都会重新抽取。",
-  "desktop.background.runningHint":
-    "程序运行期间有效，最小化或驻留托盘后仍会提醒；启动或唤醒时补发 30 分钟内错过的提醒。完全退出后停止。",
-  "desktop.background.notificationHint":
-    "左键点击托盘打开角色提醒面板，右键打开系统菜单。在聊天中请角色设置日程，面板中可查看和取消。",
   "desktop.background.save": "保存托盘与提醒设置",
   "desktop.background.saved": "托盘与提醒设置已保存。",
   "desktop.background.loading": "正在加载托盘与提醒设置…",

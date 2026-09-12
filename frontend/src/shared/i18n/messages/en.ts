@@ -22,15 +22,7 @@ export const enMessages: Record<MessageKey, string> = {
   "desktop.background.panel": "View all reminders",
   "desktop.background.title": "Tray & schedules",
   "desktop.background.minimize": "Minimize the main window to the tray",
-  "desktop.background.trayHint":
-    "Open the main window from the tray, or choose “Quit Shinsekai” to exit. Closing chat windows keeps its existing behavior.",
   "desktop.background.unavailable": "The system tray is unavailable. Choose to ask each time or quit the app.",
-  "desktop.background.reminderHint":
-    "Ask a character to schedule a reminder in chat. Edit or delete it in the schedule list. Random character selects someone new for each occurrence.",
-  "desktop.background.runningHint":
-    "Reminders work while the app is running, including in the tray. Missed reminders within 30 minutes are delivered on launch or resume. Quitting stops reminders.",
-  "desktop.background.notificationHint":
-    "Left-click the tray for character reminders; right-click for the system menu. Ask characters to schedule reminders in chat, then view or cancel them in the panel.",
   "desktop.background.save": "Save tray & reminder settings",
   "desktop.background.saved": "Tray and reminder settings saved.",
   "desktop.background.loading": "Loading tray and reminder settings…",
