@@ -100,6 +100,13 @@ def prepare_initial_presentation(
             pass
     ui_updates.switch_bgm(assets.bgm_paths[0] if assets.bgm_paths else "")
 
+    # Async replay only enqueues a lookup; it cannot guarantee that a sprite
+    # will resolve. Seed the default before replay so successful events replace
+    # it, while unavailable media leaves a visible character on stage.
+    if replay_media is not None:
+        display_initial_sprite(
+            resolved_sprite_path, config=config, ui_updates=ui_updates,
+        )
     restored_sprite = False
     if presentation_queue is not None:
         restored_sprite = restore_session_presentation(
@@ -122,7 +129,7 @@ def prepare_initial_presentation(
 
     publish_branch_tree()
     ui_updates.post_notification(ready_notification)
-    if not restored_sprite:
+    if not restored_sprite and replay_media is None:
         display_initial_sprite(
             resolved_sprite_path,
             config=config,
