@@ -270,6 +270,83 @@ def test_llm_worker_appends_repaired_suffix_with_turn_identity() -> None:
     }
 
 
+def test_invalid_sprite_is_repaired_before_its_speech_reaches_media_queue():
+    prefix = {"character_name": "Alice", "speech": "First", "sprite": "01"}
+    invalid = {"character_name": "Alice", "speech": "Smile", "sprite": "Alice/smile", "translate": "笑って"}
+    suffix = {"character_name": "Alice", "speech": "Angry", "sprite": "04"}
+    raw = json.dumps({"dialog": [prefix, invalid, suffix]})
+    fixed = json.dumps({"dialog": [prefix, {**invalid, "sprite": "05"}, suffix]})
+
+    class InspectingAdapter(MockLLMAdapter):
+        def chat(self, messages, stream=False, **kwargs):
+            if not stream:
+                assert get_app_runtime().dialog_queue.qsize() == 1
+            return super().chat(messages, stream=stream, **kwargs)
+
+    adapter = InspectingAdapter(responses=[raw, fixed])
+    manager = LLMManager(adapter=adapter, user_template="sprite 01: calm; 04: angry; 05: smile")
+    runtime, output = _run_streaming_llm_worker(manager)
+    assert [(item.text, item.asset_id) for item in output] == [
+        ("First", "01"), ("Smile", "05"), ("Angry", "04"),
+    ]
+    assert output[1].translate == "笑って"
+    assert len(adapter.call_history) == 2
+    assert adapter.call_history[-1]["kwargs"]["tools"] is None
+    assert "numeric ID" in adapter.call_history[-1]["messages"][-1]["content"]
+    assert manager.messages[-1]["content"] == fixed
+    assert {item.turn_id for item in output} == {runtime.chat_turn_service.current_turn().id}
+
+
+@pytest.mark.parametrize("changes_prefix", [False, True])
+def test_unusable_sprite_repair_keeps_original_speech_once_in_order(changes_prefix):
+    items = [
+        {"character_name": "Alice", "speech": "First", "sprite": "01"},
+        {"character_name": "Alice", "speech": "Smile", "sprite": "Alice/smile"},
+        {"character_name": "Alice", "speech": "Last", "sprite": "04"},
+    ]
+    raw = json.dumps({"dialog": items})
+    repair = json.dumps({"dialog": [
+        {**items[0], "speech": "Rewritten"}, {**items[1], "sprite": "05"}, items[2],
+    ]}) if changes_prefix else "repair failed"
+    adapter = MockLLMAdapter(responses=[raw, repair, repair])
+    _, output = _run_streaming_llm_worker(LLMManager(adapter=adapter, user_template="S"))
+    assert [item.text for item in output] == ["First", "Smile", "Last"]
+
+
+@pytest.mark.parametrize("has_prefix", [False, True])
+def test_cancel_discards_buffered_invalid_sprite_and_persists_only_delivered_prefix(has_prefix):
+    prefix = [{"character_name": "Alice", "speech": "First", "sprite": "01"}] if has_prefix else []
+    invalid = {"character_name": "Alice", "speech": "Buffered", "sprite": "Alice/smile"}
+    manager = MagicMock(media_selection_mode="indexed")
+
+    def stream():
+        yield json.dumps({"dialog": prefix + [invalid]})
+        assert get_app_runtime().dialog_queue.qsize() == len(prefix)
+        get_app_runtime().chat_turn_service.interrupt()
+
+    manager.chat.return_value = stream()
+    _, output = _run_streaming_llm_worker(manager)
+    assert [item.text for item in output] == (["First"] if has_prefix else [])
+    if has_prefix:
+        manager.add_message.assert_called_once()
+        saved = json.loads(manager.add_message.call_args.args[1])["dialog"]
+        assert [item["speech"] for item in saved] == ["First"]
+    else:
+        manager.add_message.assert_not_called()
+
+
+def test_valid_semantic_sprite_is_delivered_without_waiting_for_stream_end():
+    manager = MagicMock(media_selection_mode="semantic")
+
+    def stream():
+        yield '{"dialog":[{"character_name":"Alice","speech":"Hi","vibe":"smiling"}]}'
+        assert get_app_runtime().dialog_queue.qsize() == 1
+
+    manager.chat.return_value = stream()
+    _, output = _run_streaming_llm_worker(manager)
+    assert [item.vibe for item in output] == ["smiling"]
+
+
 def test_llm_worker_passes_locally_read_attachments_without_file_tool_group(
     tmp_path,
 ) -> None:

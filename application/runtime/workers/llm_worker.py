@@ -1,11 +1,13 @@
 """Worker that turns user input into streamed dialog messages."""
 
+import json
 import re
 from queue import Queue
 
 from ai.vision.service import ChatVisionService
 from application.chat.background_prompt import current_background_context
 from core.media.chat_attachments import resolve_chat_attachments
+from core.messaging.dialog_output import has_valid_dialog_item
 from core.messaging.dialog_reconciliation import reconcile_dialog_repair
 from core.messaging.stream_events import (
     STREAM_DIALOG_REPAIR_KEY,
@@ -159,6 +161,10 @@ class LLMWorker(ThreadDagNode):
                 reasoning_shown = ""
                 message_count = 0
                 delivered_dialogs: list[LLMDialogMessage] = []
+                pending_dialogs: list[LLMDialogMessage] = []
+                media_mode = getattr(
+                    self.llm_manager, "media_selection_mode", "indexed"
+                )
                 raw_chunks: list = []
 
                 with tracker.track("LLM stream parse"):
@@ -188,6 +194,8 @@ class LLMWorker(ThreadDagNode):
                                 delivered_dialogs,
                                 repaired_messages,
                             )
+                            if reconciliation.prefix_matched:
+                                pending_dialogs.clear()
                             appended_messages = 0
                             for llm_dialog in reconciliation.messages_to_append:
                                 message_count += 1
@@ -216,6 +224,20 @@ class LLMWorker(ThreadDagNode):
                         )
                         raw_chunks.append(chunk_message)
                         for llm_dialog in parser.feed(chunk_message):
+                            # Keep the invalid item and its suffix out of TTS.
+                            # Final repair can then append the corrected suffix
+                            # without replaying speech already delivered.
+                            if is_streaming and (
+                                pending_dialogs
+                                or not has_valid_dialog_item(
+                                    llm_dialog.model_dump(
+                                        by_alias=True, exclude_unset=True
+                                    ),
+                                    media_selection_mode=media_mode,
+                                )
+                            ):
+                                pending_dialogs.append(llm_dialog)
+                                continue
                             message_count += 1
                             delivered_dialogs.append(llm_dialog)
                             self.dialog_queue.put(
@@ -231,6 +253,20 @@ class LLMWorker(ThreadDagNode):
                         committed_raw = total_raw[: len(total_raw) - len(buf)]
                     else:
                         committed_raw = total_raw
+                    if pending_dialogs:
+                        committed_raw = (
+                            json.dumps(
+                                {
+                                    "dialog": [
+                                        item.model_dump(by_alias=True)
+                                        for item in delivered_dialogs
+                                    ]
+                                },
+                                ensure_ascii=False,
+                            )
+                            if delivered_dialogs
+                            else ""
+                        )
                     if committed_raw.strip():
                         try:
                             self.llm_manager.add_message(
@@ -239,6 +275,14 @@ class LLMWorker(ThreadDagNode):
                         except Exception:
                             pass
                     continue
+
+                # If repair failed or rewrote the delivered prefix, retain the
+                # original text once, in order, instead of losing the reply.
+                for llm_dialog in pending_dialogs:
+                    message_count += 1
+                    self.dialog_queue.put(
+                        llm_dialog.model_copy(update={"turn_id": turn.id})
+                    )
 
                 if message_count == 0:
                     _msg = tr("desktop.llm_parse_empty")
