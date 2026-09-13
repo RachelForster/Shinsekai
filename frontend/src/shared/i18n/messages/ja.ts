@@ -4,7 +4,10 @@ export const jaMessages: Record<MessageKey, string> = {
   "conversation.settings": "チャット設定",
   "conversation.settingsHint":
     "キャラクターやテンプレートを変更しても、このチャットの履歴を引き継ぎます。設定のない旧履歴では、キャラクター・テンプレート・素材選択モードを確認してください。",
-  "conversation.saveAndContinue": "保存して続ける",
+  "conversation.saveAndContinue": "適用して続ける",
+  "conversation.editCurrent": "このチャットを編集",
+  "conversation.applyHint": "適用すると、メッセージと物語の進行を保持してチャットを再読み込みします。",
+  "conversation.unavailable": "このチャットの設定を現在読み込めません。",
   "conversation.configureAndContinue": "設定して続ける",
   "conversation.workspace": "チャット",
   "conversation.recent": "最近のチャット",

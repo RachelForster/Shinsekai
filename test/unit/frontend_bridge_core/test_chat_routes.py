@@ -38,6 +38,7 @@ def _request(
 
 def test_chat_route_contracts_remain_stable() -> None:
     assert _contracts() == {
+        ("GET", "/api/chat/conversations/current"),
         ("GET", "/api/chat/conversations"),
         ("GET", "/api/chat/conversations/{conversation_id}/launch-payload"),
         ("POST", "/api/chat/conversations/{conversation_id}/rename"),

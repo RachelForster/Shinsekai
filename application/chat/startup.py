@@ -168,6 +168,7 @@ def create_chat_startup_context(
             media_selection_mode=str(
                 getattr(args, "media_selection_mode", "indexed") or "indexed"
             ),
+            **({"use_current_template_for_history": True} if getattr(args, "use_current_template_for_history", False) else {}),
         )
         if plugin_manager is not None:
             runtime.install_memory_hooks(

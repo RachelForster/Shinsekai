@@ -4,6 +4,7 @@ import { lazy, Suspense, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import "./TemplateWorkspacePage.css";
 import { ConversationLibrary } from "./ConversationLibrary";
+import { ConversationTypeBadge } from "../../entities/chat/ConversationTypeBadge";
 
 const NormalMode = lazy(() =>
   import("../template-editor/TemplateEditorPage").then(({ TemplateEditorPage }) => ({ default: TemplateEditorPage })),
@@ -62,9 +63,9 @@ export function TemplateWorkspacePage() {
               setVisited((previous) => new Set([...previous, "normal"]));
               setParams({ tab: "new", mode: "normal" });
             }}
-            onEdit={(id) => {
+            onEdit={(id, kind = "normal") => {
               setVisited((previous) => new Set([...previous, "normal"]));
-              setParams({ tab: "new", mode: "normal", conversation: id });
+              setParams({ tab: "new", mode: "normal", conversation: id, kind });
             }}
           />
         )}
@@ -86,6 +87,9 @@ export function TemplateWorkspacePage() {
           />
         )}
         {conversationId && <p className="section__description">{t("conversation.settingsHint")}</p>}
+        <div className="template-workspace__type">
+          <ConversationTypeBadge kind={conversationId ? (params.get("kind") === "story" ? "story" : "normal") : mode} />
+        </div>
         {modes.map((item) => (
           <div
             key={item.id}

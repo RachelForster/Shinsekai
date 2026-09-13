@@ -6,6 +6,9 @@
 .template-workspace__tabs {
   margin-bottom: var(--space-5);
 }
+.template-workspace__type {
+  margin-bottom: var(--space-3);
+}
 .template-workspace [hidden] {
   display: none;
 }

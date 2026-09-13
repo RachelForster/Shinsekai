@@ -13,6 +13,7 @@ import {
 } from "../../entities/chat/repository";
 import { fileThumbnailUrl } from "../../entities/files/repository";
 import type { ConversationSummary } from "../../shared/platform/types";
+import { ConversationTypeBadge } from "../../entities/chat/ConversationTypeBadge";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import { Button, Dialog, TextInput } from "../../shared/ui";
@@ -33,7 +34,13 @@ function ConversationAvatar({ name, path }: { name: string; path?: string }) {
   );
 }
 
-export function ConversationLibrary({ onCreate, onEdit }: { onCreate: () => void; onEdit: (id: string) => void }) {
+export function ConversationLibrary({
+  onCreate,
+  onEdit,
+}: {
+  onCreate: () => void;
+  onEdit: (id: string, kind?: ConversationSummary["kind"]) => void;
+}) {
   const { t, language } = useI18n();
   const client = useQueryClient();
   const navigate = useNavigate();
@@ -96,7 +103,7 @@ export function ConversationLibrary({ onCreate, onEdit }: { onCreate: () => void
               <div className="conversation-card__content">
                 <h2>{name}</h2>
                 <div className="conversation-card__meta">
-                  <span>{t(item.kind === "story" ? "conversation.story" : "conversation.normal")}</span>
+                  <ConversationTypeBadge kind={item.kind} />
                   <span>{item.characters.join(" · ")}</span>
                   <time dateTime={new Date(item.updatedAt).toISOString()}>{date.format(item.updatedAt)}</time>
                 </div>
@@ -129,8 +136,8 @@ export function ConversationLibrary({ onCreate, onEdit }: { onCreate: () => void
                 >
                   {t("conversation.rename")}
                 </Button>
-                {item.kind === "normal" && item.hasSettings && (
-                  <Button onClick={() => onEdit(item.id)}>{t("conversation.settings")}</Button>
+                {item.hasSettings && (item.kind !== "story" || item.storyPath) && (
+                  <Button onClick={() => onEdit(item.id, item.kind)}>{t("conversation.settings")}</Button>
                 )}
               </div>
               {item.kind === "story" && !item.storyPath && <p role="status">{t("conversation.missingStory")}</p>}

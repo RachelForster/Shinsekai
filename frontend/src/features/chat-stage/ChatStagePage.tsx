@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { isTauriDesktop, setDesktopWindowAlwaysOnTop } from "../../shared/desktop/desktopApi";
@@ -69,6 +69,12 @@ interface ChatRouteInputState {
   inputDraft: string;
 }
 
+const CurrentConversationEditorDialog = lazy(() =>
+  import("../template-editor/CurrentConversationEditorDialog").then((module) => ({
+    default: module.CurrentConversationEditorDialog,
+  })),
+);
+
 function chatRouteInputState(value: unknown): ChatRouteInputState {
   if (!value || typeof value !== "object") {
     return { inputAttachments: [], inputDraft: "" };
@@ -125,6 +131,7 @@ export function ChatStagePage() {
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
   const [attachmentUploadPending, setAttachmentUploadPending] = useState(false);
@@ -176,6 +183,7 @@ export function ChatStagePage() {
   const statsVisible = viewModel.stats.length > 0;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen =
+    conversationEditorOpen ||
     overlayTarget != null ||
     themePickerOpen ||
     toolbarConfigOpen ||
@@ -637,6 +645,7 @@ export function ChatStagePage() {
   const dialogSurfaceVisible = viewModel.layers.dialog || viewModel.layers.options;
   const dialogToolbar = (
     <DialogStageControls
+      onEditConversation={() => setConversationEditorOpen(true)}
       asrEnabled={viewModel.asrEnabled}
       auto={runtimeConfig.auto}
       bgmVolume={runtimeConfig.bgmVolume}
@@ -897,6 +906,17 @@ export function ChatStagePage() {
         ref={fileAttachmentInputRef}
         type="file"
       />
+      {conversationEditorOpen && (
+        <Suspense fallback={null}>
+          <CurrentConversationEditorDialog
+            onClose={() => setConversationEditorOpen(false)}
+            onApplied={(snapshot) => {
+              dispatch({ type: "hydrate", snapshot, receivedAt: performance.now() });
+              setConversationEditorOpen(false);
+            }}
+          />
+        </Suspense>
+      )}
       <AlertDialog
         body={t("chat.clear.confirmBody")}
         cancelLabel={t("common.cancel")}

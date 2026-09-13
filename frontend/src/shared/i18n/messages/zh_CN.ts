@@ -4,7 +4,10 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "conversation.settings": "聊天设置",
   "conversation.settingsHint":
     "修改此聊天的人物或模板，保存后继续原记录。旧记录未保存完整设置时，请先确认人物、模板和资源选择模式。",
-  "conversation.saveAndContinue": "保存并继续",
+  "conversation.saveAndContinue": "应用并继续",
+  "conversation.editCurrent": "编辑本次聊天",
+  "conversation.applyHint": "应用后重新加载本次聊天，保留消息和剧本进度。",
+  "conversation.unavailable": "暂时无法读取本次聊天的设置。",
   "conversation.configureAndContinue": "设置并继续",
   "conversation.workspace": "聊天",
   "conversation.recent": "最近聊天",

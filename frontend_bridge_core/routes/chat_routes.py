@@ -4,6 +4,7 @@ from http import HTTPStatus
 
 from application.chat.conversation_library import (
     conversation_launch_payload,
+    current_conversation,
     list_conversations,
     rename_conversation,
 )
@@ -107,6 +108,10 @@ def _conversations(request: ApiRequest) -> JsonResponse:
     return JsonResponse(list_conversations(request.state))
 
 
+def _current_conversation(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(current_conversation(request.state))
+
+
 def _conversation_launch(request: ApiRequest) -> JsonResponse:
     return JsonResponse(conversation_launch_payload(request.state, request.params["conversation_id"]))
 
@@ -116,6 +121,8 @@ def _rename_conversation(request: ApiRequest) -> JsonResponse:
 
 
 CHAT_ROUTES = (
+    Route(methods=frozenset({"GET"}), pattern="/api/chat/conversations/current", handler=_current_conversation,
+          body_kind=BodyKind.NONE, name="chat.conversations.current"),
     Route(methods=frozenset({"GET"}), pattern="/api/chat/conversations", handler=_conversations,
           body_kind=BodyKind.NONE, name="chat.conversations.list"),
     Route(methods=frozenset({"GET"}), pattern="/api/chat/conversations/{conversation_id}/launch-payload",

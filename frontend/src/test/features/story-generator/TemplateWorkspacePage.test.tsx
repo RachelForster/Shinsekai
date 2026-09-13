@@ -54,10 +54,13 @@ describe("creation mode tabs", () => {
       </MemoryRouter>,
     );
     fireEvent.change(await screen.findByRole("textbox", { name: "正常模式草稿" }), { target: { value: "未保存" } });
+    expect(screen.getByText("普通聊天")).toBeVisible();
     fireEvent.click(screen.getByRole("tab", { name: "剧本模式" }));
     fireEvent.change(await screen.findByRole("textbox", { name: "剧本模式草稿" }), {
       target: { value: "生成中的故事" },
     });
+    expect(screen.getByText("剧本聊天")).toBeVisible();
+    expect(screen.queryByText("普通聊天")).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("tab", { name: "剧本模式" }), { key: "ArrowLeft" });
     expect(screen.getByRole("tab", { name: "正常模式" })).toHaveFocus();
     expect(screen.getByRole("textbox", { name: "正常模式草稿" })).toHaveValue("未保存");

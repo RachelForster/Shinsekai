@@ -401,6 +401,8 @@ describe("entity repositories", () => {
     const platform = {
       chat: {
         listConversations: vi.fn().mockResolvedValue([]),
+        getCurrentConversation: vi.fn().mockResolvedValue(null),
+        reconfigureConversation: vi.fn(),
         prepareConversation: vi.fn(),
         renameConversation: vi.fn(),
         close: vi.fn().mockResolvedValue(sampleChatSnapshot),

@@ -116,9 +116,16 @@ def _run_chat_init(
     launch: Callable[[dict[str, str]], dict[str, Any]],
     *,
     timeout: float,
+    before_launch: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     if _chat_runtime_closing(state):
         raise RuntimeError("chat runtime is closing; try again shortly")
+    # Validate before creating an init stream: rejected edits must not clean up
+    # (and consequently stop) the currently running conversation.
+    if before_launch is not None:
+        if _is_task_cancel_requested(state, task_id):
+            raise TaskCancelled()
+        before_launch()
     # Preserve the legacy behavior for an already-running, fully initialized
     # runtime. The async API simply resolves to its current snapshot.
     if _chat_process_running():
@@ -242,10 +249,11 @@ def start_chat(
     mode: str,
     launch: Callable[[dict[str, str]], dict[str, Any]],
     timeout: float = CHAT_INIT_TIMEOUT_SECONDS,
+    before_launch: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
     normalized_mode = str(mode or "").strip().lower()
-    if normalized_mode not in {"launch", "resume-last"}:
-        raise ValueError("mode must be 'launch' or 'resume-last'")
+    if normalized_mode not in {"launch", "resume-last", "reconfigure"}:
+        raise ValueError("unsupported chat initialization mode")
 
     lock = _chat_init_lock(state)
     with lock:
@@ -256,6 +264,8 @@ def start_chat(
             except KeyError:
                 active_task = None
             if active_task is not None and _is_running_task(active_task):
+                if normalized_mode == "reconfigure":
+                    raise RuntimeError("chat initialization is already in progress")
                 return active_task
             state.chat_init_task_id = ""
 
@@ -273,7 +283,9 @@ def start_chat(
             _run_background_task(
                 state,
                 task_id,
-                lambda: _run_chat_init(state, task_id, launch, timeout=timeout),
+                lambda: _run_chat_init(
+                    state, task_id, launch, timeout=timeout, before_launch=before_launch
+                ),
             )
         finally:
             with lock:

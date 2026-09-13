@@ -4,7 +4,10 @@ export const enMessages: Record<MessageKey, string> = {
   "conversation.settings": "Chat settings",
   "conversation.settingsHint":
     "Change this chat's characters or template and continue its existing history. For older chats without saved settings, check the characters, template and media selection mode first.",
-  "conversation.saveAndContinue": "Save and continue",
+  "conversation.saveAndContinue": "Apply and continue",
+  "conversation.editCurrent": "Edit this chat",
+  "conversation.applyHint": "Applying reloads this chat and keeps its messages and story progress.",
+  "conversation.unavailable": "Settings for this chat are currently unavailable.",
   "conversation.configureAndContinue": "Configure and continue",
   "conversation.workspace": "Chats",
   "conversation.recent": "Recent chats",

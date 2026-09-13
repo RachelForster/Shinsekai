@@ -1392,6 +1392,12 @@ export interface ShinsekaiPlatform {
     uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
+    getCurrentConversation: () => Promise<ConversationSummary | null>;
+    reconfigureConversation: (
+      id: string,
+      payload: ChatLaunchPayload,
+      options?: TaskProgressOptions<ChatSnapshot>,
+    ) => Promise<ChatSnapshot>;
     listConversations: () => Promise<ConversationSummary[]>;
     prepareConversation: (id: string) => Promise<ChatLaunchPayload>;
     renameConversation: (id: string, title: string) => Promise<ConversationSummary>;

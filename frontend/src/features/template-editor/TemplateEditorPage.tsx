@@ -13,6 +13,7 @@ import {
   getConversationSession,
   installMissingRuntimeDependency,
   launchChat,
+  reconfigureConversation,
 } from "../../entities/chat/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
@@ -77,9 +78,13 @@ const voiceLanguages = templateVoiceLanguages;
 export function TemplateEditorPage({
   createOnly = false,
   conversationId,
+  onApplied,
+  onPendingChange,
 }: {
   createOnly?: boolean;
   conversationId?: string;
+  onApplied?: (snapshot: ChatSnapshot) => void;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -104,6 +109,7 @@ export function TemplateEditorPage({
     initializationTask,
     runChatInitialization,
   } = useChatInitialization();
+  useEffect(() => onPendingChange?.(initializationPending), [initializationPending, onPendingChange]);
   const templates = templatesQuery.data ?? [];
   const isLoading = templatesQuery.isLoading;
   const launchSession = sessionQuery.data;
@@ -508,7 +514,7 @@ export function TemplateEditorPage({
 
   const launchMutation = useMutation({
     mutationFn: async ({ resetHistory }: { resetHistory: boolean }) => {
-      if (runtimeLaunchDisabled) {
+      if (runtimeLaunchDisabled && !conversationId) {
         throw new Error(t("launch.runtimeBusy"));
       }
       return runChatInitialization(async (progressOptions) => {
@@ -526,9 +532,13 @@ export function TemplateEditorPage({
           selectedCharacters,
           selectedTemplateId: selectedId,
         });
-        const savedSession = await saveTemplateSession(session);
-        queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
-        const snapshot = await launchChat(
+        const savedSession = conversationId ? session : await saveTemplateSession(session);
+        if (!conversationId) queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
+        const apply = conversationId
+          ? (payload: Parameters<typeof launchChat>[0], options: Parameters<typeof launchChat>[1]) =>
+              reconfigureConversation(conversationId, payload, options)
+          : launchChat;
+        const snapshot = await apply(
           {
             ...synchronizeChatLaunchPayloadWithSession(
               buildChatLaunchPayload({
@@ -550,7 +560,10 @@ export function TemplateEditorPage({
         );
         const confirmedSession = synchronizeTemplateLaunchSessionWithSnapshot(savedSession, snapshot);
         if (confirmedSession !== savedSession) {
-          queryClient.setQueryData([...templatesQueryKey, "session"], confirmedSession);
+          queryClient.setQueryData(
+            conversationId ? [...conversationsQueryKey, conversationId, "settings"] : [...templatesQueryKey, "session"],
+            confirmedSession,
+          );
           setHistoryPath(confirmedSession.historyPath);
         }
         return { snapshot, template };
@@ -572,6 +585,10 @@ export function TemplateEditorPage({
       setDraft(normalized);
       if (snapshot.runtimeDependencyError) {
         void handleRuntimeDependencyError(snapshot);
+        return;
+      }
+      if (onApplied) {
+        onApplied(snapshot);
         return;
       }
       showToast({
@@ -988,7 +1005,7 @@ export function TemplateEditorPage({
 
       <footer className="template-page__footer">
         <AsyncButton
-          disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
+          disabled={!sessionRestored || (!conversationId && runtimeLaunchDisabled) || initializationPending}
           icon={<Play aria-hidden className="button__icon" />}
           loading={launchMutation.isPending}
           onClick={() => handleLaunch(false)}

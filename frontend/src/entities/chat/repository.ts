@@ -20,6 +20,12 @@ export const conversationsQueryKey = ["chat", "conversations"] as const;
 
 export const listConversations = () => getPlatform().chat.listConversations();
 export const prepareConversation = (id: string) => getPlatform().chat.prepareConversation(id);
+export const getCurrentConversation = () => getPlatform().chat.getCurrentConversation();
+export const reconfigureConversation = (
+  id: string,
+  payload: ChatLaunchPayload,
+  options?: TaskProgressOptions<ChatSnapshot>,
+) => getPlatform().chat.reconfigureConversation(id, payload, options);
 export const renameConversation = (id: string, title: string) => getPlatform().chat.renameConversation(id, title);
 
 export async function getConversationSession(id: string): Promise<TemplateLaunchSession> {

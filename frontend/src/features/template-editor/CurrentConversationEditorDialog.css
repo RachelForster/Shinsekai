@@ -1,0 +1,20 @@
+.conversation-editor-dialog {
+  width: min(1120px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+}
+.conversation-editor-dialog__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.conversation-editor-dialog .template-page {
+  min-height: 0;
+}
+.conversation-editor-dialog .template-workbench {
+  height: max(320px, calc(100dvh - 330px));
+}
+@media (max-width: 1040px) {
+  .conversation-editor-dialog .template-workbench {
+    height: auto;
+  }
+}

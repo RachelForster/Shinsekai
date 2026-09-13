@@ -3,6 +3,9 @@ export type FrontendLanguage = "zh_CN" | "en" | "ja";
 export type MessageKey =
   | "conversation.settings"
   | "conversation.settingsHint"
+  | "conversation.editCurrent"
+  | "conversation.applyHint"
+  | "conversation.unavailable"
   | "conversation.saveAndContinue"
   | "conversation.configureAndContinue"
   | "conversation.workspace"

@@ -187,6 +187,22 @@ def conversation_launch_payload(state: Any, conversation_id: str) -> dict:
     return {**launch, "historyPath": path.as_posix(), "resetHistory": False}
 
 
+def conversation_details(state: Any, conversation_id: str) -> dict:
+    return _details(_record(state, conversation_id))
+
+
+def current_conversation(state: Any) -> dict | None:
+    history = state.chat_session.get("historyPath")
+    if not history:
+        return None
+    try:
+        return conversation_details(
+            state, _id(resolve_history_path_for_project(state, history))
+        )
+    except KeyError:
+        return None
+
+
 def saved_conversation_launch(state: Any, history_path: Path) -> dict | None:
     record = _read(_directory(state) / f"{_id(history_path)}.json")
     if not isinstance(record, dict) or not isinstance(record.get("launch"), dict):

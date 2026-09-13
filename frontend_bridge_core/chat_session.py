@@ -119,6 +119,23 @@ def start_chat_initialization(
     body: dict[str, Any],
 ) -> dict[str, Any]:
     mode = str(body.get("mode") or "").strip().lower()
+    if mode == "reconfigure":
+        from application.chat.reconfigure_conversation import (
+            prepare_conversation_edit,
+            restart_edited_conversation,
+        )
+
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        conversation_id = str(body.get("conversationId") or "")
+        edited = prepare_conversation_edit(state, conversation_id, payload)
+        return start_chat(
+            state,
+            mode=mode,
+            before_launch=lambda: restart_edited_conversation(state, conversation_id, edited),
+            launch=lambda stream: launch_chat(state, edited, init_stream_info=stream),
+        )
     if mode == "launch":
         payload = body.get("payload")
         if not isinstance(payload, dict):
@@ -262,6 +279,7 @@ def launch_chat(
         ),
         workflow_path=str(body.get("workflowPath") or ""),
         media_selection_mode=media_selection_mode,
+        **({"use_current_template_for_history": True} if body.get("useCurrentTemplateForHistory") else {}),
     )
     dependency_error = runtime_dependency_error_from_text(message)
     if dependency_error:

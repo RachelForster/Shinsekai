@@ -845,6 +845,25 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     chat: {
+      async getCurrentConversation() {
+        return clone(conversations.get(chat.historyPath ?? "")?.summary ?? null);
+      },
+      async reconfigureConversation(id, payload, options) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        if (chat.chatProcessRunning && chat.historyPath !== item.summary.historyPath) {
+          throw new Error("Another chat is running");
+        }
+        if (
+          chat.chatProcessRunning &&
+          (!["idle", "paused", "error"].includes(chat.status) ||
+            chat.turnState?.pendingCount ||
+            chat.turnState?.scheduled)
+        ) {
+          throw new Error("Wait for the current reply to finish");
+        }
+        return this.launch({ ...payload, historyPath: item.summary.historyPath, resetHistory: false }, options);
+      },
       async listConversations() {
         return clone([...conversations.values()].map((item) => item.summary).sort((a, b) => b.updatedAt - a.updatedAt));
       },
@@ -1329,8 +1348,8 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             characters: payload.characters,
             preview: "",
             updatedAt: Date.now(),
-            kind: "normal",
-            storyPath: "",
+            kind: conversations.get(historyPath)?.summary.kind ?? "normal",
+            storyPath: conversations.get(historyPath)?.summary.storyPath ?? "",
             historyPath,
             hasSettings: true,
           },

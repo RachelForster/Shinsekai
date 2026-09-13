@@ -27,6 +27,7 @@ def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParse
     parser.add_argument("--tts", type=str, default="")
     parser.add_argument("--llm", type=str, default="deepseek")
     parser.add_argument("--bg", type=str, default="")
+    parser.add_argument("--use-current-template-for-history", action="store_true")
     parser.add_argument(
         "--media-selection-mode",
         choices=("indexed", "semantic"),
@@ -139,9 +140,9 @@ def _parse_chat_launch_config(raw_value: str) -> dict[str, Any]:
 
     normalized: dict[str, Any] = {}
     for key, value in data.items():
-        if key == "headless":
+        if key in {"headless", "use_current_template_for_history"}:
             if not isinstance(value, bool):
-                raise ValueError("chat launch config headless must be boolean")
+                raise ValueError(f"chat launch config {key} must be boolean")
             normalized[key] = value
             continue
         if not isinstance(value, str):

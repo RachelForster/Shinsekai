@@ -5,6 +5,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppRoutes } from "../../../app/routes/AppRoutes";
 import { I18nProvider } from "../../../shared/i18n";
 
+vi.mock("../../../entities/chat/ConversationTypeBadge", () => ({
+  ConversationTypeBadge: () => <span>Chat type</span>,
+}));
+
 vi.mock("../../../app/shell/AppShell", () => ({
   AppShell: () => (
     <section aria-label="settings shell">
