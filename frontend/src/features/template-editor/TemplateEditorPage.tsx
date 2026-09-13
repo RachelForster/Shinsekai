@@ -8,7 +8,12 @@ import { Play, RotateCw, Save, Sparkles } from "lucide-react";
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, ensureCharacterBriefs, listCharacters } from "../../entities/character/repository";
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
-import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
+import {
+  conversationsQueryKey,
+  getConversationSession,
+  installMissingRuntimeDependency,
+  launchChat,
+} from "../../entities/chat/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
@@ -69,14 +74,22 @@ import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
 
-export function TemplateEditorPage() {
+export function TemplateEditorPage({
+  createOnly = false,
+  conversationId,
+}: {
+  createOnly?: boolean;
+  conversationId?: string;
+}) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
   const sessionQuery = useQuery({
-    queryFn: getTemplateSession,
-    queryKey: [...templatesQueryKey, "session"],
+    queryFn: () => (conversationId ? getConversationSession(conversationId) : getTemplateSession()),
+    queryKey: conversationId
+      ? [...conversationsQueryKey, conversationId, "settings"]
+      : [...templatesQueryKey, "session"],
   });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
@@ -509,27 +522,30 @@ export function TemplateEditorPage() {
           mediaSelectionMode,
           options: templateOptionsState,
           primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
-          runtime: runtimeOptionsState,
+          runtime: createOnly ? { ...runtimeOptionsState, historyPath: "" } : runtimeOptionsState,
           selectedCharacters,
           selectedTemplateId: selectedId,
         });
         const savedSession = await saveTemplateSession(session);
         queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
         const snapshot = await launchChat(
-          synchronizeChatLaunchPayloadWithSession(
-            buildChatLaunchPayload({
-              backgroundName: selectedBackground,
-              effectNames: selectedEffects,
-              mobileAccessEnabled,
-              mediaSelectionMode,
-              resetHistory,
-              runtime: runtimeOptionsState,
-              selectedCharacters,
-              template,
-              useCg,
-            }),
-            savedSession,
-          ),
+          {
+            ...synchronizeChatLaunchPayloadWithSession(
+              buildChatLaunchPayload({
+                backgroundName: selectedBackground,
+                effectNames: selectedEffects,
+                mobileAccessEnabled,
+                mediaSelectionMode,
+                resetHistory: conversationId ? false : createOnly || resetHistory,
+                runtime: createOnly ? { ...runtimeOptionsState, historyPath: "" } : runtimeOptionsState,
+                selectedCharacters,
+                template,
+                useCg,
+              }),
+              savedSession,
+            ),
+            editorSession: savedSession,
+          },
           progressOptions,
         );
         const confirmedSession = synchronizeTemplateLaunchSessionWithSnapshot(savedSession, snapshot);
@@ -549,6 +565,7 @@ export function TemplateEditorPage() {
       });
     },
     onSuccess({ snapshot, template }) {
+      void queryClient.invalidateQueries({ queryKey: conversationsQueryKey });
       void updateRuntimeStatusFromSnapshot(snapshot);
       const normalized = normalizeTemplateSummary(template);
       setSessionDraftActive(true);
@@ -734,14 +751,16 @@ export function TemplateEditorPage() {
               }}
               value={draft.name}
             />
-            <AsyncButton
-              className="template-save-button"
-              icon={<Save aria-hidden className="button__icon" />}
-              loading={saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}
-            >
-              {t("common.save")}
-            </AsyncButton>
+            {!conversationId && (
+              <AsyncButton
+                className="template-save-button"
+                icon={<Save aria-hidden className="button__icon" />}
+                loading={saveMutation.isPending}
+                onClick={() => saveMutation.mutate()}
+              >
+                {t("common.save")}
+              </AsyncButton>
+            )}
           </span>
           {nameError ? <span className="field-error">{nameError}</span> : null}
         </label>
@@ -957,10 +976,12 @@ export function TemplateEditorPage() {
                 value={initSpritePath}
               />
             </label>
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.historyFile")}</span>
-              <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
-            </label>
+            {!createOnly && !conversationId && (
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.historyFile")}</span>
+                <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
+              </label>
+            )}
           </div>
         </aside>
       </div>
@@ -973,16 +994,24 @@ export function TemplateEditorPage() {
           onClick={() => handleLaunch(false)}
           variant="primary"
         >
-          {t("template.action.launch")}
+          {t(
+            conversationId
+              ? "conversation.saveAndContinue"
+              : createOnly
+                ? "conversation.createAndStart"
+                : "template.action.launch",
+          )}
         </AsyncButton>
-        <Button
-          disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
-          icon={<RotateCw aria-hidden className="button__icon" />}
-          onClick={() => setQuickRestartOpen(true)}
-          variant="ghost"
-        >
-          {t("template.action.quickRestart")}
-        </Button>
+        {!createOnly && !conversationId && (
+          <Button
+            disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
+            icon={<RotateCw aria-hidden className="button__icon" />}
+            onClick={() => setQuickRestartOpen(true)}
+            variant="ghost"
+          >
+            {t("template.action.quickRestart")}
+          </Button>
+        )}
       </footer>
 
       <AlertDialog

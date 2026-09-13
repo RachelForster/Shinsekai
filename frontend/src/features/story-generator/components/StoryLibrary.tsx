@@ -48,16 +48,10 @@ export function StoryLibrary({ onCreate }: { onCreate: () => void }) {
                   ) || t("template.transparentBackground"),
               })}
             </p>
-            <p>
-              {story.historyPath
-                ? t("story.library.progress", { node: story.currentNodeTitle || t("story.library.saved") })
-                : t("story.library.unplayed")}
-            </p>
             <StoryLaunchButton
               key={`${story.storyPath}-${story.historyPath}`}
               storyPath={story.storyPath}
-              historyPath={story.historyPath}
-              label={story.historyPath ? t("story.library.continue") : t("story.library.start")}
+              label={t("conversation.createAndStart")}
             />
           </article>
         ))}

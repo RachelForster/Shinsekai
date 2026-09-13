@@ -1,6 +1,24 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "conversation.settings": "聊天设置",
+  "conversation.settingsHint":
+    "修改此聊天的人物或模板，保存后继续原记录。旧记录未保存完整设置时，请先确认人物、模板和资源选择模式。",
+  "conversation.saveAndContinue": "保存并继续",
+  "conversation.configureAndContinue": "设置并继续",
+  "conversation.workspace": "聊天",
+  "conversation.recent": "最近聊天",
+  "conversation.new": "新建聊天",
+  "conversation.empty": "还没有聊天。选择人物和模板，开始第一段对话。",
+  "conversation.untitled": "未命名聊天",
+  "conversation.continue": "继续聊天",
+  "conversation.rename": "重命名",
+  "conversation.title": "聊天名称",
+  "conversation.normal": "普通聊天",
+  "conversation.story": "剧本聊天",
+  "conversation.noMessages": "尚无对话",
+  "conversation.missingStory": "缺少剧本关联，请从剧本库恢复此存档。",
+  "conversation.createAndStart": "创建并开始",
   "reminder.status.missed": "已错过",
   "reminder.status.cancelled": "已取消",
   "reminder.status.completed": "已完成",
@@ -1006,7 +1024,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "nav.settingsCenter": "设置中心导航",
   "nav.system": "程序设置",
   "nav.effects": "特效管理",
-  "nav.template": "聊天模板",
+  "nav.template": "聊天",
   "nav.tools": "实用工具",
   "tools.browse": "浏览",
   "tools.character": "角色",

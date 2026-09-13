@@ -3,7 +3,14 @@ import { Button } from "../../../shared/ui";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { chatQueryKey, getChatRuntimeStatus, getChatSnapshot, launchChat } from "../../../entities/chat/repository";
+import {
+  chatQueryKey,
+  conversationsQueryKey,
+  getChatRuntimeStatus,
+  getChatSnapshot,
+  launchChat,
+  prepareConversation,
+} from "../../../entities/chat/repository";
 import { prepareStoryLaunch, startStorySession, storyLibraryQueryKey } from "../../../entities/story/repository";
 import { showChatSurface } from "../../../shared/desktop/chatWindow";
 import { ChatInitializationDialog } from "../../chat-startup/ChatInitializationDialog";
@@ -28,11 +35,13 @@ export function StoryLaunchButton({
   historyPath = "",
   label,
   disabled = false,
+  conversationId,
 }: {
   storyPath: string;
   historyPath?: string;
   label?: string;
   disabled?: boolean;
+  conversationId?: string;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -57,7 +66,8 @@ export function StoryLaunchButton({
           }
           launched = current;
         } else {
-          launched = await launchChat(await prepareStoryLaunch(storyPath, historyPath), options);
+          const payload = await prepareStoryLaunch(storyPath, historyPath);
+          launched = await launchChat(conversationId ? await prepareConversation(conversationId) : payload, options);
           localStorage.setItem(
             pendingAttachmentKey,
             JSON.stringify({ storyPath, historyPath, sessionId: launched.sessionId }),
@@ -68,6 +78,7 @@ export function StoryLaunchButton({
       });
       client.setQueryData(chatQueryKey, snapshot);
       void client.invalidateQueries({ queryKey: storyLibraryQueryKey });
+      void client.invalidateQueries({ queryKey: conversationsQueryKey });
       await showChatSurface({ navigate, snapshot });
       localStorage.removeItem(pendingAttachmentKey);
     } catch (reason) {

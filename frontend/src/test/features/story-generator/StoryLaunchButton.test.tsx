@@ -5,20 +5,30 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StoryLaunchButton } from "../../../features/story-generator/components/StoryLaunchButton";
 import { I18nProvider, type FrontendLanguage } from "../../../shared/i18n";
 
-const { launchChat, getChatRuntimeStatus, getChatSnapshot, startStorySession, showChatSurface, prepareStoryLaunch } =
-  vi.hoisted(() => ({
-    prepareStoryLaunch: vi.fn(),
-    launchChat: vi.fn(),
-    getChatRuntimeStatus: vi.fn(),
-    getChatSnapshot: vi.fn(),
-    startStorySession: vi.fn(),
-    showChatSurface: vi.fn(),
-  }));
-vi.mock("../../../entities/chat/repository", () => ({
+const {
   launchChat,
   getChatRuntimeStatus,
   getChatSnapshot,
+  startStorySession,
+  showChatSurface,
+  prepareStoryLaunch,
+  prepareConversation,
+} = vi.hoisted(() => ({
+  prepareStoryLaunch: vi.fn(),
+  prepareConversation: vi.fn(),
+  launchChat: vi.fn(),
+  getChatRuntimeStatus: vi.fn(),
+  getChatSnapshot: vi.fn(),
+  startStorySession: vi.fn(),
+  showChatSurface: vi.fn(),
+}));
+vi.mock("../../../entities/chat/repository", () => ({
+  launchChat,
+  prepareConversation,
+  getChatRuntimeStatus,
+  getChatSnapshot,
   chatQueryKey: ["chat"],
+  conversationsQueryKey: ["chat", "conversations"],
 }));
 vi.mock("../../../entities/story/repository", () => ({
   startStorySession,
@@ -28,12 +38,17 @@ vi.mock("../../../entities/story/repository", () => ({
 vi.mock("../../../shared/desktop/chatWindow", () => ({ showChatSurface }));
 vi.mock("../../../features/chat-startup/ChatInitializationDialog", () => ({ ChatInitializationDialog: () => null }));
 
-function renderButton(historyPath = "", language: FrontendLanguage = "zh_CN") {
+function renderButton(historyPath = "", language: FrontendLanguage = "zh_CN", conversationId?: string) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <I18nProvider language={language}>
         <MemoryRouter>
-          <StoryLaunchButton storyPath="story/draft.json" historyPath={historyPath} disabled={false} />
+          <StoryLaunchButton
+            storyPath="story/draft.json"
+            historyPath={historyPath}
+            disabled={false}
+            conversationId={conversationId}
+          />
         </MemoryRouter>
       </I18nProvider>
     </QueryClientProvider>,
@@ -41,6 +56,19 @@ function renderButton(historyPath = "", language: FrontendLanguage = "zh_CN") {
 }
 
 describe("story launch", () => {
+  it("validates the selected story save and resumes its own prompt settings", async () => {
+    prepareConversation.mockResolvedValue({ historyPath: "saved", system: "Saved rules", resetHistory: false });
+    renderButton("saved", "zh_CN", "saved-id");
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await waitFor(() => expect(showChatSurface).toHaveBeenCalled());
+    expect(prepareStoryLaunch).toHaveBeenCalledWith("story/draft.json", "saved");
+    expect(prepareConversation).toHaveBeenCalledWith("saved-id");
+    expect(launchChat).toHaveBeenCalledWith(
+      expect.objectContaining({ historyPath: "saved", system: "Saved rules", resetHistory: false }),
+      expect.anything(),
+    );
+    expect(startStorySession).toHaveBeenCalledWith("story/draft.json");
+  });
   it("localizes the default launch action and active-chat error", async () => {
     getChatRuntimeStatus.mockResolvedValue({ state: "running" });
     renderButton("", "en");

@@ -25,6 +25,8 @@ import type {
   CharacterMemoryList,
   ChatConversationBranch,
   ChatHistoryEntry,
+  ChatLaunchPayload,
+  ConversationSummary,
   ChatSendPayload,
   ChatSnapshot,
   ChatStageEvent,
@@ -436,6 +438,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   let pluginCatalog = clone(samplePluginCatalog);
   let mcpConfig = clone(sampleMcpConfig);
   let chat = clone(sampleChatSnapshot);
+  const conversations = new Map<string, { summary: ConversationSummary; payload: ChatLaunchPayload }>();
   let previewBranchCounter = 1;
   let previewHistoryCounter = 0;
   const previewBranches = new Map<string, ChatConversationBranch & { historyEntries: ChatHistoryEntry[] }>();
@@ -842,6 +845,20 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     chat: {
+      async listConversations() {
+        return clone([...conversations.values()].map((item) => item.summary).sort((a, b) => b.updatedAt - a.updatedAt));
+      },
+      async prepareConversation(id) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        return clone(item.payload);
+      },
+      async renameConversation(id, title) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        item.summary.title = title;
+        return clone(item.summary);
+      },
       async close() {
         clearScheduledChatUpdates();
         chat = {
@@ -1304,6 +1321,20 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (templateSession) {
           templateSession = { ...templateSession, historyPath };
         }
+        conversations.set(historyPath, {
+          payload: clone({ ...payload, historyPath, resetHistory: false }),
+          summary: {
+            id: historyPath,
+            title: conversations.get(historyPath)?.summary.title || payload.templateName || "",
+            characters: payload.characters,
+            preview: "",
+            updatedAt: Date.now(),
+            kind: "normal",
+            storyPath: "",
+            historyPath,
+            hasSettings: true,
+          },
+        });
         emitChat();
         previewTask<ChatSnapshot>(
           taskId,

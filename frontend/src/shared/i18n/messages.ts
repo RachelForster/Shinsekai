@@ -1,6 +1,23 @@
 export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
+  | "conversation.settings"
+  | "conversation.settingsHint"
+  | "conversation.saveAndContinue"
+  | "conversation.configureAndContinue"
+  | "conversation.workspace"
+  | "conversation.recent"
+  | "conversation.new"
+  | "conversation.empty"
+  | "conversation.untitled"
+  | "conversation.continue"
+  | "conversation.rename"
+  | "conversation.title"
+  | "conversation.normal"
+  | "conversation.story"
+  | "conversation.noMessages"
+  | "conversation.missingStory"
+  | "conversation.createAndStart"
   | "reminder.status.missed"
   | "reminder.status.cancelled"
   | "reminder.status.completed"

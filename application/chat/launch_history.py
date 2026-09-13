@@ -85,14 +85,7 @@ def plan_chat_history_launch(
             starts_fresh=False,
         )
 
-    default_path = resolve_chat_history_path(
-        state,
-        {**payload, "historyPath": ""},
-        template,
-    )
-    history_path = default_path.with_name(
-        f"{default_path.name}-{_new_history_instance_id()}"
-    )
+    history_path = Path(state.history_dir) / f"chat-{_new_history_instance_id()}"
     return ChatHistoryLaunchTarget(
         history_path=_resolve_history_file(state, history_path),
         previous_history_path=previous_path,

@@ -592,6 +592,13 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return result;
       },
       getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
+      listConversations: () => requestJson(apiBase, "/api/chat/conversations"),
+      prepareConversation: (id) => requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}/launch-payload`),
+      renameConversation: (id, title) =>
+        requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}/rename`, {
+          method: "POST",
+          body: JSON.stringify({ title }),
+        }),
       getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>(apiBase, "/api/chat/runtime-status"),
       getSnapshot: () => requestJson<ChatSnapshot>(apiBase, chatSnapshotPath()),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),

@@ -25,11 +25,6 @@ const CharacterEditorPage = lazy(() =>
     default: CharacterEditorPage,
   })),
 );
-const ChatLauncherPage = lazy(() =>
-  import("../../features/chat-launcher/ChatLauncherPage").then(({ ChatLauncherPage }) => ({
-    default: ChatLauncherPage,
-  })),
-);
 const ChatStagePage = lazy(() =>
   import("../../features/chat-stage/ChatStagePage").then(({ ChatStagePage }) => ({
     default: ChatStagePage,
@@ -116,7 +111,7 @@ export function AppRoutes() {
         <Route element={lazyRouteElement(<LogsPage />)} path="logs" />
         <Route element={lazyRouteElement(<ToolsPage />)} path="tools" />
         <Route element={lazyRouteElement(<MusicCoverPage />)} path="music-cover" />
-        <Route element={lazyRouteElement(<ChatLauncherPage />)} path="launch" />
+        <Route element={<Navigate replace to="/settings/templates" />} path="launch" />
         <Route element={lazyRouteElement(<SystemSettingsPage />)} path="system" />
         <Route element={<Navigate replace to="/settings/templates?mode=story" />} path="stories/new" />
         <Route element={lazyRouteElement(<ChatThemeManagementPage />)} path="system/chat-themes" />

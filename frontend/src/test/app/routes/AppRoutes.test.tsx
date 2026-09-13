@@ -68,6 +68,9 @@ vi.mock("../../../features/system-settings/SystemSettingsPage", () => ({
 vi.mock("../../../features/template-editor/TemplateEditorPage", () => ({
   TemplateEditorPage: () => <h1>Templates route</h1>,
 }));
+vi.mock("../../../features/template-workspace/ConversationLibrary", () => ({
+  ConversationLibrary: () => <h1>Recent chats route</h1>,
+}));
 
 vi.mock("../../../features/tools/ToolsPage", () => ({
   ToolsPage: () => <h1>Tools route</h1>,
@@ -102,13 +105,14 @@ describe("AppRoutes", () => {
     ["/settings/characters", "Characters route"],
     ["/settings/backgrounds", "Backgrounds route"],
     ["/settings/effects", "Effects route"],
-    ["/settings/templates", "Templates route"],
+    ["/settings/templates", "Recent chats route"],
+    ["/settings/templates?tab=new", "Templates route"],
     ["/settings/plugins", "Plugins route"],
     ["/settings/logs", "Logs route"],
     ["/settings/tools", "Tools route"],
     ["/settings/stories/new", "Story generator route"],
     ["/settings/music-cover", "Music cover route"],
-    ["/settings/launch", "Launch route"],
+    ["/settings/launch", "Recent chats route"],
     ["/settings/system", "System route"],
     ["/settings/system/chat-themes", "Chat themes route"],
     ["/settings/system/chat-themes/customize", "Chat theme customizer route"],

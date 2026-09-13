@@ -9,12 +9,46 @@ import type {
   RuntimeDependencyInstallInput,
   RuntimeDependencyInstallResult,
   TaskProgressOptions,
+  TemplateLaunchSession,
 } from "../../shared/platform/types";
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../../shared/theme/chatTheme";
 import type { ChatStageEvent } from "../../shared/platform/types";
 
 export const chatQueryKey = ["chat"] as const;
+export const conversationsQueryKey = ["chat", "conversations"] as const;
+
+export const listConversations = () => getPlatform().chat.listConversations();
+export const prepareConversation = (id: string) => getPlatform().chat.prepareConversation(id);
+export const renameConversation = (id: string, title: string) => getPlatform().chat.renameConversation(id, title);
+
+export async function getConversationSession(id: string): Promise<TemplateLaunchSession> {
+  const payload = await prepareConversation(id);
+  return {
+    maxDialogItems: 0,
+    maxSpeechChars: 0,
+    useChoice: true,
+    useCot: true,
+    useEffect: true,
+    useNarration: true,
+    useStat: false,
+    useTranslation: true,
+    voiceLanguage: "ja",
+    ...payload.editorSession,
+    background: payload.backgroundName,
+    effectNames: payload.effectNames ?? [],
+    filenameStub: payload.templateName ?? "",
+    historyPath: payload.historyPath,
+    initSpritePath: payload.initSpritePath ?? "",
+    mediaSelectionMode: payload.mediaSelectionMode ?? "indexed",
+    roomId: payload.roomId ?? "",
+    scenario: payload.scenario ?? "",
+    system: payload.system ?? "",
+    selectedCharacters: payload.characters,
+    templateFileDropdown: payload.templateId,
+    useCg: payload.useCg ?? false,
+  };
+}
 export const chatRuntimeStatusQueryKey = ["chat", "runtime-status"] as const;
 export const chatThemeQueryKey = ["chat", "themes"] as const;
 

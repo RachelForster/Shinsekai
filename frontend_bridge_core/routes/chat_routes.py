@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from http import HTTPStatus
 
+from application.chat.conversation_library import (
+    conversation_launch_payload,
+    list_conversations,
+    rename_conversation,
+)
+
 from application.chat.runtime_process import (
     _chat_history,
     _chat_runtime_status,
@@ -97,7 +103,25 @@ def _delete_theme(request: ApiRequest) -> JsonResponse:
     return JsonResponse(delete_chat_theme(request.state, request.params["theme_id"]))
 
 
+def _conversations(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(list_conversations(request.state))
+
+
+def _conversation_launch(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(conversation_launch_payload(request.state, request.params["conversation_id"]))
+
+
+def _rename_conversation(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(rename_conversation(request.state, request.params["conversation_id"], request.body.get("title", "")))
+
+
 CHAT_ROUTES = (
+    Route(methods=frozenset({"GET"}), pattern="/api/chat/conversations", handler=_conversations,
+          body_kind=BodyKind.NONE, name="chat.conversations.list"),
+    Route(methods=frozenset({"GET"}), pattern="/api/chat/conversations/{conversation_id}/launch-payload",
+          handler=_conversation_launch, body_kind=BodyKind.NONE, name="chat.conversations.launch_payload"),
+    Route(methods=frozenset({"POST"}), pattern="/api/chat/conversations/{conversation_id}/rename",
+          handler=_rename_conversation, name="chat.conversations.rename"),
     Route(
         methods=frozenset({"GET"}),
         pattern="/api/chat/runtime-status",

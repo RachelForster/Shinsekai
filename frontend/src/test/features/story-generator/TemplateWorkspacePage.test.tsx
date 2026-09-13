@@ -7,14 +7,34 @@ import { I18nProvider } from "../../../shared/i18n";
 vi.mock("../../../features/template-editor/TemplateEditorPage", () => ({
   TemplateEditorPage: () => <input aria-label="正常模式草稿" defaultValue="正常草稿" />,
 }));
+vi.mock("../../../features/template-workspace/ConversationLibrary", () => ({
+  ConversationLibrary: ({ onCreate }: { onCreate: () => void }) => <button onClick={onCreate}>Open new chat</button>,
+}));
 vi.mock("../../../features/story-generator/StoryGeneratorPage", () => ({
   StoryGeneratorPage: () => <input aria-label="剧本模式草稿" defaultValue="剧本草稿" />,
 }));
 
 describe("creation mode tabs", () => {
-  it("uses translated tab labels without changing mode navigation", async () => {
+  it("defaults to recent chats and opens creation only on request", async () => {
     render(
       <MemoryRouter>
+        <I18nProvider language="en">
+          <TemplateWorkspacePage />
+        </I18nProvider>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("tab", { name: "Recent chats" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByRole("textbox", { name: "正常模式草稿" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open new chat" }));
+    expect(await screen.findByRole("textbox", { name: "正常模式草稿" })).toBeVisible();
+    fireEvent.change(screen.getByRole("textbox", { name: "正常模式草稿" }), { target: { value: "Draft" } });
+    fireEvent.click(screen.getByRole("tab", { name: "Recent chats" }));
+    fireEvent.click(screen.getByRole("tab", { name: "New chat" }));
+    expect(screen.getByRole("textbox", { name: "正常模式草稿" })).toHaveValue("Draft");
+  });
+  it("uses translated tab labels without changing mode navigation", async () => {
+    render(
+      <MemoryRouter initialEntries={["/settings/templates?tab=new"]}>
         <I18nProvider language="en">
           <TemplateWorkspacePage />
         </I18nProvider>
@@ -27,7 +47,7 @@ describe("creation mode tabs", () => {
   });
   it("keeps both drafts when switching modes and supports keyboard navigation", async () => {
     render(
-      <MemoryRouter>
+      <MemoryRouter initialEntries={["/settings/templates?tab=new"]}>
         <I18nProvider language="zh_CN">
           <TemplateWorkspacePage />
         </I18nProvider>

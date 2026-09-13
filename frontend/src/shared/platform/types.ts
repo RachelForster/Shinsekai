@@ -508,7 +508,20 @@ export interface TemplateGenerationResult extends TemplateSummary {
   resolvedCharacters: string[];
 }
 
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  characters: string[];
+  preview: string;
+  updatedAt: number;
+  kind: "normal" | "story";
+  storyPath: string;
+  historyPath: string;
+  hasSettings: boolean;
+}
+
 export interface ChatLaunchPayload {
+  editorSession?: TemplateLaunchSession;
   backgroundName: string;
   characters: string[];
   enableMobileAccess?: boolean;
@@ -1379,6 +1392,9 @@ export interface ShinsekaiPlatform {
     uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
+    listConversations: () => Promise<ConversationSummary[]>;
+    prepareConversation: (id: string) => Promise<ChatLaunchPayload>;
+    renameConversation: (id: string, title: string) => Promise<ConversationSummary>;
     close: () => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;

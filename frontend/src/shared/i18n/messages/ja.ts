@@ -1,6 +1,24 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "conversation.settings": "チャット設定",
+  "conversation.settingsHint":
+    "キャラクターやテンプレートを変更しても、このチャットの履歴を引き継ぎます。設定のない旧履歴では、キャラクター・テンプレート・素材選択モードを確認してください。",
+  "conversation.saveAndContinue": "保存して続ける",
+  "conversation.configureAndContinue": "設定して続ける",
+  "conversation.workspace": "チャット",
+  "conversation.recent": "最近のチャット",
+  "conversation.new": "新規チャット",
+  "conversation.empty": "チャットはまだありません。キャラクターとテンプレートを選んで始めましょう。",
+  "conversation.untitled": "無題のチャット",
+  "conversation.continue": "チャットを続ける",
+  "conversation.rename": "名前を変更",
+  "conversation.title": "チャット名",
+  "conversation.normal": "通常チャット",
+  "conversation.story": "ストーリーチャット",
+  "conversation.noMessages": "メッセージはまだありません",
+  "conversation.missingStory": "ストーリーとの関連付けがありません。ストーリー一覧からこのセーブを復元してください。",
+  "conversation.createAndStart": "作成して開始",
   "reminder.status.missed": "通知期限切れ",
   "reminder.status.cancelled": "キャンセル済み",
   "reminder.status.completed": "完了",
@@ -1030,7 +1048,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "nav.settingsCenter": "設定ナビゲーション",
   "nav.system": "システム",
   "nav.effects": "エフェクト管理",
-  "nav.template": "チャットテンプレート",
+  "nav.template": "チャット",
   "nav.tools": "ツール",
   "tools.browse": "参照",
   "tools.character": "キャラ",

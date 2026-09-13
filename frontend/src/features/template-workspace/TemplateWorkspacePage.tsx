@@ -3,6 +3,7 @@ import { SegmentedTabs } from "../../shared/ui/SegmentedTabs";
 import { lazy, Suspense, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import "./TemplateWorkspacePage.css";
+import { ConversationLibrary } from "./ConversationLibrary";
 
 const NormalMode = lazy(() =>
   import("../template-editor/TemplateEditorPage").then(({ TemplateEditorPage }) => ({ default: TemplateEditorPage })),
@@ -19,7 +20,16 @@ export function TemplateWorkspacePage() {
   const { t } = useI18n();
   const [params, setParams] = useSearchParams();
   const mode = params.get("mode") === "story" ? "story" : "normal";
-  const [visited, setVisited] = useState(() => new Set([mode]));
+  const conversationId = params.get("conversation") || undefined;
+  const tab = params.get("tab") === "new" || (!params.has("tab") && params.has("mode")) ? "new" : "recent";
+  const [visited, setVisited] = useState(() => new Set(tab === "new" ? [mode] : []));
+  const selectTab = (next: "new" | "recent") => {
+    if (next === "new") setVisited((previous) => new Set([...previous, mode]));
+    setParams((previous) => {
+      previous.set("tab", next);
+      return previous;
+    });
+  };
   const select = (next: typeof mode) => {
     setVisited((previous) => new Set([...previous, next]));
     setParams((previous) => {
@@ -30,28 +40,76 @@ export function TemplateWorkspacePage() {
   return (
     <div className="template-workspace">
       <SegmentedTabs
-        ariaLabel={t("template.workspace.label")}
+        ariaLabel={t("conversation.workspace")}
+        idPrefix="conversation-view"
         className="template-workspace__tabs"
-        idPrefix="mode"
-        items={modes.map((item) => ({ ...item, label: t(item.label) }))}
-        value={mode}
-        onChange={select}
+        value={tab}
+        onChange={selectTab}
+        items={[
+          { id: "recent", label: t("conversation.recent") },
+          { id: "new", label: t(conversationId ? "conversation.settings" : "conversation.new") },
+        ]}
       />
-      {modes.map((item) => (
-        <div
-          key={item.id}
-          id={`mode-panel-${item.id}`}
-          role="tabpanel"
-          aria-labelledby={`mode-${item.id}`}
-          hidden={mode !== item.id}
-        >
-          {(visited.has(item.id) || mode === item.id) && (
-            <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
-              {item.id === "normal" ? <NormalMode /> : <StoryMode />}
-            </Suspense>
-          )}
-        </div>
-      ))}
+      <div
+        role="tabpanel"
+        id="conversation-view-panel-recent"
+        aria-labelledby="conversation-view-recent"
+        hidden={tab !== "recent"}
+      >
+        {tab === "recent" && (
+          <ConversationLibrary
+            onCreate={() => {
+              setVisited((previous) => new Set([...previous, "normal"]));
+              setParams({ tab: "new", mode: "normal" });
+            }}
+            onEdit={(id) => {
+              setVisited((previous) => new Set([...previous, "normal"]));
+              setParams({ tab: "new", mode: "normal", conversation: id });
+            }}
+          />
+        )}
+      </div>
+      <div
+        role="tabpanel"
+        id="conversation-view-panel-new"
+        aria-labelledby="conversation-view-new"
+        hidden={tab !== "new"}
+      >
+        {!conversationId && (
+          <SegmentedTabs
+            ariaLabel={t("template.workspace.label")}
+            className="template-workspace__tabs"
+            idPrefix="mode"
+            items={modes.map((item) => ({ ...item, label: t(item.label) }))}
+            value={mode}
+            onChange={select}
+          />
+        )}
+        {conversationId && <p className="section__description">{t("conversation.settingsHint")}</p>}
+        {modes.map((item) => (
+          <div
+            key={item.id}
+            id={`mode-panel-${item.id}`}
+            role={conversationId ? undefined : "tabpanel"}
+            aria-labelledby={conversationId ? undefined : `mode-${item.id}`}
+            hidden={mode !== item.id}
+          >
+            {(visited.has(item.id) || (tab === "new" && mode === item.id)) && (
+              <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
+                {item.id === "normal" ? (
+                  <NormalMode
+                    key={conversationId || "new"}
+                    createOnly={!conversationId}
+                    conversationId={conversationId}
+                  />
+                ) : (
+                  <StoryMode />
+                )}
+              </Suspense>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

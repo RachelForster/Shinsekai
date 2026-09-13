@@ -1,6 +1,24 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "conversation.settings": "Chat settings",
+  "conversation.settingsHint":
+    "Change this chat's characters or template and continue its existing history. For older chats without saved settings, check the characters, template and media selection mode first.",
+  "conversation.saveAndContinue": "Save and continue",
+  "conversation.configureAndContinue": "Configure and continue",
+  "conversation.workspace": "Chats",
+  "conversation.recent": "Recent chats",
+  "conversation.new": "New chat",
+  "conversation.empty": "No chats yet. Choose characters and a template to get started.",
+  "conversation.untitled": "Untitled chat",
+  "conversation.continue": "Continue chat",
+  "conversation.rename": "Rename",
+  "conversation.title": "Chat title",
+  "conversation.normal": "Normal chat",
+  "conversation.story": "Story chat",
+  "conversation.noMessages": "No messages yet",
+  "conversation.missingStory": "Story link is missing. Restore this save from the story library.",
+  "conversation.createAndStart": "Create and start",
   "reminder.status.missed": "Missed",
   "reminder.status.cancelled": "Cancelled",
   "reminder.status.completed": "Completed",
@@ -1034,7 +1052,7 @@ export const enMessages: Record<MessageKey, string> = {
   "nav.settingsCenter": "Settings navigation",
   "nav.system": "System",
   "nav.effects": "Effects",
-  "nav.template": "Templates",
+  "nav.template": "Chats",
   "nav.tools": "Tools",
   "tools.browse": "Browse",
   "tools.character": "Character",
