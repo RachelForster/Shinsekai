@@ -7,7 +7,9 @@ from ai.llm.template.core.section import Section, TextSection
 from ai.llm.template.story.context import StoryRequestContext
 
 
-def build_story_author_system_section() -> Section[TemplateContext]:
+def build_story_author_system_section(
+    *, include_random_tools: bool = False
+) -> Section[TemplateContext]:
     return Section(
         id="story.author.system",
         children=(
@@ -35,6 +37,23 @@ def build_story_author_system_section() -> Section[TemplateContext]:
                     "not a whitelist of people or locations. "
                     "Runtime dialogue and media follow the ordinary chat template; "
                     "author only plot guidance."
+                ),
+            ),
+            TextSection(
+                id="random_tools",
+                priority=40,
+                enabled=include_random_tools,
+                text=(
+                    "\nYou may call the supplied random tools to sample, shuffle, roll dice, or assign labels. "
+                    "Use their actual results instead of inventing random outcomes. Give each decision a stable "
+                    "requestId and reuse identical arguments when retrying or repairing the same decision. "
+                    "resolvedRandomRequests contains previously committed decisions for this task; treat those "
+                    "results as authoritative and do not use a new requestId to reroll an existing decision. "
+                    "Tool results here belong to AUTHORING: any outcomes written into the artifact become fixed "
+                    "story facts. They are NOT new-game identity assignments. Per-session execution is not enabled "
+                    "yet; do not claim that these results will be rerolled at game start or invent executable triggers. "
+                    "Keep secrets only in the fields permitted by the stage schema. After tool use return exactly "
+                    "the requested JSON artifact, without tool transcripts, seeds, or extra protocol fields."
                 ),
             ),
         ),
