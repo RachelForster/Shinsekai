@@ -53,7 +53,7 @@
 
 ## 代码职责
 
-- `features/template-workspace`：模式标签与访问状态，不包含生成业务。
+- `features/chat-workspace`：聊天列表、新建类型选择与会话设置入口，不包含剧本生成业务。
 - 页面与分区复用 `page`、`section` 样式；控件复用 `Button`、`Select`、`TextArea`、
   `SegmentedTabs`。专属 CSS 仅负责工作区嵌入布局、生成阶段和剧本图。
 - `features/story-generator/state`：任务跟踪、恢复、取消与重新生成。

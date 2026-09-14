@@ -6,9 +6,9 @@ import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
 import { TextInput } from "../../shared/ui/FormControls";
 import { ConversationLibrary } from "./ConversationLibrary";
-import { ConversationTypeBadge } from "../../entities/chat/ConversationTypeBadge";
+import { ConversationTypeBadge } from "./ConversationTypeBadge";
 import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
-import "./TemplateWorkspacePage.css";
+import "./ChatWorkspacePage.css";
 
 const NormalMode = lazy(() =>
   import("../template-editor/TemplateEditorPage").then(({ TemplateEditorPage }) => ({ default: TemplateEditorPage })),
@@ -17,7 +17,7 @@ const StoryMode = lazy(() =>
   import("../story-generator/StoryGeneratorPage").then(({ StoryGeneratorPage }) => ({ default: StoryGeneratorPage })),
 );
 
-export function TemplateWorkspacePage() {
+export function ChatWorkspacePage() {
   const { t } = useI18n();
   const [params, setParams] = useSearchParams();
   const conversationId = params.get("conversation") || undefined;
@@ -31,7 +31,7 @@ export function TemplateWorkspacePage() {
   const [draftKey, setDraftKey] = useState(0);
   const back = () => setParams({ tab: "recent" });
   return (
-    <div className="template-workspace">
+    <div className="chat-workspace">
       {configuring ? (
         <>
           <header className="conversation-setup__header">

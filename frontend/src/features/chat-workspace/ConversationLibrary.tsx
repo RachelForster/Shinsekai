@@ -15,7 +15,7 @@ import {
 } from "../../entities/chat/repository";
 import { fileThumbnailUrl } from "../../entities/files/repository";
 import type { ConversationSummary } from "../../shared/platform/types";
-import { ConversationTypeBadge } from "../../entities/chat/ConversationTypeBadge";
+import { ConversationTypeBadge } from "./ConversationTypeBadge";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
 import { Button, Dialog, IconButton, TextInput } from "../../shared/ui";
@@ -23,6 +23,7 @@ import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDial
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { StoryLaunchButton } from "../story-generator/components/StoryLaunchButton";
+import "./ConversationLibrary.css";
 
 function ConversationAvatar({ name, path }: { name: string; path?: string }) {
   const [failedPath, setFailedPath] = useState<string>();

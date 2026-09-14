@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ConversationLibrary } from "../../../features/template-workspace/ConversationLibrary";
+import { ConversationLibrary } from "../../../features/chat-workspace/ConversationLibrary";
 import { I18nProvider } from "../../../shared/i18n";
 
 const mocks = vi.hoisted(() => ({

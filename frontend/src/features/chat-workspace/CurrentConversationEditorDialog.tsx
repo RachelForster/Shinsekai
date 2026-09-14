@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { conversationsQueryKey, getCurrentConversation } from "../../entities/chat/repository";
-import { ConversationTypeBadge } from "../../entities/chat/ConversationTypeBadge";
+import { ConversationTypeBadge } from "./ConversationTypeBadge";
 import { useI18n } from "../../shared/i18n";
 import type { ChatSnapshot } from "../../shared/platform/types";
 import { Button, Dialog } from "../../shared/ui";
-import { TemplateEditorPage } from "./TemplateEditorPage";
+import { TemplateEditorPage } from "../template-editor/TemplateEditorPage";
 import "./CurrentConversationEditorDialog.css";
 
 export function CurrentConversationEditorDialog({

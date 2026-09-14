@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
-import { TemplateWorkspacePage } from "../../../features/template-workspace/TemplateWorkspacePage";
+import { ChatWorkspacePage } from "../../../features/chat-workspace/ChatWorkspacePage";
 import { I18nProvider } from "../../../shared/i18n";
 import { resolveConversationTitle } from "../../../entities/chat/conversationTitle";
 
@@ -19,7 +19,7 @@ vi.mock("../../../features/template-editor/TemplateEditorPage", () => ({
     </div>
   ),
 }));
-vi.mock("../../../features/template-workspace/ConversationLibrary", () => ({
+vi.mock("../../../features/chat-workspace/ConversationLibrary", () => ({
   ConversationLibrary: ({ onCreate, onEdit }: { onCreate: () => void; onEdit: (id: string, kind: string) => void }) => (
     <>
       <button onClick={onCreate}>New chat</button>
@@ -36,7 +36,7 @@ function renderPage(path = "/settings/templates") {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <I18nProvider language="en">
-        <TemplateWorkspacePage />
+        <ChatWorkspacePage />
       </I18nProvider>
     </MemoryRouter>,
   );

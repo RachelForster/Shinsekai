@@ -70,7 +70,7 @@ interface ChatRouteInputState {
 }
 
 const CurrentConversationEditorDialog = lazy(() =>
-  import("../template-editor/CurrentConversationEditorDialog").then((module) => ({
+  import("../chat-workspace/CurrentConversationEditorDialog").then((module) => ({
     default: module.CurrentConversationEditorDialog,
   })),
 );

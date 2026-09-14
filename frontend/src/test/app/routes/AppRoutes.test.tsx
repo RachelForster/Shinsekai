@@ -5,7 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { AppRoutes } from "../../../app/routes/AppRoutes";
 import { I18nProvider } from "../../../shared/i18n";
 
-vi.mock("../../../entities/chat/ConversationTypeBadge", () => ({
+vi.mock("../../../features/chat-workspace/ConversationTypeBadge", () => ({
   ConversationTypeBadge: () => <span>Chat type</span>,
 }));
 
@@ -72,7 +72,7 @@ vi.mock("../../../features/system-settings/SystemSettingsPage", () => ({
 vi.mock("../../../features/template-editor/TemplateEditorPage", () => ({
   TemplateEditorPage: () => <h1>Templates route</h1>,
 }));
-vi.mock("../../../features/template-workspace/ConversationLibrary", () => ({
+vi.mock("../../../features/chat-workspace/ConversationLibrary", () => ({
   ConversationLibrary: () => <h1>Recent chats route</h1>,
 }));
 
@@ -101,7 +101,7 @@ function renderRoute(path: string) {
 describe("AppRoutes", () => {
   beforeAll(async () => {
     // Load the workspace's UI dependencies before timing route navigation.
-    await import("../../../features/template-workspace/TemplateWorkspacePage");
+    await import("../../../features/chat-workspace/ChatWorkspacePage");
   });
   afterEach(() => {
     vi.clearAllMocks();

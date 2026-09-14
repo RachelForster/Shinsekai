@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
-import { CurrentConversationEditorDialog } from "../../../features/template-editor/CurrentConversationEditorDialog";
+import { CurrentConversationEditorDialog } from "../../../features/chat-workspace/CurrentConversationEditorDialog";
 import { I18nProvider } from "../../../shared/i18n";
 
 vi.mock("../../../entities/chat/repository", () => ({

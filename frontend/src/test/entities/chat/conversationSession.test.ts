@@ -1,8 +1,8 @@
 import { beforeEach, expect, it, vi } from "vitest";
-import { getConversationSession } from "../../entities/chat/repository";
+import { getConversationSession } from "../../../entities/chat/repository";
 
 const prepare = vi.hoisted(() => vi.fn());
-vi.mock("../../shared/platform/platform", () => ({
+vi.mock("../../../shared/platform/platform", () => ({
   getPlatform: () => ({ chat: { prepareConversation: prepare } }),
 }));
 beforeEach(() => vi.resetAllMocks());

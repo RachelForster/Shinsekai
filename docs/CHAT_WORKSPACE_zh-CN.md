@@ -23,6 +23,14 @@
 剧本聊天编辑的是本次游玩的启动配置，剧本内容仍由原有剧本编辑器管理。
 现有立绘解析及资源选择策略保持原样。
 
+## 代码职责
+
+- `frontend/src/features/chat-workspace/`：聊天工作区、聊天列表、类型标签和当前聊天设置弹窗；组件样式与组件放在一起。
+- `frontend/src/features/template-editor/`：可复用的模板与启动配置编辑器，由聊天工作区调用。
+- `frontend/src/features/story-generator/`：剧本库、创作与启动交互。
+- `frontend/src/entities/chat/`：聊天数据访问和标题规则，不承载业务 UI。
+- 对应测试放在 `frontend/src/test/features/chat-workspace/` 和 `frontend/src/test/entities/chat/`。
+
 ## 存储兼容
 
 - 新建记录使用 `chat-时间戳-随机后缀`，不再以人物和模板内容计算身份。
