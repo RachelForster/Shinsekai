@@ -186,7 +186,8 @@ def _details(record: dict) -> dict:
         "kind": "story" if story else "normal",
         "storyPath": binding.get("storyPath", ""),
         "historyPath": path.as_posix(),
-        "hasSettings": bool(launch),
+        "hasSettings": bool(launch) and not record.get("requiresCharacterSelection", False),
+        "requiresCharacterSelection": bool(record.get("requiresCharacterSelection")),
     }
 
 
@@ -270,6 +271,32 @@ def rename_conversation(state: Any, conversation_id: str, title: str) -> dict:
         record["title"] = title
         _write(_directory(state) / f"{conversation_id}.json", record)
         return _details(record)
+
+
+def update_conversation_character(state: Any, old_name: str, new_name: str | None = None) -> None:
+    """Migrate renamed cast references; require editing after a cast member is deleted."""
+    with _metadata_lock:
+        for target in _directory(state).glob("*.json"):
+            record = _read(target)
+            if not isinstance(record, dict) or not isinstance(record.get("launch"), dict):
+                continue
+            launch = record["launch"]
+            editor = launch.get("editorSession")
+            changed = False
+            for settings, keys in ((launch, ("characters", "primaryCharacters")), (editor, ("selectedCharacters", "primaryCharacters"))):
+                if not isinstance(settings, dict):
+                    continue
+                for key in keys:
+                    names = settings.get(key)
+                    if not isinstance(names, list) or old_name not in names:
+                        continue
+                    changed = True
+                    if new_name is not None:
+                        settings[key] = list(dict.fromkeys(new_name if name == old_name else name for name in names))
+            if changed:
+                if new_name is None:
+                    record["requiresCharacterSelection"] = True
+                _write(target, record)
 
 
 def delete_conversation(state: Any, conversation_id: str) -> None:

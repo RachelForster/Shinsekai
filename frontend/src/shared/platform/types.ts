@@ -518,6 +518,7 @@ export interface ConversationSummary {
   storyPath: string;
   historyPath: string;
   hasSettings: boolean;
+  requiresCharacterSelection?: boolean;
 }
 
 export interface ChatLaunchPayload {

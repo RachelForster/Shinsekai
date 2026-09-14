@@ -17,6 +17,7 @@ from application.chat.conversation_library import (
     remember_conversation,
     rename_conversation,
     saved_conversation_launch,
+    update_conversation_character,
 )
 from application.chat.launch_history import plan_chat_history_launch
 
@@ -85,6 +86,36 @@ def test_saved_launch_survives_template_and_selection_changes(state):
     assert restored["resetHistory"] is False
     assert record["preview"] == "Good night"
     assert "Original prompt" not in json.dumps(record)
+
+
+def test_character_rename_migrates_saved_cast_and_primary_roles(state):
+    path = history(state)
+    remember_conversation(state, path, {
+        "characters": ["Alice"], "primaryCharacters": ["Alice"], "system": "Original prompt",
+        "editorSession": {"selectedCharacters": ["Alice"], "primaryCharacters": ["Alice"]},
+    })
+    identifier = list_conversations(state)[0]["id"]
+    rename_conversation(state, identifier, "My title")
+    update_conversation_character(state, "Alice", "Bob")
+    payload = conversation_launch_payload(state, identifier)
+    assert payload["characters"] == payload["primaryCharacters"] == ["Bob"]
+    assert payload["editorSession"]["selectedCharacters"] == ["Bob"]
+    assert payload["editorSession"]["primaryCharacters"] == ["Bob"]
+    assert payload["system"] == "Original prompt"
+    assert list_conversations(state)[0]["title"] == "My title"
+
+
+def test_deleted_character_requires_editing_until_a_replacement_is_saved(state):
+    path = history(state)
+    remember_conversation(state, path, {"characters": ["Alice"]})
+    update_conversation_character(state, "Alice")
+    item = list_conversations(state)[0]
+    assert item["requiresCharacterSelection"] is True
+    assert item["hasSettings"] is False
+    assert conversation_launch_payload(state, item["id"])["characters"] == ["Alice"]
+    remember_conversation(state, path, {"characters": ["Bob"]})
+    assert list_conversations(state)[0]["hasSettings"] is True
+    assert list_conversations(state)[0]["requiresCharacterSelection"] is False
 
 
 def test_fresh_registered_chat_is_available_before_any_messages(state):

@@ -143,7 +143,7 @@ export function ConversationLibrary({
                 <p className="conversation-card__preview">{item.preview || t("conversation.noMessages")}</p>
               </div>
               <div className="conversation-card__actions">
-                {item.kind === "story" ? (
+                {item.kind === "story" && !item.requiresCharacterSelection ? (
                   <StoryLaunchButton
                     storyPath={item.storyPath}
                     historyPath={item.historyPath}
@@ -155,7 +155,7 @@ export function ConversationLibrary({
                   <Button
                     variant="primary"
                     disabled={runtimeClosing || init.initializationPending}
-                    onClick={() => (item.hasSettings ? void launch(item) : onEdit(item.id))}
+                    onClick={() => (item.hasSettings ? void launch(item) : onEdit(item.id, item.kind))}
                   >
                     {t(item.hasSettings ? "conversation.continue" : "conversation.configureAndContinue")}
                   </Button>

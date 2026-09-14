@@ -24,6 +24,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "conversation.continue": "チャットを続ける",
   "conversation.rename": "名前を変更",
   "conversation.title": "チャット名",
+  "template.character.unavailable": "{name}（利用不可・クリックで選択解除）",
   "conversation.optionalTitle": "チャット名（任意）",
   "conversation.titlePlaceholder": "空欄の場合は作成日時を使用します",
   "conversation.emptyGreeting": "新しいチャットを作ってほしいにゃ",

@@ -90,6 +90,7 @@ def make_use_case(character, project_root: Path):
         character_manager=FakeCharacterManager(character),
         config_manager=FakeConfigManager(character),
         project_root_dir=str(project_root),
+        template_dir_path=str(project_root / "templates"),
     )
     return CharacterUseCase(state, file_access_roots=(project_root,))
 
@@ -102,6 +103,9 @@ def test_character_save_propagates_rename_to_template_session(tmp_path, monkeypa
     character = make_character()
     use_case = make_use_case(character, tmp_path)
     renamed = []
+    migrated = []
+    monkeypatch.setattr("application.chat.conversation_library.update_conversation_character",
+                        lambda _state, old, new: migrated.append((old, new)))
     monkeypatch.setattr(
         "application.characters.management.validate_character_payload",
         lambda *_args, **_kwargs: None,
@@ -121,6 +125,20 @@ def test_character_save_propagates_rename_to_template_session(tmp_path, monkeypa
     )
 
     assert renamed == [("A", "Mika")]
+    assert migrated == [("A", "Mika")]
+
+
+def test_character_delete_invalidates_conversation_settings(tmp_path, monkeypatch):
+    use_case = make_use_case(make_character(), tmp_path)
+    migrated = []
+    monkeypatch.setattr("application.chat.conversation_library.update_conversation_character",
+                        lambda _state, name: migrated.append(name))
+    def delete(name):
+        use_case._state.config_manager.character = SimpleNamespace(name="")
+        return "deleted", []
+    monkeypatch.setattr(use_case._state.character_manager, "delete_character", delete, raising=False)
+    execute(use_case, CharacterOperation.DELETE, {"name": "Mika"})
+    assert migrated == ["Mika"]
 
 
 def test_upload_sprite_voice_rejects_invalid_voice_type(tmp_path):

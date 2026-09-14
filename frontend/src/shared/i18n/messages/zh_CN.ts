@@ -23,6 +23,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "conversation.continue": "继续聊天",
   "conversation.rename": "重命名",
   "conversation.title": "聊天名称",
+  "template.character.unavailable": "{name}（已不可用，点击取消选择）",
   "conversation.optionalTitle": "聊天名称（可选）",
   "conversation.titlePlaceholder": "留空则按创建时间命名",
   "conversation.emptyGreeting": "请新建聊天喵",

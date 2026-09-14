@@ -164,7 +164,7 @@ describe("conversation library", () => {
     mocks.list.mockResolvedValue([{ ...entry, hasSettings: false }]);
     const { onEdit } = page();
     fireEvent.click(await screen.findByRole("button", { name: "Configure and continue" }));
-    expect(onEdit).toHaveBeenCalledWith("one");
+    expect(onEdit).toHaveBeenCalledWith("one", "normal");
     expect(mocks.launch).not.toHaveBeenCalled();
   });
   it("keeps multiple saves of the same story distinct", async () => {
@@ -181,6 +181,13 @@ describe("conversation library", () => {
     const buttons = await screen.findAllByRole("button", { name: "Resume story" });
     expect(buttons.map((button) => button.dataset.history)).toEqual(["/play-1", "/play-2"]);
     expect(buttons.map((button) => button.dataset.conversation)).toEqual(["story-1", "story-2"]);
+  });
+  it("routes a story with a deleted character to its settings", async () => {
+    mocks.list.mockResolvedValue([{ ...entry, kind: "story", hasSettings: false, requiresCharacterSelection: true }]);
+    const { onEdit } = page();
+    fireEvent.click(await screen.findByRole("button", { name: "Configure and continue" }));
+    expect(onEdit).toHaveBeenCalledWith("one", "story");
+    expect(screen.queryByRole("button", { name: "Resume story" })).not.toBeInTheDocument();
   });
   it("renames the record without starting or switching chats", async () => {
     page();

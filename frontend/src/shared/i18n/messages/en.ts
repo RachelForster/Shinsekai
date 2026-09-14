@@ -24,6 +24,7 @@ export const enMessages: Record<MessageKey, string> = {
   "conversation.continue": "Continue chat",
   "conversation.rename": "Rename",
   "conversation.title": "Chat title",
+  "template.character.unavailable": "{name} (unavailable; click to deselect)",
   "conversation.optionalTitle": "Chat title (optional)",
   "conversation.titlePlaceholder": "Leave blank to use the creation date and time",
   "conversation.emptyGreeting": "Start a new chat, meow!",

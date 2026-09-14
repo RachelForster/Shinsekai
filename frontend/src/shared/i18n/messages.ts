@@ -1,6 +1,7 @@
 export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
+  | "template.character.unavailable"
   | "conversation.settings"
   | "conversation.next"
   | "conversation.chooseType"
