@@ -36,12 +36,14 @@ export function StoryLaunchButton({
   label,
   disabled = false,
   conversationId,
+  conversationTitle,
 }: {
   storyPath: string;
   historyPath?: string;
   label?: string;
   disabled?: boolean;
   conversationId?: string;
+  conversationTitle?: string;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -67,7 +69,12 @@ export function StoryLaunchButton({
           launched = current;
         } else {
           const payload = await prepareStoryLaunch(storyPath, historyPath);
-          launched = await launchChat(conversationId ? await prepareConversation(conversationId) : payload, options);
+          launched = await launchChat(
+            conversationId
+              ? await prepareConversation(conversationId)
+              : { ...payload, conversationTitle: conversationTitle?.trim() },
+            options,
+          );
           localStorage.setItem(
             pendingAttachmentKey,
             JSON.stringify({ storyPath, historyPath, sessionId: launched.sessionId }),
@@ -90,7 +97,12 @@ export function StoryLaunchButton({
       <Button
         variant="primary"
         type="button"
-        disabled={disabled || !storyPath || init.initializationPending}
+        disabled={
+          disabled ||
+          !storyPath ||
+          init.initializationPending ||
+          (conversationTitle !== undefined && !conversationTitle.trim())
+        }
         onClick={() => void launch()}
       >
         {init.initializationPending ? t("story.launch.starting") : (label ?? t("story.launch.action"))}

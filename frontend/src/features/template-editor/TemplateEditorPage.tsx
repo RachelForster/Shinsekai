@@ -78,11 +78,13 @@ const voiceLanguages = templateVoiceLanguages;
 export function TemplateEditorPage({
   createOnly = false,
   conversationId,
+  conversationTitle,
   onApplied,
   onPendingChange,
 }: {
   createOnly?: boolean;
   conversationId?: string;
+  conversationTitle?: string;
   onApplied?: (snapshot: ChatSnapshot) => void;
   onPendingChange?: (pending: boolean) => void;
 }) {
@@ -555,6 +557,7 @@ export function TemplateEditorPage({
               savedSession,
             ),
             editorSession: savedSession,
+            ...(createOnly ? { conversationTitle: conversationTitle?.trim() } : {}),
           },
           progressOptions,
         );
@@ -1005,7 +1008,12 @@ export function TemplateEditorPage({
 
       <footer className="template-page__footer">
         <AsyncButton
-          disabled={!sessionRestored || (!conversationId && runtimeLaunchDisabled) || initializationPending}
+          disabled={
+            !sessionRestored ||
+            (!conversationId && runtimeLaunchDisabled) ||
+            initializationPending ||
+            (createOnly && conversationTitle !== undefined && !conversationTitle.trim())
+          }
           icon={<Play aria-hidden className="button__icon" />}
           loading={launchMutation.isPending}
           onClick={() => handleLaunch(false)}

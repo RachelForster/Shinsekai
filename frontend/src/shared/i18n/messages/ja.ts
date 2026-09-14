@@ -2,6 +2,13 @@ import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
   "conversation.settings": "チャット設定",
+  "conversation.next": "次へ",
+  "conversation.chooseType": "チャットの種類",
+  "conversation.normalHint": "キャラクターとテンプレートを選んで自由に会話",
+  "conversation.storyHint": "ストーリーを選択または作成して物語を進める",
+  "conversation.delete": "チャットを削除",
+  "conversation.deleteConfirm":
+    "「{title}」を削除しますか？メッセージ、分岐と物語の進行が削除されます。キャラクター、テンプレート、元のストーリーは保持されます。",
   "conversation.settingsHint":
     "キャラクターやテンプレートを変更しても、このチャットの履歴を引き継ぎます。設定のない旧履歴では、キャラクター・テンプレート・素材選択モードを確認してください。",
   "conversation.saveAndContinue": "適用して続ける",

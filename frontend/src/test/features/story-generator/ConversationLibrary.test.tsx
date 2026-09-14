@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   launch: vi.fn(),
   status: vi.fn(),
   show: vi.fn(),
+  remove: vi.fn(),
 }));
 vi.mock("../../../entities/chat/repository", () => ({
   conversationsQueryKey: ["chat", "conversations"],
@@ -19,6 +20,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   listConversations: mocks.list,
   prepareConversation: mocks.prepare,
   renameConversation: mocks.rename,
+  deleteConversation: mocks.remove,
   launchChat: mocks.launch,
   getChatRuntimeStatus: mocks.status,
 }));
@@ -83,6 +85,44 @@ describe("conversation library", () => {
       resetHistory: false,
     });
     mocks.launch.mockResolvedValue({ sessionId: "runtime-one" });
+    mocks.remove.mockResolvedValue(undefined);
+  });
+  it("offers settings and deletion for legacy normal and story chats", async () => {
+    mocks.list.mockResolvedValue([
+      { ...entry, hasSettings: false },
+      { ...entry, id: "story", kind: "story", hasSettings: false },
+    ]);
+    const { onEdit } = page();
+    const buttons = await screen.findAllByRole("button", { name: "Chat settings" });
+    buttons.forEach((button) => fireEvent.click(button));
+    expect(onEdit.mock.calls).toEqual([
+      ["one", "normal"],
+      ["story", "story"],
+    ]);
+    expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(2);
+  });
+  it("requires confirmation and refreshes the list after deletion", async () => {
+    page();
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }));
+    expect(mocks.remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    const dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText(/Delete “Evening”/)).toBeVisible();
+    mocks.list.mockResolvedValue([]);
+    fireEvent.click(dialog.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith("one"));
+    await waitFor(() => expect(screen.queryByText("Evening")).not.toBeInTheDocument());
+    expect(screen.getByText(/No chats yet/)).toBeVisible();
+  });
+  it("keeps the confirmation open and displays deletion errors", async () => {
+    mocks.remove.mockRejectedValue(new Error("Close this chat before deleting it."));
+    page();
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Close this chat");
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(screen.getByText("Evening")).toBeVisible();
   });
   it("continues the chosen record with its saved settings", async () => {
     page();

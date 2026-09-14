@@ -2,6 +2,13 @@ import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
   "conversation.settings": "Chat settings",
+  "conversation.next": "Next",
+  "conversation.chooseType": "Chat type",
+  "conversation.normalHint": "Choose characters and a template for an open conversation",
+  "conversation.storyHint": "Choose or create a story to play through",
+  "conversation.delete": "Delete chat",
+  "conversation.deleteConfirm":
+    "Delete “{title}”? Messages, branches and story progress will be deleted. Characters, templates and original stories will be kept.",
   "conversation.settingsHint":
     "Change this chat's characters or template and continue its existing history. For older chats without saved settings, check the characters, template and media selection mode first.",
   "conversation.saveAndContinue": "Apply and continue",

@@ -2,6 +2,12 @@ export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
   | "conversation.settings"
+  | "conversation.next"
+  | "conversation.chooseType"
+  | "conversation.normalHint"
+  | "conversation.storyHint"
+  | "conversation.delete"
+  | "conversation.deleteConfirm"
   | "conversation.settingsHint"
   | "conversation.editCurrent"
   | "conversation.applyHint"

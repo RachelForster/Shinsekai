@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Pencil, Settings, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
@@ -10,13 +11,14 @@ import {
   listConversations,
   prepareConversation,
   renameConversation,
+  deleteConversation,
 } from "../../entities/chat/repository";
 import { fileThumbnailUrl } from "../../entities/files/repository";
 import type { ConversationSummary } from "../../shared/platform/types";
 import { ConversationTypeBadge } from "../../entities/chat/ConversationTypeBadge";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import { Button, Dialog, TextInput } from "../../shared/ui";
+import { Button, Dialog, IconButton, TextInput } from "../../shared/ui";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { StoryLaunchButton } from "../story-generator/components/StoryLaunchButton";
@@ -48,6 +50,7 @@ export function ConversationLibrary({
   const conversations = useQuery({ queryKey: conversationsQueryKey, queryFn: listConversations, staleTime: 0 });
   const characters = useQuery({ queryKey: charactersQueryKey, queryFn: listCharacters });
   const [editing, setEditing] = useState<ConversationSummary | null>(null);
+  const [deleting, setDeleting] = useState<ConversationSummary | null>(null);
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -79,17 +82,31 @@ export function ConversationLibrary({
       setSaving(false);
     }
   };
+  const remove = async () => {
+    if (!deleting || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await deleteConversation(deleting.id);
+      await client.invalidateQueries({ queryKey: conversationsQueryKey });
+      setDeleting(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <section className="conversation-library">
       <div className="conversation-library__header">
-        <h1>{t("conversation.recent")}</h1>
+        <h1>{t("conversation.workspace")}</h1>
         <Button variant="primary" onClick={onCreate}>
           {t("conversation.new")}
         </Button>
       </div>
       {conversations.isPending && <p role="status">{t("common.loading")}</p>}
       {conversations.isError && <p role="alert">{conversations.error.message}</p>}
-      {error && !editing && <p role="alert">{error}</p>}
+      {error && !editing && !deleting && <p role="alert">{error}</p>}
       {conversations.isSuccess && !conversations.data.length && <p>{t("conversation.empty")}</p>}
       {conversations.isError && <Button onClick={() => void conversations.refetch()}>{t("common.refresh")}</Button>}
       <div className="conversation-library__list">
@@ -127,18 +144,28 @@ export function ConversationLibrary({
                     {t(item.hasSettings ? "conversation.continue" : "conversation.configureAndContinue")}
                   </Button>
                 )}
-                <Button
+                <IconButton
+                  label={t("conversation.rename")}
                   onClick={() => {
                     setEditing(item);
                     setTitle(name);
                     setError("");
                   }}
                 >
-                  {t("conversation.rename")}
-                </Button>
-                {item.hasSettings && (item.kind !== "story" || item.storyPath) && (
-                  <Button onClick={() => onEdit(item.id, item.kind)}>{t("conversation.settings")}</Button>
-                )}
+                  <Pencil aria-hidden className="icon-button__icon" />
+                </IconButton>
+                <IconButton label={t("conversation.settings")} onClick={() => onEdit(item.id, item.kind)}>
+                  <Settings aria-hidden className="icon-button__icon" />
+                </IconButton>
+                <IconButton
+                  label={t("common.delete")}
+                  onClick={() => {
+                    setDeleting(item);
+                    setError("");
+                  }}
+                >
+                  <Trash2 aria-hidden className="icon-button__icon" />
+                </IconButton>
               </div>
               {item.kind === "story" && !item.storyPath && <p role="status">{t("conversation.missingStory")}</p>}
             </article>
@@ -164,6 +191,28 @@ export function ConversationLibrary({
           value={title}
           onChange={(event) => setTitle(event.target.value)}
         />
+        {error && <p role="alert">{error}</p>}
+      </Dialog>
+      <Dialog
+        open={Boolean(deleting)}
+        title={t("conversation.delete")}
+        closeLabel={t("common.close")}
+        dismissible={!saving}
+        onClose={() => {
+          if (!saving) setDeleting(null);
+        }}
+        footer={
+          <>
+            <Button disabled={saving} onClick={() => setDeleting(null)}>
+              {t("common.cancel")}
+            </Button>
+            <Button variant="danger" disabled={saving} onClick={() => void remove()}>
+              {t("common.delete")}
+            </Button>
+          </>
+        }
+      >
+        <p>{t("conversation.deleteConfirm", { title: deleting?.title || t("conversation.untitled") })}</p>
         {error && <p role="alert">{error}</p>}
       </Dialog>
       <ChatInitializationDialog

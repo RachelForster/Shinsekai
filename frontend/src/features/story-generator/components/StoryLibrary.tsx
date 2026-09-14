@@ -5,7 +5,7 @@ import { listStories, storyLibraryQueryKey } from "../../../entities/story/repos
 import { Button } from "../../../shared/ui";
 import { StoryLaunchButton } from "./StoryLaunchButton";
 
-export function StoryLibrary({ onCreate }: { onCreate: () => void }) {
+export function StoryLibrary({ onCreate, conversationTitle }: { onCreate: () => void; conversationTitle?: string }) {
   const { t, language } = useI18n();
   const listFormatter = new Intl.ListFormat(language.replace("_", "-"), { style: "short", type: "unit" });
   const stories = useQuery({ queryKey: storyLibraryQueryKey, queryFn: listStories, staleTime: 0 });
@@ -51,6 +51,7 @@ export function StoryLibrary({ onCreate }: { onCreate: () => void }) {
             <StoryLaunchButton
               key={`${story.storyPath}-${story.historyPath}`}
               storyPath={story.storyPath}
+              conversationTitle={conversationTitle}
               label={t("conversation.createAndStart")}
             />
           </article>

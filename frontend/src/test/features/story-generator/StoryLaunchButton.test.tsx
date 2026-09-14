@@ -38,7 +38,12 @@ vi.mock("../../../entities/story/repository", () => ({
 vi.mock("../../../shared/desktop/chatWindow", () => ({ showChatSurface }));
 vi.mock("../../../features/chat-startup/ChatInitializationDialog", () => ({ ChatInitializationDialog: () => null }));
 
-function renderButton(historyPath = "", language: FrontendLanguage = "zh_CN", conversationId?: string) {
+function renderButton(
+  historyPath = "",
+  language: FrontendLanguage = "zh_CN",
+  conversationId?: string,
+  conversationTitle?: string,
+) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <I18nProvider language={language}>
@@ -48,6 +53,7 @@ function renderButton(historyPath = "", language: FrontendLanguage = "zh_CN", co
             historyPath={historyPath}
             disabled={false}
             conversationId={conversationId}
+            conversationTitle={conversationTitle}
           />
         </MemoryRouter>
       </I18nProvider>
@@ -56,6 +62,22 @@ function renderButton(historyPath = "", language: FrontendLanguage = "zh_CN", co
 }
 
 describe("story launch", () => {
+  it("passes the new chat title without changing story preparation", async () => {
+    renderButton("", "en", undefined, "Evening adventure");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    await waitFor(() =>
+      expect(launchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationTitle: "Evening adventure", historyPath: "" }),
+        expect.anything(),
+      ),
+    );
+    expect(prepareStoryLaunch).toHaveBeenCalledWith("story/draft.json", "");
+  });
+
+  it("requires a name when launched from new-chat setup", () => {
+    renderButton("", "en", undefined, "  ");
+    expect(screen.getByRole("button", { name: "Play story" })).toBeDisabled();
+  });
   it("validates the selected story save and resumes its own prompt settings", async () => {
     prepareConversation.mockResolvedValue({ historyPath: "saved", system: "Saved rules", resetHistory: false });
     renderButton("saved", "zh_CN", "saved-id");

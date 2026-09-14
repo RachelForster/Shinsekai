@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { Outlet, MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { AppRoutes } from "../../../app/routes/AppRoutes";
 import { I18nProvider } from "../../../shared/i18n";
@@ -99,6 +99,10 @@ function renderRoute(path: string) {
 }
 
 describe("AppRoutes", () => {
+  beforeAll(async () => {
+    // Load the workspace's UI dependencies before timing route navigation.
+    await import("../../../features/template-workspace/TemplateWorkspacePage");
+  });
   afterEach(() => {
     vi.clearAllMocks();
   });

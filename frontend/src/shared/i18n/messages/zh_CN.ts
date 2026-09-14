@@ -2,6 +2,12 @@ import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
   "conversation.settings": "聊天设置",
+  "conversation.next": "下一步",
+  "conversation.chooseType": "聊天类型",
+  "conversation.normalHint": "选择人物和模板，自由对话",
+  "conversation.storyHint": "选择或创作剧本，展开故事",
+  "conversation.delete": "删除聊天",
+  "conversation.deleteConfirm": "确定删除“{title}”吗？聊天记录、分支和剧本进度将被删除，人物、模板和剧本原稿不受影响。",
   "conversation.settingsHint":
     "修改此聊天的人物或模板，保存后继续原记录。旧记录未保存完整设置时，请先确认人物、模板和资源选择模式。",
   "conversation.saveAndContinue": "应用并继续",

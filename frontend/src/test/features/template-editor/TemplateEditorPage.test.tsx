@@ -185,13 +185,20 @@ describe("TemplateEditorPage", () => {
 
   it("new chat always creates independent history even with a remembered path", async () => {
     mockGetTemplateSession.mockResolvedValue(savedChat);
-    renderPage({ createOnly: true });
+    renderPage({ createOnly: true, conversationTitle: "Evening walk" });
     await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
     expect(screen.queryByRole("button", { name: "Quick restart" })).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("D:/history/chosen")).not.toBeInTheDocument();
     await clickButton(screen.getByRole("button", { name: "Create and start" }));
     await waitFor(() =>
-      expect(mockLaunchChat).toHaveBeenCalledWith(expect.objectContaining({ resetHistory: true, historyPath: "" })),
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resetHistory: true,
+          historyPath: "",
+          conversationTitle: "Evening walk",
+          templateName: "My saved chat",
+        }),
+      ),
     );
   });
 
