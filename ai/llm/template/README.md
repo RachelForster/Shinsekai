@@ -199,6 +199,9 @@ change. JSON examples, media selection rules and other requirements are unchange
 
 Tool prompt projection reads current plugin manifest enable flags. Disabled
 plugin callables (including stale imported decorators) and groups with no visible
-tools are omitted; enabled tools in shared groups remain discoverable. Generating
+tools are omitted; enabled tools in shared groups remain discoverable. Modules
+without a current manifest owner are visible only in the host's `ai.tools`
+namespace (including MCP runners), so removed external plugins are also omitted.
+Generating
 a template does not re-register disabled decorators. This affects newly generated
 prompts, not saved chat history or the runtime tool execution policy.
