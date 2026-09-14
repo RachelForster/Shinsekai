@@ -66,8 +66,9 @@ def format_llm_tools_block(translate) -> str:
         if owners:
             longest = max(len(package) for package, _ in owners)
             return any(enabled for package, enabled in owners if len(package) == longest)
-        # A removed local plugin can remain imported until the process restarts.
-        return not module.startswith("plugins.")
+        # Removed plugins can remain imported under arbitrary module names.
+        # Only host tools (including ToolManager's MCP runners) need no owner.
+        return module.startswith("ai.tools.")
 
     # Template generation may precede full host startup. Apply only visible
     # declarations; never resurrect disabled plugin decorators in ToolManager.

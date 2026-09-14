@@ -52,19 +52,44 @@ def _base_fields(context: DialogTemplateContext) -> dict[str, OutputFieldSpec]:
     return fields
 
 
-def build_field_requirements(
+def _patched_fields(
     context: DialogTemplateContext,
-) -> TextSection[DialogTemplateContext]:
-    if not any(patch.field_patches or patch.add_fields for patch in context.output_contract_patches):
-        return TextSection("fields", enabled=False)
-    base = _base_fields(context)
-    fields = base
+    fields: dict[str, OutputFieldSpec],
+) -> dict[str, OutputFieldSpec]:
     selection_field = "vibe" if context.uses_vibe else "sprite"
-    fields = apply_field_patches(
+    return apply_field_patches(
         fields,
         context.output_contract_patches,
         protected_fields=frozenset({"character_name", "speech", selection_field}),
     )
+
+
+def removed_optional_fields(context: DialogTemplateContext) -> tuple[str, ...]:
+    """Resolve removable builtin fields without translating their rule text."""
+    if not any(patch.remove_fields for patch in context.output_contract_patches):
+        return ()
+    base = {
+        key: OutputFieldSpec(key)
+        for key, enabled in (
+            ("effect", context.use_effect),
+            ("translate", context.use_llm_translation),
+        )
+        if enabled
+    }
+    fields = _patched_fields(context, base)
+    return tuple(key for key in base if key not in fields)
+
+
+def build_field_requirements(
+    context: DialogTemplateContext,
+) -> TextSection[DialogTemplateContext]:
+    if not any(
+        patch.field_patches or patch.add_fields or patch.remove_fields
+        for patch in context.output_contract_patches
+    ):
+        return TextSection("fields", enabled=False)
+    base = _base_fields(context)
+    fields = _patched_fields(context, base)
     lines = tuple(
         TextSection(
             output_field.key,
@@ -85,10 +110,14 @@ def build_field_requirements(
         for output_field in fields.values()
         if output_field != base.get(output_field.key)
     )
+    lines += tuple(
+        TextSection(key, text=f"- {key}: Do not include this field in the output.\n")
+        for key in base
+        if key not in fields
+    )
     return TextSection(
         "fields",
         priority=180,
         enabled=bool(lines),
         children=lines,
     )
-

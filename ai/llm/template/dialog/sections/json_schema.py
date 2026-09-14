@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
+from .field_requirements import removed_optional_fields
 
 
 def _json_string_content(value: str) -> str:
@@ -19,6 +20,7 @@ class JsonSchemaSection(Section[DialogTemplateContext]):
         self, context: DialogTemplateContext
     ) -> tuple[Section[DialogTemplateContext], ...]:
         translate = context.translate
+        removed = removed_optional_fields(context)
         generated = (
             TextSection(
                 "head",
@@ -35,12 +37,12 @@ class JsonSchemaSection(Section[DialogTemplateContext]):
             ),
             TextSection(
                 "effect",
-                enabled=context.use_effect,
+                enabled=context.use_effect and "effect" not in removed,
                 text=lambda ctx: ctx.translate("json_line_effect"),
             ),
             TextSection(
                 "translation",
-                enabled=context.use_llm_translation,
+                enabled=context.use_llm_translation and "translate" not in removed,
                 text=lambda ctx: ctx.translate(
                     "json_line_trans",
                     target_voice_name=_json_string_content(ctx.target_voice_name),

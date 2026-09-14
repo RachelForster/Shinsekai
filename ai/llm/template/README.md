@@ -62,10 +62,10 @@ DialogTemplateSection             sections/dialog_template.py
 ```
 
 The root renders the preamble, then its four children in priority order.
-`JsonSchemaSection` owns the JSON example and patched field contract;
+`JsonSchemaSection` owns the JSON example;
 `CharacterSection` owns sprites and character profiles; `BackgroundSection`
 owns scene and music catalogs; `RequirementsSection` owns tool guidance,
-patched rules, closing text and the final JSON reminder. Small text nodes
+patched field guidance and rules, closing text and the final JSON reminder. Small text nodes
 within each section use `enabled` for optional content. Context-dependent child
 nodes are returned internally by `_resolve_children`, then handled by the same
 Composite renderer as static children.
@@ -136,16 +136,19 @@ objects to output fields and requirements. Patch priority is ascending and ties
 preserve input order, independently of section ordering. Each render starts from
 fresh base fields and requirements; patches are never accumulated in the context.
 
-- Field removal cannot remove `character_name`, `speech` or `sprite`.
+- Field removal cannot remove `character_name`, `speech` or the active selection
+  field (`sprite` in indexed mode, `vibe` in semantic mode).
 - Field overrides retain aliases; empty descriptions keep the existing text.
 - Field additions follow overrides, retaining the existing overwrite semantics.
 - Requirements retain stable IDs and append/prepend/replace/remove operations.
 - Requirement additions can replace or re-enable an existing requirement.
 - Unknown requirement modes log a warning and retain the existing requirement.
-- JSON examples retain their existing behavior; patches affect field notes and
-  requirements, not the illustrative JSON example.
+- Removed builtin optional fields are omitted from the JSON example and their
+  corresponding rules, with an explicit omission note in requirements. Final
+  field state wins over rule additions; re-add the field to restore its rule.
+  Other field patches affect field notes, not the illustrative JSON example.
 - Builtin field descriptions appear only in requirements. There is no separate
-  `Output field contract` block. Only added or changed plugin fields contribute
+  `Output field contract` block. Only added, changed or removed fields contribute
   extra field notes through `RequirementsSection`.
 
 ## Files and verification
@@ -165,7 +168,7 @@ template/
       character.py
       background.py
       requirements.py
-      field_requirements.py # Plugin-only field additions/overrides
+      field_requirements.py # Plugin field changes and removal projection
     patches.py            # Shared SDK OutputContractPatch reducers
   prompts/              # System and user text assembly
     system.py
@@ -196,6 +199,9 @@ change. JSON examples, media selection rules and other requirements are unchange
 
 Tool prompt projection reads current plugin manifest enable flags. Disabled
 plugin callables (including stale imported decorators) and groups with no visible
-tools are omitted; enabled tools in shared groups remain discoverable. Generating
+tools are omitted; enabled tools in shared groups remain discoverable. Modules
+without a current manifest owner are visible only in the host's `ai.tools`
+namespace (including MCP runners), so removed external plugins are also omitted.
+Generating
 a template does not re-register disabled decorators. This affects newly generated
 prompts, not saved chat history or the runtime tool execution policy.

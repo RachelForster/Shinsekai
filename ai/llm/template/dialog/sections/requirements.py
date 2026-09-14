@@ -9,7 +9,7 @@ from sdk.types import RequirementSpec
 from ...core import Section, TextSection
 from ..context import DialogTemplateContext
 from ..patches import apply_requirement_patches
-from .field_requirements import build_field_requirements
+from .field_requirements import build_field_requirements, removed_optional_fields
 
 
 @dataclass(frozen=True)
@@ -143,12 +143,17 @@ def _resolve_requirement_specs(
     sections: tuple[_RequirementRuleSection, ...],
     context: DialogTemplateContext,
 ) -> list[RequirementSpec]:
+    removed_rules = {f"r_{key}" for key in removed_optional_fields(context)}
     specs = [
         RequirementSpec(section.id, section.requirement_text(context), section.priority)
         for section in sections
-        if section.enabled
+        if section.enabled and section.id not in removed_rules
     ]
-    return apply_requirement_patches(specs, context.output_contract_patches)
+    return [
+        spec
+        for spec in apply_requirement_patches(specs, context.output_contract_patches)
+        if spec.id not in removed_rules
+    ]
 
 
 def _resolve_requirement_sections(
