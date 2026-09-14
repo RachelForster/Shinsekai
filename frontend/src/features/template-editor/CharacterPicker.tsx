@@ -32,6 +32,21 @@ export function CharacterPicker({
         </Button>
       </div>
       <div aria-label={t("template.field.characters")} className="template-character-grid" role="group">
+        {selected
+          .filter((name) => !characters.some((character) => character.name === name))
+          .map((name) => (
+            <button
+              key={name}
+              type="button"
+              className="template-character-card"
+              disabled={disabled}
+              style={getCharacterChipStyle("")}
+              aria-pressed="true"
+              onClick={() => onChange(selected.filter((selectedName) => selectedName !== name))}
+            >
+              {t("template.character.unavailable", { name })}
+            </button>
+          ))}
         {characters.map((character) => (
           <button
             key={character.name}

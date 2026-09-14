@@ -67,7 +67,7 @@ def test_quick_restart_preserves_explicit_history_and_uses_new_managed_path(
         start_fresh=True,
     )
 
-    expected_name = f"{_history_id_from_scenario('scene', ['Alice'])}-{instance_id}"
+    expected_name = f"chat-{instance_id}"
     assert target.previous_history_path == selected
     assert target.history_path == Path(state.history_dir) / expected_name
     assert target.starts_fresh is True

@@ -246,10 +246,12 @@ class LLMManager:
         hook_dispatcher: PluginHookDispatcher | None = None,
         media_selection_mode: str = "indexed",
         tools_enabled: bool = True,
+        use_current_template_for_history: bool = False,
     ):
         self.llm_adapter = adapter
         self.messages = []
         self.user_template = user_template
+        self.use_current_template_for_history = use_current_template_for_history
         self.hook_dispatcher = hook_dispatcher
         self.max_context_tokens = int(max_tokens)
         self.history_recent_messages = max(1, int(history_recent_messages))
@@ -707,6 +709,11 @@ class LLMManager:
         """Sets the conversation history to a new list of messages."""
         if isinstance(new_messages, list):
             self.messages = list(new_messages)
+            if getattr(self, "use_current_template_for_history", False):
+                if self.messages and self.messages[0].get("role") == "system":
+                    self.messages[0] = {**self.messages[0], "content": self.user_template}
+                else:
+                    self.messages.insert(0, {"role": "system", "content": self.user_template})
             self._strip_orphaned_tool_calls()
             self.messages = self._trim_loaded_history_if_needed(self.messages)
             self.compact_manager.set_token_count(self.compact_manager.count_tokens(self.messages))

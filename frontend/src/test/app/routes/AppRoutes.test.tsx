@@ -1,9 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { Outlet, MemoryRouter } from "react-router-dom";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { AppRoutes } from "../../../app/routes/AppRoutes";
 import { I18nProvider } from "../../../shared/i18n";
+
+vi.mock("../../../features/chat-workspace/ConversationTypeBadge", () => ({
+  ConversationTypeBadge: () => <span>Chat type</span>,
+}));
 
 vi.mock("../../../app/shell/AppShell", () => ({
   AppShell: () => (
@@ -68,6 +72,9 @@ vi.mock("../../../features/system-settings/SystemSettingsPage", () => ({
 vi.mock("../../../features/template-editor/TemplateEditorPage", () => ({
   TemplateEditorPage: () => <h1>Templates route</h1>,
 }));
+vi.mock("../../../features/chat-workspace/ConversationLibrary", () => ({
+  ConversationLibrary: () => <h1>Recent chats route</h1>,
+}));
 
 vi.mock("../../../features/tools/ToolsPage", () => ({
   ToolsPage: () => <h1>Tools route</h1>,
@@ -92,6 +99,10 @@ function renderRoute(path: string) {
 }
 
 describe("AppRoutes", () => {
+  beforeAll(async () => {
+    // Load the workspace's UI dependencies before timing route navigation.
+    await import("../../../features/chat-workspace/ChatWorkspacePage");
+  });
   afterEach(() => {
     vi.clearAllMocks();
   });
@@ -102,13 +113,14 @@ describe("AppRoutes", () => {
     ["/settings/characters", "Characters route"],
     ["/settings/backgrounds", "Backgrounds route"],
     ["/settings/effects", "Effects route"],
-    ["/settings/templates", "Templates route"],
+    ["/settings/templates", "Recent chats route"],
+    ["/settings/templates?tab=new", "Templates route"],
     ["/settings/plugins", "Plugins route"],
     ["/settings/logs", "Logs route"],
     ["/settings/tools", "Tools route"],
     ["/settings/stories/new", "Story generator route"],
     ["/settings/music-cover", "Music cover route"],
-    ["/settings/launch", "Launch route"],
+    ["/settings/launch", "Recent chats route"],
     ["/settings/system", "System route"],
     ["/settings/system/chat-themes", "Chat themes route"],
     ["/settings/system/chat-themes/customize", "Chat theme customizer route"],

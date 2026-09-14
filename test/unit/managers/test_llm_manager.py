@@ -25,6 +25,16 @@ class ToolPairBadRequest(Exception):
 
 
 class TestLLMManagerMessageManagement:
+    @pytest.mark.parametrize("edited", [False, True])
+    def test_loaded_history_uses_current_prompt_only_after_explicit_edit(self, mock_llm_adapter, edited):
+        mgr = LLMManager(adapter=mock_llm_adapter, user_template="Edited rules", use_current_template_for_history=edited)
+        for old in ("Original rules", "Other branch rules"):
+            messages = [{"role": "system", "content": old}, {"role": "user", "content": "Keep my message"}]
+            mgr.set_messages(messages)
+            assert mgr.messages[0]["content"] == ("Edited rules" if edited else old)
+            assert mgr.messages[1:] == messages[1:]
+            assert messages[0]["content"] == old
+
     def test_init_creates_system_message_with_template(self, mock_llm_adapter):
         mgr = LLMManager(adapter=mock_llm_adapter, user_template="You are helpful.")
         assert len(mgr.messages) == 1

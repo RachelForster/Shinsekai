@@ -22,6 +22,15 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("deletes only the selected conversation through the bridge", async () => {
+    const fetchMock = vi.fn(() => mockJsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createHttpPlatform("http://127.0.0.1:8787/").chat.deleteConversation("selected-chat");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/conversations/selected-chat",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -1128,6 +1137,56 @@ describe("http platform", () => {
         method: "POST",
       }),
     );
+  });
+
+  it("resets transport sequence numbers when reconnecting to a new session", async () => {
+    vi.useFakeTimers();
+    const snapshot = {
+      dialogText: "",
+      inputDraft: "",
+      options: [],
+      sprites: [],
+      status: "idle",
+      wsUrl: "ws://127.0.0.1:8788/ws",
+      sessionId: "old",
+      eventSeq: 80,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => mockJsonResponse(snapshot))
+      .mockImplementation(() => mockJsonResponse({ ...snapshot, sessionId: "new", eventSeq: 1 }));
+    vi.stubGlobal("fetch", fetchMock);
+    class Socket {
+      static instances: Socket[] = [];
+      onclose: ((event: Event) => void) | null = null;
+      onmessage: ((event: MessageEvent) => void) | null = null;
+      close = vi.fn();
+      constructor(public url: string) {
+        Socket.instances.push(this);
+      }
+    }
+    vi.stubGlobal("WebSocket", Socket);
+    const listener = vi.fn();
+    const stop = createHttpPlatform("http://127.0.0.1:8787").chat.subscribeEvents(listener);
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      Socket.instances[0].onclose?.(new Event("close"));
+      await vi.advanceTimersByTimeAsync(800);
+      expect(Socket.instances[1].url).toContain("sessionId=new");
+      expect(listener).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "snapshot", seq: 1, snapshot: expect.objectContaining({ sessionId: "new" }) }),
+      );
+      Socket.instances[1].onmessage?.(
+        new MessageEvent("message", {
+          data: JSON.stringify({ type: "notification.change", seq: 2, ts: 0, v: 1, text: "new" }),
+        }),
+      );
+      expect(listener).toHaveBeenLastCalledWith(expect.objectContaining({ seq: 2, text: "new" }));
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      stop();
+      vi.useRealTimers();
+    }
   });
 
   it("subscribes to chat events over websocket when the snapshot exposes a session", async () => {

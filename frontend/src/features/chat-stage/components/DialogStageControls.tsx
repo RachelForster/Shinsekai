@@ -48,6 +48,7 @@ export function DialogStageControls({
   onLockedChange,
   onOpenBranches,
   onOpenHistory,
+  onEditConversation,
   onOpenPluginPage,
   onTurnOptionsChange,
   showBranches,
@@ -75,6 +76,7 @@ export function DialogStageControls({
   onLockedChange: (locked: boolean) => void;
   onOpenBranches: () => void;
   onOpenHistory: () => void;
+  onEditConversation?: () => void;
   onOpenPluginPage: (target: PluginPageTarget) => void;
   onTurnOptionsChange: (options: ChatTurnOptions) => void;
   showBranches: boolean;
@@ -241,6 +243,14 @@ export function DialogStageControls({
           <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-dialog-actions" />
         </div>
         <ChatTurnSettingsPopover
+          onEditConversation={
+            onEditConversation
+              ? () => {
+                  closeChatSettings();
+                  onEditConversation();
+                }
+              : undefined
+          }
           bgmVolume={bgmVolume}
           effectVolume={effectVolume}
           onBgmVolumeChange={onBgmVolumeChange}

@@ -17,6 +17,14 @@ def _tr(key, **_kwargs):
 
 
 class ChatLaunchArgsTests(unittest.TestCase):
+    def test_explicit_conversation_edit_flag_round_trips_through_launch_config(self):
+        with patch.dict(os.environ, {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"use_current_template_for_history": True})}):
+            config = load_chat_launch_config()
+        parser = build_chat_arg_parser(_tr)
+        parser.set_defaults(**config)
+        self.assertTrue(parser.parse_args([]).use_current_template_for_history)
+        self.assertFalse(build_chat_arg_parser(_tr).parse_args([]).use_current_template_for_history)
+
     def test_parser_accepts_mirror_stream_endpoint(self):
         parser = build_chat_arg_parser(_tr)
 

@@ -122,6 +122,7 @@ export interface ChatStageViewModel {
 }
 
 export type ChatStageAction =
+  | { type: "replaceSession"; snapshot: ChatSnapshot; receivedAt?: number }
   | { type: "event"; event: ChatStageEvent; receivedAt?: number }
   | { type: "hydrate"; snapshot: ChatSnapshot; receivedAt?: number }
   | { type: "addAttachments"; attachments: ChatAttachmentInput[] }

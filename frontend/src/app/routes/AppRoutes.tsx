@@ -25,11 +25,6 @@ const CharacterEditorPage = lazy(() =>
     default: CharacterEditorPage,
   })),
 );
-const ChatLauncherPage = lazy(() =>
-  import("../../features/chat-launcher/ChatLauncherPage").then(({ ChatLauncherPage }) => ({
-    default: ChatLauncherPage,
-  })),
-);
 const ChatStagePage = lazy(() =>
   import("../../features/chat-stage/ChatStagePage").then(({ ChatStagePage }) => ({
     default: ChatStagePage,
@@ -70,9 +65,9 @@ const SystemSettingsPage = lazy(() =>
     default: SystemSettingsPage,
   })),
 );
-const TemplateWorkspacePage = lazy(() =>
-  import("../../features/template-workspace/TemplateWorkspacePage").then(({ TemplateWorkspacePage }) => ({
-    default: TemplateWorkspacePage,
+const ChatWorkspacePage = lazy(() =>
+  import("../../features/chat-workspace/ChatWorkspacePage").then(({ ChatWorkspacePage }) => ({
+    default: ChatWorkspacePage,
   })),
 );
 const ToolsPage = lazy(() =>
@@ -111,12 +106,12 @@ export function AppRoutes() {
         <Route element={lazyRouteElement(<CharacterEditorPage />)} path="characters" />
         <Route element={lazyRouteElement(<BackgroundManagerPage />)} path="backgrounds" />
         <Route element={lazyRouteElement(<EffectManagerPage />)} path="effects" />
-        <Route element={lazyRouteElement(<TemplateWorkspacePage />)} path="templates" />
+        <Route element={lazyRouteElement(<ChatWorkspacePage />)} path="templates" />
         <Route element={lazyRouteElement(<PluginManagerPage />)} path="plugins" />
         <Route element={lazyRouteElement(<LogsPage />)} path="logs" />
         <Route element={lazyRouteElement(<ToolsPage />)} path="tools" />
         <Route element={lazyRouteElement(<MusicCoverPage />)} path="music-cover" />
-        <Route element={lazyRouteElement(<ChatLauncherPage />)} path="launch" />
+        <Route element={<Navigate replace to="/settings/templates" />} path="launch" />
         <Route element={lazyRouteElement(<SystemSettingsPage />)} path="system" />
         <Route element={<Navigate replace to="/settings/templates?mode=story" />} path="stories/new" />
         <Route element={lazyRouteElement(<ChatThemeManagementPage />)} path="system/chat-themes" />

@@ -196,13 +196,11 @@ describe("StoryGeneratorPage", () => {
     const page = renderPage("en");
     fireEvent.click(await screen.findByRole("tab", { name: "Saved stories" }));
     expect(await screen.findByText("旧校舍谜案")).toBeVisible();
-    expect(screen.getByText("Last progress: 调查教室")).toBeVisible();
     expect(screen.getByText("小玲, 小明")).toBeVisible();
     expect(screen.getByText("Background: 旧校舍, Transparent scene")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Continue playing" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Create and start" })).toBeEnabled();
     page.changeLanguage("ja");
-    expect(screen.getByText("前回の進行状況：调查教室")).toBeVisible();
-    expect(screen.getByRole("button", { name: "プレイを再開" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "作成して開始" })).toBeEnabled();
   });
   beforeEach(() => {
     vi.clearAllMocks();
@@ -358,8 +356,7 @@ describe("StoryGeneratorPage", () => {
     fireEvent.change(await screen.findByRole("textbox", { name: "剧情梗概" }), { target: { value: "我的新故事" } });
     fireEvent.click(screen.getByRole("tab", { name: "已有剧本" }));
     expect(await screen.findByText("旧校舍谜案")).toBeInTheDocument();
-    expect(screen.getByText("上次进度：调查教室")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "继续游玩" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "创建并开始" })).toBeEnabled();
     fireEvent.click(screen.getByRole("tab", { name: "创作新剧本" }));
     expect(screen.getByRole("textbox", { name: "剧情梗概" })).toHaveValue("我的新故事");
   });

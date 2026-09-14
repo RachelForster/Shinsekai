@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from application.chat.build_effect_context import build_effect_context
+from application.chat.conversation_library import remember_conversation, saved_conversation_launch
 from application.chat.initial_sprite import initial_sprite_path_for_characters
 from application.chat.launch_history import (
     persist_confirmed_history_path,
@@ -118,6 +119,23 @@ def start_chat_initialization(
     body: dict[str, Any],
 ) -> dict[str, Any]:
     mode = str(body.get("mode") or "").strip().lower()
+    if mode == "reconfigure":
+        from application.chat.reconfigure_conversation import (
+            prepare_conversation_edit,
+            restart_edited_conversation,
+        )
+
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        conversation_id = str(body.get("conversationId") or "")
+        edited = prepare_conversation_edit(state, conversation_id, payload)
+        return start_chat(
+            state,
+            mode=mode,
+            before_launch=lambda: restart_edited_conversation(state, conversation_id, edited),
+            launch=lambda stream: launch_chat(state, edited, init_stream_info=stream),
+        )
     if mode == "launch":
         payload = body.get("payload")
         if not isinstance(payload, dict):
@@ -261,6 +279,7 @@ def launch_chat(
         ),
         workflow_path=str(body.get("workflowPath") or ""),
         media_selection_mode=media_selection_mode,
+        **({"use_current_template_for_history": True} if body.get("useCurrentTemplateForHistory") else {}),
     )
     dependency_error = runtime_dependency_error_from_text(message)
     if dependency_error:
@@ -317,6 +336,18 @@ def launch_chat(
             "Chat launched but the selected history path could not be persisted",
             extra={"history_path": history_path.as_posix()},
         )
+    try:
+        remember_conversation(state, history_path, {
+            **body,
+            "characters": characters,
+            "scenario": user_scenario,
+            "system": system_template,
+            "templateName": row.get("name", ""),
+            "mediaSelectionMode": media_selection_mode,
+            "initSpritePath": init_sprite_path,
+        })
+    except OSError:
+        logger.exception("Chat launched but its conversation settings could not be saved")
     return _chat_snapshot(
         state,
         "idle",
@@ -356,6 +387,9 @@ def resume_last_chat(
     )
     if history_path is None:
         raise FileNotFoundError("未找到聊天记录（*.json）。请先在主窗口进行过对话。")
+    saved_launch = saved_conversation_launch(state, history_path)
+    if saved_launch is not None:
+        return launch_chat(state, saved_launch, init_stream_info=init_stream_info)
     template_parts = _resume_template_parts(state)
     session_scenario = str(session.get("scenario") or "")
     session_system = str(session.get("system") or "")

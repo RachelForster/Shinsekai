@@ -15,11 +15,11 @@ import { useStoryGeneration } from "./state/useStoryGeneration";
 import { stages } from "./state/stages";
 import "./StoryGeneratorPage.css";
 
-function StoryWorkspace() {
+function StoryWorkspace({ conversationTitle }: { conversationTitle?: string }) {
   const { t } = useI18n();
   const [params] = useSearchParams();
   const [view, setView] = useState<"create" | "library">(() =>
-    params.get("view") === "library" ? "library" : "create",
+    conversationTitle !== undefined || params.get("view") === "library" ? "library" : "create",
   );
   const generation = useStoryGeneration();
   const [regenerationStage, setRegenerationStage] = useState<StoryGenerationStage>("narrative");
@@ -42,7 +42,9 @@ function StoryWorkspace() {
         aria-labelledby="story-view-library"
         hidden={view !== "library"}
       >
-        {view === "library" && <StoryLibrary onCreate={() => setView("create")} />}
+        {view === "library" && (
+          <StoryLibrary conversationTitle={conversationTitle} onCreate={() => setView("create")} />
+        )}
       </div>
       <div role="tabpanel" id="story-view-panel-create" aria-labelledby="story-view-create" hidden={view !== "create"}>
         <StorySetupForm pending={pending} onStart={generation.start} />
@@ -70,6 +72,7 @@ function StoryWorkspace() {
                 <StoryLaunchButton
                   key={`${task.id}-${task.updatedAt}`}
                   storyPath={task.draftPath}
+                  conversationTitle={conversationTitle}
                   disabled={pending || !task.validation?.valid || !task.draftPath}
                 />
                 <details className="story-regenerate">
@@ -106,7 +109,7 @@ function StoryWorkspace() {
   );
 }
 
-export function StoryGeneratorPage() {
+export function StoryGeneratorPage({ conversationTitle }: { conversationTitle?: string }) {
   const { t } = useI18n();
   return (
     <div className="page story-generator-page">
@@ -117,7 +120,7 @@ export function StoryGeneratorPage() {
         </div>
       </header>
       <StoryFeatureGate>
-        <StoryWorkspace />
+        <StoryWorkspace conversationTitle={conversationTitle} />
       </StoryFeatureGate>
     </div>
   );

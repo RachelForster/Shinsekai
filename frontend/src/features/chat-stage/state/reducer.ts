@@ -1,4 +1,5 @@
 import { mergeChatAttachmentInputs } from "../attachments";
+import { emptyChatState } from "./initialState";
 import { applyStageEvent } from "./events";
 import { clearTransientNotificationState, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
@@ -131,7 +132,11 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
           text: action.event.text.trim(),
         });
       }
-      if (!state.optimisticSubmission || next === state) {
+      if (
+        (state.sessionId && next.sessionId && next.sessionId !== state.sessionId) ||
+        !state.optimisticSubmission ||
+        next === state
+      ) {
         return next;
       }
       if (action.event.type === "snapshot") {
@@ -148,9 +153,15 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       }
       return next;
     }
+    case "replaceSession":
+      return hydrateFromSnapshot(emptyChatState, action.snapshot, action.receivedAt);
     case "hydrate": {
       const next = hydrateFromSnapshot(state, action.snapshot, action.receivedAt);
-      if (!state.optimisticSubmission || next === state) {
+      if (
+        (state.sessionId && next.sessionId && next.sessionId !== state.sessionId) ||
+        !state.optimisticSubmission ||
+        next === state
+      ) {
         return next;
       }
       // Hydration requests may have started before the user submitted. Keep the

@@ -5,7 +5,7 @@ import { listStories, storyLibraryQueryKey } from "../../../entities/story/repos
 import { Button } from "../../../shared/ui";
 import { StoryLaunchButton } from "./StoryLaunchButton";
 
-export function StoryLibrary({ onCreate }: { onCreate: () => void }) {
+export function StoryLibrary({ onCreate, conversationTitle }: { onCreate: () => void; conversationTitle?: string }) {
   const { t, language } = useI18n();
   const listFormatter = new Intl.ListFormat(language.replace("_", "-"), { style: "short", type: "unit" });
   const stories = useQuery({ queryKey: storyLibraryQueryKey, queryFn: listStories, staleTime: 0 });
@@ -48,16 +48,11 @@ export function StoryLibrary({ onCreate }: { onCreate: () => void }) {
                   ) || t("template.transparentBackground"),
               })}
             </p>
-            <p>
-              {story.historyPath
-                ? t("story.library.progress", { node: story.currentNodeTitle || t("story.library.saved") })
-                : t("story.library.unplayed")}
-            </p>
             <StoryLaunchButton
               key={`${story.storyPath}-${story.historyPath}`}
               storyPath={story.storyPath}
-              historyPath={story.historyPath}
-              label={story.historyPath ? t("story.library.continue") : t("story.library.start")}
+              conversationTitle={conversationTitle}
+              label={t("conversation.createAndStart")}
             />
           </article>
         ))}

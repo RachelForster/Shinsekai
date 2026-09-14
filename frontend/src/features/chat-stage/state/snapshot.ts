@@ -79,6 +79,9 @@ function restoreEffectImage(state: ChatStageState, snapshot: ChatSnapshot, recei
 }
 
 export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapshot, receivedAt = 0): ChatStageState {
+  if (snapshot.sessionId && state.sessionId && snapshot.sessionId !== state.sessionId) {
+    state = emptyChatState;
+  }
   const nextEventSeq = snapshotEventSeq(snapshot);
   if (nextEventSeq < state.eventSeq) {
     return state;

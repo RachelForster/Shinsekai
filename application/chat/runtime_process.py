@@ -409,6 +409,7 @@ def _launch_chat(
     init_stream_endpoint: str = "",
     workflow_path: str = "",
     media_selection_mode: str = "indexed",
+    use_current_template_for_history: bool = False,
 ) -> str:
     global _main_chat_process
 
@@ -469,6 +470,8 @@ def _launch_chat(
         if workflow_path:
             launch_config["workflow"] = workflow_path
         env = os.environ.copy()
+        if use_current_template_for_history:
+            launch_config["use_current_template_for_history"] = True
         env[CHAT_LAUNCH_CONFIG_ENV] = json.dumps(launch_config, ensure_ascii=False)
         env["SHINSEKAI_PROJECT_ROOT"] = str(project_root)
         env["EASYAI_PROJECT_ROOT"] = str(project_root)

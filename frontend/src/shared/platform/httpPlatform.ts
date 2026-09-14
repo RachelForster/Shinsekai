@@ -592,6 +592,24 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return result;
       },
       getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
+      listConversations: () => requestJson(apiBase, "/api/chat/conversations"),
+      deleteConversation: async (id) => {
+        await requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}`, { method: "DELETE" });
+      },
+      getCurrentConversation: () => requestJson(apiBase, "/api/chat/conversations/current"),
+      async reconfigureConversation(conversationId, payload, options) {
+        const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
+          body: JSON.stringify({ mode: "reconfigure", conversationId, payload }),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task, options);
+      },
+      prepareConversation: (id) => requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}/launch-payload`),
+      renameConversation: (id, title) =>
+        requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}/rename`, {
+          method: "POST",
+          body: JSON.stringify({ title }),
+        }),
       getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>(apiBase, "/api/chat/runtime-status"),
       getSnapshot: () => requestJson<ChatSnapshot>(apiBase, chatSnapshotPath()),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),
@@ -668,8 +686,14 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         let seq = 0;
         let socket: WebSocket | null = null;
         let lastEventSeq = 0;
+        let currentSessionId = "";
 
         const emitSnapshot = (snapshot: ChatSnapshot) => {
+          if (snapshot.sessionId && snapshot.sessionId !== currentSessionId) {
+            currentSessionId = snapshot.sessionId;
+            seq = 0;
+            lastEventSeq = 0;
+          }
           const snapshotSeq =
             typeof snapshot.eventSeq === "number" && Number.isFinite(snapshot.eventSeq) ? snapshot.eventSeq : 0;
           const event: ChatStageEvent = {
@@ -762,7 +786,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
                 if (lastEventSeq > 0 && parsed.seq > lastEventSeq + 1) {
                   void requestJson<ChatSnapshot>(apiBase, chatSnapshotPath())
                     .then((nextSnapshot) => {
-                      if (!stopped) {
+                      if (!stopped && socket === ws) {
                         emitSnapshot(nextSnapshot);
                       }
                     })

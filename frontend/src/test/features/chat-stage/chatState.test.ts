@@ -4,6 +4,25 @@ import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../..
 import { chatStageSpriteAxisCenter, limitChatStageSpritesToSlots } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
+  it("resets transient state and the sequence watermark when the session changes", () => {
+    let old = chatStageReducer(
+      { ...emptyChatState, sessionId: "old", eventSeq: 100 },
+      { type: "submitUserMessage", text: "old optimistic input" },
+    );
+    const snapshot = { ...emptyChatState, effectImage: null, sessionId: "new", eventSeq: 1, dialogText: "New session" };
+    const next = chatStageReducer(old, { type: "hydrate", snapshot });
+    expect(next.sessionId).toBe("new");
+    expect(next.eventSeq).toBe(1);
+    expect(next.optimisticSubmission).toBeUndefined();
+    expect(next.dialogText).toBe("New session");
+    expect(
+      chatStageReducer(next, {
+        type: "event",
+        event: { type: "notification.change", seq: 2, ts: 0, v: 1, text: "new" },
+      }).notificationText,
+    ).toBe("new");
+    expect(chatStageReducer(next, { type: "hydrate", snapshot: { ...snapshot, eventSeq: 0 } })).toBe(next);
+  });
   afterEach(() => vi.restoreAllMocks());
 
   it.each([-30_000, 30_000])("times image events locally despite a wall-clock offset of %s", (offset) => {

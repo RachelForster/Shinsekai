@@ -3,7 +3,7 @@ import { Play, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatTurnOptions, ChatTurnState } from "../../../shared/platform/types";
-import { IconButton, Switch } from "../../../shared/ui";
+import { Button, IconButton, Switch } from "../../../shared/ui";
 
 export function ChatTurnSettingsPopover({
   bgmVolume,
@@ -12,6 +12,7 @@ export function ChatTurnSettingsPopover({
   onEffectVolumeChange,
   onCancelBatch,
   onClose,
+  onEditConversation,
   onFlushBatch,
   onTurnOptionsChange,
   open,
@@ -24,6 +25,7 @@ export function ChatTurnSettingsPopover({
   onEffectVolumeChange: (value: number) => void;
   onCancelBatch: () => void;
   onClose: () => void;
+  onEditConversation?: () => void;
   onFlushBatch: () => void;
   onTurnOptionsChange: (options: ChatTurnOptions) => void;
   open: boolean;
@@ -65,6 +67,7 @@ export function ChatTurnSettingsPopover({
           <X aria-hidden />
         </IconButton>
       </header>
+      {onEditConversation && <Button onClick={onEditConversation}>{t("conversation.editCurrent")}</Button>}
       <div className="dialog-stage-controls__chat-settings-options">
         <Switch
           checked={turnOptions.batchEnabled}

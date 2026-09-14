@@ -1,13 +1,22 @@
 import { useI18n } from "../../../shared/i18n";
+import { resolveConversationTitle } from "../../../entities/chat/conversationTitle";
 import { Button } from "../../../shared/ui";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { chatQueryKey, getChatRuntimeStatus, getChatSnapshot, launchChat } from "../../../entities/chat/repository";
+import {
+  chatQueryKey,
+  conversationsQueryKey,
+  getChatRuntimeStatus,
+  getChatSnapshot,
+  launchChat,
+  prepareConversation,
+} from "../../../entities/chat/repository";
 import { prepareStoryLaunch, startStorySession, storyLibraryQueryKey } from "../../../entities/story/repository";
 import { showChatSurface } from "../../../shared/desktop/chatWindow";
 import { ChatInitializationDialog } from "../../chat-startup/ChatInitializationDialog";
 import { useChatInitialization } from "../../chat-startup/useChatInitialization";
+import { useChatLaunchGuard } from "../../chat-startup/useChatLaunchGuard";
 
 const pendingAttachmentKey = "story.pending-attachment.v1";
 
@@ -28,19 +37,24 @@ export function StoryLaunchButton({
   historyPath = "",
   label,
   disabled = false,
+  conversationId,
+  conversationTitle,
 }: {
   storyPath: string;
   historyPath?: string;
   label?: string;
   disabled?: boolean;
+  conversationId?: string;
+  conversationTitle?: string;
 }) {
   const { t } = useI18n();
   const navigate = useNavigate();
   const client = useQueryClient();
   const init = useChatInitialization();
+  const { runtimeClosing, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
   const [error, setError] = useState("");
   const launch = async () => {
-    if (!storyPath || init.initializationPending) return;
+    if (!storyPath || runtimeClosing || init.initializationPending) return;
     setError("");
     try {
       const snapshot = await init.runChatInitialization(async (options) => {
@@ -57,17 +71,28 @@ export function StoryLaunchButton({
           }
           launched = current;
         } else {
-          launched = await launchChat(await prepareStoryLaunch(storyPath, historyPath), options);
+          const payload = await prepareStoryLaunch(storyPath, historyPath);
+          launched = await launchChat(
+            conversationId
+              ? await prepareConversation(conversationId)
+              : {
+                  ...payload,
+                  conversationTitle: historyPath ? undefined : resolveConversationTitle(conversationTitle),
+                },
+            options,
+          );
           localStorage.setItem(
             pendingAttachmentKey,
             JSON.stringify({ storyPath, historyPath, sessionId: launched.sessionId }),
           );
+          await updateRuntimeStatusFromSnapshot(launched);
         }
         const story = await startStorySession(storyPath);
         return { ...launched, ...story };
       });
       client.setQueryData(chatQueryKey, snapshot);
       void client.invalidateQueries({ queryKey: storyLibraryQueryKey });
+      void client.invalidateQueries({ queryKey: conversationsQueryKey });
       await showChatSurface({ navigate, snapshot });
       localStorage.removeItem(pendingAttachmentKey);
     } catch (reason) {
@@ -79,7 +104,7 @@ export function StoryLaunchButton({
       <Button
         variant="primary"
         type="button"
-        disabled={disabled || !storyPath || init.initializationPending}
+        disabled={disabled || !storyPath || runtimeClosing || init.initializationPending}
         onClick={() => void launch()}
       >
         {init.initializationPending ? t("story.launch.starting") : (label ?? t("story.launch.action"))}

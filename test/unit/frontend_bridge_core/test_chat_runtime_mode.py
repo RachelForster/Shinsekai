@@ -640,9 +640,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 snapshot = handler._launch_chat(body)
             marker_survived = marker.is_file()
 
-        expected_history = (
-            f"{_history_id_from_scenario('scene', ['Alice'])}-{instance_id}"
-        )
+        expected_history = f"chat-{instance_id}"
         self.assertEqual(launch_chat.call_args.kwargs["user_scenario"], "scene")
         self.assertEqual(
             Path(launch_chat.call_args.kwargs["history_file"]).name,

@@ -278,7 +278,17 @@ class ChatStreamService:
 
     def delete_session(self, session_id: str) -> None:
         with self._lock:
-            self._sessions.pop(session_id, None)
+            session = self._sessions.pop(session_id, None)
+        if session is None:
+            return
+        connections = list(session.viewers)
+        if session.producer is not None:
+            connections.append(session.producer)
+        loop = self._loop
+        if connections and loop is not None and loop.is_running():
+            async def close_connections() -> None:
+                await asyncio.gather(*(connection.close() for connection in connections), return_exceptions=True)
+            asyncio.run_coroutine_threadsafe(close_connections(), loop)
 
     def wait_for_producer(self, session_id: str, *, timeout: float = 5.0) -> bool:
         with self._lock:

@@ -1,4 +1,5 @@
 import { CharacterPicker } from "./CharacterPicker";
+import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { updateCharacterRoles } from "./characterRoles";
 import type { CSSProperties } from "react";
@@ -8,7 +9,13 @@ import { Play, RotateCw, Save, Sparkles } from "lucide-react";
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, ensureCharacterBriefs, listCharacters } from "../../entities/character/repository";
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
-import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
+import {
+  conversationsQueryKey,
+  getConversationSession,
+  installMissingRuntimeDependency,
+  launchChat,
+  reconfigureConversation,
+} from "../../entities/chat/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
@@ -69,20 +76,35 @@ import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
 
-export function TemplateEditorPage() {
+export function TemplateEditorPage({
+  createOnly = false,
+  conversationId,
+  conversationTitle,
+  onApplied,
+  onPendingChange,
+}: {
+  createOnly?: boolean;
+  conversationId?: string;
+  conversationTitle?: string;
+  onApplied?: (snapshot: ChatSnapshot) => void;
+  onPendingChange?: (pending: boolean) => void;
+}) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
   const sessionQuery = useQuery({
-    queryFn: getTemplateSession,
-    queryKey: [...templatesQueryKey, "session"],
+    queryFn: () => (conversationId ? getConversationSession(conversationId) : getTemplateSession()),
+    queryKey: conversationId
+      ? [...conversationsQueryKey, conversationId, "settings"]
+      : [...templatesQueryKey, "session"],
   });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const effectsQuery = useQuery({ queryFn: listEffects, queryKey: effectsQueryKey });
-  const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const { refreshRuntimeStatus, runtimeLaunchDisabled, runtimeClosing, updateRuntimeStatusFromSnapshot } =
+    useChatLaunchGuard();
   const {
     closeInitialization,
     initializationError,
@@ -91,6 +113,7 @@ export function TemplateEditorPage() {
     initializationTask,
     runChatInitialization,
   } = useChatInitialization();
+  useEffect(() => onPendingChange?.(initializationPending), [initializationPending, onPendingChange]);
   const templates = templatesQuery.data ?? [];
   const isLoading = templatesQuery.isLoading;
   const launchSession = sessionQuery.data;
@@ -169,7 +192,7 @@ export function TemplateEditorPage() {
     if (!sessionFetched || sessionRestored) {
       return;
     }
-    if (launchSession?.templateFileDropdown && !templates.length) {
+    if (!conversationId && launchSession?.templateFileDropdown && templatesQuery.isPending) {
       return;
     }
     if (!launchSession) {
@@ -222,7 +245,7 @@ export function TemplateEditorPage() {
       }),
     );
     setSessionRestored(true);
-  }, [launchSession, sessionFetched, sessionRestored, t, templates]);
+  }, [conversationId, launchSession, sessionFetched, sessionRestored, t, templates, templatesQuery.isPending]);
 
   useEffect(() => {
     if (!backgroundOptions.includes(selectedBackground)) {
@@ -495,7 +518,7 @@ export function TemplateEditorPage() {
 
   const launchMutation = useMutation({
     mutationFn: async ({ resetHistory }: { resetHistory: boolean }) => {
-      if (runtimeLaunchDisabled) {
+      if (runtimeClosing || (runtimeLaunchDisabled && !conversationId)) {
         throw new Error(t("launch.runtimeBusy"));
       }
       return runChatInitialization(async (progressOptions) => {
@@ -509,32 +532,43 @@ export function TemplateEditorPage() {
           mediaSelectionMode,
           options: templateOptionsState,
           primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
-          runtime: runtimeOptionsState,
+          runtime: createOnly ? { ...runtimeOptionsState, historyPath: "" } : runtimeOptionsState,
           selectedCharacters,
           selectedTemplateId: selectedId,
         });
-        const savedSession = await saveTemplateSession(session);
-        queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
-        const snapshot = await launchChat(
-          synchronizeChatLaunchPayloadWithSession(
-            buildChatLaunchPayload({
-              backgroundName: selectedBackground,
-              effectNames: selectedEffects,
-              mobileAccessEnabled,
-              mediaSelectionMode,
-              resetHistory,
-              runtime: runtimeOptionsState,
-              selectedCharacters,
-              template,
-              useCg,
-            }),
-            savedSession,
-          ),
+        const savedSession = conversationId ? session : await saveTemplateSession(session);
+        if (!conversationId) queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
+        const apply = conversationId
+          ? (payload: Parameters<typeof launchChat>[0], options: Parameters<typeof launchChat>[1]) =>
+              reconfigureConversation(conversationId, payload, options)
+          : launchChat;
+        const snapshot = await apply(
+          {
+            ...synchronizeChatLaunchPayloadWithSession(
+              buildChatLaunchPayload({
+                backgroundName: selectedBackground,
+                effectNames: selectedEffects,
+                mobileAccessEnabled,
+                mediaSelectionMode,
+                resetHistory: conversationId ? false : createOnly || resetHistory,
+                runtime: createOnly ? { ...runtimeOptionsState, historyPath: "" } : runtimeOptionsState,
+                selectedCharacters,
+                template,
+                useCg,
+              }),
+              savedSession,
+            ),
+            editorSession: savedSession,
+            ...(createOnly ? { conversationTitle: resolveConversationTitle(conversationTitle) } : {}),
+          },
           progressOptions,
         );
         const confirmedSession = synchronizeTemplateLaunchSessionWithSnapshot(savedSession, snapshot);
         if (confirmedSession !== savedSession) {
-          queryClient.setQueryData([...templatesQueryKey, "session"], confirmedSession);
+          queryClient.setQueryData(
+            conversationId ? [...conversationsQueryKey, conversationId, "settings"] : [...templatesQueryKey, "session"],
+            confirmedSession,
+          );
           setHistoryPath(confirmedSession.historyPath);
         }
         return { snapshot, template };
@@ -549,12 +583,17 @@ export function TemplateEditorPage() {
       });
     },
     onSuccess({ snapshot, template }) {
+      void queryClient.invalidateQueries({ queryKey: conversationsQueryKey });
       void updateRuntimeStatusFromSnapshot(snapshot);
       const normalized = normalizeTemplateSummary(template);
       setSessionDraftActive(true);
       setDraft(normalized);
       if (snapshot.runtimeDependencyError) {
         void handleRuntimeDependencyError(snapshot);
+        return;
+      }
+      if (onApplied) {
+        onApplied(snapshot);
         return;
       }
       showToast({
@@ -734,14 +773,16 @@ export function TemplateEditorPage() {
               }}
               value={draft.name}
             />
-            <AsyncButton
-              className="template-save-button"
-              icon={<Save aria-hidden className="button__icon" />}
-              loading={saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}
-            >
-              {t("common.save")}
-            </AsyncButton>
+            {!conversationId && (
+              <AsyncButton
+                className="template-save-button"
+                icon={<Save aria-hidden className="button__icon" />}
+                loading={saveMutation.isPending}
+                onClick={() => saveMutation.mutate()}
+              >
+                {t("common.save")}
+              </AsyncButton>
+            )}
           </span>
           {nameError ? <span className="field-error">{nameError}</span> : null}
         </label>
@@ -957,32 +998,44 @@ export function TemplateEditorPage() {
                 value={initSpritePath}
               />
             </label>
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.historyFile")}</span>
-              <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
-            </label>
+            {!createOnly && !conversationId && (
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.historyFile")}</span>
+                <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
+              </label>
+            )}
           </div>
         </aside>
       </div>
 
       <footer className="template-page__footer">
         <AsyncButton
-          disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
+          disabled={
+            !sessionRestored || runtimeClosing || (!conversationId && runtimeLaunchDisabled) || initializationPending
+          }
           icon={<Play aria-hidden className="button__icon" />}
           loading={launchMutation.isPending}
           onClick={() => handleLaunch(false)}
           variant="primary"
         >
-          {t("template.action.launch")}
+          {t(
+            conversationId
+              ? "conversation.saveAndContinue"
+              : createOnly
+                ? "conversation.createAndStart"
+                : "template.action.launch",
+          )}
         </AsyncButton>
-        <Button
-          disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
-          icon={<RotateCw aria-hidden className="button__icon" />}
-          onClick={() => setQuickRestartOpen(true)}
-          variant="ghost"
-        >
-          {t("template.action.quickRestart")}
-        </Button>
+        {!createOnly && !conversationId && (
+          <Button
+            disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
+            icon={<RotateCw aria-hidden className="button__icon" />}
+            onClick={() => setQuickRestartOpen(true)}
+            variant="ghost"
+          >
+            {t("template.action.quickRestart")}
+          </Button>
+        )}
       </footer>
 
       <AlertDialog

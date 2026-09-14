@@ -18,6 +18,22 @@ from frontend_bridge_core.transport.ws_client import WSClientSink
 from config.schema import ApiConfig
 
 
+def test_delete_session_closes_viewers_so_they_can_reconnect():
+    async def run():
+        service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
+        service._loop = asyncio.get_running_loop()
+        info = service.create_session()
+        closed = asyncio.Event()
+        class Viewer:
+            async def close(self):
+                closed.set()
+        service._sessions[info["sessionId"]].viewers.add(Viewer())
+        service.delete_session(info["sessionId"])
+        await asyncio.wait_for(closed.wait(), timeout=1)
+        assert service.get_snapshot(info["sessionId"]) is None
+    asyncio.run(run())
+
+
 class _StubChatStream:
     def __init__(self):
         self.command = None

@@ -508,7 +508,33 @@ export interface TemplateGenerationResult extends TemplateSummary {
   resolvedCharacters: string[];
 }
 
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  characters: string[];
+  preview: string;
+  updatedAt: number;
+  kind: "normal" | "story";
+  storyPath: string;
+  historyPath: string;
+  hasSettings: boolean;
+  requiresCharacterSelection?: boolean;
+}
+
 export interface ChatLaunchPayload {
+  characterPromptMode?: CharacterPromptMode;
+  primaryCharacters?: string[];
+  maxDialogItems?: number;
+  maxSpeechChars?: number;
+  useChoice?: boolean;
+  useCot?: boolean;
+  useEffect?: boolean;
+  useNarration?: boolean;
+  useStat?: boolean;
+  useTranslation?: boolean;
+  voiceLanguage?: string;
+  conversationTitle?: string;
+  editorSession?: TemplateLaunchSession;
   backgroundName: string;
   characters: string[];
   enableMobileAccess?: boolean;
@@ -1379,6 +1405,16 @@ export interface ShinsekaiPlatform {
     uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
+    getCurrentConversation: () => Promise<ConversationSummary | null>;
+    reconfigureConversation: (
+      id: string,
+      payload: ChatLaunchPayload,
+      options?: TaskProgressOptions<ChatSnapshot>,
+    ) => Promise<ChatSnapshot>;
+    listConversations: () => Promise<ConversationSummary[]>;
+    prepareConversation: (id: string) => Promise<ChatLaunchPayload>;
+    renameConversation: (id: string, title: string) => Promise<ConversationSummary>;
+    deleteConversation: (id: string) => Promise<void>;
     close: () => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;

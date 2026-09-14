@@ -400,6 +400,12 @@ describe("entity repositories", () => {
     const unsubscribe = vi.fn();
     const platform = {
       chat: {
+        listConversations: vi.fn().mockResolvedValue([]),
+        getCurrentConversation: vi.fn().mockResolvedValue(null),
+        reconfigureConversation: vi.fn(),
+        prepareConversation: vi.fn(),
+        renameConversation: vi.fn(),
+        deleteConversation: vi.fn(),
         close: vi.fn().mockResolvedValue(sampleChatSnapshot),
         command: vi.fn().mockResolvedValue(sampleChatSnapshot),
         getHistory: vi.fn().mockResolvedValue(sampleChatSnapshot.historyEntries ?? []),
