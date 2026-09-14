@@ -8,6 +8,7 @@ import pytest
 
 from application.chat.conversation_library import (
     conversation_launch_payload,
+    current_conversation,
     delete_conversation,
     list_conversations,
     remember_conversation,
@@ -81,6 +82,28 @@ def test_saved_launch_survives_template_and_selection_changes(state):
     assert restored["resetHistory"] is False
     assert record["preview"] == "Good night"
     assert "Original prompt" not in json.dumps(record)
+
+
+def test_fresh_registered_chat_is_available_before_any_messages(state):
+    path = Path(state.history_dir) / "fresh"
+    remember_conversation(state, path, {"characters": ["Alice"]})
+    state.chat_session = {"historyPath": str(path)}
+    assert current_conversation(state)["hasSettings"] is True
+    assert list_conversations(state)[0]["preview"] == ""
+
+
+def test_registered_crash_history_reads_tmp_without_consuming_it(state):
+    path = history(state)
+    remember_conversation(state, path, {"characters": ["Alice"]})
+    (path / "active.json").unlink()
+    temporary = path / "active.json.tmp"
+    content = json.dumps({"role": "user", "content": "Recover me"}) + ',\n{"partial"'
+    temporary.write_text(content, encoding="utf-8")
+    state.chat_session = {"historyPath": str(path)}
+    assert current_conversation(state)["preview"] == "Recover me"
+    assert list_conversations(state)[0]["preview"] == "Recover me"
+    assert temporary.read_text(encoding="utf-8") == content
+    assert not (path / "active.json").exists()
 
 
 def test_chat_title_is_independent_of_template_name_and_keeps_renames(state):

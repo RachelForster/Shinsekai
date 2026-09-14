@@ -58,6 +58,14 @@ def _write(path: Path, value: dict) -> None:
 def remember_conversation(state: Any, history_path: Path, payload: dict) -> None:
     """Store the effective launch, never a reference to the mutable template body."""
     path = resolve_history_path_for_project(state, history_path)
+    active = chat_history_active_path(path)
+    active.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        # Never replace a snapshot already written by the chat process.
+        with active.open("x", encoding="utf-8") as file:
+            file.write("[]")
+    except FileExistsError:
+        pass
     target = _directory(state) / f"{_id(path)}.json"
     previous = _read(target)
     previous = previous if isinstance(previous, dict) else {}
@@ -84,7 +92,8 @@ def _records(state: Any) -> dict[str, dict]:
             and value["historyPath"]
         ):
             path = Path(value["historyPath"])
-            if chat_history_active_path(path).is_file():
+            active = chat_history_active_path(path)
+            if active.is_file() or Path(str(active) + ".tmp").is_file():
                 records[_id(path)] = value
     root = Path(state.history_dir).resolve()
     candidates = list(root.glob("*.json")) + list(root.rglob(ACTIVE_HISTORY_FILENAME))
@@ -108,10 +117,30 @@ def _record(state: Any, conversation_id: str) -> dict:
     return record
 
 
+def _history_messages(active: Path) -> list:
+    """Read incremental recovery data without modifying a running chat's files."""
+    messages = _read(active)
+    messages = messages if isinstance(messages, list) else []
+    temporary = Path(str(active) + ".tmp")
+    try:
+        lines = temporary.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return messages
+    pending = []
+    for line in lines:
+        try:
+            pending.append(json.loads(line.rstrip().rstrip(",")))
+        except ValueError:
+            continue  # A live writer may not have finished the last line yet.
+    if messages and pending and messages[-1] == pending[0]:
+        pending = pending[1:]
+    return messages + pending
+
+
 def _details(record: dict) -> dict:
     path = Path(record["historyPath"])
     active = chat_history_active_path(path)
-    messages = _read(active)
+    messages = _history_messages(active)
     turns = chat_history_to_turns(messages) if messages else []
     launch = record.get("launch")
     launch = launch if isinstance(launch, dict) else {}
@@ -132,7 +161,11 @@ def _details(record: dict) -> dict:
     binding = _read(directory / "story-prompt-binding.json")
     binding = binding if isinstance(binding, dict) else {}
     story = (directory / STORY_SESSION_FILENAME).is_file()
-    modified = active.stat().st_mtime
+    modified = max(
+        file.stat().st_mtime
+        for file in (active, Path(str(active) + ".tmp"))
+        if file.is_file()
+    )
     if story:
         modified = max(modified, (directory / STORY_SESSION_FILENAME).stat().st_mtime)
     title = record.get("title") or launch.get("templateName") or ""
@@ -168,7 +201,7 @@ def conversation_launch_payload(state: Any, conversation_id: str) -> dict:
     if not isinstance(launch, dict):
         # Old records contain the original system prompt, but no launch settings.
         # Preserve it rather than borrowing the last opened, unrelated template.
-        messages = _read(chat_history_active_path(path))
+        messages = _history_messages(chat_history_active_path(path))
         messages = messages if isinstance(messages, list) else []
         system = next(
             (
