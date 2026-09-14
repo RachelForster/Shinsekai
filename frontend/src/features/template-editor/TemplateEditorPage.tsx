@@ -192,7 +192,7 @@ export function TemplateEditorPage({
     if (!sessionFetched || sessionRestored) {
       return;
     }
-    if (launchSession?.templateFileDropdown && !templates.length) {
+    if (!conversationId && launchSession?.templateFileDropdown && templatesQuery.isPending) {
       return;
     }
     if (!launchSession) {
@@ -245,7 +245,7 @@ export function TemplateEditorPage({
       }),
     );
     setSessionRestored(true);
-  }, [launchSession, sessionFetched, sessionRestored, t, templates]);
+  }, [conversationId, launchSession, sessionFetched, sessionRestored, t, templates, templatesQuery.isPending]);
 
   useEffect(() => {
     if (!backgroundOptions.includes(selectedBackground)) {

@@ -217,6 +217,23 @@ describe("TemplateEditorPage", () => {
     );
   });
 
+  it("restores independent conversation settings after all public templates are deleted", async () => {
+    mockListTemplates.mockResolvedValue([]);
+    mockGetConversationSession.mockResolvedValue(savedChat);
+    mockReconfigureConversation.mockResolvedValue({ status: "idle", historyPath: savedChat.historyPath });
+    renderPage({ conversationId: "chosen", onApplied: vi.fn() });
+    expect(await screen.findByDisplayValue("Saved scene")).toBeVisible();
+    const button = screen.getByRole("button", { name: "Apply and continue" });
+    expect(button).toBeEnabled();
+    await clickButton(button);
+    await waitFor(() =>
+      expect(mockReconfigureConversation).toHaveBeenCalledWith(
+        "chosen",
+        expect.objectContaining({ scenario: "Saved scene", system: "Saved rules", historyPath: savedChat.historyPath }),
+      ),
+    );
+  });
+
   it("disables applying settings while the current chat is closing", async () => {
     mockGetConversationSession.mockResolvedValue(savedChat);
     mockUseChatLaunchGuard.mockReturnValue({
