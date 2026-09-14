@@ -521,6 +521,17 @@ export interface ConversationSummary {
 }
 
 export interface ChatLaunchPayload {
+  characterPromptMode?: CharacterPromptMode;
+  primaryCharacters?: string[];
+  maxDialogItems?: number;
+  maxSpeechChars?: number;
+  useChoice?: boolean;
+  useCot?: boolean;
+  useEffect?: boolean;
+  useNarration?: boolean;
+  useStat?: boolean;
+  useTranslation?: boolean;
+  voiceLanguage?: string;
   conversationTitle?: string;
   editorSession?: TemplateLaunchSession;
   backgroundName: string;

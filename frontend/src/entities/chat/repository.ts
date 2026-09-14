@@ -31,17 +31,20 @@ export const deleteConversation = (id: string) => getPlatform().chat.deleteConve
 
 export async function getConversationSession(id: string): Promise<TemplateLaunchSession> {
   const payload = await prepareConversation(id);
+  const options = { ...payload, ...payload.editorSession };
   return {
-    maxDialogItems: 0,
-    maxSpeechChars: 0,
-    useChoice: true,
-    useCot: true,
-    useEffect: true,
-    useNarration: true,
-    useStat: false,
-    useTranslation: true,
-    voiceLanguage: "ja",
-    ...payload.editorSession,
+    maxDialogItems: options.maxDialogItems ?? 0,
+    maxSpeechChars: options.maxSpeechChars ?? 0,
+    useChoice: options.useChoice ?? true,
+    useCot: options.useCot ?? false,
+    useEffect: options.useEffect ?? true,
+    useNarration: options.useNarration ?? true,
+    useStat: options.useStat ?? true,
+    useTranslation: options.useTranslation ?? true,
+    voiceLanguage: options.voiceLanguage || "ja",
+    characterPromptMode: options.characterPromptMode,
+    primaryCharacters: options.primaryCharacters,
+    enableMobileAccess: options.enableMobileAccess,
     background: payload.backgroundName,
     effectNames: payload.effectNames ?? [],
     filenameStub: payload.templateName ?? "",
