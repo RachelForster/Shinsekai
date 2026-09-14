@@ -206,7 +206,15 @@ def test_dynamic_delete_routes_decode_names_and_do_not_require_bodies(
     monkeypatch,
 ) -> None:
     deleted: list[tuple[str, str]] = []
+    invalidated = []
+    monkeypatch.setattr(
+        "application.chat.conversation_library.update_conversation_character",
+        lambda _state, name: invalidated.append(name),
+    )
     state = SimpleNamespace(
+        config_manager=SimpleNamespace(
+            get_character_by_name=lambda name: None if ("character", name) in deleted else SimpleNamespace(name=name)
+        ),
         character_manager=SimpleNamespace(
             delete_character=lambda name: (
                 deleted.append(("character", name)) or ("deleted", ["Remaining"])
@@ -242,6 +250,7 @@ def test_dynamic_delete_routes_decode_names_and_do_not_require_bodies(
         ("background", "Room 1"),
         ("effect", "Thunder Clap"),
     ]
+    assert invalidated == ["Alice A"]
 
 
 @pytest.mark.parametrize(
