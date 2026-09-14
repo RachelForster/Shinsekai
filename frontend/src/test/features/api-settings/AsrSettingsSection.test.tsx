@@ -32,6 +32,7 @@ function apiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
 
 function systemConfig(overrides: Partial<SystemConfig> = {}): SystemConfig {
   return {
+    asr_continuous_during_reply_experimental_enabled: false,
     asr_language: "",
     asr_provider: "vosk",
     asr_whisper_compute_type: "",
@@ -121,6 +122,42 @@ describe("AsrSettingsSection", () => {
     fireEvent.click(screen.getByRole("option", { name: "float16" }));
     expect(props.onSystemPatch).toHaveBeenCalledWith({ asr_whisper_compute_type: "float16" });
   });
+
+  it("exposes the experimental continuous-listening switch with an echo warning", () => {
+    const { props } = renderSection();
+    const toggle = screen.getByRole("checkbox", { name: "Experimental: keep listening during replies" });
+
+    fireEvent.click(toggle);
+
+    expect(props.onSystemPatch).toHaveBeenCalledWith({
+      asr_continuous_during_reply_experimental_enabled: true,
+    });
+    expect(screen.getByText(/character audio may be transcribed/i)).toBeInTheDocument();
+    expect(toggle).toHaveAccessibleDescription(/character audio may be transcribed/i);
+    const controls = toggle.closest(".field-row__control");
+    expect(controls).toHaveClass("asr-continuous-control");
+    expect(screen.getByText(/character audio may be transcribed/i).parentElement).toBe(controls);
+  });
+
+  it.each(["vosk", "faster_whisper"])(
+    "places the experimental switch last in the shared control grid for %s",
+    (provider) => {
+      const { container } = renderSection({
+        activeAsrProvider: provider,
+        showWhisperFields: provider === "faster_whisper",
+        activeAsrSchema: { threshold: { type: "float", default: 0.5 } },
+      });
+      const toggle = screen.getByRole("checkbox", { name: "Experimental: keep listening during replies" });
+      const row = toggle.closest(".field-row");
+      const grid = row?.parentElement;
+      const section = container.querySelector(".schema-section");
+
+      expect(grid).toHaveClass("form-grid", "form-grid--two", "api-extra-grid");
+      expect(grid?.parentElement).toBe(section);
+      expect(section?.querySelectorAll(".field-row").item(section.querySelectorAll(".field-row").length - 1)).toBe(row);
+      expect(section?.lastElementChild).toBe(grid);
+    },
+  );
 
   it("checks a missing Whisper model, confirms download, and reports cached without claiming it is loaded", async () => {
     const missing = {

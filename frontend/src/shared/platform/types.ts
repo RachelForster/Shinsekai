@@ -101,6 +101,7 @@ export interface SystemConfig {
   asr_whisper_model_size: string;
   asr_whisper_device: string;
   asr_whisper_compute_type: string;
+  asr_continuous_during_reply_experimental_enabled: boolean;
   music_volumn: number;
   theme_color: string;
   bgm_path: string;
@@ -962,6 +963,8 @@ export interface ChatSnapshot {
   asrEnabled?: boolean;
   asrLoading?: boolean;
   asrRunning?: boolean;
+  /** ID of the ASR utterance that currently owns ``inputDraft``, when any. */
+  asrUtteranceId?: string | null;
   backgroundPath?: string;
   bgmPath?: string;
   busyDurationSeconds?: number;
@@ -1044,6 +1047,7 @@ export interface ChatAttachmentInput {
 }
 
 export interface ChatSendPayload {
+  asrUtteranceId?: string;
   attachments: ChatAttachmentInput[];
   text: string;
 }
@@ -1168,8 +1172,8 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "effect.loop.start"; key: string; url: string })
   | (ChatEventBase & { type: "effect.loop.stop"; key: string })
   | (ChatEventBase & { type: "effect.loop.stop-all" })
-  | (ChatEventBase & { type: "asr.partial"; text: string })
-  | (ChatEventBase & { type: "asr.final"; text: string })
+  | (ChatEventBase & { type: "asr.partial"; text: string; utteranceId?: string })
+  | (ChatEventBase & { type: "asr.final"; text: string; utteranceId?: string })
   | (ChatEventBase & { type: "asr.state"; enabled?: boolean; loading?: boolean; running: boolean })
   | (ChatEventBase & { type: "reply.finished" })
   | (ChatEventBase & { type: "session.closed"; reason: string });
