@@ -1062,7 +1062,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "nav.settingsCenter": "設定ナビゲーション",
   "nav.system": "システム",
   "nav.effects": "エフェクト管理",
-  "nav.template": "チャット",
+  "nav.template": "チャット管理",
   "nav.tools": "ツール",
   "tools.browse": "参照",
   "tools.character": "キャラ",

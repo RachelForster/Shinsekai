@@ -1066,7 +1066,7 @@ export const enMessages: Record<MessageKey, string> = {
   "nav.settingsCenter": "Settings navigation",
   "nav.system": "System",
   "nav.effects": "Effects",
-  "nav.template": "Chats",
+  "nav.template": "Chat management",
   "nav.tools": "Tools",
   "tools.browse": "Browse",
   "tools.character": "Character",

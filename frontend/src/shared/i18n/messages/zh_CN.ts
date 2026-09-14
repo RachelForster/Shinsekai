@@ -1037,7 +1037,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "nav.settingsCenter": "设置中心导航",
   "nav.system": "程序设置",
   "nav.effects": "特效管理",
-  "nav.template": "聊天",
+  "nav.template": "聊天管理",
   "nav.tools": "实用工具",
   "tools.browse": "浏览",
   "tools.character": "角色",
