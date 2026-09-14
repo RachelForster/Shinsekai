@@ -88,6 +88,29 @@
   display: grid;
   gap: var(--space-3);
 }
+.conversation-library__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: clamp(16px, 5vh, 48px) var(--space-4);
+  text-align: center;
+}
+.conversation-library__empty img {
+  width: min(240px, 100%);
+  height: auto;
+  border-radius: 32px;
+}
+.conversation-library__empty h2 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+.conversation-library__empty p {
+  margin: 0;
+  color: var(--color-text-muted);
+  max-width: 360px;
+  line-height: 1.6;
+}
 .conversation-card {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr) auto;

@@ -48,6 +48,7 @@ export function ConversationLibrary({
   const navigate = useNavigate();
   const init = useChatInitialization();
   const conversations = useQuery({ queryKey: conversationsQueryKey, queryFn: listConversations, staleTime: 0 });
+  const isEmpty = conversations.isSuccess && !conversations.data.length;
   const characters = useQuery({ queryKey: charactersQueryKey, queryFn: listCharacters });
   const [editing, setEditing] = useState<ConversationSummary | null>(null);
   const [deleting, setDeleting] = useState<ConversationSummary | null>(null);
@@ -100,14 +101,25 @@ export function ConversationLibrary({
     <section className="conversation-library">
       <div className="conversation-library__header">
         <h1>{t("conversation.workspace")}</h1>
-        <Button variant="primary" onClick={onCreate}>
-          {t("conversation.new")}
-        </Button>
+        {!isEmpty && (
+          <Button variant="primary" onClick={onCreate}>
+            {t("conversation.new")}
+          </Button>
+        )}
       </div>
       {conversations.isPending && <p role="status">{t("common.loading")}</p>}
       {conversations.isError && <p role="alert">{conversations.error.message}</p>}
       {error && !editing && !deleting && <p role="alert">{error}</p>}
-      {conversations.isSuccess && !conversations.data.length && <p>{t("conversation.empty")}</p>}
+      {isEmpty && (
+        <div className="conversation-library__empty">
+          <img src="/chat-empty-catgirl.png" alt="" width={240} height={240} />
+          <h2>{t("conversation.emptyGreeting")}</h2>
+          <p>{t("conversation.empty")}</p>
+          <Button variant="primary" onClick={onCreate}>
+            {t("conversation.new")}
+          </Button>
+        </div>
+      )}
       {conversations.isError && <Button onClick={() => void conversations.refetch()}>{t("common.refresh")}</Button>}
       <div className="conversation-library__list">
         {conversations.data?.map((item) => {

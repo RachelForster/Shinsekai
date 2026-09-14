@@ -1,4 +1,5 @@
 import { useI18n } from "../../../shared/i18n";
+import { resolveConversationTitle } from "../../../entities/chat/conversationTitle";
 import { Button } from "../../../shared/ui";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -72,7 +73,10 @@ export function StoryLaunchButton({
           launched = await launchChat(
             conversationId
               ? await prepareConversation(conversationId)
-              : { ...payload, conversationTitle: conversationTitle?.trim() },
+              : {
+                  ...payload,
+                  conversationTitle: historyPath ? undefined : resolveConversationTitle(conversationTitle),
+                },
             options,
           );
           localStorage.setItem(
@@ -97,12 +101,7 @@ export function StoryLaunchButton({
       <Button
         variant="primary"
         type="button"
-        disabled={
-          disabled ||
-          !storyPath ||
-          init.initializationPending ||
-          (conversationTitle !== undefined && !conversationTitle.trim())
-        }
+        disabled={disabled || !storyPath || init.initializationPending}
         onClick={() => void launch()}
       >
         {init.initializationPending ? t("story.launch.starting") : (label ?? t("story.launch.action"))}

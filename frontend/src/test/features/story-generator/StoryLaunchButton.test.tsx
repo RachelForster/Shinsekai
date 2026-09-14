@@ -74,9 +74,15 @@ describe("story launch", () => {
     expect(prepareStoryLaunch).toHaveBeenCalledWith("story/draft.json", "");
   });
 
-  it("requires a name when launched from new-chat setup", () => {
+  it("generates a timestamp title when the new-chat title is cleared", async () => {
     renderButton("", "en", undefined, "  ");
-    expect(screen.getByRole("button", { name: "Play story" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    await waitFor(() =>
+      expect(launchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationTitle: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/) }),
+        expect.anything(),
+      ),
+    );
   });
   it("validates the selected story save and resumes its own prompt settings", async () => {
     prepareConversation.mockResolvedValue({ historyPath: "saved", system: "Saved rules", resetHistory: false });

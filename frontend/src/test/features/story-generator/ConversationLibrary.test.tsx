@@ -177,6 +177,11 @@ describe("conversation library", () => {
     mocks.list.mockResolvedValue([]);
     const { onCreate } = page();
     expect(await screen.findByText(/No chats yet/)).toBeVisible();
+    expect(screen.getByRole("heading", { name: "Start a new chat, meow!" })).toBeVisible();
+    expect(document.querySelector(".conversation-library__empty img")).toHaveAttribute(
+      "src",
+      "/chat-empty-catgirl.png",
+    );
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     expect(onCreate).toHaveBeenCalledOnce();
   });

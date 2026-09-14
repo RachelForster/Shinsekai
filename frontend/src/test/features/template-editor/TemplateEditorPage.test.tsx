@@ -202,6 +202,21 @@ describe("TemplateEditorPage", () => {
     );
   });
 
+  it("generates a timestamp title when a new chat title is cleared", async () => {
+    mockGetTemplateSession.mockResolvedValue(savedChat);
+    renderPage({ createOnly: true, conversationTitle: "  " });
+    await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
+    await clickButton(screen.getByRole("button", { name: "Create and start" }));
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationTitle: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
+          resetHistory: true,
+        }),
+      ),
+    );
+  });
+
   it("conversation settings restore that conversation and continue its fixed history", async () => {
     mockGetConversationSession.mockResolvedValue(savedChat);
     mockReconfigureConversation.mockResolvedValue({ status: "idle", historyPath: savedChat.historyPath });

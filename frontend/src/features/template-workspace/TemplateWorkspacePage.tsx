@@ -7,6 +7,7 @@ import { Dialog } from "../../shared/ui/Dialog";
 import { TextInput } from "../../shared/ui/FormControls";
 import { ConversationLibrary } from "./ConversationLibrary";
 import { ConversationTypeBadge } from "../../entities/chat/ConversationTypeBadge";
+import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
 import "./TemplateWorkspacePage.css";
 
 const NormalMode = lazy(() =>
@@ -45,8 +46,13 @@ export function TemplateWorkspacePage() {
             <h1 className="conversation-setup__title">{t("conversation.settings")}</h1>
           ) : (
             <label className="conversation-setup__name">
-              <span>{t("conversation.title")}</span>
-              <TextInput value={title} maxLength={120} onChange={(event) => setTitle(event.target.value)} />
+              <span>{t("conversation.optionalTitle")}</span>
+              <TextInput
+                value={title}
+                placeholder={t("conversation.titlePlaceholder")}
+                maxLength={120}
+                onChange={(event) => setTitle(event.target.value)}
+              />
             </label>
           )}
           <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
@@ -85,9 +91,8 @@ export function TemplateWorkspacePage() {
             <Button onClick={() => setCreating(false)}>{t("common.cancel")}</Button>
             <Button
               variant="primary"
-              disabled={!draftTitle.trim()}
               onClick={() => {
-                setTitle(draftTitle.trim());
+                setTitle(resolveConversationTitle(draftTitle));
                 setDraftKey((key) => key + 1);
                 setParams({ tab: "new", mode: kind });
                 setCreating(false);
@@ -99,8 +104,13 @@ export function TemplateWorkspacePage() {
         }
       >
         <label className="conversation-setup__name">
-          <span>{t("conversation.title")}</span>
-          <TextInput value={draftTitle} maxLength={120} onChange={(event) => setDraftTitle(event.target.value)} />
+          <span>{t("conversation.optionalTitle")}</span>
+          <TextInput
+            value={draftTitle}
+            placeholder={t("conversation.titlePlaceholder")}
+            maxLength={120}
+            onChange={(event) => setDraftTitle(event.target.value)}
+          />
         </label>
         <fieldset className="conversation-create__types">
           <legend>{t("conversation.chooseType")}</legend>

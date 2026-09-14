@@ -1,4 +1,5 @@
 import { CharacterPicker } from "./CharacterPicker";
+import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { updateCharacterRoles } from "./characterRoles";
 import type { CSSProperties } from "react";
@@ -557,7 +558,7 @@ export function TemplateEditorPage({
               savedSession,
             ),
             editorSession: savedSession,
-            ...(createOnly ? { conversationTitle: conversationTitle?.trim() } : {}),
+            ...(createOnly ? { conversationTitle: resolveConversationTitle(conversationTitle) } : {}),
           },
           progressOptions,
         );
@@ -1008,12 +1009,7 @@ export function TemplateEditorPage({
 
       <footer className="template-page__footer">
         <AsyncButton
-          disabled={
-            !sessionRestored ||
-            (!conversationId && runtimeLaunchDisabled) ||
-            initializationPending ||
-            (createOnly && conversationTitle !== undefined && !conversationTitle.trim())
-          }
+          disabled={!sessionRestored || (!conversationId && runtimeLaunchDisabled) || initializationPending}
           icon={<Play aria-hidden className="button__icon" />}
           loading={launchMutation.isPending}
           onClick={() => handleLaunch(false)}

@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { TemplateWorkspacePage } from "../../../features/template-workspace/TemplateWorkspacePage";
 import { I18nProvider } from "../../../shared/i18n";
+import { resolveConversationTitle } from "../../../entities/chat/conversationTitle";
 
 vi.mock("../../../features/template-editor/TemplateEditorPage", () => ({
   TemplateEditorPage: ({
@@ -42,22 +43,39 @@ function renderPage(path = "/settings/templates") {
 }
 
 describe("chat workspace", () => {
+  it("uses local time for empty titles and preserves user-supplied names", () => {
+    const createdAt = new Date(2026, 0, 2, 3, 4, 5);
+    expect(resolveConversationTitle(undefined, createdAt)).toBe("2026-01-02 03:04:05");
+    expect(resolveConversationTitle("  ", createdAt)).toBe("2026-01-02 03:04:05");
+    expect(resolveConversationTitle("  Evening walk  ", createdAt)).toBe("Evening walk");
+  });
   it.each(["Normal chat", "Story chat"])("asks for title and type before configuring %s", async (kind) => {
     renderPage();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
     expect(screen.queryByTestId("normal-editor")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     const dialog = within(screen.getByRole("dialog"));
-    expect(dialog.getByRole("button", { name: "Next" })).toBeDisabled();
-    fireEvent.change(dialog.getByLabelText("Chat title"), { target: { value: "  Evening walk  " } });
+    expect(dialog.getByRole("button", { name: "Next" })).toBeEnabled();
+    fireEvent.change(dialog.getByLabelText("Chat title (optional)"), { target: { value: "  Evening walk  " } });
     fireEvent.click(dialog.getByRole("radio", { name: new RegExp(kind) }));
     fireEvent.click(dialog.getByRole("button", { name: "Next" }));
     expect(await screen.findByTestId(kind === "Normal chat" ? "normal-editor" : "story-editor")).toHaveTextContent(
       "Evening walk",
     );
-    expect(screen.getByLabelText("Chat title")).toHaveValue("Evening walk");
+    expect(screen.getByLabelText("Chat title (optional)")).toHaveValue("Evening walk");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(screen.queryByRole("tablist")).not.toBeInTheDocument();
+  });
+  it.each(["Normal chat", "Story chat"])("creates a timestamp title for an unnamed %s", async (kind) => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
+    const dialog = within(screen.getByRole("dialog"));
+    fireEvent.change(dialog.getByLabelText("Chat title (optional)"), { target: { value: "  " } });
+    fireEvent.click(dialog.getByRole("radio", { name: new RegExp(kind) }));
+    fireEvent.click(dialog.getByRole("button", { name: "Next" }));
+    const editor = await screen.findByTestId(kind === "Normal chat" ? "normal-editor" : "story-editor");
+    expect(editor).toHaveTextContent(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(screen.getByLabelText("Chat title (optional)")).toHaveValue(editor.textContent);
   });
   it("cancels creation without mounting an editor", () => {
     renderPage();
