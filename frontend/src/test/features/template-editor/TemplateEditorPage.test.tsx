@@ -217,6 +217,22 @@ describe("TemplateEditorPage", () => {
     );
   });
 
+  it("disables applying settings while the current chat is closing", async () => {
+    mockGetConversationSession.mockResolvedValue(savedChat);
+    mockUseChatLaunchGuard.mockReturnValue({
+      runtimeClosing: true,
+      runtimeLaunchDisabled: true,
+      refreshRuntimeStatus: mockRefreshRuntimeStatus,
+      updateRuntimeStatusFromSnapshot: mockUpdateRuntimeStatusFromSnapshot,
+    });
+    renderPage({ conversationId: "chosen" });
+    await screen.findByDisplayValue("Saved scene");
+    const button = screen.getByRole("button", { name: "Apply and continue" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(mockReconfigureConversation).not.toHaveBeenCalled();
+  });
+
   it("conversation settings restore that conversation and continue its fixed history", async () => {
     mockGetConversationSession.mockResolvedValue(savedChat);
     mockReconfigureConversation.mockResolvedValue({ status: "idle", historyPath: savedChat.historyPath });

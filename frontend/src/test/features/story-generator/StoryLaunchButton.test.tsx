@@ -22,7 +22,8 @@ const {
   startStorySession: vi.fn(),
   showChatSurface: vi.fn(),
 }));
-vi.mock("../../../entities/chat/repository", () => ({
+vi.mock("../../../entities/chat/repository", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../entities/chat/repository")>()),
   launchChat,
   prepareConversation,
   getChatRuntimeStatus,
@@ -179,6 +180,16 @@ describe("story launch", () => {
     expect(startStorySession).toHaveBeenCalledTimes(2);
     expect(localStorage.getItem("story.pending-attachment.v1")).toBeNull();
   });
+  it("disables story launch while the backend is closing", async () => {
+    getChatRuntimeStatus.mockResolvedValue({ state: "closing" });
+    renderButton();
+    const button = screen.getByRole("button", { name: "运行剧本" });
+    await waitFor(() => expect(button).toBeDisabled());
+    fireEvent.click(button);
+    expect(prepareStoryLaunch).not.toHaveBeenCalled();
+    expect(launchChat).not.toHaveBeenCalled();
+    expect(startStorySession).not.toHaveBeenCalled();
+  });
   it.each(["changed-session", "changed-save", "closing"])("rejects a stale retry after %s", async (change) => {
     startStorySession.mockRejectedValueOnce(new Error("network unavailable"));
     const first = renderButton();
@@ -188,6 +199,11 @@ describe("story launch", () => {
     getChatRuntimeStatus.mockResolvedValue({ state: change === "closing" ? "closing" : "running" });
     if (change === "changed-session") getChatSnapshot.mockResolvedValue({ sessionId: "session-2" });
     renderButton(change === "changed-save" ? "different-save" : "");
+    if (change === "closing") {
+      await waitFor(() => expect(screen.getByRole("button", { name: "运行剧本" })).toBeDisabled());
+      expect(startStorySession).toHaveBeenCalledTimes(1);
+      return;
+    }
     fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("请先结束当前聊天");
     expect(startStorySession).toHaveBeenCalledTimes(1);

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -14,7 +14,8 @@ const mocks = vi.hoisted(() => ({
   show: vi.fn(),
   remove: vi.fn(),
 }));
-vi.mock("../../../entities/chat/repository", () => ({
+vi.mock("../../../entities/chat/repository", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../entities/chat/repository")>()),
   conversationsQueryKey: ["chat", "conversations"],
   chatQueryKey: ["chat"],
   listConversations: mocks.list,
@@ -33,12 +34,14 @@ vi.mock("../../../features/story-generator/components/StoryLaunchButton", () => 
     historyPath,
     storyPath,
     conversationId,
+    disabled,
   }: {
     historyPath: string;
     storyPath: string;
     conversationId?: string;
+    disabled?: boolean;
   }) => (
-    <button data-history={historyPath} data-story={storyPath} data-conversation={conversationId}>
+    <button disabled={disabled} data-history={historyPath} data-story={storyPath} data-conversation={conversationId}>
       Resume story
     </button>
   ),
@@ -61,8 +64,9 @@ const entry = {
 function page() {
   const onEdit = vi.fn();
   const onCreate = vi.fn();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
-    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <QueryClientProvider client={client}>
       <I18nProvider language="en">
         <MemoryRouter>
           <ConversationLibrary onEdit={onEdit} onCreate={onCreate} />
@@ -70,7 +74,7 @@ function page() {
       </I18nProvider>
     </QueryClientProvider>,
   );
-  return { onEdit, onCreate };
+  return { onEdit, onCreate, client };
 }
 
 describe("conversation library", () => {
@@ -114,6 +118,27 @@ describe("conversation library", () => {
     await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith("one"));
     await waitFor(() => expect(screen.queryByText("Evening")).not.toBeInTheDocument());
     expect(screen.getByText(/No chats yet/)).toBeVisible();
+  });
+  it("disables creation and all resume entries until closing completes", async () => {
+    mocks.status.mockResolvedValue({ state: "closing" });
+    mocks.list.mockResolvedValue([
+      entry,
+      { ...entry, id: "legacy", hasSettings: false },
+      { ...entry, id: "story", kind: "story", storyPath: "/story.json" },
+    ]);
+    const { client, onCreate, onEdit } = page();
+    await screen.findByRole("button", { name: "Continue chat" });
+    const names = ["New chat", "Continue chat", "Configure and continue", "Resume story"];
+    await waitFor(() => names.forEach((name) => expect(screen.getByRole("button", { name })).toBeDisabled()));
+    names.forEach((name) => fireEvent.click(screen.getByRole("button", { name })));
+    expect(mocks.launch).not.toHaveBeenCalled();
+    expect(onCreate).not.toHaveBeenCalled();
+    expect(onEdit).not.toHaveBeenCalled();
+    mocks.status.mockResolvedValue({ state: "idle" });
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: ["chat", "runtime-status"] });
+    });
+    await waitFor(() => names.forEach((name) => expect(screen.getByRole("button", { name })).toBeEnabled()));
   });
   it("keeps the confirmation open and displays deletion errors", async () => {
     mocks.remove.mockRejectedValue(new Error("Close this chat before deleting it."));

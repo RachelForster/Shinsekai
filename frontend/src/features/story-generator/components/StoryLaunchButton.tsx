@@ -16,6 +16,7 @@ import { prepareStoryLaunch, startStorySession, storyLibraryQueryKey } from "../
 import { showChatSurface } from "../../../shared/desktop/chatWindow";
 import { ChatInitializationDialog } from "../../chat-startup/ChatInitializationDialog";
 import { useChatInitialization } from "../../chat-startup/useChatInitialization";
+import { useChatLaunchGuard } from "../../chat-startup/useChatLaunchGuard";
 
 const pendingAttachmentKey = "story.pending-attachment.v1";
 
@@ -50,9 +51,10 @@ export function StoryLaunchButton({
   const navigate = useNavigate();
   const client = useQueryClient();
   const init = useChatInitialization();
+  const { runtimeClosing, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
   const [error, setError] = useState("");
   const launch = async () => {
-    if (!storyPath || init.initializationPending) return;
+    if (!storyPath || runtimeClosing || init.initializationPending) return;
     setError("");
     try {
       const snapshot = await init.runChatInitialization(async (options) => {
@@ -83,6 +85,7 @@ export function StoryLaunchButton({
             pendingAttachmentKey,
             JSON.stringify({ storyPath, historyPath, sessionId: launched.sessionId }),
           );
+          await updateRuntimeStatusFromSnapshot(launched);
         }
         const story = await startStorySession(storyPath);
         return { ...launched, ...story };
@@ -101,7 +104,7 @@ export function StoryLaunchButton({
       <Button
         variant="primary"
         type="button"
-        disabled={disabled || !storyPath || init.initializationPending}
+        disabled={disabled || !storyPath || runtimeClosing || init.initializationPending}
         onClick={() => void launch()}
       >
         {init.initializationPending ? t("story.launch.starting") : (label ?? t("story.launch.action"))}

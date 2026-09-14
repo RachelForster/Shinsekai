@@ -103,7 +103,8 @@ export function TemplateEditorPage({
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const effectsQuery = useQuery({ queryFn: listEffects, queryKey: effectsQueryKey });
-  const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const { refreshRuntimeStatus, runtimeLaunchDisabled, runtimeClosing, updateRuntimeStatusFromSnapshot } =
+    useChatLaunchGuard();
   const {
     closeInitialization,
     initializationError,
@@ -517,7 +518,7 @@ export function TemplateEditorPage({
 
   const launchMutation = useMutation({
     mutationFn: async ({ resetHistory }: { resetHistory: boolean }) => {
-      if (runtimeLaunchDisabled && !conversationId) {
+      if (runtimeClosing || (runtimeLaunchDisabled && !conversationId)) {
         throw new Error(t("launch.runtimeBusy"));
       }
       return runChatInitialization(async (progressOptions) => {
@@ -1009,7 +1010,9 @@ export function TemplateEditorPage({
 
       <footer className="template-page__footer">
         <AsyncButton
-          disabled={!sessionRestored || (!conversationId && runtimeLaunchDisabled) || initializationPending}
+          disabled={
+            !sessionRestored || runtimeClosing || (!conversationId && runtimeLaunchDisabled) || initializationPending
+          }
           icon={<Play aria-hidden className="button__icon" />}
           loading={launchMutation.isPending}
           onClick={() => handleLaunch(false)}

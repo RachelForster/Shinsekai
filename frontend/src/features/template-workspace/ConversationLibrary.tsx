@@ -21,6 +21,7 @@ import { useI18n } from "../../shared/i18n";
 import { Button, Dialog, IconButton, TextInput } from "../../shared/ui";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { StoryLaunchButton } from "../story-generator/components/StoryLaunchButton";
 
 function ConversationAvatar({ name, path }: { name: string; path?: string }) {
@@ -47,6 +48,7 @@ export function ConversationLibrary({
   const client = useQueryClient();
   const navigate = useNavigate();
   const init = useChatInitialization();
+  const { runtimeClosing, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
   const conversations = useQuery({ queryKey: conversationsQueryKey, queryFn: listConversations, staleTime: 0 });
   const isEmpty = conversations.isSuccess && !conversations.data.length;
   const characters = useQuery({ queryKey: charactersQueryKey, queryFn: listCharacters });
@@ -57,6 +59,7 @@ export function ConversationLibrary({
   const [error, setError] = useState("");
   const date = new Intl.DateTimeFormat(language.replace("_", "-"), { dateStyle: "medium", timeStyle: "short" });
   const launch = async (item: ConversationSummary) => {
+    if (runtimeClosing || init.initializationPending) return;
     setError("");
     try {
       const snapshot = await init.runChatInitialization(async (options) => {
@@ -64,6 +67,7 @@ export function ConversationLibrary({
         return launchChat(await prepareConversation(item.id), options);
       });
       client.setQueryData(chatQueryKey, snapshot);
+      await updateRuntimeStatusFromSnapshot(snapshot);
       await showChatSurface({ navigate, snapshot });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -102,7 +106,7 @@ export function ConversationLibrary({
       <div className="conversation-library__header">
         <h1>{t("conversation.workspace")}</h1>
         {!isEmpty && (
-          <Button variant="primary" onClick={onCreate}>
+          <Button variant="primary" disabled={runtimeClosing} onClick={onCreate}>
             {t("conversation.new")}
           </Button>
         )}
@@ -115,7 +119,7 @@ export function ConversationLibrary({
           <img src="/chat-empty-catgirl.png" alt="" width={240} height={240} />
           <h2>{t("conversation.emptyGreeting")}</h2>
           <p>{t("conversation.empty")}</p>
-          <Button variant="primary" onClick={onCreate}>
+          <Button variant="primary" disabled={runtimeClosing} onClick={onCreate}>
             {t("conversation.new")}
           </Button>
         </div>
@@ -145,12 +149,12 @@ export function ConversationLibrary({
                     historyPath={item.historyPath}
                     conversationId={item.hasSettings ? item.id : undefined}
                     label={t("conversation.continue")}
-                    disabled={!item.storyPath || init.initializationPending}
+                    disabled={!item.storyPath || runtimeClosing || init.initializationPending}
                   />
                 ) : (
                   <Button
                     variant="primary"
-                    disabled={init.initializationPending}
+                    disabled={runtimeClosing || init.initializationPending}
                     onClick={() => (item.hasSettings ? void launch(item) : onEdit(item.id))}
                   >
                     {t(item.hasSettings ? "conversation.continue" : "conversation.configureAndContinue")}
