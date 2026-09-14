@@ -878,6 +878,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         item.summary.title = title;
         return clone(item.summary);
       },
+      async deleteConversation(id) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        if ((chat.chatProcessRunning || chat.chatRuntimeClosing) && chat.historyPath === item.summary.historyPath) {
+          throw new Error("Close this chat before deleting it.");
+        }
+        conversations.delete(id);
+      },
       async close() {
         clearScheduledChatUpdates();
         chat = {
@@ -1344,7 +1352,11 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           payload: clone({ ...payload, historyPath, resetHistory: false }),
           summary: {
             id: historyPath,
-            title: conversations.get(historyPath)?.summary.title || payload.templateName || "",
+            title:
+              conversations.get(historyPath)?.summary.title ||
+              payload.conversationTitle?.trim() ||
+              payload.templateName ||
+              "",
             characters: payload.characters,
             preview: "",
             updatedAt: Date.now(),

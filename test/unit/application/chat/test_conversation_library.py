@@ -8,6 +8,7 @@ import pytest
 
 from application.chat.conversation_library import (
     conversation_launch_payload,
+    delete_conversation,
     list_conversations,
     remember_conversation,
     rename_conversation,
@@ -80,6 +81,50 @@ def test_saved_launch_survives_template_and_selection_changes(state):
     assert restored["resetHistory"] is False
     assert record["preview"] == "Good night"
     assert "Original prompt" not in json.dumps(record)
+
+
+def test_chat_title_is_independent_of_template_name_and_keeps_renames(state):
+    path = history(state)
+    payload = {"templateName": "Template", "conversationTitle": "  My chat  "}
+    remember_conversation(state, path, payload)
+    item = list_conversations(state)[0]
+    assert item["title"] == "My chat"
+    assert conversation_launch_payload(state, item["id"])["templateName"] == "Template"
+    rename_conversation(state, item["id"], "Renamed")
+    remember_conversation(state, path, payload)
+    assert list_conversations(state)[0]["title"] == "Renamed"
+
+
+def test_delete_removes_history_branches_story_and_legacy_alias_but_keeps_other_files(state):
+    path = history(state)
+    write(path / "branches.json", {})
+    write(path / "story-v2.json", {})
+    write(path / "story-prompt-binding.json", {"storyPath": "original.json"})
+    write(path.with_suffix(".json"), [])
+    write(path / "keep.txt", "unrelated")
+    other = history(state, "second")
+    remember_conversation(state, path, {"characters": ["Alice"]})
+    item = next(item for item in list_conversations(state) if item["historyPath"] == path.as_posix())
+    delete_conversation(state, item["id"])
+    assert not (path / "active.json").exists()
+    assert not path.with_suffix(".json").exists()
+    assert list(path.iterdir()) == [path / "keep.txt"]
+    assert (other / "active.json").is_file()
+    assert len(list_conversations(state)) == 1
+    assert saved_conversation_launch(state, path) is None
+
+
+@pytest.mark.parametrize("busy", ["initializing", "running", "closing"])
+def test_delete_rejects_active_sessions(state, monkeypatch, busy):
+    path = history(state)
+    state.chat_session = {"historyPath": str(path)}
+    if busy == "initializing":
+        state.chat_init_task_id = "task"
+    monkeypatch.setattr("application.chat.runtime_process._chat_runtime_status", lambda _state: {"state": busy})
+    item = list_conversations(state)[0]
+    with pytest.raises(RuntimeError):
+        delete_conversation(state, item["id"])
+    assert (path / "active.json").is_file()
 
 
 def test_rename_keeps_storage_branch_links_and_title_on_relaunch(state):
@@ -156,6 +201,8 @@ def test_unknown_id_cannot_read_or_write_arbitrary_paths(state, identifier):
         conversation_launch_payload(state, identifier)
     with pytest.raises(KeyError):
         rename_conversation(state, identifier, "Renamed")
+    with pytest.raises(KeyError):
+        delete_conversation(state, identifier)
 
 
 def test_missing_history_is_not_resurrected_from_metadata(state):

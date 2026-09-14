@@ -405,6 +405,7 @@ describe("entity repositories", () => {
         reconfigureConversation: vi.fn(),
         prepareConversation: vi.fn(),
         renameConversation: vi.fn(),
+        deleteConversation: vi.fn(),
         close: vi.fn().mockResolvedValue(sampleChatSnapshot),
         command: vi.fn().mockResolvedValue(sampleChatSnapshot),
         getHistory: vi.fn().mockResolvedValue(sampleChatSnapshot.historyEntries ?? []),

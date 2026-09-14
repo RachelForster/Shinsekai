@@ -63,6 +63,28 @@ function templateSession(overrides: Partial<TemplateLaunchSession> = {}): Templa
 }
 
 describe("browser preview platform chat themes", () => {
+  it("keeps chat names separate and permits deleting only a closed conversation", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    await resolvePreview(
+      platform.chat.launch({
+        templateId: "template",
+        templateName: "Template",
+        conversationTitle: "Evening",
+        characters: ["Nanami"],
+        backgroundName: "",
+        historyPath: "",
+        resetHistory: true,
+      }),
+    );
+    const [item] = await platform.chat.listConversations();
+    expect(item.title).toBe("Evening");
+    await expect(platform.chat.deleteConversation(item.id)).rejects.toThrow("Close this chat");
+    expect(await platform.chat.listConversations()).toHaveLength(1);
+    await resolvePreview(platform.chat.close());
+    await platform.chat.deleteConversation(item.id);
+    expect(await platform.chat.listConversations()).toEqual([]);
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();

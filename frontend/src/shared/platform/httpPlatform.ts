@@ -593,6 +593,9 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
       getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
       listConversations: () => requestJson(apiBase, "/api/chat/conversations"),
+      deleteConversation: async (id) => {
+        await requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}`, { method: "DELETE" });
+      },
       getCurrentConversation: () => requestJson(apiBase, "/api/chat/conversations/current"),
       async reconfigureConversation(conversationId, payload, options) {
         const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {

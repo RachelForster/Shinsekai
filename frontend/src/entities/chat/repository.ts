@@ -27,6 +27,7 @@ export const reconfigureConversation = (
   options?: TaskProgressOptions<ChatSnapshot>,
 ) => getPlatform().chat.reconfigureConversation(id, payload, options);
 export const renameConversation = (id: string, title: string) => getPlatform().chat.renameConversation(id, title);
+export const deleteConversation = (id: string) => getPlatform().chat.deleteConversation(id);
 
 export async function getConversationSession(id: string): Promise<TemplateLaunchSession> {
   const payload = await prepareConversation(id);

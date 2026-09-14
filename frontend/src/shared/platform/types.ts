@@ -521,6 +521,7 @@ export interface ConversationSummary {
 }
 
 export interface ChatLaunchPayload {
+  conversationTitle?: string;
   editorSession?: TemplateLaunchSession;
   backgroundName: string;
   characters: string[];
@@ -1401,6 +1402,7 @@ export interface ShinsekaiPlatform {
     listConversations: () => Promise<ConversationSummary[]>;
     prepareConversation: (id: string) => Promise<ChatLaunchPayload>;
     renameConversation: (id: string, title: string) => Promise<ConversationSummary>;
+    deleteConversation: (id: string) => Promise<void>;
     close: () => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;

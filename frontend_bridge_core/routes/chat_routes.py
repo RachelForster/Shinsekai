@@ -5,6 +5,7 @@ from http import HTTPStatus
 from application.chat.conversation_library import (
     conversation_launch_payload,
     current_conversation,
+    delete_conversation,
     list_conversations,
     rename_conversation,
 )
@@ -120,7 +121,14 @@ def _rename_conversation(request: ApiRequest) -> JsonResponse:
     return JsonResponse(rename_conversation(request.state, request.params["conversation_id"], request.body.get("title", "")))
 
 
+def _delete_conversation(request: ApiRequest) -> JsonResponse:
+    delete_conversation(request.state, request.params["conversation_id"])
+    return JsonResponse({"ok": True})
+
+
 CHAT_ROUTES = (
+    Route(methods=frozenset({"DELETE"}), pattern="/api/chat/conversations/{conversation_id}",
+          handler=_delete_conversation, body_kind=BodyKind.NONE, name="chat.conversations.delete"),
     Route(methods=frozenset({"GET"}), pattern="/api/chat/conversations/current", handler=_current_conversation,
           body_kind=BodyKind.NONE, name="chat.conversations.current"),
     Route(methods=frozenset({"GET"}), pattern="/api/chat/conversations", handler=_conversations,

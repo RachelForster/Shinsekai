@@ -22,6 +22,15 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("deletes only the selected conversation through the bridge", async () => {
+    const fetchMock = vi.fn(() => mockJsonResponse({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createHttpPlatform("http://127.0.0.1:8787/").chat.deleteConversation("selected-chat");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/conversations/selected-chat",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();

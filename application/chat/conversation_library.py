@@ -16,6 +16,7 @@ from core.chat_history.storage import (
     STORY_SESSION_FILENAME,
     chat_history_active_path,
     chat_history_session_dir,
+    remove_chat_history_storage,
 )
 from core.chat_history.text import chat_history_to_turns
 
@@ -64,7 +65,7 @@ def remember_conversation(state: Any, history_path: Path, payload: dict) -> None
         target,
         {
             "historyPath": path.as_posix(),
-            "title": previous.get("title", ""),
+            "title": previous.get("title") or str(payload.get("conversationTitle") or "").strip()[:120],
             "createdAt": previous.get("createdAt")
             or datetime.now(timezone.utc).isoformat(),
             "launch": launch,
@@ -222,3 +223,28 @@ def rename_conversation(state: Any, conversation_id: str, title: str) -> dict:
     record["title"] = title
     _write(_directory(state) / f"{conversation_id}.json", record)
     return _details(record)
+
+
+def delete_conversation(state: Any, conversation_id: str) -> None:
+    from application.chat.runtime_process import _chat_runtime_status
+    from application.chat.start_chat import _chat_init_lock
+
+    with _chat_init_lock(state):
+        record = _record(state, conversation_id)
+        if getattr(state, "chat_init_task_id", ""):
+            raise RuntimeError("Wait for chat initialization to finish before deleting.")
+        active = getattr(state, "chat_session", {}).get("historyPath")
+        if active and _id(Path(active)) == conversation_id and _chat_runtime_status(state)["state"] != "idle":
+            raise RuntimeError("Close this chat before deleting it.")
+        path = resolve_history_path_for_project(state, record["historyPath"])
+        directory = chat_history_session_dir(path)
+        legacy = Path(str(directory) + ".json")
+        if legacy.is_file() and (directory / "branches.json").is_file():
+            path = legacy
+        remove_chat_history_storage(path)
+        (directory / "story-prompt-binding.json").unlink(missing_ok=True)
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
+        (_directory(state) / f"{conversation_id}.json").unlink(missing_ok=True)
