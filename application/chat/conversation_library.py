@@ -19,6 +19,7 @@ from core.chat_history.storage import (
     remove_chat_history_storage,
 )
 from core.chat_history.text import chat_history_to_turns
+from core.messaging.dialog_tokens import NARR_ALIASES, SYSTEM_UI_SKIP, normalize_character_name
 
 
 def _directory(state: Any) -> Path:
@@ -114,11 +115,17 @@ def _details(record: dict) -> dict:
     turns = chat_history_to_turns(messages) if messages else []
     launch = record.get("launch")
     launch = launch if isinstance(launch, dict) else {}
-    characters = launch.get("characters") or list(
+    candidates = launch.get("characters") or [
+        turn["speaker"] for turn in turns if turn["role"] == "assistant"
+    ]
+    # Dialogue control roles are not participants or user-facing default titles.
+    reserved = SYSTEM_UI_SKIP | NARR_ALIASES
+    characters = list(
         dict.fromkeys(
-            turn["speaker"]
-            for turn in turns
-            if turn["role"] == "assistant" and turn["speaker"]
+            name.strip()
+            for name in candidates
+            if isinstance(name, str) and name.strip()
+            and normalize_character_name(name) not in reserved
         )
     )
     directory = chat_history_session_dir(path)

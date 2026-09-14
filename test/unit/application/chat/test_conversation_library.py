@@ -151,6 +151,42 @@ def test_legacy_discovery_does_not_write_or_guess_last_template(state):
     assert (path / "active.json").read_bytes() == original
 
 
+@pytest.mark.parametrize("saved_settings", [False, True])
+def test_default_title_and_participants_exclude_dialog_control_roles(state, saved_settings):
+    path = history(state)
+    names = [
+        "CHOICE", "COT", "NARR", "STAT", "SCENE", "bgm", "CG",
+        "选项", "思维链", "旁白", "数值", "场景", " choice ", "BGM", "cg",
+        " Alice ", "Bob", "Alice", "CHOICE Alice",
+    ]
+    write(path / "active.json", [{
+        "role": "assistant",
+        "content": json.dumps({"dialog": [
+            {"character_name": name, "speech": "Hello"} for name in names
+        ]}),
+    }])
+    if saved_settings:
+        remember_conversation(state, path, {"characters": names})
+    original = (path / "active.json").read_bytes()
+    item = list_conversations(state)[0]
+    assert item["characters"] == ["Alice", "Bob", "CHOICE Alice"]
+    assert item["title"] == "Alice · Bob · CHOICE Alice"
+    assert (path / "active.json").read_bytes() == original
+
+
+def test_control_only_history_uses_untitled_fallback_and_preserves_authored_titles(state):
+    path = history(state)
+    write(path / "active.json", [{
+        "role": "assistant",
+        "content": '{"dialog": [{"character_name": "CHOICE", "speech": "Continue"}]}',
+    }])
+    item = list_conversations(state)[0]
+    assert item["characters"] == []
+    assert item["title"] == ""  # The UI supplies its localized untitled label.
+    rename_conversation(state, item["id"], "My CHOICE story")
+    assert list_conversations(state)[0]["title"] == "My CHOICE story"
+
+
 def test_every_story_save_appears_separately(state):
     for name in ("play-one", "play-two"):
         path = history(state, name)
