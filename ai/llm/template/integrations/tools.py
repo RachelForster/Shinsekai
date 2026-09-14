@@ -3,7 +3,8 @@
 from typing import Any
 
 from ai.tools.tool_manager import ToolManager
-from sdk.tool_registry import apply_registered_tools
+from sdk.tool_registry import iter_registered_tools
+from plugin_system.host import read_plugin_manifest_items
 
 # Keep builtin registration at module import for existing application callers.
 import ai.tools.character_tools  # noqa: F401
@@ -44,12 +45,43 @@ def format_llm_tools_block(translate) -> str:
     """Only include default-group tools in the system prompt.
     Use search_tools to discover tools from other groups on demand."""
     _T = translate
-    apply_registered_tools(ToolManager())
-    definitions = ToolManager().get_definitions(groups="default")
+    tm = ToolManager()
+    module_states = []
+    entry_states = []
+    for item in read_plugin_manifest_items():
+        module = item["entry"].split(":", 1)[0].strip()
+        entry_states.append((module, bool(item.get("enabled", True))))
+        # Tool helpers commonly live beside the plugin entry module.
+        package = module.rpartition(".")[0] if "." in module else module
+        if package == "plugins":
+            package = module
+        module_states.append((package, bool(item.get("enabled", True))))
+
+    def visible(module: str) -> bool:
+        owners = [(entry, enabled) for entry, enabled in entry_states
+                  if module == entry or module.startswith(entry + ".")]
+        if not owners:
+            owners = [(package, enabled) for package, enabled in module_states
+                      if module == package or module.startswith(package + ".")]
+        if owners:
+            longest = max(len(package) for package, _ in owners)
+            return any(enabled for package, enabled in owners if len(package) == longest)
+        # Removed plugins can remain imported under arbitrary module names.
+        # Only host tools (including ToolManager's MCP runners) need no owner.
+        return module.startswith("ai.tools.")
+
+    # Template generation may precede full host startup. Apply only visible
+    # declarations; never resurrect disabled plugin decorators in ToolManager.
+    for fn, name, description, group, risk in iter_registered_tools():
+        if visible(fn.__module__):
+            tm.register_function(fn, name=name, description=description, group=group, risk=risk)
+    available = [entry for entry in tm.get_definitions()
+                 if visible(tm.get_tool_module(entry["function"]["name"]))]
+    definitions = [entry for entry in available
+                   if tm.get_tool_group(entry["function"]["name"]) == "default"]
     if not definitions:
         return ""
-    tm = ToolManager()
-    other_groups = [g for g in tm.get_groups() if g != "default"]
+    other_groups = sorted({tm.get_tool_group(entry["function"]["name"]) for entry in available} - {"default"})
     other_hint = ""
     if other_groups:
         other_hint = _T("tools_other_groups", groups=", ".join(other_groups))

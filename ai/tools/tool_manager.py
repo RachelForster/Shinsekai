@@ -253,6 +253,10 @@ class ToolManager:
         """Return the group name for a tool."""
         return self._tool_groups.get(tool_name, "default")
 
+    def get_tool_module(self, tool_name: str) -> str:
+        """Return callable provenance for prompt visibility filtering."""
+        return str(getattr(self._functions.get(tool_name), "__module__", ""))
+
     def get_tool_risk(self, tool_name: str) -> str:
         """Return the risk level for a tool (low/medium/high)."""
         return self._tool_risks.get(tool_name, "low")
