@@ -686,8 +686,14 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         let seq = 0;
         let socket: WebSocket | null = null;
         let lastEventSeq = 0;
+        let currentSessionId = "";
 
         const emitSnapshot = (snapshot: ChatSnapshot) => {
+          if (snapshot.sessionId && snapshot.sessionId !== currentSessionId) {
+            currentSessionId = snapshot.sessionId;
+            seq = 0;
+            lastEventSeq = 0;
+          }
           const snapshotSeq =
             typeof snapshot.eventSeq === "number" && Number.isFinite(snapshot.eventSeq) ? snapshot.eventSeq : 0;
           const event: ChatStageEvent = {
@@ -780,7 +786,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
                 if (lastEventSeq > 0 && parsed.seq > lastEventSeq + 1) {
                   void requestJson<ChatSnapshot>(apiBase, chatSnapshotPath())
                     .then((nextSnapshot) => {
-                      if (!stopped) {
+                      if (!stopped && socket === ws) {
                         emitSnapshot(nextSnapshot);
                       }
                     })

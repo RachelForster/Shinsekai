@@ -250,9 +250,10 @@ export function ChatStagePage() {
     standaloneDesktopWindow,
     transparentBackground,
   });
-  useChatStageEvents({
+  const { replaceSession } = useChatStageEvents({
     dispatch,
     eventSeq: state.eventSeq,
+    sessionId: state.sessionId,
     loadFallbackMessage: t("chat.error.loadFallback"),
     queueAnimatedDialog,
   });
@@ -714,6 +715,7 @@ export function ChatStagePage() {
           transparent={transparentBackground}
         />
         <ChatSoundPlayer
+          key={state.sessionId}
           bgmPath={viewModel.bgmPath}
           bgmVolume={runtimeConfig.bgmVolume}
           effectVolume={runtimeConfig.effectVolume}
@@ -911,7 +913,8 @@ export function ChatStagePage() {
           <CurrentConversationEditorDialog
             onClose={() => setConversationEditorOpen(false)}
             onApplied={(snapshot) => {
-              dispatch({ type: "hydrate", snapshot, receivedAt: performance.now() });
+              replaceSession(snapshot);
+              showDialogImmediately();
               setConversationEditorOpen(false);
             }}
           />
