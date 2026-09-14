@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,10 @@ from core.chat_history.storage import (
 )
 from core.chat_history.text import chat_history_to_turns
 from core.messaging.dialog_tokens import NARR_ALIASES, SYSTEM_UI_SKIP, normalize_character_name
+
+
+# All bridge windows and HTTP worker threads share this metadata transaction lock.
+_metadata_lock = threading.RLock()
 
 
 def _directory(state: Any) -> Path:
@@ -67,19 +72,20 @@ def remember_conversation(state: Any, history_path: Path, payload: dict) -> None
     except FileExistsError:
         pass
     target = _directory(state) / f"{_id(path)}.json"
-    previous = _read(target)
-    previous = previous if isinstance(previous, dict) else {}
-    launch = {**payload, "historyPath": path.as_posix(), "resetHistory": False}
-    _write(
-        target,
-        {
-            "historyPath": path.as_posix(),
-            "title": previous.get("title") or str(payload.get("conversationTitle") or "").strip()[:120],
-            "createdAt": previous.get("createdAt")
-            or datetime.now(timezone.utc).isoformat(),
-            "launch": launch,
-        },
-    )
+    with _metadata_lock:
+        previous = _read(target)
+        previous = previous if isinstance(previous, dict) else {}
+        launch = {**payload, "historyPath": path.as_posix(), "resetHistory": False}
+        _write(
+            target,
+            {
+                "historyPath": path.as_posix(),
+                "title": previous.get("title") or str(payload.get("conversationTitle") or "").strip()[:120],
+                "createdAt": previous.get("createdAt")
+                or datetime.now(timezone.utc).isoformat(),
+                "launch": launch,
+            },
+        )
 
 
 def _records(state: Any) -> dict[str, dict]:
@@ -259,17 +265,18 @@ def rename_conversation(state: Any, conversation_id: str, title: str) -> dict:
     title = str(title).strip()
     if not title or len(title) > 120:
         raise ValueError("conversation title must contain 1–120 characters")
-    record = _record(state, conversation_id)
-    record["title"] = title
-    _write(_directory(state) / f"{conversation_id}.json", record)
-    return _details(record)
+    with _metadata_lock:
+        record = _record(state, conversation_id)
+        record["title"] = title
+        _write(_directory(state) / f"{conversation_id}.json", record)
+        return _details(record)
 
 
 def delete_conversation(state: Any, conversation_id: str) -> None:
     from application.chat.runtime_process import _chat_runtime_status
     from application.chat.start_chat import _chat_init_lock
 
-    with _chat_init_lock(state):
+    with _chat_init_lock(state), _metadata_lock:
         record = _record(state, conversation_id)
         if getattr(state, "chat_init_task_id", ""):
             raise RuntimeError("Wait for chat initialization to finish before deleting.")

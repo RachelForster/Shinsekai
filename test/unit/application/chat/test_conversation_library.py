@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from application.chat import conversation_library
 
 from application.chat.conversation_library import (
     conversation_launch_payload,
@@ -252,6 +255,53 @@ def test_new_chats_never_reuse_a_template_derived_identity(state):
     )
     assert first.history_path != second.history_path
     assert first.history_path.name.startswith("chat-")
+
+
+@pytest.mark.parametrize("first", ["save", "rename"])
+def test_concurrent_title_and_settings_updates_preserve_both(state, monkeypatch, first):
+    path = history(state)
+    remember_conversation(state, path, {"system": "original"})
+    identifier = list_conversations(state)[0]["id"]
+    entered, release, second_started, second_write = (threading.Event() for _ in range(4))
+    original_write = conversation_library._write
+    owner = None
+
+    def write_after_pause(target, value):
+        if threading.get_ident() == owner:
+            entered.set()
+            assert release.wait(5)
+        else:
+            second_write.set()
+        original_write(target, value)
+
+    actions = {
+        "save": lambda: remember_conversation(state, path, {"system": "updated"}),
+        "rename": lambda: rename_conversation(state, identifier, "New title"),
+    }
+
+    def run_first():
+        nonlocal owner
+        owner = threading.get_ident()
+        actions[first]()
+
+    def run_second():
+        second_started.set()
+        actions["rename" if first == "save" else "save"]()
+
+    monkeypatch.setattr(conversation_library, "_write", write_after_pause)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first_result = pool.submit(run_first)
+        assert entered.wait(5)
+        second_result = pool.submit(run_second)
+        try:
+            assert second_started.wait(5)
+            assert not second_write.wait(0.1)
+        finally:
+            release.set()
+        first_result.result(timeout=5)
+        second_result.result(timeout=5)
+    assert list_conversations(state)[0]["title"] == "New title"
+    assert saved_conversation_launch(state, path)["system"] == "updated"
 
 
 @pytest.mark.parametrize("identifier", ["../../secret", "unknown"])
