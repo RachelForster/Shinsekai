@@ -185,8 +185,17 @@ describe("TemplateEditorPage", () => {
 
   it("new chat always creates independent history even with a remembered path", async () => {
     mockGetTemplateSession.mockResolvedValue(savedChat);
+    mockGenerateTemplate.mockImplementation(async (input) => ({
+      ...template,
+      name: input.name,
+      scenario: savedChat.scenario,
+      system: "Indexed sprite instructions",
+      mediaSelectionMode: input.mediaSelectionMode,
+    }));
     renderPage({ createOnly: true, conversationTitle: "Evening walk" });
     await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
+    expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).not.toBeChecked();
+    expect(mockGetMemoryStatus).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Quick restart" })).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("D:/history/chosen")).not.toBeInTheDocument();
     await clickButton(screen.getByRole("button", { name: "Create and start" }));
@@ -197,13 +206,16 @@ describe("TemplateEditorPage", () => {
           historyPath: "",
           conversationTitle: "Evening walk",
           templateName: "My saved chat",
+          mediaSelectionMode: "indexed",
+          system: "Indexed sprite instructions",
         }),
       ),
     );
+    expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ mediaSelectionMode: "indexed" }));
   });
 
   it("generates a timestamp title when a new chat title is cleared", async () => {
-    mockGetTemplateSession.mockResolvedValue(savedChat);
+    mockGetTemplateSession.mockResolvedValue({ ...savedChat, mediaSelectionMode: "indexed" });
     renderPage({ createOnly: true, conversationTitle: "  " });
     await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
     await clickButton(screen.getByRole("button", { name: "Create and start" }));
@@ -215,6 +227,19 @@ describe("TemplateEditorPage", () => {
         }),
       ),
     );
+  });
+
+  it("keeps smart sprite matching off when a new chat loads a semantic template", async () => {
+    mockListTemplates.mockResolvedValue([{ ...template, mediaSelectionMode: "semantic" }]);
+    renderPage({ createOnly: true });
+
+    await screen.findByDisplayValue("Opening");
+
+    expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).not.toBeChecked();
+    expect(mockGetMemoryStatus).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Smart sprite matching" }));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).toBeChecked());
+    expect(mockGetMemoryStatus).toHaveBeenCalledWith({ startLoading: true });
   });
 
   it("restores independent conversation settings after all public templates are deleted", async () => {
