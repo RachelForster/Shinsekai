@@ -112,6 +112,7 @@ export function StorySetupForm({
           placeholder={t("story.setup.synopsisPlaceholder")}
         />
       </label>
+      <p className="section__description">{t("story.setup.synopsisPlaceholder")}</p>
       {[characters, backgrounds].map(
         (query, index) =>
           query.isError && (

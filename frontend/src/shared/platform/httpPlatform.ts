@@ -1,4 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { StorySuggestion } from "./storyEditorTypes";
 import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
 import { PlatformRequestError } from "./errors";
 import {
@@ -866,6 +867,23 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     story: {
+      readDocument: (storyPath) =>
+        requestJson(apiBase, "/api/story/editor/read", {
+          body: JSON.stringify({ storyPath }),
+          method: "POST",
+        }),
+      saveDocument: (input) =>
+        requestJson(apiBase, "/api/story/editor/save", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      async suggestGraph(input) {
+        const task = await requestJson<TaskSnapshot<StorySuggestion>>(apiBase, "/api/story/editor/suggest", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
       list: () => requestJson(apiBase, "/api/story/library"),
       prepareLaunch: (storyPath, historyPath = "") =>
         requestJson(apiBase, "/api/story/launch-payload", {

@@ -23,6 +23,37 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("uses separate read, save and background suggestion endpoints for story editing", async () => {
+    const doc = {
+      storyPath: "story.json",
+      sourceHash: "hash",
+      title: "Story",
+      graph: { startNodeId: "end", nodes: [{ id: "end", title: "Ending", type: "ending_node" as const }] },
+    };
+    const proposal = { graph: doc.graph, summary: "Edited", validation: { valid: true, issues: [] } };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => mockJsonResponse(doc))
+      .mockImplementationOnce(() => mockJsonResponse({ ...doc, storyPath: "edited.json" }))
+      .mockImplementationOnce(() => mockJsonResponse({ id: "edit-task", status: "succeeded", result: proposal }));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    expect(await platform.story.readDocument("story.json")).toEqual(doc);
+    expect(await platform.story.saveDocument(doc)).toMatchObject({ storyPath: "edited.json" });
+    expect(await platform.story.suggestGraph({ ...doc, scope: "graph", instructions: "Add a branch" })).toEqual(
+      proposal,
+    );
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "http://127.0.0.1:8787/api/story/editor/read",
+      "http://127.0.0.1:8787/api/story/editor/save",
+      "http://127.0.0.1:8787/api/story/editor/suggest",
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({
+      sourceHash: "hash",
+      scope: "graph",
+      instructions: "Add a branch",
+    });
+  });
   it("deletes only the selected conversation through the bridge", async () => {
     const fetchMock = vi.fn(() => mockJsonResponse({ ok: true }));
     vi.stubGlobal("fetch", fetchMock);

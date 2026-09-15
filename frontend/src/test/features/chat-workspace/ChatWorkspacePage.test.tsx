@@ -32,6 +32,11 @@ vi.mock("../../../features/story-generator/StoryGeneratorPage", () => ({
     <div data-testid="story-editor">{conversationTitle}</div>
   ),
 }));
+vi.mock("../../../features/story-generator/StoryConversationSettings", () => ({
+  StoryConversationSettings: ({ conversationId }: { conversationId: string }) => (
+    <div data-testid="story-settings">{conversationId}</div>
+  ),
+}));
 function renderPage(path = "/settings/templates") {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -84,12 +89,13 @@ describe("chat workspace", () => {
     expect(screen.queryByTestId("normal-editor")).not.toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
-  it("keeps story deep links and uses the shared settings editor for existing stories", async () => {
+  it("keeps story deep links and opens dedicated settings for existing stories", async () => {
     renderPage("/settings/templates?mode=story");
     expect(await screen.findByTestId("story-editor")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Chats" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit story" }));
-    expect(await screen.findByTestId("normal-editor")).toHaveTextContent("old-story");
+    expect(await screen.findByTestId("story-settings")).toHaveTextContent("old-story");
+    expect(screen.queryByTestId("normal-editor")).not.toBeInTheDocument();
     expect(screen.getByText("Story chat")).toBeVisible();
     expect(screen.queryByLabelText("Chat title")).not.toBeInTheDocument();
   });

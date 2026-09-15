@@ -1322,6 +1322,7 @@ export interface StoryGenerationInput {
 }
 
 export interface StoryLibraryEntry {
+  version?: number;
   id: string;
   title: string;
   storyPath: string;
@@ -1441,6 +1442,13 @@ export interface ShinsekaiPlatform {
     subscribeEvents: (listener: (event: ChatStageEvent) => void) => () => void;
   };
   story: {
+    readDocument: (storyPath: string) => Promise<import("./storyEditorTypes").StoryDocument>;
+    saveDocument: (
+      input: import("./storyEditorTypes").StoryEditInput,
+    ) => Promise<import("./storyEditorTypes").StoryDocument>;
+    suggestGraph: (
+      input: import("./storyEditorTypes").StorySuggestionInput,
+    ) => Promise<import("./storyEditorTypes").StorySuggestion>;
     list: () => Promise<StoryLibraryEntry[]>;
     prepareLaunch: (storyPath: string, historyPath?: string) => Promise<ChatLaunchPayload>;
     getPreview: (id: string) => Promise<import("./storyPreviewTypes").StoryGenerationPreview>;

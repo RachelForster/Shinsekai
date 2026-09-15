@@ -86,14 +86,24 @@ describe("story launch", () => {
     );
   });
   it("validates the selected story save and resumes its own prompt settings", async () => {
-    prepareConversation.mockResolvedValue({ historyPath: "saved", system: "Saved rules", resetHistory: false });
+    prepareConversation.mockResolvedValue({
+      historyPath: "saved",
+      system: "Saved rules",
+      scenario: "The culprit is Ling",
+      resetHistory: false,
+    });
     renderButton("saved", "zh_CN", "saved-id");
     fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
     await waitFor(() => expect(showChatSurface).toHaveBeenCalled());
     expect(prepareStoryLaunch).toHaveBeenCalledWith("story/draft.json", "saved");
     expect(prepareConversation).toHaveBeenCalledWith("saved-id");
     expect(launchChat).toHaveBeenCalledWith(
-      expect.objectContaining({ historyPath: "saved", system: "Saved rules", resetHistory: false }),
+      expect.objectContaining({
+        historyPath: "saved",
+        system: "Saved rules",
+        scenario: "Current node guidance",
+        resetHistory: false,
+      }),
       expect.anything(),
     );
     expect(startStorySession).toHaveBeenCalledWith("story/draft.json");
@@ -116,6 +126,7 @@ describe("story launch", () => {
         characters: ["小玲"],
         backgroundName: "旧校舍",
         system: "人物设定",
+        scenario: "Current node guidance",
         historyPath,
         resetHistory: !historyPath,
       }),

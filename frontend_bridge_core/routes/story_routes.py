@@ -15,6 +15,11 @@ from application.story.generation_recovery import recovery_for
 from application.story.generation_preview import generation_preview
 from application.story.selection import generation_selection
 from application.story.library import list_story_library, prepare_story_launch
+from application.story.editor import (
+    read_story_document,
+    save_story_document,
+    suggest_story_graph,
+)
 from frontend_bridge_core.chat_session import (
     _generate_system_template_for_mode,
     _usable_media_selection_mode,
@@ -176,6 +181,33 @@ def _cancel_generation(request: ApiRequest) -> JsonResponse:
 
 
 STORY_ROUTES = (
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/story/editor/read",
+        handler=lambda request: JsonResponse(
+            read_story_document(request.state, str(request.body.get("storyPath") or ""))
+        ),
+        name="story.editor.read",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/story/editor/save",
+        handler=lambda request: JsonResponse(
+            save_story_document(request.state, request.body)
+        ),
+        name="story.editor.save",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/story/editor/suggest",
+        handler=lambda request: TaskResponse(
+            kind="story-edit",
+            title="修改剧本",
+            message="正在生成候选修改。",
+            worker=lambda task_id: suggest_story_graph(request.state, request.body),
+        ),
+        name="story.editor.suggest",
+    ),
     Route(
         methods=frozenset({"GET"}),
         pattern="/api/story/library",

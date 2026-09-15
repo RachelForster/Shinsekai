@@ -118,7 +118,7 @@ describe("StoryGeneratorPage", () => {
     startStoryGeneration.mockResolvedValue(generatedTask());
     const page = renderPage("en");
     fireEvent.click(await screen.findByRole("button", { name: "小玲" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Synopsis" }), { target: { value: "我的新故事" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Creative brief" }), { target: { value: "我的新故事" } });
     const start = screen.getByRole("button", { name: "Generate story" });
     await waitFor(() => expect(start).toBeEnabled());
     fireEvent.click(start);
@@ -137,7 +137,7 @@ describe("StoryGeneratorPage", () => {
     expect(screen.getByText("The story ends here.")).toBeVisible();
 
     page.changeLanguage("ja");
-    expect(screen.getByRole("textbox", { name: "あらすじ" })).toHaveValue("我的新故事");
+    expect(screen.getByRole("textbox", { name: "創作要件" })).toHaveValue("我的新故事");
     expect(screen.getByRole("button", { name: "小玲" })).toHaveClass("template-character-card--selected");
     expect(screen.getByRole("heading", { name: "シナリオ図" })).toBeVisible();
     expect(screen.getByRole("button", { name: "結末 重逢的约定" })).toHaveAttribute("aria-pressed", "true");
@@ -353,11 +353,11 @@ describe("StoryGeneratorPage", () => {
       },
     ]);
     renderPage();
-    fireEvent.change(await screen.findByRole("textbox", { name: "剧情梗概" }), { target: { value: "我的新故事" } });
+    fireEvent.change(await screen.findByRole("textbox", { name: "创作要求" }), { target: { value: "我的新故事" } });
     fireEvent.click(screen.getByRole("tab", { name: "已有剧本" }));
     expect(await screen.findByText("旧校舍谜案")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建并开始" })).toBeEnabled();
     fireEvent.click(screen.getByRole("tab", { name: "创作新剧本" }));
-    expect(screen.getByRole("textbox", { name: "剧情梗概" })).toHaveValue("我的新故事");
+    expect(screen.getByRole("textbox", { name: "创作要求" })).toHaveValue("我的新故事");
   });
 });

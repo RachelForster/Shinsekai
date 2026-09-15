@@ -1102,6 +1102,7 @@ class StoryGenerationService:
             "status": "draft",
             "startNodeId": narrative.get("startNodeId"),
             "metadata": {
+                "authoringBrief": task["synopsis"],
                 **(
                     {
                         "resourceBindings": {
@@ -1115,7 +1116,6 @@ class StoryGenerationService:
                             "characterPromptMode": task["options"].get(
                                 "characterPromptMode", "full"
                             ),
-                            "scenario": task["synopsis"],
                             "templateOptions": {
                                 key: task["options"][key]
                                 for key in TEMPLATE_OPTION_KEYS if key in task["options"]
