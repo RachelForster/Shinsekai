@@ -287,6 +287,18 @@ function openDownload(apiBase: string, path: string) {
   openBridgeWindow(apiBase, `/api/download?path=${encodeURIComponent(path)}`);
 }
 
+async function exportPackage(apiBase: string, resource: string, name: string) {
+  const openFolder = isTauriDesktop();
+  const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, `/api/${resource}/export`, {
+    body: JSON.stringify({ name, ...(openFolder ? { openFolder: true } : {}) }),
+    method: "POST",
+  });
+  if (!openFolder) {
+    openDownload(apiBase, result.path);
+  }
+  return result.path;
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -443,14 +455,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ index, name }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/backgrounds/export", {
-          body: JSON.stringify({ name }),
-          method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+      export: (name) => exportPackage(apiBase, "backgrounds", name),
       import: (items) => {
         if (isFileList(items)) {
           return uploadFiles<Background[]>(apiBase, "/api/backgrounds/import-upload", items);
@@ -511,14 +516,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ index, name }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/effects/export", {
-          body: JSON.stringify({ name }),
-          method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+      export: (name) => exportPackage(apiBase, "effects", name),
       import: (items) => {
         if (isFileList(items)) {
           return uploadFiles<Effect[]>(apiBase, "/api/effects/import-upload", items);
@@ -942,14 +940,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ name, spriteIndex }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/characters/export", {
-          body: JSON.stringify({ name }),
-          method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+      export: (name) => exportPackage(apiBase, "characters", name),
       ensureBriefs: (names) =>
         requestJson<CharacterBriefBatchResult>(apiBase, "/api/characters/ensure-briefs", {
           body: JSON.stringify({ names }),

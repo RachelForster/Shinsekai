@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from application.backgrounds import BackgroundOperation
@@ -34,6 +35,7 @@ from frontend_bridge_core.routes.router import (
     TaskResponse,
 )
 from frontend_bridge_core.routes.uploads import UploadedFiles
+from sdk.path_utils import safe_project_path
 
 
 def _uploads(request: ApiRequest) -> UploadedFiles:
@@ -80,8 +82,19 @@ def _import_uploaded_characters(request: ApiRequest) -> JsonResponse:
     )
 
 
+def _export_response(request: ApiRequest, result: dict[str, str]) -> JsonResponse:
+    if request.body.get("openFolder") is True:
+        from tools.file_util import _open_export_folder
+
+        project_root = Path(getattr(request.state, "project_root_dir", "") or Path.cwd())
+        output = safe_project_path(result["path"], root=project_root)
+        _open_export_folder(output)
+    return JsonResponse(result)
+
+
 def _export_character(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(
+    return _export_response(
+        request,
         character_response_payload(
             _execute_character_request(
                 request.state,
@@ -122,7 +135,8 @@ def _import_uploaded_backgrounds(request: ApiRequest) -> JsonResponse:
 
 
 def _export_background(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(
+    return _export_response(
+        request,
         background_response_payload(
             _execute_background_request(
                 request.state,
@@ -178,7 +192,8 @@ def _import_uploaded_effects(request: ApiRequest) -> JsonResponse:
 
 
 def _export_effect(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(
+    return _export_response(
+        request,
         _execute_effect(
             request.state,
             EffectOperation.EXPORT,

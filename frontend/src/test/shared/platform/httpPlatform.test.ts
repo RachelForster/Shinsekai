@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpPlatform } from "../../../shared/platform/httpPlatform";
 import { currentChatRendererId } from "../../../shared/platform/chatRenderer";
+import * as desktopApi from "../../../shared/desktop/desktopApi";
 import {
   sampleConfig,
   sampleMcpConfig,
@@ -33,6 +34,7 @@ describe("http platform", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     delete window.__SHINSEKAI_BRIDGE_RESTARTING__;
     delete window.__SHINSEKAI_RESTARTING__;
@@ -466,6 +468,44 @@ describe("http platform", () => {
       "_blank",
       "noopener,noreferrer",
     );
+  });
+
+  it.each([
+    ["characters", "Mio", "char"],
+    ["backgrounds", "Room", "bg"],
+    ["effects", "Spark", "ef"],
+  ] as const)("opens the export folder for desktop %s exports", async (resource, name, extension) => {
+    vi.spyOn(desktopApi, "isTauriDesktop").mockReturnValue(true);
+    const path = `output/${name}.${extension}`;
+    const fetchMock = vi.fn(() => mockJsonResponse({ path, downloadUrl: `/api/download?path=${path}` }));
+    const openMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("open", openMock);
+    const externalOpenMock = vi.spyOn(desktopApi, "openDesktopExternalUrl").mockResolvedValue(undefined);
+
+    await expect(createHttpPlatform("http://127.0.0.1:8787")[resource].export(name)).resolves.toBe(path);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://127.0.0.1:8787/api/${resource}/export`,
+      expect.objectContaining({ body: JSON.stringify({ name, openFolder: true }), method: "POST" }),
+    );
+    expect(openMock).not.toHaveBeenCalled();
+    expect(externalOpenMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps a failed desktop export as an error without opening a download", async () => {
+    vi.spyOn(desktopApi, "isTauriDesktop").mockReturnValue(true);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => mockJsonResponse({ error: "Export failed" }, false)),
+    );
+    const openMock = vi.fn();
+    vi.stubGlobal("open", openMock);
+
+    await expect(createHttpPlatform("http://127.0.0.1:8787").characters.export("Mio")).rejects.toThrow("Export failed");
+
+    expect(openMock).not.toHaveBeenCalled();
   });
 
   it("calls background translate and upload endpoints", async () => {
