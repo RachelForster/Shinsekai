@@ -11,6 +11,8 @@ import "./StoryCanvas.css";
 type Point = { x: number; y: number };
 const WIDTH = 248;
 const HEIGHT = 148;
+const arrange = (graph: StoryGraph): Record<string, Point> =>
+  Object.fromEntries(layoutStoryGraph(graph).nodes.map((node) => [node.id, { x: node.x * 1.4, y: node.y * 1.5 }]));
 const curve = (a: Point, b: Point, lane = 0) => {
   const bend = Math.max(70, Math.abs(b.x - a.x) / 2);
   return `M ${a.x} ${a.y} C ${a.x + bend} ${a.y + lane}, ${b.x - bend} ${b.y + lane}, ${b.x} ${b.y}`;
@@ -34,16 +36,20 @@ export function StoryCanvas({
   const { t } = useI18n();
   const viewport = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Record<string, Point>>(() => {
+    const initial = arrange(graph);
     try {
       const value = JSON.parse(sessionStorage.getItem(storageKey) || "{}");
-      return Object.fromEntries(
-        Object.entries(value).filter((entry): entry is [string, Point] => {
-          const point = entry[1] as Point | null;
-          return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
-        }),
-      );
+      return {
+        ...initial,
+        ...Object.fromEntries(
+          Object.entries(value).filter((entry): entry is [string, Point] => {
+            const point = entry[1] as Point | null;
+            return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
+          }),
+        ),
+      };
     } catch {
-      return {};
+      return initial;
     }
   });
   const [view, setView] = useState({ x: 40, y: 40, scale: 1 });
@@ -62,6 +68,14 @@ export function StoryCanvas({
   const nodesRef = useRef(nodes);
   nodesRef.current = nodes;
   const ids = graph.nodes.map((node) => node.id).join("\0");
+  useEffect(() => {
+    const missing = nodes.filter((node) => !Object.hasOwn(positions, node.id));
+    if (missing.length)
+      setPositions((previous) => ({
+        ...previous,
+        ...Object.fromEntries(missing.map((node) => [node.id, { x: node.x, y: node.y }])),
+      }));
+  }, [nodes, positions]);
   const fit = useCallback(() => {
     const items = nodesRef.current;
     if (!items.length) return;
@@ -277,7 +291,7 @@ export function StoryCanvas({
           title={t("story.canvas.arrange")}
           aria-label={t("story.canvas.arrange")}
           onClick={() => {
-            setPositions({});
+            setPositions(arrange(graph));
             requestAnimationFrame(() => fit());
           }}
         >
