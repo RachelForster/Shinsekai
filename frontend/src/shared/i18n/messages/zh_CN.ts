@@ -105,6 +105,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "story.regenerate.action": "重新生成",
   "story.editor.title": "剧本编辑器",
   "story.editor.edit": "编辑节点图",
+  "story.editor.unsupported": "此剧本暂不支持节点编辑，仍可正常游玩。",
   "story.editor.version": "版本 {version}",
   "story.editor.versionHint": "保存为新版本，已有聊天与存档继续使用原版。",
   "story.editor.draftHint": "点击节点编辑。未保存的草稿会暂存在本窗口，LLM 候选需要采纳后再保存。",

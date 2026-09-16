@@ -175,7 +175,7 @@ def test_editor_routes_are_registered_and_suggestions_run_as_tasks(tmp_path):
         save_story_document(state, document)
 
 
-def test_saved_version_keeps_generated_profiles_when_original_is_regenerated(tmp_path):
+def setup_generated_profile(tmp_path):
     state, document, _, _ = setup_editor(tmp_path)
     path = Path(document["storyPath"])
     source = json.loads(path.read_text(encoding="utf-8"))
@@ -185,6 +185,11 @@ def test_saved_version_keeps_generated_profiles_when_original_is_regenerated(tmp
     source["cast"]["characters"][0]["source"] = {"type": "author-generated", "path": "characters/witness.yaml"}
     path.write_text(json.dumps(source), encoding="utf-8")
     document = read_story_document(state, str(path))
+    return state, document, profile
+
+
+def test_saved_version_keeps_generated_profiles_when_original_is_regenerated(tmp_path):
+    state, document, profile = setup_generated_profile(tmp_path)
     saved = save_story_document(state, document)
     new_source = StoryProjectLoader().load_source(saved["storyPath"])
     copied = Path(saved["storyPath"]).parent / new_source["cast"]["characters"][0]["source"]["path"]
@@ -192,3 +197,76 @@ def test_saved_version_keeps_generated_profiles_when_original_is_regenerated(tmp
     assert copied.read_bytes() == profile.read_bytes()
     profile.write_text("name: Replacement\n", encoding="utf-8")
     assert "Original witness" in copied.read_text(encoding="utf-8")
+
+
+def test_profiles_are_synced_and_atomically_published_before_manifest(tmp_path, monkeypatch):
+    from application.story import editor
+
+    state, document, profile = setup_generated_profile(tmp_path)
+    rename = editor._durable_rename
+    fsync = editor.os.fsync
+    events = []
+
+    def sync(fd):
+        fsync(fd)
+        events.append("sync")
+
+    def publish(temporary, destination):
+        assert events[-1] == "sync"
+        assert not destination.exists()
+        if "-character-" in destination.name:
+            assert temporary.read_bytes() == profile.read_bytes()
+            assert not list(destination.parent.glob("edited-*.json"))
+            kind = "profile"
+        else:
+            source = json.loads(temporary.read_text(encoding="utf-8"))
+            copied = destination.parent / source["cast"]["characters"][0]["source"]["path"]
+            assert copied.read_bytes() == profile.read_bytes()
+            assert "profile" in events
+            kind = "manifest"
+        rename(temporary, destination)
+        events.append(kind)
+
+    monkeypatch.setattr(editor.os, "fsync", sync)
+    monkeypatch.setattr(editor, "_durable_rename", publish)
+    saved = save_story_document(state, document)
+    assert read_story_document(state, saved["storyPath"]) == saved
+    assert events[-1] == "manifest"
+    assert not list(profile.parent.parent.glob("*.tmp"))
+
+
+@pytest.mark.parametrize("failure", ["profile-sync", "profile-rename", "manifest-rename", "after-manifest-rename"])
+def test_failed_save_never_leaves_manifest_with_missing_profiles(tmp_path, monkeypatch, failure):
+    from application.story import editor
+
+    state, document, profile = setup_generated_profile(tmp_path)
+    original = Path(document["storyPath"]).read_bytes()
+    rename = editor._durable_rename
+
+    def fail_sync(_fd):
+        raise OSError("injected sync failure")
+
+    def publish(temporary, destination):
+        is_profile = "-character-" in destination.name
+        if failure == ("profile-rename" if is_profile else "manifest-rename"):
+            raise OSError("injected rename failure")
+        rename(temporary, destination)
+        if failure == "after-manifest-rename" and not is_profile:
+            raise OSError("injected directory sync failure")
+
+    monkeypatch.setattr(editor, "_durable_rename", publish)
+    if failure == "profile-sync":
+        monkeypatch.setattr(editor.os, "fsync", fail_sync)
+    with pytest.raises(OSError, match="injected"):
+        save_story_document(state, document)
+    root = profile.parent.parent
+    assert Path(document["storyPath"]).read_bytes() == original
+    assert not list(root.glob("*.tmp"))
+    if failure == "after-manifest-rename":
+        manifest, = root.glob("edited-*.json")
+        source = StoryProjectLoader().load_source(manifest)
+        copied = root / source["cast"]["characters"][0]["source"]["path"]
+        assert copied.read_bytes() == profile.read_bytes()
+        assert read_story_document(state, str(manifest))["version"] == document["version"] + 1
+    else:
+        assert not list(root.glob("edited-*"))

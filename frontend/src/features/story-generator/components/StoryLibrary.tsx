@@ -61,7 +61,11 @@ export function StoryLibrary({ onCreate, conversationTitle }: { onCreate: () => 
               conversationTitle={conversationTitle}
               label={t("conversation.createAndStart")}
             />
-            <Button onClick={() => setEditing(story.storyPath)}>{t("story.editor.edit")}</Button>
+            {story.canEditGraph === true ? (
+              <Button onClick={() => setEditing(story.storyPath)}>{t("story.editor.edit")}</Button>
+            ) : (
+              <p className="section__description">{t("story.editor.unsupported")}</p>
+            )}
           </article>
         ))}
       </div>

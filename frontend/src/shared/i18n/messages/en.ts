@@ -109,6 +109,7 @@ export const enMessages: Record<MessageKey, string> = {
   "story.regenerate.action": "Regenerate",
   "story.editor.title": "Story editor",
   "story.editor.edit": "Edit node graph",
+  "story.editor.unsupported": "Node editing is unavailable for this story. You can still play it.",
   "story.editor.version": "Version {version}",
   "story.editor.versionHint": "Save as a new version. Existing conversations and saves keep their original story.",
   "story.editor.draftHint":

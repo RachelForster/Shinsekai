@@ -20,7 +20,7 @@ from application.story.generation import (
     _validate_narrative,
     story_generation_service_for_state,
 )
-from application.story.library import _read_project
+from application.story.library import _read_project, supports_graph_editing
 from application.story.project_loader import StoryProjectLoader
 from application.story.selection import generation_selection
 from sdk.path_utils import safe_child_path, safe_existing_file_path
@@ -48,7 +48,9 @@ def _validate_graph(graph: dict) -> None:
 
 
 def _load(state: Any, story_path: str) -> tuple[Path, dict]:
-    path, _, _ = _read_project(state, story_path)
+    path, project, _ = _read_project(state, story_path)
+    if not supports_graph_editing(project):
+        raise ValueError("此旧版剧本暂不支持节点编辑，仍可正常游玩。")
     if path.is_dir():
         path = path / "manifest.yaml"
     source = StoryProjectLoader().load_source(path)
@@ -110,13 +112,45 @@ def _validate(source: dict) -> dict:
     return report.to_payload()
 
 
+def _durable_rename(temporary: Path, destination: Path) -> None:
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+
+        move = ctypes.WinDLL("kernel32", use_last_error=True).MoveFileExW
+        move.argtypes = (wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD)
+        move.restype = wintypes.BOOL
+        # MOVEFILE_WRITE_THROUGH: finish persisting the rename before publishing
+        # a manifest that references it. All targets are new, unique siblings.
+        if not move(str(temporary), str(destination), 0x8):
+            raise ctypes.WinError(ctypes.get_last_error())
+    else:
+        os.replace(temporary, destination)
+        directory = os.open(destination.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+
+def _publish_bytes(destination: Path, data: bytes) -> None:
+    temporary = destination.with_name(destination.name + ".tmp")
+    try:
+        with temporary.open("xb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        _durable_rename(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def save_story_document(state: Any, request: dict) -> dict:
     path, source = _draft(state, request)
     source["version"] += 1
     # Relative resources remain relative to the same directory. A new path and
     # version keep all existing conversations and saved progress on their source.
     destination = path.with_name(f"edited-{uuid.uuid4().hex}.json")
-    temporary = destination.with_suffix(".tmp")
     profiles = []
     for index, character in enumerate(source.get("cast", {}).get("characters", [])):
         binding = character.get("source", {})
@@ -139,20 +173,18 @@ def save_story_document(state: Any, request: dict) -> dict:
     created_profiles = []
     try:
         for target, data in profiles:
-            with target.open("xb") as handle:
-                created_profiles.append(target)
-                handle.write(data)
-        with temporary.open("x", encoding="utf-8", newline="\n") as handle:
-            handle.write(encoded)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temporary, destination)
+            created_profiles.append(target)
+            _publish_bytes(target, data)
+        # The manifest is the commit point. Every referenced copy is durable
+        # before this becomes visible; a crash earlier leaves only orphan copies.
+        _publish_bytes(destination, encoded.encode("utf-8"))
     except Exception:
-        for target in created_profiles:
-            target.unlink(missing_ok=True)
+        # A rename may succeed before directory synchronization reports failure.
+        # Never remove dependencies of a manifest that is already visible.
+        if not destination.exists():
+            for target in created_profiles:
+                target.unlink(missing_ok=True)
         raise
-    finally:
-        temporary.unlink(missing_ok=True)
     return _document(destination, source)
 
 

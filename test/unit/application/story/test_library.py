@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -127,6 +128,7 @@ def test_library_survives_restart_and_continues_saved_node(tmp_path):
     rows = list_story_library(state)
     assert len(rows) == 1
     assert rows[0]["characters"] == ["小玲", "小晴"]
+    assert rows[0]["canEditGraph"] is True
     assert not rows[0]["historyPath"]
     history = state.history_dir / "save"
     history.mkdir(parents=True)
@@ -155,6 +157,19 @@ def test_library_survives_restart_and_continues_saved_node(tmp_path):
     )
     assert recovered.active_branch.state.current_node_id == "school-lobby"
     assert recovered.active_branch.state.revision == revision
+
+
+def test_legacy_library_project_remains_playable_without_editor(tmp_path):
+    from application.story.editor import read_story_document
+
+    state, _, _, _ = selected_story(tmp_path)
+    legacy = tmp_path / "data/stories/campus-mystery"
+    shutil.copytree(Path("test/fixtures/stories/campus-mystery"), legacy)
+    row = next(item for item in list_story_library(state) if item["storyPath"] == (legacy / "manifest.yaml").as_posix())
+    assert row["canEditGraph"] is False
+    assert prepare_story_launch(state, row["storyPath"])["templateName"] == row["title"]
+    with pytest.raises(ValueError, match="旧版剧本暂不支持"):
+        read_story_document(state, row["storyPath"])
 
 
 def test_library_ignores_broken_and_incomplete_projects_and_rejects_wrong_save(

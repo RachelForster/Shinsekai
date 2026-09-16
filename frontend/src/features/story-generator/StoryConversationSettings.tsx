@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { conversationsQueryKey, listConversations } from "../../entities/chat/repository";
+import { listStories, storyLibraryQueryKey } from "../../entities/story/repository";
 import { useI18n } from "../../shared/i18n";
 import { Button } from "../../shared/ui";
 import type { ConversationSummary } from "../../shared/platform/types";
@@ -26,6 +27,13 @@ export function StoryConversationSettings({
     staleTime: 0,
   });
   const current = conversation ?? query.data?.find((item) => item.id === conversationId);
+  const stories = useQuery({
+    queryKey: storyLibraryQueryKey,
+    queryFn: listStories,
+    enabled: current?.kind === "story" && Boolean(current.storyPath),
+    staleTime: 0,
+  });
+  const canEdit = stories.data?.some((story) => story.storyPath === current?.storyPath && story.canEditGraph === true);
   return (
     <StoryFeatureGate>
       <section className="section">
@@ -48,15 +56,19 @@ export function StoryConversationSettings({
                 label={t("story.library.continue")}
               />
             )}
-            {editing ? (
+            {editing && canEdit ? (
               <StoryEditor
                 key={current.storyPath}
                 storyPath={current.storyPath}
                 onClose={() => setEditing(false)}
                 onPendingChange={onPendingChange}
               />
-            ) : (
+            ) : canEdit ? (
               <Button onClick={() => setEditing(true)}>{t("story.editor.openFromSettings")}</Button>
+            ) : (
+              <p className="section__description">
+                {t(stories.isPending ? "common.loading" : "story.editor.unsupported")}
+              </p>
             )}
           </>
         ) : (

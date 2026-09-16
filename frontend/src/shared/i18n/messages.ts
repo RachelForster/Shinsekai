@@ -3,6 +3,7 @@ export type FrontendLanguage = "zh_CN" | "en" | "ja";
 export type MessageKey =
   | "story.editor.title"
   | "story.editor.edit"
+  | "story.editor.unsupported"
   | "story.editor.version"
   | "story.editor.versionHint"
   | "story.editor.draftHint"

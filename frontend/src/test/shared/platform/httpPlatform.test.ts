@@ -508,7 +508,9 @@ describe("http platform", () => {
   ] as const)("opens the export folder for desktop %s exports", async (resource, name, extension) => {
     vi.spyOn(desktopApi, "isTauriDesktop").mockReturnValue(true);
     const path = `output/${name}.${extension}`;
-    const fetchMock = vi.fn(() => mockJsonResponse({ path, downloadUrl: `/api/download?path=${path}` }));
+    const fetchMock = vi.fn(() =>
+      mockJsonResponse({ path, downloadUrl: `/api/download?path=${path}`, folderOpened: true }),
+    );
     const openMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal("open", openMock);
@@ -523,6 +525,22 @@ describe("http platform", () => {
     );
     expect(openMock).not.toHaveBeenCalled();
     expect(externalOpenMock).not.toHaveBeenCalled();
+  });
+
+  it.each([false, undefined])("downloads the exported package when folderOpened is %s", async (folderOpened) => {
+    vi.spyOn(desktopApi, "isTauriDesktop").mockReturnValue(true);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => mockJsonResponse({ path: "output/Mio.char", folderOpened })),
+    );
+    const openMock = vi.fn();
+    vi.stubGlobal("open", openMock);
+    await expect(createHttpPlatform("http://127.0.0.1:8787").characters.export("Mio")).resolves.toBe("output/Mio.char");
+    expect(openMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/download?path=output%2FMio.char",
+      "_blank",
+      "noopener,noreferrer",
+    );
   });
 
   it("keeps a failed desktop export as an error without opening a download", async () => {
