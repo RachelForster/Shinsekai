@@ -45,12 +45,12 @@ const document: StoryDocument = {
   },
 };
 const validation = { valid: true, issues: [] };
-function renderEditor(onClose = vi.fn()) {
+function renderEditor(onClose = vi.fn(), storyPath = document.storyPath) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <I18nProvider language="en">
-        <StoryEditor storyPath={document.storyPath} onClose={onClose} />
+        <StoryEditor storyPath={storyPath} onClose={onClose} />
       </I18nProvider>
     </QueryClientProvider>,
   );
@@ -113,6 +113,60 @@ describe("story graph editor", () => {
       "stories/edited.json",
     );
     expect(screen.getByRole("button", { name: "Validate and save new version" })).toBeDisabled();
+  });
+
+  it("writes moves after saving to the new version and restores them when reopened", async () => {
+    vi.stubGlobal("PointerEvent", MouseEvent);
+    const layouts = (path: string) => JSON.parse(sessionStorage.getItem(`story-canvas:${path}`) || "{}");
+    let version = 1;
+    let latest = document;
+    saveStoryDocument.mockImplementation(async (input) => {
+      version += 1;
+      latest = { ...document, ...input, version, sourceHash: `v${version}`, storyPath: `stories/v${version}.json` };
+      return latest;
+    });
+    try {
+      const page = renderEditor();
+      await screen.findByDisplayValue(document.title);
+      const initialLayout = layouts(document.storyPath);
+      const moveNode = () => {
+        const node = screen.getByRole("button", { name: "Ending Truth" }).closest("article")!;
+        const canvas = screen.getByLabelText("Node canvas");
+        fireEvent.pointerDown(node, { button: 0, clientX: 100, clientY: 100 });
+        fireEvent.pointerMove(canvas, { clientX: 180, clientY: 160 });
+        fireEvent.pointerUp(canvas, { clientX: 180, clientY: 160 });
+      };
+      for (const nextVersion of [2, 3]) {
+        fireEvent.change(screen.getByRole("textbox", { name: "Story title" }), {
+          target: { value: `Version ${nextVersion}` },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Validate and save new version" }));
+        await waitFor(() =>
+          expect(screen.getByRole("button", { name: "Start playing the new version" })).toHaveAttribute(
+            "data-path",
+            `stories/v${nextVersion}.json`,
+          ),
+        );
+        const previousPath = nextVersion === 2 ? document.storyPath : "stories/v2.json";
+        const beforeMove = layouts(previousPath);
+        expect(layouts(latest.storyPath)).toEqual(beforeMove);
+        moveNode();
+        expect(layouts(latest.storyPath).end).not.toEqual(beforeMove.end);
+        expect(layouts(previousPath)).toEqual(beforeMove);
+      }
+      const finalLayout = layouts(latest.storyPath);
+      expect(layouts(document.storyPath)).toEqual(initialLayout);
+      page.unmount();
+      readStoryDocument.mockResolvedValue(latest);
+      renderEditor(vi.fn(), latest.storyPath);
+      await screen.findByDisplayValue(latest.title);
+      expect(screen.getByRole("button", { name: "Ending Truth" }).closest("article")).toHaveStyle({
+        left: `${finalLayout.end.x}px`,
+        top: `${finalLayout.end.y}px`,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("adds nodes and connections, removes incoming edges on deletion, and supports undo", async () => {

@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from application.chat.history_paths import resolve_history_path_for_project
+from application.chat.conversation_library import saved_conversation_launch
 from application.chat.runtime_process import TRANSPARENT_BACKGROUND_NAME
 from application.story.persistence import JsonStorySessionRepository
 from application.story.project_loader import load_story_project
 from application.story.selection import normal_template_options
 from config.feature_flags import FeatureFlag
-from core.chat_history.storage import STORY_SESSION_FILENAME, chat_history_session_dir
+from core.chat_history.storage import STORY_SESSION_FILENAME, chat_history_active_path, chat_history_session_dir
 from core.story import CharacterSourceType, StoryCompiler, StoryNode, StoryValidationError
 from sdk.path_utils import safe_existing_path
 
@@ -106,6 +107,31 @@ def list_story_library(state: Any) -> list[dict]:
     return sorted(entries, key=lambda item: item["updatedAt"], reverse=True)
 
 
+def _pending_story_attachment(state: Any, history: Path, story: Path) -> bool:
+    directory = chat_history_session_dir(history)
+    # Only recover an interrupted first attachment. A missing committed save or
+    # damaged storage must not silently restart an already played story.
+    if (
+        (directory / STORY_SESSION_FILENAME).exists()
+        or (directory / "story-prompt-binding.json").exists()
+        or not chat_history_active_path(history).is_file()
+    ):
+        return False
+    launch = saved_conversation_launch(state, history)
+    source = (launch or {}).get("storyPath")
+    if not isinstance(source, str) or not source.strip():
+        return False
+    root = Path(state.project_root_dir).resolve()
+    try:
+        recorded = safe_existing_path(root / source, roots=(root,), field="story path")
+    except (OSError, ValueError):
+        return False
+    # A directory and its manifest refer to the same project.
+    recorded = recorded / "manifest.yaml" if recorded.is_dir() else recorded
+    story = story / "manifest.yaml" if story.is_dir() else story
+    return recorded == story
+
+
 def prepare_story_launch(state: Any, story_path: str, history_path: str = "") -> dict:
     if not story_path.strip():
         raise ValueError("请选择剧本。")
@@ -115,7 +141,11 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         saved = JsonStorySessionRepository(
             chat_history_session_dir(resolved_history)
         ).load()
-        if not saved or not _matches(saved, program):
+        can_resume = (
+            _matches(saved, program) if saved is not None
+            else _pending_story_attachment(state, resolved_history, resolved_story)
+        )
+        if not can_resume:
             raise ValueError("存档与当前剧本不匹配，请刷新已有剧本后重试。")
         history_path = resolved_history.as_posix()
     bindings = project.metadata.resource_bindings

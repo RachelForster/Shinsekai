@@ -171,7 +171,7 @@ function EditorDraft({
         if (mounted.current) {
           try {
             sessionStorage.removeItem(draftKey(document));
-            const layout = sessionStorage.getItem(`story-canvas:${initial.storyPath}`);
+            const layout = sessionStorage.getItem(`story-canvas:${document.storyPath}`);
             if (layout) sessionStorage.setItem(`story-canvas:${result.storyPath}`, layout);
           } catch {
             /* Optional draft cache. */
@@ -258,7 +258,7 @@ function EditorDraft({
           graph={draft.graph}
           selectedId={selected?.id}
           disabled={locked}
-          storageKey={`story-canvas:${initial.storyPath}`}
+          storageKey={`story-canvas:${document.storyPath}`}
           onSelect={(id, inspect = true) => {
             setSelectedId(id);
             if (inspect) setPanel("node");
