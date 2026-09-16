@@ -120,6 +120,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "story.regenerate.action": "再生成",
   "story.editor.title": "シナリオエディター",
   "story.editor.edit": "ノードグラフを編集",
+  "story.editor.unsupported": "このシナリオはノード編集に対応していません。プレイは可能です。",
   "story.editor.version": "バージョン {version}",
   "story.editor.versionHint": "新しいバージョンとして保存します。既存の会話とセーブは元のシナリオを使います。",
   "story.editor.draftHint":

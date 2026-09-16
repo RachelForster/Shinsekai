@@ -113,6 +113,7 @@ export function createStoryPreviewPlatform(
             title: documentFor(task.draftPath).title,
             version: documentFor(task.draftPath).version,
             storyPath: task.draftPath,
+            canEditGraph: true,
             characters: (task.options.characters as string[]) ?? [],
             backgrounds: [String(task.options.backgroundName || TRANSPARENT_BACKGROUND_NAME)],
             historyPath: save?.historyPath || "",

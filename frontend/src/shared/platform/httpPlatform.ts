@@ -290,11 +290,15 @@ function openDownload(apiBase: string, path: string) {
 
 async function exportPackage(apiBase: string, resource: string, name: string) {
   const openFolder = isTauriDesktop();
-  const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, `/api/${resource}/export`, {
-    body: JSON.stringify({ name, ...(openFolder ? { openFolder: true } : {}) }),
-    method: "POST",
-  });
-  if (!openFolder) {
+  const result = await requestJson<{ downloadUrl: string; path: string; folderOpened?: boolean }>(
+    apiBase,
+    `/api/${resource}/export`,
+    {
+      body: JSON.stringify({ name, ...(openFolder ? { openFolder: true } : {}) }),
+      method: "POST",
+    },
+  );
+  if (!openFolder || result.folderOpened !== true) {
     openDownload(apiBase, result.path);
   }
   return result.path;

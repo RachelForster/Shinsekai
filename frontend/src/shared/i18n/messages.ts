@@ -14,6 +14,7 @@ export type MessageKey =
   | "story.canvas.hidePanel"
   | "story.editor.title"
   | "story.editor.edit"
+  | "story.editor.unsupported"
   | "story.editor.version"
   | "story.editor.versionHint"
   | "story.editor.draftHint"

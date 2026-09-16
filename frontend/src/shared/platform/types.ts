@@ -1323,6 +1323,7 @@ export interface StoryGenerationInput {
 }
 
 export interface StoryLibraryEntry {
+  canEditGraph?: boolean;
   version?: number;
   id: string;
   title: string;

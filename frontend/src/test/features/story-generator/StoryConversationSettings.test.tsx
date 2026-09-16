@@ -4,6 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, expect, it, vi } from "vitest";
 import { StoryConversationSettings } from "../../../features/story-generator/StoryConversationSettings";
 import { I18nProvider } from "../../../shared/i18n";
+const { listStories } = vi.hoisted(() => ({ listStories: vi.fn() }));
+vi.mock("../../../entities/story/repository", () => ({
+  storyLibraryQueryKey: ["story-library"],
+  listStories,
+}));
 vi.mock("../../../entities/chat/repository", () => ({
   conversationsQueryKey: ["chat", "conversations"],
   listConversations: async () => [
@@ -25,6 +30,7 @@ vi.mock("../../../features/story-generator/components/StoryLaunchButton", () => 
 }));
 describe("story conversation settings", () => {
   it("keeps the saved conversation separate from full-plot editing", async () => {
+    listStories.mockResolvedValue([{ storyPath: "original.json", canEditGraph: true }]);
     render(
       <QueryClientProvider client={new QueryClient()}>
         <I18nProvider language="en">
@@ -34,7 +40,20 @@ describe("story conversation settings", () => {
     );
     expect(await screen.findByRole("button", { name: "save:story-chat" })).toBeVisible();
     expect(screen.queryByTestId("node-editor")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open story editor (includes later plot)" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open story editor (includes later plot)" }));
     expect(screen.getByTestId("node-editor")).toHaveTextContent("original.json");
+  });
+  it("keeps legacy conversations playable without offering the editor", async () => {
+    listStories.mockResolvedValue([{ storyPath: "original.json", canEditGraph: false }]);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <I18nProvider language="en">
+          <StoryConversationSettings conversationId="story-chat" />
+        </I18nProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("Node editing is unavailable for this story. You can still play it.")).toBeVisible();
+    expect(screen.getByRole("button", { name: "save:story-chat" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Open story editor (includes later plot)" })).not.toBeInTheDocument();
   });
 });

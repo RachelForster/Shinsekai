@@ -88,7 +88,7 @@ def _export_response(request: ApiRequest, result: dict[str, str]) -> JsonRespons
 
         project_root = Path(getattr(request.state, "project_root_dir", "") or Path.cwd())
         output = safe_project_path(result["path"], root=project_root)
-        _open_export_folder(output)
+        result = {**result, "folderOpened": _open_export_folder(output)}
     return JsonResponse(result)
 
 

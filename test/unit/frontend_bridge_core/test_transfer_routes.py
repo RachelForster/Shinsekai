@@ -136,7 +136,7 @@ def test_export_opens_output_folder_only_when_requested_after_writing_package(
 
     response = getattr(transfer_routes, f"_export_{resource}")(request)
 
-    assert response.data == payload
+    assert response.data == {**payload, **({"folderOpened": True} if open_folder else {})}
     assert opened == ([output.parent.resolve()] if open_folder else [])
 
 
@@ -181,4 +181,25 @@ def test_folder_open_failure_preserves_successful_export_response(tmp_path, monk
     )
     payload = {"path": "output/Mio.char", "downloadUrl": "/api/download?path=output/Mio.char"}
 
-    assert transfer_routes._export_response(request, payload).data == payload
+    assert transfer_routes._export_response(request, payload).data == {**payload, "folderOpened": False}
+
+
+@pytest.mark.parametrize("system,command", [("Darwin", "open"), ("Linux", "xdg-open")])
+@pytest.mark.parametrize("failure", [None, "exit", "missing", "timeout"])
+def test_folder_opener_reports_process_failure(tmp_path, monkeypatch, system, command, failure):
+    import subprocess
+    from tools.file_util import _open_export_folder
+
+    def run(args, **kwargs):
+        assert args == [command, str(tmp_path.resolve())]
+        assert kwargs == {"check": True, "timeout": 10}
+        if failure == "exit":
+            raise subprocess.CalledProcessError(1, args)
+        if failure == "missing":
+            raise FileNotFoundError(command)
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(args, 10)
+
+    monkeypatch.setattr("tools.file_util.platform.system", lambda: system)
+    monkeypatch.setattr("tools.file_util.subprocess.run", run)
+    assert _open_export_folder(tmp_path / "package.char") is (failure is None)

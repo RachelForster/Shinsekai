@@ -13,7 +13,7 @@ from application.story.project_loader import load_story_project
 from application.story.selection import normal_template_options
 from config.feature_flags import FeatureFlag
 from core.chat_history.storage import STORY_SESSION_FILENAME, chat_history_session_dir
-from core.story import CharacterSourceType, StoryCompiler, StoryValidationError
+from core.story import CharacterSourceType, StoryCompiler, StoryNode, StoryValidationError
 from sdk.path_utils import safe_existing_path
 
 
@@ -26,6 +26,10 @@ def _read_project(state: Any, story_path: str | Path):
     path = safe_existing_path(candidate, roots=(root,), field="story path")
     project = load_story_project(path)
     return path, project, StoryCompiler().compile(project)
+
+
+def supports_graph_editing(project: Any) -> bool:
+    return all(isinstance(node, StoryNode) for node in project.narrative_graph.nodes)
 
 
 def _matches(saved: dict, program: Any) -> bool:
@@ -88,6 +92,7 @@ def list_story_library(state: Any) -> list[dict]:
                 "title": project.title,
                 "version": project.version,
                 "storyPath": resolved.as_posix(),
+                "canEditGraph": supports_graph_editing(project),
                 "characters": [
                     str(item.source.character_id or item.id)
                     for item in project.character_registry.characters

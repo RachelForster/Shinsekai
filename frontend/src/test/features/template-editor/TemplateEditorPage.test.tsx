@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Profiler } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
@@ -94,7 +95,7 @@ const template = {
 
 const queryClients = new Set<QueryClient>();
 
-function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}) {
+function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}, onCommit = () => {}) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -104,7 +105,9 @@ function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}) {
     <QueryClientProvider client={client}>
       <ToastProvider>
         <I18nProvider language="en">
-          <TemplateEditorPage {...props} />
+          <Profiler id="template-editor" onRender={onCommit}>
+            <TemplateEditorPage {...props} />
+          </Profiler>
         </I18nProvider>
       </ToastProvider>
     </QueryClientProvider>,
@@ -213,6 +216,42 @@ describe("TemplateEditorPage", () => {
     );
     expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ mediaSelectionMode: "indexed" }));
   });
+
+  it.each(["semantic", "indexed"] as const)(
+    "launches the restored form before passive effects flush (%s)",
+    async (mode) => {
+      mockGetTemplateSession.mockResolvedValue({ ...savedChat, mediaSelectionMode: mode });
+      mockGenerateTemplate.mockImplementation(async (input) => ({
+        ...template,
+        name: input.name,
+        scenario: input.scenario,
+        system: "Indexed sprite instructions",
+        mediaSelectionMode: input.mediaSelectionMode,
+      }));
+      let clicked = false;
+      renderPage({ createOnly: true, conversationTitle: "Evening walk" }, () => {
+        if (clicked || screen.queryByLabelText<HTMLInputElement>("Template name")?.value !== "My saved chat") return;
+        clicked = true;
+        // Commit-phase click deterministically exercises the interval before
+        // React Query refreshes its mutation callbacks in passive effects.
+        fireEvent.click(screen.getByRole("button", { name: "Create and start" }));
+      });
+      await waitFor(() =>
+        expect(mockLaunchChat).toHaveBeenCalledWith(
+          expect.objectContaining({
+            templateName: "My saved chat",
+            characters: ["Nanami"],
+            scenario: "Saved scene",
+            historyPath: "",
+            resetHistory: true,
+            mediaSelectionMode: "indexed",
+          }),
+        ),
+      );
+      if (mode === "semantic")
+        expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: "My saved chat" }));
+    },
+  );
 
   it("generates a timestamp title when a new chat title is cleared", async () => {
     mockGetTemplateSession.mockResolvedValue({ ...savedChat, mediaSelectionMode: "indexed" });
@@ -461,6 +500,7 @@ describe("TemplateEditorPage", () => {
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     fireEvent.change(screen.getByDisplayValue("Morning scene"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Nanami" }));
+    fireEvent.change(screen.getByLabelText("Template name"), { target: { value: "Renamed before generation" } });
     const defaultScenario = buildDefaultTemplateScenario(
       ["Nanami"],
       translateMessage("en", "template.defaultScenario"),
@@ -471,6 +511,7 @@ describe("TemplateEditorPage", () => {
         expect.objectContaining({
           characters: ["Nanami"],
           scenario: defaultScenario,
+          name: "Renamed before generation",
         }),
       ),
     );
