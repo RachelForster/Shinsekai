@@ -522,6 +522,7 @@ export interface ConversationSummary {
 }
 
 export interface ChatLaunchPayload {
+  storyPath?: string;
   characterPromptMode?: CharacterPromptMode;
   primaryCharacters?: string[];
   maxDialogItems?: number;

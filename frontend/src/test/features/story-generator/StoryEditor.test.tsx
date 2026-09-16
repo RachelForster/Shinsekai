@@ -45,23 +45,40 @@ const document: StoryDocument = {
   },
 };
 const validation = { valid: true, issues: [] };
-function renderEditor() {
+function renderEditor(onClose = vi.fn(), storyPath = document.storyPath) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
       <I18nProvider language="en">
-        <StoryEditor storyPath={document.storyPath} />
+        <StoryEditor storyPath={storyPath} onClose={onClose} />
       </I18nProvider>
     </QueryClientProvider>,
   );
 }
-const text = () => screen.getByRole("textbox", { name: "Scene text / performance guidance" });
+const text = () => screen.getByLabelText("Scene text / performance guidance");
 const select = (label: string, option: string) => {
   fireEvent.click(screen.getByRole("combobox", { name: label }));
   fireEvent.click(screen.getByRole("option", { name: option }));
 };
 
 describe("story graph editor", () => {
+  it("uses a back header and opens the inspector by clicking any part of the same node repeatedly", async () => {
+    const onClose = vi.fn();
+    renderEditor(onClose);
+    await screen.findByDisplayValue(document.title);
+    expect(screen.queryByRole("button", { name: "Node content" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Edit with an LLM" })).toHaveLength(1);
+    expect(screen.queryByRole("textbox", { name: "Node title" })).not.toBeInTheDocument();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      fireEvent.click(screen.getByText("Invite the player inside.", { selector: "p" }));
+      expect(screen.getByRole("textbox", { name: "Node title" })).toHaveValue("School gate");
+      fireEvent.click(screen.getByRole("button", { name: "Collapse panel" }));
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
@@ -78,6 +95,7 @@ describe("story graph editor", () => {
   it("edits selected nodes, saves a separate version and launches its new path", async () => {
     renderEditor();
     expect(await screen.findByDisplayValue(document.title)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Turn-limited scene School gate" }));
     expect(screen.getByRole("button", { name: "Validate and save new version" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Ending Truth" }));
     fireEvent.change(text(), { target: { value: "The witness confesses." } });
@@ -97,9 +115,64 @@ describe("story graph editor", () => {
     expect(screen.getByRole("button", { name: "Validate and save new version" })).toBeDisabled();
   });
 
+  it("writes moves after saving to the new version and restores them when reopened", async () => {
+    vi.stubGlobal("PointerEvent", MouseEvent);
+    const layouts = (path: string) => JSON.parse(sessionStorage.getItem(`story-canvas:${path}`) || "{}");
+    let version = 1;
+    let latest = document;
+    saveStoryDocument.mockImplementation(async (input) => {
+      version += 1;
+      latest = { ...document, ...input, version, sourceHash: `v${version}`, storyPath: `stories/v${version}.json` };
+      return latest;
+    });
+    try {
+      const page = renderEditor();
+      await screen.findByDisplayValue(document.title);
+      const initialLayout = layouts(document.storyPath);
+      const moveNode = () => {
+        const node = screen.getByRole("button", { name: "Ending Truth" }).closest("article")!;
+        const canvas = screen.getByLabelText("Node canvas");
+        fireEvent.pointerDown(node, { button: 0, clientX: 100, clientY: 100 });
+        fireEvent.pointerMove(canvas, { clientX: 180, clientY: 160 });
+        fireEvent.pointerUp(canvas, { clientX: 180, clientY: 160 });
+      };
+      for (const nextVersion of [2, 3]) {
+        fireEvent.change(screen.getByRole("textbox", { name: "Story title" }), {
+          target: { value: `Version ${nextVersion}` },
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Validate and save new version" }));
+        await waitFor(() =>
+          expect(screen.getByRole("button", { name: "Start playing the new version" })).toHaveAttribute(
+            "data-path",
+            `stories/v${nextVersion}.json`,
+          ),
+        );
+        const previousPath = nextVersion === 2 ? document.storyPath : "stories/v2.json";
+        const beforeMove = layouts(previousPath);
+        expect(layouts(latest.storyPath)).toEqual(beforeMove);
+        moveNode();
+        expect(layouts(latest.storyPath).end).not.toEqual(beforeMove.end);
+        expect(layouts(previousPath)).toEqual(beforeMove);
+      }
+      const finalLayout = layouts(latest.storyPath);
+      expect(layouts(document.storyPath)).toEqual(initialLayout);
+      page.unmount();
+      readStoryDocument.mockResolvedValue(latest);
+      renderEditor(vi.fn(), latest.storyPath);
+      await screen.findByDisplayValue(latest.title);
+      expect(screen.getByRole("button", { name: "Ending Truth" }).closest("article")).toHaveStyle({
+        left: `${finalLayout.end.x}px`,
+        top: `${finalLayout.end.y}px`,
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("adds nodes and connections, removes incoming edges on deletion, and supports undo", async () => {
     renderEditor();
     await screen.findByDisplayValue(document.title);
+    fireEvent.click(screen.getByRole("button", { name: "Turn-limited scene School gate" }));
     fireEvent.click(screen.getByRole("button", { name: "Add node" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Node title" }), { target: { value: "Confrontation" } });
     fireEvent.change(text(), { target: { value: "Challenge the witness." } });
@@ -137,6 +210,9 @@ describe("story graph editor", () => {
     );
     renderEditor();
     await screen.findByDisplayValue(document.title);
+    fireEvent.click(screen.getByRole("button", { name: "Turn-limited scene School gate" }));
+    if (!screen.queryByRole("textbox", { name: "Revision request" }))
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit with an LLM" })[0]);
     fireEvent.change(screen.getByRole("textbox", { name: "Revision request" }), {
       target: { value: "Be more cautious" },
     });
@@ -165,7 +241,11 @@ describe("story graph editor", () => {
     suggestStoryGraph.mockResolvedValue({ graph, summary: "New branch", validation });
     renderEditor();
     await screen.findByDisplayValue(document.title);
+    fireEvent.click(screen.getByRole("button", { name: "Turn-limited scene School gate" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit with an LLM" })[0]);
     select("Edit scope", "Whole graph (can generate new nodes)");
+    if (!screen.queryByRole("textbox", { name: "Revision request" }))
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit with an LLM" })[0]);
     fireEvent.change(screen.getByRole("textbox", { name: "Revision request" }), {
       target: { value: "Add reconciliation" },
     });
@@ -181,6 +261,7 @@ describe("story graph editor", () => {
     saveStoryDocument.mockRejectedValue(new Error("Unreachable node"));
     const page = renderEditor();
     await screen.findByDisplayValue(document.title);
+    fireEvent.click(screen.getByRole("button", { name: "Turn-limited scene School gate" }));
     fireEvent.change(text(), { target: { value: "My unsaved scene" } });
     fireEvent.click(screen.getByRole("button", { name: "Validate and save new version" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Unreachable node");
@@ -188,6 +269,7 @@ describe("story graph editor", () => {
     page.unmount();
     renderEditor();
     await screen.findByDisplayValue(document.title);
+    fireEvent.click(screen.getByRole("button", { name: "Turn-limited scene School gate" }));
     expect(text()).toHaveValue("My unsaved scene");
   });
 
@@ -195,7 +277,10 @@ describe("story graph editor", () => {
     suggestStoryGraph.mockRejectedValue(new Error("Model unavailable"));
     renderEditor();
     await screen.findByDisplayValue(document.title);
+    fireEvent.click(screen.getByRole("button", { name: "Turn-limited scene School gate" }));
     fireEvent.change(text(), { target: { value: "My scene" } });
+    if (!screen.queryByRole("textbox", { name: "Revision request" }))
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit with an LLM" })[0]);
     fireEvent.change(screen.getByRole("textbox", { name: "Revision request" }), { target: { value: "Revise" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate proposal" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Model unavailable");

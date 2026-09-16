@@ -23,7 +23,7 @@ export function StoryNodeForm({
   const update = (patch: Partial<StoryGraphNode>) => onChange({ ...node, ...patch });
   return (
     <fieldset className="story-editor__fields" disabled={disabled}>
-      <legend>{t("story.editor.node")}</legend>
+      <legend className="visually-hidden">{t("story.editor.node")}</legend>
       <label>
         {t("story.editor.nodeTitle")}
         <TextInput value={node.title} maxLength={200} onChange={(e) => update({ title: e.target.value })} />

@@ -55,17 +55,18 @@ export function StoryLibrary({ onCreate, conversationTitle }: { onCreate: () => 
                   ) || t("template.transparentBackground"),
               })}
             </p>
-            <StoryLaunchButton
-              key={`${story.storyPath}-${story.historyPath}`}
-              storyPath={story.storyPath}
-              conversationTitle={conversationTitle}
-              label={t("conversation.createAndStart")}
-            />
-            {story.canEditGraph === true ? (
-              <Button onClick={() => setEditing(story.storyPath)}>{t("story.editor.edit")}</Button>
-            ) : (
-              <p className="section__description">{t("story.editor.unsupported")}</p>
-            )}
+            <div className="story-library-card__actions">
+              <StoryLaunchButton
+                key={`${story.storyPath}-${story.historyPath}`}
+                storyPath={story.storyPath}
+                conversationTitle={conversationTitle}
+                label={t("conversation.createAndStart")}
+              />
+              {story.canEditGraph === true && (
+                <Button onClick={() => setEditing(story.storyPath)}>{t("story.editor.edit")}</Button>
+              )}
+            </div>
+            {story.canEditGraph !== true && <p className="section__description">{t("story.editor.unsupported")}</p>}
           </article>
         ))}
       </div>
