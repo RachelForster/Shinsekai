@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { I18nProvider } from "../../../shared/i18n/I18nProvider";
-import { AlertDialog, FileBrowserProvider, FilePicker } from "../../../shared/ui";
+import { AlertDialog, FileBrowserProvider, FilePicker, PathPickerDialog } from "../../../shared/ui";
 
 const browseFiles = vi.fn();
 
@@ -25,11 +26,13 @@ vi.mock("../../../shared/desktop/desktopApi", async (importOriginal) => {
 });
 
 function renderWithFileBrowser(children: ReactNode) {
-  return render(
-    <I18nProvider language="zh_CN">
-      <FileBrowserProvider browse={browseFiles}>{children}</FileBrowserProvider>
-    </I18nProvider>,
-  );
+  return render(children, {
+    wrapper: ({ children }) => (
+      <I18nProvider language="zh_CN">
+        <FileBrowserProvider browse={browseFiles}>{children}</FileBrowserProvider>
+      </I18nProvider>
+    ),
+  });
 }
 
 describe("AlertDialog", () => {
@@ -168,6 +171,7 @@ describe("FilePicker", () => {
 describe("FilePicker on the Tauri desktop", () => {
   beforeEach(() => {
     isTauriMock.mockReturnValue(true);
+    openMock.mockReset();
     browseFiles.mockResolvedValue({
       cwd: "/tmp",
       entries: [],
@@ -212,6 +216,122 @@ describe("FilePicker on the Tauri desktop", () => {
     expect(openMock).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
   });
 
+  it("keeps one native dialog across parent renders and uses the latest selection callback", async () => {
+    let resolvePick!: (paths: string[]) => void;
+    openMock.mockImplementationOnce(
+      () =>
+        new Promise<string[]>((resolve) => {
+          resolvePick = resolve;
+        }),
+    );
+    const onPathsChange = vi.fn();
+    const onUpdatedPathsChange = vi.fn();
+    const picker = (onChange: (paths: string[]) => void) => (
+      <FilePicker
+        acceptedExtensions={[".char", ".cha"]}
+        multiple
+        onPathsChange={onChange}
+        pickLabel="导入人物"
+        value=""
+      />
+    );
+    const { rerender } = renderWithFileBrowser(picker(onPathsChange));
+
+    fireEvent.click(screen.getByLabelText("导入人物"));
+    await waitFor(() => expect(openMock).toHaveBeenCalledTimes(1));
+    rerender(picker(onUpdatedPathsChange));
+    await act(async () => {});
+
+    expect(openMock).toHaveBeenCalledTimes(1);
+    expect(openMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        filters: [{ extensions: ["char", "cha"], name: "char, cha" }],
+        multiple: true,
+      }),
+    );
+    await act(async () => resolvePick(["C:/characters/mio.char", "C:/characters/aki.cha"]));
+    expect(onUpdatedPathsChange).toHaveBeenCalledTimes(1);
+    expect(onUpdatedPathsChange).toHaveBeenCalledWith(["C:/characters/mio.char", "C:/characters/aki.cha"]);
+    expect(onPathsChange).not.toHaveBeenCalled();
+  });
+
+  it("opens and handles the native dialog once when mounted open in StrictMode", async () => {
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    openMock.mockResolvedValue("C:/characters/mio.char");
+    const picker = () => (
+      <StrictMode>
+        <PathPickerDialog
+          acceptedExtensions={[".char", ".cha"]}
+          onClose={() => onClose()}
+          onSelect={(path) => onSelect(path)}
+          open
+          title="导入人物"
+        />
+      </StrictMode>
+    );
+    const { rerender } = renderWithFileBrowser(picker());
+
+    await waitFor(() => expect(onSelect).toHaveBeenCalledWith("C:/characters/mio.char"));
+    rerender(picker());
+    await act(async () => {});
+
+    expect(openMock).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens a fresh native dialog after cancellation", async () => {
+    const onPathChange = vi.fn();
+    openMock.mockResolvedValueOnce(null).mockResolvedValueOnce("C:/characters/mio.char");
+    renderWithFileBrowser(<FilePicker onPathChange={onPathChange} pickLabel="导入人物" value="" />);
+
+    await act(async () => fireEvent.click(screen.getByLabelText("导入人物")));
+    expect(openMock).toHaveBeenCalledTimes(1);
+    expect(onPathChange).not.toHaveBeenCalled();
+
+    await act(async () => fireEvent.click(screen.getByLabelText("导入人物")));
+    expect(openMock).toHaveBeenCalledTimes(2);
+    expect(onPathChange).toHaveBeenCalledTimes(1);
+    expect(onPathChange).toHaveBeenCalledWith("C:/characters/mio.char");
+  });
+
+  it("ignores a closed native dialog result after reopening", async () => {
+    let resolveFirstPick!: (path: string) => void;
+    let resolveSecondPick!: (path: string) => void;
+    openMock
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveFirstPick = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((resolve) => {
+            resolveSecondPick = resolve;
+          }),
+      );
+    const onClose = vi.fn();
+    const onSelect = vi.fn();
+    const picker = (open: boolean) => (
+      <PathPickerDialog onClose={onClose} onSelect={onSelect} open={open} title="导入人物" />
+    );
+    const { rerender } = renderWithFileBrowser(picker(true));
+    await waitFor(() => expect(openMock).toHaveBeenCalledTimes(1));
+    rerender(picker(false));
+    rerender(picker(true));
+    await waitFor(() => expect(openMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => resolveFirstPick("C:/characters/old.char"));
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSelect).not.toHaveBeenCalled();
+    await act(async () => resolveSecondPick("C:/characters/mio.char"));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(onSelect).toHaveBeenCalledWith("C:/characters/mio.char");
+  });
+
   it("keeps the value unchanged when the native dialog is cancelled", async () => {
     const onPathChange = vi.fn();
     openMock.mockResolvedValueOnce(null);
@@ -236,5 +356,19 @@ describe("FilePicker on the Tauri desktop", () => {
 
     expect(await screen.findByRole("dialog", { name: "选择素材" })).toBeInTheDocument();
     expect(onPathChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps the fallback browser open across parent renders without retrying the native dialog", async () => {
+    openMock.mockRejectedValue(new Error("plugin unavailable"));
+    const picker = () => <FilePicker acceptedExtensions={[".char", ".cha"]} pickLabel="导入人物" value="" />;
+    const { rerender } = renderWithFileBrowser(picker());
+    fireEvent.click(screen.getByLabelText("导入人物"));
+    expect(await screen.findByRole("dialog", { name: "导入人物" })).toBeInTheDocument();
+
+    rerender(picker());
+    await act(async () => {});
+
+    expect(openMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog", { name: "导入人物" })).toBeInTheDocument();
   });
 });

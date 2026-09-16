@@ -74,7 +74,7 @@ export function StoryLaunchButton({
           const payload = await prepareStoryLaunch(storyPath, historyPath);
           launched = await launchChat(
             conversationId
-              ? await prepareConversation(conversationId)
+              ? { ...(await prepareConversation(conversationId)), scenario: payload.scenario }
               : {
                   ...payload,
                   conversationTitle: historyPath ? undefined : resolveConversationTitle(conversationTitle),

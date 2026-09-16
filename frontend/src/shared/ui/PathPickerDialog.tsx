@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 
 import type { PathPickerMode } from "../platform/types";
@@ -47,9 +47,14 @@ export function PathPickerDialog({
   const { t } = useI18n();
   const [confirmPaths, setConfirmPaths] = useState<string[]>([]);
   const [nativeDialogFailed, setNativeDialogFailed] = useState(false);
+  const nativeRequestRef = useRef<{
+    handled: boolean;
+    promise: Promise<string[] | null>;
+  } | null>(null);
 
   useEffect(() => {
     if (!open) {
+      nativeRequestRef.current = null;
       setConfirmPaths([]);
       setNativeDialogFailed(false);
     }
@@ -60,19 +65,26 @@ export function PathPickerDialog({
     if (!open || !isTauriDesktop()) {
       return;
     }
+    // Keep one request for this opening. Parent renders and StrictMode effect
+    // replays may resubscribe, but cleanup cannot close an OS-native dialog.
+    const request = (nativeRequestRef.current ??= {
+      handled: false,
+      promise: pickDesktopNativePath({
+        defaultPath: value,
+        extensions: acceptedExtensions,
+        mode,
+        multiple,
+        title,
+      }),
+    });
     let cancelled = false;
     void (async () => {
       try {
-        const paths = await pickDesktopNativePath({
-          defaultPath: value,
-          extensions: acceptedExtensions,
-          mode,
-          multiple,
-          title,
-        });
-        if (cancelled) {
+        const paths = await request.promise;
+        if (cancelled || request.handled) {
           return;
         }
+        request.handled = true;
         if (paths === null) {
           onClose();
           return;
@@ -86,7 +98,8 @@ export function PathPickerDialog({
       } catch {
         // The dialog plugin may be unavailable (e.g. older desktop shell);
         // fall back to the in-app browser instead of failing the pick.
-        if (!cancelled) {
+        if (!cancelled && !request.handled) {
+          request.handled = true;
           setNativeDialogFailed(true);
         }
       }

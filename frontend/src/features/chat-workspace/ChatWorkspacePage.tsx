@@ -16,6 +16,11 @@ const NormalMode = lazy(() =>
 const StoryMode = lazy(() =>
   import("../story-generator/StoryGeneratorPage").then(({ StoryGeneratorPage }) => ({ default: StoryGeneratorPage })),
 );
+const StorySettings = lazy(() =>
+  import("../story-generator/StoryConversationSettings").then(({ StoryConversationSettings }) => ({
+    default: StoryConversationSettings,
+  })),
+);
 
 export function ChatWorkspacePage() {
   const { t } = useI18n();
@@ -56,7 +61,9 @@ export function ChatWorkspacePage() {
             </label>
           )}
           <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
-            {conversationId || mode === "normal" ? (
+            {conversationId && (params.get("kind") === "story" || mode === "story") ? (
+              <StorySettings key={conversationId} conversationId={conversationId} />
+            ) : conversationId || mode === "normal" ? (
               <NormalMode
                 key={conversationId || draftKey}
                 createOnly={!conversationId}
@@ -76,7 +83,7 @@ export function ChatWorkspacePage() {
             setCreating(true);
           }}
           onEdit={(id, selectedKind = "normal") =>
-            setParams({ tab: "new", mode: "normal", conversation: id, kind: selectedKind })
+            setParams({ tab: "new", mode: selectedKind, conversation: id, kind: selectedKind })
           }
         />
       )}

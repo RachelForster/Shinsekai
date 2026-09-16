@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHttpPlatform } from "../../../shared/platform/httpPlatform";
 import { currentChatRendererId } from "../../../shared/platform/chatRenderer";
+import * as desktopApi from "../../../shared/desktop/desktopApi";
 import {
   sampleConfig,
   sampleMcpConfig,
@@ -22,6 +23,37 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("uses separate read, save and background suggestion endpoints for story editing", async () => {
+    const doc = {
+      storyPath: "story.json",
+      sourceHash: "hash",
+      title: "Story",
+      graph: { startNodeId: "end", nodes: [{ id: "end", title: "Ending", type: "ending_node" as const }] },
+    };
+    const proposal = { graph: doc.graph, summary: "Edited", validation: { valid: true, issues: [] } };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => mockJsonResponse(doc))
+      .mockImplementationOnce(() => mockJsonResponse({ ...doc, storyPath: "edited.json" }))
+      .mockImplementationOnce(() => mockJsonResponse({ id: "edit-task", status: "succeeded", result: proposal }));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    expect(await platform.story.readDocument("story.json")).toEqual(doc);
+    expect(await platform.story.saveDocument(doc)).toMatchObject({ storyPath: "edited.json" });
+    expect(await platform.story.suggestGraph({ ...doc, scope: "graph", instructions: "Add a branch" })).toEqual(
+      proposal,
+    );
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "http://127.0.0.1:8787/api/story/editor/read",
+      "http://127.0.0.1:8787/api/story/editor/save",
+      "http://127.0.0.1:8787/api/story/editor/suggest",
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({
+      sourceHash: "hash",
+      scope: "graph",
+      instructions: "Add a branch",
+    });
+  });
   it("deletes only the selected conversation through the bridge", async () => {
     const fetchMock = vi.fn(() => mockJsonResponse({ ok: true }));
     vi.stubGlobal("fetch", fetchMock);
@@ -33,6 +65,7 @@ describe("http platform", () => {
   });
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
     delete window.__SHINSEKAI_BRIDGE_RESTARTING__;
     delete window.__SHINSEKAI_RESTARTING__;
@@ -466,6 +499,62 @@ describe("http platform", () => {
       "_blank",
       "noopener,noreferrer",
     );
+  });
+
+  it.each([
+    ["characters", "Mio", "char"],
+    ["backgrounds", "Room", "bg"],
+    ["effects", "Spark", "ef"],
+  ] as const)("opens the export folder for desktop %s exports", async (resource, name, extension) => {
+    vi.spyOn(desktopApi, "isTauriDesktop").mockReturnValue(true);
+    const path = `output/${name}.${extension}`;
+    const fetchMock = vi.fn(() =>
+      mockJsonResponse({ path, downloadUrl: `/api/download?path=${path}`, folderOpened: true }),
+    );
+    const openMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("open", openMock);
+    const externalOpenMock = vi.spyOn(desktopApi, "openDesktopExternalUrl").mockResolvedValue(undefined);
+
+    await expect(createHttpPlatform("http://127.0.0.1:8787")[resource].export(name)).resolves.toBe(path);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `http://127.0.0.1:8787/api/${resource}/export`,
+      expect.objectContaining({ body: JSON.stringify({ name, openFolder: true }), method: "POST" }),
+    );
+    expect(openMock).not.toHaveBeenCalled();
+    expect(externalOpenMock).not.toHaveBeenCalled();
+  });
+
+  it.each([false, undefined])("downloads the exported package when folderOpened is %s", async (folderOpened) => {
+    vi.spyOn(desktopApi, "isTauriDesktop").mockReturnValue(true);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => mockJsonResponse({ path: "output/Mio.char", folderOpened })),
+    );
+    const openMock = vi.fn();
+    vi.stubGlobal("open", openMock);
+    await expect(createHttpPlatform("http://127.0.0.1:8787").characters.export("Mio")).resolves.toBe("output/Mio.char");
+    expect(openMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/download?path=output%2FMio.char",
+      "_blank",
+      "noopener,noreferrer",
+    );
+  });
+
+  it("keeps a failed desktop export as an error without opening a download", async () => {
+    vi.spyOn(desktopApi, "isTauriDesktop").mockReturnValue(true);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => mockJsonResponse({ error: "Export failed" }, false)),
+    );
+    const openMock = vi.fn();
+    vi.stubGlobal("open", openMock);
+
+    await expect(createHttpPlatform("http://127.0.0.1:8787").characters.export("Mio")).rejects.toThrow("Export failed");
+
+    expect(openMock).not.toHaveBeenCalled();
   });
 
   it("calls background translate and upload endpoints", async () => {

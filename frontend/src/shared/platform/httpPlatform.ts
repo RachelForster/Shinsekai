@@ -1,4 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { StorySuggestion } from "./storyEditorTypes";
 import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
 import { PlatformRequestError } from "./errors";
 import {
@@ -287,6 +288,22 @@ function openDownload(apiBase: string, path: string) {
   openBridgeWindow(apiBase, `/api/download?path=${encodeURIComponent(path)}`);
 }
 
+async function exportPackage(apiBase: string, resource: string, name: string) {
+  const openFolder = isTauriDesktop();
+  const result = await requestJson<{ downloadUrl: string; path: string; folderOpened?: boolean }>(
+    apiBase,
+    `/api/${resource}/export`,
+    {
+      body: JSON.stringify({ name, ...(openFolder ? { openFolder: true } : {}) }),
+      method: "POST",
+    },
+  );
+  if (!openFolder || result.folderOpened !== true) {
+    openDownload(apiBase, result.path);
+  }
+  return result.path;
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -443,14 +460,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ index, name }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/backgrounds/export", {
-          body: JSON.stringify({ name }),
-          method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+      export: (name) => exportPackage(apiBase, "backgrounds", name),
       import: (items) => {
         if (isFileList(items)) {
           return uploadFiles<Background[]>(apiBase, "/api/backgrounds/import-upload", items);
@@ -511,14 +521,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ index, name }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/effects/export", {
-          body: JSON.stringify({ name }),
-          method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+      export: (name) => exportPackage(apiBase, "effects", name),
       import: (items) => {
         if (isFileList(items)) {
           return uploadFiles<Effect[]>(apiBase, "/api/effects/import-upload", items);
@@ -868,6 +871,23 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     story: {
+      readDocument: (storyPath) =>
+        requestJson(apiBase, "/api/story/editor/read", {
+          body: JSON.stringify({ storyPath }),
+          method: "POST",
+        }),
+      saveDocument: (input) =>
+        requestJson(apiBase, "/api/story/editor/save", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      async suggestGraph(input) {
+        const task = await requestJson<TaskSnapshot<StorySuggestion>>(apiBase, "/api/story/editor/suggest", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
       list: () => requestJson(apiBase, "/api/story/library"),
       prepareLaunch: (storyPath, historyPath = "") =>
         requestJson(apiBase, "/api/story/launch-payload", {
@@ -942,14 +962,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ name, spriteIndex }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/characters/export", {
-          body: JSON.stringify({ name }),
-          method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+      export: (name) => exportPackage(apiBase, "characters", name),
       ensureBriefs: (names) =>
         requestJson<CharacterBriefBatchResult>(apiBase, "/api/characters/ensure-briefs", {
           body: JSON.stringify({ names }),

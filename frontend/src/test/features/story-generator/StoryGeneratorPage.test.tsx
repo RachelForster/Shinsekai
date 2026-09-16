@@ -118,7 +118,7 @@ describe("StoryGeneratorPage", () => {
     startStoryGeneration.mockResolvedValue(generatedTask());
     const page = renderPage("en");
     fireEvent.click(await screen.findByRole("button", { name: "小玲" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Synopsis" }), { target: { value: "我的新故事" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Creative brief" }), { target: { value: "我的新故事" } });
     const start = screen.getByRole("button", { name: "Generate story" });
     await waitFor(() => expect(start).toBeEnabled());
     fireEvent.click(start);
@@ -137,7 +137,7 @@ describe("StoryGeneratorPage", () => {
     expect(screen.getByText("The story ends here.")).toBeVisible();
 
     page.changeLanguage("ja");
-    expect(screen.getByRole("textbox", { name: "あらすじ" })).toHaveValue("我的新故事");
+    expect(screen.getByRole("textbox", { name: "創作要件" })).toHaveValue("我的新故事");
     expect(screen.getByRole("button", { name: "小玲" })).toHaveClass("template-character-card--selected");
     expect(screen.getByRole("heading", { name: "シナリオ図" })).toBeVisible();
     expect(screen.getByRole("button", { name: "結末 重逢的约定" })).toHaveAttribute("aria-pressed", "true");
@@ -180,28 +180,38 @@ describe("StoryGeneratorPage", () => {
     expect(screen.getByText("物語の前提")).toBeInTheDocument();
   });
 
-  it("localizes saved story metadata and actions while retaining story and resource names", async () => {
-    listStories.mockResolvedValue([
-      {
-        id: "saved",
-        storyPath: "saved/draft.json",
-        title: "旧校舍谜案",
-        characters: ["小玲", "小明"],
-        backgrounds: ["旧校舍", TRANSPARENT_BACKGROUND_NAME],
-        historyPath: "data/chat_history/saved",
-        currentNodeTitle: "调查教室",
-        updatedAt: 2,
-      },
-    ]);
-    const page = renderPage("en");
-    fireEvent.click(await screen.findByRole("tab", { name: "Saved stories" }));
-    expect(await screen.findByText("旧校舍谜案")).toBeVisible();
-    expect(screen.getByText("小玲, 小明")).toBeVisible();
-    expect(screen.getByText("Background: 旧校舍, Transparent scene")).toBeVisible();
-    expect(screen.getByRole("button", { name: "Create and start" })).toBeEnabled();
-    page.changeLanguage("ja");
-    expect(screen.getByRole("button", { name: "作成して開始" })).toBeEnabled();
-  });
+  it.each([true, false, undefined])(
+    "gates saved story editing on capability %s while keeping play available",
+    async (canEditGraph) => {
+      listStories.mockResolvedValue([
+        {
+          id: "saved",
+          canEditGraph,
+          storyPath: "saved/draft.json",
+          title: "旧校舍谜案",
+          characters: ["小玲", "小明"],
+          backgrounds: ["旧校舍", TRANSPARENT_BACKGROUND_NAME],
+          historyPath: "data/chat_history/saved",
+          currentNodeTitle: "调查教室",
+          updatedAt: 2,
+        },
+      ]);
+      const page = renderPage("en");
+      fireEvent.click(await screen.findByRole("tab", { name: "Saved stories" }));
+      expect(await screen.findByText("旧校舍谜案")).toBeVisible();
+      expect(screen.getByText("小玲, 小明")).toBeVisible();
+      expect(screen.getByText("Background: 旧校舍, Transparent scene")).toBeVisible();
+      expect(screen.getByRole("button", { name: "Create and start" })).toBeEnabled();
+      if (canEditGraph) {
+        expect(screen.getByRole("button", { name: "Edit node graph" })).toBeEnabled();
+      } else {
+        expect(screen.queryByRole("button", { name: "Edit node graph" })).not.toBeInTheDocument();
+        expect(screen.getByText("Node editing is unavailable for this story. You can still play it.")).toBeVisible();
+      }
+      page.changeLanguage("ja");
+      expect(screen.getByRole("button", { name: "作成して開始" })).toBeEnabled();
+    },
+  );
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
@@ -353,11 +363,11 @@ describe("StoryGeneratorPage", () => {
       },
     ]);
     renderPage();
-    fireEvent.change(await screen.findByRole("textbox", { name: "剧情梗概" }), { target: { value: "我的新故事" } });
+    fireEvent.change(await screen.findByRole("textbox", { name: "创作要求" }), { target: { value: "我的新故事" } });
     fireEvent.click(screen.getByRole("tab", { name: "已有剧本" }));
     expect(await screen.findByText("旧校舍谜案")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "创建并开始" })).toBeEnabled();
     fireEvent.click(screen.getByRole("tab", { name: "创作新剧本" }));
-    expect(screen.getByRole("textbox", { name: "剧情梗概" })).toHaveValue("我的新故事");
+    expect(screen.getByRole("textbox", { name: "创作要求" })).toHaveValue("我的新故事");
   });
 });

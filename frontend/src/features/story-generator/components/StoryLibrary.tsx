@@ -4,11 +4,15 @@ import { useQuery } from "@tanstack/react-query";
 import { listStories, storyLibraryQueryKey } from "../../../entities/story/repository";
 import { Button } from "../../../shared/ui";
 import { StoryLaunchButton } from "./StoryLaunchButton";
+import { useState } from "react";
+import { StoryEditor } from "../editor/StoryEditor";
 
 export function StoryLibrary({ onCreate, conversationTitle }: { onCreate: () => void; conversationTitle?: string }) {
   const { t, language } = useI18n();
+  const [editing, setEditing] = useState("");
   const listFormatter = new Intl.ListFormat(language.replace("_", "-"), { style: "short", type: "unit" });
   const stories = useQuery({ queryKey: storyLibraryQueryKey, queryFn: listStories, staleTime: 0 });
+  if (editing) return <StoryEditor key={editing} storyPath={editing} onClose={() => setEditing("")} />;
   return (
     <section className="section">
       <div className="story-library-header">
@@ -35,6 +39,9 @@ export function StoryLibrary({ onCreate, conversationTitle }: { onCreate: () => 
         {stories.data?.map((story) => (
           <article className="story-library-card" key={story.storyPath}>
             <h3>{story.title}</h3>
+            {story.version !== undefined && (
+              <p className="section__description">{t("story.editor.version", { version: story.version })}</p>
+            )}
             <p className="section__description">
               {listFormatter.format(story.characters) || t("story.library.characters")}
             </p>
@@ -54,6 +61,11 @@ export function StoryLibrary({ onCreate, conversationTitle }: { onCreate: () => 
               conversationTitle={conversationTitle}
               label={t("conversation.createAndStart")}
             />
+            {story.canEditGraph === true ? (
+              <Button onClick={() => setEditing(story.storyPath)}>{t("story.editor.edit")}</Button>
+            ) : (
+              <p className="section__description">{t("story.editor.unsupported")}</p>
+            )}
           </article>
         ))}
       </div>

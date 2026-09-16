@@ -6,9 +6,11 @@ from types import SimpleNamespace
 
 import pytest
 
+from application.backgrounds import BackgroundExportResult
+from application.characters import CharacterExportResult
 from frontend_bridge_core.routes import transfer_routes
 from frontend_bridge_core.routes.api import FrontendBridgeHandler
-from frontend_bridge_core.routes.router import BodyKind
+from frontend_bridge_core.routes.router import ApiRequest, BodyKind
 from frontend_bridge_core.routes.transfer_routes import TRANSFER_ROUTES
 from frontend_bridge_core.routes.uploads import UploadedFiles
 
@@ -88,3 +90,116 @@ def test_effect_upload_uses_multipart_dispatch_and_cleans_after_response(
     assert received == [(state, list(uploaded.paths), (str(uploaded.root),))]
     assert sent == [([{"name": "Spark"}], HTTPStatus.OK)]
     assert not uploaded.root.exists()
+
+
+EXPORT_CASES = (
+    ("character", "_execute_character_request", "Mio.char", CharacterExportResult),
+    ("background", "_execute_background_request", "Room.bg", BackgroundExportResult),
+    ("effect", "_execute_effect", "Spark.ef", None),
+)
+
+
+@pytest.mark.parametrize("resource,executor,filename,result_type", EXPORT_CASES)
+@pytest.mark.parametrize("open_folder", [True, False, None])
+def test_export_opens_output_folder_only_when_requested_after_writing_package(
+    tmp_path, monkeypatch, resource, executor, filename, result_type, open_folder
+):
+    project_root = tmp_path / "project"
+    output = project_root / "output" / filename
+    relative = f"output/{filename}"
+    payload = {"path": relative, "downloadUrl": f"/api/download?path={relative}"}
+
+    def export_package(*_args):
+        output.parent.mkdir(parents=True)
+        output.write_bytes(b"package")
+        return result_type(path=relative) if result_type else payload
+
+    opened = []
+
+    def open_directory(folder):
+        assert output.read_bytes() == b"package"
+        opened.append(folder)
+
+    monkeypatch.setattr(transfer_routes, executor, export_package)
+    monkeypatch.setattr("tools.file_util.platform.system", lambda: "Windows")
+    monkeypatch.setattr("tools.file_util.os.startfile", open_directory, raising=False)
+    # Resolve against the selected project even if the bridge's cwd differs.
+    monkeypatch.chdir(tmp_path)
+    request = ApiRequest(
+        state=SimpleNamespace(project_root_dir=str(project_root)),
+        method="POST",
+        path=f"/api/{resource}s/export",
+        query={},
+        params={},
+        body={"name": output.stem, **({"openFolder": open_folder} if open_folder is not None else {})},
+    )
+
+    response = getattr(transfer_routes, f"_export_{resource}")(request)
+
+    assert response.data == {**payload, **({"folderOpened": True} if open_folder else {})}
+    assert opened == ([output.parent.resolve()] if open_folder else [])
+
+
+@pytest.mark.parametrize("resource,executor,filename,result_type", EXPORT_CASES)
+def test_failed_export_does_not_open_output_folder(
+    tmp_path, monkeypatch, resource, executor, filename, result_type
+):
+    def fail_export(*_args):
+        raise RuntimeError("export failed")
+
+    monkeypatch.setattr(transfer_routes, executor, fail_export)
+    monkeypatch.setattr(
+        "tools.file_util._open_export_folder",
+        lambda _path: pytest.fail("failed export opened a folder"),
+    )
+    request = ApiRequest(
+        state=SimpleNamespace(project_root_dir=str(tmp_path)),
+        method="POST",
+        path=f"/api/{resource}s/export",
+        query={},
+        params={},
+        body={"name": Path(filename).stem, "openFolder": True},
+    )
+
+    with pytest.raises(RuntimeError, match="export failed"):
+        getattr(transfer_routes, f"_export_{resource}")(request)
+
+
+def test_folder_open_failure_preserves_successful_export_response(tmp_path, monkeypatch):
+    def fail_open(_folder):
+        raise OSError("file manager unavailable")
+
+    monkeypatch.setattr("tools.file_util.platform.system", lambda: "Windows")
+    monkeypatch.setattr("tools.file_util.os.startfile", fail_open, raising=False)
+    request = ApiRequest(
+        state=SimpleNamespace(project_root_dir=str(tmp_path)),
+        method="POST",
+        path="/api/characters/export",
+        query={},
+        params={},
+        body={"name": "Mio", "openFolder": True},
+    )
+    payload = {"path": "output/Mio.char", "downloadUrl": "/api/download?path=output/Mio.char"}
+
+    assert transfer_routes._export_response(request, payload).data == {**payload, "folderOpened": False}
+
+
+@pytest.mark.parametrize("system,command", [("Darwin", "open"), ("Linux", "xdg-open")])
+@pytest.mark.parametrize("failure", [None, "exit", "missing", "timeout"])
+def test_folder_opener_reports_process_failure(tmp_path, monkeypatch, system, command, failure):
+    import subprocess
+    from tools.file_util import _open_export_folder
+
+    def run(args, **kwargs):
+        assert args == [command, str(tmp_path.resolve())]
+        assert kwargs == {"check": True, "timeout": 10}
+        if failure == "exit":
+            raise subprocess.CalledProcessError(1, args)
+        if failure == "missing":
+            raise FileNotFoundError(command)
+        if failure == "timeout":
+            raise subprocess.TimeoutExpired(args, 10)
+
+    monkeypatch.setattr("tools.file_util.platform.system", lambda: system)
+    monkeypatch.setattr("tools.file_util.subprocess.run", run)
+    assert _open_export_folder(tmp_path / "package.char") is (failure is None)

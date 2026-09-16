@@ -12,13 +12,28 @@ const nodeLabels = {
   ending_node: "story.graph.ending",
 } as const;
 
-export function StoryGraphView({ graph }: { graph: StoryGraph }) {
+export function StoryGraphView({
+  graph,
+  selectedNodeId,
+  onSelectNode,
+  showDetails = true,
+}: {
+  graph: StoryGraph;
+  selectedNodeId?: string;
+  onSelectNode?: (id: string) => void;
+  showDetails?: boolean;
+}) {
   const { t } = useI18n();
   const [selectedId, setSelectedId] = useState(graph.startNodeId);
   const [zoom, setZoom] = useState(1);
   const marker = useId().replace(/:/g, "");
   const layout = useMemo(() => layoutStoryGraph(graph), [graph]);
-  const selected = graph.nodes.find((node) => node.id === selectedId) ?? graph.nodes[0];
+  const select = (id: string) => {
+    setSelectedId(id);
+    onSelectNode?.(id);
+  };
+  const headingId = `${marker}-title`;
+  const selected = graph.nodes.find((node) => node.id === (selectedNodeId ?? selectedId)) ?? graph.nodes[0];
   const title = (id: string) => graph.nodes.find((node) => node.id === id)?.title ?? id;
   const edges = layout.nodes.flatMap((node) => {
     const targets = new Set((node.transitions ?? []).map((item) => item.to));
@@ -48,10 +63,10 @@ export function StoryGraphView({ graph }: { graph: StoryGraph }) {
     });
   });
   return (
-    <section className="section" aria-labelledby="story-graph-title">
+    <section className="section" aria-labelledby={headingId}>
       <div className="section__header story-graph__header">
         <div>
-          <h2 className="section__title" id="story-graph-title">
+          <h2 className="section__title" id={headingId}>
             {t("story.graph.title")}
           </h2>
           <p className="section__description">{t("story.graph.hint")}</p>
@@ -107,7 +122,7 @@ export function StoryGraphView({ graph }: { graph: StoryGraph }) {
                 className={`story-graph__node story-graph__node--${node.type}`}
                 style={{ left: node.x, top: node.y, width: NODE_WIDTH, height: NODE_HEIGHT }}
                 aria-pressed={selected?.id === node.id}
-                onClick={() => setSelectedId(node.id)}
+                onClick={() => select(node.id)}
               >
                 <small>
                   {node.id === graph.startNodeId ? t("story.graph.start") : ""}
@@ -119,7 +134,7 @@ export function StoryGraphView({ graph }: { graph: StoryGraph }) {
           </div>
         </div>
       </div>
-      {selected && (
+      {showDetails && selected && (
         <article className="story-graph__detail" aria-label={t("story.graph.details")}>
           <h3>{selected.title}</h3>
           <p className="section__description">{selected.instruction || t("story.graph.endHint")}</p>
@@ -140,7 +155,7 @@ export function StoryGraphView({ graph }: { graph: StoryGraph }) {
             {selected.transitions?.map((transition, index) => (
               <li key={`${transition.to}-${index}`}>
                 {transition.when} →{" "}
-                <Button variant="ghost" type="button" onClick={() => setSelectedId(transition.to)}>
+                <Button variant="ghost" type="button" onClick={() => select(transition.to)}>
                   {title(transition.to)}
                 </Button>
               </li>

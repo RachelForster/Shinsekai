@@ -6,6 +6,7 @@ import { useI18n } from "../../shared/i18n";
 import type { ChatSnapshot } from "../../shared/platform/types";
 import { Button, Dialog } from "../../shared/ui";
 import { TemplateEditorPage } from "../template-editor/TemplateEditorPage";
+import { StoryConversationSettings } from "../story-generator/StoryConversationSettings";
 import "./CurrentConversationEditorDialog.css";
 
 export function CurrentConversationEditorDialog({
@@ -48,13 +49,19 @@ export function CurrentConversationEditorDialog({
             <ConversationTypeBadge kind={current.data.kind} />
             <strong>{current.data.title || t("conversation.untitled")}</strong>
           </div>
-          <p className="section__description">{t("conversation.applyHint")}</p>
-          <TemplateEditorPage
-            key={current.data.id}
-            conversationId={current.data.id}
-            onPendingChange={setPending}
-            onApplied={onApplied}
-          />
+          {current.data.kind === "story" ? (
+            <StoryConversationSettings conversation={current.data} onPendingChange={setPending} />
+          ) : (
+            <>
+              <p className="section__description">{t("conversation.applyHint")}</p>
+              <TemplateEditorPage
+                key={current.data.id}
+                conversationId={current.data.id}
+                onPendingChange={setPending}
+                onApplied={onApplied}
+              />
+            </>
+          )}
         </>
       )}
     </Dialog>

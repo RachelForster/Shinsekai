@@ -13,7 +13,7 @@ from application.story.project_loader import load_story_project
 from application.story.selection import normal_template_options
 from config.feature_flags import FeatureFlag
 from core.chat_history.storage import STORY_SESSION_FILENAME, chat_history_session_dir
-from core.story import CharacterSourceType, StoryCompiler, StoryValidationError
+from core.story import CharacterSourceType, StoryCompiler, StoryNode, StoryValidationError
 from sdk.path_utils import safe_existing_path
 
 
@@ -26,6 +26,10 @@ def _read_project(state: Any, story_path: str | Path):
     path = safe_existing_path(candidate, roots=(root,), field="story path")
     project = load_story_project(path)
     return path, project, StoryCompiler().compile(project)
+
+
+def supports_graph_editing(project: Any) -> bool:
+    return all(isinstance(node, StoryNode) for node in project.narrative_graph.nodes)
 
 
 def _matches(saved: dict, program: Any) -> bool:
@@ -56,7 +60,7 @@ def list_story_library(state: Any) -> list[dict]:
         if path.suffix.lower() not in {".json", ".yaml", ".yml"} or not path.is_file():
             continue
         relative = path.relative_to(stories_root)
-        if ".generation" in relative.parts:
+        if ".generation" in relative.parts and not path.name.startswith("edited-"):
             if path.name != "draft.json":
                 continue
             try:
@@ -86,7 +90,9 @@ def list_story_library(state: Any) -> list[dict]:
             {
                 "id": project.id,
                 "title": project.title,
+                "version": project.version,
                 "storyPath": resolved.as_posix(),
+                "canEditGraph": supports_graph_editing(project),
                 "characters": [
                     str(item.source.character_id or item.id)
                     for item in project.character_registry.characters
@@ -138,7 +144,6 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         "primaryCharacters": list(bindings.get("primaryCharacters", names)),
         "historyPath": history_path,
         "resetHistory": not bool(history_path),
-        "scenario": bindings.get("scenario")
-        or f"正在游玩互动剧本《{project.title}》。",
+        "scenario": f"正在游玩互动剧本《{project.title}》。根据当前节点的剧情要求和已发生的对话推进故事。",
     }
     return payload

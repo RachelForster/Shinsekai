@@ -22,6 +22,10 @@ class StoryProjectLoader:
     """Load a manifest and its declared YAML documents without path escape."""
 
     def load(self, path: str | Path) -> StoryProject:
+        return parse_story_project(self.load_source(path))
+
+    def load_source(self, path: str | Path) -> dict[str, Any]:
+        """Return the resolved source, including authoring fields unknown to runtime."""
         requested = Path(path)
         manifest_path = requested / "manifest.yaml" if requested.is_dir() else requested
         root = manifest_path.parent.resolve()
@@ -34,7 +38,9 @@ class StoryProjectLoader:
         )
         self._merge_ref(aggregate, manifest, "logicGraphRef", "logicGraph", root)
         self._merge_chapter_refs(aggregate, manifest, root)
-        return parse_story_project(aggregate)
+        for key in ("variablesRef", "castRef", "narrativeGraphRef", "logicGraphRef", "chaptersRef"):
+            aggregate.pop(key, None)
+        return aggregate
 
     def _merge_chapter_refs(
         self,

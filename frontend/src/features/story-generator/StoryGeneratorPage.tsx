@@ -11,12 +11,14 @@ import { GenerationStages } from "./components/GenerationStages";
 import { GenerationValidation } from "./components/GenerationValidation";
 import { StoryLaunchButton } from "./components/StoryLaunchButton";
 import { StoryGraphView } from "./graph/StoryGraphView";
+import { StoryEditor } from "./editor/StoryEditor";
 import { useStoryGeneration } from "./state/useStoryGeneration";
 import { stages } from "./state/stages";
 import "./StoryGeneratorPage.css";
 
 function StoryWorkspace({ conversationTitle }: { conversationTitle?: string }) {
   const { t } = useI18n();
+  const [editing, setEditing] = useState("");
   const [params] = useSearchParams();
   const [view, setView] = useState<"create" | "library">(() =>
     conversationTitle !== undefined || params.get("view") === "library" ? "library" : "create",
@@ -24,6 +26,7 @@ function StoryWorkspace({ conversationTitle }: { conversationTitle?: string }) {
   const generation = useStoryGeneration();
   const [regenerationStage, setRegenerationStage] = useState<StoryGenerationStage>("narrative");
   const { task, pending, preview } = generation;
+  if (editing) return <StoryEditor key={editing} storyPath={editing} onClose={() => setEditing("")} />;
   return (
     <>
       <SegmentedTabs
@@ -75,6 +78,9 @@ function StoryWorkspace({ conversationTitle }: { conversationTitle?: string }) {
                   conversationTitle={conversationTitle}
                   disabled={pending || !task.validation?.valid || !task.draftPath}
                 />
+                <Button disabled={pending || !task.draftPath} onClick={() => setEditing(task.draftPath)}>
+                  {t("story.editor.edit")}
+                </Button>
                 <details className="story-regenerate">
                   <summary>{t("story.regenerate.title")}</summary>
                   <p className="section__description">{t("story.regenerate.hint")}</p>

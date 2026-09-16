@@ -1,4 +1,9 @@
 import { getPlatform } from "../../shared/platform/platform";
+import type { StoryEditInput, StorySuggestionInput } from "../../shared/platform/storyEditorTypes";
+
+export const readStoryDocument = (storyPath: string) => getPlatform().story.readDocument(storyPath);
+export const saveStoryDocument = (input: StoryEditInput) => getPlatform().story.saveDocument(input);
+export const suggestStoryGraph = (input: StorySuggestionInput) => getPlatform().story.suggestGraph(input);
 import type {
   StoryGenerationInput,
   StoryGenerationStage,
