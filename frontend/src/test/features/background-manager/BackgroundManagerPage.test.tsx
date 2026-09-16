@@ -404,9 +404,10 @@ describe("BackgroundManagerPage", () => {
     renderPage();
 
     await waitFor(() => expect(screen.getByLabelText("Name")).toHaveValue("School"));
-    fireEvent.click(screen.getByTitle("hall.png"));
+    // The gallery updates its visible items in an effect after the name renders.
+    fireEvent.click(await screen.findByTitle("hall.png"));
     fireEvent.change(screen.getByLabelText("Tag"), { target: { value: "unsaved hall edit" } });
-    fireEvent.click(screen.getByTitle("classroom.png"));
+    fireEvent.click(await screen.findByTitle("classroom.png"));
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     const dialog = screen.getByRole("dialog", { name: "Remove" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
