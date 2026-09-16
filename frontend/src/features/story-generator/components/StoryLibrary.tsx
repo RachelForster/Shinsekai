@@ -55,13 +55,15 @@ export function StoryLibrary({ onCreate, conversationTitle }: { onCreate: () => 
                   ) || t("template.transparentBackground"),
               })}
             </p>
-            <StoryLaunchButton
-              key={`${story.storyPath}-${story.historyPath}`}
-              storyPath={story.storyPath}
-              conversationTitle={conversationTitle}
-              label={t("conversation.createAndStart")}
-            />
-            <Button onClick={() => setEditing(story.storyPath)}>{t("story.editor.edit")}</Button>
+            <div className="story-library-card__actions">
+              <StoryLaunchButton
+                key={`${story.storyPath}-${story.historyPath}`}
+                storyPath={story.storyPath}
+                conversationTitle={conversationTitle}
+                label={t("conversation.createAndStart")}
+              />
+              <Button onClick={() => setEditing(story.storyPath)}>{t("story.editor.edit")}</Button>
+            </div>
           </article>
         ))}
       </div>

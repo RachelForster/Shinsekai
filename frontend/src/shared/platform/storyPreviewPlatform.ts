@@ -126,6 +126,7 @@ export function createStoryPreviewPlatform(
       if (!task) throw new Error("剧本不存在，请刷新后重试。");
       return {
         templateId: "",
+        storyPath,
         templateName: documentFor(storyPath).title,
         scenario: `正在游玩互动剧本《${documentFor(storyPath).title}》。根据当前节点的剧情要求和已发生的对话推进故事。`,
         system: "根据当前剧本场景呈现人物对话和旁白。",

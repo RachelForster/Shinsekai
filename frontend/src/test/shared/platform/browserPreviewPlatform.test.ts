@@ -63,6 +63,26 @@ function templateSession(overrides: Partial<TemplateLaunchSession> = {}): Templa
 }
 
 describe("browser preview platform chat themes", () => {
+  it("keeps an existing story launch classified as story through attachment and reopening", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    const generated = await platform.story.startGeneration({
+      synopsis: "A mystery",
+      options: { characters: ["Nanami"] },
+    });
+    const payload = await platform.story.prepareLaunch(generated.draftPath!);
+    expect(payload.storyPath).toBe(generated.draftPath);
+    await resolvePreview(platform.chat.launch(payload));
+    const item = (await platform.chat.listConversations())[0];
+    expect(item).toMatchObject({ kind: "story", storyPath: generated.draftPath });
+    await platform.story.startSession(generated.draftPath!);
+    await resolvePreview(platform.chat.close());
+    await resolvePreview(platform.chat.launch(await platform.chat.prepareConversation(item.id)));
+    expect(await platform.chat.getCurrentConversation()).toMatchObject({
+      kind: "story",
+      storyPath: generated.draftPath,
+    });
+  });
   it("keeps chat names separate and permits deleting only a closed conversation", async () => {
     vi.useFakeTimers();
     const platform = createBrowserPreviewPlatform();

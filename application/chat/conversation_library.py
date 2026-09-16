@@ -166,14 +166,16 @@ def _details(record: dict) -> dict:
     directory = chat_history_session_dir(path)
     binding = _read(directory / "story-prompt-binding.json")
     binding = binding if isinstance(binding, dict) else {}
-    story = (directory / STORY_SESSION_FILENAME).is_file()
+    story_file = directory / STORY_SESSION_FILENAME
+    story_path = binding.get("storyPath") or launch.get("storyPath") or ""
+    story = bool(story_path) or story_file.is_file()
     modified = max(
         file.stat().st_mtime
         for file in (active, Path(str(active) + ".tmp"))
         if file.is_file()
     )
-    if story:
-        modified = max(modified, (directory / STORY_SESSION_FILENAME).stat().st_mtime)
+    if story_file.is_file():
+        modified = max(modified, story_file.stat().st_mtime)
     title = record.get("title") or launch.get("templateName") or ""
     if not title:
         title = " · ".join(characters[:3])
@@ -184,7 +186,7 @@ def _details(record: dict) -> dict:
         "preview": turns[-1]["content"][:180] if turns else "",
         "updatedAt": modified * 1000,
         "kind": "story" if story else "normal",
-        "storyPath": binding.get("storyPath", ""),
+        "storyPath": story_path,
         "historyPath": path.as_posix(),
         "hasSettings": bool(launch) and not record.get("requiresCharacterSelection", False),
         "requiresCharacterSelection": bool(record.get("requiresCharacterSelection")),

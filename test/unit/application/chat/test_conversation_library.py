@@ -126,6 +126,23 @@ def test_fresh_registered_chat_is_available_before_any_messages(state):
     assert list_conversations(state)[0]["preview"] == ""
 
 
+def test_story_source_identifies_chat_before_session_storage_exists(state):
+    path = Path(state.history_dir) / "fresh-story"
+    remember_conversation(state, path, {"characters": ["Alice"], "storyPath": "stories/mystery.json"})
+    item = list_conversations(state)[0]
+    assert item["kind"] == "story"
+    assert item["storyPath"] == "stories/mystery.json"
+    assert conversation_launch_payload(state, item["id"])["storyPath"] == item["storyPath"]
+
+
+def test_existing_story_binding_repairs_classification_without_session_file(state):
+    path = history(state)
+    remember_conversation(state, path, {"characters": ["Alice"]})
+    write(path / "story-prompt-binding.json", {"storyPath": "stories/old.json"})
+    assert list_conversations(state)[0]["kind"] == "story"
+    assert list_conversations(state)[0]["storyPath"] == "stories/old.json"
+
+
 def test_registered_crash_history_reads_tmp_without_consuming_it(state):
     path = history(state)
     remember_conversation(state, path, {"characters": ["Alice"]})

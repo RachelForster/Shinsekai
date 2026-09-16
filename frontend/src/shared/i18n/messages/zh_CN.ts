@@ -1,6 +1,17 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "story.canvas.title": "节点画布",
+  "story.canvas.fit": "全览节点 (F)",
+  "story.canvas.arrange": "自动排列",
+  "story.canvas.empty": "点击编写这个场景",
+  "story.canvas.input": "连接到 {title}",
+  "story.canvas.output": "从 {title} 连接",
+  "story.canvas.hint": "拖动空白处平移 · 滚轮缩放 · 拖动节点 · F 全览",
+  "story.canvas.connectHint": "拖到或点击目标输入端口，Esc 取消；连接后在节点面板填写触发条件。",
+  "story.canvas.panels": "编辑面板",
+  "story.canvas.hidePanel": "收起面板",
+
   "conversation.settings": "聊天设置",
   "conversation.next": "下一步",
   "conversation.chooseType": "聊天类型",

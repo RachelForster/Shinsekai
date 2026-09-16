@@ -106,6 +106,7 @@ def test_selection_reaches_author_and_runtime_with_primary_and_secondary_setting
     )
     payload = response.data
     assert payload["templateId"] == ""
+    assert payload["storyPath"] == Path(task["draftPath"]).resolve().as_posix()
     assert payload["characters"] == ["小玲", "小晴"]
     assert payload["backgroundName"] == "旧校舍"
     assert payload["resetHistory"] is True

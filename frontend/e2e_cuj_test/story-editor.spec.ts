@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { StoryDocument, StoryEditInput } from "../src/shared/platform/storyEditorTypes";
 
-for (const width of [1280, 760]) {
+for (const width of [1280, 760, 390]) {
   test(`story graph editing and proposal review at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 960 });
     const errors: string[] = [];
@@ -96,6 +96,48 @@ for (const width of [1280, 760]) {
     await expect(page.getByRole("heading", { name: "剧本编辑器" })).toBeVisible();
     await page.getByRole("textbox", { name: "剧情正文 / 演绎要求" }).fill("玩家来到旧校舍，与小玲核对线索。");
     await page.screenshot({ path: testInfo.outputPath("node-editor.png"), fullPage: true });
+    const canvas = page.getByLabel("节点画布", { exact: true });
+    const bounds = await canvas.boundingBox();
+    expect(bounds!.height).toBeGreaterThan(width < 600 ? 180 : 450);
+    for (const node of await page.locator(".story-canvas__node").all()) {
+      const box = (await node.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(bounds!.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(bounds!.x + bounds!.width + 1);
+      expect(box.y + box.height).toBeLessThanOrEqual(bounds!.y + bounds!.height + 1);
+    }
+    const opening = page.locator('[data-node-id="opening"]');
+    const beforeDrag = (await opening.boundingBox())!;
+    await page.mouse.move(beforeDrag.x + 30, beforeDrag.y + 30);
+    await page.mouse.down();
+    await page.mouse.move(beforeDrag.x + 85, beforeDrag.y + 85, { steps: 8 });
+    await page.mouse.up();
+    expect((await opening.boundingBox())!.x).toBeCloseTo(beforeDrag.x + 55, 0);
+    const world = page.locator(".story-canvas__world");
+    const transform = await world.getAttribute("style");
+    await page.mouse.move(bounds!.x + 20, bounds!.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(bounds!.x + 50, bounds!.y + 40, { steps: 5 });
+    await page.mouse.up();
+    expect(await world.getAttribute("style")).not.toBe(transform);
+    await page.mouse.wheel(0, -120);
+    await page.getByRole("button", { name: "全览节点 (F)", exact: true }).click();
+    await page.getByRole("button", { name: "从 校门前的邀约 连接" }).click();
+    await page.getByRole("button", { name: "连接到 真相大白" }).click();
+    await expect(page.getByRole("textbox", { name: "跳转条件" })).toHaveCount(2);
+    await page.getByRole("textbox", { name: "跳转条件" }).last().fill("玩家直接询问真相");
+    const sourcePort = (await page.getByRole("button", { name: "从 校门前的邀约 连接" }).boundingBox())!;
+    const targetPort = (await page.getByRole("button", { name: "连接到 真相大白" }).boundingBox())!;
+    await page.mouse.move(sourcePort.x + sourcePort.width / 2, sourcePort.y + sourcePort.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(targetPort.x + targetPort.width / 2, targetPort.y + targetPort.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await expect(page.getByRole("textbox", { name: "跳转条件" })).toHaveCount(3);
+    await page.getByRole("textbox", { name: "跳转条件" }).last().fill("玩家找到隐藏线索");
+    await page.getByRole("button", { name: "收起面板" }).click();
+    await expect(page.locator(".story-editor__inspector")).toBeHidden();
+    if (width >= 600) expect((await canvas.boundingBox())!.width).toBeGreaterThan(bounds!.width + 200);
+    else expect((await canvas.boundingBox())!.height).toBeGreaterThan(bounds!.height + 100);
+    await page.getByRole("button", { name: "LLM 辅助修改", exact: true }).first().click();
     await page.getByRole("combobox", { name: "修改范围" }).click();
     await page.getByRole("option", { name: "整个节点图（可生成新节点）" }).click();
     await page.getByRole("textbox", { name: "修改要求" }).fill("加入对质场景");

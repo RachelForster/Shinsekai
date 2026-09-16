@@ -55,7 +55,7 @@ function renderEditor() {
     </QueryClientProvider>,
   );
 }
-const text = () => screen.getByRole("textbox", { name: "Scene text / performance guidance" });
+const text = () => screen.getByLabelText("Scene text / performance guidance");
 const select = (label: string, option: string) => {
   fireEvent.click(screen.getByRole("combobox", { name: label }));
   fireEvent.click(screen.getByRole("option", { name: option }));
@@ -137,6 +137,8 @@ describe("story graph editor", () => {
     );
     renderEditor();
     await screen.findByDisplayValue(document.title);
+    if (!screen.queryByRole("textbox", { name: "Revision request" }))
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit with an LLM" })[0]);
     fireEvent.change(screen.getByRole("textbox", { name: "Revision request" }), {
       target: { value: "Be more cautious" },
     });
@@ -165,7 +167,10 @@ describe("story graph editor", () => {
     suggestStoryGraph.mockResolvedValue({ graph, summary: "New branch", validation });
     renderEditor();
     await screen.findByDisplayValue(document.title);
+    fireEvent.click(screen.getAllByRole("button", { name: "Edit with an LLM" })[0]);
     select("Edit scope", "Whole graph (can generate new nodes)");
+    if (!screen.queryByRole("textbox", { name: "Revision request" }))
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit with an LLM" })[0]);
     fireEvent.change(screen.getByRole("textbox", { name: "Revision request" }), {
       target: { value: "Add reconciliation" },
     });
@@ -196,6 +201,8 @@ describe("story graph editor", () => {
     renderEditor();
     await screen.findByDisplayValue(document.title);
     fireEvent.change(text(), { target: { value: "My scene" } });
+    if (!screen.queryByRole("textbox", { name: "Revision request" }))
+      fireEvent.click(screen.getAllByRole("button", { name: "Edit with an LLM" })[0]);
     fireEvent.change(screen.getByRole("textbox", { name: "Revision request" }), { target: { value: "Revise" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate proposal" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Model unavailable");

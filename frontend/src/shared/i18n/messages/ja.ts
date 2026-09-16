@@ -1,6 +1,17 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "story.canvas.title": "ノードキャンバス",
+  "story.canvas.fit": "全ノードを表示 (F)",
+  "story.canvas.arrange": "自動整列",
+  "story.canvas.empty": "選択してシーンを編集",
+  "story.canvas.input": "{title} へ接続",
+  "story.canvas.output": "{title} から接続",
+  "story.canvas.hint": "背景をドラッグして移動 · ホイールで拡大縮小 · F で全体表示",
+  "story.canvas.connectHint": "入力ポートへドラッグまたはクリック。Esc でキャンセル。条件はノードパネルで設定。",
+  "story.canvas.panels": "編集パネル",
+  "story.canvas.hidePanel": "パネルを閉じる",
+
   "conversation.settings": "チャット設定",
   "conversation.next": "次へ",
   "conversation.chooseType": "チャットの種類",

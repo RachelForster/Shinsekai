@@ -104,7 +104,7 @@ def list_story_library(state: Any) -> list[dict]:
 def prepare_story_launch(state: Any, story_path: str, history_path: str = "") -> dict:
     if not story_path.strip():
         raise ValueError("请选择剧本。")
-    _, project, program = _read_project(state, story_path)
+    resolved_story, project, program = _read_project(state, story_path)
     if history_path:
         resolved_history = resolve_history_path_for_project(state, history_path)
         saved = JsonStorySessionRepository(
@@ -132,6 +132,7 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         **dict(bindings.get("templateOptions") or {}),
         **normal_template_options(state),
         "templateId": "",
+        "storyPath": resolved_story.as_posix(),
         "templateName": project.title,
         "characters": names,
         "backgroundName": background,

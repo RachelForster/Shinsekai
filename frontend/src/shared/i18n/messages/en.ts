@@ -1,6 +1,18 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "story.canvas.title": "Node canvas",
+  "story.canvas.fit": "Fit all nodes (F)",
+  "story.canvas.arrange": "Auto arrange",
+  "story.canvas.empty": "Select to write this scene",
+  "story.canvas.input": "Connect to {title}",
+  "story.canvas.output": "Connect from {title}",
+  "story.canvas.hint": "Drag background to pan · Wheel to zoom · Drag nodes · F to fit",
+  "story.canvas.connectHint":
+    "Drag to an input port, or click one. Escape cancels. Set the condition in the node panel.",
+  "story.canvas.panels": "Editor panels",
+  "story.canvas.hidePanel": "Collapse panel",
+
   "conversation.settings": "Chat settings",
   "conversation.next": "Next",
   "conversation.chooseType": "Chat type",
