@@ -132,6 +132,7 @@ export function StoryCanvas({
     }
     event.preventDefault();
     event.stopPropagation();
+    suppressClick.current = false;
     if (id) onSelect(id, false);
     const node = nodes.find((n) => n.id === id);
     drag.current = { id, start: { x: event.clientX, y: event.clientY }, origin: node ?? view, moved: false };
@@ -182,6 +183,9 @@ export function StoryCanvas({
       }}
       onPointerUp={(event) => {
         suppressClick.current = Boolean(drag.current?.moved);
+        // Pointer capture sends the browser's click to the canvas, so finish
+        // node selection here as well as supporting keyboard-generated clicks.
+        if (drag.current?.id && !drag.current.moved) onSelect(drag.current.id);
         drag.current = null;
         viewport.current?.releasePointerCapture?.(event.pointerId);
         if (wire) {
@@ -240,15 +244,15 @@ export function StoryCanvas({
             className={`story-canvas__node ${node.type} ${node.id === selectedId ? "is-selected" : ""}`}
             style={{ left: node.x, top: node.y, width: WIDTH, height: HEIGHT }}
             onPointerDown={(event) => begin(event, node.id)}
+            onClick={() => {
+              if (!suppressClick.current) onSelect(node.id);
+              suppressClick.current = false;
+            }}
           >
             <button
               className="story-canvas__node-heading"
               aria-pressed={node.id === selectedId}
               aria-label={`${t(nodeTypeLabels[node.type])} ${node.title || node.id}`}
-              onClick={() => {
-                if (!suppressClick.current) onSelect(node.id);
-                suppressClick.current = false;
-              }}
             >
               <small>
                 {t(nodeTypeLabels[node.type])}
@@ -266,7 +270,10 @@ export function StoryCanvas({
               aria-label={t("story.canvas.input", { title: node.title })}
               disabled={disabled}
               onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => connect(node.id)}
+              onClick={(event) => {
+                event.stopPropagation();
+                connect(node.id);
+              }}
             />
             {node.type !== "ending_node" && (
               <button
@@ -277,7 +284,10 @@ export function StoryCanvas({
                   event.stopPropagation();
                   if (event.button === 0) setWire({ from: node.id, end: localPoint(event) });
                 }}
-                onClick={() => setWire({ from: node.id, end: { x: node.x + WIDTH + 80, y: node.y + 58 } })}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setWire({ from: node.id, end: { x: node.x + WIDTH + 80, y: node.y + 58 } });
+                }}
               />
             )}
           </article>

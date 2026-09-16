@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "story.editor.back": "Back",
   "story.canvas.title": "Node canvas",
   "story.canvas.fit": "Fit all nodes (F)",
   "story.canvas.arrange": "Auto arrange",

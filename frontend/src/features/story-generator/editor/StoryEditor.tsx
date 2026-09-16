@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { ArrowLeft, PanelRightClose } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   readStoryDocument,
@@ -45,6 +47,7 @@ export function StoryEditor({
 }) {
   const { t } = useI18n();
   const [busy, setBusy] = useState(false);
+  const titleId = useId();
   const reportPending = useCallback(
     (value: boolean) => {
       setBusy(value);
@@ -59,32 +62,41 @@ export function StoryEditor({
     gcTime: 0,
     refetchOnWindowFocus: false,
   });
-  return (
-    <Dialog
-      open
-      title={t("story.editor.title")}
-      className="story-studio"
-      bodyClassName="story-editor"
-      dismissible={!busy && Boolean(onClose)}
-      onClose={() => onClose?.()}
-      closeLabel={t("common.close")}
-    >
-      {query.isPending && <p role="status">{t("common.loading")}</p>}
-      {query.isError && (
-        <>
-          <p role="alert">{query.error.message}</p>
-          <Button onClick={() => void query.refetch()}>{t("common.refresh")}</Button>
-          {onClose && <Button onClick={onClose}>{t("common.close")}</Button>}
-        </>
-      )}
-      {query.data && (
-        <EditorDraft
-          key={`${query.data.storyPath}:${query.data.sourceHash}`}
-          initial={query.data}
-          onPendingChange={reportPending}
-        />
-      )}
-    </Dialog>
+  return createPortal(
+    <section className="page story-studio" aria-labelledby={titleId}>
+      <header className="page__header">
+        <div className="story-studio__heading">
+          <Button
+            variant="ghost"
+            icon={<ArrowLeft aria-hidden size={18} />}
+            disabled={busy || !onClose}
+            onClick={onClose}
+          >
+            {t("story.editor.back")}
+          </Button>
+          <h1 className="page__title" id={titleId}>
+            {t("story.editor.title")}
+          </h1>
+        </div>
+      </header>
+      <div className="story-editor">
+        {query.isPending && <p role="status">{t("common.loading")}</p>}
+        {query.isError && (
+          <>
+            <p role="alert">{query.error.message}</p>
+            <Button onClick={() => void query.refetch()}>{t("common.refresh")}</Button>
+          </>
+        )}
+        {query.data && (
+          <EditorDraft
+            key={`${query.data.storyPath}:${query.data.sourceHash}`}
+            initial={query.data}
+            onPendingChange={reportPending}
+          />
+        )}
+      </div>
+    </section>,
+    document.querySelector(".desktop-frame__content") ?? document.body,
   );
 }
 
@@ -107,7 +119,7 @@ function EditorDraft({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
-  const [panel, setPanel] = useState<"node" | "ai" | null>("node");
+  const [panel, setPanel] = useState<"node" | "ai" | null>(null);
   const running = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -181,8 +193,8 @@ function EditorDraft({
   return (
     <>
       <header className="story-editor__toolbar">
-        <label>
-          {t("story.editor.storyTitle")}
+        <label className="story-editor__name">
+          <span>{t("story.editor.storyTitle")}</span>
           <TextInput
             disabled={locked}
             value={draft.title}
@@ -221,14 +233,11 @@ function EditorDraft({
           >
             {t("story.editor.undo")}
           </Button>
-          <Button aria-pressed={panel === "node"} onClick={() => setPanel(panel === "node" ? null : "node")}>
-            {t("story.editor.node")}
-          </Button>
           <Button aria-pressed={panel === "ai"} onClick={() => setPanel(panel === "ai" ? null : "ai")}>
             {t("story.editor.ai")}
           </Button>
-          <label>
-            {t("story.editor.start")}
+          <label className="story-editor__start">
+            <span>{t("story.editor.start")}</span>
             <Select
               aria-label={t("story.editor.start")}
               disabled={locked}
@@ -266,17 +275,12 @@ function EditorDraft({
           }}
         />
         <aside className="story-editor__inspector" hidden={!panel}>
-          <nav className="story-editor__tabs" aria-label={t("story.canvas.panels")}>
-            <Button aria-pressed={panel === "node"} onClick={() => setPanel("node")}>
-              {t("story.editor.node")}
-            </Button>
-            <Button aria-pressed={panel === "ai"} onClick={() => setPanel("ai")}>
-              {t("story.editor.ai")}
-            </Button>
+          <header className="story-editor__panel-header">
+            <h2>{t(panel === "ai" ? "story.editor.ai" : "story.editor.node")}</h2>
             <Button aria-label={t("story.canvas.hidePanel")} onClick={() => setPanel(null)}>
-              ×
+              <PanelRightClose aria-hidden size={16} />
             </Button>
-          </nav>
+          </header>
           <div className="story-editor__panel-scroll" hidden={panel !== "node"}>
             {selected && (
               <section className="section">
@@ -314,7 +318,6 @@ function EditorDraft({
             )}
           </div>
           <section className="story-editor__ai story-editor__panel-scroll" hidden={panel !== "ai"}>
-            <h3>{t("story.editor.ai")}</h3>
             {document.authoringBrief && (
               <details>
                 <summary>{t("story.editor.brief")}</summary>

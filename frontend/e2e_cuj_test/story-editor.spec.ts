@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import type { StoryDocument, StoryEditInput } from "../src/shared/platform/storyEditorTypes";
 
 for (const width of [1280, 760, 390]) {
@@ -49,11 +50,13 @@ for (const width of [1280, 760, 390]) {
       const path = new URL(route.request().url()).pathname;
       let body: unknown = [];
       if (["/api/config", "/api/chat/theme", "/api/chat/snapshot"].includes(path)) {
-        const samples = await page.evaluate(async () => {
-          const modulePath = "/src/shared/platform/sampleData.ts";
-          const { sampleConfig, sampleChatTheme, sampleChatSnapshot } = await import(modulePath);
-          return { sampleConfig, sampleChatTheme, sampleChatSnapshot };
-        });
+        const samples = process.env.STORY_EDITOR_E2E_SAMPLES
+          ? JSON.parse(readFileSync(process.env.STORY_EDITOR_E2E_SAMPLES, "utf8"))
+          : await page.evaluate(async () => {
+              const modulePath = "/src/shared/platform/sampleData.ts";
+              const { sampleConfig, sampleChatTheme, sampleChatSnapshot } = await import(modulePath);
+              return { sampleConfig, sampleChatTheme, sampleChatSnapshot };
+            });
         if (path === "/api/config")
           body = {
             ...samples.sampleConfig,
@@ -92,8 +95,40 @@ for (const width of [1280, 760, 390]) {
     await page.goto("/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787#/settings/templates?mode=story&view=library", {
       waitUntil: "domcontentloaded",
     });
+    // Reproduce the desktop titlebar ownership boundary without a native host.
+    await page.evaluate(() => {
+      const host = document.createElement("div");
+      host.className = "desktop-frame__content";
+      host.style.setProperty("--desktop-titlebar-height", "38px");
+      document.body.append(host);
+      const titlebar = document.createElement("div");
+      titlebar.style.cssText = "position:fixed;inset:0 0 auto;height:38px;z-index:100;background:#17191f";
+      titlebar.textContent = "Shinsekai";
+      document.body.append(titlebar);
+    });
     await page.getByRole("button", { name: "编辑节点图" }).click();
     await expect(page.getByRole("heading", { name: "剧本编辑器" })).toBeVisible();
+    const studio = page.getByRole("region", { name: "剧本编辑器", exact: true });
+    expect((await page.getByRole("heading", { name: "剧本编辑器" }).boundingBox())!.y).toBeGreaterThanOrEqual(38);
+    await expect(studio.getByRole("button", { name: "节点内容", exact: true })).toHaveCount(0);
+    await expect(studio.getByRole("button", { name: "LLM 辅助修改", exact: true })).toHaveCount(1);
+    await expect(studio.getByRole("button", { name: "关闭", exact: true })).toHaveCount(0);
+    await expect(page.locator(".story-editor__inspector")).toBeHidden();
+    await page.getByRole("button", { name: "限轮剧情 校门前的邀约", exact: true }).click();
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await page.getByRole("button", { name: "收起面板" }).click();
+      await page.locator('[data-node-id="opening"] p').click();
+      await expect(page.getByRole("textbox", { name: "节点标题" })).toBeVisible();
+    }
+    if (width >= 1000) {
+      const nameBox = (await page.getByRole("textbox", { name: "剧本名称", exact: true }).boundingBox())!;
+      const addBox = (await page.getByRole("button", { name: "新增节点", exact: true }).boundingBox())!;
+      expect(nameBox.width).toBeLessThanOrEqual(240);
+      expect(Math.abs(nameBox.y + nameBox.height / 2 - addBox.y - addBox.height / 2)).toBeLessThan(3);
+    }
+    const startLabel = (await page.locator(".story-editor__start > span").boundingBox())!;
+    const startSelect = (await page.getByRole("combobox", { name: "起始节点", exact: true }).boundingBox())!;
+    expect(Math.abs(startLabel.y + startLabel.height / 2 - startSelect.y - startSelect.height / 2)).toBeLessThan(3);
     await page.getByRole("textbox", { name: "剧情正文 / 演绎要求" }).fill("玩家来到旧校舍，与小玲核对线索。");
     await page.screenshot({ path: testInfo.outputPath("node-editor.png"), fullPage: true });
     const canvas = page.getByLabel("节点画布", { exact: true });
@@ -151,7 +186,7 @@ for (const width of [1280, 760, 390]) {
     await expect(page.getByRole("button", { name: "用新版本开始游玩" })).toBeVisible();
     expect(saves).toHaveLength(1);
     expect(saves[0].graph.nodes).toHaveLength(3);
-    await page.getByRole("button", { name: "关闭", exact: true }).click();
+    await page.getByRole("button", { name: "返回", exact: true }).click();
     await expect(page.getByText("版本 2", { exact: true })).toBeVisible();
     expect(errors).toEqual([]);
   });

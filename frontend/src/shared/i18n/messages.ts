@@ -1,6 +1,7 @@
 export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
+  | "story.editor.back"
   | "story.canvas.title"
   | "story.canvas.fit"
   | "story.canvas.arrange"

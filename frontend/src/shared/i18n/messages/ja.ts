@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "story.editor.back": "戻る",
   "story.canvas.title": "ノードキャンバス",
   "story.canvas.fit": "全ノードを表示 (F)",
   "story.canvas.arrange": "自動整列",

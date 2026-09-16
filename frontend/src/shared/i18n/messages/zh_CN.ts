@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "story.editor.back": "返回",
   "story.canvas.title": "节点画布",
   "story.canvas.fit": "全览节点 (F)",
   "story.canvas.arrange": "自动排列",
