@@ -1,6 +1,6 @@
 import { CharacterPicker } from "./CharacterPicker";
 import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { updateCharacterRoles } from "./characterRoles";
 import type { CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -418,23 +418,29 @@ export function TemplateEditorPage({
     mutationFn: ensureCharacterBriefs,
   });
 
+  const generationInput = (scenario = scenarioForSelectedCharacters()) =>
+    buildTemplateGenerateInput({
+      backgroundName: selectedBackground,
+      characterPromptMode: characterPromptMode ?? "full",
+      draft: { ...draft, scenario },
+      effectNames: selectedEffects,
+      mediaSelectionMode,
+      options: templateOptionsState,
+      runtime: runtimeOptionsState,
+      primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
+      selectedCharacters,
+    });
+  const latestGenerationInput = useRef(generationInput);
+  useLayoutEffect(() => {
+    latestGenerationInput.current = generationInput;
+  });
+
   const generateMutation = useMutation({
-    mutationFn: async (options?: { scenario?: string; silent?: boolean }) => {
-      const scenario = options?.scenario ?? scenarioForSelectedCharacters();
-      return generateTemplate(
-        buildTemplateGenerateInput({
-          backgroundName: selectedBackground,
-          characterPromptMode: characterPromptMode ?? "full",
-          draft: { ...draft, scenario },
-          effectNames: selectedEffects,
-          mediaSelectionMode,
-          options: templateOptionsState,
-          runtime: runtimeOptionsState,
-          primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
-          selectedCharacters,
-        }),
-      );
-    },
+    // Mutation callbacks are refreshed in a passive effect. Pass the visible
+    // form as variables so a click immediately after restoration cannot use
+    // the previous render's draft.
+    mutationFn: ({ input }: { input: ReturnType<typeof buildTemplateGenerateInput>; silent?: boolean }) =>
+      generateTemplate(input),
     onError(error, options) {
       const wasPreparingLaunch = deferredLaunchRef.current !== null;
       deferredLaunchRef.current = null;
@@ -505,7 +511,10 @@ export function TemplateEditorPage({
       lastAutoScenarioRef.current = scenario;
       updateDraft({ scenario });
     }
-    const timer = window.setTimeout(() => generateMutation.mutate({ scenario, silent: true }), 160);
+    const timer = window.setTimeout(
+      () => generateMutation.mutate({ input: latestGenerationInput.current(scenario), silent: true }),
+      160,
+    );
     return () => window.clearTimeout(timer);
   }, [
     generationCharactersKey,
@@ -526,25 +535,19 @@ export function TemplateEditorPage({
   ]);
 
   const launchMutation = useMutation({
-    mutationFn: async ({ resetHistory }: { resetHistory: boolean }) => {
+    mutationFn: async ({
+      resetHistory,
+      template,
+      session,
+    }: {
+      resetHistory: boolean;
+      template: TemplateSummary;
+      session: TemplateLaunchSession;
+    }) => {
       if (runtimeClosing || (runtimeLaunchDisabled && !conversationId)) {
         throw new Error(t("launch.runtimeBusy"));
       }
       return runChatInitialization(async (progressOptions) => {
-        const template = buildTemplateSummary(draft);
-        const session: TemplateLaunchSession = buildTemplateLaunchSession({
-          backgroundName: selectedBackground,
-          characterPromptMode: characterPromptMode ?? "full",
-          draft,
-          effectNames: selectedEffects,
-          mobileAccessEnabled,
-          mediaSelectionMode,
-          options: templateOptionsState,
-          primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
-          runtime: createOnly ? { ...runtimeOptionsState, historyPath: "" } : runtimeOptionsState,
-          selectedCharacters,
-          selectedTemplateId: selectedId,
-        });
         const savedSession = conversationId ? session : await saveTemplateSession(session);
         if (!conversationId) queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
         const apply = conversationId
@@ -555,15 +558,15 @@ export function TemplateEditorPage({
           {
             ...synchronizeChatLaunchPayloadWithSession(
               buildChatLaunchPayload({
-                backgroundName: selectedBackground,
-                effectNames: selectedEffects,
-                mobileAccessEnabled,
-                mediaSelectionMode,
+                backgroundName: session.background,
+                effectNames: session.effectNames,
+                mobileAccessEnabled: Boolean(session.enableMobileAccess),
+                mediaSelectionMode: session.mediaSelectionMode ?? "indexed",
                 resetHistory: conversationId ? false : createOnly || resetHistory,
-                runtime: createOnly ? { ...runtimeOptionsState, historyPath: "" } : runtimeOptionsState,
-                selectedCharacters,
+                runtime: session,
+                selectedCharacters: session.selectedCharacters,
                 template,
-                useCg,
+                useCg: session.useCg,
               }),
               savedSession,
             ),
@@ -618,13 +621,31 @@ export function TemplateEditorPage({
     },
   });
 
+  const launchCurrentDraft = (resetHistory: boolean) => {
+    const template = buildTemplateSummary(draft);
+    const session: TemplateLaunchSession = buildTemplateLaunchSession({
+      backgroundName: selectedBackground,
+      characterPromptMode: characterPromptMode ?? "full",
+      draft,
+      effectNames: selectedEffects,
+      mobileAccessEnabled,
+      mediaSelectionMode,
+      options: templateOptionsState,
+      primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
+      runtime: createOnly ? { ...runtimeOptionsState, historyPath: "" } : runtimeOptionsState,
+      selectedCharacters,
+      selectedTemplateId: selectedId,
+    });
+    launchMutation.mutate({ resetHistory, template, session });
+  };
+
   useEffect(() => {
     if (launchReadyAfterRoleGeneration === null) {
       return;
     }
     const resetHistory = launchReadyAfterRoleGeneration;
     setLaunchReadyAfterRoleGeneration(null);
-    launchMutation.mutate({ resetHistory });
+    launchCurrentDraft(resetHistory);
   }, [launchReadyAfterRoleGeneration]);
 
   const updateSelectedCharacters = (next: string[], options?: { preservePromptMode?: boolean }) => {
@@ -722,7 +743,7 @@ export function TemplateEditorPage({
       lastAutoScenarioRef.current = scenario;
       updateDraft({ scenario });
     }
-    generateMutation.mutate({ scenario, silent: false });
+    generateMutation.mutate({ input: generationInput(scenario), silent: false });
   };
 
   const handleLaunch = (resetHistory: boolean) => {
@@ -735,10 +756,10 @@ export function TemplateEditorPage({
     // selection. Regenerate its instructions before starting that chat.
     if (draft.mediaSelectionMode !== mediaSelectionMode) {
       deferredLaunchRef.current = resetHistory;
-      generateMutation.mutate({ silent: true });
+      generateMutation.mutate({ input: generationInput(), silent: true });
       return;
     }
-    launchMutation.mutate({ resetHistory });
+    launchCurrentDraft(resetHistory);
   };
 
   const templateOptions = [
