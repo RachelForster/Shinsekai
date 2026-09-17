@@ -67,6 +67,7 @@ vi.mock("../../../entities/background/repository", () => ({
 vi.mock("../../../entities/story/repository", () => ({
   storyLibraryQueryKey: ["story-library"],
   listStories: (...args: unknown[]) => listStories(...args),
+  deleteStory: vi.fn(),
   startStoryGeneration: (...args: unknown[]) => startStoryGeneration(...args),
   resumeStoryGeneration: (...args: unknown[]) => resumeStoryGeneration(...args),
   regenerateStoryGeneration: (...args: unknown[]) => regenerateStoryGeneration(...args),

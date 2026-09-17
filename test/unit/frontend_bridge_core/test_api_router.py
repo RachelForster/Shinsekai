@@ -169,6 +169,7 @@ def test_registered_story_route_contracts_match_main() -> None:
         ("GET", "/api/story/generation/{generation_task_id}"),
         ("GET", "/api/story/generation/{generation_task_id}/preview"),
         ("GET", "/api/story/library"),
+        ("POST", "/api/story/library/delete"),
         ("POST", "/api/story/editor/read"),
         ("POST", "/api/story/editor/save"),
         ("POST", "/api/story/editor/suggest"),

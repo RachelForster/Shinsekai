@@ -1,6 +1,9 @@
 import type { MessageKey } from "../messages";
 
 export const jaMessages: Record<MessageKey, string> = {
+  "story.library.delete": "シナリオのバージョンを削除",
+  "story.library.deleteConfirm":
+    "「{title}」のバージョン {version} と関連するすべての会話・セーブデータを削除しますか？他のバージョンは保持されます。この操作は取り消せません。",
   "story.editor.back": "戻る",
   "story.canvas.title": "ノードキャンバス",
   "story.canvas.fit": "全ノードを表示 (F)",
