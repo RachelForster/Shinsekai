@@ -42,6 +42,30 @@ class _StatefulMemory:
         self.rows.append((text, kwargs))
         return {"results": [{"id": str(len(self.rows))}]}
 
+    def search(self, query, *, filters, top_k=20):
+        matches = [
+            {"metadata": kwargs["metadata"], "score": 1.0}
+            for text, kwargs in self.rows
+            if text == query
+            and all(kwargs.get(key) == value for key, value in filters.items())
+        ]
+        return {"results": matches[:top_k]}
+
+
+class _LegacyStatefulMemory(_StatefulMemory):
+    def get_all(self, *, filters, limit=20):
+        return super().get_all(filters=filters, top_k=limit)
+
+    def search(self, query, *, filters, limit=20):
+        return super().search(query, filters=filters, top_k=limit)
+
+
+def _candidates(count):
+    return [
+        {"asset_id": str(index), "path": f"{index}.png", "tags": f"expression {index}"}
+        for index in range(1, count + 1)
+    ]
+
 
 def test_local_media_search_indexes_raw_tags_and_returns_asset_ids(monkeypatch):
     memory = _FakeMemory()
@@ -92,25 +116,54 @@ def test_media_search_uses_owner_service_when_configured(monkeypatch):
     assert matches == [{"asset_id": "4", "score": 0.9}]
 
 
-def test_local_catalog_index_is_idempotent(monkeypatch):
-    memory = _StatefulMemory()
+@pytest.mark.parametrize("memory_type", [_StatefulMemory, _LegacyStatefulMemory])
+@pytest.mark.parametrize("asset_count", [2, 501, 1200])
+def test_local_catalog_index_is_idempotent(monkeypatch, memory_type, asset_count):
+    memory = memory_type()
     monkeypatch.setattr(media_assets, "ensure_mem0", lambda: memory)
     catalogs = [
         {
             "scope": "sprite:Alice",
-            "candidates": [
-                {"asset_id": "1", "path": "calm.png", "tags": "calm"},
-                {"asset_id": "2", "path": "angry.png", "tags": "angry"},
-            ],
+            "candidates": _candidates(asset_count),
         }
     ]
 
     first = media_assets._local_index_catalogs(catalogs)
     second = media_assets._local_index_catalogs(catalogs)
 
-    assert first == {"catalogCount": 1, "assetCount": 2, "addedCount": 2}
-    assert second == {"catalogCount": 1, "assetCount": 2, "addedCount": 0}
-    assert len(memory.rows) == 2
+    assert first == {"catalogCount": 1, "assetCount": asset_count, "addedCount": asset_count}
+    assert second == {"catalogCount": 1, "assetCount": asset_count, "addedCount": 0}
+    assert len(memory.rows) == asset_count
+
+
+@pytest.mark.parametrize("memory_type", [_StatefulMemory, _LegacyStatefulMemory])
+@pytest.mark.parametrize("use_owner_service", [False, True])
+def test_large_catalog_search_can_match_last_asset(
+    monkeypatch, memory_type, use_owner_service
+):
+    memory = memory_type()
+    monkeypatch.setattr(media_assets, "ensure_mem0", lambda: memory)
+    endpoints = {
+        "asset-index": media_assets.media_asset_index_response,
+        "asset-search": media_assets.media_asset_search_response,
+    }
+    monkeypatch.setattr(
+        media_assets,
+        "_memory_service_request",
+        lambda endpoint, payload: endpoints[endpoint](payload) if use_owner_service else None,
+    )
+    candidates = _candidates(1200)
+
+    result = media_assets.ensure_media_asset_indexes(
+        [{"scope": "sprite:Alice", "candidates": candidates}]
+    )
+    matches = media_assets.search_media_assets(
+        scope="sprite:Alice", vibe="expression 1200", candidates=candidates
+    )
+
+    assert result == {"catalogCount": 1, "assetCount": 1200, "addedCount": 1200}
+    assert matches == [{"asset_id": "1200", "score": 1.0}]
+    assert len(memory.rows) == 1200
 
 
 def test_catalog_index_uses_owner_service_when_configured(monkeypatch):
