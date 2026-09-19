@@ -186,6 +186,42 @@ describe("TemplateEditorPage", () => {
     });
   });
 
+  it("defaults initial sprites to visible and saves a disabled switch when launching", async () => {
+    mockGetTemplateSession.mockResolvedValue({ ...savedChat, initSpritePath: "D:/sprites/custom.png" });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png"));
+    const toggle = screen.getByRole("checkbox", { name: "Show initial sprite" });
+    expect(toggle).toBeChecked();
+    await clickButton(toggle);
+    expect(screen.getByLabelText("Initial sprite")).toBeDisabled();
+    expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png");
+    await clickButton(screen.getByRole("button", { name: "Quick restart" }));
+    const dialog = screen.getByRole("dialog", { name: "Quick restart" });
+    await clickButton(within(dialog).getByRole("button", { name: "Quick restart" }));
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ showInitialSprite: false, initSpritePath: "D:/sprites/custom.png" }),
+      ),
+    );
+    expect(mockSaveTemplateSession).toHaveBeenCalledWith(expect.objectContaining({ showInitialSprite: false }));
+  });
+
+  it("restores a disabled initial sprite and preserves its path when enabled again", async () => {
+    mockGetTemplateSession.mockResolvedValue({
+      ...savedChat,
+      initSpritePath: "D:/sprites/custom.png",
+      showInitialSprite: false,
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png"));
+    const toggle = screen.getByRole("checkbox", { name: "Show initial sprite" });
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByLabelText("Initial sprite")).toBeDisabled();
+    await clickButton(toggle);
+    expect(screen.getByLabelText("Initial sprite")).toBeEnabled();
+    expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png");
+  });
+
   it("new chat always creates independent history even with a remembered path", async () => {
     mockGetTemplateSession.mockResolvedValue(savedChat);
     mockGenerateTemplate.mockImplementation(async (input) => ({

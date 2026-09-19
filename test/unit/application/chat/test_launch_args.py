@@ -17,6 +17,15 @@ def _tr(key, **_kwargs):
 
 
 class ChatLaunchArgsTests(unittest.TestCase):
+    def test_initial_sprite_defaults_to_visible_and_can_be_disabled(self):
+        parser = build_chat_arg_parser(_tr)
+        self.assertTrue(parser.parse_args([]).show_initial_sprite)
+        self.assertFalse(parser.parse_args(["--no-show-initial-sprite"]).show_initial_sprite)
+        with patch.dict(os.environ, {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"show_initial_sprite": False})}):
+            config = load_chat_launch_config()
+        parser.set_defaults(**config)
+        self.assertFalse(parser.parse_args([]).show_initial_sprite)
+
     def test_explicit_conversation_edit_flag_round_trips_through_launch_config(self):
         with patch.dict(os.environ, {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"use_current_template_for_history": True})}):
             config = load_chat_launch_config()

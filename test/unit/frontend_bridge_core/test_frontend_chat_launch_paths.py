@@ -175,6 +175,7 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
         state,
         history_file="",
         init_sprite_path="",
+        show_initial_sprite=False,
         room_id="",
         selected_bg="",
         system_template="system",
@@ -195,6 +196,7 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     assert len(captured["cmd"]) == 2
     launch_config = json.loads(captured["env"][CHAT_LAUNCH_CONFIG_ENV])
     assert launch_config["template"] == "_temp"
+    assert launch_config["show_initial_sprite"] is False
     assert launch_config["media_selection_mode"] == "indexed"
 
 

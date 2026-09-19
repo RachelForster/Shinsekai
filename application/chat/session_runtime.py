@@ -589,6 +589,7 @@ class StreamingChatSession(_BaseChatSession):
                 presentation_queue=self._require_runtime().presentation_queue,
                 assets=self._require_runtime().presentation_assets,
                 initial_sprite_path=self.args.init_sprite_path,
+                show_initial_sprite=getattr(self.args, "show_initial_sprite", True),
                 welcome_html=welcome_html,
                 initial_option=initial_option,
                 ready_notification=self.options.translate("main.notify_chat"),
