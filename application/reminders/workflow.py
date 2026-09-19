@@ -1,5 +1,8 @@
 """Run the chat generation and parsing stages for a single reminder utterance."""
 
+from datetime import datetime
+import random
+
 from ai.llm.template.dialog import DialogTemplateContext
 from ai.llm.template.integrations.localization import (
     _target_voice_display_name,
@@ -16,6 +19,16 @@ from i18n import tr_in_bundle
 from sdk.messages import LLMDialogMessage
 
 
+# Vary only the phrasing, never the event's timing, facts or character identity.
+REMINDER_EXPRESSION_STYLES = (
+    "a simple, direct reminder",
+    "a warm, caring nudge",
+    "a brief, friendly question",
+    "a light playful nudge, only if it fits the character",
+    "a short word of encouragement",
+)
+
+
 class ReminderDialogWorkflow:
     def __init__(self, config):
         self.config = config
@@ -26,8 +39,17 @@ class ReminderDialogWorkflow:
         def translate(key, **kwargs):
             return tr_in_bundle(f"template_gen.{key}", language, **kwargs)
 
+        now = datetime.now().astimezone()
+        previous_count = data.get("delivery_count", 0)
         context = ReminderContext(
-            payload=data,
+            payload={
+                **data,
+                "current_date": now.date().isoformat(),
+                "current_time": now.isoformat(timespec="seconds"),
+                "previous_reminder_count": previous_count,
+                "reminder_number": previous_count + 1,
+                "expression_style": random.choice(REMINDER_EXPRESSION_STYLES),
+            },
             dialog=DialogTemplateContext(
                 characters=((character.name, character),),
                 translate=translate,
