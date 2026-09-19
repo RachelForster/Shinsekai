@@ -52,6 +52,10 @@ class ReminderPresenter:
             if not isinstance(value, str) or not value.strip() or len(value) > maximum:
                 raise ValueError(f"Invalid reminder {field}")
             result[field] = value
+        count = payload.get("delivery_count", 0)
+        if type(count) is not int or count < 0:
+            raise ValueError("Invalid reminder delivery_count")
+        result["delivery_count"] = count
         return result
 
     @staticmethod
