@@ -56,8 +56,11 @@ def resolve_chat_template_characters(
 
 
 def json_format_reminder() -> str:
-    """Localized reminder that must close every runtime system prompt."""
-    return _T("closing_json_reminder").strip()
+    """Close system prompts with the output format and tool protocol rules."""
+    return "\n".join(
+        _T(key).strip()
+        for key in ("closing_json_reminder", "closing_tool_protocol")
+    )
 
 
 def _format_llm_tools_block() -> str:
