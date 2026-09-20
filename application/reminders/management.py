@@ -41,10 +41,15 @@ class ReminderStore:
                 title TEXT NOT NULL, message TEXT NOT NULL, due_at REAL NOT NULL,
                 recurrence TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'active',
                 claim_token TEXT, claim_until REAL NOT NULL DEFAULT 0,
+                delivery_count INTEGER NOT NULL DEFAULT 0,
                 created_at REAL NOT NULL, updated_at REAL NOT NULL)""")
             db.execute("CREATE TABLE IF NOT EXISTS heartbeat (id INTEGER PRIMARY KEY, seen_at REAL)")
             db.commit()
             db.execute("BEGIN IMMEDIATE")
+            # Migrate under the same write lock used by competing store instances.
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(reminders)")}
+            if "delivery_count" not in columns:
+                db.execute("ALTER TABLE reminders ADD COLUMN delivery_count INTEGER NOT NULL DEFAULT 0")
             yield db
             db.commit()
         except BaseException:
@@ -179,5 +184,6 @@ class ReminderStore:
                 return {"ok": False}
             due = row["due_at"] if row["recurrence"] == "once" else self.next_due(row["due_at"], row["recurrence"], now)
             status = "completed" if row["recurrence"] == "once" else "active"
-            db.execute("UPDATE reminders SET status=?,due_at=?,claim_token=NULL,claim_until=0,updated_at=? WHERE id=?", (status, due, now, reminder_id))
+            # Count committed occurrences, never claims, retries or missed schedules.
+            db.execute("UPDATE reminders SET status=?,due_at=?,claim_token=NULL,claim_until=0,updated_at=?,delivery_count=delivery_count+1 WHERE id=?", (status, due, now, reminder_id))
         return {"ok": True}
