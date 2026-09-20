@@ -771,7 +771,8 @@ export const enMessages: Record<MessageKey, string> = {
   "chat.config.fontFamilyPlaceholder": "Use theme font when blank",
   "chat.config.fontSizeValue": "{value}px",
   "chat.config.longPressTalk": "Long press to talk",
-  "chat.config.longPressTalkHelp": "Hold F8 in the chat window for live transcription; release to send. Esc or switching windows cancels. On first use, wait for the speech model to finish loading before speaking.",
+  "chat.config.longPressTalkHelp":
+    "Hold F8 in the chat window for live transcription; release to send. Esc or switching windows cancels. On first use, wait for the speech model to finish loading before speaking.",
   "chat.config.longPressTalkVoskMissing":
     "Download and configure a Vosk speech model before enabling this. Go to System settings to download it. Current path: {path}",
   "chat.config.immersiveMode": "Immersive mode",

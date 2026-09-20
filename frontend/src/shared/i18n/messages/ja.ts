@@ -772,7 +772,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.fontFamilyPlaceholder": "空欄ならテーマフォント",
   "chat.config.fontSizeValue": "{value}px",
   "chat.config.longPressTalk": "長押しで話す",
-  "chat.config.longPressTalkHelp": "チャット画面で F8 を押しながら話すとリアルタイムで認識し、離すと送信します。Esc またはウィンドウの切り替えでキャンセルします。初回は音声モデルの読み込み完了後に話してください。",
+  "chat.config.longPressTalkHelp":
+    "チャット画面で F8 を押しながら話すとリアルタイムで認識し、離すと送信します。Esc またはウィンドウの切り替えでキャンセルします。初回は音声モデルの読み込み完了後に話してください。",
   "chat.config.longPressTalkVoskMissing":
     "有効にするには先に Vosk 音声モデルをダウンロードして設定してください。システム設定でダウンロードできます。現在のパス: {path}",
   "chat.config.immersiveMode": "没入モード",
