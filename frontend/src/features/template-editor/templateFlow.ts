@@ -34,6 +34,7 @@ export interface TemplateFlowOptions {
 export interface TemplateRuntimeOptions {
   historyPath: string;
   initSpritePath: string;
+  showInitialSprite?: boolean;
   maxDialogItems: number;
   maxSpeechChars: number;
   roomId: string;
@@ -150,6 +151,7 @@ export function buildTemplateLaunchSession(input: {
     filenameStub: input.draft.name.trim(),
     historyPath: input.runtime.historyPath.trim(),
     initSpritePath: input.runtime.initSpritePath.trim(),
+    showInitialSprite: input.runtime.showInitialSprite ?? true,
     maxDialogItems: input.runtime.maxDialogItems,
     maxSpeechChars: input.runtime.maxSpeechChars,
     mediaSelectionMode: input.mediaSelectionMode,
@@ -175,7 +177,7 @@ export function buildChatLaunchPayload(input: {
   effectNames?: string[];
   mobileAccessEnabled: boolean;
   resetHistory: boolean;
-  runtime: Pick<TemplateRuntimeOptions, "historyPath" | "initSpritePath" | "roomId">;
+  runtime: Pick<TemplateRuntimeOptions, "historyPath" | "initSpritePath" | "showInitialSprite" | "roomId">;
   selectedCharacters: string[];
   template: TemplateSummary;
   useCg: boolean;
@@ -188,6 +190,7 @@ export function buildChatLaunchPayload(input: {
     effectNames: input.effectNames?.length ? input.effectNames : undefined,
     historyPath: input.runtime.historyPath.trim(),
     initSpritePath: input.runtime.initSpritePath.trim(),
+    showInitialSprite: input.runtime.showInitialSprite ?? true,
     mediaSelectionMode: input.mediaSelectionMode,
     resetHistory: input.resetHistory,
     roomId: input.runtime.roomId.trim(),
@@ -212,6 +215,7 @@ export function synchronizeChatLaunchPayloadWithSession(
     effectNames: effectNames.length ? effectNames : undefined,
     historyPath: session.historyPath.trim(),
     initSpritePath: session.initSpritePath.trim(),
+    showInitialSprite: session.showInitialSprite ?? true,
     mediaSelectionMode: session.mediaSelectionMode ?? "indexed",
     roomId: session.roomId.trim(),
     scenario: session.scenario,

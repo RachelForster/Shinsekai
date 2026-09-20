@@ -540,6 +540,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             body = {
                 "characters": ["Deleted", " alice "],
                 "initSpritePath": "",
+                "showInitialSprite": False,
                 "scenario": "restored scene",
                 "system": "generated system",
                 "templateId": "restored-template",
@@ -565,6 +566,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         runtime_args = launch_chat.call_args.kwargs
         self.assertEqual(runtime_args["character_names"], ["Alice"])
         self.assertEqual(runtime_args["init_sprite_path"], "sprites/alice.png")
+        self.assertFalse(runtime_args["show_initial_sprite"])
         self.assertEqual(
             Path(runtime_args["history_file"]).name,
             _history_id_from_scenario("restored scene", ["Alice"]),
@@ -807,6 +809,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                         "background": "",
                         "historyPath": history_path.relative_to(Path.cwd()).as_posix(),
                         "initSpritePath": "",
+                        "showInitialSprite": False,
                         "roomId": "",
                         "scenario": "scene",
                         "selectedCharacters": ["Deleted", "Alice"],
@@ -843,6 +846,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self.assertEqual(
             launch_chat.call_args.kwargs["init_sprite_path"], "sprites/alice.png"
         )
+        self.assertFalse(launch_chat.call_args.kwargs["show_initial_sprite"])
         self.assertEqual(handler.server.state.chat_session["characterName"], "Alice")
 
     @unittest.skipUnless(os.name == "nt", "Windows drive semantics")
