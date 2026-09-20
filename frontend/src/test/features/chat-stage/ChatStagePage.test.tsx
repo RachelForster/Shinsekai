@@ -1402,7 +1402,7 @@ describe("ChatStagePage", () => {
     const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     expect(config).toHaveClass("chat-stage-modal");
     expect(config.querySelector(".chat-stage-modal__header")).not.toBeNull();
-    expect(within(config).queryByLabelText("Long press to talk")).not.toBeInTheDocument();
+    expect(within(config).getByLabelText("Long press to talk")).not.toBeChecked();
     fireEvent.click(within(config).getByRole("button", { name: "Close" }));
 
     const asrButtons = await screen.findAllByRole("button", { name: "Resume ASR" });
@@ -2002,6 +2002,35 @@ describe("ChatStagePage", () => {
 
     fireEvent.click(listeningButton);
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "pause-asr" }));
+  });
+
+  it("persists the hold-to-talk switch and streams text before F8 release", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+    await screen.findByText("Ready");
+    fireEvent.keyDown(window, { code: "F8" });
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "begin-asr-hold" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Long press to talk" }));
+    expect(
+      JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}").config.longPressTalk,
+    ).toBe(true);
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Chat appearance settings" })).getByRole("button", { name: "Close" }),
+    );
+    fireEvent.keyDown(window, { code: "F8" });
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "begin-asr-hold" }));
+    act(() => {
+      listener?.({ type: "asr.partial", text: "Live words", seq: 1, ts: 1, v: 1 });
+    });
+    expect(screen.getByPlaceholderText("Enter dialogue")).toHaveValue("Live words");
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "finish-asr-hold" });
+    fireEvent.keyUp(window, { code: "F8" });
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "finish-asr-hold" }));
   });
 
   it("keeps ASR enabled through automatic submission and resumes after the final reply", async () => {

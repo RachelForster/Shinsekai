@@ -1077,7 +1077,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           chat = { ...chat, status: "idle", numericInfo: "idle" };
           emitChat();
         }
-        if (command.type === "pause-asr") {
+        if (["pause-asr", "finish-asr-hold", "cancel-asr-hold"].includes(command.type)) {
           clearScheduledChatUpdates();
           chat = {
             ...chat,
@@ -1089,7 +1089,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           };
           emitChat();
         }
-        if (command.type === "resume-asr") {
+        if (command.type === "resume-asr" || command.type === "begin-asr-hold") {
           clearScheduledChatUpdates();
           chat = {
             ...chat,

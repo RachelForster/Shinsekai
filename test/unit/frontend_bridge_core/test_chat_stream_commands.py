@@ -195,6 +195,17 @@ def _send_json_frame(sock: socket.socket, payload: dict) -> None:
 
 
 class ChatStreamCommandTests(unittest.TestCase):
+    def test_forwards_hold_commands_without_replacing_dialogue(self):
+        for command_type in ("begin-asr-hold", "finish-asr-hold", "cancel-asr-hold"):
+            with self.subTest(command_type=command_type):
+                chat_stream = _StubChatStream()
+                chat_stream.snapshot["status"] = "idle"
+                chat_stream.snapshot["dialogText"] = "Current dialogue"
+                state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
+                snapshot = _handle_chat_command(state, {"type": command_type})
+                self.assertEqual(chat_stream.command[1]["type"], command_type)
+                self.assertEqual(snapshot["dialogText"], "Current dialogue")
+
     def test_handle_chat_command_wraps_resume_asr_with_cmd_id(self):
         chat_stream = _StubChatStream()
         state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)

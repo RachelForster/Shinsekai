@@ -1,10 +1,130 @@
 from __future__ import annotations
 
 import time
+import pytest
 from threading import Event, Thread
 
 from ai.asr.streaming_controller import StreamingASRController
 from sdk.adapters.asr import ASRAdapter
+
+
+@pytest.fixture
+def hold_runtime():
+    events, submitted, adapters = [], [], []
+    def factory(callback):
+        adapter = _FakeASRAdapter(callback)
+        adapters.append(adapter)
+        return adapter
+    controller = StreamingASRController(
+        adapter_factory=factory, emit_event=events.append,
+        submit_final=submitted.append, silence_submit_seconds=0.01,
+    )
+    controller.begin_hold()
+    _wait_until(lambda: controller._active)
+    yield controller, adapters[0], events, submitted
+    controller.close()
+
+
+def test_hold_streams_segments_without_sending_until_release(hold_runtime):
+    controller, adapter, events, submitted = hold_runtime
+    adapter.callback("hello", False)
+    adapter.callback("wor", True)
+    time.sleep(0.03)
+    assert submitted == []
+    assert events[-1] == {"type": "asr.partial", "text": "hello wor"}
+    def finish():
+        adapter.callback("world", False)
+        adapter.stop()
+    adapter.finish = finish
+    controller.finish_hold()
+    controller.finish_hold()
+    adapter.callback("late result", False)
+    assert submitted == ["hello world"]
+    assert not controller.enabled
+    assert {"type": "asr.final", "text": "hello world"} in events
+    controller.reply_finished()
+    assert adapter.status == "Stopped"
+
+
+def test_hold_cancel_discards_text_and_allows_next_recording(hold_runtime):
+    controller, adapter, events, submitted = hold_runtime
+    adapter.callback("discard", False)
+    controller.finish_hold(cancel=True)
+    assert submitted == []
+    assert events[-1]["type"] == "asr.state"
+    assert events[-1]["enabled"] is False
+    controller.begin_hold()
+    _wait_until(lambda: controller._active)
+    adapter.callback("new", True)
+    controller.finish_hold()
+    assert submitted == ["new"]
+
+
+def test_hold_empty_recording_does_not_submit(hold_runtime):
+    controller, adapter, events, submitted = hold_runtime
+    controller.finish_hold()
+    assert submitted == []
+    assert not controller.enabled
+
+
+def test_hold_release_during_loading_does_not_start_capture():
+    entered, release = Event(), Event()
+    adapters, submitted = [], []
+    def factory(callback):
+        entered.set()
+        assert release.wait(1)
+        adapter = _FakeASRAdapter(callback)
+        adapters.append(adapter)
+        return adapter
+    controller = StreamingASRController(adapter_factory=factory, emit_event=lambda event: None,
+                                        submit_final=submitted.append)
+    try:
+        controller.begin_hold()
+        assert entered.wait(1)
+        controller.finish_hold()
+        release.set()
+        _wait_until(lambda: not controller._activating)
+        assert "start" not in adapters[0].calls
+        assert submitted == []
+        controller.begin_hold()
+        _wait_until(lambda: controller._active)
+        adapters[0].callback("next hold", True)
+        controller.finish_hold()
+        assert submitted == ["next hold"]
+    finally:
+        release.set()
+        controller.close()
+
+
+def test_hold_finalization_failure_preserves_draft_without_sending(hold_runtime):
+    controller, adapter, events, submitted = hold_runtime
+    adapter.callback("draft", True)
+    def finish():
+        raise RuntimeError("decoder failed")
+    adapter.finish = finish
+    with pytest.raises(RuntimeError, match="decoder failed"):
+        controller.finish_hold()
+    assert submitted == []
+    assert not controller.enabled
+    assert adapter.status == "Stopped"
+
+
+def test_hold_duplicate_begin_does_not_reset_transcript(hold_runtime):
+    controller, adapter, events, submitted = hold_runtime
+    adapter.callback("keep", True)
+    controller.begin_hold()
+    controller.finish_hold()
+    assert submitted == ["keep"]
+
+
+def test_hold_keeps_transcript_when_submission_is_rejected(hold_runtime):
+    controller, adapter, events, submitted = hold_runtime
+    adapter.callback("keep draft", True)
+    controller._submit_final = lambda text: False
+    with pytest.raises(RuntimeError, match="transcript was kept"):
+        controller.finish_hold()
+    assert events[-2] == {"type": "asr.partial", "text": "keep draft"}
+    assert events[-1]["enabled"] is False
 
 
 class _FakeASRAdapter(ASRAdapter):

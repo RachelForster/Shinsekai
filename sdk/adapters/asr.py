@@ -34,6 +34,14 @@ class ASRAdapter(ABC):
     def stop(self) -> None:
         pass
 
+    def finish(self) -> None:
+        """Stop capture, publishing any buffered final transcript before returning.
+
+        Adapters with a decoder buffer should override this. The compatibility
+        default stops capture; callers can retain the latest partial transcript.
+        """
+        self.stop()
+
     @abstractmethod
     def get_status(self) -> str:
         pass

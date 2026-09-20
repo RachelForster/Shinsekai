@@ -41,6 +41,7 @@ import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
+import { useHoldToTalk } from "./hooks/useHoldToTalk";
 import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
 import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
@@ -593,6 +594,12 @@ export function ChatStagePage() {
     onToggleAuto: toggleAuto,
   });
 
+  useHoldToTalk({
+    enabled: runtimeConfig.longPressTalk,
+    disabled: modalOpen || viewModel.inputDisabled || Boolean(state.sessionClosedReason),
+    onCommand: sendCommand,
+  });
+
   const openHistoryDialog = () => {
     setHistoryDialogOpen(true);
     void refreshHistory();
@@ -856,6 +863,11 @@ export function ChatStagePage() {
           effectiveDialogText={effectiveDialogText}
           effectiveNameText={effectiveNameText}
           immersiveMode={runtimeConfig.immersiveMode}
+          longPressTalk={runtimeConfig.longPressTalk}
+          onLongPressTalkChange={(longPressTalk) => {
+            setRuntimeConfig((current) => ({ ...current, longPressTalk }));
+            if (longPressTalk) void sendCommand({ type: "pause-asr" });
+          }}
           mainThemeColor={mainThemeColor}
           nameText={runtimeConfig.nameText}
           onClose={() => setToolbarConfigOpen(false)}

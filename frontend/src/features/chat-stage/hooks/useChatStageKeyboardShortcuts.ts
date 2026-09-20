@@ -11,7 +11,7 @@ export function useChatStageKeyboardShortcuts({
 }) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
+      const target = event.target instanceof HTMLElement ? event.target : null;
       if (
         target?.isContentEditable ||
         target?.closest("a, button, input, textarea, select, summary, [role='button'], [role='link']")
