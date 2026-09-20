@@ -258,7 +258,8 @@ def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
         )
 
 
-def test_save_template_session_persists_only_resolved_characters_and_their_default_sprite(monkeypatch):
+@pytest.mark.parametrize("show_initial_sprite", [True, False])
+def test_save_template_session_persists_only_resolved_characters_and_their_default_sprite(monkeypatch, show_initial_sprite):
     character = SimpleNamespace(
         name="Alice",
         sprites=[SimpleNamespace(path="sprites/alice.png")],
@@ -289,6 +290,7 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
             "enableMobileAccess": True,
             "effectNames": [" Rain ", ""],
             "initSpritePath": "",
+            "showInitialSprite": show_initial_sprite,
             "characterPromptMode": "compact",
             "mediaSelectionMode": "semantic",
             "primaryCharacters": [" alice ", "Deleted"],
@@ -302,6 +304,8 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     assert saved["effect_names"] == ["Rain"]
     assert saved["enable_mobile_access"] is True
     assert saved["init_sprite_path"] == "sprites/alice.png"
+    assert saved["show_initial_sprite"] is show_initial_sprite
+    assert restored["showInitialSprite"] is show_initial_sprite
     assert saved["character_prompt_mode"] == "compact"
     assert saved["primary_characters"] == ["Alice"]
     assert saved["media_selection_mode"] == "semantic"
@@ -353,6 +357,7 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
         "filenameStub": "demo",
         "historyPath": "/tmp/history.json",
         "initSpritePath": "/tmp/sprite.png",
+        "showInitialSprite": True,
         "maxDialogItems": 8,
         "maxSpeechChars": 0,
         "mediaSelectionMode": "indexed",

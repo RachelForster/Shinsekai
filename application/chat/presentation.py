@@ -85,11 +85,12 @@ def prepare_initial_presentation(
     publish_branch_tree: Any,
     translate: Any,
     replay_media: Any = None,
+    show_initial_sprite: bool = True,
 ) -> None:
     """Restore background, BGM, dialog, options, and initial character sprite."""
 
     resolved_sprite_path = str(initial_sprite_path or "")
-    if not resolved_sprite_path and not assets.transparent:
+    if show_initial_sprite and not resolved_sprite_path and not assets.transparent:
         resolved_sprite_path = str(resource_path("assets/system/picture/shinsekai.png"))
 
     _persist_selected_background(config, assets)
@@ -122,7 +123,7 @@ def prepare_initial_presentation(
 
     publish_branch_tree()
     ui_updates.post_notification(ready_notification)
-    if not restored_sprite:
+    if show_initial_sprite and not restored_sprite:
         display_initial_sprite(
             resolved_sprite_path,
             config=config,
