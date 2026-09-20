@@ -1,9 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Profiler } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
+import { ChatWorkspacePage } from "../../../features/chat-workspace/ChatWorkspacePage";
 import { buildDefaultTemplateScenario } from "../../../features/template-editor/templateFlow";
 import { I18nProvider, translateMessage } from "../../../shared/i18n/I18nProvider";
 import { PlatformRequestError } from "../../../shared/platform/errors";
@@ -83,6 +85,10 @@ vi.mock("../../../shared/desktop/chatWindow", () => ({
   showChatSurface: (...args: unknown[]) => mockShowChatSurface(...args),
 }));
 
+vi.mock("../../../features/chat-workspace/ConversationLibrary", () => ({
+  ConversationLibrary: () => <h1>Chats</h1>,
+}));
+
 const template = {
   content: "Morning scene\n\nSystem rules",
   id: "opening",
@@ -95,7 +101,7 @@ const template = {
 
 const queryClients = new Set<QueryClient>();
 
-function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}, onCommit = () => {}) {
+function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}, onCommit = () => {}, workspace = false) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -106,7 +112,13 @@ function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}, onComm
       <ToastProvider>
         <I18nProvider language="en">
           <Profiler id="template-editor" onRender={onCommit}>
-            <TemplateEditorPage {...props} />
+            {workspace ? (
+              <MemoryRouter initialEntries={["/settings/templates?tab=new&mode=normal"]}>
+                <ChatWorkspacePage />
+              </MemoryRouter>
+            ) : (
+              <TemplateEditorPage {...props} />
+            )}
           </Profiler>
         </I18nProvider>
       </ToastProvider>
@@ -216,6 +228,68 @@ describe("TemplateEditorPage", () => {
     );
     expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ mediaSelectionMode: "indexed" }));
   });
+
+  it.each(["success", "failure", "mobile"])(
+    "returns to Chats while creation is pending and handles %s after the editor unmounts",
+    async (outcome) => {
+      let finish!: (snapshot: unknown) => void;
+      let fail!: (error: Error) => void;
+      mockLaunchChat.mockReturnValueOnce(
+        new Promise((resolve, reject) => {
+          finish = resolve;
+          fail = reject;
+        }),
+      );
+      renderPage({}, undefined, true);
+      await screen.findByDisplayValue("Opening");
+      fireEvent.click(screen.getByRole("button", { name: "Create and start" }));
+
+      await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
+      expect(screen.getByRole("heading", { name: "Chats" })).toBeVisible();
+      expect(screen.queryByLabelText("Template name")).not.toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeVisible();
+      expect(mockShowChatSurface).not.toHaveBeenCalled();
+
+      await act(async () => {
+        if (outcome === "failure") {
+          fail(new Error("Launch failed"));
+        } else {
+          finish({
+            dialogText: "launched",
+            ...(outcome === "mobile"
+              ? {
+                  mobileAccess: {
+                    enabled: true,
+                    host: "192.168.1.20",
+                    httpPort: 8789,
+                    websocketPort: 8790,
+                    qrCodeDataUrl: "data:image/png;base64,dGVzdA==",
+                    url: "http://192.168.1.20:8789/",
+                    websocketUrl: "ws://192.168.1.20:8790/ws",
+                  },
+                }
+              : {}),
+          });
+        }
+      });
+      if (outcome === "failure") {
+        expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("Launch failed");
+        expect(mockShowChatSurface).not.toHaveBeenCalled();
+      } else if (outcome === "mobile") {
+        expect(await screen.findByRole("dialog", { name: "Mobile access is ready" })).toBeVisible();
+        expect(mockShowChatSurface).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole("button", { name: "Open local chat" }));
+        expect(mockShowChatSurface).toHaveBeenCalledWith(
+          expect.objectContaining({
+            snapshot: expect.objectContaining({ wsUrl: "ws://192.168.1.20:8790/ws" }),
+          }),
+        );
+      } else {
+        await waitFor(() => expect(mockShowChatSurface).toHaveBeenCalledTimes(1));
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      }
+    },
+  );
 
   it.each(["semantic", "indexed"] as const)(
     "launches the restored form before passive effects flush (%s)",

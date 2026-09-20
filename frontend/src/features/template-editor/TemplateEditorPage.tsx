@@ -18,7 +18,7 @@ import {
 } from "../../entities/chat/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
-import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useChatInitialization, type ChatInitializationService } from "../chat-startup/useChatInitialization";
 import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
@@ -82,12 +82,16 @@ export function TemplateEditorPage({
   conversationTitle,
   onApplied,
   onPendingChange,
+  initializationService,
+  onLaunchStarted,
 }: {
   createOnly?: boolean;
   conversationId?: string;
   conversationTitle?: string;
   onApplied?: (snapshot: ChatSnapshot) => void;
   onPendingChange?: (pending: boolean) => void;
+  initializationService?: ChatInitializationService;
+  onLaunchStarted?: () => void;
 }) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
@@ -105,6 +109,7 @@ export function TemplateEditorPage({
   const effectsQuery = useQuery({ queryFn: listEffects, queryKey: effectsQueryKey });
   const { refreshRuntimeStatus, runtimeLaunchDisabled, runtimeClosing, updateRuntimeStatusFromSnapshot } =
     useChatLaunchGuard();
+  const localInitialization = useChatInitialization();
   const {
     closeInitialization,
     initializationError,
@@ -112,7 +117,7 @@ export function TemplateEditorPage({
     initializationPending,
     initializationTask,
     runChatInitialization,
-  } = useChatInitialization();
+  } = initializationService ?? localInitialization;
   useEffect(() => onPendingChange?.(initializationPending), [initializationPending, onPendingChange]);
   const templates = templatesQuery.data ?? [];
   const isLoading = templatesQuery.isLoading;
@@ -548,6 +553,7 @@ export function TemplateEditorPage({
         throw new Error(t("launch.runtimeBusy"));
       }
       return runChatInitialization(async (progressOptions) => {
+        onLaunchStarted?.();
         const savedSession = conversationId ? session : await saveTemplateSession(session);
         if (!conversationId) queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
         const apply = conversationId
@@ -1099,7 +1105,7 @@ export function TemplateEditorPage({
       <ChatInitializationDialog
         error={initializationError}
         onClose={closeInitialization}
-        open={initializationOpen}
+        open={!initializationService && initializationOpen}
         pending={initializationPending}
         task={initializationTask}
       />
