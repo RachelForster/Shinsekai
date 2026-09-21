@@ -123,8 +123,25 @@ def test_hold_keeps_transcript_when_submission_is_rejected(hold_runtime):
     controller._submit_final = lambda text: False
     with pytest.raises(RuntimeError, match="transcript was kept"):
         controller.finish_hold()
+    assert not any(event.get("type") == "asr.final" for event in events)
     assert events[-2] == {"type": "asr.partial", "text": "keep draft"}
     assert events[-1]["enabled"] is False
+
+
+def test_hold_publishes_final_only_after_submission_is_accepted(hold_runtime):
+    controller, adapter, events, _submitted = hold_runtime
+    adapter.callback("accepted", True)
+    observed = []
+
+    def submit(text):
+        observed.append((text, any(event.get("type") == "asr.final" for event in events)))
+        return True
+
+    controller._submit_final = submit
+    controller.finish_hold()
+
+    assert observed == [("accepted", False)]
+    assert {"type": "asr.final", "text": "accepted"} in events
 
 
 class _FakeASRAdapter(ASRAdapter):
@@ -322,8 +339,9 @@ def test_failed_adapter_start_does_not_report_listening() -> None:
     controller.close()
 
 
-def test_rejected_final_submission_resumes_listening() -> None:
+def test_rejected_final_submission_resumes_listening_without_publishing_final() -> None:
     adapters: list[_FakeASRAdapter] = []
+    events: list[dict] = []
 
     def factory(callback):
         adapter = _FakeASRAdapter(callback)
@@ -332,7 +350,7 @@ def test_rejected_final_submission_resumes_listening() -> None:
 
     controller = StreamingASRController(
         adapter_factory=factory,
-        emit_event=lambda _event: None,
+        emit_event=events.append,
         submit_final=lambda _text: False,
         resume_delay_seconds=0,
     )
@@ -343,6 +361,7 @@ def test_rejected_final_submission_resumes_listening() -> None:
     _wait_until(lambda: "resume" in adapters[0].calls)
 
     assert controller.enabled is True
+    assert not any(event.get("type") == "asr.final" for event in events)
     controller.close()
 
 

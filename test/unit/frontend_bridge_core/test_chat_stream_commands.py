@@ -696,6 +696,33 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertIsNotNone(snapshot)
         self.assertEqual(snapshot["sessionId"], session["sessionId"])
 
+    def test_asr_final_projects_user_turn_into_polling_snapshot(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
+        session = service.create_session(
+            {
+                "characterName": "Nanami",
+                "dialogHtml": "<p>Previous reply</p>",
+                "dialogText": "Previous reply",
+                "inputDraft": "hello wor",
+                "options": ["stale option"],
+                "userDisplayName": "Aoi",
+            }
+        )
+
+        asyncio.run(
+            service._publish_event(
+                session["sessionId"],
+                {"text": "hello world", "type": "asr.final"},
+            )
+        )
+
+        snapshot = service.get_snapshot(session["sessionId"])
+        self.assertEqual(snapshot["characterName"], "Aoi")
+        self.assertIsNone(snapshot["dialogHtml"])
+        self.assertEqual(snapshot["dialogText"], "hello world")
+        self.assertEqual(snapshot["inputDraft"], "")
+        self.assertEqual(snapshot["options"], [])
+
     def test_chat_stream_assigns_voice_to_one_renderer_and_rejects_other_signals(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
         session = service.create_session()

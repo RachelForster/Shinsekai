@@ -555,7 +555,13 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
     if event_type == "asr.final":
         _clear_transient_notification_state(next_snapshot)
         # The final transcript has already entered the chat turn pipeline.
-        # Persist its consumed presentation state for reconnect hydration.
+        # Persist that accepted user turn so polling and reconnect hydration
+        # expose the same presentation as the live event stream.
+        next_snapshot["characterName"] = (
+            str(next_snapshot.get("userDisplayName") or "").strip() or "你"
+        )
+        next_snapshot["dialogHtml"] = None
+        next_snapshot["dialogText"] = str(event.get("text") or "").strip()
         next_snapshot["inputDraft"] = ""
         next_snapshot["options"] = []
         return next_snapshot

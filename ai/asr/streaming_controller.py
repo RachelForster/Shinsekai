@@ -155,8 +155,6 @@ class StreamingASRController:
                     self._enabled = self._active = self._started = False
                     self._turn_paused = False
                 if submit:
-                    self._emit_event_safe({"type": "asr.final", "text": text})
-                    self._emit_state()
                     try:
                         if self._submit_final(text) is False:
                             raise RuntimeError(
@@ -166,6 +164,8 @@ class StreamingASRController:
                         self._emit_event_safe({"type": "asr.partial", "text": text})
                         self._emit_state()
                         raise
+                    self._emit_event_safe({"type": "asr.final", "text": text})
+                    self._emit_state()
                 elif cancel:
                     self._emit_event_safe({"type": "asr.partial", "text": ""})
                     self._emit_state()
@@ -432,17 +432,14 @@ class StreamingASRController:
                 self._active = False
                 active_adapter = adapter
 
-        self._emit_event_safe(
-            {"type": "asr.partial" if is_partial else "asr.final", "text": displayed}
-        )
         if is_partial:
+            self._emit_event_safe({"type": "asr.partial", "text": displayed})
             return
 
         with self._lock:
             if self._closed or not self._enabled or not self._turn_paused:
                 return
         self._pause_adapter(active_adapter)
-        self._emit_state()
         try:
             accepted = self._submit_final(displayed)
         except BaseException as exc:
@@ -454,6 +451,9 @@ class StreamingASRController:
                     self._turn_paused = False
                     self._clear_on_activation = True
             self._activate_async()
+            return
+        self._emit_event_safe({"type": "asr.final", "text": displayed})
+        self._emit_state()
 
     def _pause_adapter(self, adapter: ASRAdapter | None) -> None:
         if adapter is None:
