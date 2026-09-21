@@ -1339,6 +1339,7 @@ export type MessageKey =
   | "template.field.effectName"
   | "template.field.historyFile"
   | "template.field.initSprite"
+  | "template.field.showInitialSprite"
   | "template.field.maxDialogItems"
   | "template.field.maxSpeechChars"
   | "template.field.mobileAccess"

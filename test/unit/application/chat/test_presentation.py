@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from application.chat import presentation
 
 
@@ -104,3 +106,32 @@ def test_prepare_initial_presentation_restores_media_and_falls_back_to_sprite(
         config=config,
         ui_updates=ui,
     )
+
+
+@pytest.mark.parametrize("initial_sprite_path", ["sprite.png", ""])
+@pytest.mark.parametrize("restored_sprite", [False, True])
+def test_disabled_initial_sprite_skips_custom_and_system_fallback_but_restores_history(
+    monkeypatch, initial_sprite_path, restored_sprite,
+) -> None:
+    ui = Mock()
+    restore = Mock(return_value=restored_sprite)
+    display = Mock()
+    monkeypatch.setattr(presentation, "restore_session_presentation", restore)
+    monkeypatch.setattr(presentation, "display_initial_sprite", display)
+    presentation.prepare_initial_presentation(
+        messages=[{"role": "assistant", "content": "previous dialog"}],
+        config=_Config(),
+        ui_updates=ui,
+        presentation_queue=object(),
+        assets=presentation.ChatPresentationAssets([], [], False),
+        initial_sprite_path=initial_sprite_path,
+        show_initial_sprite=False,
+        welcome_html="welcome",
+        initial_option="start",
+        ready_notification="ready",
+        publish_branch_tree=Mock(),
+        translate=lambda key, **_kwargs: key,
+    )
+    restore.assert_called_once()
+    display.assert_not_called()
+    ui.post_notification.assert_called_once_with("ready")

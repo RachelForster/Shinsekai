@@ -1438,6 +1438,7 @@ export const enMessages: Record<MessageKey, string> = {
   "template.field.effectName": "Effect scheme",
   "template.field.historyFile": "History file",
   "template.field.initSprite": "Initial sprite",
+  "template.field.showInitialSprite": "Show initial sprite",
   "template.field.maxDialogItems": "Max dialog items",
   "template.field.maxSpeechChars": "Max speech chars",
   "template.field.mobileAccess": "Allow mobile access",

@@ -154,6 +154,7 @@ export function TemplateEditorPage({
   const [maxSpeechChars, setMaxSpeechChars] = useState(0);
   const [maxDialogItems, setMaxDialogItems] = useState(0);
   const [initSpritePath, setInitSpritePath] = useState("");
+  const [showInitialSprite, setShowInitialSprite] = useState(true);
   const [historyPath, setHistoryPath] = useState("");
   const [roomId, setRoomId] = useState("");
   const [systemExpanded, setSystemExpanded] = useState(false);
@@ -233,6 +234,7 @@ export function TemplateEditorPage({
     setMaxSpeechChars(Number(launchSession.maxSpeechChars) || 0);
     setMaxDialogItems(Number(launchSession.maxDialogItems) || 0);
     setInitSpritePath(launchSession.initSpritePath || "");
+    setShowInitialSprite(launchSession.showInitialSprite ?? true);
     setHistoryPath(launchSession.historyPath || "");
     setRoomId(launchSession.roomId || "");
     const matchingTemplate = templates.find((template) => template.id === launchSession.templateFileDropdown);
@@ -321,6 +323,7 @@ export function TemplateEditorPage({
   const runtimeOptionsState = {
     historyPath,
     initSpritePath,
+    showInitialSprite,
     maxDialogItems,
     maxSpeechChars,
     roomId,
@@ -1029,10 +1032,22 @@ export function TemplateEditorPage({
           </div>
 
           <div className="template-runtime-fields">
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.initSprite")}</span>
+            <div className="template-side-field">
+              <div className="template-sprite-heading">
+                <label className="template-side-field__label" htmlFor="template-initial-sprite">
+                  {t("template.field.initSprite")}
+                </label>
+                <Switch
+                  aria-label={t("template.field.showInitialSprite")}
+                  checked={showInitialSprite}
+                  onChange={(event) => setShowInitialSprite(event.target.checked)}
+                  title={t("template.field.showInitialSprite")}
+                />
+              </div>
               <FilePicker
                 acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+                disabled={!showInitialSprite}
+                id="template-initial-sprite"
                 onChange={(event) => setInitSpritePath(event.target.value)}
                 onPathChange={setInitSpritePath}
                 pickLabel={t("common.chooseFile")}
@@ -1040,7 +1055,7 @@ export function TemplateEditorPage({
                 readOnly={false}
                 value={initSpritePath}
               />
-            </label>
+            </div>
             {!createOnly && !conversationId && (
               <label className="template-side-field">
                 <span className="template-side-field__label">{t("template.field.historyFile")}</span>

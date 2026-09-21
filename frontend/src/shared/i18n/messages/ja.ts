@@ -1435,6 +1435,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "template.field.effectName": "エフェクトスキーム",
   "template.field.historyFile": "履歴ファイル",
   "template.field.initSprite": "初期立ち絵",
+  "template.field.showInitialSprite": "初期立ち絵を表示",
   "template.field.maxDialogItems": "最大会話数",
   "template.field.maxSpeechChars": "最大台詞文字数",
   "template.field.mobileAccess": "スマートフォンからのアクセスを許可",

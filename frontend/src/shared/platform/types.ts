@@ -542,6 +542,7 @@ export interface ChatLaunchPayload {
   effectNames?: string[];
   historyPath: string;
   initSpritePath?: string;
+  showInitialSprite?: boolean;
   mediaSelectionMode?: MediaSelectionMode;
   resetHistory?: boolean;
   roomId?: string;
@@ -584,6 +585,7 @@ export interface TemplateLaunchSession {
   filenameStub: string;
   historyPath: string;
   initSpritePath: string;
+  showInitialSprite?: boolean;
   maxDialogItems: number;
   maxSpeechChars: number;
   mediaSelectionMode?: MediaSelectionMode;

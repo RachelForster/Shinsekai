@@ -23,6 +23,7 @@ def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParse
         default="komaeda_sprite",
     )
     parser.add_argument("--init_sprite_path", "-isp", type=str, default="")
+    parser.add_argument("--show-initial-sprite", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--history", "--his", type=str, default="")
     parser.add_argument("--tts", type=str, default="")
     parser.add_argument("--llm", type=str, default="deepseek")
@@ -140,7 +141,7 @@ def _parse_chat_launch_config(raw_value: str) -> dict[str, Any]:
 
     normalized: dict[str, Any] = {}
     for key, value in data.items():
-        if key in {"headless", "use_current_template_for_history"}:
+        if key in {"headless", "use_current_template_for_history", "show_initial_sprite"}:
             if not isinstance(value, bool):
                 raise ValueError(f"chat launch config {key} must be boolean")
             normalized[key] = value

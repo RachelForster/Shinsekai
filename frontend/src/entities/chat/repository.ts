@@ -50,6 +50,7 @@ export async function getConversationSession(id: string): Promise<TemplateLaunch
     filenameStub: payload.templateName ?? "",
     historyPath: payload.historyPath,
     initSpritePath: payload.initSpritePath ?? "",
+    showInitialSprite: payload.showInitialSprite ?? true,
     mediaSelectionMode: payload.mediaSelectionMode ?? "indexed",
     roomId: payload.roomId ?? "",
     scenario: payload.scenario ?? "",

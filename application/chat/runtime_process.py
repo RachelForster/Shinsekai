@@ -403,6 +403,7 @@ def _launch_chat(
     effect_context: SelectedEffectContext | None = None,
     history_file: str,
     init_sprite_path: str,
+    show_initial_sprite: bool = True,
     room_id: str,
     selected_bg: str,
     system_template: str,
@@ -454,6 +455,7 @@ def _launch_chat(
         launch_config = {
             "template": "_temp",
             "init_sprite_path": init_sprite_path or "",
+            "show_initial_sprite": show_initial_sprite,
             "history": history_argument,
             "bg": selected_bg,
             "effect_names": effect_names,

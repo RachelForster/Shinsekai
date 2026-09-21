@@ -1397,6 +1397,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "template.field.effectName": "特效方案",
   "template.field.historyFile": "历史记录",
   "template.field.initSprite": "初始立绘",
+  "template.field.showInitialSprite": "显示初始立绘",
   "template.field.maxDialogItems": "最大对话条数",
   "template.field.maxSpeechChars": "最大台词字数",
   "template.field.mobileAccess": "允许手机访问",

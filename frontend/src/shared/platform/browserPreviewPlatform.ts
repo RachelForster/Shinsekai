@@ -1338,9 +1338,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           chatRuntimeClosing: false,
           dialogText: "",
           historyPath,
-          sprites: character?.sprites[0]
-            ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
-            : [],
+          sprites:
+            payload.showInitialSprite !== false && character?.sprites[0]
+              ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
+              : [],
           sessionClosedReason: "",
           status: "idle",
           statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
@@ -1421,9 +1422,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           chatRuntimeClosing: false,
           dialogText: "",
           historyPath,
-          sprites: character?.sprites[0]
-            ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
-            : chat.sprites,
+          sprites:
+            templateSession?.showInitialSprite === false
+              ? []
+              : character?.sprites[0]
+                ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
+                : chat.sprites,
           sessionClosedReason: "",
           status: "idle",
           statusMessage: `已恢复上次启动：${historyPath}`,

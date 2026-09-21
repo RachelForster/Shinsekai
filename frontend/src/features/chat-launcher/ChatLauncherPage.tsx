@@ -40,6 +40,7 @@ import {
   FilePicker,
   QueryErrorState,
   Select,
+  Switch,
   TextInput,
   useToast,
 } from "../../shared/ui";
@@ -82,6 +83,7 @@ export function ChatLauncherPage() {
   const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
   const [historyPath, setHistoryPath] = useState("");
   const [initSpritePath, setInitSpritePath] = useState("");
+  const [showInitialSprite, setShowInitialSprite] = useState(true);
   const [useCg, setUseCg] = useState(false);
   const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
   const [quickRestartOpen, setQuickRestartOpen] = useState(false);
@@ -142,6 +144,7 @@ export function ChatLauncherPage() {
     setSelectedCharacters(Array.isArray(launchSession.selectedCharacters) ? launchSession.selectedCharacters : []);
     setHistoryPath(launchSession.historyPath || "");
     setInitSpritePath(launchSession.initSpritePath || "");
+    setShowInitialSprite(launchSession.showInitialSprite ?? true);
     setUseCg(launchSession.useCg ?? false);
   }, [launchSession, sessionFetched, sessionRestored, templates]);
 
@@ -172,6 +175,7 @@ export function ChatLauncherPage() {
     filenameStub: selectedTemplate?.name ?? "",
     historyPath: historyPath.trim(),
     initSpritePath: initSpritePath.trim(),
+    showInitialSprite,
     maxDialogItems: launchSession?.maxDialogItems ?? 0,
     maxSpeechChars: launchSession?.maxSpeechChars ?? 0,
     mediaSelectionMode: selectedTemplate?.mediaSelectionMode ?? "indexed",
@@ -280,6 +284,7 @@ export function ChatLauncherPage() {
       effectNames: selectedEffects.length ? selectedEffects : undefined,
       historyPath: historyPath.trim(),
       initSpritePath: initSpritePath.trim(),
+      showInitialSprite,
       mediaSelectionMode: selectedTemplate.mediaSelectionMode ?? "indexed",
       resetHistory,
       roomId: launchSession?.roomId ?? "",
@@ -412,11 +417,21 @@ export function ChatLauncherPage() {
                 </span>
               </label>
             ) : null}
-            <label className="field-row">
-              <span className="field-row__label">{t("template.field.initSprite")}</span>
+            <div className="field-row">
+              <span className="field-row__label">
+                <label htmlFor="launch-initial-sprite">{t("template.field.initSprite")}</label>
+                <Switch
+                  aria-label={t("template.field.showInitialSprite")}
+                  checked={showInitialSprite}
+                  onChange={(event) => setShowInitialSprite(event.target.checked)}
+                  title={t("template.field.showInitialSprite")}
+                />
+              </span>
               <span className="field-row__control">
                 <FilePicker
                   acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+                  disabled={!showInitialSprite}
+                  id="launch-initial-sprite"
                   onChange={(event) => setInitSpritePath(event.target.value)}
                   onPathChange={setInitSpritePath}
                   pickLabel={t("common.chooseFile")}
@@ -425,7 +440,7 @@ export function ChatLauncherPage() {
                   value={initSpritePath}
                 />
               </span>
-            </label>
+            </div>
             <label className="field-row">
               <span className="field-row__label">{t("launch.history")}</span>
               <span className="field-row__control">
