@@ -36,6 +36,7 @@ export function DialogStageControls({
   configOpen,
   hideCloseButton,
   hidden,
+  longPressTalk,
   locked,
   onAutoChange,
   onBgmVolumeChange,
@@ -45,6 +46,7 @@ export function DialogStageControls({
   onCommand,
   onConfigOpenChange,
   onFlushBatch,
+  onLongPressTalkChange,
   onLockedChange,
   onOpenBranches,
   onOpenHistory,
@@ -64,6 +66,7 @@ export function DialogStageControls({
   configOpen: boolean;
   hidden: boolean;
   hideCloseButton: boolean;
+  longPressTalk: boolean;
   locked: boolean;
   onAutoChange: (auto: boolean) => void;
   onBgmVolumeChange: (value: number) => void;
@@ -73,6 +76,7 @@ export function DialogStageControls({
   onCommand: (command: ChatCommand) => void;
   onConfigOpenChange: (open: boolean) => void;
   onFlushBatch: () => void;
+  onLongPressTalkChange: (value: boolean) => void;
   onLockedChange: (locked: boolean) => void;
   onOpenBranches: () => void;
   onOpenHistory: () => void;
@@ -253,11 +257,13 @@ export function DialogStageControls({
           }
           bgmVolume={bgmVolume}
           effectVolume={effectVolume}
+          longPressTalk={longPressTalk}
           onBgmVolumeChange={onBgmVolumeChange}
           onEffectVolumeChange={onEffectVolumeChange}
           onCancelBatch={onCancelBatch}
           onClose={closeChatSettings}
           onFlushBatch={onFlushBatch}
+          onLongPressTalkChange={onLongPressTalkChange}
           onTurnOptionsChange={onTurnOptionsChange}
           open={chatSettingsOpen}
           turnOptions={turnOptions}

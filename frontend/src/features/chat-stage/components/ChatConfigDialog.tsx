@@ -110,8 +110,6 @@ export function ChatConfigDialog({
   effectiveDialogText,
   effectiveNameText,
   immersiveMode,
-  longPressTalk = false,
-  onLongPressTalkChange,
   mainThemeColor,
   nameText,
   onAlwaysOnTopChange,
@@ -159,8 +157,6 @@ export function ChatConfigDialog({
   effectiveDialogText?: ChatStageTextStyleConfig;
   effectiveNameText?: ChatStageTextStyleConfig;
   immersiveMode: boolean;
-  longPressTalk?: boolean;
-  onLongPressTalkChange?: (value: boolean) => void;
   mainThemeColor: string;
   nameText: ChatStageTextStyleConfig;
   onAlwaysOnTopChange: (value: boolean) => void;
@@ -442,11 +438,6 @@ export function ChatConfigDialog({
         </section>
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionConversation")}</h3>
-          <label className="chat-config-dialog__row chat-config-dialog__checkbox-row">
-            <span className="chat-config-dialog__label">{t("chat.config.longPressTalk")}</span>
-            <Switch checked={longPressTalk} onChange={(event) => onLongPressTalkChange?.(event.target.checked)} />
-          </label>
-          <p className="chat-config-dialog__help">{t("chat.config.longPressTalkHelp")}</p>
           <label className="chat-config-dialog__row chat-config-dialog__voice">
             <span className="chat-config-dialog__label">
               <Languages aria-hidden className="chat-config-dialog__voice-icon" />

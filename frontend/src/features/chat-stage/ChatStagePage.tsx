@@ -498,6 +498,10 @@ export function ChatStagePage() {
   const updateRuntimeEffectVolume = (effectVolume: number) => {
     setRuntimeConfig((current) => ({ ...current, effectVolume: Math.min(1, Math.max(0, effectVolume)) }));
   };
+  const updateRuntimeLongPressTalk = (longPressTalk: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, longPressTalk }));
+    if (longPressTalk) void sendCommand({ type: "pause-asr" });
+  };
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
@@ -662,6 +666,7 @@ export function ChatStagePage() {
       configOpen={toolbarConfigOpen}
       hidden={!dialogSurfaceVisible}
       hideCloseButton={standaloneDesktopWindow}
+      longPressTalk={runtimeConfig.longPressTalk}
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
       onBgmVolumeChange={updateRuntimeBgmVolume}
@@ -671,6 +676,7 @@ export function ChatStagePage() {
       onCommand={sendCommand}
       onConfigOpenChange={setToolbarConfigOpen}
       onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
+      onLongPressTalkChange={updateRuntimeLongPressTalk}
       onLockedChange={setDialogControlsLocked}
       onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
@@ -863,11 +869,6 @@ export function ChatStagePage() {
           effectiveDialogText={effectiveDialogText}
           effectiveNameText={effectiveNameText}
           immersiveMode={runtimeConfig.immersiveMode}
-          longPressTalk={runtimeConfig.longPressTalk}
-          onLongPressTalkChange={(longPressTalk) => {
-            setRuntimeConfig((current) => ({ ...current, longPressTalk }));
-            if (longPressTalk) void sendCommand({ type: "pause-asr" });
-          }}
           mainThemeColor={mainThemeColor}
           nameText={runtimeConfig.nameText}
           onClose={() => setToolbarConfigOpen(false)}

@@ -771,7 +771,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "chat.config.autoHideTopTools": "右上ツールバーを自動的に隠す",
   "chat.config.fontFamilyPlaceholder": "空欄ならテーマフォント",
   "chat.config.fontSizeValue": "{value}px",
-  "chat.config.longPressTalk": "長押しで話す",
+  "chat.config.longPressTalk": "F8長押し会話を有効化",
   "chat.config.longPressTalkHelp":
     "チャット画面で F8 を押しながら話すとリアルタイムで認識し、離すと送信します。Esc またはウィンドウの切り替えでキャンセルします。初回は音声モデルの読み込み完了後に話してください。",
   "chat.config.longPressTalkVoskMissing":

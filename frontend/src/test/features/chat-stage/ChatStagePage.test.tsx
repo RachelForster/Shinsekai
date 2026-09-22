@@ -491,6 +491,8 @@ describe("ChatStagePage", () => {
     const stackSwitch = within(settings).getByRole("checkbox", { name: "Stack consecutive messages" });
     expect(stackSwitch).not.toBeChecked();
     expect(within(settings).getByRole("checkbox", { name: "Allow new messages to interrupt replies" })).toBeChecked();
+    expect(within(settings).getByRole("checkbox", { name: "Enable F8 hold to talk" })).not.toBeChecked();
+    expect(within(settings).getByRole("slider", { name: "BGM volume" })).toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: "keep this draft" } });
     fireEvent.click(stackSwitch);
@@ -1402,7 +1404,7 @@ describe("ChatStagePage", () => {
     const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     expect(config).toHaveClass("chat-stage-modal");
     expect(config.querySelector(".chat-stage-modal__header")).not.toBeNull();
-    expect(within(config).getByLabelText("Long press to talk")).not.toBeChecked();
+    expect(within(config).queryByLabelText("Enable F8 hold to talk")).not.toBeInTheDocument();
     fireEvent.click(within(config).getByRole("button", { name: "Close" }));
 
     const asrButtons = await screen.findAllByRole("button", { name: "Resume ASR" });
@@ -2014,14 +2016,14 @@ describe("ChatStagePage", () => {
     await screen.findByText("Ready");
     fireEvent.keyDown(window, { code: "F8" });
     expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "begin-asr-hold" });
-    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "Long press to talk" }));
+    fireEvent.click(screen.getByRole("button", { name: "Chat settings" }));
+    const chatSettings = screen.getByRole("dialog", { name: "Chat settings" });
+    expect(within(chatSettings).getByRole("slider", { name: "BGM volume" })).toBeInTheDocument();
+    fireEvent.click(within(chatSettings).getByRole("checkbox", { name: "Enable F8 hold to talk" }));
     expect(
       JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}").config.longPressTalk,
     ).toBe(true);
-    fireEvent.click(
-      within(screen.getByRole("dialog", { name: "Chat appearance settings" })).getByRole("button", { name: "Close" }),
-    );
+    fireEvent.click(within(chatSettings).getByRole("button", { name: "Close" }));
     fireEvent.keyDown(window, { code: "F8" });
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "begin-asr-hold" }));
     act(() => {

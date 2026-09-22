@@ -749,7 +749,7 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "chat.config.autoHideTopTools": "自动隐藏右上角工具栏",
   "chat.config.fontFamilyPlaceholder": "留空使用主题字体",
   "chat.config.fontSizeValue": "{value}px",
-  "chat.config.longPressTalk": "长按键说话",
+  "chat.config.longPressTalk": "启用 F8 按住说话",
   "chat.config.longPressTalkHelp":
     "在聊天窗口按住 F8 实时识别，松开发送。Esc 或切换窗口取消本次录音。首次使用请等待语音模型加载完成后再说话。",
   "chat.config.longPressTalkVoskMissing":
