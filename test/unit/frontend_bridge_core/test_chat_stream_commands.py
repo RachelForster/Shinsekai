@@ -195,6 +195,17 @@ def _send_json_frame(sock: socket.socket, payload: dict) -> None:
 
 
 class ChatStreamCommandTests(unittest.TestCase):
+    def test_forwards_hold_commands_without_replacing_dialogue(self):
+        for command_type in ("begin-asr-hold", "finish-asr-hold", "cancel-asr-hold"):
+            with self.subTest(command_type=command_type):
+                chat_stream = _StubChatStream()
+                chat_stream.snapshot["status"] = "idle"
+                chat_stream.snapshot["dialogText"] = "Current dialogue"
+                state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
+                snapshot = _handle_chat_command(state, {"type": command_type})
+                self.assertEqual(chat_stream.command[1]["type"], command_type)
+                self.assertEqual(snapshot["dialogText"], "Current dialogue")
+
     def test_handle_chat_command_wraps_resume_asr_with_cmd_id(self):
         chat_stream = _StubChatStream()
         state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
@@ -684,6 +695,33 @@ class ChatStreamCommandTests(unittest.TestCase):
         snapshot = service.get_snapshot(session["sessionId"])
         self.assertIsNotNone(snapshot)
         self.assertEqual(snapshot["sessionId"], session["sessionId"])
+
+    def test_asr_final_projects_user_turn_into_polling_snapshot(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
+        session = service.create_session(
+            {
+                "characterName": "Nanami",
+                "dialogHtml": "<p>Previous reply</p>",
+                "dialogText": "Previous reply",
+                "inputDraft": "hello wor",
+                "options": ["stale option"],
+                "userDisplayName": "Aoi",
+            }
+        )
+
+        asyncio.run(
+            service._publish_event(
+                session["sessionId"],
+                {"text": "hello world", "type": "asr.final"},
+            )
+        )
+
+        snapshot = service.get_snapshot(session["sessionId"])
+        self.assertEqual(snapshot["characterName"], "Aoi")
+        self.assertIsNone(snapshot["dialogHtml"])
+        self.assertEqual(snapshot["dialogText"], "hello world")
+        self.assertEqual(snapshot["inputDraft"], "")
+        self.assertEqual(snapshot["options"], [])
 
     def test_chat_stream_assigns_voice_to_one_renderer_and_rejects_other_signals(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=8787)

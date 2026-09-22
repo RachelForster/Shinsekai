@@ -79,4 +79,8 @@ def test_output_matches_deduplicated_renderer(monkeypatch, language, mask):
     text, warning = render_case(monkeypatch, language, mask)
 
     assert warning == ""
+    tool_protocol = tr_in_bundle("template_gen.closing_tool_protocol", language)
+    assert text.endswith(tool_protocol + "\n")
+    # Preserve the original digests: only the new final protocol rule may differ.
+    text = text[: -len(tool_protocol + "\n")]
     assert hashlib.sha256(text.encode("utf-8")).hexdigest() == expected[str(mask)]

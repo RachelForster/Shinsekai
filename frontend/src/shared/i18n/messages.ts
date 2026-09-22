@@ -731,6 +731,7 @@ export type MessageKey =
   | "chat.config.fontFamilyPlaceholder"
   | "chat.config.fontSizeValue"
   | "chat.config.longPressTalk"
+  | "chat.config.longPressTalkHelp"
   | "chat.config.longPressTalkVoskMissing"
   | "chat.config.immersiveMode"
   | "chat.config.menuThemeColor"

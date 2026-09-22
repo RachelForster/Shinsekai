@@ -76,6 +76,9 @@ TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
 _HISTORY_DOWNLOAD_CAPABILITY_TTL_SECONDS = 60.0
 _RUNTIME_CHAT_COMMANDS = {
+    "begin-asr-hold",
+    "finish-asr-hold",
+    "cancel-asr-hold",
     "audio-playback-signal",
     "cancel-input-batch",
     "change-voice-language",
@@ -1451,6 +1454,8 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         return _forward_runtime_command("paused", "语音识别已暂停。")
     if command == "resume-asr":
         return _forward_runtime_command("listening", "语音识别已恢复。")
+    if command in {"begin-asr-hold", "finish-asr-hold", "cancel-asr-hold"}:
+        return _forward_runtime_command(_current_runtime_status())
     if command == "reroll":
         return _forward_runtime_command("generating", "正在请求重新生成。")
     if command == "revert-history":

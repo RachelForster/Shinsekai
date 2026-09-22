@@ -63,6 +63,9 @@ class StreamingASRController:
         self._silence_generation = 0
         self._original_text = ""
         self._current_text = ""
+        self._hold_to_talk = False
+        self._finishing_hold = False
+        self._hold_adapter_warm = False
 
     @property
     def enabled(self) -> bool:
@@ -71,12 +74,15 @@ class StreamingASRController:
 
     def user_resume(self) -> None:
         """Enable ASR, loading the selected adapter lazily on first use."""
+        if self._hold_to_talk or self._finishing_hold:
+            self.user_pause()
         with self._lock:
             if self._closed:
                 return
             self._enabled = True
             self._turn_paused = False
             self._clear_on_activation = True
+            self._hold_adapter_warm = False
             self._cancel_resume_timer_locked()
             self._cancel_silence_timer_locked()
         self._emit_state()
@@ -91,6 +97,8 @@ class StreamingASRController:
             self._active = False
             self._turn_paused = False
             self._clear_on_activation = False
+            self._hold_to_talk = False
+            self._hold_adapter_warm = False
             self._cancel_resume_timer_locked()
             self._cancel_silence_timer_locked()
             adapter = self._adapter if self._started else None
@@ -98,8 +106,87 @@ class StreamingASRController:
         self._stop_adapter(adapter)
         self._emit_state()
 
+    def begin_hold(self) -> None:
+        """Collect a single utterance until an explicit release, without auto-send."""
+        with self._lock:
+            if self._closed or self._hold_to_talk or self._finishing_hold:
+                return
+            reuse_warm_adapter = (
+                self._hold_adapter_warm
+                and self._adapter is not None
+                and self._started
+            )
+        if not reuse_warm_adapter:
+            self.user_pause()
+        with self._lock:
+            if self._closed:
+                return
+            self._hold_to_talk = True
+            self._hold_adapter_warm = False
+            self._enabled = True
+            self._original_text = self._current_text = ""
+            self._clear_on_activation = False
+        self._emit_event_safe({"type": "asr.partial", "text": ""})
+        self._activate_async()
+
+    def finish_hold(self, *, cancel: bool = False) -> None:
+        """Drain the decoder before submitting once; cancellation never submits."""
+        with self._lock:
+            if not self._hold_to_talk or self._finishing_hold:
+                return
+            self._finishing_hold = True
+            adapter = self._adapter if self._started else None
+            if cancel or adapter is None:
+                self._enabled = False
+            self._cancel_silence_timer_locked()
+        failed = False
+        kept_warm = False
+        try:
+            if adapter is not None:
+                kept_warm = bool(adapter.finish_hold(cancel=cancel))
+        except Exception:
+            failed = True
+            self._stop_adapter(adapter)
+            raise
+        finally:
+            with self._callback_lock:
+                with self._lock:
+                    text = self._current_text.strip()
+                    submit = (
+                        bool(text)
+                        and adapter is not None
+                        and self._hold_to_talk
+                        and not (cancel or failed or self._closed)
+                    )
+                    self._hold_to_talk = False
+                    self._finishing_hold = False
+                    self._enabled = self._active = False
+                    self._started = kept_warm and not failed and not self._closed
+                    self._hold_adapter_warm = self._started
+                    self._turn_paused = False
+                if submit:
+                    try:
+                        if self._submit_final(text) is False:
+                            raise RuntimeError(
+                                "Voice input could not be sent; the transcript was kept in the input box."
+                            )
+                    except Exception:
+                        self._emit_event_safe({"type": "asr.partial", "text": text})
+                        self._emit_state()
+                        raise
+                    self._emit_event_safe({"type": "asr.final", "text": text})
+                    self._emit_state()
+                elif cancel:
+                    self._emit_event_safe({"type": "asr.partial", "text": ""})
+                    self._emit_state()
+                else:
+                    self._emit_state()
+
     def pause_for_turn(self) -> bool:
         """Temporarily pause an enabled adapter while a chat turn is processed."""
+        if self._hold_to_talk:
+            self.finish_hold(cancel=True)
+            return True
         with self._lock:
             if self._closed or not self._enabled:
                 return False
@@ -140,6 +227,7 @@ class StreamingASRController:
             adapter = self._adapter
             self._adapter = None
             self._started = False
+            self._hold_adapter_warm = False
         # A callback may have left _lock just before _closed was set. Wait for
         # that callback to finish before the caller publishes session.closed.
         with self._callback_lock:
@@ -308,6 +396,17 @@ class StreamingASRController:
                 return
             adapter = self._adapter
             language = str(getattr(adapter, "language", "") or "").strip().lower()
+            if self._hold_to_talk:
+                piece = raw_text.strip() if language.startswith("en") else raw_text.replace(" ", "").strip()
+                if not piece:
+                    return
+                separator = " " if language.startswith("en") else "，"
+                self._current_text = f"{self._original_text}{separator if self._original_text else ''}{piece}"
+                if not is_partial:
+                    self._original_text = self._current_text
+                # Endpoint detection is only a segment boundary in hold mode.
+                self._emit_event_safe({"type": "asr.partial", "text": self._current_text})
+                return
             if is_partial:
                 if not raw_text:
                     return
@@ -344,17 +443,14 @@ class StreamingASRController:
                 self._active = False
                 active_adapter = adapter
 
-        self._emit_event_safe(
-            {"type": "asr.partial" if is_partial else "asr.final", "text": displayed}
-        )
         if is_partial:
+            self._emit_event_safe({"type": "asr.partial", "text": displayed})
             return
 
         with self._lock:
             if self._closed or not self._enabled or not self._turn_paused:
                 return
         self._pause_adapter(active_adapter)
-        self._emit_state()
         try:
             accepted = self._submit_final(displayed)
         except BaseException as exc:
@@ -366,6 +462,9 @@ class StreamingASRController:
                     self._turn_paused = False
                     self._clear_on_activation = True
             self._activate_async()
+            return
+        self._emit_event_safe({"type": "asr.final", "text": displayed})
+        self._emit_state()
 
     def _pause_adapter(self, adapter: ASRAdapter | None) -> None:
         if adapter is None:
@@ -393,7 +492,10 @@ class StreamingASRController:
             loading = (
                 enabled
                 and not self._turn_paused
-                and (self._loading or self._activating)
+                and (
+                    self._loading
+                    or (self._activating and not self._started)
+                )
             )
         self._emit_event_safe(
             {
