@@ -65,6 +65,7 @@ class StreamingASRController:
         self._current_text = ""
         self._hold_to_talk = False
         self._finishing_hold = False
+        self._hold_adapter_warm = False
 
     @property
     def enabled(self) -> bool:
@@ -81,6 +82,7 @@ class StreamingASRController:
             self._enabled = True
             self._turn_paused = False
             self._clear_on_activation = True
+            self._hold_adapter_warm = False
             self._cancel_resume_timer_locked()
             self._cancel_silence_timer_locked()
         self._emit_state()
@@ -96,6 +98,7 @@ class StreamingASRController:
             self._turn_paused = False
             self._clear_on_activation = False
             self._hold_to_talk = False
+            self._hold_adapter_warm = False
             self._cancel_resume_timer_locked()
             self._cancel_silence_timer_locked()
             adapter = self._adapter if self._started else None
@@ -108,11 +111,18 @@ class StreamingASRController:
         with self._lock:
             if self._closed or self._hold_to_talk or self._finishing_hold:
                 return
-        self.user_pause()
+            reuse_warm_adapter = (
+                self._hold_adapter_warm
+                and self._adapter is not None
+                and self._started
+            )
+        if not reuse_warm_adapter:
+            self.user_pause()
         with self._lock:
             if self._closed:
                 return
             self._hold_to_talk = True
+            self._hold_adapter_warm = False
             self._enabled = True
             self._original_text = self._current_text = ""
             self._clear_on_activation = False
@@ -130,12 +140,10 @@ class StreamingASRController:
                 self._enabled = False
             self._cancel_silence_timer_locked()
         failed = False
+        kept_warm = False
         try:
             if adapter is not None:
-                if cancel:
-                    adapter.stop()
-                else:
-                    adapter.finish()
+                kept_warm = bool(adapter.finish_hold(cancel=cancel))
         except Exception:
             failed = True
             self._stop_adapter(adapter)
@@ -152,7 +160,9 @@ class StreamingASRController:
                     )
                     self._hold_to_talk = False
                     self._finishing_hold = False
-                    self._enabled = self._active = self._started = False
+                    self._enabled = self._active = False
+                    self._started = kept_warm and not failed and not self._closed
+                    self._hold_adapter_warm = self._started
                     self._turn_paused = False
                 if submit:
                     try:
@@ -217,6 +227,7 @@ class StreamingASRController:
             adapter = self._adapter
             self._adapter = None
             self._started = False
+            self._hold_adapter_warm = False
         # A callback may have left _lock just before _closed was set. Wait for
         # that callback to finish before the caller publishes session.closed.
         with self._callback_lock:
@@ -481,7 +492,10 @@ class StreamingASRController:
             loading = (
                 enabled
                 and not self._turn_paused
-                and (self._loading or self._activating)
+                and (
+                    self._loading
+                    or (self._activating and not self._started)
+                )
             )
         self._emit_event_safe(
             {

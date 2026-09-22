@@ -60,6 +60,78 @@ def test_hold_cancel_discards_text_and_allows_next_recording(hold_runtime):
     assert submitted == ["new"]
 
 
+def test_hold_reuses_adapter_that_can_stay_warm() -> None:
+    adapters: list[_WarmHoldASRAdapter] = []
+    events: list[dict] = []
+    submitted: list[str] = []
+
+    def factory(callback):
+        adapter = _WarmHoldASRAdapter(callback)
+        adapters.append(adapter)
+        return adapter
+
+    controller = StreamingASRController(
+        adapter_factory=factory,
+        emit_event=events.append,
+        submit_final=submitted.append,
+    )
+    try:
+        controller.begin_hold()
+        _wait_until(lambda: bool(adapters) and controller._active)
+        adapter = adapters[0]
+        adapter.callback("first", True)
+        controller.finish_hold()
+
+        assert submitted == ["first"]
+        assert adapter.calls == ["start", "finish-hold"]
+        assert controller._started is True
+        assert controller._hold_adapter_warm is True
+
+        warm_resume_event_index = len(events)
+        controller.begin_hold()
+        _wait_until(lambda: controller._active)
+        adapter.callback("second", True)
+        controller.finish_hold()
+
+        assert submitted == ["first", "second"]
+        assert adapter.calls == ["start", "finish-hold", "resume", "finish-hold"]
+        assert len(adapters) == 1
+        assert not any(
+            event.get("type") == "asr.state" and event.get("loading")
+            for event in events[warm_resume_event_index:]
+        )
+    finally:
+        controller.close()
+
+
+def test_cancelled_hold_can_keep_expensive_adapter_warm() -> None:
+    adapters: list[_WarmHoldASRAdapter] = []
+    submitted: list[str] = []
+
+    def factory(callback):
+        adapter = _WarmHoldASRAdapter(callback)
+        adapters.append(adapter)
+        return adapter
+
+    controller = StreamingASRController(
+        adapter_factory=factory,
+        emit_event=lambda _event: None,
+        submit_final=submitted.append,
+    )
+    try:
+        controller.begin_hold()
+        _wait_until(lambda: bool(adapters) and controller._active)
+        adapters[0].callback("discard", True)
+        controller.finish_hold(cancel=True)
+        controller.begin_hold()
+        _wait_until(lambda: controller._active)
+
+        assert submitted == []
+        assert adapters[0].calls == ["start", "cancel-hold", "resume"]
+    finally:
+        controller.close()
+
+
 def test_hold_empty_recording_does_not_submit(hold_runtime):
     controller, adapter, events, submitted = hold_runtime
     controller.finish_hold()
@@ -168,6 +240,13 @@ class _FakeASRAdapter(ASRAdapter):
     def resume(self) -> None:
         self.calls.append("resume")
         self.status = "Running"
+
+
+class _WarmHoldASRAdapter(_FakeASRAdapter):
+    def finish_hold(self, *, cancel: bool = False) -> bool:
+        self.calls.append("cancel-hold" if cancel else "finish-hold")
+        self.status = "Paused"
+        return True
 
 
 def _wait_until(predicate, timeout: float = 1.0) -> None:

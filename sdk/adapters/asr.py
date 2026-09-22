@@ -42,6 +42,20 @@ class ASRAdapter(ABC):
         """
         self.stop()
 
+    def finish_hold(self, *, cancel: bool = False) -> bool:
+        """Finish one push-to-talk capture and report whether it stayed warm.
+
+        The compatibility path keeps the historical stop-on-release behaviour.
+        Adapters whose model/recorder is expensive to recreate may override this,
+        pause capture without releasing those resources, and return ``True`` so
+        the next hold resumes the existing session.
+        """
+        if cancel:
+            self.stop()
+        else:
+            self.finish()
+        return False
+
     @abstractmethod
     def get_status(self) -> str:
         pass
