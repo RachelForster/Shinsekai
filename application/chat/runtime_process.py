@@ -406,6 +406,7 @@ def _launch_chat(
     show_initial_sprite: bool = True,
     room_id: str,
     selected_bg: str,
+    selected_backgrounds: list[str] | None = None,
     system_template: str,
     use_cg: bool,
     user_scenario: str,
@@ -458,6 +459,10 @@ def _launch_chat(
             "show_initial_sprite": show_initial_sprite,
             "history": history_argument,
             "bg": selected_bg,
+            "background_names": json.dumps(
+                selected_backgrounds or [selected_bg],
+                ensure_ascii=False,
+            ),
             "effect_names": effect_names,
             "t2i": "ComfyUI" if use_cg else "",
             "room_id": room_id,

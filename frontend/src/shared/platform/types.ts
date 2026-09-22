@@ -537,6 +537,7 @@ export interface ChatLaunchPayload {
   conversationTitle?: string;
   editorSession?: TemplateLaunchSession;
   backgroundName: string;
+  backgroundNames?: string[];
   characters: string[];
   enableMobileAccess?: boolean;
   effectNames?: string[];
@@ -555,6 +556,7 @@ export interface ChatLaunchPayload {
 
 export interface TemplateGenerateInput {
   backgroundName: string;
+  backgroundNames?: string[];
   characterPromptMode?: CharacterPromptMode;
   characters: string[];
   effectNames?: string[];
@@ -579,6 +581,7 @@ export type MediaSelectionMode = "indexed" | "semantic";
 
 export interface TemplateLaunchSession {
   background: string;
+  backgroundNames?: string[];
   characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;
   effectNames: string[];
