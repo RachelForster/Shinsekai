@@ -21,6 +21,7 @@ from application.model_providers import (
     adapter_catalog as _adapter_catalog,
     claude_messages_endpoint_url,
     claude_models_endpoint_url,
+    configured_vision_available as _configured_vision_available,
     normalize_t2i_provider as _normalize_t2i_provider,
 )
 from .security import host_matches, validated_http_url
@@ -116,12 +117,9 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     if tts_bundle_paths:
         payload["tts_bundle_installed_paths"] = tts_bundle_paths
     payload["adapter_catalog"] = _adapter_catalog()
-    try:
-        from ai.vision.service import configured_vision_available
-
-        payload["vision_available"] = configured_vision_available(state.config_manager.config.api_config)
-    except Exception:
-        payload["vision_available"] = False
+    payload["vision_available"] = _configured_vision_available(
+        state.config_manager.config.api_config
+    )
     return payload
 
 

@@ -156,9 +156,21 @@ def normalize_t2i_provider(value: str) -> str:
     return raw
 
 
+def configured_vision_available(api_config: Any) -> bool:
+    """Report configured vision availability without exposing AI imports to transport."""
+
+    try:
+        from ai.vision.service import configured_vision_available as _configured
+
+        return bool(_configured(api_config))
+    except Exception:
+        return False
+
+
 __all__ = [
     "adapter_catalog",
     "claude_messages_endpoint_url",
     "claude_models_endpoint_url",
+    "configured_vision_available",
     "normalize_t2i_provider",
 ]
