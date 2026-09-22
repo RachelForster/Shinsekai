@@ -1,7 +1,20 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
+export interface PortraitCrop {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface PlayerPortrait {
+  characterName: string;
+  url: string;
+  crop: PortraitCrop;
+}
+
 export interface Sprite {
+  portrait_crop?: PortraitCrop | null;
   path: string;
   voice_path?: string;
   voice_text?: string;
@@ -11,6 +24,7 @@ export interface Sprite {
 export type SpriteVoiceType = "fallback" | "preset" | "reference";
 
 export interface Character {
+  portrait_crop?: PortraitCrop;
   name: string;
   color: string;
   sprite_prefix: string;
@@ -523,6 +537,8 @@ export interface ConversationSummary {
 
 export interface ChatLaunchPayload {
   storyPath?: string;
+  playerCharacter?: string;
+  readPlayerSpeech?: boolean;
   characterPromptMode?: CharacterPromptMode;
   primaryCharacters?: string[];
   maxDialogItems?: number;
@@ -554,6 +570,7 @@ export interface ChatLaunchPayload {
 }
 
 export interface TemplateGenerateInput {
+  playerCharacter?: string;
   backgroundName: string;
   characterPromptMode?: CharacterPromptMode;
   characters: string[];
@@ -578,6 +595,8 @@ export type CharacterPromptMode = "compact" | "full";
 export type MediaSelectionMode = "indexed" | "semantic";
 
 export interface TemplateLaunchSession {
+  playerCharacter?: string;
+  readPlayerSpeech?: boolean;
   background: string;
   characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;
@@ -980,6 +999,7 @@ export interface ChatStoryState {
 }
 
 export interface ChatSnapshot {
+  playerPortrait?: PlayerPortrait | null;
   activePlayback?: {
     characterName: string;
     playbackId: string;
@@ -1127,6 +1147,7 @@ interface ChatEventBase {
 }
 
 export type ChatStageEvent =
+  | (ChatEventBase & PlayerPortrait & { type: "player.portrait.show" })
   | (ChatEventBase & { type: "snapshot"; snapshot: ChatSnapshot })
   | (ChatEventBase & {
       type: "chat.init.progress" | "chat.init.completed" | "chat.init.failed" | "chat.init.cancelled";

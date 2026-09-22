@@ -1,4 +1,4 @@
-import { Users } from "lucide-react";
+import { UserRound, Users } from "lucide-react";
 import type { Character } from "../../shared/platform/types";
 import { useI18n } from "../../shared/i18n";
 import { Button } from "../../shared/ui";
@@ -9,11 +9,13 @@ export function CharacterPicker({
   characters,
   selected,
   onChange,
+  onConfigurePlayer,
   disabled = false,
 }: {
   characters: Character[];
   selected: string[];
   onChange: (names: string[]) => void;
+  onConfigurePlayer?: () => void;
   disabled?: boolean;
 }) {
   const { t } = useI18n();
@@ -22,14 +24,26 @@ export function CharacterPicker({
     <div className="template-character-picker">
       <div className="template-character-picker__header">
         <span className="template-character-picker__label">{t("template.field.characters")}</span>
-        <Button
-          disabled={disabled || !characters.length}
-          icon={<Users aria-hidden className="button__icon" />}
-          onClick={() => onChange(characters.map((character) => character.name))}
-          variant="ghost"
-        >
-          {t("template.action.selectAllCharacters")}
-        </Button>
+        <div className="template-character-picker__actions">
+          {onConfigurePlayer ? (
+            <Button
+              disabled={disabled || !selected.length}
+              icon={<UserRound aria-hidden className="button__icon" />}
+              onClick={onConfigurePlayer}
+              variant="ghost"
+            >
+              {t("player.configure")}
+            </Button>
+          ) : null}
+          <Button
+            disabled={disabled || !characters.length}
+            icon={<Users aria-hidden className="button__icon" />}
+            onClick={() => onChange(characters.map((character) => character.name))}
+            variant="ghost"
+          >
+            {t("template.action.selectAllCharacters")}
+          </Button>
+        </div>
       </div>
       <div aria-label={t("template.field.characters")} className="template-character-grid" role="group">
         {selected

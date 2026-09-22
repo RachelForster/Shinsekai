@@ -487,6 +487,27 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
 
     # --- 高层业务组装 → 事件 ---
 
+    def queue_player_portrait(self, name: str, sprite_id: int) -> None:
+        if getattr(self, "_player_input_visible", False):
+            self.update_sprite(name, sprite_id)
+        else:
+            self._pending_player_portrait = (name, sprite_id)
+
+    def _apply_player_portrait_for_dialog(self, name: str, speech: str) -> None:
+        from application.chat.player_control import player_settings
+        from core.messaging.dialog_tokens import NARR_ALIASES, normalize_character_name
+        player = str(player_settings().get("name") or "")
+        compact = lambda value: re.sub(r'\s+', '', str(value or ''))
+        relevant = bool(player) and (
+            compact(name) == compact(player) or
+            (normalize_character_name(name) in NARR_ALIASES and compact(player) in compact(speech))
+        )
+        self._player_input_visible = False
+        pending = getattr(self, "_pending_player_portrait", None)
+        self._pending_player_portrait = None
+        if relevant and pending is not None:
+            self.update_sprite(*pending)
+
     def update_dialog(
         self,
         name: str,
@@ -494,6 +515,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         color: str,
         is_system: bool = True,
     ) -> None:
+        self._apply_player_portrait_for_dialog(name, speech)
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
@@ -509,6 +531,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self.sync_history_entries()
 
     def record_user_message(self, text: str) -> None:
+        self._player_input_visible = True
+        self._pending_player_portrait = None
         super().record_user_message(text)
         self.sync_history_entries()
 
@@ -521,6 +545,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         color: str = "",
         is_system: bool = True,
     ) -> None:
+        self._apply_player_portrait_for_dialog(speaker, html.unescape(re.sub(r'<[^>]*>', '', full_html)))
         if append_history and str(full_html or "").strip():
             self.chat_history.append(full_html)
         self._sink.emit(
@@ -546,6 +571,17 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             scale = float(getattr(character_config, "sprite_scale", 1.0) or 1.0)
         except Exception as e:
             print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
+            return
+        from application.chat.player_control import player_settings
+        if character_name == player_settings().get("name"):
+            crop = (sprite.get("portrait_crop") if isinstance(sprite, dict) else getattr(sprite, "portrait_crop", None))
+            crop = crop or getattr(character_config, "portrait_crop", None)
+            self._sink.emit({
+                "type": "player.portrait.show",
+                "characterName": character_name,
+                "url": self._media_url(image_path),
+                "crop": crop.model_dump() if hasattr(crop, "model_dump") else (crop or {"x": 0.5, "y": 0.2, "zoom": 1}),
+            })
             return
         display_slot = self._get_or_create_sprite_slot(character_name)
         self._sink.emit(

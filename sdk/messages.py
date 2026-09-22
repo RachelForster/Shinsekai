@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 from typing import Any, Optional, Union
 
 
@@ -25,6 +25,7 @@ class LLMDialogMessage(BaseModel):
     """LLM 输出对话片段队列的消息格式 (dialog_queue)。"""
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
+    _player_input: bool = PrivateAttr(default=False)
 
     name: str = Field(
         ...,

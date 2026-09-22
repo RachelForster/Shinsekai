@@ -189,6 +189,12 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         if audio_path:
             audio_path = Path(audio_path).as_posix()
         effect = out.effect
+        from application.chat.player_control import player_settings
+        if character_name == player_settings().get("name") and sprite_id is not None and not speech and not audio_path:
+            queue_portrait = getattr(ui, "queue_player_portrait", None)
+            if callable(queue_portrait):
+                queue_portrait(character_name, int(sprite_id) - 1)
+            return
         is_continuation = not speech  # 非首段，仅播放音频
 
         if not is_continuation:

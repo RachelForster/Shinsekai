@@ -14,6 +14,10 @@
   max-width: min(var(--chat-options-max-width), var(--chat-input-resolved-width));
 }
 
+.dialog-layer-shell {
+  position: relative;
+}
+
 .dialog-layer {
   position: relative;
   z-index: 1;
@@ -286,4 +290,45 @@
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
   pointer-events: none;
   animation: chat-stage-ctc 1.15s ease-in-out infinite;
+}
+@property --player-portrait-height {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 224px;
+}
+
+.dialog-layer__player-portrait {
+  position: absolute;
+  bottom: var(--player-portrait-inset);
+  left: clamp(
+    calc(-1 * (var(--player-portrait-size) + var(--player-portrait-gap))),
+    calc(572px - 58.1vw),
+    var(--player-portrait-inset)
+  );
+  width: var(--player-portrait-size);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dialog-layer-shell[data-player-portrait="true"] {
+  --player-portrait-inset: clamp(8px, 1.5vw, 16px);
+  --player-portrait-gap: clamp(12px, 1.5vw, 20px);
+  --player-portrait-size: clamp(
+    calc(var(--chat-dialog-height) - 2 * var(--player-portrait-inset)),
+    19.5vw,
+    min(calc(var(--chat-dialog-height) + 72px), 320px)
+  );
+  --player-portrait-text-inset: clamp(
+    0px,
+    calc(854px - 55.8vw),
+    calc(var(--player-portrait-size) + var(--player-portrait-gap))
+  );
+}
+
+.dialog-layer-shell[data-player-portrait="true"] .dialog-layer__name {
+  margin-left: var(--player-portrait-text-inset);
+}
+
+.dialog-layer-shell[data-player-portrait="true"] .dialog-layer__body {
+  padding-left: var(--player-portrait-text-inset);
 }

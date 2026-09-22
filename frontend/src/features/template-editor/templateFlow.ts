@@ -106,6 +106,7 @@ export function buildTemplateGenerateInput(input: {
   selectedCharacters: string[];
   characterPromptMode?: "compact" | "full";
   primaryCharacters?: string[];
+  playerCharacter?: string;
   mediaSelectionMode: MediaSelectionMode;
 }): TemplateGenerateInput {
   return {
@@ -118,6 +119,7 @@ export function buildTemplateGenerateInput(input: {
     mediaSelectionMode: input.mediaSelectionMode,
     name: input.draft.name.trim(),
     primaryCharacters: input.primaryCharacters,
+    playerCharacter: input.playerCharacter,
     scenario: String(input.draft.scenario ?? ""),
     useCg: input.options.useCg,
     useChoice: input.options.useChoice,
@@ -140,6 +142,8 @@ export function buildTemplateLaunchSession(input: {
   selectedCharacters: string[];
   characterPromptMode?: "compact" | "full";
   primaryCharacters?: string[];
+  playerCharacter?: string;
+  readPlayerSpeech?: boolean;
   mediaSelectionMode: MediaSelectionMode;
   selectedTemplateId: string;
 }): TemplateLaunchSession {
@@ -158,6 +162,8 @@ export function buildTemplateLaunchSession(input: {
     roomId: input.runtime.roomId.trim(),
     scenario: String(input.draft.scenario ?? ""),
     primaryCharacters: input.primaryCharacters,
+    playerCharacter: input.playerCharacter,
+    readPlayerSpeech: input.readPlayerSpeech,
     selectedCharacters: input.selectedCharacters,
     system: String(input.draft.system ?? ""),
     templateFileDropdown: input.selectedTemplateId,
@@ -211,6 +217,8 @@ export function synchronizeChatLaunchPayloadWithSession(
     ...payload,
     backgroundName: session.background,
     characters: session.selectedCharacters,
+    playerCharacter: session.playerCharacter,
+    readPlayerSpeech: session.readPlayerSpeech,
     enableMobileAccess: session.enableMobileAccess,
     effectNames: effectNames.length ? effectNames : undefined,
     historyPath: session.historyPath.trim(),

@@ -510,7 +510,15 @@ class StreamingChatSession(_BaseChatSession):
                 bg_group=runtime.presentation_assets.background_sprites,
             )
             self._configure_stream_runtime()
+            from application.chat.player_control import player_settings
+            player_name = str(player_settings().get("name") or "")
+            if player_name:
+                self.ui_updates.set_user_display_name(player_name)
         self._start_workflow()
+        if player_name:
+            character = self.config.get_character_by_name(player_name)
+            if character is not None and character.sprites:
+                self.ui_updates.update_sprite(player_name, 0)
         self._present_initial_ui()
         self.initialization.complete()
         self._start_live_comments()

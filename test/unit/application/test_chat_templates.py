@@ -361,6 +361,8 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
         "maxDialogItems": 8,
         "maxSpeechChars": 0,
         "mediaSelectionMode": "indexed",
+        "playerCharacter": "",
+        "readPlayerSpeech": False,
         "roomId": "123",
         "scenario": "场景",
         "selectedCharacters": ["Alice", "42"],

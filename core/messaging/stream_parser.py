@@ -51,7 +51,9 @@ class LlmResponseStreamParser:
     边解析边 put 的时序一致；同一 chunk 内多个 JSON 也会在解析第一个后先交付下游）。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, player_name: str = "", player_speech: str = "") -> None:
+        self.player_name = player_name
+        self.player_speech = player_speech
         self._buffer = ""
         self.accumulated_text = ""
         self.parse_failures = 0
@@ -101,8 +103,7 @@ class LlmResponseStreamParser:
                 self._buffer = self._buffer[end_index:].strip()
                 break
 
-    @staticmethod
-    def _dialog_messages(dialog_item: object) -> list[LLMDialogMessage]:
+    def _dialog_messages(self, dialog_item: object) -> list[LLMDialogMessage]:
         """Turn one parsed JSON object into dialogue messages.
 
         The output contract wraps utterances in ``{"dialog": [ {...}, ... ]}``.
@@ -112,8 +113,35 @@ class LlmResponseStreamParser:
         it here into its utterances; both paths then yield the same messages.
         The ``dialog`` key matches ``parse_assistant_dialog_content``.
         """
+        player_messages = []
+        if self.player_name and isinstance(dialog_item, dict):
+            speech = dialog_item.get("player_speech")
+            if speech is None and dialog_item and set(dialog_item) <= {"translate"}:
+                speech = dialog_item
+            if self.player_speech and isinstance(speech, dict):
+                translated = str(speech.get("translate") or "").strip()
+                if translated:
+                    player_message = LLMDialogMessage(
+                        name=self.player_name,
+                        text=self.player_speech,
+                        translate=translated,
+                        sprite="-1",
+                    )
+                    player_message._player_input = True
+                    player_messages.append(player_message)
+                    if speech is dialog_item:
+                        return player_messages
+            portrait = dialog_item.get("player_portrait")
+            if portrait is None and dialog_item and set(dialog_item) <= {"sprite", "vibe"}:
+                portrait = dialog_item
+            if isinstance(portrait, dict) and portrait and set(portrait) <= {"sprite", "vibe"}:
+                player_messages.append(LLMDialogMessage(
+                    name=self.player_name, text="", sprite=portrait.get("sprite", "-1"), vibe=portrait.get("vibe", ""),
+                ))
+                if portrait is dialog_item or ("dialog" not in dialog_item and "character_name" not in dialog_item):
+                    return player_messages
         if isinstance(dialog_item, dict) and isinstance(dialog_item.get("dialog"), list):
             items = [item for item in dialog_item["dialog"] if isinstance(item, dict)]
         else:
             items = [dialog_item]
-        return [LLMDialogMessage(**item) for item in items]
+        return player_messages + [LLMDialogMessage(**item) for item in items]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from core.chat_history.text import parse_assistant_dialog_content
@@ -27,6 +28,17 @@ def latest_media_dialogs(
     for message in messages:
         if not isinstance(message, dict) or message.get("role") != "assistant":
             continue
+        from application.chat.player_control import player_settings
+        player = str(player_settings().get("name") or "")
+        try:
+            portrait = json.loads(message.get("content", "")).get("player_portrait")
+        except (ValueError, TypeError, AttributeError):
+            portrait = None
+        if player and isinstance(portrait, dict):
+            position += 1
+            latest["player"] = (position, LLMDialogMessage(
+                name=player, text="", sprite=portrait.get("sprite", "-1"), vibe=portrait.get("vibe", ""),
+            ))
         for item in parse_assistant_dialog_content(message.get("content", "")):
             try:
                 dialog = LLMDialogMessage.model_validate(item)
@@ -45,6 +57,9 @@ def latest_media_dialogs(
                 continue
             else:
                 kind = "character"
+                from application.chat.player_control import player_settings
+                if dialog.name == player_settings().get("name"):
+                    kind = "player"
             latest[kind] = (position, dialog)
 
     return tuple(

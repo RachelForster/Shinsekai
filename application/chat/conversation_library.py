@@ -288,6 +288,9 @@ def update_conversation_character(state: Any, old_name: str, new_name: str | Non
             for settings, keys in ((launch, ("characters", "primaryCharacters")), (editor, ("selectedCharacters", "primaryCharacters"))):
                 if not isinstance(settings, dict):
                     continue
+                if settings.get("playerCharacter") == old_name:
+                    settings["playerCharacter"] = new_name or ""
+                    changed = True
                 for key in keys:
                     names = settings.get(key)
                     if not isinstance(names, list) or old_name not in names:

@@ -110,11 +110,14 @@ class TemplateGenerator:
         max_dialog_items: int = 0,
         primary_characters: Any = None,
         media_selection_mode: str = "indexed",
+        player_character: str = "",
     ):
         if not selected_characters:
             raise NoValidCharactersError()
         characters = self.resolve_chat_template_characters(selected_characters)
-        if not characters:
+        if player_character:
+            characters = [(name, character) for name, character in characters if name != player_character]
+        if not characters and not player_character:
             raise NoValidCharactersError()
         has_background = bool(bg_name) and not is_transparent_background(bg_name)
         context = DialogTemplateContext(
