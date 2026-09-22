@@ -116,6 +116,12 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     if tts_bundle_paths:
         payload["tts_bundle_installed_paths"] = tts_bundle_paths
     payload["adapter_catalog"] = _adapter_catalog()
+    try:
+        from ai.vision.service import configured_vision_available
+
+        payload["vision_available"] = configured_vision_available(state.config_manager.config.api_config)
+    except Exception:
+        payload["vision_available"] = False
     return payload
 
 
@@ -136,6 +142,16 @@ def _validate_api_config_for_save(config: Any) -> None:
         raise ValueError("服务商、基础地址、API Key 和模型 ID 都需要填写。")
     if _contains_quotes(base_url):
         raise ValueError("LLM API 基础网址不能包含引号。")
+
+    vision_provider = str(getattr(config, "vision_provider", "auto") or "auto").strip().lower()
+    if vision_provider == "deepseek":
+        vision_api_key = _provider_map_value(getattr(config, "vision_api_key", {}), vision_provider)
+        vision_base_url = _provider_map_value(getattr(config, "vision_base_url", {}), vision_provider)
+        vision_model = _provider_map_value(getattr(config, "vision_model", {}), vision_provider)
+        if not vision_api_key or not vision_base_url or not vision_model:
+            raise ValueError("DeepSeek 视觉的基础地址、API Key 和模型 ID 都需要填写。")
+        if _contains_quotes(vision_base_url) or not is_http_url(vision_base_url):
+            raise ValueError("DeepSeek 视觉基础地址必须是有效且不含引号的 http(s) URL。")
 
     tts_provider = normalize_tts_provider(config.tts_provider)
     if not uses_shared_tts_server_config(tts_provider):

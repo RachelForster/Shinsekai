@@ -453,6 +453,8 @@ class ConfigManager:
             src = ac.asr_extra_configs or {}
         elif kind == "t2i":
             src = ac.t2i_extra_configs or {}
+        elif kind == "vision":
+            src = ac.vision_extra_configs or {}
         else:
             return {}
         return dict(src.get(pk, {}) or {})
@@ -479,6 +481,10 @@ class ConfigManager:
             m = dict(ac.t2i_extra_configs or {})
             m[pk] = dict(data)
             ac.t2i_extra_configs = m
+        elif kind == "vision":
+            m = dict(ac.vision_extra_configs or {})
+            m[pk] = dict(data)
+            ac.vision_extra_configs = m
         else:
             return
         self.config.api_config = ac

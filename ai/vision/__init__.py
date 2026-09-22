@@ -2,7 +2,17 @@
 
 from .vision_adapter import VisionAdapter
 
-__all__ = ["ChatVisionService", "PreparedChatInput", "VisionAdapter", "VisionManager"]
+__all__ = [
+    "ChatVisionService",
+    "configured_vision_available",
+    "configured_vision_manager",
+    "DeepSeekVisionAdapter",
+    "DeepseekVisonAdapter",
+    "DeepseekVisionAdapter",
+    "PreparedChatInput",
+    "VisionAdapter",
+    "VisionManager",
+]
 
 
 def __getattr__(name: str):
@@ -12,8 +22,30 @@ def __getattr__(name: str):
         from .vision_manager import VisionManager
 
         return VisionManager
-    if name in {"ChatVisionService", "PreparedChatInput"}:
-        from .service import ChatVisionService, PreparedChatInput
+    if name in {"ChatVisionService", "PreparedChatInput", "configured_vision_available", "configured_vision_manager"}:
+        from .service import (
+            ChatVisionService,
+            PreparedChatInput,
+            configured_vision_available,
+            configured_vision_manager,
+        )
 
-        return {"ChatVisionService": ChatVisionService, "PreparedChatInput": PreparedChatInput}[name]
+        return {
+            "ChatVisionService": ChatVisionService,
+            "PreparedChatInput": PreparedChatInput,
+            "configured_vision_available": configured_vision_available,
+            "configured_vision_manager": configured_vision_manager,
+        }[name]
+    if name in {"DeepSeekVisionAdapter", "DeepseekVisonAdapter", "DeepseekVisionAdapter"}:
+        from .deepseek_vision_adapter import (
+            DeepSeekVisionAdapter,
+            DeepseekVisonAdapter,
+            DeepseekVisionAdapter,
+        )
+
+        return {
+            "DeepSeekVisionAdapter": DeepSeekVisionAdapter,
+            "DeepseekVisonAdapter": DeepseekVisonAdapter,
+            "DeepseekVisionAdapter": DeepseekVisionAdapter,
+        }[name]
     raise AttributeError(name)

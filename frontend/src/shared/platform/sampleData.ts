@@ -14,6 +14,7 @@ import type {
 } from "./types";
 
 export const sampleConfig: AppConfig = {
+  vision_available: true,
   adapter_catalog: {
     asr: [
       {
@@ -65,6 +66,15 @@ export const sampleConfig: AppConfig = {
       { label: "IndexTTS", schema: {}, value: "index-tts" },
       { label: "CosyVoice", schema: {}, value: "cosyvoice" },
     ],
+    vision: [
+      { label: "自动选择", schema: {}, value: "auto" },
+      {
+        label: "DeepSeek Vision",
+        schema: { detail: { choices: ["auto", "low", "high", "original"], default: "auto", type: "str" } },
+        value: "deepseek",
+      },
+      { label: "Moondream（本地）", schema: {}, value: "moondream" },
+    ],
   },
   api_config: {
     gpt_sovits_api_path: "",
@@ -84,6 +94,10 @@ export const sampleConfig: AppConfig = {
     llm_model: {},
     llm_provider: "Deepseek",
     is_streaming: true,
+    vision_provider: "auto",
+    vision_api_key: { deepseek: "" },
+    vision_base_url: { deepseek: "https://api.deepseek.com" },
+    vision_model: { deepseek: "deepseek-flash" },
     interrupt_enabled: true,
     is_batch_input_enabled: false,
     batch_input_timeout: 5,
@@ -107,6 +121,7 @@ export const sampleConfig: AppConfig = {
     tts_extra_configs: {},
     asr_extra_configs: {},
     t2i_extra_configs: {},
+    vision_extra_configs: {},
   },
   background_list: [
     {

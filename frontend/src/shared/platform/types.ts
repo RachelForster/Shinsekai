@@ -67,6 +67,10 @@ export interface ApiConfig {
   llm_model: Record<string, string>;
   llm_provider: string;
   is_streaming: boolean;
+  vision_provider: string;
+  vision_api_key: Record<string, string>;
+  vision_base_url: Record<string, string>;
+  vision_model: Record<string, string>;
   interrupt_enabled: boolean;
   is_batch_input_enabled: boolean;
   batch_input_timeout: number;
@@ -90,6 +94,7 @@ export interface ApiConfig {
   tts_extra_configs: Record<string, Record<string, unknown>>;
   asr_extra_configs: Record<string, Record<string, unknown>>;
   t2i_extra_configs: Record<string, Record<string, unknown>>;
+  vision_extra_configs: Record<string, Record<string, unknown>>;
 }
 
 export interface SystemConfig {
@@ -156,6 +161,7 @@ export interface AppConfig {
   effect_list: Effect[];
   system_config: SystemConfig;
   tts_bundle_installed_paths?: Record<string, string>;
+  vision_available?: boolean;
 }
 
 export interface AdapterExtraFieldSchema {
@@ -180,6 +186,7 @@ export interface AdapterCatalog {
   llm: AdapterOption[];
   t2i: AdapterOption[];
   tts: AdapterOption[];
+  vision?: AdapterOption[];
 }
 
 export type PluginSlotId =

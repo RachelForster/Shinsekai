@@ -134,3 +134,26 @@ def test_asset_paths_cannot_escape_the_project_root(tmp_path: Path):
 
 def test_normalize_generated_tags_removes_wrappers():
     assert normalize_generated_tags("```text\nTags: night; rainy\n```") == "night, rainy"
+
+
+def test_smart_label_uses_the_configured_vision_manager(tmp_path: Path, monkeypatch):
+    character = SimpleNamespace(
+        name="Nanami",
+        sprites=[SimpleNamespace(path=_image(tmp_path, "one.png"))],
+        emotion_tags="",
+    )
+    config = FakeConfigManager(character=character)
+    calls: list[tuple[bytes, str]] = []
+    configured = SimpleNamespace(
+        describe=lambda image, prompt: calls.append((image, prompt)) or "smiling, standing"
+    )
+    monkeypatch.setattr(
+        "application.media.auto_annotation.configured_vision_manager",
+        lambda: configured,
+    )
+
+    result = auto_label_character_sprites(config, "Nanami", project_root=tmp_path)
+
+    assert result["annotatedCount"] == 1
+    assert tag_contents(result["tags"], 1) == ["smiling, standing"]
+    assert calls and "concise English tags" in calls[0][1]

@@ -54,8 +54,9 @@ def adapter_catalog() -> dict[str, list[dict[str, Any]]]:
         from ai.llm.llm_manager import LLMAdapterFactory
         from ai.t2i.t2i_manager import T2IAdapterFactory
         from ai.tts.tts_manager import TTSAdapterFactory
+        from ai.vision.vision_manager import VisionManager
     except Exception:
-        return {"asr": [], "llm": [], "t2i": [], "tts": []}
+        return {"asr": [], "llm": [], "t2i": [], "tts": [], "vision": []}
 
     llm_adapters = dict(LLMAdapterFactory._adapters)
     llm: list[dict[str, Any]] = []
@@ -130,7 +131,13 @@ def adapter_catalog() -> dict[str, list[dict[str, Any]]]:
     for key in sorted(key for key in asr_adapters if key != "vosk"):
         asr.append(_adapter_option(key, asr_labels.get(key, key), asr_adapters[key]))
 
-    return {"asr": asr, "llm": llm, "t2i": t2i, "tts": tts}
+    vision_adapters = dict(VisionManager._adapters)
+    vision_labels = {"deepseek": "DeepSeek Vision", "moondream": "Moondream（本地）"}
+    vision: list[dict[str, Any]] = [_adapter_option("auto", "自动选择")]
+    for key in sorted(vision_adapters, key=str.lower):
+        vision.append(_adapter_option(key, vision_labels.get(key, key), vision_adapters[key]))
+
+    return {"asr": asr, "llm": llm, "t2i": t2i, "tts": tts, "vision": vision}
 
 
 def normalize_t2i_provider(value: str) -> str:

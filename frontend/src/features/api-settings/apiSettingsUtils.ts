@@ -498,6 +498,15 @@ export function llmModelFetchKey(config: ApiConfig) {
   ]);
 }
 
+export function visionModelFetchKey(config: ApiConfig) {
+  const provider = String(config.vision_provider || "").trim();
+  return [
+    provider,
+    activeMapValue(config.vision_base_url, provider).trim(),
+    activeMapValue(config.vision_api_key, provider).trim(),
+  ].join("\u0000");
+}
+
 export function thinkingUnsupported(model: string) {
   return ["deepseek-v4-flash", "deepseek-chat"].includes(model.trim().toLowerCase());
 }
