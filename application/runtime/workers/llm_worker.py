@@ -215,8 +215,8 @@ class LLMWorker(ThreadDagNode):
                             )
                             delivered_before_repair = message_count
                             reconciliation = reconcile_dialog_repair(
-                                delivered_dialogs,
-                                repaired_messages,
+                                [item for item in delivered_dialogs if not item._player_input],
+                                [item for item in repaired_messages if not item._player_input],
                             )
                             appended_messages = 0
                             for llm_dialog in reconciliation.messages_to_append:

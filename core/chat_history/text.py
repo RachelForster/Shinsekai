@@ -24,6 +24,7 @@ __all__ = [
     "history_payload_to_plain_text",
     "history_payload_to_turns",
     "parse_assistant_dialog_content",
+    "parse_assistant_dialog_payload",
     "rendered_history_text",
     "turns_to_text",
 ]
@@ -86,7 +87,7 @@ def _repair_json_string(text: str) -> str:
     return "".join(result)
 
 
-def parse_assistant_dialog_content(content: Any) -> list[Any]:
+def parse_assistant_dialog_payload(content: Any) -> dict[str, Any]:
     """Parse an assistant response into its ``dialog`` list.
 
     Plain JSON objects, fenced JSON, and the same mildly malformed JSON that
@@ -95,14 +96,13 @@ def parse_assistant_dialog_content(content: Any) -> list[Any]:
     """
 
     if content is None:
-        return []
+        return {}
     if isinstance(content, Mapping):
-        dialog = content.get("dialog", [])
-        return dialog if isinstance(dialog, list) else []
+        return dict(content)
 
     text = str(content).strip()
     if not text:
-        return []
+        return {}
     if text.startswith("```"):
         text = re.sub(r"^```[a-zA-Z0-9]*\s*", "", text)
         text = re.sub(r"\s*```$", "", text, flags=re.DOTALL)
@@ -117,15 +117,23 @@ def parse_assistant_dialog_content(content: Any) -> list[Any]:
         except json.JSONDecodeError:
             start, end = text.find("{"), text.rfind("}")
             if start < 0 or end <= start:
-                return []
+                return {}
             try:
                 parsed = json.loads(text[start : end + 1])
             except json.JSONDecodeError:
-                return []
+                return {}
     if not isinstance(parsed, dict):
-        return []
+        return {}
+    return parsed
+
+
+def parse_assistant_dialog_content(content: Any) -> list[Any]:
+    """Parse an assistant response into its ``dialog`` list."""
+    parsed = parse_assistant_dialog_payload(content)
     dialog = parsed.get("dialog", [])
-    return dialog if isinstance(dialog, list) else []
+    if not isinstance(dialog, list):
+        return []
+    return dialog
 
 
 def rendered_history_text(value: Any) -> str:

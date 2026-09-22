@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from core.chat_history.text import parse_assistant_dialog_content
+from core.chat_history.text import parse_assistant_dialog_content, parse_assistant_dialog_payload
 from core.messaging.dialog_tokens import (
     match_bgm_name,
     match_cg_name,
@@ -31,7 +31,7 @@ def latest_media_dialogs(
         from application.chat.player_control import player_settings
         player = str(player_settings().get("name") or "")
         try:
-            portrait = json.loads(message.get("content", "")).get("player_portrait")
+            portrait = parse_assistant_dialog_payload(message.get("content", "")).get("player_portrait")
         except (ValueError, TypeError, AttributeError):
             portrait = None
         if player and isinstance(portrait, dict):

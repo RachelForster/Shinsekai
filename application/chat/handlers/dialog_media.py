@@ -305,7 +305,10 @@ class CharacterMediaHandler(MessageHandler):
 
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
-        name_s = _cc().convert(msg.name)
+        raw_name = str(msg.name or "")
+        from application.chat.player_control import player_settings
+        player_name = str(player_settings().get("name") or "")
+        name_s = raw_name if raw_name == player_name else _cc().convert(raw_name)
         _refresh_config(rt)
         character_config = rt.config.get_character_by_name(name_s)
         if character_config is None:
@@ -334,8 +337,7 @@ class CharacterMediaHandler(MessageHandler):
         )
         if sprite.found:
             self._last_sprite_by_character[name_s] = sprite.asset_id
-        from application.chat.player_control import player_settings
-        if name_s == player_settings().get("name"):
+        if name_s == player_name:
             if msg._player_input:
                 from dataclasses import replace
                 from application.chat.player_control import player_speech

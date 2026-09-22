@@ -191,14 +191,12 @@ class CharacterUseCase:
             raise ValueError(error)
 
     def _save(self, payload: dict[str, Any]) -> dict[str, Any]:
-        from config.schema import Character
+        from config.schema import Character, PortraitCrop
 
         body = payload.get("character", payload)
         if not isinstance(body, dict):
             raise ValueError("character payload must be an object")
         original_name = str(payload.get("originalName") or body.get("name") or "").strip()
-        previous_character = self._state.config_manager.get_character_by_name(original_name)
-        previous_crop = getattr(previous_character, "portrait_crop", None)
         validate_character_payload(body, allow_remote_voice_paths=self._uses_remote_gpt_sovits())
         character = Character.model_validate(body)
         saved_name = character.name.strip()
@@ -218,6 +216,12 @@ class CharacterUseCase:
             edit_as_name=original_name,
             emotion_tags=str(character.emotion_tags or ""),
             character_brief=str(character.character_brief or "").strip(),
+            portrait_crop=character.portrait_crop if "portrait_crop" in body else None,
+            sprite_portrait_crops={
+                index: (item.get("portrait_crop") and PortraitCrop.model_validate(item["portrait_crop"]))
+                for index, item in enumerate(body.get("sprites", []))
+                if isinstance(item, dict) and "portrait_crop" in item
+            },
         )
         if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
             raise RuntimeError(message)
@@ -232,20 +236,6 @@ class CharacterUseCase:
                 pass
             update_conversation_character(self._state, original_name, saved_name)
         saved = self._state.config_manager.get_character_by_name(saved_name)
-        if saved is not None:
-            saved.portrait_crop = character.portrait_crop if "portrait_crop" in body else (previous_crop or character.portrait_crop)
-            from config.schema import PortraitCrop
-            sprite_crops = {str(item.get("path") or ""): item.get("portrait_crop") for item in body.get("sprites", []) if isinstance(item, dict) and "portrait_crop" in item}
-            for sprite in saved.sprites:
-                path = str(sprite.get("path") or "") if isinstance(sprite, dict) else str(sprite.path)
-                if path in sprite_crops:
-                    value = sprite_crops[path]
-                    crop = PortraitCrop.model_validate(value) if value is not None else None
-                    if isinstance(sprite, dict):
-                        sprite["portrait_crop"] = crop.model_dump() if crop else None
-                    else:
-                        sprite.portrait_crop = crop
-            self._state.config_manager.save_characters_config()
         return _jsonify(saved or character)
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:

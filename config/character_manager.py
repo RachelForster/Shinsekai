@@ -87,7 +87,9 @@ class CharacterManager:
                      pronunciation_map: dict = None,
                      edit_as_name: Optional[str] = None,
                      emotion_tags: Optional[str] = None,
-                     character_brief: Optional[str] = None) -> Tuple[str, List[str]]:
+                     character_brief: Optional[str] = None,
+                     portrait_crop=None,
+                     sprite_portrait_crops: Optional[dict[int, object]] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
 
@@ -146,6 +148,15 @@ class CharacterManager:
                     target.pronunciation_map = pronunciation_map
                 if emotion_tags is not None:
                     target.emotion_tags = emotion_tags
+                if portrait_crop is not None:
+                    target.portrait_crop = portrait_crop
+                for index, crop in (sprite_portrait_crops or {}).items():
+                    if 0 <= index < len(target.sprites):
+                        sprite = target.sprites[index]
+                        if isinstance(sprite, dict):
+                            sprite["portrait_crop"] = crop.model_dump() if crop else None
+                        else:
+                            sprite.portrait_crop = crop
                 self._save_characters_config()
                 return "人物已更新！", [c.name for c in characters]
 
@@ -170,6 +181,7 @@ class CharacterManager:
                 speech_speed=speech_speed,
                 speech_volume=speech_volume,
                 pronunciation_map=pronunciation_map or {},
+                portrait_crop=portrait_crop,
             )
             characters.append(new_character)
             self._save_characters_config()
@@ -193,6 +205,15 @@ class CharacterManager:
                 existing_character.pronunciation_map = pronunciation_map
             if emotion_tags is not None:
                 existing_character.emotion_tags = emotion_tags
+            if portrait_crop is not None:
+                existing_character.portrait_crop = portrait_crop
+            for index, crop in (sprite_portrait_crops or {}).items():
+                if 0 <= index < len(existing_character.sprites):
+                    sprite = existing_character.sprites[index]
+                    if isinstance(sprite, dict):
+                        sprite["portrait_crop"] = crop.model_dump() if crop else None
+                    else:
+                        sprite.portrait_crop = crop
 
             self._save_characters_config()
             return "人物已更新！", [c.name for c in characters]

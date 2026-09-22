@@ -81,10 +81,10 @@ def player_runtime_template(
     from ai.llm.template_generator import _T
     character = config.get_character_by_name(name)
     separator = _T('name_sep')
-    old_names = separator.join(names or [])
     npc_names = separator.join(item for item in (names or []) if item != name)
+    old_names = separator.join(names or [])
     if old_names:
-        template = template.replace(old_names, npc_names)
+        template = template.replace(_T('preamble', names=old_names), _T('preamble', names=npc_names))
     if character is not None:
         blocks = [
             _T('sprites_count', name=name, n=len(character.sprites)) + f'{character.emotion_tags or ""}\n\n',
