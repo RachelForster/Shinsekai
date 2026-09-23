@@ -64,12 +64,11 @@ export interface ApiConfig {
   t2i_output_node_id: string;
   llm_api_key: Record<string, string>;
   llm_base_url: string;
+  llm_base_urls: Record<string, string>;
   llm_model: Record<string, string>;
   llm_provider: string;
   is_streaming: boolean;
   vision_provider: string;
-  vision_api_key: Record<string, string>;
-  vision_base_url: Record<string, string>;
   vision_model: Record<string, string>;
   interrupt_enabled: boolean;
   is_batch_input_enabled: boolean;

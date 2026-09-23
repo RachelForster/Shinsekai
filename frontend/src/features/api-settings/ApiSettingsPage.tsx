@@ -79,12 +79,11 @@ import {
   t2iProviderSelectOptions,
   updateAsrExtraConfig,
   effectiveVisionApiKey,
-  visionDefaultBaseUrls,
+  effectiveVisionBaseUrl,
   visionDefaultModels,
   visionModelFetchKey,
   visionProviderLlmProviders,
   visionProviderRequiresApiKey,
-  visionReusesLlmApiKey,
   withCurrentOption,
   VOSK_MODEL_PATH,
   type UiLanguage,
@@ -468,9 +467,8 @@ export function ApiSettingsPage() {
   const availableModelOptions = mergeModelOptions(modelOptions, activeModel ? [{ id: activeModel, tags: [] }] : []);
   const selectedOption = availableModelOptions.find((option) => option.id === activeModel);
   const modelCandidateListId = "llm-model-candidates";
-  const reuseVisionLlmApiKey = visionReusesLlmApiKey(draft);
   const activeVisionApiKey = effectiveVisionApiKey(draft);
-  const activeVisionBaseUrl = activeMapValue(draft.vision_base_url, draft.vision_provider);
+  const activeVisionBaseUrl = effectiveVisionBaseUrl(draft);
   const activeVisionModel = activeMapValue(draft.vision_model, draft.vision_provider);
   const availableVisionModelOptions = mergeModelOptions(
     visionModelOptions,
@@ -521,6 +519,12 @@ export function ApiSettingsPage() {
       activeModelFetchKey.current = null;
       setModelOptions([]);
       resetLlmConnectionState();
+      const baseUrl = String(patch.llm_base_url ?? "");
+      updateDraft({
+        ...patch,
+        llm_base_urls: { ...draft.llm_base_urls, [draft.llm_provider]: baseUrl },
+      });
+      return;
     }
     updateDraft(patch);
   };
@@ -546,9 +550,11 @@ export function ApiSettingsPage() {
     activeModelFetchKey.current = null;
     setModelOptions([]);
     resetLlmConnectionState();
+    const baseUrl = activeMapValue(draft.llm_base_urls, provider) || llmDefaultBaseUrls[provider] || "";
     setDraft({
       ...draft,
-      llm_base_url: llmDefaultBaseUrls[provider] ?? "",
+      llm_base_url: baseUrl,
+      llm_base_urls: { ...draft.llm_base_urls, [provider]: baseUrl },
       llm_provider: provider,
     });
   };
@@ -558,11 +564,6 @@ export function ApiSettingsPage() {
     setVisionModelOptions([]);
     setDraft({
       ...draft,
-      vision_api_key: { ...draft.vision_api_key, [provider]: draft.vision_api_key?.[provider] ?? "" },
-      vision_base_url: {
-        ...draft.vision_base_url,
-        [provider]: draft.vision_base_url?.[provider] ?? visionDefaultBaseUrls[provider] ?? "",
-      },
       vision_model: {
         ...draft.vision_model,
         [provider]: draft.vision_model?.[provider] ?? visionDefaultModels[provider] ?? "",
@@ -599,14 +600,27 @@ export function ApiSettingsPage() {
     });
   };
 
-  const updateVisionProviderMap = (key: "vision_api_key" | "vision_base_url" | "vision_model", value: string) => {
-    if (key !== "vision_model") {
-      activeVisionModelFetchKey.current = null;
-      setVisionModelOptions([]);
+  const updateVisionModel = (value: string) => {
+    setDraft({
+      ...draft,
+      vision_model: { ...draft.vision_model, [draft.vision_provider]: value },
+    });
+  };
+
+  const updateVisionSharedCredential = (key: "llm_api_key" | "llm_base_urls", value: string) => {
+    const provider = visionProviderLlmProviders[draft.vision_provider];
+    if (!provider) return;
+    activeVisionModelFetchKey.current = null;
+    setVisionModelOptions([]);
+    if (provider === draft.llm_provider) {
+      activeModelFetchKey.current = null;
+      setModelOptions([]);
+      resetLlmConnectionState();
     }
     setDraft({
       ...draft,
-      [key]: { ...draft[key], [draft.vision_provider]: value },
+      [key]: { ...draft[key], [provider]: value },
+      ...(key === "llm_base_urls" && provider === draft.llm_provider ? { llm_base_url: value } : {}),
     });
   };
 
@@ -740,6 +754,7 @@ export function ApiSettingsPage() {
     }
     if (
       !["auto", "moondream"].includes(draft.vision_provider.toLowerCase()) &&
+      visionProviderLlmProviders[draft.vision_provider] &&
       (!activeVisionBaseUrl.trim() ||
         (visionProviderRequiresApiKey(draft.vision_provider) && !activeVisionApiKey.trim()) ||
         !activeVisionModel.trim())
@@ -872,6 +887,7 @@ export function ApiSettingsPage() {
         activeApiKey={activeVisionApiKey}
         activeBaseUrl={activeVisionBaseUrl}
         activeModel={activeVisionModel}
+        apiKeyRequired={visionProviderRequiresApiKey(draft.vision_provider)}
         availableModelOptions={availableVisionModelOptions}
         disabled={saveMutation.isPending}
         draft={draft}
@@ -883,14 +899,10 @@ export function ApiSettingsPage() {
         }
         onFetchModels={handleFetchVisionModels}
         onProviderChange={updateVisionProvider}
-        onProviderMapChange={updateVisionProviderMap}
+        onProviderMapChange={updateVisionModel}
+        onSharedCredentialChange={updateVisionSharedCredential}
         providerOptions={visionProviderOptions}
-        reuseLlmApiKey={reuseVisionLlmApiKey}
-        sharedLlmProvider={
-          visionProviderRequiresApiKey(draft.vision_provider)
-            ? visionProviderLlmProviders[draft.vision_provider]
-            : undefined
-        }
+        sharedLlmProvider={visionProviderLlmProviders[draft.vision_provider]}
       />
       <MemorySettingsSection
         disabled={saveMutation.isPending}

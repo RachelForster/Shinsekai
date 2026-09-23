@@ -9,6 +9,7 @@ import pytest
 
 from ai.vision.message_content import normalize_anthropic_user_content, normalize_openai_messages
 from ai.vision.service import ChatVisionService, configured_vision_available
+from ai.vision.vision_manager import VisionManager
 from core.media.chat_attachments import resolve_chat_attachments
 
 
@@ -33,15 +34,22 @@ class _FallbackVision:
         return "a moon over a quiet lake"
 
 
-def test_configured_vision_available_accepts_a_shared_llm_api_key():
+def test_configured_vision_available_uses_corresponding_llm_credentials():
     config = SimpleNamespace(
         llm_api_key={"Deepseek": "shared-key"},
-        vision_api_key={},
-        vision_base_url={"deepseek": "https://api.deepseek.com"},
-        vision_extra_configs={"deepseek": {"reuse_llm_api_key": True}},
+        llm_base_urls={"Deepseek": "https://api.deepseek.com/v1"},
+        llm_provider="ChatGPT",
+        llm_base_url="https://api.openai.com/v1",
         vision_model={"deepseek": "deepseek-flash"},
         vision_provider="deepseek",
     )
+
+    assert configured_vision_available(config) is True
+
+
+def test_registered_plugin_vision_does_not_require_builtin_provider_credentials(monkeypatch):
+    monkeypatch.setitem(VisionManager._adapters, "plugin-vision", _FallbackVision)
+    config = SimpleNamespace(vision_provider="plugin-vision")
 
     assert configured_vision_available(config) is True
 

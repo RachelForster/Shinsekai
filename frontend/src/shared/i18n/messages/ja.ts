@@ -394,9 +394,9 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.llm.testingConnection": "接続を確認中",
   "api.llm.thinkingEnabled": "思考モード",
   "api.llm.thinkingUnsupported": "このモデルは思考モードに対応していません。",
-  "api.vision.apiKey": "Vision API キー",
+  "api.vision.apiKey": "プロバイダー API キー",
   "api.vision.auto": "自動選択",
-  "api.vision.baseUrl": "Vision ベース URL",
+  "api.vision.baseUrl": "プロバイダー ベース URL",
   "api.vision.checkingModel": "Moondream モデルを確認中...",
   "api.vision.description":
     "画像入力に未対応の言語モデル向けに画像理解サービスを選択します。自動モードではプラグイン、ローカル Moondream の順に試します。",
@@ -419,8 +419,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.vision.provider": "Vision アダプター",
   "api.vision.required":
     "Vision アダプターにはベース URL とモデル ID が必要です。リモートサービスには API キーも必要です。",
-  "api.vision.reuseLlmApiKey": "LLM API キーを再利用",
-  "api.vision.reuseLlmApiKeyHelp": "別のキーを保存せず、{provider} に保存済みの API キーを使用します。",
+  "api.vision.sharedCredentialsHelp":
+    "LLM の {provider} 設定と接続情報を共有します。どちらで編集しても同じ設定が更新されます。",
   "api.vision.title": "画像理解",
   "api.loading": "API 設定を読み込み中",
   "api.resume.btn": "最後のチャットを読み込んで起動",

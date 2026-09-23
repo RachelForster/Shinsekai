@@ -106,6 +106,10 @@ class ApiConfig(BaseModel):
 
     llm_api_key: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商的 API Key 字典")
     llm_base_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="LLM 服务的 Base URL")
+    llm_base_urls: DefaultIfNone[Dict[str, str]] = Field(
+        default_factory=dict,
+        description="不同模型服务商共用的 Base URL 字典",
+    )
     llm_model: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商使用的具体模型名称字典")
     llm_provider: DefaultIfNone[str] = Field(default="Deepseek", description="LLM 服务器商名字")
     is_streaming: DefaultIfNone[bool] = Field(default=True, description="是否使用流式响应")
@@ -113,11 +117,6 @@ class ApiConfig(BaseModel):
     vision_provider: DefaultIfNone[str] = Field(
         default="auto",
         description="视觉理解适配器：auto / remote provider / moondream",
-    )
-    vision_api_key: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同视觉服务商的 API Key 字典")
-    vision_base_url: DefaultIfNone[Dict[str, str]] = Field(
-        default_factory=lambda: {"deepseek": "https://api.deepseek.com"},
-        description="不同视觉服务商的 Base URL 字典",
     )
     vision_model: DefaultIfNone[Dict[str, str]] = Field(
         default_factory=lambda: {"deepseek": "deepseek-flash"},

@@ -13,7 +13,12 @@ from ai.vision.moondream_adapter import (
     moondream_model_cached,
 )
 from ai.vision.vision_manager import VisionManager
-from config.vision_defaults import resolve_vision_api_key, vision_provider_requires_api_key
+from config.vision_defaults import (
+    resolve_vision_api_key,
+    resolve_vision_base_url,
+    vision_llm_provider,
+    vision_provider_requires_api_key,
+)
 from core.media.chat_attachments import (
     ResolvedChatAttachment,
     chat_attachment_display_text,
@@ -89,6 +94,8 @@ def configured_vision_available(api_config: Any | None = None) -> bool:
     provider = _configured_vision_provider(api_config)
     if provider not in {"auto", "moondream"}:
         try:
+            if not vision_llm_provider(provider):
+                return provider in VisionManager._adapters
             config = api_config
             if config is None:
                 from config.config_manager import ConfigManager
@@ -97,7 +104,7 @@ def configured_vision_available(api_config: Any | None = None) -> bool:
             api_key_ready = bool(resolve_vision_api_key(config, provider))
             return bool(
                 (api_key_ready or not vision_provider_requires_api_key(provider))
-                and str((config.vision_base_url or {}).get(provider, "") or "").strip()
+                and resolve_vision_base_url(config, provider)
                 and str((config.vision_model or {}).get(provider, "") or "").strip()
                 and provider in VisionManager._adapters
             )

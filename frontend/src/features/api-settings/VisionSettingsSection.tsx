@@ -5,7 +5,7 @@ import type { AdapterExtraFieldSchema, ApiConfig } from "../../entities/config/t
 import { downloadModelAsset, getModelAssetStatus } from "../../entities/model-assets/repository";
 import { useI18n } from "../../shared/i18n";
 import type { LlmModelOption, ModelAssetStatus, TaskSnapshot } from "../../shared/platform/types";
-import { AsyncButton, Select, Switch, TaskProgress, TextInput, useToast } from "../../shared/ui";
+import { AsyncButton, Select, TaskProgress, TextInput, useToast } from "../../shared/ui";
 import { AdapterExtraForm } from "./AdapterExtraForm";
 import { EditableModelSelect } from "./EditableModelSelect";
 
@@ -13,6 +13,7 @@ interface VisionSettingsSectionProps {
   activeApiKey: string;
   activeBaseUrl: string;
   activeModel: string;
+  apiKeyRequired: boolean;
   availableModelOptions: LlmModelOption[];
   disabled: boolean;
   draft: ApiConfig;
@@ -22,9 +23,9 @@ interface VisionSettingsSectionProps {
   onAdapterExtraChange: (key: string, value: unknown) => void;
   onFetchModels: () => void;
   onProviderChange: (provider: string) => void;
-  onProviderMapChange: (key: "vision_api_key" | "vision_base_url" | "vision_model", value: string) => void;
+  onProviderMapChange: (value: string) => void;
+  onSharedCredentialChange: (key: "llm_api_key" | "llm_base_urls", value: string) => void;
   providerOptions: Array<{ label: string; value: string }>;
-  reuseLlmApiKey: boolean;
   sharedLlmProvider?: string;
 }
 
@@ -34,6 +35,7 @@ export function VisionSettingsSection({
   activeApiKey,
   activeBaseUrl,
   activeModel,
+  apiKeyRequired,
   availableModelOptions,
   disabled,
   draft,
@@ -44,8 +46,8 @@ export function VisionSettingsSection({
   onFetchModels,
   onProviderChange,
   onProviderMapChange,
+  onSharedCredentialChange,
   providerOptions,
-  reuseLlmApiKey,
   sharedLlmProvider,
 }: VisionSettingsSectionProps) {
   const { t } = useI18n();
@@ -119,48 +121,36 @@ export function VisionSettingsSection({
           </Select>
         </span>
       </label>
-      {remoteProvider ? (
+      {remoteProvider && sharedLlmProvider ? (
         <>
           <label className="field-row">
             <span className="field-row__label">{t("api.vision.baseUrl")}</span>
             <span className="field-row__control">
               <TextInput
                 disabled={disabled}
-                onChange={(event) => onProviderMapChange("vision_base_url", event.target.value)}
-                placeholder="https://api.deepseek.com"
+                onChange={(event) => onSharedCredentialChange("llm_base_urls", event.target.value)}
+                placeholder="https://api.example.com/v1"
                 type="url"
                 value={activeBaseUrl}
               />
+              <span className="field-row__help">
+                {t("api.vision.sharedCredentialsHelp", { provider: sharedLlmProvider })}
+              </span>
             </span>
           </label>
-          {sharedLlmProvider ? (
+          {apiKeyRequired ? (
             <label className="field-row">
-              <span className="field-row__label">{t("api.vision.reuseLlmApiKey")}</span>
+              <span className="field-row__label">{t("api.vision.apiKey")}</span>
               <span className="field-row__control">
-                <Switch
-                  aria-label={t("api.vision.reuseLlmApiKey")}
-                  checked={reuseLlmApiKey}
+                <TextInput
                   disabled={disabled}
-                  id="vision-reuse-llm-api-key"
-                  onChange={(event) => onAdapterExtraChange("reuse_llm_api_key", event.currentTarget.checked)}
+                  onChange={(event) => onSharedCredentialChange("llm_api_key", event.target.value)}
+                  type="password"
+                  value={activeApiKey}
                 />
-                <span className="field-row__help">
-                  {t("api.vision.reuseLlmApiKeyHelp", { provider: sharedLlmProvider })}
-                </span>
               </span>
             </label>
           ) : null}
-          <label className="field-row">
-            <span className="field-row__label">{t("api.vision.apiKey")}</span>
-            <span className="field-row__control">
-              <TextInput
-                disabled={disabled || reuseLlmApiKey}
-                onChange={(event) => onProviderMapChange("vision_api_key", event.target.value)}
-                type="password"
-                value={activeApiKey}
-              />
-            </span>
-          </label>
           <label className="field-row">
             <span className="field-row__label">{t("api.vision.model")}</span>
             <span className="field-row__control">
@@ -168,7 +158,7 @@ export function VisionSettingsSection({
                 <EditableModelSelect
                   disabled={disabled}
                   id="vision-model-candidates"
-                  onChange={(value) => onProviderMapChange("vision_model", value)}
+                  onChange={onProviderMapChange}
                   options={availableModelOptions}
                   placeholder={t("api.vision.modelPlaceholder")}
                   value={activeModel}

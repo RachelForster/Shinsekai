@@ -7,6 +7,7 @@ import {
   DEFAULT_T2I_OUTPUT_NODE_ID,
   DEFAULT_T2I_PROMPT_NODE_ID,
   effectiveVisionApiKey,
+  effectiveVisionBaseUrl,
   inferT2iSetupMode,
   isT2iReadyForSprites,
   isTaskRunning,
@@ -27,6 +28,7 @@ function apiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
     asr_extra_configs: {},
     llm_api_key: {},
     llm_base_url: "",
+    llm_base_urls: {},
     llm_model: {},
     llm_provider: "Deepseek",
     ...overrides,
@@ -188,20 +190,19 @@ describe("API settings utilities", () => {
     expect(isT2iReadyForSprites(stableDiffusion)).toBe(true);
   });
 
-  it("can reuse the API key from the corresponding LLM provider", () => {
+  it("uses credentials from the corresponding provider independently of the active LLM", () => {
     const config = apiConfig({
-      llm_api_key: { Deepseek: "shared-key" },
-      vision_api_key: { deepseek: "dedicated-key" },
-      vision_extra_configs: { deepseek: { reuse_llm_api_key: true } },
+      llm_api_key: { ChatGPT: "chat-key", Deepseek: "shared-key" },
+      llm_base_url: "https://api.openai.com/v1",
+      llm_base_urls: {
+        ChatGPT: "https://api.openai.com/v1",
+        Deepseek: "https://deepseek-proxy.example.com/v1",
+      },
+      llm_provider: "ChatGPT",
       vision_provider: "deepseek",
     });
 
     expect(effectiveVisionApiKey(config)).toBe("shared-key");
-    expect(
-      effectiveVisionApiKey({
-        ...config,
-        vision_extra_configs: { deepseek: { reuse_llm_api_key: false } },
-      }),
-    ).toBe("dedicated-key");
+    expect(effectiveVisionBaseUrl(config)).toBe("https://deepseek-proxy.example.com/v1");
   });
 });

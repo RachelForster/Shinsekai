@@ -1,8 +1,10 @@
-"""Built-in vision-provider defaults and LLM credential sharing helpers."""
+"""Built-in vision-provider defaults and shared provider credentials."""
 
 from __future__ import annotations
 
 from typing import Any
+
+from config.llm_defaults import LLM_BASE_URLS, resolve_llm_base_url
 
 
 VISION_PROVIDER_LLM_PROVIDER = {
@@ -16,13 +18,8 @@ VISION_PROVIDER_LLM_PROVIDER = {
 }
 
 VISION_BASE_URLS = {
-    "deepseek": "https://api.deepseek.com",
-    "chatgpt": "https://api.openai.com/v1",
-    "gemini": "https://generativelanguage.googleapis.com/v1beta/openai",
-    "claude": "https://api.anthropic.com/v1",
-    "doubao": "https://ark.cn-beijing.volces.com/api/v3",
-    "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "ollama": "http://127.0.0.1:11434/v1",
+    provider: LLM_BASE_URLS.get(llm_provider, "")
+    for provider, llm_provider in VISION_PROVIDER_LLM_PROVIDER.items()
 }
 
 VISION_DEFAULT_MODELS = {
@@ -38,34 +35,29 @@ VISION_DEFAULT_MODELS = {
 VISION_PROVIDERS_WITHOUT_API_KEY = frozenset({"ollama"})
 
 
-def vision_reuses_llm_api_key(api_config: Any, provider: str) -> bool:
-    provider_key = str(provider or "").strip().lower()
-    try:
-        extra = (getattr(api_config, "vision_extra_configs", {}) or {}).get(
-            provider_key, {}
-        )
-        return bool(extra.get("reuse_llm_api_key", False))
-    except (AttributeError, TypeError):
-        return False
+def vision_llm_provider(provider: str) -> str:
+    return VISION_PROVIDER_LLM_PROVIDER.get(str(provider or "").strip().lower(), "")
 
 
 def resolve_vision_api_key(api_config: Any, provider: str) -> str:
-    """Return the dedicated key or the matching LLM provider key."""
+    """Return the key owned by the corresponding LLM provider."""
 
-    provider_key = str(provider or "").strip().lower()
+    llm_provider = vision_llm_provider(provider)
+    if not llm_provider:
+        return ""
     try:
-        if vision_reuses_llm_api_key(api_config, provider_key):
-            llm_provider = VISION_PROVIDER_LLM_PROVIDER.get(provider_key, "")
-            return str(
-                (getattr(api_config, "llm_api_key", {}) or {}).get(llm_provider, "")
-                or ""
-            ).strip()
         return str(
-            (getattr(api_config, "vision_api_key", {}) or {}).get(provider_key, "")
+            (getattr(api_config, "llm_api_key", {}) or {}).get(llm_provider, "")
             or ""
         ).strip()
     except (AttributeError, TypeError):
         return ""
+
+
+def resolve_vision_base_url(api_config: Any, provider: str) -> str:
+    """Return the URL owned by the corresponding LLM provider."""
+
+    return resolve_llm_base_url(api_config, vision_llm_provider(provider))
 
 
 def vision_provider_requires_api_key(provider: str) -> bool:
@@ -79,6 +71,7 @@ __all__ = [
     "VISION_PROVIDER_LLM_PROVIDER",
     "VISION_PROVIDERS_WITHOUT_API_KEY",
     "resolve_vision_api_key",
+    "resolve_vision_base_url",
+    "vision_llm_provider",
     "vision_provider_requires_api_key",
-    "vision_reuses_llm_api_key",
 ]

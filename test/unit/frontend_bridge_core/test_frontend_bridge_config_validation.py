@@ -17,6 +17,7 @@ def _valid_config(**overrides):
     data = {
         "llm_provider": "Deepseek",
         "llm_base_url": "https://api.deepseek.com/v1",
+        "llm_base_urls": {"Deepseek": "https://api.deepseek.com/v1"},
         "llm_api_key": {"Deepseek": "sk-test"},
         "llm_model": {"Deepseek": "deepseek-chat"},
         "tts_provider": "gpt-sovits",
@@ -93,9 +94,15 @@ def test_deepseek_vision_requires_remote_credentials():
         _validate_api_config_for_save(
             _valid_config(
                 tts_provider="cosyvoice",
+                llm_provider="ChatGPT",
+                llm_base_url="https://api.openai.com/v1",
+                llm_base_urls={
+                    "ChatGPT": "https://api.openai.com/v1",
+                    "Deepseek": "https://api.deepseek.com/v1",
+                },
+                llm_api_key={"ChatGPT": "sk-chat"},
+                llm_model={"ChatGPT": "gpt-4o-mini"},
                 vision_provider="deepseek",
-                vision_api_key={},
-                vision_base_url={"deepseek": "https://api.deepseek.com"},
                 vision_model={"deepseek": "deepseek-flash"},
             )
         )
@@ -106,22 +113,35 @@ def test_deepseek_vision_accepts_complete_configuration():
         _valid_config(
             tts_provider="cosyvoice",
             vision_provider="deepseek",
-            vision_api_key={"deepseek": "sk-vision"},
-            vision_base_url={"deepseek": "https://api.deepseek.com"},
+            llm_api_key={"Deepseek": "sk-vision"},
             vision_model={"deepseek": "deepseek-flash"},
         )
     )
 
 
-def test_deepseek_vision_can_reuse_corresponding_llm_api_key():
+def test_vision_provider_can_differ_from_active_llm_provider():
     _validate_api_config_for_save(
         _valid_config(
             tts_provider="cosyvoice",
+            llm_provider="ChatGPT",
+            llm_base_url="https://api.openai.com/v1",
+            llm_base_urls={
+                "ChatGPT": "https://api.openai.com/v1",
+                "Deepseek": "https://deepseek-proxy.example.com/v1",
+            },
+            llm_api_key={"ChatGPT": "sk-chat", "Deepseek": "sk-deepseek"},
+            llm_model={"ChatGPT": "gpt-4o-mini"},
             vision_provider="deepseek",
-            vision_api_key={},
-            vision_base_url={"deepseek": "https://api.deepseek.com"},
             vision_model={"deepseek": "deepseek-flash"},
-            vision_extra_configs={"deepseek": {"reuse_llm_api_key": True}},
+        )
+    )
+
+
+def test_plugin_vision_provider_uses_its_own_adapter_schema():
+    _validate_api_config_for_save(
+        _valid_config(
+            tts_provider="cosyvoice",
+            vision_provider="plugin-vision",
         )
     )
 
@@ -185,6 +205,7 @@ def test_tts_bundle_response_uses_project_root_instead_of_app_root(tmp_path, mon
     payload = _app_config_response(state)
 
     assert payload["api_config"]["gpt_sovits_api_path"] == project_bundle.as_posix()
+    assert payload["api_config"]["llm_base_urls"]["Deepseek"] == "https://api.deepseek.com/v1"
     assert payload["tts_bundle_installed_paths"]["gpt-sovits"] == project_bundle.as_posix()
     assert payload["api_config"]["gpt_sovits_api_path"] != app_bundle.as_posix()
 
@@ -200,6 +221,7 @@ def test_save_api_config_defaults_tts_path_under_project_root(tmp_path):
     saved = _save_api_config(state, payload)
 
     assert saved.gpt_sovits_api_path == project_bundle.as_posix()
+    assert saved.llm_base_urls["Deepseek"] == "https://api.deepseek.com/v1"
     assert manager.config.api_config.gpt_sovits_api_path == project_bundle.as_posix()
     assert manager.saved is True
 

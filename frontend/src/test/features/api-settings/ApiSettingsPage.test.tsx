@@ -493,6 +493,55 @@ describe("ApiSettingsPage", () => {
     expect(screen.getByRole("button", { name: "已连通" })).toBeInTheDocument();
   });
 
+  it("keeps LLM and vision selections independent while sharing provider credentials", async () => {
+    mocks.getAppConfig.mockResolvedValue({
+      ...validAppConfig(),
+      api_config: {
+        ...validAppConfig().api_config,
+        llm_api_key: { ChatGPT: "sk-chat", Deepseek: "sk-deepseek" },
+        llm_base_url: "https://api.openai.com/v1",
+        llm_base_urls: {
+          ChatGPT: "https://api.openai.com/v1",
+          Deepseek: "https://deepseek-proxy.example.com/v1",
+        },
+        llm_model: { ChatGPT: "gpt-4o-mini" },
+        llm_provider: "ChatGPT",
+        vision_model: { deepseek: "deepseek-flash" },
+        vision_provider: "deepseek",
+      },
+    });
+    mocks.saveApiConfig.mockImplementation(async (config) => config);
+    mocks.saveSystemConfig.mockImplementation(async (config) => config);
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    expect(screen.getByLabelText("LLM API Key")).toHaveValue("sk-chat");
+    expect(screen.getByLabelText("服务商 API Key")).toHaveValue("sk-deepseek");
+    expect(screen.getByDisplayValue("https://deepseek-proxy.example.com/v1")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("服务商 API Key"), { target: { value: "sk-shared-new" } });
+    fireEvent.change(screen.getByDisplayValue("https://deepseek-proxy.example.com/v1"), {
+      target: { value: "https://deepseek-new.example.com/v1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(mocks.saveApiConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          llm_api_key: expect.objectContaining({ ChatGPT: "sk-chat", Deepseek: "sk-shared-new" }),
+          llm_base_url: "https://api.openai.com/v1",
+          llm_base_urls: expect.objectContaining({
+            ChatGPT: "https://api.openai.com/v1",
+            Deepseek: "https://deepseek-new.example.com/v1",
+          }),
+          llm_provider: "ChatGPT",
+          vision_provider: "deepseek",
+        }),
+      ),
+    );
+  });
+
   it("downloads a TTS bundle and writes the returned provider path into the draft", async () => {
     mocks.getAppConfig.mockResolvedValue(validAppConfig());
     mocks.getTtsBundleRecommendation.mockResolvedValue({

@@ -1,4 +1,4 @@
-from application.model_providers import adapter_catalog
+from application.model_providers.catalog import adapter_catalog
 
 
 def test_adapter_catalog_exposes_visual_backends_and_deepseek_schema():

@@ -395,9 +395,9 @@ export const enMessages: Record<MessageKey, string> = {
   "api.llm.testingConnection": "Testing connection",
   "api.llm.thinkingEnabled": "Thinking mode",
   "api.llm.thinkingUnsupported": "This model does not support thinking mode.",
-  "api.vision.apiKey": "Vision API key",
+  "api.vision.apiKey": "Provider API key",
   "api.vision.auto": "Automatic",
-  "api.vision.baseUrl": "Vision base URL",
+  "api.vision.baseUrl": "Provider base URL",
   "api.vision.checkingModel": "Checking the Moondream model...",
   "api.vision.description":
     "Choose an image-understanding service for language models without native image input. Automatic mode tries plugins, then local Moondream.",
@@ -419,8 +419,8 @@ export const enMessages: Record<MessageKey, string> = {
   "api.vision.modelStatus": "Local model status",
   "api.vision.provider": "Vision adapter",
   "api.vision.required": "Vision adapters require a base URL and model ID; remote services also require an API key.",
-  "api.vision.reuseLlmApiKey": "Reuse LLM API key",
-  "api.vision.reuseLlmApiKeyHelp": "Use the API key saved for {provider} instead of storing another copy.",
+  "api.vision.sharedCredentialsHelp":
+    "Shared with the {provider} LLM configuration. Editing the provider connection here updates the same settings.",
   "api.vision.title": "Vision understanding",
   "api.loading": "Loading API settings",
   "api.resume.btn": "Resume last chat & launch",

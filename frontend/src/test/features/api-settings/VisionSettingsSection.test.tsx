@@ -25,6 +25,7 @@ describe("VisionSettingsSection", () => {
   it("shows remote model configuration and keeps the model editable", () => {
     const onAdapterExtraChange = vi.fn();
     const onProviderMapChange = vi.fn();
+    const onSharedCredentialChange = vi.fn();
     render(
       <ToastProvider>
         <I18nProvider language="zh_CN">
@@ -32,6 +33,7 @@ describe("VisionSettingsSection", () => {
             activeApiKey="sk-vision"
             activeBaseUrl="https://api.deepseek.com"
             activeModel="deepseek-flash"
+            apiKeyRequired
             availableModelOptions={[
               { id: "deepseek-flash", tags: ["vision"] },
               { id: "deepseek-v4-flash-vision-exp", tags: ["vision"] },
@@ -51,11 +53,11 @@ describe("VisionSettingsSection", () => {
             onFetchModels={vi.fn()}
             onProviderChange={vi.fn()}
             onProviderMapChange={onProviderMapChange}
+            onSharedCredentialChange={onSharedCredentialChange}
             providerOptions={[
               { label: "自动选择", value: "auto" },
               { label: "DeepSeek Vision", value: "deepseek" },
             ]}
-            reuseLlmApiKey={false}
             sharedLlmProvider="Deepseek"
           />
         </I18nProvider>
@@ -66,10 +68,11 @@ describe("VisionSettingsSection", () => {
     expect(screen.getByDisplayValue("https://api.deepseek.com")).toBeInTheDocument();
     fireEvent.focus(screen.getByDisplayValue("deepseek-flash"));
     fireEvent.click(screen.getByRole("option", { name: /deepseek-v4-flash-vision-exp/ }));
-    expect(onProviderMapChange).toHaveBeenCalledWith("vision_model", "deepseek-v4-flash-vision-exp");
+    expect(onProviderMapChange).toHaveBeenCalledWith("deepseek-v4-flash-vision-exp");
     expect(screen.getByText("图片细节级别")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("checkbox", { name: "复用 LLM API Key" }));
-    expect(onAdapterExtraChange).toHaveBeenCalledWith("reuse_llm_api_key", true);
+    expect(screen.getByText(/与 LLM 配置中的 Deepseek 共用/)).toBeInTheDocument();
+    fireEvent.change(screen.getByDisplayValue("sk-vision"), { target: { value: "sk-shared" } });
+    expect(onSharedCredentialChange).toHaveBeenCalledWith("llm_api_key", "sk-shared");
   });
 
   it("keeps automatic mode compact", () => {
@@ -80,6 +83,7 @@ describe("VisionSettingsSection", () => {
             activeApiKey=""
             activeBaseUrl=""
             activeModel=""
+            apiKeyRequired={false}
             availableModelOptions={[]}
             disabled={false}
             draft={{ ...sampleConfig.api_config, vision_provider: "auto" }}
@@ -89,8 +93,8 @@ describe("VisionSettingsSection", () => {
             onFetchModels={vi.fn()}
             onProviderChange={vi.fn()}
             onProviderMapChange={vi.fn()}
+            onSharedCredentialChange={vi.fn()}
             providerOptions={[{ label: "自动选择", value: "auto" }]}
-            reuseLlmApiKey={false}
           />
         </I18nProvider>
       </ToastProvider>,
@@ -120,6 +124,7 @@ describe("VisionSettingsSection", () => {
             activeApiKey=""
             activeBaseUrl=""
             activeModel=""
+            apiKeyRequired={false}
             availableModelOptions={[]}
             disabled={false}
             draft={{ ...sampleConfig.api_config, vision_provider: "moondream" }}
@@ -129,8 +134,8 @@ describe("VisionSettingsSection", () => {
             onFetchModels={vi.fn()}
             onProviderChange={vi.fn()}
             onProviderMapChange={vi.fn()}
+            onSharedCredentialChange={vi.fn()}
             providerOptions={[{ label: "Moondream（本地）", value: "moondream" }]}
-            reuseLlmApiKey={false}
           />
         </I18nProvider>
       </ToastProvider>,

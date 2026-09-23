@@ -20,7 +20,7 @@ from config.tts_provider_config import (
     tts_server_url_or_default,
     uses_shared_tts_server_config,
 )
-from config.llm_defaults import LLM_BASE_URLS
+from config.llm_defaults import resolve_llm_base_url
 from config.feature_flags import FeatureFlagConfigManager
 from config.mirror_env import apply_mirror_environment
 from config.network_proxy import apply_network_proxy_environment
@@ -31,18 +31,6 @@ import traceback
 def character_name_key(name: str) -> str:
     """Return the case-insensitive identity key used for character lookup."""
     return name.lower()
-
-
-def _llm_default_base_url(llm_provider: str) -> str:
-    """Return the built-in base URL for a provider, accepting minor case drift."""
-    provider = (llm_provider or "").strip()
-    if provider in LLM_BASE_URLS:
-        return LLM_BASE_URLS[provider]
-    provider_lower = provider.lower()
-    for name, base_url in LLM_BASE_URLS.items():
-        if name.lower() == provider_lower:
-            return base_url
-    return ""
 
 
 class ConfigManager:
@@ -269,6 +257,7 @@ class ConfigManager:
 
         current_api_config.llm_provider = llm_provider
         current_api_config.llm_base_url = base_url
+        current_api_config.llm_base_urls[llm_provider] = base_url
         current_api_config.is_streaming = (is_streaming == "是")
         current_api_config.tts_provider = normalize_tts_provider(tts_provider)
 
@@ -346,7 +335,7 @@ class ConfigManager:
 
         api_config = self.config.api_config
         
-        base_url = _llm_default_base_url(llm_provider)
+        base_url = resolve_llm_base_url(api_config, llm_provider)
         
         # 从字典中获取对应提供商的模型和 API Key
         llm_model = api_config.llm_model.get(llm_provider, "")
@@ -426,9 +415,7 @@ class ConfigManager:
         llm_provider = self.config.api_config.llm_provider
         api_key = self.config.api_config.llm_api_key.get(llm_provider,"")
         model = self.config.api_config.llm_model.get(llm_provider,"")
-        base_url = str(self.config.api_config.llm_base_url or "").strip()
-        if not base_url:
-            base_url = _llm_default_base_url(llm_provider)
+        base_url = resolve_llm_base_url(self.config.api_config, llm_provider)
         return llm_provider, model, base_url, api_key
 
     def get_gpt_sovits_config(self):
