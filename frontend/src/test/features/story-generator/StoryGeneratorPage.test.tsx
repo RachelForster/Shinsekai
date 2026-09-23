@@ -34,7 +34,7 @@ vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
   listCharacters: () =>
     Promise.resolve(
-      ["小玲", "小明", "小夏", "小雨", "小晴"].map((name) => ({ name, character_setting: `${name}的完整设定` })),
+      ["小玲", "小明", "小夏", "小雨", "小晴"].map((name) => ({ name, character_setting: `${name}的完整设定`, sprites: [] })),
     ),
   ensureCharacterBriefs: (...args: unknown[]) => ensureCharacterBriefs(...args),
 }));
@@ -253,6 +253,32 @@ describe("StoryGeneratorPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /自由对话 寻找旧日线索/ }));
     expect(screen.getByText("在旧教室自由调查，讨论信中的秘密。")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "运行剧本" })).toBeEnabled();
+  });
+
+  it("stores the selected player character in the generated story", async () => {
+    startStoryGeneration.mockResolvedValue(generatedTask());
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "小玲" }));
+    fireEvent.click(screen.getByRole("button", { name: "主控人物" }));
+    const dialog = screen.getByRole("dialog");
+    const playerSelect = within(dialog).getByRole("combobox", { name: "主控人物（你扮演的角色）" });
+    fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
+    fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
+    fireEvent.keyDown(playerSelect, { key: "Enter" });
+    await waitFor(() =>
+      expect(playerSelect).toHaveTextContent("小玲"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
+
+    await waitFor(() =>
+      expect(startStoryGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({ playerCharacter: "小玲", readPlayerSpeech: false }),
+        }),
+        expect.anything(),
+      ),
+    );
   });
 
   it("shows automatic recovery without requiring a manual resume action", async () => {
