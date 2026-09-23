@@ -110,7 +110,10 @@ class ApiConfig(BaseModel):
     llm_provider: DefaultIfNone[str] = Field(default="Deepseek", description="LLM 服务器商名字")
     is_streaming: DefaultIfNone[bool] = Field(default=True, description="是否使用流式响应")
 
-    vision_provider: DefaultIfNone[str] = Field(default="auto", description="视觉理解适配器：auto / deepseek / moondream")
+    vision_provider: DefaultIfNone[str] = Field(
+        default="auto",
+        description="视觉理解适配器：auto / remote provider / moondream",
+    )
     vision_api_key: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同视觉服务商的 API Key 字典")
     vision_base_url: DefaultIfNone[Dict[str, str]] = Field(
         default_factory=lambda: {"deepseek": "https://api.deepseek.com"},

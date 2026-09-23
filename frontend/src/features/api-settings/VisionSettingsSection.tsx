@@ -1,9 +1,11 @@
-import { RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { DownloadCloud, RefreshCw } from "lucide-react";
 
 import type { AdapterExtraFieldSchema, ApiConfig } from "../../entities/config/types";
+import { downloadModelAsset, getModelAssetStatus } from "../../entities/model-assets/repository";
 import { useI18n } from "../../shared/i18n";
-import type { LlmModelOption } from "../../shared/platform/types";
-import { AsyncButton, Select, TextInput } from "../../shared/ui";
+import type { LlmModelOption, ModelAssetStatus, TaskSnapshot } from "../../shared/platform/types";
+import { AsyncButton, Select, Switch, TaskProgress, TextInput, useToast } from "../../shared/ui";
 import { AdapterExtraForm } from "./AdapterExtraForm";
 import { EditableModelSelect } from "./EditableModelSelect";
 
@@ -22,7 +24,11 @@ interface VisionSettingsSectionProps {
   onProviderChange: (provider: string) => void;
   onProviderMapChange: (key: "vision_api_key" | "vision_base_url" | "vision_model", value: string) => void;
   providerOptions: Array<{ label: string; value: string }>;
+  reuseLlmApiKey: boolean;
+  sharedLlmProvider?: string;
 }
+
+const MOONDREAM_MODEL_ASSET = { assetId: "vision.moondream" } as const;
 
 export function VisionSettingsSection({
   activeApiKey,
@@ -39,9 +45,54 @@ export function VisionSettingsSection({
   onProviderChange,
   onProviderMapChange,
   providerOptions,
+  reuseLlmApiKey,
+  sharedLlmProvider,
 }: VisionSettingsSectionProps) {
   const { t } = useI18n();
+  const { showToast } = useToast();
+  const [moondreamStatus, setMoondreamStatus] = useState<ModelAssetStatus | null>(null);
+  const [moondreamTask, setMoondreamTask] = useState<TaskSnapshot | null>(null);
+  const [moondreamBusy, setMoondreamBusy] = useState(false);
+  const [moondreamChecking, setMoondreamChecking] = useState(false);
   const remoteProvider = !["auto", "moondream"].includes(draft.vision_provider.toLowerCase());
+  const moondreamProvider = draft.vision_provider.toLowerCase() === "moondream";
+
+  useEffect(() => {
+    if (!moondreamProvider) return;
+    let active = true;
+    setMoondreamChecking(true);
+    void getModelAssetStatus(MOONDREAM_MODEL_ASSET)
+      .then((status) => {
+        if (active) setMoondreamStatus(status);
+      })
+      .catch(() => {
+        if (active) setMoondreamStatus(null);
+      })
+      .finally(() => {
+        if (active) setMoondreamChecking(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [moondreamProvider]);
+
+  const downloadMoondream = async () => {
+    setMoondreamBusy(true);
+    setMoondreamTask(null);
+    try {
+      await downloadModelAsset(MOONDREAM_MODEL_ASSET, { onTaskUpdate: setMoondreamTask });
+      setMoondreamStatus(await getModelAssetStatus(MOONDREAM_MODEL_ASSET));
+      setMoondreamTask(null);
+    } catch (error) {
+      showToast({
+        kind: "error",
+        message: error instanceof Error ? error.message : t("api.vision.modelDownloadFailed"),
+        title: t("api.vision.title"),
+      });
+    } finally {
+      setMoondreamBusy(false);
+    }
+  };
 
   return (
     <section className="section page-section-anchor" id={id}>
@@ -82,11 +133,28 @@ export function VisionSettingsSection({
               />
             </span>
           </label>
+          {sharedLlmProvider ? (
+            <label className="field-row">
+              <span className="field-row__label">{t("api.vision.reuseLlmApiKey")}</span>
+              <span className="field-row__control">
+                <Switch
+                  aria-label={t("api.vision.reuseLlmApiKey")}
+                  checked={reuseLlmApiKey}
+                  disabled={disabled}
+                  id="vision-reuse-llm-api-key"
+                  onChange={(event) => onAdapterExtraChange("reuse_llm_api_key", event.currentTarget.checked)}
+                />
+                <span className="field-row__help">
+                  {t("api.vision.reuseLlmApiKeyHelp", { provider: sharedLlmProvider })}
+                </span>
+              </span>
+            </label>
+          ) : null}
           <label className="field-row">
             <span className="field-row__label">{t("api.vision.apiKey")}</span>
             <span className="field-row__control">
               <TextInput
-                disabled={disabled}
+                disabled={disabled || reuseLlmApiKey}
                 onChange={(event) => onProviderMapChange("vision_api_key", event.target.value)}
                 type="password"
                 value={activeApiKey}
@@ -116,6 +184,31 @@ export function VisionSettingsSection({
             </span>
           </label>
         </>
+      ) : null}
+      {moondreamProvider ? (
+        <div className="field-row" aria-live="polite">
+          <span className="field-row__label">{t("api.vision.modelStatus")}</span>
+          <span className="field-row__control">
+            <span>
+              {moondreamChecking
+                ? t("api.vision.checkingModel")
+                : moondreamStatus?.cached
+                  ? t("api.vision.modelCached")
+                  : t("api.vision.modelMissing")}
+            </span>
+            {!moondreamChecking && !moondreamStatus?.cached ? (
+              <AsyncButton
+                disabled={disabled}
+                icon={<DownloadCloud aria-hidden className="button__icon" />}
+                loading={moondreamBusy}
+                onClick={() => void downloadMoondream()}
+              >
+                {moondreamBusy ? t("api.vision.downloadingModel") : t("api.vision.downloadModel")}
+              </AsyncButton>
+            ) : null}
+            {moondreamTask ? <TaskProgress logLimit={0} task={moondreamTask} /> : null}
+          </span>
+        </div>
       ) : null}
       <AdapterExtraForm
         disabled={disabled}

@@ -24,6 +24,7 @@ from application.model_providers import (
     configured_vision_available as _configured_vision_available,
     normalize_t2i_provider as _normalize_t2i_provider,
 )
+from config.vision_defaults import resolve_vision_api_key, vision_provider_requires_api_key
 from .security import host_matches, validated_http_url
 from application.runtime.state import BridgeState, _jsonify
 
@@ -142,14 +143,20 @@ def _validate_api_config_for_save(config: Any) -> None:
         raise ValueError("LLM API 基础网址不能包含引号。")
 
     vision_provider = str(getattr(config, "vision_provider", "auto") or "auto").strip().lower()
-    if vision_provider == "deepseek":
-        vision_api_key = _provider_map_value(getattr(config, "vision_api_key", {}), vision_provider)
+    if vision_provider not in {"auto", "moondream"}:
+        vision_api_key = resolve_vision_api_key(config, vision_provider)
         vision_base_url = _provider_map_value(getattr(config, "vision_base_url", {}), vision_provider)
         vision_model = _provider_map_value(getattr(config, "vision_model", {}), vision_provider)
-        if not vision_api_key or not vision_base_url or not vision_model:
-            raise ValueError("DeepSeek 视觉的基础地址、API Key 和模型 ID 都需要填写。")
+        if (
+            (vision_provider_requires_api_key(vision_provider) and not vision_api_key)
+            or not vision_base_url
+            or not vision_model
+        ):
+            raise ValueError(
+                "视觉适配器的基础地址和模型 ID 都需要填写；远程服务还需 API Key。"
+            )
         if _contains_quotes(vision_base_url) or not is_http_url(vision_base_url):
-            raise ValueError("DeepSeek 视觉基础地址必须是有效且不含引号的 http(s) URL。")
+            raise ValueError("视觉服务基础地址必须是有效且不含引号的 http(s) URL。")
 
     tts_provider = normalize_tts_provider(config.tts_provider)
     if not uses_shared_tts_server_config(tts_provider):

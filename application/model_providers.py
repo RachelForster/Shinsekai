@@ -132,7 +132,16 @@ def adapter_catalog() -> dict[str, list[dict[str, Any]]]:
         asr.append(_adapter_option(key, asr_labels.get(key, key), asr_adapters[key]))
 
     vision_adapters = dict(VisionManager._adapters)
-    vision_labels = {"deepseek": "DeepSeek Vision", "moondream": "Moondream（本地）"}
+    vision_labels = {
+        "chatgpt": "OpenAI Vision",
+        "claude": "Claude Vision",
+        "deepseek": "DeepSeek Vision",
+        "doubao": "豆包视觉",
+        "gemini": "Gemini Vision",
+        "moondream": "Moondream（本地）",
+        "ollama": "Ollama Vision（本地）",
+        "qwen": "通义千问视觉",
+    }
     vision: list[dict[str, Any]] = [_adapter_option("auto", "自动选择")]
     for key in sorted(vision_adapters, key=str.lower):
         vision.append(_adapter_option(key, vision_labels.get(key, key), vision_adapters[key]))

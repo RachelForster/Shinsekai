@@ -6,6 +6,7 @@ from typing import Any
 from openai import OpenAI
 
 from ai.vision.vision_adapter import VisionAdapter
+from config.vision_defaults import resolve_vision_api_key
 
 
 DEFAULT_DEEPSEEK_VISION_BASE_URL = "https://api.deepseek.com"
@@ -32,7 +33,7 @@ def _configured_values() -> tuple[str, str, str, str]:
 
     config = ConfigManager().config.api_config
     provider = "deepseek"
-    api_key = str((config.vision_api_key or {}).get(provider, "") or "").strip()
+    api_key = resolve_vision_api_key(config, provider)
     base_url = str((config.vision_base_url or {}).get(provider, "") or "").strip()
     model = str((config.vision_model or {}).get(provider, "") or "").strip()
     detail = str((config.vision_extra_configs or {}).get(provider, {}).get("detail", "auto") or "auto").strip()

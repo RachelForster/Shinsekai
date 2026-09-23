@@ -88,8 +88,8 @@ def test_kaggle_tts_provider_does_not_require_local_server_path(tmp_path):
     )
 
 
-def test_deepseek_vision_requires_separate_remote_credentials():
-    with pytest.raises(ValueError, match="DeepSeek 视觉的基础地址、API Key 和模型 ID"):
+def test_deepseek_vision_requires_remote_credentials():
+    with pytest.raises(ValueError, match="远程服务还需 API Key"):
         _validate_api_config_for_save(
             _valid_config(
                 tts_provider="cosyvoice",
@@ -109,6 +109,19 @@ def test_deepseek_vision_accepts_complete_configuration():
             vision_api_key={"deepseek": "sk-vision"},
             vision_base_url={"deepseek": "https://api.deepseek.com"},
             vision_model={"deepseek": "deepseek-flash"},
+        )
+    )
+
+
+def test_deepseek_vision_can_reuse_corresponding_llm_api_key():
+    _validate_api_config_for_save(
+        _valid_config(
+            tts_provider="cosyvoice",
+            vision_provider="deepseek",
+            vision_api_key={},
+            vision_base_url={"deepseek": "https://api.deepseek.com"},
+            vision_model={"deepseek": "deepseek-flash"},
+            vision_extra_configs={"deepseek": {"reuse_llm_api_key": True}},
         )
     )
 

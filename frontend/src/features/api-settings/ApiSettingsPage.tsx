@@ -78,7 +78,13 @@ import {
   thinkingUnsupported,
   t2iProviderSelectOptions,
   updateAsrExtraConfig,
+  effectiveVisionApiKey,
+  visionDefaultBaseUrls,
+  visionDefaultModels,
   visionModelFetchKey,
+  visionProviderLlmProviders,
+  visionProviderRequiresApiKey,
+  visionReusesLlmApiKey,
   withCurrentOption,
   VOSK_MODEL_PATH,
   type UiLanguage,
@@ -462,7 +468,8 @@ export function ApiSettingsPage() {
   const availableModelOptions = mergeModelOptions(modelOptions, activeModel ? [{ id: activeModel, tags: [] }] : []);
   const selectedOption = availableModelOptions.find((option) => option.id === activeModel);
   const modelCandidateListId = "llm-model-candidates";
-  const activeVisionApiKey = activeMapValue(draft.vision_api_key, draft.vision_provider);
+  const reuseVisionLlmApiKey = visionReusesLlmApiKey(draft);
+  const activeVisionApiKey = effectiveVisionApiKey(draft);
   const activeVisionBaseUrl = activeMapValue(draft.vision_base_url, draft.vision_provider);
   const activeVisionModel = activeMapValue(draft.vision_model, draft.vision_provider);
   const availableVisionModelOptions = mergeModelOptions(
@@ -554,11 +561,11 @@ export function ApiSettingsPage() {
       vision_api_key: { ...draft.vision_api_key, [provider]: draft.vision_api_key?.[provider] ?? "" },
       vision_base_url: {
         ...draft.vision_base_url,
-        [provider]: draft.vision_base_url?.[provider] ?? (provider === "deepseek" ? "https://api.deepseek.com" : ""),
+        [provider]: draft.vision_base_url?.[provider] ?? visionDefaultBaseUrls[provider] ?? "",
       },
       vision_model: {
         ...draft.vision_model,
-        [provider]: draft.vision_model?.[provider] ?? (provider === "deepseek" ? "deepseek-flash" : ""),
+        [provider]: draft.vision_model?.[provider] ?? visionDefaultModels[provider] ?? "",
       },
       vision_provider: provider,
     });
@@ -635,12 +642,15 @@ export function ApiSettingsPage() {
   };
 
   const handleFetchVisionModels = () => {
-    if (!activeVisionBaseUrl.trim() || !activeVisionApiKey.trim()) {
+    if (
+      !activeVisionBaseUrl.trim() ||
+      (visionProviderRequiresApiKey(draft.vision_provider) && !activeVisionApiKey.trim())
+    ) {
       showToast({ kind: "error", message: t("api.vision.fetchMissing"), title: t("api.vision.fetchTitle") });
       return;
     }
     visionModelFetchMutation.mutate({
-      apiKey: activeVisionApiKey,
+      apiKey: activeVisionApiKey || "ollama",
       baseUrl: activeVisionBaseUrl,
       fetchKey: visionModelFetchKey(draft),
       provider: draft.vision_provider,
@@ -692,6 +702,12 @@ export function ApiSettingsPage() {
     catalogOptions(adapterCatalog?.vision, [
       { label: t("api.vision.auto"), value: "auto" },
       { label: "DeepSeek Vision", value: "deepseek" },
+      { label: "OpenAI Vision", value: "chatgpt" },
+      { label: "Gemini Vision", value: "gemini" },
+      { label: "Claude Vision", value: "claude" },
+      { label: "豆包视觉", value: "doubao" },
+      { label: "通义千问视觉", value: "qwen" },
+      { label: "Ollama Vision（本地）", value: "ollama" },
       { label: "Moondream", value: "moondream" },
     ]),
     draft.vision_provider,
@@ -723,8 +739,10 @@ export function ApiSettingsPage() {
       return;
     }
     if (
-      draft.vision_provider.toLowerCase() === "deepseek" &&
-      (!activeVisionBaseUrl.trim() || !activeVisionApiKey.trim() || !activeVisionModel.trim())
+      !["auto", "moondream"].includes(draft.vision_provider.toLowerCase()) &&
+      (!activeVisionBaseUrl.trim() ||
+        (visionProviderRequiresApiKey(draft.vision_provider) && !activeVisionApiKey.trim()) ||
+        !activeVisionModel.trim())
     ) {
       showToast({ kind: "error", message: t("api.vision.required"), title: t("common.validationFailed") });
       return;
@@ -867,6 +885,12 @@ export function ApiSettingsPage() {
         onProviderChange={updateVisionProvider}
         onProviderMapChange={updateVisionProviderMap}
         providerOptions={visionProviderOptions}
+        reuseLlmApiKey={reuseVisionLlmApiKey}
+        sharedLlmProvider={
+          visionProviderRequiresApiKey(draft.vision_provider)
+            ? visionProviderLlmProviders[draft.vision_provider]
+            : undefined
+        }
       />
       <MemorySettingsSection
         disabled={saveMutation.isPending}

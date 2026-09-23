@@ -498,12 +498,58 @@ export function llmModelFetchKey(config: ApiConfig) {
   ]);
 }
 
+export const visionProviderLlmProviders: Record<string, string> = {
+  chatgpt: "ChatGPT",
+  claude: "Claude",
+  deepseek: "Deepseek",
+  doubao: "豆包",
+  gemini: "Gemini",
+  ollama: "Ollama",
+  qwen: "通义千问",
+};
+
+export const visionDefaultBaseUrls: Record<string, string> = {
+  chatgpt: "https://api.openai.com/v1",
+  claude: "https://api.anthropic.com/v1",
+  deepseek: "https://api.deepseek.com",
+  doubao: "https://ark.cn-beijing.volces.com/api/v3",
+  gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
+  ollama: "http://127.0.0.1:11434/v1",
+  qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+};
+
+export const visionDefaultModels: Record<string, string> = {
+  chatgpt: "gpt-4o-mini",
+  claude: "claude-3-5-sonnet-latest",
+  deepseek: "deepseek-flash",
+  doubao: "",
+  gemini: "gemini-2.5-flash",
+  ollama: "llava",
+  qwen: "qwen-vl-max",
+};
+
+export function visionReusesLlmApiKey(config: ApiConfig, provider = config.vision_provider) {
+  return Boolean(config.vision_extra_configs?.[provider]?.reuse_llm_api_key);
+}
+
+export function effectiveVisionApiKey(config: ApiConfig, provider = config.vision_provider) {
+  if (visionReusesLlmApiKey(config, provider)) {
+    const llmProvider = visionProviderLlmProviders[provider];
+    return llmProvider ? activeMapValue(config.llm_api_key, llmProvider) : "";
+  }
+  return activeMapValue(config.vision_api_key, provider);
+}
+
+export function visionProviderRequiresApiKey(provider: string) {
+  return provider.trim().toLowerCase() !== "ollama";
+}
+
 export function visionModelFetchKey(config: ApiConfig) {
   const provider = String(config.vision_provider || "").trim();
   return [
     provider,
     activeMapValue(config.vision_base_url, provider).trim(),
-    activeMapValue(config.vision_api_key, provider).trim(),
+    effectiveVisionApiKey(config, provider).trim(),
   ].join("\u0000");
 }
 

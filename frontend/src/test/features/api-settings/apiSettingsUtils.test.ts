@@ -6,6 +6,7 @@ import {
   DEFAULT_T2I_API_URL,
   DEFAULT_T2I_OUTPUT_NODE_ID,
   DEFAULT_T2I_PROMPT_NODE_ID,
+  effectiveVisionApiKey,
   inferT2iSetupMode,
   isT2iReadyForSprites,
   isTaskRunning,
@@ -185,5 +186,22 @@ describe("API settings utilities", () => {
     expect(isT2iReadyForSprites(emptyComfy)).toBe(false);
     expect(isT2iReadyForSprites({ ...emptyComfy, t2i_default_workflow_path: "D:/workflows/sprite.json" })).toBe(true);
     expect(isT2iReadyForSprites(stableDiffusion)).toBe(true);
+  });
+
+  it("can reuse the API key from the corresponding LLM provider", () => {
+    const config = apiConfig({
+      llm_api_key: { Deepseek: "shared-key" },
+      vision_api_key: { deepseek: "dedicated-key" },
+      vision_extra_configs: { deepseek: { reuse_llm_api_key: true } },
+      vision_provider: "deepseek",
+    });
+
+    expect(effectiveVisionApiKey(config)).toBe("shared-key");
+    expect(
+      effectiveVisionApiKey({
+        ...config,
+        vision_extra_configs: { deepseek: { reuse_llm_api_key: false } },
+      }),
+    ).toBe("dedicated-key");
   });
 });
