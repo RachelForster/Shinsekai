@@ -246,6 +246,11 @@ export interface PluginManifest {
   version: string;
 }
 
+export interface PluginLoadStatus {
+  error?: string;
+  status: "error" | "idle" | "loading" | "ready";
+}
+
 export interface PluginInstallMetadata {
   dependencyDetail?: string;
   dependencyStatus?: string;
@@ -1597,6 +1602,7 @@ export interface ShinsekaiPlatform {
     getUi: (id: string) => Promise<PluginUIDetail>;
     list: () => Promise<PluginManifest[]>;
     listSlotContributions: () => Promise<PluginSlotContribution[]>;
+    status: () => Promise<PluginLoadStatus>;
     repoTags: (repo: string) => Promise<string[]>;
     scanLocal: (input: { path: string }) => Promise<PluginLocalScanResult>;
     validateSubmission: (input: PluginSubmissionInput) => Promise<PluginSubmissionValidationResult>;

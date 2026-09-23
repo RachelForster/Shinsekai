@@ -2343,6 +2343,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
               ]
             : [],
         ),
+      status: () => delay({ status: "ready" as const }),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
       runSlotContribution: (pluginId, contributionId) =>
         delay({
