@@ -54,8 +54,9 @@ def adapter_catalog() -> dict[str, list[dict[str, Any]]]:
         from ai.llm.llm_manager import LLMAdapterFactory
         from ai.t2i.t2i_manager import T2IAdapterFactory
         from ai.tts.tts_manager import TTSAdapterFactory
+        from ai.vision.vision_manager import VisionManager
     except Exception:
-        return {"asr": [], "llm": [], "t2i": [], "tts": []}
+        return {"asr": [], "llm": [], "t2i": [], "tts": [], "vision": []}
 
     llm_adapters = dict(LLMAdapterFactory._adapters)
     llm: list[dict[str, Any]] = []
@@ -130,7 +131,22 @@ def adapter_catalog() -> dict[str, list[dict[str, Any]]]:
     for key in sorted(key for key in asr_adapters if key != "vosk"):
         asr.append(_adapter_option(key, asr_labels.get(key, key), asr_adapters[key]))
 
-    return {"asr": asr, "llm": llm, "t2i": t2i, "tts": tts}
+    vision_adapters = dict(VisionManager._adapters)
+    vision_labels = {
+        "chatgpt": "OpenAI Vision",
+        "claude": "Claude Vision",
+        "deepseek": "DeepSeek Vision",
+        "doubao": "豆包视觉",
+        "gemini": "Gemini Vision",
+        "moondream": "Moondream（本地）",
+        "ollama": "Ollama Vision（本地）",
+        "qwen": "通义千问视觉",
+    }
+    vision: list[dict[str, Any]] = [_adapter_option("auto", "自动选择")]
+    for key in sorted(vision_adapters, key=str.lower):
+        vision.append(_adapter_option(key, vision_labels.get(key, key), vision_adapters[key]))
+
+    return {"asr": asr, "llm": llm, "t2i": t2i, "tts": tts, "vision": vision}
 
 
 def normalize_t2i_provider(value: str) -> str:
@@ -149,9 +165,21 @@ def normalize_t2i_provider(value: str) -> str:
     return raw
 
 
+def configured_vision_available(api_config: Any) -> bool:
+    """Report configured vision availability without exposing AI imports to transport."""
+
+    try:
+        from ai.vision.service import configured_vision_available as _configured
+
+        return bool(_configured(api_config))
+    except Exception:
+        return False
+
+
 __all__ = [
     "adapter_catalog",
     "claude_messages_endpoint_url",
     "claude_models_endpoint_url",
+    "configured_vision_available",
     "normalize_t2i_provider",
 ]

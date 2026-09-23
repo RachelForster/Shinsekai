@@ -41,7 +41,7 @@ import { BackgroundMusicSection } from "./BackgroundMusicSection";
 import { BackgroundSpriteGallery } from "./BackgroundSpriteGallery";
 import { BackgroundTagsDialog } from "./BackgroundTagsDialog";
 import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
-import { useMoondreamAvailability } from "../media-auto-label/useMoondreamAvailability";
+import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
 import {
   backgroundDeleteDialogCopy,
   createBackground,
@@ -57,7 +57,7 @@ export function BackgroundManagerPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const moondreamAvailable = useMoondreamAvailability();
+  const visionAvailable = useVisionAvailability();
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const data = backgroundsQuery.data ?? [];
   const isLoading = backgroundsQuery.isLoading;
@@ -846,7 +846,7 @@ export function BackgroundManagerPage() {
 
         {/* Sprite gallery */}
         <BackgroundSpriteGallery
-          autoLabelAvailable={moondreamAvailable}
+          autoLabelAvailable={visionAvailable}
           autoLabelDisabled={
             !isSavedBackground || !currentDraft.sprites.length || !imageRowTags.some((tag) => !tag.trim())
           }
