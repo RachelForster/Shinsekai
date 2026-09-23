@@ -153,6 +153,35 @@ describe("ApiSettingsPage", () => {
     mocks.saveSystemConfig.mockResolvedValue(sampleConfig.system_config);
   });
 
+  it("places vision understanding and long-term memory after TTS in the navigation and page", async () => {
+    mocks.getAppConfig.mockResolvedValue(validAppConfig());
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    const navigation = screen.getByRole("navigation", { name: "AI 服务设置" });
+    expect(
+      within(navigation)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual([
+      "界面语言",
+      "LLM API 配置",
+      "TTS 整合包",
+      "视觉理解",
+      "长期记忆",
+      "图像生成（T2I）",
+      "语音输入（ASR）",
+      "资源与说明",
+    ]);
+
+    const ttsSection = document.getElementById("api-tts")!;
+    const visionSection = document.getElementById("api-vision")!;
+    const memorySection = document.getElementById("api-memory")!;
+    expect(ttsSection.compareDocumentPosition(visionSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(visionSection.compareDocumentPosition(memorySection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("shows a newly loaded ASR adapter and its fields when returning to settings after plugin reload", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 5 * 60 * 1000 } },

@@ -729,9 +729,9 @@ export function ApiSettingsPage() {
   const apiSectionNavItems = [
     { id: "api-language", label: t("api.language.title") },
     { id: "api-llm", label: t("api.llm.connectionTitle") },
+    { id: "api-tts", label: t("api.tts.bundleTitle") },
     { id: "api-vision", label: t("api.vision.title") },
     { id: "api-memory", label: t("api.memory.title") },
-    { id: "api-tts", label: t("api.tts.bundleTitle") },
     { id: "api-t2i", label: t("api.t2i.title") },
     { id: "api-asr", label: t("system.asr.title") },
     { id: "api-links", label: t("api.links.title") },
@@ -883,33 +883,6 @@ export function ApiSettingsPage() {
         onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
         value={draft}
       />
-      <VisionSettingsSection
-        activeApiKey={activeVisionApiKey}
-        activeBaseUrl={activeVisionBaseUrl}
-        activeModel={activeVisionModel}
-        apiKeyRequired={visionProviderRequiresApiKey(draft.vision_provider)}
-        availableModelOptions={availableVisionModelOptions}
-        disabled={saveMutation.isPending}
-        draft={draft}
-        extraSchema={visionExtraSchema}
-        fetchModelsPending={visionModelFetchMutation.isPending}
-        id="api-vision"
-        onAdapterExtraChange={(key, value) =>
-          updateAdapterExtra("vision_extra_configs", draft.vision_provider, key, value)
-        }
-        onFetchModels={handleFetchVisionModels}
-        onProviderChange={updateVisionProvider}
-        onProviderMapChange={updateVisionModel}
-        onSharedCredentialChange={updateVisionSharedCredential}
-        providerOptions={visionProviderOptions}
-        sharedLlmProvider={visionProviderLlmProviders[draft.vision_provider]}
-      />
-      <MemorySettingsSection
-        disabled={saveMutation.isPending}
-        draft={draft}
-        id="api-memory"
-        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
-      />
       <TtsBundleSection
         canCancelDownload={canCancelTtsBundleDownload}
         cancelPending={ttsBundleCancelMutation.isPending}
@@ -938,6 +911,33 @@ export function ApiSettingsPage() {
         groups={apiSchema.filter((g) => g.id === "tts")}
         onChange={updateTtsDraftFromSchema}
         value={draft}
+      />
+      <VisionSettingsSection
+        activeApiKey={activeVisionApiKey}
+        activeBaseUrl={activeVisionBaseUrl}
+        activeModel={activeVisionModel}
+        apiKeyRequired={visionProviderRequiresApiKey(draft.vision_provider)}
+        availableModelOptions={availableVisionModelOptions}
+        disabled={saveMutation.isPending}
+        draft={draft}
+        extraSchema={visionExtraSchema}
+        fetchModelsPending={visionModelFetchMutation.isPending}
+        id="api-vision"
+        onAdapterExtraChange={(key, value) =>
+          updateAdapterExtra("vision_extra_configs", draft.vision_provider, key, value)
+        }
+        onFetchModels={handleFetchVisionModels}
+        onProviderChange={updateVisionProvider}
+        onProviderMapChange={updateVisionModel}
+        onSharedCredentialChange={updateVisionSharedCredential}
+        providerOptions={visionProviderOptions}
+        sharedLlmProvider={visionProviderLlmProviders[draft.vision_provider]}
+      />
+      <MemorySettingsSection
+        disabled={saveMutation.isPending}
+        draft={draft}
+        id="api-memory"
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
       />
       <T2iSetupSection
         disabled={saveMutation.isPending}
