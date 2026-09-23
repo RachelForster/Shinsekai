@@ -67,7 +67,7 @@ class Character(BaseModel):
     )
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
-    portrait_crop: PortraitCrop = Field(default_factory=PortraitCrop)
+    portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)
     emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
 
     # gpt-sovits 相关的配置

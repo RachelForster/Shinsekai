@@ -1830,13 +1830,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           sprite_scale: index >= 0 ? config.characters[index].sprite_scale : 1,
           sprites:
             index >= 0
-              ? config.characters[index].sprites.map((sprite) => ({
+              ? config.characters[index].sprites.map((sprite, spriteIndex) => ({
                   ...sprite,
                   portrait_crop:
-                    character.sprites.find((input) => input.path === sprite.path)?.portrait_crop ??
-                    (character.sprites.some((input) => input.path === sprite.path && input.portrait_crop === null)
+                    character.sprites[spriteIndex]?.portrait_crop === null
                       ? null
-                      : sprite.portrait_crop),
+                      : (character.sprites[spriteIndex]?.portrait_crop ?? sprite.portrait_crop),
                 }))
               : [],
           character_setting: character.character_setting.trim(),
