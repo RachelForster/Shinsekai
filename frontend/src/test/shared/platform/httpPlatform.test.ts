@@ -2161,11 +2161,11 @@ describe("http platform", () => {
     expect(updates).toHaveBeenLastCalledWith(expect.objectContaining({ phase: "completed" }));
   });
 
-  it("runs Moondream image auto-labeling as a background task", async () => {
+  it("runs configured vision smart-labeling as a background task", async () => {
     const task = {
       createdAt: 1,
       id: "task-label",
-      kind: "moondream-character-auto-label",
+      kind: "vision-character-smart-label",
       logs: [],
       message: "queued",
       phase: "queued",

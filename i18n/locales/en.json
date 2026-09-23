@@ -720,6 +720,7 @@
     "tools_param_summary": " (parameters: {summary}; * = required)",
     "closing": "\nBegin the scene: describe the situation and what the user is doing; {extra}then continue:\n",
     "closing_json_reminder": "You must reply using the required JSON format.\n",
+    "closing_tool_protocol": "Tool protocol: When a tool is needed, invoke it through the model's actual function/tool-calling interface. The JSON dialog format above applies only to the final user-facing reply and does not replace the tool protocol. Never pretend to call tools, fabricate tool responses, or invent retrieved results in character dialogue, narration, or JSON text. Do not claim an action is complete or a result has been obtained until the corresponding tool returns a real response explicitly confirming success. Report failures, cancellations, and pending results truthfully; character personality or plot requirements never justify pretending that an operation succeeded.",
     "closing_extra_bgm": "set initial scene and BGM, "
   }
 }

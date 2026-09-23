@@ -112,6 +112,9 @@ class ChatCommandDispatcher:
             "dialog-advance": self._skip_speech,
             "pause-asr": self._pause_asr,
             "resume-asr": self._resume_asr,
+            "begin-asr-hold": self._begin_asr_hold,
+            "finish-asr-hold": self._finish_asr_hold,
+            "cancel-asr-hold": self._cancel_asr_hold,
             "reroll": self._reroll,
             "clear-history": self._clear_history,
             "change-voice-language": self._change_voice_language,
@@ -256,6 +259,17 @@ class ChatCommandDispatcher:
 
     def _resume_asr(self, _payload: object) -> None:
         self.runtime_asr.user_resume()
+
+    def _begin_asr_hold(self, _payload: object) -> None:
+        if not self.bindings.can_submit_text():
+            raise ValueError("当前无法开始语音输入。")
+        self.runtime_asr.begin_hold()
+
+    def _finish_asr_hold(self, _payload: object) -> None:
+        self.runtime_asr.finish_hold()
+
+    def _cancel_asr_hold(self, _payload: object) -> None:
+        self.runtime_asr.finish_hold(cancel=True)
 
     def _reroll(self, _payload: object) -> None:
         messages = self.llm_manager.get_messages()

@@ -17,7 +17,7 @@ export const llmDefaultBaseUrls: Record<string, string> = {
   Deepseek: "https://api.deepseek.com/v1",
   Gemini: "https://generativelanguage.googleapis.com/v1beta/openai",
   豆包: "https://ark.cn-beijing.volces.com/api/v3",
-  通义千问: "https://dashscope.aliyuncs.com/api/v1",
+  通义千问: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   Ollama: "http://127.0.0.1:11434/v1",
 };
 

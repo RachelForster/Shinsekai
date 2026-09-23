@@ -246,6 +246,19 @@ def test_dispatches_turn_input_asr_and_speech_commands(command_runtime) -> None:
     assert runtime.ui_calls.count(("skip", None)) == 2
 
 
+def test_dispatches_hold_to_talk_commands(command_runtime):
+    runtime = command_runtime
+    runtime.runtime_asr.begin_hold = Mock()
+    runtime.runtime_asr.finish_hold = Mock()
+    assert _execute(runtime, "begin-asr-hold").ok
+    assert _execute(runtime, "finish-asr-hold").ok
+    assert _execute(runtime, "cancel-asr-hold").ok
+    runtime.runtime_asr.begin_hold.assert_called_once_with()
+    assert runtime.runtime_asr.finish_hold.call_count == 2
+    runtime.runtime_asr.finish_hold.assert_any_call()
+    runtime.runtime_asr.finish_hold.assert_any_call(cancel=True)
+
+
 def test_validates_and_dispatches_audio_playback_signal(command_runtime) -> None:
     runtime = command_runtime
 

@@ -16,6 +16,7 @@ from sdk.path_utils import reject_control_chars
 
 _ASR_FASTER_WHISPER_ASSET_ID = "asr.faster-whisper"
 _MEMORY_EMBEDDING_ASSET_ID = "memory.embedding"
+_MOONDREAM_VISION_ASSET_ID = "vision.moondream"
 _ASR_ALLOW_PATTERNS = (
     "config.json",
     "preprocessor_config.json",
@@ -171,6 +172,12 @@ def resolve_model_asset(
         from ai.memory.config import EMBEDDING_MODEL_ASSET
 
         return EMBEDDING_MODEL_ASSET
+    if asset_id == _MOONDREAM_VISION_ASSET_ID:
+        if request.configured or request.variant is not None:
+            raise ValueError("Moondream model requests do not accept a variant")
+        from ai.vision.moondream_adapter import MOONDREAM_MODEL_ASSET
+
+        return MOONDREAM_MODEL_ASSET
     if asset_id != _ASR_FASTER_WHISPER_ASSET_ID:
         raise ValueError(f"Unsupported model asset: {asset_id or '<empty>'}")
 

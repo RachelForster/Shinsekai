@@ -4,6 +4,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { AppRoutes } from "../../../app/routes/AppRoutes";
 import { I18nProvider } from "../../../shared/i18n";
+import { ToastProvider } from "../../../shared/ui";
 
 vi.mock("../../../features/chat-workspace/ConversationTypeBadge", () => ({
   ConversationTypeBadge: () => <span>Chat type</span>,
@@ -92,7 +93,9 @@ function renderRoute(path: string) {
   return render(
     <MemoryRouter future={{ v7_relativeSplatPath: true, v7_startTransition: true }} initialEntries={[path]}>
       <I18nProvider language="en">
-        <AppRoutes />
+        <ToastProvider>
+          <AppRoutes />
+        </ToastProvider>
       </I18nProvider>
     </MemoryRouter>,
   );

@@ -7,8 +7,18 @@ from typing import Any, Callable, Iterable, Mapping, Protocol
 from ai.llm.template.prompts import UserPromptContext, build_user_prompt_section
 from ai.vision.fallback_registry import active_vision_fallback
 from ai.vision.message_content import local_image_block
-from ai.vision.moondream_adapter import MoondreamPluginUnavailable, installed_moondream_directory
+from ai.vision.moondream_adapter import (
+    MoondreamPluginUnavailable,
+    installed_moondream_directory,
+    moondream_model_cached,
+)
 from ai.vision.vision_manager import VisionManager
+from config.vision_defaults import (
+    resolve_vision_api_key,
+    resolve_vision_base_url,
+    vision_llm_provider,
+    vision_provider_requires_api_key,
+)
 from core.media.chat_attachments import (
     ResolvedChatAttachment,
     chat_attachment_display_text,
@@ -68,25 +78,62 @@ FileReader = Callable[[str], Mapping[str, Any]]
 FallbackAvailability = Callable[[], bool]
 
 
-def _default_fallback_factory() -> VisionDescriber:
-    """Prefer a plugin-registered vision fallback, else the local Moondream plugin."""
+def configured_vision_manager() -> VisionDescriber:
+    """Resolve the configured backend; auto keeps the plugin/Moondream fallback chain."""
+    provider = _configured_vision_provider()
+    if provider != "auto":
+        return VisionManager(provider)
     preferred = active_vision_fallback()
     if preferred is not None:
         return preferred.factory()
     return VisionManager("moondream")
 
 
-def _default_fallback_available() -> bool:
-    """Report whether any built-in fallback (plugin-preferred or Moondream) can run."""
-    if active_vision_fallback() is not None:
+def configured_vision_available(api_config: Any | None = None) -> bool:
+    """Report whether the configured visual backend has enough runtime configuration."""
+    provider = _configured_vision_provider(api_config)
+    if provider not in {"auto", "moondream"}:
+        try:
+            if not vision_llm_provider(provider):
+                return provider in VisionManager._adapters
+            config = api_config
+            if config is None:
+                from config.config_manager import ConfigManager
+
+                config = ConfigManager().config.api_config
+            api_key_ready = bool(resolve_vision_api_key(config, provider))
+            return bool(
+                (api_key_ready or not vision_provider_requires_api_key(provider))
+                and resolve_vision_base_url(config, provider)
+                and str((config.vision_model or {}).get(provider, "") or "").strip()
+                and provider in VisionManager._adapters
+            )
+        except Exception:
+            return False
+    if provider == "auto" and active_vision_fallback() is not None:
         return True
     if installed_moondream_directory() is None:
+        return False
+    if not moondream_model_cached():
         return False
     # The built-in Moondream fallback needs PyTorch at runtime. If it is not
     # importable, describe() would crash the chat turn, so report it unavailable
     # and let the caller show the graceful "install a vision plugin / switch
     # model" guidance instead of leaking a raw missing-module error.
     return importlib.util.find_spec("torch") is not None
+
+
+def _configured_vision_provider(api_config: Any | None = None) -> str:
+    try:
+        config = api_config
+        if config is None:
+            from config.config_manager import ConfigManager
+
+            config = ConfigManager().config.api_config
+        value = str(config.vision_provider or "auto").strip().lower()
+    except Exception:
+        return "auto"
+    return value or "auto"
 
 
 class ChatVisionService:
@@ -99,9 +146,9 @@ class ChatVisionService:
         fallback_available: FallbackAvailability | None = None,
         file_reader: FileReader | None = None,
     ) -> None:
-        self._fallback_factory = fallback_factory or _default_fallback_factory
+        self._fallback_factory = fallback_factory or configured_vision_manager
         self._fallback_available = fallback_available or (
-            _default_fallback_available
+            configured_vision_available
             if fallback_factory is None
             else (lambda: True)
         )
@@ -123,7 +170,7 @@ class ChatVisionService:
             "Image attachments could not be inspected. The current language model does not support "
             "native image input, and no vision fallback is currently available. "
             f"Uninspected attachments: {names}. Explain this to the user and offer these options: "
-            "install or enable a vision fallback plugin (for example local Moondream), "
+            "configure a visual service (for example DeepSeek Vision or local Moondream) in AI Service settings, "
             "switch to a vision-capable model, or describe the images in text."
         )
         return _prepared_input(

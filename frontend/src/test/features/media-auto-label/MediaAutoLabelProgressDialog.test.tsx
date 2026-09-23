@@ -9,9 +9,9 @@ const task: TaskSnapshot<ImageAutoLabelResult> = {
   completedItems: 0,
   createdAt: 1,
   id: "task-label",
-  kind: "moondream-character-auto-label",
-  logs: ["正在加载 Moondream 模型"],
-  message: "正在加载 Moondream 模型并准备标注第 1/3 张图片…",
+  kind: "vision-character-smart-label",
+  logs: ["正在准备视觉模型"],
+  message: "正在准备视觉模型并智能标注第 1/3 张图片…",
   phase: "loading-model",
   progress: 0,
   result: null,
@@ -29,9 +29,9 @@ describe("MediaAutoLabelProgressDialog", () => {
       </I18nProvider>,
     );
 
-    expect(screen.getByRole("dialog", { name: "Moondream labeling progress" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Smart-labeling progress" })).toBeInTheDocument();
     expect(screen.getByText("0/3 · 0%")).toBeInTheDocument();
-    expect(screen.getByText(/正在加载 Moondream 模型并准备标注第 1\/3 张图片/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Labeling in progress" })).toBeDisabled();
+    expect(screen.getByText(/正在准备视觉模型并智能标注第 1\/3 张图片/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Smart labeling in progress" })).toBeDisabled();
   });
 });

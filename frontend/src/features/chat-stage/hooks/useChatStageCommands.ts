@@ -49,6 +49,9 @@ export function useChatStageCommands({
         const snapshot = await sendChatCommand(command);
         const commandAppliedByEventStream = [
           "audio-playback-signal",
+          "begin-asr-hold",
+          "finish-asr-hold",
+          "cancel-asr-hold",
           "cancel-input-batch",
           "dismiss-plugin-page",
           "flush-input-batch",
