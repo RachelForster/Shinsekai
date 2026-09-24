@@ -28,6 +28,7 @@ def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParse
     parser.add_argument("--tts", type=str, default="")
     parser.add_argument("--llm", type=str, default="deepseek")
     parser.add_argument("--bg", type=str, default="")
+    parser.add_argument("--background_names", type=str, default="")
     parser.add_argument("--use-current-template-for-history", action="store_true")
     parser.add_argument(
         "--media-selection-mode",

@@ -316,7 +316,12 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
     resolved_names = _resolve_template_character_names(state, selected)
     if not resolved_names:
         raise NoValidCharactersError()
-    background = str(payload.get("backgroundName") or "")
+    background_names = payload.get("backgroundNames")
+    background = (
+        [str(name).strip() for name in background_names if str(name).strip()]
+        if isinstance(background_names, list) and background_names
+        else str(payload.get("backgroundName") or "")
+    )
     voice_language = str(payload.get("voiceLanguage") or "").strip()
     if voice_language:
         sc = state.config_manager.config.system_config.model_copy(deep=True)
@@ -404,8 +409,11 @@ def _session_string_list(value: Any) -> list[str]:
 def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] | None:
     if not raw:
         return None
+    background = str(raw.get("background") or "")
+    background_names = _session_string_list(raw.get("background_names"))
     payload = {
-        "background": str(raw.get("background") or ""),
+        "background": background,
+        "backgroundNames": background_names or ([background] if background else []),
         "effectNames": _session_string_list(raw.get("effect_names")),
         "enableMobileAccess": bool(raw.get("enable_mobile_access", False)),
         "filenameStub": str(raw.get("filename_stub") or ""),
@@ -568,11 +576,16 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         for name in primary_characters
         if character_name_key(name) in selected_keys
     ]
+    background_names = _session_string_list(payload.get("backgroundNames"))
+    background = str(payload.get("background") or "").strip()
+    if not background and background_names:
+        background = background_names[0]
     data = {
         "selected_characters": selected_characters,
         "character_prompt_mode": prompt_mode,
         "primary_characters": primary_characters,
-        "background": str(payload.get("background") or ""),
+        "background": background,
+        "background_names": background_names or ([background] if background else []),
         "effect_names": _session_string_list(payload.get("effectNames")),
         "enable_mobile_access": bool(payload.get("enableMobileAccess", False)),
         "voice_lang": str(payload.get("voiceLanguage") or ""),
@@ -621,7 +634,8 @@ def _repair_template_session_if_needed(state: BridgeState, raw: dict[str, Any] |
     try:
         content, _result = state.template_generator.generate_chat_template(
             [str(item) for item in selected if str(item)],
-            str(raw.get("background") or ""),
+            _session_string_list(raw.get("background_names"))
+            or str(raw.get("background") or ""),
             bool(raw.get("use_effect_yes", True)),
             bool(raw.get("use_cg_yes", False)),
             bool(raw.get("use_tr_yes", True)),

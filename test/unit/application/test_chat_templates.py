@@ -287,6 +287,8 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     restored = _save_template_session_payload(
         state,
         {
+            "background": "School",
+            "backgroundNames": ["School", "Roof"],
             "enableMobileAccess": True,
             "effectNames": [" Rain ", ""],
             "initSpritePath": "",
@@ -301,6 +303,8 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     )
 
     assert saved["selected_characters"] == ["Alice"]
+    assert saved["background"] == "School"
+    assert saved["background_names"] == ["School", "Roof"]
     assert saved["effect_names"] == ["Rain"]
     assert saved["enable_mobile_access"] is True
     assert saved["init_sprite_path"] == "sprites/alice.png"
@@ -311,6 +315,7 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     assert saved["media_selection_mode"] == "semantic"
     assert restored["effectNames"] == ["Rain"]
     assert restored["selectedCharacters"] == ["Alice"]
+    assert restored["backgroundNames"] == ["School", "Roof"]
     assert restored["initSpritePath"] == "sprites/alice.png"
     assert restored["characterPromptMode"] == "compact"
     assert restored["primaryCharacters"] == ["Alice"]
@@ -328,6 +333,7 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
     assert _template_session_to_frontend(
         {
             "background": "校门",
+            "background_names": ["校门", "操场"],
             "enable_mobile_access": True,
             "effect_names": ["Rain", "", 42],
             "filename_stub": "demo",
@@ -352,6 +358,7 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
         }
     ) == {
         "background": "校门",
+        "backgroundNames": ["校门", "操场"],
         "enableMobileAccess": True,
         "effectNames": ["Rain", "42"],
         "filenameStub": "demo",

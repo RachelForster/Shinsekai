@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+import json
 import logging
 import signal
 import sys
@@ -366,7 +367,20 @@ class _BaseChatSession:
             if pronunciation_map:
                 name_map.update(pronunciation_map)
 
-        assets = load_presentation_assets(self.config, self.args.bg)
+        try:
+            configured_backgrounds = str(
+                getattr(self.args, "background_names", "") or ""
+            )
+            background_names = (
+                json.loads(configured_backgrounds)
+                if configured_backgrounds
+                else [self.args.bg]
+            )
+        except (TypeError, json.JSONDecodeError):
+            background_names = [self.args.bg]
+        if not isinstance(background_names, list):
+            background_names = [self.args.bg]
+        assets = load_presentation_assets(self.config, background_names)
         media_selection_mode = str(
             getattr(self.args, "media_selection_mode", "indexed") or "indexed"
         ).strip().lower()
