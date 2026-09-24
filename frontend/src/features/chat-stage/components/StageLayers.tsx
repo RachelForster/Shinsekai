@@ -21,7 +21,7 @@ import type { ChatStageEffectImage } from "../state/types";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
 import type { DialogHtmlNode, DialogHtmlStyleProperty } from "../dialogTypewriter";
 import { chatStageSpriteAxisCenter, chatStageSpriteCharacterName } from "../state/sprites";
-import { Portrait } from "../../../shared/player-portrait/Portrait";
+import { Portrait } from "../../../shared/components/Portrait";
 import type { PlayerPortrait } from "../../../shared/platform/types";
 
 function closestDialogInteractiveElement(target: EventTarget | null) {

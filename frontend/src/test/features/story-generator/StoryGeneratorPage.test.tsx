@@ -34,7 +34,11 @@ vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
   listCharacters: () =>
     Promise.resolve(
-      ["小玲", "小明", "小夏", "小雨", "小晴"].map((name) => ({ name, character_setting: `${name}的完整设定`, sprites: [] })),
+      ["小玲", "小明", "小夏", "小雨", "小晴"].map((name) => ({
+        name,
+        character_setting: `${name}的完整设定`,
+        sprites: [],
+      })),
     ),
   ensureCharacterBriefs: (...args: unknown[]) => ensureCharacterBriefs(...args),
 }));
@@ -266,9 +270,7 @@ describe("StoryGeneratorPage", () => {
     fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
     fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
     fireEvent.keyDown(playerSelect, { key: "Enter" });
-    await waitFor(() =>
-      expect(playerSelect).toHaveTextContent("小玲"),
-    );
+    await waitFor(() => expect(playerSelect).toHaveTextContent("小玲"));
     fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
 
     await waitFor(() =>

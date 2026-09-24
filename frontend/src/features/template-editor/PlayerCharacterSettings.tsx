@@ -2,9 +2,25 @@ import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { charactersQueryKey, saveCharacter } from "../../entities/character/repository";
 import type { Character, PortraitCrop } from "../../shared/platform/types";
-import { Portrait, defaultPortraitCrop, portraitGeometry } from "../../shared/player-portrait/Portrait";
+import { Portrait, defaultPortraitCrop, portraitGeometry } from "../../shared/components/Portrait";
 import { Button, Dialog, Select, Switch } from "../../shared/ui";
 import { useI18n } from "../../shared/i18n";
+
+export function applyPortraitCrop(
+  character: Character,
+  spriteIndex: number,
+  individual: boolean,
+  crop: PortraitCrop,
+): Character {
+  const next = structuredClone(character);
+  if (!next.sprites[spriteIndex]) return next;
+  if (individual) next.sprites[spriteIndex].portrait_crop = crop;
+  else {
+    next.portrait_crop = crop;
+    next.sprites[spriteIndex].portrait_crop = null;
+  }
+  return next;
+}
 
 export function PlayerCharacterSettings({
   characters,
@@ -35,13 +51,7 @@ export function PlayerCharacterSettings({
   const save = useMutation({
     mutationFn: () => {
       if (!editing) throw new Error("No character selected");
-      const next = structuredClone(editing);
-      if (individual) next.sprites[index].portrait_crop = crop;
-      else {
-        next.portrait_crop = crop;
-        next.sprites[index].portrait_crop = null;
-      }
-      return saveCharacter(next, next.name);
+      return saveCharacter(editing, editing.name);
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: charactersQueryKey });
@@ -54,6 +64,13 @@ export function PlayerCharacterSettings({
     setIndividual(Boolean(override));
     setCrop(override ?? value.portrait_crop ?? defaultPortraitCrop);
     drag.current = null;
+  };
+  const updateCrop = (nextCrop: PortraitCrop) => {
+    setCrop(nextCrop);
+    setEditing((value) => {
+      if (!value) return value;
+      return applyPortraitCrop(value, index, individual, nextCrop);
+    });
   };
   return (
     <>
@@ -86,8 +103,9 @@ export function PlayerCharacterSettings({
                 disabled={!character.sprites.length}
                 onClick={() => {
                   save.reset();
-                  setEditing(structuredClone(character));
-                  selectSprite(0, character);
+                  const next = structuredClone(character);
+                  setEditing(next);
+                  selectSprite(0, next);
                 }}
               >
                 {t("player.adjust")}
@@ -104,7 +122,7 @@ export function PlayerCharacterSettings({
         title={t("player.adjust")}
         footer={
           <>
-            <Button disabled={save.isPending} onClick={() => setCrop({ ...defaultPortraitCrop })}>
+            <Button disabled={save.isPending} onClick={() => updateCrop({ ...defaultPortraitCrop })}>
               {t("player.reset")}
             </Button>
             <Button disabled={save.isPending} onClick={() => save.mutate()}>
@@ -149,7 +167,7 @@ export function PlayerCharacterSettings({
                   const side = portraitGeometry(width, height, start.crop).side;
                   const scale = event.currentTarget.clientWidth / side;
                   const initial = portraitGeometry(width, height, start.crop);
-                  setCrop({
+                  updateCrop({
                     ...start.crop,
                     x: Math.max(
                       side / (2 * width),
@@ -180,7 +198,7 @@ export function PlayerCharacterSettings({
                       max={key === "zoom" ? 8 : 1}
                       step={0.01}
                       value={crop[key]}
-                      onChange={(event) => setCrop({ ...crop, [key]: Number(event.target.value) })}
+                      onChange={(event) => updateCrop({ ...crop, [key]: Number(event.target.value) })}
                     />
                   </label>
                 ))}
@@ -190,8 +208,14 @@ export function PlayerCharacterSettings({
                     disabled={save.isPending}
                     checked={individual}
                     onChange={(event) => {
-                      setIndividual(event.target.checked);
-                      if (!event.target.checked) setCrop(editing.portrait_crop ?? defaultPortraitCrop);
+                      const enabled = event.target.checked;
+                      const nextCrop = enabled ? crop : (editing.portrait_crop ?? defaultPortraitCrop);
+                      setIndividual(enabled);
+                      setCrop(nextCrop);
+                      setEditing((value) => {
+                        if (!value) return value;
+                        return applyPortraitCrop(value, index, enabled, nextCrop);
+                      });
                     }}
                   />
                 </label>

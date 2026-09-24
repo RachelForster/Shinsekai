@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { portraitGeometry } from "../../../shared/player-portrait/Portrait";
+import { portraitGeometry } from "../../../shared/components/Portrait";
+import { applyPortraitCrop } from "../../../features/template-editor/PlayerCharacterSettings";
 import { playerPortraitForDialog } from "../../../features/chat-stage/state/text";
 import { chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
 import {
@@ -32,6 +33,29 @@ describe("player portrait", () => {
           expect(crop.top + crop.side).toBeLessThanOrEqual(height);
         }
     }
+  });
+
+  it("keeps each sprite crop when switching between sprites", () => {
+    const character = {
+      name: "神羽",
+      color: "#fff",
+      sprite_prefix: "神羽",
+      sprites: [{ path: "one.png" }, { path: "two.png" }],
+      character_setting: "",
+      sprite_scale: 1,
+      emotion_tags: "",
+      speech_speed: 1,
+      speech_volume: 1,
+      pronunciation_map: {},
+    };
+    const first = { x: 0.2, y: 0.3, zoom: 2 };
+    const second = { x: 0.7, y: 0.6, zoom: 3 };
+
+    const afterFirst = applyPortraitCrop(character, 0, true, first);
+    const afterSecond = applyPortraitCrop(afterFirst, 1, true, second);
+
+    expect(afterSecond.sprites[0].portrait_crop).toEqual(first);
+    expect(afterSecond.sprites[1].portrait_crop).toEqual(second);
   });
 
   it("updates player expression without replacing dialogue or stage sprites", () => {
