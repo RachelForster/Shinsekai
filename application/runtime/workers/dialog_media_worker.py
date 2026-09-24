@@ -97,9 +97,6 @@ class DialogMediaWorker(ThreadDagNode):
         effect: str = "",
     ):
         """Keep the original dialog visible when media preparation fails."""
-        from application.chat.player_control import player_settings
-        if character_name == player_settings().get("name"):
-            return
         emit_presentation_message(
             character_name,
             speech,

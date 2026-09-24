@@ -81,6 +81,8 @@ class AppRuntime:
     presentation_queue: Any
     text_processor: Any  # TextProcessor
     opencc: Any  # OpenCC
+    player_character: str = ""
+    read_player_speech: bool = False
     background: Any = None
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
     effect_image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)

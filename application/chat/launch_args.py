@@ -42,6 +42,12 @@ def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParse
         default="",
         help="JSON array or comma-separated character names selected for this chat.",
     )
+    parser.add_argument("--player-character", type=str, default="")
+    parser.add_argument(
+        "--read-player-speech",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+    )
     parser.add_argument("--t2i", type=str, default="ComfyUI")
     parser.add_argument(
         "--workflow",
@@ -141,7 +147,12 @@ def _parse_chat_launch_config(raw_value: str) -> dict[str, Any]:
 
     normalized: dict[str, Any] = {}
     for key, value in data.items():
-        if key in {"headless", "use_current_template_for_history", "show_initial_sprite"}:
+        if key in {
+            "headless",
+            "read_player_speech",
+            "use_current_template_for_history",
+            "show_initial_sprite",
+        }:
             if not isinstance(value, bool):
                 raise ValueError(f"chat launch config {key} must be boolean")
             normalized[key] = value

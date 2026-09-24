@@ -306,10 +306,12 @@ class CharacterMediaHandler(MessageHandler):
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
         raw_name = str(msg.name or "")
-        from application.chat.player_control import player_settings
-        player_name = str(player_settings().get("name") or "")
-        name_s = raw_name if raw_name == player_name else _cc().convert(raw_name)
         _refresh_config(rt)
+        name_s = (
+            raw_name
+            if rt.config.get_character_by_name(raw_name) is not None
+            else _cc().convert(raw_name)
+        )
         character_config = rt.config.get_character_by_name(name_s)
         if character_config is None:
             raise ValueError(f"未找到角色配置: {name_s}")
@@ -337,35 +339,6 @@ class CharacterMediaHandler(MessageHandler):
         )
         if sprite.found:
             self._last_sprite_by_character[name_s] = sprite.asset_id
-        if name_s == player_name:
-            if msg._player_input:
-                from dataclasses import replace
-                from application.chat.player_control import player_speech
-                speech = player_speech(msg.text or "")
-                translated = str(msg.translate or "").strip()
-                if speech and translated and rt.tts_manager is not None:
-                    request = TtsGenerationRequest(
-                        runtime=rt, character=character_config, character_name=name_s,
-                        message=msg.model_copy(update={"text": speech, "translate": translated}),
-                        sprite=replace(sprite, voice_type="reference" if sprite.voice_type == "reference" else "", voice_path=sprite.voice_path if sprite.voice_type == "reference" else ""),
-                    )
-                    for audio_path in self.tts_generation_strategy.generate(request):
-                        if audio_path:
-                            rt.presentation_queue.put(PresentationMessage(
-                                name=name_s, text="", audio_path=audio_path,
-                                asset_id=None, is_system_message=False, timeout=0,
-                            ))
-                return
-            if sprite.found:
-                # Player output cannot enter preset-audio or generated-dialog paths.
-                if bool(getattr(msg, "_presentation_replay", False)):
-                    rt.ui_update_manager.update_sprite(name_s, int(sprite.asset_id) - 1)
-                else:
-                    rt.presentation_queue.put(PresentationMessage(
-                        name=name_s, text="", audio_path="", asset_id=sprite.asset_id,
-                        is_system_message=False, timeout=0,
-                    ))
-            return
         if bool(getattr(msg, "_presentation_replay", False)):
             rt.presentation_queue.put(
                 PresentationMessage(

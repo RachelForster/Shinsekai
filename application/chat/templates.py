@@ -56,31 +56,54 @@ def _compose_stored_template(
     system: str,
     *,
     media_selection_mode: str = "indexed",
+    player_character: str = "",
+    read_player_speech: bool = False,
 ) -> str:
     a = (scenario or "").replace("\r\n", "\n").rstrip()
     b = (system or "").replace("\r\n", "\n").rstrip()
+    player_name = str(player_character or "").strip()
+    metadata_fields: dict[str, Any] = {
+        "mediaSelectionMode": _normalize_media_selection_mode(media_selection_mode),
+    }
+    if player_name:
+        metadata_fields.update(
+            {
+                "playerCharacter": player_name,
+                "readPlayerSpeech": bool(read_player_speech),
+            }
+        )
     metadata = json.dumps(
-        {"mediaSelectionMode": _normalize_media_selection_mode(media_selection_mode)},
+        metadata_fields,
         ensure_ascii=False,
         separators=(",", ":"),
     )
     return f"{MARK_METADATA}\n{metadata}\n{MARK_SCENARIO}\n{a}\n{MARK_SYSTEM}\n{b}\n"
 
 
-def _parse_stored_template_metadata(raw: str) -> dict[str, str]:
+def _parse_stored_template_metadata(raw: str) -> dict[str, Any]:
     text = (raw or "").replace("\r\n", "\n")
     if MARK_METADATA not in text:
-        return {"mediaSelectionMode": "indexed"}
+        return {
+            "mediaSelectionMode": "indexed",
+            "playerCharacter": "",
+            "readPlayerSpeech": False,
+        }
     try:
         start = text.index(MARK_METADATA) + len(MARK_METADATA)
         end = text.index(MARK_SCENARIO, start)
         parsed = json.loads(text[start:end].strip())
     except (ValueError, json.JSONDecodeError):
         parsed = {}
+    metadata = parsed if isinstance(parsed, dict) else {}
+    player_character = str(metadata.get("playerCharacter") or "").strip()
     return {
         "mediaSelectionMode": _normalize_media_selection_mode(
-            parsed.get("mediaSelectionMode") if isinstance(parsed, dict) else None
-        )
+            metadata.get("mediaSelectionMode")
+        ),
+        "playerCharacter": player_character,
+        "readPlayerSpeech": bool(
+            metadata.get("readPlayerSpeech", False) and player_character
+        ),
     }
 
 
@@ -278,6 +301,8 @@ def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
                 "scenario": scenario,
                 "system": system,
                 "mediaSelectionMode": metadata["mediaSelectionMode"],
+                "playerCharacter": metadata["playerCharacter"],
+                "readPlayerSpeech": metadata["readPlayerSpeech"],
                 "updatedAt": str(int(path.stat().st_mtime)),
             }
         )
@@ -302,6 +327,8 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
             scenario,
             system,
             media_selection_mode=media_selection_mode,
+            player_character=str(template.get("playerCharacter") or ""),
+            read_player_speech=bool(template.get("readPlayerSpeech", False)),
         ),
         encoding="utf-8",
     )
@@ -328,6 +355,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
     prompt_mode = str(payload.get("characterPromptMode") or "").strip().lower()
     from application.chat.player_control import resolve_player
     player_character = resolve_player(state.config_manager, resolved_names, payload.get("playerCharacter"))
+    read_player_speech = bool(player_character and payload.get("readPlayerSpeech", False))
     primary_characters = (
         _resolve_template_character_names(state, payload.get("primaryCharacters") or [])
         if prompt_mode == "compact"
@@ -363,6 +391,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         primary_characters=primary_characters,
         media_selection_mode=media_selection_mode,
         player_character=player_character,
+        read_player_speech=read_player_speech,
     )
     output_name = str(result or "").strip()
     name = str(output_name or payload.get("name") or "generated").strip()
@@ -375,6 +404,8 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         "scenario": scenario,
         "system": content,
         "mediaSelectionMode": media_selection_mode,
+        "playerCharacter": player_character,
+        "readPlayerSpeech": read_player_speech,
         "updatedAt": "",
         "resolvedCharacters": resolved_names,
     }

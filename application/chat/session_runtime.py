@@ -455,6 +455,10 @@ class _BaseChatSession:
                 presentation_queue=runtime.presentation_queue,
                 text_processor=runtime.text_processor,
                 opencc=runtime.opencc,
+                player_character=str(getattr(self.args, "player_character", "") or ""),
+                read_player_speech=bool(
+                    getattr(self.args, "read_player_speech", False)
+                ),
                 background=getattr(runtime.presentation_assets, "background", None),
                 chat_turn_service=self.chat_turn_service,
             )
@@ -510,15 +514,14 @@ class StreamingChatSession(_BaseChatSession):
                 bg_group=runtime.presentation_assets.background_sprites,
             )
             self._configure_stream_runtime()
-            from application.chat.player_control import player_settings
-            player_name = str(player_settings().get("name") or "")
+            player_name = str(getattr(self.args, "player_character", "") or "")
             if player_name:
-                self.ui_updates.set_user_display_name(player_name)
+                self.ui_updates.set_player_character(player_name)
         self._start_workflow()
         if player_name:
             character = self.config.get_character_by_name(player_name)
             if character is not None and character.sprites:
-                self.ui_updates.update_sprite(player_name, 0)
+                self.ui_updates.update_player_portrait(player_name, 0)
         self._present_initial_ui()
         self.initialization.complete()
         self._start_live_comments()
@@ -607,6 +610,9 @@ class StreamingChatSession(_BaseChatSession):
                     messages,
                     dialog_queue=self._require_runtime().dialog_queue,
                     opencc=self._require_runtime().opencc,
+                    player_name=str(
+                        getattr(self.args, "player_character", "") or ""
+                    ),
                 ),
             )
 

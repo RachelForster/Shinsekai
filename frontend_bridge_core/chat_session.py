@@ -88,6 +88,7 @@ def _generate_system_template_for_mode(
         primary_characters=primary,
         media_selection_mode=media_selection_mode,
         player_character=str(source.get("playerCharacter") or ""),
+        read_player_speech=bool(source.get("readPlayerSpeech", False)),
     )
     return content
 

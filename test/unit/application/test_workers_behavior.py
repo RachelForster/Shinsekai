@@ -172,38 +172,6 @@ def test_llm_worker_run_uses_original_queues_and_marks_input_done(
     )
 
 
-def test_llm_worker_queues_player_translation_before_streamed_dialog(
-    monkeypatch,
-) -> None:
-    user_input_queue = CountingQueue()
-    dialog_queue = CountingQueue()
-    user_input_queue.put(UserInputMessage(text="我才不要（摊开手）"))
-    user_input_queue.put(None)
-
-    runtime = _make_app_runtime(dialog_queue=dialog_queue)
-    runtime.config.config.api_config.is_streaming = True
-    runtime.llm_manager.chat.return_value = iter(
-        [
-            '{"dialog":[{"character_name":"Alice","speech":"Why?","sprite":"0"}',
-            '],"player_speech":{"translate":"嫌だ。"}}',
-        ]
-    )
-    monkeypatch.setenv(
-        "SHINSEKAI_PLAYER_CONTROL",
-        json.dumps({"name": "Player", "readSpeech": True}),
-    )
-
-    LLMWorker(user_input_queue, dialog_queue).run()
-
-    player = dialog_queue.get_nowait()
-    npc = dialog_queue.get_nowait()
-    assert player.name == "Player"
-    assert player.text == "我才不要"
-    assert player.translate == "嫌だ。"
-    assert player._player_input is True
-    assert npc.name == "Alice"
-
-
 @pytest.mark.parametrize("effect", ["", "笔记本", "after:笔记本"])
 @pytest.mark.parametrize(
     "user_text", ["（拿起笔记本）", "我拿起杯子，笔记本还锁在柜子里。"]

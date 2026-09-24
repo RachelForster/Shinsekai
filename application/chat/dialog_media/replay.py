@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
-from core.chat_history.text import parse_assistant_dialog_content, parse_assistant_dialog_payload
+from core.chat_history.text import parse_assistant_dialog_content
 from core.messaging.dialog_tokens import (
     match_bgm_name,
     match_cg_name,
@@ -20,6 +19,7 @@ def latest_media_dialogs(
     messages: list[Any],
     *,
     opencc: Any,
+    player_name: str = "",
 ) -> tuple[LLMDialogMessage, ...]:
     """Return the latest scene, BGM, and character instructions in source order."""
 
@@ -28,17 +28,6 @@ def latest_media_dialogs(
     for message in messages:
         if not isinstance(message, dict) or message.get("role") != "assistant":
             continue
-        from application.chat.player_control import player_settings
-        player = str(player_settings().get("name") or "")
-        try:
-            portrait = parse_assistant_dialog_payload(message.get("content", "")).get("player_portrait")
-        except (ValueError, TypeError, AttributeError):
-            portrait = None
-        if player and isinstance(portrait, dict):
-            position += 1
-            latest["player"] = (position, LLMDialogMessage(
-                name=player, text="", sprite=portrait.get("sprite", "-1"), vibe=portrait.get("vibe", ""),
-            ))
         for item in parse_assistant_dialog_content(message.get("content", "")):
             try:
                 dialog = LLMDialogMessage.model_validate(item)
@@ -57,8 +46,7 @@ def latest_media_dialogs(
                 continue
             else:
                 kind = "character"
-                from application.chat.player_control import player_settings
-                if dialog.name == player_settings().get("name"):
+                if player_name and dialog.name == player_name:
                     kind = "player"
             latest[kind] = (position, dialog)
 
@@ -72,10 +60,15 @@ def enqueue_latest_media_replay(
     *,
     dialog_queue: Any,
     opencc: Any,
+    player_name: str = "",
 ) -> bool:
     """Replay raw media inputs with the active strategies, without replaying speech."""
 
-    dialogs = latest_media_dialogs(messages, opencc=opencc)
+    dialogs = latest_media_dialogs(
+        messages,
+        opencc=opencc,
+        player_name=player_name,
+    )
     for dialog in dialogs:
         dialog_queue.put(
             dialog.model_copy(

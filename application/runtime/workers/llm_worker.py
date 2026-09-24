@@ -129,13 +129,6 @@ class LLMWorker(ThreadDagNode):
                     self.ui_update_manager.chat_history.append(formatted_user_message)
 
                 is_streaming = get_app_runtime().config.config.api_config.is_streaming
-                from application.chat.player_control import player_settings, player_speech
-                settings = player_settings()
-                player_text = (
-                    player_speech(message.text)
-                    if settings.get("name") and settings.get("readSpeech")
-                    else ""
-                )
                 with tracker.track("LLM chat total"):
                     chat_kwargs = {
                         "stream": is_streaming,
@@ -162,31 +155,11 @@ class LLMWorker(ThreadDagNode):
                 else:
                     response_stream = [raw_response]
 
-                parser = LlmResponseStreamParser(
-                    player_name=str(settings.get("name") or ""),
-                    player_speech=player_text,
-                )
+                parser = LlmResponseStreamParser()
                 reasoning_shown = ""
                 message_count = 0
                 delivered_dialogs: list[LLMDialogMessage] = []
-                pending_dialogs: list[LLMDialogMessage] = []
-                player_speech_queued = not bool(player_text)
                 raw_chunks: list = []
-
-                def deliver(llm_dialog: LLMDialogMessage) -> None:
-                    nonlocal message_count, player_speech_queued
-                    message_count += 1
-                    delivered_dialogs.append(llm_dialog)
-                    outgoing = llm_dialog.model_copy(update={"turn_id": turn.id})
-                    if not player_speech_queued and not llm_dialog._player_input:
-                        pending_dialogs.append(outgoing)
-                        return
-                    self.dialog_queue.put(outgoing)
-                    if llm_dialog._player_input and not player_speech_queued:
-                        player_speech_queued = True
-                        for pending in pending_dialogs:
-                            self.dialog_queue.put(pending)
-                        pending_dialogs.clear()
 
                 with tracker.track("LLM stream parse"):
                     for chunk in response_stream:
@@ -206,22 +179,23 @@ class LLMWorker(ThreadDagNode):
                             isinstance(chunk, dict)
                             and STREAM_DIALOG_REPAIR_KEY in chunk
                         ):
-                            repaired_parser = LlmResponseStreamParser(
-                                player_name=str(settings.get("name") or ""),
-                                player_speech=player_text,
-                            )
+                            repaired_parser = LlmResponseStreamParser()
                             repaired_messages = list(
                                 repaired_parser.feed(chunk[STREAM_DIALOG_REPAIR_KEY])
                             )
                             delivered_before_repair = message_count
                             reconciliation = reconcile_dialog_repair(
-                                [item for item in delivered_dialogs if not item._player_input],
-                                [item for item in repaired_messages if not item._player_input],
+                                delivered_dialogs,
+                                repaired_messages,
                             )
                             appended_messages = 0
                             for llm_dialog in reconciliation.messages_to_append:
+                                message_count += 1
                                 appended_messages += 1
-                                deliver(llm_dialog)
+                                delivered_dialogs.append(llm_dialog)
+                                self.dialog_queue.put(
+                                    llm_dialog.model_copy(update={"turn_id": turn.id})
+                                )
                             logger.info(
                                 "Reconciled repaired dialogue with streamed messages",
                                 extra={
@@ -242,16 +216,11 @@ class LLMWorker(ThreadDagNode):
                         )
                         raw_chunks.append(chunk_message)
                         for llm_dialog in parser.feed(chunk_message):
-                            deliver(llm_dialog)
-
-                if pending_dialogs:
-                    logger.warning(
-                        "LLM response omitted the player speech translation",
-                        extra={"event": "llm.player_translation.missing"},
-                    )
-                    for pending in pending_dialogs:
-                        self.dialog_queue.put(pending)
-                    pending_dialogs.clear()
+                            message_count += 1
+                            delivered_dialogs.append(llm_dialog)
+                            self.dialog_queue.put(
+                                llm_dialog.model_copy(update={"turn_id": turn.id})
+                            )
 
                 # --- Interrupted: write committed context, discard the rest ---
                 if turn.is_cancelled():
