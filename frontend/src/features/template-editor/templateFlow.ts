@@ -107,6 +107,7 @@ export function buildTemplateGenerateInput(input: {
   characterPromptMode?: "compact" | "full";
   primaryCharacters?: string[];
   playerCharacter?: string;
+  readPlayerSpeech?: boolean;
   mediaSelectionMode: MediaSelectionMode;
 }): TemplateGenerateInput {
   return {
@@ -120,6 +121,7 @@ export function buildTemplateGenerateInput(input: {
     name: input.draft.name.trim(),
     primaryCharacters: input.primaryCharacters,
     playerCharacter: input.playerCharacter,
+    readPlayerSpeech: Boolean(input.playerCharacter && input.readPlayerSpeech),
     scenario: String(input.draft.scenario ?? ""),
     useCg: input.options.useCg,
     useChoice: input.options.useChoice,

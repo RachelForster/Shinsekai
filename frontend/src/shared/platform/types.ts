@@ -513,6 +513,8 @@ export interface TemplateSummary {
   name: string;
   path: string;
   mediaSelectionMode?: MediaSelectionMode;
+  playerCharacter?: string;
+  readPlayerSpeech?: boolean;
   scenario?: string;
   system?: string;
   updatedAt: string;
@@ -571,6 +573,7 @@ export interface ChatLaunchPayload {
 
 export interface TemplateGenerateInput {
   playerCharacter?: string;
+  readPlayerSpeech?: boolean;
   backgroundName: string;
   characterPromptMode?: CharacterPromptMode;
   characters: string[];
