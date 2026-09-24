@@ -1,8 +1,21 @@
-import type { ChatRuntimeStatus } from "../../../shared/platform/types";
+import type { ChatRuntimeStatus, PlayerPortrait } from "../../../shared/platform/types";
 import { parseHtmlFragment, stripHtmlFallback } from "../htmlFragment";
 import type { ChatStageState } from "./types";
 
 export const defaultUserDialogSpeaker = "你";
+
+export function playerPortraitForDialog(
+  portrait: PlayerPortrait | null | undefined,
+  speaker: string | undefined,
+  text: string,
+) {
+  if (!portrait?.url) return null;
+  const compact = (value: string) => value.replace(/\s+/gu, "");
+  const name = compact(portrait.characterName);
+  const currentSpeaker = compact(speaker ?? "");
+  const narration = currentSpeaker.toUpperCase() === "NARR" || currentSpeaker === "旁白";
+  return name && (currentSpeaker === name || (narration && compact(text).includes(name))) ? portrait : null;
+}
 
 const blockTextTags = new Set(["div", "li", "p"]);
 

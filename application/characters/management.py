@@ -191,7 +191,7 @@ class CharacterUseCase:
             raise ValueError(error)
 
     def _save(self, payload: dict[str, Any]) -> dict[str, Any]:
-        from config.schema import Character
+        from config.schema import Character, PortraitCrop
 
         body = payload.get("character", payload)
         if not isinstance(body, dict):
@@ -216,6 +216,12 @@ class CharacterUseCase:
             edit_as_name=original_name,
             emotion_tags=str(character.emotion_tags or ""),
             character_brief=str(character.character_brief or "").strip(),
+            portrait_crop=character.portrait_crop if "portrait_crop" in body else None,
+            sprite_portrait_crops={
+                index: (item.get("portrait_crop") and PortraitCrop.model_validate(item["portrait_crop"]))
+                for index, item in enumerate(body.get("sprites", []))
+                if isinstance(item, dict) and "portrait_crop" in item
+            },
         )
         if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
             raise RuntimeError(message)

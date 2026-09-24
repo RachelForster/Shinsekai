@@ -56,31 +56,54 @@ def _compose_stored_template(
     system: str,
     *,
     media_selection_mode: str = "indexed",
+    player_character: str = "",
+    read_player_speech: bool = False,
 ) -> str:
     a = (scenario or "").replace("\r\n", "\n").rstrip()
     b = (system or "").replace("\r\n", "\n").rstrip()
+    player_name = str(player_character or "").strip()
+    metadata_fields: dict[str, Any] = {
+        "mediaSelectionMode": _normalize_media_selection_mode(media_selection_mode),
+    }
+    if player_name:
+        metadata_fields.update(
+            {
+                "playerCharacter": player_name,
+                "readPlayerSpeech": bool(read_player_speech),
+            }
+        )
     metadata = json.dumps(
-        {"mediaSelectionMode": _normalize_media_selection_mode(media_selection_mode)},
+        metadata_fields,
         ensure_ascii=False,
         separators=(",", ":"),
     )
     return f"{MARK_METADATA}\n{metadata}\n{MARK_SCENARIO}\n{a}\n{MARK_SYSTEM}\n{b}\n"
 
 
-def _parse_stored_template_metadata(raw: str) -> dict[str, str]:
+def _parse_stored_template_metadata(raw: str) -> dict[str, Any]:
     text = (raw or "").replace("\r\n", "\n")
     if MARK_METADATA not in text:
-        return {"mediaSelectionMode": "indexed"}
+        return {
+            "mediaSelectionMode": "indexed",
+            "playerCharacter": "",
+            "readPlayerSpeech": False,
+        }
     try:
         start = text.index(MARK_METADATA) + len(MARK_METADATA)
         end = text.index(MARK_SCENARIO, start)
         parsed = json.loads(text[start:end].strip())
     except (ValueError, json.JSONDecodeError):
         parsed = {}
+    metadata = parsed if isinstance(parsed, dict) else {}
+    player_character = str(metadata.get("playerCharacter") or "").strip()
     return {
         "mediaSelectionMode": _normalize_media_selection_mode(
-            parsed.get("mediaSelectionMode") if isinstance(parsed, dict) else None
-        )
+            metadata.get("mediaSelectionMode")
+        ),
+        "playerCharacter": player_character,
+        "readPlayerSpeech": bool(
+            metadata.get("readPlayerSpeech", False) and player_character
+        ),
     }
 
 
@@ -278,6 +301,8 @@ def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
                 "scenario": scenario,
                 "system": system,
                 "mediaSelectionMode": metadata["mediaSelectionMode"],
+                "playerCharacter": metadata["playerCharacter"],
+                "readPlayerSpeech": metadata["readPlayerSpeech"],
                 "updatedAt": str(int(path.stat().st_mtime)),
             }
         )
@@ -302,6 +327,8 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
             scenario,
             system,
             media_selection_mode=media_selection_mode,
+            player_character=str(template.get("playerCharacter") or ""),
+            read_player_speech=bool(template.get("readPlayerSpeech", False)),
         ),
         encoding="utf-8",
     )
@@ -326,6 +353,9 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
     max_speech_chars = max(0, int(payload.get("maxSpeechChars") or 0))
     max_dialog_items = max(0, int(payload.get("maxDialogItems") or 0))
     prompt_mode = str(payload.get("characterPromptMode") or "").strip().lower()
+    from application.chat.player_control import resolve_player
+    player_character = resolve_player(state.config_manager, resolved_names, payload.get("playerCharacter"))
+    read_player_speech = bool(player_character and payload.get("readPlayerSpeech", False))
     primary_characters = (
         _resolve_template_character_names(state, payload.get("primaryCharacters") or [])
         if prompt_mode == "compact"
@@ -338,6 +368,8 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         else "indexed"
     )
     if primary_characters is not None:
+        if player_character and player_character not in primary_characters:
+            primary_characters.append(player_character)
         selected_keys = {character_name_key(name) for name in resolved_names}
         primary_characters = [
             name
@@ -358,6 +390,8 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         max_dialog_items=max_dialog_items,
         primary_characters=primary_characters,
         media_selection_mode=media_selection_mode,
+        player_character=player_character,
+        read_player_speech=read_player_speech,
     )
     output_name = str(result or "").strip()
     name = str(output_name or payload.get("name") or "generated").strip()
@@ -370,6 +404,8 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         "scenario": scenario,
         "system": content,
         "mediaSelectionMode": media_selection_mode,
+        "playerCharacter": player_character,
+        "readPlayerSpeech": read_player_speech,
         "updatedAt": "",
         "resolvedCharacters": resolved_names,
     }
@@ -441,6 +477,8 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         payload["primaryCharacters"] = _session_string_list(
             raw.get("primary_characters")
         )
+    payload["playerCharacter"] = str(raw.get("player_character") or "")
+    payload["readPlayerSpeech"] = bool(raw.get("read_player_speech", False))
     return payload
 
 
@@ -478,10 +516,13 @@ def _reconcile_template_session_characters(
     prompt_mode = str(raw.get("character_prompt_mode") or "").strip().lower()
     if prompt_mode == "compact" and not resolved_primary:
         prompt_mode = ""
+    saved_player = str(raw.get("player_character") or "")
+    resolved_player = resolved_by_key.get(character_name_key(saved_player), "")
     if (
         resolved_names == selected
         and resolved_primary == primary
         and prompt_mode == str(raw.get("character_prompt_mode") or "")
+        and saved_player == resolved_player
     ):
         return raw
 
@@ -489,6 +530,7 @@ def _reconcile_template_session_characters(
     repaired["selected_characters"] = resolved_names
     repaired["primary_characters"] = resolved_primary
     repaired["character_prompt_mode"] = prompt_mode
+    repaired["player_character"] = resolved_player
     repaired["init_sprite_path"] = initial_sprite_path_for_characters(
         state.config_manager,
         str(raw.get("init_sprite_path") or ""),
@@ -524,6 +566,8 @@ def _rename_template_session_character(
         return
     repaired = dict(raw)
     repaired["selected_characters"] = renamed
+    if character_name_key(str(raw.get("player_character") or "")) == original_key:
+        repaired["player_character"] = saved_name
     primary = _session_string_list(raw.get("primary_characters"))
     repaired["primary_characters"] = [
         saved_name if character_name_key(name) == original_key else name
@@ -569,6 +613,8 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
         if character_name_key(name) in selected_keys
     ]
     data = {
+        "player_character": str(payload.get("playerCharacter") or ""),
+        "read_player_speech": bool(payload.get("readPlayerSpeech", False)),
         "selected_characters": selected_characters,
         "character_prompt_mode": prompt_mode,
         "primary_characters": primary_characters,

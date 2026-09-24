@@ -12,7 +12,13 @@
   gap: var(--space-2);
 }
 
-.template-character-picker__header .button {
+.template-character-picker__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--space-2);
+}
+
+.template-character-picker__actions .button {
   min-height: 28px;
   flex: 0 0 auto;
   padding-block: 3px;
@@ -113,8 +119,13 @@
     flex-direction: column;
   }
 
-  .template-character-picker__header .button,
+  .template-character-picker__actions,
+  .template-character-picker__actions .button,
   .template-character-card {
     width: 100%;
+  }
+
+  .template-character-picker__actions {
+    flex-direction: column;
   }
 }

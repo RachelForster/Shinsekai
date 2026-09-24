@@ -192,6 +192,9 @@ class _StreamingSessionWiring:
                     messages,
                     dialog_queue=self.runtime.dialog_queue,
                     opencc=self.runtime.opencc,
+                    player_name=str(
+                        getattr(self.args, "player_character", "") or ""
+                    ),
                 ),
             ),
         )

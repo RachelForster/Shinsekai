@@ -87,6 +87,8 @@ def _generate_system_template_for_mode(
         max_dialog_items=max(0, int(source.get("maxDialogItems") or 0)),
         primary_characters=primary,
         media_selection_mode=media_selection_mode,
+        player_character=str(source.get("playerCharacter") or ""),
+        read_player_speech=bool(source.get("readPlayerSpeech", False)),
     )
     return content
 
@@ -191,7 +193,9 @@ def launch_chat(
         state,
         body.get("characters") or [],
     )
-    first_character = characters[0] if characters else ""
+    from application.chat.player_control import resolve_player
+    player_character = resolve_player(state.config_manager, characters, body.get("playerCharacter"))
+    first_character = next((name for name in characters if name != player_character), "")
     init_sprite_path = initial_sprite_path_for_characters(
         state.config_manager,
         str(body.get("initSpritePath") or ""),
@@ -230,8 +234,10 @@ def launch_chat(
     )
     if start_fresh_history:
         clear_story_session(state)
-    user_display_name = _sanitize_user_display_name(body.get("userDisplayName"))
+    user_display_name = player_character or _sanitize_user_display_name(body.get("userDisplayName"))
     session_base = {
+        "playerCharacter": player_character,
+        "readPlayerSpeech": bool(body.get("readPlayerSpeech", False)),
         "backgroundName": str(body.get("backgroundName") or ""),
         "characterName": first_character,
         "historyPath": history_path.as_posix(),
@@ -411,7 +417,9 @@ def resume_last_chat(
     )
     requested_media_mode = session.get("mediaSelectionMode")
     media_selection_mode = _usable_media_selection_mode(requested_media_mode)
-    first_character = selected_characters[0] if selected_characters else ""
+    from application.chat.player_control import resolve_player
+    player_character = resolve_player(state.config_manager, selected_characters, session.get("playerCharacter"))
+    first_character = next((name for name in selected_characters if name != player_character), "")
     init_sprite_path = initial_sprite_path_for_characters(
         state.config_manager,
         str(session.get("initSpritePath") or ""),
@@ -423,9 +431,11 @@ def resume_last_chat(
         or ""
     )
     selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
-    user_display_name = _sanitize_user_display_name(session.get("userDisplayName"))
+    user_display_name = player_character or _sanitize_user_display_name(session.get("userDisplayName"))
     session_base = {
         "backgroundName": selected_bg,
+        "playerCharacter": player_character,
+        "readPlayerSpeech": bool(session.get("readPlayerSpeech", False)),
         "characterName": first_character,
         "historyPath": history_path.as_posix(),
         "sessionId": "",

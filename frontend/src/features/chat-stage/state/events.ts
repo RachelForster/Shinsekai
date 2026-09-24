@@ -54,6 +54,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
     return state;
   }
   switch (event.type) {
+    case "player.portrait.show":
+      return {
+        ...state,
+        eventSeq: event.seq,
+        playerPortrait: { characterName: event.characterName, url: event.url, crop: event.crop },
+      };
     case "snapshot":
       return hydrateFromSnapshot(
         state,

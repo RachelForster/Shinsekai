@@ -197,6 +197,14 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             next_snapshot["userDisplayName"] = name
         return next_snapshot
 
+    if event_type == "player.portrait.show":
+        next_snapshot["playerPortrait"] = {
+            "characterName": str(event.get("characterName") or ""),
+            "url": str(event.get("url") or ""),
+            "crop": dict(event.get("crop") or {}),
+        }
+        return next_snapshot
+
     if event_type == "sprite.show":
         _clear_transient_notification_state(next_snapshot)
         character_name = str(event.get("characterName") or "")

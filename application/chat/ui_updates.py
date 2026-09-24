@@ -225,6 +225,11 @@ class HeadlessUIUpdateManager:
         if value:
             self.user_display_name = value
 
+    def set_player_character(self, name: str) -> None:
+        self.player_character = str(name or "").strip()
+        if self.player_character:
+            self.set_user_display_name(self.player_character)
+
     def update_dialog(
         self,
         name: str,
@@ -245,6 +250,9 @@ class HeadlessUIUpdateManager:
         print(f"你: {value}")
 
     def update_sprite(self, character_name: str, sprite_id: int) -> None:
+        pass
+
+    def update_player_portrait(self, character_name: str, sprite_id: int) -> None:
         pass
 
     def switch_bgm(self, new_bgm_path: str) -> None:
@@ -487,6 +495,26 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
 
     # --- 高层业务组装 → 事件 ---
 
+    def queue_player_portrait(self, name: str, sprite_id: int) -> None:
+        if getattr(self, "_player_input_visible", False):
+            self.update_player_portrait(name, sprite_id)
+        else:
+            self._pending_player_portrait = (name, sprite_id)
+
+    def _apply_player_portrait_for_dialog(self, name: str, speech: str) -> None:
+        from core.messaging.dialog_tokens import NARR_ALIASES, normalize_character_name
+        player = str(getattr(self, "player_character", "") or "")
+        compact = lambda value: re.sub(r'\s+', '', str(value or ''))
+        relevant = bool(player) and (
+            compact(name) == compact(player) or
+            (normalize_character_name(name) in NARR_ALIASES and compact(player) in compact(speech))
+        )
+        self._player_input_visible = False
+        pending = getattr(self, "_pending_player_portrait", None)
+        self._pending_player_portrait = None
+        if relevant and pending is not None:
+            self.update_player_portrait(*pending)
+
     def update_dialog(
         self,
         name: str,
@@ -494,6 +522,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         color: str,
         is_system: bool = True,
     ) -> None:
+        self._apply_player_portrait_for_dialog(name, speech)
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
@@ -509,6 +538,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self.sync_history_entries()
 
     def record_user_message(self, text: str) -> None:
+        self._player_input_visible = True
+        self._pending_player_portrait = None
         super().record_user_message(text)
         self.sync_history_entries()
 
@@ -521,6 +552,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         color: str = "",
         is_system: bool = True,
     ) -> None:
+        self._apply_player_portrait_for_dialog(speaker, html.unescape(re.sub(r'<[^>]*>', '', full_html)))
         if append_history and str(full_html or "").strip():
             self.chat_history.append(full_html)
         self._sink.emit(
@@ -555,6 +587,39 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                 "url": self._media_url(image_path),
                 "scale": scale,
                 "slot": display_slot,
+            }
+        )
+
+    def update_player_portrait(self, character_name: str, sprite_id: int) -> None:
+        try:
+            character_config = get_character_by_name(character_name)
+            if character_config is None:
+                raise ValueError(f"未找到角色配置: {character_name}")
+            sprite = character_config.sprites[sprite_id]
+            image_path = str(
+                Path(sprite.get("path", ""))
+                if isinstance(sprite, dict)
+                else Path(getattr(sprite, "path", ""))
+            )
+        except Exception as error:
+            print(f"StreamingUIUpdateManager: 主控头像解析失败: {error}")
+            return
+        crop = (
+            sprite.get("portrait_crop")
+            if isinstance(sprite, dict)
+            else getattr(sprite, "portrait_crop", None)
+        )
+        crop = crop or getattr(character_config, "portrait_crop", None)
+        self._sink.emit(
+            {
+                "type": "player.portrait.show",
+                "characterName": character_name,
+                "url": self._media_url(image_path),
+                "crop": (
+                    crop.model_dump()
+                    if hasattr(crop, "model_dump")
+                    else (crop or {"x": 0.5, "y": 0.2, "zoom": 1})
+                ),
             }
         )
 

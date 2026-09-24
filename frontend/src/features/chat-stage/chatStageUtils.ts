@@ -83,7 +83,7 @@ export function stageAssetUrl(path?: string) {
       // Fall through to the existing path handling.
     }
   }
-  if (/^(?:[a-z][a-z\d+.-]*:|\/assets\/)/i.test(path)) {
+  if (/^(?:https?:|data:|blob:|\/assets\/)/i.test(path)) {
     return path;
   }
   return fileUrl(path);

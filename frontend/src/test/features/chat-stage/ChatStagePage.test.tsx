@@ -61,6 +61,7 @@ vi.mock("../../../entities/config/repository", () => ({
 
 vi.mock("../../../entities/files/repository", () => ({
   browseFiles: (options?: { path?: string; showHidden?: boolean }) => mocks.browseFiles(options),
+  fileUrl: (path: string) => path,
 }));
 
 vi.mock("../../../features/chat-stage/theme/ChatThemeProvider", () => ({

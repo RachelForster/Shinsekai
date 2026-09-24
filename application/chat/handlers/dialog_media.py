@@ -305,8 +305,13 @@ class CharacterMediaHandler(MessageHandler):
 
     def handle(self, msg: LLMDialogMessage) -> None:
         rt = get_app_runtime()
-        name_s = _cc().convert(msg.name)
+        raw_name = str(msg.name or "")
         _refresh_config(rt)
+        name_s = (
+            raw_name
+            if rt.config.get_character_by_name(raw_name) is not None
+            else _cc().convert(raw_name)
+        )
         character_config = rt.config.get_character_by_name(name_s)
         if character_config is None:
             raise ValueError(f"未找到角色配置: {name_s}")

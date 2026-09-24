@@ -73,6 +73,9 @@ class FakeConfigManager:
     def reload(self):
         pass
 
+    def save_characters_config(self):
+        pass
+
 
 def make_character(**sprite_fields):
     return Character(

@@ -37,12 +37,20 @@ def clamp_compact_target_ratio(compact_threshold: float, compact_target_ratio: f
 
 
 # Character Config Models
+class PortraitCrop(BaseModel):
+    """Normalized square viewport: center in the image and zoom over cover size."""
+    x: float = Field(default=0.5, ge=0, le=1)
+    y: float = Field(default=0.2, ge=0, le=1)
+    zoom: float = Field(default=1.0, ge=1, le=8)
+
+
 class Sprite(BaseModel):
     """角色的单个立绘/语音配置"""
     path: FilePath = Field(..., description="立绘图片的文件路径")
     voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
     voice_type: Optional[str] = Field(None, description="语音类型: fallback、preset 或 reference")
+    portrait_crop: Optional[PortraitCrop] = None
 
 class Character(BaseModel):
     """单个角色配置的实体模型"""
@@ -59,6 +67,7 @@ class Character(BaseModel):
     )
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
+    portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)
     emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
 
     # gpt-sovits 相关的配置

@@ -38,7 +38,9 @@ def test_parse_stored_template_handles_legacy_single_body_text():
     assert _parse_stored_template("legacy template") == ("legacy template", "")
     assert _parse_stored_template("  \n") == ("", "")
     assert _parse_stored_template_metadata("legacy template") == {
-        "mediaSelectionMode": "indexed"
+        "mediaSelectionMode": "indexed",
+        "playerCharacter": "",
+        "readPlayerSpeech": False,
     }
 
 
@@ -46,7 +48,24 @@ def test_stored_template_round_trips_semantic_media_metadata():
     raw = _compose_stored_template("scene", "system", media_selection_mode="semantic")
 
     assert _parse_stored_template_metadata(raw) == {
-        "mediaSelectionMode": "semantic"
+        "mediaSelectionMode": "semantic",
+        "playerCharacter": "",
+        "readPlayerSpeech": False,
+    }
+
+
+def test_stored_template_round_trips_player_metadata():
+    raw = _compose_stored_template(
+        "scene",
+        "system",
+        player_character="神羽",
+        read_player_speech=True,
+    )
+
+    assert _parse_stored_template_metadata(raw) == {
+        "mediaSelectionMode": "indexed",
+        "playerCharacter": "神羽",
+        "readPlayerSpeech": True,
     }
 
 
@@ -361,6 +380,8 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
         "maxDialogItems": 8,
         "maxSpeechChars": 0,
         "mediaSelectionMode": "indexed",
+        "playerCharacter": "",
+        "readPlayerSpeech": False,
         "roomId": "123",
         "scenario": "场景",
         "selectedCharacters": ["Alice", "42"],

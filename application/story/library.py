@@ -162,6 +162,9 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         for name in names
         if state.config_manager.get_character_by_name(name) is not None
     ]
+    player_character = str(bindings.get("playerCharacter") or "")
+    if player_character not in names:
+        player_character = ""
     background = bindings.get("openingBackground") or TRANSPARENT_BACKGROUND_NAME
     payload = {
         **dict(bindings.get("templateOptions") or {}),
@@ -173,6 +176,8 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         "backgroundName": background,
         "characterPromptMode": bindings.get("characterPromptMode", "full"),
         "primaryCharacters": list(bindings.get("primaryCharacters", names)),
+        "playerCharacter": player_character,
+        "readPlayerSpeech": bool(bindings.get("readPlayerSpeech")) if player_character else False,
         "historyPath": history_path,
         "resetHistory": not bool(history_path),
         "scenario": f"正在游玩互动剧本《{project.title}》。根据当前节点的剧情要求和已发生的对话推进故事。",
