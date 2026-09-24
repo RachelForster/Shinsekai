@@ -1,6 +1,9 @@
 import type { MessageKey } from "../messages";
 
 export const zhCNMessages: Record<MessageKey, string> = {
+  "story.library.delete": "删除剧本版本",
+  "story.library.deleteConfirm":
+    "确定删除《{title}》的版本 {version} 及其全部关联对话和存档吗？其他版本会保留。此操作无法撤销。",
   "story.editor.back": "返回",
   "story.canvas.title": "节点画布",
   "story.canvas.fit": "全览节点 (F)",

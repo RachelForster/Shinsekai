@@ -42,6 +42,7 @@ function previewStoryGeneration(id: string, status: StoryGenerationTask["status"
 export function createStoryPreviewPlatform(
   getChat: () => ChatSnapshot,
   setChat: (snapshot: ChatSnapshot) => void,
+  deleteConversations: (storyPath: string) => void,
 ): ShinsekaiPlatform["story"] {
   const tasks = new Map<string, StoryGenerationTask>();
   const saves = new Map<string, ChatSnapshot>();
@@ -87,6 +88,23 @@ export function createStoryPreviewPlatform(
     return task;
   };
   return {
+    delete: async (storyPath) => {
+      documentFor(storyPath);
+      const chat = getChat();
+      if (activeStoryPath === storyPath && (chat.chatProcessRunning || chat.chatRuntimeClosing)) {
+        throw new Error("请先关闭该剧本版本的聊天，再删除剧本及关联对话。");
+      }
+      deleteConversations(storyPath);
+      for (const [id, task] of tasks) {
+        if (task.draftPath === storyPath) tasks.delete(id);
+      }
+      documents.delete(storyPath);
+      saves.delete(storyPath);
+      if (activeStoryPath === storyPath) {
+        activeStoryPath = "";
+        setChat({ ...chat, story: undefined });
+      }
+    },
     readDocument: async (storyPath) => documentFor(storyPath),
     saveDocument: async (input) => {
       const base = documentFor(input.storyPath);

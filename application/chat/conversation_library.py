@@ -313,14 +313,21 @@ def delete_conversation(state: Any, conversation_id: str) -> None:
         if active and _id(Path(active)) == conversation_id and _chat_runtime_status(state)["state"] != "idle":
             raise RuntimeError("Close this chat before deleting it.")
         path = resolve_history_path_for_project(state, record["historyPath"])
-        directory = chat_history_session_dir(path)
-        legacy = Path(str(directory) + ".json")
-        if legacy.is_file() and (directory / "branches.json").is_file():
-            path = legacy
-        remove_chat_history_storage(path)
-        (directory / "story-prompt-binding.json").unlink(missing_ok=True)
-        try:
-            directory.rmdir()
-        except OSError:
-            pass
-        (_directory(state) / f"{conversation_id}.json").unlink(missing_ok=True)
+        _delete_conversation_files(state, path)
+
+
+def _delete_conversation_files(state: Any, path: Path) -> None:
+    """Remove validated storage while the caller holds initialization/metadata locks."""
+    conversation_id = _id(path)
+    directory = chat_history_session_dir(path)
+    legacy = Path(str(directory) + ".json")
+    if legacy.is_file() and (directory / "branches.json").is_file():
+        path = legacy
+    remove_chat_history_storage(path)
+    (directory / "story-prompt-binding.json").unlink(missing_ok=True)
+    (directory / f"{STORY_SESSION_FILENAME}.lock").unlink(missing_ok=True)
+    try:
+        directory.rmdir()
+    except OSError:
+        pass
+    (_directory(state) / f"{conversation_id}.json").unlink(missing_ok=True)

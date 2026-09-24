@@ -1468,6 +1468,7 @@ export interface ShinsekaiPlatform {
       input: import("./storyEditorTypes").StorySuggestionInput,
     ) => Promise<import("./storyEditorTypes").StorySuggestion>;
     list: () => Promise<StoryLibraryEntry[]>;
+    delete: (storyPath: string) => Promise<void>;
     prepareLaunch: (storyPath: string, historyPath?: string) => Promise<ChatLaunchPayload>;
     getPreview: (id: string) => Promise<import("./storyPreviewTypes").StoryGenerationPreview>;
     startSession: (storyPath: string) => Promise<ChatSnapshot>;
