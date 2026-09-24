@@ -10,6 +10,7 @@ from ai.llm.template.dialog import (
     DialogTemplateContext,
     DialogTemplateSection,
     JsonSchemaSection,
+    PlayerSection,
     RequirementsSection,
     build_dialog_section,
 )
@@ -42,12 +43,13 @@ def context():
     )
 
 
-def test_dialog_root_exposes_the_four_major_section_types(context):
+def test_dialog_root_exposes_the_five_major_section_types(context):
     root = DialogTemplateSection()
 
     assert [type(child) for child in root.children] == [
         JsonSchemaSection,
         CharacterSection,
+        PlayerSection,
         BackgroundSection,
         RequirementsSection,
     ]
