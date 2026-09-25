@@ -1382,6 +1382,9 @@ export const jaMessages: Record<MessageKey, string> = {
   "plugin.trust.verifiedHint": "メンテナーが手動レビュー済み",
   "system.asr.computeAuto": "自動（デバイスに合わせる）",
   "system.asr.computeType": "計算精度 (compute_type)",
+  "system.asr.continuousDuringReply": "実験的：応答中も音声認識を継続",
+  "system.asr.continuousDuringReplyHint":
+    "キャラクターの応答中も音声認識を続け、ターン全体の終了後に入力を自動送信します。連続メッセージのスタックが有効な場合は、同じ待機時間と結合ルールを使います。キャラクター音声（TTS・プリセット・フォールバック）は無効になりますが、保存済みの音声設定は保持されます。保存してチャットを再起動すると適用されます。",
   "system.asr.device": "推論デバイス",
   "system.asr.deviceAuto": "自動",
   "system.asr.followUi": "表示言語に合わせる",

@@ -42,6 +42,10 @@ function appendAudioCommand(state: ChatStageState, command: ChatAudioCommand) {
   return [...state.audioCommands, command].slice(-32);
 }
 
+function asrUtteranceId(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, receivedAt = 0): ChatStageState {
   if (event.type === "transport.state") {
     return withResolvedLayers({
@@ -374,35 +378,60 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         eventSeq: Math.max(state.eventSeq, event.seq),
         loopingEffects: [],
       });
-    case "asr.partial":
+    case "asr.partial": {
+      const continuous = event.continuous === true;
+      const replyInProgress = continuous && ["generating", "streaming", "speaking"].includes(state.status);
+      const utteranceId = continuous ? asrUtteranceId(event.utteranceId) : null;
+      const hasManualDraft = !state.asrUtteranceId && Boolean(state.inputDraft);
+      const acceptsDraft = !utteranceId || !hasManualDraft;
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
         asrEnabled: true,
         asrLoading: false,
         asrRunning: true,
         asrTranscript: event.text,
+        asrContinuous: continuous,
         eventSeq: Math.max(state.eventSeq, event.seq),
-        inputDraft: event.text,
-        status: "listening",
+        inputDraft: acceptsDraft ? event.text : state.inputDraft,
+        inputDraftFromAsr: acceptsDraft ? Boolean(event.text) : state.inputDraftFromAsr,
+        asrSourceUtteranceId: acceptsDraft ? utteranceId : state.asrSourceUtteranceId,
+        asrUtteranceId: acceptsDraft ? utteranceId : null,
+        status: replyInProgress ? state.status : "listening",
       });
-    case "asr.final":
+    }
+    case "asr.final": {
+      const utteranceId = event.continuous === true ? asrUtteranceId(event.utteranceId) : null;
+      const ownsCurrentDraft = !utteranceId || state.asrUtteranceId === utteranceId;
+      const matchesCurrentSource = !utteranceId || state.asrSourceUtteranceId === utteranceId;
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
         asrTranscript: event.text,
         eventSeq: Math.max(state.eventSeq, event.seq),
-        inputDraft: "",
+        inputDraft: ownsCurrentDraft ? "" : state.inputDraft,
+        inputDraftFromAsr: ownsCurrentDraft ? false : state.inputDraftFromAsr,
+        asrSourceUtteranceId: matchesCurrentSource ? null : state.asrSourceUtteranceId,
+        asrUtteranceId: ownsCurrentDraft ? null : state.asrUtteranceId,
         options: [],
       });
+    }
     case "asr.state": {
       const asrEnabled = event.enabled ?? event.running;
+      const continuous = event.continuous ?? state.asrContinuous ?? false;
       const replyInProgress = ["generating", "streaming", "speaking"].includes(state.status);
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
         asrEnabled,
+        asrContinuous: continuous,
         asrLoading: Boolean(event.loading) && asrEnabled,
         asrRunning: event.running && asrEnabled,
         eventSeq: Math.max(state.eventSeq, event.seq),
-        status: event.running ? "listening" : replyInProgress ? state.status : "paused",
+        status: event.running
+          ? continuous && replyInProgress
+            ? state.status
+            : "listening"
+          : replyInProgress
+            ? state.status
+            : "paused",
       });
     }
     case "reply.finished":
@@ -410,7 +439,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         ...clearTransientNotificationState(state),
         activePlayback: null,
         eventSeq: Math.max(state.eventSeq, event.seq),
-        status: state.status === "generating" || state.status === "streaming" ? "idle" : state.status,
+        status:
+          state.status === "generating" ||
+          state.status === "streaming" ||
+          (state.asrContinuous && state.status === "speaking")
+            ? "idle"
+            : state.status,
       });
     case "session.closed":
       return withResolvedLayers({

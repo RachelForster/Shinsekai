@@ -348,7 +348,15 @@ export function ChatStagePage() {
       return;
     }
     const displayText = chatAttachmentDisplayText(text, attachments);
-    const payload: string | ChatSendPayload = attachments.length ? { attachments, text } : text;
+    // Only an ordinary input submission owns the current draft. Callers that
+    // provide an unrelated override (for example, an option action) must not
+    // retire an ASR utterance that is still being captured.
+    const asrUtteranceId = state.asrContinuous && textOverride === undefined ? state.asrSourceUtteranceId : null;
+    const payload: string | ChatSendPayload = asrUtteranceId
+      ? { asrUtteranceId, attachments, text }
+      : attachments.length
+        ? { attachments, text }
+        : text;
     showDialogImmediately();
     dispatch({
       queued: state.turnOptions.batchEnabled,

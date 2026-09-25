@@ -84,6 +84,25 @@ def dialog(**kwargs):
     )
 
 
+def test_continuous_asr_suppresses_reminder_synthesis_without_changing_voice_config(presenter):
+    presenter.config.config.system_config.asr_continuous_during_reply_experimental_enabled = True
+    presenter._synthesize = Mock()
+    before = presenter.config.get_gpt_sovits_config()
+    assert presenter.speech({"dialog": dialog()}) == {"audio_path": None}
+    presenter._synthesize.assert_not_called()
+    assert presenter.config.get_gpt_sovits_config() == before
+    presenter.config.config.system_config.asr_continuous_during_reply_experimental_enabled = False
+    presenter._synthesize.return_value = {"audio_path": "voice.wav"}
+    assert presenter.speech({"dialog": dialog()}) == {"audio_path": "voice.wav"}
+
+
+def test_reminder_speech_obeys_active_session_policy(presenter):
+    presenter._speech_disabled = lambda: True
+    presenter._synthesize = Mock()
+    assert presenter.speech({"dialog": dialog()}) == {"audio_path": None}
+    presenter._synthesize.assert_not_called()
+
+
 def output(*items):
     return json.dumps({"dialog": list(items) or [dialog()]}, ensure_ascii=False)
 

@@ -236,6 +236,7 @@ export function ReminderPanel() {
       <button
         aria-label={voice.muted ? t("reminder.unmuteVoice") : t("reminder.muteVoice")}
         title={voice.muted ? t("reminder.unmuteVoice") : t("reminder.muteVoice")}
+        disabled={voice.speechDisabled}
         onClick={voice.toggleMute}
       >
         {voice.muted ? <VolumeX size={15} /> : <Volume2 size={15} />}

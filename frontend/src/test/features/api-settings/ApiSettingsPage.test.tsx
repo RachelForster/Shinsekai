@@ -274,6 +274,28 @@ describe("ApiSettingsPage", () => {
     );
   });
 
+  it("enables continuous ASR before saving undeployed TTS settings", async () => {
+    const config = appConfigForTts("gpt-sovits");
+    mocks.getAppConfig.mockResolvedValue(config);
+    mocks.saveSystemConfig.mockImplementation(async (system) => system);
+    mocks.saveApiConfig.mockImplementation(async (api) => {
+      expect(mocks.saveSystemConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ asr_continuous_during_reply_experimental_enabled: true }),
+      );
+      return api;
+    });
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByText("语音输入（ASR）", { selector: "summary" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "实验性：回复期间持续识别" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() =>
+      expect(mocks.saveApiConfig).toHaveBeenCalledWith(
+        expect.objectContaining({ tts_provider: "gpt-sovits", gpt_sovits_api_path: "" }),
+      ),
+    );
+  });
+
   it("saves valid API/system settings and resumes the last chat", async () => {
     const config = validAppConfig();
     mocks.getAppConfig.mockResolvedValue(config);
@@ -669,5 +691,260 @@ describe("ApiSettingsPage", () => {
     fireEvent.click(cancelButton);
 
     await waitFor(() => expect(mocks.cancelTtsBundleDownload).toHaveBeenCalledWith("tts-task"));
+  });
+
+  it("saves API first when experimental continuous ASR is unchanged (OFF to OFF)", async () => {
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue(config);
+    const callOrder: string[] = [];
+    mocks.saveApiConfig.mockImplementation(async (api) => {
+      callOrder.push("api");
+      return api;
+    });
+    mocks.saveSystemConfig.mockImplementation(async (system) => {
+      callOrder.push("system");
+      return system;
+    });
+
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(callOrder).toEqual(["api", "system"]));
+  });
+
+  it("saves API first when experimental continuous ASR is unchanged (ON to ON)", async () => {
+    const config = {
+      ...validAppConfig(),
+      system_config: {
+        ...sampleConfig.system_config,
+        asr_continuous_during_reply_experimental_enabled: true,
+      },
+    };
+    mocks.getAppConfig.mockResolvedValue(config);
+    const callOrder: string[] = [];
+    mocks.saveApiConfig.mockImplementation(async (api) => {
+      callOrder.push("api");
+      return api;
+    });
+    mocks.saveSystemConfig.mockImplementation(async (system) => {
+      callOrder.push("system");
+      return system;
+    });
+
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(callOrder).toEqual(["api", "system"]));
+  });
+
+  it("saves API first when experimental continuous ASR is disabling (ON to OFF)", async () => {
+    const config = {
+      ...validAppConfig(),
+      system_config: {
+        ...sampleConfig.system_config,
+        asr_continuous_during_reply_experimental_enabled: true,
+      },
+    };
+    mocks.getAppConfig.mockResolvedValue(config);
+    const callOrder: string[] = [];
+    mocks.saveApiConfig.mockImplementation(async (api) => {
+      callOrder.push("api");
+      return api;
+    });
+    mocks.saveSystemConfig.mockImplementation(async (system) => {
+      callOrder.push("system");
+      return system;
+    });
+
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByText("语音输入（ASR）", { selector: "summary" }));
+    const checkbox = screen.getByRole("checkbox", { name: "实验性：回复期间持续识别" });
+    expect(checkbox).toBeChecked();
+    fireEvent.click(checkbox);
+    expect(checkbox).not.toBeChecked();
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(callOrder).toEqual(["api", "system"]));
+  });
+
+  it("does not call saveSystemConfig or erase unsaved input when API-first write fails", async () => {
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue(config);
+    mocks.saveApiConfig.mockRejectedValue(new Error("api write failed"));
+
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    const urlInput = screen.getByLabelText("LLM API 基础网址");
+    fireEvent.change(urlInput, { target: { value: "https://new-endpoint.example.com/v1" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText("api write failed")).toBeInTheDocument();
+    expect(mocks.saveSystemConfig).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("LLM API 基础网址")).toHaveValue("https://new-endpoint.example.com/v1");
+  });
+
+  it("does not call saveApiConfig or erase unsaved input when System-first write fails", async () => {
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue(config);
+    mocks.saveSystemConfig.mockRejectedValue(new Error("system write failed"));
+
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByText("语音输入（ASR）", { selector: "summary" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "实验性：回复期间持续识别" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText("system write failed")).toBeInTheDocument();
+    expect(mocks.saveApiConfig).not.toHaveBeenCalled();
+    expect(screen.getByRole("checkbox", { name: "实验性：回复期间持续识别" })).toBeChecked();
+  });
+
+  it("rolls back API config to saved pre-submit value when second write (system) fails and preserves user draft", async () => {
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue(config);
+    mocks.saveApiConfig.mockImplementation(async (api) => api);
+    mocks.saveSystemConfig.mockRejectedValue(new Error("system save failed"));
+
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    const urlInput = screen.getByLabelText("LLM API 基础网址");
+    fireEvent.change(urlInput, { target: { value: "https://modified.example.com/v1" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText("system save failed")).toBeInTheDocument();
+    expect(screen.queryByText("设置已保存")).not.toBeInTheDocument();
+
+    // 1st write with new config, then rollback with pre-submit config
+    expect(mocks.saveApiConfig).toHaveBeenCalledTimes(2);
+    expect(mocks.saveApiConfig).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ llm_base_url: "https://modified.example.com/v1" }),
+    );
+    expect(mocks.saveApiConfig).toHaveBeenNthCalledWith(2, config.api_config);
+
+    // User input is preserved on successful rollback
+    expect(screen.getByLabelText("LLM API 基础网址")).toHaveValue("https://modified.example.com/v1");
+  });
+
+  it("rolls back system config to saved pre-submit value when enabling experimental mode and API write fails", async () => {
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue(config);
+    mocks.saveSystemConfig.mockImplementation(async (system) => system);
+    mocks.saveApiConfig.mockRejectedValue(new Error("api save failed"));
+
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByText("语音输入（ASR）", { selector: "summary" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "实验性：回复期间持续识别" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText("api save failed")).toBeInTheDocument();
+    expect(screen.queryByText("设置已保存")).not.toBeInTheDocument();
+
+    // 1st write was system, then rollback system to pre-submit
+    expect(mocks.saveSystemConfig).toHaveBeenCalledTimes(2);
+    expect(mocks.saveSystemConfig).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ asr_continuous_during_reply_experimental_enabled: true }),
+    );
+    expect(mocks.saveSystemConfig).toHaveBeenNthCalledWith(2, config.system_config);
+
+    // User input is preserved
+    expect(screen.getByRole("checkbox", { name: "实验性：回复期间持续识别" })).toBeChecked();
+  });
+
+  it("refetches actual config and reports combined failure when rollback fails (API-first)", async () => {
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue(config);
+    mocks.saveApiConfig
+      .mockResolvedValueOnce({ ...config.api_config, llm_base_url: "https://persisted-on-backend.test" })
+      .mockRejectedValueOnce(new Error("api rollback crashed"));
+    mocks.saveSystemConfig.mockRejectedValueOnce(new Error("system save failed"));
+
+    const refetchedConfig = {
+      ...config,
+      api_config: {
+        ...config.api_config,
+        llm_base_url: "https://persisted-on-backend.test",
+        llm_base_urls: {
+          ...config.api_config.llm_base_urls,
+          [config.api_config.llm_provider]: "https://persisted-on-backend.test",
+        },
+      },
+    };
+
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    const urlInput = screen.getByLabelText("LLM API 基础网址");
+    fireEvent.change(urlInput, { target: { value: "https://attempted.test" } });
+
+    mocks.getAppConfig.mockResolvedValue(refetchedConfig);
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText(/system save failed[\s\S]*api rollback crashed/)).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(screen.getByLabelText("LLM API 基础网址")).toHaveValue("https://persisted-on-backend.test"),
+    );
+
+    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).not.toBeDisabled();
+  });
+
+  it("refetches actual config and reports combined failure when rollback fails (System-first)", async () => {
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue(config);
+    mocks.saveSystemConfig
+      .mockResolvedValueOnce({
+        ...config.system_config,
+        asr_continuous_during_reply_experimental_enabled: true,
+      })
+      .mockRejectedValueOnce(new Error("system rollback crashed"));
+    mocks.saveApiConfig.mockRejectedValueOnce(new Error("api save failed"));
+
+    const refetchedConfig = {
+      ...config,
+      system_config: {
+        ...config.system_config,
+        asr_continuous_during_reply_experimental_enabled: true,
+      },
+    };
+
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByText("语音输入（ASR）", { selector: "summary" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "实验性：回复期间持续识别" }));
+
+    mocks.getAppConfig.mockResolvedValue(refetchedConfig);
+
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText(/api save failed[\s\S]*system rollback crashed/)).toBeInTheDocument();
+
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "实验性：回复期间持续识别" })).toBeChecked());
+
+    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存" })).not.toBeDisabled();
+  });
+
+  it("reports combined failure using translated fallback messages when errors lack messages", async () => {
+    const config = validAppConfig();
+    mocks.getAppConfig.mockResolvedValue(config);
+    mocks.saveApiConfig.mockResolvedValueOnce(config.api_config).mockRejectedValueOnce({});
+    mocks.saveSystemConfig.mockRejectedValueOnce({});
+
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    expect(await screen.findByText(/请检查系统配置。[\s\S]*请检查配置字段。/)).toBeInTheDocument();
   });
 });

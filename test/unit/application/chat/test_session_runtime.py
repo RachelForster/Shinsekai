@@ -631,6 +631,14 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
         opencc=None,
     )
     runtime_asr = SimpleNamespace(close=Mock())
+    from core.messaging.chat_turn_service import ChatTurnService
+    from core.messaging.continuous_asr_policy import ContinuousASRPolicy
+    admitted = []
+    turn_service = ChatTurnService(continuous_policy=ContinuousASRPolicy(), sink=admitted.append)
+    session.chat_turn_service = turn_service
+    active_turn = turn_service.begin_turn()
+    turn_service.submit("pending speech", defer_until_idle=True)
+    turn_service.mark_generation_complete(active_turn)
     branch_manager = SimpleNamespace(persist=Mock())
     session.streaming_bindings = SimpleNamespace(
         runtime_asr=runtime_asr,
@@ -652,12 +660,247 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
     )
 
     session._shutdown()
+    captured["pre_shutdown"]()
     captured["save_background"]()
     captured["emit_session_closed"]()
 
     assert captured["workflow"] is workflow
-    assert captured["pre_shutdown"] == runtime_asr.close
+    runtime_asr.close.assert_called_once_with()
+    turn_service.finish_turn(active_turn)
+    turn_service.submit("late speech", defer_until_idle=True)
+    assert admitted == []
     assert captured["save_history"] == branch_manager.persist
     assert captured["close_stream_sink"] == transport.close
     assert saved_background == [{"bg_path": "bg.png", "bgm_path": "bgm.mp3"}]
     assert transport.events[-1]["type"] == "session.closed"
+
+
+def test_streaming_shutdown_quiesces_turn_service_and_invalidates_history_before_persistence(
+    tmp_path: Path,
+) -> None:
+    from ai.llm.llm_manager import LLMManager
+    from core.chat_history.storage import chat_history_active_path
+    from core.messaging.chat_turn_service import ChatTurnService
+    from test.mocks import MockLLMAdapter
+
+    history_arg = str(tmp_path / "chat_history.json")
+    active_history_file = str(chat_history_active_path(history_arg))
+    manager = LLMManager(
+        adapter=MockLLMAdapter(),
+        user_template="system",
+        history_file=active_history_file,
+    )
+    manager.add_message("user", "hello")
+    tmp_path_file = Path(active_history_file + ".tmp")
+    assert tmp_path_file.exists()
+
+    turn_service = ChatTurnService()
+    active_turn = turn_service.begin_turn()
+
+    worker_scope = manager.history_scope(manager.history_epoch)
+    worker_scope.__enter__()
+
+    transport = _Transport(streaming=True)
+    session = session_runtime.StreamingChatSession(
+        _options(history=history_arg),
+        SimpleNamespace(llm_manager=manager, tts_manager=None, plugin_manager=None),
+        transport,
+        _Initialization(),
+    )
+    workflow_stopped = False
+
+    def stop_workflow():
+        nonlocal workflow_stopped
+        workflow_stopped = True
+
+    session.runtime = session_runtime._RuntimeComponents(
+        workflow=SimpleNamespace(stop=stop_workflow),
+        input_queue=None,
+        dialog_queue=None,
+        presentation_queue=None,
+        ui_worker=None,
+        presentation_assets=SimpleNamespace(bgm_paths=[]),
+        effect_keyword_map={},
+        text_processor=None,
+        opencc=None,
+    )
+    session.chat_turn_service = turn_service
+    runtime_asr = SimpleNamespace(close=Mock())
+    session.streaming_bindings = SimpleNamespace(
+        runtime_asr=runtime_asr,
+        branch_manager=SimpleNamespace(
+            persist=lambda: session_runtime.save_chat_history_and_delete_tmp(
+                history_arg, manager.get_messages()
+            )
+        ),
+    )
+    session.ui_updates = SimpleNamespace(
+        current_background_path="",
+        current_bgm_path="",
+    )
+
+    session._shutdown()
+
+    runtime_asr.close.assert_called_once_with()
+    assert workflow_stopped is True
+    assert not tmp_path_file.exists()
+
+    # 1. Closed turn service rejects turn publication
+    with turn_service.turn_publication(active_turn) as allowed:
+        assert allowed is False
+
+    # 2. Delayed worker in old scope cannot mutate manager after shutdown
+    assert manager.add_message("assistant", "delayed response after shutdown") is False
+    assert not any(
+        m.get("content") == "delayed response after shutdown"
+        for m in manager.get_messages()
+    )
+
+    # 3. Delayed worker cannot recreate tmp after shutdown
+    assert not tmp_path_file.exists()
+
+    worker_scope.__exit__(None, None, None)
+
+
+def test_headless_shutdown_quiesces_turn_service_and_invalidates_history_before_persistence(
+    tmp_path: Path,
+) -> None:
+    from ai.llm.llm_manager import LLMManager
+    from core.chat_history.storage import chat_history_active_path
+    from core.messaging.chat_turn_service import ChatTurnService
+    from test.mocks import MockLLMAdapter
+
+    history_arg = str(tmp_path / "headless_history.json")
+    active_history_file = str(chat_history_active_path(history_arg))
+    manager = LLMManager(
+        adapter=MockLLMAdapter(),
+        user_template="system",
+        history_file=active_history_file,
+    )
+    manager.add_message("user", "hello headless")
+    tmp_path_file = Path(active_history_file + ".tmp")
+    assert tmp_path_file.exists()
+
+    turn_service = ChatTurnService()
+    active_turn = turn_service.begin_turn()
+
+    worker_scope = manager.history_scope(manager.history_epoch)
+    worker_scope.__enter__()
+
+    transport = _Transport(streaming=False)
+    session = session_runtime.HeadlessChatSession(
+        _options(stream_endpoint="", headless=True, history=history_arg),
+        SimpleNamespace(llm_manager=manager, tts_manager=None, plugin_manager=None),
+        transport,
+        _Initialization(),
+    )
+    workflow_stopped = False
+
+    def stop_workflow():
+        nonlocal workflow_stopped
+        workflow_stopped = True
+
+    session.runtime = session_runtime._RuntimeComponents(
+        workflow=SimpleNamespace(stop=stop_workflow),
+        input_queue=None,
+        dialog_queue=None,
+        presentation_queue=None,
+        ui_worker=None,
+        presentation_assets=SimpleNamespace(bgm_paths=[]),
+        effect_keyword_map={},
+        text_processor=None,
+        opencc=None,
+    )
+    session.chat_turn_service = turn_service
+
+    session._shutdown()
+
+    assert workflow_stopped is True
+    assert not tmp_path_file.exists()
+
+    # 1. Closed turn service rejects turn publication
+    with turn_service.turn_publication(active_turn) as allowed:
+        assert allowed is False
+
+    # 2. Delayed worker in old scope cannot mutate manager after shutdown
+    assert manager.add_message("assistant", "delayed headless response") is False
+    assert not any(
+        m.get("content") == "delayed headless response"
+        for m in manager.get_messages()
+    )
+
+    # 3. Delayed worker cannot recreate tmp after shutdown
+    assert not tmp_path_file.exists()
+
+    worker_scope.__exit__(None, None, None)
+
+
+def test_shutdown_quiesce_order_and_exception_resilience() -> None:
+    events = []
+
+    class FailingTurnService:
+        def close(self):
+            events.append("close_turn_service")
+            raise RuntimeError("close failed")
+
+    class InvalidateManager:
+        def invalidate_history(self):
+            events.append("invalidate_history")
+
+    session_runtime._quiesce_chat_turn_and_history(
+        FailingTurnService(),
+        InvalidateManager(),
+    )
+    # Even if close() raises, invalidate_history() must still be called
+    assert events == ["close_turn_service", "invalidate_history"]
+
+
+def test_streaming_shutdown_order_quiesces_before_capture_and_workflow_and_history() -> None:
+    order = []
+
+    class DummyTurnService:
+        def close(self):
+            order.append("turn_service_close")
+
+    class DummyLlmManager:
+        def invalidate_history(self):
+            order.append("invalidate_history")
+
+    session = session_runtime.StreamingChatSession(
+        _options(),
+        SimpleNamespace(llm_manager=DummyLlmManager(), tts_manager=None, plugin_manager=None),
+        _Transport(streaming=True),
+        _Initialization(),
+    )
+    session.chat_turn_service = DummyTurnService()
+    session.runtime = session_runtime._RuntimeComponents(
+        workflow=SimpleNamespace(stop=lambda: order.append("workflow_stop")),
+        input_queue=None,
+        dialog_queue=None,
+        presentation_queue=None,
+        ui_worker=None,
+        presentation_assets=SimpleNamespace(bgm_paths=[]),
+        effect_keyword_map={},
+        text_processor=None,
+        opencc=None,
+    )
+    runtime_asr = SimpleNamespace(close=lambda: order.append("asr_close"))
+    branch_manager = SimpleNamespace(persist=lambda: order.append("save_history"))
+    session.streaming_bindings = SimpleNamespace(
+        runtime_asr=runtime_asr,
+        branch_manager=branch_manager,
+    )
+    session.ui_updates = SimpleNamespace(
+        current_background_path="",
+        current_bgm_path="",
+    )
+
+    session._shutdown()
+
+    assert order == [
+        "turn_service_close",
+        "invalidate_history",
+        "asr_close",
+        "workflow_stop",
+        "save_history",
+    ]

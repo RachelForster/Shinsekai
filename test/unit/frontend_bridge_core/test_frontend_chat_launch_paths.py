@@ -14,11 +14,13 @@ from frontend_bridge_core.chat_session import _usable_media_selection_mode
 class _SystemConfig:
     chat_ui_runtime_mode = "react"
     live_room_id = ""
+    asr_continuous_during_reply_experimental_enabled = False
 
     def model_copy(self, *, deep: bool):
         clone = _SystemConfig()
         clone.chat_ui_runtime_mode = self.chat_ui_runtime_mode
         clone.live_room_id = self.live_room_id
+        clone.asr_continuous_during_reply_experimental_enabled = self.asr_continuous_during_reply_experimental_enabled
         return clone
 
 
@@ -141,7 +143,8 @@ def test_media_mode_keeps_existing_normalization(monkeypatch, requested, expecte
     assert initialize.call_count == (1 if expected == "semantic" else 0)
 
 
-def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch):
+@pytest.mark.parametrize("continuous_asr", [False, True])
+def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch, continuous_asr):
     project_root = tmp_path / "project"
     app_root = tmp_path / "Shinsekai"
     template_dir = project_root / "data" / "character_templates"
@@ -170,6 +173,7 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
         history_dir=str(history_dir),
         template_dir_path=str(template_dir),
     )
+    monkeypatch.setattr(state.config_manager.config.system_config, "asr_continuous_during_reply_experimental_enabled", continuous_asr)
 
     message = chat._launch_chat(
         state,
@@ -184,6 +188,7 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     )
 
     assert message == "聊天进程已启动！PID: 12345"
+    assert state.chat_session["characterSpeechDisabled"] is continuous_asr
     assert captured["cmd"][1] == str(chat._source_root() / "main.py")
     assert captured["cwd"] == str(project_root)
     assert captured["env"]["SHINSEKAI_PROJECT_ROOT"] == str(project_root)

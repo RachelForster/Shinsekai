@@ -111,3 +111,28 @@ def test_wiring_clears_flushed_batch_delivery_when_batch_is_cancelled() -> None:
     service.cancel_pending_batch()
 
     assert input_queue.empty()
+
+
+def test_composition_installs_experimental_policy_only_when_enabled():
+    for enabled in (False, True):
+        for batched in (False, True):
+            config = make_config(interrupt_enabled=True, batch_enabled=batched)
+            config.config.system_config = SimpleNamespace(asr_continuous_during_reply_experimental_enabled=enabled)
+            queue = Queue()
+            service = create_chat_turn_service(config=config, user_input_queue=queue,
+                dialog_queue=ClearableQueue(), presentation_queue=ClearableQueue(),
+                llm_manager=None, ui_worker=None, ui_updates=None)
+            try:
+                assert (service.continuous_policy is not None) is enabled
+                service.begin_turn()
+                service.submit("first correction")
+                service.submit("second correction")
+                if batched:
+                    assert queue.empty()
+                    service.flush()
+                    assert queue.get_nowait().text == "first correction\n---\nsecond correction"
+                else:
+                    assert queue.get_nowait().text == "first correction"
+                    assert queue.get_nowait().text == "second correction"
+            finally:
+                service.close()

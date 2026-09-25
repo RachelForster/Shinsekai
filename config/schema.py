@@ -50,7 +50,7 @@ class Character(BaseModel):
     name: str = Field(..., description="角色名称")
     color: str = Field(..., description="角色对话框或名字的颜色")
     sprite_prefix: str = Field(..., description="立绘文件名的通用前缀")
-    
+
     # 列表中可能包含 Sprite 模型，也可能只是原始字典
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="角色的立绘和对应语音的列表")
     character_brief: DefaultIfNone[str] = Field(
@@ -203,6 +203,10 @@ class SystemConfig(BaseModel):
     asr_whisper_compute_type: DefaultIfNone[str] = Field(
         default="",
         description="faster-whisper / RealtimeSTT compute_type，留空则按设备自动选择",
+    )
+    asr_continuous_during_reply_experimental_enabled: DefaultIfNone[bool] = Field(
+        default=False,
+        description="实验性功能：角色回复期间保持语音识别，并将完成的语音输入排队自动发送",
     )
     music_volumn: DefaultIfNone[int] =Field(default=30,description="bgm 音量")
     theme_color: DefaultIfNone[str] = Field(default='#d4788e',description="主题色")

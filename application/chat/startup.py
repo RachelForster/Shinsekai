@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
+from application.chat.voice_policy import character_speech_disabled
 from core.chat_history.storage import chat_history_active_path
 
 if TYPE_CHECKING:
@@ -326,6 +327,8 @@ def _initialize_tts(
     gsv_url, gsv_api_path, config_provider = config.get_gpt_sovits_config()
     adapter_name = str(args.tts or "").strip() or str(config_provider or "")
     if not adapter_name or adapter_name.casefold() == "none":
+        return None, adapter_name
+    if character_speech_disabled(config):
         return None, adapter_name
     with phase("tts.init"):
         try:

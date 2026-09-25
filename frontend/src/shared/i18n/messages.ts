@@ -1293,6 +1293,8 @@ export type MessageKey =
   | "plugin.trust.verifiedHint"
   | "system.asr.computeAuto"
   | "system.asr.computeType"
+  | "system.asr.continuousDuringReply"
+  | "system.asr.continuousDuringReplyHint"
   | "system.asr.device"
   | "system.asr.deviceAuto"
   | "system.asr.followUi"

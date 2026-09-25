@@ -51,6 +51,10 @@ export interface ChatStageEffectImage {
 export interface ChatStageState extends Omit<ChatSnapshot, "sprites" | "effectImage"> {
   effectImage?: ChatStageEffectImage | null;
   audioCommands: ChatAudioCommand[];
+  /** Locally tracks ASR-owned drafts across polling and reconnects. */
+  inputDraftFromAsr?: boolean;
+  /** ID of the ASR utterance that contributed to the current draft, even after a manual edit. */
+  asrSourceUtteranceId: string | null;
   asrTranscript?: string;
   busyDurationSeconds?: number;
   busyText?: string;
@@ -70,7 +74,10 @@ export interface ChatStageState extends Omit<ChatSnapshot, "sprites" | "effectIm
       dialogHtml?: string;
       dialogText: string;
       error?: string;
+      asrUtteranceId?: string | null;
+      asrSourceUtteranceId: string | null;
       inputDraft: string;
+      inputDraftFromAsr?: boolean;
       inputAttachments: ChatAttachmentInput[];
       notificationText?: string;
       options: ChatOption[];

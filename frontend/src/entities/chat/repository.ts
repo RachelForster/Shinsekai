@@ -6,6 +6,7 @@ import type {
   ChatLaunchPayload,
   ChatRuntimeProcessState,
   ChatSnapshot,
+  ChatSnapshotOptions,
   RuntimeDependencyInstallInput,
   RuntimeDependencyInstallResult,
   TaskProgressOptions,
@@ -65,8 +66,8 @@ export const chatThemeQueryKey = ["chat", "themes"] as const;
 
 export { runtimeStatusFromSnapshot } from "../../shared/platform/chatRuntimeStatus";
 
-export function getChatSnapshot(): Promise<ChatSnapshot> {
-  return getPlatform().chat.getSnapshot();
+export function getChatSnapshot(options?: ChatSnapshotOptions): Promise<ChatSnapshot> {
+  return getPlatform().chat.getSnapshot(options);
 }
 
 export function getChatRuntimeStatus(): Promise<ChatRuntimeProcessState> {
@@ -107,8 +108,8 @@ export function getChatHistory(): Promise<ChatHistoryEntry[]> {
   return getPlatform().chat.getHistory();
 }
 
-export function subscribeChat(listener: (snapshot: ChatSnapshot) => void): () => void {
-  return getPlatform().chat.subscribe(listener);
+export function subscribeChat(listener: (snapshot: ChatSnapshot) => void, options?: ChatSnapshotOptions): () => void {
+  return getPlatform().chat.subscribe(listener, options);
 }
 
 // --- 主题 mod 系统 ---

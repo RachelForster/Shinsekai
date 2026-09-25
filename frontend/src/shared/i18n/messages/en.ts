@@ -1387,6 +1387,9 @@ export const enMessages: Record<MessageKey, string> = {
   "plugin.trust.verifiedHint": "Manually reviewed by maintainers",
   "system.asr.computeAuto": "Auto (follow device)",
   "system.asr.computeType": "Compute precision",
+  "system.asr.continuousDuringReply": "Experimental: keep listening during replies",
+  "system.asr.continuousDuringReplyHint":
+    "Keeps speech recognition active while the character replies. Completed utterances are sent after the full reply finishes. When stacked input is enabled, they share its idle wait and merging rules. Character speech (TTS, preset, and fallback voices) is disabled while your voice settings are preserved. Save and restart the chat to apply.",
   "system.asr.device": "Device",
   "system.asr.deviceAuto": "Auto",
   "system.asr.followUi": "Follow interface language",

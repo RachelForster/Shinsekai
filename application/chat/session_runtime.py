@@ -492,6 +492,13 @@ class _BaseChatSession:
             raise RuntimeError("chat session runtime has not been built")
         return self.runtime
 
+    def _quiesce_session(self) -> None:
+        """Close chat turn admission and invalidate history before shutdown persistence."""
+        _quiesce_chat_turn_and_history(
+            self.chat_turn_service,
+            getattr(self.startup, "llm_manager", None),
+        )
+
 
 class StreamingChatSession(_BaseChatSession):
     """Run a realtime chat session backed by a streaming transport."""
@@ -634,9 +641,19 @@ class StreamingChatSession(_BaseChatSession):
         from application.runtime.shutdown import shutdown_chat_runtime
 
         runtime = self._require_runtime()
+
+        def pre_shutdown() -> None:
+            try:
+                self._quiesce_session()
+            finally:
+                runtime_asr = getattr(getattr(self, "streaming_bindings", None), "runtime_asr", None)
+                close_asr = getattr(runtime_asr, "close", None)
+                if callable(close_asr):
+                    close_asr()
+
         shutdown_chat_runtime(
             workflow=runtime.workflow,
-            pre_shutdown=self.streaming_bindings.runtime_asr.close,
+            pre_shutdown=pre_shutdown,
             plugin_shutdown=self._shutdown_plugins,
             tts_shutdown=self._tts_shutdown(),
             save_history=self.streaming_bindings.branch_manager.persist,
@@ -689,11 +706,34 @@ class HeadlessChatSession(_BaseChatSession):
             save_history = persist_history
         shutdown_chat_runtime(
             workflow=runtime.workflow,
+            pre_shutdown=self._quiesce_session,
             plugin_shutdown=self._shutdown_plugins,
             tts_shutdown=self._tts_shutdown(),
             save_history=save_history,
             on_error=_log_shutdown_error,
         )
+
+
+def _quiesce_chat_turn_and_history(
+    chat_turn_service: Any | None,
+    llm_manager: Any | None,
+) -> None:
+    """Close turn admission and invalidate history before persistence or teardown."""
+    if chat_turn_service is not None:
+        close = getattr(chat_turn_service, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception as exc:
+                _log_shutdown_error("close_chat_turn_service", exc)
+
+    if llm_manager is not None:
+        invalidate = getattr(llm_manager, "invalidate_history", None)
+        if callable(invalidate):
+            try:
+                invalidate()
+            except Exception as exc:
+                _log_shutdown_error("invalidate_history", exc)
 
 
 def save_chat_history_and_delete_tmp(

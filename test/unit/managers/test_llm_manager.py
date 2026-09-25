@@ -800,7 +800,12 @@ class TestLLMManagerCompact:
 
 
 class TestLLMManagerDialogRepair:
-    def test_manager_marks_stream_repair_without_replaying_it_as_text(self) -> None:
+    def test_manager_marks_stream_repair_without_replaying_it_as_text(self, monkeypatch, sample_app_config) -> None:
+        # Stream-repair behavior must not depend on the user's saved provider.
+        monkeypatch.setattr(
+            "config.config_manager.ConfigManager",
+            lambda: SimpleNamespace(config=sample_app_config),
+        )
         valid_dialog = (
             '{"dialog":[{"character_name":"Alice","sprite":"0","speech":"Hi"}]}'
         )

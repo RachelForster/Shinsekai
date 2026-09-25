@@ -146,7 +146,7 @@ def _provider_map_value(mapping: dict[str, str], provider: str) -> str:
     return str((mapping or {}).get(provider, "") or "").strip()
 
 
-def _validate_api_config_for_save(config: Any) -> None:
+def _validate_api_config_for_save(config: Any, *, speech_disabled: bool = False) -> None:
     provider = str(config.llm_provider or "").strip()
     base_url = resolve_llm_base_url(config, provider)
     api_key = _provider_map_value(config.llm_api_key, provider)
@@ -175,7 +175,7 @@ def _validate_api_config_for_save(config: Any) -> None:
             raise ValueError("视觉服务基础地址必须是有效且不含引号的 http(s) URL。")
 
     tts_provider = normalize_tts_provider(config.tts_provider)
-    if not uses_shared_tts_server_config(tts_provider):
+    if speech_disabled or not uses_shared_tts_server_config(tts_provider):
         return
 
     tts_url = str(config.gpt_sovits_url or "").strip()
@@ -193,6 +193,7 @@ def _validate_api_config_for_save(config: Any) -> None:
 
 
 def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
+    from application.chat.voice_policy import character_speech_disabled
     from config.schema import ApiConfig
 
     config = ApiConfig.model_validate(payload).model_copy(deep=True)
@@ -213,7 +214,7 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
             config.gpt_sovits_api_path,
             _state_project_root(state),
         )
-    _validate_api_config_for_save(config)
+    _validate_api_config_for_save(config, speech_disabled=character_speech_disabled(state.config_manager))
     state.config_manager.config.api_config = config
     state.config_manager.save_api_config()
     return config

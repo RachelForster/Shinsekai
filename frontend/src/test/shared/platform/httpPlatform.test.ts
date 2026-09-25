@@ -23,6 +23,24 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("lets auxiliary windows observe policy without claiming chat playback", async () => {
+    const snapshot = { characterSpeechDisabled: true };
+    const fetchMock = vi.fn((_input: RequestInfo | URL) => mockJsonResponse(snapshot));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+    expect(await platform.chat.getSnapshot({ claimRenderer: false })).toEqual(snapshot);
+    const listener = vi.fn();
+    const unsubscribe = platform.chat.subscribe(listener, { claimRenderer: false });
+    try {
+      await waitFor(() => expect(listener).toHaveBeenCalledWith(snapshot));
+      expect(fetchMock.mock.calls.every((call) => String(call[0]) === "http://127.0.0.1:8787/api/chat/snapshot")).toBe(
+        true,
+      );
+    } finally {
+      unsubscribe();
+    }
+  });
+
   it("uses separate read, save and background suggestion endpoints for story editing", async () => {
     const doc = {
       storyPath: "story.json",

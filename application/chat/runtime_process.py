@@ -148,6 +148,15 @@ def _chat_process_running() -> bool:
         return _main_chat_process is not None and _main_chat_process.poll() is None
 
 
+def _chat_character_speech_disabled(state: BridgeState) -> bool:
+    from application.chat.voice_policy import character_speech_disabled
+
+    # A running session uses its startup policy in either switch direction.
+    if _chat_process_running():
+        return bool(state.chat_session.get("characterSpeechDisabled", False))
+    return character_speech_disabled(getattr(state, "config_manager", None))
+
+
 def _chat_runtime_closing(state: BridgeState) -> bool:
     lock = getattr(state, "chat_runtime_lock", None)
     if lock is None:
@@ -218,7 +227,9 @@ def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tu
         + f"cwd: {cwd}\n"
         + f"cmd: {' '.join(cmd)}\n"
     )
-    env = {**env, "PYTHONUNBUFFERED": "1"}
+    # Popen passes the file descriptor, not the parent's TextIOWrapper encoding.
+    # Match the UTF-8 log reader even on Windows hosts using a legacy code page.
+    env = {**env, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
     # The command contains only the trusted interpreter/entrypoint. Runtime
     # options are delivered through a validated JSON environment payload.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
@@ -439,6 +450,13 @@ def _launch_chat(
         sc.live_room_id = room_id
         state.config_manager.config.system_config = sc
         state.config_manager.save_system_config()
+
+        from application.chat.voice_policy import character_speech_disabled
+
+        state.chat_session = {
+            **getattr(state, "chat_session", {}),
+            "characterSpeechDisabled": character_speech_disabled(state.config_manager),
+        }
 
         template_hash = _history_id_from_scenario(user_scenario, character_names)
         history_path = Path(history_file) if history_file else Path(state.history_dir) / template_hash
@@ -726,6 +744,8 @@ def _chat_snapshot(
     user_display_name = _chat_user_display_name(state)
     runtime_state = {
         "chatProcessRunning": _chat_process_running(),
+        "characterSpeechDisabled": _chat_character_speech_disabled(state),
+        "asrContinuous": _chat_character_speech_disabled(state),
         "chatRuntimeClosing": _chat_runtime_closing(state),
         "turnOptions": _chat_turn_options(state),
     }
@@ -1412,6 +1432,9 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
                 "attachments": [attachment.to_payload() for attachment in attachments],
                 "text": submitted_text,
             }
+            utterance_id = payload.get("asrUtteranceId")
+            if isinstance(utterance_id, str) and 0 < len(utterance_id) <= 128:
+                body["payload"]["asrUtteranceId"] = utterance_id
         else:
             submitted_text = str(payload or "").strip()
         if not submitted_text and not attachments:

@@ -386,7 +386,8 @@ function makeChatCommandId() {
   return `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function chatSnapshotPath() {
+function chatSnapshotPath(claimRenderer = true) {
+  if (!claimRenderer) return "/api/chat/snapshot";
   return `/api/chat/snapshot?rendererId=${encodeURIComponent(currentChatRendererId())}`;
 }
 
@@ -615,7 +616,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ title }),
         }),
       getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>(apiBase, "/api/chat/runtime-status"),
-      getSnapshot: () => requestJson<ChatSnapshot>(apiBase, chatSnapshotPath()),
+      getSnapshot: (options) => requestJson<ChatSnapshot>(apiBase, chatSnapshotPath(options?.claimRenderer)),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),
       async launch(payload: ChatLaunchPayload, options) {
         const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
@@ -631,13 +632,13 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         });
         return waitForTask(apiBase, task, options);
       },
-      subscribe(listener) {
+      subscribe(listener, options) {
         let stopped = false;
         let timeoutId = 0;
 
         const poll = async () => {
           try {
-            const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath());
+            const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath(options?.claimRenderer));
             if (!stopped) {
               listener(snapshot);
             }
