@@ -123,7 +123,7 @@ describe("AsrSettingsSection", () => {
     expect(props.onSystemPatch).toHaveBeenCalledWith({ asr_whisper_compute_type: "float16" });
   });
 
-  it("exposes the experimental continuous-listening switch with an echo warning", () => {
+  it("exposes the experimental continuous-listening switch with a role speech hint", () => {
     const { props } = renderSection();
     const toggle = screen.getByRole("checkbox", { name: "Experimental: keep listening during replies" });
 
@@ -132,11 +132,11 @@ describe("AsrSettingsSection", () => {
     expect(props.onSystemPatch).toHaveBeenCalledWith({
       asr_continuous_during_reply_experimental_enabled: true,
     });
-    expect(screen.getByText(/character audio may be transcribed/i)).toBeInTheDocument();
-    expect(toggle).toHaveAccessibleDescription(/character audio may be transcribed/i);
+    expect(screen.getByText(/character speech/i)).toBeInTheDocument();
+    expect(toggle).toHaveAccessibleDescription(/character speech/i);
     const controls = toggle.closest(".field-row__control");
     expect(controls).toHaveClass("asr-continuous-control");
-    expect(screen.getByText(/character audio may be transcribed/i).parentElement).toBe(controls);
+    expect(screen.getByText(/character speech/i).parentElement).toBe(controls);
   });
 
   it.each(["vosk", "faster_whisper"])(

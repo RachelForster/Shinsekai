@@ -170,6 +170,7 @@ def _execute(runtime: SimpleNamespace, command_type: str, payload: object = None
 @pytest.mark.parametrize("command", ["clear-history", "revert-history", "fork-history", "switch-branch"])
 def test_history_invalidated_before_handler_even_without_asr_boundary(command_runtime, command):
     from core.messaging.chat_turn_service import ChatTurnService
+    from core.messaging.continuous_asr_policy import ContinuousASRPolicy
 
     events = []
     service = ChatTurnService()
@@ -199,6 +200,7 @@ def test_history_commands_quiesce_asr_before_mutation(command_runtime, command):
         finally:
             events.append("resumed")
 
+    command_runtime.runtime_asr.continuous_listening = True
     command_runtime.runtime_asr.input_boundary = boundary
     command_runtime.turn_service.cancel_pending_batch = lambda: events.append("cancelled")
     command_runtime.dispatcher._handlers[command] = lambda payload: events.append("mutated")
@@ -210,10 +212,11 @@ def test_history_commands_quiesce_asr_before_mutation(command_runtime, command):
 def test_history_commands_discard_live_transcript_and_deferred_admission(command_runtime, command):
     from ai.asr.streaming_controller import ASRSubmissionResult, StreamingASRController
     from core.messaging.chat_turn_service import ChatTurnService
+    from core.messaging.continuous_asr_policy import ContinuousASRPolicy
     from test.unit.adapters.test_streaming_asr_controller import _FakeASRAdapter, _wait_until
 
     delivered = []
-    service = ChatTurnService(sink=delivered.append)
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(), sink=delivered.append)
     turn = service.begin_turn()
 
     def submit(text):
@@ -334,6 +337,19 @@ def test_dispatches_turn_input_asr_and_speech_commands(command_runtime) -> None:
     runtime.runtime_asr.user_pause.assert_called_once_with()
     runtime.runtime_asr.user_resume.assert_called_once_with()
     assert runtime.ui_calls.count(("skip", None)) == 2
+
+
+def test_dispatches_hold_to_talk_commands(command_runtime):
+    runtime = command_runtime
+    runtime.runtime_asr.begin_hold = Mock()
+    runtime.runtime_asr.finish_hold = Mock()
+    assert _execute(runtime, "begin-asr-hold").ok
+    assert _execute(runtime, "finish-asr-hold").ok
+    assert _execute(runtime, "cancel-asr-hold").ok
+    runtime.runtime_asr.begin_hold.assert_called_once_with()
+    assert runtime.runtime_asr.finish_hold.call_count == 2
+    runtime.runtime_asr.finish_hold.assert_any_call()
+    runtime.runtime_asr.finish_hold.assert_any_call(cancel=True)
 
 
 def test_validates_and_dispatches_audio_playback_signal(command_runtime) -> None:

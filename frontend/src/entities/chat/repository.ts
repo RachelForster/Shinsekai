@@ -6,22 +6,68 @@ import type {
   ChatLaunchPayload,
   ChatRuntimeProcessState,
   ChatSnapshot,
+  ChatSnapshotOptions,
   RuntimeDependencyInstallInput,
   RuntimeDependencyInstallResult,
   TaskProgressOptions,
+  TemplateLaunchSession,
 } from "../../shared/platform/types";
 import type { ChatThemePayload } from "../../shared/theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../../shared/theme/chatTheme";
 import type { ChatStageEvent } from "../../shared/platform/types";
 
 export const chatQueryKey = ["chat"] as const;
+export const conversationsQueryKey = ["chat", "conversations"] as const;
+
+export const listConversations = () => getPlatform().chat.listConversations();
+export const prepareConversation = (id: string) => getPlatform().chat.prepareConversation(id);
+export const getCurrentConversation = () => getPlatform().chat.getCurrentConversation();
+export const reconfigureConversation = (
+  id: string,
+  payload: ChatLaunchPayload,
+  options?: TaskProgressOptions<ChatSnapshot>,
+) => getPlatform().chat.reconfigureConversation(id, payload, options);
+export const renameConversation = (id: string, title: string) => getPlatform().chat.renameConversation(id, title);
+export const deleteConversation = (id: string) => getPlatform().chat.deleteConversation(id);
+
+export async function getConversationSession(id: string): Promise<TemplateLaunchSession> {
+  const payload = await prepareConversation(id);
+  const options = { ...payload, ...payload.editorSession };
+  return {
+    maxDialogItems: options.maxDialogItems ?? 0,
+    maxSpeechChars: options.maxSpeechChars ?? 0,
+    useChoice: options.useChoice ?? true,
+    useCot: options.useCot ?? false,
+    useEffect: options.useEffect ?? true,
+    useNarration: options.useNarration ?? true,
+    useStat: options.useStat ?? true,
+    useTranslation: options.useTranslation ?? true,
+    voiceLanguage: options.voiceLanguage || "ja",
+    characterPromptMode: options.characterPromptMode,
+    primaryCharacters: options.primaryCharacters,
+    enableMobileAccess: options.enableMobileAccess,
+    background: payload.backgroundName,
+    effectNames: payload.effectNames ?? [],
+    filenameStub: payload.templateName ?? "",
+    historyPath: payload.historyPath,
+    initSpritePath: payload.initSpritePath ?? "",
+    showInitialSprite: payload.showInitialSprite ?? true,
+    mediaSelectionMode: payload.mediaSelectionMode ?? "indexed",
+    roomId: payload.roomId ?? "",
+    scenario: payload.scenario ?? "",
+    system: payload.system ?? "",
+    selectedCharacters: payload.characters,
+    templateFileDropdown: payload.templateId,
+    useCg: payload.useCg ?? false,
+  };
+}
 export const chatRuntimeStatusQueryKey = ["chat", "runtime-status"] as const;
 export const chatThemeQueryKey = ["chat", "themes"] as const;
 
 export { runtimeStatusFromSnapshot } from "../../shared/platform/chatRuntimeStatus";
 
-export function getChatSnapshot(): Promise<ChatSnapshot> {
-  return getPlatform().chat.getSnapshot();
+export function getChatSnapshot(options?: ChatSnapshotOptions): Promise<ChatSnapshot> {
+  return getPlatform().chat.getSnapshot(options);
 }
 
 export function getChatRuntimeStatus(): Promise<ChatRuntimeProcessState> {
@@ -62,8 +108,8 @@ export function getChatHistory(): Promise<ChatHistoryEntry[]> {
   return getPlatform().chat.getHistory();
 }
 
-export function subscribeChat(listener: (snapshot: ChatSnapshot) => void): () => void {
-  return getPlatform().chat.subscribe(listener);
+export function subscribeChat(listener: (snapshot: ChatSnapshot) => void, options?: ChatSnapshotOptions): () => void {
+  return getPlatform().chat.subscribe(listener, options);
 }
 
 // --- 主题 mod 系统 ---

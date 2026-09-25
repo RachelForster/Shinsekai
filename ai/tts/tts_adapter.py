@@ -1,5 +1,6 @@
 """Built-in text-to-speech adapters."""
 from sdk.adapters import TTSAdapter
+from ai.tts.server_process import server_python, start_server_process
 import os
 import requests
 import threading
@@ -157,11 +158,11 @@ class GPTSoVitsAdapter(TTSAdapter):
         if not api_path.is_file():
             raise FileNotFoundError(f"GPT-SoVITS api_v2.py not found: {api_path}")
 
-        bundled_python = os_path / "runtime" / ("python.exe" if os.name == "nt" else "python")
+        bundled_python = server_python(os_path / "runtime" / ("python.exe" if os.name == "nt" else "python"))
         python_path = bundled_python if bundled_python.exists() else Path(sys.executable)
 
         # Use subprocess.Popen to start the server in the background
-        self._server_process = subprocess.Popen([str(python_path), str(api_path)], cwd=str(os_path))
+        self._server_process = start_server_process(python_path, api_path, cwd=os_path)
         print("GPT-SoVITS server starting...")
 
     def generate_speech(self, text, file_path=None, **kwargs):
@@ -548,7 +549,7 @@ class IndexTTSAdapter(TTSAdapter):
             raise FileNotFoundError(f"IndexTTS api_v2.py not found: {api_path}")
 
         # Use subprocess.Popen to start the server in the background
-        self._server_process = subprocess.Popen([embeded_python_path, api_path], cwd=os_path)
+        self._server_process = start_server_process(embeded_python_path, api_path, cwd=os_path)
         print("IndexTTS server starting...")
 
     def generate_speech(self, text, file_path=None, **kwargs):
@@ -831,7 +832,7 @@ class GenieTTSAdapter(TTSAdapter):
         if os_path.endswith(".py"):
             os_path = str(Path(os_path).parent)
 
-        embedded_python_path = os.path.join(os_path, "runtime", "python.exe")
+        embedded_python_path = server_python(Path(os_path) / "runtime" / "python.exe")
         start_script_path = os.path.join(os_path, "start.py")
 
         if not os.path.exists(embedded_python_path):
@@ -841,7 +842,7 @@ class GenieTTSAdapter(TTSAdapter):
             print(f"Genie TTS start.py not found: {start_script_path}")
             return
 
-        self._server_process = subprocess.Popen([embedded_python_path, start_script_path], cwd=os_path)
+        self._server_process = start_server_process(embedded_python_path, start_script_path, cwd=os_path)
         print("Genie TTS server starting...")
         for _ in range(20):
             time.sleep(0.5)

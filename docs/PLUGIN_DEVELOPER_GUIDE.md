@@ -510,16 +510,25 @@ streaming capture running during replies. Completed speech waits for the full
 current turn, including the existing presentation pacing. Capture is stopped and
 recreated across history resets/switches to reject callbacks from the old context.
 
-The legacy callback remains `(text, is_partial)`; it does **not** provide a source
-utterance ID. After the existing silence fallback, the controller suppresses the
-next final and related (equal/prefix-normalized) partials until that final or a
-dissimilar partial arrives. This avoids common duplicate submissions but cannot
-distinguish an immediate identical new utterance from a delayed partial, nor every
-late spelling correction from new speech. Such inputs may be suppressed or
-submitted twice. A new identical utterance after the previous engine final works
-normally. Controller-generated `utteranceId` values identify UI draft ownership,
-not authoritative engine utterance boundaries. This is an explicit experimental
-limitation; no echo cancellation is provided.
+The callback remains `(text, is_partial)`. Controller-generated `utteranceId`
+values identify UI draft ownership. No text-prefix or equality filter is used to
+guess engine boundaries, so a new identical utterance can be submitted again.
+
+Adapters may implement the optional `reset_capture(next_callback)` capability.
+It must discard only acknowledged audio, retain later live and queued audio,
+preserve the loaded model, and atomically bind the new callback. Each decoding
+job retains its original generation and callback; stale jobs cannot publish to
+the new generation. `acknowledge_capture()` is called inside the controller's
+accepted callback, before processing it, so a decode waiting for that acceptance
+lock cannot advance the reset boundary. Reset must not wait for a callback while
+holding an adapter lock. The microphone can continue reading during decoding.
+
+The separate faster-whisper plugin fix implements this contract. It must be
+distributed with that plugin; the main project's patch does not install it.
+Ordinary mode keeps the existing adapter pause/resume lifecycle. Experimental
+mode falls back to retiring/recreating capture if reset is unavailable, including
+RealtimeSTT; model reload latency in that fallback depends on the adapter. There
+is no echo cancellation. Natural engine endpoints remain the preferred path.
 
 ```python
 from sdk.adapters.asr import ASRAdapter

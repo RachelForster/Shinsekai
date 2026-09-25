@@ -1,4 +1,5 @@
 import { mergeChatAttachmentInputs } from "../attachments";
+import { emptyChatState } from "./initialState";
 import { applyStageEvent } from "./events";
 import { clearTransientNotificationState, withResolvedLayers } from "./layers";
 import { hydrateFromSnapshot, snapshotEventSeq } from "./snapshot";
@@ -13,6 +14,7 @@ function preserveOptimisticPresentation(state: ChatStageState, next: ChatStageSt
     dialogText: state.dialogText,
     inputAttachments: state.inputAttachments,
     inputDraft: state.inputDraft,
+    inputDraftFromAsr: state.inputDraftFromAsr,
     asrUtteranceId: state.asrUtteranceId,
     asrSourceUtteranceId: state.asrSourceUtteranceId,
     optimisticSubmission: state.optimisticSubmission,
@@ -78,6 +80,7 @@ function submitUserMessageState(
       asrUtteranceId: state.asrUtteranceId,
       asrSourceUtteranceId: state.asrSourceUtteranceId,
       inputDraft: state.inputDraft,
+      inputDraftFromAsr: state.inputDraftFromAsr,
       inputAttachments: state.inputAttachments.map((attachment) => ({ ...attachment })),
       notificationText: state.notificationText,
       options: [...state.options],
@@ -95,12 +98,14 @@ function submitUserMessageState(
         asrSourceUtteranceId: state.asrSourceUtteranceId,
         inputAttachments: state.inputAttachments,
         inputDraft: state.inputDraft,
+        inputDraftFromAsr: state.inputDraftFromAsr,
       }
     : {
         asrUtteranceId: null,
         asrSourceUtteranceId: null,
         inputAttachments: [],
         inputDraft: "",
+        inputDraftFromAsr: false,
       };
   if (queued) {
     // Batch/queued submissions must still show the user's own message instead of
@@ -142,7 +147,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         action.event.type === "asr.final" &&
         action.event.text.trim() &&
         !state.optimisticSubmission &&
-        !["generating", "streaming", "speaking"].includes(state.status)
+        (!action.event.continuous || !["generating", "streaming", "speaking"].includes(state.status))
       ) {
         return submitUserMessageState(next, {
           preserveInput: Boolean(next.inputDraft),
@@ -150,7 +155,11 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
           text: action.event.text.trim(),
         });
       }
-      if (!state.optimisticSubmission || next === state) {
+      if (
+        (state.sessionId && next.sessionId && next.sessionId !== state.sessionId) ||
+        !state.optimisticSubmission ||
+        next === state
+      ) {
         return next;
       }
       if (action.event.type === "snapshot") {
@@ -167,9 +176,15 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
       }
       return next;
     }
+    case "replaceSession":
+      return hydrateFromSnapshot(emptyChatState, action.snapshot, action.receivedAt);
     case "hydrate": {
       const next = hydrateFromSnapshot(state, action.snapshot, action.receivedAt);
-      if (!state.optimisticSubmission || next === state) {
+      if (
+        (state.sessionId && next.sessionId && next.sessionId !== state.sessionId) ||
+        !state.optimisticSubmission ||
+        next === state
+      ) {
         return next;
       }
       // Hydration requests may have started before the user submitted. Keep the
@@ -201,6 +216,9 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         asrUtteranceId,
         asrSourceUtteranceId,
         inputDraft,
+        inputDraftFromAsr: optimistic.draftEditedAfterSubmission
+          ? state.inputDraftFromAsr
+          : optimistic.previous.inputDraftFromAsr,
         inputAttachments: inputAttachments.map((attachment) => ({ ...attachment })),
         options: [...optimistic.previous.options],
         optimisticSubmission: undefined,
@@ -233,6 +251,7 @@ export function chatStageReducer(state: ChatStageState, action: ChatStageAction)
         asrUtteranceId: null,
         asrSourceUtteranceId: action.text.trim() ? state.asrSourceUtteranceId : null,
         inputDraft: action.text,
+        inputDraftFromAsr: false,
         optimisticSubmission: state.optimisticSubmission
           ? { ...state.optimisticSubmission, draftEditedAfterSubmission: true }
           : undefined,

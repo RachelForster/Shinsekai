@@ -128,6 +128,7 @@ describe("useChatLaunchGuard", () => {
       state: "closing",
     });
     await waitFor(() => expect(result.current.runtimeLaunchDisabled).toBe(true));
+    expect(result.current.runtimeClosing).toBe(true);
   });
 
   it("starts polling after a launch snapshot reports running", async () => {
@@ -210,6 +211,7 @@ describe("useChatLaunchGuard", () => {
       closePromise = closeChatRuntime();
     });
     expect(result.current.runtimeLaunchDisabled).toBe(true);
+    expect(result.current.runtimeClosing).toBe(true);
 
     const closedSnapshot: ChatSnapshot = {
       dialogText: "",
@@ -223,6 +225,7 @@ describe("useChatLaunchGuard", () => {
       await expect(closePromise).resolves.toBe(closedSnapshot);
     });
     expect(result.current.runtimeLaunchDisabled).toBe(false);
+    expect(result.current.runtimeClosing).toBe(false);
   });
 
   it("releases the local closing state when the close operation fails", async () => {

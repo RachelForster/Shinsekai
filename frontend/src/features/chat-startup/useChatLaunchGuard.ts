@@ -14,6 +14,7 @@ const RUNTIME_STATUS_POLL_INTERVAL_MS = 1200;
 interface ChatLaunchGuard {
   refreshRuntimeStatus: () => Promise<void>;
   runtimeLaunchDisabled: boolean;
+  runtimeClosing: boolean;
   updateRuntimeStatusFromSnapshot: (snapshot: ChatSnapshot) => Promise<ChatRuntimeProcessState>;
 }
 
@@ -41,8 +42,8 @@ export function useChatLaunchGuard(): ChatLaunchGuard {
     [queryClient],
   );
 
-  const runtimeLaunchDisabled =
-    localRuntimeClosing || runtimeStatusQuery.data?.state === "running" || runtimeStatusQuery.data?.state === "closing";
+  const runtimeClosing = localRuntimeClosing || runtimeStatusQuery.data?.state === "closing";
+  const runtimeLaunchDisabled = runtimeClosing || runtimeStatusQuery.data?.state === "running";
 
   const refreshRuntimeStatus = useCallback(async () => {
     await runtimeStatusQuery.refetch();
@@ -51,6 +52,7 @@ export function useChatLaunchGuard(): ChatLaunchGuard {
   return {
     refreshRuntimeStatus,
     runtimeLaunchDisabled,
+    runtimeClosing,
     updateRuntimeStatusFromSnapshot,
   };
 }

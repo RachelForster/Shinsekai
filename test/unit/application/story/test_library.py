@@ -1,4 +1,5 @@
 import json
+import shutil
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -12,6 +13,11 @@ from application.story.coordinator import (
 from application.story.generation import StoryGenerationError, StoryPatchApplier
 from application.story.library import list_story_library, prepare_story_launch
 from application.story.selection import generation_selection
+from application.chat.conversation_library import (
+    conversation_launch_payload,
+    list_conversations,
+    remember_conversation,
+)
 from config.schema import Character
 from core.story import AdvanceStoryTurn
 from frontend_bridge_core.routes.router import ApiRequest
@@ -106,6 +112,7 @@ def test_selection_reaches_author_and_runtime_with_primary_and_secondary_setting
     )
     payload = response.data
     assert payload["templateId"] == ""
+    assert payload["storyPath"] == Path(task["draftPath"]).resolve().as_posix()
     assert payload["characters"] == ["小玲", "小晴"]
     assert payload["backgroundName"] == "旧校舍"
     assert payload["resetHistory"] is True
@@ -127,6 +134,7 @@ def test_library_survives_restart_and_continues_saved_node(tmp_path):
     rows = list_story_library(state)
     assert len(rows) == 1
     assert rows[0]["characters"] == ["小玲", "小晴"]
+    assert rows[0]["canEditGraph"] is True
     assert not rows[0]["historyPath"]
     history = state.history_dir / "save"
     history.mkdir(parents=True)
@@ -155,6 +163,71 @@ def test_library_survives_restart_and_continues_saved_node(tmp_path):
     )
     assert recovered.active_branch.state.current_node_id == "school-lobby"
     assert recovered.active_branch.state.revision == revision
+
+
+def test_legacy_library_project_remains_playable_without_editor(tmp_path):
+    from application.story.editor import read_story_document
+
+    state, _, _, _ = selected_story(tmp_path)
+    legacy = tmp_path / "data/stories/campus-mystery"
+    shutil.copytree(Path("test/fixtures/stories/campus-mystery"), legacy)
+    row = next(item for item in list_story_library(state) if item["storyPath"] == (legacy / "manifest.yaml").as_posix())
+    assert row["canEditGraph"] is False
+    assert prepare_story_launch(state, row["storyPath"])["templateName"] == row["title"]
+    with pytest.raises(ValueError, match="旧版剧本暂不支持"):
+        read_story_document(state, row["storyPath"])
+
+
+def test_resume_story_after_restart_before_first_attachment_preserves_history(tmp_path):
+    state, task, _, _ = selected_story(tmp_path)
+    state.template_dir_path = tmp_path / "data/templates"
+    history = state.history_dir / "pending-story"
+    launch = prepare_story_launch(state, task["draftPath"])
+    remember_conversation(state, history, {**launch, "system": "Saved rules"})
+    active = history / "active.json"
+    active.write_text('[{"role":"user","content":"Keep my opening message"}]', encoding="utf-8")
+    before = active.read_bytes()
+    # A fresh state has no active runtime or browser retry state.
+    restarted = SimpleNamespace(**vars(state))
+    restarted.chat_session = {}
+    item, = list_conversations(restarted)
+    assert item["kind"] == "story"
+    payload = prepare_story_launch(restarted, item["storyPath"], item["historyPath"])
+    assert payload["historyPath"] == history.as_posix()
+    assert payload["resetHistory"] is False
+    assert conversation_launch_payload(restarted, item["id"])["system"] == "Saved rules"
+    restarted.chat_session = {"historyPath": payload["historyPath"]}
+    session = start_or_recover_story_session(restarted, item["storyPath"], command_id="retry")
+    assert session.active_branch.state.current_node_id == "school-gate"
+    assert (history / "story-v2.json").is_file()
+    assert active.read_bytes() == before
+    assert prepare_story_launch(restarted, item["storyPath"], item["historyPath"])["resetHistory"] is False
+
+
+@pytest.mark.parametrize("case", ["unregistered", "normal-chat", "other-story", "missing-save", "corrupt-save"])
+def test_missing_story_save_does_not_allow_rebinding_unrelated_or_damaged_history(tmp_path, case):
+    state, task, _, _ = selected_story(tmp_path)
+    state.template_dir_path = tmp_path / "data/templates"
+    history = state.history_dir / "existing"
+    history.mkdir(parents=True)
+    (history / "active.json").write_text("[]", encoding="utf-8")
+    if case != "unregistered":
+        launch = prepare_story_launch(state, task["draftPath"])
+        if case == "normal-chat":
+            launch.pop("storyPath")
+        if case == "other-story":
+            other = Path(task["draftPath"]).with_name("other.json")
+            other.write_bytes(Path(task["draftPath"]).read_bytes())
+            launch["storyPath"] = other.as_posix()
+        remember_conversation(state, history, launch)
+    if case == "missing-save":
+        (history / "story-prompt-binding.json").write_text(json.dumps({"storyPath": task["draftPath"]}), encoding="utf-8")
+    if case == "corrupt-save":
+        (history / "story-v2.json").write_text("{broken", encoding="utf-8")
+    before = {path: path.read_bytes() for path in history.iterdir()}
+    with pytest.raises(ValueError):
+        prepare_story_launch(state, task["draftPath"], str(history))
+    assert {path: path.read_bytes() for path in history.iterdir()} == before
 
 
 def test_library_ignores_broken_and_incomplete_projects_and_rejects_wrong_save(

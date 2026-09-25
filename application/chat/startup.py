@@ -12,6 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol
 
+from application.chat.voice_policy import character_speech_disabled
 from core.chat_history.storage import chat_history_active_path
 
 if TYPE_CHECKING:
@@ -168,6 +169,7 @@ def create_chat_startup_context(
             media_selection_mode=str(
                 getattr(args, "media_selection_mode", "indexed") or "indexed"
             ),
+            **({"use_current_template_for_history": True} if getattr(args, "use_current_template_for_history", False) else {}),
         )
         if plugin_manager is not None:
             runtime.install_memory_hooks(
@@ -325,6 +327,8 @@ def _initialize_tts(
     gsv_url, gsv_api_path, config_provider = config.get_gpt_sovits_config()
     adapter_name = str(args.tts or "").strip() or str(config_provider or "")
     if not adapter_name or adapter_name.casefold() == "none":
+        return None, adapter_name
+    if character_speech_disabled(config):
         return None, adapter_name
     with phase("tts.init"):
         try:

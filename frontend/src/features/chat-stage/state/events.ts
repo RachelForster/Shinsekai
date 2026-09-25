@@ -379,8 +379,9 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         loopingEffects: [],
       });
     case "asr.partial": {
-      const replyInProgress = ["generating", "streaming", "speaking"].includes(state.status);
-      const utteranceId = asrUtteranceId(event.utteranceId);
+      const continuous = event.continuous === true;
+      const replyInProgress = continuous && ["generating", "streaming", "speaking"].includes(state.status);
+      const utteranceId = continuous ? asrUtteranceId(event.utteranceId) : null;
       const hasManualDraft = !state.asrUtteranceId && Boolean(state.inputDraft);
       const acceptsDraft = !utteranceId || !hasManualDraft;
       return withResolvedLayers({
@@ -389,15 +390,17 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         asrLoading: false,
         asrRunning: true,
         asrTranscript: event.text,
+        asrContinuous: continuous,
         eventSeq: Math.max(state.eventSeq, event.seq),
         inputDraft: acceptsDraft ? event.text : state.inputDraft,
+        inputDraftFromAsr: acceptsDraft ? Boolean(event.text) : state.inputDraftFromAsr,
         asrSourceUtteranceId: acceptsDraft ? utteranceId : state.asrSourceUtteranceId,
         asrUtteranceId: acceptsDraft ? utteranceId : null,
         status: replyInProgress ? state.status : "listening",
       });
     }
     case "asr.final": {
-      const utteranceId = asrUtteranceId(event.utteranceId);
+      const utteranceId = event.continuous === true ? asrUtteranceId(event.utteranceId) : null;
       const ownsCurrentDraft = !utteranceId || state.asrUtteranceId === utteranceId;
       const matchesCurrentSource = !utteranceId || state.asrSourceUtteranceId === utteranceId;
       return withResolvedLayers({
@@ -405,6 +408,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         asrTranscript: event.text,
         eventSeq: Math.max(state.eventSeq, event.seq),
         inputDraft: ownsCurrentDraft ? "" : state.inputDraft,
+        inputDraftFromAsr: ownsCurrentDraft ? false : state.inputDraftFromAsr,
         asrSourceUtteranceId: matchesCurrentSource ? null : state.asrSourceUtteranceId,
         asrUtteranceId: ownsCurrentDraft ? null : state.asrUtteranceId,
         options: [],
@@ -412,15 +416,17 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
     }
     case "asr.state": {
       const asrEnabled = event.enabled ?? event.running;
+      const continuous = event.continuous ?? state.asrContinuous ?? false;
       const replyInProgress = ["generating", "streaming", "speaking"].includes(state.status);
       return withResolvedLayers({
         ...clearTransientNotificationState(state),
         asrEnabled,
+        asrContinuous: continuous,
         asrLoading: Boolean(event.loading) && asrEnabled,
         asrRunning: event.running && asrEnabled,
         eventSeq: Math.max(state.eventSeq, event.seq),
         status: event.running
-          ? replyInProgress
+          ? continuous && replyInProgress
             ? state.status
             : "listening"
           : replyInProgress
@@ -433,7 +439,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         ...clearTransientNotificationState(state),
         activePlayback: null,
         eventSeq: Math.max(state.eventSeq, event.seq),
-        status: ["generating", "streaming", "speaking"].includes(state.status) ? "idle" : state.status,
+        status:
+          state.status === "generating" ||
+          state.status === "streaming" ||
+          (state.asrContinuous && state.status === "speaking")
+            ? "idle"
+            : state.status,
       });
     case "session.closed":
       return withResolvedLayers({

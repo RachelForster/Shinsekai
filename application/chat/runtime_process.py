@@ -76,6 +76,9 @@ TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
 _HISTORY_DOWNLOAD_CAPABILITY_TTL_SECONDS = 60.0
 _RUNTIME_CHAT_COMMANDS = {
+    "begin-asr-hold",
+    "finish-asr-hold",
+    "cancel-asr-hold",
     "audio-playback-signal",
     "cancel-input-batch",
     "change-voice-language",
@@ -143,6 +146,15 @@ def _hidden_subprocess_kwargs() -> dict[str, Any]:
 def _chat_process_running() -> bool:
     with _main_chat_process_lock:
         return _main_chat_process is not None and _main_chat_process.poll() is None
+
+
+def _chat_character_speech_disabled(state: BridgeState) -> bool:
+    from application.chat.voice_policy import character_speech_disabled
+
+    # A running session uses its startup policy in either switch direction.
+    if _chat_process_running():
+        return bool(state.chat_session.get("characterSpeechDisabled", False))
+    return character_speech_disabled(getattr(state, "config_manager", None))
 
 
 def _chat_runtime_closing(state: BridgeState) -> bool:
@@ -215,7 +227,9 @@ def _popen_chat_process(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> tu
         + f"cwd: {cwd}\n"
         + f"cmd: {' '.join(cmd)}\n"
     )
-    env = {**env, "PYTHONUNBUFFERED": "1"}
+    # Popen passes the file descriptor, not the parent's TextIOWrapper encoding.
+    # Match the UTF-8 log reader even on Windows hosts using a legacy code page.
+    env = {**env, "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
     # The command contains only the trusted interpreter/entrypoint. Runtime
     # options are delivered through a validated JSON environment payload.
     # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
@@ -400,6 +414,7 @@ def _launch_chat(
     effect_context: SelectedEffectContext | None = None,
     history_file: str,
     init_sprite_path: str,
+    show_initial_sprite: bool = True,
     room_id: str,
     selected_bg: str,
     system_template: str,
@@ -409,6 +424,7 @@ def _launch_chat(
     init_stream_endpoint: str = "",
     workflow_path: str = "",
     media_selection_mode: str = "indexed",
+    use_current_template_for_history: bool = False,
 ) -> str:
     global _main_chat_process
 
@@ -435,6 +451,13 @@ def _launch_chat(
         state.config_manager.config.system_config = sc
         state.config_manager.save_system_config()
 
+        from application.chat.voice_policy import character_speech_disabled
+
+        state.chat_session = {
+            **getattr(state, "chat_session", {}),
+            "characterSpeechDisabled": character_speech_disabled(state.config_manager),
+        }
+
         template_hash = _history_id_from_scenario(user_scenario, character_names)
         history_path = Path(history_file) if history_file else Path(state.history_dir) / template_hash
         history_argument = str(history_path)
@@ -450,6 +473,7 @@ def _launch_chat(
         launch_config = {
             "template": "_temp",
             "init_sprite_path": init_sprite_path or "",
+            "show_initial_sprite": show_initial_sprite,
             "history": history_argument,
             "bg": selected_bg,
             "effect_names": effect_names,
@@ -469,6 +493,8 @@ def _launch_chat(
         if workflow_path:
             launch_config["workflow"] = workflow_path
         env = os.environ.copy()
+        if use_current_template_for_history:
+            launch_config["use_current_template_for_history"] = True
         env[CHAT_LAUNCH_CONFIG_ENV] = json.dumps(launch_config, ensure_ascii=False)
         env["SHINSEKAI_PROJECT_ROOT"] = str(project_root)
         env["EASYAI_PROJECT_ROOT"] = str(project_root)
@@ -718,6 +744,8 @@ def _chat_snapshot(
     user_display_name = _chat_user_display_name(state)
     runtime_state = {
         "chatProcessRunning": _chat_process_running(),
+        "characterSpeechDisabled": _chat_character_speech_disabled(state),
+        "asrContinuous": _chat_character_speech_disabled(state),
         "chatRuntimeClosing": _chat_runtime_closing(state),
         "turnOptions": _chat_turn_options(state),
     }
@@ -1404,6 +1432,9 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
                 "attachments": [attachment.to_payload() for attachment in attachments],
                 "text": submitted_text,
             }
+            utterance_id = payload.get("asrUtteranceId")
+            if isinstance(utterance_id, str) and 0 < len(utterance_id) <= 128:
+                body["payload"]["asrUtteranceId"] = utterance_id
         else:
             submitted_text = str(payload or "").strip()
         if not submitted_text and not attachments:
@@ -1446,6 +1477,8 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
         return _forward_runtime_command("paused", "语音识别已暂停。")
     if command == "resume-asr":
         return _forward_runtime_command("listening", "语音识别已恢复。")
+    if command in {"begin-asr-hold", "finish-asr-hold", "cancel-asr-hold"}:
+        return _forward_runtime_command(_current_runtime_status())
     if command == "reroll":
         return _forward_runtime_command("generating", "正在请求重新生成。")
     if command == "revert-history":

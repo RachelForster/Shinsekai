@@ -164,6 +164,9 @@ class _StreamingSessionWiring:
         if not value and not resolved:
             return False
         payloads = [attachment.to_payload() for attachment in resolved]
+        if not self.continuous_asr:
+            self.last_user_message["text"] = value
+            self.last_user_message["attachments"] = payloads
         if self.emit_user_text is None:
             if notify_key:
                 self.ui_updates.post_notification(self.translate("main.notify_chat"))
@@ -187,7 +190,7 @@ class _StreamingSessionWiring:
             defer_until_idle=defer_until_idle,
             on_admit=admitted,
             **identity_kwargs,
-        )
+        ) if self.continuous_asr else self.emit_user_text(value, attachments=payloads)
         if accepted is False:
             return False
         if notify_key:
@@ -234,14 +237,35 @@ class _StreamingSessionWiring:
 
         return StreamingASRController(
             adapter_factory=self.create_asr_adapter,
-            emit_event=self.transport.emit,
-            submit_final=self._submit_asr_text,
-            submit_utterance=self._submit_asr_text,
+            emit_event=self._emit_asr_event,
+            submit_final=self._submit_legacy_asr_text,
+            submit_utterance=self._submit_asr_text if self.continuous_asr else None,
             on_loading_changed=self._set_asr_loading,
             on_error=self._report_asr_error,
             resume_delay_seconds=0.5,
             continuous_listening=self.continuous_asr,
         )
+
+    def _emit_asr_event(self, event: dict[str, Any]) -> None:
+        if self.continuous_asr and event.get("continuous") is not False:
+            event = {**event, "continuous": True}
+            if event.get("type") == "asr.partial":
+                self.chat_turn_service.input_changed(
+                    has_text=bool(event.get("text")), source="asr",
+                )
+            elif event.get("type") == "asr.state" and not event.get("running"):
+                self.chat_turn_service.input_changed(has_text=False, source="asr")
+        self.transport.emit(event)
+
+    def _submit_legacy_asr_text(self, text: str) -> bool:
+        """Official normal/hold input keeps manual interruption and flush rules."""
+        accepted = self.submit_runtime_text(text, notify_key=None)
+        if not accepted:
+            return False
+        if self.chat_turn_service.options.batch_enabled:
+            self.chat_turn_service.flush()
+        self.transport.emit({"type": "status.change", "status": "generating"})
+        return True
 
     def _submit_asr_text(self, text: str, utterance_id: str = "") -> Any:
         from ai.asr.streaming_controller import ASRSubmissionResult
@@ -250,7 +274,7 @@ class _StreamingSessionWiring:
 
         def on_admit(value: str, _attachments: list[dict[str, object]]) -> None:
             admitted.set()
-            self.transport.emit(
+            self._emit_asr_event(
                 {"type": "asr.final", "text": value, "utteranceId": utterance_id}
             )
             self.transport.emit({"type": "status.change", "status": "generating"})
@@ -264,6 +288,8 @@ class _StreamingSessionWiring:
             utterance_id=utterance_id if self.continuous_asr else None,
         )
         if not accepted:
+            if self.continuous_asr:
+                self.chat_turn_service.input_changed(has_text=False, source="asr")
             return False
         if self.continuous_asr:
             return ASRSubmissionResult(accepted=True, admitted=admitted.is_set())

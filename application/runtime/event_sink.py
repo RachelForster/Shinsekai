@@ -546,24 +546,33 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "asr.partial":
         _clear_transient_notification_state(next_snapshot)
+        continuous = event.get("continuous") is True
+        next_snapshot["asrContinuous"] = continuous
         current_status = str(next_snapshot.get("status") or "idle")
         utterance_id = event.get("utteranceId")
-        has_utterance_id = isinstance(utterance_id, str) and bool(utterance_id)
+        has_utterance_id = continuous and isinstance(utterance_id, str) and bool(utterance_id)
         next_snapshot["asrEnabled"] = True
         next_snapshot["asrLoading"] = False
         next_snapshot["asrRunning"] = True
         next_snapshot["inputDraft"] = str(event.get("text") or "")
         next_snapshot["asrUtteranceId"] = utterance_id if has_utterance_id else None
-        if current_status not in {"generating", "streaming", "speaking"}:
+        if not continuous or current_status not in {"generating", "streaming", "speaking"}:
             next_snapshot["status"] = "listening"
         return next_snapshot
 
     if event_type == "asr.final":
         _clear_transient_notification_state(next_snapshot)
         # The final transcript has already entered the chat turn pipeline.
+        # Persist that accepted user turn so polling and reconnect hydration
+        # expose the same presentation as the live event stream.
+        next_snapshot["characterName"] = (
+            str(next_snapshot.get("userDisplayName") or "").strip() or "你"
+        )
+        next_snapshot["dialogHtml"] = None
+        next_snapshot["dialogText"] = str(event.get("text") or "").strip()
         # Persist its consumed presentation state for reconnect hydration.
         utterance_id = event.get("utteranceId")
-        has_utterance_id = isinstance(utterance_id, str) and bool(utterance_id)
+        has_utterance_id = event.get("continuous") is True and isinstance(utterance_id, str) and bool(utterance_id)
         current_utterance_id = next_snapshot.get("asrUtteranceId")
         owns_current_draft = (
             not has_utterance_id
@@ -580,13 +589,15 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
 
     if event_type == "asr.state":
         _clear_transient_notification_state(next_snapshot)
+        continuous = event.get("continuous", next_snapshot.get("asrContinuous", False))
+        next_snapshot["asrContinuous"] = bool(continuous)
         running = bool(event.get("running"))
         enabled = bool(event.get("enabled", running))
         next_snapshot["asrEnabled"] = enabled
         next_snapshot["asrLoading"] = bool(event.get("loading")) and enabled
         next_snapshot["asrRunning"] = running and enabled
         current_status = str(next_snapshot.get("status") or "idle")
-        if running and current_status not in {"generating", "streaming", "speaking"}:
+        if running and (not continuous or current_status not in {"generating", "streaming", "speaking"}):
             next_snapshot["status"] = "listening"
         elif current_status not in {"generating", "streaming", "speaking"}:
             next_snapshot["status"] = "paused"

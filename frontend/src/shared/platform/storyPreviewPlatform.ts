@@ -1,6 +1,7 @@
 import type { ChatSnapshot, ShinsekaiPlatform, StoryGenerationTask, TaskProgressOptions } from "./types";
 import { previewStoryGraph } from "./previewStoryGraph";
 import { TRANSPARENT_BACKGROUND_NAME } from "../constants";
+import type { StoryDocument } from "./storyEditorTypes";
 
 function previewStoryGeneration(id: string, status: StoryGenerationTask["status"]): StoryGenerationTask {
   const now = Date.now();
@@ -44,6 +45,23 @@ export function createStoryPreviewPlatform(
 ): ShinsekaiPlatform["story"] {
   const tasks = new Map<string, StoryGenerationTask>();
   const saves = new Map<string, ChatSnapshot>();
+  const documents = new Map<string, StoryDocument>();
+  const documentFor = (storyPath: string): StoryDocument => {
+    const existing = documents.get(storyPath);
+    if (existing) return structuredClone(existing);
+    const task = [...tasks.values()].find((item) => item.draftPath === storyPath);
+    if (!task || !previewStoryGraph.graph) throw new Error("剧本不存在，请刷新后重试。");
+    const document = {
+      storyPath,
+      title: previewStoryGraph.title,
+      version: 1,
+      sourceHash: task.id,
+      graph: structuredClone(previewStoryGraph.graph),
+      authoringBrief: task.synopsis,
+    };
+    documents.set(storyPath, document);
+    return structuredClone(document);
+  };
   let activeStoryPath = "";
   const read = (id: string) => {
     const task = tasks.get(id);
@@ -69,6 +87,21 @@ export function createStoryPreviewPlatform(
     return task;
   };
   return {
+    readDocument: async (storyPath) => documentFor(storyPath),
+    saveDocument: async (input) => {
+      const base = documentFor(input.storyPath);
+      if (base.sourceHash !== input.sourceHash) throw new Error("剧本已变化，请重新打开编辑器。");
+      const task = [...tasks.values()].find((item) => item.draftPath === input.storyPath)!;
+      const id = crypto.randomUUID();
+      const storyPath = `data/stories/edited-${id}.json`;
+      const result = { ...base, ...structuredClone(input), storyPath, sourceHash: id, version: base.version + 1 };
+      documents.set(storyPath, result);
+      tasks.set(id, { ...task, id, draftPath: storyPath, updatedAt: Date.now() });
+      return structuredClone(result);
+    },
+    suggestGraph: async () => {
+      throw new Error("浏览器演示模式未连接 LLM。请连接后端后使用辅助修改。");
+    },
     list: async () => {
       if (activeStoryPath && getChat().story) saves.set(activeStoryPath, getChat());
       return [...tasks.values()]
@@ -77,8 +110,10 @@ export function createStoryPreviewPlatform(
           const save = saves.get(task.draftPath);
           return {
             id: task.id,
-            title: previewStoryGraph.title,
+            title: documentFor(task.draftPath).title,
+            version: documentFor(task.draftPath).version,
             storyPath: task.draftPath,
+            canEditGraph: true,
             characters: (task.options.characters as string[]) ?? [],
             backgrounds: [String(task.options.backgroundName || TRANSPARENT_BACKGROUND_NAME)],
             historyPath: save?.historyPath || "",
@@ -92,8 +127,9 @@ export function createStoryPreviewPlatform(
       if (!task) throw new Error("剧本不存在，请刷新后重试。");
       return {
         templateId: "",
-        templateName: previewStoryGraph.title,
-        scenario: task.synopsis || previewStoryGraph.title,
+        storyPath,
+        templateName: documentFor(storyPath).title,
+        scenario: `正在游玩互动剧本《${documentFor(storyPath).title}》。根据当前节点的剧情要求和已发生的对话推进故事。`,
         system: "根据当前剧本场景呈现人物对话和旁白。",
         characters: (task.options.characters as string[]) ?? [],
         backgroundName: String(task.options.backgroundName || TRANSPARENT_BACKGROUND_NAME),
@@ -123,6 +159,8 @@ export function createStoryPreviewPlatform(
         options,
       ),
     startSession: async (storyPath) => {
+      const document = documentFor(storyPath);
+      const opening = document.graph.nodes.find((node) => node.id === document.graph.startNodeId)!;
       activeStoryPath = storyPath;
       const saved = saves.get(storyPath);
       if (saved && saved.historyPath === getChat().historyPath) {
@@ -135,16 +173,16 @@ export function createStoryPreviewPlatform(
         story: {
           activeCast: [],
           castRevision: 0,
-          currentNodeId: "opening",
-          currentNodeTitle: "校门前的邀约",
-          currentNodeType: "limited_turn_node",
-          maxRounds: 3,
+          currentNodeId: opening.id,
+          currentNodeTitle: opening.title,
+          currentNodeType: opening.type,
+          maxRounds: opening.maxRounds,
           nodeTurnCount: 0,
           objectives: [],
           options: [],
           revision: 1,
           storyId: "preview-story",
-          storyVersion: 1,
+          storyVersion: document.version,
           unlockedNotifications: [],
           visibleVariables: [],
         },

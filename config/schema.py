@@ -50,7 +50,7 @@ class Character(BaseModel):
     name: str = Field(..., description="角色名称")
     color: str = Field(..., description="角色对话框或名字的颜色")
     sprite_prefix: str = Field(..., description="立绘文件名的通用前缀")
-    
+
     # 列表中可能包含 Sprite 模型，也可能只是原始字典
     sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="角色的立绘和对应语音的列表")
     character_brief: DefaultIfNone[str] = Field(
@@ -106,9 +106,22 @@ class ApiConfig(BaseModel):
 
     llm_api_key: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商的 API Key 字典")
     llm_base_url: DefaultIfNone[Union[HttpUrl, str]] = Field(default='', description="LLM 服务的 Base URL")
+    llm_base_urls: DefaultIfNone[Dict[str, str]] = Field(
+        default_factory=dict,
+        description="不同模型服务商共用的 Base URL 字典",
+    )
     llm_model: DefaultIfNone[Dict[str, str]] = Field(default_factory=dict, description="不同 LLM 服务商使用的具体模型名称字典")
     llm_provider: DefaultIfNone[str] = Field(default="Deepseek", description="LLM 服务器商名字")
     is_streaming: DefaultIfNone[bool] = Field(default=True, description="是否使用流式响应")
+
+    vision_provider: DefaultIfNone[str] = Field(
+        default="auto",
+        description="视觉理解适配器：auto / remote provider / moondream",
+    )
+    vision_model: DefaultIfNone[Dict[str, str]] = Field(
+        default_factory=lambda: {"deepseek": "deepseek-flash"},
+        description="不同视觉服务商使用的模型名称字典",
+    )
     # --- Interrupt & Batch Input ---
     interrupt_enabled: DefaultIfNone[bool] = Field(default=True, description="是否启用打断功能：新消息可中断正在生成的回复")
     is_batch_input_enabled: DefaultIfNone[bool] = Field(default=False, description="启用批量消息输入：连续发送多条后合并为一条")
@@ -147,6 +160,10 @@ class ApiConfig(BaseModel):
     t2i_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
         default_factory=dict,
         description="T2I 适配器扩展参数：引擎名（如 comfyui） -> 字段名 -> 值",
+    )
+    vision_extra_configs: DefaultIfNone[Dict[str, Dict[str, Any]]] = Field(
+        default_factory=dict,
+        description="视觉适配器扩展参数：provider 名 -> 字段名 -> 值",
     )
 
     @model_validator(mode="after")

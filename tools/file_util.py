@@ -27,7 +27,7 @@ BGM_UPLOAD_DIR = BASE_DATA_PATH / 'bgm'
 _WINDOWS_DRIVE_RE = re.compile(r"^[A-Za-z]:")
 
 
-def _open_export_folder(output_path: str | os.PathLike) -> None:
+def _open_export_folder(output_path: str | os.PathLike) -> bool:
     folder_path = Path(output_path).parent.resolve()
 
     try:
@@ -35,11 +35,15 @@ def _open_export_folder(output_path: str | os.PathLike) -> None:
         if system == 'Windows':
             os.startfile(folder_path)  # type: ignore[attr-defined]
         elif system == 'Darwin':  # macOS
-            subprocess.Popen(['open', str(folder_path)])
+            subprocess.run(['open', str(folder_path)], check=True, timeout=10)
         elif system == 'Linux':
-            subprocess.Popen(['xdg-open', str(folder_path)])
+            subprocess.run(['xdg-open', str(folder_path)], check=True, timeout=10)
+        else:
+            return False
+        return True
     except Exception as e:
         print(f"Failed to open export folder {folder_path}: {e}")
+        return False
 
 
 def _safe_package_relpath(path: str | os.PathLike | None, field_name: str) -> Path:

@@ -1,8 +1,11 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Profiler } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
+import { ChatWorkspacePage } from "../../../features/chat-workspace/ChatWorkspacePage";
 import { buildDefaultTemplateScenario } from "../../../features/template-editor/templateFlow";
 import { I18nProvider, translateMessage } from "../../../shared/i18n/I18nProvider";
 import { PlatformRequestError } from "../../../shared/platform/errors";
@@ -14,6 +17,7 @@ const mockListBackgrounds = vi.fn();
 const mockListCharacters = vi.fn();
 const mockEnsureCharacterBriefs = vi.fn();
 const mockLaunchChat = vi.fn();
+const mockReconfigureConversation = vi.fn();
 const mockGetChatSnapshot = vi.fn();
 const mockInstallMissingRuntimeDependency = vi.fn();
 const mockGetAppConfig = vi.fn();
@@ -21,6 +25,7 @@ const mockGetMemoryStatus = vi.fn();
 const mockSaveSystemConfig = vi.fn();
 const mockGenerateTemplate = vi.fn();
 const mockGetTemplateSession = vi.fn();
+const mockGetConversationSession = vi.fn();
 const mockListEffects = vi.fn();
 const mockListTemplates = vi.fn();
 const mockRefreshRuntimeStatus = vi.fn();
@@ -43,9 +48,12 @@ vi.mock("../../../entities/character/repository", () => ({
 
 vi.mock("../../../entities/chat/repository", () => ({
   chatQueryKey: ["chat"],
+  conversationsQueryKey: ["chat", "conversations"],
+  getConversationSession: (id: string) => mockGetConversationSession(id),
   getChatSnapshot: () => mockGetChatSnapshot(),
   installMissingRuntimeDependency: (input: unknown) => mockInstallMissingRuntimeDependency(input),
   launchChat: (input: unknown) => mockLaunchChat(input),
+  reconfigureConversation: (id: string, input: unknown) => mockReconfigureConversation(id, input),
 }));
 
 vi.mock("../../../features/chat-startup/useChatLaunchGuard", () => ({
@@ -77,6 +85,10 @@ vi.mock("../../../shared/desktop/chatWindow", () => ({
   showChatSurface: (...args: unknown[]) => mockShowChatSurface(...args),
 }));
 
+vi.mock("../../../features/chat-workspace/ConversationLibrary", () => ({
+  ConversationLibrary: () => <h1>Chats</h1>,
+}));
+
 const template = {
   content: "Morning scene\n\nSystem rules",
   id: "opening",
@@ -89,7 +101,7 @@ const template = {
 
 const queryClients = new Set<QueryClient>();
 
-function renderPage() {
+function renderPage(props: Parameters<typeof TemplateEditorPage>[0] = {}, onCommit = () => {}, workspace = false) {
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -99,7 +111,15 @@ function renderPage() {
     <QueryClientProvider client={client}>
       <ToastProvider>
         <I18nProvider language="en">
-          <TemplateEditorPage />
+          <Profiler id="template-editor" onRender={onCommit}>
+            {workspace ? (
+              <MemoryRouter initialEntries={["/settings/templates?tab=new&mode=normal"]}>
+                <ChatWorkspacePage />
+              </MemoryRouter>
+            ) : (
+              <TemplateEditorPage {...props} />
+            )}
+          </Profiler>
         </I18nProvider>
       </ToastProvider>
     </QueryClientProvider>,
@@ -114,6 +134,22 @@ async function clickButton(button: HTMLElement) {
 }
 
 describe("TemplateEditorPage", () => {
+  const savedChat = {
+    filenameStub: "My saved chat",
+    templateFileDropdown: "opening",
+    scenario: "Saved scene",
+    system: "Saved rules",
+    selectedCharacters: ["Nanami"],
+    primaryCharacters: ["Nanami"],
+    characterPromptMode: "full",
+    historyPath: "D:/history/chosen",
+    background: "默认房间",
+    mediaSelectionMode: "semantic",
+    effectNames: [],
+    initSpritePath: "",
+    roomId: "",
+    voiceLanguage: "en",
+  };
   beforeEach(() => {
     vi.resetAllMocks();
     mockUseChatLaunchGuard.mockReturnValue({
@@ -160,6 +196,266 @@ describe("TemplateEditorPage", () => {
       for (const client of queryClients) client.clear();
       queryClients.clear();
     });
+  });
+
+  it("defaults initial sprites to visible and saves a disabled switch when launching", async () => {
+    mockGetTemplateSession.mockResolvedValue({ ...savedChat, initSpritePath: "D:/sprites/custom.png" });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png"));
+    const toggle = screen.getByRole("checkbox", { name: "Show initial sprite" });
+    expect(toggle).toBeChecked();
+    await clickButton(toggle);
+    expect(screen.getByLabelText("Initial sprite")).toBeDisabled();
+    expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png");
+    await clickButton(screen.getByRole("button", { name: "Quick restart" }));
+    const dialog = screen.getByRole("dialog", { name: "Quick restart" });
+    await clickButton(within(dialog).getByRole("button", { name: "Quick restart" }));
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ showInitialSprite: false, initSpritePath: "D:/sprites/custom.png" }),
+      ),
+    );
+    expect(mockSaveTemplateSession).toHaveBeenCalledWith(expect.objectContaining({ showInitialSprite: false }));
+  });
+
+  it("restores a disabled initial sprite and preserves its path when enabled again", async () => {
+    mockGetTemplateSession.mockResolvedValue({
+      ...savedChat,
+      initSpritePath: "D:/sprites/custom.png",
+      showInitialSprite: false,
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png"));
+    const toggle = screen.getByRole("checkbox", { name: "Show initial sprite" });
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByLabelText("Initial sprite")).toBeDisabled();
+    await clickButton(toggle);
+    expect(screen.getByLabelText("Initial sprite")).toBeEnabled();
+    expect(screen.getByLabelText("Initial sprite")).toHaveValue("D:/sprites/custom.png");
+  });
+
+  it("new chat always creates independent history even with a remembered path", async () => {
+    mockGetTemplateSession.mockResolvedValue(savedChat);
+    mockGenerateTemplate.mockImplementation(async (input) => ({
+      ...template,
+      name: input.name,
+      scenario: savedChat.scenario,
+      system: "Indexed sprite instructions",
+      mediaSelectionMode: input.mediaSelectionMode,
+    }));
+    renderPage({ createOnly: true, conversationTitle: "Evening walk" });
+    await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
+    expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).not.toBeChecked();
+    expect(mockGetMemoryStatus).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Quick restart" })).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("D:/history/chosen")).not.toBeInTheDocument();
+    await clickButton(screen.getByRole("button", { name: "Create and start" }));
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          resetHistory: true,
+          historyPath: "",
+          conversationTitle: "Evening walk",
+          templateName: "My saved chat",
+          mediaSelectionMode: "indexed",
+          system: "Indexed sprite instructions",
+        }),
+      ),
+    );
+    expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ mediaSelectionMode: "indexed" }));
+  });
+
+  it.each(["success", "failure", "mobile"])(
+    "returns to Chats while creation is pending and handles %s after the editor unmounts",
+    async (outcome) => {
+      let finish!: (snapshot: unknown) => void;
+      let fail!: (error: Error) => void;
+      mockLaunchChat.mockReturnValueOnce(
+        new Promise((resolve, reject) => {
+          finish = resolve;
+          fail = reject;
+        }),
+      );
+      renderPage({}, undefined, true);
+      await screen.findByDisplayValue("Opening");
+      fireEvent.click(screen.getByRole("button", { name: "Create and start" }));
+
+      await waitFor(() => expect(mockLaunchChat).toHaveBeenCalledTimes(1));
+      expect(screen.getByRole("heading", { name: "Chats" })).toBeVisible();
+      expect(screen.queryByLabelText("Template name")).not.toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeVisible();
+      expect(mockShowChatSurface).not.toHaveBeenCalled();
+
+      await act(async () => {
+        if (outcome === "failure") {
+          fail(new Error("Launch failed"));
+        } else {
+          finish({
+            dialogText: "launched",
+            ...(outcome === "mobile"
+              ? {
+                  mobileAccess: {
+                    enabled: true,
+                    host: "192.168.1.20",
+                    httpPort: 8789,
+                    websocketPort: 8790,
+                    qrCodeDataUrl: "data:image/png;base64,dGVzdA==",
+                    url: "http://192.168.1.20:8789/",
+                    websocketUrl: "ws://192.168.1.20:8790/ws",
+                  },
+                }
+              : {}),
+          });
+        }
+      });
+      if (outcome === "failure") {
+        expect(within(screen.getByRole("dialog")).getByRole("alert")).toHaveTextContent("Launch failed");
+        expect(mockShowChatSurface).not.toHaveBeenCalled();
+      } else if (outcome === "mobile") {
+        expect(await screen.findByRole("dialog", { name: "Mobile access is ready" })).toBeVisible();
+        expect(mockShowChatSurface).not.toHaveBeenCalled();
+        fireEvent.click(screen.getByRole("button", { name: "Open local chat" }));
+        expect(mockShowChatSurface).toHaveBeenCalledWith(
+          expect.objectContaining({
+            snapshot: expect.objectContaining({ wsUrl: "ws://192.168.1.20:8790/ws" }),
+          }),
+        );
+      } else {
+        await waitFor(() => expect(mockShowChatSurface).toHaveBeenCalledTimes(1));
+        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      }
+    },
+  );
+
+  it.each(["semantic", "indexed"] as const)(
+    "launches the restored form before passive effects flush (%s)",
+    async (mode) => {
+      mockGetTemplateSession.mockResolvedValue({ ...savedChat, mediaSelectionMode: mode });
+      mockGenerateTemplate.mockImplementation(async (input) => ({
+        ...template,
+        name: input.name,
+        scenario: input.scenario,
+        system: "Indexed sprite instructions",
+        mediaSelectionMode: input.mediaSelectionMode,
+      }));
+      let clicked = false;
+      renderPage({ createOnly: true, conversationTitle: "Evening walk" }, () => {
+        if (clicked || screen.queryByLabelText<HTMLInputElement>("Template name")?.value !== "My saved chat") return;
+        clicked = true;
+        // Commit-phase click deterministically exercises the interval before
+        // React Query refreshes its mutation callbacks in passive effects.
+        fireEvent.click(screen.getByRole("button", { name: "Create and start" }));
+      });
+      await waitFor(() =>
+        expect(mockLaunchChat).toHaveBeenCalledWith(
+          expect.objectContaining({
+            templateName: "My saved chat",
+            characters: ["Nanami"],
+            scenario: "Saved scene",
+            historyPath: "",
+            resetHistory: true,
+            mediaSelectionMode: "indexed",
+          }),
+        ),
+      );
+      if (mode === "semantic")
+        expect(mockGenerateTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: "My saved chat" }));
+    },
+  );
+
+  it("generates a timestamp title when a new chat title is cleared", async () => {
+    mockGetTemplateSession.mockResolvedValue({ ...savedChat, mediaSelectionMode: "indexed" });
+    renderPage({ createOnly: true, conversationTitle: "  " });
+    await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
+    await clickButton(screen.getByRole("button", { name: "Create and start" }));
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationTitle: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/),
+          resetHistory: true,
+        }),
+      ),
+    );
+  });
+
+  it("keeps smart sprite matching off when a new chat loads a semantic template", async () => {
+    mockListTemplates.mockResolvedValue([{ ...template, mediaSelectionMode: "semantic" }]);
+    renderPage({ createOnly: true });
+
+    await screen.findByDisplayValue("Opening");
+
+    expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).not.toBeChecked();
+    expect(mockGetMemoryStatus).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Smart sprite matching" }));
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Smart sprite matching" })).toBeChecked());
+    expect(mockGetMemoryStatus).toHaveBeenCalledWith({ startLoading: true });
+  });
+
+  it("restores independent conversation settings after all public templates are deleted", async () => {
+    mockListTemplates.mockResolvedValue([]);
+    mockGetConversationSession.mockResolvedValue(savedChat);
+    mockReconfigureConversation.mockResolvedValue({ status: "idle", historyPath: savedChat.historyPath });
+    renderPage({ conversationId: "chosen", onApplied: vi.fn() });
+    expect(await screen.findByDisplayValue("Saved scene")).toBeVisible();
+    const button = screen.getByRole("button", { name: "Apply and continue" });
+    expect(button).toBeEnabled();
+    await clickButton(button);
+    await waitFor(() =>
+      expect(mockReconfigureConversation).toHaveBeenCalledWith(
+        "chosen",
+        expect.objectContaining({ scenario: "Saved scene", system: "Saved rules", historyPath: savedChat.historyPath }),
+      ),
+    );
+  });
+
+  it("disables applying settings while the current chat is closing", async () => {
+    mockGetConversationSession.mockResolvedValue(savedChat);
+    mockUseChatLaunchGuard.mockReturnValue({
+      runtimeClosing: true,
+      runtimeLaunchDisabled: true,
+      refreshRuntimeStatus: mockRefreshRuntimeStatus,
+      updateRuntimeStatusFromSnapshot: mockUpdateRuntimeStatusFromSnapshot,
+    });
+    renderPage({ conversationId: "chosen" });
+    await screen.findByDisplayValue("Saved scene");
+    const button = screen.getByRole("button", { name: "Apply and continue" });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+    expect(mockReconfigureConversation).not.toHaveBeenCalled();
+  });
+
+  it("conversation settings restore that conversation and continue its fixed history", async () => {
+    mockGetConversationSession.mockResolvedValue(savedChat);
+    mockReconfigureConversation.mockResolvedValue({ status: "idle", historyPath: savedChat.historyPath });
+    mockUseChatLaunchGuard.mockReturnValue({
+      refreshRuntimeStatus: mockRefreshRuntimeStatus,
+      runtimeLaunchDisabled: true,
+      updateRuntimeStatusFromSnapshot: mockUpdateRuntimeStatusFromSnapshot,
+    });
+    const onApplied = vi.fn();
+    renderPage({ conversationId: "chosen", onApplied });
+    await screen.findByDisplayValue("Saved scene");
+    expect(mockGetConversationSession).toHaveBeenCalledWith("chosen");
+    expect(mockGetTemplateSession).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(mockReconfigureConversation).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByDisplayValue("Saved scene"), { target: { value: "Edited scene" } });
+    await clickButton(screen.getByRole("button", { name: "Apply and continue" }));
+    await waitFor(() =>
+      expect(mockReconfigureConversation).toHaveBeenCalledWith(
+        "chosen",
+        expect.objectContaining({
+          scenario: "Edited scene",
+          resetHistory: false,
+          historyPath: "D:/history/chosen",
+          mediaSelectionMode: "semantic",
+        }),
+      ),
+    );
+    await waitFor(() => expect(onApplied).toHaveBeenCalledOnce());
+    expect(mockLaunchChat).not.toHaveBeenCalled();
+    expect(mockSaveTemplateSession).not.toHaveBeenCalled();
+    expect(mockShowChatSurface).not.toHaveBeenCalled();
   });
 
   it("saves edited scenario text and generates with selected characters", async () => {
@@ -314,6 +610,7 @@ describe("TemplateEditorPage", () => {
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
     fireEvent.change(screen.getByDisplayValue("Morning scene"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Nanami" }));
+    fireEvent.change(screen.getByLabelText("Template name"), { target: { value: "Renamed before generation" } });
     const defaultScenario = buildDefaultTemplateScenario(
       ["Nanami"],
       translateMessage("en", "template.defaultScenario"),
@@ -324,6 +621,7 @@ describe("TemplateEditorPage", () => {
         expect.objectContaining({
           characters: ["Nanami"],
           scenario: defaultScenario,
+          name: "Renamed before generation",
         }),
       ),
     );

@@ -199,11 +199,18 @@ application/effects/         特效配置与资源管理用例
 application/media/           媒体标注等跨领域共享能力
 application/model_assets/    模型与 TTS 资源下载用例
 application/runtime/         app runtime、workers、workflow、shutdown
+application/reminders/       日程校验、持久化、重复规则与投递状态管理
 application/story/           剧情会话、分支状态仓库、人物 readiness 与演出编排
 application/plugins/         插件安装、更新、发布等用例编排
 ```
 
 application 可以组合多个能力域，但不实现具体 HTTP 或 UI 控件。
+角色日程工具通过 `sdk/llm_runtime.py` 的窄宿主接口调用日程用例，
+由 `application/runtime/context.py` 注入实现；`ai/tools` 不直接导入 application。
+提醒面板 UI 放在 `frontend/src/features/reminders/`，领域类型与数据访问入口放在
+`frontend/src/entities/reminder/`，桌面 IPC 与窗口操作放在 `frontend/src/shared/desktop/`，
+窗口路由由 `frontend/src/app/routes/` 选择。Rust 托盘与通知投递属于桌面壳，
+保留在 `frontend/src-tauri/src/`。
 表示明确流程或动作的 application 模块优先使用 `动词_名词.py`，例如
 `manage_branches.py`。只有作为整个领域唯一稳定入口时才使用
 `management.py`；

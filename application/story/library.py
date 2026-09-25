@@ -7,13 +7,14 @@ from pathlib import Path
 from typing import Any
 
 from application.chat.history_paths import resolve_history_path_for_project
+from application.chat.conversation_library import saved_conversation_launch
 from application.chat.runtime_process import TRANSPARENT_BACKGROUND_NAME
 from application.story.persistence import JsonStorySessionRepository
 from application.story.project_loader import load_story_project
 from application.story.selection import normal_template_options
 from config.feature_flags import FeatureFlag
-from core.chat_history.storage import STORY_SESSION_FILENAME, chat_history_session_dir
-from core.story import CharacterSourceType, StoryCompiler, StoryValidationError
+from core.chat_history.storage import STORY_SESSION_FILENAME, chat_history_active_path, chat_history_session_dir
+from core.story import CharacterSourceType, StoryCompiler, StoryNode, StoryValidationError
 from sdk.path_utils import safe_existing_path
 
 
@@ -26,6 +27,10 @@ def _read_project(state: Any, story_path: str | Path):
     path = safe_existing_path(candidate, roots=(root,), field="story path")
     project = load_story_project(path)
     return path, project, StoryCompiler().compile(project)
+
+
+def supports_graph_editing(project: Any) -> bool:
+    return all(isinstance(node, StoryNode) for node in project.narrative_graph.nodes)
 
 
 def _matches(saved: dict, program: Any) -> bool:
@@ -56,7 +61,7 @@ def list_story_library(state: Any) -> list[dict]:
         if path.suffix.lower() not in {".json", ".yaml", ".yml"} or not path.is_file():
             continue
         relative = path.relative_to(stories_root)
-        if ".generation" in relative.parts:
+        if ".generation" in relative.parts and not path.name.startswith("edited-"):
             if path.name != "draft.json":
                 continue
             try:
@@ -86,7 +91,9 @@ def list_story_library(state: Any) -> list[dict]:
             {
                 "id": project.id,
                 "title": project.title,
+                "version": project.version,
                 "storyPath": resolved.as_posix(),
+                "canEditGraph": supports_graph_editing(project),
                 "characters": [
                     str(item.source.character_id or item.id)
                     for item in project.character_registry.characters
@@ -100,16 +107,45 @@ def list_story_library(state: Any) -> list[dict]:
     return sorted(entries, key=lambda item: item["updatedAt"], reverse=True)
 
 
+def _pending_story_attachment(state: Any, history: Path, story: Path) -> bool:
+    directory = chat_history_session_dir(history)
+    # Only recover an interrupted first attachment. A missing committed save or
+    # damaged storage must not silently restart an already played story.
+    if (
+        (directory / STORY_SESSION_FILENAME).exists()
+        or (directory / "story-prompt-binding.json").exists()
+        or not chat_history_active_path(history).is_file()
+    ):
+        return False
+    launch = saved_conversation_launch(state, history)
+    source = (launch or {}).get("storyPath")
+    if not isinstance(source, str) or not source.strip():
+        return False
+    root = Path(state.project_root_dir).resolve()
+    try:
+        recorded = safe_existing_path(root / source, roots=(root,), field="story path")
+    except (OSError, ValueError):
+        return False
+    # A directory and its manifest refer to the same project.
+    recorded = recorded / "manifest.yaml" if recorded.is_dir() else recorded
+    story = story / "manifest.yaml" if story.is_dir() else story
+    return recorded == story
+
+
 def prepare_story_launch(state: Any, story_path: str, history_path: str = "") -> dict:
     if not story_path.strip():
         raise ValueError("请选择剧本。")
-    _, project, program = _read_project(state, story_path)
+    resolved_story, project, program = _read_project(state, story_path)
     if history_path:
         resolved_history = resolve_history_path_for_project(state, history_path)
         saved = JsonStorySessionRepository(
             chat_history_session_dir(resolved_history)
         ).load()
-        if not saved or not _matches(saved, program):
+        can_resume = (
+            _matches(saved, program) if saved is not None
+            else _pending_story_attachment(state, resolved_history, resolved_story)
+        )
+        if not can_resume:
             raise ValueError("存档与当前剧本不匹配，请刷新已有剧本后重试。")
         history_path = resolved_history.as_posix()
     bindings = project.metadata.resource_bindings
@@ -131,6 +167,7 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         **dict(bindings.get("templateOptions") or {}),
         **normal_template_options(state),
         "templateId": "",
+        "storyPath": resolved_story.as_posix(),
         "templateName": project.title,
         "characters": names,
         "backgroundName": background,
@@ -138,7 +175,6 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         "primaryCharacters": list(bindings.get("primaryCharacters", names)),
         "historyPath": history_path,
         "resetHistory": not bool(history_path),
-        "scenario": bindings.get("scenario")
-        or f"正在游玩互动剧本《{project.title}》。",
+        "scenario": f"正在游玩互动剧本《{project.title}》。根据当前节点的剧情要求和已发生的对话推进故事。",
     }
     return payload

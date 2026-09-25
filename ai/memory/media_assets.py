@@ -16,7 +16,6 @@ logger = logging.getLogger(__name__)
 
 _MEDIA_AGENT_ID = "semantic-media"
 _MEDIA_SCOPE_PREFIX = "__shinsekai_media__"
-_MAX_CANDIDATES = 500
 
 
 def _scope_id(scope: str) -> str:
@@ -27,8 +26,6 @@ def _scope_id(scope: str) -> str:
 
 
 def _candidate_rows(candidates: Sequence[Any]) -> list[dict[str, str]]:
-    if len(candidates) > _MAX_CANDIDATES:
-        raise ValueError(f"asset candidate count exceeds {_MAX_CANDIDATES}")
     rows: list[dict[str, str]] = []
     for item in candidates:
         if isinstance(item, dict):
@@ -79,8 +76,9 @@ def _ensure_index(
 ) -> tuple[str, int]:
     fingerprint = _fingerprint(rows)
     current_filters = _filters(scope_id, fingerprint)
+    # Read the whole catalog so large catalogs do not re-add existing assets.
     existing = _results(
-        mem.get_all(filters=current_filters, **_pagination(mem.get_all, _MAX_CANDIDATES))
+        mem.get_all(filters=current_filters, **_pagination(mem.get_all, len(rows)))
     )
     existing_ids = {
         str(_metadata(row).get("asset_id") or "").strip() for row in existing

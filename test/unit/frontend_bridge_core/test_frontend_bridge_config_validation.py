@@ -17,6 +17,7 @@ def _valid_config(**overrides):
     data = {
         "llm_provider": "Deepseek",
         "llm_base_url": "https://api.deepseek.com/v1",
+        "llm_base_urls": {"Deepseek": "https://api.deepseek.com/v1"},
         "llm_api_key": {"Deepseek": "sk-test"},
         "llm_model": {"Deepseek": "deepseek-chat"},
         "tts_provider": "gpt-sovits",
@@ -88,6 +89,63 @@ def test_kaggle_tts_provider_does_not_require_local_server_path(tmp_path):
     )
 
 
+def test_deepseek_vision_requires_remote_credentials():
+    with pytest.raises(ValueError, match="远程服务还需 API Key"):
+        _validate_api_config_for_save(
+            _valid_config(
+                tts_provider="cosyvoice",
+                llm_provider="ChatGPT",
+                llm_base_url="https://api.openai.com/v1",
+                llm_base_urls={
+                    "ChatGPT": "https://api.openai.com/v1",
+                    "Deepseek": "https://api.deepseek.com/v1",
+                },
+                llm_api_key={"ChatGPT": "sk-chat"},
+                llm_model={"ChatGPT": "gpt-4o-mini"},
+                vision_provider="deepseek",
+                vision_model={"deepseek": "deepseek-flash"},
+            )
+        )
+
+
+def test_deepseek_vision_accepts_complete_configuration():
+    _validate_api_config_for_save(
+        _valid_config(
+            tts_provider="cosyvoice",
+            vision_provider="deepseek",
+            llm_api_key={"Deepseek": "sk-vision"},
+            vision_model={"deepseek": "deepseek-flash"},
+        )
+    )
+
+
+def test_vision_provider_can_differ_from_active_llm_provider():
+    _validate_api_config_for_save(
+        _valid_config(
+            tts_provider="cosyvoice",
+            llm_provider="ChatGPT",
+            llm_base_url="https://api.openai.com/v1",
+            llm_base_urls={
+                "ChatGPT": "https://api.openai.com/v1",
+                "Deepseek": "https://deepseek-proxy.example.com/v1",
+            },
+            llm_api_key={"ChatGPT": "sk-chat", "Deepseek": "sk-deepseek"},
+            llm_model={"ChatGPT": "gpt-4o-mini"},
+            vision_provider="deepseek",
+            vision_model={"deepseek": "deepseek-flash"},
+        )
+    )
+
+
+def test_plugin_vision_provider_uses_its_own_adapter_schema():
+    _validate_api_config_for_save(
+        _valid_config(
+            tts_provider="cosyvoice",
+            vision_provider="plugin-vision",
+        )
+    )
+
+
 def _api_config_with_local_tts() -> ApiConfig:
     return ApiConfig(
         llm_provider="Deepseek",
@@ -147,6 +205,7 @@ def test_tts_bundle_response_uses_project_root_instead_of_app_root(tmp_path, mon
     payload = _app_config_response(state)
 
     assert payload["api_config"]["gpt_sovits_api_path"] == project_bundle.as_posix()
+    assert payload["api_config"]["llm_base_urls"]["Deepseek"] == "https://api.deepseek.com/v1"
     assert payload["tts_bundle_installed_paths"]["gpt-sovits"] == project_bundle.as_posix()
     assert payload["api_config"]["gpt_sovits_api_path"] != app_bundle.as_posix()
 
@@ -162,8 +221,31 @@ def test_save_api_config_defaults_tts_path_under_project_root(tmp_path):
     saved = _save_api_config(state, payload)
 
     assert saved.gpt_sovits_api_path == project_bundle.as_posix()
+    assert saved.llm_base_urls["Deepseek"] == "https://api.deepseek.com/v1"
     assert manager.config.api_config.gpt_sovits_api_path == project_bundle.as_posix()
     assert manager.saved is True
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_save_undeployed_tts_config_with_continuous_asr(tmp_path, enabled):
+    state, manager = _bridge_state_for_config(tmp_path, tmp_path)
+    manager.config.system_config.asr_continuous_during_reply_experimental_enabled = enabled
+    payload = _api_config_with_local_tts().model_dump(mode="json")
+    if not enabled:
+        with pytest.raises(ValueError, match="本地 TTS 引擎需要填写服务启动路径"):
+            _save_api_config(state, payload)
+        assert not manager.saved
+    else:
+        saved = _save_api_config(state, payload)
+        assert saved.tts_provider == payload["tts_provider"]
+        assert saved.gpt_sovits_url == payload["gpt_sovits_url"]
+        assert saved.gpt_sovits_api_path == ""
+        assert manager.saved
+
+
+def test_speech_disabled_still_validates_llm_credentials():
+    with pytest.raises(ValueError):
+        _validate_api_config_for_save(_valid_config(llm_api_key={}), speech_disabled=True)
 
 
 def test_project_root_lookup_supports_legacy_state_and_cwd_fallback(tmp_path, monkeypatch):

@@ -64,9 +64,12 @@ export interface ApiConfig {
   t2i_output_node_id: string;
   llm_api_key: Record<string, string>;
   llm_base_url: string;
+  llm_base_urls: Record<string, string>;
   llm_model: Record<string, string>;
   llm_provider: string;
   is_streaming: boolean;
+  vision_provider: string;
+  vision_model: Record<string, string>;
   interrupt_enabled: boolean;
   is_batch_input_enabled: boolean;
   batch_input_timeout: number;
@@ -90,6 +93,7 @@ export interface ApiConfig {
   tts_extra_configs: Record<string, Record<string, unknown>>;
   asr_extra_configs: Record<string, Record<string, unknown>>;
   t2i_extra_configs: Record<string, Record<string, unknown>>;
+  vision_extra_configs: Record<string, Record<string, unknown>>;
 }
 
 export interface SystemConfig {
@@ -157,6 +161,7 @@ export interface AppConfig {
   effect_list: Effect[];
   system_config: SystemConfig;
   tts_bundle_installed_paths?: Record<string, string>;
+  vision_available?: boolean;
 }
 
 export interface AdapterExtraFieldSchema {
@@ -181,6 +186,7 @@ export interface AdapterCatalog {
   llm: AdapterOption[];
   t2i: AdapterOption[];
   tts: AdapterOption[];
+  vision?: AdapterOption[];
 }
 
 export type PluginSlotId =
@@ -238,6 +244,11 @@ export interface PluginManifest {
   title: string;
   toolsTabs: string[];
   version: string;
+}
+
+export interface PluginLoadStatus {
+  error?: string;
+  status: "error" | "idle" | "loading" | "ready";
 }
 
 export interface PluginInstallMetadata {
@@ -509,13 +520,41 @@ export interface TemplateGenerationResult extends TemplateSummary {
   resolvedCharacters: string[];
 }
 
+export interface ConversationSummary {
+  id: string;
+  title: string;
+  characters: string[];
+  preview: string;
+  updatedAt: number;
+  kind: "normal" | "story";
+  storyPath: string;
+  historyPath: string;
+  hasSettings: boolean;
+  requiresCharacterSelection?: boolean;
+}
+
 export interface ChatLaunchPayload {
+  storyPath?: string;
+  characterPromptMode?: CharacterPromptMode;
+  primaryCharacters?: string[];
+  maxDialogItems?: number;
+  maxSpeechChars?: number;
+  useChoice?: boolean;
+  useCot?: boolean;
+  useEffect?: boolean;
+  useNarration?: boolean;
+  useStat?: boolean;
+  useTranslation?: boolean;
+  voiceLanguage?: string;
+  conversationTitle?: string;
+  editorSession?: TemplateLaunchSession;
   backgroundName: string;
   characters: string[];
   enableMobileAccess?: boolean;
   effectNames?: string[];
   historyPath: string;
   initSpritePath?: string;
+  showInitialSprite?: boolean;
   mediaSelectionMode?: MediaSelectionMode;
   resetHistory?: boolean;
   roomId?: string;
@@ -558,6 +597,7 @@ export interface TemplateLaunchSession {
   filenameStub: string;
   historyPath: string;
   initSpritePath: string;
+  showInitialSprite?: boolean;
   maxDialogItems: number;
   maxSpeechChars: number;
   mediaSelectionMode?: MediaSelectionMode;
@@ -951,6 +991,11 @@ export interface ChatStoryState {
   }>;
 }
 
+export interface ChatSnapshotOptions {
+  /** Auxiliary windows can read state without claiming chat audio playback. */
+  claimRenderer?: boolean;
+}
+
 export interface ChatSnapshot {
   activePlayback?: {
     characterName: string;
@@ -963,6 +1008,7 @@ export interface ChatSnapshot {
   asrEnabled?: boolean;
   asrLoading?: boolean;
   asrRunning?: boolean;
+  asrContinuous?: boolean;
   /** ID of the ASR utterance that currently owns ``inputDraft``, when any. */
   asrUtteranceId?: string | null;
   backgroundPath?: string;
@@ -988,6 +1034,7 @@ export interface ChatSnapshot {
     url: string;
   } | null;
   experimentalFeatures?: ChatExperimentalFeatures;
+  characterSpeechDisabled?: boolean;
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
   inputDraft: string;
@@ -1068,6 +1115,9 @@ export interface ChatCommand {
     | "flush-input-batch"
     | "open-history"
     | "pause-asr"
+    | "begin-asr-hold"
+    | "finish-asr-hold"
+    | "cancel-asr-hold"
     | "rename-branch"
     | "revert-history"
     | "resume-asr"
@@ -1172,9 +1222,15 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "effect.loop.start"; key: string; url: string })
   | (ChatEventBase & { type: "effect.loop.stop"; key: string })
   | (ChatEventBase & { type: "effect.loop.stop-all" })
-  | (ChatEventBase & { type: "asr.partial"; text: string; utteranceId?: string })
-  | (ChatEventBase & { type: "asr.final"; text: string; utteranceId?: string })
-  | (ChatEventBase & { type: "asr.state"; enabled?: boolean; loading?: boolean; running: boolean })
+  | (ChatEventBase & { type: "asr.partial"; text: string; utteranceId?: string; continuous?: boolean })
+  | (ChatEventBase & { type: "asr.final"; text: string; utteranceId?: string; continuous?: boolean })
+  | (ChatEventBase & {
+      type: "asr.state";
+      enabled?: boolean;
+      loading?: boolean;
+      running: boolean;
+      continuous?: boolean;
+    })
   | (ChatEventBase & { type: "reply.finished" })
   | (ChatEventBase & { type: "session.closed"; reason: string });
 
@@ -1300,6 +1356,8 @@ export interface StoryGenerationInput {
 }
 
 export interface StoryLibraryEntry {
+  canEditGraph?: boolean;
+  version?: number;
   id: string;
   title: string;
   storyPath: string;
@@ -1383,15 +1441,25 @@ export interface ShinsekaiPlatform {
     uploadImageAudio: (input: { index: number; name: string; path: string }) => Promise<Effect>;
   };
   chat: {
+    getCurrentConversation: () => Promise<ConversationSummary | null>;
+    reconfigureConversation: (
+      id: string,
+      payload: ChatLaunchPayload,
+      options?: TaskProgressOptions<ChatSnapshot>,
+    ) => Promise<ChatSnapshot>;
+    listConversations: () => Promise<ConversationSummary[]>;
+    prepareConversation: (id: string) => Promise<ChatLaunchPayload>;
+    renameConversation: (id: string, title: string) => Promise<ConversationSummary>;
+    deleteConversation: (id: string) => Promise<void>;
     close: () => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;
     getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
-    getSnapshot: () => Promise<ChatSnapshot>;
+    getSnapshot: (options?: ChatSnapshotOptions) => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;
     launch: (payload: ChatLaunchPayload, options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
     resumeLast: (options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
-    subscribe: (listener: (snapshot: ChatSnapshot) => void) => () => void;
+    subscribe: (listener: (snapshot: ChatSnapshot) => void, options?: ChatSnapshotOptions) => () => void;
     // --- 主题 mod 系统 ---
     listThemes: () => Promise<ChatThemeSummary[]>;
     getThemeManifest: (id: string) => Promise<ChatThemeManifest>;
@@ -1409,6 +1477,13 @@ export interface ShinsekaiPlatform {
     subscribeEvents: (listener: (event: ChatStageEvent) => void) => () => void;
   };
   story: {
+    readDocument: (storyPath: string) => Promise<import("./storyEditorTypes").StoryDocument>;
+    saveDocument: (
+      input: import("./storyEditorTypes").StoryEditInput,
+    ) => Promise<import("./storyEditorTypes").StoryDocument>;
+    suggestGraph: (
+      input: import("./storyEditorTypes").StorySuggestionInput,
+    ) => Promise<import("./storyEditorTypes").StorySuggestion>;
     list: () => Promise<StoryLibraryEntry[]>;
     prepareLaunch: (storyPath: string, historyPath?: string) => Promise<ChatLaunchPayload>;
     getPreview: (id: string) => Promise<import("./storyPreviewTypes").StoryGenerationPreview>;
@@ -1543,6 +1618,7 @@ export interface ShinsekaiPlatform {
     getUi: (id: string) => Promise<PluginUIDetail>;
     list: () => Promise<PluginManifest[]>;
     listSlotContributions: () => Promise<PluginSlotContribution[]>;
+    status: () => Promise<PluginLoadStatus>;
     repoTags: (repo: string) => Promise<string[]>;
     scanLocal: (input: { path: string }) => Promise<PluginLocalScanResult>;
     validateSubmission: (input: PluginSubmissionInput) => Promise<PluginSubmissionValidationResult>;

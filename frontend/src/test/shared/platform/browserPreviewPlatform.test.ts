@@ -63,6 +63,48 @@ function templateSession(overrides: Partial<TemplateLaunchSession> = {}): Templa
 }
 
 describe("browser preview platform chat themes", () => {
+  it("keeps an existing story launch classified as story through attachment and reopening", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    const generated = await platform.story.startGeneration({
+      synopsis: "A mystery",
+      options: { characters: ["Nanami"] },
+    });
+    const payload = await platform.story.prepareLaunch(generated.draftPath!);
+    expect(payload.storyPath).toBe(generated.draftPath);
+    await resolvePreview(platform.chat.launch(payload));
+    const item = (await platform.chat.listConversations())[0];
+    expect(item).toMatchObject({ kind: "story", storyPath: generated.draftPath });
+    await platform.story.startSession(generated.draftPath!);
+    await resolvePreview(platform.chat.close());
+    await resolvePreview(platform.chat.launch(await platform.chat.prepareConversation(item.id)));
+    expect(await platform.chat.getCurrentConversation()).toMatchObject({
+      kind: "story",
+      storyPath: generated.draftPath,
+    });
+  });
+  it("keeps chat names separate and permits deleting only a closed conversation", async () => {
+    vi.useFakeTimers();
+    const platform = createBrowserPreviewPlatform();
+    await resolvePreview(
+      platform.chat.launch({
+        templateId: "template",
+        templateName: "Template",
+        conversationTitle: "Evening",
+        characters: ["Nanami"],
+        backgroundName: "",
+        historyPath: "",
+        resetHistory: true,
+      }),
+    );
+    const [item] = await platform.chat.listConversations();
+    expect(item.title).toBe("Evening");
+    await expect(platform.chat.deleteConversation(item.id)).rejects.toThrow("Close this chat");
+    expect(await platform.chat.listConversations()).toHaveLength(1);
+    await resolvePreview(platform.chat.close());
+    await platform.chat.deleteConversation(item.id);
+    expect(await platform.chat.listConversations()).toEqual([]);
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();

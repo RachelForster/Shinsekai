@@ -8,6 +8,7 @@ from collections.abc import Iterable, Iterator
 from pathlib import Path
 from urllib.parse import urlparse
 
+from ai.tts.model_session import tts_model_session
 from .models import TtsGenerationRequest
 
 
@@ -23,6 +24,21 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
     """Use configured fixed audio when available, otherwise synthesize speech."""
 
     def generate(self, request: TtsGenerationRequest) -> Iterator[str]:
+        manager = request.runtime.tts_manager
+        adapter = getattr(manager, "tts_adapter", None)
+        if adapter is None:
+            yield from self._generate(request)
+            return
+        config = getattr(request.runtime, "config", None)
+        api = getattr(getattr(config, "config", None), "api_config", None)
+        endpoint = str(getattr(api, "gpt_sovits_url", "") or "")
+        get_config = getattr(config, "get_gpt_sovits_config", None)
+        if callable(get_config):
+            endpoint = str(get_config()[0])
+        with tts_model_session(adapter, endpoint):
+            yield from self._generate(request)
+
+    def _generate(self, request: TtsGenerationRequest) -> Iterator[str]:
         manager = request.runtime.tts_manager
         if manager is None:
             yield self._fallback_audio_path(request)
@@ -40,10 +56,8 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
         manager.switch_model(
             {
                 "character_name": request.character_name,
-                "sovits_model_path": Path(character.sovits_model_path)
-                .resolve()
-                .as_posix(),
-                "gpt_model_path": Path(character.gpt_model_path).resolve().as_posix(),
+                "sovits_model_path": self._absolute(character.sovits_model_path),
+                "gpt_model_path": self._absolute(character.gpt_model_path),
             }
         )
 
@@ -153,7 +167,11 @@ class DefaultTtsGenerationStrategy(TtsGenerationStrategy):
 
     @staticmethod
     def _absolute(path: str | Path | None) -> str:
-        return Path(path or "").resolve().as_posix()
+        if not path:
+            return ""
+        if str(path).startswith("/kaggle/"):
+            return str(path)
+        return Path(path).resolve().as_posix()
 
     @staticmethod
     def _is_audio_file(path: str | None) -> bool:

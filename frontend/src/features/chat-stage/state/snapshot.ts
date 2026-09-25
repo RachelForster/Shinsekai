@@ -32,7 +32,15 @@ function asrUtteranceId(value: unknown): string | null {
 function hydratedInputDraft(
   state: ChatStageState,
   snapshot: ChatSnapshot,
-): Pick<ChatStageState, "asrSourceUtteranceId" | "asrUtteranceId" | "inputDraft"> {
+): Pick<ChatStageState, "asrSourceUtteranceId" | "asrUtteranceId" | "inputDraft" | "inputDraftFromAsr"> {
+  if (!snapshot.asrContinuous) {
+    return {
+      asrSourceUtteranceId: null,
+      asrUtteranceId: null,
+      inputDraft: state.inputDraft && !state.inputDraftFromAsr ? state.inputDraft : snapshot.inputDraft,
+      inputDraftFromAsr: !(state.inputDraft && !state.inputDraftFromAsr) && Boolean(snapshot.inputDraft),
+    };
+  }
   const localUtteranceId = asrUtteranceId(state.asrUtteranceId);
   const snapshotUtteranceId = asrUtteranceId(snapshot.asrUtteranceId);
 
@@ -109,6 +117,9 @@ function restoreEffectImage(state: ChatStageState, snapshot: ChatSnapshot, recei
 }
 
 export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapshot, receivedAt = 0): ChatStageState {
+  if (snapshot.sessionId && state.sessionId && snapshot.sessionId !== state.sessionId) {
+    state = emptyChatState;
+  }
   const nextEventSeq = snapshotEventSeq(snapshot);
   if (nextEventSeq < state.eventSeq) {
     return state;

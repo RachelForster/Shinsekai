@@ -336,7 +336,7 @@ export function AsrSettingsSection({
         />
       ) : null}
       <div className="form-grid form-grid--two api-extra-grid">
-        <div className="field-row">
+        <div className="field-row field-row--full">
           <label className="field-row__label" htmlFor="asr-continuous-during-reply-experimental">
             {t("system.asr.continuousDuringReply")}
           </label>

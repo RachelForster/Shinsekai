@@ -222,16 +222,24 @@ class CharacterUseCase:
         self._state.config_manager.reload()
         if original_name and original_name != saved_name:
             from application.chat.templates import _rename_template_session_character
+            from application.chat.conversation_library import update_conversation_character
 
             try:
                 _rename_template_session_character(self._state, original_name, saved_name)
             except OSError:
                 pass
+            update_conversation_character(self._state, original_name, saved_name)
         saved = self._state.config_manager.get_character_by_name(saved_name)
         return _jsonify(saved or character)
 
     def _delete(self, payload: dict[str, Any]) -> dict[str, Any]:
-        message, names = self._state.character_manager.delete_character(str(payload.get("name") or "").strip())
+        from application.chat.conversation_library import update_conversation_character
+
+        name = str(payload.get("name") or "").strip()
+        existed = self._state.config_manager.get_character_by_name(name) is not None
+        message, names = self._state.character_manager.delete_character(name)
+        if existed and self._state.config_manager.get_character_by_name(name) is None:
+            update_conversation_character(self._state, name)
         return {"message": message, "names": names}
 
     def _upload_sprites(self, payload: dict[str, Any]) -> dict[str, Any]:

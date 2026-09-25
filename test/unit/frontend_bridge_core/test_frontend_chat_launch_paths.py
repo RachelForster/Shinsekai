@@ -1,5 +1,6 @@
 import json
 import signal
+import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -13,11 +14,13 @@ from frontend_bridge_core.chat_session import _usable_media_selection_mode
 class _SystemConfig:
     chat_ui_runtime_mode = "react"
     live_room_id = ""
+    asr_continuous_during_reply_experimental_enabled = False
 
     def model_copy(self, *, deep: bool):
         clone = _SystemConfig()
         clone.chat_ui_runtime_mode = self.chat_ui_runtime_mode
         clone.live_room_id = self.live_room_id
+        clone.asr_continuous_during_reply_experimental_enabled = self.asr_continuous_during_reply_experimental_enabled
         return clone
 
 
@@ -112,25 +115,36 @@ class _ChatStreamForClose:
         self.deleted.append(session_id)
 
 
-def test_semantic_mode_is_downgraded_before_launch_while_mem0_is_loading(monkeypatch):
+def test_semantic_mode_waits_for_existing_initializer_without_downgrading(monkeypatch):
+    initialize = MagicMock()
+    monkeypatch.setattr("ai.memory.runtime.get_mem0", initialize)
+    probe = MagicMock(return_value={"status": "loading"})
     monkeypatch.setattr(
         "frontend_bridge_core.memory._get_mem0_status",
-        lambda *, start_loading: {"status": "loading"},
+        probe,
     )
-
-    assert _usable_media_selection_mode("semantic") == "indexed"
-
-
-def test_semantic_mode_is_kept_when_mem0_is_ready(monkeypatch):
-    monkeypatch.setattr(
-        "frontend_bridge_core.memory._get_mem0_status",
-        lambda *, start_loading: {"status": "ready"},
-    )
-
     assert _usable_media_selection_mode("semantic") == "semantic"
+    initialize.assert_called_once_with()
+    probe.assert_not_called()
 
 
-def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch):
+@pytest.mark.parametrize("error", [TimeoutError("loading timed out"), ModuleNotFoundError("mem0")])
+def test_failed_semantic_initialization_is_reported_instead_of_switching_strategy(monkeypatch, error):
+    monkeypatch.setattr("ai.memory.runtime.get_mem0", MagicMock(side_effect=error))
+    with pytest.raises(type(error), match=str(error)):
+        _usable_media_selection_mode("semantic")
+
+
+@pytest.mark.parametrize("requested,expected", [(None, "indexed"), ("indexed", "indexed"), (" SEMANTIC ", "semantic")])
+def test_media_mode_keeps_existing_normalization(monkeypatch, requested, expected):
+    initialize = MagicMock()
+    monkeypatch.setattr("ai.memory.runtime.get_mem0", initialize)
+    assert _usable_media_selection_mode(requested) == expected
+    assert initialize.call_count == (1 if expected == "semantic" else 0)
+
+
+@pytest.mark.parametrize("continuous_asr", [False, True])
+def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch, continuous_asr):
     project_root = tmp_path / "project"
     app_root = tmp_path / "Shinsekai"
     template_dir = project_root / "data" / "character_templates"
@@ -159,11 +173,13 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
         history_dir=str(history_dir),
         template_dir_path=str(template_dir),
     )
+    monkeypatch.setattr(state.config_manager.config.system_config, "asr_continuous_during_reply_experimental_enabled", continuous_asr)
 
     message = chat._launch_chat(
         state,
         history_file="",
         init_sprite_path="",
+        show_initial_sprite=False,
         room_id="",
         selected_bg="",
         system_template="system",
@@ -172,6 +188,7 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     )
 
     assert message == "聊天进程已启动！PID: 12345"
+    assert state.chat_session["characterSpeechDisabled"] is continuous_asr
     assert captured["cmd"][1] == str(chat._source_root() / "main.py")
     assert captured["cwd"] == str(project_root)
     assert captured["env"]["SHINSEKAI_PROJECT_ROOT"] == str(project_root)
@@ -184,6 +201,7 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     assert len(captured["cmd"]) == 2
     launch_config = json.loads(captured["env"][CHAT_LAUNCH_CONFIG_ENV])
     assert launch_config["template"] == "_temp"
+    assert launch_config["show_initial_sprite"] is False
     assert launch_config["media_selection_mode"] == "indexed"
 
 

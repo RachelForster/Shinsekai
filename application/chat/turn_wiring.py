@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from core.messaging.chat_turn_service import BatchState, ChatTurnOptions, ChatTurnService
+from core.messaging.continuous_asr_policy import ContinuousASRPolicy
 
 
 def create_chat_turn_service(
@@ -59,7 +60,10 @@ def create_chat_turn_service(
     def has_pending_work() -> bool:
         return any(queue is not None and not queue.empty() for queue in (dialog_queue, presentation_queue))
 
+    system_config = getattr(getattr(config, "config", None), "system_config", None)
+    continuous = bool(getattr(system_config, "asr_continuous_during_reply_experimental_enabled", False))
     return ChatTurnService(
+        continuous_policy=ContinuousASRPolicy() if continuous else None,
         sink=deliver,
         revision_sink=deliver_revision,
         options=options,

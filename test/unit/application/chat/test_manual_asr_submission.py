@@ -50,6 +50,7 @@ def test_manual_voice_draft_is_submitted_only_once(mode, edited):
         controller.close()
 
 
+
 def test_manual_replacement_of_deferred_draft_preserves_newer_utterance():
     wiring, service, queue = _live_wiring(continuous=True)
     controller = wiring._create_streaming_asr()
@@ -79,6 +80,7 @@ def test_manual_replacement_of_deferred_draft_preserves_newer_utterance():
         controller.close()
 
 
+
 def test_rejected_manual_submission_does_not_retire_active_speech():
     wiring, service, queue = _live_wiring(continuous=True)
     controller = wiring._create_streaming_asr()
@@ -97,3 +99,4 @@ def test_rejected_manual_submission_does_not_retire_active_speech():
     finally:
         service.close()
         controller.close()
+from core.messaging.continuous_asr_policy import ContinuousASRPolicy

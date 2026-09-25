@@ -71,7 +71,7 @@ def test_dialog_root_exposes_the_four_major_section_types(context):
 @pytest.mark.parametrize(
     "section_type,markers",
     [
-        (JsonSchemaSection, ("<json_head_top>", "Output field contract")),
+        (JsonSchemaSection, ("<json_head_top>", "<json_foot>")),
         (CharacterSection, ("<sprites_header>", "<profile_header>", "Alice profile")),
         (BackgroundSection, ("<scene_block_header>", "room: 01", "song: 01")),
         (
@@ -126,7 +126,6 @@ def test_major_sections_expose_their_runtime_composite_children(context):
         "effect",
         "translation",
         "foot",
-        "fields",
     ]
     assert [child.id for child in character_children] == [
         "sprites",
@@ -197,7 +196,7 @@ def test_semantic_media_mode_uses_vibe_and_omits_numbered_asset_catalogs(context
     rendered = DialogTemplateSection().render(semantic)
 
     assert "<json_vibe_head_top>" in rendered
-    assert "vibe (string, required)" in rendered
+    assert "Output field contract" not in rendered
     assert "sprite (string, required)" not in rendered
     assert "<r_vibe>" in rendered
     assert "<r_non_vibe>" in rendered

@@ -86,13 +86,14 @@ def test_stale_history_scope_cannot_invoke_story_persistence(tmp_path):
     assert not Path(history_file + ".tmp").exists()
 
 
-@pytest.mark.parametrize("transition", ["clear", "replace"])
+@pytest.mark.parametrize("transition", ["clear", "replace", "replace_with_current_template"])
 def test_blocked_old_request_cannot_append_or_recreate_tmp_after_history_transition(
     tmp_path: Path, transition: str
 ):
     adapter = _BlockingAdapter()
     history_file = str(tmp_path / "chat.json")
     manager = _manager(adapter, history_file=history_file)
+    manager.use_current_template_for_history = transition == "replace_with_current_template"
     old_epoch = manager.history_epoch
     result: dict[str, object] = {}
 
@@ -115,6 +116,9 @@ def test_blocked_old_request_cannot_append_or_recreate_tmp_after_history_transit
             {"role": "user", "content": "new input"},
         ]
         manager.set_messages(expected)
+        if manager.use_current_template_for_history:
+            assert expected[0]["content"] == "replacement"
+            expected[0] = {"role": "system", "content": "system"}
 
     # The production history boundary removes the old recovery file after it
     # advances the epoch.  A late old stream must not create it again.

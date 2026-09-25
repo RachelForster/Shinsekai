@@ -25,6 +25,8 @@ import type {
   CharacterMemoryList,
   ChatConversationBranch,
   ChatHistoryEntry,
+  ChatLaunchPayload,
+  ConversationSummary,
   ChatSendPayload,
   ChatSnapshot,
   ChatStageEvent,
@@ -436,6 +438,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
   let pluginCatalog = clone(samplePluginCatalog);
   let mcpConfig = clone(sampleMcpConfig);
   let chat = clone(sampleChatSnapshot);
+  const conversations = new Map<string, { summary: ConversationSummary; payload: ChatLaunchPayload }>();
   let previewBranchCounter = 1;
   let previewHistoryCounter = 0;
   const previewBranches = new Map<string, ChatConversationBranch & { historyEntries: ChatHistoryEntry[] }>();
@@ -842,6 +845,47 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     chat: {
+      async getCurrentConversation() {
+        return clone(conversations.get(chat.historyPath ?? "")?.summary ?? null);
+      },
+      async reconfigureConversation(id, payload, options) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        if (chat.chatProcessRunning && chat.historyPath !== item.summary.historyPath) {
+          throw new Error("Another chat is running");
+        }
+        if (
+          chat.chatProcessRunning &&
+          (!["idle", "paused", "error"].includes(chat.status) ||
+            chat.turnState?.pendingCount ||
+            chat.turnState?.scheduled)
+        ) {
+          throw new Error("Wait for the current reply to finish");
+        }
+        return this.launch({ ...payload, historyPath: item.summary.historyPath, resetHistory: false }, options);
+      },
+      async listConversations() {
+        return clone([...conversations.values()].map((item) => item.summary).sort((a, b) => b.updatedAt - a.updatedAt));
+      },
+      async prepareConversation(id) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        return clone(item.payload);
+      },
+      async renameConversation(id, title) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        item.summary.title = title;
+        return clone(item.summary);
+      },
+      async deleteConversation(id) {
+        const item = conversations.get(id);
+        if (!item) throw new Error("Conversation not found");
+        if ((chat.chatProcessRunning || chat.chatRuntimeClosing) && chat.historyPath === item.summary.historyPath) {
+          throw new Error("Close this chat before deleting it.");
+        }
+        conversations.delete(id);
+      },
       async close() {
         clearScheduledChatUpdates();
         chat = {
@@ -1033,7 +1077,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           chat = { ...chat, status: "idle", numericInfo: "idle" };
           emitChat();
         }
-        if (command.type === "pause-asr") {
+        if (["pause-asr", "finish-asr-hold", "cancel-asr-hold"].includes(command.type)) {
           clearScheduledChatUpdates();
           chat = {
             ...chat,
@@ -1045,7 +1089,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           };
           emitChat();
         }
-        if (command.type === "resume-asr") {
+        if (command.type === "resume-asr" || command.type === "begin-asr-hold") {
           clearScheduledChatUpdates();
           chat = {
             ...chat,
@@ -1294,9 +1338,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           chatRuntimeClosing: false,
           dialogText: "",
           historyPath,
-          sprites: character?.sprites[0]
-            ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
-            : [],
+          sprites:
+            payload.showInitialSprite !== false && character?.sprites[0]
+              ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
+              : [],
           sessionClosedReason: "",
           status: "idle",
           statusMessage: `${payload.templateId || payload.templateName || "预览聊天"} 已启动：${historyPath}`,
@@ -1304,6 +1349,24 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         if (templateSession) {
           templateSession = { ...templateSession, historyPath };
         }
+        conversations.set(historyPath, {
+          payload: clone({ ...payload, historyPath, resetHistory: false }),
+          summary: {
+            id: historyPath,
+            title:
+              conversations.get(historyPath)?.summary.title ||
+              payload.conversationTitle?.trim() ||
+              payload.templateName ||
+              "",
+            characters: payload.characters,
+            preview: "",
+            updatedAt: Date.now(),
+            kind: payload.storyPath ? "story" : (conversations.get(historyPath)?.summary.kind ?? "normal"),
+            storyPath: payload.storyPath || conversations.get(historyPath)?.summary.storyPath || "",
+            historyPath,
+            hasSettings: true,
+          },
+        });
         emitChat();
         previewTask<ChatSnapshot>(
           taskId,
@@ -1359,9 +1422,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           chatRuntimeClosing: false,
           dialogText: "",
           historyPath,
-          sprites: character?.sprites[0]
-            ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
-            : chat.sprites,
+          sprites:
+            templateSession?.showInitialSprite === false
+              ? []
+              : character?.sprites[0]
+                ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
+                : chat.sprites,
           sessionClosedReason: "",
           status: "idle",
           statusMessage: `已恢复上次启动：${historyPath}`,
@@ -1912,15 +1978,21 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     modelAssets: {
       async download(input, options) {
         const memoryEmbedding = input.assetId === "memory.embedding";
+        const moondreamVision = input.assetId === "vision.moondream";
         const variant = memoryEmbedding
           ? "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-          : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
-        const local = Boolean(!memoryEmbedding && input.configured && looksLikeLocalModelReference(variant));
-        const repoId = memoryEmbedding
-          ? variant
-          : variant.includes("/")
+          : moondreamVision
+            ? "vikhyatk/moondream2"
+            : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
+        const local = Boolean(
+          !memoryEmbedding && !moondreamVision && input.configured && looksLikeLocalModelReference(variant),
+        );
+        const repoId =
+          memoryEmbedding || moondreamVision
             ? variant
-            : `Systran/faster-whisper-${variant}`;
+            : variant.includes("/")
+              ? variant
+              : `Systran/faster-whisper-${variant}`;
         const key = `${input.assetId}:${variant}`;
         const taskId = `preview-model-${Date.now()}`;
         previewTask(
@@ -1944,7 +2016,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           path: local ? variant : `preview-cache/${variant}`,
           ...(local ? {} : { repoId }),
           source: local ? ("local" as const) : ("huggingface" as const),
-          title: memoryEmbedding ? "Long-term memory embedding" : "Whisper ASR",
+          title: memoryEmbedding ? "Long-term memory embedding" : moondreamVision ? "Moondream vision" : "Whisper ASR",
           variant,
         };
         if (!local) {
@@ -1967,22 +2039,28 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
       status(input) {
         const memoryEmbedding = input.assetId === "memory.embedding";
+        const moondreamVision = input.assetId === "vision.moondream";
         const variant = memoryEmbedding
           ? "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-          : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
-        const local = Boolean(!memoryEmbedding && input.configured && looksLikeLocalModelReference(variant));
-        const repoId = memoryEmbedding
-          ? variant
-          : variant.includes("/")
+          : moondreamVision
+            ? "vikhyatk/moondream2"
+            : String((input.configured ? config.system_config.asr_whisper_model_size : input.variant) || "small");
+        const local = Boolean(
+          !memoryEmbedding && !moondreamVision && input.configured && looksLikeLocalModelReference(variant),
+        );
+        const repoId =
+          memoryEmbedding || moondreamVision
             ? variant
-            : `Systran/faster-whisper-${variant}`;
+            : variant.includes("/")
+              ? variant
+              : `Systran/faster-whisper-${variant}`;
         return delay({
           assetId: input.assetId,
           cached: local || cachedModelAssets.has(`${input.assetId}:${variant}`),
           downloadable: !local,
           ...(local ? { path: variant } : { repoId }),
           source: local ? ("local" as const) : ("huggingface" as const),
-          title: memoryEmbedding ? "Long-term memory embedding" : "Whisper ASR",
+          title: memoryEmbedding ? "Long-term memory embedding" : moondreamVision ? "Moondream vision" : "Whisper ASR",
           variant,
         });
       },
@@ -2265,6 +2343,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
               ]
             : [],
         ),
+      status: () => delay({ status: "ready" as const }),
       repoTags: () => delay(["v1.0.0", "v0.9.0"]),
       runSlotContribution: (pluginId, contributionId) =>
         delay({

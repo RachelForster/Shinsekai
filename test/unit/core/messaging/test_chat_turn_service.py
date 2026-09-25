@@ -5,6 +5,7 @@ from threading import Event, Thread
 
 import pytest
 
+from core.messaging.continuous_asr_policy import ContinuousASRPolicy
 from core.messaging.chat_turn_service import BatchState, ChatTurnOptions, ChatTurnService
 
 
@@ -17,6 +18,7 @@ def wait_until(predicate, timeout: float = 1.0) -> None:
     raise AssertionError("condition was not reached before timeout")
 
 
+
 def test_submit_delivers_immediately_when_batching_is_disabled() -> None:
     delivered: list[str] = []
     service = ChatTurnService(
@@ -27,6 +29,7 @@ def test_submit_delivers_immediately_when_batching_is_disabled() -> None:
     service.submit("hello")
 
     assert delivered == ["hello"]
+
 
 
 def test_submit_preserves_attachments_for_immediate_and_batched_delivery() -> None:
@@ -51,6 +54,7 @@ def test_submit_preserves_attachments_for_immediate_and_batched_delivery() -> No
     assert delivered == [("inspect", [image, document])]
 
 
+
 def test_batched_delivery_preserves_admission_callbacks() -> None:
     admitted: list[tuple[str, list[dict[str, str]]]] = []
     service = ChatTurnService(
@@ -72,6 +76,7 @@ def test_batched_delivery_preserves_admission_callbacks() -> None:
     assert admitted == [("one | two", [])]
 
 
+
 def test_submit_interrupts_active_turn_before_delivery() -> None:
     events: list[str] = []
     service = ChatTurnService(
@@ -89,6 +94,7 @@ def test_submit_interrupts_active_turn_before_delivery() -> None:
     assert events == ["cancel", "clear", "stop", "send:next"]
 
 
+
 def test_interrupt_option_is_honored() -> None:
     cancelled: list[bool] = []
     service = ChatTurnService(
@@ -104,9 +110,10 @@ def test_interrupt_option_is_honored() -> None:
     assert cancelled == []
 
 
+
 def test_deferred_submissions_wait_for_complete_turn_and_admit_one_at_a_time() -> None:
     events: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=lambda text: events.append(f"send:{text}"),
         options=ChatTurnOptions(interrupt_enabled=True),
         cancel_current=lambda: events.append("cancel"),
@@ -135,9 +142,10 @@ def test_deferred_submissions_wait_for_complete_turn_and_admit_one_at_a_time() -
     ]
 
 
+
 def test_deferred_admission_publishes_commit_before_generating_status() -> None:
     events: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=lambda text: events.append(f"send:{text}"),
         options=ChatTurnOptions(interrupt_enabled=True),
     )
@@ -162,11 +170,12 @@ def test_deferred_admission_publishes_commit_before_generating_status() -> None:
     ]
 
 
+
 def test_interrupting_submission_during_completion_is_next_priority() -> None:
     events: list[str] = []
     completion_started = Event()
     release_completion = Event()
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=lambda text: events.append(f"send:{text}"),
         options=ChatTurnOptions(interrupt_enabled=True),
         cancel_current=lambda: events.append("cancel"),
@@ -200,11 +209,12 @@ def test_interrupting_submission_during_completion_is_next_priority() -> None:
     assert events == ["send:manual", "send:voice"]
 
 
+
 def test_deferred_delivery_failure_releases_admission_reservation() -> None:
     def failing_sink(_text: str) -> None:
         raise RuntimeError("queue closed")
 
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=failing_sink,
         options=ChatTurnOptions(interrupt_enabled=True),
     )
@@ -218,6 +228,7 @@ def test_deferred_delivery_failure_releases_admission_reservation() -> None:
     assert not service.is_active()
 
 
+
 def test_close_waits_for_inflight_admission_and_rejects_later_delivery() -> None:
     delivery_started = Event()
     release_delivery = Event()
@@ -229,7 +240,7 @@ def test_close_waits_for_inflight_admission_and_rejects_later_delivery() -> None
         release_delivery.wait(timeout=1)
         delivered.append(text)
 
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=sink,
         options=ChatTurnOptions(interrupt_enabled=True),
     )
@@ -254,6 +265,7 @@ def test_close_waits_for_inflight_admission_and_rejects_later_delivery() -> None
     service.submit("late", interrupt_current=False, defer_until_idle=True)
     service.close()
     assert delivered == ["voice"]
+
 
 
 def test_close_clears_buffered_delivery_and_cancels_a_late_worker_turn() -> None:
@@ -289,12 +301,13 @@ def test_close_clears_buffered_delivery_and_cancels_a_late_worker_turn() -> None
     assert queued == []
 
 
+
 def test_cancel_pending_batch_invalidates_a_dequeued_admission_before_delivery() -> None:
     delivery_paused = Event()
     release_delivery = Event()
     admitted: list[str] = []
     delivered: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=delivered.append,
         options=ChatTurnOptions(interrupt_enabled=True),
     )
@@ -327,11 +340,12 @@ def test_cancel_pending_batch_invalidates_a_dequeued_admission_before_delivery()
     assert delivered == []
 
 
+
 def test_finish_turn_does_not_admit_new_branch_input_after_reset_during_completion() -> None:
     completion_started = Event()
     release_completion = Event()
     delivered: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=delivered.append,
         options=ChatTurnOptions(interrupt_enabled=True),
     )
@@ -365,11 +379,12 @@ def test_finish_turn_does_not_admit_new_branch_input_after_reset_during_completi
     assert delivered == ["new branch voice"]
 
 
+
 def test_close_before_completion_callback_skips_the_callback() -> None:
     callback_called: list[bool] = []
     guard_checked = Event()
     release_guard = Event()
-    service = ChatTurnService(options=ChatTurnOptions(interrupt_enabled=True))
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(), options=ChatTurnOptions(interrupt_enabled=True))
     turn = service.begin_turn()
     service.mark_generation_complete(turn)
     original_guard = service._completion_is_current_locked
@@ -405,9 +420,10 @@ def test_close_before_completion_callback_skips_the_callback() -> None:
     assert callback_called == []
 
 
+
 def test_deferred_final_waits_for_a_queued_manual_turn_before_worker_begin() -> None:
     delivered: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=delivered.append,
         options=ChatTurnOptions(interrupt_enabled=True),
     )
@@ -422,9 +438,10 @@ def test_deferred_final_waits_for_a_queued_manual_turn_before_worker_begin() -> 
     assert delivered == ["typed", "voice final"]
 
 
+
 def test_deferred_final_waits_for_a_queued_manual_turn_to_fully_finish() -> None:
     delivered: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=delivered.append,
         options=ChatTurnOptions(interrupt_enabled=True),
     )
@@ -442,12 +459,13 @@ def test_deferred_final_waits_for_a_queued_manual_turn_to_fully_finish() -> None
     assert delivered == ["typed next", "voice final"]
 
 
+
 @pytest.mark.parametrize("delivery_path", ("flush", "option_update"))
 def test_batched_delivery_waits_for_worker_begin_before_admitting_deferred_final(
     delivery_path: str,
 ) -> None:
     delivered: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=delivered.append,
         options=ChatTurnOptions(
             interrupt_enabled=True,
@@ -465,6 +483,9 @@ def test_batched_delivery_waits_for_worker_begin_before_admitting_deferred_final
         )
     service.submit("voice final", interrupt_current=False, defer_until_idle=True)
 
+    if service.options.batch_enabled:
+        service.flush()
+
     assert delivered == ["typed"]
     typed_turn = service.begin_turn()
     service.mark_generation_complete(typed_turn)
@@ -472,9 +493,10 @@ def test_batched_delivery_waits_for_worker_begin_before_admitting_deferred_final
     assert delivered == ["typed", "voice final"]
 
 
+
 def test_admission_callback_can_reset_without_delivering_a_stale_sink_item() -> None:
     delivered: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=delivered.append,
         options=ChatTurnOptions(interrupt_enabled=True),
     )
@@ -490,6 +512,7 @@ def test_admission_callback_can_reset_without_delivering_a_stale_sink_item() -> 
     assert not service.is_active()
 
 
+
 def test_batch_flush_does_not_deadlock_with_inflight_direct_delivery() -> None:
     direct_started = Event()
     release_direct = Event()
@@ -501,11 +524,11 @@ def test_batch_flush_does_not_deadlock_with_inflight_direct_delivery() -> None:
             release_direct.wait(timeout=1)
         delivered.append(text)
 
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=sink,
         options=ChatTurnOptions(
             interrupt_enabled=False,
-            batch_enabled=True,
+            batch_enabled=False,
             batch_idle_seconds=30,
         ),
     )
@@ -518,6 +541,7 @@ def test_batch_flush_does_not_deadlock_with_inflight_direct_delivery() -> None:
     )
     direct_thread.start()
     assert direct_started.wait(timeout=1)
+    service.update_options(ChatTurnOptions(interrupt_enabled=False, batch_enabled=True, batch_idle_seconds=30))
     service.submit("batched", interrupt_current=False)
     flush_thread = Thread(target=service.flush)
     flush_thread.start()
@@ -531,9 +555,10 @@ def test_batch_flush_does_not_deadlock_with_inflight_direct_delivery() -> None:
     assert delivered == ["direct", "batched"]
 
 
+
 def test_cancel_pending_batch_discards_deferred_submissions() -> None:
     delivered: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=delivered.append,
         options=ChatTurnOptions(interrupt_enabled=True),
     )
@@ -547,9 +572,10 @@ def test_cancel_pending_batch_discards_deferred_submissions() -> None:
     assert delivered == []
 
 
+
 def test_interrupting_input_is_admitted_before_earlier_deferred_voice() -> None:
     events: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=lambda text: events.append(f"send:{text}"),
         options=ChatTurnOptions(interrupt_enabled=True),
         cancel_current=lambda: events.append("cancel"),
@@ -567,9 +593,10 @@ def test_interrupting_input_is_admitted_before_earlier_deferred_voice() -> None:
     assert events == ["cancel", "send:manual interrupt", "send:deferred voice"]
 
 
-def test_deferred_voice_flushes_existing_batch_as_one_deferred_turn() -> None:
+
+def test_deferred_voice_joins_existing_batch_and_waits_for_idle_timeout() -> None:
     delivered: list[str] = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         sink=delivered.append,
         options=ChatTurnOptions(
             interrupt_enabled=True,
@@ -587,11 +614,16 @@ def test_deferred_voice_flushes_existing_batch_as_one_deferred_turn() -> None:
         defer_until_idle=True,
     )
 
-    assert state.pending_count == 0
+    assert state.pending_messages == ("typed fragment", "voice final")
+    assert state.scheduled
     assert delivered == []
     service.mark_generation_complete(turn)
     service.finish_turn(turn)
+    assert delivered == []
+    service.flush()
     assert delivered == ["typed fragment | voice final"]
+    service.close()
+
 
 
 def test_batch_auto_flushes_without_a_ui_timer() -> None:
@@ -614,6 +646,7 @@ def test_batch_auto_flushes_without_a_ui_timer() -> None:
     flushed = service.batch_state()
     assert flushed.pending_count == 0
     assert flushed.pending_messages == ()
+
 
 
 def test_typing_pauses_and_empty_input_reschedules_batch() -> None:
@@ -639,6 +672,7 @@ def test_typing_pauses_and_empty_input_reschedules_batch() -> None:
     wait_until(lambda: delivered == ["one"])
 
 
+
 def test_cancel_pending_batch_invalidates_timer_and_clears_buffered_delivery() -> None:
     delivered: list[str] = ["already queued"]
     service = ChatTurnService(
@@ -660,8 +694,9 @@ def test_cancel_pending_batch_invalidates_timer_and_clears_buffered_delivery() -
     assert not state.scheduled
 
 
+
 def test_turn_handles_keep_old_work_cancelled_after_new_turn_starts() -> None:
-    service = ChatTurnService(options=ChatTurnOptions(interrupt_enabled=True))
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(), options=ChatTurnOptions(interrupt_enabled=True))
     first = service.begin_turn()
 
     service.interrupt()
@@ -672,8 +707,9 @@ def test_turn_handles_keep_old_work_cancelled_after_new_turn_starts() -> None:
     assert first.id != second.id
 
 
+
 def test_pipeline_stays_active_until_generation_and_downstream_are_idle() -> None:
-    service = ChatTurnService(options=ChatTurnOptions(interrupt_enabled=True))
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(), options=ChatTurnOptions(interrupt_enabled=True))
     turn = service.begin_turn()
 
     service.mark_idle(turn)
@@ -682,6 +718,7 @@ def test_pipeline_stays_active_until_generation_and_downstream_are_idle() -> Non
     service.mark_generation_complete(turn)
     service.mark_idle(turn)
     assert not service.is_active()
+
 
 
 def test_option_update_flushes_pending_batch_when_batching_is_disabled() -> None:
@@ -713,6 +750,7 @@ def test_option_update_flushes_pending_batch_when_batching_is_disabled() -> None
     assert not state.enabled
     assert state.pending_count == 0
     assert states[-1] == state
+
 
 
 def test_option_update_reschedules_pending_batch_with_new_timeout() -> None:

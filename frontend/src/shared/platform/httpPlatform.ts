@@ -1,4 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { StorySuggestion } from "./storyEditorTypes";
 import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
 import { PlatformRequestError } from "./errors";
 import {
@@ -51,6 +52,7 @@ import type {
   PluginCatalogItem,
   PluginConfigActionResult,
   PluginConfigSaveResult,
+  PluginLoadStatus,
   PluginManifest,
   PluginSlotActionResult,
   PluginSlotContribution,
@@ -287,6 +289,22 @@ function openDownload(apiBase: string, path: string) {
   openBridgeWindow(apiBase, `/api/download?path=${encodeURIComponent(path)}`);
 }
 
+async function exportPackage(apiBase: string, resource: string, name: string) {
+  const openFolder = isTauriDesktop();
+  const result = await requestJson<{ downloadUrl: string; path: string; folderOpened?: boolean }>(
+    apiBase,
+    `/api/${resource}/export`,
+    {
+      body: JSON.stringify({ name, ...(openFolder ? { openFolder: true } : {}) }),
+      method: "POST",
+    },
+  );
+  if (!openFolder || result.folderOpened !== true) {
+    openDownload(apiBase, result.path);
+  }
+  return result.path;
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -368,7 +386,8 @@ function makeChatCommandId() {
   return `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function chatSnapshotPath() {
+function chatSnapshotPath(claimRenderer = true) {
+  if (!claimRenderer) return "/api/chat/snapshot";
   return `/api/chat/snapshot?rendererId=${encodeURIComponent(currentChatRendererId())}`;
 }
 
@@ -443,14 +462,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ index, name }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/backgrounds/export", {
-          body: JSON.stringify({ name }),
-          method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+      export: (name) => exportPackage(apiBase, "backgrounds", name),
       import: (items) => {
         if (isFileList(items)) {
           return uploadFiles<Background[]>(apiBase, "/api/backgrounds/import-upload", items);
@@ -511,14 +523,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ index, name }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/effects/export", {
-          body: JSON.stringify({ name }),
-          method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+      export: (name) => exportPackage(apiBase, "effects", name),
       import: (items) => {
         if (isFileList(items)) {
           return uploadFiles<Effect[]>(apiBase, "/api/effects/import-upload", items);
@@ -592,8 +597,26 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return result;
       },
       getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
+      listConversations: () => requestJson(apiBase, "/api/chat/conversations"),
+      deleteConversation: async (id) => {
+        await requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}`, { method: "DELETE" });
+      },
+      getCurrentConversation: () => requestJson(apiBase, "/api/chat/conversations/current"),
+      async reconfigureConversation(conversationId, payload, options) {
+        const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
+          body: JSON.stringify({ mode: "reconfigure", conversationId, payload }),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task, options);
+      },
+      prepareConversation: (id) => requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}/launch-payload`),
+      renameConversation: (id, title) =>
+        requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}/rename`, {
+          method: "POST",
+          body: JSON.stringify({ title }),
+        }),
       getRuntimeStatus: () => requestJson<ChatRuntimeProcessState>(apiBase, "/api/chat/runtime-status"),
-      getSnapshot: () => requestJson<ChatSnapshot>(apiBase, chatSnapshotPath()),
+      getSnapshot: (options) => requestJson<ChatSnapshot>(apiBase, chatSnapshotPath(options?.claimRenderer)),
       getTheme: () => requestJson<ChatThemePayload>(apiBase, "/api/chat/theme"),
       async launch(payload: ChatLaunchPayload, options) {
         const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
@@ -609,13 +632,13 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         });
         return waitForTask(apiBase, task, options);
       },
-      subscribe(listener) {
+      subscribe(listener, options) {
         let stopped = false;
         let timeoutId = 0;
 
         const poll = async () => {
           try {
-            const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath());
+            const snapshot = await requestJson<ChatSnapshot>(apiBase, chatSnapshotPath(options?.claimRenderer));
             if (!stopped) {
               listener(snapshot);
             }
@@ -668,8 +691,14 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         let seq = 0;
         let socket: WebSocket | null = null;
         let lastEventSeq = 0;
+        let currentSessionId = "";
 
         const emitSnapshot = (snapshot: ChatSnapshot) => {
+          if (snapshot.sessionId && snapshot.sessionId !== currentSessionId) {
+            currentSessionId = snapshot.sessionId;
+            seq = 0;
+            lastEventSeq = 0;
+          }
           const snapshotSeq =
             typeof snapshot.eventSeq === "number" && Number.isFinite(snapshot.eventSeq) ? snapshot.eventSeq : 0;
           const event: ChatStageEvent = {
@@ -762,7 +791,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
                 if (lastEventSeq > 0 && parsed.seq > lastEventSeq + 1) {
                   void requestJson<ChatSnapshot>(apiBase, chatSnapshotPath())
                     .then((nextSnapshot) => {
-                      if (!stopped) {
+                      if (!stopped && socket === ws) {
                         emitSnapshot(nextSnapshot);
                       }
                     })
@@ -844,6 +873,23 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     story: {
+      readDocument: (storyPath) =>
+        requestJson(apiBase, "/api/story/editor/read", {
+          body: JSON.stringify({ storyPath }),
+          method: "POST",
+        }),
+      saveDocument: (input) =>
+        requestJson(apiBase, "/api/story/editor/save", {
+          body: JSON.stringify(input),
+          method: "POST",
+        }),
+      async suggestGraph(input) {
+        const task = await requestJson<TaskSnapshot<StorySuggestion>>(apiBase, "/api/story/editor/suggest", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
       list: () => requestJson(apiBase, "/api/story/library"),
       prepareLaunch: (storyPath, historyPath = "") =>
         requestJson(apiBase, "/api/story/launch-payload", {
@@ -918,14 +964,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify({ name, spriteIndex }),
           method: "POST",
         }),
-      export: async (name) => {
-        const result = await requestJson<{ downloadUrl: string; path: string }>(apiBase, "/api/characters/export", {
-          body: JSON.stringify({ name }),
-          method: "POST",
-        });
-        openDownload(apiBase, result.path);
-        return result.path;
-      },
+      export: (name) => exportPackage(apiBase, "characters", name),
       ensureBriefs: (names) =>
         requestJson<CharacterBriefBatchResult>(apiBase, "/api/characters/ensure-briefs", {
           body: JSON.stringify({ names }),
@@ -1242,6 +1281,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       getUi: (id) => requestJson<PluginUIDetail>(apiBase, `/api/plugins/${encodePath(id)}/ui`),
       list: () => requestJson<PluginManifest[]>(apiBase, "/api/plugins"),
       listSlotContributions: () => requestJson<PluginSlotContribution[]>(apiBase, "/api/plugins/chat-ui-contributions"),
+      status: () => requestJson<PluginLoadStatus>(apiBase, "/api/plugins/status"),
       async repoTags(repo) {
         const result = await requestJson<{ tags: string[] }>(apiBase, "/api/plugins/repo-tags", {
           body: JSON.stringify({ repo }),

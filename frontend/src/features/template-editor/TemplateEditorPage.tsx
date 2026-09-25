@@ -1,5 +1,6 @@
 import { CharacterPicker } from "./CharacterPicker";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { updateCharacterRoles } from "./characterRoles";
 import type { CSSProperties } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -8,10 +9,16 @@ import { Play, RotateCw, Save, Sparkles } from "lucide-react";
 import { backgroundsQueryKey, listBackgrounds } from "../../entities/background/repository";
 import { charactersQueryKey, ensureCharacterBriefs, listCharacters } from "../../entities/character/repository";
 import { effectsQueryKey, listEffects } from "../../entities/effect/repository";
-import { installMissingRuntimeDependency, launchChat } from "../../entities/chat/repository";
+import {
+  conversationsQueryKey,
+  getConversationSession,
+  installMissingRuntimeDependency,
+  launchChat,
+  reconfigureConversation,
+} from "../../entities/chat/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
-import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { useChatInitialization, type ChatInitializationService } from "../chat-startup/useChatInitialization";
 import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
 import { configQueryKey, getAppConfig, saveSystemConfig } from "../../entities/config/repository";
@@ -69,20 +76,40 @@ import "./TemplateEditorPage.css";
 
 const voiceLanguages = templateVoiceLanguages;
 
-export function TemplateEditorPage() {
+export function TemplateEditorPage({
+  createOnly = false,
+  conversationId,
+  conversationTitle,
+  onApplied,
+  onPendingChange,
+  initializationService,
+  onLaunchStarted,
+}: {
+  createOnly?: boolean;
+  conversationId?: string;
+  conversationTitle?: string;
+  onApplied?: (snapshot: ChatSnapshot) => void;
+  onPendingChange?: (pending: boolean) => void;
+  initializationService?: ChatInitializationService;
+  onLaunchStarted?: () => void;
+}) {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
   const templatesQuery = useQuery({ queryFn: listTemplates, queryKey: templatesQueryKey });
   const sessionQuery = useQuery({
-    queryFn: getTemplateSession,
-    queryKey: [...templatesQueryKey, "session"],
+    queryFn: () => (conversationId ? getConversationSession(conversationId) : getTemplateSession()),
+    queryKey: conversationId
+      ? [...conversationsQueryKey, conversationId, "settings"]
+      : [...templatesQueryKey, "session"],
   });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const backgroundsQuery = useQuery({ queryFn: listBackgrounds, queryKey: backgroundsQueryKey });
   const effectsQuery = useQuery({ queryFn: listEffects, queryKey: effectsQueryKey });
-  const { refreshRuntimeStatus, runtimeLaunchDisabled, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const { refreshRuntimeStatus, runtimeLaunchDisabled, runtimeClosing, updateRuntimeStatusFromSnapshot } =
+    useChatLaunchGuard();
+  const localInitialization = useChatInitialization();
   const {
     closeInitialization,
     initializationError,
@@ -90,7 +117,8 @@ export function TemplateEditorPage() {
     initializationPending,
     initializationTask,
     runChatInitialization,
-  } = useChatInitialization();
+  } = initializationService ?? localInitialization;
+  useEffect(() => onPendingChange?.(initializationPending), [initializationPending, onPendingChange]);
   const templates = templatesQuery.data ?? [];
   const isLoading = templatesQuery.isLoading;
   const launchSession = sessionQuery.data;
@@ -126,6 +154,7 @@ export function TemplateEditorPage() {
   const [maxSpeechChars, setMaxSpeechChars] = useState(0);
   const [maxDialogItems, setMaxDialogItems] = useState(0);
   const [initSpritePath, setInitSpritePath] = useState("");
+  const [showInitialSprite, setShowInitialSprite] = useState(true);
   const [historyPath, setHistoryPath] = useState("");
   const [roomId, setRoomId] = useState("");
   const [systemExpanded, setSystemExpanded] = useState(false);
@@ -160,16 +189,16 @@ export function TemplateEditorPage() {
       setSelectedId(selected.id);
       const normalized = normalizeTemplateSummary(structuredClone(selected));
       setDraft(normalized);
-      setMediaSelectionMode(selected.mediaSelectionMode ?? "indexed");
+      setMediaSelectionMode(createOnly ? "indexed" : (selected.mediaSelectionMode ?? "indexed"));
       setNameError("");
     }
-  }, [selected, sessionDraftActive]);
+  }, [createOnly, selected, sessionDraftActive]);
 
   useEffect(() => {
     if (!sessionFetched || sessionRestored) {
       return;
     }
-    if (launchSession?.templateFileDropdown && !templates.length) {
+    if (!conversationId && launchSession?.templateFileDropdown && templatesQuery.isPending) {
       return;
     }
     if (!launchSession) {
@@ -184,7 +213,7 @@ export function TemplateEditorPage() {
         : Array.isArray(launchSession.primaryCharacters)
           ? launchSession.primaryCharacters.filter((name) => restoredCharacters.includes(name))
           : [];
-    const restoredMediaSelectionMode = launchSession.mediaSelectionMode ?? "indexed";
+    const restoredMediaSelectionMode = createOnly ? "indexed" : (launchSession.mediaSelectionMode ?? "indexed");
     lastAutoGeneratedCharactersRef.current = `${restoredCharacters.join("\n")}\n--${restoredMode ?? "pending"}\n${restoredPrimaryCharacters.join("\n")}\n--${restoredMediaSelectionMode}`;
     setSessionDraftActive(true);
     setSelectedCharacters(restoredCharacters);
@@ -205,6 +234,7 @@ export function TemplateEditorPage() {
     setMaxSpeechChars(Number(launchSession.maxSpeechChars) || 0);
     setMaxDialogItems(Number(launchSession.maxDialogItems) || 0);
     setInitSpritePath(launchSession.initSpritePath || "");
+    setShowInitialSprite(launchSession.showInitialSprite ?? true);
     setHistoryPath(launchSession.historyPath || "");
     setRoomId(launchSession.roomId || "");
     const matchingTemplate = templates.find((template) => template.id === launchSession.templateFileDropdown);
@@ -215,14 +245,23 @@ export function TemplateEditorPage() {
         id: matchingTemplate?.id ?? "",
         name: launchSession.filenameStub || matchingTemplate?.name || t("template.defaultName"),
         path: matchingTemplate?.path ?? "",
-        mediaSelectionMode: restoredMediaSelectionMode,
+        mediaSelectionMode: launchSession.mediaSelectionMode ?? "indexed",
         scenario: launchSession.scenario,
         system: launchSession.system,
         updatedAt: matchingTemplate?.updatedAt ?? "",
       }),
     );
     setSessionRestored(true);
-  }, [launchSession, sessionFetched, sessionRestored, t, templates]);
+  }, [
+    conversationId,
+    createOnly,
+    launchSession,
+    sessionFetched,
+    sessionRestored,
+    t,
+    templates,
+    templatesQuery.isPending,
+  ]);
 
   useEffect(() => {
     if (!backgroundOptions.includes(selectedBackground)) {
@@ -284,6 +323,7 @@ export function TemplateEditorPage() {
   const runtimeOptionsState = {
     historyPath,
     initSpritePath,
+    showInitialSprite,
     maxDialogItems,
     maxSpeechChars,
     roomId,
@@ -386,23 +426,29 @@ export function TemplateEditorPage() {
     mutationFn: ensureCharacterBriefs,
   });
 
+  const generationInput = (scenario = scenarioForSelectedCharacters()) =>
+    buildTemplateGenerateInput({
+      backgroundName: selectedBackground,
+      characterPromptMode: characterPromptMode ?? "full",
+      draft: { ...draft, scenario },
+      effectNames: selectedEffects,
+      mediaSelectionMode,
+      options: templateOptionsState,
+      runtime: runtimeOptionsState,
+      primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
+      selectedCharacters,
+    });
+  const latestGenerationInput = useRef(generationInput);
+  useLayoutEffect(() => {
+    latestGenerationInput.current = generationInput;
+  });
+
   const generateMutation = useMutation({
-    mutationFn: async (options?: { scenario?: string; silent?: boolean }) => {
-      const scenario = options?.scenario ?? scenarioForSelectedCharacters();
-      return generateTemplate(
-        buildTemplateGenerateInput({
-          backgroundName: selectedBackground,
-          characterPromptMode: characterPromptMode ?? "full",
-          draft: { ...draft, scenario },
-          effectNames: selectedEffects,
-          mediaSelectionMode,
-          options: templateOptionsState,
-          runtime: runtimeOptionsState,
-          primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
-          selectedCharacters,
-        }),
-      );
-    },
+    // Mutation callbacks are refreshed in a passive effect. Pass the visible
+    // form as variables so a click immediately after restoration cannot use
+    // the previous render's draft.
+    mutationFn: ({ input }: { input: ReturnType<typeof buildTemplateGenerateInput>; silent?: boolean }) =>
+      generateTemplate(input),
     onError(error, options) {
       const wasPreparingLaunch = deferredLaunchRef.current !== null;
       deferredLaunchRef.current = null;
@@ -473,7 +519,10 @@ export function TemplateEditorPage() {
       lastAutoScenarioRef.current = scenario;
       updateDraft({ scenario });
     }
-    const timer = window.setTimeout(() => generateMutation.mutate({ scenario, silent: true }), 160);
+    const timer = window.setTimeout(
+      () => generateMutation.mutate({ input: latestGenerationInput.current(scenario), silent: true }),
+      160,
+    );
     return () => window.clearTimeout(timer);
   }, [
     generationCharactersKey,
@@ -494,47 +543,53 @@ export function TemplateEditorPage() {
   ]);
 
   const launchMutation = useMutation({
-    mutationFn: async ({ resetHistory }: { resetHistory: boolean }) => {
-      if (runtimeLaunchDisabled) {
+    mutationFn: async ({
+      resetHistory,
+      template,
+      session,
+    }: {
+      resetHistory: boolean;
+      template: TemplateSummary;
+      session: TemplateLaunchSession;
+    }) => {
+      if (runtimeClosing || (runtimeLaunchDisabled && !conversationId)) {
         throw new Error(t("launch.runtimeBusy"));
       }
       return runChatInitialization(async (progressOptions) => {
-        const template = buildTemplateSummary(draft);
-        const session: TemplateLaunchSession = buildTemplateLaunchSession({
-          backgroundName: selectedBackground,
-          characterPromptMode: characterPromptMode ?? "full",
-          draft,
-          effectNames: selectedEffects,
-          mobileAccessEnabled,
-          mediaSelectionMode,
-          options: templateOptionsState,
-          primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
-          runtime: runtimeOptionsState,
-          selectedCharacters,
-          selectedTemplateId: selectedId,
-        });
-        const savedSession = await saveTemplateSession(session);
-        queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
-        const snapshot = await launchChat(
-          synchronizeChatLaunchPayloadWithSession(
-            buildChatLaunchPayload({
-              backgroundName: selectedBackground,
-              effectNames: selectedEffects,
-              mobileAccessEnabled,
-              mediaSelectionMode,
-              resetHistory,
-              runtime: runtimeOptionsState,
-              selectedCharacters,
-              template,
-              useCg,
-            }),
-            savedSession,
-          ),
+        onLaunchStarted?.();
+        const savedSession = conversationId ? session : await saveTemplateSession(session);
+        if (!conversationId) queryClient.setQueryData([...templatesQueryKey, "session"], savedSession);
+        const apply = conversationId
+          ? (payload: Parameters<typeof launchChat>[0], options: Parameters<typeof launchChat>[1]) =>
+              reconfigureConversation(conversationId, payload, options)
+          : launchChat;
+        const snapshot = await apply(
+          {
+            ...synchronizeChatLaunchPayloadWithSession(
+              buildChatLaunchPayload({
+                backgroundName: session.background,
+                effectNames: session.effectNames,
+                mobileAccessEnabled: Boolean(session.enableMobileAccess),
+                mediaSelectionMode: session.mediaSelectionMode ?? "indexed",
+                resetHistory: conversationId ? false : createOnly || resetHistory,
+                runtime: session,
+                selectedCharacters: session.selectedCharacters,
+                template,
+                useCg: session.useCg,
+              }),
+              savedSession,
+            ),
+            editorSession: savedSession,
+            ...(createOnly ? { conversationTitle: resolveConversationTitle(conversationTitle) } : {}),
+          },
           progressOptions,
         );
         const confirmedSession = synchronizeTemplateLaunchSessionWithSnapshot(savedSession, snapshot);
         if (confirmedSession !== savedSession) {
-          queryClient.setQueryData([...templatesQueryKey, "session"], confirmedSession);
+          queryClient.setQueryData(
+            conversationId ? [...conversationsQueryKey, conversationId, "settings"] : [...templatesQueryKey, "session"],
+            confirmedSession,
+          );
           setHistoryPath(confirmedSession.historyPath);
         }
         return { snapshot, template };
@@ -549,12 +604,17 @@ export function TemplateEditorPage() {
       });
     },
     onSuccess({ snapshot, template }) {
+      void queryClient.invalidateQueries({ queryKey: conversationsQueryKey });
       void updateRuntimeStatusFromSnapshot(snapshot);
       const normalized = normalizeTemplateSummary(template);
       setSessionDraftActive(true);
       setDraft(normalized);
       if (snapshot.runtimeDependencyError) {
         void handleRuntimeDependencyError(snapshot);
+        return;
+      }
+      if (onApplied) {
+        onApplied(snapshot);
         return;
       }
       showToast({
@@ -570,13 +630,31 @@ export function TemplateEditorPage() {
     },
   });
 
+  const launchCurrentDraft = (resetHistory: boolean) => {
+    const template = buildTemplateSummary(draft);
+    const session: TemplateLaunchSession = buildTemplateLaunchSession({
+      backgroundName: selectedBackground,
+      characterPromptMode: characterPromptMode ?? "full",
+      draft,
+      effectNames: selectedEffects,
+      mobileAccessEnabled,
+      mediaSelectionMode,
+      options: templateOptionsState,
+      primaryCharacters: characterPromptMode === "compact" ? primaryCharacters : selectedCharacters,
+      runtime: createOnly ? { ...runtimeOptionsState, historyPath: "" } : runtimeOptionsState,
+      selectedCharacters,
+      selectedTemplateId: selectedId,
+    });
+    launchMutation.mutate({ resetHistory, template, session });
+  };
+
   useEffect(() => {
     if (launchReadyAfterRoleGeneration === null) {
       return;
     }
     const resetHistory = launchReadyAfterRoleGeneration;
     setLaunchReadyAfterRoleGeneration(null);
-    launchMutation.mutate({ resetHistory });
+    launchCurrentDraft(resetHistory);
   }, [launchReadyAfterRoleGeneration]);
 
   const updateSelectedCharacters = (next: string[], options?: { preservePromptMode?: boolean }) => {
@@ -674,7 +752,7 @@ export function TemplateEditorPage() {
       lastAutoScenarioRef.current = scenario;
       updateDraft({ scenario });
     }
-    generateMutation.mutate({ scenario, silent: false });
+    generateMutation.mutate({ input: generationInput(scenario), silent: false });
   };
 
   const handleLaunch = (resetHistory: boolean) => {
@@ -683,7 +761,14 @@ export function TemplateEditorPage() {
       setPrimaryCharacterDialogOpen(true);
       return;
     }
-    launchMutation.mutate({ resetHistory });
+    // A new chat may reuse a semantic template while defaulting to indexed
+    // selection. Regenerate its instructions before starting that chat.
+    if (draft.mediaSelectionMode !== mediaSelectionMode) {
+      deferredLaunchRef.current = resetHistory;
+      generateMutation.mutate({ input: generationInput(), silent: true });
+      return;
+    }
+    launchCurrentDraft(resetHistory);
   };
 
   const templateOptions = [
@@ -734,14 +819,16 @@ export function TemplateEditorPage() {
               }}
               value={draft.name}
             />
-            <AsyncButton
-              className="template-save-button"
-              icon={<Save aria-hidden className="button__icon" />}
-              loading={saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}
-            >
-              {t("common.save")}
-            </AsyncButton>
+            {!conversationId && (
+              <AsyncButton
+                className="template-save-button"
+                icon={<Save aria-hidden className="button__icon" />}
+                loading={saveMutation.isPending}
+                onClick={() => saveMutation.mutate()}
+              >
+                {t("common.save")}
+              </AsyncButton>
+            )}
           </span>
           {nameError ? <span className="field-error">{nameError}</span> : null}
         </label>
@@ -945,10 +1032,22 @@ export function TemplateEditorPage() {
           </div>
 
           <div className="template-runtime-fields">
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.initSprite")}</span>
+            <div className="template-side-field">
+              <div className="template-sprite-heading">
+                <label className="template-side-field__label" htmlFor="template-initial-sprite">
+                  {t("template.field.initSprite")}
+                </label>
+                <Switch
+                  aria-label={t("template.field.showInitialSprite")}
+                  checked={showInitialSprite}
+                  onChange={(event) => setShowInitialSprite(event.target.checked)}
+                  title={t("template.field.showInitialSprite")}
+                />
+              </div>
               <FilePicker
                 acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+                disabled={!showInitialSprite}
+                id="template-initial-sprite"
                 onChange={(event) => setInitSpritePath(event.target.value)}
                 onPathChange={setInitSpritePath}
                 pickLabel={t("common.chooseFile")}
@@ -956,33 +1055,45 @@ export function TemplateEditorPage() {
                 readOnly={false}
                 value={initSpritePath}
               />
-            </label>
-            <label className="template-side-field">
-              <span className="template-side-field__label">{t("template.field.historyFile")}</span>
-              <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
-            </label>
+            </div>
+            {!createOnly && !conversationId && (
+              <label className="template-side-field">
+                <span className="template-side-field__label">{t("template.field.historyFile")}</span>
+                <TextInput onChange={(event) => setHistoryPath(event.target.value)} value={historyPath} />
+              </label>
+            )}
           </div>
         </aside>
       </div>
 
       <footer className="template-page__footer">
         <AsyncButton
-          disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
+          disabled={
+            !sessionRestored || runtimeClosing || (!conversationId && runtimeLaunchDisabled) || initializationPending
+          }
           icon={<Play aria-hidden className="button__icon" />}
           loading={launchMutation.isPending}
           onClick={() => handleLaunch(false)}
           variant="primary"
         >
-          {t("template.action.launch")}
+          {t(
+            conversationId
+              ? "conversation.saveAndContinue"
+              : createOnly
+                ? "conversation.createAndStart"
+                : "template.action.launch",
+          )}
         </AsyncButton>
-        <Button
-          disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
-          icon={<RotateCw aria-hidden className="button__icon" />}
-          onClick={() => setQuickRestartOpen(true)}
-          variant="ghost"
-        >
-          {t("template.action.quickRestart")}
-        </Button>
+        {!createOnly && !conversationId && (
+          <Button
+            disabled={!sessionRestored || runtimeLaunchDisabled || initializationPending}
+            icon={<RotateCw aria-hidden className="button__icon" />}
+            onClick={() => setQuickRestartOpen(true)}
+            variant="ghost"
+          >
+            {t("template.action.quickRestart")}
+          </Button>
+        )}
       </footer>
 
       <AlertDialog
@@ -1009,7 +1120,7 @@ export function TemplateEditorPage() {
       <ChatInitializationDialog
         error={initializationError}
         onClose={closeInitialization}
-        open={initializationOpen}
+        open={!initializationService && initializationOpen}
         pending={initializationPending}
         task={initializationTask}
       />

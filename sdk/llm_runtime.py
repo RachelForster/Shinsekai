@@ -23,6 +23,8 @@ class LLMHostRuntime(Protocol):
 
     def set_user_display_name(self, display_name: str) -> str | None: ...
 
+    def manage_reminders(self, request: dict[str, str]) -> dict[str, object]: ...
+
 
 class NullLLMHostRuntime:
     """Safe defaults for tests, tools, and non-host LLM consumers."""
@@ -48,6 +50,10 @@ class NullLLMHostRuntime:
     def set_user_display_name(self, display_name: str) -> str | None:
         del display_name
         return "chat runtime is not ready"
+
+    def manage_reminders(self, request: dict[str, str]) -> dict[str, object]:
+        del request
+        return {"ok": False, "error": "reminder host is not available"}
 
 
 _runtime: LLMHostRuntime = NullLLMHostRuntime()

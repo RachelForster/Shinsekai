@@ -18,6 +18,7 @@ from application.runtime.workers import (
     PresentationWorker,
     DialogMediaWorker,
 )
+from core.messaging.continuous_asr_policy import ContinuousASRPolicy
 from core.messaging.chat_turn_service import ChatTurnOptions, ChatTurnService
 from core.messaging.stream_events import STREAM_DIALOG_REPAIR_KEY
 from ai.llm.llm_manager import LLMManager
@@ -231,7 +232,12 @@ def test_llm_worker_reads_background_each_send_and_keeps_user_display_text() -> 
     assert [call.args[0] for call in runtime.ui_update_manager.record_user_message.call_args_list] == ["第一轮", "第二轮"]
 
 
-def test_llm_worker_does_not_requeue_dialogue_after_stream_repair() -> None:
+def test_llm_worker_does_not_requeue_dialogue_after_stream_repair(monkeypatch, sample_app_config) -> None:
+    # Stream-repair behavior must not depend on the user's saved provider.
+    monkeypatch.setattr(
+        "config.config_manager.ConfigManager",
+        lambda: SimpleNamespace(config=sample_app_config),
+    )
     valid = (
         '{"dialog":['
         '{"character_name":"Alice","speech":"First","sprite":"0"},'
@@ -528,6 +534,7 @@ def test_ui_worker_publishes_reply_finished_before_admitting_deferred_input() ->
     ui_manager.post_llm_reply_finished.side_effect = lambda: events.append("reply.finished")
     runtime = _make_app_runtime(ui_manager=ui_manager)
     runtime.chat_turn_service = ChatTurnService(
+        continuous_policy=ContinuousASRPolicy(),
         sink=lambda text: events.append(f"admit:{text}"),
         options=ChatTurnOptions(interrupt_enabled=True),
     )

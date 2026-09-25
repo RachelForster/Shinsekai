@@ -4,6 +4,25 @@ import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../..
 import { chatStageSpriteAxisCenter, limitChatStageSpritesToSlots } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
+  it("resets transient state and the sequence watermark when the session changes", () => {
+    let old = chatStageReducer(
+      { ...emptyChatState, sessionId: "old", eventSeq: 100 },
+      { type: "submitUserMessage", text: "old optimistic input" },
+    );
+    const snapshot = { ...emptyChatState, effectImage: null, sessionId: "new", eventSeq: 1, dialogText: "New session" };
+    const next = chatStageReducer(old, { type: "hydrate", snapshot });
+    expect(next.sessionId).toBe("new");
+    expect(next.eventSeq).toBe(1);
+    expect(next.optimisticSubmission).toBeUndefined();
+    expect(next.dialogText).toBe("New session");
+    expect(
+      chatStageReducer(next, {
+        type: "event",
+        event: { type: "notification.change", seq: 2, ts: 0, v: 1, text: "new" },
+      }).notificationText,
+    ).toBe("new");
+    expect(chatStageReducer(next, { type: "hydrate", snapshot: { ...snapshot, eventSeq: 0 } })).toBe(next);
+  });
   afterEach(() => vi.restoreAllMocks());
 
   it("preserves ASR draft identity and reply status across a locally timed image event", () => {
@@ -11,7 +30,15 @@ describe("chatStageReducer", () => {
       { ...emptyChatState, status: "streaming" },
       {
         type: "event",
-        event: { type: "asr.partial", text: "blue umbrella", utteranceId: "voice-1", seq: 1, ts: 1, v: 1 },
+        event: {
+          type: "asr.partial",
+          text: "blue umbrella",
+          continuous: true,
+          utteranceId: "voice-1",
+          seq: 1,
+          ts: 1,
+          v: 1,
+        },
       },
     );
     const showing = chatStageReducer(speaking, {
@@ -28,7 +55,15 @@ describe("chatStageReducer", () => {
     });
     const finished = chatStageReducer(showing, {
       type: "event",
-      event: { type: "asr.final", text: "blue umbrella", utteranceId: "voice-1", seq: 3, ts: 2, v: 1 },
+      event: {
+        type: "asr.final",
+        text: "blue umbrella",
+        continuous: true,
+        utteranceId: "voice-1",
+        seq: 3,
+        ts: 2,
+        v: 1,
+      },
     });
     expect(finished).toMatchObject({
       status: "streaming",
@@ -204,6 +239,7 @@ describe("chatStageReducer", () => {
           text: "queued voice",
           ts: 1,
           type: "asr.partial",
+          continuous: true,
           utteranceId: "u-queued",
           v: 1,
         },
@@ -224,6 +260,7 @@ describe("chatStageReducer", () => {
           text: "queued voice",
           ts: 3,
           type: "asr.final",
+          continuous: true,
           utteranceId: "u-queued",
           v: 1,
         },
@@ -249,11 +286,27 @@ describe("chatStageReducer", () => {
       status: "streaming" as const,
     };
     const firstPending = chatStageReducer(replying, {
-      event: { seq: 1, text: "first phrase", ts: 1, type: "asr.partial", utteranceId: "u-first", v: 1 },
+      event: {
+        seq: 1,
+        text: "first phrase",
+        ts: 1,
+        type: "asr.partial",
+        continuous: true,
+        utteranceId: "u-first",
+        v: 1,
+      },
       type: "event",
     });
     const newerPending = chatStageReducer(firstPending, {
-      event: { seq: 2, text: "second phrase", ts: 2, type: "asr.partial", utteranceId: "u-second", v: 1 },
+      event: {
+        seq: 2,
+        text: "second phrase",
+        ts: 2,
+        type: "asr.partial",
+        continuous: true,
+        utteranceId: "u-second",
+        v: 1,
+      },
       type: "event",
     });
     const finished = chatStageReducer(newerPending, {
@@ -261,13 +314,46 @@ describe("chatStageReducer", () => {
       type: "event",
     });
     const firstAdmitted = chatStageReducer(finished, {
-      event: { seq: 4, text: "first phrase", ts: 4, type: "asr.final", utteranceId: "u-first", v: 1 },
+      event: { seq: 4, text: "first phrase", ts: 4, type: "asr.final", continuous: true, utteranceId: "u-first", v: 1 },
       type: "event",
     });
 
     expect(firstAdmitted.inputDraft).toBe("second phrase");
     expect(firstAdmitted.dialogText).toBe("first phrase");
     expect(firstAdmitted.optimisticSubmission?.text).toBe("first phrase");
+  });
+
+  it("commits a merged batch once while retaining the next speech draft", () => {
+    let state = chatStageReducer(emptyChatState, {
+      event: {
+        seq: 1,
+        text: "third phrase",
+        ts: 1,
+        type: "asr.partial",
+        continuous: true,
+        utteranceId: "u-third",
+        v: 1,
+      },
+      type: "event",
+    });
+    for (const [index, utteranceId] of ["u-first", "u-second"].entries()) {
+      state = chatStageReducer(state, {
+        event: {
+          seq: index + 2,
+          text: "first | second",
+          ts: 2,
+          type: "asr.final",
+          continuous: true,
+          utteranceId,
+          v: 1,
+        },
+        type: "event",
+      });
+    }
+    expect(state.inputDraft).toBe("third phrase");
+    expect(state.asrUtteranceId).toBe("u-third");
+    expect(state.dialogText).toBe("first | second");
+    expect(state.optimisticSubmission?.text).toBe("first | second");
   });
 
   it("applies ASR corrections with the same utterance ownership", () => {
@@ -277,6 +363,7 @@ describe("chatStageReducer", () => {
         text: "hello word",
         ts: 1,
         type: "asr.partial",
+        continuous: true,
         utteranceId: "u-correction",
         v: 1,
       },
@@ -288,6 +375,7 @@ describe("chatStageReducer", () => {
         text: "hello world",
         ts: 2,
         type: "asr.partial",
+        continuous: true,
         utteranceId: "u-correction",
         v: 1,
       },
@@ -303,6 +391,7 @@ describe("chatStageReducer", () => {
         text: "hello world",
         ts: 3,
         type: "asr.final",
+        continuous: true,
         utteranceId: "u-correction",
         v: 1,
       },
@@ -316,17 +405,25 @@ describe("chatStageReducer", () => {
   it("does not let an older ID'd final clear a newer draft with the same prefix", () => {
     const newer = chatStageReducer(
       chatStageReducer(emptyChatState, {
-        event: { seq: 1, text: "hello", ts: 1, type: "asr.partial", utteranceId: "u-old", v: 1 },
+        event: { seq: 1, text: "hello", ts: 1, type: "asr.partial", continuous: true, utteranceId: "u-old", v: 1 },
         type: "event",
       }),
       {
-        event: { seq: 2, text: "hello there", ts: 2, type: "asr.partial", utteranceId: "u-new", v: 1 },
+        event: {
+          seq: 2,
+          text: "hello there",
+          ts: 2,
+          type: "asr.partial",
+          continuous: true,
+          utteranceId: "u-new",
+          v: 1,
+        },
         type: "event",
       },
     );
 
     const admitted = chatStageReducer(newer, {
-      event: { seq: 3, text: "hello", ts: 3, type: "asr.final", utteranceId: "u-old", v: 1 },
+      event: { seq: 3, text: "hello", ts: 3, type: "asr.final", continuous: true, utteranceId: "u-old", v: 1 },
       type: "event",
     });
 
@@ -337,12 +434,12 @@ describe("chatStageReducer", () => {
 
   it("does not let an ID'd final erase a user-edited draft", () => {
     const asr = chatStageReducer(emptyChatState, {
-      event: { seq: 1, text: "voice draft", ts: 1, type: "asr.partial", utteranceId: "u-edit", v: 1 },
+      event: { seq: 1, text: "voice draft", ts: 1, type: "asr.partial", continuous: true, utteranceId: "u-edit", v: 1 },
       type: "event",
     });
     const edited = chatStageReducer(asr, { text: "manual draft", type: "setDraft" });
     const admitted = chatStageReducer(edited, {
-      event: { seq: 2, text: "voice draft", ts: 2, type: "asr.final", utteranceId: "u-edit", v: 1 },
+      event: { seq: 2, text: "voice draft", ts: 2, type: "asr.final", continuous: true, utteranceId: "u-edit", v: 1 },
       type: "event",
     });
 
@@ -355,7 +452,15 @@ describe("chatStageReducer", () => {
 
   it("keeps ASR provenance through a manual edit and clears it when the draft is cleared", () => {
     const asr = chatStageReducer(emptyChatState, {
-      event: { seq: 1, text: "voice draft", ts: 1, type: "asr.partial", utteranceId: "u-provenance", v: 1 },
+      event: {
+        seq: 1,
+        text: "voice draft",
+        ts: 1,
+        type: "asr.partial",
+        continuous: true,
+        utteranceId: "u-provenance",
+        v: 1,
+      },
       type: "event",
     });
     const edited = chatStageReducer(asr, { text: "edited voice draft", type: "setDraft" });
@@ -370,7 +475,15 @@ describe("chatStageReducer", () => {
 
   it("restores ASR provenance when an optimistic submission fails", () => {
     const asr = chatStageReducer(emptyChatState, {
-      event: { seq: 1, text: "retry voice", ts: 1, type: "asr.partial", utteranceId: "u-retry", v: 1 },
+      event: {
+        seq: 1,
+        text: "retry voice",
+        ts: 1,
+        type: "asr.partial",
+        continuous: true,
+        utteranceId: "u-retry",
+        v: 1,
+      },
       type: "event",
     });
     const submitted = chatStageReducer(asr, { text: "submit voice", type: "submitUserMessage" });
@@ -384,13 +497,22 @@ describe("chatStageReducer", () => {
 
   it("clears an ASR-owned draft after reconnect when its final was missed", () => {
     const asr = chatStageReducer(emptyChatState, {
-      event: { seq: 1, text: "missed final", ts: 1, type: "asr.partial", utteranceId: "u-missed", v: 1 },
+      event: {
+        seq: 1,
+        text: "missed final",
+        ts: 1,
+        type: "asr.partial",
+        continuous: true,
+        utteranceId: "u-missed",
+        v: 1,
+      },
       type: "event",
     });
     const hydrated = chatStageReducer(asr, {
       snapshot: {
         asrEnabled: true,
         asrRunning: true,
+        asrContinuous: true,
         asrUtteranceId: null,
         dialogText: "missed final",
         eventSeq: 3,
@@ -409,7 +531,15 @@ describe("chatStageReducer", () => {
   it("preserves a manually edited draft during reconnect hydration", () => {
     const edited = chatStageReducer(
       chatStageReducer(emptyChatState, {
-        event: { seq: 1, text: "voice draft", ts: 1, type: "asr.partial", utteranceId: "u-manual", v: 1 },
+        event: {
+          seq: 1,
+          text: "voice draft",
+          ts: 1,
+          type: "asr.partial",
+          continuous: true,
+          utteranceId: "u-manual",
+          v: 1,
+        },
         type: "event",
       }),
       { text: "manual draft", type: "setDraft" },
@@ -418,6 +548,7 @@ describe("chatStageReducer", () => {
       snapshot: {
         asrEnabled: true,
         asrRunning: true,
+        asrContinuous: true,
         asrUtteranceId: null,
         dialogText: "reply",
         eventSeq: 3,
@@ -439,6 +570,7 @@ describe("chatStageReducer", () => {
       snapshot: {
         asrEnabled: true,
         asrRunning: true,
+        asrContinuous: true,
         asrUtteranceId: "u-snapshot",
         dialogText: "reply",
         eventSeq: 2,
@@ -455,6 +587,7 @@ describe("chatStageReducer", () => {
       snapshot: {
         asrEnabled: true,
         asrRunning: true,
+        asrContinuous: true,
         asrUtteranceId: "u-stale",
         dialogText: "reply",
         eventSeq: 3,
@@ -472,11 +605,11 @@ describe("chatStageReducer", () => {
 
   it("uses an empty fresh partial as an ASR reset without erasing a manual draft", () => {
     const owned = chatStageReducer(emptyChatState, {
-      event: { seq: 1, text: "old voice", ts: 1, type: "asr.partial", utteranceId: "u-old", v: 1 },
+      event: { seq: 1, text: "old voice", ts: 1, type: "asr.partial", continuous: true, utteranceId: "u-old", v: 1 },
       type: "event",
     });
     const resetOwned = chatStageReducer(owned, {
-      event: { seq: 2, text: "", ts: 2, type: "asr.partial", utteranceId: "u-reset", v: 1 },
+      event: { seq: 2, text: "", ts: 2, type: "asr.partial", continuous: true, utteranceId: "u-reset", v: 1 },
       type: "event",
     });
 
@@ -485,7 +618,7 @@ describe("chatStageReducer", () => {
 
     const manual = chatStageReducer(owned, { text: "manual draft", type: "setDraft" });
     const resetManual = chatStageReducer(manual, {
-      event: { seq: 2, text: "", ts: 2, type: "asr.partial", utteranceId: "u-reset", v: 1 },
+      event: { seq: 2, text: "", ts: 2, type: "asr.partial", continuous: true, utteranceId: "u-reset", v: 1 },
       type: "event",
     });
 
@@ -534,7 +667,7 @@ describe("chatStageReducer", () => {
 
     expect(resumed.asrEnabled).toBe(true);
     expect(resumed.asrRunning).toBe(true);
-    expect(resumed.status).toBe("generating");
+    expect(resumed.status).toBe("listening");
   });
 
   it("hydrates an ASR-final snapshot without restoring a sendable draft", () => {
@@ -1939,4 +2072,36 @@ describe("chatStageReducer", () => {
       interruptEnabled: false,
     });
   });
+});
+
+it("ordinary ASR uses upstream status/draft semantics even if an ID is received", () => {
+  const initial = { ...emptyChatState, status: "generating" as const, inputDraft: "typed" };
+  const partial = chatStageReducer(initial, {
+    type: "event",
+    event: {
+      type: "asr.partial",
+      seq: 1,
+      ts: 1,
+      v: 1,
+      text: "normal voice",
+      utteranceId: "ignored",
+    },
+  });
+  expect(partial.status).toBe("listening");
+  expect(partial.inputDraft).toBe("normal voice");
+  expect(partial.asrSourceUtteranceId).toBeNull();
+  const final = chatStageReducer(partial, {
+    type: "event",
+    event: {
+      type: "asr.final",
+      seq: 2,
+      ts: 2,
+      v: 1,
+      text: "normal voice",
+      utteranceId: "ignored",
+    },
+  });
+  expect(final.inputDraft).toBe("");
+  expect(final.dialogText).toBe("normal voice");
+  expect(final.optimisticSubmission?.text).toBe("normal voice");
 });

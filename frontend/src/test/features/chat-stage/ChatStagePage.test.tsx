@@ -491,6 +491,8 @@ describe("ChatStagePage", () => {
     const stackSwitch = within(settings).getByRole("checkbox", { name: "Stack consecutive messages" });
     expect(stackSwitch).not.toBeChecked();
     expect(within(settings).getByRole("checkbox", { name: "Allow new messages to interrupt replies" })).toBeChecked();
+    expect(within(settings).getByRole("checkbox", { name: "Enable F8 hold to talk" })).not.toBeChecked();
+    expect(within(settings).getByRole("slider", { name: "BGM volume" })).toBeInTheDocument();
 
     fireEvent.change(input, { target: { value: "keep this draft" } });
     fireEvent.click(stackSwitch);
@@ -599,6 +601,7 @@ describe("ChatStagePage", () => {
         text: "voice draft",
         ts: 1,
         type: "asr.partial",
+        continuous: true,
         utteranceId: "u-send",
         v: 1,
       });
@@ -629,6 +632,7 @@ describe("ChatStagePage", () => {
         text: "voice draft",
         ts: 1,
         type: "asr.partial",
+        continuous: true,
         utteranceId: "u-edited-send",
         v: 1,
       });
@@ -659,6 +663,7 @@ describe("ChatStagePage", () => {
         text: "old voice",
         ts: 1,
         type: "asr.partial",
+        continuous: true,
         utteranceId: "u-cleared",
         v: 1,
       });
@@ -691,6 +696,7 @@ describe("ChatStagePage", () => {
         text: "retry voice",
         ts: 1,
         type: "asr.partial",
+        continuous: true,
         utteranceId: "u-retry-send",
         v: 1,
       });
@@ -1525,7 +1531,7 @@ describe("ChatStagePage", () => {
     const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
     expect(config).toHaveClass("chat-stage-modal");
     expect(config.querySelector(".chat-stage-modal__header")).not.toBeNull();
-    expect(within(config).queryByLabelText("Long press to talk")).not.toBeInTheDocument();
+    expect(within(config).queryByLabelText("Enable F8 hold to talk")).not.toBeInTheDocument();
     fireEvent.click(within(config).getByRole("button", { name: "Close" }));
 
     const asrButtons = await screen.findAllByRole("button", { name: "Resume ASR" });
@@ -2127,6 +2133,35 @@ describe("ChatStagePage", () => {
     await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "pause-asr" }));
   });
 
+  it("persists the hold-to-talk switch and streams text before F8 release", async () => {
+    let listener: ((event: ChatStageEvent) => void) | null = null;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    renderPage();
+    await screen.findByText("Ready");
+    fireEvent.keyDown(window, { code: "F8" });
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "begin-asr-hold" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat settings" }));
+    const chatSettings = screen.getByRole("dialog", { name: "Chat settings" });
+    expect(within(chatSettings).getByRole("slider", { name: "BGM volume" })).toBeInTheDocument();
+    fireEvent.click(within(chatSettings).getByRole("checkbox", { name: "Enable F8 hold to talk" }));
+    expect(
+      JSON.parse(window.localStorage.getItem("shinsekai-chat-stage-runtime-config") || "{}").config.longPressTalk,
+    ).toBe(true);
+    fireEvent.click(within(chatSettings).getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(window, { code: "F8" });
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "begin-asr-hold" }));
+    act(() => {
+      listener?.({ type: "asr.partial", continuous: true, text: "Live words", seq: 1, ts: 1, v: 1 });
+    });
+    expect(screen.getByPlaceholderText("Enter dialogue")).toHaveValue("Live words");
+    expect(mocks.sendChatCommand).not.toHaveBeenCalledWith({ type: "finish-asr-hold" });
+    fireEvent.keyUp(window, { code: "F8" });
+    await waitFor(() => expect(mocks.sendChatCommand).toHaveBeenCalledWith({ type: "finish-asr-hold" }));
+  });
+
   it("keeps ASR enabled through automatic submission and resumes after the final reply", async () => {
     let listener: ((event: ChatStageEvent) => void) | null = null;
     mocks.subscribeChatEvents.mockImplementation((next) => {
@@ -2138,12 +2173,12 @@ describe("ChatStagePage", () => {
     await screen.findByText("Ready");
     act(() => {
       listener?.({ enabled: true, loading: false, running: true, seq: 1, ts: 1, type: "asr.state", v: 1 });
-      listener?.({ seq: 2, text: "hello wor", ts: 2, type: "asr.partial", v: 1 });
+      listener?.({ seq: 2, text: "hello wor", ts: 2, type: "asr.partial", continuous: true, v: 1 });
     });
     expect(screen.getByPlaceholderText("Enter dialogue")).toHaveValue("hello wor");
 
     act(() => {
-      listener?.({ seq: 3, text: "hello world", ts: 3, type: "asr.final", v: 1 });
+      listener?.({ seq: 3, text: "hello world", ts: 3, type: "asr.final", continuous: true, v: 1 });
       listener?.({ enabled: true, loading: false, running: false, seq: 4, ts: 4, type: "asr.state", v: 1 });
     });
     expect(screen.getByText("hello world")).toBeInTheDocument();

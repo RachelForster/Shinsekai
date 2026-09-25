@@ -375,26 +375,40 @@ export function applyDownloadedTtsBundle(config: ApiConfig, result: { path: stri
   );
 }
 
-export function normalizeApiConfigForUi(config: ApiConfig, installedTtsBundlePath = ""): ApiConfig {
+export function normalizeProviderBaseUrls(config: ApiConfig): ApiConfig {
   const provider = (config.llm_provider || "Deepseek").trim() || "Deepseek";
+  const llmBaseUrls = { ...(config.llm_base_urls ?? {}) };
+  const activeBaseUrl =
+    String(llmBaseUrls[provider] || config.llm_base_url || "").trim() || llmDefaultBaseUrls[provider] || "";
+  if (activeBaseUrl) {
+    llmBaseUrls[provider] = activeBaseUrl;
+  }
+  return {
+    ...config,
+    llm_base_url: activeBaseUrl,
+    llm_base_urls: llmBaseUrls,
+    llm_provider: provider,
+  };
+}
+
+export function normalizeApiConfigForUi(config: ApiConfig, installedTtsBundlePath = ""): ApiConfig {
+  const normalizedProviders = normalizeProviderBaseUrls(config);
   return applyTtsProviderDefaults(
     syncCompactRatioDraft({
-      ...config,
-      history_recent_messages: finiteNumber(config.history_recent_messages, 20),
-      llm_api_key: config.llm_api_key ?? {},
-      llm_base_url: String(config.llm_base_url || "").trim() || llmDefaultBaseUrls[provider] || "",
-      llm_model: config.llm_model ?? {},
-      llm_provider: provider,
-      max_active_tool_groups: finiteNumber(config.max_active_tool_groups, 3),
-      max_tool_result_chars: finiteNumber(config.max_tool_result_chars, 6000),
-      memory_auto_enabled: config.memory_auto_enabled ?? false,
-      memory_extract_interval_turns: clampInt(config.memory_extract_interval_turns, 5, 1, 50),
-      memory_recent_buffer_messages: clampInt(config.memory_recent_buffer_messages, 16, 2, 64),
-      memory_search_limit: clampInt(config.memory_search_limit, 5, 1, 20),
-      t2i_api_url: String(config.t2i_api_url || "").trim() || DEFAULT_T2I_API_URL,
-      t2i_output_node_id: String(config.t2i_output_node_id || "").trim() || DEFAULT_T2I_OUTPUT_NODE_ID,
-      t2i_prompt_node_id: String(config.t2i_prompt_node_id || "").trim() || DEFAULT_T2I_PROMPT_NODE_ID,
-      t2i_provider: String(config.t2i_provider || "").trim() || DEFAULT_T2I_PROVIDER,
+      ...normalizedProviders,
+      history_recent_messages: finiteNumber(normalizedProviders.history_recent_messages, 20),
+      llm_api_key: normalizedProviders.llm_api_key ?? {},
+      llm_model: normalizedProviders.llm_model ?? {},
+      max_active_tool_groups: finiteNumber(normalizedProviders.max_active_tool_groups, 3),
+      max_tool_result_chars: finiteNumber(normalizedProviders.max_tool_result_chars, 6000),
+      memory_auto_enabled: normalizedProviders.memory_auto_enabled ?? false,
+      memory_extract_interval_turns: clampInt(normalizedProviders.memory_extract_interval_turns, 5, 1, 50),
+      memory_recent_buffer_messages: clampInt(normalizedProviders.memory_recent_buffer_messages, 16, 2, 64),
+      memory_search_limit: clampInt(normalizedProviders.memory_search_limit, 5, 1, 20),
+      t2i_api_url: String(normalizedProviders.t2i_api_url || "").trim() || DEFAULT_T2I_API_URL,
+      t2i_output_node_id: String(normalizedProviders.t2i_output_node_id || "").trim() || DEFAULT_T2I_OUTPUT_NODE_ID,
+      t2i_prompt_node_id: String(normalizedProviders.t2i_prompt_node_id || "").trim() || DEFAULT_T2I_PROMPT_NODE_ID,
+      t2i_provider: String(normalizedProviders.t2i_provider || "").trim() || DEFAULT_T2I_PROVIDER,
     }),
     installedTtsBundlePath,
   );
@@ -496,6 +510,58 @@ export function llmModelFetchKey(config: ApiConfig) {
     String(config.llm_base_url || "").trim(),
     activeMapValue(config.llm_api_key, config.llm_provider),
   ]);
+}
+
+export const visionProviderLlmProviders: Record<string, string> = {
+  chatgpt: "ChatGPT",
+  claude: "Claude",
+  deepseek: "Deepseek",
+  doubao: "豆包",
+  gemini: "Gemini",
+  ollama: "Ollama",
+  qwen: "通义千问",
+};
+
+export const visionDefaultModels: Record<string, string> = {
+  chatgpt: "gpt-4o-mini",
+  claude: "claude-3-5-sonnet-latest",
+  deepseek: "deepseek-flash",
+  doubao: "",
+  gemini: "gemini-2.5-flash",
+  ollama: "llava",
+  qwen: "qwen-vl-max",
+};
+
+export function providerBaseUrl(config: ApiConfig, provider: string) {
+  return (
+    activeMapValue(config.llm_base_urls, provider).trim() ||
+    (provider === config.llm_provider ? String(config.llm_base_url || "").trim() : "") ||
+    llmDefaultBaseUrls[provider] ||
+    ""
+  );
+}
+
+export function effectiveVisionApiKey(config: ApiConfig, provider = config.vision_provider) {
+  const llmProvider = visionProviderLlmProviders[provider];
+  return llmProvider ? activeMapValue(config.llm_api_key, llmProvider) : "";
+}
+
+export function effectiveVisionBaseUrl(config: ApiConfig, provider = config.vision_provider) {
+  const llmProvider = visionProviderLlmProviders[provider];
+  return llmProvider ? providerBaseUrl(config, llmProvider) : "";
+}
+
+export function visionProviderRequiresApiKey(provider: string) {
+  return provider.trim().toLowerCase() !== "ollama";
+}
+
+export function visionModelFetchKey(config: ApiConfig) {
+  const provider = String(config.vision_provider || "").trim();
+  return [
+    provider,
+    effectiveVisionBaseUrl(config, provider).trim(),
+    effectiveVisionApiKey(config, provider).trim(),
+  ].join("\u0000");
 }
 
 export function thinkingUnsupported(model: string) {

@@ -1,3 +1,4 @@
+from core.messaging.continuous_asr_policy import ContinuousASRPolicy
 from core.messaging.chat_turn_service import ChatTurnOptions, ChatTurnService
 from threading import Event, Thread
 import pytest
@@ -6,7 +7,7 @@ import pytest
 def test_history_boundary_cancels_begun_turn_and_rejects_already_dequeued_input():
     delivered = []
     service = ChatTurnService(revision_sink=lambda *args: delivered.append(args))
-    service.submit("old", defer_until_idle=True)
+    service.submit("old")
     old = delivered.pop()
     begun = service.begin_turn(expected_revision=old[2])
     with service.history_boundary():
@@ -14,14 +15,15 @@ def test_history_boundary_cancels_begun_turn_and_rejects_already_dequeued_input(
     late = service.begin_turn(expected_revision=old[2])
     assert late.is_cancelled()
     assert not service.is_active()
-    service.submit("fresh", defer_until_idle=True)
+    service.submit("fresh")
     fresh = delivered.pop()
     assert not service.begin_turn(expected_revision=fresh[2]).is_cancelled()
 
 
+
 def test_retired_asr_already_dequeued_does_not_block_manual_or_next_voice():
     delivered = []
-    service = ChatTurnService(revision_sink=lambda *args: delivered.append(args))
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(), revision_sink=lambda *args: delivered.append(args))
     service.submit("voice", defer_until_idle=True, utterance_id="u1")
     old = delivered.pop()
     service.submit("edited voice", replace_utterance_id="u1", interrupt_current=False)
@@ -32,6 +34,7 @@ def test_retired_asr_already_dequeued_does_not_block_manual_or_next_voice():
     service.mark_generation_complete(turn)
     service.finish_turn(turn)
     assert [item[0] for item in delivered] == ["next"]
+
 
 
 def test_dequeued_worker_waits_until_history_mutation_completes():
@@ -58,6 +61,7 @@ def test_dequeued_worker_waits_until_history_mutation_completes():
     assert turns[0].is_cancelled()
 
 
+
 def test_cancelled_turn_cannot_publish_user_history():
     service = ChatTurnService()
     turn = service.begin_turn()
@@ -67,10 +71,11 @@ def test_cancelled_turn_cannot_publish_user_history():
         assert not current
 
 
+
 @pytest.mark.parametrize("already_delivered", [False, True])
 def test_manual_voice_replacement_keeps_absorbed_typed_batch(already_delivered):
     delivered = []
-    service = ChatTurnService(
+    service = ChatTurnService(continuous_policy=ContinuousASRPolicy(),
         revision_sink=lambda *args: delivered.append(args),
         options=ChatTurnOptions(batch_enabled=True, batch_idle_seconds=300),
     )
@@ -79,6 +84,7 @@ def test_manual_voice_replacement_keeps_absorbed_typed_batch(already_delivered):
         service.submit("typed", interrupt_current=False)
         service.submit("voice", defer_until_idle=True, utterance_id="u1")
         if already_delivered:
+            service.flush()
             service.mark_generation_complete(turn)
             service.finish_turn(turn)
             old = delivered.pop()

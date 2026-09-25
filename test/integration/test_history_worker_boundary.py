@@ -50,7 +50,7 @@ def test_old_worker_cannot_publish_or_persist_after_history_change(phase, mutati
     worker.chat_vision_service.prepare = prepare
     worker.start()
     try:
-        rt.chat_turn_service.submit("old voice", defer_until_idle=True, utterance_id="old")
+        rt.chat_turn_service.submit("old text")
         assert entered.wait(5)
         with rt.chat_turn_service.history_boundary():
             rt.llm_manager.invalidate_history()
@@ -66,10 +66,10 @@ def test_old_worker_cannot_publish_or_persist_after_history_change(phase, mutati
         assert rt.llm_manager._chat_depth == 0
         assert rt.dialog_queue.empty()
         rt.ui_update_manager.record_user_message.assert_not_called()
-        rt.chat_turn_service.submit("fresh voice", defer_until_idle=True, utterance_id="fresh")
+        rt.chat_turn_service.submit("fresh text")
         assert rt.dialog_queue.get(timeout=5).text == "reply"
         assert _wait_for_unfinished_tasks(rt.user_input_queue)
-        assert any("fresh voice" in str(item.get("content")) for item in rt.llm_manager.get_messages())
+        assert any("fresh text" in str(item.get("content")) for item in rt.llm_manager.get_messages())
     finally:
         release.set()
         worker.stop()

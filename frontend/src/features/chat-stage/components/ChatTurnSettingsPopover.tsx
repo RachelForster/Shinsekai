@@ -3,15 +3,18 @@ import { Play, X } from "lucide-react";
 
 import { useI18n } from "../../../shared/i18n";
 import type { ChatTurnOptions, ChatTurnState } from "../../../shared/platform/types";
-import { IconButton, Switch } from "../../../shared/ui";
+import { Button, IconButton, Switch } from "../../../shared/ui";
 
 export function ChatTurnSettingsPopover({
   bgmVolume,
   effectVolume,
+  longPressTalk,
   onBgmVolumeChange,
   onEffectVolumeChange,
+  onLongPressTalkChange,
   onCancelBatch,
   onClose,
+  onEditConversation,
   onFlushBatch,
   onTurnOptionsChange,
   open,
@@ -20,10 +23,13 @@ export function ChatTurnSettingsPopover({
 }: {
   bgmVolume: number;
   effectVolume: number;
+  longPressTalk: boolean;
   onBgmVolumeChange: (value: number) => void;
   onEffectVolumeChange: (value: number) => void;
+  onLongPressTalkChange: (value: boolean) => void;
   onCancelBatch: () => void;
   onClose: () => void;
+  onEditConversation?: () => void;
   onFlushBatch: () => void;
   onTurnOptionsChange: (options: ChatTurnOptions) => void;
   open: boolean;
@@ -65,6 +71,7 @@ export function ChatTurnSettingsPopover({
           <X aria-hidden />
         </IconButton>
       </header>
+      {onEditConversation && <Button onClick={onEditConversation}>{t("conversation.editCurrent")}</Button>}
       <div className="dialog-stage-controls__chat-settings-options">
         <Switch
           checked={turnOptions.batchEnabled}
@@ -81,6 +88,14 @@ export function ChatTurnSettingsPopover({
           onChange={(event) => onTurnOptionsChange({ ...turnOptions, interruptEnabled: event.currentTarget.checked })}
         >
           {t("chat.config.interruptEnabled")}
+        </Switch>
+        <Switch
+          checked={longPressTalk}
+          className="dialog-stage-controls__chat-setting"
+          id="chat-turn-settings-hold-to-talk"
+          onChange={(event) => onLongPressTalkChange(event.currentTarget.checked)}
+        >
+          {t("chat.config.longPressTalk")}
         </Switch>
         <label className="dialog-stage-controls__chat-setting dialog-stage-controls__chat-slider">
           <span className="dialog-stage-controls__chat-slider-label">

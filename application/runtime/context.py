@@ -296,5 +296,10 @@ class _ApplicationLLMHostRuntime:
         ui.set_user_display_name(display_name)
         return None
 
+    def manage_reminders(self, request: dict[str, str]) -> dict[str, object]:
+        from application.reminders import manage_character_reminders
+
+        return manage_character_reminders(request)
+
 
 set_llm_host_runtime(_ApplicationLLMHostRuntime())

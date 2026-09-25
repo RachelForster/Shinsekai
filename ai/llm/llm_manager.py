@@ -264,6 +264,8 @@ class LLMManager:
         history_file: str = "",
         hook_dispatcher: PluginHookDispatcher | None = None,
         media_selection_mode: str = "indexed",
+        tools_enabled: bool = True,
+        use_current_template_for_history: bool = False,
     ):
         # Keep the backing list separate from the public ``messages`` property.
         # The property can then return a worker's thread-local history view
@@ -275,6 +277,7 @@ class LLMManager:
         self._history_lock = RLock()
         self.llm_adapter = adapter
         self.user_template = user_template
+        self.use_current_template_for_history = use_current_template_for_history
         self.hook_dispatcher = hook_dispatcher
         self.max_context_tokens = int(max_tokens)
         self.history_recent_messages = max(1, int(history_recent_messages))
@@ -290,7 +293,8 @@ class LLMManager:
         )
         self.generation_config = generation_config or {}
         self.set_user_template(user_template)
-        self.tools_definitions = tool_manager.get_definitions(groups="default")  # 初始仅 default 组
+        self.tools_enabled = tools_enabled
+        self.tools_definitions = tool_manager.get_definitions(groups="default") if tools_enabled else []
         self._active_tool_groups: list = ["default"]  # LRU: most recent first
         self._max_active_groups = max(1, int(max_active_tool_groups))
         self.tools_manager = tool_manager
@@ -806,6 +810,8 @@ class LLMManager:
         }
 
     def _current_tool_definitions(self) -> list[dict]:
+        if not self.tools_enabled:
+            return []
         state = self._turn_state
         if state is not None and state.tool_budget_exhausted():
             self.logger.info(
@@ -1010,6 +1016,11 @@ class LLMManager:
             # These are deterministic in-memory transforms.  Do them before
             # the short atomic replacement so plugin/network work cannot hold
             # the history lock.
+            if getattr(self, "use_current_template_for_history", False):
+                if replacement and replacement[0].get("role") == "system":
+                    replacement[0] = {**replacement[0], "content": self.user_template}
+                else:
+                    replacement.insert(0, {"role": "system", "content": self.user_template})
             strip_orphaned_tool_calls(replacement)
             replacement = self._trim_loaded_history_if_needed(replacement)
             token_count = self.compact_manager.count_tokens(replacement)
@@ -1200,6 +1211,8 @@ class LLMManager:
         )
 
     def _execute_formatted_tool_call(self, call: dict) -> tuple[str, str]:
+        if not self.tools_enabled:
+            raise ValueError("Tools are disabled for this LLM workflow")
         func_name = call["function"]["name"]
         func_args = call["function"]["arguments"]
         if isinstance(func_args, str) and not func_args.strip():
@@ -1424,6 +1437,8 @@ class LLMManager:
             return
 
         if has_tool_use:
+            if not self.tools_enabled:
+                raise ValueError("Unexpected tool call in a dialog-only workflow")
             formatted_calls = []
             for idx in sorted(full_tool_calls.keys()):
                 tc = full_tool_calls[idx]
@@ -1564,6 +1579,8 @@ class LLMManager:
         )
 
         if tool_calls:
+            if not self.tools_enabled:
+                raise ValueError("Unexpected tool call in a dialog-only workflow")
             # Gemini 的 thought_signature 会被 OpenAI SDK Pydantic 模型丢弃，
             # 从原始 HTTP 响应体中捞出补齐
             _raw_extras = _raw_response_tool_call_extras(response)

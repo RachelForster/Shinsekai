@@ -17,12 +17,20 @@ from config.tts_provider_config import (
     tts_server_url_or_default,
     uses_shared_tts_server_config,
 )
-from application.model_providers import (
+from application.model_providers.catalog import (
     adapter_catalog as _adapter_catalog,
     claude_messages_endpoint_url,
     claude_models_endpoint_url,
+    configured_vision_available as _configured_vision_available,
     normalize_t2i_provider as _normalize_t2i_provider,
 )
+from config.vision_defaults import (
+    resolve_vision_api_key,
+    resolve_vision_base_url,
+    vision_llm_provider,
+    vision_provider_requires_api_key,
+)
+from config.llm_defaults import resolve_llm_base_url
 from .security import host_matches, validated_http_url
 from application.runtime.state import BridgeState, _jsonify
 
@@ -91,13 +99,21 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     tts_bundle_paths = installed_tts_bundle_paths(project_root)
     if isinstance(api_config, dict):
         provider = str(api_config.get("llm_provider") or "Deepseek").strip() or "Deepseek"
-        if not str(api_config.get("llm_base_url") or "").strip():
+        base_urls = api_config.get("llm_base_urls")
+        if not isinstance(base_urls, dict):
+            base_urls = {}
+            api_config["llm_base_urls"] = base_urls
+        active_base_url = str(base_urls.get(provider) or api_config.get("llm_base_url") or "").strip()
+        if not active_base_url:
             try:
                 from config.llm_defaults import LLM_BASE_URLS
 
-                api_config["llm_base_url"] = str(LLM_BASE_URLS.get(provider) or "")
+                active_base_url = str(LLM_BASE_URLS.get(provider) or "")
             except Exception:
                 pass
+        api_config["llm_base_url"] = active_base_url
+        if active_base_url:
+            base_urls[provider] = active_base_url
         llm_model = api_config.get("llm_model")
         if not isinstance(llm_model, dict):
             llm_model = {}
@@ -116,6 +132,9 @@ def _app_config_response(state: BridgeState) -> dict[str, Any]:
     if tts_bundle_paths:
         payload["tts_bundle_installed_paths"] = tts_bundle_paths
     payload["adapter_catalog"] = _adapter_catalog()
+    payload["vision_available"] = _configured_vision_available(
+        state.config_manager.config.api_config
+    )
     return payload
 
 
@@ -127,9 +146,9 @@ def _provider_map_value(mapping: dict[str, str], provider: str) -> str:
     return str((mapping or {}).get(provider, "") or "").strip()
 
 
-def _validate_api_config_for_save(config: Any) -> None:
+def _validate_api_config_for_save(config: Any, *, speech_disabled: bool = False) -> None:
     provider = str(config.llm_provider or "").strip()
-    base_url = str(config.llm_base_url or "").strip()
+    base_url = resolve_llm_base_url(config, provider)
     api_key = _provider_map_value(config.llm_api_key, provider)
     model = _provider_map_value(config.llm_model, provider)
     if not provider or not base_url or not api_key or not model:
@@ -137,8 +156,26 @@ def _validate_api_config_for_save(config: Any) -> None:
     if _contains_quotes(base_url):
         raise ValueError("LLM API 基础网址不能包含引号。")
 
+    vision_provider = str(getattr(config, "vision_provider", "auto") or "auto").strip().lower()
+    if vision_provider not in {"auto", "moondream"} and vision_llm_provider(
+        vision_provider
+    ):
+        vision_api_key = resolve_vision_api_key(config, vision_provider)
+        vision_base_url = resolve_vision_base_url(config, vision_provider)
+        vision_model = _provider_map_value(getattr(config, "vision_model", {}), vision_provider)
+        if (
+            (vision_provider_requires_api_key(vision_provider) and not vision_api_key)
+            or not vision_base_url
+            or not vision_model
+        ):
+            raise ValueError(
+                "视觉适配器的基础地址和模型 ID 都需要填写；远程服务还需 API Key。"
+            )
+        if _contains_quotes(vision_base_url) or not is_http_url(vision_base_url):
+            raise ValueError("视觉服务基础地址必须是有效且不含引号的 http(s) URL。")
+
     tts_provider = normalize_tts_provider(config.tts_provider)
-    if not uses_shared_tts_server_config(tts_provider):
+    if speech_disabled or not uses_shared_tts_server_config(tts_provider):
         return
 
     tts_url = str(config.gpt_sovits_url or "").strip()
@@ -156,9 +193,16 @@ def _validate_api_config_for_save(config: Any) -> None:
 
 
 def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
+    from application.chat.voice_policy import character_speech_disabled
     from config.schema import ApiConfig
 
     config = ApiConfig.model_validate(payload).model_copy(deep=True)
+    active_base_url = str(config.llm_base_url or "").strip() or resolve_llm_base_url(
+        config, config.llm_provider
+    )
+    config.llm_base_url = active_base_url
+    config.llm_base_urls = dict(config.llm_base_urls or {})
+    config.llm_base_urls[config.llm_provider] = active_base_url
     config.tts_provider = normalize_tts_provider(config.tts_provider)
     config.t2i_provider = _normalize_t2i_provider(config.t2i_provider)
     config.gpt_sovits_url = tts_server_url_or_default(config.tts_provider, config.gpt_sovits_url)
@@ -170,7 +214,7 @@ def _save_api_config(state: BridgeState, payload: dict[str, Any]) -> Any:
             config.gpt_sovits_api_path,
             _state_project_root(state),
         )
-    _validate_api_config_for_save(config)
+    _validate_api_config_for_save(config, speech_disabled=character_speech_disabled(state.config_manager))
     state.config_manager.config.api_config = config
     state.config_manager.save_api_config()
     return config

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from application.chat.build_effect_context import build_effect_context
+from application.chat.conversation_library import remember_conversation, saved_conversation_launch
 from application.chat.initial_sprite import initial_sprite_path_for_characters
 from application.chat.launch_history import (
     persist_confirmed_history_path,
@@ -27,7 +28,6 @@ from application.chat.templates import (
     _latest_history_json,
     _list_templates,
     _load_template_session_payload,
-    _save_template_session_payload,
     _repair_template_parts_from_session_if_needed,
     _resolve_template_character_names,
     _resume_template_parts,
@@ -54,15 +54,13 @@ def _usable_media_selection_mode(requested: object) -> str:
         if str(requested or "").strip().lower() == "semantic"
         else "indexed"
     )
-    if mode != "semantic":
-        return mode
-    try:
-        from frontend_bridge_core.memory import _get_mem0_status
+    if mode == "semantic":
+        # Wait through the existing initializer instead of changing the
+        # selected strategy (and persisted template) on a cold start.
+        from application.memory.manage_memories import wait_for_memory_ready
 
-        status = _get_mem0_status(start_loading=False)
-    except Exception:
-        return "indexed"
-    return "semantic" if status.get("status") == "ready" else "indexed"
+        wait_for_memory_ready()
+    return mode
 
 
 def _generate_system_template_for_mode(
@@ -121,6 +119,23 @@ def start_chat_initialization(
     body: dict[str, Any],
 ) -> dict[str, Any]:
     mode = str(body.get("mode") or "").strip().lower()
+    if mode == "reconfigure":
+        from application.chat.reconfigure_conversation import (
+            prepare_conversation_edit,
+            restart_edited_conversation,
+        )
+
+        payload = body.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("payload must be an object")
+        conversation_id = str(body.get("conversationId") or "")
+        edited = prepare_conversation_edit(state, conversation_id, payload)
+        return start_chat(
+            state,
+            mode=mode,
+            before_launch=lambda: restart_edited_conversation(state, conversation_id, edited),
+            launch=lambda stream: launch_chat(state, edited, init_stream_info=stream),
+        )
     if mode == "launch":
         payload = body.get("payload")
         if not isinstance(payload, dict):
@@ -213,30 +228,6 @@ def launch_chat(
         user_scenario,
         system_template,
     )
-    saved_session = _load_template_session_payload(state) or {}
-    launch_source = {**saved_session, **body}
-    requested_mode = (
-        "semantic"
-        if str(requested_media_mode or "").strip().lower() == "semantic"
-        else "indexed"
-    )
-    if media_selection_mode != requested_mode:
-        system_template = _generate_system_template_for_mode(
-            state,
-            characters=characters,
-            background=str(body.get("backgroundName") or ""),
-            source=launch_source,
-            media_selection_mode=media_selection_mode,
-        )
-        if saved_session:
-            _save_template_session_payload(
-                state,
-                {
-                    **launch_source,
-                    "mediaSelectionMode": media_selection_mode,
-                    "system": system_template,
-                },
-            )
     if start_fresh_history:
         clear_story_session(state)
     user_display_name = _sanitize_user_display_name(body.get("userDisplayName"))
@@ -273,6 +264,7 @@ def launch_chat(
         effect_context=effect_context,
         history_file=history_path.as_posix(),
         init_sprite_path=init_sprite_path,
+        show_initial_sprite=body.get("showInitialSprite", True) is not False,
         room_id=room_id,
         selected_bg=str(body.get("backgroundName") or ""),
         system_template=system_template,
@@ -288,6 +280,7 @@ def launch_chat(
         ),
         workflow_path=str(body.get("workflowPath") or ""),
         media_selection_mode=media_selection_mode,
+        **({"use_current_template_for_history": True} if body.get("useCurrentTemplateForHistory") else {}),
     )
     dependency_error = runtime_dependency_error_from_text(message)
     if dependency_error:
@@ -344,6 +337,18 @@ def launch_chat(
             "Chat launched but the selected history path could not be persisted",
             extra={"history_path": history_path.as_posix()},
         )
+    try:
+        remember_conversation(state, history_path, {
+            **body,
+            "characters": characters,
+            "scenario": user_scenario,
+            "system": system_template,
+            "templateName": row.get("name", ""),
+            "mediaSelectionMode": media_selection_mode,
+            "initSpritePath": init_sprite_path,
+        })
+    except OSError:
+        logger.exception("Chat launched but its conversation settings could not be saved")
     return _chat_snapshot(
         state,
         "idle",
@@ -383,6 +388,9 @@ def resume_last_chat(
     )
     if history_path is None:
         raise FileNotFoundError("未找到聊天记录（*.json）。请先在主窗口进行过对话。")
+    saved_launch = saved_conversation_launch(state, history_path)
+    if saved_launch is not None:
+        return launch_chat(state, saved_launch, init_stream_info=init_stream_info)
     template_parts = _resume_template_parts(state)
     session_scenario = str(session.get("scenario") or "")
     session_system = str(session.get("system") or "")
@@ -415,27 +423,6 @@ def resume_last_chat(
         or ""
     )
     selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
-    requested_mode = (
-        "semantic"
-        if str(requested_media_mode or "").strip().lower() == "semantic"
-        else "indexed"
-    )
-    if media_selection_mode != requested_mode:
-        system_template = _generate_system_template_for_mode(
-            state,
-            characters=selected_characters,
-            background=selected_bg,
-            source=session,
-            media_selection_mode=media_selection_mode,
-        )
-        session = _save_template_session_payload(
-            state,
-            {
-                **session,
-                "mediaSelectionMode": media_selection_mode,
-                "system": system_template,
-            },
-        )
     user_display_name = _sanitize_user_display_name(session.get("userDisplayName"))
     session_base = {
         "backgroundName": selected_bg,
@@ -477,6 +464,7 @@ def resume_last_chat(
         character_names=selected_characters,
         history_file=history_path.as_posix(),
         init_sprite_path=init_sprite_path,
+        show_initial_sprite=session.get("showInitialSprite", True) is not False,
         room_id=room_id,
         selected_bg=selected_bg,
         system_template=system_template,

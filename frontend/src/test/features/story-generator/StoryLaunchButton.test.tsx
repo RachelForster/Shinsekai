@@ -5,20 +5,31 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { StoryLaunchButton } from "../../../features/story-generator/components/StoryLaunchButton";
 import { I18nProvider, type FrontendLanguage } from "../../../shared/i18n";
 
-const { launchChat, getChatRuntimeStatus, getChatSnapshot, startStorySession, showChatSurface, prepareStoryLaunch } =
-  vi.hoisted(() => ({
-    prepareStoryLaunch: vi.fn(),
-    launchChat: vi.fn(),
-    getChatRuntimeStatus: vi.fn(),
-    getChatSnapshot: vi.fn(),
-    startStorySession: vi.fn(),
-    showChatSurface: vi.fn(),
-  }));
-vi.mock("../../../entities/chat/repository", () => ({
+const {
   launchChat,
   getChatRuntimeStatus,
   getChatSnapshot,
+  startStorySession,
+  showChatSurface,
+  prepareStoryLaunch,
+  prepareConversation,
+} = vi.hoisted(() => ({
+  prepareStoryLaunch: vi.fn(),
+  prepareConversation: vi.fn(),
+  launchChat: vi.fn(),
+  getChatRuntimeStatus: vi.fn(),
+  getChatSnapshot: vi.fn(),
+  startStorySession: vi.fn(),
+  showChatSurface: vi.fn(),
+}));
+vi.mock("../../../entities/chat/repository", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../entities/chat/repository")>()),
+  launchChat,
+  prepareConversation,
+  getChatRuntimeStatus,
+  getChatSnapshot,
   chatQueryKey: ["chat"],
+  conversationsQueryKey: ["chat", "conversations"],
 }));
 vi.mock("../../../entities/story/repository", () => ({
   startStorySession,
@@ -28,12 +39,23 @@ vi.mock("../../../entities/story/repository", () => ({
 vi.mock("../../../shared/desktop/chatWindow", () => ({ showChatSurface }));
 vi.mock("../../../features/chat-startup/ChatInitializationDialog", () => ({ ChatInitializationDialog: () => null }));
 
-function renderButton(historyPath = "", language: FrontendLanguage = "zh_CN") {
+function renderButton(
+  historyPath = "",
+  language: FrontendLanguage = "zh_CN",
+  conversationId?: string,
+  conversationTitle?: string,
+) {
   return render(
     <QueryClientProvider client={new QueryClient()}>
       <I18nProvider language={language}>
         <MemoryRouter>
-          <StoryLaunchButton storyPath="story/draft.json" historyPath={historyPath} disabled={false} />
+          <StoryLaunchButton
+            storyPath="story/draft.json"
+            historyPath={historyPath}
+            disabled={false}
+            conversationId={conversationId}
+            conversationTitle={conversationTitle}
+          />
         </MemoryRouter>
       </I18nProvider>
     </QueryClientProvider>,
@@ -41,6 +63,51 @@ function renderButton(historyPath = "", language: FrontendLanguage = "zh_CN") {
 }
 
 describe("story launch", () => {
+  it("passes the new chat title without changing story preparation", async () => {
+    renderButton("", "en", undefined, "Evening adventure");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    await waitFor(() =>
+      expect(launchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationTitle: "Evening adventure", historyPath: "" }),
+        expect.anything(),
+      ),
+    );
+    expect(prepareStoryLaunch).toHaveBeenCalledWith("story/draft.json", "");
+  });
+
+  it("generates a timestamp title when the new-chat title is cleared", async () => {
+    renderButton("", "en", undefined, "  ");
+    fireEvent.click(screen.getByRole("button", { name: "Play story" }));
+    await waitFor(() =>
+      expect(launchChat).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationTitle: expect.stringMatching(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/) }),
+        expect.anything(),
+      ),
+    );
+  });
+  it("validates the selected story save and resumes its own prompt settings", async () => {
+    prepareConversation.mockResolvedValue({
+      historyPath: "saved",
+      system: "Saved rules",
+      scenario: "The culprit is Ling",
+      resetHistory: false,
+    });
+    renderButton("saved", "zh_CN", "saved-id");
+    fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
+    await waitFor(() => expect(showChatSurface).toHaveBeenCalled());
+    expect(prepareStoryLaunch).toHaveBeenCalledWith("story/draft.json", "saved");
+    expect(prepareConversation).toHaveBeenCalledWith("saved-id");
+    expect(launchChat).toHaveBeenCalledWith(
+      expect.objectContaining({
+        historyPath: "saved",
+        system: "Saved rules",
+        scenario: "Current node guidance",
+        resetHistory: false,
+      }),
+      expect.anything(),
+    );
+    expect(startStorySession).toHaveBeenCalledWith("story/draft.json");
+  });
   it("localizes the default launch action and active-chat error", async () => {
     getChatRuntimeStatus.mockResolvedValue({ state: "running" });
     renderButton("", "en");
@@ -59,6 +126,7 @@ describe("story launch", () => {
         characters: ["小玲"],
         backgroundName: "旧校舍",
         system: "人物设定",
+        scenario: "Current node guidance",
         historyPath,
         resetHistory: !historyPath,
       }),
@@ -123,6 +191,16 @@ describe("story launch", () => {
     expect(startStorySession).toHaveBeenCalledTimes(2);
     expect(localStorage.getItem("story.pending-attachment.v1")).toBeNull();
   });
+  it("disables story launch while the backend is closing", async () => {
+    getChatRuntimeStatus.mockResolvedValue({ state: "closing" });
+    renderButton();
+    const button = screen.getByRole("button", { name: "运行剧本" });
+    await waitFor(() => expect(button).toBeDisabled());
+    fireEvent.click(button);
+    expect(prepareStoryLaunch).not.toHaveBeenCalled();
+    expect(launchChat).not.toHaveBeenCalled();
+    expect(startStorySession).not.toHaveBeenCalled();
+  });
   it.each(["changed-session", "changed-save", "closing"])("rejects a stale retry after %s", async (change) => {
     startStorySession.mockRejectedValueOnce(new Error("network unavailable"));
     const first = renderButton();
@@ -132,6 +210,11 @@ describe("story launch", () => {
     getChatRuntimeStatus.mockResolvedValue({ state: change === "closing" ? "closing" : "running" });
     if (change === "changed-session") getChatSnapshot.mockResolvedValue({ sessionId: "session-2" });
     renderButton(change === "changed-save" ? "different-save" : "");
+    if (change === "closing") {
+      await waitFor(() => expect(screen.getByRole("button", { name: "运行剧本" })).toBeDisabled());
+      expect(startStorySession).toHaveBeenCalledTimes(1);
+      return;
+    }
     fireEvent.click(screen.getByRole("button", { name: "运行剧本" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("请先结束当前聊天");
     expect(startStorySession).toHaveBeenCalledTimes(1);

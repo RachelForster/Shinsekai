@@ -119,10 +119,11 @@ jobs:
         working-directory: frontend
         run: pnpm build
 
-      - name: Rust desktop runtime and project-root tests
+      - name: Rust desktop runtime, project-root, and background tests
         run: |
           cargo test --manifest-path frontend/src-tauri/Cargo.toml runtime
           cargo test --manifest-path frontend/src-tauri/Cargo.toml project_root
+          cargo test --manifest-path frontend/src-tauri/Cargo.toml background
 
       - name: Verify embedded Python runtime matrix
         working-directory: frontend

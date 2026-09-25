@@ -15,7 +15,11 @@ import logging
 import math
 import threading
 import time
-from typing import Any, Callable, Iterable
+from typing import TYPE_CHECKING, Any, Callable, Iterable
+
+if TYPE_CHECKING:
+    from core.messaging.continuous_asr_policy import ContinuousASRPolicy
+from uuid import uuid4
 
 
 logger = logging.getLogger(__name__)
@@ -66,6 +70,8 @@ class _Admission:
     on_admit: tuple[AdmissionCallback, ...] = field(default=(), compare=False, repr=False)
     cancellation_revision: int = field(default=0, compare=False, repr=False)
     utterance_id: str | None = None
+    defer_until_idle: bool = False
+    parts: tuple[_Admission, ...] = field(default=(), compare=False, repr=False)
 
 
 class ChatTurnService:
@@ -89,6 +95,7 @@ class ChatTurnService:
         stop_playback: Callable[[], None] | None = None,
         hide_status: Callable[[], None] | None = None,
         has_pending_work: Callable[[], bool] | None = None,
+        continuous_policy: ContinuousASRPolicy[_Admission] | None = None,
     ) -> None:
         self._sink = sink or (lambda _text: None)
         self._revision_sink = revision_sink
@@ -110,23 +117,22 @@ class ChatTurnService:
             threading.Event(),
             threading.Event(),
         )
-        self._deferred: deque[_Admission] = deque()
-        self._priority_deferred: deque[_Admission] = deque()
-        self._admission_reserved = False
-        self._admission_revision: int | None = None
-        # A direct sink write is visible to the worker before begin_turn() can
-        # mark it active.  Keep deferred ASR finals behind that short window
-        # without changing normal manual-submit routing.
+        self.continuous_policy = continuous_policy
+        # Delivery and turn lifecycle belong to the host, including the gap
+        # between enqueueing an input and the worker starting its turn.
         self._delivery_pending: deque[_Admission] = deque()
+        self._admission_reserved = False
+        self._batch_interrupt_reserved = False
+        self._admission_revision: int | None = None
+        self._reserved_admission: _Admission | None = None
         self._completing = False
+        self._input_activity: dict[str, bool] = {}
         # Every path that invokes an admission callback or the sink takes this
         # gate.  Reset and close take it first, so they cannot return while a
         # previously accepted admission can still reach a callback or sink.
         self._delivery_lock = threading.RLock()
         self._closed_event = threading.Event()
         self._cancellation_revision = 0
-        self._retired_utterances: set[str] = set()
-        self._utterance_batch_prefixes: dict[str, _Admission] = {}
 
         self._batch: list[_Admission] = []
         self._batch_deadline: float | None = None
@@ -157,151 +163,102 @@ class ChatTurnService:
         if not value and not attachment_payloads:
             return self.batch_state()
 
+        if (defer_until_idle or utterance_id or replace_utterance_id) and self.continuous_policy is None:
+            raise ValueError("Continuous ASR input requires an enabled session policy")
         admission_callbacks = (on_admit,) if on_admit is not None else ()
-        if replace_utterance_id:
-            # Same gate as delivery: even a popped deferred admission cannot
-            # escape retirement and appear after the manual replacement.
-            with self._delivery_lock:
-                with self._lock:
-                    self._retired_utterances.add(replace_utterance_id)
-                    # A final may have absorbed earlier typed batch fragments.
-                    # Transfer those fragments to the manual replacement rather
-                    # than discarding unrelated accepted input with the voice.
-                    prefix = self._utterance_batch_prefixes.pop(replace_utterance_id, None)
-                    if prefix is not None:
-                        value = self.options.batch_separator.join(
-                            part for part in (prefix.text, value) if part
-                        )
-                        attachment_payloads = prefix.attachments + attachment_payloads
-                        admission_callbacks = prefix.on_admit + admission_callbacks
-                    self._deferred = deque(
-                        item for item in self._deferred
-                        if item.utterance_id != replace_utterance_id
-                    )
-        if defer_until_idle:
-            flushed_batch = False
+        # Keep retirement and replacement in the same delivery gate. A batch
+        # may already have left the deferred queue, or reached the worker queue.
+        with self._delivery_lock if replace_utterance_id else nullcontext():
             with self._lock:
                 if self._closed or self._closed_event.is_set():
                     return self._batch_state_locked()
-                if self._batch:
-                    if utterance_id:
-                        self._utterance_batch_prefixes[utterance_id] = self._new_admission_locked(
-                            self.options.batch_separator.join(item.text for item in self._batch if item.text),
-                            [attachment for item in self._batch for attachment in item.attachments],
-                            tuple(callback for item in self._batch for callback in item.on_admit),
-                        )
-                    texts = [item.text for item in self._batch if item.text]
-                    if value:
-                        texts.append(value)
-                    value = self.options.batch_separator.join(texts)
-                    attachment_payloads = [
-                        attachment
-                        for item in self._batch
-                        for attachment in item.attachments
-                    ] + attachment_payloads
-                    admission_callbacks = tuple(
-                        callback
-                        for item in self._batch
-                        for callback in item.on_admit
-                    ) + admission_callbacks
-                    self._batch.clear()
-                    self._typing = False
-                    self._cancel_batch_timer_locked()
-                    flushed_batch = True
+                remainder = (self._retire_utterance_locked(replace_utterance_id)
+                             if self.continuous_policy is not None else ())
                 admission = self._new_admission_locked(
-                    value,
-                    attachment_payloads,
-                    admission_callbacks,
-                    utterance_id=utterance_id,
+                    value, attachment_payloads, admission_callbacks,
+                    utterance_id=utterance_id, defer_until_idle=defer_until_idle,
                 )
-                state = self._batch_state_locked()
-            self._defer_or_deliver(admission)
-            if flushed_batch:
-                self._publish_state(state)
-            return state
-
-        should_interrupt = (
-            self.options.interrupt_enabled
-            if interrupt_current is None
-            else bool(interrupt_current)
-        )
-        interrupt_claimed = False
-        immediate_admission: _Admission | None = None
-        state: BatchState | None = None
-        with self._lock:
-            if self._closed or self._closed_event.is_set():
-                return self._batch_state_locked()
-            if should_interrupt:
-                if self._completing or (
-                    self._admission_reserved and not self._active.is_set()
-                ):
-                    self._priority_deferred.append(
-                        self._new_admission_locked(
-                            value,
-                            attachment_payloads,
-                            admission_callbacks,
-                        )
-                    )
-                    return self._batch_state_locked()
-                if self._active.is_set():
-                    turn = self._current_turn
-                    turn.cancelled.set()
-                    turn.pipeline_complete.set()
-                    self._active.clear()
-                    self._reserve_admission_locked()
-                    interrupt_claimed = True
-            admission = self._new_admission_locked(
-                value,
-                attachment_payloads,
-                admission_callbacks,
+                if remainder:
+                    admission = self._combine_admissions_locked((*remainder, admission))
+            return self._submit_admission(
+                admission, interrupt_current=interrupt_current,
+                input_source="asr" if defer_until_idle else "manual",
             )
-            if not self.options.batch_enabled:
-                immediate_admission = admission
-            else:
-                self._batch.append(admission)
-                self._typing = False
-                self._schedule_flush_locked()
-                state = self._batch_state_locked()
-        if interrupt_claimed:
-            self._run_interrupt_callbacks()
 
-        if immediate_admission is not None:
-            try:
-                delivered = self._deliver(immediate_admission)
-            except Exception:
-                if interrupt_claimed:
-                    self._release_admission_reservation(immediate_admission)
-                raise
-            if interrupt_claimed and not delivered:
-                self._release_admission_reservation(immediate_admission)
-            return self.batch_state()
-
-        assert state is not None
+    def _submit_admission(
+        self, admission: _Admission, *, interrupt_current: bool | None, input_source: str,
+    ) -> BatchState:
+        should_interrupt = not admission.defer_until_idle and (
+            self.options.interrupt_enabled if interrupt_current is None else bool(interrupt_current)
+        )
+        # Ordinary submissions retain upstream immediate admission and pending
+        # presentation interruption, even while a previous completion is running.
+        with self._delivery_lock:
+            with self._lock:
+                if not self._admission_is_current_locked(admission):
+                    return self._batch_state_locked()
+            interrupt_claimed = False
+            if should_interrupt and self._pipeline_has_work():
+                if self.continuous_policy is None:
+                    self.interrupt()
+                else:
+                    with self._lock:
+                        self._current_turn.cancelled.set()
+                        self._current_turn.pipeline_complete.set()
+                        self._active.clear()
+                        self._reserve_admission_locked(admission)
+                        self._batch_interrupt_reserved = self.options.batch_enabled
+                    interrupt_claimed = True
+            with self._lock:
+                if not self._admission_is_current_locked(admission):
+                    return self._batch_state_locked()
+                policy = self.continuous_policy
+                if policy is not None:
+                    self._input_activity.pop(input_source, None)
+                if self.options.batch_enabled:
+                    self._batch.append(admission)
+                    self._typing = bool(policy and any(self._input_activity.values()))
+                    if not self._typing:
+                        self._schedule_flush_locked()
+                    state = self._batch_state_locked()
+                else:
+                    state = None
+            if interrupt_claimed:
+                self._run_interrupt_callbacks()
+            if state is None:
+                try:
+                    self._route_admission(admission)
+                except Exception:
+                    if policy is not None:
+                        self._release_admission_reservation(admission)
+                    raise
+                return self.batch_state()
         self._publish_state(state)
         return state
 
-    def input_changed(self, *, has_text: bool, composing: bool = False) -> BatchState:
-        """Update input activity without exposing UI details to the service."""
+    def input_changed(
+        self, *, has_text: bool, composing: bool = False, source: str = "manual",
+    ) -> BatchState:
         if not self.options.batch_enabled:
             return self.batch_state()
         with self._lock:
-            self._typing = bool(has_text or composing) and bool(self._batch)
-            if has_text or composing:
+            active = bool(has_text or composing)
+            if self.continuous_policy is not None:
+                self._input_activity[source] = active
+                active = any(self._input_activity.values())
+            self._typing = active and bool(self._batch)
+            if active:
                 self._cancel_batch_timer_locked()
             elif self._batch:
                 self._schedule_flush_locked()
             state = self._batch_state_locked()
         self._publish_state(state)
         return state
-
     def flush(self) -> BatchState:
         """Deliver all buffered messages as one user turn."""
         return self._flush(expected_revision=None)
 
     def _flush(self, *, expected_revision: int | None) -> BatchState:
-        combined = ""
-        combined_attachments: list[dict[str, Any]] = []
-        combined_callbacks: tuple[AdmissionCallback, ...] = ()
         admission: _Admission | None = None
         with self._lock:
             if self._closed or self._closed_event.is_set() or (
@@ -310,31 +267,16 @@ class ChatTurnService:
                 return self._batch_state_locked()
             self._cancel_batch_timer_locked()
             self._typing = False
+            if self.continuous_policy is not None:
+                self._input_activity.clear()
             if self._batch:
-                combined = self.options.batch_separator.join(
-                    item.text for item in self._batch if item.text
-                )
-                combined_attachments = [
-                    attachment
-                    for item in self._batch
-                    for attachment in item.attachments
-                ]
-                combined_callbacks = tuple(
-                    callback
-                    for item in self._batch
-                    for callback in item.on_admit
-                )
+                admission = self._combine_admissions_locked(self._batch)
                 self._batch.clear()
-            if combined or combined_attachments:
-                admission = self._new_admission_locked(
-                    combined,
-                    combined_attachments,
-                    combined_callbacks,
-                )
-        # Do not call callbacks or the sink under ``_lock``.  Reset and close
-        # acquire the delivery gate before this method can expose the admission.
+                if self.continuous_policy is not None and self._batch_interrupt_reserved:
+                    self._clear_admission_reservation_locked()
+        # Reset and close can revoke this admission before delivery begins.
         if admission is not None:
-            self._deliver(admission)
+            self._route_admission(admission)
         with self._lock:
             state = self._batch_state_locked()
         self._publish_state(state)
@@ -348,15 +290,14 @@ class ChatTurnService:
                 # sections.  Tagging it with this generation prevents that
                 # stale object from being delivered after the reset returns.
                 self._cancellation_revision += 1
-                self._retired_utterances.clear()
-                self._utterance_batch_prefixes.clear()
                 self._cancel_batch_timer_locked()
                 self._batch.clear()
-                self._deferred.clear()
-                self._priority_deferred.clear()
-                self._clear_admission_reservation_locked()
-                self._clear_delivery_pending_locked()
-                self._completing = False
+                if self.continuous_policy is not None:
+                    self.continuous_policy.invalidate()
+                    self._delivery_pending.clear()
+                    self._input_activity.clear()
+                    self._clear_admission_reservation_locked()
+                    self._completing = False
                 self._typing = False
                 state = self._batch_state_locked()
             # Keep cleanup in the same delivery section as callbacks and sink
@@ -388,9 +329,6 @@ class ChatTurnService:
         settings change cannot strand user input.  Updating the timeout while a
         batch is pending reschedules it from the time of the change.
         """
-        combined = ""
-        combined_attachments: list[dict[str, Any]] = []
-        combined_callbacks: tuple[AdmissionCallback, ...] = ()
         admission: _Admission | None = None
         with self._lock:
             if self._closed or self._closed_event.is_set():
@@ -400,31 +338,19 @@ class ChatTurnService:
             if previous.batch_enabled and not options.batch_enabled:
                 self._cancel_batch_timer_locked()
                 self._typing = False
+                if self.continuous_policy is not None:
+                    self._input_activity.clear()
                 if self._batch:
-                    combined = previous.batch_separator.join(
-                        item.text for item in self._batch if item.text
-                    )
-                    combined_attachments = [
-                        attachment
-                        for item in self._batch
-                        for attachment in item.attachments
-                    ]
-                    combined_callbacks = tuple(
-                        callback
-                        for item in self._batch
-                        for callback in item.on_admit
+                    admission = self._combine_admissions_locked(
+                        self._batch, separator=previous.batch_separator,
                     )
                     self._batch.clear()
+                    if self.continuous_policy is not None and self._batch_interrupt_reserved:
+                        self._clear_admission_reservation_locked()
             elif options.batch_enabled and self._batch and not self._typing:
                 self._schedule_flush_locked()
-            if combined or combined_attachments:
-                admission = self._new_admission_locked(
-                    combined,
-                    combined_attachments,
-                    combined_callbacks,
-                )
         if admission is not None:
-            self._deliver(admission)
+            self._route_admission(admission)
         with self._lock:
             state = self._batch_state_locked()
         self._publish_state(state)
@@ -435,42 +361,33 @@ class ChatTurnService:
             return self._batch_state_locked()
 
     def begin_turn(self, *, expected_revision: int | None = None, utterance_id: str | None = None) -> TurnHandle:
-        """Create and activate a cancellation identity for a worker turn."""
-        # Closed workers must return immediately even while close is waiting
-        # for a buffered-delivery cleanup callback.
         gate = nullcontext() if self._closed_event.is_set() else self._delivery_lock
         with gate, self._lock:
             self._turn_counter += 1
-            handle = TurnHandle(
-                self._turn_counter,
-                threading.Event(),
-                threading.Event(),
-                threading.Event(),
-            )
+            handle = TurnHandle(self._turn_counter, threading.Event(), threading.Event(), threading.Event())
+            policy = self.continuous_policy
             if self._closed or self._closed_event.is_set() or (
                 expected_revision is not None and expected_revision != self._cancellation_revision
-            ) or utterance_id in self._retired_utterances:
-                # A worker can dequeue its last input concurrently with close.
-                # It must observe cancellation rather than revive service state.
+            ) or (policy is not None and policy.is_retired(utterance_id)):
                 handle.cancelled.set()
                 handle.pipeline_complete.set()
-                if utterance_id:
+                if policy is not None:
                     self._delivery_pending = deque(
                         item for item in self._delivery_pending if item.utterance_id != utterance_id
                     )
                 return handle
             self._current_turn = handle
-            if utterance_id:
-                self._utterance_batch_prefixes.pop(utterance_id, None)
-            self._clear_admission_reservation_locked()
-            if self._delivery_pending:
-                self._delivery_pending.popleft()
-            # A newly started turn supersedes any old finish callback that was
-            # still publishing reply.finished outside the state lock.
-            self._completing = False
+            if policy is not None:
+                admitted_id = utterance_id or (
+                    self._delivery_pending[0].utterance_id if self._delivery_pending else None
+                )
+                policy.begin_turn(admitted_id)
+                self._clear_admission_reservation_locked()
+                if self._delivery_pending:
+                    self._delivery_pending.popleft()
+                self._completing = False
             self._active.set()
             return handle
-
     def current_turn(self) -> TurnHandle:
         with self._lock:
             return self._current_turn
@@ -479,7 +396,7 @@ class ChatTurnService:
     def turn_publication(self, turn: TurnHandle):
         """Serialize a short UI-history write with history replacement."""
         with self._delivery_lock:
-            yield not turn.is_cancelled()
+            yield not self._closed_event.is_set() and not turn.is_cancelled()
 
     def mark_generation_complete(self, turn: TurnHandle) -> None:
         """Record that the LLM stage is no longer producing downstream work."""
@@ -488,6 +405,23 @@ class ChatTurnService:
     def mark_idle(self, turn: TurnHandle | None = None) -> bool:
         """Mark the pipeline idle unless a newer turn has already started."""
         return self.finish_turn(turn)
+
+    def is_active(self) -> bool:
+        with self._lock:
+            if self.continuous_policy is not None and self._is_waiting_locked():
+                return True
+        return self._pipeline_has_work()
+
+    def _pipeline_has_work(self) -> bool:
+        if self._active.is_set():
+            return True
+        if self._has_pending_work is None:
+            return False
+        try:
+            return bool(self._has_pending_work())
+        except Exception:
+            logger.debug("chat turn pending-work probe failed", exc_info=True)
+            return False
 
     def finish_turn(
         self,
@@ -505,17 +439,24 @@ class ChatTurnService:
                 return False
             if candidate.pipeline_complete.is_set():
                 return False
-            was_active = self._active.is_set() or self._admission_reserved
+            continuous = self.continuous_policy is not None
+            was_active = self._active.is_set() or (continuous and self._admission_reserved)
             if not was_active:
                 return False
             candidate.pipeline_complete.set()
             self._active.clear()
             # Reserve the admission boundary while reply.finished is published.
             # ASR finals arriving in this window join the deferred FIFO.
-            self._reserve_admission_locked()
-            self._completing = True
+            if continuous:
+                self._reserve_admission_locked()
+                self._completing = True
             completion_turn_id = candidate.id
             completion_revision = self._cancellation_revision
+
+        if not continuous:
+            if before_next is not None:
+                before_next()
+            return True
 
         if before_next is not None:
             with self._lock:
@@ -547,33 +488,29 @@ class ChatTurnService:
                     self._clear_admission_reservation_locked()
                 else:
                     self._admission_revision = deferred.cancellation_revision
+                    self._reserved_admission = deferred
 
-        if deferred is not None:
+        while deferred is not None:
             try:
                 delivered = self._deliver(deferred)
             except Exception:
                 self._release_admission_reservation(deferred)
                 raise
-            if not delivered:
-                self._release_admission_reservation(deferred)
+            if delivered:
+                break
+            self._release_admission_reservation(deferred)
+            with self._lock:
+                if (
+                    completion_revision != self._cancellation_revision
+                    or self._closed or self._closed_event.is_set()
+                    or self._active.is_set() or self._admission_reserved
+                    or self._delivery_pending or self._completing
+                ):
+                    break
+                deferred = self._pop_current_deferred_locked()
+                if deferred is not None:
+                    self._reserve_admission_locked(deferred)
         return True
-
-    def is_active(self) -> bool:
-        with self._lock:
-            if (
-                self._active.is_set()
-                or self._admission_reserved
-                or self._delivery_pending
-                or self._completing
-            ):
-                return True
-        if self._has_pending_work is None:
-            return False
-        try:
-            return bool(self._has_pending_work())
-        except Exception:
-            logger.debug("chat turn pending-work probe failed", exc_info=True)
-            return False
 
     def interrupt(self, *, reserve_admission: bool = False) -> None:
         """Cancel the current turn and clear all downstream work."""
@@ -583,7 +520,7 @@ class ChatTurnService:
             interruption_revision = self._cancellation_revision
 
         self._run_interrupt_callbacks()
-        if reserve_admission:
+        if reserve_admission and self.continuous_policy is not None:
             with self._lock:
                 if (
                     not self._closed
@@ -623,16 +560,17 @@ class ChatTurnService:
                     return
                 self._closed = True
                 self._cancellation_revision += 1
-                self._utterance_batch_prefixes.clear()
-                self._retired_utterances.clear()
+                self._current_turn.cancelled.set()
+                self._current_turn.pipeline_complete.set()
                 self._active.clear()
                 self._cancel_batch_timer_locked()
                 self._batch.clear()
-                self._deferred.clear()
-                self._priority_deferred.clear()
-                self._clear_admission_reservation_locked()
-                self._clear_delivery_pending_locked()
-                self._completing = False
+                if self.continuous_policy is not None:
+                    self.continuous_policy.invalidate()
+                    self._delivery_pending.clear()
+                    self._input_activity.clear()
+                    self._clear_admission_reservation_locked()
+                    self._completing = False
                 self._typing = False
             if self._clear_buffered_delivery is not None:
                 try:
@@ -647,98 +585,60 @@ class ChatTurnService:
         on_admit: tuple[AdmissionCallback, ...],
         *,
         utterance_id: str | None = None,
+        defer_until_idle: bool = False,
     ) -> _Admission:
         """Capture the branch-generation that accepted this input."""
-        return _Admission(
-            text,
-            attachments,
-            on_admit,
+        admission = _Admission(
+            text, attachments, on_admit,
             cancellation_revision=self._cancellation_revision,
-            utterance_id=utterance_id,
+            utterance_id=utterance_id, defer_until_idle=defer_until_idle,
         )
+        if utterance_id and self.continuous_policy is not None:
+            self.continuous_policy.track(admission, identity=utterance_id, sources=(utterance_id,))
+        return admission
+
+    def _combine_admissions_locked(
+        self, admissions: Iterable[_Admission], *, separator: str | None = None,
+    ) -> _Admission:
+        parts = tuple(part for item in admissions for part in (item.parts or (item,)))
+        if len(parts) == 1:
+            combined = parts[0]
+        else:
+            separator = self.options.batch_separator if separator is None else separator
+            combined = _Admission(
+                separator.join(part.text for part in parts if part.text),
+                [attachment for part in parts for attachment in part.attachments],
+                tuple(callback for part in parts for callback in part.on_admit),
+                cancellation_revision=parts[0].cancellation_revision,
+                # A batch identity lets retirement revoke already-dequeued input
+                # without changing the worker/queue protocol.
+                utterance_id=f"batch:{uuid4().hex}" if any(part.utterance_id for part in parts) else None,
+                defer_until_idle=any(part.defer_until_idle for part in parts),
+                parts=parts,
+            )
+        if self.continuous_policy is not None:
+            self.continuous_policy.track(
+                combined, identity=combined.utterance_id,
+                sources=(part.utterance_id for part in parts if part.utterance_id),
+            )
+        return combined
+
+    def _route_admission(self, admission: _Admission) -> bool:
+        if admission.defer_until_idle and self.continuous_policy is not None:
+            return self._defer_or_deliver(admission)
+        return self._deliver(admission)
 
     def _admission_is_current_locked(self, admission: _Admission) -> bool:
         return (
             not self._closed
             and not self._closed_event.is_set()
             and admission.cancellation_revision == self._cancellation_revision
-            and admission.utterance_id not in self._retired_utterances
+            and (self.continuous_policy is None or not self.continuous_policy.is_retired(admission.utterance_id))
         )
 
     def _admission_is_current(self, admission: _Admission) -> bool:
         with self._lock:
             return self._admission_is_current_locked(admission)
-
-    def _completion_is_current_locked(self, turn_id: int, revision: int) -> bool:
-        return (
-            not self._closed
-            and not self._closed_event.is_set()
-            and self._completing
-            and self._current_turn.id == turn_id
-            and self._cancellation_revision == revision
-        )
-
-    def _reserve_admission_locked(self) -> None:
-        self._admission_reserved = True
-        self._admission_revision = self._cancellation_revision
-
-    def _clear_admission_reservation_locked(self) -> None:
-        self._admission_reserved = False
-        self._admission_revision = None
-
-    def _mark_delivery_pending_locked(self, admission: _Admission) -> None:
-        self._delivery_pending.append(admission)
-
-    def _discard_delivery_pending_locked(self, admission: _Admission) -> None:
-        for index, pending in enumerate(self._delivery_pending):
-            if pending is admission:
-                del self._delivery_pending[index]
-                return
-
-    def _discard_delivery_pending(self, admission: _Admission) -> None:
-        with self._lock:
-            self._discard_delivery_pending_locked(admission)
-
-    def _clear_delivery_pending_locked(self) -> None:
-        self._delivery_pending.clear()
-
-    def _release_admission_reservation(self, admission: _Admission) -> None:
-        """Release only the reservation attached to a failed old admission."""
-        with self._lock:
-            if (
-                self._admission_reserved
-                and self._admission_revision == admission.cancellation_revision
-            ):
-                self._clear_admission_reservation_locked()
-
-    def _pop_current_deferred_locked(self) -> _Admission | None:
-        for queue in (self._priority_deferred, self._deferred):
-            while queue:
-                admission = queue.popleft()
-                if self._admission_is_current_locked(admission):
-                    return admission
-        return None
-
-    def _defer_or_deliver(self, admission: _Admission) -> None:
-        with self._lock:
-            if not self._admission_is_current_locked(admission):
-                return
-            if (
-                self._active.is_set()
-                or self._admission_reserved
-                or self._delivery_pending
-                or self._completing
-            ):
-                self._deferred.append(admission)
-                return
-            self._reserve_admission_locked()
-        try:
-            delivered = self._deliver(admission)
-        except Exception:
-            self._release_admission_reservation(admission)
-            raise
-        if not delivered:
-            self._release_admission_reservation(admission)
 
     def _deliver(self, admission: _Admission) -> bool:
         with self._delivery_lock:
@@ -748,7 +648,8 @@ class ChatTurnService:
                 # Set this before callbacks or sink delivery.  A worker may
                 # begin immediately after the sink write, while a concurrent
                 # continuous final must continue to wait in either case.
-                self._mark_delivery_pending_locked(admission)
+                if self.continuous_policy is not None:
+                    self._delivery_pending.append(admission)
             # Publish the committed user-turn presentation before exposing the
             # queue item to a worker thread that may immediately start output.
             try:
@@ -773,6 +674,86 @@ class ChatTurnService:
                 self._discard_delivery_pending(admission)
                 raise
             return True
+
+    def _discard_delivery_pending(self, admission: _Admission) -> None:
+        with self._lock:
+            self._delivery_pending = deque(item for item in self._delivery_pending if item is not admission)
+
+    def _completion_is_current_locked(self, turn_id: int, revision: int) -> bool:
+        return (
+            not self._closed
+            and not self._closed_event.is_set()
+            and self._completing
+            and self._current_turn.id == turn_id
+            and self._cancellation_revision == revision
+        )
+
+    def _reserve_admission_locked(self, admission: _Admission | None = None) -> None:
+        self._admission_reserved = True
+        self._admission_revision = self._cancellation_revision
+        self._reserved_admission = admission
+
+    def _clear_admission_reservation_locked(self) -> None:
+        self._admission_reserved = False
+        self._batch_interrupt_reserved = False
+        self._admission_revision = None
+        self._reserved_admission = None
+
+    def _release_admission_reservation(self, admission: _Admission) -> None:
+        """Release only the reservation attached to a failed old admission."""
+        with self._lock:
+            if (
+                self._admission_reserved
+                and self._reserved_admission is admission
+                and self._admission_revision == admission.cancellation_revision
+            ):
+                self._clear_admission_reservation_locked()
+
+    def _is_waiting_locked(self) -> bool:
+        return bool(self._admission_reserved or self._delivery_pending or self._completing)
+
+    def _pop_current_deferred_locked(self) -> _Admission | None:
+        if self.continuous_policy is not None:
+            while (admission := self.continuous_policy.pop()) is not None:
+                if self._admission_is_current_locked(admission):
+                    return admission
+        return None
+
+    def _retire_utterance_locked(self, utterance_id: str | None) -> tuple[_Admission, ...]:
+        # Called after validating a nonempty replacement, under the delivery
+        # gate and state lock. Only the host changes its open batch and queue.
+        if not utterance_id or self.continuous_policy is None:
+            return ()
+        previous = self.continuous_policy.retire(utterance_id)
+        if previous is None:
+            return ()
+        self._batch = [item for item in self._batch if item is not previous]
+        self._delivery_pending = deque(item for item in self._delivery_pending if item is not previous)
+        if not self._active.is_set() and not self._completing and not self._delivery_pending:
+            self._clear_admission_reservation_locked()
+        return tuple(part for part in (previous.parts or (previous,)) if part.utterance_id != utterance_id)
+
+    def _defer_or_deliver(self, admission: _Admission) -> bool:
+        with self._lock:
+            if not self._admission_is_current_locked(admission):
+                return False
+            if (
+                self._active.is_set()
+                or self._admission_reserved
+                or self._delivery_pending
+                or self._completing
+            ):
+                self.continuous_policy.defer(admission)
+                return False
+            self._reserve_admission_locked(admission)
+        try:
+            delivered = self._deliver(admission)
+        except Exception:
+            self._release_admission_reservation(admission)
+            raise
+        if not delivered:
+            self._release_admission_reservation(admission)
+        return delivered
 
     def _publish_state(self, state: BatchState) -> None:
         callback = self._on_state_change

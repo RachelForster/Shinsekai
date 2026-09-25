@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { isTauriDesktop, setDesktopWindowAlwaysOnTop } from "../../shared/desktop/desktopApi";
@@ -41,6 +41,7 @@ import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
+import { useHoldToTalk } from "./hooks/useHoldToTalk";
 import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
 import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
@@ -68,6 +69,12 @@ interface ChatRouteInputState {
   inputAttachments: ChatAttachmentInput[];
   inputDraft: string;
 }
+
+const CurrentConversationEditorDialog = lazy(() =>
+  import("../chat-workspace/CurrentConversationEditorDialog").then((module) => ({
+    default: module.CurrentConversationEditorDialog,
+  })),
+);
 
 function chatRouteInputState(value: unknown): ChatRouteInputState {
   if (!value || typeof value !== "object") {
@@ -125,6 +132,7 @@ export function ChatStagePage() {
   const [confirmRevertUserIndex, setConfirmRevertUserIndex] = useState<number | null>(null);
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [conversationEditorOpen, setConversationEditorOpen] = useState(false);
   const [dialogControlsLocked, setDialogControlsLocked] = useState(false);
   const [runtimeConfig, setRuntimeConfig] = useState(readChatStageRuntimeConfig);
   const [attachmentUploadPending, setAttachmentUploadPending] = useState(false);
@@ -176,6 +184,7 @@ export function ChatStagePage() {
   const statsVisible = viewModel.stats.length > 0;
   const tokenUsageVisible = tokenUsageOpen && Boolean(viewModel.tokenUsageText);
   const modalOpen =
+    conversationEditorOpen ||
     overlayTarget != null ||
     themePickerOpen ||
     toolbarConfigOpen ||
@@ -242,9 +251,10 @@ export function ChatStagePage() {
     standaloneDesktopWindow,
     transparentBackground,
   });
-  useChatStageEvents({
+  const { replaceSession } = useChatStageEvents({
     dispatch,
     eventSeq: state.eventSeq,
+    sessionId: state.sessionId,
     loadFallbackMessage: t("chat.error.loadFallback"),
     queueAnimatedDialog,
   });
@@ -341,7 +351,7 @@ export function ChatStagePage() {
     // Only an ordinary input submission owns the current draft. Callers that
     // provide an unrelated override (for example, an option action) must not
     // retire an ASR utterance that is still being captured.
-    const asrUtteranceId = textOverride === undefined ? state.asrSourceUtteranceId : null;
+    const asrUtteranceId = state.asrContinuous && textOverride === undefined ? state.asrSourceUtteranceId : null;
     const payload: string | ChatSendPayload = asrUtteranceId
       ? { asrUtteranceId, attachments, text }
       : attachments.length
@@ -496,6 +506,10 @@ export function ChatStagePage() {
   const updateRuntimeEffectVolume = (effectVolume: number) => {
     setRuntimeConfig((current) => ({ ...current, effectVolume: Math.min(1, Math.max(0, effectVolume)) }));
   };
+  const updateRuntimeLongPressTalk = (longPressTalk: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, longPressTalk }));
+    if (longPressTalk) void sendCommand({ type: "pause-asr" });
+  };
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
@@ -592,6 +606,12 @@ export function ChatStagePage() {
     onToggleAuto: toggleAuto,
   });
 
+  useHoldToTalk({
+    enabled: runtimeConfig.longPressTalk,
+    disabled: modalOpen || viewModel.inputDisabled || Boolean(state.sessionClosedReason),
+    onCommand: sendCommand,
+  });
+
   const openHistoryDialog = () => {
     setHistoryDialogOpen(true);
     void refreshHistory();
@@ -645,6 +665,7 @@ export function ChatStagePage() {
   const dialogSurfaceVisible = viewModel.layers.dialog || viewModel.layers.options;
   const dialogToolbar = (
     <DialogStageControls
+      onEditConversation={() => setConversationEditorOpen(true)}
       asrEnabled={viewModel.asrEnabled}
       auto={runtimeConfig.auto}
       bgmVolume={runtimeConfig.bgmVolume}
@@ -653,6 +674,7 @@ export function ChatStagePage() {
       configOpen={toolbarConfigOpen}
       hidden={!dialogSurfaceVisible}
       hideCloseButton={standaloneDesktopWindow}
+      longPressTalk={runtimeConfig.longPressTalk}
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
       onBgmVolumeChange={updateRuntimeBgmVolume}
@@ -662,6 +684,7 @@ export function ChatStagePage() {
       onCommand={sendCommand}
       onConfigOpenChange={setToolbarConfigOpen}
       onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
+      onLongPressTalkChange={updateRuntimeLongPressTalk}
       onLockedChange={setDialogControlsLocked}
       onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}
@@ -713,6 +736,7 @@ export function ChatStagePage() {
           transparent={transparentBackground}
         />
         <ChatSoundPlayer
+          key={state.sessionId}
           bgmPath={viewModel.bgmPath}
           bgmVolume={runtimeConfig.bgmVolume}
           effectVolume={runtimeConfig.effectVolume}
@@ -905,6 +929,18 @@ export function ChatStagePage() {
         ref={fileAttachmentInputRef}
         type="file"
       />
+      {conversationEditorOpen && (
+        <Suspense fallback={null}>
+          <CurrentConversationEditorDialog
+            onClose={() => setConversationEditorOpen(false)}
+            onApplied={(snapshot) => {
+              replaceSession(snapshot);
+              showDialogImmediately();
+              setConversationEditorOpen(false);
+            }}
+          />
+        </Suspense>
+      )}
       <AlertDialog
         body={t("chat.clear.confirmBody")}
         cancelLabel={t("common.cancel")}

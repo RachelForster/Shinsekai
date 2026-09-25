@@ -61,6 +61,20 @@ def _state() -> BridgeState:
     return state
 
 
+def test_rejected_edit_does_not_cleanup_existing_runtime(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch)
+    runtime["running"] = True
+    launch = Mock()
+    task = start_chat(state, mode="reconfigure", launch=launch, before_launch=Mock(side_effect=ValueError("invalid edit")))
+    result = _wait_for_task(state, task["id"], {"failed"})
+    assert "invalid edit" in result["error"]
+    assert runtime["running"] is True
+    assert runtime["closeReasons"] == []
+    assert state.chat_stream.create_session_calls == []
+    launch.assert_not_called()
+
+
 def _wait_for_task(
     state: BridgeState, task_id: str, statuses: set[str], timeout: float = 3.0
 ) -> dict[str, Any]:
