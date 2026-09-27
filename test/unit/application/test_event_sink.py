@@ -184,6 +184,8 @@ class EventSinkSnapshotTests(unittest.TestCase):
                     "slot": 0,
                     "x": 18,
                     "y": -12,
+                    "avatarType": "static",
+                    "modelUrl": "",
                 }
             ],
         )

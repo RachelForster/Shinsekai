@@ -218,6 +218,8 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             "characterName": character_name,
             "scale": event.get("scale"),
             "slot": slot,
+            "avatarType": str(event.get("avatarType") or "static"),
+            "modelUrl": str(event.get("modelUrl") or ""),
         }
         for axis in ("x", "y"):
             if event.get(axis) is not None:

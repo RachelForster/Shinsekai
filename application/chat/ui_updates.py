@@ -544,6 +544,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                 Path(sprite.get("path", "")) if isinstance(sprite, dict) else Path(getattr(sprite, "path", ""))
             )
             scale = float(getattr(character_config, "sprite_scale", 1.0) or 1.0)
+            avatar_type = str(getattr(character_config, "avatar_type", "static") or "static")
         except Exception as e:
             print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
             return
@@ -555,6 +556,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                 "url": self._media_url(image_path),
                 "scale": scale,
                 "slot": display_slot,
+                "avatar_type": avatar_type,
+                "model_url": "",
             }
         )
 
@@ -576,6 +579,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                 "url": self._media_url(path),
                 "scale": float(scale or 1.0),
                 "slot": self._get_or_create_sprite_slot(resolved_character_name),
+                "avatar_type": "static",
+                "model_url": "",
             }
         )
         return True

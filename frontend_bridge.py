@@ -277,6 +277,7 @@ def _start_plugin_loader(state, logger) -> None:
                 PluginRuntimeBindings,
             )
             from ai.vision.fallback_registry import configure_registered_fallbacks
+            from core.media.avatar.registry import configure_registered_formats
             from ai.asr.asr_manager import ASRAdapterFactory
             from ai.llm.llm_manager import LLMAdapterFactory
             from ai.tools.tool_manager import ToolManager
@@ -297,6 +298,7 @@ def _start_plugin_loader(state, logger) -> None:
                     t2i_adapters=T2IAdapterFactory._adapters,
                     create_tool_manager=ToolManager,
                     configure_vision_fallbacks=configure_registered_fallbacks,
+                    configure_avatar_formats=configure_registered_formats,
                     register_mcp_tools=register_mcp_tools,
                 ),
             )

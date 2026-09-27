@@ -14,7 +14,9 @@ from typing import TYPE_CHECKING, Type
 from sdk.handlers import MessageHandler, UIOutputMessageHandler
 from sdk.adapters import (
     ASRAdapter,
+    AvatarFormatContribution,
     LLMAdapter,
+    ModelAssetAdapter,
     T2IAdapter,
     TTSAdapter,
     VisionAdapterFactory,
@@ -149,6 +151,7 @@ class PluginCapabilityRegistry:
         self._asr_adapters: dict[str, Type[ASRAdapter]] = {}
         self._t2i_adapters: dict[str, Type[T2IAdapter]] = {}
         self._vision_fallbacks: dict[str, VisionFallbackContribution] = {}
+        self._avatar_formats: dict[str, AvatarFormatContribution] = {}
         self._llm_tool_registrars: list[Callable[[ToolManager], None]] = []
         self._dialog_media_handlers: list[MessageHandler] = []
         self._ui_handlers: list[UIOutputMessageHandler] = []
@@ -198,6 +201,33 @@ class PluginCapabilityRegistry:
             provider=clean_provider,
             factory=factory,
             available=available,
+            priority=int(priority),
+        )
+
+    def register_avatar_format(
+        self,
+        format_id: str,
+        factory: Callable[[], ModelAssetAdapter],
+        *,
+        label: str = "",
+        priority: int = 100,
+    ) -> None:
+        """Register an optional model avatar format (e.g. a custom live2d/VRM-like loader).
+
+        ``format_id`` becomes a value of ``Character.avatar_type`` and the key under
+        ``Character.avatars``. ``factory`` is invoked lazily by the avatar registry.
+        """
+        clean_id = str(format_id or "").strip().lower()
+        if not clean_id:
+            raise ValueError("avatar format id cannot be empty")
+        if clean_id == "static":
+            raise ValueError("'static' is a reserved avatar type")
+        if not callable(factory):
+            raise TypeError("avatar format factory must be callable")
+        self._avatar_formats[clean_id] = AvatarFormatContribution(
+            format_id=clean_id,
+            factory=factory,
+            label=str(label or "").strip(),
             priority=int(priority),
         )
 
@@ -482,6 +512,13 @@ class PluginCapabilityRegistry:
         return sorted(
             self._vision_fallbacks.values(),
             key=lambda contribution: (contribution.priority, contribution.provider),
+        )
+
+    @property
+    def avatar_formats(self) -> list[AvatarFormatContribution]:
+        return sorted(
+            self._avatar_formats.values(),
+            key=lambda contribution: (contribution.priority, contribution.format_id),
         )
 
     @property
