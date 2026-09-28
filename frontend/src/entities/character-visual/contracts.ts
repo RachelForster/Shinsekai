@@ -23,6 +23,8 @@ export interface AvatarMount {
 
 /** 一个已加载的模型实例。泛型 S 是状态文件内容，C 是该格式的临时编辑描述。 */
 export interface AvatarSession<S, C> {
+  /** Actual bindings available on this loaded model, within the format's capabilities. */
+  readonly capabilities: AvatarCapabilities;
   readonly controls: C;
   apply(state: S, mode: ApplyMode, signal: AbortSignal): Promise<void>;
   readState(): S;
@@ -58,9 +60,9 @@ export interface CharacterVisualAsset {
   /** static 为图片 URL；模型格式为状态 JSON URL。 */
   url: string;
   /** 默认 "static"。 */
-  avatarType?: string;
+  avatarType: string;
   /** 模型入口 URL；static 为空。 */
-  modelUrl?: string;
+  modelUrl: string;
 }
 
 export const STATIC_AVATAR_TYPE = "static";

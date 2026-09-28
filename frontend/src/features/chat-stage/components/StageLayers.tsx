@@ -143,14 +143,14 @@ export function SpriteLayer({
                 id: sprite.id,
                 label: sprite.label,
                 url: stageAssetUrl(sprite.path),
-                avatarType: sprite.avatarType,
+                avatarType: sprite.avatarType ?? "static",
                 modelUrl: sprite.modelUrl ? stageAssetUrl(sprite.modelUrl) : "",
               }}
               hitbox={Boolean(onDragStart)}
-              imageClassName="sprite-layer__image"
-              imageOnError={hideBrokenStageAsset}
-              imageOnMouseDown={onDragStart}
-              key={sprite.path}
+              className="sprite-layer__image"
+              onImageError={hideBrokenStageAsset}
+              onMouseDown={onDragStart ?? (() => {})}
+              mode="play"
             />
           </figure>
         );
