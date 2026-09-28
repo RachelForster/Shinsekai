@@ -176,6 +176,24 @@ def test_cors_drops_crlf_origin():
     assert not any(key == "Access-Control-Allow-Origin" for key, _value in headers)
 
 
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://shinsekai.localhost.evil.example",
+        "http://evil.shinsekai.localhost",
+        "http://other.localhost",
+        "http://shinsekai.localhost/path",
+        "http://shinsekai.localhost?query=1",
+        "http://shinsekai.localhost#fragment",
+    ],
+)
+def test_cors_rejects_lookalike_or_malformed_desktop_origins(origin):
+    handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+    handler.headers = {"Origin": origin, "Host": "127.0.0.1:8787"}
+
+    assert not handler._request_origin_allowed()
+
+
 def test_cors_cookie_uses_the_server_side_token_after_query_authentication(
     monkeypatch,
 ):
