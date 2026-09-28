@@ -59,6 +59,7 @@ describe("entity repositories", () => {
         saveSystem: vi.fn().mockResolvedValue(systemConfig),
       },
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((paths: string[], options?: { size?: number }) =>
@@ -186,6 +187,7 @@ describe("entity repositories", () => {
     const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
     const platform = {
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((batch: string[], options?: { size?: number }) =>
@@ -210,6 +212,7 @@ describe("entity repositories", () => {
     const paths = ["/tmp/background-a.png", "/tmp/background-b.png"];
     const platform = {
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((batch: string[], options?: { delivery?: "data" | "url"; size?: number }) =>
@@ -245,6 +248,7 @@ describe("entity repositories", () => {
     const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
     const platform = {
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((batch: string[], options?: { size?: number }) => {
@@ -290,6 +294,8 @@ describe("entity repositories", () => {
         uploadImages: vi.fn().mockResolvedValue(background),
       },
       characters: {
+        importModel: vi.fn().mockResolvedValue(character),
+        saveModelState: vi.fn().mockResolvedValue(character),
         autoLabelSprites: vi.fn().mockResolvedValue({}),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllSprites: vi.fn().mockResolvedValue(character),

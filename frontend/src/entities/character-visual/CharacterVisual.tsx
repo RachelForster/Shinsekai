@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type MouseEventHandler, type SyntheticEven
 import { STATIC_AVATAR_TYPE, type ApplyMode, type AvatarSession, type CharacterVisualAsset } from "./contracts";
 import { avatarFormat } from "./registry";
 import { avatarAssetUrl } from "./assetUrl";
+import { bindAvatarVoice } from "./voiceRoute";
 import "./CharacterVisual.css";
 
 export interface CharacterVisualProps {
@@ -12,6 +13,8 @@ export interface CharacterVisualProps {
   onMouseDown: MouseEventHandler<HTMLElement>;
   hitbox: boolean;
   mode: ApplyMode;
+  voiceCharacterName?: string;
+  stateSequence?: number;
 }
 
 /** The host owns layout; format modules render inside its model container. */
@@ -41,11 +44,17 @@ function ModelVisual({
   onMouseDown,
   hitbox,
   mode,
+  voiceCharacterName,
+  stateSequence,
 }: CharacterVisualProps & { avatarType: string }) {
   const format = avatarFormat(avatarType);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [session, setSession] = useState<AvatarSession<unknown, unknown> | null>(null);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (session && voiceCharacterName && mode !== "edit") return bindAvatarVoice(voiceCharacterName, session);
+  }, [session, voiceCharacterName, mode]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -117,7 +126,7 @@ function ModelVisual({
       if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err));
     });
     return () => controller.abort();
-  }, [session, asset.url, mode]);
+  }, [session, asset.url, mode, stateSequence]);
 
   return (
     <div

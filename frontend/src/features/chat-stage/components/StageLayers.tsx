@@ -150,7 +150,9 @@ export function SpriteLayer({
               className="sprite-layer__image"
               onImageError={hideBrokenStageAsset}
               onMouseDown={onDragStart ?? (() => {})}
-              mode="play"
+              mode={sprite.applyMode ?? "play"}
+              voiceCharacterName={chatStageSpriteCharacterName(sprite)}
+              stateSequence={sprite.stateSequence}
             />
           </figure>
         );

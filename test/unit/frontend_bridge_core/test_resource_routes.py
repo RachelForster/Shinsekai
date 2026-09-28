@@ -56,6 +56,8 @@ def test_character_route_contracts_remain_stable() -> None:
         ("POST", "/api/characters/ai-setting"),
         ("POST", "/api/characters/ensure-briefs"),
         ("POST", "/api/characters/emotion-tags"),
+        ("POST", "/api/characters/model/import"),
+        ("POST", "/api/characters/model/state"),
         ("POST", "/api/characters/sprite-scale"),
         ("POST", "/api/characters/sprite-voice/delete"),
         ("POST", "/api/characters/sprite-voice/text"),

@@ -21,7 +21,9 @@ def get_character_assets(character: Any, avatar_type: str) -> ModelSprites:
     """
     avatar_type = str(avatar_type or "").strip().lower() or STATIC_AVATAR_TYPE
     if avatar_type == STATIC_AVATAR_TYPE:
-        return ModelSprites(
+        # This is a read-only view, not a configuration validation boundary.
+        # Revalidation would clone dict sprites and reject legacy lightweight objects.
+        return ModelSprites.model_construct(
             model_path="",
             sprites=list(getattr(character, "sprites", None) or []),
             emotion_tags=getattr(character, "emotion_tags", "") or "",
@@ -29,4 +31,5 @@ def get_character_assets(character: Any, avatar_type: str) -> ModelSprites:
     avatars = getattr(character, "avatars", None) or {}
     if avatar_type not in avatars:
         raise KeyError(f"unknown avatar format: {avatar_type}")
-    return avatars[avatar_type]
+    value = avatars[avatar_type]
+    return ModelSprites.model_construct(**value) if isinstance(value, dict) else value

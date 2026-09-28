@@ -390,6 +390,8 @@ def run(
         or secrets.token_urlsafe(32)
     )
 
+    from core.media.avatar.registry import configure_builtin_formats
+    configure_builtin_formats()
     state = BridgeState(
         config_manager=config_manager,
         character_manager=CharacterManager(),

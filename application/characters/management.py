@@ -7,6 +7,7 @@ from enum import Enum
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Iterable
+from threading import RLock
 from urllib.parse import urlparse
 
 from application.media.resource_paths import MediaResourcePaths
@@ -14,6 +15,8 @@ from application.runtime.state import _jsonify
 
 
 class CharacterOperation(str, Enum):
+    IMPORT_MODEL = "import-model"
+    SAVE_MODEL_STATE = "save-model-state"
     SAVE = "save"
     DELETE = "delete"
     UPLOAD_SPRITES = "upload-sprites"
@@ -94,6 +97,7 @@ def validate_character_payload(body: dict[str, Any], *, allow_remote_voice_paths
 
 class CharacterUseCase:
     """Single application entry point for character resource mutations."""
+    _mutation_lock = RLock()
 
     def __init__(self, state: Any, *, file_access_roots: Iterable[Path] = ()):
         self._state = state
@@ -104,7 +108,10 @@ class CharacterUseCase:
         )
 
     def execute(self, request: CharacterRequest) -> Any:
+        from application.characters.model_assets import import_model, save_model_state
         handlers = {
+            CharacterOperation.IMPORT_MODEL: lambda body: import_model(self, body),
+            CharacterOperation.SAVE_MODEL_STATE: lambda body: save_model_state(self, body),
             CharacterOperation.SAVE: self._save,
             CharacterOperation.DELETE: self._delete,
             CharacterOperation.UPLOAD_SPRITES: self._upload_sprites,
@@ -117,7 +124,11 @@ class CharacterUseCase:
             CharacterOperation.IMPORT: self._import_packages,
             CharacterOperation.EXPORT: self._export_package,
         }
-        return handlers[request.operation](request.payload)
+        # Import prepares outside the lock, then checks the original config at commit.
+        if request.operation == CharacterOperation.IMPORT_MODEL:
+            return handlers[request.operation](request.payload)
+        with self._mutation_lock:
+            return handlers[request.operation](request.payload)
 
     def _character(self, name: str) -> Any:
         character = self._state.config_manager.get_character_by_name(name)

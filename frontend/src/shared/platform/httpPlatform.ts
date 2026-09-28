@@ -932,6 +932,15 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      importModel: async (input) => {
+        const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/import", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
+      saveModelState: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/model/state", { body: JSON.stringify(input), method: "POST" }),
       autoLabelSprites: async (name, options) => {
         const task = await requestJson<TaskSnapshot<ImageAutoLabelResult>>(
           apiBase,
@@ -1142,6 +1151,12 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           return path;
         }
         return bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(path)}`);
+      },
+      modelUrl(modelPath, path) {
+        return bridgeUrl(
+          apiBase,
+          `/api/avatar/file?model_path=${encodeURIComponent(modelPath)}&path=${encodeURIComponent(path)}`,
+        );
       },
       async thumbnailBatch(paths, options) {
         const localPaths = paths.filter((path) => path && !/^(?:https?:|blob:|data:|\/assets\/)/.test(path));

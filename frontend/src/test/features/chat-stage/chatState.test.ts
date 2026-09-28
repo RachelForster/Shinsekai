@@ -1085,6 +1085,7 @@ describe("chatStageReducer", () => {
     expect(recovered.audioCommands).toEqual([
       {
         kind: "voice-play",
+        characterName: "Mio",
         playbackId: "voice-1",
         rendererId: "renderer-desktop",
         seq: 7,

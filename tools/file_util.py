@@ -222,6 +222,38 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
             if isinstance(sprites, list):
                 char_data['sprites'] = normalized_sprites
 
+            # Preserve package-relative model dependencies and state/voice paths.
+            from core.media.avatar.registry import adapter_for, is_registered_format
+            from sdk.path_utils import safe_existing_file_path
+            for kind, bank in char_data.get('avatars', {}).items():
+                if not bank.get('model_path') or not is_registered_format(kind):
+                    continue
+                if not Path(bank['model_path']).is_file():
+                    continue  # Metadata from unavailable/older configurations remains intact.
+                source_root = SPRITE_DIR / config.sprite_prefix
+                model = safe_existing_file_path(bank['model_path'], roots=[source_root])
+                adapter = adapter_for(kind)
+                files = set(adapter.inspect(model).files)
+                for sprite in bank.get('sprites', []):
+                    state_file = safe_existing_file_path(sprite['path'], roots=[model.parent])
+                    state = adapter.parse_state(model, json.loads(state_file.read_text(encoding='utf-8')))
+                    files.add(state_file)
+                    files.update(adapter.state_files(model, state))
+                    if sprite.get('voice_path'):
+                        voice = safe_existing_file_path(sprite['voice_path'], roots=[SPEECH_DIR / config.sprite_prefix, model.parent])
+                        relative_voice = Path('avatar-voices') / kind / voice.name
+                        destination = temp_dir / 'sprites' / config.sprite_prefix / relative_voice
+                        destination.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(voice, destination)
+                        sprite['voice_path'] = relative_voice.as_posix()
+                    sprite['path'] = state_file.relative_to(source_root.resolve()).as_posix()
+                for file in files:
+                    checked = safe_existing_file_path(file, roots=[source_root])
+                    destination = temp_dir / 'sprites' / config.sprite_prefix / checked.relative_to(source_root.resolve())
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(checked, destination)
+                bank['model_path'] = model.relative_to(source_root.resolve()).as_posix()
+
             # 复制语音文件
             if config.sprite_prefix:
                 voice_src_dir = SPEECH_DIR / config.sprite_prefix
@@ -450,6 +482,23 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                         char_data[key] = None
 
             # 将更新后的数据创建为 CharacterConfig 对象
+            for kind, bank in char_data.get('avatars', {}).items():
+                model_text = bank.get('model_path', '')
+                if not model_text or not new_sprite_prefix:
+                    continue
+                # Only rebase entries actually present in this package; legacy unknown
+                # banks may contain metadata with no bundled files.
+                try:
+                    model_relative = _safe_package_relpath(model_text, 'avatar model')
+                except ValueError:
+                    continue
+                if not (source_sprite_dir / model_relative).is_file():
+                    continue
+                bank['model_path'] = (dest_sprite_dir / model_relative).as_posix()
+                for sprite in bank.get('sprites', []):
+                    sprite['path'] = (dest_sprite_dir / _safe_package_relpath(sprite['path'], 'avatar state')).as_posix()
+                    if sprite.get('voice_path'):
+                        sprite['voice_path'] = (dest_sprite_dir / _safe_package_relpath(sprite['voice_path'], 'avatar voice')).as_posix()
             imported_configs.append(CharacterConfig.parse_dic(char_data=char_data))
         
         # 将配置追加到 characters.yaml

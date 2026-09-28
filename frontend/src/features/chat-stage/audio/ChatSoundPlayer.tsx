@@ -7,6 +7,7 @@ import { currentChatRendererId } from "../../../shared/platform/chatRenderer";
 import { stageAssetUrl } from "../chatStageUtils";
 import type { ChatAudioCommand } from "../state/types";
 import { SoundPlayer, type VoicePlaybackSignal } from "./soundPlayer";
+import { routeAvatarVoice } from "../../../entities/character-visual/voiceRoute";
 
 export function ChatSoundPlayer({
   bgmPath,
@@ -27,7 +28,7 @@ export function ChatSoundPlayer({
   const { t } = useI18n();
 
   if (!playerRef.current && typeof Audio !== "undefined") {
-    playerRef.current = new SoundPlayer();
+    playerRef.current = new SoundPlayer(undefined, routeAvatarVoice);
   }
 
   useEffect(() => {
@@ -75,7 +76,7 @@ export function ChatSoundPlayer({
       switch (command.kind) {
         case "voice-play":
           if (!command.rendererId || command.rendererId === currentChatRendererId()) {
-            player.playVoice(command.playbackId, stageAssetUrl(command.url), command.volume);
+            player.playVoice(command.playbackId, stageAssetUrl(command.url), command.volume, command.characterName);
           }
           break;
         case "voice-stop":

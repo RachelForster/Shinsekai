@@ -18,6 +18,7 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
     y: event.y,
     avatarType: event.avatarType ?? "static",
     modelUrl: event.modelUrl ?? "",
+    stateSequence: event.seq,
   };
   const sprites = upsertChatStageSprite(state.sprites, nextSprite);
   return withResolvedLayers({
@@ -291,6 +292,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         },
         audioCommands: appendAudioCommand(state, {
           kind: "voice-play",
+          characterName: event.characterName,
           playbackId: event.playbackId ?? "",
           rendererId: event.rendererId,
           seq: event.seq,

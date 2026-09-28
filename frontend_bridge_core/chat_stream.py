@@ -404,6 +404,14 @@ class ChatStreamService:
             {"shinsekai_bridge_token": self.auth_token},
         )
 
+    def avatar_url(self, model_path: str, raw_path: str) -> str:
+        from pathlib import Path
+        relative = Path(raw_path).resolve().relative_to(Path(model_path).resolve().parent).as_posix()
+        return _append_query(
+            f"{self.http_base}/api/avatar/file?model_path={quote(model_path)}&path={quote(relative)}",
+            {"shinsekai_bridge_token": self.auth_token},
+        )
+
     def approve_external_media_path(self, raw_path: str) -> bool:
         path = str(raw_path or "").strip()
         if not (

@@ -1,0 +1,11 @@
+import type { AvatarFormat } from "../../contracts";
+import type { L2DControls, L2DState } from "./state";
+
+const format: AvatarFormat<L2DState, L2DControls> = {
+  id: "l2d",
+  label: "Live2D Cubism",
+  capabilities: { mouth: true, blink: true, motion: true, sampling: "none" },
+  createEmpty: () => ({ model_path: "", sprites: [], emotion_tags: "" }),
+  load: () => import("./module"),
+};
+export default format;

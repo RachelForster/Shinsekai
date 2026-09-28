@@ -65,6 +65,21 @@ class CharacterManager:
         """保存角色配置的便捷方法"""
         self._config_manager.save_characters_config()
 
+    def save_avatar_bank(self, name: str, avatar_type: str, bank: ModelSprites) -> None:
+        """Persist one validated bank without replacing other types or static assets."""
+        character = self._config_manager.get_character_by_name(name)
+        if character is None:
+            raise KeyError(name)
+        validated = Character(name=name, color=character.color, sprite_prefix=character.sprite_prefix,
+                              avatars={avatar_type: bank}).avatars
+        previous = character.avatars
+        character.avatars = {**previous, **validated}
+        try:
+            self._save_characters_config()
+        except Exception:
+            character.avatars = previous
+            raise
+
     def save_characters_to_file(self) -> str:
         """
         保存所有角色配置到文件。

@@ -555,13 +555,18 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             {
                 "type": "sprite.show",
                 "characterName": character_name,
-                "url": self._media_url(image_path),
+                "url": self._avatar_url(assets.model_path, image_path) if assets.model_path else self._media_url(image_path),
                 "scale": scale,
                 "slot": display_slot,
                 "avatarType": avatar_type,
-                "modelUrl": self._media_url(assets.model_path) if assets.model_path else "",
+                "modelUrl": self._avatar_url(assets.model_path, assets.model_path) if assets.model_path else "",
             }
         )
+
+    def _avatar_url(self, model_path: str, path: str) -> str:
+        if hasattr(self._sink, "avatar_url"):
+            return self._sink.avatar_url(model_path, path)
+        return self._media_url(path)
 
     def update_sprite_from_path(
         self,

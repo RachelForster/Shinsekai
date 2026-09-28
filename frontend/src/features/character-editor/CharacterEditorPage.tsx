@@ -59,6 +59,7 @@ import {
 import { useCharacterMemoryController } from "./useCharacterMemoryController";
 import { useCharacterMemoryImportController } from "./useCharacterMemoryImportController";
 import "./CharacterEditorPage.css";
+import { ModelStateEditor } from "./ModelStateEditor";
 
 export function mergeSprites(serverSprites: Sprite[], current: Character) {
   const currentSpritesByPath = new Map(
@@ -1033,49 +1034,60 @@ export function CharacterEditorPage() {
           voiceReferenceReadOnly={voiceReferenceReadOnly}
         />
 
-        <CharacterSpritesSection
-          autoLabelAvailable={visionAvailable}
-          autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
-          autoLabelPending={autoLabelMutation.isPending}
-          draft={draft}
-          emotionTagsPending={emotionTagsMutation.isPending}
-          id="character-sprites"
-          onClearSprites={requestClearSprites}
-          onAutoLabel={() => {
-            setAutoLabelTask(null);
-            setAutoLabelDialogOpen(true);
-            autoLabelMutation.mutate();
+        <ModelStateEditor
+          character={draft}
+          onChange={setDraft}
+          onSaved={(character) => {
+            queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+            setDraft(structuredClone(character));
           }}
-          onOpenBulkTags={openBulkSpriteTagsDialog}
-          onPendingSpritePathsChange={setPendingSpritePaths}
-          onPendingVoicePathChange={updatePendingVoicePath}
-          onSaveScale={saveSpriteScaleValue}
-          onSaveTags={saveSpriteTags}
-          onScaleChange={update}
-          onScaleWheel={handleSpriteScaleWheel}
-          onSelectSprite={setSelectedSpriteIndex}
-          onSpriteDelete={requestSelectedSpriteDelete}
-          onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
-          onSpriteUpload={uploadSprites}
-          onSpriteVoiceDelete={requestSelectedSpriteVoiceDelete}
-          onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
-          onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
-          onSpriteVoiceUpload={uploadSelectedSpriteVoice}
-          onSpriteVoiceTypeChange={handleSpriteVoiceTypeChange}
-          pendingSpritePaths={pendingSpritePaths}
-          pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
-          selectedSprite={
-            selectedSprite ? { ...selectedSprite, voice_type: spriteVoiceType(selectedSprite, draft) } : undefined
-          }
-          selectedSpriteIndex={selectedSpriteIndex}
-          selectedSpriteTag={selectedSpriteTag}
-          spriteDeletePending={spriteDeleteMutation.isPending}
-          spriteGalleryItems={spriteGalleryItems}
-          spriteScalePending={spriteScaleMutation.isPending}
-          spriteUploadPending={spriteUploadMutation.isPending}
-          voiceDeletePending={voiceDeleteMutation.isPending}
-          voiceUploadPending={voiceUploadMutation.isPending}
         />
+
+        {draft.avatar_type === "static" && (
+          <CharacterSpritesSection
+            autoLabelAvailable={visionAvailable}
+            autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
+            autoLabelPending={autoLabelMutation.isPending}
+            draft={draft}
+            emotionTagsPending={emotionTagsMutation.isPending}
+            id="character-sprites"
+            onClearSprites={requestClearSprites}
+            onAutoLabel={() => {
+              setAutoLabelTask(null);
+              setAutoLabelDialogOpen(true);
+              autoLabelMutation.mutate();
+            }}
+            onOpenBulkTags={openBulkSpriteTagsDialog}
+            onPendingSpritePathsChange={setPendingSpritePaths}
+            onPendingVoicePathChange={updatePendingVoicePath}
+            onSaveScale={saveSpriteScaleValue}
+            onSaveTags={saveSpriteTags}
+            onScaleChange={update}
+            onScaleWheel={handleSpriteScaleWheel}
+            onSelectSprite={setSelectedSpriteIndex}
+            onSpriteDelete={requestSelectedSpriteDelete}
+            onSpriteTagChange={(value) => updateSpriteTag(selectedSpriteIndex, value)}
+            onSpriteUpload={uploadSprites}
+            onSpriteVoiceDelete={requestSelectedSpriteVoiceDelete}
+            onSpriteVoiceTextBlur={saveSelectedSpriteVoiceText}
+            onSpriteVoiceTextChange={(value) => updateSprite(selectedSpriteIndex, { voice_text: value })}
+            onSpriteVoiceUpload={uploadSelectedSpriteVoice}
+            onSpriteVoiceTypeChange={handleSpriteVoiceTypeChange}
+            pendingSpritePaths={pendingSpritePaths}
+            pendingVoicePath={pendingVoicePaths[selectedSpriteIndex] ?? ""}
+            selectedSprite={
+              selectedSprite ? { ...selectedSprite, voice_type: spriteVoiceType(selectedSprite, draft) } : undefined
+            }
+            selectedSpriteIndex={selectedSpriteIndex}
+            selectedSpriteTag={selectedSpriteTag}
+            spriteDeletePending={spriteDeleteMutation.isPending}
+            spriteGalleryItems={spriteGalleryItems}
+            spriteScalePending={spriteScaleMutation.isPending}
+            spriteUploadPending={spriteUploadMutation.isPending}
+            voiceDeletePending={voiceDeleteMutation.isPending}
+            voiceUploadPending={voiceUploadMutation.isPending}
+          />
+        )}
 
         <CharacterMemorySection
           addPending={memoryController.addPending}

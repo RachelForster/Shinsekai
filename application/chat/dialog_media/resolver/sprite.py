@@ -10,6 +10,7 @@ from typing import Any, Sequence
 import yaml
 
 from core.media.asset_tags import tag_contents
+from config.character_assets import get_character_assets
 
 from ..lookup import AssetCandidate, AssetLookupResult
 from .asset import AssetResolver, ResolvedAsset, asset_candidates
@@ -40,8 +41,9 @@ class SpriteAssetResolver:
         self._resolver = AssetResolver()
 
     def candidates(self, character: Any) -> tuple[AssetCandidate, ...]:
-        sprites = getattr(character, "sprites", None) or []
-        tags = tag_contents(getattr(character, "emotion_tags", ""), len(sprites))
+        assets = get_character_assets(character, getattr(character, "avatar_type", "static"))
+        sprites = assets.sprites
+        tags = tag_contents(assets.emotion_tags, len(sprites))
         return asset_candidates(sprites, tags=tags)
 
     def resolve(
@@ -58,7 +60,7 @@ class SpriteAssetResolver:
         voice_type = self._value(sprite, "voice_type")
         voice_path = str(self._value(sprite, "voice_path", "") or "").strip()
         voice_text = str(self._value(sprite, "voice_text", "") or "")
-        yaml_voice = self._read_voice_config(
+        yaml_voice = None if getattr(character, "avatar_type", "static") != "static" else self._read_voice_config(
             str(getattr(character, "name", "")), int(resolved.index)
         )
         if yaml_voice is not None and yaml_voice[1]:
