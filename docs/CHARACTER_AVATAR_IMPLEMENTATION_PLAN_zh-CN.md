@@ -39,7 +39,7 @@ interface CharacterAvatarFields {
 
 新增字段不用问号或 Optional。后端加载旧角色时通过默认值补齐：avatar_type 为 static，avatars 为空映射。未导入模型的格式在角色卡中显示“未配置”，不能直接启用。不建立额外的版本迁移框架。
 
-配置文件里出现本版本不认识的格式 id（未来版本保存）时，加载保留该键、UI 标记“不可用”、保存回写不丢弃；`avatar_type` 指向未知 id 时运行期回退 static 并提示。这是向前 / 向后兼容的固定行为，不是格式实现各自决定。
+配置文件里出现本版本不认识的格式 id（未来版本保存）时，加载保留该键、UI 标记“不可用”、保存回写不丢弃；`avatar_type` 指向未知 id 时显示不可用占位并保留选择，用户可以切回 static；不自动套用静态同编号资源。这是向前 / 向后兼容的固定行为，不是格式实现各自决定。
 
 配置片段如下，其他已有角色字段在示例中省略展示：
 
@@ -141,7 +141,7 @@ def get_character_assets(character, avatar_type: str) -> ModelSprites:
 | config/schema.py、character_config.py | 加入两个字段（avatar_type、avatars 映射）和完整默认值；旧角色直接可用 |
 | config/character_manager.py | 动态资源操作沿用列表增删和标签同步逻辑；静态删除只删除静态文件 |
 | config/character_assets.py | 新增：`get_character_assets` 及按类型的写回小工具 |
-| core/media/avatar/contracts.py、registry.py | 新增：ModelAssetAdapter、能力标志、按 id 注册 / 查找 |
+| sdk/adapters/avatar.py、registry.py | 新增：ModelAssetAdapter、能力标志、按 id 注册 / 查找 |
 | core/media/avatar/{l2d,vrm,...}.py | 各格式的 inspect / parse_state / state_files |
 | dialog_media/resolver/sprite.py | 从当前类型构造候选、解析 path，并从同一类型读取条目语音 |
 | dialog_media/catalogs.py | 索引当前类型资源；scope 区分角色名与类型，防止多套 tags 混检 |
@@ -182,13 +182,13 @@ LLM 输出 schema、别名、必填性、外层包络和插件扩展全部保持
 
 复用 SpriteLayer 的槽位、缩放、位移和发言高亮，里面按 avatar_type 选择 img 或注册表里的模型组件。三个角色可以分别使用不同类型同场显示，但同一个角色当前只显示角色卡选中的一种。
 
-槽位与格式无关：`slot` 仍是 character → 0/1/2 的舞台位置（后端 `_get_or_create_sprite_slot` LRU，前端 `upsertChatStageSprite` 稳定槽位），`<figure>` 上的轴心、偏移、缩放、发言高亮全部照旧。改造点只有一处——`SpriteLayer` 里硬编码的 `<img>` 换成 `CharacterVisual`：static 分支走原 `<img>`，模型格式分支按注册表把 module 挂进容器。adapter 通过 `resize(width, height)` 拿到槽位盒子缩放后的 CSS 尺寸并在内部 contain 适配，不拥有 slot / x / y / scale。
+槽位与格式无关：`slot` 仍是 character → 0/1/2 的舞台位置（后端 `_get_or_create_sprite_slot` LRU，前端 `upsertChatStageSprite` 稳定槽位），`<figure>` 上的轴心、偏移、缩放、发言高亮全部照旧。改造点只有一处——`SpriteLayer` 里硬编码的 `<img>` 换成 `CharacterVisual`：static 分支走原 `<img>`，模型格式分支按注册表把 module 挂进容器。adapter 通过 `resize(width, height)` 拿到槽位盒子布局 CSS 尺寸（不乘外层 transform）并在内部 contain 适配，不拥有 slot / x / y / scale。
 
 继续使用现有 sprite.show / sprite.remove，不增加新的事件族。为使前端知道如何加载，在 sprite.show 及其舞台快照中增加两个必要字段：avatarType、modelUrl（对应 Character.avatar_type）；原 url 在静态模式指向图片，在动态模式指向状态 JSON。
 
 新增两个字段在规范化后的事件类型中必填。静态发送 avatarType=static、modelUrl=""；既有旧事件由入口补齐这两个静态值。复用原 characterName、seq、slot、scale 和音频 playbackId，不新增演出身份体系或协议版本框架。LLM 输出与这些内部 UI 字段无关。
 
-前端接口只覆盖模型创建、状态应用 / 读取、嘴型输入、尺寸变化和销毁，完整定义见 [高层设计](CHARACTER_AVATAR_HIGH_LEVEL_DESIGN_zh-CN.md)。每个格式实现相同的生命周期与各自的编辑控件，并在 `entities/character-visual/registry.ts` 注册一行；静态继续使用现有 img。控制参数扫描和编辑由各自适配器提供，不先建立通用能力数据库。只有切换模型才重载，切换状态只应用参数 / 动作。卸载时取消动画循环并释放 GPU 资源；连续异步切状态以最后一次请求为准。
+前端接口只覆盖模型创建、状态应用 / 读取、嘴型输入、尺寸变化和销毁，完整定义见 [高层设计](CHARACTER_AVATAR_HIGH_LEVEL_DESIGN_zh-CN.md)。每个格式实现相同的生命周期与各自的编辑控件，并导出自己的 `adapters/<format>/format.ts` 轻量描述符，由应用入口注册；load() 动态加载 SDK 和实现；静态继续使用现有 img。控制参数扫描和编辑由各自适配器提供，不先建立通用能力数据库。只有切换模型才重载，切换状态只应用参数 / 动作。卸载时取消动画循环并释放 GPU 资源；连续异步切状态以最后一次请求为准。
 
 沿用现有资源鉴权与文件服务，为各模型格式的相对依赖提供包目录寻址或加载器 URL 重写；只允许访问导入包范围。状态 JSON 不送入图片缩略图接口，交给模型预览生成截图缓存。
 
@@ -196,11 +196,11 @@ LLM 输出 schema、别名、必填性、外层包络和插件扩展全部保持
 
 5. 口型和眨眼
 
-基础口型直接接在已有 SoundPlayer：分析实际播放的 voice 音量，平滑后驱动当前 characterName 对应的模型。把 tts.play 中现有的 characterName 保留到语音队列项，避免队列里的旧语音驱动最新对白角色。BGM 和音效不参与嘴型分析。**只有当前格式的 `capabilities.mouth` 为真才接开合量**；不支持的格式照常显示但不驱动嘴型。
+基础口型直接接在已有 SoundPlayer：分析实际播放的 voice 音量，平滑后驱动当前 characterName 对应的模型。把 tts.play 中现有的 characterName 保留到语音队列项，避免队列里的旧语音驱动最新对白角色。BGM 和音效不参与嘴型分析。**只有当前模型的 `session.capabilities.mouth` 为真才接开合量**；不支持的格式照常显示但不驱动嘴型。
 
 继续使用现有 playbackId、rendererId、分句状态与播放回执。实际开始播放才动嘴，暂停、缓冲、跳过、结束、失败时恢复嘴部基础状态。同一句后续音频片段不重新发起整个肢体动作；沿用现有分句处理判断首段，不新增动作编号或时间轴 ID。
 
-L2D 使用模型的嘴眼参数，VRM 使用已有嘴型 / 眨眼 expression；自动眨眼在各适配器中实现（由 `capabilities.blink` 决定是否启用）。已有表情或动作控制闭眼时，应暂停 / 混合自动眨眼；嘴型与微笑等表情按模型规则混合，不简单互相覆盖。人工保存状态时排除自动驱动参数。
+L2D 使用模型的嘴眼参数，VRM 使用已有嘴型 / 眨眼 expression；自动眨眼在各适配器中实现（由 `session.capabilities.blink` 决定是否启用）。已有表情或动作控制闭眼时，应暂停 / 混合自动眨眼；嘴型与微笑等表情按模型规则混合，不简单互相覆盖。人工保存状态时排除自动驱动参数。
 
 基础版先做音量口型；精细音素口型后续再加。没有嘴眼绑定时照常显示模型，并在角色卡说明该能力不可用。Python 和 React state 不参与逐帧参数传输。
 
@@ -211,7 +211,7 @@ L2D 使用模型的嘴眼参数，VRM 使用已有嘴型 / 眨眼 expression；�
 - 已有资源自动标注：加载该状态，采样截图；有动作时取多个时间点。复用当前视觉标注能力，写入这一类型的 emotion_tags。不会改另一类型标签。
 - 自动设计新资源：读取当前模型实际可用的参数、表情和动作，结合受限的点头 / 视线 / 歪头模板构造候选；LLM 沿用既有编号 / vibe 契约选择符合描述的候选，程序保存成与手动编辑相同的状态 JSON，追加到当前 sprites，再自动标注。
 
-采样能力由格式的 `capabilities.sampling` 声明：`none` 表示该格式不提供动态视觉标注，不声称完成；`single` / `multi` 决定采样帧数。不修改 LLM 输出 schema，也不把新 JSON 隐藏在 speech 或 effect 中。AI 和人工最终操作同一种状态文件；用户可以继续手动调整 AI 生成的条目并保存。新文件通过范围、参数存在性和预览检查后入库；不覆盖已编辑资源。
+采样能力由实例的 `session.capabilities.sampling` 声明：`none` 表示该格式不提供动态视觉标注，不声称完成；`single` / `multi` 决定采样帧数。不修改 LLM 输出 schema，也不把新 JSON 隐藏在 speech 或 effect 中。AI 和人工最终操作同一种状态文件；用户可以继续手动调整 AI 生成的条目并保存。新文件通过范围、参数存在性和预览检查后入库；不覆盖已编辑资源。
 
 这一版可以组合模型已有表情、动作和有界参数模板。模型不存在的形变、复杂走路 / 跳舞动作不能靠文本 LLM 凭空产生；需要另接动作生成服务时再扩展。无论如何，不要求这些表现与 static 的表情集合一致。
 
@@ -228,11 +228,11 @@ Shinsekai/
 │  └─ character_assets.py               新增：统一资源选择与写回小工具
 ├─ core/media/
 │  ├─ asset_tags.py                     复用原编号标签工具
-│  └─ avatar/                          新增：后端契约、注册表及格式 adapter
-│     ├─ contracts.py                   共享文件能力接口 + 能力标志
+│  └─ avatar/                          新增：注册表及格式 adapter
 │     ├─ registry.py                    id → adapter 注册 / 查找
 │     ├─ l2d.py                         L2D 资源检查、状态解析（注册一行）
 │     └─ vrm.py                         VRM 资源检查、状态解析（注册一行）
+├─ sdk/adapters/avatar.py              共享文件能力 ABC 与能力声明
 ├─ application/
 │  ├─ characters/management.py          复用角色保存与资源操作
 │  ├─ characters/model_assets.py        新增：模型导入、状态保存、预览采样用例
@@ -250,13 +250,14 @@ Shinsekai/
 │  └─ chat_stream.py                    原媒体事件路径处理适配
 ├─ tools/file_util.py                  .char 打包模型及其依赖、状态、语音
 └─ frontend/src/
+   ├─ app/avatarFormats.ts              启动时注册随构建交付的 format.ts 描述符
    ├─ shared/platform/types.ts          Character 和内部舞台类型的小幅扩展
    ├─ shared/platform/httpPlatform.ts   角色模型操作 API
    ├─ entities/character-visual/        新增：聊天和预览共用
    │  ├─ contracts.ts / registry.ts     共享实例接口与 id → 模块注册
    │  ├─ CharacterVisual.tsx            按类型选择显示组件
-   │  ├─ adapters/l2d/                  L2D 加载、状态、嘴眼和参数编辑（注册一行）
-   │  └─ adapters/vrm/                  VRM 加载、状态、嘴眼和姿态编辑（注册一行）
+   │  ├─ adapters/l2d/                  L2D 描述符、加载、状态、嘴眼和参数编辑
+   │  └─ adapters/vrm/                  VRM 描述符、加载、状态、嘴眼和姿态编辑
    ├─ features/character-editor/
    │  ├─ CharacterEditorPage.tsx        增加形象类型选择（读注册表）
    │  ├─ CharacterSpritesSection.tsx   复用画廊、编号、标签、条目语音
@@ -283,7 +284,7 @@ sprite_index 沿用内部从 0 开始的列表下标；保存时 -1 表示追加
 
 8. 分步骤 / PR 大纲与“加格式”配方
 
-首版收敛成四个实现 PR。每个 PR 自带对应测试和 .char 往返检查，首个发布包含前四个；不再先搭建完整的统一演出平台。
+本 PR 0 先落注册与宿主 API 基础，不包含真实 renderer、模型导入 / 保存 / 导出与 AI 流程；已实现和待接通范围见 [高层设计](CHARACTER_AVATAR_HIGH_LEVEL_DESIGN_zh-CN.md)。后续首版收敛成四个实现 PR。每个 PR 自带对应测试和 .char 往返检查，首个发布包含前四个；不再先搭建完整的统一演出平台。
 
 “新增一个格式”是固定配方，任何格式（gltf、spine、live3d……）都照此办理：
 
@@ -291,7 +292,7 @@ sprite_index 沿用内部从 0 开始的列表下标；保存时 -1 表示追加
 新增格式 X：
   后端  core/media/avatar/x.py       实现 ModelAssetAdapter（format_id、capabilities、inspect/parse_state/state_files）
   前端  entities/character-visual/adapters/x/  实现 AvatarModule<S,C> 与 Editor（含自己的 S/C、fixtures）
-  注册  后端 registry.register_adapter(...) 一行；前端 registerAvatarFormat(...) 一行
+  注册  后端 registry.register_adapter(...) 一行；前端导出 adapters/x/format.ts，由应用启动入口统一注册
   测试  双方 fixtures / tests（接受与拒绝边界、资源释放、.char 往返）
   不改  Character schema、get_character_assets、编号/标签/语音、事件、命令、LLM、共享 UI
 ```

@@ -1,10 +1,15 @@
 Shinsekai 多形态角色：高层设计与协作契约
 
-状态：待实施的设计契约。本 PR 提交文档，不宣称运行时已支持 L2D / VRM。需求与示例见 [实现方案](CHARACTER_AVATAR_IMPLEMENTATION_PLAN_zh-CN.md)，目录依赖遵守 [项目结构](PROJECT_STRUCTURE.md)。本文确定 adapter、前后端边界和协作接口；具体 SDK 参数处理由各格式实现维护。
+状态：本 PR 交付 PR 0 共享 API 基础与设计契约，不宣称运行时已支持 L2D / VRM。需求与示例见 [实现方案](CHARACTER_AVATAR_IMPLEMENTATION_PLAN_zh-CN.md)，目录依赖遵守 [项目结构](PROJECT_STRUCTURE.md)。本文确定 adapter、前后端边界和协作接口；具体 SDK 参数处理由各格式实现维护。
 
 设计原则：角色负责选择使用哪套资源，资源列表负责编号和标签，格式 adapter 负责解释某种格式。共享层理解“选择第几项”，不理解“这个参数怎样让角色微笑”。
 
-本文的复用目标很具体：**新增一个立绘 / 模型格式，只新增一个格式目录并在注册表加一行；不改 Character 数据模型、不改取资源入口、不改编号 / 标签 / 语音、不改事件与命令。** 下面第 0 节说明这套可复用结构，其余各节都在同一结构下展开。
+本次已实现：Character 的两个字段与旧配置默认值、资源选择函数、SDK / 宿主注册、前端描述符启动入口与懒加载、模型宿主生命周期、sprite.show 元数据和静态舞台兼容。测试使用替身格式，仓库尚无真实模型 renderer。
+
+PR A 仍需接通角色卡类型选择及保存 / .char 往返、提示词与语义索引 / 条目语音的当前类型路由、受控模型文件服务、语音驱动、聊天快照 restore 与首段 play 的区分。模型 JSON / 二进制依赖不得通过全局放宽原媒体接口扩展名来开放；按导入后的包范围授权。PR B / C 再加入真实格式及编辑器，PR D 完成 AI 流程。下文是这些 PR 的目标契约，不能把 SDK 注册成功视为完整格式可用。
+
+
+本文的复用目标很具体：**新增一个立绘 / 模型格式，只新增格式目录并接入既定注册入口；不改 Character 数据模型、不改取资源入口、不改编号 / 标签 / 语音、不改事件与命令。** 下面第 0 节说明这套可复用结构，其余各节都在同一结构下展开。
 
 0. 可复用核心：一个注册表 + 一个键控映射
 
@@ -18,7 +23,7 @@ Shinsekai 多形态角色：高层设计与协作契约
 因此新增一个格式（例如 `gltf`）的完整清单是：
 
 1. 后端 `core/media/avatar/gltf.py`：实现 `ModelAssetAdapter`，注册一行。
-2. 前端 `entities/character-visual/adapters/gltf/`：实现 `AvatarModule` 与 Editor，注册一行。
+2. 前端 `entities/character-visual/adapters/gltf/`：实现 `AvatarModule` 与 Editor，导出轻量 `format.ts` 描述符，由应用启动入口统一注册。
 3. 各自 fixtures / tests。
 
 **不修改**：Character schema、`get_character_assets`、编号 / 标签 / 语音查找、舞台事件、命令路由、LLM schema、共享画廊 / 标签 / 语音 UI。
@@ -31,7 +36,7 @@ Shinsekai 多形态角色：高层设计与协作契约
 - Character 只增加 `avatar_type`、`avatars` 两个字段；`static` 继续使用根级 sprites / emotion_tags，不进入 `avatars` 映射。每个动态格式在 `avatars` 中持有一个 `model_path` 和自己的 sprites / emotion_tags。
 - Sprite 保持现有结构。静态 path 是图片，动态 path 是状态文件；条目语音继续用 voice_path / voice_text / voice_type。
 - 各类型独立编号、独立标注。编号由列表位置计算，不建立跨类型语义映射。
-- LLM 输出 schema、编号 / vibe 选择顺序和插件字段规则保持不变。新接口的字段均必填；未配置格式在 `avatars` 中保留 `model_path=""`、`sprites=[]`、`emotion_tags=""` 的空值，旧角色在配置入口补齐默认值。
+- LLM 输出 schema、编号 / vibe 选择顺序和插件字段规则保持不变。新接口的字段均必填；已建立但未配置模型的格式在 `avatars` 中保留 `model_path=""`、`sprites=[]`、`emotion_tags=""` 的空值，旧角色在配置入口补齐默认值。
 - 当前会话使用启动时选定的类型和资源列表；编辑角色卡影响下次启动。首版不实现中途换类型的会话重编排。
 
 共享数据契约（Sprite 使用现有定义）：
@@ -85,8 +90,8 @@ def get_character_assets(character, avatar_type: str) -> ModelSprites:
 未知格式的向前 / 向后兼容是复用的一部分，必须明确：
 
 - 配置文件里出现当前版本不认识的格式 id（未来版本保存的配置）时，**保留不丢弃**，加载后标记“不可用”，在 UI 中不可选择；保存回写时原样保留该键，不做静默删除。
-- `avatar_type` 指向未知 id 时，运行期回退 `static` 并给出可见提示，而不是崩溃或误读另一套资源。
-- 格式 id 在配置加载和命令入口两处校验（fail-closed），通过后下游可以安全索引。
+- `avatar_type` 指向未知 id 时，显示“不可用”占位并保留选择，允许用户切回 static；不能把动态编号套到静态列表。
+- 格式 id 统一 trim + lowercase；static 保留、空键和规范化后的重复键报错。配置加载保留未知格式的数据，命令入口另查注册状态及该角色是否配置了对应资源，不将“注册过”当成“已导入”。
 
 编号模式把现有 sprite / asset_id 解析为当前列表的第 N 项；语义模式只检索当前类型的 tags。索引 scope 使用现有角色名与类型组成，例如 `sprite:Alice:l2d`，仅是检索分区，不是新业务身份。无效条目可以从候选中排除，但保留原列表下标对应的编号；真正删除时仍按现有规则重新编号。
 
@@ -99,12 +104,13 @@ def get_character_assets(character, avatar_type: str) -> ModelSprites:
 
 static 继续使用原图片实现；只有动态格式实现模型 adapter。注册表按 id 索引，**新增格式加一行注册**，不建立插件发现、全局模型管理器或通用参数语言。
 
-后端 adapter 是无角色、无会话状态的文件能力，放在 `core/media/avatar/`。下面的对象仅在一次调用中存在，不写入 Character 或新增 manifest：
+后端 adapter 是无角色、无会话状态的文件能力。公共 ABC 与数据类型从 `sdk.adapters` 导出（实现见 [SDK 契约](../sdk/adapters/avatar.py)），内置实现放在 `core/media/avatar/`。这些类型不写入 Character，也不新增 manifest；注册表可以复用无状态 adapter 实例：
 
 ```python
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from abc import ABC, abstractmethod
+from typing import ClassVar
 
 @dataclass(frozen=True)
 class ModelFiles:
@@ -118,40 +124,31 @@ class ModelCapabilities:
     motion: bool = False      # 支持一次性动作
     sampling: str = "none"    # none | single | multi（预览采样）
 
-class ModelAssetAdapter(Protocol):
-    format_id: str
-    capabilities: ModelCapabilities
+class ModelAssetAdapter(ABC):
+    format_id: ClassVar[str] = ""
+    capabilities: ClassVar[ModelCapabilities] = ModelCapabilities()
 
+    @abstractmethod
     def inspect(self, source: Path) -> ModelFiles:
         """识别一个模型入口，并列出导入时需要的完整依赖。"""
         ...
 
+    @abstractmethod
     def parse_state(self, model: Path, value: object) -> dict:
         """校验结构、有限数值和文件引用，返回规范化状态。"""
         ...
 
+    @abstractmethod
     def state_files(self, model: Path, state: dict) -> tuple[Path, ...]:
         """列出状态额外引用的动作、表情等文件，供角色包打包。"""
         ...
 ```
 
-注册表是唯一入口，共享代码通过它查找 adapter 和能力，绝不直接 `import` 具体格式模块：
+注册实现见 [后端注册表](../core/media/avatar/registry.py) 与 [SDK 注册入口](../sdk/register.py)。注册名是唯一依据；adapter 的 format_id 必须与其规范化后相同，不一致时记录错误并跳过该贡献，不能改名注册。SDK 拒绝重复注册；宿主合并时保留首个有效贡献、报告冲突，内置格式优先。一个插件失败不能阻断其他格式。priority 只用于贡献排序，不授权覆盖同名格式。
 
-```python
-# core/media/avatar/registry.py
-_REGISTRY: dict[str, ModelAssetAdapter] = {}
+内置 adapter 必须在运行时组合入口显式 import / 注册，不依赖从未加载的模块副作用。Python 插件由已有 PluginManager 初始化，宿主调用 configure_registered_formats；工厂在这一步创建轻量 adapter，耗时模型加载留给操作。后端注册只提供文件能力，不会把 React 渲染代码装进浏览器。
 
-def register_adapter(adapter: ModelAssetAdapter) -> None:
-    if adapter.format_id in _REGISTRY:
-        raise ValueError(f"duplicate avatar format: {adapter.format_id}")
-    _REGISTRY[adapter.format_id] = adapter
-
-def adapter_for(format_id: str) -> ModelAssetAdapter: ...   # 未知 id 抛 KeyError
-def registered_format_ids() -> tuple[str, ...]: ...
-def capabilities_for(format_id: str) -> ModelCapabilities: ...
-```
-
-后端能力副本用于编排侧判断（能否驱动嘴型、能否采样标注）；但真实 SDK 参数存在性和取值范围仍由前端实例在预览 / 运行时最终验证，见下。
+格式 capabilities 是支持上限，前端 session.capabilities 才描述当前模型实际的嘴眼绑定与动作 / 采样能力。无嘴眼绑定的模型仍可加载；UI、语音和采样按实例实际能力降级。后端不能凭格式标志承诺当前模型具备某个参数。
 
 inspect 不复制文件，parse_state 不保存文件，adapter 不修改角色。application 按 ModelFiles 暂存 / 提交依赖，并调用现有配置保存逻辑。包中有多个模型入口时要求明确选择，不猜测。所有依赖解析限制在已选中或导入的资源范围，错误不能通过扩大文件权限解决。
 
@@ -179,6 +176,7 @@ export interface AvatarMount {
 }
 
 export interface AvatarSession<S, C> {
+  readonly capabilities: AvatarCapabilities; // 当前模型实际可用的能力
   readonly controls: C;
   apply(state: S, mode: ApplyMode, signal: AbortSignal): Promise<void>;
   readState(): S;
@@ -203,28 +201,15 @@ export interface AvatarFormat<S, C> {
   label: string;
   capabilities: AvatarCapabilities;
   createEmpty(): ModelSprites;          // 未配置时的默认值工厂
-  module: AvatarModule<S, C>;           // 懒加载
+  load(): Promise<AvatarModule<S, C>>;  // 按需加载渲染与编辑代码
 }
 ```
 
-注册表按 id 存描述符。因为 S/C 因格式而异，注册表擦除泛型，类型见证由格式模块自己负责——格式模块导出一个带具体 S/C 的注册函数，共享层只拿到擦除后的模块对象并在格式边界内 cast 回 S/C，共享层永不解释 state：
+注册表按规范化 id 存描述符，拒绝空值、static 与同名覆盖。因为 S/C 因格式而异，注册表内部擦除泛型；格式模块负责从 unknown 校验成自己的 S，共享层不解释状态。实现见 [前端注册表](../frontend/src/entities/character-visual/registry.ts)。
 
-```ts
-// entities/character-visual/registry.ts
-const formats = new Map<string, AvatarFormat<unknown, unknown>>();
+应用启动时，[avatarFormats.ts](../frontend/src/app/avatarFormats.ts) 收集 `adapters/*/format.ts` 的 default export 并统一注册。format.ts 只含轻量元数据，类型使用 type import，load() 内使用动态 import 加载 SDK / renderer / Editor。注册本身不触发 load；并发 load 共用 Promise，失败清除缓存，后续创建可以重试。这个入口只包含随当前前端构建交付的格式；第三方 Python 插件若没有对应前端描述符，应显示不可用。运行时分发第三方 JS 不属于本 PR 的插件承诺。
 
-export function registerAvatarFormat<S, C>(format: AvatarFormat<S, C>): void {
-  formats.set(format.id, format as AvatarFormat<unknown, unknown>);
-}
-export function avatarFormat(id: string): AvatarFormat<unknown, unknown> | undefined {
-  return formats.get(id);
-}
-export function registeredAvatarFormats(): AvatarFormat<unknown, unknown>[] {
-  return [...formats.values()];
-}
-```
-
-L2D 模块提供 L2DState、参数 / 动作编辑描述与自己的 Editor；VRM 模块提供 VrmState、表情 / 人形骨骼编辑描述与自己的 Editor；未来格式同理。共享 ModelStateEditor 只管理“当前编号、草稿、保存、标签”，通过 `module.Editor` 展示格式专属控件。编辑描述 C 不强求一致，避免为了统一滑条把各模型的能力都压成一种格式。
+L2D 模块提供 L2DState、参数 / 动作编辑描述与自己的 Editor；VRM 模块提供 VrmState、表情 / 人形骨骼编辑描述与自己的 Editor；未来格式同理。共享 ModelStateEditor 只管理“当前编号、草稿、保存、标签”，等待 load() 后通过 `module.Editor` 展示格式专属控件。编辑描述 C 不强求一致，避免为了统一滑条把各模型的能力都压成一种格式。
 
 接口行为必须一致：
 
@@ -241,7 +226,7 @@ L2D 模块提供 L2DState、参数 / 动作编辑描述与自己的 Editor；VRM
 
 adapter 自己持有一个帧循环，并按固定顺序混合动作、基础表情、自动眨眼、嘴型和物理。宿主不读写 SDK 参数，也不逐帧 setState。被中止的 apply 不能在新请求之后覆盖状态；宿主取消上一次请求，adapter 在异步边界和提交前检查 signal。
 
-CharacterVisual 的分发只有一处：static 渲染现有 img；动态类型按注册表懒加载模块。实例由组件持有，模型 URL 不变时只 apply，新模型或卸载才 dispose。预览和聊天各有实例，互不改变状态。未知格式 id（本版本未注册）渲染占位并允许切回 static。
+CharacterVisual 的分发只有一处：static 渲染现有 img；动态类型按注册表懒加载模块。实例由组件持有，模型 URL 不变时只 apply，新模型或卸载才 dispose。加载与 apply 使用独立的 AbortController，晚到的实例立即 dispose，晚到的状态响应不得提交；HTTP 失败不能作为状态应用。错误以覆盖层展示，保留挂载容器，换模型或下一次有效状态可恢复。预览和聊天各有实例，互不改变状态。未知格式 id（本版本未注册）渲染占位并允许切回 static。
 
 4. 状态文件属于各格式，对共享层不透明
 
@@ -333,12 +318,12 @@ sprite.show 只增加 avatarType 和 modelUrl 两个事件字段；其余 charac
 
 - slot 仍由共享层拥有：后端 `_get_or_create_sprite_slot` 按 character → 0..N-1 做 LRU 分配；前端 `upsertChatStageSprite` / `resolvedChatStageSpriteSlot` 负责槽位稳定、轴心补偿与重连修复。格式 adapter 不读也不写 slot。
 - SpriteLayer 的 `<figure>` 仍是布局单元：`data-slot`、`--sprite-axis-center`、`--sprite-offset-x/y`、`--sprite-scale`、发言高亮 `data-speaking` / `data-dim` 全部照旧，作用于整个槽位，与内容无关。
-- 唯一变化是 figure 内部：从硬编码 `<img>` 换成 CharacterVisual 分发——static 渲染现有 img，模型格式按注册表把 module 挂进一个容器。adapter 只负责“把模型填满这个盒子”（contain 适配、内部取景），不负责盒子在哪、多大、排第几。
-- sprite.scale / sprite_scale 继续缩放这个盒子（CSS transform）；adapter 通过 resize(width, height) 拿到缩放后的 CSS 像素尺寸，并在实现内限幅设备像素比。模型自身的取景（画布尺寸、相机 FOV、中心对齐）属于格式能力，不属于槽位。
+- 唯一变化是 figure 内部：从硬编码 `<img>` 换成 CharacterVisual 分发——static 渲染现有 img，模型格式按注册表把 module 挂进一个容器。adapter 只负责“把模型放进这个盒子”（contain 适配、内部取景），不负责盒子在哪、多大、排第几。
+- sprite.scale / sprite_scale 继续缩放这个盒子（CSS transform）；adapter 通过 resize(width, height) 拿到布局 CSS 像素尺寸（未乘外层 transform），并在实现内限幅设备像素比。模型自身的取景（画布尺寸、相机 FOV、中心对齐）属于格式能力，不属于槽位。
 
 模型资源使用现有媒体鉴权，补充包内相对寻址。AvatarMount.assetUrl 由共享加载器提供；各格式内部 loader 所有外部依赖也必须经该规则转换和检查，不能只有状态文件受限而纹理直接访问任意 URL。
 
-SoundPlayer 保留已有 characterName 到实际语音队列项，从 voice 支路采样并平滑开合量，以真正播放的 characterName 路由到实例。**是否路由嘴型由当前格式的 `capabilities.mouth` 决定**；不支持嘴型的格式不接开合量。继续使用已有 playbackId / rendererId；BGM、音效不驱动嘴型。停止、失败、缓冲和失去播放权时撤去语音驱动，不增加新的播放身份字段。
+SoundPlayer 保留已有 characterName 到实际语音队列项，从 voice 支路采样并平滑开合量，以真正播放的 characterName 路由到实例。**是否路由嘴型由当前模型的 `session.capabilities.mouth` 决定**；不支持嘴型的格式不接开合量。继续使用已有 playbackId / rendererId；BGM、音效不驱动嘴型。停止、失败、缓冲和失去播放权时撤去语音驱动，不增加新的播放身份字段。
 
 媒体 worker 可以提前准备资源，舞台更新仍由既有有序呈现链执行。首段触发状态 / 动作，后续分句只继续音频；使用现有分句判断与事件 seq 去重。恢复快照使用 restore，新消息使用 play，不因重连重播动作。切换形象类型后的新会话不复用其他类型的历史资源编号。
 
@@ -348,7 +333,7 @@ SoundPlayer 保留已有 characterName 到实际语音队列项，从 voice 支�
 
 AI 流程：格式模块根据真实 controls 构造有界候选 → 现有编号 / vibe 契约选择候选 → 程序得到对应状态 → 同样校验和保存 → 预览采样 → 复用标签生成流程。LLM 不返回新的状态 JSON schema，也不在 speech / effect 隐藏动作指令。
 
-动态采样需要真正的前端模型实例，**是否可采样由 `capabilities.sampling` 决定**：`none` 表示该格式不提供动态视觉标注（不声称完成）；`single` 采样所选状态一帧；`multi` 对有动作的状态按时间点顺序采样。共享编辑器顺序采样所选状态，使用既有图片上传和任务机制交给视觉标注用例。需要捕获 / 时间定位时，由各格式模块提供编辑期采样辅助函数，不把它变成聊天渲染器的必需方法。关闭预览、取消任务或模型失效时明确取消这一批；没有可用渲染客户端时不声称后端已完成动态视觉标注。
+动态采样需要真正的前端模型实例，**是否可采样由 `session.capabilities.sampling` 决定**：`none` 表示该格式不提供动态视觉标注（不声称完成）；`single` 采样所选状态一帧；`multi` 对有动作的状态按时间点顺序采样。共享编辑器顺序采样所选状态，使用既有图片上传和任务机制交给视觉标注用例。需要捕获 / 时间定位时，由各格式模块提供编辑期采样辅助函数，不把它变成聊天渲染器的必需方法。关闭预览、取消任务或模型失效时明确取消这一批；没有可用渲染客户端时不声称后端已完成动态视觉标注。
 
 参数缺失、数值越界、文件引用无效都不能写成可用条目。后端不能验证的 SDK 能力在前端保存前和运行时检查；错误返回当前编辑器。批量任务只追加成功项，失败项保留原因，绝不跨类型修改标签。
 
@@ -358,14 +343,14 @@ AI 流程：格式模块根据真实 controls 构造有界候选 → 现有编�
 |---|---|---|
 | 共享基础 | config/schema.py、config/character_assets.py、现有 character manager / use case / routes、sprite resolver / catalogs、原舞台事件与音频 | 角色结构（两个新字段）、取资源入口、平台命令、事件字段、能力标志和语音输入 |
 | 共享前端 | entities/character-visual/contracts.ts、registry.ts、CharacterVisual.tsx、features/character-editor/ModelStateEditor.tsx、shared/platform/types.ts | AvatarFormat / Session 与平台类型；static 保留原 img |
-| 共享后端 | core/media/avatar/contracts.py、registry.py、application/characters/model_assets.py | ModelAssetAdapter、能力标志、导入 / 状态提交、文件安全与配置更新 |
+| 共享后端 | sdk/adapters/avatar.py、core/media/avatar/registry.py、application/characters/model_assets.py | ModelAssetAdapter、能力标志、导入 / 状态提交、文件安全与配置更新 |
 | 每个格式（如 L2D） | core/media/avatar/l2d.py、entities/character-visual/adapters/l2d/、各自 fixtures / tests | 该格式依赖、状态解析、加载与编辑、嘴眼和资源释放 |
 | 每个格式（如 VRM） | core/media/avatar/vrm.py、entities/character-visual/adapters/vrm/、各自 fixtures / tests | 该格式依赖、状态解析、加载与编辑、嘴眼和资源释放 |
 | AI 整合 | application/characters/generate_model_states.py、application/media/auto_annotation.py、编辑器批量操作 | 接受格式候选 / 采样结果，复用保存和标签流程 |
 
-共享契约位于宿主已有模块，不创建新的 sdk/avatar.py；本期 adapter 是内部实现边界。前端 shared/platform 不反向依赖具体 adapter：平台层只看到 `avatar_type: string` 和 `state: unknown`，具体状态类型由格式模块在自己的目录导出；临时 C 类型只由格式模块导出。Python adapter 的状态解析模型留在格式目录，config 不导入 core。
+后端公共契约位于 sdk/adapters/avatar.py，沿用现有插件能力注册；core 只持有运行时注册快照。前端 shared/platform 不反向依赖具体 adapter：平台层只看到 `avatar_type: string` 和 `state: unknown`，具体状态类型由格式模块在自己的目录导出；临时 C 类型只由格式模块导出。Python adapter 的状态解析模型留在格式目录，config 不导入 core。
 
-注册表采用固定 id → 模块 / adapter 的懒加载入口。基础 PR 先声明契约、共享宿主和一个**测试替身格式**，未就绪格式在 UI 中不可选择；每个格式 PR 再添加自己的目录与一行注册。双方都不复制或改写 CharacterVisual、SoundPlayer、character_routes.py 的通用逻辑。
+注册表采用固定 id → 轻量描述符 / adapter 的入口，前端实现按需加载。基础 PR 先声明契约、共享宿主和一个**测试替身格式**，未就绪格式在 UI 中不可选择；每个格式 PR 再添加自己的目录与一行注册。双方都不复制或改写 CharacterVisual、SoundPlayer、character_routes.py 的通用逻辑。
 
 9. 新增格式的清单与 PR 顺序
 
@@ -375,7 +360,7 @@ AI 流程：格式模块根据真实 controls 构造有界候选 → 现有编�
 新增格式 X：
   后端  core/media/avatar/x.py       实现 ModelAssetAdapter（format_id、capabilities、inspect/parse_state/state_files）
   前端  entities/character-visual/adapters/x/  实现 AvatarModule<S,C> 与 Editor（含自己的 S/C 类型、fixtures）
-  注册  后端 registry.register_adapter(...) 一行；前端 registerAvatarFormat(...) 一行
+  注册  后端 registry.register_adapter(...) 一行；前端导出 adapters/x/format.ts（应用启动入口自动注册）
   测试  双方 fixtures / tests（接受与拒绝边界、资源释放、.char 往返）
   不改  Character schema、get_character_assets、编号/标签/语音、事件、命令、LLM、共享 UI
 ```
@@ -398,6 +383,6 @@ AI 流程：格式模块根据真实 controls 构造有界候选 → 现有编�
 5. 关闭预览、离场与重复 dispose 后无帧循环 / GPU / 事件监听泄漏。
 6. 状态文件和依赖可随 .char 导出再导入；动态标签 / 条目语音不会读写 static 或另一种动态类型。
 7. 提供有效状态、越界 / 未知控制、缺失文件、取消加载样例，Python 与 TypeScript 对状态结构的判断一致。
-8. **复用冒烟**：只新增一个测试替身格式（新目录 + 两行注册），不改任何共享文件，即能在 UI 出现、能导入 / 保存 / 选中 / 应用 / 导出；这验证“加格式”配方成立。
+8. **复用冒烟**：只新增一个测试替身格式（新目录 + 后端注册 + 前端描述符），不改任何共享文件，即能在 UI 出现、能导入 / 保存 / 选中 / 应用 / 导出；这验证“加格式”配方成立。
 
-共享基础另外验证 LLM 输出 schema 不变、旧角色默认 static、原编号 / vibe 行为、条目删除重排、保存下标冲突、角色重命名后的旧任务、语音排队不串角色，以及未知格式 id 的保留与回退 static。只验证共享契约所需行为，不要求 L2D 和 VRM 具有相同表情集合或相同可编辑参数。
+共享基础另外验证 LLM 输出 schema 不变、旧角色默认 static、原编号 / vibe 行为、条目删除重排、保存下标冲突、角色重命名后的旧任务、语音排队不串角色，以及未知格式 id 的保留、不可用提示和手动切回 static。只验证共享契约所需行为，不要求 L2D 和 VRM 具有相同表情集合或相同可编辑参数。
