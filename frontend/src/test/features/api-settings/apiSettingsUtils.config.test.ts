@@ -150,6 +150,7 @@ describe("API settings utilities", () => {
       history_recent_messages: "bad" as unknown as number,
       llm_api_key: undefined as unknown as Record<string, string>,
       llm_base_url: "",
+      llm_base_urls: undefined as unknown as Record<string, string>,
       llm_model: undefined as unknown as Record<string, string>,
       max_active_tool_groups: "bad" as unknown as number,
       max_tool_result_chars: "bad" as unknown as number,
@@ -163,6 +164,7 @@ describe("API settings utilities", () => {
     expect(normalized.llm_api_key).toEqual({});
     expect(normalized.llm_model).toEqual({});
     expect(normalized.llm_base_url).toBeTruthy();
+    expect(normalized.llm_base_urls[normalized.llm_provider]).toBe(normalized.llm_base_url);
     expect(
       normalizeApiConfigForUi({
         ...sampleConfig.api_config,

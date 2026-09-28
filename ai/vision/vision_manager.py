@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from ai.vision.deepseek_vision_adapter import DeepseekVisionAdapter
 from ai.vision.moondream_adapter import MoondreamVisionAdapter
+from ai.vision.provider_vision_adapters import (
+    ChatGPTVisionAdapter,
+    ClaudeVisionAdapter,
+    DoubaoVisionAdapter,
+    GeminiVisionAdapter,
+    OllamaVisionAdapter,
+    QwenVisionAdapter,
+)
 from ai.vision.vision_adapter import VisionAdapter
 
 
@@ -13,7 +22,14 @@ class VisionManager:
     """Resolve and invoke vision providers without leaking provider details to callers."""
 
     _adapters: dict[str, VisionAdapterFactory] = {
+        "chatgpt": ChatGPTVisionAdapter,
+        "claude": ClaudeVisionAdapter,
+        "deepseek": DeepseekVisionAdapter,
+        "doubao": DoubaoVisionAdapter,
+        "gemini": GeminiVisionAdapter,
         "moondream": MoondreamVisionAdapter,
+        "ollama": OllamaVisionAdapter,
+        "qwen": QwenVisionAdapter,
     }
 
     def __init__(self, provider: str = "moondream") -> None:

@@ -153,6 +153,35 @@ describe("ApiSettingsPage", () => {
     mocks.saveSystemConfig.mockResolvedValue(sampleConfig.system_config);
   });
 
+  it("places vision understanding and long-term memory after TTS in the navigation and page", async () => {
+    mocks.getAppConfig.mockResolvedValue(validAppConfig());
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    const navigation = screen.getByRole("navigation", { name: "AI 服务设置" });
+    expect(
+      within(navigation)
+        .getAllByRole("button")
+        .map((button) => button.textContent),
+    ).toEqual([
+      "界面语言",
+      "LLM API 配置",
+      "TTS 整合包",
+      "视觉理解",
+      "长期记忆",
+      "图像生成（T2I）",
+      "语音输入（ASR）",
+      "资源与说明",
+    ]);
+
+    const ttsSection = document.getElementById("api-tts")!;
+    const visionSection = document.getElementById("api-vision")!;
+    const memorySection = document.getElementById("api-memory")!;
+    expect(ttsSection.compareDocumentPosition(visionSection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(visionSection.compareDocumentPosition(memorySection) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("shows a newly loaded ASR adapter and its fields when returning to settings after plugin reload", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: 5 * 60 * 1000 } },
@@ -491,6 +520,55 @@ describe("ApiSettingsPage", () => {
     );
     expect(await screen.findByRole("dialog", { name: "LLM 连通检测" })).toHaveTextContent("连接成功");
     expect(screen.getByRole("button", { name: "已连通" })).toBeInTheDocument();
+  });
+
+  it("keeps LLM and vision selections independent while sharing provider credentials", async () => {
+    mocks.getAppConfig.mockResolvedValue({
+      ...validAppConfig(),
+      api_config: {
+        ...validAppConfig().api_config,
+        llm_api_key: { ChatGPT: "sk-chat", Deepseek: "sk-deepseek" },
+        llm_base_url: "https://api.openai.com/v1",
+        llm_base_urls: {
+          ChatGPT: "https://api.openai.com/v1",
+          Deepseek: "https://deepseek-proxy.example.com/v1",
+        },
+        llm_model: { ChatGPT: "gpt-4o-mini" },
+        llm_provider: "ChatGPT",
+        vision_model: { deepseek: "deepseek-flash" },
+        vision_provider: "deepseek",
+      },
+    });
+    mocks.saveApiConfig.mockImplementation(async (config) => config);
+    mocks.saveSystemConfig.mockImplementation(async (config) => config);
+
+    renderPage();
+
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+    expect(screen.getByLabelText("LLM API Key")).toHaveValue("sk-chat");
+    expect(screen.getByLabelText("服务商 API Key")).toHaveValue("sk-deepseek");
+    expect(screen.getByDisplayValue("https://deepseek-proxy.example.com/v1")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("服务商 API Key"), { target: { value: "sk-shared-new" } });
+    fireEvent.change(screen.getByDisplayValue("https://deepseek-proxy.example.com/v1"), {
+      target: { value: "https://deepseek-new.example.com/v1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() =>
+      expect(mocks.saveApiConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          llm_api_key: expect.objectContaining({ ChatGPT: "sk-chat", Deepseek: "sk-shared-new" }),
+          llm_base_url: "https://api.openai.com/v1",
+          llm_base_urls: expect.objectContaining({
+            ChatGPT: "https://api.openai.com/v1",
+            Deepseek: "https://deepseek-new.example.com/v1",
+          }),
+          llm_provider: "ChatGPT",
+          vision_provider: "deepseek",
+        }),
+      ),
+    );
   });
 
   it("downloads a TTS bundle and writes the returned provider path into the draft", async () => {

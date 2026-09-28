@@ -14,6 +14,7 @@ import type {
 } from "./types";
 
 export const sampleConfig: AppConfig = {
+  vision_available: true,
   adapter_catalog: {
     asr: [
       {
@@ -65,6 +66,21 @@ export const sampleConfig: AppConfig = {
       { label: "IndexTTS", schema: {}, value: "index-tts" },
       { label: "CosyVoice", schema: {}, value: "cosyvoice" },
     ],
+    vision: [
+      { label: "自动选择", schema: {}, value: "auto" },
+      {
+        label: "DeepSeek Vision",
+        schema: { detail: { choices: ["auto", "low", "high", "original"], default: "auto", type: "str" } },
+        value: "deepseek",
+      },
+      { label: "OpenAI Vision", schema: {}, value: "chatgpt" },
+      { label: "Gemini Vision", schema: {}, value: "gemini" },
+      { label: "Claude Vision", schema: {}, value: "claude" },
+      { label: "豆包视觉", schema: {}, value: "doubao" },
+      { label: "通义千问视觉", schema: {}, value: "qwen" },
+      { label: "Ollama Vision（本地）", schema: {}, value: "ollama" },
+      { label: "Moondream（本地）", schema: {}, value: "moondream" },
+    ],
   },
   api_config: {
     gpt_sovits_api_path: "",
@@ -81,9 +97,12 @@ export const sampleConfig: AppConfig = {
     t2i_output_node_id: "9",
     llm_api_key: { Deepseek: "" },
     llm_base_url: "https://api.deepseek.com/v1",
+    llm_base_urls: { Deepseek: "https://api.deepseek.com/v1" },
     llm_model: {},
     llm_provider: "Deepseek",
     is_streaming: true,
+    vision_provider: "auto",
+    vision_model: { deepseek: "deepseek-flash" },
     interrupt_enabled: true,
     is_batch_input_enabled: false,
     batch_input_timeout: 5,
@@ -107,6 +126,7 @@ export const sampleConfig: AppConfig = {
     tts_extra_configs: {},
     asr_extra_configs: {},
     t2i_extra_configs: {},
+    vision_extra_configs: {},
   },
   background_list: [
     {

@@ -9,7 +9,12 @@
   background:
     linear-gradient(135deg, color-mix(in oklch, var(--color-accent-primary) 7%, transparent), transparent 52%),
     var(--color-bg-input);
-  scrollbar-width: thin;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.page-section-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .page__header > .page-section-nav {

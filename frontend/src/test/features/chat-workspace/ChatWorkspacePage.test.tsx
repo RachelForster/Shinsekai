@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ChatWorkspacePage } from "../../../features/chat-workspace/ChatWorkspacePage";
 import { I18nProvider } from "../../../shared/i18n";
 import { resolveConversationTitle } from "../../../entities/chat/conversationTitle";
+import { ToastProvider } from "../../../shared/ui";
 
 vi.mock("../../../features/template-editor/TemplateEditorPage", () => ({
   TemplateEditorPage: ({
@@ -41,7 +42,9 @@ function renderPage(path = "/settings/templates") {
   return render(
     <MemoryRouter initialEntries={[path]}>
       <I18nProvider language="en">
-        <ChatWorkspacePage />
+        <ToastProvider>
+          <ChatWorkspacePage />
+        </ToastProvider>
       </I18nProvider>
     </MemoryRouter>,
   );

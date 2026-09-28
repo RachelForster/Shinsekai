@@ -3,6 +3,8 @@ llm_provider: Deepseek
 llm_api_key:
   Deepseek: sk-test-sample-key
 llm_base_url: https://api.deepseek.com
+llm_base_urls:
+  Deepseek: https://api.deepseek.com
 llm_model:
   Deepseek: deepseek-chat
 is_streaming: true

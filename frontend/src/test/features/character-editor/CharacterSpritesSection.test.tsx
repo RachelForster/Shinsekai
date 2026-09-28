@@ -96,14 +96,14 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterSpritesSect
 }
 
 describe("CharacterSpritesSection", () => {
-  it("only shows the Moondream action when the plugin is available", () => {
+  it("only shows the smart-label action when vision is available", () => {
     const onAutoLabel = vi.fn();
     const first = renderSection();
-    expect(screen.queryByRole("button", { name: "Label untagged with Moondream" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Smart labeling" })).not.toBeInTheDocument();
     first.unmount();
 
     renderSection({ autoLabelAvailable: true, autoLabelDisabled: false, onAutoLabel });
-    fireEvent.click(screen.getByRole("button", { name: "Label untagged with Moondream" }));
+    fireEvent.click(screen.getByRole("button", { name: "Smart labeling" }));
     expect(onAutoLabel).toHaveBeenCalledOnce();
   });
 

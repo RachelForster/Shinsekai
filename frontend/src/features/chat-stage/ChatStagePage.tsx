@@ -41,6 +41,7 @@ import { isRemoteMobileAccessPage, layerClassName } from "./chatStageUtils";
 import { useChatStageCommands } from "./hooks/useChatStageCommands";
 import { useChatStageEvents } from "./hooks/useChatStageEvents";
 import { useChatStageKeyboardShortcuts } from "./hooks/useChatStageKeyboardShortcuts";
+import { useHoldToTalk } from "./hooks/useHoldToTalk";
 import { useDesktopClickThrough } from "./hooks/useDesktopClickThrough";
 import { useDesktopWindowDrag } from "./hooks/useDesktopWindowDrag";
 import { useDialogTypewriter } from "./hooks/useDialogTypewriter";
@@ -498,6 +499,10 @@ export function ChatStagePage() {
   const updateRuntimeEffectVolume = (effectVolume: number) => {
     setRuntimeConfig((current) => ({ ...current, effectVolume: Math.min(1, Math.max(0, effectVolume)) }));
   };
+  const updateRuntimeLongPressTalk = (longPressTalk: boolean) => {
+    setRuntimeConfig((current) => ({ ...current, longPressTalk }));
+    if (longPressTalk) void sendCommand({ type: "pause-asr" });
+  };
   const updateRuntimeImmersiveMode = (immersiveMode: boolean) => {
     setRuntimeConfig((current) => ({ ...current, immersiveMode }));
   };
@@ -594,6 +599,12 @@ export function ChatStagePage() {
     onToggleAuto: toggleAuto,
   });
 
+  useHoldToTalk({
+    enabled: runtimeConfig.longPressTalk,
+    disabled: modalOpen || viewModel.inputDisabled || Boolean(state.sessionClosedReason),
+    onCommand: sendCommand,
+  });
+
   const openHistoryDialog = () => {
     setHistoryDialogOpen(true);
     void refreshHistory();
@@ -656,6 +667,7 @@ export function ChatStagePage() {
       configOpen={toolbarConfigOpen}
       hidden={!dialogSurfaceVisible}
       hideCloseButton={standaloneDesktopWindow}
+      longPressTalk={runtimeConfig.longPressTalk}
       locked={dialogControlsLocked}
       onAutoChange={(auto) => setRuntimeConfig((current) => ({ ...current, auto }))}
       onBgmVolumeChange={updateRuntimeBgmVolume}
@@ -665,6 +677,7 @@ export function ChatStagePage() {
       onCommand={sendCommand}
       onConfigOpenChange={setToolbarConfigOpen}
       onFlushBatch={() => void sendCommand({ type: "flush-input-batch" })}
+      onLongPressTalkChange={updateRuntimeLongPressTalk}
       onLockedChange={setDialogControlsLocked}
       onOpenBranches={() => setBranchDialogOpen(true)}
       onOpenHistory={openHistoryDialog}

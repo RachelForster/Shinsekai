@@ -115,6 +115,7 @@ class VoskAdapter(ASRAdapter):
             else resource_path(raw_model_path)
         ).as_posix()
         self._is_running = False
+        self._finalize_on_stop = False
         self._thread: Optional[threading.Thread] = None
 
         self._pause_event = threading.Event()
@@ -148,24 +149,34 @@ class VoskAdapter(ASRAdapter):
         recognizer = KaldiRecognizer(self.model, self.samplerate)
         stream.start_stream()
 
-        while self._is_running:
-            if not self._pause_event.is_set():
-                time.sleep(0.1)
-                continue
+        try:
+            while self._is_running:
+                if not self._pause_event.is_set():
+                    time.sleep(0.1)
+                    continue
 
-            data = stream.read(self.chunk_size, exception_on_overflow=False)
-            if recognizer.AcceptWaveform(data):
-                result_json = json.loads(recognizer.Result())
+                data = stream.read(self.chunk_size, exception_on_overflow=False)
+                if recognizer.AcceptWaveform(data):
+                    result_json = json.loads(recognizer.Result())
+                    if result_json.get("text"):
+                        self.callback(result_json["text"], is_partial=False)
+                else:
+                    result_json = json.loads(recognizer.PartialResult())
+                    if result_json.get("partial"):
+                        self.callback(result_json["partial"], is_partial=True)
+
+            if self._finalize_on_stop:
+                result_json = json.loads(recognizer.FinalResult())
                 if result_json.get("text"):
                     self.callback(result_json["text"], is_partial=False)
-            else:
-                result_json = json.loads(recognizer.PartialResult())
-                if result_json.get("partial"):
-                    self.callback(result_json["partial"], is_partial=True)
-
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
+        except Exception as exc:
+            self._capture_error = exc
+            _log.exception("Vosk capture failed")
+        finally:
+            self._is_running = False
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
         _log.info("Vosk recognition loop ended")
 
     def start(self):
@@ -180,6 +191,9 @@ class VoskAdapter(ASRAdapter):
             raise RuntimeError(message)
 
         _log.info("Vosk starting…")
+        self._finalize_on_stop = False
+        self._capture_error = None
+        self._pause_event.set()
         self._is_running = True
         self._thread = threading.Thread(target=self._vosk_recognition_loop)
         self._thread.start()
@@ -187,18 +201,21 @@ class VoskAdapter(ASRAdapter):
 
     def stop(self):
         """停止 Vosk 识别线程。"""
-        if not self._is_running:
-            return
-
         _log.info("Vosk stopping…")
         self._is_running = False
-        if self._thread and self._thread.is_alive():
+        if self._thread and self._thread.is_alive() and self._thread is not threading.current_thread():
             self._thread.join()
         _log.info("Vosk stopped")
 
     def get_status(self) -> str:
         """获取 Vosk 的运行状态。"""
         return "Running" if self._is_running else "Stopped"
+
+    def finish(self) -> None:
+        self._finalize_on_stop = True
+        self.stop()
+        if getattr(self, "_capture_error", None) is not None:
+            raise RuntimeError("Vosk could not finalize voice input") from self._capture_error
 
     def pause(self):
         """暂停 Vosk 识别。"""

@@ -25,3 +25,17 @@ def test_moondream_adapter_requires_the_optional_plugin(monkeypatch):
 
     with pytest.raises(MoondreamPluginUnavailable, match="Moondream"):
         MoondreamVisionAdapter()
+
+
+def test_moondream_adapter_requires_the_model_cache(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "ai.vision.moondream_adapter.installed_moondream_directory",
+        lambda: tmp_path,
+    )
+    monkeypatch.setattr(
+        "ai.vision.moondream_adapter.moondream_model_cached",
+        lambda: False,
+    )
+
+    with pytest.raises(MoondreamPluginUnavailable, match="模型尚未下载"):
+        MoondreamVisionAdapter()

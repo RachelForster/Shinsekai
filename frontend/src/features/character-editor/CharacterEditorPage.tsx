@@ -46,7 +46,7 @@ import { CharacterPersonalitySection } from "./CharacterPersonalitySection";
 import { CharacterSpritesSection } from "./CharacterSpritesSection";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
 import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
-import { useMoondreamAvailability } from "../media-auto-label/useMoondreamAvailability";
+import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
 import { SpriteTagsDialog } from "./SpriteTagsDialog";
 import {
   SPRITE_SCALE_STEP,
@@ -79,7 +79,7 @@ export function CharacterEditorPage() {
   const queryClient = useQueryClient();
   const { showToast } = useToast();
   const { t } = useI18n();
-  const moondreamAvailable = useMoondreamAvailability();
+  const visionAvailable = useVisionAvailability();
   const charactersQuery = useQuery({ queryFn: listCharacters, queryKey: charactersQueryKey });
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const data = charactersQuery.data ?? [];
@@ -1034,7 +1034,7 @@ export function CharacterEditorPage() {
         />
 
         <CharacterSpritesSection
-          autoLabelAvailable={moondreamAvailable}
+          autoLabelAvailable={visionAvailable}
           autoLabelDisabled={!isSavedCharacter || !draft.sprites.length || !spriteTags.some((tag) => !tag.trim())}
           autoLabelPending={autoLabelMutation.isPending}
           draft={draft}

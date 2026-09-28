@@ -439,8 +439,12 @@ class EventSinkSnapshotTests(unittest.TestCase):
 
     def test_asr_final_snapshot_persists_consumed_transcript_state(self):
         snapshot = make_empty_chat_snapshot()
+        snapshot["characterName"] = "Mio"
+        snapshot["dialogHtml"] = "<p>Previous reply</p>"
+        snapshot["dialogText"] = "Previous reply"
         snapshot["inputDraft"] = "hello wor"
         snapshot["options"] = ["stale option"]
+        snapshot["userDisplayName"] = "Aoi"
 
         next_snapshot = fold_event_into_snapshot(
             snapshot,
@@ -453,6 +457,9 @@ class EventSinkSnapshotTests(unittest.TestCase):
             },
         )
 
+        self.assertEqual(next_snapshot.get("characterName"), "Aoi")
+        self.assertIsNone(next_snapshot.get("dialogHtml"))
+        self.assertEqual(next_snapshot.get("dialogText"), "hello world")
         self.assertEqual(next_snapshot.get("inputDraft"), "")
         self.assertEqual(next_snapshot.get("options"), [])
 

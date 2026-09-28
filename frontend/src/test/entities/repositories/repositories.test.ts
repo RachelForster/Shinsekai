@@ -470,6 +470,7 @@ describe("entity repositories", () => {
         install: vi.fn().mockResolvedValue({ id: "core-tools" }),
         list: vi.fn().mockResolvedValue([]),
         listSlotContributions: vi.fn().mockResolvedValue([]),
+        status: vi.fn().mockResolvedValue({ status: "ready" }),
         repoTags: vi.fn().mockResolvedValue(["v0.1.0"]),
         scanLocal: vi.fn().mockResolvedValue({
           author: "Shinsekai Contributors",
@@ -589,6 +590,7 @@ describe("entity repositories", () => {
     await plugin.savePluginUiConfig("core-tools", "settings", { enabled: true });
     await plugin.runPluginUiAction("core-tools", "settings", "reload", { enabled: true });
     await plugin.listPluginCatalog();
+    await plugin.getPluginLoadStatus();
     await plugin.listRepoTags("myouo/Shinsekai");
     await plugin.scanLocalPlugin("/tmp/plugin-example");
     await plugin.validatePluginSubmission({
@@ -653,6 +655,7 @@ describe("entity repositories", () => {
     });
     expect(platform.logs.import).toHaveBeenCalledWith(["/tmp/shinsekai.log"]);
     expect(platform.logs.import).toHaveBeenCalledTimes(2);
+    expect(platform.plugins.status).toHaveBeenCalledTimes(1);
     expect(platform.plugins.appUpdateRun).toHaveBeenCalledWith({ refKind: "tag", tagName: "v0.1.0" }, taskOptions);
     expect(platform.plugins.install).toHaveBeenCalledWith({ source: "repo", tagName: "v0.1.0" }, taskOptions);
     expect(platform.mcp.previewTools).toHaveBeenCalledWith(sampleMcpConfig, taskOptions);

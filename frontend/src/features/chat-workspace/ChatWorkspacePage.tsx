@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from "react";
 import { ArrowLeft, BookOpen, MessageCircle } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useI18n } from "../../shared/i18n";
 import { Button } from "../../shared/ui/Button";
 import { Dialog } from "../../shared/ui/Dialog";
@@ -8,6 +8,11 @@ import { TextInput } from "../../shared/ui/FormControls";
 import { ConversationLibrary } from "./ConversationLibrary";
 import { ConversationTypeBadge } from "./ConversationTypeBadge";
 import { resolveConversationTitle } from "../../entities/chat/conversationTitle";
+import { useChatInitialization } from "../chat-startup/useChatInitialization";
+import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
+import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
+import { showChatSurface } from "../../shared/desktop/chatWindow";
+import type { ChatSnapshot, MobileAccessInfo } from "../../shared/platform/types";
 import "./ChatWorkspacePage.css";
 
 const NormalMode = lazy(() =>
@@ -25,6 +30,9 @@ const StorySettings = lazy(() =>
 export function ChatWorkspacePage() {
   const { t } = useI18n();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  const initialization = useChatInitialization();
+  const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
   const conversationId = params.get("conversation") || undefined;
   const configuring =
     params.get("tab") === "new" || Boolean(conversationId) || (!params.has("tab") && params.has("mode"));
@@ -35,6 +43,13 @@ export function ChatWorkspacePage() {
   const [title, setTitle] = useState("");
   const [draftKey, setDraftKey] = useState(0);
   const back = () => setParams({ tab: "recent" });
+  const onCreated = (snapshot: ChatSnapshot) => {
+    if (snapshot.mobileAccess) {
+      setMobileAccessInfo(snapshot.mobileAccess);
+    } else {
+      void showChatSurface({ navigate, snapshot });
+    }
+  };
   return (
     <div className="chat-workspace">
       {configuring ? (
@@ -69,6 +84,9 @@ export function ChatWorkspacePage() {
                 createOnly={!conversationId}
                 conversationId={conversationId}
                 conversationTitle={title}
+                initializationService={conversationId ? undefined : initialization}
+                onLaunchStarted={conversationId ? undefined : back}
+                onApplied={conversationId ? undefined : onCreated}
               />
             ) : (
               <StoryMode key={draftKey} conversationTitle={title} />
@@ -87,6 +105,25 @@ export function ChatWorkspacePage() {
           }
         />
       )}
+      <ChatInitializationDialog
+        error={initialization.initializationError}
+        onClose={initialization.closeInitialization}
+        open={initialization.initializationOpen}
+        pending={initialization.initializationPending}
+        task={initialization.initializationTask}
+      />
+      <MobileAccessDialog
+        info={mobileAccessInfo}
+        onClose={() => setMobileAccessInfo(null)}
+        onOpenLocalChat={() => {
+          const info = mobileAccessInfo;
+          setMobileAccessInfo(null);
+          return showChatSurface({
+            navigate,
+            snapshot: info ? { runtimeMode: "react", wsUrl: info.websocketUrl } : null,
+          });
+        }}
+      />
       <Dialog
         open={creating}
         title={t("conversation.new")}
