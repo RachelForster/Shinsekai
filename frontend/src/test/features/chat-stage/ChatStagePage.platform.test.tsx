@@ -1,3 +1,5 @@
+/// <reference types="vitest/jsdom" />
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -75,10 +77,10 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
   };
 }
 
-function renderPage() {
+function renderPage(route = "/") {
   return render(
     <ToastProvider>
-      <MemoryRouter initialEntries={["/"]}>
+      <MemoryRouter initialEntries={[route]}>
         <I18nProvider language="en">
           <ChatStagePage />
         </I18nProvider>
@@ -88,6 +90,8 @@ function renderPage() {
 }
 
 describe("ChatStagePage http platform integration", () => {
+  const originalPageUrl = window.location.href;
+
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
@@ -101,60 +105,91 @@ describe("ChatStagePage http platform integration", () => {
   });
 
   afterEach(() => {
+    jsdom.reconfigure({ url: originalPageUrl });
     vi.useRealTimers();
     vi.unstubAllGlobals();
     delete window.__SHINSEKAI_BRIDGE_RESTARTING__;
     delete window.__SHINSEKAI_RESTARTING__;
   });
 
-  it("resolves local stage media paths through platform file URLs", async () => {
-    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
-    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
-    const mediaSnapshot = snapshot({
-      backgroundPath: "data/backgrounds/school.png",
-      bgmPath: "data/bgm/school.mp3",
-      sprites: [{ id: "mio", label: "Mio", path: "data/characters/mio.png" }],
-    });
-    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
-      const url = String(input);
-      const pathname = new URL(url).pathname;
-      if (pathname === "/api/chat/snapshot") {
-        return mockJsonResponse(mediaSnapshot);
+  it.each([
+    { pageUrl: "http://localhost/", mediaOrigin: "http://127.0.0.1:8787", spriteCount: 2, bridgeMediaUrls: false },
+    {
+      // desktop_frontend_reload navigates the existing Windows chat window to this URL.
+      pageUrl:
+        "http://shinsekai.localhost/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787&shinsekai_bridge_token=secret&shinsekai_reload=1#/chat-stage",
+      mediaOrigin: "http://127.0.0.1:8787",
+      spriteCount: 2,
+      bridgeMediaUrls: true,
+    },
+    {
+      pageUrl: "http://192.168.1.20:8789/#/chat-stage",
+      mediaOrigin: "http://192.168.1.20:8789",
+      spriteCount: 1,
+      bridgeMediaUrls: true,
+    },
+  ])(
+    "preserves stage media and sprite policy on $pageUrl",
+    async ({ pageUrl, mediaOrigin, spriteCount, bridgeMediaUrls }) => {
+      jsdom.reconfigure({ url: pageUrl });
+      const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+      const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+      const mediaPath = (path: string) =>
+        bridgeMediaUrls ? `http://127.0.0.1:8787/api/media?path=${encodeURIComponent(path)}` : path;
+      const mediaSnapshot = snapshot({
+        backgroundPath: mediaPath("data/backgrounds/school.png"),
+        bgmPath: mediaPath("data/bgm/school.mp3"),
+        sprites: [
+          { id: "mio", label: "Mio", path: mediaPath("data/characters/mio.png"), slot: 0 },
+          { id: "aoi", label: "Aoi", path: mediaPath("data/characters/aoi.png"), slot: 1 },
+        ],
+      });
+      const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+        const url = String(input);
+        const pathname = new URL(url).pathname;
+        if (pathname === "/api/chat/snapshot") {
+          return mockJsonResponse(mediaSnapshot);
+        }
+        if (pathname === "/api/chat/history") {
+          return mockJsonResponse([]);
+        }
+        if (pathname === "/api/chat/close") {
+          return mockJsonResponse(mediaSnapshot);
+        }
+        throw new Error(`Unexpected fetch in ChatStagePage media test: ${url}`);
+      });
+
+      vi.stubGlobal("fetch", fetchMock);
+      platformMocks.getPlatform.mockReturnValue(createHttpPlatform("http://127.0.0.1:8787"));
+
+      const { unmount } = renderPage(new URL(pageUrl).hash.slice(1) || "/");
+
+      await screen.findByText("Ready");
+      expect(document.querySelector(".chat-stage__background img")).toHaveAttribute(
+        "src",
+        `${mediaOrigin}/api/media?path=data%2Fbackgrounds%2Fschool.png`,
+      );
+      const sprites = document.querySelectorAll(".sprite-layer__image");
+      expect(sprites).toHaveLength(spriteCount);
+      for (const sprite of sprites) {
+        expect(sprite.getAttribute("src")?.startsWith(`${mediaOrigin}/api/media?`)).toBe(true);
       }
-      if (pathname === "/api/chat/history") {
-        return mockJsonResponse([]);
+      if (spriteCount === 2) {
+        expect(sprites[0]).toHaveAttribute("src", `${mediaOrigin}/api/media?path=data%2Fcharacters%2Fmio.png`);
+        expect(sprites[1]).toHaveAttribute("src", `${mediaOrigin}/api/media?path=data%2Fcharacters%2Faoi.png`);
       }
-      if (pathname === "/api/chat/close") {
-        return mockJsonResponse(mediaSnapshot);
-      }
-      throw new Error(`Unexpected fetch in ChatStagePage media test: ${url}`);
-    });
+      expect(document.querySelector("[data-chat-stage-audio-player]")).toHaveAttribute(
+        "data-bgm-src",
+        `${mediaOrigin}/api/media?path=data%2Fbgm%2Fschool.mp3`,
+      );
+      await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
 
-    vi.stubGlobal("fetch", fetchMock);
-    platformMocks.getPlatform.mockReturnValue(createHttpPlatform("http://127.0.0.1:8787"));
-
-    const { unmount } = renderPage();
-
-    await screen.findByText("Ready");
-    expect(document.querySelector(".chat-stage__background img")).toHaveAttribute(
-      "src",
-      "http://127.0.0.1:8787/api/media?path=data%2Fbackgrounds%2Fschool.png",
-    );
-    expect(document.querySelector(".sprite-layer__image")).toHaveAttribute(
-      "src",
-      "http://127.0.0.1:8787/api/media?path=data%2Fcharacters%2Fmio.png",
-    );
-    expect(document.querySelector("[data-chat-stage-audio-player]")).toHaveAttribute(
-      "data-bgm-src",
-      "http://127.0.0.1:8787/api/media?path=data%2Fbgm%2Fschool.mp3",
-    );
-    await waitFor(() => expect(play).toHaveBeenCalledTimes(1));
-
-    unmount();
-    expect(pause).toHaveBeenCalledTimes(1);
-    play.mockRestore();
-    pause.mockRestore();
-  });
+      unmount();
+      expect(pause).toHaveBeenCalledTimes(1);
+      play.mockRestore();
+      pause.mockRestore();
+    },
+  );
 
   it("reopens the input layer through repository and httpPlatform when a command clears closed-session markers", async () => {
     const closedSnapshot = snapshot({

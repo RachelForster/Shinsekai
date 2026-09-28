@@ -27,11 +27,11 @@ describe("stageAssetUrl", () => {
     );
   });
 
-  it("keeps loopback URLs unchanged in the Tauri desktop WebView", () => {
+  it.each(["tauri.localhost", "shinsekai.localhost"])("keeps bridge media URLs unchanged on %s", (hostname) => {
     vi.stubGlobal("window", {
       location: {
-        host: "tauri.localhost",
-        hostname: "tauri.localhost",
+        host: hostname,
+        hostname,
         protocol: "http:",
       },
     });
@@ -46,6 +46,9 @@ describe("stageAssetUrl", () => {
     expect(isRemoteMobileAccessPage({ hostname: "127.0.0.1", protocol: "http:" })).toBe(false);
     expect(isRemoteMobileAccessPage({ hostname: "localhost", protocol: "http:" })).toBe(false);
     expect(isRemoteMobileAccessPage({ hostname: "tauri.localhost", protocol: "http:" })).toBe(false);
+    expect(isRemoteMobileAccessPage({ hostname: "shinsekai.localhost", protocol: "http:" })).toBe(false);
+    expect(isRemoteMobileAccessPage({ hostname: "shinsekai.localhost", protocol: "https:" })).toBe(false);
+    expect(isRemoteMobileAccessPage({ hostname: "shinsekai.localhost.example.com", protocol: "http:" })).toBe(true);
     expect(isRemoteMobileAccessPage({ hostname: "localhost", protocol: "tauri:" })).toBe(false);
   });
 });
