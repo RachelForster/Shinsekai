@@ -74,7 +74,17 @@ export function PlayerCharacterSettings({
   };
   return (
     <>
-      <Dialog open={open} onClose={onClose} title={t("player.select")}>
+      <Dialog
+        open={open}
+        onClose={onClose}
+        closeLabel={t("common.close")}
+        title={t("player.select")}
+        footer={
+          <Button onClick={onClose} variant="primary">
+            {t("common.confirm")}
+          </Button>
+        }
+      >
         <div className="template-mobile-access">
           <label style={{ display: "grid", gap: 8 }}>
             {t("player.select")}

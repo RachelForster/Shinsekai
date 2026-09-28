@@ -525,6 +525,57 @@ describe("TemplateEditorPage", () => {
     await waitFor(() => expect(toggle).not.toBeChecked());
   });
 
+  it.each([4, 5])(
+    "keeps NPC role controls available after selecting a player in a %i-character cast",
+    async (count) => {
+      const cast = Array.from({ length: count }, (_, index) => ({
+        character_brief: "Existing brief",
+        color: "#66ccff",
+        name: `Character ${index + 1}`,
+        sprites: [],
+      }));
+      mockListCharacters.mockResolvedValue(cast);
+      renderPage();
+      await screen.findByDisplayValue("Opening");
+      fireEvent.click(screen.getByRole("button", { name: "Select all characters" }));
+      fireEvent.click(screen.getByRole("button", { name: "Player character" }));
+      const playerDialog = screen.getByRole("dialog", { name: "Player character" });
+      const playerSelect = within(playerDialog).getByRole("combobox", { name: "Player character" });
+      fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
+      fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
+      fireEvent.keyDown(playerSelect, { key: "Enter" });
+      await waitFor(() => expect(playerSelect).toHaveTextContent("Character 1"));
+      fireEvent.click(within(playerDialog).getByRole("checkbox", { name: "Read player dialogue aloud" }));
+      fireEvent.click(within(playerDialog).getByRole("button", { name: "Confirm" }));
+      expect(screen.queryByRole("dialog", { name: "Player character" })).not.toBeInTheDocument();
+
+      const roleStatus = screen.getByText(
+        count === 5 ? "4 selected · roles need to be set" : "3 selected · all are primary",
+      );
+      fireEvent.click(
+        within(roleStatus.parentElement!).getByRole("button", {
+          name: count === 5 ? "Choose primary characters" : "Change",
+        }),
+      );
+      const rolesDialog = screen.getByRole("dialog", { name: "Choose primary characters" });
+      expect(within(rolesDialog).queryByRole("button", { name: /Character 1/ })).not.toBeInTheDocument();
+      for (const character of cast.slice(2)) {
+        const button = within(rolesDialog).getByRole("button", { name: new RegExp(character.name) });
+        if (button.getAttribute("aria-pressed") === "true") fireEvent.click(button);
+      }
+      fireEvent.click(within(rolesDialog).getByRole("button", { name: "Apply roles" }));
+      await waitFor(() =>
+        expect(mockEnsureCharacterBriefs).toHaveBeenCalledWith(cast.slice(2).map(({ name }) => name)),
+      );
+      expect(await screen.findByText(`1 primary · ${count - 2} supporting`)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Player character" }));
+      const restoredPlayerDialog = screen.getByRole("dialog", { name: "Player character" });
+      expect(within(restoredPlayerDialog).getByRole("combobox")).toHaveTextContent("Character 1");
+      expect(within(restoredPlayerDialog).getByRole("checkbox", { name: "Read player dialogue aloud" })).toBeChecked();
+    },
+  );
+
   it("asks for primary characters above the threshold and generates missing supporting briefs", async () => {
     const largeCast = Array.from({ length: 6 }, (_, index) => ({
       character_brief: index === 4 ? "Existing brief" : "",

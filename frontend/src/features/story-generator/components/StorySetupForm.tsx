@@ -36,20 +36,23 @@ export function StorySetupForm({
     () => selected.flatMap((name) => characters.data?.find((item) => item.name === name) ?? []),
     [characters.data, selected],
   );
+  const effectivePlayerCharacter = selected.includes(playerCharacter) ? playerCharacter : "";
+  const npcCharacters = selectedCharacters.filter((character) => character.name !== effectivePlayerCharacter);
   const briefs = useMutation({
     mutationFn: async (names: string[]) => {
-      const result = await ensureCharacterBriefs(selected.filter((name) => !names.includes(name)));
+      const result = await ensureCharacterBriefs(
+        selected.filter((name) => name !== effectivePlayerCharacter && !names.includes(name)),
+      );
       const updated = new Map(result.characters.map((character) => [character.name, character]));
       client.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
         current.map((character) => updated.get(character.name) ?? character),
       );
       setPrimary(names);
-      setMode(names.length === selected.length ? "full" : "compact");
+      setMode(names.length === npcCharacters.length ? "full" : "compact");
       setDialogOpen(false);
     },
   });
   const busy = pending || briefs.isPending;
-  const effectivePlayerCharacter = selected.includes(playerCharacter) ? playerCharacter : "";
   const updateSelected = (next: string[]) => {
     if (!next.includes(playerCharacter)) {
       setPlayerCharacter("");
@@ -83,14 +86,17 @@ export function StorySetupForm({
       />
       <CharacterRoleStatus
         disabled={busy}
+        hasPlayerCharacter={Boolean(effectivePlayerCharacter)}
         mode={mode}
         onConfigure={() => {
           briefs.reset();
           setDialogOpen(true);
         }}
         onUseAll={useAll}
-        selectedCount={selected.length}
-        primaryCount={mode === "full" ? selected.length : primary.length}
+        selectedCount={npcCharacters.length}
+        primaryCount={
+          mode === "full" ? npcCharacters.length : primary.filter((name) => name !== effectivePlayerCharacter).length
+        }
       />
       <label className="story-setup-field">
         {t("story.setup.background")}
@@ -161,7 +167,7 @@ export function StorySetupForm({
         <small>{t("story.setup.savedHint")}</small>
       </div>
       <PrimaryCharacterDialog
-        characters={selectedCharacters}
+        characters={npcCharacters}
         initialPrimaryCharacters={primary}
         open={dialogOpen}
         error={briefs.error?.message}

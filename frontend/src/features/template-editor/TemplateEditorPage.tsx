@@ -886,6 +886,7 @@ export function TemplateEditorPage({
               />
 
               <CharacterRoleStatus
+                hasPlayerCharacter={Boolean(effectivePlayerCharacter)}
                 mode={characterPromptMode}
                 onConfigure={() => setPrimaryCharacterDialogOpen(true)}
                 onUseAll={useAllCharactersAsPrimary}
