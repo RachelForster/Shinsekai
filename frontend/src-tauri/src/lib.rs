@@ -2101,6 +2101,11 @@ mod tests {
         assert!(targets[0].1.contains("#/settings/api"));
         assert_eq!(targets[1].0, "chat");
         assert!(targets[1].1.contains("#/chat-stage"));
+        assert!(targets[1].1.starts_with(&format!(
+            "{}/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787",
+            live_frontend_origin_for_platform(cfg!(windows))
+        )));
+        assert!(targets[1].1.contains("shinsekai_bridge_token=token-1"));
         assert_eq!(targets[2].0, "reminders");
         assert!(targets[2].1.contains("#/reminders"));
     }
