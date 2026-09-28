@@ -6,6 +6,7 @@ import threading
 from http import HTTPStatus
 from http.server import ThreadingHTTPServer
 from types import SimpleNamespace
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
@@ -257,8 +258,19 @@ def test_handler_get_uses_registered_health_path() -> None:
     assert sent[0][0]["plugins"]["status"] == "idle"
 
 
-def test_registered_routes_keep_live_http_paths_and_methods() -> None:
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "http://tauri.localhost",
+        "http://shinsekai.localhost",
+        "https://shinsekai.localhost",
+        "tauri://localhost",
+        "shinsekai://localhost",
+    ],
+)
+def test_registered_routes_keep_live_http_paths_and_methods(origin: str) -> None:
     state = _state()
+    state.auth_token = "desktop-test-token"
     task = _create_task(state, kind="download", title="Download")
     server = ThreadingHTTPServer(("127.0.0.1", 0), FrontendBridgeHandler)
     server.state = state
@@ -267,17 +279,43 @@ def test_registered_routes_keep_live_http_paths_and_methods() -> None:
     base_url = f"http://127.0.0.1:{server.server_address[1]}"
 
     try:
-        with urlopen(f"{base_url}/api/health", timeout=5) as response:
+        preflight = Request(
+            f"{base_url}/api/health",
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "X-Shinsekai-Bridge-Token",
+            },
+            method="OPTIONS",
+        )
+        with urlopen(preflight, timeout=5) as response:
+            assert response.status == HTTPStatus.NO_CONTENT
+            assert response.headers["Access-Control-Allow-Origin"] == origin
+            assert "X-Shinsekai-Bridge-Token" in response.headers[
+                "Access-Control-Allow-Headers"
+            ]
+        health_request = Request(
+            f"{base_url}/api/health", headers={"Origin": origin}
+        )
+        with urlopen(health_request, timeout=5) as response:
+            assert response.headers["Access-Control-Allow-Origin"] == origin
             health = json.loads(response.read().decode("utf-8"))
         with urlopen(f"{base_url}/api/tasks/{task['id']}", timeout=5) as response:
             stored = json.loads(response.read().decode("utf-8"))
         cancel_request = Request(
             f"{base_url}/api/tasks/{task['id']}/cancel",
             data=b"{}",
-            headers={"Content-Type": "application/json"},
+            headers={"Content-Type": "application/json", "Origin": origin},
             method="POST",
         )
+        with pytest.raises(HTTPError) as denied:
+            urlopen(cancel_request, timeout=5)
+        with denied.value as response:
+            assert response.code == HTTPStatus.FORBIDDEN
+            assert json.loads(response.read())["error"] == "invalid bridge auth token"
+        cancel_request.add_header("X-Shinsekai-Bridge-Token", state.auth_token)
         with urlopen(cancel_request, timeout=5) as response:
+            assert response.headers["Access-Control-Allow-Origin"] == origin
             cancelled = json.loads(response.read().decode("utf-8"))
     finally:
         server.shutdown()

@@ -39,7 +39,14 @@ BRIDGE_AUTH_QUERY = "shinsekai_bridge_token"
 BRIDGE_AUTH_COOKIE = "shinsekai_bridge_token"
 
 _ALLOWED_CUSTOM_ORIGIN_SCHEMES = {"shinsekai", "tauri"}
-_ALLOWED_LOCAL_ORIGIN_HOSTS = {"127.0.0.1", "::1", "localhost", "tauri.localhost"}
+# WebView2 exposes registered Tauri protocols as http(s)://<scheme>.localhost.
+_ALLOWED_LOCAL_ORIGIN_HOSTS = {
+    "127.0.0.1",
+    "::1",
+    "localhost",
+    "tauri.localhost",
+    "shinsekai.localhost",
+}
 _POLLING_PATHS = {
     "/api/characters/memories/status",
     "/api/health",
