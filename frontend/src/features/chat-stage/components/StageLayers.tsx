@@ -208,11 +208,6 @@ export function DialogLayer({
 
   return (
     <div className="dialog-layer-shell" data-player-portrait={playerPortrait?.url ? "true" : undefined} hidden={hidden}>
-      {playerPortrait?.url ? (
-        <div className="dialog-layer__player-portrait">
-          <Portrait path={playerPortrait.url} crop={playerPortrait.crop} name={playerPortrait.characterName} />
-        </div>
-      ) : null}
       <section
         aria-hidden={hidden}
         aria-live="polite"
@@ -223,6 +218,11 @@ export function DialogLayer({
         onClick={handleDialogClick}
       >
         <ThemeFrame prefix="chat-dialog" />
+        {playerPortrait?.url ? (
+          <div className="dialog-layer__player-portrait">
+            <Portrait path={playerPortrait.url} crop={playerPortrait.crop} name={playerPortrait.characterName} />
+          </div>
+        ) : null}
         {characterName ? (
           <p className="dialog-layer__name">
             <ThemeFrame prefix="chat-name" />

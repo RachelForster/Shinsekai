@@ -540,6 +540,27 @@ describe("ChatStagePage", () => {
     expect(await screen.findByRole("textbox")).toBeDisabled();
   });
 
+  it("renders the player portrait inside the dialogue rather than beside its outer shell", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        characterName: "Aoi",
+        playerPortrait: {
+          characterName: "Aoi",
+          url: "asset://aoi-portrait.png",
+          crop: { x: 0.5, y: 0.2, zoom: 1 },
+        },
+      }),
+    );
+    renderPage();
+
+    await screen.findByText("Ready");
+    const dialog = document.querySelector(".dialog-layer")!;
+    const portrait = dialog.querySelector(":scope > .dialog-layer__player-portrait");
+    expect(portrait).toBeInTheDocument();
+    expect(within(portrait as HTMLElement).getByAltText("Aoi")).toBeInTheDocument();
+    expect(document.querySelector(".dialog-layer-shell > .dialog-layer__player-portrait")).toBeNull();
+  });
+
   it("anchors decorative frames to the main chat surfaces", async () => {
     renderPage();
 
