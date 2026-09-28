@@ -14,8 +14,28 @@
 
 .template-character-picker__actions {
   display: flex;
-  flex: 0 0 auto;
+  min-width: 0;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-2);
+}
+
+.template-character-picker__player {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.template-character-picker__player-name {
+  min-width: 0;
+  max-width: 160px;
+  overflow: hidden;
+  color: var(--color-accent-primary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .template-character-picker__actions .button {
@@ -127,5 +147,10 @@
 
   .template-character-picker__actions {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .template-character-picker__player .button {
+    width: auto;
   }
 }

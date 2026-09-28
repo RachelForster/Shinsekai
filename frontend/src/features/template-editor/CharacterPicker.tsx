@@ -10,30 +10,40 @@ export function CharacterPicker({
   selected,
   onChange,
   onConfigurePlayer,
+  playerCharacter = "",
   disabled = false,
 }: {
   characters: Character[];
   selected: string[];
   onChange: (names: string[]) => void;
   onConfigurePlayer?: () => void;
+  playerCharacter?: string;
   disabled?: boolean;
 }) {
   const { t } = useI18n();
   const names = new Set(selected);
+  const effectivePlayerCharacter = names.has(playerCharacter) ? playerCharacter : "";
   return (
     <div className="template-character-picker">
       <div className="template-character-picker__header">
         <span className="template-character-picker__label">{t("template.field.characters")}</span>
         <div className="template-character-picker__actions">
           {onConfigurePlayer ? (
-            <Button
-              disabled={disabled || !selected.length}
-              icon={<UserRound aria-hidden className="button__icon" />}
-              onClick={onConfigurePlayer}
-              variant="ghost"
-            >
-              {t("player.configure")}
-            </Button>
+            <div className="template-character-picker__player">
+              <Button
+                disabled={disabled || !selected.length}
+                icon={<UserRound aria-hidden className="button__icon" />}
+                onClick={onConfigurePlayer}
+                variant="ghost"
+              >
+                {t("player.configure")}
+              </Button>
+              {effectivePlayerCharacter ? (
+                <span className="template-character-picker__player-name" title={effectivePlayerCharacter}>
+                  {effectivePlayerCharacter}
+                </span>
+              ) : null}
+            </div>
           ) : null}
           <Button
             disabled={disabled || !characters.length}

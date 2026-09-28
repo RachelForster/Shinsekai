@@ -883,6 +883,7 @@ export function TemplateEditorPage({
                 selected={selectedCharacters}
                 onChange={updateSelectedCharacters}
                 onConfigurePlayer={() => setPlayerCharacterDialogOpen(true)}
+                playerCharacter={effectivePlayerCharacter}
               />
 
               <CharacterRoleStatus

@@ -273,6 +273,8 @@ describe("StoryGeneratorPage", () => {
     await waitFor(() => expect(playerSelect).toHaveTextContent("小玲"));
     fireEvent.click(within(dialog).getByRole("button", { name: "确定" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const playerControls = screen.getByRole("button", { name: "主控人物" }).parentElement!;
+    expect(within(playerControls).getByText("小玲")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
 
     await waitFor(() =>

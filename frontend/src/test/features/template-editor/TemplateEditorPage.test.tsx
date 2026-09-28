@@ -548,6 +548,8 @@ describe("TemplateEditorPage", () => {
       fireEvent.click(within(playerDialog).getByRole("checkbox", { name: "Read player dialogue aloud" }));
       fireEvent.click(within(playerDialog).getByRole("button", { name: "Confirm" }));
       expect(screen.queryByRole("dialog", { name: "Player character" })).not.toBeInTheDocument();
+      const playerControls = screen.getByRole("button", { name: "Player character" }).parentElement!;
+      expect(within(playerControls).getByText("Character 1")).toBeInTheDocument();
 
       const roleStatus = screen.getByText(
         count === 5 ? "4 selected · roles need to be set" : "3 selected · all are primary",

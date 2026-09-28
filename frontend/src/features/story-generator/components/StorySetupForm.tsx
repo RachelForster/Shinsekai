@@ -82,6 +82,7 @@ export function StorySetupForm({
         selected={selected}
         onChange={updateSelected}
         onConfigurePlayer={() => setPlayerDialogOpen(true)}
+        playerCharacter={effectivePlayerCharacter}
         disabled={busy}
       />
       <CharacterRoleStatus
