@@ -32,6 +32,13 @@ class _NullAdapter(ModelAssetAdapter):
 
 
 class TestRegisterAvatarFormat:
+    def test_normalized_duplicate_is_rejected(self):
+        registry = PluginCapabilityRegistry()
+        registry.register_avatar_format(" Null ", _NullAdapter)
+        with pytest.raises(ValueError, match="duplicate"):
+            registry.register_avatar_format("null", _NullAdapter)
+        assert registry.avatar_formats[0].format_id == "null"
+
     def test_registers_and_sorts_by_priority(self):
         registry = PluginCapabilityRegistry()
         registry.register_avatar_format("zeta", _NullAdapter, priority=10)

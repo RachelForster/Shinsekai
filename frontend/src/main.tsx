@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 
 import { AppRootProviders } from "./app/providers/AppProviders";
+import "./app/avatarFormats";
 import { AppWindowRoutes } from "./app/routes/AppWindowRoutes";
 import {
   desktopRestartErrorMessage,

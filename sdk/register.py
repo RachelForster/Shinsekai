@@ -215,13 +215,16 @@ class PluginCapabilityRegistry:
         """Register an optional model avatar format (e.g. a custom live2d/VRM-like loader).
 
         ``format_id`` becomes a value of ``Character.avatar_type`` and the key under
-        ``Character.avatars``. ``factory`` is invoked lazily by the avatar registry.
+        ``Character.avatars``. The host invokes ``factory`` while configuring
+        plugins; expensive model loading belongs in the adapter's operations.
         """
         clean_id = str(format_id or "").strip().lower()
         if not clean_id:
             raise ValueError("avatar format id cannot be empty")
         if clean_id == "static":
             raise ValueError("'static' is a reserved avatar type")
+        if clean_id in self._avatar_formats:
+            raise ValueError(f"duplicate avatar format: {clean_id}")
         if not callable(factory):
             raise TypeError("avatar format factory must be callable")
         self._avatar_formats[clean_id] = AvatarFormatContribution(

@@ -1,16 +1,6 @@
-import {
-  useEffect,
-  useRef,
-  useState,
-  type MouseEventHandler,
-  type SyntheticEvent,
-} from "react";
+import { useEffect, useRef, useState, type MouseEventHandler, type SyntheticEvent } from "react";
 
-import {
-  STATIC_AVATAR_TYPE,
-  type AvatarSession,
-  type CharacterVisualAsset,
-} from "./contracts";
+import { STATIC_AVATAR_TYPE, type AvatarSession, type CharacterVisualAsset } from "./contracts";
 import { avatarFormat } from "./registry";
 
 export interface CharacterVisualProps {
@@ -64,19 +54,22 @@ function ModelVisual({ asset, avatarType }: { asset: CharacterVisualAsset; avata
     let session: AvatarSession<unknown, unknown> | null = null;
     const controller = new AbortController();
 
-    format.module
-      .create(
-        {
-          element: container,
-          modelUrl: asset.modelUrl ?? "",
-          assetUrl: (relativePath) => relativePath,
-          reportError: (err) => {
-            if (!cancelled) {
-              setError(err.message);
-            }
+    format
+      .load()
+      .then((module) =>
+        module.create(
+          {
+            element: container,
+            modelUrl: asset.modelUrl ?? "",
+            assetUrl: (relativePath) => relativePath,
+            reportError: (err) => {
+              if (!cancelled) {
+                setError(err.message);
+              }
+            },
           },
-        },
-        controller.signal,
+          controller.signal,
+        ),
       )
       .then(async (created) => {
         if (cancelled) {

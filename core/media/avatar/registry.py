@@ -39,7 +39,7 @@ def register_adapter(adapter: ModelAssetAdapter) -> None:
     if format_id == _STATIC_AVATAR_TYPE:
         raise ValueError("'static' is a reserved avatar type")
     with _lock:
-        if format_id in _builtin:
+        if format_id in _builtin or format_id in _plugin:
             raise ValueError(f"duplicate avatar format: {format_id}")
         _builtin[format_id] = adapter
 
@@ -50,27 +50,36 @@ def configure_registered_formats(
     """原子替换插件提供的格式集合（由插件宿主调用）。"""
     registered: dict[str, ModelAssetAdapter] = {}
     for contribution in contributions:
+        format_id = _normalize_format_id(contribution.format_id)
+        if not format_id or format_id == _STATIC_AVATAR_TYPE:
+            logger.error("invalid avatar format: %r", contribution.format_id)
+            continue
+        if format_id in registered:
+            logger.error("duplicate avatar format: %s", format_id)
+            continue
+        with _lock:
+            if format_id in _builtin:
+                logger.error("avatar format conflicts with builtin: %s", format_id)
+                continue
         try:
             adapter = contribution.factory()
+            if not isinstance(adapter, ModelAssetAdapter):
+                raise TypeError("avatar factory must return a ModelAssetAdapter")
+            if _normalize_format_id(adapter.format_id) != format_id:
+                raise ValueError(
+                    f"avatar format mismatch: registered {format_id!r}, "
+                    f"adapter declares {adapter.format_id!r}"
+                )
         except Exception:
             logger.exception(
                 "avatar format factory failed for %r",
                 contribution.format_id,
             )
             continue
-        format_id = _normalize_format_id(
-            getattr(adapter, "format_id", "") or contribution.format_id
-        )
-        if (
-            not format_id
-            or format_id == _STATIC_AVATAR_TYPE
-            or format_id in _builtin
-        ):
-            continue
         registered[format_id] = adapter
     with _lock:
         _plugin.clear()
-        _plugin.update(registered)
+        _plugin.update({key: value for key, value in registered.items() if key not in _builtin})
 
 
 def adapter_for(format_id: str) -> ModelAssetAdapter:

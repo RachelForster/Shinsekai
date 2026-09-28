@@ -48,7 +48,7 @@ export interface AvatarFormat<S, C> {
   label: string;
   capabilities: AvatarCapabilities;
   createEmpty(): ModelSprites;
-  module: AvatarModule<S, C>;
+  load(): Promise<AvatarModule<S, C>>;
 }
 
 /** 舞台 / 预览交给 CharacterVisual 的资源引用，与具体格式无关。 */

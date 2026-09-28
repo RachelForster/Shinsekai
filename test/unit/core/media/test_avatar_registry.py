@@ -63,6 +63,33 @@ class TestRegisterAdapter:
 
 
 class TestConfigureRegisteredFormats:
+    def test_mismatched_registration_does_not_rename_or_shadow(self, caplog):
+        registry.configure_registered_formats([
+            AvatarFormatContribution(format_id="alpha", factory=_NullAdapter),
+            AvatarFormatContribution(format_id="null", factory=_NullAdapter),
+        ])
+        assert registry.registered_format_ids() == ("null",)
+        assert "mismatch" in caplog.text
+        with pytest.raises(KeyError):
+            registry.adapter_for("alpha")
+
+    def test_duplicate_contribution_keeps_first_and_reports_error(self, caplog):
+        first = _NullAdapter()
+        registry.configure_registered_formats([
+            AvatarFormatContribution(format_id="null", factory=lambda: first),
+            AvatarFormatContribution(format_id=" NULL ", factory=_NullAdapter),
+        ])
+        assert registry.adapter_for(" NULL ") is first
+        assert "duplicate" in caplog.text
+
+    def test_invalid_factory_result_is_isolated(self, caplog):
+        registry.configure_registered_formats([
+            AvatarFormatContribution(format_id="bad", factory=lambda: None),
+            AvatarFormatContribution(format_id="null", factory=_NullAdapter),
+        ])
+        assert registry.registered_format_ids() == ("null",)
+        assert "ModelAssetAdapter" in caplog.text
+
     def test_plugin_formats_are_merged(self):
         registry.configure_registered_formats(
             [AvatarFormatContribution(format_id="null", factory=_NullAdapter)]

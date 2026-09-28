@@ -18,7 +18,7 @@ class ModelFiles:
 class ModelCapabilities:
     """一个模型形象格式对共享层声明的能力。
 
-    共享层据此降级（例如不驱动嘴型、不提供动态采样），而不是按格式名硬编码假设。
+    这是格式支持的能力上限；当前模型实际可用的能力由前端加载后的实例声明。
     """
 
     mouth: bool = False  # 语音音量可驱动嘴型
@@ -57,7 +57,7 @@ class ModelAssetAdapter(ABC):
 class AvatarFormatContribution:
     """插件提供的模型形象格式。
 
-    工厂延迟实例化 adapter，便于把重型 SDK 导入推迟到真正加载时。
+    宿主配置插件时实例化轻量 adapter；重型 SDK 和模型加载留在具体操作中。
     """
 
     format_id: str

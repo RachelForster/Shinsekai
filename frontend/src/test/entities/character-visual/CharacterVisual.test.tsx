@@ -1,12 +1,9 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CharacterVisual } from "../../../entities/character-visual/CharacterVisual";
 import type { AvatarFormat, AvatarSession } from "../../../entities/character-visual/contracts";
-import {
-  clearRegisteredAvatarFormats,
-  registerAvatarFormat,
-} from "../../../entities/character-visual/registry";
+import { clearRegisteredAvatarFormats, registerAvatarFormat } from "../../../entities/character-visual/registry";
 
 afterEach(() => {
   cleanup();
@@ -50,7 +47,7 @@ describe("CharacterVisual", () => {
       label: "Null",
       capabilities: { mouth: true, blink: false, motion: false, sampling: "none" },
       createEmpty: () => ({ model_path: "", sprites: [], emotion_tags: "" }),
-      module: { create: created, Editor: () => null },
+      load: async () => ({ create: created, Editor: () => null }),
     };
     registerAvatarFormat(format);
 
@@ -59,7 +56,7 @@ describe("CharacterVisual", () => {
     );
 
     expect(await screen.findByTestId("model-container")).toBeInTheDocument();
-    expect(created).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(created).toHaveBeenCalledTimes(1));
     expect(created.mock.calls[0][0].modelUrl).toBe("/m.model");
 
     unmount();
