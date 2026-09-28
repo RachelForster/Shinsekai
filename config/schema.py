@@ -75,6 +75,24 @@ class Character(BaseModel):
         description="模型格式 id → 该格式的模型路径与资源列表；static 不在其中",
     )
 
+    @field_validator("avatar_type")
+    @classmethod
+    def normalize_avatar_type(cls, value: str) -> str:
+        return value.strip().lower() or "static"
+
+    @field_validator("avatars", mode="before")
+    @classmethod
+    def normalize_avatar_keys(cls, value):
+        if not isinstance(value, dict):
+            return value
+        normalized = {}
+        for key, assets in value.items():
+            format_id = str(key).strip().lower()
+            if not format_id or format_id == "static" or format_id in normalized:
+                raise ValueError(f"invalid or duplicate avatar format: {key!r}")
+            normalized[format_id] = assets
+        return normalized
+
     # gpt-sovits 相关的配置
     gpt_model_path: Optional[str] = Field('', description="角色 GPT 模型的路径 (可选)")
     sovits_model_path: Optional[str] = Field('', description="角色的 SoVITS 语音模型路径 (可选)")

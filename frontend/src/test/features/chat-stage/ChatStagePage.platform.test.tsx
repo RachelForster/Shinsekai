@@ -113,7 +113,7 @@ describe("ChatStagePage http platform integration", () => {
     const mediaSnapshot = snapshot({
       backgroundPath: "data/backgrounds/school.png",
       bgmPath: "data/bgm/school.mp3",
-      sprites: [{ id: "mio", label: "Mio", path: "data/characters/mio.png" }],
+      sprites: [{ avatarType: "static", modelUrl: "", id: "mio", label: "Mio", path: "data/characters/mio.png" }],
     });
     const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);

@@ -4,6 +4,31 @@ import { buildChatStageViewModel, chatStageReducer, emptyChatState } from "../..
 import { chatStageSpriteAxisCenter, limitChatStageSpritesToSlots } from "../../../features/chat-stage/state/sprites";
 
 describe("chatStageReducer", () => {
+  it("normalizes legacy snapshot avatar fields and preserves model metadata", () => {
+    const legacy = JSON.parse('{"id":"Alice","label":"Alice","path":"static.png"}');
+    const model = { id: "Bob", label: "Bob", path: "smile.json", avatarType: "vrm", modelUrl: "bob.vrm" };
+    const state = chatStageReducer(emptyChatState, {
+      type: "hydrate",
+      snapshot: { ...emptyChatState, effectImage: null, sprites: [legacy, model] },
+    });
+    expect(state.sprites[0]).toMatchObject({ avatarType: "static", modelUrl: "" });
+    expect(state.sprites[1]).toMatchObject(model);
+    const next = chatStageReducer(state, {
+      type: "event",
+      event: {
+        type: "sprite.show",
+        characterName: "Bob",
+        url: "new.json",
+        avatarType: "vrm",
+        modelUrl: "bob.vrm",
+        scale: 1,
+        seq: 1,
+        ts: 1,
+        v: 1,
+      },
+    });
+    expect(next.sprites[1]).toMatchObject({ avatarType: "vrm", modelUrl: "bob.vrm", path: "new.json" });
+  });
   it("resets transient state and the sequence watermark when the session changes", () => {
     let old = chatStageReducer(
       { ...emptyChatState, sessionId: "old", eventSeq: 100 },
@@ -60,8 +85,24 @@ describe("chatStageReducer", () => {
       ...emptyChatState,
       backgroundPath: "asset://room.png",
       sprites: [
-        { id: "Mio:0", label: "Mio", characterName: "Mio", path: "mio.png", slot: 0 },
-        { id: "Ren:1", label: "Ren", characterName: "Ren", path: "ren.png", slot: 1 },
+        {
+          avatarType: "static",
+          modelUrl: "",
+          id: "Mio:0",
+          label: "Mio",
+          characterName: "Mio",
+          path: "mio.png",
+          slot: 0,
+        },
+        {
+          avatarType: "static",
+          modelUrl: "",
+          id: "Ren:1",
+          label: "Ren",
+          characterName: "Ren",
+          path: "ren.png",
+          slot: 1,
+        },
       ],
     };
     const unchanged = chatStageReducer(oldScene, {
@@ -80,6 +121,8 @@ describe("chatStageReducer", () => {
     const returned = chatStageReducer(cleared, {
       type: "event",
       event: {
+        avatarType: "static",
+        modelUrl: "",
         type: "sprite.show",
         characterName: "Ren",
         url: "ren-happy.png",
@@ -752,7 +795,10 @@ describe("chatStageReducer", () => {
 
   it("projects stage events into layer visibility state", () => {
     const clearedState = chatStageReducer(
-      { ...emptyChatState, sprites: [{ id: "stale", label: "Stale", path: "asset://stale.png" }] },
+      {
+        ...emptyChatState,
+        sprites: [{ avatarType: "static", modelUrl: "", id: "stale", label: "Stale", path: "asset://stale.png" }],
+      },
       {
         snapshot: {
           dialogText: "",
@@ -769,6 +815,8 @@ describe("chatStageReducer", () => {
 
     const spriteState = chatStageReducer(clearedState, {
       event: {
+        avatarType: "static",
+        modelUrl: "",
         characterName: "Mio",
         scale: 1.1,
         seq: 1,
@@ -1189,6 +1237,8 @@ describe("chatStageReducer", () => {
   it("updates token usage text and clears sprites by character name", () => {
     const withSprite = chatStageReducer(emptyChatState, {
       event: {
+        avatarType: "static",
+        modelUrl: "",
         characterName: "Mio",
         scale: 1.1,
         seq: 1,
@@ -1272,6 +1322,8 @@ describe("chatStageReducer", () => {
     ) =>
       chatStageReducer(state, {
         event: {
+          avatarType: "static",
+          modelUrl: "",
           characterName,
           scale: 1,
           seq,
@@ -1312,8 +1364,8 @@ describe("chatStageReducer", () => {
         inputDraft: "",
         options: [],
         sprites: [
-          { id: "Aoi:2", label: "Aoi", path: "asset://aoi.png", slot: 2 },
-          { id: "Mio:0", label: "Mio", path: "asset://mio-happy.png", slot: 0 },
+          { avatarType: "static", modelUrl: "", id: "Aoi:2", label: "Aoi", path: "asset://aoi.png", slot: 2 },
+          { avatarType: "static", modelUrl: "", id: "Mio:0", label: "Mio", path: "asset://mio-happy.png", slot: 0 },
         ],
         status: "idle",
       },
@@ -1326,20 +1378,20 @@ describe("chatStageReducer", () => {
 
   it("maps the latest sprite into the single mobile display slot", () => {
     const sprites = [
-      { id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 },
-      { id: "Aoi", label: "Aoi", path: "asset://aoi.png", slot: 2 },
+      { avatarType: "static", modelUrl: "", id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 },
+      { avatarType: "static", modelUrl: "", id: "Aoi", label: "Aoi", path: "asset://aoi.png", slot: 2 },
     ];
 
     expect(limitChatStageSpritesToSlots(sprites, 1)).toEqual([
-      { id: "Aoi", label: "Aoi", path: "asset://aoi.png", slot: 0 },
+      { avatarType: "static", modelUrl: "", id: "Aoi", label: "Aoi", path: "asset://aoi.png", slot: 0 },
     ]);
     expect(sprites.map((sprite) => sprite.slot)).toEqual([0, 2]);
   });
 
   it("centers occupied sprite axes with the legacy Qt compensation", () => {
-    const left = { id: "Mio", label: "Mio", path: "mio.png", slot: 0 };
-    const middle = { id: "Ren", label: "Ren", path: "ren.png", slot: 1 };
-    const right = { id: "Aoi", label: "Aoi", path: "aoi.png", slot: 2 };
+    const left = { avatarType: "static", modelUrl: "", id: "Mio", label: "Mio", path: "mio.png", slot: 0 };
+    const middle = { avatarType: "static", modelUrl: "", id: "Ren", label: "Ren", path: "ren.png", slot: 1 };
+    const right = { avatarType: "static", modelUrl: "", id: "Aoi", label: "Aoi", path: "aoi.png", slot: 2 };
 
     expect(chatStageSpriteAxisCenter([left], left, 0)).toBe(50);
     expect(chatStageSpriteAxisCenter([left, middle], left, 0)).toBeCloseTo(100 / 3);

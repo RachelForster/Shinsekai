@@ -634,6 +634,9 @@ def build_event(seq: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         "ts": int(time.time() * 1000),
     }
     event.update(payload)
+    if event.get("type") == "sprite.show":
+        event["avatarType"] = str(event.get("avatarType") or "static")
+        event["modelUrl"] = str(event.get("modelUrl") or "")
     return event
 
 

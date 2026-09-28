@@ -142,6 +142,8 @@ vi.mock("../../../entities/character/repository", () => ({
 }));
 
 const character: Character = {
+  avatar_type: "static",
+  avatars: {},
   character_setting: "Quiet student.",
   color: "#66ccff",
   emotion_tags: "Sprite 1: happy\n",

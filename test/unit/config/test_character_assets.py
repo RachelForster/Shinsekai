@@ -54,3 +54,14 @@ class TestGetCharacterAssets:
         character = _character()
         with pytest.raises(KeyError):
             get_character_assets(character, "gltf")
+
+    def test_unknown_bank_survives_configuration_roundtrip(self):
+        character = _character(avatar_type="Future", avatars={"Future": {"model_path": "model.future"}})
+        restored = Character.model_validate(character.model_dump())
+        assert restored.avatar_type == "future"
+        assert get_character_assets(restored, " FUTURE ").model_path == "model.future"
+
+    @pytest.mark.parametrize("banks", [{"static": {}}, {"": {}}, {" VRM ": {}, "vrm": {}}])
+    def test_ambiguous_bank_names_are_rejected(self, banks):
+        with pytest.raises(ValueError):
+            _character(avatars=banks)

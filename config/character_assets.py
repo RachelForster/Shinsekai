@@ -19,7 +19,7 @@ def get_character_assets(character: Any, avatar_type: str) -> ModelSprites:
     - ``static``：返回根级 sprites / emotion_tags，model_path 为空。
     - 其他：返回 ``character.avatars[avatar_type]``（边界已校验未知 id）。
     """
-    avatar_type = str(avatar_type or "").strip() or STATIC_AVATAR_TYPE
+    avatar_type = str(avatar_type or "").strip().lower() or STATIC_AVATAR_TYPE
     if avatar_type == STATIC_AVATAR_TYPE:
         return ModelSprites(
             model_path="",

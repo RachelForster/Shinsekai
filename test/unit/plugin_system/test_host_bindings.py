@@ -67,6 +67,9 @@ def test_plugin_host_applies_application_runtime_bindings(monkeypatch, tmp_path)
         def collect_output_contract_patches(self):
             return []
 
+        def collect_avatar_formats(self):
+            return ["avatar"]
+
     manager = FakePluginManager()
     tool_manager = object()
     app_config = object()
@@ -92,6 +95,7 @@ def test_plugin_host_applies_application_runtime_bindings(monkeypatch, tmp_path)
         t2i_adapters=adapters["t2i"],
         create_tool_manager=lambda: tool_manager,
         configure_vision_fallbacks=lambda values: calls.setdefault("vision", values),
+        configure_avatar_formats=lambda values: calls.setdefault("avatar", values),
         register_mcp_tools=lambda value: calls.setdefault("mcp", value),
     )
 
@@ -104,6 +108,7 @@ def test_plugin_host_applies_application_runtime_bindings(monkeypatch, tmp_path)
         "asr": adapters["asr"],
         "t2i": adapters["t2i"],
         "vision": ["vision"],
+        "avatar": ["avatar"],
         "sdk_tools": tool_manager,
         "plugin_tools": tool_manager,
         "mcp": tool_manager,

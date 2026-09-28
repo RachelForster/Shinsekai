@@ -60,7 +60,7 @@ class PluginRuntimeBindings:
     t2i_adapters: dict[str, Any]
     create_tool_manager: Callable[[], Any]
     configure_vision_fallbacks: Callable[[list[Any]], None]
-    configure_avatar_formats: Callable[[list[Any]], None] | None = None
+    configure_avatar_formats: Callable[[list[Any]], None]
     register_mcp_tools: Callable[[Any], None] | None = None
 
 
@@ -223,13 +223,10 @@ def ensure_plugins_loaded(
             )
         except Exception:
             logger.exception("collect_vision_fallbacks failed")
-        if runtime_bindings.configure_avatar_formats is not None:
-            try:
-                runtime_bindings.configure_avatar_formats(
-                    mgr.collect_avatar_formats()
-                )
-            except Exception:
-                logger.exception("collect_avatar_formats failed")
+        try:
+            runtime_bindings.configure_avatar_formats(mgr.collect_avatar_formats())
+        except Exception:
+            logger.exception("collect_avatar_formats failed")
         try:
             from sdk.tool_registry import apply_registered_tools
 
