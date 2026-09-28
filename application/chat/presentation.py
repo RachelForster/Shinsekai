@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ai.llm.template_generator import is_transparent_background
+from ai.llm.template_generator import (
+    is_transparent_background,
+    resolve_chat_template_background,
+)
 from application.chat.history_state import (
     get_history,
     history_entry_stage_payload,
@@ -52,15 +55,20 @@ class StreamingHistoryPresenter:
 
 
 def load_presentation_assets(
-    config: Any, background_name: str
+    config: Any, background_names: Any
 ) -> ChatPresentationAssets:
     """Resolve selected background media without making it startup-fatal."""
 
-    transparent = is_transparent_background(background_name)
+    selected = (
+        background_names
+        if isinstance(background_names, (list, tuple))
+        else [background_names]
+    )
+    transparent = all(is_transparent_background(name) for name in selected)
     if transparent:
         return ChatPresentationAssets([], [], True)
     try:
-        background = config.get_background_by_name(background_name)
+        background = resolve_chat_template_background(background_names, config)
         return ChatPresentationAssets(
             background_sprites=list(getattr(background, "sprites", None) or []),
             bgm_paths=list(getattr(background, "bgm_list", None) or []),

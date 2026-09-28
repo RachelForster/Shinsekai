@@ -8,6 +8,8 @@ method signatures and the ``(template, warning)`` result remain supported.
 from typing import Any
 
 from config.config_manager import ConfigManager
+from config.schema import Background
+from core.media.asset_tags import numbered_tags, tag_contents
 from sdk.types import OutputContractPatch
 
 from .template.dialog import DialogTemplateContext, DialogTemplateSection
@@ -52,6 +54,56 @@ def resolve_chat_template_characters(
     return _resolve_characters(
         selected_characters,
         config_manager if manager is None else manager,
+    )
+
+
+def resolve_chat_template_background(
+    selected_backgrounds: Any,
+    manager: Any = None,
+) -> Background | None:
+    """Resolve selected groups into one ordered, globally numbered catalog."""
+
+    source = (
+        selected_backgrounds
+        if isinstance(selected_backgrounds, (list, tuple))
+        else [selected_backgrounds]
+    )
+    resolved: list[Background] = []
+    seen: set[str] = set()
+    config = config_manager if manager is None else manager
+    for raw_name in source:
+        name = str(raw_name or "").strip()
+        key = name.casefold()
+        if not name or is_transparent_background(name) or key in seen:
+            continue
+        background = config.get_background_by_name(name)
+        if background is not None:
+            resolved.append(background)
+            seen.add(key)
+    if not resolved:
+        return None
+    if len(resolved) == 1:
+        return resolved[0]
+
+    sprites: list[Any] = []
+    bgm_list: list[str] = []
+    scene_tags: list[str] = []
+    music_tags: list[str] = []
+    for background in resolved:
+        group_sprites = list(background.sprites or [])
+        group_bgm = list(background.bgm_list or [])
+        sprites.extend(group_sprites)
+        bgm_list.extend(group_bgm)
+        scene_tags.extend(tag_contents(background.bg_tags, len(group_sprites)))
+        music_tags.extend(tag_contents(background.bgm_tags, len(group_bgm)))
+
+    return Background(
+        name=" + ".join(background.name for background in resolved),
+        sprite_prefix="",
+        sprites=sprites,
+        bg_tags=numbered_tags("场景", scene_tags),
+        bgm_list=bgm_list,
+        bgm_tags=numbered_tags("音乐", music_tags),
     )
 
 
@@ -119,7 +171,8 @@ class TemplateGenerator:
         characters = self.resolve_chat_template_characters(selected_characters)
         if not characters:
             raise NoValidCharactersError()
-        has_background = bool(bg_name) and not is_transparent_background(bg_name)
+        background = resolve_chat_template_background(bg_name)
+        has_background = background is not None
         context = DialogTemplateContext(
             characters=tuple(characters),
             translate=_T,
@@ -136,11 +189,7 @@ class TemplateGenerator:
                 )
             ),
             tools_block=_format_llm_tools_block(),
-            background=(
-                config_manager.get_background_by_name(bg_name)
-                if has_background
-                else None
-            ),
+            background=background,
             has_real_background=has_background,
             output_contract_patches=tuple(self._get_output_contract_patches()),
             use_effect=use_effect,

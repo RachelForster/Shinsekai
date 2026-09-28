@@ -67,15 +67,29 @@ describe("CustomSelect", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 
-  it("falls back to the native select when multiple is enabled", () => {
+  it("keeps a multi-select menu open and emits the full post-toggle selection", () => {
+    const onChange = vi.fn();
     render(
-      <CustomSelect defaultValue={["a", "b"]} multiple>
+      <CustomSelect multiple onChange={onChange} value={["a"]}>
         <option value="a">A</option>
         <option value="b">B</option>
       </CustomSelect>,
     );
 
-    expect(screen.getByRole("listbox")).toHaveClass("select");
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("combobox"));
+    expect(screen.getByRole("listbox")).toHaveAttribute("aria-multiselectable", "true");
+    expect(screen.getByRole("option", { name: "A" })).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(screen.getByRole("option", { name: "B" }));
+
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        target: expect.objectContaining({
+          selectedOptions: [{ value: "a" }, { value: "b" }],
+          value: "b",
+        }),
+      }),
+    );
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
   });
 });

@@ -116,7 +116,8 @@
 
 .custom-select__option,
 .editable-combo__option {
-  display: block;
+  display: flex;
+  align-items: center;
   width: 100%;
   min-width: 0;
   padding: 8px 9px;
@@ -126,6 +127,17 @@
   background: transparent;
   text-align: left;
   cursor: pointer;
+}
+
+.custom-select__option-check {
+  flex: 0 0 auto;
+  order: 2;
+  margin-left: var(--space-2);
+  color: transparent;
+}
+
+.custom-select__option[aria-selected="true"] .custom-select__option-check {
+  color: var(--color-accent-primary);
 }
 
 .custom-select__option:hover,
@@ -143,6 +155,7 @@
 
 .custom-select__option-label {
   display: block;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
