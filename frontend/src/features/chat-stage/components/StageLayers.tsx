@@ -129,7 +129,7 @@ export function SpriteLayer({
             data-draggable={onDragStart ? "true" : "false"}
             data-slot={sprite.slot ?? index}
             data-speaking={speaking ? "true" : "false"}
-            key={sprite.id}
+            key={chatStageSpriteCharacterName(sprite) || sprite.id}
             style={
               {
                 "--sprite-axis-center": `${axisCenter}%`,

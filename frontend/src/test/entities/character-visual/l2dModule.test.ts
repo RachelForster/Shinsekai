@@ -204,6 +204,121 @@ describe("Live2D model lifecycle without licensed SDK assets", () => {
     expect(model.play).toHaveBeenCalledTimes(2);
   });
 
+  it("smoothly switches saved poses in one canvas while readState keeps the target", async () => {
+    const session = await start();
+    const canvas = host.querySelector("canvas");
+    await session.apply(neutralState(), "restore", new AbortController().signal);
+    frame(0);
+    vi.mocked(performance.now).mockReturnValue(100);
+    const next = { ...neutralState(), parameters: { ParamAngleX: 20 } };
+    await session.apply(next, "play", new AbortController().signal);
+    expect(session.readState()).toEqual(next);
+    frame(100);
+    expect(values[0]).toBe(0);
+    frame(175);
+    expect(values[0]).toBeCloseTo(3.125);
+    frame(250);
+    expect(values[0]).toBe(10);
+    frame(400);
+    expect(values[0]).toBe(20);
+    expect(host.querySelector("canvas")).toBe(canvas);
+    expect(model.loadModel).toHaveBeenCalledOnce();
+    expect(model.release).not.toHaveBeenCalled();
+  });
+
+  it("blends expression operations and clears removed parameters without residue", async () => {
+    const session = await start();
+    await session.apply(
+      { ...neutralState(), parameters: { ParamAngleX: 10 }, expressions: ["add.exp3.json", "multiply.exp3.json"] },
+      "restore",
+      new AbortController().signal,
+    );
+    frame(0);
+    expect(values[0]).toBe(6);
+    await session.apply(
+      { ...neutralState(), expressions: ["overwrite.exp3.json"] },
+      "play",
+      new AbortController().signal,
+    );
+    frame(150);
+    expect(values[0]).toBe(9);
+    frame(300);
+    expect(values[0]).toBe(12);
+    vi.mocked(performance.now).mockReturnValue(300);
+    await session.apply(neutralState(), "play", new AbortController().signal);
+    frame(450);
+    expect(values[0]).toBe(6);
+    frame(600);
+    expect(values).toEqual(defaults);
+  });
+
+  it("retargets rapid state changes without jumping to the interrupted destination", async () => {
+    const session = await start();
+    await session.apply(neutralState(), "restore", new AbortController().signal);
+    frame(0);
+    await session.apply({ ...neutralState(), parameters: { ParamAngleX: 20 } }, "play", new AbortController().signal);
+    frame(150);
+    expect(values[0]).toBe(10);
+    vi.mocked(performance.now).mockReturnValue(150);
+    await session.apply({ ...neutralState(), parameters: { ParamAngleX: -20 } }, "play", new AbortController().signal);
+    frame(150);
+    expect(values[0]).toBe(10);
+    frame(300);
+    expect(values[0]).toBe(-5);
+    frame(450);
+    expect(values[0]).toBe(-20);
+  });
+
+  it.each(["restore", "edit"] as const)("applies %s immediately during a transition", async (mode) => {
+    const session = await start();
+    await session.apply(neutralState(), "restore", new AbortController().signal);
+    frame(0);
+    await session.apply({ ...neutralState(), parameters: { ParamAngleX: 20 } }, "play", new AbortController().signal);
+    frame(150);
+    await session.apply({ ...neutralState(), parameters: { ParamAngleX: -10 } }, mode, new AbortController().signal);
+    frame(150);
+    expect(values[0]).toBe(-10);
+    expect(model.play).not.toHaveBeenCalled();
+  });
+
+  it("preserves blink and part fading, and never bakes voice or physics into the transition", async () => {
+    const session = await start();
+    await session.apply(neutralState(), "restore", new AbortController().signal);
+    model.physics.mockImplementation(() => modelData.setParameterValueByIndex(0, 25));
+    session.setMouthOpen(1);
+    frame(3000);
+    expect(values[0]).toBe(25);
+    expect(values[1]).toBe(1);
+    model.physics.mockImplementation(() => {});
+    modelData.setPartOpacityByIndex = vi.fn();
+    vi.mocked(performance.now).mockReturnValue(3000);
+    await session.apply({ ...neutralState(), parameters: { ParamAngleX: 20 } }, "play", new AbortController().signal);
+    expect(modelData.setPartOpacityByIndex).not.toHaveBeenCalled();
+    session.setMouthOpen(0);
+    frame(3000);
+    expect(values[0]).toBe(0);
+    expect(values[1]).toBe(0);
+    frame(3100);
+    expect(values[2]).toBe(0);
+    session.setMouthOpen(0.8);
+    frame(3150);
+    expect(values[0]).toBe(10);
+    expect(values[1]).toBe(0.8);
+  });
+
+  it("respects reduced motion for pose transitions", async () => {
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => ({ matches: true })),
+    );
+    const session = await start();
+    await session.apply(neutralState(), "restore", new AbortController().signal);
+    frame(0);
+    await session.apply({ ...neutralState(), parameters: { ParamAngleX: 20 } }, "play", new AbortController().signal);
+    frame(0);
+    expect(values[0]).toBe(20);
+  });
+
   it("mixes blink with base eye openness and mouth with smile independently", async () => {
     const session = await start();
     await session.apply(

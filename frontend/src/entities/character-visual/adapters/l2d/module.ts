@@ -1,5 +1,6 @@
 import type { ApplyMode, AvatarMount, AvatarSession } from "../../contracts";
 import { loadSdk, type SdkMotion } from "./sdk";
+import { ParameterTransition } from "./parameterTransition";
 import { neutralState, packagePath, parseState, validateControls, type L2DControls, type L2DState } from "./state";
 export { Editor } from "./Editor";
 
@@ -22,6 +23,8 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
     disposed = false,
     generation = 0;
   let current = neutralState();
+  const transition = new ParameterTransition();
+  let hasAppliedState = false;
   let mode: ApplyMode = "restore";
   let mouth = 0,
     lastTime = 0,
@@ -177,6 +180,8 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
                   : base + parameter.Value,
             );
           }
+        const target = controls.parameters.map((_, index) => sdkModel.getParameterValueByIndex(index));
+        transition.sample(target, time).forEach((value, index) => sdkModel.setParameterValueByIndex(index, value));
         if (mode !== "edit") {
           if (time >= nextBlink && blinkStart < 0) blinkStart = time;
           if (blinkStart >= 0) {
@@ -255,14 +260,21 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         }
         abort.throwIfAborted();
         if (request !== generation || disposed) return;
+        const now = performance.now();
+        const animate = nextMode === "play" && hasAppliedState;
+        transition.start(animate && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches, now);
         model.resetMotion();
-        reset();
+        // Do not reset part opacity while changing expression: pose owns its fade.
+        if (!animate) reset();
         current = structuredClone(next);
         mode = nextMode;
         motionEyes = drivenEyes;
         if (mode === "edit") mouth = 0;
-        blinkStart = -1;
-        nextBlink = performance.now() + 3000;
+        if (!animate) {
+          blinkStart = -1;
+          nextBlink = now + 3000;
+        }
+        hasAppliedState = true;
         if (motion) model.play(motion);
       },
       readState: () => structuredClone(current),
