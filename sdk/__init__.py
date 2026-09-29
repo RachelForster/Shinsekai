@@ -30,6 +30,7 @@ from typing import Any
 __all__ = [
     "apply_registered_tools",
     "ASRAdapter",
+    "AvatarFormatContribution",
     "BeforeChatContext",
     "BeforeCompactContext",
     "ChatInitService",
@@ -60,6 +61,9 @@ __all__ = [
     "LLMAdapter",
     "LLMDialogMessage",
     "MessageHandler",
+    "ModelAssetAdapter",
+    "ModelCapabilities",
+    "ModelFiles",
     "OutputContractPatch",
     "OutputFieldSpec",
     "PluginBase",
@@ -122,7 +126,11 @@ __all__ = [
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
     # ── adapters ──
     "ASRAdapter": ("sdk.adapters", "ASRAdapter"),
+    "AvatarFormatContribution": ("sdk.adapters", "AvatarFormatContribution"),
     "LLMAdapter": ("sdk.adapters", "LLMAdapter"),
+    "ModelAssetAdapter": ("sdk.adapters", "ModelAssetAdapter"),
+    "ModelCapabilities": ("sdk.adapters", "ModelCapabilities"),
+    "ModelFiles": ("sdk.adapters", "ModelFiles"),
     "T2IAdapter": ("sdk.adapters", "T2IAdapter"),
     "TTSAdapter": ("sdk.adapters", "TTSAdapter"),
     "TranscriptionCallback": ("sdk.adapters", "TranscriptionCallback"),

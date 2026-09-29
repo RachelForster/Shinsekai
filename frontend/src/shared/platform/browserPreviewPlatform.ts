@@ -1353,7 +1353,15 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           historyPath,
           sprites:
             payload.showInitialSprite !== false && character?.sprites[0]
-              ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
+              ? [
+                  {
+                    avatarType: "static",
+                    modelUrl: "",
+                    id: `${character.name}-0`,
+                    label: character.name,
+                    path: character.sprites[0].path,
+                  },
+                ]
               : [],
           sessionClosedReason: "",
           status: "idle",
@@ -1455,7 +1463,15 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
             templateSession?.showInitialSprite === false
               ? []
               : character?.sprites[0]
-                ? [{ id: `${character.name}-0`, label: character.name, path: character.sprites[0].path }]
+                ? [
+                    {
+                      avatarType: "static",
+                      modelUrl: "",
+                      id: `${character.name}-0`,
+                      label: character.name,
+                      path: character.sprites[0].path,
+                    },
+                  ]
                 : chat.sprites,
           sessionClosedReason: "",
           status: "idle",
@@ -1699,6 +1715,8 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         const imported = items.map<Character>((item, index) => {
           const label = item instanceof File ? item.name : item.split("/").pop() || `character-${index + 1}`;
           return {
+            avatar_type: "static",
+            avatars: {},
             character_brief: "",
             character_setting: "导入预览角色",
             color: DEFAULT_CHARACTER_COLOR,

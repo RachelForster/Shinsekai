@@ -13,6 +13,8 @@ import pytest
 import yaml
 
 from tools import file_util
+from config.character_config import CharacterConfig
+from config.schema import Character, ModelSprites, Sprite
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
@@ -102,6 +104,58 @@ BASIC_CHAR = {
 
 
 # ── Import tests ────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("typed", [False, True])
+def test_avatar_banks_survive_char_export_import(tmp_path, monkeypatch, typed):
+    monkeypatch.chdir(tmp_path)
+    motion = tmp_path / "happy.json"
+    voice = tmp_path / "happy.wav"
+    motion.write_text("{}", encoding="utf-8")
+    voice.write_bytes(b"voice")
+    banks = {
+        "l2d": ModelSprites(
+            model_path="models/alice/model.model3.json",
+            emotion_tags="1: happy",
+            sprites=[Sprite(path=motion, voice_path=voice, voice_text="Hi", voice_type="preset")],
+        ),
+        "future": ModelSprites(model_path="models/alice/model.future", emotion_tags="future state"),
+    }
+    crop = {"x": 0.3, "y": 0.4, "zoom": 2.0}
+    sprite_crop = {"x": 0.6, "y": 0.2, "zoom": 3.0}
+    config = CharacterConfig.parse_dic(dict(
+        BASIC_CHAR, sprites=[{"path": "smile.png", "portrait_crop": sprite_crop}],
+        portrait_crop=crop, avatar_type=" L2D ",
+        avatars=banks if typed else {key: bank.model_dump(mode="json") for key, bank in banks.items()},
+    ))
+    expected = {key: bank.model_dump(mode="json") for key, bank in banks.items()}
+    with _mock_dirs(tmp_path):
+        output = tmp_path / "out.char"
+        file_util.export_character([config], str(output), open_folder=False)
+        with zipfile.ZipFile(output) as package:
+            exported = yaml.safe_load(package.read("character.yaml"))[0]
+        imported = file_util.import_character(str(output))[0]
+        saved = yaml.safe_load(file_util.CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))[0]
+
+    assert exported["avatar_type"] == "l2d"
+    assert exported["avatars"] == expected
+    assert imported.avatar_type == "l2d"
+    assert imported.avatars == expected
+    assert saved["avatar_type"] == "l2d"
+    assert saved["avatars"] == expected
+    assert exported["portrait_crop"] == imported.portrait_crop == saved["portrait_crop"] == crop
+    assert exported["sprites"][0]["portrait_crop"] == sprite_crop
+    assert imported.sprites[0]["portrait_crop"] == saved["sprites"][0]["portrait_crop"] == sprite_crop
+    restored = Character.model_validate(saved)
+    assert restored.avatar_type == "l2d"
+    assert restored.model_dump(mode="json")["avatars"] == expected
+
+
+@pytest.mark.parametrize("fields", [{}, {"avatar_type": None, "avatars": None}])
+def test_character_config_defaults_legacy_avatar_fields(fields):
+    config = CharacterConfig.parse_dic(dict(BASIC_CHAR, **fields))
+    assert config.avatar_type == "static"
+    assert config.avatars == {}
+
 
 class TestImport:
     def test_character_config_parse_preserves_explicit_preset_voice(self):

@@ -222,6 +222,9 @@ class CharacterUseCase:
                 for index, item in enumerate(body.get("sprites", []))
                 if isinstance(item, dict) and "portrait_crop" in item
             },
+            # Preserve stored banks when older clients omit the new fields.
+            avatar_type=character.avatar_type if "avatar_type" in body else None,
+            avatars=character.avatars if "avatars" in body else None,
         )
         if message.startswith("名称不能为空") or "已与其他角色重复" in message or message.startswith("保存失败"):
             raise RuntimeError(message)

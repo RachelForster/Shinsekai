@@ -78,6 +78,37 @@ class TestCharacter:
 
         assert character.character_brief == brief
 
+    def test_avatar_defaults_for_legacy_character(self):
+        c = Character(name="Alice", color="#fff", sprite_prefix="alice")
+        assert c.avatar_type == "static"
+        assert c.avatars == {}
+
+    def test_avatar_none_defaults_treated_as_default(self):
+        c = Character(name="Alice", color="#fff", sprite_prefix="alice", avatar_type=None, avatars=None)
+        assert c.avatar_type == "static"
+        assert c.avatars == {}
+
+    def test_avatars_accepts_model_sprites(self, tmp_path):
+        state = tmp_path / "state.json"
+        state.write_text("{}")
+        c = Character(
+            name="Alice",
+            color="#fff",
+            sprite_prefix="alice",
+            avatar_type="l2d",
+            avatars={
+                "l2d": {
+                    "model_path": str(tmp_path / "model.model3.json"),
+                    "sprites": [{"path": str(state)}],
+                    "emotion_tags": "立绘 1：微笑",
+                }
+            },
+        )
+        assert c.avatar_type == "l2d"
+        assert c.avatars["l2d"].model_path.endswith("model.model3.json")
+        assert len(c.avatars["l2d"].sprites) == 1
+        assert c.avatars["l2d"].emotion_tags == "立绘 1：微笑"
+
 
 class TestApiConfig:
     def test_defaults(self):

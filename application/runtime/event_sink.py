@@ -226,6 +226,8 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             "characterName": character_name,
             "scale": event.get("scale"),
             "slot": slot,
+            "avatarType": str(event.get("avatarType") or "static"),
+            "modelUrl": str(event.get("modelUrl") or ""),
         }
         for axis in ("x", "y"):
             if event.get(axis) is not None:
@@ -640,6 +642,9 @@ def build_event(seq: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         "ts": int(time.time() * 1000),
     }
     event.update(payload)
+    if event.get("type") == "sprite.show":
+        event["avatarType"] = str(event.get("avatarType") or "static")
+        event["modelUrl"] = str(event.get("modelUrl") or "")
     return event
 
 

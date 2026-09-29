@@ -13,6 +13,8 @@ import { DEFAULT_CHARACTER_COLOR } from "../../../shared/constants";
 describe("character editor utilities", () => {
   it("creates a safe empty character draft", () => {
     expect(createCharacter()).toEqual({
+      avatar_type: "static",
+      avatars: {},
       character_brief: "",
       character_setting: "",
       color: DEFAULT_CHARACTER_COLOR,

@@ -41,6 +41,8 @@ describe("player portrait", () => {
       color: "#fff",
       sprite_prefix: "神羽",
       sprites: [{ path: "one.png" }, { path: "two.png" }],
+      avatar_type: "static",
+      avatars: {},
       character_setting: "",
       sprite_scale: 1,
       emotion_tags: "",

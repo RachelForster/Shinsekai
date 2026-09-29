@@ -23,6 +23,12 @@ export interface Sprite {
 
 export type SpriteVoiceType = "fallback" | "preset" | "reference";
 
+export interface ModelSprites {
+  model_path: string;
+  sprites: Sprite[];
+  emotion_tags: string;
+}
+
 export interface Character {
   portrait_crop?: PortraitCrop;
   name: string;
@@ -33,6 +39,10 @@ export interface Character {
   character_setting: string;
   sprite_scale: number;
   emotion_tags: string;
+  /** 默认 "static"；模型格式为已注册的格式 id。 */
+  avatar_type: string;
+  /** 格式 id → 该格式的模型与资源；static 不在此映射中。 */
+  avatars: Record<string, ModelSprites>;
   gpt_model_path?: string;
   sovits_model_path?: string;
   refer_audio_path?: string;
@@ -903,6 +913,8 @@ export interface ChatSprite {
   slot?: number;
   x?: number;
   y?: number;
+  avatarType: string;
+  modelUrl: string;
 }
 
 export type ChatHistoryRole = "assistant" | "options" | "system" | "user";
@@ -1193,6 +1205,8 @@ export type ChatStageEvent =
       slot?: number;
       x?: number;
       y?: number;
+      avatarType: string;
+      modelUrl: string;
     })
   | (ChatEventBase & { type: "sprite.remove"; characterName: string })
   | (ChatEventBase & { type: "background.change"; url: string })

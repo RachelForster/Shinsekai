@@ -24,6 +24,8 @@ it("shows the current player beside the settings button and removes stale names"
           color: "#66ccff",
           sprite_prefix: "",
           sprites: [],
+          avatar_type: "static",
+          avatars: {},
           character_setting: "",
           sprite_scale: 1,
           emotion_tags: "",

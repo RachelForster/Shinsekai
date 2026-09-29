@@ -176,7 +176,7 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
     inputDraft: "",
     numericInfo: "idle / 2",
     options: [],
-    sprites: [{ id: "mio", label: "Mio", path: "asset://mio.png" }],
+    sprites: [{ avatarType: "static", modelUrl: "", id: "mio", label: "Mio", path: "asset://mio.png" }],
     status: "idle",
     userDisplayName: "Aoi",
     voiceLanguage: "ja",
@@ -698,7 +698,9 @@ describe("ChatStagePage", () => {
   it("remounts only the sprite image when an expression changes so the switch animation replays", async () => {
     let listener: ((event: ChatStageEvent) => void) | null = null;
     mocks.getChatSnapshot.mockResolvedValue(
-      snapshot({ sprites: [{ id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 }] }),
+      snapshot({
+        sprites: [{ avatarType: "static", modelUrl: "", id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 }],
+      }),
     );
     mocks.subscribeChatEvents.mockImplementation((next) => {
       listener = next;
@@ -712,6 +714,8 @@ describe("ChatStagePage", () => {
 
     act(() => {
       listener?.({
+        avatarType: "static",
+        modelUrl: "",
         characterName: "Mio",
         scale: 1,
         seq: 1,
@@ -1637,8 +1641,8 @@ describe("ChatStagePage", () => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
         sprites: [
-          { id: "mio", label: "Mio", path: "asset://mio.png" },
-          { id: "ren", label: "Ren", path: "asset://ren.png" },
+          { avatarType: "static", modelUrl: "", id: "mio", label: "Mio", path: "asset://mio.png" },
+          { avatarType: "static", modelUrl: "", id: "ren", label: "Ren", path: "asset://ren.png" },
         ],
       }),
     );
@@ -2203,8 +2207,8 @@ describe("ChatStagePage", () => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
         sprites: [
-          { id: "mio", label: "Mio", path: "asset://mio.png" },
-          { id: "ren", label: "Ren", path: "asset://ren.png" },
+          { avatarType: "static", modelUrl: "", id: "mio", label: "Mio", path: "asset://mio.png" },
+          { avatarType: "static", modelUrl: "", id: "ren", label: "Ren", path: "asset://ren.png" },
         ],
       }),
     );

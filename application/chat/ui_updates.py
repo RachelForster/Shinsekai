@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from core.media.effect_bindings import effect_modes
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
+from config.character_assets import get_character_assets
 from application.chat.history_state import serialize_chat_history_entries
 
 SOUND_EFFECTS_PATH = {
@@ -571,7 +572,9 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             character_config = get_character_by_name(character_name)
             if character_config is None:
                 raise ValueError(f"未找到角色配置: {character_name}")
-            sprite = character_config.sprites[sprite_id]
+            avatar_type = str(getattr(character_config, "avatar_type", "static") or "static").strip().lower()
+            assets = get_character_assets(character_config, avatar_type)
+            sprite = assets.sprites[sprite_id]
             image_path = str(
                 Path(sprite.get("path", "")) if isinstance(sprite, dict) else Path(getattr(sprite, "path", ""))
             )
@@ -587,6 +590,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                 "url": self._media_url(image_path),
                 "scale": scale,
                 "slot": display_slot,
+                "avatarType": avatar_type,
+                "modelUrl": self._media_url(assets.model_path) if assets.model_path else "",
             }
         )
 
@@ -641,6 +646,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                 "url": self._media_url(path),
                 "scale": float(scale or 1.0),
                 "slot": self._get_or_create_sprite_slot(resolved_character_name),
+                "avatarType": "static",
+                "modelUrl": "",
             }
         )
         return True
