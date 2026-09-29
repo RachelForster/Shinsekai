@@ -9,9 +9,16 @@
 - [SDK 下载与许可](https://www.live2d.com/en/sdk/download/web/)、[发行许可](https://www.live2d.com/en/sdk/license/)。开源应用自身的许可不覆盖 Cubism Core 或用户模型。
 - [Haru 免费样例](https://www.live2d.com/en/learn/sample/haru/)、[样例使用条件](https://www.live2d.com/en/learn/sample/model-terms/)。免费不等于公共领域。
 - Core 与 Haru 仅用于已授权的本地集成试验。`frontend/public/live2d/.gitignore` 排除 Core 脚本与 models，不随此分支提交。
-- Framework 的仓库分发方式待确认；目前 `frontend/vendor/.gitignore` 排除本地 Framework 产物。干净检出不能在缺少 Framework 的情况下构建，本分支尚未作为可发布 PR 推送。
+- SDK 是显式准备的可选本地运行时，源码和类型检查不再引用被忽略的 vendor 产物。干净检出可以构建及运行单元测试；未安装 SDK 时加载 L2D 会明确报错，静态立绘不受影响。Core / Framework 的发布分发方案仍需单独许可审查。
 
-本机 SDK 原始包和编译产物位于 `.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4/`，实际本地前端试验文件位于 `frontend/vendor/cubism-framework/` 与 `frontend/public/live2d/`。不把这些路径当成发布安装方案。
+本机 SDK 原始包位于 `.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4/`。用户先阅读并接受 SDK 的 Framework / Core 许可，然后显式运行（不会自动下载 SDK 或复制模型）：
+
+```powershell
+cd frontend
+pnpm prepare:l2d --sdk-dir ../.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4 --accept-sdk-license
+```
+
+脚本核对 SDK 的 CHANGELOG 首个版本为 `5-r.4`，使用已声明的 Vite 依赖将官方 Framework 和本项目的窄桥接模块编译成 `public/live2d/cubism-sdk.js`，同时复制 Core 与许可说明；这些生成文件均被忽略，不随 PR 分发。应用仅按需加载同源本地资源，没有运行时 CDN。`sdk.ts` 定义本应用所需的窄运行时接口，不引用或分发 Core 的专有类型文件。升级 SDK 必须复核桥接模块，不能仅修改版本字符串。
 
 ## 模型与状态
 
@@ -34,7 +41,7 @@
 - 每帧从默认参数开始，按动作、基础参数/表情、自动眨眼、语音嘴型、物理的顺序处理。已有动作控制眼部时不叠加自动眨眼；基础闭眼保持闭眼；语音驱动不会改写微笑参数。
 - `readState` 返回保存草稿副本，不捕获当前口型、眨眼或物理瞬态。
 - WebAudio 只分析实际播放的 voice；队列保留 characterName，背景音乐/音效不驱动嘴型。暂停、等待缓冲、失败、跳过和结束撤去驱动。
-- 帧循环、请求、纹理、GPU 上下文、观察器和事件监听随实例释放。R4 的 shader manager 没有单上下文移除 API，格式模块内有固定版本清理兼容代码，必须随 SDK 升级复核。
+- 帧循环、请求、纹理、GPU 上下文、观察器和事件监听随实例释放。R4 的 shader manager 没有单上下文移除 API，本地编译的 `scripts/l2d-sdk-bridge.mjs` 含固定版本清理兼容代码，必须随 SDK 升级复核。
 
 ## 验证
 
@@ -44,4 +51,4 @@
 
 2026-09-29 本地验证：Edge WebGL 加载 Haru，识别 42 个参数、8 个表情、6 个动作；上述冒烟操作后无浏览器错误，重复销毁后 canvas 数量为 0。类型检查与格式检查通过。Python 全量结果为 2906 通过、9 跳过、1 个失败（现有 memory queue 测试遇到 Windows `os.replace` 权限错误）；单独重跑该测试文件 4 项通过。前端全量其余 1011 项通过，新增下拉框导致的 2 个旧选择器失败已修复，角色编辑器及页头 20 项重跑通过。并非完整的发布矩阵验收，也未验证真实 TTS 音频到模型的端到端链路。
 
-后续待完成：SDK 依赖的干净检出/CI/打包路径；会话选择与资源列表冻结；动态条目完整增删、语音编辑与标签工作流；取消/多实例/受控 bridge 的端到端验收。不能把本地样例成功等同于全部设计验收通过。
+后续待完成：SDK 的发布许可/打包分发方案；会话选择与资源列表冻结；动态条目完整增删、语音编辑与标签工作流；取消/多实例/受控 bridge 的端到端验收。不能把本地样例成功等同于全部设计验收通过。

@@ -58,6 +58,7 @@ import {
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
 import { limitChatStageSpritesToSlots } from "./state/sprites";
+import { playerPortraitForDialog } from "./state/text";
 import {
   CHAT_ATTACHMENT_LIMIT,
   CHAT_IMAGE_EXTENSIONS,
@@ -771,6 +772,11 @@ export function ChatStagePage() {
             <DialogLayer
               canAdvance={viewModel.layers.dialog && !typingDialog && dialogTotalCharacters > 0}
               characterName={viewModel.dialogCharacterName}
+              playerPortrait={playerPortraitForDialog(
+                state.playerPortrait,
+                viewModel.dialogCharacterName,
+                viewModel.dialogText,
+              )}
               hidden={!viewModel.layers.dialog}
               htmlNodes={displayedDialog.nodes}
               onAdvance={advanceDialog}

@@ -5,7 +5,7 @@ from config.schema import Character
 
 
 class CharacterConfig:
-    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, character_brief="", avatar_type="static", avatars=None):
+    def __init__(self, name, color, sprite_prefix, gpt_model_path=None, sovits_model_path=None, refer_audio_path=None, prompt_text=None, prompt_lang=None, sprites=[], emotion_tags="", sprite_scale=1.0, character_setting="", speech_speed=1.0, speech_volume=1.0, pronunciation_map=None, character_brief="", avatar_type="static", avatars=None, portrait_crop=None):
         # 角色基本信息
         self.name = name
         self.color = color
@@ -14,6 +14,7 @@ class CharacterConfig:
         self.character_brief = "" if character_brief is None else character_brief
         self.character_setting = character_setting
         self.sprite_scale = sprite_scale
+        self.portrait_crop = portrait_crop
         self.emotion_tags = emotion_tags
         self.speech_speed = speech_speed
         self.speech_volume = speech_volume
@@ -80,6 +81,7 @@ class CharacterConfig:
                 speech_speed=char_data.get("speech_speed", 1.0),
                 speech_volume=char_data.get("speech_volume", 1.0),
                 pronunciation_map=char_data.get("pronunciation_map", None),
+                portrait_crop=char_data.get("portrait_crop"),
                 avatar_type=char_data.get("avatar_type", "static"),
                 avatars=char_data.get("avatars"),
             )

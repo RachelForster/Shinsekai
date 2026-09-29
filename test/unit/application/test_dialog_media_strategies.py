@@ -411,6 +411,58 @@ def test_character_handler_builds_presentation_from_injected_path_strategy(
     )
 
 
+@pytest.mark.parametrize("read_speech", [True, False])
+@pytest.mark.parametrize("speech", ["New player reply", ""])
+def test_player_media_keeps_ai_text_and_does_not_synthesize_silent_portraits(
+    mock_app_runtime, read_speech, speech,
+):
+    mock_app_runtime.player_character = "TestChar"
+    mock_app_runtime.read_player_speech = read_speech
+    sprite = ResolvedSpriteAsset(
+        asset_id="1", index=0, value={}, voice_type="preset",
+        voice_path="preset.wav", voice_text="Must not replace the player reply",
+    )
+    resolver = MagicMock()
+    resolver.candidates.return_value = ()
+    resolver.resolve.return_value = sprite
+    generation = MagicMock()
+    generation.generate.return_value = ["generated.wav"]
+    CharacterMediaHandler(MagicMock(), generation, resolver).handle(
+        LLMDialogMessage(name="TestChar", text=speech, asset_id="1"),
+    )
+    output = mock_app_runtime.presentation_queue.get_nowait()
+    assert output.text == speech
+    if read_speech and speech:
+        generation.generate.assert_called_once()
+        assert generation.generate.call_args.args[0].sprite.voice_type == "reference"
+        assert output.audio_path == "generated.wav"
+    else:
+        generation.generate.assert_not_called()
+        assert output.audio_path == ""
+
+
+def test_player_reply_synthesizes_new_words_instead_of_playing_fixed_sprite_recording(mock_app_runtime):
+    mock_app_runtime.player_character = "TestChar"
+    mock_app_runtime.read_player_speech = True
+    mock_app_runtime.tts_manager = MagicMock(tts_adapter=None)
+    mock_app_runtime.tts_manager.generate_tts.return_value = "fresh.wav"
+    mock_app_runtime.config.get_character_by_name.return_value = _character(name="TestChar")
+    mock_app_runtime.config.config.api_config = SimpleNamespace(tts_split_enabled=False, tts_provider="none")
+    mock_app_runtime.text_processor = SimpleNamespace(remove_parentheses=lambda text: text)
+    resolver = MagicMock()
+    resolver.candidates.return_value = ()
+    resolver.resolve.return_value = ResolvedSpriteAsset(
+        asset_id="1", voice_type="preset", voice_path="preset.wav", voice_text="Old recording",
+    )
+    CharacterMediaHandler(MagicMock(), DefaultTtsGenerationStrategy(), resolver).handle(
+        LLMDialogMessage(name="TestChar", text="Fresh player reply", asset_id="1"),
+    )
+    assert mock_app_runtime.tts_manager.generate_tts.call_args.args[0] == "Fresh player reply"
+    output = mock_app_runtime.presentation_queue.get_nowait()
+    assert output.text == "Fresh player reply"
+    assert output.audio_path == "fresh.wav"
+
+
 def test_character_handler_passes_each_characters_previous_sprite_to_lookup(
     mock_app_runtime,
 ):

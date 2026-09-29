@@ -425,8 +425,22 @@ def _launch_chat(
 
         # 把用户情景放在系统模板末尾（紧跟 closing 提示后）
         effective_user_scenario = _effective_user_scenario(user_scenario)
+        chat_session = getattr(state, "chat_session", {}) or {}
+        player_name = str(chat_session.get("playerCharacter") or "")
+        read_player_speech = bool(chat_session.get("readPlayerSpeech", False))
+        from ai.llm.template.dialog.sections.player import player_runtime_prompt
+
+        player_rules = player_runtime_prompt(
+            state.config_manager,
+            player_name,
+            allow_dialogue=bool(chat_session.get("allowPlayerDialogue", True)),
+            read_speech=read_player_speech,
+            media_selection_mode=media_selection_mode,
+        )
         template = _compose_runtime_template(
-            system_template, effective_user_scenario, effect_context
+            (system_template or "") + ("\n" + player_rules if player_rules else ""),
+            effective_user_scenario,
+            effect_context,
         )
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
@@ -468,6 +482,10 @@ def _launch_chat(
         }
         if character_names:
             launch_config["characters"] = json.dumps(character_names, ensure_ascii=False)
+        if player_name:
+            launch_config["player_character"] = player_name
+            launch_config["read_player_speech"] = read_player_speech
+            launch_config["allow_player_dialogue"] = bool(chat_session.get("allowPlayerDialogue", True))
         if stream_endpoint:
             launch_config["stream_endpoint"] = stream_endpoint
         if init_stream_endpoint:
@@ -475,7 +493,7 @@ def _launch_chat(
         if workflow_path:
             launch_config["workflow"] = workflow_path
         env = os.environ.copy()
-        if use_current_template_for_history:
+        if use_current_template_for_history or player_name:
             launch_config["use_current_template_for_history"] = True
         env[CHAT_LAUNCH_CONFIG_ENV] = json.dumps(launch_config, ensure_ascii=False)
         env["SHINSEKAI_PROJECT_ROOT"] = str(project_root)

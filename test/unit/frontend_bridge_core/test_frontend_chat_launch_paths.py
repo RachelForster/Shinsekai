@@ -141,7 +141,8 @@ def test_media_mode_keeps_existing_normalization(monkeypatch, requested, expecte
     assert initialize.call_count == (1 if expected == "semantic" else 0)
 
 
-def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch):
+@pytest.mark.parametrize("player_mode", [None, True, False])
+def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeypatch, player_mode):
     project_root = tmp_path / "project"
     app_root = tmp_path / "Shinsekai"
     template_dir = project_root / "data" / "character_templates"
@@ -170,6 +171,16 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
         history_dir=str(history_dir),
         template_dir_path=str(template_dir),
     )
+    if player_mode is not None:
+        from i18n import init_i18n
+        init_i18n("zh_CN")
+        state.chat_session = {
+            "playerCharacter": "Alice", "allowPlayerDialogue": player_mode,
+            "readPlayerSpeech": False,
+        }
+        state.config_manager.get_character_by_name = lambda name: SimpleNamespace(
+            name="Alice", character_setting="player setting",
+        )
 
     message = chat._launch_chat(
         state,
@@ -198,6 +209,16 @@ def test_launch_chat_uses_source_main_py_with_project_root_cwd(tmp_path, monkeyp
     assert launch_config["template"] == "_temp"
     assert launch_config["show_initial_sprite"] is False
     assert launch_config["media_selection_mode"] == "indexed"
+    if player_mode is not None:
+        from ai.llm.template.dialog.sections.player import player_runtime_prompt
+        assert launch_config["allow_player_dialogue"] is player_mode
+        assert launch_config["player_character"] == "Alice"
+        rules = player_runtime_prompt(
+            state.config_manager, "Alice", allow_dialogue=player_mode,
+            read_speech=False, media_selection_mode="indexed",
+        )
+        assert rules in (template_dir / "_temp.txt").read_text(encoding="utf-8")
+        assert json.loads((template_dir / chat.TEMP_SPLIT_META).read_text(encoding="utf-8"))["system"] == "system"
 
 
 def test_launch_chat_passes_stream_endpoint(tmp_path, monkeypatch):

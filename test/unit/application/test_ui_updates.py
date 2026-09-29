@@ -293,6 +293,30 @@ def test_model_presentation_uses_its_own_bank_and_preserves_metadata_in_snapshot
     assert sprite["path"] == "media://smile.json"
 
 
+def test_model_stage_and_static_player_portrait_keep_separate_resource_routes():
+    class AvatarSink(_Sink):
+        def avatar_url(self, model_path, path):
+            return f"avatar://{model_path}/{path}"
+
+    character = SimpleNamespace(
+        avatar_type="l2d", sprite_scale=1.25,
+        avatars={"l2d": {"model_path": "mio.model3.json", "sprites": [{"path": "smile.json"}]}},
+        sprites=[{"path": "portrait.png", "portrait_crop": {"x": 0.2, "y": 0.3, "zoom": 2}}],
+    )
+    sink = AvatarSink()
+    presenter = StreamingUIUpdateManager(sink)
+    with patch("application.chat.ui_updates.get_character_by_name", return_value=character):
+        presenter.update_sprite("Mio", 0)
+        presenter.update_player_portrait("Mio", 0)
+    assert sink.events[0]["url"] == "avatar://mio.model3.json/smile.json"
+    assert sink.events[0]["modelUrl"] == "avatar://mio.model3.json/mio.model3.json"
+    assert sink.events[1] == {
+        "type": "player.portrait.show", "characterName": "Mio", "url": "media://portrait.png",
+        "crop": {"x": 0.2, "y": 0.3, "zoom": 2},
+    }
+    assert list(presenter._sprite_lru) == ["Mio"]
+
+
 @pytest.mark.parametrize("next_background", ["street.png", ""])
 def test_background_switch_clears_reconnect_sprites_and_reassigns_slots(next_background) -> None:
     sink = _Sink()

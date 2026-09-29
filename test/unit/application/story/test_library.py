@@ -72,6 +72,9 @@ def selected_story(tmp_path):
             "primaryCharacters": ["小玲"],
             "characterPromptMode": "compact",
             "backgroundName": "旧校舍",
+            "playerCharacter": "小玲",
+            "readPlayerSpeech": True,
+            "allowPlayerDialogue": False,
         },
     )
     artifacts = stage_artifacts()
@@ -115,6 +118,9 @@ def test_selection_reaches_author_and_runtime_with_primary_and_secondary_setting
     assert payload["storyPath"] == Path(task["draftPath"]).resolve().as_posix()
     assert payload["characters"] == ["小玲", "小晴"]
     assert payload["backgroundName"] == "旧校舍"
+    assert payload["playerCharacter"] == "小玲"
+    assert payload["readPlayerSpeech"] is True
+    assert payload["allowPlayerDialogue"] is False
     assert payload["resetHistory"] is True
     assert state.template_generator.generate_chat_template.call_args.kwargs[
         "primary_characters"

@@ -12,6 +12,7 @@ import {
   sampleTemplates,
 } from "./sampleData";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
+import { DEFAULT_PLAYER_OPTIONS } from "../playerCharacterOptions";
 import { numberedTags, tagContents } from "../assets/assetText";
 import { runtimeStatusFromSnapshot } from "./chatRuntimeStatus";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
@@ -1321,7 +1322,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           options,
         );
         await delay(null, 80);
-        const character = config.characters.find((item) => payload.characters.includes(item.name));
+        const player = config.characters.find(
+          (item) => item.name === payload.playerCharacter && payload.characters.includes(item.name),
+        );
+        const character = config.characters.find(
+          (item) => payload.characters.includes(item.name) && item.name !== player?.name,
+        );
         const background = config.background_list.find((item) => item.name === payload.backgroundName);
         const requestedHistoryPath = payload.historyPath || chat.historyPath || "./data/chat_history/preview";
         const historyBase = requestedHistoryPath.toLowerCase().endsWith(".json")
@@ -1333,6 +1339,14 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path,
+          userDisplayName: player?.name || "你",
+          playerPortrait: player?.sprites[0]
+            ? {
+                characterName: player.name,
+                url: player.sprites[0].path,
+                crop: player.sprites[0].portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
+              }
+            : null,
           characterName: character?.name,
           chatProcessRunning: true,
           chatRuntimeClosing: false,
@@ -1419,12 +1433,28 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           options,
         );
         await delay(null, 80);
-        const character = config.characters.find((item) => templateSession?.selectedCharacters?.includes(item.name));
+        const player = config.characters.find(
+          (item) =>
+            item.name === templateSession?.playerCharacter && templateSession?.selectedCharacters?.includes(item.name),
+        );
+        const character = config.characters.find(
+          (item) => templateSession?.selectedCharacters?.includes(item.name) && item.name !== player?.name,
+        );
         const background = config.background_list.find((item) => item.name === templateSession?.background);
         const historyPath = templateSession?.historyPath || chat.historyPath || "./data/chat_history/preview";
         chat = {
           ...chat,
           backgroundPath: background?.sprites[0]?.path ?? chat.backgroundPath,
+          userDisplayName: player?.name || "你",
+          playerPortrait: player?.sprites[0]
+            ? chat.playerPortrait?.characterName === player.name
+              ? chat.playerPortrait
+              : {
+                  characterName: player.name,
+                  url: player.sprites[0].path,
+                  crop: player.sprites[0].portrait_crop ?? player.portrait_crop ?? { x: 0.5, y: 0.2, zoom: 1 },
+                }
+            : null,
           characterName: character?.name ?? chat.characterName,
           chatProcessRunning: true,
           chatRuntimeClosing: false,
@@ -1823,7 +1853,16 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           sovits_model_path: character.sovits_model_path?.trim() || "",
           sprite_prefix: character.sprite_prefix.trim() || "temp",
           sprite_scale: index >= 0 ? config.characters[index].sprite_scale : 1,
-          sprites: index >= 0 ? config.characters[index].sprites : [],
+          sprites:
+            index >= 0
+              ? config.characters[index].sprites.map((sprite, spriteIndex) => ({
+                  ...sprite,
+                  portrait_crop:
+                    character.sprites[spriteIndex]?.portrait_crop === null
+                      ? null
+                      : (character.sprites[spriteIndex]?.portrait_crop ?? sprite.portrait_crop),
+                }))
+              : [],
           character_setting: character.character_setting.trim(),
         };
         if (index >= 0) {
@@ -2582,6 +2621,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           name: input.name || "新模板",
           path: "",
           resolvedCharacters: [...input.characters],
+          allowPlayerDialogue: input.allowPlayerDialogue ?? DEFAULT_PLAYER_OPTIONS.allowPlayerDialogue,
           scenario,
           system,
           updatedAt: "",

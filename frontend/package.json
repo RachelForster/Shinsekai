@@ -13,6 +13,7 @@
     "build": "tsc -b && vite build",
     "sync:version": "node scripts/sync-version.mjs",
     "prepare:runtime": "node scripts/prepare-runtime.mjs",
+    "prepare:l2d": "node scripts/prepare-l2d.mjs",
     "prepare:tauri-resources": "node scripts/prepare-tauri-resources.mjs",
     "verify:packaged-runtime": "node scripts/verify-packaged-runtime.mjs",
     "verify:runtime-matrix": "node scripts/verify-runtime-matrix.mjs",

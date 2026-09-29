@@ -14,6 +14,25 @@ export const enMessages: Record<MessageKey, string> = {
   "story.canvas.panels": "Editor panels",
   "story.canvas.hidePanel": "Collapse panel",
 
+  "player.select": "Player character",
+  "player.configure": "Player character",
+  "player.none": "No player character",
+  "player.hint":
+    "You can enter this character's words and actions. AI may narrate interactions and change the portrait expression.",
+  "player.allowDialogue": "Allow AI to write player dialogue",
+  "player.allowDialogueHint":
+    "On by default: AI may write player replies. Turn off to control all player dialogue yourself.",
+  "player.readSpeech": "Read player dialogue aloud",
+  "player.speechHint":
+    "Controls player audio, including AI-written dialogue. Turning off does not hide dialogue text. Actions and thoughts are silent.",
+  "player.adjust": "Adjust player portrait",
+  "player.reset": "Reset crop",
+  "player.sprite": "Expression sprite",
+  "player.dragHint": "Drag to frame the head, or use the sliders. Save before switching sprites.",
+  "player.x": "Horizontal position",
+  "player.y": "Vertical position",
+  "player.zoom": "Zoom",
+  "player.individual": "Apply only to this sprite (otherwise save as character default)",
   "conversation.settings": "Chat settings",
   "conversation.next": "Next",
   "conversation.chooseType": "Chat type",

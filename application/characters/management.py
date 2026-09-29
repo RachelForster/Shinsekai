@@ -202,7 +202,7 @@ class CharacterUseCase:
             raise ValueError(error)
 
     def _save(self, payload: dict[str, Any]) -> dict[str, Any]:
-        from config.schema import Character
+        from config.schema import Character, PortraitCrop
 
         body = payload.get("character", payload)
         if not isinstance(body, dict):
@@ -227,6 +227,12 @@ class CharacterUseCase:
             edit_as_name=original_name,
             emotion_tags=str(character.emotion_tags or ""),
             character_brief=str(character.character_brief or "").strip(),
+            portrait_crop=character.portrait_crop if "portrait_crop" in body else None,
+            sprite_portrait_crops={
+                index: (item.get("portrait_crop") and PortraitCrop.model_validate(item["portrait_crop"]))
+                for index, item in enumerate(body.get("sprites", []))
+                if isinstance(item, dict) and "portrait_crop" in item
+            },
             # Preserve stored banks when older clients omit the new fields.
             avatar_type=character.avatar_type if "avatar_type" in body else None,
             avatars=character.avatars if "avatars" in body else None,

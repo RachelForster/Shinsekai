@@ -17,6 +17,14 @@ def _tr(key, **_kwargs):
 
 
 class ChatLaunchArgsTests(unittest.TestCase):
+    def test_ai_player_dialogue_defaults_on_and_explicit_false_survives_config(self):
+        parser = build_chat_arg_parser(_tr)
+        self.assertTrue(parser.parse_args([]).allow_player_dialogue)
+        self.assertFalse(parser.parse_args(["--no-allow-player-dialogue"]).allow_player_dialogue)
+        with patch.dict(os.environ, {CHAT_LAUNCH_CONFIG_ENV: json.dumps({"allow_player_dialogue": False})}):
+            parser.set_defaults(**load_chat_launch_config())
+        self.assertFalse(parser.parse_args([]).allow_player_dialogue)
+
     def test_initial_sprite_defaults_to_visible_and_can_be_disabled(self):
         parser = build_chat_arg_parser(_tr)
         self.assertTrue(parser.parse_args([]).show_initial_sprite)

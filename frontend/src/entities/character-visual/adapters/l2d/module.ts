@@ -1,69 +1,22 @@
-import { CubismFramework } from "../../../../../vendor/cubism-framework/live2dcubismframework.js";
-import { CubismModelSettingJson } from "../../../../../vendor/cubism-framework/cubismmodelsettingjson.js";
-import { CubismUserModel } from "../../../../../vendor/cubism-framework/model/cubismusermodel.js";
-import { CubismMatrix44 } from "../../../../../vendor/cubism-framework/math/cubismmatrix44.js";
-import { CubismMotion } from "../../../../../vendor/cubism-framework/motion/cubismmotion.js";
-import { CubismShaderManager_WebGL } from "../../../../../vendor/cubism-framework/rendering/cubismshader_webgl.js";
-import type { CubismShader_WebGL } from "../../../../../vendor/cubism-framework/rendering/cubismshader_webgl.js";
-import type { csmMap } from "../../../../../vendor/cubism-framework/type/csmmap.js";
 import type { ApplyMode, AvatarMount, AvatarSession } from "../../contracts";
-import { loadCore } from "./core";
+import { loadSdk, type SdkMotion } from "./sdk";
 import { neutralState, packagePath, parseState, validateControls, type L2DControls, type L2DState } from "./state";
 export { Editor } from "./Editor";
 
 type Expression = { Parameters: Array<{ Id: string; Value: number; Blend?: string }> };
 let activeModels = 0;
 
-function releaseContextShader(gl: WebGLRenderingContext) {
-  // R4 lacks a per-context removal API. Keep this pinned-SDK compatibility shim
-  // inside the format adapter: release once and erase the retained context entry.
-  const manager = CubismShaderManager_WebGL.getInstance() as unknown as {
-    _shaderMap: csmMap<WebGLRenderingContext, CubismShader_WebGL>;
-  };
-  const map = manager._shaderMap;
-  for (const entry = map.begin(); entry.notEqual(map.end()); entry.preIncrement()) {
-    if (entry.ptr().first === gl) {
-      entry.ptr().second.release();
-      map.erase(entry);
-      break;
-    }
-  }
-}
-
-class Model extends CubismUserModel {
-  resetMotion() {
-    this._motionManager.stopAllMotions();
-  }
-  play(motion: CubismMotion) {
-    this._motionManager.startMotionPriority(motion, false, 3);
-  }
-  motionFinished() {
-    return this._motionManager.isFinished();
-  }
-  animate(dt: number, physics: boolean) {
-    this._motionManager.updateMotion(this.getModel(), dt);
-    if (physics) this._physics?.evaluate(this.getModel(), dt);
-  }
-  physics(dt: number) {
-    this._physics?.evaluate(this.getModel(), dt);
-  }
-  pose(dt: number) {
-    this._pose?.updateParameters(this.getModel(), dt);
-  }
-}
-
 export async function create(mount: AvatarMount, signal: AbortSignal): Promise<AvatarSession<L2DState, L2DControls>> {
-  await loadCore(signal);
-  if (!CubismFramework.isStarted()) CubismFramework.startUp();
-  if (!CubismFramework.isInitialized()) CubismFramework.initialize();
+  const sdk = await loadSdk(signal);
+  sdk.initialize();
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "display:block;width:100%;height:100%";
   const gl = canvas.getContext("webgl", { alpha: true, premultipliedAlpha: true });
   if (!gl) throw new Error("Live2D requires WebGL");
-  const model = new Model();
+  const model = sdk.createModel();
   ++activeModels;
   const textures: WebGLTexture[] = [];
-  const motions = new Map<string, CubismMotion>();
+  const motions = new Map<string, SdkMotion>();
   const expressions = new Map<string, Expression>();
   let frame = 0,
     disposed = false,
@@ -90,8 +43,7 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
     for (const motion of motions.values()) motion.release();
     motions.clear();
     for (const texture of textures) gl.deleteTexture(texture);
-    releaseContextShader(gl);
-    if (--activeModels === 0) CubismShaderManager_WebGL.deleteInstance();
+    sdk.releaseContext(gl, --activeModels === 0);
     gl.getExtension("WEBGL_lose_context")?.loseContext();
     canvas.remove();
   };
@@ -113,7 +65,6 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
   const assetBytes = (path: string, abort?: AbortSignal) => bytes(mount.assetUrl(packagePath(path)), abort);
   try {
     const entry = await bytes(mount.modelUrl);
-    const setting = new CubismModelSettingJson(entry, entry.byteLength);
     const definition = JSON.parse(new TextDecoder().decode(entry)) as {
       FileReferences: {
         Moc: string;
@@ -194,7 +145,6 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         image.close();
       }
     }
-    setting.release();
     signal.throwIfAborted();
     mount.element.append(canvas);
     canvas.addEventListener("webglcontextlost", contextLost);
@@ -209,7 +159,7 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         lastTime = time;
         reset(false);
         if (mode !== "edit") {
-          model.animate(dt, false);
+          model.animate(dt);
           if (model.motionFinished()) motionEyes.clear();
         }
         for (const [id, value] of Object.entries(current.parameters))
@@ -254,14 +204,14 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         gl.viewport(0, 0, canvas.width, canvas.height);
         gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
-        const matrix = new CubismMatrix44();
+        const matrix = sdk.createMatrix();
         const aspect = canvas.width / Math.max(1, canvas.height);
         const modelAspect = sdkModel.getCanvasWidth() / sdkModel.getCanvasHeight();
         const fit = Math.min(1, aspect / modelAspect) * 0.95;
         matrix.scale(fit / aspect, fit);
         matrix.multiplyByMatrix(model.getModelMatrix());
         renderer.setMvpMatrix(matrix);
-        renderer.setRenderState(null as unknown as WebGLFramebuffer, [0, 0, canvas.width, canvas.height]);
+        renderer.setRenderState(null, [0, 0, canvas.width, canvas.height]);
         renderer.drawModel();
         frame = requestAnimationFrame(update);
       } catch (error) {
@@ -283,7 +233,7 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         const request = ++generation;
         const next = parseState(value);
         validateControls(next, controls);
-        let motion: CubismMotion | undefined;
+        let motion: SdkMotion | undefined;
         let drivenEyes = new Set<string>();
         if (nextMode === "play" && next.motion) {
           const data = await assetBytes(next.motion, abort);
@@ -297,8 +247,9 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
           if (request !== generation || disposed) return;
           motion = motions.get(next.motion);
           if (!motion) {
-            motion = model.loadMotion(data, data.byteLength, next.motion);
-            if (!motion) throw new Error("Invalid Live2D motion");
+            const loadedMotion = model.loadMotion(data, data.byteLength, next.motion);
+            if (!loadedMotion) throw new Error("Invalid Live2D motion");
+            motion = loadedMotion;
             motions.set(next.motion, motion);
           }
         }

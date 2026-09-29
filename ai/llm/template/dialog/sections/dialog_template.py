@@ -7,6 +7,7 @@ from ..context import DialogTemplateContext
 from .background import BackgroundSection
 from .character import CharacterSection
 from .json_schema import JsonSchemaSection
+from .player import PlayerSection
 from .requirements import RequirementsSection
 
 
@@ -19,6 +20,7 @@ class DialogTemplateSection(Section[DialogTemplateContext]):
         default_factory=lambda: (
             JsonSchemaSection(priority=10),
             CharacterSection(priority=20),
+            PlayerSection(priority=25),
             BackgroundSection(priority=30),
             RequirementsSection(priority=40),
         )
