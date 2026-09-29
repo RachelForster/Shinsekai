@@ -7,6 +7,7 @@ import { backgroundsQueryKey, listBackgrounds } from "../../../entities/backgrou
 import { charactersQueryKey, ensureCharacterBriefs, listCharacters } from "../../../entities/character/repository";
 import type { Character, CharacterPromptMode, StoryGenerationInput } from "../../../shared/platform/types";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../../shared/constants";
+import { DEFAULT_PLAYER_OPTIONS } from "../../../shared/playerCharacterOptions";
 import { PrimaryCharacterDialog } from "../../template-editor/PrimaryCharacterDialog";
 import { CharacterRoleStatus } from "../../template-editor/CharacterRoleStatus";
 import { updateCharacterRoles } from "../../template-editor/characterRoles";
@@ -26,9 +27,9 @@ export function StorySetupForm({
   const [mode, setMode] = useState<CharacterPromptMode | undefined>("full");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [playerDialogOpen, setPlayerDialogOpen] = useState(false);
-  const [playerCharacter, setPlayerCharacter] = useState("");
-  const [readPlayerSpeech, setReadPlayerSpeech] = useState(false);
-  const [allowPlayerDialogue, setAllowPlayerDialogue] = useState(true);
+  const [playerCharacter, setPlayerCharacter] = useState(DEFAULT_PLAYER_OPTIONS.playerCharacter);
+  const [readPlayerSpeech, setReadPlayerSpeech] = useState(DEFAULT_PLAYER_OPTIONS.readPlayerSpeech);
+  const [allowPlayerDialogue, setAllowPlayerDialogue] = useState(DEFAULT_PLAYER_OPTIONS.allowPlayerDialogue);
   const [background, setBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
   const [synopsis, setSynopsis] = useState("");
   const characters = useQuery({ queryKey: charactersQueryKey, queryFn: listCharacters });

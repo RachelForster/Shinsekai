@@ -527,16 +527,19 @@ export interface PluginConfigActionResult {
   result: Record<string, unknown>;
 }
 
-export interface TemplateSummary {
+export interface PlayerCharacterOptions {
+  playerCharacter?: string;
+  readPlayerSpeech?: boolean;
+  allowPlayerDialogue?: boolean;
+}
+
+export interface TemplateSummary extends PlayerCharacterOptions {
   content: string;
   generationMessage?: string;
   id: string;
   name: string;
   path: string;
   mediaSelectionMode?: MediaSelectionMode;
-  playerCharacter?: string;
-  readPlayerSpeech?: boolean;
-  allowPlayerDialogue?: boolean;
   scenario?: string;
   system?: string;
   updatedAt: string;
@@ -559,11 +562,8 @@ export interface ConversationSummary {
   requiresCharacterSelection?: boolean;
 }
 
-export interface ChatLaunchPayload {
+export interface ChatLaunchPayload extends PlayerCharacterOptions {
   storyPath?: string;
-  playerCharacter?: string;
-  readPlayerSpeech?: boolean;
-  allowPlayerDialogue?: boolean;
   characterPromptMode?: CharacterPromptMode;
   primaryCharacters?: string[];
   maxDialogItems?: number;
@@ -594,10 +594,7 @@ export interface ChatLaunchPayload {
   useCg?: boolean;
 }
 
-export interface TemplateGenerateInput {
-  playerCharacter?: string;
-  readPlayerSpeech?: boolean;
-  allowPlayerDialogue?: boolean;
+export interface TemplateGenerateInput extends PlayerCharacterOptions {
   backgroundName: string;
   characterPromptMode?: CharacterPromptMode;
   characters: string[];
@@ -621,10 +618,7 @@ export interface TemplateGenerateInput {
 export type CharacterPromptMode = "compact" | "full";
 export type MediaSelectionMode = "indexed" | "semantic";
 
-export interface TemplateLaunchSession {
-  playerCharacter?: string;
-  readPlayerSpeech?: boolean;
-  allowPlayerDialogue?: boolean;
+export interface TemplateLaunchSession extends PlayerCharacterOptions {
   background: string;
   characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;

@@ -12,6 +12,7 @@ import {
   sampleTemplates,
 } from "./sampleData";
 import { DEFAULT_CHARACTER_COLOR } from "../constants";
+import { DEFAULT_PLAYER_OPTIONS } from "../playerCharacterOptions";
 import { numberedTags, tagContents } from "../assets/assetText";
 import { runtimeStatusFromSnapshot } from "./chatRuntimeStatus";
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
@@ -2611,7 +2612,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           name: input.name || "新模板",
           path: "",
           resolvedCharacters: [...input.characters],
-          allowPlayerDialogue: input.allowPlayerDialogue ?? true,
+          allowPlayerDialogue: input.allowPlayerDialogue ?? DEFAULT_PLAYER_OPTIONS.allowPlayerDialogue,
           scenario,
           system,
           updatedAt: "",
