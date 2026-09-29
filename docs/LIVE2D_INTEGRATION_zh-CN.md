@@ -19,6 +19,8 @@
 
 状态格式由 L2D 模块解释：
 
+角色编辑器复用 `shared/ui` 的 `Select`、`FilePicker`、`TextInput`、`Button` / `AsyncButton` 和 `Switch`，沿用角色编辑页的 section / field-row 布局及中英日 i18n。Live2D 描述符声明 `.model3.json` 入口过滤，文件选择沿用桌面原生对话框与浏览器降级机制，并保留手输路径。角色导入 / 保存走既有 character repository，模型 URL 和不透明状态读取分别归 files / character-visual repository；格式专属 Editor 与状态类型仍留在设计指定的 adapter 目录。
+
 ```json
 {"parameters":{"ParamAngleX":12},"expressions":[],"motion":""}
 ```

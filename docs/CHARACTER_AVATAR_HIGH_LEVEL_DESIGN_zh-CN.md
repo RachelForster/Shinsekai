@@ -199,6 +199,7 @@ export interface AvatarModule<S, C> {
 export interface AvatarFormat<S, C> {
   id: AvatarFormatId;
   label: string;
+  modelExtensions?: string[];          // 共享文件选择器的入口后缀过滤，省略则不过滤
   capabilities: AvatarCapabilities;
   createEmpty(): ModelSprites;          // 未配置时的默认值工厂
   load(): Promise<AvatarModule<S, C>>;  // 按需加载渲染与编辑代码
@@ -210,6 +211,8 @@ export interface AvatarFormat<S, C> {
 应用启动时，[avatarFormats.ts](../frontend/src/app/avatarFormats.ts) 收集 `adapters/*/format.ts` 的 default export 并统一注册。format.ts 只含轻量元数据，类型使用 type import，load() 内使用动态 import 加载 SDK / renderer / Editor。注册本身不触发 load；并发 load 共用 Promise，失败清除缓存，后续创建可以重试。这个入口只包含随当前前端构建交付的格式；第三方 Python 插件若没有对应前端描述符，应显示不可用。运行时分发第三方 JS 不属于本 PR 的插件承诺。
 
 L2D 模块提供 L2DState、参数 / 动作编辑描述与自己的 Editor；VRM 模块提供 VrmState、表情 / 人形骨骼编辑描述与自己的 Editor；未来格式同理。共享 ModelStateEditor 只管理“当前编号、草稿、保存、标签”，等待 load() 后通过 `module.Editor` 展示格式专属控件。编辑描述 C 不强求一致，避免为了统一滑条把各模型的能力都压成一种格式。
+
+共享编辑器与格式 Editor 复用已有 shared/ui 控件和 i18n；文件选择复用 FilePicker 的桌面原生 / 浏览器降级路径。入口后缀从描述符的 modelExtensions 读取，不在共享层硬编码 l2d / vrm；后缀过滤只辅助选择，不代替后端 adapter 校验。角色导入 / 保存经 character repository，模型 URL 经 files repository，状态读取经 character-visual repository，领域类型沿用 entities/config/types 的出口。
 
 接口行为必须一致：
 
