@@ -351,8 +351,8 @@ class ConfigManager:
             return
             
         print("正在保存 characters.yaml...")
-        # 角色列表需要将每个 Character 实体转换为字典
-        characters_data = [char.model_dump(by_alias=True) for char in self.config.characters]
+        # JSON 模式将嵌套的 Path 转为字符串，避免 YAML 写出 safe_load 无法读取的 Python 标签。
+        characters_data = [char.model_dump(mode="json", by_alias=True) for char in self.config.characters]
         self._save_single_config(self._CHARACTERS_CONFIG_PATH, characters_data)
         print("characters.yaml 保存完成。")
     

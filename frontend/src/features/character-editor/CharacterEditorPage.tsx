@@ -1038,7 +1038,9 @@ export function CharacterEditorPage() {
           character={draft}
           onChange={setDraft}
           onSaved={(character) => {
-            queryClient.invalidateQueries({ queryKey: charactersQueryKey });
+            queryClient.setQueryData<Character[]>(charactersQueryKey, (current = [character]) =>
+              current.map((item) => (item.name === character.name ? character : item)),
+            );
             setDraft(structuredClone(character));
           }}
         />

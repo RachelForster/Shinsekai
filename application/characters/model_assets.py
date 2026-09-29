@@ -44,7 +44,7 @@ def import_model(use_case, body: dict) -> dict:
             bank.model_path = str(final / files.entry.name)
             shutil.copytree(staged, final)
             try:
-                use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+                use_case._state.character_manager.save_avatar_bank(name, kind, bank, activate=True)
             except Exception:
                 shutil.rmtree(final)
                 raise

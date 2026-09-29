@@ -41,7 +41,7 @@ class SpriteAssetResolver:
         self._resolver = AssetResolver()
 
     def candidates(self, character: Any) -> tuple[AssetCandidate, ...]:
-        assets = get_character_assets(character, getattr(character, "avatar_type", "static"))
+        assets = get_character_assets(character)
         sprites = assets.sprites
         tags = tag_contents(assets.emotion_tags, len(sprites))
         return asset_candidates(sprites, tags=tags)

@@ -56,6 +56,8 @@ class _Transport:
     def __init__(self, *, streaming: bool) -> None:
         self.streaming = streaming
         self.stream_sink = object() if streaming else None
+        from application.media.resource_urls import UnconfiguredResourceUrls
+        self.resource_urls = UnconfiguredResourceUrls()
         self.events = []
         self.initialization_events = []
         self.closed_initialization = 0

@@ -44,6 +44,8 @@ def test_import_save_overwrite_and_authorized_files(harness):
     state, use_case, entry = harness
     imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
     model = imported["avatars"]["l2d"]["model_path"]
+    assert imported["avatar_type"] == "l2d"
+    assert state.config_manager.get_character_by_name("Haru").avatar_type == "l2d"
     assert model != str(entry) and Path(model).is_file()
     body = dict(name="Haru", avatar_type="l2d", model_path=model, sprite_index=-1, path="", state={"parameters": {}, "expressions": [], "motion": ""}, tags="neutral")
     result = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, **body)
@@ -92,3 +94,87 @@ def test_replacement_retains_old_states_without_breaking_new_model(harness):
     assert replacement["avatars"]["l2d"]["sprites"] == saved["avatars"]["l2d"]["sprites"]
     new_model = replacement["avatars"]["l2d"]["model_path"]
     assert model_file(state, new_model, "texture.png").is_file()
+
+
+def test_import_activates_model_without_replacing_static_or_other_banks(harness):
+    state, use_case, entry = harness
+    character = state.config_manager.get_character_by_name("Haru")
+    character.sprites = [{"path": str(entry.parent / "static.png")}]
+    character.emotion_tags = "立绘 1：static\n"
+    from config.schema import ModelSprites
+    character.avatars["future"] = ModelSprites(model_path="future.model", emotion_tags="keep")
+    result = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+    assert result["avatar_type"] == "l2d"
+    assert result["sprites"][0]["path"] == str(entry.parent / "static.png")
+    assert result["emotion_tags"] == "立绘 1：static\n"
+    assert result["avatars"]["future"]["emotion_tags"] == "keep"
+    state.config_manager.reload()
+    assert state.config_manager.get_character_by_name("Haru").avatar_type == "l2d"
+
+
+def test_failed_import_rolls_back_active_type_and_bank(harness, monkeypatch):
+    state, use_case, entry = harness
+    def fail_save():
+        raise OSError("Cannot save configuration")
+    monkeypatch.setattr(state.character_manager, "_save_characters_config", fail_save)
+    with pytest.raises(OSError, match="Cannot save"):
+        execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+    character = state.config_manager.get_character_by_name("Haru")
+    assert character.avatar_type == "static"
+    assert character.avatars == {}
+    parent = Path(state.project_root_dir) / "data/sprite/haru/avatars/l2d"
+    assert list(parent.iterdir()) == []
+
+
+def test_new_format_reuses_import_startup_events_and_snapshot(harness, monkeypatch):
+    """An opaque, non-Cubism format must need no changes to the shared pipeline."""
+    from application.chat.initial_sprite import display_initial_sprite, initial_sprite_path_for_characters
+    from application.chat.runtime_process import _chat_session_media
+    from application.chat.ui_updates import StreamingUIUpdateManager
+    from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
+    from core.media.avatar import registry
+    from frontend_bridge_core.resource_urls import BridgeResourceUrls
+    from sdk.adapters.avatar import ModelAssetAdapter, ModelFiles
+
+    class DemoAdapter(ModelAssetAdapter):
+        format_id = "demo"
+
+        def inspect(self, source):
+            return ModelFiles(source.resolve(), (source.resolve(),))
+
+        def parse_state(self, model, value):
+            assert "pose" in value
+            return dict(value)
+
+        def state_files(self, model, state):
+            return ()
+
+    monkeypatch.setattr(registry, "_builtin", dict(registry._builtin))
+    registry.register_adapter(DemoAdapter())
+    state, use_case, entry = harness
+    entry = entry.with_name("sample.demo")
+    entry.write_text("demo")
+    old_sprite = entry.with_name("static.png")
+    old_sprite.touch()
+    state.config_manager.get_character_by_name("Haru").sprites = [{"path": str(old_sprite)}]
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="demo", source_path=str(entry))
+    model = imported["avatars"]["demo"]["model_path"]
+    saved = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="demo", model_path=model,
+                    sprite_index=-1, path="", state={"pose": [1, 2, 3]}, tags="demo pose")
+    saved_path = saved["avatars"]["demo"]["sprites"][0]["path"]
+    assert initial_sprite_path_for_characters(state.config_manager, str(old_sprite), ["Haru"]) == saved_path
+
+    events = []
+    urls = BridgeResourceUrls("http://127.0.0.1:8787", "test-token")
+    presenter = StreamingUIUpdateManager(SimpleNamespace(emit=events.append), resource_urls=urls)
+    monkeypatch.setattr("application.chat.ui_updates.get_character_by_name", state.config_manager.get_character_by_name)
+    assert display_initial_sprite(saved_path, config=state.config_manager, ui_updates=presenter)
+    assert events[0]["avatarType"] == "demo"
+    restored = fold_event_into_snapshot(make_empty_chat_snapshot(), events[0])["sprites"][0]
+    state.chat_session = {"characterName": "Haru"}
+    state.resource_urls = urls
+    _, _, initial = _chat_session_media(state)
+    for key in ("avatarType", "modelUrl", "path", "scale"):
+        assert initial[0][key] == restored[key]
+    relative_state = Path(saved_path).relative_to(Path(model).parent).as_posix()
+    assert json.loads(model_file(state, model, relative_state).read_text()) == {"pose": [1, 2, 3]}

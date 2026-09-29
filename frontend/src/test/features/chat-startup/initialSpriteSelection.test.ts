@@ -12,6 +12,31 @@ const characters = [
 ];
 
 describe("initial sprite selection", () => {
+  it("uses any active model bank and rejects paths from inactive banks", () => {
+    const models = [
+      {
+        name: "Demo",
+        avatar_type: "demo",
+        sprites: [{ path: "static.png" }],
+        avatars: {
+          demo: { model_path: "model.demo", sprites: [{ path: "demo/pose.json" }], emotion_tags: "" },
+          other: { model_path: "model.other", sprites: [{ path: "other/pose.json" }], emotion_tags: "" },
+        },
+      },
+    ];
+    expect(initialSpriteOwner("demo/pose.json", models)).toBe("Demo");
+    expect(initialSpriteOwner("static.png", models)).toBeUndefined();
+    for (const path of ["static.png", "other/pose.json"]) {
+      expect(compatibleInitialSpritePath({ characters: models, path, selectedCharacters: ["Demo"] })).toBe("");
+    }
+    expect(compatibleInitialSpritePath({ characters: models, path: "demo/pose.json", selectedCharacters: [] })).toBe(
+      "",
+    );
+    expect(
+      compatibleInitialSpritePath({ characters: models, path: "demo/pose.json", selectedCharacters: ["Demo"] }),
+    ).toBe("demo/pose.json");
+  });
+
   it.each([
     {
       expected: "C:\\Sprites\\Nanami\\Idle.PNG",

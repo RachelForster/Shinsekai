@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import type { Character } from "../../entities/config/types";
-import { importCharacterModel, saveCharacterModelState } from "../../entities/character/repository";
+import { characterAvatarType, getCharacterAssets } from "../../entities/character/assets";
+import { importCharacterModel } from "../../entities/character/repository";
 import { modelFileUrl } from "../../entities/files/repository";
 import { registeredAvatarFormats, avatarFormat } from "../../entities/character-visual/registry";
-import { avatarAssetUrl } from "../../entities/character-visual/assetUrl";
-import type { AvatarModule, AvatarSession } from "../../entities/character-visual/contracts";
-import { readAvatarState } from "../../entities/character-visual/repository";
+import { CharacterVisual } from "../../entities/character-visual/CharacterVisual";
+import { avatarStateUrl } from "../../entities/character-visual/repository";
 import { tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
-import { AsyncButton, FilePicker, Select, TextInput } from "../../shared/ui";
+import { AsyncButton, Button, EmptyState, FilePicker, ImageAssetGallery, PathDisplay, Select } from "../../shared/ui";
+import { ModelStateDialog } from "./ModelStateDialog";
 import "./ModelStateEditor.css";
 
 export function ModelStateEditor({
@@ -21,127 +22,52 @@ export function ModelStateEditor({
   onSaved: (character: Character) => void;
 }) {
   const { t } = useI18n();
-  const kind = character.avatar_type;
-  const bank = character.avatars[kind];
+  const kind = characterAvatarType(character);
+  const bank = getCharacterAssets(character);
   const format = avatarFormat(kind);
-  const host = useRef<HTMLDivElement>(null);
   const [source, setSource] = useState("");
-  const [index, setIndex] = useState(-1);
-  const [tags, setTags] = useState("");
-  const [session, setSession] = useState<AvatarSession<unknown, unknown> | null>(null);
-  const [module, setModule] = useState<AvatarModule<unknown, unknown> | null>(null);
-  const [value, setValue] = useState<unknown>(null);
+  const [index, setIndex] = useState(0);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const request = useRef(0);
   const name = character.name;
   const modelPath = bank?.model_path ?? "";
-  const path = index >= 0 ? (bank?.sprites[index]?.path ?? "") : "";
+  const sprite = bank?.sprites[index];
+  const tags = tagContents(bank?.emotion_tags ?? "", bank?.sprites.length ?? 0);
   useEffect(() => {
-    setTags(index >= 0 ? (tagContents(bank?.emotion_tags ?? "", bank?.sprites.length ?? 0)[index] ?? "") : "");
-  }, [index, bank?.emotion_tags, bank?.sprites.length]);
-  const run = async (operation: () => Promise<void>) => {
+    setIndex(0);
+    setEditingIndex(null);
+    setSource("");
+    setError("");
+    setPending(false);
+    ++request.current;
+    return () => {
+      ++request.current;
+    };
+  }, [name, kind, modelPath]);
+  const importModel = async () => {
+    const sequence = ++request.current;
     setPending(true);
     setError("");
     try {
-      await operation();
+      const result = await importCharacterModel({ name, avatar_type: kind, source_path: source });
+      if (request.current === sequence) onSaved(result);
     } catch (failure) {
-      setError(String(failure));
+      if (request.current === sequence) setError(String(failure));
     } finally {
-      setPending(false);
+      if (request.current === sequence) setPending(false);
     }
   };
-  useEffect(() => {
-    setIndex(-1);
-    setTags("");
-    setSource("");
-    ++request.current;
-  }, [name, kind, modelPath]);
-  useEffect(() => {
-    if (!host.current || !format || !modelPath) {
-      setSession(null);
-      return;
-    }
-    const target = host.current;
-    const abort = new AbortController();
-    let instance: AvatarSession<unknown, unknown> | null = null;
-    let observer: ResizeObserver | null = null;
-    setSession(null);
-    setError("");
-    setValue(null);
-    void format
-      .load()
-      .then(async (loaded) => {
-        if (abort.signal.aborted) return;
-        const modelUrl = modelFileUrl(modelPath);
-        instance = await loaded.create(
-          {
-            element: target,
-            modelUrl,
-            assetUrl: (relative) => avatarAssetUrl(modelUrl, relative),
-            reportError: (failure) => {
-              if (!abort.signal.aborted) setError(failure.message);
-            },
-          },
-          abort.signal,
-        );
-        if (abort.signal.aborted) {
-          instance.dispose();
-          return;
-        }
-        const resize = () => instance?.resize(target.clientWidth, target.clientHeight);
-        resize();
-        observer = new ResizeObserver(resize);
-        observer.observe(target);
-        setModule(loaded);
-        setSession(instance);
-      })
-      .catch((failure) => {
-        if (!abort.signal.aborted) setError(String(failure));
-      });
-    return () => {
-      abort.abort();
-      ++request.current;
-      observer?.disconnect();
-      instance?.dispose();
-    };
-  }, [name, kind, modelPath, format]);
-  useEffect(() => {
-    if (!session || !modelPath) return;
-    const abort = new AbortController();
-    const sequence = ++request.current;
-    setValue(null);
-    void (async () => {
-      let state = session.readState();
-      if (path) {
-        state = await readAvatarState(modelPath, path, abort.signal);
-      }
-      abort.signal.throwIfAborted();
-      await session.apply(state, "edit", abort.signal);
-      if (request.current === sequence && !abort.signal.aborted) setValue(session.readState());
-    })().catch((failure) => {
-      if (!abort.signal.aborted) setError(String(failure));
-    });
-    return () => abort.abort();
-  }, [session, path, modelPath]);
-  const change = (state: unknown) => {
-    if (!session) return;
-    const sequence = ++request.current;
-    void session
-      .apply(state, "edit", new AbortController().signal)
-      .then(() => {
-        if (sequence === request.current) {
-          setValue(session.readState());
-          setError("");
-        }
-      })
-      .catch((failure) => setError(String(failure)));
-  };
-  const Editor = module?.Editor;
   return (
     <section className="section page-section-anchor" id="character-model">
       <div className="section__header">
         <h2 className="section__title">{t("character.avatar.title")}</h2>
+        {kind !== "static" && format && (
+          <Button disabled={pending || !modelPath} onClick={() => setEditingIndex(-1)}>
+            {t("character.avatar.newState")}
+          </Button>
+        )}
       </div>
       <div className="asset-editor">
         <label className="field-row field-row--stack">
@@ -150,6 +76,7 @@ export function ModelStateEditor({
             <Select
               aria-label={t("character.avatar.format")}
               value={kind}
+              disabled={pending}
               onChange={(event) => {
                 const avatar_type = event.target.value;
                 onChange({
@@ -196,74 +123,58 @@ export function ModelStateEditor({
                 />
               </span>
             </label>
-            <AsyncButton
-              loading={pending}
-              disabled={pending || !source || !name}
-              onClick={() =>
-                void run(async () => {
-                  const sequence = ++request.current;
-                  const result = await importCharacterModel({
-                    name,
-                    avatar_type: kind,
-                    source_path: source,
-                  });
-                  if (request.current === sequence) onSaved(result);
-                })
-              }
-            >
+            <AsyncButton loading={pending} disabled={pending || !source || !name} onClick={() => void importModel()}>
               {t("character.avatar.importModel")}
             </AsyncButton>
-            <div ref={host} className="model-state-editor__preview" />
-            <label className="field-row field-row--stack">
-              <span className="field-row__label">{t("character.avatar.state")}</span>
-              <span className="field-row__control">
-                <Select
-                  aria-label={t("character.avatar.state")}
-                  value={index}
-                  onChange={(event) => {
-                    setIndex(Number(event.target.value));
-                    setTags("");
-                  }}
-                >
-                  <option value={-1}>{t("character.avatar.newState")}</option>
-                  {bank?.sprites.map((sprite, i) => (
-                    <option key={sprite.path} value={i}>
-                      {i + 1}: {sprite.path.split(/[\\/]/).at(-1)}
-                    </option>
-                  ))}
-                </Select>
-              </span>
-            </label>
-            {session && Editor && value !== null && <Editor session={session} value={value} onChange={change} />}
-            <label className="field-row field-row--stack">
-              <span className="field-row__label">{t("character.sprite.tag")}</span>
-              <span className="field-row__control">
-                <TextInput value={tags} onChange={(event) => setTags(event.target.value)} />
-              </span>
-            </label>
-            <AsyncButton
-              loading={pending}
-              disabled={pending || !session || value === null || Boolean(error)}
-              onClick={() =>
-                void run(async () => {
-                  if (!session) return;
-                  const sequence = ++request.current;
-                  const state = session.readState();
-                  const result = await saveCharacterModelState({
-                    name,
-                    avatar_type: kind,
-                    model_path: modelPath,
-                    sprite_index: index,
-                    path,
-                    state,
-                    tags,
-                  });
-                  if (request.current === sequence) onSaved(result);
-                })
-              }
-            >
-              {t("character.avatar.saveState")}
-            </AsyncButton>
+            {modelPath && (
+              <div className="asset-gallery-layout asset-gallery-layout--character">
+                {bank?.sprites.length ? (
+                  <ImageAssetGallery
+                    selectedIndex={index}
+                    onSelect={setIndex}
+                    items={bank.sprites.map((item, i) => ({
+                      id: item.path,
+                      title: tags[i] || item.path.split(/[\\/]/).at(-1) || "",
+                      meta: t("character.avatar.state"),
+                      badge: format.label,
+                    }))}
+                  />
+                ) : (
+                  <EmptyState title={t("character.avatar.emptyStates")} />
+                )}
+                <aside className="asset-inspector">
+                  {!pending && editingIndex === null && (
+                    <CharacterVisual
+                      className="model-state-editor__preview"
+                      asset={{
+                        id: modelPath,
+                        label: t("character.avatar.preview"),
+                        avatarType: kind,
+                        modelUrl: modelFileUrl(modelPath),
+                        url: sprite ? avatarStateUrl(modelPath, sprite.path) : "",
+                      }}
+                      mode="restore"
+                      hitbox={false}
+                      onImageError={() => {}}
+                      onMouseDown={() => {}}
+                    />
+                  )}
+                  <label className="field-row field-row--stack">
+                    <span className="field-row__label">{t("character.sprite.tag")}</span>
+                    <span className="field-row__control">{tags[index] || "—"}</span>
+                  </label>
+                  <label className="field-row field-row--stack">
+                    <span className="field-row__label">{t("character.sprite.path")}</span>
+                    <span className="field-row__control">
+                      <PathDisplay className="path-display--input" path={sprite?.path || modelPath} />
+                    </span>
+                  </label>
+                  <Button disabled={pending || !sprite} onClick={() => setEditingIndex(index)}>
+                    {t("character.avatar.editState")}
+                  </Button>
+                </aside>
+              </div>
+            )}
           </>
         )}
         {error && (
@@ -272,6 +183,19 @@ export function ModelStateEditor({
           </p>
         )}
       </div>
+      {editingIndex !== null && format && bank && (
+        <ModelStateDialog
+          key={`${name}:${kind}:${modelPath}`}
+          character={character}
+          index={editingIndex}
+          onClose={() => setEditingIndex(null)}
+          onSaved={(result) => {
+            setIndex(editingIndex < 0 ? bank.sprites.length : editingIndex);
+            setEditingIndex(null);
+            onSaved(result);
+          }}
+        />
+      )}
     </section>
   );
 }

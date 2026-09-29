@@ -28,11 +28,27 @@ pnpm prepare:l2d --sdk-dir ../.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4 --accept-sdk
 
 角色编辑器复用 `shared/ui` 的 `Select`、`FilePicker`、`TextInput`、`Button` / `AsyncButton` 和 `Switch`，沿用角色编辑页的 section / field-row 布局及中英日 i18n。Live2D 描述符声明 `.model3.json` 入口过滤，文件选择沿用桌面原生对话框与浏览器降级机制，并保留手输路径。角色导入 / 保存走既有 character repository，模型 URL 和不透明状态读取分别归 files / character-visual repository；格式专属 Editor 与状态类型仍留在设计指定的 adapter 目录。
 
+模型导入成功时将该类型与资源银行一并持久化，失败同时回滚，不再因刷新返回静态立绘。默认查看区复用 `ImageAssetGallery` 的编号 / 标签卡片、既有 inspector 布局与 `CharacterVisual` 的真实模型预览；卡片不伪造动态缩略图。点击“新建状态”（或已有条目的“编辑状态”）才挂载临时编辑实例，复用 `Dialog`，桌面左侧滚动参数、右侧固定模型预览，窄屏改为上下排列。只有保存成功才提交并选中对应条目；取消释放实例、不保存草稿，保存失败保留草稿供重试。
+
 ```json
 {"parameters":{"ParamAngleX":12},"expressions":[],"motion":""}
 ```
 
 参数与资源通过真实 SDK controls 校验；后端只验证文件/结构/有限数值，不假装能从 JSON 得知 moc3 参数范围。新条目以 `sprite_index=-1, path=""` 追加；覆盖同时核对模型路径、下标和原状态路径，保留条目语音。状态文件不覆盖旧文件，配置保存失败不改变原银行。
+
+## 格式扩展与共享边界
+
+- `config.character_assets.get_character_assets(character)` 默认读取当前形象银行；静态图片保留原存储结构。初始资源选择、对话资源解析均复用此入口。识别旧启动路径时可遍历所有银行，但非当前银行的路径只用于判断失效，不能作为当前状态下标使用。
+- `application.chat.character_visual.resolve_character_visual` 是舞台资源投影入口。初始快照与实时事件共用它；事件累计出的重连快照保留同一组形象字段。共享层只处理模型入口和状态引用，不解释具体格式的状态内容。
+- `application.media.resource_urls.ResourceUrls` 是独立于事件发送的资源地址接口，通过运行时组装注入展示层。`BridgeResourceUrls` 统一实现鉴权、普通媒体地址及模型目录内的资源地址；HTTP bridge 和 WebSocket producer 复用同一实现。传输类原有 URL 方法仅作兼容委托。
+- `StreamingUIUpdateManager` 明确要求完整的资源地址接口，不再用 `hasattr` 将缺失的模型能力静默降为图片 URL。尚未组装传输的默认地址实现只支持本地静态图片，模型请求会明确报错。
+- 前端 `entities/character/assets.ts` 负责通用银行选择，启动路径检查、模型查看与编辑弹窗共用它；`CharacterVisual` 与通用状态编辑器继续通过 registry 加载格式模块。
+
+在现有模型包、JSON 状态及能力契约内增加格式，需要实现后端 `ModelAssetAdapter` 并在内置或插件组装入口注册，前端添加 `adapters/<format>/format.ts` 及其模块（由 `app/avatarFormats.ts` 自动发现）。无需修改舞台、事件传输、通用编辑器或资源路由。若格式引入契约尚未表达的能力，再单独扩展契约。
+
+回归验证包含一个 `demo` 格式，其状态为 `{"pose":[1,2,3]}`，复用模型导入、状态保存、初始显示、实时事件、重连快照和受控资源读取；不依赖 Cubism 的参数、动作或表情字段。
+
+本次共享边界重构验证：`shinsekai` conda 环境下应用层、配置、bridge、core 和架构边界测试共 1659 项通过、5 项跳过；前端形象模块、角色编辑器、聊天启动及舞台测试 407 项通过，类型检查与生产构建通过。本地包内 Python 的 `desktop-core` 启动自检通过；未完成更新后运行实例的鉴权模型请求及真实舞台渲染复验。
 
 ## 生命周期与嘴眼
 
