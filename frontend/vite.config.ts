@@ -67,6 +67,9 @@ export default defineConfig({
     port: 5173,
   },
   test: {
+    // DOM + coverage workers otherwise saturate large Windows hosts and time out healthy tests.
+    maxWorkers: 4,
+    minWorkers: 1,
     environment: "jsdom",
     globals: true,
     include: ["src/test/**/*.{test,spec}.{ts,tsx}"],
