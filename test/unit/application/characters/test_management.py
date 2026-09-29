@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from application.characters import (
     CharacterExportResult,
@@ -11,6 +12,7 @@ from application.characters import (
     validate_character_payload,
 )
 from config.schema import Character
+from config.character_manager import CharacterManager
 
 
 def _character_payload(**overrides):
@@ -97,6 +99,73 @@ def make_use_case(character, project_root: Path):
 
 def execute(use_case, operation, payload):
     return use_case.execute(parse_character_request(operation, payload))
+
+
+@pytest.mark.parametrize("existing", [False, True])
+@pytest.mark.parametrize("avatar_fields", [
+    {
+        "avatar_type": "l2d",
+        "avatars": {"l2d": {
+            "model_path": "new.model3.json",
+            "sprites": [{"path": "happy.json"}],
+            "emotion_tags": "1: happy",
+        }},
+    },
+    {"avatar_type": "static", "avatars": {}},
+    {"avatar_type": "static"},
+    {"avatars": {"vrm": {"model_path": "updated.vrm"}}},
+    {"avatar_type": None, "avatars": None},
+    {},
+])
+def test_save_avatar_banks_survive_config_reload(tmp_path, existing, avatar_fields):
+    character = Character(
+        name="Mika", color="#66ccff", sprite_prefix="mika", avatar_type="vrm",
+        avatars={"vrm": {"model_path": "existing.vrm"}},
+    )
+    expected = Character.model_validate({
+        **(character.model_dump(mode="json") if existing else {
+            "name": "Mika", "color": "#ffffff", "sprite_prefix": "mika",
+        }),
+        **avatar_fields,
+    })
+    config_path = tmp_path / "characters.yaml"
+
+    class PersistentConfig:
+        def __init__(self):
+            self.config = SimpleNamespace(
+                characters=[character] if existing else [],
+                api_config=SimpleNamespace(tts_provider="none"),
+            )
+
+        def get_character_by_name(self, name):
+            return next((item for item in self.config.characters if item.name == name), None)
+
+        def save_characters_config(self):
+            config_path.write_text(yaml.safe_dump([
+                item.model_dump(mode="json") for item in self.config.characters
+            ]), encoding="utf-8")
+
+        def reload(self):
+            self.config.characters = [
+                Character.model_validate(item)
+                for item in yaml.safe_load(config_path.read_text(encoding="utf-8"))
+            ]
+
+    config = PersistentConfig()
+    manager = CharacterManager.__new__(CharacterManager)
+    manager._config_manager = config
+    state = SimpleNamespace(
+        character_manager=manager, config_manager=config,
+        project_root_dir=str(tmp_path), template_dir_path=str(tmp_path / "templates"),
+    )
+    use_case = CharacterUseCase(state, file_access_roots=(tmp_path,))
+    result = execute(use_case, CharacterOperation.SAVE, {
+        "character": {"name": "Mika", "color": "#ffffff", "sprite_prefix": "mika",
+                      "character_setting": "Edited in the existing editor", **avatar_fields},
+    })
+    assert result["avatar_type"] == expected.avatar_type
+    assert result["avatars"] == expected.model_dump(mode="json")["avatars"]
+    assert config.get_character_by_name("Mika").model_dump(mode="json")["avatars"] == result["avatars"]
 
 
 def test_character_save_propagates_rename_to_template_session(tmp_path, monkeypatch):

@@ -129,6 +129,13 @@
   pointer-events: auto;
 }
 
+/* Model containers share image placement, scale and highlighting. Their square
+   viewport gives the adapter a stable box in which to fit its own camera. */
+.sprite-layer__image.character-visual__model {
+  position: absolute;
+  aspect-ratio: 1;
+}
+
 .sprite-layer__figure[data-dim="true"] .sprite-layer__image {
   filter: brightness(0.6) saturate(0.82);
 }

@@ -4,7 +4,7 @@ import hashlib
 import re
 from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional, Union
-from config.schema import Character, Sprite
+from config.schema import Character, ModelSprites, Sprite
 from config.config_manager import ConfigManager
 import yaml
 
@@ -87,12 +87,15 @@ class CharacterManager:
                      pronunciation_map: dict = None,
                      edit_as_name: Optional[str] = None,
                      emotion_tags: Optional[str] = None,
-                     character_brief: Optional[str] = None) -> Tuple[str, List[str]]:
+                     character_brief: Optional[str] = None,
+                     avatar_type: Optional[str] = None,
+                     avatars: Optional[Dict[str, Union[ModelSprites, dict]]] = None) -> Tuple[str, List[str]]:
         """
         添加或更新角色配置。
 
         若 edit_as_name 为当前列表中已存在的名字（如 UI 下拉当前选中项），
         则按该条记录做更新；名称栏改为新名字时视为重命名，不会新建另一条角色。
+        省略 avatar_type / avatars 的旧调用会保留现有形象配置；显式 static / {} 会重置它们。
 
         Returns:
             Tuple[str, List[str]]: (操作结果消息, 当前所有角色名称列表)
@@ -123,6 +126,11 @@ class CharacterManager:
                         current_names,
                     )
 
+        avatar_fields = Character(
+            name=name, color=color, sprite_prefix=sprite_prefix,
+            avatar_type=avatar_type, avatars=avatars,
+        )
+
         if edit_as_name and str(edit_as_name).strip():
             target = self._config_manager.get_character_by_name(str(edit_as_name).strip())
             if target is not None:
@@ -146,6 +154,10 @@ class CharacterManager:
                     target.pronunciation_map = pronunciation_map
                 if emotion_tags is not None:
                     target.emotion_tags = emotion_tags
+                if avatar_type is not None:
+                    target.avatar_type = avatar_fields.avatar_type
+                if avatars is not None:
+                    target.avatars = avatar_fields.avatars
                 self._save_characters_config()
                 return "人物已更新！", [c.name for c in characters]
 
@@ -170,6 +182,8 @@ class CharacterManager:
                 speech_speed=speech_speed,
                 speech_volume=speech_volume,
                 pronunciation_map=pronunciation_map or {},
+                avatar_type=avatar_fields.avatar_type,
+                avatars=avatar_fields.avatars,
             )
             characters.append(new_character)
             self._save_characters_config()
@@ -193,6 +207,10 @@ class CharacterManager:
                 existing_character.pronunciation_map = pronunciation_map
             if emotion_tags is not None:
                 existing_character.emotion_tags = emotion_tags
+            if avatar_type is not None:
+                existing_character.avatar_type = avatar_fields.avatar_type
+            if avatars is not None:
+                existing_character.avatars = avatar_fields.avatars
 
             self._save_characters_config()
             return "人物已更新！", [c.name for c in characters]

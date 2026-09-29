@@ -268,6 +268,29 @@ def test_streaming_presenter_keeps_character_slot_across_expression_changes() ->
 
     assert [event["slot"] for event in sink.events] == [0, 0]
     assert sink.events[-1]["url"] == "media://happy.png"
+    assert sink.events[-1]["avatarType"] == "static"
+    assert sink.events[-1]["modelUrl"] == ""
+
+
+def test_model_presentation_uses_its_own_bank_and_preserves_metadata_in_snapshot():
+    from config.schema import Character
+
+    character = Character(
+        name="Mio", color="#fff", sprite_prefix="mio", avatar_type=" VRM ",
+        sprites=[{"path": "static.png"}],
+        avatars={" VRM ": {"model_path": "mio.vrm", "sprites": [{"path": "smile.json"}]}},
+    )
+    sink = _Sink()
+    with patch("application.chat.ui_updates.get_character_by_name", return_value=character):
+        StreamingUIUpdateManager(sink).update_sprite("Mio", 0)
+    event = sink.events[-1]
+    assert event["url"] == "media://smile.json"
+    assert event["avatarType"] == "vrm"
+    assert event["modelUrl"] == "media://mio.vrm"
+    sprite = fold_event_into_snapshot(make_empty_chat_snapshot(), event)["sprites"][0]
+    assert sprite["avatarType"] == "vrm"
+    assert sprite["modelUrl"] == "media://mio.vrm"
+    assert sprite["path"] == "media://smile.json"
 
 
 @pytest.mark.parametrize("next_background", ["street.png", ""])

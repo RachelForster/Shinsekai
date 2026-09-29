@@ -15,6 +15,7 @@ import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatOption, ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
+import { CharacterVisual } from "../../../entities/character-visual/CharacterVisual";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import type { ChatStageEffectImage } from "../state/types";
@@ -137,14 +138,19 @@ export function SpriteLayer({
               } as CSSProperties
             }
           >
-            <img
-              alt={sprite.label}
+            <CharacterVisual
+              asset={{
+                id: sprite.id,
+                label: sprite.label,
+                url: stageAssetUrl(sprite.path),
+                avatarType: sprite.avatarType ?? "static",
+                modelUrl: sprite.modelUrl ? stageAssetUrl(sprite.modelUrl) : "",
+              }}
+              hitbox={Boolean(onDragStart)}
               className="sprite-layer__image"
-              data-chat-stage-hitbox={onDragStart ? "true" : undefined}
-              key={sprite.path}
-              onError={hideBrokenStageAsset}
-              onMouseDown={onDragStart}
-              src={stageAssetUrl(sprite.path)}
+              onImageError={hideBrokenStageAsset}
+              onMouseDown={onDragStart ?? (() => {})}
+              mode="play"
             />
           </figure>
         );

@@ -6,6 +6,8 @@ import { I18nProvider } from "../../../shared/i18n/I18nProvider";
 import type { Character } from "../../../shared/platform/types";
 
 const characters = Array.from({ length: 6 }, (_, index) => ({
+  avatar_type: "static",
+  avatars: {},
   character_brief: index === 5 ? "Brief ready" : "",
   character_setting: `Full setting ${index + 1}`,
   color: "#66ccff",

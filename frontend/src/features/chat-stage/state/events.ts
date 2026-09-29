@@ -16,6 +16,8 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
     slot: event.slot,
     x: event.x,
     y: event.y,
+    avatarType: event.avatarType ?? "static",
+    modelUrl: event.modelUrl ?? "",
   };
   const sprites = upsertChatStageSprite(state.sprites, nextSprite);
   return withResolvedLayers({

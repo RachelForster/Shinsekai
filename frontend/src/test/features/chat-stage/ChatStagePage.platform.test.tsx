@@ -140,8 +140,22 @@ describe("ChatStagePage http platform integration", () => {
         backgroundPath: mediaPath("data/backgrounds/school.png"),
         bgmPath: mediaPath("data/bgm/school.mp3"),
         sprites: [
-          { id: "mio", label: "Mio", path: mediaPath("data/characters/mio.png"), slot: 0 },
-          { id: "aoi", label: "Aoi", path: mediaPath("data/characters/aoi.png"), slot: 1 },
+          {
+            avatarType: "static",
+            modelUrl: "",
+            id: "mio",
+            label: "Mio",
+            path: mediaPath("data/characters/mio.png"),
+            slot: 0,
+          },
+          {
+            avatarType: "static",
+            modelUrl: "",
+            id: "aoi",
+            label: "Aoi",
+            path: mediaPath("data/characters/aoi.png"),
+            slot: 1,
+          },
         ],
       });
       const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
