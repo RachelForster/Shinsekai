@@ -68,7 +68,8 @@ export function createSdkLoader(importRuntime: (url: string) => Promise<unknown>
     await loadCore(signal);
     loaded ??= (async () => {
       try {
-        const url = "/live2d/cubism-sdk.js";
+        // Absolute same-origin URLs avoid Vite rewriting optional public assets to ?import in dev.
+        const url = new URL("/live2d/cubism-sdk.js", window.location.href).href;
         const sdk = await importRuntime(url);
         const module = sdk as Partial<CubismSdk> | null;
         if (

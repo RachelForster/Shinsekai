@@ -16,7 +16,7 @@ describe("optional local Cubism runtime", () => {
     await expect(Promise.all([load(signal), load(signal)])).resolves.toEqual([runtime, runtime]);
     await expect(load(signal)).resolves.toBe(runtime);
     expect(importer).toHaveBeenCalledOnce();
-    expect(importer).toHaveBeenCalledWith("/live2d/cubism-sdk.js");
+    expect(importer).toHaveBeenCalledWith(new URL("/live2d/cubism-sdk.js", window.location.href).href);
   });
 
   it("reports missing resources and permits a later retry", async () => {
