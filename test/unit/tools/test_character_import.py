@@ -120,8 +120,11 @@ def test_avatar_banks_survive_char_export_import(tmp_path, monkeypatch, typed):
         ),
         "future": ModelSprites(model_path="models/alice/model.future", emotion_tags="future state"),
     }
+    crop = {"x": 0.3, "y": 0.4, "zoom": 2.0}
+    sprite_crop = {"x": 0.6, "y": 0.2, "zoom": 3.0}
     config = CharacterConfig.parse_dic(dict(
-        BASIC_CHAR, sprites=[], avatar_type=" L2D ",
+        BASIC_CHAR, sprites=[{"path": "smile.png", "portrait_crop": sprite_crop}],
+        portrait_crop=crop, avatar_type=" L2D ",
         avatars=banks if typed else {key: bank.model_dump(mode="json") for key, bank in banks.items()},
     ))
     expected = {key: bank.model_dump(mode="json") for key, bank in banks.items()}
@@ -139,6 +142,9 @@ def test_avatar_banks_survive_char_export_import(tmp_path, monkeypatch, typed):
     assert imported.avatars == expected
     assert saved["avatar_type"] == "l2d"
     assert saved["avatars"] == expected
+    assert exported["portrait_crop"] == imported.portrait_crop == saved["portrait_crop"] == crop
+    assert exported["sprites"][0]["portrait_crop"] == sprite_crop
+    assert imported.sprites[0]["portrait_crop"] == saved["sprites"][0]["portrait_crop"] == sprite_crop
     restored = Character.model_validate(saved)
     assert restored.avatar_type == "l2d"
     assert restored.model_dump(mode="json")["avatars"] == expected

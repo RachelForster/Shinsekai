@@ -27,6 +27,7 @@ from frontend_bridge_core.media_paths import (
 
 
 _MEDIA_EVENT_TYPES = {
+    "player.portrait.show",
     "background.change",
     "bgm.change",
     "cg.show",

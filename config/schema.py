@@ -37,12 +37,20 @@ def clamp_compact_target_ratio(compact_threshold: float, compact_target_ratio: f
 
 
 # Character Config Models
+class PortraitCrop(BaseModel):
+    """Normalized square viewport: center in the image and zoom over cover size."""
+    x: float = Field(default=0.5, ge=0, le=1)
+    y: float = Field(default=0.2, ge=0, le=1)
+    zoom: float = Field(default=1.0, ge=1, le=8)
+
+
 class Sprite(BaseModel):
     """角色的单个立绘/语音配置"""
     path: FilePath = Field(..., description="立绘图片的文件路径")
     voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
     voice_type: Optional[str] = Field(None, description="语音类型: fallback、preset 或 reference")
+    portrait_crop: Optional[PortraitCrop] = None
 
 class ModelSprites(BaseModel):
     """一个模型形象格式（如 l2d / vrm）的模型路径与它自己的资源列表、标签。
@@ -68,6 +76,7 @@ class Character(BaseModel):
     )
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
+    portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)
     emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
     avatar_type: DefaultIfNone[str] = Field(default="static", description="当前选择的形象类型：static 或已注册的模型格式 id")
     avatars: DefaultIfNone[Dict[str, ModelSprites]] = Field(

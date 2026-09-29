@@ -189,6 +189,24 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
         if audio_path:
             audio_path = Path(audio_path).as_posix()
         effect = out.effect
+        is_player = character_name == str(getattr(rt, "player_character", "") or "")
+        if is_player:
+            allow_dialogue = bool(getattr(rt, "allow_player_dialogue", True))
+            generated_dialogue = allow_dialogue and bool(speech)
+            continuation = allow_dialogue and out.timeout == 0 and bool(audio_path)
+            if sprite_id is not None and (generated_dialogue or not continuation):
+                queue_portrait = getattr(ui, "queue_player_portrait", None)
+                if callable(queue_portrait):
+                    queue_portrait(character_name, int(sprite_id) - 1)
+            if not generated_dialogue:
+                if sprite_id is not None and not continuation:
+                    return
+                if not bool(getattr(rt, "read_player_speech", False)) or not audio_path:
+                    return
+                # User-controlled input echoes are audio-only; AI dialogue is visible.
+                speech = ""
+            if not bool(getattr(rt, "read_player_speech", False)):
+                audio_path = ""
         is_continuation = not speech  # 非首段，仅播放音频
 
         if not is_continuation:
@@ -196,7 +214,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
             tracker.stop_cross("e2e")
 
         character_config = get_character_by_name(character_name)
-        if character_config:
+        if character_config and not is_player:
             try:
                 catalog = tuple(
                     str(

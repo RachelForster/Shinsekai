@@ -29,6 +29,10 @@ class DialogTemplateContext(TemplateContext):
     translate: Callable[..., str]
     target_voice_name: str
     json_reminder: str
+    player_name: str = ""
+    player_character: Any = None
+    read_player_speech: bool = False
+    allow_player_dialogue: bool = True
     effect_catalog: EffectCatalogContext | None = field(default=None, kw_only=True)
     primary_character_names: frozenset[str] | None = None
     tools_block: str = ""

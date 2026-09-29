@@ -12,6 +12,35 @@ const responsiveCss: string = readFileSync("src/features/chat-stage/styles/respo
 const themePickerCss: string = readFileSync("src/features/chat-stage/theme/chat-theme-picker.css", "utf8");
 
 describe("chat stage immersive styles", () => {
+  it("keeps the player portrait inset and vertically centered inside the dialog", () => {
+    const portraitBlock = dialogLayerCss.split(".dialog-layer__player-portrait {")[1]?.split("}")[0] ?? "";
+    const layoutBlock =
+      dialogLayerCss.split('.dialog-layer-shell[data-player-portrait="true"] {')[1]?.split("}")[0] ?? "";
+
+    expect(portraitBlock).toContain("top: 50%;");
+    expect(portraitBlock).toContain("left: var(--player-portrait-inset);");
+    expect(portraitBlock).toContain("transform: translateY(-50%);");
+    expect(portraitBlock).not.toContain("bottom:");
+    expect(layoutBlock).toContain("--player-portrait-height: var(--chat-dialog-height);");
+    expect(layoutBlock).toContain("calc(var(--player-portrait-height) - 2 * var(--player-portrait-inset))");
+    expect(layoutBlock).toContain(
+      "--player-portrait-text-inset: calc(var(--player-portrait-size) + var(--player-portrait-gap));",
+    );
+  });
+
+  it("preserves the normal nameplate position while reserving portrait space only in the body", () => {
+    const nameBlock = dialogLayerCss.split(".dialog-layer__name {")[1]?.split("}")[0] ?? "";
+    const bodyBlock =
+      dialogLayerCss
+        .split('.dialog-layer-shell[data-player-portrait="true"] .dialog-layer__body {')[1]
+        ?.split("}")[0] ?? "";
+
+    expect(nameBlock).toContain("left: var(--chat-name-left);");
+    expect(nameBlock).toContain("margin: 0;");
+    expect(dialogLayerCss).not.toContain('.dialog-layer-shell[data-player-portrait="true"] .dialog-layer__name');
+    expect(bodyBlock).toContain("padding-left: var(--player-portrait-text-inset);");
+  });
+
   it("keeps the theme picker shell and scrollable body widths in sync", () => {
     const dialogBlock = themePickerCss.split(".dialog.chat-theme-picker__dialog")[1]?.split("}")[0] ?? "";
     const bodyBlock = themePickerCss.split(".chat-theme-picker__dialog-body")[1]?.split("}")[0] ?? "";

@@ -1,7 +1,20 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
+export interface PortraitCrop {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface PlayerPortrait {
+  characterName: string;
+  url: string;
+  crop: PortraitCrop;
+}
+
 export interface Sprite {
+  portrait_crop?: PortraitCrop | null;
   path: string;
   voice_path?: string;
   voice_text?: string;
@@ -17,6 +30,7 @@ export interface ModelSprites {
 }
 
 export interface Character {
+  portrait_crop?: PortraitCrop;
   name: string;
   color: string;
   sprite_prefix: string;
@@ -513,7 +527,13 @@ export interface PluginConfigActionResult {
   result: Record<string, unknown>;
 }
 
-export interface TemplateSummary {
+export interface PlayerCharacterOptions {
+  playerCharacter?: string;
+  readPlayerSpeech?: boolean;
+  allowPlayerDialogue?: boolean;
+}
+
+export interface TemplateSummary extends PlayerCharacterOptions {
   content: string;
   generationMessage?: string;
   id: string;
@@ -542,7 +562,7 @@ export interface ConversationSummary {
   requiresCharacterSelection?: boolean;
 }
 
-export interface ChatLaunchPayload {
+export interface ChatLaunchPayload extends PlayerCharacterOptions {
   storyPath?: string;
   characterPromptMode?: CharacterPromptMode;
   primaryCharacters?: string[];
@@ -574,7 +594,7 @@ export interface ChatLaunchPayload {
   useCg?: boolean;
 }
 
-export interface TemplateGenerateInput {
+export interface TemplateGenerateInput extends PlayerCharacterOptions {
   backgroundName: string;
   characterPromptMode?: CharacterPromptMode;
   characters: string[];
@@ -598,7 +618,7 @@ export interface TemplateGenerateInput {
 export type CharacterPromptMode = "compact" | "full";
 export type MediaSelectionMode = "indexed" | "semantic";
 
-export interface TemplateLaunchSession {
+export interface TemplateLaunchSession extends PlayerCharacterOptions {
   background: string;
   characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;
@@ -1003,6 +1023,7 @@ export interface ChatStoryState {
 }
 
 export interface ChatSnapshot {
+  playerPortrait?: PlayerPortrait | null;
   activePlayback?: {
     characterName: string;
     playbackId: string;
@@ -1153,6 +1174,7 @@ interface ChatEventBase {
 }
 
 export type ChatStageEvent =
+  | (ChatEventBase & PlayerPortrait & { type: "player.portrait.show" })
   | (ChatEventBase & { type: "snapshot"; snapshot: ChatSnapshot })
   | (ChatEventBase & {
       type: "chat.init.progress" | "chat.init.completed" | "chat.init.failed" | "chat.init.cancelled";

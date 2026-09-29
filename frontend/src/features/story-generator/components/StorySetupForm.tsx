@@ -7,9 +7,11 @@ import { backgroundsQueryKey, listBackgrounds } from "../../../entities/backgrou
 import { charactersQueryKey, ensureCharacterBriefs, listCharacters } from "../../../entities/character/repository";
 import type { Character, CharacterPromptMode, StoryGenerationInput } from "../../../shared/platform/types";
 import { TRANSPARENT_BACKGROUND_NAME } from "../../../shared/constants";
+import { DEFAULT_PLAYER_OPTIONS } from "../../../shared/playerCharacterOptions";
 import { PrimaryCharacterDialog } from "../../template-editor/PrimaryCharacterDialog";
 import { CharacterRoleStatus } from "../../template-editor/CharacterRoleStatus";
 import { updateCharacterRoles } from "../../template-editor/characterRoles";
+import { PlayerCharacterSettings } from "../../template-editor/PlayerCharacterSettings";
 
 export function StorySetupForm({
   pending,
@@ -24,6 +26,10 @@ export function StorySetupForm({
   const [primary, setPrimary] = useState<string[]>([]);
   const [mode, setMode] = useState<CharacterPromptMode | undefined>("full");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [playerDialogOpen, setPlayerDialogOpen] = useState(false);
+  const [playerCharacter, setPlayerCharacter] = useState(DEFAULT_PLAYER_OPTIONS.playerCharacter);
+  const [readPlayerSpeech, setReadPlayerSpeech] = useState(DEFAULT_PLAYER_OPTIONS.readPlayerSpeech);
+  const [allowPlayerDialogue, setAllowPlayerDialogue] = useState(DEFAULT_PLAYER_OPTIONS.allowPlayerDialogue);
   const [background, setBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
   const [synopsis, setSynopsis] = useState("");
   const characters = useQuery({ queryKey: charactersQueryKey, queryFn: listCharacters });
@@ -32,20 +38,28 @@ export function StorySetupForm({
     () => selected.flatMap((name) => characters.data?.find((item) => item.name === name) ?? []),
     [characters.data, selected],
   );
+  const effectivePlayerCharacter = selected.includes(playerCharacter) ? playerCharacter : "";
+  const npcCharacters = selectedCharacters.filter((character) => character.name !== effectivePlayerCharacter);
   const briefs = useMutation({
     mutationFn: async (names: string[]) => {
-      const result = await ensureCharacterBriefs(selected.filter((name) => !names.includes(name)));
+      const result = await ensureCharacterBriefs(
+        selected.filter((name) => name !== effectivePlayerCharacter && !names.includes(name)),
+      );
       const updated = new Map(result.characters.map((character) => [character.name, character]));
       client.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
         current.map((character) => updated.get(character.name) ?? character),
       );
       setPrimary(names);
-      setMode(names.length === selected.length ? "full" : "compact");
+      setMode(names.length === npcCharacters.length ? "full" : "compact");
       setDialogOpen(false);
     },
   });
   const busy = pending || briefs.isPending;
   const updateSelected = (next: string[]) => {
+    if (!next.includes(playerCharacter)) {
+      setPlayerCharacter("");
+      setReadPlayerSpeech(false);
+    }
     const roles = updateCharacterRoles(selected, next, primary, mode);
     setSelected(next);
     setMode(roles.mode);
@@ -69,18 +83,23 @@ export function StorySetupForm({
         characters={characters.data ?? []}
         selected={selected}
         onChange={updateSelected}
+        onConfigurePlayer={() => setPlayerDialogOpen(true)}
+        playerCharacter={effectivePlayerCharacter}
         disabled={busy}
       />
       <CharacterRoleStatus
         disabled={busy}
+        hasPlayerCharacter={Boolean(effectivePlayerCharacter)}
         mode={mode}
         onConfigure={() => {
           briefs.reset();
           setDialogOpen(true);
         }}
         onUseAll={useAll}
-        selectedCount={selected.length}
-        primaryCount={mode === "full" ? selected.length : primary.length}
+        selectedCount={npcCharacters.length}
+        primaryCount={
+          mode === "full" ? npcCharacters.length : primary.filter((name) => name !== effectivePlayerCharacter).length
+        }
       />
       <label className="story-setup-field">
         {t("story.setup.background")}
@@ -140,6 +159,9 @@ export function StorySetupForm({
                 backgroundName: background,
                 characterPromptMode: mode,
                 primaryCharacters: mode === "full" ? selected : primary,
+                playerCharacter: effectivePlayerCharacter,
+                readPlayerSpeech: effectivePlayerCharacter ? readPlayerSpeech : false,
+                allowPlayerDialogue,
               },
             });
           }}
@@ -149,13 +171,24 @@ export function StorySetupForm({
         <small>{t("story.setup.savedHint")}</small>
       </div>
       <PrimaryCharacterDialog
-        characters={selectedCharacters}
+        characters={npcCharacters}
         initialPrimaryCharacters={primary}
         open={dialogOpen}
         error={briefs.error?.message}
         pending={briefs.isPending}
         onUseAll={useAll}
         onConfirm={(names) => briefs.mutate(names)}
+      />
+      <PlayerCharacterSettings
+        characters={selectedCharacters}
+        selected={effectivePlayerCharacter}
+        onSelect={setPlayerCharacter}
+        readSpeech={readPlayerSpeech}
+        onReadSpeech={setReadPlayerSpeech}
+        allowDialogue={allowPlayerDialogue}
+        onAllowDialogue={setAllowPlayerDialogue}
+        open={playerDialogOpen}
+        onClose={() => setPlayerDialogOpen(false)}
       />
     </section>
   );

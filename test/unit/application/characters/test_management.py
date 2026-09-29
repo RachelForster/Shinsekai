@@ -75,6 +75,9 @@ class FakeConfigManager:
     def reload(self):
         pass
 
+    def save_characters_config(self):
+        pass
+
 
 def make_character(**sprite_fields):
     return Character(
@@ -118,9 +121,12 @@ def execute(use_case, operation, payload):
     {},
 ])
 def test_save_avatar_banks_survive_config_reload(tmp_path, existing, avatar_fields):
+    crop = {"x": 0.3, "y": 0.4, "zoom": 2.0}
+    sprite_crop = {"x": 0.6, "y": 0.2, "zoom": 3.0}
     character = Character(
         name="Mika", color="#66ccff", sprite_prefix="mika", avatar_type="vrm",
         avatars={"vrm": {"model_path": "existing.vrm"}},
+        sprites=[{"path": "neutral.png"}],
     )
     expected = Character.model_validate({
         **(character.model_dump(mode="json") if existing else {
@@ -161,11 +167,17 @@ def test_save_avatar_banks_survive_config_reload(tmp_path, existing, avatar_fiel
     use_case = CharacterUseCase(state, file_access_roots=(tmp_path,))
     result = execute(use_case, CharacterOperation.SAVE, {
         "character": {"name": "Mika", "color": "#ffffff", "sprite_prefix": "mika",
-                      "character_setting": "Edited in the existing editor", **avatar_fields},
+                      "character_setting": "Edited in the existing editor",
+                      "portrait_crop": crop,
+                      "sprites": [{"path": "neutral.png", "portrait_crop": sprite_crop}],
+                      **avatar_fields},
     })
     assert result["avatar_type"] == expected.avatar_type
     assert result["avatars"] == expected.model_dump(mode="json")["avatars"]
     assert config.get_character_by_name("Mika").model_dump(mode="json")["avatars"] == result["avatars"]
+    assert result["portrait_crop"] == crop
+    if existing:
+        assert result["sprites"][0]["portrait_crop"] == sprite_crop
 
 
 def test_character_save_propagates_rename_to_template_session(tmp_path, monkeypatch):
