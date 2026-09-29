@@ -115,6 +115,7 @@ class TemplateGenerator:
         media_selection_mode: str = "indexed",
         player_character: str = "",
         read_player_speech: bool = False,
+        allow_player_dialogue: bool = True,
     ):
         if not selected_characters:
             raise NoValidCharactersError()
@@ -123,7 +124,7 @@ class TemplateGenerator:
             (character for name, character in characters if name == player_character),
             None,
         )
-        if player is not None:
+        if player is not None and not allow_player_dialogue:
             characters = [(name, character) for name, character in characters if name != player_character]
         if not characters and player is None:
             raise NoValidCharactersError()
@@ -136,6 +137,7 @@ class TemplateGenerator:
             player_name=player_character if player is not None else "",
             player_character=player,
             read_player_speech=bool(read_player_speech and player is not None),
+            allow_player_dialogue=allow_player_dialogue,
             primary_character_names=(
                 None
                 if primary_characters is None

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import traceback
 from collections.abc import Iterable, Iterator
+from dataclasses import replace
 from typing import List
 
 from application.chat.dialog_media import (
@@ -352,22 +353,35 @@ class CharacterMediaHandler(MessageHandler):
                 )
             )
             return
+        is_player = name_s == str(getattr(rt, "player_character", "") or "")
+        # A portrait's fixed recording must not replace a newly written reply.
+        speech_sprite = (
+            replace(sprite, voice_type="reference")
+            if is_player and sprite.voice_type == "preset" else sprite
+        )
         generation_request = TtsGenerationRequest(
             runtime=rt,
             character=character_config,
             character_name=name_s,
             message=msg,
-            sprite=sprite,
+            sprite=speech_sprite,
         )
-        show_busy = rt.tts_manager is not None
+        player_silent = is_player and (
+            not bool(getattr(rt, "read_player_speech", False))
+            or not (str(msg.text or "").strip() or str(msg.translate or "").strip())
+        )
+        show_busy = rt.tts_manager is not None and not player_silent
         if show_busy:
             _post_media_busy(tr_i18n("desktop.tts_busy_synthesizing", name=name_s))
         try:
-            audio_paths = self.tts_generation_strategy.generate(generation_request)
+            audio_paths = (
+                ("",) if player_silent
+                else self.tts_generation_strategy.generate(generation_request)
+            )
             for output in self._presentation_messages(
                 character_name=name_s,
                 message=msg,
-                sprite=sprite,
+                sprite=speech_sprite,
                 audio_paths=audio_paths,
             ):
                 rt.presentation_queue.put(output)

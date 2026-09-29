@@ -52,6 +52,7 @@ class PlayerControlTests(unittest.TestCase):
                 False,
                 player_character="神羽",
                 read_player_speech=True,
+                allow_player_dialogue=False,
             )
 
         self.assertEqual(template.splitlines()[0], _T("preamble", names="阳明").strip())
@@ -62,6 +63,53 @@ class PlayerControlTests(unittest.TestCase):
         self.assertIn('"sprite":"-1"', template)
         self.assertNotIn("player_speech", template)
         self.assertNotIn("player_portrait", template)
+
+    def test_default_ai_mode_includes_player_profile_and_allows_new_replies(self):
+        from i18n import init_i18n
+        from ai.llm.template_generator import TemplateGenerator, _T
+
+        init_i18n("zh_CN")
+        player = SimpleNamespace(
+            name="神羽", sprites=[{}], emotion_tags="笑",
+            character_setting="用户独有资料", character_brief="用户简述",
+        )
+        generator = object.__new__(TemplateGenerator)
+        generator.resolve_chat_template_characters = lambda names: [(player.name, player)]
+        generator._get_output_contract_patches = lambda: []
+        with (
+            patch("ai.llm.template_generator._format_llm_tools_block", return_value=""),
+            patch("ai.llm.template_generator._target_voice_display_name", return_value="中文"),
+        ):
+            template, _ = generator.generate_chat_template(
+                [player.name], "", False, False, False, player_character=player.name,
+            )
+        self.assertIn(_T("profile_for", name=player.name), template)
+        self.assertIn("允许 AI", template)
+        self.assertIn("用户独有资料", template)
+        self.assertNotIn(_T("player_speech_disabled", name=player.name), template)
+
+    def test_runtime_rules_support_both_modes_and_media_schemas(self):
+        from i18n import init_i18n
+        from ai.llm.template_generator import _T
+        from ai.llm.template.dialog.sections.player import player_runtime_prompt
+
+        init_i18n("zh_CN")
+        player = SimpleNamespace(name="神羽", character_setting="用户独有资料")
+        config = SimpleNamespace(get_character_by_name=lambda name: player)
+        for media_mode, field in (("indexed", "sprite"), ("semantic", "vibe")):
+            for allow in (True, False):
+                with self.subTest(media_mode=media_mode, allow=allow):
+                    rules = player_runtime_prompt(
+                        config, player.name, allow_dialogue=allow, read_speech=False,
+                        media_selection_mode=media_mode,
+                    )
+                    self.assertTrue(rules.startswith(_T("player_runtime_override")))
+                    self.assertIn(field, rules)
+                    self.assertIn("用户独有资料", rules)
+                    self.assertEqual(_T("player_speech_disabled", name=player.name) in rules, not allow)
+        self.assertEqual(player_runtime_prompt(
+            config, "", allow_dialogue=True, read_speech=False, media_selection_mode="indexed",
+        ), "")
 
     def test_player_media_restores_from_normal_dialog_items(self):
         from application.chat.dialog_media.replay import latest_media_dialogs
@@ -170,6 +218,7 @@ class PlayerControlTests(unittest.TestCase):
         runtime = SimpleNamespace(
             player_character="神羽",
             read_player_speech=True,
+            allow_player_dialogue=False,
             ui_update_manager=ui,
             ui_playback=SimpleNamespace(
                 playback_controller=playback,
@@ -204,6 +253,7 @@ class PlayerControlTests(unittest.TestCase):
         runtime = SimpleNamespace(
             player_character="神羽",
             read_player_speech=True,
+            allow_player_dialogue=False,
             ui_update_manager=ui,
             ui_playback=SimpleNamespace(
                 playback_controller=playback,
@@ -230,6 +280,63 @@ class PlayerControlTests(unittest.TestCase):
 
         ui.update_dialog.assert_not_called()
         playback.play_and_wait.assert_called_once()
+
+    def test_ai_player_dialogue_is_visible_independently_of_voice(self):
+        from application.chat.handlers.presentation import CharacterDialogUiHandler
+
+        for read_speech in (True, False):
+            for sprite_id in (None, "2"):
+                with self.subTest(read_speech=read_speech, sprite_id=sprite_id):
+                    ui = MagicMock()
+                    playback = MagicMock()
+                    playback.play_and_wait.return_value = SimpleNamespace(error="")
+                    runtime = SimpleNamespace(
+                        player_character="神羽", allow_player_dialogue=True,
+                        read_player_speech=read_speech, ui_update_manager=ui,
+                        ui_playback=SimpleNamespace(playback_controller=playback, task_done_requested=None),
+                    )
+                    with (
+                        patch("application.chat.handlers.presentation.get_app_runtime", return_value=runtime),
+                        patch("application.chat.handlers.presentation.get_character_by_name", return_value=None),
+                        patch("application.chat.handlers.presentation.Path.exists", return_value=True),
+                    ):
+                        CharacterDialogUiHandler().handle(PresentationMessage(
+                            name="神羽", text="我们一起走吧", audio_path="generated.wav",
+                            asset_id=sprite_id,
+                        ))
+                    ui.update_dialog.assert_called_once_with(
+                        "神羽", "我们一起走吧", "#84C2D5", is_system=False,
+                    )
+                    ui.update_sprite.assert_not_called()
+                    if sprite_id is not None:
+                        ui.queue_player_portrait.assert_called_once_with("神羽", 1)
+                    if read_speech:
+                        playback.play_and_wait.assert_called_once()
+                    else:
+                        playback.play_and_wait.assert_not_called()
+
+    def test_ai_player_audio_continuation_does_not_replace_dialogue_or_portrait(self):
+        from application.chat.handlers.presentation import CharacterDialogUiHandler
+
+        ui = MagicMock()
+        playback = MagicMock()
+        playback.play_and_wait.return_value = SimpleNamespace(error="")
+        runtime = SimpleNamespace(
+            player_character="神羽", allow_player_dialogue=True, read_player_speech=True,
+            ui_update_manager=ui,
+            ui_playback=SimpleNamespace(playback_controller=playback, task_done_requested=None),
+        )
+        with (
+            patch("application.chat.handlers.presentation.get_app_runtime", return_value=runtime),
+            patch("application.chat.handlers.presentation.get_character_by_name", return_value=None),
+            patch("application.chat.handlers.presentation.Path.exists", return_value=True),
+        ):
+            CharacterDialogUiHandler().handle(PresentationMessage(
+                name="神羽", text="", audio_path="chunk2.wav", asset_id="2", timeout=0,
+            ))
+        playback.play_and_wait.assert_called_once()
+        ui.update_dialog.assert_not_called()
+        ui.queue_player_portrait.assert_not_called()
 
 
 if __name__ == "__main__":

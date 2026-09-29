@@ -68,6 +68,8 @@ export type MessageKey =
   | "player.none"
   | "player.hint"
   | "player.readSpeech"
+  | "player.allowDialogue"
+  | "player.allowDialogueHint"
   | "player.speechHint"
   | "player.adjust"
   | "player.reset"

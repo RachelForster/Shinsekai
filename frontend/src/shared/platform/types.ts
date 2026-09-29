@@ -536,6 +536,7 @@ export interface TemplateSummary {
   mediaSelectionMode?: MediaSelectionMode;
   playerCharacter?: string;
   readPlayerSpeech?: boolean;
+  allowPlayerDialogue?: boolean;
   scenario?: string;
   system?: string;
   updatedAt: string;
@@ -562,6 +563,7 @@ export interface ChatLaunchPayload {
   storyPath?: string;
   playerCharacter?: string;
   readPlayerSpeech?: boolean;
+  allowPlayerDialogue?: boolean;
   characterPromptMode?: CharacterPromptMode;
   primaryCharacters?: string[];
   maxDialogItems?: number;
@@ -595,6 +597,7 @@ export interface ChatLaunchPayload {
 export interface TemplateGenerateInput {
   playerCharacter?: string;
   readPlayerSpeech?: boolean;
+  allowPlayerDialogue?: boolean;
   backgroundName: string;
   characterPromptMode?: CharacterPromptMode;
   characters: string[];
@@ -621,6 +624,7 @@ export type MediaSelectionMode = "indexed" | "semantic";
 export interface TemplateLaunchSession {
   playerCharacter?: string;
   readPlayerSpeech?: boolean;
+  allowPlayerDialogue?: boolean;
   background: string;
   characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;

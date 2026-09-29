@@ -85,7 +85,7 @@ describe("player portrait", () => {
     expect(background.playerPortrait).toEqual(next.playerPortrait);
   });
 
-  it("passes the player identity and voice option through saved sessions", () => {
+  it.each([undefined, true, false])("keeps player AI mode %s in saved sessions", (allowPlayerDialogue) => {
     const session = buildTemplateLaunchSession({
       backgroundName: "背景",
       draft: { id: "", name: "test", content: "", path: "", updatedAt: "", scenario: "", system: "" },
@@ -95,6 +95,7 @@ describe("player portrait", () => {
       selectedCharacters: ["神羽", "阳明"],
       playerCharacter: "神羽",
       readPlayerSpeech: true,
+      allowPlayerDialogue,
       runtime: {
         historyPath: "history",
         initSpritePath: "",
@@ -119,5 +120,7 @@ describe("player portrait", () => {
     );
     expect(payload.playerCharacter).toBe("神羽");
     expect(payload.readPlayerSpeech).toBe(true);
+    expect(session.allowPlayerDialogue).toBe(allowPlayerDialogue ?? true);
+    expect(payload.allowPlayerDialogue).toBe(allowPlayerDialogue ?? true);
   });
 });

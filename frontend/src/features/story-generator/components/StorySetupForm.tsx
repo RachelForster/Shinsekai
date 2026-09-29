@@ -28,6 +28,7 @@ export function StorySetupForm({
   const [playerDialogOpen, setPlayerDialogOpen] = useState(false);
   const [playerCharacter, setPlayerCharacter] = useState("");
   const [readPlayerSpeech, setReadPlayerSpeech] = useState(false);
+  const [allowPlayerDialogue, setAllowPlayerDialogue] = useState(true);
   const [background, setBackground] = useState(TRANSPARENT_BACKGROUND_NAME);
   const [synopsis, setSynopsis] = useState("");
   const characters = useQuery({ queryKey: charactersQueryKey, queryFn: listCharacters });
@@ -159,6 +160,7 @@ export function StorySetupForm({
                 primaryCharacters: mode === "full" ? selected : primary,
                 playerCharacter: effectivePlayerCharacter,
                 readPlayerSpeech: effectivePlayerCharacter ? readPlayerSpeech : false,
+                allowPlayerDialogue,
               },
             });
           }}
@@ -182,6 +184,8 @@ export function StorySetupForm({
         onSelect={setPlayerCharacter}
         readSpeech={readPlayerSpeech}
         onReadSpeech={setReadPlayerSpeech}
+        allowDialogue={allowPlayerDialogue}
+        onAllowDialogue={setAllowPlayerDialogue}
         open={playerDialogOpen}
         onClose={() => setPlayerDialogOpen(false)}
       />

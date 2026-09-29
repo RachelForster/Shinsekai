@@ -83,6 +83,7 @@ class AppRuntime:
     opencc: Any  # OpenCC
     player_character: str = ""
     read_player_speech: bool = False
+    allow_player_dialogue: bool = True
     background: Any = None
     effect_keyword_map: dict = field(default_factory=dict)  # keyword → audio_path
     effect_image_keyword_map: dict[str, ImageEffectAsset] = field(default_factory=dict)

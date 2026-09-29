@@ -18,10 +18,13 @@ export const enMessages: Record<MessageKey, string> = {
   "player.configure": "Player character",
   "player.none": "No player character",
   "player.hint":
-    "You control this character's speech and choices. AI may narrate interactions and change the portrait expression.",
+    "You can enter this character's words and actions. AI may narrate interactions and change the portrait expression.",
+  "player.allowDialogue": "Allow AI to write player dialogue",
+  "player.allowDialogueHint":
+    "On by default: AI may write player replies. Turn off to control all player dialogue yourself.",
   "player.readSpeech": "Read player dialogue aloud",
   "player.speechHint":
-    "Uses the character's voice settings. Parenthesized actions, bracketed thoughts, and explicitly marked thought lines are silent.",
+    "Controls player audio, including AI-written dialogue. Turning off does not hide dialogue text. Actions and thoughts are silent.",
   "player.adjust": "Adjust player portrait",
   "player.reset": "Reset crop",
   "player.sprite": "Expression sprite",

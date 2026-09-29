@@ -459,6 +459,7 @@ class _BaseChatSession:
                 read_player_speech=bool(
                     getattr(self.args, "read_player_speech", False)
                 ),
+                allow_player_dialogue=bool(getattr(self.args, "allow_player_dialogue", True)),
                 background=getattr(runtime.presentation_assets, "background", None),
                 chat_turn_service=self.chat_turn_service,
             )

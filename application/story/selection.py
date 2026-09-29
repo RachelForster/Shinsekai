@@ -91,6 +91,7 @@ def generation_selection(state: Any, options: dict) -> tuple[dict, dict]:
         "backgroundName": background,
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(options.get("readPlayerSpeech")) if player_character else False,
+        "allowPlayerDialogue": bool(options.get("allowPlayerDialogue", True)),
     }
     resolved.pop("templateId", None)
     return resolved, {

@@ -178,6 +178,7 @@ def prepare_story_launch(state: Any, story_path: str, history_path: str = "") ->
         "primaryCharacters": list(bindings.get("primaryCharacters", names)),
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(bindings.get("readPlayerSpeech")) if player_character else False,
+        "allowPlayerDialogue": bool(bindings.get("allowPlayerDialogue", True)),
         "historyPath": history_path,
         "resetHistory": not bool(history_path),
         "scenario": f"正在游玩互动剧本《{project.title}》。根据当前节点的剧情要求和已发生的对话推进故事。",

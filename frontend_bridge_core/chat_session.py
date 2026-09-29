@@ -89,6 +89,7 @@ def _generate_system_template_for_mode(
         media_selection_mode=media_selection_mode,
         player_character=str(source.get("playerCharacter") or ""),
         read_player_speech=bool(source.get("readPlayerSpeech", False)),
+        allow_player_dialogue=bool(source.get("allowPlayerDialogue", True)),
     )
     return content
 
@@ -238,6 +239,7 @@ def launch_chat(
     session_base = {
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(body.get("readPlayerSpeech", False)),
+        "allowPlayerDialogue": bool(body.get("allowPlayerDialogue", True)),
         "backgroundName": str(body.get("backgroundName") or ""),
         "characterName": first_character,
         "historyPath": history_path.as_posix(),
@@ -436,6 +438,7 @@ def resume_last_chat(
         "backgroundName": selected_bg,
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(session.get("readPlayerSpeech", False)),
+        "allowPlayerDialogue": bool(session.get("allowPlayerDialogue", True)),
         "characterName": first_character,
         "historyPath": history_path.as_posix(),
         "sessionId": "",

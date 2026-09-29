@@ -28,6 +28,8 @@ export function PlayerCharacterSettings({
   onSelect,
   readSpeech,
   onReadSpeech,
+  allowDialogue,
+  onAllowDialogue,
   open,
   onClose,
 }: {
@@ -36,6 +38,8 @@ export function PlayerCharacterSettings({
   onSelect: (name: string) => void;
   readSpeech: boolean;
   onReadSpeech: (enabled: boolean) => void;
+  allowDialogue: boolean;
+  onAllowDialogue: (enabled: boolean) => void;
   open: boolean;
   onClose: () => void;
 }) {
@@ -104,6 +108,11 @@ export function PlayerCharacterSettings({
           {character ? (
             <>
               <p>{t("player.hint")}</p>
+              <label className="template-toggle-row">
+                <span>{t("player.allowDialogue")}</span>
+                <Switch checked={allowDialogue} onChange={(event) => onAllowDialogue(event.target.checked)} />
+              </label>
+              <p>{t("player.allowDialogueHint")}</p>
               <label className="template-toggle-row">
                 <span>{t("player.readSpeech")}</span>
                 <Switch checked={readSpeech} onChange={(event) => onReadSpeech(event.target.checked)} />

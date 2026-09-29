@@ -58,6 +58,7 @@ def _compose_stored_template(
     media_selection_mode: str = "indexed",
     player_character: str = "",
     read_player_speech: bool = False,
+    allow_player_dialogue: bool = True,
 ) -> str:
     a = (scenario or "").replace("\r\n", "\n").rstrip()
     b = (system or "").replace("\r\n", "\n").rstrip()
@@ -70,6 +71,7 @@ def _compose_stored_template(
             {
                 "playerCharacter": player_name,
                 "readPlayerSpeech": bool(read_player_speech),
+                "allowPlayerDialogue": bool(allow_player_dialogue),
             }
         )
     metadata = json.dumps(
@@ -87,6 +89,7 @@ def _parse_stored_template_metadata(raw: str) -> dict[str, Any]:
             "mediaSelectionMode": "indexed",
             "playerCharacter": "",
             "readPlayerSpeech": False,
+            "allowPlayerDialogue": True,
         }
     try:
         start = text.index(MARK_METADATA) + len(MARK_METADATA)
@@ -101,6 +104,7 @@ def _parse_stored_template_metadata(raw: str) -> dict[str, Any]:
             metadata.get("mediaSelectionMode")
         ),
         "playerCharacter": player_character,
+        "allowPlayerDialogue": bool(metadata.get("allowPlayerDialogue", True)),
         "readPlayerSpeech": bool(
             metadata.get("readPlayerSpeech", False) and player_character
         ),
@@ -303,6 +307,7 @@ def _list_templates(state: BridgeState) -> list[dict[str, Any]]:
                 "mediaSelectionMode": metadata["mediaSelectionMode"],
                 "playerCharacter": metadata["playerCharacter"],
                 "readPlayerSpeech": metadata["readPlayerSpeech"],
+                "allowPlayerDialogue": metadata["allowPlayerDialogue"],
                 "updatedAt": str(int(path.stat().st_mtime)),
             }
         )
@@ -329,6 +334,7 @@ def _save_template_summary(state: BridgeState, payload: dict[str, Any]) -> dict[
             media_selection_mode=media_selection_mode,
             player_character=str(template.get("playerCharacter") or ""),
             read_player_speech=bool(template.get("readPlayerSpeech", False)),
+            allow_player_dialogue=bool(template.get("allowPlayerDialogue", True)),
         ),
         encoding="utf-8",
     )
@@ -392,6 +398,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         media_selection_mode=media_selection_mode,
         player_character=player_character,
         read_player_speech=read_player_speech,
+        allow_player_dialogue=bool(payload.get("allowPlayerDialogue", True)),
     )
     output_name = str(result or "").strip()
     name = str(output_name or payload.get("name") or "generated").strip()
@@ -406,6 +413,7 @@ def _generate_template_summary(state: BridgeState, payload: dict[str, Any]) -> d
         "mediaSelectionMode": media_selection_mode,
         "playerCharacter": player_character,
         "readPlayerSpeech": read_player_speech,
+        "allowPlayerDialogue": bool(payload.get("allowPlayerDialogue", True)),
         "updatedAt": "",
         "resolvedCharacters": resolved_names,
     }
@@ -479,6 +487,7 @@ def _template_session_to_frontend(raw: dict[str, Any] | None) -> dict[str, Any] 
         )
     payload["playerCharacter"] = str(raw.get("player_character") or "")
     payload["readPlayerSpeech"] = bool(raw.get("read_player_speech", False))
+    payload["allowPlayerDialogue"] = bool(raw.get("allow_player_dialogue", True))
     return payload
 
 
@@ -615,6 +624,7 @@ def _save_template_session_payload(state: BridgeState, payload: dict[str, Any]) 
     data = {
         "player_character": str(payload.get("playerCharacter") or ""),
         "read_player_speech": bool(payload.get("readPlayerSpeech", False)),
+        "allow_player_dialogue": bool(payload.get("allowPlayerDialogue", True)),
         "selected_characters": selected_characters,
         "character_prompt_mode": prompt_mode,
         "primary_characters": primary_characters,

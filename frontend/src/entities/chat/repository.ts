@@ -46,6 +46,7 @@ export async function getConversationSession(id: string): Promise<TemplateLaunch
     primaryCharacters: options.primaryCharacters,
     playerCharacter: options.playerCharacter,
     readPlayerSpeech: options.readPlayerSpeech,
+    allowPlayerDialogue: options.allowPlayerDialogue ?? true,
     enableMobileAccess: options.enableMobileAccess,
     background: payload.backgroundName,
     effectNames: payload.effectNames ?? [],

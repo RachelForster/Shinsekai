@@ -271,6 +271,9 @@ describe("StoryGeneratorPage", () => {
     fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
     fireEvent.keyDown(playerSelect, { key: "Enter" });
     await waitFor(() => expect(playerSelect).toHaveTextContent("小玲"));
+    const aiDialogue = within(dialog).getByRole("checkbox", { name: "允许 AI 生成主控台词" });
+    expect(aiDialogue).toBeChecked();
+    fireEvent.click(aiDialogue);
     fireEvent.click(within(dialog).getByRole("button", { name: "确定" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     const playerControls = screen.getByRole("button", { name: "主控人物" }).parentElement!;
@@ -280,7 +283,11 @@ describe("StoryGeneratorPage", () => {
     await waitFor(() =>
       expect(startStoryGeneration).toHaveBeenCalledWith(
         expect.objectContaining({
-          options: expect.objectContaining({ playerCharacter: "小玲", readPlayerSpeech: false }),
+          options: expect.objectContaining({
+            playerCharacter: "小玲",
+            readPlayerSpeech: false,
+            allowPlayerDialogue: false,
+          }),
         }),
         expect.anything(),
       ),

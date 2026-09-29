@@ -2611,6 +2611,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           name: input.name || "新模板",
           path: "",
           resolvedCharacters: [...input.characters],
+          allowPlayerDialogue: input.allowPlayerDialogue ?? true,
           scenario,
           system,
           updatedAt: "",

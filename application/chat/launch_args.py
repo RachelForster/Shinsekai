@@ -43,6 +43,7 @@ def build_chat_arg_parser(tr_i18n: Callable[..., str]) -> argparse.ArgumentParse
         help="JSON array or comma-separated character names selected for this chat.",
     )
     parser.add_argument("--player-character", type=str, default="")
+    parser.add_argument("--allow-player-dialogue", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument(
         "--read-player-speech",
         action=argparse.BooleanOptionalAction,
@@ -150,6 +151,7 @@ def _parse_chat_launch_config(raw_value: str) -> dict[str, Any]:
         if key in {
             "headless",
             "read_player_speech",
+            "allow_player_dialogue",
             "use_current_template_for_history",
             "show_initial_sprite",
         }:

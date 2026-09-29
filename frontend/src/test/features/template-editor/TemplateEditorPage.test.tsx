@@ -545,6 +545,9 @@ describe("TemplateEditorPage", () => {
       fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
       fireEvent.keyDown(playerSelect, { key: "Enter" });
       await waitFor(() => expect(playerSelect).toHaveTextContent("Character 1"));
+      const aiDialogue = within(playerDialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" });
+      expect(aiDialogue).toBeChecked();
+      fireEvent.click(aiDialogue);
       fireEvent.click(within(playerDialog).getByRole("checkbox", { name: "Read player dialogue aloud" }));
       fireEvent.click(within(playerDialog).getByRole("button", { name: "Confirm" }));
       expect(screen.queryByRole("dialog", { name: "Player character" })).not.toBeInTheDocument();
@@ -574,7 +577,52 @@ describe("TemplateEditorPage", () => {
       fireEvent.click(screen.getByRole("button", { name: "Player character" }));
       const restoredPlayerDialog = screen.getByRole("dialog", { name: "Player character" });
       expect(within(restoredPlayerDialog).getByRole("combobox")).toHaveTextContent("Character 1");
+      expect(
+        within(restoredPlayerDialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" }),
+      ).not.toBeChecked();
       expect(within(restoredPlayerDialog).getByRole("checkbox", { name: "Read player dialogue aloud" })).toBeChecked();
+    },
+  );
+
+  it.each([undefined, false])(
+    "restores player AI mode %s and forwards changes to generation and launch",
+    async (savedMode) => {
+      mockGetTemplateSession.mockResolvedValue({
+        ...savedChat,
+        playerCharacter: "Nanami",
+        readPlayerSpeech: false,
+        allowPlayerDialogue: savedMode,
+      });
+      mockListCharacters.mockResolvedValue([{ name: "Nanami", color: "#66ccff", sprites: [] }]);
+      renderPage();
+      await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("My saved chat"));
+      await clickButton(screen.getByRole("button", { name: "Player character" }));
+      const dialog = screen.getByRole("dialog", { name: "Player character" });
+      const toggle = within(dialog).getByRole("checkbox", { name: "Allow AI to write player dialogue" });
+      const expectedInitial = savedMode ?? true;
+      if (expectedInitial) expect(toggle).toBeChecked();
+      else expect(toggle).not.toBeChecked();
+      await clickButton(toggle);
+      await clickButton(within(dialog).getByRole("button", { name: "Confirm" }));
+      await waitFor(() =>
+        expect(mockGenerateTemplate).toHaveBeenCalledWith(
+          expect.objectContaining({ playerCharacter: "Nanami", allowPlayerDialogue: !expectedInitial }),
+        ),
+      );
+      await waitFor(() => expect(screen.getByRole("button", { name: "Launch chat" })).toBeEnabled());
+      await clickButton(screen.getByRole("button", { name: "Launch chat" }));
+      await waitFor(() =>
+        expect(mockLaunchChat).toHaveBeenCalledWith(
+          expect.objectContaining({
+            playerCharacter: "Nanami",
+            allowPlayerDialogue: !expectedInitial,
+            readPlayerSpeech: false,
+          }),
+        ),
+      );
+      expect(mockSaveTemplateSession).toHaveBeenCalledWith(
+        expect.objectContaining({ playerCharacter: "Nanami", allowPlayerDialogue: !expectedInitial }),
+      );
     },
   );
 

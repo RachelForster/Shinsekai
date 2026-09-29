@@ -41,6 +41,7 @@ def test_parse_stored_template_handles_legacy_single_body_text():
         "mediaSelectionMode": "indexed",
         "playerCharacter": "",
         "readPlayerSpeech": False,
+        "allowPlayerDialogue": True,
     }
 
 
@@ -51,22 +52,34 @@ def test_stored_template_round_trips_semantic_media_metadata():
         "mediaSelectionMode": "semantic",
         "playerCharacter": "",
         "readPlayerSpeech": False,
+        "allowPlayerDialogue": True,
     }
 
 
-def test_stored_template_round_trips_player_metadata():
+@pytest.mark.parametrize("allow_dialogue", [True, False])
+def test_stored_template_round_trips_player_metadata(allow_dialogue):
     raw = _compose_stored_template(
         "scene",
         "system",
         player_character="神羽",
         read_player_speech=True,
+        allow_player_dialogue=allow_dialogue,
     )
 
     assert _parse_stored_template_metadata(raw) == {
         "mediaSelectionMode": "indexed",
         "playerCharacter": "神羽",
         "readPlayerSpeech": True,
+        "allowPlayerDialogue": allow_dialogue,
     }
+
+
+def test_legacy_player_template_enables_ai_dialogue_by_default():
+    raw = f'{MARK_METADATA}\n{{"playerCharacter":"神羽","readPlayerSpeech":false}}\n{MARK_SCENARIO}\nscene\n{MARK_SYSTEM}\nsystem'
+    metadata = _parse_stored_template_metadata(raw)
+    assert metadata["playerCharacter"] == "神羽"
+    assert metadata["allowPlayerDialogue"] is True
+    assert metadata["readPlayerSpeech"] is False
 
 
 def test_history_id_uses_effective_scenario_and_selected_characters():
@@ -278,7 +291,8 @@ def test_generate_template_summary_rejects_all_stale_characters(monkeypatch):
 
 
 @pytest.mark.parametrize("show_initial_sprite", [True, False])
-def test_save_template_session_persists_only_resolved_characters_and_their_default_sprite(monkeypatch, show_initial_sprite):
+@pytest.mark.parametrize("allow_dialogue", [True, False])
+def test_save_template_session_persists_only_resolved_characters_and_their_default_sprite(monkeypatch, show_initial_sprite, allow_dialogue):
     character = SimpleNamespace(
         name="Alice",
         sprites=[SimpleNamespace(path="sprites/alice.png")],
@@ -310,6 +324,7 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
             "effectNames": [" Rain ", ""],
             "initSpritePath": "",
             "showInitialSprite": show_initial_sprite,
+            "allowPlayerDialogue": allow_dialogue,
             "characterPromptMode": "compact",
             "mediaSelectionMode": "semantic",
             "primaryCharacters": [" alice ", "Deleted"],
@@ -325,6 +340,8 @@ def test_save_template_session_persists_only_resolved_characters_and_their_defau
     assert saved["init_sprite_path"] == "sprites/alice.png"
     assert saved["show_initial_sprite"] is show_initial_sprite
     assert restored["showInitialSprite"] is show_initial_sprite
+    assert saved["allow_player_dialogue"] is allow_dialogue
+    assert restored["allowPlayerDialogue"] is allow_dialogue
     assert saved["character_prompt_mode"] == "compact"
     assert saved["primary_characters"] == ["Alice"]
     assert saved["media_selection_mode"] == "semantic"
@@ -383,6 +400,7 @@ def test_template_session_to_frontend_normalizes_types_and_defaults():
         "playerCharacter": "",
         "readPlayerSpeech": False,
         "roomId": "123",
+        "allowPlayerDialogue": True,
         "scenario": "场景",
         "selectedCharacters": ["Alice", "42"],
         "system": "系统",

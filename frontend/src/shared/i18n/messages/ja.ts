@@ -16,10 +16,13 @@ export const jaMessages: Record<MessageKey, string> = {
   "player.select": "主控人物（あなたが演じるキャラクター）",
   "player.configure": "主控人物",
   "player.none": "主控人物なし",
-  "player.hint": "台詞と能動的な行動はあなたが入力します。AI は交流の描写と表情の変更を行います。",
+  "player.hint": "主控人物の台詞や行動を入力できます。AI は交流の描写と表情の変更を行います。",
+  "player.allowDialogue": "AI に主控人物の台詞生成を許可",
+  "player.allowDialogueHint":
+    "既定で有効：AI が返答を書けます。無効にすると主控人物の台詞はあなたの入力のみになります。",
   "player.readSpeech": "主控人物の台詞を読み上げる",
   "player.speechHint":
-    "キャラクターの音声設定を使用します。括弧内の動作、【心理描写】、明示した心理描写の行は読み上げません。",
+    "AI が生成した台詞を含む主控人物の音声を制御します。無効でも台詞は表示されます。行動や心理描写は読み上げません。",
   "player.adjust": "主控人物の顔画像を調整",
   "player.reset": "切り抜きをリセット",
   "player.sprite": "表情の立ち絵",

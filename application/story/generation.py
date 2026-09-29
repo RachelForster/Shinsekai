@@ -1118,6 +1118,7 @@ class StoryGenerationService:
                             ),
                             "playerCharacter": task["options"].get("playerCharacter", ""),
                             "readPlayerSpeech": bool(task["options"].get("readPlayerSpeech")),
+                            "allowPlayerDialogue": bool(task["options"].get("allowPlayerDialogue", True)),
                             "templateOptions": {
                                 key: task["options"][key]
                                 for key in TEMPLATE_OPTION_KEYS if key in task["options"]
