@@ -1,4 +1,5 @@
 import json
+import struct
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -65,6 +66,34 @@ def test_import_save_overwrite_and_authorized_files(harness):
     with pytest.raises(PermissionError): model_file(state, str(entry), "texture.png")
     with pytest.raises(ValueError): execute(use_case, CharacterOperation.SAVE_MODEL_STATE, **{**body, "model_path": "changed"})
     with pytest.raises(ValueError): execute(use_case, CharacterOperation.SAVE_MODEL_STATE, **{**body, "sprite_index": 0, "path": path})
+
+
+def test_pmx_import_state_and_protected_texture_route(harness):
+    state, use_case, entry = harness
+    texture = entry.parent / "TEX" / "face.png"
+    texture.parent.mkdir()
+    texture.write_bytes(b"texture")
+    model_entry = entry.parent / "model.pmx"
+    def text(value):
+        encoded = value.encode("utf-8")
+        return struct.pack("<i", len(encoded)) + encoded
+    model_entry.write_bytes(
+        b"PMX " + struct.pack("<fB", 2.0, 8) + bytes((1, 0, 1, 1, 1, 1, 1, 1))
+        + text("") * 4 + struct.pack("<iii", 0, 0, 1) + text(r"TEX\face.png")
+    )
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="mmd", source_path=str(model_entry))
+    model = imported["avatars"]["mmd"]["model_path"]
+    assert imported["avatar_type"] == "mmd"
+    assert model_file(state, model, "TEX/face.png").read_bytes() == b"texture"
+    with pytest.raises(PermissionError):
+        model_file(state, model, "sample.moc3")
+    camera = {"yaw": 25, "pitch": -5, "zoom": 1.5, "panX": 0.1, "panY": 0}
+    saved = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="mmd", model_path=model,
+                    sprite_index=-1, path="", state={"morphs": {"笑顔": 0.5}, "mouthMorph": "あ", "blinkMorph": "まばたき", "camera": camera}, tags="happy")
+    state_path = Path(saved["avatars"]["mmd"]["sprites"][0]["path"])
+    restored = json.loads(model_file(state, model, state_path.relative_to(Path(model).parent).as_posix()).read_text())
+    assert restored["morphs"] == {"笑顔": 0.5}
+    assert restored["camera"] == camera
 
 
 def test_bad_state_does_not_change_bank(harness):

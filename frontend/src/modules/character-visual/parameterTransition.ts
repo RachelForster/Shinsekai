@@ -1,4 +1,4 @@
-/** Blend the pre-procedural pose, never the mouth/blink/physics output. */
+/** Smoothly retarget a vector of model controls without coupling to a format SDK. */
 export class ParameterTransition {
   private displayed: readonly number[] | undefined;
   private from: readonly number[] | undefined;
@@ -7,7 +7,6 @@ export class ParameterTransition {
   constructor(private readonly durationMs = 300) {}
 
   start(animate: boolean, now: number) {
-    // Retarget from the last presented frame, including an interrupted blend.
     this.from = animate ? this.displayed?.slice() : undefined;
     this.startedAt = now;
   }
