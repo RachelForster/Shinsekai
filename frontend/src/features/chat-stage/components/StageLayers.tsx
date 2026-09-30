@@ -15,7 +15,7 @@ import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatOption, ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
-import { CharacterVisual } from "../../../entities/character-visual/CharacterVisual";
+import { CharacterVisual } from "../../../modules/character-visual";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import type { ChatStageEffectImage } from "../state/types";
@@ -129,7 +129,7 @@ export function SpriteLayer({
             data-draggable={onDragStart ? "true" : "false"}
             data-slot={sprite.slot ?? index}
             data-speaking={speaking ? "true" : "false"}
-            key={sprite.id}
+            key={chatStageSpriteCharacterName(sprite) || sprite.id}
             style={
               {
                 "--sprite-axis-center": `${axisCenter}%`,
@@ -152,7 +152,9 @@ export function SpriteLayer({
               className="sprite-layer__image"
               onImageError={hideBrokenStageAsset}
               onMouseDown={onDragStart ?? (() => {})}
-              mode="play"
+              mode={sprite.applyMode ?? "play"}
+              voiceCharacterName={chatStageSpriteCharacterName(sprite)}
+              stateSequence={sprite.stateSequence}
             />
           </figure>
         );

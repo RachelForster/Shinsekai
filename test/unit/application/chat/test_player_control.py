@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from application.chat.player_control import resolve_player
+from application.media.resource_urls import UnconfiguredResourceUrls
 from application.chat.ui_updates import StreamingUIUpdateManager
 from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
 from config.schema import Character, PortraitCrop, Sprite
@@ -173,7 +174,7 @@ class PlayerControlTests(unittest.TestCase):
         )
         sink = MagicMock()
         sink.media_url.side_effect = lambda path: path
-        ui = StreamingUIUpdateManager(sink, chat_history=[])
+        ui = StreamingUIUpdateManager(sink, chat_history=[], resource_urls=UnconfiguredResourceUrls())
         ui.set_player_character("神羽")
         with patch("application.chat.ui_updates.get_character_by_name", return_value=character):
             ui.update_player_portrait("神羽", 0)
@@ -190,7 +191,7 @@ class PlayerControlTests(unittest.TestCase):
         self.assertEqual(snapshot["sprites"], [])
 
     def test_expression_waits_for_related_narration_and_is_discarded_for_npc(self):
-        ui = StreamingUIUpdateManager(MagicMock(), chat_history=[])
+        ui = StreamingUIUpdateManager(MagicMock(), chat_history=[], resource_urls=UnconfiguredResourceUrls())
         ui.set_player_character("神羽")
         with patch.object(ui, "update_player_portrait") as update:
             ui.queue_player_portrait("神羽", 1)

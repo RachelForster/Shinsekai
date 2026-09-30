@@ -71,6 +71,8 @@ from application.story.coordinator import (
 from core.story import SelectChoice
 from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from sdk.path_utils import reject_control_chars
+from config.character_assets import get_character_assets
+from application.chat.character_visual import resolve_character_visual
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
@@ -554,7 +556,7 @@ def _sprite_path(sprite: Any) -> str:
     return str(sprite.path if hasattr(sprite, "path") else sprite.get("path", ""))
 
 
-def _chat_session_media(state: BridgeState) -> tuple[str, str, list[dict[str, str]]]:
+def _chat_session_media(state: BridgeState) -> tuple[str, str, list[dict[str, Any]]]:
     config = state.config_manager.config
     character_name = str(state.chat_session.get("characterName") or "")
     background_name = str(state.chat_session.get("backgroundName") or "")
@@ -567,9 +569,9 @@ def _chat_session_media(state: BridgeState) -> tuple[str, str, list[dict[str, st
     if character is None:
         character = config.characters[0] if config.characters else None
     sprites = []
-    if character and character.sprites:
-        sprite = character.sprites[0]
-        sprites.append({"id": f"{character.name}-0", "label": character.name, "path": _sprite_path(sprite)})
+    if character and get_character_assets(character).sprites:
+        visual = resolve_character_visual(character, 0, state.resource_urls)
+        sprites.append({"id": f"{character.name}-0", "label": character.name, **visual.snapshot_fields()})
     bg_path = ""
     if background and background.sprites:
         sprite = background.sprites[0]

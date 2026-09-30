@@ -1521,6 +1521,16 @@ export interface ShinsekaiPlatform {
     ) => Promise<StoryGenerationTask>;
   };
   characters: {
+    importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;
+    saveModelState: (input: {
+      name: string;
+      avatar_type: string;
+      model_path: string;
+      sprite_index: number;
+      path: string;
+      state: unknown;
+      tags: string;
+    }) => Promise<Character>;
     autoLabelSprites: (
       name: string,
       options?: TaskProgressOptions<ImageAutoLabelResult>,
@@ -1593,6 +1603,7 @@ export interface ShinsekaiPlatform {
     status: (input: ModelAssetRef) => Promise<ModelAssetStatus>;
   };
   files: {
+    modelUrl: (modelPath: string, path: string) => string;
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
     fileUrl: (path: string) => string;
     thumbnailBatch?: (

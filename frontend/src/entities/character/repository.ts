@@ -3,6 +3,7 @@ import type { Character } from "../config/types";
 import type {
   CharacterMemoryImportResult,
   ImageAutoLabelResult,
+  ShinsekaiPlatform,
   SpriteVoiceType,
   TaskProgressOptions,
 } from "../../shared/platform/types";
@@ -27,6 +28,14 @@ export function importCharacters(items: File[] | string[]) {
 
 export function exportCharacter(name: string) {
   return getPlatform().characters.export(name);
+}
+
+export function importCharacterModel(input: Parameters<ShinsekaiPlatform["characters"]["importModel"]>[0]) {
+  return getPlatform().characters.importModel(input);
+}
+
+export function saveCharacterModelState(input: Parameters<ShinsekaiPlatform["characters"]["saveModelState"]>[0]) {
+  return getPlatform().characters.saveModelState(input);
 }
 
 export function ensureCharacterBriefs(names: string[]) {

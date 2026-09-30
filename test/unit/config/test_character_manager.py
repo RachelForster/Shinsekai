@@ -28,6 +28,22 @@ def sprite_field(sprite, key):
     return getattr(sprite, key, None) if hasattr(sprite, key) else sprite.get(key)
 
 
+@pytest.mark.parametrize("prefix", ["", ".", "../outside"])
+def test_delete_all_sprites_rejects_shared_or_escaping_root(tmp_path, monkeypatch, prefix):
+    sprite_root = tmp_path / "sprite"
+    sprite_root.mkdir()
+    sentinel = sprite_root / "other-character.png"
+    sentinel.touch()
+    monkeypatch.setattr("config.character_manager.UPLOAD_DIR", str(sprite_root))
+    monkeypatch.setattr("config.character_manager.VOICE_DIR", str(tmp_path / "speech"))
+    character = Character(name="Mika", color="#fff", sprite_prefix=prefix)
+    manager = build_manager([character])
+    with pytest.raises((ValueError, PermissionError)):
+        manager.delete_all_sprites("Mika")
+    assert sentinel.is_file()
+    assert manager._config_manager.save_count == 0
+
+
 @pytest.mark.parametrize("operation", ["create", "update", "rename", "update_by_name"])
 def test_add_character_persists_avatar_banks(operation):
     character = Character(

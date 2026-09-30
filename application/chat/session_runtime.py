@@ -19,6 +19,7 @@ from application.chat.startup import (
     create_chat_startup_context,
     load_chat_config,
 )
+from application.media.resource_urls import ResourceUrls
 from sdk.chat_init import ChatInitService, InitChatCancelled
 
 
@@ -47,6 +48,9 @@ _CHAT_INIT_PHASES: dict[str, tuple[float, float, str]] = {
 
 class ChatSessionTransport(Protocol):
     stream_sink: Any | None
+
+    @property
+    def resource_urls(self) -> ResourceUrls: ...
 
     @property
     def streaming(self) -> bool: ...
@@ -511,6 +515,7 @@ class StreamingChatSession(_BaseChatSession):
         with self.initialization.phase("stream.runtime.setup"):
             self.ui_updates = StreamingUIUpdateManager(
                 self.transport.stream_sink,
+                resource_urls=self.transport.resource_urls,
                 chat_history=chat_history,
                 bg_group=runtime.presentation_assets.background_sprites,
             )

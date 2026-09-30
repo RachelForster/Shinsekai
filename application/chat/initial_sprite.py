@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from config.character_assets import get_character_assets
 
 from core.sprite.selection import (
     find_character_sprite_by_path as find_sprite_in_characters,
@@ -36,11 +37,10 @@ def initial_sprite_path_for_characters(
     default_path = ""
     if selected_names:
         character = config.get_character_by_name(selected_names[0])
-        sprites = getattr(character, "sprites", None) if character else None
-        if isinstance(character, dict):
-            sprites = character.get("sprites")
-        if isinstance(sprites, (list, tuple)) and sprites:
-            default_path = sprite_entry_path(sprites[0])
+        if character is not None:
+            sprites = get_character_assets(character).sprites
+            if sprites:
+                default_path = sprite_entry_path(sprites[0])
 
     return resolve_initial_sprite_path(
         _characters(config),

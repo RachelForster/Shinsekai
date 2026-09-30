@@ -390,6 +390,8 @@ def run(
         or secrets.token_urlsafe(32)
     )
 
+    from core.media.avatar.registry import configure_builtin_formats
+    configure_builtin_formats()
     state = BridgeState(
         config_manager=config_manager,
         character_manager=CharacterManager(),
@@ -402,6 +404,7 @@ def run(
     )
     _set_bridge_state(state)
     state.chat_stream = ChatStreamService(host=host, bridge_port=port, auth_token=bridge_auth_token)
+    state.resource_urls = state.chat_stream.resource_urls
     state.chat_stream.start()
 
     def create_mobile_http_server(bind_host: str, mobile_port: int) -> ThreadingHTTPServer:

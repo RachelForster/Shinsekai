@@ -179,7 +179,10 @@ Python modules from this repository.
 - `app` owns routing, providers, shell layout, and app-level state.
 - `shared` owns design tokens, reusable UI, async/query setup, i18n, and platform adapters.
 - `entities` owns domain types, schemas, repositories, and serialization.
+- `modules` owns reusable technical subsystems. `modules/character-visual` provides the public rendering API, format-neutral host and registry; its `adapters/<format>` own SDK integration and format-specific controls. It must not import entities, features, app, or application platform/desktop adapters.
 - `features` owns page-level behavior, mutations, task state, and composition.
+- Character resource-bank defaults and state persistence belong to `entities/character`; format descriptors do not construct character configuration. Features compose those repositories with the rendering module's public `index.ts` API.
+- Only `app/avatarFormats.ts` discovers shipped format descriptors. Common rendering code cannot import a concrete adapter, and one adapter cannot import another. SDK loading remains lazy. These boundaries are enforced by `src/test/architecture/characterVisualBoundaries.test.ts`.
 - React components do not read YAML, call Python modules, or access Tauri/Electron APIs directly.
 - Plugins render only into declared slots from `entities/plugin/slots.tsx`; UI contributions must declare id, title, slot, permissions, render function, and optional config schema.
 - UI copy reads from `shared/i18n`; `SystemSettingsPage` updates the app language state after config load/save.

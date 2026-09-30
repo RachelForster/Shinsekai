@@ -16,7 +16,8 @@ if TYPE_CHECKING:
 from core.media.effect_bindings import effect_modes
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
-from config.character_assets import get_character_assets
+from application.chat.character_visual import resolve_character_visual
+from application.media.resource_urls import ResourceUrls
 from application.chat.history_state import serialize_chat_history_entries
 
 SOUND_EFFECTS_PATH = {
@@ -280,9 +281,14 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         chat_history: Optional[MutableSequence[str]] = None,
         bg_group: Optional[List] = None,
         max_sprite_slots: int = 3,
+        *,
+        resource_urls: ResourceUrls,
     ) -> None:
         super().__init__(chat_history=chat_history)
+        if not isinstance(resource_urls, ResourceUrls):
+            raise TypeError("Chat presentation requires both media and model resource URL methods")
         self._sink = sink
+        self._resource_urls = resource_urls
         self.bg_group = list(bg_group or [])
         try:
             normalized_slot_count = int(max_sprite_slots)
@@ -310,9 +316,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         return slot
 
     def _media_url(self, raw_path: str) -> str:
-        if hasattr(self._sink, "media_url"):
-            return str(getattr(self._sink, "media_url")(raw_path) or "")
-        return str(raw_path or "")
+        return self._resource_urls.media_url(raw_path)
 
     def sync_history_entries(self) -> None:
         self._sink.emit({"type": "history.replace", "entries": serialize_chat_history_entries(list(self.chat_history))})
@@ -572,13 +576,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             character_config = get_character_by_name(character_name)
             if character_config is None:
                 raise ValueError(f"未找到角色配置: {character_name}")
-            avatar_type = str(getattr(character_config, "avatar_type", "static") or "static").strip().lower()
-            assets = get_character_assets(character_config, avatar_type)
-            sprite = assets.sprites[sprite_id]
-            image_path = str(
-                Path(sprite.get("path", "")) if isinstance(sprite, dict) else Path(getattr(sprite, "path", ""))
-            )
-            scale = float(getattr(character_config, "sprite_scale", 1.0) or 1.0)
+            visual = resolve_character_visual(character_config, sprite_id, self._resource_urls)
         except Exception as e:
             print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
             return
@@ -587,11 +585,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             {
                 "type": "sprite.show",
                 "characterName": character_name,
-                "url": self._media_url(image_path),
-                "scale": scale,
+                **visual.event_fields(),
                 "slot": display_slot,
-                "avatarType": avatar_type,
-                "modelUrl": self._media_url(assets.model_path) if assets.model_path else "",
             }
         )
 

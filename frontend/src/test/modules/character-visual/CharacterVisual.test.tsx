@@ -1,14 +1,15 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CharacterVisual, type CharacterVisualProps } from "../../../entities/character-visual/CharacterVisual";
+import { CharacterVisual, type CharacterVisualProps } from "../../../modules/character-visual/CharacterVisual";
 import type {
   AvatarCapabilities,
   AvatarSession,
   CharacterVisualAsset,
-} from "../../../entities/character-visual/contracts";
-import { clearRegisteredAvatarFormats, registerAvatarFormat } from "../../../entities/character-visual/registry";
+} from "../../../modules/character-visual/contracts";
+import { clearRegisteredAvatarFormats, registerAvatarFormat } from "../../../modules/character-visual/registry";
 import { SpriteLayer } from "../../../features/chat-stage/components/StageLayers";
+import { chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
 
 const capabilities: AvatarCapabilities = { mouth: false, blink: false, motion: false, sampling: "none" };
 const asset: CharacterVisualAsset = {
@@ -42,7 +43,6 @@ function register(create = vi.fn().mockResolvedValue(session())) {
     id: "demo",
     label: "Demo",
     capabilities,
-    createEmpty: () => ({ model_path: "", sprites: [], emotion_tags: "" }),
     load: async () => ({ create, Editor: () => null }),
   });
   return create;
@@ -209,5 +209,49 @@ describe("CharacterVisual", () => {
     );
     await waitFor(() => expect(instance.apply).toHaveBeenCalledTimes(2));
     expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("keeps a character mounted across snapshot IDs, live events and reconnect", async () => {
+    const instance = session();
+    const create = register(vi.fn().mockResolvedValue(instance));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({ ok: true, json: async () => ({}) })),
+    );
+    const snapshot = {
+      ...emptyChatState,
+      effectImage: null,
+      sprites: [{ id: "Alice-0", label: "Alice", path: "/1.json", avatarType: "demo", modelUrl: "/alice.model" }],
+    };
+    let state = chatStageReducer(emptyChatState, { type: "hydrate", snapshot });
+    const view = render(<SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} sprites={state.sprites} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    const container = screen.getByTestId("model-container");
+    state = chatStageReducer(state, {
+      type: "event",
+      event: {
+        type: "sprite.show",
+        characterName: "Alice",
+        url: "/2.json",
+        avatarType: "demo",
+        modelUrl: "/alice.model",
+        scale: 1,
+        seq: 1,
+        ts: 1,
+        v: 1,
+      },
+    });
+    expect(state.sprites[0].id).toBe("Alice");
+    view.rerender(<SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} sprites={state.sprites} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledTimes(2));
+    state = chatStageReducer(state, { type: "hydrate", snapshot: { ...snapshot, eventSeq: 2 } });
+    view.rerender(<SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} sprites={state.sprites} />);
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledTimes(3));
+    expect(instance.apply.mock.calls.map((call) => call[1])).toEqual(["restore", "play", "restore"]);
+    expect(create).toHaveBeenCalledOnce();
+    expect(instance.dispose).not.toHaveBeenCalled();
+    expect(screen.getByTestId("model-container")).toBe(container);
+    view.unmount();
+    expect(instance.dispose).toHaveBeenCalledOnce();
   });
 });

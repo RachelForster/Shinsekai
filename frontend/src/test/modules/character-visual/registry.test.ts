@@ -1,19 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AvatarFormat } from "../../../entities/character-visual/contracts";
+import type { AvatarFormat } from "../../../modules/character-visual/contracts";
 import {
   avatarFormat,
   clearRegisteredAvatarFormats,
   registerAvatarFormat,
   registeredAvatarFormats,
-} from "../../../entities/character-visual/registry";
+} from "../../../modules/character-visual/registry";
 
 function nullFormat(id = "null"): AvatarFormat<unknown, unknown> {
   return {
     id,
     label: "Null",
     capabilities: { mouth: true, blink: false, motion: false, sampling: "none" },
-    createEmpty: () => ({ model_path: "", sprites: [], emotion_tags: "" }),
     load: async () => ({
       create: async () => {
         throw new Error("not implemented");

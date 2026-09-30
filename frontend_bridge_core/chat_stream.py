@@ -24,6 +24,7 @@ from frontend_bridge_core.media_paths import (
     is_absolute_local_media_path_text,
     is_supported_media_path_text,
 )
+from frontend_bridge_core.resource_urls import BridgeResourceUrls, append_query as _append_query
 
 
 _MEDIA_EVENT_TYPES = {
@@ -54,22 +55,6 @@ def _http_base(host: str, port: int) -> str:
 
 def _ws_base(host: str, port: int) -> str:
     return f"ws://{_external_host(host)}:{int(port)}/ws"
-
-
-def _is_direct_media_path(raw_path: str) -> bool:
-    return raw_path.startswith(("http://", "https://", "blob:", "data:", "/assets/"))
-
-
-def _append_query(url: str, params: dict[str, str]) -> str:
-    pairs = [
-        f"{quote(str(key), safe='')}={quote(str(value), safe='')}"
-        for key, value in params.items()
-        if str(value)
-    ]
-    if not pairs:
-        return url
-    separator = "&" if "?" in url else "?"
-    return f"{url}{separator}{'&'.join(pairs)}"
 
 
 @dataclass(eq=False)
@@ -156,6 +141,7 @@ class ChatStreamService:
         self.http_base = _http_base(host, bridge_port)
         self.ws_base = _ws_base(host, self.ws_port)
         self.auth_token = str(auth_token or "").strip()
+        self.resource_urls = BridgeResourceUrls(self.http_base, self.auth_token, self.approve_external_media_path)
         self._sessions: dict[str, _ChatStreamSession] = {}
         self._approved_external_media_paths: dict[str, float] = {}
         self._lock = threading.Lock()
@@ -394,16 +380,10 @@ class ChatStreamService:
         return False
 
     def media_url(self, raw_path: str) -> str:
-        path = str(raw_path or "").strip()
-        if not path:
-            return ""
-        if _is_direct_media_path(path):
-            return path
-        self.approve_external_media_path(path)
-        return _append_query(
-            f"{self.http_base}/api/media?path={quote(path)}",
-            {"shinsekai_bridge_token": self.auth_token},
-        )
+        return self.resource_urls.media_url(raw_path)
+
+    def avatar_url(self, model_path: str, raw_path: str) -> str:
+        return self.resource_urls.avatar_url(model_path, raw_path)
 
     def approve_external_media_path(self, raw_path: str) -> bool:
         path = str(raw_path or "").strip()

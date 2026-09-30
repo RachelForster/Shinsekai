@@ -1,3 +1,5 @@
+import { VoiceAnalyser, type MouthListener } from "./voiceAnalyser";
+
 export type SoundPlayerLockListener = (locked: boolean) => void;
 export type VoicePlaybackState = "started" | "finished" | "interrupted" | "failed";
 export interface VoicePlaybackSignal {
@@ -8,7 +10,7 @@ export interface VoicePlaybackSignal {
 export type VoicePlaybackSignalListener = (signal: VoicePlaybackSignal) => void;
 
 type AudioFactory = (url: string) => HTMLAudioElement;
-type QueuedVoice = { playbackId: string; url: string; volume: number };
+type QueuedVoice = { playbackId: string; url: string; volume: number; characterName: string };
 type ActiveVoice = QueuedVoice & { audio: HTMLAudioElement; started: boolean };
 
 function clampVolume(value: number) {
@@ -38,6 +40,7 @@ function stopAudio(audio: HTMLAudioElement | null | undefined) {
 
 export class SoundPlayer {
   private readonly createAudio: AudioFactory;
+  private readonly analyser: VoiceAnalyser | null;
   private bgm: HTMLAudioElement | null = null;
   private bgmUrl = "";
   private currentVoice: ActiveVoice | null = null;
@@ -49,8 +52,9 @@ export class SoundPlayer {
   private readonly voiceQueue: QueuedVoice[] = [];
   private readonly voiceSignalListeners = new Set<VoicePlaybackSignalListener>();
 
-  constructor(createAudio: AudioFactory = (url) => new Audio(url)) {
+  constructor(createAudio: AudioFactory = (url) => new Audio(url), onMouth?: MouthListener) {
     this.createAudio = createAudio;
+    this.analyser = onMouth ? new VoiceAnalyser(onMouth) : null;
   }
 
   subscribeLock(listener: SoundPlayerLockListener) {
@@ -106,7 +110,7 @@ export class SoundPlayer {
     }
   }
 
-  playVoice(playbackId: string, url: string, volume = 1) {
+  playVoice(playbackId: string, url: string, volume = 1, characterName = "") {
     const nextUrl = url.trim();
     if (!nextUrl) {
       return;
@@ -116,6 +120,7 @@ export class SoundPlayer {
         playbackId: playbackId.trim(),
         url: nextUrl,
         volume: clampVolume(volume),
+        characterName,
       });
       return;
     }
@@ -123,6 +128,7 @@ export class SoundPlayer {
       playbackId: playbackId.trim(),
       url: nextUrl,
       volume: clampVolume(volume),
+      characterName,
     });
   }
 
@@ -136,6 +142,7 @@ export class SoundPlayer {
       return;
     }
     this.voiceQueue.length = 0;
+    this.analyser?.stop();
     stopAudio(this.currentVoice?.audio);
     this.currentVoice = null;
   }
@@ -213,12 +220,14 @@ export class SoundPlayer {
 
   dispose() {
     this.stopAll();
+    this.analyser?.dispose();
     this.listeners.clear();
     this.voiceSignalListeners.clear();
   }
 
   private startVoice(voice: QueuedVoice) {
     const audio = this.createAudio(voice.url);
+    audio.crossOrigin = "anonymous";
     audio.preload = "auto";
     audio.volume = voice.volume;
     const activeVoice: ActiveVoice = { ...voice, audio, started: false };
@@ -270,6 +279,7 @@ export class SoundPlayer {
       return;
     }
     voice.started = true;
+    this.analyser?.start(voice.audio, voice.characterName);
     this.emitVoiceSignal(voice.playbackId, "started");
   }
 
@@ -278,6 +288,7 @@ export class SoundPlayer {
       return;
     }
     this.currentVoice = null;
+    this.analyser?.stop();
     this.emitVoiceSignal(voice.playbackId, state, error);
     const next = this.voiceQueue.shift();
     if (next) {

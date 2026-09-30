@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 import os
 from pathlib import Path
-from typing import Any
+from config.character_assets import get_character_assets, iter_character_asset_banks
 
 from sdk.path_utils import normalize_path_identity
 
@@ -20,15 +20,6 @@ def _character_name(character: object) -> str:
     return str(getattr(character, "name", "") or "")
 
 
-def _character_sprites(character: object) -> list[Any]:
-    sprites = (
-        character.get("sprites")
-        if isinstance(character, dict)
-        else getattr(character, "sprites", None)
-    )
-    return list(sprites) if isinstance(sprites, (list, tuple)) else []
-
-
 def resolve_runtime_path(raw_path: str) -> Path:
     return normalize_path_identity(raw_path, field="initial sprite path")
 
@@ -41,18 +32,23 @@ def _sprite_path_key(raw_path: str) -> str:
 def find_character_sprite_by_path(
     characters: Iterable[object],
     raw_path: str,
+    *,
+    include_inactive: bool = False,
 ) -> tuple[str, int] | None:
     if not raw_path:
         return None
     target_key = _sprite_path_key(raw_path)
     for character in characters:
-        for index, sprite in enumerate(_character_sprites(character)):
-            sprite_path = sprite_entry_path(sprite)
-            if not sprite_path:
-                continue
-            candidate_key = _sprite_path_key(sprite_path)
-            if candidate_key == target_key:
-                return _character_name(character), index
+        banks = (
+            (assets for _, assets in iter_character_asset_banks(character))
+            if include_inactive
+            else (get_character_assets(character),)
+        )
+        for bank in banks:
+            for index, sprite in enumerate(bank.sprites):
+                sprite_path = sprite_entry_path(sprite)
+                if sprite_path and _sprite_path_key(sprite_path) == target_key:
+                    return _character_name(character), index
     return None
 
 
@@ -72,7 +68,10 @@ def resolve_initial_sprite_path(
     requested_path = str(raw_path or "").strip()
     if not requested_path:
         return default_path
+    characters = list(characters)
     matched = find_character_sprite_by_path(characters, requested_path)
-    if matched is not None and matched[0] not in selected_names:
+    if matched is not None:
+        return requested_path if matched[0] in selected_names else default_path
+    if find_character_sprite_by_path(characters, requested_path, include_inactive=True) is not None:
         return default_path
     return requested_path

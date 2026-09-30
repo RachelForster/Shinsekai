@@ -7,6 +7,10 @@ export function avatarAssetUrl(modelUrl: string, relativePath: string): string {
   const model = new URL(modelUrl, window.location.href);
   if (!/^https?:$/.test(model.protocol)) throw new Error("Unsupported avatar model URL");
   const mediaPath = model.searchParams.get("path");
+  if (model.pathname === "/api/avatar/file") {
+    model.searchParams.set("path", path);
+    return model.toString();
+  }
   if (model.pathname === "/api/media" && mediaPath) {
     const normalized = mediaPath.replaceAll("\\", "/");
     model.searchParams.set("path", normalized.slice(0, normalized.lastIndexOf("/") + 1) + path);

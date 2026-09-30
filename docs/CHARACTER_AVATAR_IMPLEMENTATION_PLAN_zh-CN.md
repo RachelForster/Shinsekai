@@ -253,7 +253,9 @@ Shinsekai/
    ├─ app/avatarFormats.ts              启动时注册随构建交付的 format.ts 描述符
    ├─ shared/platform/types.ts          Character 和内部舞台类型的小幅扩展
    ├─ shared/platform/httpPlatform.ts   角色模型操作 API
-   ├─ entities/character-visual/        新增：聊天和预览共用
+   ├─ entities/character/              资源银行默认值、选择与状态 repository
+   ├─ modules/character-visual/         独立渲染子系统：聊天和预览共用
+   │  ├─ index.ts                      业务消费者唯一公开入口
    │  ├─ contracts.ts / registry.ts     共享实例接口与 id → 模块注册
    │  ├─ CharacterVisual.tsx            按类型选择显示组件
    │  ├─ adapters/l2d/                  L2D 描述符、加载、状态、嘴眼和参数编辑
@@ -291,7 +293,7 @@ sprite_index 沿用内部从 0 开始的列表下标；保存时 -1 表示追加
 ```
 新增格式 X：
   后端  core/media/avatar/x.py       实现 ModelAssetAdapter（format_id、capabilities、inspect/parse_state/state_files）
-  前端  entities/character-visual/adapters/x/  实现 AvatarModule<S,C> 与 Editor（含自己的 S/C、fixtures）
+  前端  modules/character-visual/adapters/x/  实现 AvatarModule<S,C> 与 Editor（含自己的 S/C、fixtures）
   注册  后端 registry.register_adapter(...) 一行；前端导出 adapters/x/format.ts，由应用启动入口统一注册
   测试  双方 fixtures / tests（接受与拒绝边界、资源释放、.char 往返）
   不改  Character schema、get_character_assets、编号/标签/语音、事件、命令、LLM、共享 UI

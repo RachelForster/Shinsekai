@@ -1608,6 +1608,12 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     characters: {
+      importModel: async () => {
+        throw new Error("Model import requires the local bridge");
+      },
+      saveModelState: async () => {
+        throw new Error("Model state saving requires the local bridge");
+      },
       async autoLabelSprites(name) {
         const character = config.characters.find((item) => item.name === name);
         if (!character) {
@@ -2123,6 +2129,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     files: {
+      modelUrl: () => {
+        throw new Error("Models require the local bridge");
+      },
       browse(options) {
         return delay(previewFileBrowser(options?.path));
       },

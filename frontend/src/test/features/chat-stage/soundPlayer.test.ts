@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { SoundPlayer } from "../../../features/chat-stage/audio/soundPlayer";
+import { VoiceAnalyser } from "../../../features/chat-stage/audio/voiceAnalyser";
 
 class FakeAudio {
   currentTime = 0;
@@ -38,6 +39,29 @@ function createHarness() {
 }
 
 describe("SoundPlayer", () => {
+  it("retains queued character identity and clears the voice analyser between speakers", async () => {
+    const start = vi.spyOn(VoiceAnalyser.prototype, "start").mockImplementation(() => {});
+    const stop = vi.spyOn(VoiceAnalyser.prototype, "stop").mockImplementation(() => {});
+    const audio: FakeAudio[] = [];
+    const player = new SoundPlayer((url) => {
+      const item = new FakeAudio(url);
+      audio.push(item);
+      return item as unknown as HTMLAudioElement;
+    }, vi.fn());
+    player.playVoice("one", "one.wav", 1, "A");
+    player.playVoice("two", "two.wav", 1, "B");
+    await Promise.resolve();
+    expect(start).toHaveBeenLastCalledWith(audio[0], "A");
+    audio[0].finish();
+    await Promise.resolve();
+    expect(stop).toHaveBeenCalled();
+    expect(start).toHaveBeenLastCalledWith(audio[1], "B");
+    player.stopVoice();
+    expect(stop).toHaveBeenCalledTimes(2);
+    player.dispose();
+    start.mockRestore();
+    stop.mockRestore();
+  });
   it("keeps BGM looping while voice and effects use independent channels", async () => {
     const { audio, player } = createHarness();
     const signals: Array<{ playbackId: string; state: string }> = [];

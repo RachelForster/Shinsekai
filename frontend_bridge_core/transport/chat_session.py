@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from application.media.resource_urls import ResourceUrls
 
 from frontend_bridge_core.transport.chat_commands import (
     parse_chat_command,
@@ -18,6 +19,12 @@ class ChatSessionTransport:
 
     stream_sink: WSClientSink | None = None
     init_sink: WSClientSink | None = None
+
+    @property
+    def resource_urls(self) -> ResourceUrls:
+        if self.stream_sink is None:
+            raise RuntimeError("Chat presentation requires a configured resource URL resolver")
+        return self.stream_sink.resource_urls
 
     @property
     def streaming(self) -> bool:

@@ -2,7 +2,7 @@ import type { AvatarFormat } from "./contracts";
 
 const formats = new Map<string, AvatarFormat<unknown, unknown>>();
 
-/** 注册一个模型形象格式。新增格式只需在自己的模块里调用一次。 */
+/** 应用组装入口注册格式描述符；注册本身不加载具体实现。 */
 export function registerAvatarFormat<S, C>(format: AvatarFormat<S, C>): void {
   const id = format.id.trim().toLowerCase();
   if (!id) {

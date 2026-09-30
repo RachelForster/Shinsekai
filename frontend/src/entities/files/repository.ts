@@ -31,6 +31,13 @@ export function fileUrl(path: string): string {
   return getPlatform().files.fileUrl(path);
 }
 
+export function modelFileUrl(
+  modelPath: string,
+  path = modelPath.replaceAll("\\", "/").split("/").at(-1) ?? "",
+): string {
+  return getPlatform().files.modelUrl(modelPath, path);
+}
+
 export function fileThumbnailUrl(path: string, size = 160): string {
   return getPlatform().files.thumbnailUrl(path, { size });
 }

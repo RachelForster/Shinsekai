@@ -68,7 +68,7 @@ application
 | `plugin_system/` | `core/`、`config/`、`sdk/` | bridge、UI、`application/` |
 | `application/` | `ai/`、`core/`、`config/`、`plugin_system/`、`sdk/` | bridge 的具体传输实现、React 具体控件或历史 Qt UI |
 | `frontend_bridge_core/` | `application/`、简单配置读写契约、传输层工具 | pip、下载、解压、模型加载、插件覆盖等主体业务 |
-| `frontend/` | 前端自身的 app/entities/features/shared | Python 业务实现和本地配置文件直接读写 |
+| `frontend/` | 前端自身的 app/entities/features/modules/shared | Python 业务实现和本地配置文件直接读写 |
 
 架构测试的依赖例外 allowlist 当前为空；新增反向依赖必须直接修正，不得增加例外。
 
@@ -81,6 +81,7 @@ Shinsekai/
       app/
       entities/
       features/
+      modules/
       shared/
     src-tauri/
 
@@ -160,11 +161,14 @@ Shinsekai/
 frontend/src/app       路由、providers、应用 shell
 frontend/src/features  页面和业务功能 UI
 frontend/src/entities  前端领域类型、schema、repository
+frontend/src/modules   独立技术子系统及其契约、公共宿主和具体适配器
 frontend/src/shared    通用 UI、i18n、theme、platform adapter
 frontend/src-tauri     Tauri 壳、打包配置和 Rust 侧能力
 ```
 
 前端通过 platform adapter 和 bridge 协议访问 Python。不得直接实现配置文件读写、插件安装、模型下载或 Python runtime 管理。
+
+`modules/character-visual` 不依赖 `entities`、`features`、`app` 或应用 platform/desktop 适配器。业务功能通过公共 `index.ts` 使用显示、编辑实例与能力接口；模型配置、资源银行默认值和状态 repository 留在 `entities/character`。只有 `app/avatarFormats.ts` 发现并注册格式描述符；公共宿主不 import 具体格式，格式之间不能交叉依赖。SDK 加载、WebGL、嘴眼和过渡均留在各自 adapter 内。对应约束由前端 architecture 测试自动检查。
 
 ### `frontend_bridge_core/`
 

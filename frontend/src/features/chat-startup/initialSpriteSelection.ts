@@ -1,4 +1,7 @@
 import type { Character } from "../../shared/platform/types";
+import { characterAssetBanks, getCharacterAssets, type CharacterAssetSource } from "../../entities/character/assets";
+
+type SpriteCharacter = Pick<Character, "name" | "sprites"> & CharacterAssetSource;
 
 function browserHostPlatform() {
   if (typeof navigator === "undefined") {
@@ -19,17 +22,22 @@ function normalizedSpritePath(path: string, caseSensitive: boolean) {
 
 export function initialSpriteOwner(
   path: string,
-  characters: Array<Pick<Character, "name" | "sprites">>,
-  { caseSensitive = spritePathsAreCaseSensitive() }: { caseSensitive?: boolean } = {},
+  characters: SpriteCharacter[],
+  {
+    caseSensitive = spritePathsAreCaseSensitive(),
+    includeInactive = false,
+  }: { caseSensitive?: boolean; includeInactive?: boolean } = {},
 ) {
   const normalizedPath = normalizedSpritePath(path, caseSensitive);
   if (!normalizedPath) {
     return undefined;
   }
   return characters.find((character) =>
-    (character?.sprites ?? []).some(
-      (sprite) =>
-        typeof sprite?.path === "string" && normalizedSpritePath(sprite.path, caseSensitive) === normalizedPath,
+    (includeInactive ? characterAssetBanks(character) : [getCharacterAssets(character)]).some((bank) =>
+      bank.sprites.some(
+        (sprite) =>
+          typeof sprite?.path === "string" && normalizedSpritePath(sprite.path, caseSensitive) === normalizedPath,
+      ),
     ),
   )?.name;
 }
@@ -41,7 +49,7 @@ export function compatibleInitialSpritePath({
   preserveUnknown = true,
   selectedCharacters,
 }: {
-  characters: Array<Pick<Character, "name" | "sprites">>;
+  characters: SpriteCharacter[];
   caseSensitive?: boolean;
   path: string;
   preserveUnknown?: boolean;
@@ -53,6 +61,7 @@ export function compatibleInitialSpritePath({
   }
   const owner = initialSpriteOwner(candidate, characters, { caseSensitive });
   if (!owner) {
+    if (initialSpriteOwner(candidate, characters, { caseSensitive, includeInactive: true })) return "";
     return preserveUnknown ? candidate : "";
   }
   return selectedCharacters.includes(owner) ? candidate : "";

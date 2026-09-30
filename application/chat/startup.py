@@ -228,7 +228,8 @@ def _import_provider_runtime() -> SimpleNamespace:
     from ai.tools.tool_manager import ToolManager
     from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
     from ai.vision.fallback_registry import configure_registered_fallbacks
-    from core.media.avatar.registry import configure_registered_formats
+    from core.media.avatar.registry import configure_registered_formats, configure_builtin_formats
+    configure_builtin_formats()
     from plugin_system.host import ensure_plugins_loaded, PluginRuntimeBindings
     from sdk.chat_init import InitChatContext
 

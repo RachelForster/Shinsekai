@@ -189,6 +189,26 @@ def test_initial_sprite_path_preserves_unknown_path_without_characters(tmp_path,
     assert initial_sprite_path_for_characters(config, "D:/external/custom.png", []) == "D:/external/custom.png"
 
 
+@pytest.mark.parametrize("as_dict", [False, True])
+def test_active_bank_controls_initial_selection_and_ownership(tmp_path, monkeypatch, as_dict):
+    monkeypatch.chdir(tmp_path)
+    fields = dict(
+        name="Demo", avatar_type="demo", sprites=[{"path": "static.png"}],
+        avatars={
+            "demo": {"model_path": "model.demo", "sprites": [{"path": "demo/pose.json"}]},
+            "other": {"model_path": "model.other", "sprites": [{"path": "other/pose.json"}]},
+        },
+    )
+    character = fields if as_dict else SimpleNamespace(**fields)
+    config = _config([character])
+    config.get_character_by_name = lambda name: character if name == "Demo" else None
+    assert find_character_sprite_by_path(config, "demo/pose.json") == ("Demo", 0)
+    assert find_character_sprite_by_path(config, "static.png") is None
+    for previous_path in ("", "static.png", "other/pose.json"):
+        assert initial_sprite_path_for_characters(config, previous_path, ["Demo"]) == "demo/pose.json"
+    assert initial_sprite_path_for_characters(config, "demo/pose.json", []) == ""
+
+
 def test_restore_session_ui_applies_background_without_messages():
     queue = Queue()
     window = _Window()

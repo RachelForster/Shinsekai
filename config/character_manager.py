@@ -65,6 +65,25 @@ class CharacterManager:
         """保存角色配置的便捷方法"""
         self._config_manager.save_characters_config()
 
+    def save_avatar_bank(self, name: str, avatar_type: str, bank: ModelSprites, *, activate: bool = False) -> None:
+        """Persist one validated bank without replacing other types or static assets."""
+        character = self._config_manager.get_character_by_name(name)
+        if character is None:
+            raise KeyError(name)
+        validated = Character(name=name, color=character.color, sprite_prefix=character.sprite_prefix,
+                              avatars={avatar_type: bank}).avatars
+        previous = character.avatars
+        previous_type = character.avatar_type
+        character.avatars = {**previous, **validated}
+        if activate:
+            character.avatar_type = avatar_type
+        try:
+            self._save_characters_config()
+        except Exception:
+            character.avatars = previous
+            character.avatar_type = previous_type
+            raise
+
     def save_characters_to_file(self) -> str:
         """
         保存所有角色配置到文件。
@@ -351,13 +370,26 @@ class CharacterManager:
         if not character:
             return f"找不到角色: {character_name}", [], ""
         
-        # 删除立绘目录
-        char_dir = os.path.join(UPLOAD_DIR, character.sprite_prefix)
-        if os.path.exists(char_dir):
-            shutil.rmtree(char_dir)
+        # Static assets share this root with independently managed model banks.
+        # Validate the root before removing children; preserve model/package voices.
+        from sdk.path_utils import safe_child_path
+        char_dir = safe_child_path(Path(UPLOAD_DIR), character.sprite_prefix)
+        char_voice_dir = safe_child_path(Path(VOICE_DIR), character.sprite_prefix)
+        if char_dir == Path(UPLOAD_DIR).resolve() or char_voice_dir == Path(VOICE_DIR).resolve():
+            raise PermissionError("Character asset directory must not be the shared root")
+        if char_dir.is_dir():
+            for child in char_dir.iterdir():
+                if child.name.lower() in {"avatars", "avatar-voices"}:
+                    continue
+                if child.is_dir() and not child.is_symlink():
+                    checked = safe_child_path(char_dir, child.name)
+                    shutil.rmtree(checked)
+                else:
+                    child.unlink()
+            if not any(char_dir.iterdir()):
+                char_dir.rmdir()
 
         # 删除语音目录
-        char_voice_dir = os.path.join(VOICE_DIR, character.sprite_prefix)
         if os.path.exists(char_voice_dir):
             shutil.rmtree(char_voice_dir)
         

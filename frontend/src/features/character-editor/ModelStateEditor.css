@@ -1,0 +1,56 @@
+.model-state-editor__preview {
+  height: 400px;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+}
+
+.model-state-dialog {
+  width: min(1100px, 100%);
+  max-height: calc(100vh - 32px);
+}
+
+.model-state-dialog__layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 1.25fr);
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.model-state-dialog__parameters {
+  min-width: 0;
+  max-height: min(650px, 65vh);
+  overflow: auto;
+}
+
+.model-state-dialog__controls {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.model-state-dialog__preview {
+  height: min(650px, 65vh);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-input);
+}
+
+@media (max-width: 760px) {
+  .model-state-dialog__layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .model-state-dialog__parameters {
+    max-height: 35vh;
+  }
+
+  .model-state-dialog__preview {
+    height: 40vh;
+  }
+}
