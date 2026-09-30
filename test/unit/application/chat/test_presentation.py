@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 import pytest
 
@@ -104,6 +104,46 @@ def test_prepare_initial_presentation_restores_media_and_falls_back_to_sprite(
     display_sprite.assert_called_once_with(
         "sprite.png",
         config=config,
+        ui_updates=ui,
+    )
+
+
+@pytest.mark.parametrize("restored_sprite", [False, True])
+def test_enabled_initial_sprite_shows_bank_aware_sprite_even_after_history_restore(
+    monkeypatch, restored_sprite,
+) -> None:
+    """History restore replays dialogs with sprite=None; avatar banks must still
+    get the bank-aware initial sprite from the launch payload path."""
+    ui = SimpleNamespace(
+        post_background=Mock(),
+        switch_bgm=Mock(),
+        post_dialog_html=Mock(),
+        post_options=Mock(),
+        post_notification=Mock(),
+    )
+    restore = Mock(return_value=restored_sprite)
+    display = Mock()
+    monkeypatch.setattr(presentation, "restore_session_presentation", restore)
+    monkeypatch.setattr(presentation, "display_initial_sprite", display)
+    monkeypatch.setattr(presentation, "get_history", lambda: [])
+    presentation.prepare_initial_presentation(
+        messages=[{"role": "assistant", "content": "previous dialog"}],
+        config=_Config(),
+        ui_updates=ui,
+        presentation_queue=object(),
+        assets=presentation.ChatPresentationAssets([], [], False),
+        initial_sprite_path="avatar-state.json",
+        show_initial_sprite=True,
+        welcome_html="welcome",
+        initial_option="start",
+        ready_notification="ready",
+        publish_branch_tree=Mock(),
+        translate=lambda key, **_kwargs: key,
+    )
+    restore.assert_called_once()
+    display.assert_called_once_with(
+        "avatar-state.json",
+        config=ANY,
         ui_updates=ui,
     )
 

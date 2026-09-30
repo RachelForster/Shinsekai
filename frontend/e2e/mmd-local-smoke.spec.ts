@@ -35,6 +35,14 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
   expect(status.capabilities.blink).toBe(true);
   expect(requested).toContain(basename(entry));
   expect(requested.some((path) => path.toLowerCase().endsWith(".png"))).toBe(true);
+  // Use real browser input: canceling pointerdown suppresses its compatibility
+  // mousedown, so a synthetic fireEvent.mouseDown cannot catch broken host drag.
+  await page.locator("#model canvas").click();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { mmdSmoke: { hostInput: { mouseDowns: number } } }).mmdSmoke.hostInput.mouseDowns,
+    ),
+  ).toBe(1);
   const painted = await page.locator("#model canvas").evaluate((canvas: HTMLCanvasElement) => {
     const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
     if (!gl) return 0;

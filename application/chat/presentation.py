@@ -123,7 +123,11 @@ def prepare_initial_presentation(
 
     publish_branch_tree()
     ui_updates.post_notification(ready_notification)
-    if show_initial_sprite and not restored_sprite:
+    # The restored dialog replays with sprite=None (replay_media path) and
+    # avatar-era banks resolve by path, not by the static sprite index stored
+    # in history. Always show the bank-aware initial sprite; the async history
+    # replay may still override it for static banks, preserving legacy UX.
+    if show_initial_sprite:
         display_initial_sprite(
             resolved_sprite_path,
             config=config,

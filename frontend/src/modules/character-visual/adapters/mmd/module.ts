@@ -55,8 +55,14 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "display:block;width:100%;height:100%";
   mount.element.append(canvas);
-  const engine = new Engine(canvas, true, { alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true });
+  // The desktop chat window is created with `transparent(true)`: layered
+  // WebView2 windows only composite WebGL content correctly when the drawing
+  // buffer is premultiplied. Straight alpha renders invisibly there.
+  const engine = new Engine(canvas, true, { alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: true });
   const scene = new Scene(engine);
+  // The host owns window dragging; the editor controls the camera via state.
+  // Babylon's default pointerdown cancellation suppresses the host's mousedown.
+  scene.detachControl();
   scene.clearColor = new Color4(0, 0, 0, 0);
   let runtime: MmdRuntime | undefined;
   let disposed = false;
