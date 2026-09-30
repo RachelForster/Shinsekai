@@ -1,5 +1,7 @@
 import { avatarAssetUrl } from "../../src/modules/character-visual/assetUrl";
 import { create } from "../../src/modules/character-visual/adapters/mmd/module";
+import { Engine } from "@babylonjs/core/Engines/engine";
+import { bindAvatarVoice, routeAvatarVoice } from "../../src/modules/character-visual/voiceRoute";
 
 const source = new URLSearchParams(location.search).get("source")!;
 const modelUrl = `/api/avatar/file?${new URLSearchParams({ model_path: source, path: source.split(/[\\/]/).at(-1)! })}`;
@@ -20,7 +22,25 @@ try {
   );
   session.resize(600, 700);
   await session.apply(session.readState(), "restore", abort.signal);
-  Object.assign(window, { mmdSmoke: { session, abort, hostInput } });
+  const unbind = bindAvatarVoice("MMD", session);
+  const scene = Engine.Instances.at(-1)!.scenes[0];
+  const root = scene.meshes.find((mesh) => mesh.metadata?.skeleton);
+  const skeleton = root?.metadata.skeleton;
+  const headIndex = skeleton?.bones.findIndex((bone: { name: string }) => ["頭", "head"].includes(bone.name));
+  const readHeadMatrix = () => {
+    if (!root || !skeleton || headIndex < 0) return [];
+    return Array.from(skeleton.getTransformMatrices(root).slice(headIndex * 16, headIndex * 16 + 16));
+  };
+  Object.assign(window, {
+    mmdSmoke: {
+      session,
+      abort,
+      hostInput,
+      readHeadMatrix,
+      routeVoice: (value: number) => routeAvatarVoice("MMD", value),
+      unbind,
+    },
+  });
   document.querySelector("#status")!.textContent = JSON.stringify({
     capabilities: session.capabilities,
     bindings: session.readState(),

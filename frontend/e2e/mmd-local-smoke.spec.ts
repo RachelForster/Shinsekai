@@ -101,4 +101,64 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
   });
   expect(cameraResult.changed).toBe(true);
   expect(cameraResult.restored).toEqual(cameraResult.camera);
+
+  const headMotion = await page.evaluate(async () => {
+    const { session, routeVoice, readHeadMatrix } = (
+      window as unknown as {
+        mmdSmoke: {
+          session: AvatarSession<MmdState, MmdControls>;
+          routeVoice(value: number): void;
+          readHeadMatrix(): number[];
+        };
+      }
+    ).mmdSmoke;
+    const state = { ...session.readState(), mouthMorph: "", blinkMorph: "" };
+    await session.apply(state, "restore", new AbortController().signal);
+    routeVoice(0);
+    const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+    await wait(200);
+    const baseline = readHeadMatrix();
+    routeVoice(0.8);
+    await wait(600);
+    const talking = readHeadMatrix();
+    const preserved = JSON.stringify(state) === JSON.stringify(session.readState());
+    routeVoice(0);
+    await wait(3000);
+    const stopped = readHeadMatrix();
+    await session.apply(state, "edit", new AbortController().signal);
+    routeVoice(1);
+    await wait(300);
+    const editing = readHeadMatrix();
+    await session.apply(state, "restore", new AbortController().signal);
+    return { baseline, talking, stopped, editing, preserved };
+  });
+  const difference = (a: number[], b: number[]) => Math.max(...a.map((value, index) => Math.abs(value - b[index])));
+  expect(headMotion.baseline).toHaveLength(16);
+  expect(difference(headMotion.baseline, headMotion.talking)).toBeGreaterThan(0.001);
+  expect(difference(headMotion.baseline, headMotion.stopped)).toBeLessThan(0.00001);
+  expect(difference(headMotion.baseline, headMotion.editing)).toBeLessThan(0.00001);
+  expect(headMotion.preserved).toBe(true);
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const reduced = await page.evaluate(async () => {
+    const { routeVoice, readHeadMatrix } = (
+      window as unknown as {
+        mmdSmoke: { routeVoice(value: number): void; readHeadMatrix(): number[] };
+      }
+    ).mmdSmoke;
+    routeVoice(1);
+    await new Promise((done) => setTimeout(done, 300));
+    return readHeadMatrix();
+  });
+  expect(difference(headMotion.baseline, reduced)).toBeLessThan(0.00001);
+  await page.evaluate(() => {
+    const { session, unbind } = (
+      window as unknown as {
+        mmdSmoke: { session: AvatarSession<MmdState, MmdControls>; unbind(): void };
+      }
+    ).mmdSmoke;
+    unbind();
+    session.dispose();
+  });
+  await expect(page.locator("#model canvas")).toHaveCount(0);
 });

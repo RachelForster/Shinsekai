@@ -27,6 +27,8 @@ export interface AvatarSession<S, C> {
   apply(state: S, mode: ApplyMode, signal: AbortSignal): Promise<void>;
   readState(): S;
   setMouthOpen(value: number): void;
+  /** Optional speech overlays, independent of whether this model has a mouth binding. */
+  setSpeechLevel?(value: number): void;
   resize(width: number, height: number): void;
   dispose(): void;
 }

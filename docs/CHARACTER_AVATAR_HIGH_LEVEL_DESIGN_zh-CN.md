@@ -181,6 +181,7 @@ export interface AvatarSession<S, C> {
   apply(state: S, mode: ApplyMode, signal: AbortSignal): Promise<void>;
   readState(): S;
   setMouthOpen(value: number): void;
+  setSpeechLevel?(value: number): void;   // 可选语音瞬态，与是否有嘴型绑定无关
   resize(width: number, height: number): void;
   dispose(): void;
 }

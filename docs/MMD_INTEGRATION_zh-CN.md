@@ -8,4 +8,6 @@
 
 当前支持 PMX 模型、贴图、morph 状态、口型同步和自动眨眼；**不支持 VMD 动作、物理、VRM 或 Blender 源工程直接导入**。MMD 运行时关闭物理模拟，使用正交镜头显示静态站姿。Babylon.js 与 `babylon-mmd` 由 npm 锁定并懒加载，仅在使用 MMD 形象时加载；无需 Live2D Cubism SDK。
 
+说话时默认叠加轻微的头部运动，复用实际播放语音的强度信号。共享 `TalkingHeadMotion` 负责渐入、渐出和慢速错峰节奏，MMD adapter 自动识别可旋转、无固定轴限制的 `頭/head`、`首/neck` 骨骼及英文别名，沿头颈父子链分配小幅旋转；缺少绑定时安全跳过，不转动整个模型或镜头。微动是 MMD 骨骼求解的临时输入，在 before/after physics 两个阶段后恢复原始局部姿态，不累积、不进入保存状态。编辑模式、系统减少动态效果设置和已选中的显式骨骼动画会停用微动；暂停或结束语音时平滑归位。无需新增依赖或修改角色卡、状态 JSON 与聊天事件。
+
 本地真实模型冒烟测试通过 `SHINSEKAI_PMX_MODEL` 指定用户有权使用的 `.pmx`，启动 Vite 开发服务器后执行 `pnpm exec playwright test e2e/mmd-local-smoke.spec.ts`。测试从本地模型及贴图读取，不将它们放入仓库或发行包。使用第三方模型时仍应遵守该模型自己的授权与分发限制。

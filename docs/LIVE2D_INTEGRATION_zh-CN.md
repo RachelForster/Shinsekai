@@ -57,6 +57,8 @@ pnpm prepare:l2d --sdk-dir ../.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4 --accept-sdk
 
 ## 生命周期与嘴眼
 
+- 说话头部微动复用共享 `TalkingHeadMotion` 的语音包络和节奏，L2D adapter 仅映射模型实际存在的 `ParamAngleX/Y/Z`，按真实范围缩放并限制取值。微动在基础姿态过渡之后、物理之前叠加，不进入 `readState`；已有动作控制的角度参数让出控制。编辑模式和系统减少动态效果设置下停用，语音结束后平滑回到基础姿态，不新增 SDK 或状态字段。
+
 - 同一模型实例反复 apply，换模型或离场才 dispose。
 - 舞台使用角色身份而非快照的资源 ID 作为组件 key，避免初始快照（例如 `Alice-0`）与实时事件（`Alice`）切换时销毁同一模型。
 - 首次应用、`restore` 与 `edit` 立即恢复目标状态；后续 `play` 用 300ms `smoothstep` 混合上一次实际显示的基础姿态与本帧目标参数。连续切换从当前中间姿态接续，不从旧目标或默认值重新开始；遵循系统减少动态效果设置。过渡在 L2D adapter 内完成，不新增共享状态字段或渲染依赖。
@@ -72,6 +74,8 @@ pnpm prepare:l2d --sdk-dir ../.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4 --accept-sdk
 共享状态 fixtures：`test/fixtures/avatar/l2d_states.json`，Python/TypeScript 均读取同一份。
 
 本地真实模型冒烟页面：开发服务器下 `/e2e/fixtures/l2d-smoke.html`（不进入生产入口）。测试 Haru 实际渲染、嘴型开合、编辑状态读取、动作 play/restore 和重复销毁。本地截图在 `.tmp/l2d-evidence/`，不得作为模型再分发素材。
+
+说话头部微动的本地真实 SDK 检查：准备好授权的 Core / Framework 与上述 Haru 样例、启动 Vite 后，设置 `SHINSEKAI_L2D_SMOKE=1` 并执行 `pnpm exec playwright test e2e/l2d-local-smoke.spec.ts`。检查实际头部参数变化、语音停止归位、保存状态不变、编辑/减少动态效果降级和实例释放；无授权资源的 CI 默认跳过。MMD 使用相同共享语音入口，真实 PMX 检查见 [MMD 支持](MMD_INTEGRATION_zh-CN.md)。
 
 2026-09-29 本地验证：Edge WebGL 加载 Haru，识别 42 个参数、8 个表情、6 个动作；上述冒烟操作后无浏览器错误，重复销毁后 canvas 数量为 0。类型检查与格式检查通过。Python 全量结果为 2906 通过、9 跳过、1 个失败（现有 memory queue 测试遇到 Windows `os.replace` 权限错误）；单独重跑该测试文件 4 项通过。前端全量其余 1011 项通过，新增下拉框导致的 2 个旧选择器失败已修复，角色编辑器及页头 20 项重跑通过。并非完整的发布矩阵验收，也未验证真实 TTS 音频到模型的端到端链路。
 

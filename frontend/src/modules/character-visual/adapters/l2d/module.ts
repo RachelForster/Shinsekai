@@ -1,6 +1,7 @@
 import type { ApplyMode, AvatarMount, AvatarSession } from "../../contracts";
 import { loadSdk, type SdkMotion } from "./sdk";
 import { ParameterTransition } from "../../parameterTransition";
+import { TalkingHeadMotion } from "../../talkingHeadMotion";
 import { neutralState, packagePath, parseState, validateControls, type L2DControls, type L2DState } from "./state";
 export { Editor } from "./Editor";
 
@@ -24,13 +25,15 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
     generation = 0;
   let current = neutralState();
   const transition = new ParameterTransition();
+  const talkingHead = new TalkingHeadMotion();
+  const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
   let hasAppliedState = false;
   let mode: ApplyMode = "restore";
   let mouth = 0,
     lastTime = 0,
     blinkStart = -1,
     nextBlink = 0;
-  let motionEyes = new Set<string>();
+  let motionParameters = new Set<string>();
   const requests = new AbortController();
   const cancel = () => requests.abort();
   signal.addEventListener("abort", cancel, { once: true });
@@ -96,6 +99,10 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         .map((item) => packagePath(item.File)),
     };
     const indexes = new Map(controls.parameters.map((parameter, index) => [parameter.id, index]));
+    const headParameters = (["ParamAngleX", "ParamAngleY", "ParamAngleZ"] as const).flatMap((id, axis) => {
+      const index = indexes.get(id);
+      return index === undefined ? [] : [{ id, axis, index, parameter: controls.parameters[index] }];
+    });
     const group = (name: string) =>
       (definition.Groups ?? [])
         .filter((item) => item.Target === "Parameter" && item.Name === name)
@@ -163,7 +170,7 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         reset(false);
         if (mode !== "edit") {
           model.animate(dt);
-          if (model.motionFinished()) motionEyes.clear();
+          if (model.motionFinished()) motionParameters.clear();
         }
         for (const [id, value] of Object.entries(current.parameters))
           sdkModel.setParameterValueByIndex(indexes.get(id)!, value);
@@ -182,13 +189,21 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
           }
         const target = controls.parameters.map((_, index) => sdkModel.getParameterValueByIndex(index));
         transition.sample(target, time).forEach((value, index) => sdkModel.setParameterValueByIndex(index, value));
+        const rotation = talkingHead.sample(dt, mode !== "edit" && !reducedMotion?.matches);
         if (mode !== "edit") {
+          const angles = [rotation.yaw, rotation.pitch, rotation.roll];
+          for (const { id, axis, index, parameter } of headParameters)
+            if (!motionParameters.has(id)) {
+              const scale = Math.min(1, (parameter.max - parameter.min) / 60);
+              const value = sdkModel.getParameterValueByIndex(index) + (angles[axis] * 180 * scale) / Math.PI;
+              sdkModel.setParameterValueByIndex(index, Math.max(parameter.min, Math.min(parameter.max, value)));
+            }
           if (time >= nextBlink && blinkStart < 0) blinkStart = time;
           if (blinkStart >= 0) {
             const elapsed = time - blinkStart;
             const openness = elapsed < 100 ? 1 - elapsed / 100 : elapsed < 150 ? 0 : Math.min(1, (elapsed - 150) / 150);
             for (const id of eyes)
-              if (!motionEyes.has(id)) {
+              if (!motionParameters.has(id)) {
                 const index = indexes.get(id)!;
                 sdkModel.setParameterValueByIndex(index, sdkModel.getParameterValueByIndex(index) * openness);
               }
@@ -239,13 +254,13 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         const next = parseState(value);
         validateControls(next, controls);
         let motion: SdkMotion | undefined;
-        let drivenEyes = new Set<string>();
+        let drivenParameters = new Set<string>();
         if (nextMode === "play" && next.motion) {
           const data = await assetBytes(next.motion, abort);
           const metadata = JSON.parse(new TextDecoder().decode(data)) as {
             Curves?: Array<{ Target: string; Id: string }>;
           };
-          drivenEyes = new Set(
+          drivenParameters = new Set(
             (metadata.Curves ?? []).filter((curve) => curve.Target === "Parameter").map((curve) => curve.Id),
           );
           abort.throwIfAborted();
@@ -268,8 +283,11 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         if (!animate) reset();
         current = structuredClone(next);
         mode = nextMode;
-        motionEyes = drivenEyes;
-        if (mode === "edit") mouth = 0;
+        motionParameters = drivenParameters;
+        if (mode === "edit") {
+          mouth = 0;
+          talkingHead.reset();
+        }
         if (!animate) {
           blinkStart = -1;
           nextBlink = now + 3000;
@@ -280,6 +298,9 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
       readState: () => structuredClone(current),
       setMouthOpen(value) {
         if (!disposed) mouth = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+      },
+      setSpeechLevel(value) {
+        if (!disposed) talkingHead.setLevel(value);
       },
       resize(width, height) {
         if (disposed) return;

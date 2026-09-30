@@ -11,6 +11,8 @@ import { MmdStandardMaterialProxy } from "babylon-mmd/esm/Runtime/mmdStandardMat
 
 import type { ApplyMode, AvatarMount, AvatarSession } from "../../contracts";
 import { ParameterTransition } from "../../parameterTransition";
+import { TalkingHeadMotion } from "../../talkingHeadMotion";
+import { createHeadPose } from "./headPose";
 import { createView } from "./view";
 import {
   blinkClosure,
@@ -113,8 +115,8 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
     container.addAllToScene();
     const root = container.meshes[0];
     if (!(root instanceof Mesh)) throw new Error("PMX has no root mesh");
-    runtime = new MmdRuntime(scene, null);
-    const model = runtime.createMmdModel(root, {
+    const modelRuntime = (runtime = new MmdRuntime(scene, null));
+    const model = modelRuntime.createMmdModel(root, {
       materialProxyConstructor: MmdStandardMaterialProxy,
       buildPhysics: false,
     });
@@ -133,6 +135,9 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
       ],
     };
     const bindings = detectBindings(controls.morphs);
+    const headPose = createHeadPose(model.runtimeBones, parsed.bones);
+    const talkingHead = new TalkingHeadMotion();
+    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
     let current = neutralState(bindings.mouthMorph, bindings.blinkMorph);
     const capabilities = {
       mouth: Boolean(current.mouthMorph),
@@ -157,8 +162,9 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
       view.update(current.camera, pixelWidth, pixelHeight);
     };
     resize(mount.element.clientWidth, mount.element.clientHeight);
-    // Register our pose sampler first; the MMD runtime then applies morphs and bones
-    // at the scene's before-animation stage, before Babylon draws this frame.
+    // Transient rotations are inputs to MMD, not edits to its final skinning matrices.
+    // Keep them through both solver stages (including after-physics bones), then
+    // restore the original local pose so neither snapshots nor later frames drift.
     scene.onBeforeAnimationsObservable.add(() => {
       if (disposed) return;
       try {
@@ -192,12 +198,26 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
               Math.max(model.morph.getMorphWeight(current.mouthMorph), smoothMouth),
             );
         }
+        headPose.apply(talkingHead.sample(dt, mode !== "edit" && !reducedMotion?.matches && !model.currentAnimation));
+        modelRuntime.beforePhysics(engine.getDeltaTime());
       } catch (error) {
+        headPose.restore();
         dispose();
         mount.reportError(error instanceof Error ? error : new Error(String(error)));
       }
     });
-    runtime.register(scene);
+    scene.onBeforeRenderObservable.add(() => {
+      if (disposed) return;
+      try {
+        modelRuntime.afterPhysics();
+      } catch (error) {
+        headPose.restore();
+        dispose();
+        mount.reportError(error instanceof Error ? error : new Error(String(error)));
+      } finally {
+        headPose.restore();
+      }
+    });
     engine.runRenderLoop(() => {
       if (!disposed) scene.render();
     });
@@ -218,12 +238,18 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         capabilities.mouth = Boolean(current.mouthMorph);
         capabilities.blink = Boolean(current.blinkMorph);
         mode = nextMode;
-        if (mode === "edit") smoothMouth = mouth = 0;
+        if (mode === "edit") {
+          smoothMouth = mouth = 0;
+          talkingHead.reset();
+        }
         hasApplied = true;
       },
       readState: () => structuredClone(current),
       setMouthOpen(value) {
         if (!disposed) mouth = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+      },
+      setSpeechLevel(value) {
+        if (!disposed) talkingHead.setLevel(value);
       },
       resize,
       dispose,
