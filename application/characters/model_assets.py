@@ -38,15 +38,15 @@ def import_model(use_case, body: dict) -> dict:
             current = use_case._character(name)
             if current.model_dump(mode="json") != expected:
                 raise ValueError("Character changed during model import; refresh and retry")
-            # Retain old states on explicit model replacement, as the design requires.
-            old = current.avatars.get(kind, ModelSprites())
-            bank = old.model_copy(deep=True)
-            bank.model_path = str(final / files.entry.name)
-            shutil.copytree(staged, final)
+            # Old files remain recoverable, but are not validated for this model.
+            # Publish no old states/tags until the user saves states for the new model.
+            bank = ModelSprites(model_path=str(final / files.entry.name))
             try:
+                shutil.copytree(staged, final)
                 use_case._state.character_manager.save_avatar_bank(name, kind, bank, activate=True)
             except Exception:
-                shutil.rmtree(final)
+                if final.exists():
+                    shutil.rmtree(final)
                 raise
     return use_case._after_reload(name)
 
@@ -72,8 +72,8 @@ def save_model_state(use_case, body: dict) -> dict:
         # New immutable file first; config persistence is the commit point.
         target = safe_child_path(model.parent, f"states/{uuid.uuid4().hex}.json")
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(json.dumps(state, ensure_ascii=False, allow_nan=False), encoding="utf-8")
         try:
+            target.write_text(json.dumps(state, ensure_ascii=False, allow_nan=False), encoding="utf-8")
             from core.media.asset_tags import numbered_tags, tag_contents
             tags = tag_contents(bank.emotion_tags, len(bank.sprites))
             sprite = Sprite(path=target) if index == -1 else bank.sprites[index].model_copy(update={"path": target})

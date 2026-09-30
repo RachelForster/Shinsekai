@@ -12,6 +12,7 @@ from typing import List
 import platform
 import subprocess
 import tempfile
+from copy import deepcopy
 
 # 定义项目的基础数据路径
 BASE_DATA_PATH = Path('./data')
@@ -156,7 +157,7 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                 'sprites': config.sprites,
                 'emotion_tags': config.emotion_tags,
                 'avatar_type': getattr(config, 'avatar_type', 'static') or 'static',
-                'avatars': getattr(config, 'avatars', None) or {},
+                'avatars': deepcopy(getattr(config, 'avatars', None) or {}),
                 'character_brief': getattr(config, 'character_brief', '') or '',
                 'character_setting': config.character_setting,
                 'speech_speed': getattr(config, 'speech_speed', 1.0),
@@ -241,7 +242,10 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
                     files.add(state_file)
                     files.update(adapter.state_files(model, state))
                     if sprite.get('voice_path'):
-                        voice = safe_existing_file_path(sprite['voice_path'], roots=[SPEECH_DIR / config.sprite_prefix, model.parent])
+                        voice = safe_existing_file_path(sprite['voice_path'], roots=[
+                            SPEECH_DIR / config.sprite_prefix, model.parent,
+                            source_root / 'avatar-voices' / kind,
+                        ])
                         relative_voice = Path('avatar-voices') / kind / voice.name
                         destination = temp_dir / 'sprites' / config.sprite_prefix / relative_voice
                         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -495,11 +499,12 @@ def import_character(input_path: str) -> list[CharacterConfig]:
                     continue
                 if not (source_sprite_dir / model_relative).is_file():
                     continue
-                bank['model_path'] = (dest_sprite_dir / model_relative).as_posix()
+                # Stored paths have one unambiguous base even with a relative SPRITE_DIR.
+                bank['model_path'] = (dest_sprite_dir / model_relative).resolve().as_posix()
                 for sprite in bank.get('sprites', []):
-                    sprite['path'] = (dest_sprite_dir / _safe_package_relpath(sprite['path'], 'avatar state')).as_posix()
+                    sprite['path'] = (dest_sprite_dir / _safe_package_relpath(sprite['path'], 'avatar state')).resolve().as_posix()
                     if sprite.get('voice_path'):
-                        sprite['voice_path'] = (dest_sprite_dir / _safe_package_relpath(sprite['voice_path'], 'avatar voice')).as_posix()
+                        sprite['voice_path'] = (dest_sprite_dir / _safe_package_relpath(sprite['voice_path'], 'avatar voice')).resolve().as_posix()
             imported_configs.append(CharacterConfig.parse_dic(char_data=char_data))
         
         # 将配置追加到 characters.yaml

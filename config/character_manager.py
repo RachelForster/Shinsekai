@@ -370,13 +370,26 @@ class CharacterManager:
         if not character:
             return f"找不到角色: {character_name}", [], ""
         
-        # 删除立绘目录
-        char_dir = os.path.join(UPLOAD_DIR, character.sprite_prefix)
-        if os.path.exists(char_dir):
-            shutil.rmtree(char_dir)
+        # Static assets share this root with independently managed model banks.
+        # Validate the root before removing children; preserve model/package voices.
+        from sdk.path_utils import safe_child_path
+        char_dir = safe_child_path(Path(UPLOAD_DIR), character.sprite_prefix)
+        char_voice_dir = safe_child_path(Path(VOICE_DIR), character.sprite_prefix)
+        if char_dir == Path(UPLOAD_DIR).resolve() or char_voice_dir == Path(VOICE_DIR).resolve():
+            raise PermissionError("Character asset directory must not be the shared root")
+        if char_dir.is_dir():
+            for child in char_dir.iterdir():
+                if child.name.lower() in {"avatars", "avatar-voices"}:
+                    continue
+                if child.is_dir() and not child.is_symlink():
+                    checked = safe_child_path(char_dir, child.name)
+                    shutil.rmtree(checked)
+                else:
+                    child.unlink()
+            if not any(char_dir.iterdir()):
+                char_dir.rmdir()
 
         # 删除语音目录
-        char_voice_dir = os.path.join(VOICE_DIR, character.sprite_prefix)
         if os.path.exists(char_voice_dir):
             shutil.rmtree(char_voice_dir)
         

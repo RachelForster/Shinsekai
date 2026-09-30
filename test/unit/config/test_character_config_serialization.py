@@ -7,6 +7,13 @@ from config.config_manager import ConfigManager
 from config.schema import Character, ModelSprites, Sprite
 
 
+def test_unloaded_character_config_cannot_report_a_successful_save():
+    manager = object.__new__(ConfigManager)
+    manager._config = None
+    with pytest.raises(RuntimeError, match="无法保存角色配置"):
+        manager.save_characters_config()
+
+
 @pytest.mark.parametrize("avatar_type", ["static", "l2d", "vrm"])
 def test_character_config_paths_round_trip_through_safe_yaml(tmp_path, avatar_type):
     state_path = tmp_path / "状态.json"

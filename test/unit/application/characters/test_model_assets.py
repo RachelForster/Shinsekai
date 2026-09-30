@@ -76,6 +76,31 @@ def test_bad_state_does_not_change_bank(harness):
     assert state.config_manager.get_character_by_name("Haru").avatars["l2d"].sprites == []
 
 
+def test_producer_transport_urls_read_imported_model_and_state(harness, monkeypatch):
+    from urllib.parse import parse_qs, urlsplit
+    from application.chat.ui_updates import StreamingUIUpdateManager
+    from frontend_bridge_core.transport.chat_session import ChatSessionTransport
+    from frontend_bridge_core.transport.ws_client import WSClientSink
+
+    state, use_case, entry = harness
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+    model = imported["avatars"]["l2d"]["model_path"]
+    saved = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="l2d", model_path=model,
+                    sprite_index=-1, path="", state={"parameters": {}, "expressions": [], "motion": ""}, tags="neutral")
+    sink = WSClientSink("ws://127.0.0.1:8788/ws?token=regression-test")
+    monkeypatch.setattr(sink, "_ensure_worker", lambda: None)
+    monkeypatch.setattr("application.chat.ui_updates.get_character_by_name", state.config_manager.get_character_by_name)
+    transport = ChatSessionTransport(stream_sink=sink)
+    StreamingUIUpdateManager(transport, resource_urls=transport.resource_urls).update_sprite("Haru", 0)
+    event = sink._peek_event()
+    for field, expected in (("modelUrl", model), ("url", saved["avatars"]["l2d"]["sprites"][0]["path"])):
+        url = urlsplit(event[field])
+        assert url.path == "/api/avatar/file"
+        query = parse_qs(url.query)
+        assert query["shinsekai_bridge_token"] == ["regression-test"]
+        assert model_file(state, query["model_path"][0], query["path"][0]) == Path(expected)
+
+
 def test_missing_import_dependency_preserves_configuration(harness):
     state, use_case, entry = harness
     (entry.parent / "texture.png").unlink()
@@ -84,16 +109,108 @@ def test_missing_import_dependency_preserves_configuration(harness):
     assert state.config_manager.get_character_by_name("Haru").avatars == {}
 
 
-def test_replacement_retains_old_states_without_breaking_new_model(harness):
+def test_replacement_excludes_old_states_but_preserves_files(harness):
     state, use_case, entry = harness
     first = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
     model = first["avatars"]["l2d"]["model_path"]
     saved = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="l2d", model_path=model,
                     sprite_index=-1, path="", state={"parameters": {}, "expressions": [], "motion": ""}, tags="old")
     replacement = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
-    assert replacement["avatars"]["l2d"]["sprites"] == saved["avatars"]["l2d"]["sprites"]
+    assert replacement["avatars"]["l2d"]["sprites"] == []
+    assert replacement["avatars"]["l2d"]["emotion_tags"] == ""
+    assert Path(saved["avatars"]["l2d"]["sprites"][0]["path"]).is_file()
+    assert Path(model).is_file()
     new_model = replacement["avatars"]["l2d"]["model_path"]
     assert model_file(state, new_model, "texture.png").is_file()
+    from config.character_assets import get_character_assets
+    active = get_character_assets(state.config_manager.get_character_by_name("Haru"))
+    assert active.sprites == []
+    assert active.emotion_tags == ""
+    fresh = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="l2d",
+                    model_path=new_model, sprite_index=-1, path="",
+                    state={"parameters": {}, "expressions": [], "motion": ""}, tags="new")
+    fresh_path = Path(fresh["avatars"]["l2d"]["sprites"][0]["path"])
+    assert model_file(state, new_model, fresh_path.relative_to(Path(new_model).parent).as_posix()) == fresh_path
+
+
+def test_static_cleanup_preserves_imported_models_and_saved_states(harness, monkeypatch):
+    state, use_case, entry = harness
+    first = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+    model = first["avatars"]["l2d"]["model_path"]
+    execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="l2d", model_path=model,
+            sprite_index=-1, path="", state={"parameters": {}, "expressions": [], "motion": ""}, tags="keep")
+    root = Path(state.project_root_dir)
+    monkeypatch.setattr("config.character_manager.UPLOAD_DIR", str(root / "data/sprite"))
+    monkeypatch.setattr("config.character_manager.VOICE_DIR", str(root / "data/speech"))
+    static = root / "data/sprite/haru/static.png"
+    static.touch()
+    packaged_voice = root / "data/sprite/haru/avatar-voices/l2d/smile.wav"
+    packaged_voice.parent.mkdir(parents=True)
+    packaged_voice.touch()
+    character = state.config_manager.get_character_by_name("Haru")
+    character.avatar_type = "static"
+    character.sprites = [{"path": str(static)}]
+    character.emotion_tags = "立绘 1：static\n"
+    banks = character.model_dump(mode="json")["avatars"]
+    state.character_manager.delete_all_sprites("Haru")
+    state.config_manager.reload()
+    character = state.config_manager.get_character_by_name("Haru")
+    assert not static.exists()
+    assert packaged_voice.is_file()
+    assert character.sprites == [] and character.emotion_tags == ""
+    assert character.model_dump(mode="json")["avatars"] == banks
+    character.avatar_type = "l2d"
+    assert model_file(state, model, "texture.png").is_file()
+    saved = Path(banks["l2d"]["sprites"][0]["path"])
+    assert model_file(state, model, saved.relative_to(Path(model).parent).as_posix()) == saved
+
+
+@pytest.mark.parametrize("operation", ["import", "replace", "append", "overwrite"])
+@pytest.mark.parametrize("failure", ["serialize", "flush", "replace"])
+def test_real_persistence_failure_rolls_back_files_and_bank(harness, monkeypatch, operation, failure):
+    """Exercise the real YAML commit, not a fake save method that already raises."""
+    import yaml
+    from config.config_manager import ConfigManager
+
+    state, use_case, entry = harness
+    manager = object.__new__(ConfigManager)
+    manager._config = state.config_manager.config
+    manager._CHARACTERS_CONFIG_PATH = Path(state.project_root_dir) / "characters.yaml"
+    def reload():
+        manager._config.characters = [Character.model_validate(item) for item in
+                                     yaml.safe_load(manager._CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))]
+    monkeypatch.setattr(manager, "reload", reload)
+    state.config_manager = manager
+    state.character_manager._config_manager = manager
+    manager.save_characters_config()
+    if operation != "import":
+        imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+        model = imported["avatars"]["l2d"]["model_path"]
+        saved = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="l2d", model_path=model,
+                        sprite_index=-1, path="", state={"parameters": {}, "expressions": [], "motion": ""}, tags="old")
+    original = manager.get_character_by_name("Haru").model_dump(mode="json")
+    disk = manager._CHARACTERS_CONFIG_PATH.read_bytes()
+    root = Path(state.project_root_dir)
+    files = {p.relative_to(root) for p in root.rglob("*") if p.is_file()}
+    def fail(*args, **kwargs):
+        if failure == "serialize":
+            args[1].write("partial YAML")
+        raise OSError("simulated disk write failure")
+    target = {"serialize": "yaml.dump", "flush": "os.fsync", "replace": "os.replace"}[failure]
+    monkeypatch.setattr(f"config.config_manager.{target}", fail)
+    with pytest.raises(OSError, match="simulated disk write failure"):
+        if operation in {"import", "replace"}:
+            execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+        else:
+            execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="l2d", model_path=model,
+                    sprite_index=0 if operation == "overwrite" else -1,
+                    path=saved["avatars"]["l2d"]["sprites"][0]["path"] if operation == "overwrite" else "",
+                    state={"parameters": {"ParamAngleX": 2}, "expressions": [], "motion": ""}, tags="new")
+    assert manager.get_character_by_name("Haru").model_dump(mode="json") == original
+    assert manager._CHARACTERS_CONFIG_PATH.read_bytes() == disk
+    assert {p.relative_to(root) for p in root.rglob("*") if p.is_file()} == files
+    reload()
+    assert manager.get_character_by_name("Haru").model_dump(mode="json") == original
 
 
 def test_import_activates_model_without_replacing_static_or_other_banks(harness):

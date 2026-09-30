@@ -1,12 +1,14 @@
 """Comprehensive tests for character export/import: sprite paths, voice files, fields."""
 
 import contextlib
+from copy import deepcopy
 import json
 import os
 import shutil
 import tempfile
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -104,6 +106,67 @@ BASIC_CHAR = {
 
 
 # ── Import tests ────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("relative_root", [True, False])
+def test_bundled_avatar_import_serve_and_reexport(tmp_path, monkeypatch, relative_root):
+    from application.characters.model_files import model_file
+    from core.media.avatar.registry import configure_builtin_formats
+
+    configure_builtin_formats()
+    source = tmp_path / "source"
+    source.mkdir()
+    monkeypatch.chdir(source)
+    with _mock_dirs(source):
+        package_dir = file_util.SPRITE_DIR / "alice/avatars/l2d/original"
+        package_dir.mkdir(parents=True)
+        model = package_dir / "sample.model3.json"
+        model.write_text(json.dumps({"Version": 3, "FileReferences": {"Moc": "sample.moc3", "Textures": ["texture.png"]}}))
+        (package_dir / "sample.moc3").write_bytes(b"moc")
+        (package_dir / "texture.png").write_bytes(b"texture")
+        state_file = package_dir / "smile.json"
+        state_file.write_text(json.dumps({"parameters": {}, "expressions": [], "motion": ""}))
+        voice = package_dir / "smile.wav"
+        voice.write_bytes(b"voice")
+        config = CharacterConfig.parse_dic(dict(BASIC_CHAR, sprites=[], avatar_type="l2d", avatars={
+            "l2d": {"model_path": str(model), "sprites": [{"path": str(state_file), "voice_path": str(voice)}],
+                    "emotion_tags": "立绘 1：smile\n"},
+        }))
+        expected = deepcopy(config.avatars)
+        output = tmp_path / "source.char"
+        file_util.export_character([config], str(output), open_folder=False)
+        assert config.avatars == expected
+
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    monkeypatch.chdir(destination)
+    with _mock_dirs(destination):
+        if relative_root:
+            monkeypatch.setattr(file_util, "SPRITE_DIR", Path("data/sprite"))
+        imported = file_util.import_character(str(output))[0]
+        bank = imported.avatars["l2d"]
+        for path in (bank["model_path"], bank["sprites"][0]["path"], bank["sprites"][0]["voice_path"]):
+            assert Path(path).is_absolute() and Path(path).is_file()
+        persisted = yaml.safe_load(file_util.CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))
+        state = SimpleNamespace(project_root_dir=str(destination),
+                                config_manager=SimpleNamespace(config=SimpleNamespace(
+                                    characters=[Character.model_validate(persisted[0])])))
+        # Serving must use the destination project, not whichever cwd the caller has.
+        monkeypatch.chdir(tmp_path)
+        assert model_file(state, bank["model_path"], "sample.model3.json").read_bytes() == model.read_bytes()
+        assert model_file(state, bank["model_path"], "smile.json").read_bytes() == state_file.read_bytes()
+        monkeypatch.chdir(destination)
+        reexport = tmp_path / "reexport.char"
+        expected = deepcopy(imported.avatars)
+        file_util.export_character([imported], str(reexport), open_folder=False)
+        assert imported.avatars == expected
+        with zipfile.ZipFile(reexport) as package:
+            exported = yaml.safe_load(package.read("character.yaml"))[0]
+            exported_bank = exported["avatars"]["l2d"]
+            for path in (exported_bank["model_path"], exported_bank["sprites"][0]["path"],
+                         exported_bank["sprites"][0]["voice_path"]):
+                assert not Path(path).is_absolute()
+                assert f"sprites/alice/{path}" in package.namelist()
+
 
 @pytest.mark.parametrize("typed", [False, True])
 def test_avatar_banks_survive_char_export_import(tmp_path, monkeypatch, typed):

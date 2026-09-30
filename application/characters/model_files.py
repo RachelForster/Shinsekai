@@ -29,8 +29,7 @@ def model_file(state, model_path: str, relative_path: str) -> Path:
                     allowed.add(saved)
                     allowed.update(adapter.state_files(model, parsed))
                 except (ValueError, PermissionError, FileNotFoundError, KeyError):
-                    # Replacement retains old, now-invalid states without preventing
-                    # the new model's own declared dependencies from being loaded.
+                    # Invalid legacy entries must not block declared model dependencies.
                     continue
             if target not in allowed:
                 raise PermissionError("File is not a configured model dependency")
