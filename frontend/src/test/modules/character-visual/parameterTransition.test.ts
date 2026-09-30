@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ParameterTransition } from "../../../entities/character-visual/adapters/l2d/parameterTransition";
+import { ParameterTransition } from "../../../modules/character-visual/adapters/l2d/parameterTransition";
 
 describe("parameter transition", () => {
   it("uses bounded smoothstep and reaches the exact target", () => {

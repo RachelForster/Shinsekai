@@ -1,7 +1,5 @@
 import type { ComponentType } from "react";
 
-import type { ModelSprites } from "../config/types";
-
 /** 状态应用模式：play 播放动作、restore 恢复快照、edit 编辑预览。 */
 export type ApplyMode = "play" | "restore" | "edit";
 
@@ -51,7 +49,6 @@ export interface AvatarFormat<S, C> {
   /** Entry-file filters for the shared picker; omitted formats allow all files. */
   modelExtensions?: string[];
   capabilities: AvatarCapabilities;
-  createEmpty(): ModelSprites;
   load(): Promise<AvatarModule<S, C>>;
 }
 

@@ -23,7 +23,7 @@ PR A 仍需接通角色卡类型选择及保存 / .char 往返、提示词与语
 因此新增一个格式（例如 `gltf`）的完整清单是：
 
 1. 后端 `core/media/avatar/gltf.py`：实现 `ModelAssetAdapter`，注册一行。
-2. 前端 `entities/character-visual/adapters/gltf/`：实现 `AvatarModule` 与 Editor，导出轻量 `format.ts` 描述符，由应用启动入口统一注册。
+2. 前端 `modules/character-visual/adapters/gltf/`：实现 `AvatarModule` 与 Editor，导出轻量 `format.ts` 描述符，由应用启动入口统一注册。
 3. 各自 fixtures / tests。
 
 **不修改**：Character schema、`get_character_assets`、编号 / 标签 / 语音查找、舞台事件、命令路由、LLM schema、共享画廊 / 标签 / 语音 UI。
@@ -201,18 +201,19 @@ export interface AvatarFormat<S, C> {
   label: string;
   modelExtensions?: string[];          // 共享文件选择器的入口后缀过滤，省略则不过滤
   capabilities: AvatarCapabilities;
-  createEmpty(): ModelSprites;          // 未配置时的默认值工厂
   load(): Promise<AvatarModule<S, C>>;  // 按需加载渲染与编辑代码
 }
 ```
 
-注册表按规范化 id 存描述符，拒绝空值、static 与同名覆盖。因为 S/C 因格式而异，注册表内部擦除泛型；格式模块负责从 unknown 校验成自己的 S，共享层不解释状态。实现见 [前端注册表](../frontend/src/entities/character-visual/registry.ts)。
+注册表按规范化 id 存描述符，拒绝空值、static 与同名覆盖。因为 S/C 因格式而异，注册表内部擦除泛型；格式模块负责从 unknown 校验成自己的 S，共享层不解释状态。实现见 [前端注册表](../frontend/src/modules/character-visual/registry.ts)。
+
+领域层与渲染模块独立：`entities/character/assets.ts` 创建和选择通用资源银行，`entities/character/modelStateRepository.ts` 负责状态地址与读取。`AvatarFormat` 不再提供 `createEmpty()`，渲染契约不依赖 `Character` / `ModelSprites`；格式只提供元数据与模块加载。业务页面通过 `modules/character-visual/index.ts` 消费公开渲染接口，由 `app` 注册具体实现。公共模块不反向依赖业务层，也不直接引入任何具体 SDK；各格式只依赖公共契约和自己的实现。
 
 应用启动时，[avatarFormats.ts](../frontend/src/app/avatarFormats.ts) 收集 `adapters/*/format.ts` 的 default export 并统一注册。format.ts 只含轻量元数据，类型使用 type import，load() 内使用动态 import 加载 SDK / renderer / Editor。注册本身不触发 load；并发 load 共用 Promise，失败清除缓存，后续创建可以重试。这个入口只包含随当前前端构建交付的格式；第三方 Python 插件若没有对应前端描述符，应显示不可用。运行时分发第三方 JS 不属于本 PR 的插件承诺。
 
 L2D 模块提供 L2DState、参数 / 动作编辑描述与自己的 Editor；VRM 模块提供 VrmState、表情 / 人形骨骼编辑描述与自己的 Editor；未来格式同理。共享 ModelStateEditor 只管理“当前编号、草稿、保存、标签”，等待 load() 后通过 `module.Editor` 展示格式专属控件。编辑描述 C 不强求一致，避免为了统一滑条把各模型的能力都压成一种格式。
 
-共享编辑器与格式 Editor 复用已有 shared/ui 控件和 i18n；文件选择复用 FilePicker 的桌面原生 / 浏览器降级路径。入口后缀从描述符的 modelExtensions 读取，不在共享层硬编码 l2d / vrm；后缀过滤只辅助选择，不代替后端 adapter 校验。角色导入 / 保存经 character repository，模型 URL 经 files repository，状态读取经 character-visual repository，领域类型沿用 entities/config/types 的出口。
+共享编辑器与格式 Editor 复用已有 shared/ui 控件和 i18n；文件选择复用 FilePicker 的桌面原生 / 浏览器降级路径。入口后缀从描述符的 modelExtensions 读取，不在共享层硬编码 l2d / vrm；后缀过滤只辅助选择，不代替后端 adapter 校验。角色导入 / 保存经 character repository，模型 URL 经 files repository，状态读取经 character/modelStateRepository，领域类型沿用 entities/config/types 的出口。
 
 接口行为必须一致：
 
@@ -345,10 +346,10 @@ AI 流程：格式模块根据真实 controls 构造有界候选 → 现有编�
 | 维护范围 | 文件 / 目录 | 稳定边界 |
 |---|---|---|
 | 共享基础 | config/schema.py、config/character_assets.py、现有 character manager / use case / routes、sprite resolver / catalogs、原舞台事件与音频 | 角色结构（两个新字段）、取资源入口、平台命令、事件字段、能力标志和语音输入 |
-| 共享前端 | entities/character-visual/contracts.ts、registry.ts、CharacterVisual.tsx、features/character-editor/ModelStateEditor.tsx、shared/platform/types.ts | AvatarFormat / Session 与平台类型；static 保留原 img |
+| 共享前端 | modules/character-visual/contracts.ts、registry.ts、CharacterVisual.tsx、features/character-editor/ModelStateEditor.tsx、shared/platform/types.ts | AvatarFormat / Session 与平台类型；static 保留原 img |
 | 共享后端 | sdk/adapters/avatar.py、core/media/avatar/registry.py、application/characters/model_assets.py | ModelAssetAdapter、能力标志、导入 / 状态提交、文件安全与配置更新 |
-| 每个格式（如 L2D） | core/media/avatar/l2d.py、entities/character-visual/adapters/l2d/、各自 fixtures / tests | 该格式依赖、状态解析、加载与编辑、嘴眼和资源释放 |
-| 每个格式（如 VRM） | core/media/avatar/vrm.py、entities/character-visual/adapters/vrm/、各自 fixtures / tests | 该格式依赖、状态解析、加载与编辑、嘴眼和资源释放 |
+| 每个格式（如 L2D） | core/media/avatar/l2d.py、modules/character-visual/adapters/l2d/、各自 fixtures / tests | 该格式依赖、状态解析、加载与编辑、嘴眼和资源释放 |
+| 每个格式（如 VRM） | core/media/avatar/vrm.py、modules/character-visual/adapters/vrm/、各自 fixtures / tests | 该格式依赖、状态解析、加载与编辑、嘴眼和资源释放 |
 | AI 整合 | application/characters/generate_model_states.py、application/media/auto_annotation.py、编辑器批量操作 | 接受格式候选 / 采样结果，复用保存和标签流程 |
 
 后端公共契约位于 sdk/adapters/avatar.py，沿用现有插件能力注册；core 只持有运行时注册快照。前端 shared/platform 不反向依赖具体 adapter：平台层只看到 `avatar_type: string` 和 `state: unknown`，具体状态类型由格式模块在自己的目录导出；临时 C 类型只由格式模块导出。Python adapter 的状态解析模型留在格式目录，config 不导入 core。
@@ -362,7 +363,7 @@ AI 流程：格式模块根据真实 controls 构造有界候选 → 现有编�
 ```
 新增格式 X：
   后端  core/media/avatar/x.py       实现 ModelAssetAdapter（format_id、capabilities、inspect/parse_state/state_files）
-  前端  entities/character-visual/adapters/x/  实现 AvatarModule<S,C> 与 Editor（含自己的 S/C 类型、fixtures）
+  前端  modules/character-visual/adapters/x/  实现 AvatarModule<S,C> 与 Editor（含自己的 S/C 类型、fixtures）
   注册  后端 registry.register_adapter(...) 一行；前端导出 adapters/x/format.ts（应用启动入口自动注册）
   测试  双方 fixtures / tests（接受与拒绝边界、资源释放、.char 往返）
   不改  Character schema、get_character_assets、编号/标签/语音、事件、命令、LLM、共享 UI

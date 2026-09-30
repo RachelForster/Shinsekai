@@ -1,13 +1,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { CharacterVisual, type CharacterVisualProps } from "../../../entities/character-visual/CharacterVisual";
+import { CharacterVisual, type CharacterVisualProps } from "../../../modules/character-visual/CharacterVisual";
 import type {
   AvatarCapabilities,
   AvatarSession,
   CharacterVisualAsset,
-} from "../../../entities/character-visual/contracts";
-import { clearRegisteredAvatarFormats, registerAvatarFormat } from "../../../entities/character-visual/registry";
+} from "../../../modules/character-visual/contracts";
+import { clearRegisteredAvatarFormats, registerAvatarFormat } from "../../../modules/character-visual/registry";
 import { SpriteLayer } from "../../../features/chat-stage/components/StageLayers";
 import { chatStageReducer, emptyChatState } from "../../../features/chat-stage/chatState";
 
@@ -43,7 +43,6 @@ function register(create = vi.fn().mockResolvedValue(session())) {
     id: "demo",
     label: "Demo",
     capabilities,
-    createEmpty: () => ({ model_path: "", sprites: [], emotion_tags: "" }),
     load: async () => ({ create, Editor: () => null }),
   });
   return create;

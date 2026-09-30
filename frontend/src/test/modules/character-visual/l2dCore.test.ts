@@ -14,14 +14,14 @@ const script = () => document.querySelector<HTMLScriptElement>('script[src="/liv
 describe("licensed local Core loading", () => {
   it("uses an existing global without creating a script", async () => {
     vi.stubGlobal("Live2DCubismCore", {});
-    const { hasCore, loadCore } = await import("../../../entities/character-visual/adapters/l2d/core");
+    const { hasCore, loadCore } = await import("../../../modules/character-visual/adapters/l2d/core");
     await loadCore(new AbortController().signal);
     expect(hasCore()).toBe(true);
     expect(script()).toBeNull();
   });
 
   it("shares a pending local load and validates the global", async () => {
-    const { loadCore } = await import("../../../entities/character-visual/adapters/l2d/core");
+    const { loadCore } = await import("../../../modules/character-visual/adapters/l2d/core");
     const signal = new AbortController().signal;
     const first = loadCore(signal),
       second = loadCore(signal);
@@ -32,7 +32,7 @@ describe("licensed local Core loading", () => {
   });
 
   it.each(["error", "load", "timeout"])("reports and cleans up failed loads: %s", async (failure) => {
-    const { loadCore } = await import("../../../entities/character-visual/adapters/l2d/core");
+    const { loadCore } = await import("../../../modules/character-visual/adapters/l2d/core");
     const loading = loadCore(new AbortController().signal);
     const rejected = expect(loading).rejects.toThrow("Core is missing");
     if (failure === "timeout") await vi.advanceTimersByTimeAsync(15000);
@@ -47,7 +47,7 @@ describe("licensed local Core loading", () => {
   });
 
   it("honours cancellation before and after a shared load", async () => {
-    const { loadCore } = await import("../../../entities/character-visual/adapters/l2d/core");
+    const { loadCore } = await import("../../../modules/character-visual/adapters/l2d/core");
     const abort = new AbortController();
     abort.abort();
     await expect(loadCore(abort.signal)).rejects.toMatchObject({ name: "AbortError" });

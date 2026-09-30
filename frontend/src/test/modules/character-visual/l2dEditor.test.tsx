@@ -1,9 +1,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { Editor } from "../../../entities/character-visual/adapters/l2d/Editor";
-import { neutralState, type L2DControls, type L2DState } from "../../../entities/character-visual/adapters/l2d/state";
-import type { AvatarSession } from "../../../entities/character-visual/contracts";
+import { Editor } from "../../../modules/character-visual/adapters/l2d/Editor";
+import { neutralState, type L2DControls, type L2DState } from "../../../modules/character-visual/adapters/l2d/state";
+import type { AvatarSession } from "../../../modules/character-visual/contracts";
 import { I18nProvider } from "../../../shared/i18n";
 
 const session: AvatarSession<L2DState, L2DControls> = {

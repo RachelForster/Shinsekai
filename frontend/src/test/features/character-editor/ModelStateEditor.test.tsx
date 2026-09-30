@@ -3,9 +3,9 @@ import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Character } from "../../../entities/config/types";
-import type { AvatarSession } from "../../../entities/character-visual/contracts";
-import l2dFormat from "../../../entities/character-visual/adapters/l2d/format";
-import { clearRegisteredAvatarFormats, registerAvatarFormat } from "../../../entities/character-visual/registry";
+import type { AvatarSession } from "../../../modules/character-visual/contracts";
+import l2dFormat from "../../../modules/character-visual/adapters/l2d/format";
+import { clearRegisteredAvatarFormats, registerAvatarFormat } from "../../../modules/character-visual/registry";
 import { ModelStateEditor } from "../../../features/character-editor/ModelStateEditor";
 import { I18nProvider } from "../../../shared/i18n";
 import { sampleConfig } from "../../../shared/platform/sampleData";
@@ -110,6 +110,70 @@ afterEach(() => {
 });
 
 describe("ModelStateEditor shared controls and repositories", () => {
+  it("selects, imports and edits an opaque format without any Live2D registration", async () => {
+    clearRegisteredAvatarFormats();
+    const load = vi.fn(async () => ({
+      create: async () => {
+        let value: unknown = { pose: [0] };
+        return {
+          capabilities: { mouth: false, blink: false, motion: false, sampling: "none" as const },
+          controls: {},
+          apply: async (next: unknown) => {
+            value = next;
+          },
+          readState: () => value,
+          resize: () => {},
+          setMouthOpen: () => {},
+          dispose: () => {},
+        };
+      },
+      Editor: ({ onChange }: { onChange: (state: unknown) => void }) => (
+        <button onClick={() => onChange({ pose: [1, 2, 3] })}>Change demo pose</button>
+      ),
+    }));
+    registerAvatarFormat({
+      id: "demo",
+      label: "Demo",
+      load,
+      capabilities: { mouth: false, blink: false, motion: false, sampling: "none" },
+    });
+    const draft = { ...character, avatar_type: "static", avatars: {} };
+    const imported = {
+      ...draft,
+      avatar_type: "demo",
+      avatars: { demo: { model_path: "/models/test.demo", sprites: [], emotion_tags: "" } },
+    };
+    importModel.mockResolvedValue(imported);
+    saveModelState.mockResolvedValue(imported);
+    const { onChange } = view(draft);
+    fireEvent.click(screen.getByRole("combobox", { name: "Avatar format" }));
+    fireEvent.click(screen.getByRole("option", { name: "Demo" }));
+    expect(onChange).toHaveBeenCalledWith({
+      ...draft,
+      avatar_type: "demo",
+      avatars: { demo: { model_path: "", sprites: [], emotion_tags: "" } },
+    });
+    expect(load).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Model entry" }), { target: { value: "/source/test.demo" } });
+    fireEvent.click(screen.getByRole("button", { name: "Import model" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "New state" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "New state" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Change demo pose" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save state" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save state" }));
+    await waitFor(() =>
+      expect(saveModelState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          avatar_type: "demo",
+          model_path: "/models/test.demo",
+          state: { pose: [1, 2, 3] },
+          sprite_index: -1,
+        }),
+      ),
+    );
+    expect(load).toHaveBeenCalledOnce();
+  });
+
   it("uses the shared dropdown and preserves other banks when changing format", () => {
     const draft = {
       ...character,
@@ -124,7 +188,7 @@ describe("ModelStateEditor shared controls and repositories", () => {
     expect(onChange).toHaveBeenCalledWith({
       ...draft,
       avatar_type: "l2d",
-      avatars: { ...draft.avatars, l2d: l2dFormat.createEmpty() },
+      avatars: { ...draft.avatars, l2d: { model_path: "", sprites: [], emotion_tags: "" } },
     });
   });
 

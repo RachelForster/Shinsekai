@@ -15,7 +15,7 @@ import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatOption, ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
-import { CharacterVisual } from "../../../entities/character-visual/CharacterVisual";
+import { CharacterVisual } from "../../../modules/character-visual";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import type { ChatStageEffectImage } from "../state/types";

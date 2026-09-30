@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createSdkLoader } from "../../../entities/character-visual/adapters/l2d/sdk";
+import { createSdkLoader } from "../../../modules/character-visual/adapters/l2d/sdk";
 
 const core = vi.hoisted(() => vi.fn(async (signal: AbortSignal) => signal.throwIfAborted()));
-vi.mock("../../../entities/character-visual/adapters/l2d/core", () => ({ loadCore: core }));
+vi.mock("../../../modules/character-visual/adapters/l2d/core", () => ({ loadCore: core }));
 
 const runtime = { SDK_VERSION: "5-r.4", initialize() {}, createModel() {}, createMatrix() {}, releaseContext() {} };
 beforeEach(() => vi.clearAllMocks());

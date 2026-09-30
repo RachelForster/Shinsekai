@@ -7,7 +7,7 @@ import { currentChatRendererId } from "../../../shared/platform/chatRenderer";
 import { stageAssetUrl } from "../chatStageUtils";
 import type { ChatAudioCommand } from "../state/types";
 import { SoundPlayer, type VoicePlaybackSignal } from "./soundPlayer";
-import { routeAvatarVoice } from "../../../entities/character-visual/voiceRoute";
+import { routeAvatarVoice } from "../../../modules/character-visual";
 
 export function ChatSoundPlayer({
   bgmPath,

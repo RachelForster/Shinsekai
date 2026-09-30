@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { create } from "../../../entities/character-visual/adapters/l2d/module";
-import type { AvatarSession } from "../../../entities/character-visual/contracts";
-import type { L2DState, L2DControls } from "../../../entities/character-visual/adapters/l2d/state";
-import { neutralState } from "../../../entities/character-visual/adapters/l2d/state";
-import type { CubismSdk, SdkModel } from "../../../entities/character-visual/adapters/l2d/sdk";
+import { create } from "../../../modules/character-visual/adapters/l2d/module";
+import type { AvatarSession } from "../../../modules/character-visual/contracts";
+import type { L2DState, L2DControls } from "../../../modules/character-visual/adapters/l2d/state";
+import { neutralState } from "../../../modules/character-visual/adapters/l2d/state";
+import type { CubismSdk, SdkModel } from "../../../modules/character-visual/adapters/l2d/sdk";
 
 const loadSdk = vi.hoisted(() => vi.fn());
-vi.mock("../../../entities/character-visual/adapters/l2d/sdk", () => ({ loadSdk }));
+vi.mock("../../../modules/character-visual/adapters/l2d/sdk", () => ({ loadSdk }));
 
 const ids = ["ParamAngleX", "ParamMouthOpenY", "ParamEyeLOpen", "ParamMouthForm"];
 const defaults = [0, 0, 1, 0.5];

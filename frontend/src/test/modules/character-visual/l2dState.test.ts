@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fixtures from "../../../../../test/fixtures/avatar/l2d_states.json";
-import { parseState, validateControls, packagePath } from "../../../entities/character-visual/adapters/l2d/state";
+import { parseState, validateControls, packagePath } from "../../../modules/character-visual/adapters/l2d/state";
 
 describe("L2D state contract", () => {
   it.each(fixtures.valid)("accepts shared fixture %#", (value) => expect(parseState(value)).toEqual(value));

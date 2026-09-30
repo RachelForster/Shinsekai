@@ -1,6 +1,6 @@
 import { it, expect, vi } from "vitest";
-import { bindAvatarVoice, routeAvatarVoice } from "../../../entities/character-visual/voiceRoute";
-import type { AvatarSession } from "../../../entities/character-visual/contracts";
+import { bindAvatarVoice, routeAvatarVoice } from "../../../modules/character-visual/voiceRoute";
+import type { AvatarSession } from "../../../modules/character-visual/contracts";
 
 it("routes by the queued voice's character and only actual mouth capability", () => {
   const a = { capabilities: { mouth: true }, setMouthOpen: vi.fn() } as unknown as AvatarSession<unknown, unknown>;

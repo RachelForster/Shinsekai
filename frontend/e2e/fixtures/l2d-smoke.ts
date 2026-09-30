@@ -1,5 +1,5 @@
-import { create } from "../../src/entities/character-visual/adapters/l2d/module";
-import { neutralState } from "../../src/entities/character-visual/adapters/l2d/state";
+import { create } from "../../src/modules/character-visual/adapters/l2d/module";
+import { neutralState } from "../../src/modules/character-visual/adapters/l2d/state";
 
 const abort = new AbortController();
 const session = await create(

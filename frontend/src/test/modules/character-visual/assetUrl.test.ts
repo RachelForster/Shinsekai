@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avatarAssetUrl } from "../../../entities/character-visual/assetUrl";
+import { avatarAssetUrl } from "../../../modules/character-visual/assetUrl";
 
 describe("avatarAssetUrl", () => {
   it("retains bridge authentication while resolving a model dependency", () => {

@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { Character } from "../../entities/config/types";
-import { characterAvatarType, getCharacterAssets } from "../../entities/character/assets";
+import { characterAvatarType, createEmptyCharacterAssets, getCharacterAssets } from "../../entities/character/assets";
 import { importCharacterModel } from "../../entities/character/repository";
 import { modelFileUrl } from "../../entities/files/repository";
-import { registeredAvatarFormats, avatarFormat } from "../../entities/character-visual/registry";
-import { CharacterVisual } from "../../entities/character-visual/CharacterVisual";
-import { avatarStateUrl } from "../../entities/character-visual/repository";
+import { registeredAvatarFormats, avatarFormat, CharacterVisual } from "../../modules/character-visual";
+import { avatarStateUrl } from "../../entities/character/modelStateRepository";
 import { tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
 import { AsyncButton, Button, EmptyState, FilePicker, ImageAssetGallery, PathDisplay, Select } from "../../shared/ui";
@@ -85,7 +84,7 @@ export function ModelStateEditor({
                   avatars: {
                     ...character.avatars,
                     ...(avatar_type !== "static" && !character.avatars[avatar_type]
-                      ? { [avatar_type]: avatarFormat(avatar_type)!.createEmpty() }
+                      ? { [avatar_type]: createEmptyCharacterAssets() }
                       : {}),
                   },
                 });

@@ -6,7 +6,6 @@ const format: AvatarFormat<L2DState, L2DControls> = {
   label: "Live2D Cubism",
   modelExtensions: [".model3.json"],
   capabilities: { mouth: true, blink: true, motion: true, sampling: "none" },
-  createEmpty: () => ({ model_path: "", sprites: [], emotion_tags: "" }),
   load: () => import("./module"),
 };
 export default format;

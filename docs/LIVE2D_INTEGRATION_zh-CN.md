@@ -26,7 +26,7 @@ pnpm prepare:l2d --sdk-dir ../.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4 --accept-sdk
 
 状态格式由 L2D 模块解释：
 
-角色编辑器复用 `shared/ui` 的 `Select`、`FilePicker`、`TextInput`、`Button` / `AsyncButton` 和 `Switch`，沿用角色编辑页的 section / field-row 布局及中英日 i18n。Live2D 描述符声明 `.model3.json` 入口过滤，文件选择沿用桌面原生对话框与浏览器降级机制，并保留手输路径。角色导入 / 保存走既有 character repository，模型 URL 和不透明状态读取分别归 files / character-visual repository；格式专属 Editor 与状态类型仍留在设计指定的 adapter 目录。
+角色编辑器复用 `shared/ui` 的 `Select`、`FilePicker`、`TextInput`、`Button` / `AsyncButton` 和 `Switch`，沿用角色编辑页的 section / field-row 布局及中英日 i18n。Live2D 描述符声明 `.model3.json` 入口过滤，文件选择沿用桌面原生对话框与浏览器降级机制，并保留手输路径。角色导入 / 保存走既有 character repository，模型 URL 和不透明状态读取分别归 files / character/modelStateRepository；格式专属 Editor 与状态类型仍留在设计指定的 adapter 目录。
 
 模型导入成功时将该类型与资源银行一并持久化，失败同时回滚，不再因刷新返回静态立绘。默认查看区复用 `ImageAssetGallery` 的编号 / 标签卡片、既有 inspector 布局与 `CharacterVisual` 的真实模型预览；卡片不伪造动态缩略图。点击“新建状态”（或已有条目的“编辑状态”）才挂载临时编辑实例，复用 `Dialog`，桌面左侧滚动参数、右侧固定模型预览，窄屏改为上下排列。只有保存成功才提交并选中对应条目；取消释放实例、不保存草稿，保存失败保留草稿供重试。
 
@@ -38,6 +38,9 @@ pnpm prepare:l2d --sdk-dir ../.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4 --accept-sdk
 
 ## 格式扩展与共享边界
 
+- 前端渲染已独立到 `modules/character-visual`：契约、注册表、公共宿主与格式 adapter 不依赖角色实体或业务页面；业务消费者经 `index.ts` 使用渲染 API，`app/avatarFormats.ts` 统一发现格式。`entities/character` 只承担资源银行规则与状态 repository，默认资源银行不再由格式描述符创建。
+- 前端 architecture 测试禁止实体/共享层依赖渲染、渲染反向依赖业务层、公共代码直连具体格式、格式间交叉依赖及描述符提前加载 SDK；移除 L2D 注册后，独立 `demo` 格式仍可使用通用编辑器完成选择、导入、新建及保存不透明状态。
+- 该分层调整已通过 434 项相关前端回归、类型检查和生产构建；新目录下真实 Haru 冒烟测试保持连续中间姿态、采样帧无空白、资源重载 0 次及销毁后 canvas 为 0。不修改后端协议、角色配置结构或状态文件格式。
 - `config.character_assets.get_character_assets(character)` 默认读取当前形象银行；静态图片保留原存储结构。初始资源选择、对话资源解析均复用此入口。识别旧启动路径时可遍历所有银行，但非当前银行的路径只用于判断失效，不能作为当前状态下标使用。
 - `application.chat.character_visual.resolve_character_visual` 是舞台资源投影入口。初始快照与实时事件共用它；事件累计出的重连快照保留同一组形象字段。共享层只处理模型入口和状态引用，不解释具体格式的状态内容。
 - `application.media.resource_urls.ResourceUrls` 是独立于事件发送的资源地址接口，通过运行时组装注入展示层。`BridgeResourceUrls` 统一实现鉴权、普通媒体地址及模型目录内的资源地址；HTTP bridge 和 WebSocket producer 复用同一实现。传输类原有 URL 方法仅作兼容委托。
