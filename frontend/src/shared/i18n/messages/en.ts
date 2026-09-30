@@ -1,6 +1,9 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "story.library.delete": "Delete story version",
+  "story.library.deleteConfirm":
+    "Delete version {version} of “{title}” and all its conversations and saves? Other versions will be kept. This cannot be undone.",
   "story.editor.back": "Back",
   "story.canvas.title": "Node canvas",
   "story.canvas.fit": "Fit all nodes (F)",

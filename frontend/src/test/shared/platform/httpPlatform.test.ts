@@ -23,6 +23,18 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("deletes the selected story version by its full path", async () => {
+    const fetchMock = vi.fn(() => mockJsonResponse({ ok: true, deletedConversations: 2 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await createHttpPlatform("http://127.0.0.1:8787").story.delete("data/stories/旧校舍/edited.json");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/story/library/delete",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ storyPath: "data/stories/旧校舍/edited.json" }),
+      }),
+    );
+  });
   it("uses separate read, save and background suggestion endpoints for story editing", async () => {
     const doc = {
       storyPath: "story.json",

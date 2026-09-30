@@ -890,6 +890,12 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return waitForTask(apiBase, task);
       },
       list: () => requestJson(apiBase, "/api/story/library"),
+      delete: async (storyPath) => {
+        await requestJson(apiBase, "/api/story/library/delete", {
+          body: JSON.stringify({ storyPath }),
+          method: "POST",
+        });
+      },
       prepareLaunch: (storyPath, historyPath = "") =>
         requestJson(apiBase, "/api/story/launch-payload", {
           body: JSON.stringify({ storyPath, historyPath }),

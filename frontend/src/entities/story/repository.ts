@@ -17,6 +17,10 @@ export function listStories() {
   return getPlatform().story.list();
 }
 
+export function deleteStory(storyPath: string) {
+  return getPlatform().story.delete(storyPath);
+}
+
 export function prepareStoryLaunch(storyPath: string, historyPath?: string) {
   return getPlatform().story.prepareLaunch(storyPath, historyPath);
 }

@@ -15,6 +15,7 @@ from application.story.generation_recovery import recovery_for
 from application.story.generation_preview import generation_preview
 from application.story.selection import generation_selection
 from application.story.library import list_story_library, prepare_story_launch
+from application.story.deletion import delete_story_version
 from application.story.editor import (
     read_story_document,
     save_story_document,
@@ -214,6 +215,14 @@ STORY_ROUTES = (
         handler=lambda request: JsonResponse(list_story_library(request.state)),
         body_kind=BodyKind.NONE,
         name="story.library",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/story/library/delete",
+        handler=lambda request: JsonResponse(
+            delete_story_version(request.state, str(request.body.get("storyPath") or ""))
+        ),
+        name="story.library.delete",
     ),
     Route(
         methods=frozenset({"POST"}),
