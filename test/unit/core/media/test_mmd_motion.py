@@ -1,4 +1,5 @@
 import struct
+from pathlib import Path
 
 import pytest
 
@@ -6,6 +7,55 @@ from core.media.avatar.mmd import MmdAdapter
 from core.media.avatar.mmd_motion import inspect_motion
 from test.fixtures.mmd_motion import vpd_bytes, vmd_bytes
 from test.fixtures.pmx import pmx_bytes
+
+
+def test_large_vpd_advances_match_offsets_without_copying_suffixes(tmp_path, monkeypatch):
+    from core.media.avatar import mmd_motion
+
+    class NoSuffixCopy(str):
+        def __getitem__(self, key):
+            if isinstance(key, slice) and key.start and key.stop is None:
+                pytest.fail("VPD parser copied the unconsumed suffix")
+            return super().__getitem__(key)
+
+    original_sub = mmd_motion.re.sub
+    monkeypatch.setattr(mmd_motion.re, "sub", lambda *args: NoSuffixCopy(original_sub(*args)))
+    count = 20_000
+    text = f"Vocaloid Pose Data file\nsample.osm;\n{count};\n"
+    text += "".join(f"Bone{i}{{bone{i}\n0,0,0;\n0,0,0,1;\n}}\n" for i in range(count))
+    source = tmp_path / "large.vpd"
+    source.write_text(text + " \n\t", encoding="utf-8")
+    assert len(inspect_motion(source).bones) == count
+
+
+@pytest.mark.parametrize("failure", ["directory", "non-directory-parent", "missing", "stat-denied", "read-denied"])
+def test_preset_filesystem_errors_are_validation_failures(tmp_path, monkeypatch, failure):
+    source = tmp_path / "pose.vpd"
+    source.write_bytes(vpd_bytes())
+    if failure == "directory":
+        source.unlink()
+        source.mkdir()
+    elif failure == "non-directory-parent":
+        source = source / "pose.vmd"
+    elif failure == "missing":
+        source.unlink()
+    else:
+        method = "stat" if failure == "stat-denied" else "read_bytes"
+        original = getattr(Path, method)
+        def denied(path, *args, **kwargs):
+            if path == source:
+                raise PermissionError("unreadable preset")
+            return original(path, *args, **kwargs)
+        monkeypatch.setattr(Path, method, denied)
+    with pytest.raises(ValueError):
+        inspect_motion(source)
+    model = tmp_path / "model.pmx"
+    model.write_bytes(pmx_bytes())
+    with pytest.raises(ValueError):
+        MmdAdapter().parse_state(model, {
+            "morphs": {}, "mouthMorph": "", "blinkMorph": "",
+            "motion": source.relative_to(tmp_path).as_posix(),
+        })
 
 
 @pytest.mark.parametrize("extension,data", [

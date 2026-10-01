@@ -9,7 +9,7 @@ from pathlib import Path
 from sdk.adapters import ModelAssetAdapter, ModelCapabilities, ModelFiles
 from sdk.path_utils import is_portable_relative_path, safe_child_path
 from core.media.avatar.pmx import inspect_pmx, PmxInspection
-from core.media.avatar.mmd_motion import inspect_motion, MotionTargets
+from core.media.avatar.mmd_motion import inspect_motion
 
 
 @lru_cache(maxsize=128)
@@ -17,14 +17,10 @@ def _metadata(model: Path, mtime_ns: int, size: int) -> PmxInspection:
     return inspect_pmx(model.read_bytes())
 
 
-@lru_cache(maxsize=256)
-def _motion_targets(source: Path, mtime_ns: int, size: int) -> MotionTargets:
-    return inspect_motion(source)
-
-
 def _validate_motion(model: Path, source: Path) -> None:
-    stat = source.stat()
-    targets = _motion_targets(source, stat.st_mtime_ns, stat.st_size)
+    # Only mutation/package-validation paths parse presets; never retain the
+    # full target-name sets in a long-lived authorization cache.
+    targets = inspect_motion(source)
     stat = model.stat()
     known = _metadata(model, stat.st_mtime_ns, stat.st_size)
     if not (targets.bones & known.bones or targets.morphs & known.morphs):

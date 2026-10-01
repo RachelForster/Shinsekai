@@ -9,7 +9,9 @@ import uuid
 from pathlib import Path
 
 from config.schema import ModelSprites, Sprite
+from core.media.asset_import import PendingAssetBatch
 from core.media.avatar.registry import adapter_for
+from core.media.avatar.state_dependencies import index_path, write_state_index
 from sdk.path_utils import safe_child_path
 
 
@@ -28,11 +30,10 @@ def import_model_states(use_case, body: dict) -> dict:
     model = use_case._file(bank.model_path, field="model")
     sources = [use_case._file(path, field="preset") for path in paths]
     adapter = adapter_for(kind)
-    batch = f"states/{uuid.uuid4().hex}"
-    final = safe_child_path(model.parent, batch)
     tags_to_add: list[str] = []
-    with tempfile.TemporaryDirectory(prefix=".import-", dir=model.parent) as directory:
-        staged = Path(directory)
+    with PendingAssetBatch(safe_child_path(model.parent, "states")) as transaction:
+        staged = transaction.path
+        batch = staged.relative_to(model.parent).as_posix()
         for index, source in enumerate(sources):
             # Managed names avoid URL-unsafe exporter filenames and collisions.
             relative = f"{index}/preset{source.suffix.lower()}"
@@ -47,25 +48,20 @@ def import_model_states(use_case, body: dict) -> dict:
             target.with_name("state.json").write_text(
                 json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8"
             )
+            parsed = adapter.parse_state(model, value)
+            write_state_index(adapter, model, target.with_name("state.json"), parsed)
             tags_to_add.append(" ".join(source.stem.splitlines()))
         with use_case._mutation_lock:
             if use_case._character(name).model_dump(mode="json") != expected:
                 raise ValueError("Character changed during preset import; refresh and retry")
-            try:
-                shutil.copytree(staged, final)
-                for index in range(len(sources)):
-                    path = final / str(index) / "state.json"
-                    adapter.parse_state(model, json.loads(path.read_text(encoding="utf-8")))
-                    bank.sprites.append(Sprite(path=path))
-                from core.media.asset_tags import numbered_tags, tag_contents
-                old_count = len(bank.sprites) - len(sources)
-                tags = tag_contents(bank.emotion_tags, old_count)
-                bank.emotion_tags = numbered_tags("立绘", [*tags, *tags_to_add])
-                use_case._state.character_manager.save_avatar_bank(name, kind, bank)
-            except Exception:
-                if final.exists():
-                    shutil.rmtree(final)
-                raise
+            for index in range(len(sources)):
+                bank.sprites.append(Sprite(path=staged / str(index) / "state.json"))
+            from core.media.asset_tags import numbered_tags, tag_contents
+            old_count = len(bank.sprites) - len(sources)
+            tags = tag_contents(bank.emotion_tags, old_count)
+            bank.emotion_tags = numbered_tags("立绘", [*tags, *tags_to_add])
+            use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+            transaction.commit()
     return use_case._after_reload(name)
 
 
@@ -130,6 +126,7 @@ def save_model_state(use_case, body: dict) -> dict:
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
             target.write_text(json.dumps(state, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+            write_state_index(adapter_for(kind), model, target, state)
             from core.media.asset_tags import numbered_tags, tag_contents
             tags = tag_contents(bank.emotion_tags, len(bank.sprites))
             sprite = Sprite(path=target) if index == -1 else bank.sprites[index].model_copy(update={"path": target})
@@ -143,5 +140,6 @@ def save_model_state(use_case, body: dict) -> dict:
             use_case._state.character_manager.save_avatar_bank(name, kind, bank)
         except Exception:
             target.unlink(missing_ok=True)
+            index_path(target).unlink(missing_ok=True)
             raise
     return use_case._after_reload(name)
