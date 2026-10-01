@@ -23,6 +23,26 @@ function mockJsonResponse(body: unknown, ok = true) {
 }
 
 describe("http platform", () => {
+  it("imports an opaque preset batch through the existing task transport", async () => {
+    const input = {
+      name: "Alice",
+      avatar_type: "mmd",
+      model_path: "model.pmx",
+      source_paths: ["pose.vpd", "nod.vmd"],
+      state: { opaque: true },
+    };
+    const character = sampleConfig.characters[0];
+    const fetchMock = vi.fn(() => mockJsonResponse({ id: "preset-import", status: "succeeded", result: character }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await createHttpPlatform("http://127.0.0.1:8787").characters.importModelStates(input)).toEqual(character);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters/model/states/import",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    );
+  });
   it("uses separate read, save and background suggestion endpoints for story editing", async () => {
     const doc = {
       storyPath: "story.json",

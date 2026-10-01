@@ -1608,6 +1608,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
       },
     },
     characters: {
+      importModelStates: async () => {
+        throw new Error("Preset import requires the local bridge");
+      },
       importModel: async () => {
         throw new Error("Model import requires the local bridge");
       },

@@ -15,6 +15,8 @@ export interface CharacterVisualProps {
   mode: ApplyMode;
   voiceCharacterName?: string;
   stateSequence?: number;
+  /** Temporary preview access, never persisted as character data. */
+  onReady?: (session: AvatarSession<unknown, unknown> | null) => void;
 }
 
 /** The host owns layout; format modules render inside its model container. */
@@ -46,6 +48,7 @@ function ModelVisual({
   mode,
   voiceCharacterName,
   stateSequence,
+  onReady,
 }: CharacterVisualProps & { avatarType: string }) {
   const format = avatarFormat(avatarType);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -111,7 +114,11 @@ function ModelVisual({
   }, [format, avatarType, asset.modelUrl]);
 
   useEffect(() => {
-    if (!session || !asset.url) return;
+    if (!session) return;
+    if (!asset.url) {
+      onReady?.(session);
+      return () => onReady?.(null);
+    }
     const controller = new AbortController();
     setError("");
     const apply = async () => {
@@ -121,12 +128,16 @@ function ModelVisual({
       // Some transports cannot abort an already buffered response.
       if (controller.signal.aborted) return;
       await session.apply(state, mode, controller.signal);
+      if (!controller.signal.aborted) onReady?.(session);
     };
     void apply().catch((err) => {
       if (!controller.signal.aborted) setError(err instanceof Error ? err.message : String(err));
     });
-    return () => controller.abort();
-  }, [session, asset.url, mode, stateSequence]);
+    return () => {
+      controller.abort();
+      onReady?.(null);
+    };
+  }, [session, asset.url, mode, stateSequence, onReady]);
 
   return (
     <div

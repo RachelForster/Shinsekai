@@ -720,6 +720,12 @@ export const jaMessages: Record<MessageKey, string> = {
     "先にキャラクターを保存し、モデルの入口ファイルを選択してください。モデル変更後も既存の状態は保持されますが、再検証が必要です。選択は次のチャットから適用されます。",
   "character.avatar.modelEntry": "ローカルモデルの入口",
   "character.avatar.importModel": "モデルをインポート",
+  "character.avatar.presetFiles": "ポーズ / モーションファイル（複数選択可）",
+  "character.avatar.importPresets": "プリセットを一括インポート",
+  "character.avatar.presetImportHint":
+    "最大100ファイル。ファイル名をタグにし、現在のプレビューのカメラと口・瞬きの設定を引き継ぎます。VPDはポーズを保持、VMDは1回再生後に最終フレームを保持します。",
+  "character.avatar.playPreset": "プリセットを再生",
+  "character.avatar.clearMotion": "モーション参照を削除",
   "character.avatar.state": "モデル状態",
   "character.avatar.newState": "新しい状態",
   "character.avatar.editState": "状態を編集",

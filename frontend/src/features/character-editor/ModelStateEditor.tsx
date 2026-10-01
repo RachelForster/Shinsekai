@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Character } from "../../entities/config/types";
 import { characterAvatarType, createEmptyCharacterAssets, getCharacterAssets } from "../../entities/character/assets";
-import { importCharacterModel } from "../../entities/character/repository";
+import { importCharacterModel, importCharacterModelStates } from "../../entities/character/repository";
+import type { AvatarSession } from "../../modules/character-visual";
 import { modelFileUrl } from "../../entities/files/repository";
 import { registeredAvatarFormats, avatarFormat, CharacterVisual } from "../../modules/character-visual";
 import { avatarStateUrl } from "../../entities/character/modelStateRepository";
@@ -25,6 +26,14 @@ export function ModelStateEditor({
   const bank = getCharacterAssets(character);
   const format = avatarFormat(kind);
   const [source, setSource] = useState("");
+  const [presets, setPresets] = useState<string[]>([]);
+  const [previewSequence, setPreviewSequence] = useState(0);
+  const [ready, setReady] = useState(false);
+  const preview = useRef<AvatarSession<unknown, unknown> | null>(null);
+  const onPreviewReady = useCallback((session: AvatarSession<unknown, unknown> | null) => {
+    preview.current = session;
+    setReady(Boolean(session));
+  }, []);
   const [index, setIndex] = useState(0);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [error, setError] = useState("");
@@ -38,6 +47,8 @@ export function ModelStateEditor({
     setIndex(0);
     setEditingIndex(null);
     setSource("");
+    setPresets([]);
+    setPreviewSequence(0);
     setError("");
     setPending(false);
     ++request.current;
@@ -52,6 +63,31 @@ export function ModelStateEditor({
     try {
       const result = await importCharacterModel({ name, avatar_type: kind, source_path: source });
       if (request.current === sequence) onSaved(result);
+    } catch (failure) {
+      if (request.current === sequence) setError(String(failure));
+    } finally {
+      if (request.current === sequence) setPending(false);
+    }
+  };
+  const importStates = async () => {
+    if (!preview.current) return;
+    const state = preview.current.readState();
+    const sequence = ++request.current;
+    setPending(true);
+    setError("");
+    try {
+      const result = await importCharacterModelStates({
+        name,
+        avatar_type: kind,
+        model_path: modelPath,
+        source_paths: presets,
+        state,
+      });
+      if (request.current === sequence) {
+        setIndex(bank?.sprites.length ?? 0);
+        setPresets([]);
+        onSaved(result);
+      }
     } catch (failure) {
       if (request.current === sequence) setError(String(failure));
     } finally {
@@ -125,12 +161,42 @@ export function ModelStateEditor({
             <AsyncButton loading={pending} disabled={pending || !source || !name} onClick={() => void importModel()}>
               {t("character.avatar.importModel")}
             </AsyncButton>
+            {modelPath && !!format.stateExtensions?.length && (
+              <>
+                <label className="field-row field-row--stack">
+                  <span className="field-row__label">{t("character.avatar.presetFiles")}</span>
+                  <span className="field-row__control">
+                    <FilePicker
+                      aria-label={t("character.avatar.presetFiles")}
+                      pickLabel={t("character.avatar.presetFiles")}
+                      multiple
+                      value={presets.join("; ")}
+                      onPathsChange={setPresets}
+                      acceptedExtensions={format.stateExtensions}
+                      disabled={pending}
+                      pickerTitle={t("character.avatar.presetFiles")}
+                    />
+                  </span>
+                </label>
+                <p className="field-row__hint">{t("character.avatar.presetImportHint")}</p>
+                <AsyncButton
+                  loading={pending}
+                  disabled={pending || !ready || !presets.length || presets.length > 100}
+                  onClick={() => void importStates()}
+                >
+                  {t("character.avatar.importPresets")}
+                </AsyncButton>
+              </>
+            )}
             {modelPath && (
               <div className="asset-gallery-layout asset-gallery-layout--character">
                 {bank?.sprites.length ? (
                   <ImageAssetGallery
                     selectedIndex={index}
-                    onSelect={setIndex}
+                    onSelect={(next) => {
+                      setIndex(next);
+                      setPreviewSequence(0);
+                    }}
                     items={bank.sprites.map((item, i) => ({
                       id: item.path,
                       title: tags[i] || item.path.split(/[\\/]/).at(-1) || "",
@@ -142,7 +208,7 @@ export function ModelStateEditor({
                   <EmptyState title={t("character.avatar.emptyStates")} />
                 )}
                 <aside className="asset-inspector">
-                  {!pending && editingIndex === null && (
+                  {editingIndex === null && (
                     <CharacterVisual
                       className="model-state-editor__preview"
                       asset={{
@@ -152,7 +218,9 @@ export function ModelStateEditor({
                         modelUrl: modelFileUrl(modelPath),
                         url: sprite ? avatarStateUrl(modelPath, sprite.path) : "",
                       }}
-                      mode="restore"
+                      mode={previewSequence ? "play" : "restore"}
+                      stateSequence={previewSequence}
+                      onReady={onPreviewReady}
                       hitbox={false}
                       onImageError={() => {}}
                       onMouseDown={() => {}}
@@ -171,6 +239,14 @@ export function ModelStateEditor({
                   <Button disabled={pending || !sprite} onClick={() => setEditingIndex(index)}>
                     {t("character.avatar.editState")}
                   </Button>
+                  {format.capabilities.motion && (
+                    <Button
+                      disabled={pending || !ready || !sprite}
+                      onClick={() => setPreviewSequence((value) => value + 1)}
+                    >
+                      {t("character.avatar.playPreset")}
+                    </Button>
+                  )}
                 </aside>
               </div>
             )}

@@ -50,6 +50,8 @@ export interface AvatarFormat<S, C> {
   label: string;
   /** Entry-file filters for the shared picker; omitted formats allow all files. */
   modelExtensions?: string[];
+  /** Optional external preset filters; shared UI can offer batch import. */
+  stateExtensions?: string[];
   capabilities: AvatarCapabilities;
   load(): Promise<AvatarModule<S, C>>;
 }

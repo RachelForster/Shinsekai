@@ -3,6 +3,7 @@ import { basename, dirname, extname, relative, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import type { MmdControls, MmdState } from "../src/modules/character-visual/adapters/mmd/state";
 import type { AvatarSession } from "../src/modules/character-visual/contracts";
+import { vmdBytes } from "../src/test/fixtures/mmdMotion";
 
 const source = process.env.SHINSEKAI_PMX_MODEL;
 if (process.platform === "win32") test.use({ channel: "msedge" });
@@ -20,6 +21,15 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
     const rest = relative(root, target);
     if (!path || rest.startsWith("..") || rest.includes(":")) return route.fulfill({ status: 403 });
     requested.push(path);
+    if (path === "__smoke__/pose.vpd") {
+      return route.fulfill({
+        body: "Vocaloid Pose Data file\n\nmodel.osm;\n1;\nBone0{頭\n0,0,0;\n0,0.258819,0,0.965926;\n}\n",
+      });
+    }
+    if (path === "__smoke__/nod.vmd") {
+      // Shift-JIS encoding of 頭; the motion is synthetic, not a redistributed asset.
+      return route.fulfill({ body: Buffer.from(vmdBytes(new Uint8Array([0x93, 0xaa]))) });
+    }
     const body = await readFile(target);
     const contentType =
       { ".png": "image/png", ".bmp": "image/bmp", ".tga": "image/x-tga" }[extname(target).toLowerCase()] ??
@@ -138,6 +148,53 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
   expect(difference(headMotion.baseline, headMotion.stopped)).toBeLessThan(0.00001);
   expect(difference(headMotion.baseline, headMotion.editing)).toBeLessThan(0.00001);
   expect(headMotion.preserved).toBe(true);
+
+  const presets = await page.evaluate(async () => {
+    const { session, readHeadMatrix } = (
+      window as unknown as {
+        mmdSmoke: {
+          session: AvatarSession<MmdState, MmdControls>;
+          readHeadMatrix(): number[];
+        };
+      }
+    ).mmdSmoke;
+    const signal = new AbortController().signal;
+    const base = { ...session.readState(), mouthMorph: "", blinkMorph: "" };
+    const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+    await session.apply(base, "edit", signal);
+    await wait(100);
+    const neutral = readHeadMatrix();
+    await session.apply({ ...base, motion: "__smoke__/pose.vpd" }, "play", signal);
+    await wait(400);
+    const pose = readHeadMatrix();
+    await session.apply({ ...base, motion: "__smoke__/nod.vmd" }, "play", signal);
+    await wait(400);
+    const middle = readHeadMatrix();
+    await wait(1000);
+    const end = readHeadMatrix();
+    await session.apply({ ...base, motion: "__smoke__/nod.vmd" }, "restore", signal);
+    await wait(100);
+    const restored = readHeadMatrix();
+    await session.apply(base, "edit", signal);
+    await wait(100);
+    const cleared = readHeadMatrix();
+    await session.apply(base, "restore", signal);
+    return {
+      neutral,
+      pose,
+      middle,
+      end,
+      restored,
+      cleared,
+      canvases: document.querySelectorAll("#model canvas").length,
+    };
+  });
+  expect(difference(presets.neutral, presets.pose)).toBeGreaterThan(0.01);
+  expect(difference(presets.middle, presets.end)).toBeGreaterThan(0.01);
+  expect(difference(presets.end, presets.restored)).toBeLessThan(0.00001);
+  expect(difference(presets.neutral, presets.cleared)).toBeLessThan(0.00001);
+  expect(presets.canvases).toBe(1);
+  expect(requested.filter((path) => path === "__smoke__/nod.vmd")).toHaveLength(1);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   const reduced = await page.evaluate(async () => {

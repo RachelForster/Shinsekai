@@ -16,6 +16,7 @@ from application.runtime.state import _jsonify
 
 class CharacterOperation(str, Enum):
     IMPORT_MODEL = "import-model"
+    IMPORT_MODEL_STATES = "import-model-states"
     SAVE_MODEL_STATE = "save-model-state"
     SAVE = "save"
     DELETE = "delete"
@@ -108,9 +109,10 @@ class CharacterUseCase:
         )
 
     def execute(self, request: CharacterRequest) -> Any:
-        from application.characters.model_assets import import_model, save_model_state
+        from application.characters.model_assets import import_model, import_model_states, save_model_state
         handlers = {
             CharacterOperation.IMPORT_MODEL: lambda body: import_model(self, body),
+            CharacterOperation.IMPORT_MODEL_STATES: lambda body: import_model_states(self, body),
             CharacterOperation.SAVE_MODEL_STATE: lambda body: save_model_state(self, body),
             CharacterOperation.SAVE: self._save,
             CharacterOperation.DELETE: self._delete,
@@ -125,7 +127,7 @@ class CharacterUseCase:
             CharacterOperation.EXPORT: self._export_package,
         }
         # Import prepares outside the lock, then checks the original config at commit.
-        if request.operation == CharacterOperation.IMPORT_MODEL:
+        if request.operation in (CharacterOperation.IMPORT_MODEL, CharacterOperation.IMPORT_MODEL_STATES):
             return handlers[request.operation](request.payload)
         with self._mutation_lock:
             return handlers[request.operation](request.payload)

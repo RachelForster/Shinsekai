@@ -10,6 +10,103 @@ from config.character_manager import CharacterManager
 from config.schema import Character
 from core.media.avatar.registry import configure_builtin_formats
 from test.fixtures.pmx import pmx_bytes, pmx_sections
+from test.fixtures.mmd_motion import vpd_bytes, vmd_bytes
+
+
+def _mmd_batch(harness):
+    state, use_case, entry = harness
+    model = entry.with_name("sample.pmx")
+    model.write_bytes(pmx_bytes())
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="mmd", source_path=str(model))
+    pose = entry.with_name("wave.vpd")
+    pose.write_bytes(vpd_bytes())
+    motion = entry.with_name("wave.vmd")
+    motion.write_bytes(vmd_bytes())
+    body = dict(name="Haru", avatar_type="mmd", model_path=imported["avatars"]["mmd"]["model_path"],
+                source_paths=[str(pose), str(motion)],
+                state={"morphs": {}, "mouthMorph": "", "blinkMorph": "",
+                       "camera": {"yaw": 20, "pitch": 0, "zoom": 2, "panX": 0, "panY": 0}})
+    return state, use_case, body
+
+
+def test_import_mixed_motion_batch_and_serve_managed_copies(harness):
+    state, use_case, body = _mmd_batch(harness)
+    result = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
+    bank = result["avatars"]["mmd"]
+    assert len(bank["sprites"]) == 2
+    assert bank["emotion_tags"] == "立绘 1：wave\n立绘 2：wave\n"
+    model = Path(bank["model_path"])
+    for sprite, source in zip(bank["sprites"], body["source_paths"]):
+        file = Path(sprite["path"])
+        value = json.loads(file.read_text(encoding="utf-8"))
+        assert value["camera"] == body["state"]["camera"]
+        assert model_file(state, str(model), file.relative_to(model.parent).as_posix()) == file
+        assert model_file(state, str(model), value["motion"]).read_bytes() == Path(source).read_bytes()
+        Path(source).unlink()
+        assert model_file(state, str(model), value["motion"]).is_file()
+    # Subsequent batches append, preserving existing tags and voice metadata.
+    character = state.config_manager.get_character_by_name("Haru")
+    character.avatars["mmd"].sprites[0]["voice_text"] = "keep me"
+    new_pose = model.parent / "again.vpd"
+    new_pose.write_bytes(vpd_bytes())
+    result = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **{**body, "source_paths": [str(new_pose)]})
+    assert len(result["avatars"]["mmd"]["sprites"]) == 3
+    assert result["avatars"]["mmd"]["sprites"][0]["voice_text"] == "keep me"
+    with pytest.raises(PermissionError):
+        model_file(state, str(model), "again.vpd")
+
+
+@pytest.mark.parametrize("failure", ["invalid", "incompatible", "persist", "stale"])
+def test_motion_batch_is_atomic(harness, monkeypatch, failure):
+    state, use_case, body = _mmd_batch(harness)
+    before = state.config_manager.get_character_by_name("Haru").model_dump(mode="json")
+    model = Path(body["model_path"])
+    if failure == "invalid":
+        Path(body["source_paths"][1]).write_bytes(b"broken")
+    elif failure == "incompatible":
+        Path(body["source_paths"][1]).write_bytes(vmd_bytes("another-rig"))
+    elif failure == "persist":
+        monkeypatch.setattr(state.config_manager, "save_characters_config", lambda: (_ for _ in ()).throw(OSError("disk full")))
+    else:
+        body["model_path"] = "stale.pmx"
+    with pytest.raises((ValueError, OSError)):
+        execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
+    assert state.config_manager.get_character_by_name("Haru").model_dump(mode="json") == before
+    assert not list(model.parent.rglob("*.vpd")) and not list(model.parent.rglob("*.vmd"))
+    assert not list(model.parent.rglob(".import-*"))
+
+
+@pytest.mark.parametrize("paths", [[], "pose.vpd", ["file"] * 101])
+def test_motion_batch_limits(harness, paths):
+    state, use_case, body = _mmd_batch(harness)
+    with pytest.raises(ValueError, match="100"):
+        execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **{**body, "source_paths": paths})
+
+
+def test_motion_batch_rejects_ungranted_inputs(harness, tmp_path_factory):
+    state, use_case, body = _mmd_batch(harness)
+    outside = tmp_path_factory.mktemp("ungranted") / "pose.vpd"
+    outside.write_bytes(vpd_bytes())
+    with pytest.raises(PermissionError):
+        execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **{**body, "source_paths": [str(outside)]})
+    assert not list(Path(body["model_path"]).parent.rglob("*.vpd"))
+
+
+def test_motion_batch_does_not_overwrite_concurrent_character_edit(harness, monkeypatch):
+    from core.media.avatar.mmd import MmdAdapter
+    state, use_case, body = _mmd_batch(harness)
+    original = MmdAdapter.import_state
+    def prepare(adapter, *args):
+        result = original(adapter, *args)
+        state.config_manager.get_character_by_name("Haru").character_setting = "Edited while importing"
+        return result
+    monkeypatch.setattr(MmdAdapter, "import_state", prepare)
+    with pytest.raises(ValueError, match="changed during"):
+        execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
+    character = state.config_manager.get_character_by_name("Haru")
+    assert character.character_setting == "Edited while importing"
+    assert character.avatars["mmd"].sprites == []
+    assert not list(Path(body["model_path"]).parent.rglob("*.vpd"))
 
 
 @pytest.fixture

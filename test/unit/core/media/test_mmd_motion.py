@@ -1,0 +1,78 @@
+import struct
+
+import pytest
+
+from core.media.avatar.mmd import MmdAdapter
+from core.media.avatar.mmd_motion import inspect_motion
+from test.fixtures.mmd_motion import vpd_bytes, vmd_bytes
+from test.fixtures.pmx import pmx_bytes
+
+
+@pytest.mark.parametrize("extension,data", [
+    ("vpd", vpd_bytes("頭")), ("VPD", vpd_bytes("頭", encoding="cp932")),
+    ("vmd", vmd_bytes("頭")), ("VMD", vmd_bytes("頭", optional=False)),
+])
+def test_motion_targets_and_encodings(tmp_path, extension, data):
+    file = tmp_path / f"motion.{extension}"
+    file.write_bytes(data)
+    assert inspect_motion(file).bones == {"頭"}
+
+
+@pytest.mark.parametrize("payload", [
+    b"", vpd_bytes().replace(b"1;", b"2;"), vpd_bytes()[:-3],
+    vpd_bytes(angle="nan,0,0,1"), vpd_bytes(angle="0,0,0,0"),
+    vpd_bytes().replace(b"Bone0", b"Other0"), vpd_bytes() + b"junk",
+    vpd_bytes().replace(b"0,0,0;", b"inf,0,0;"),
+])
+def test_reject_invalid_vpd(tmp_path, payload):
+    file = tmp_path / "bad.vpd"
+    file.write_bytes(payload)
+    with pytest.raises(ValueError):
+        inspect_motion(file)
+
+
+def test_vmd_every_truncation_is_rejected_except_optional_section_boundaries(tmp_path):
+    data = vmd_bytes(morph="smile")
+    file = tmp_path / "bad.vmd"
+    # Header + bones + required morphs, then four optional section counts.
+    optional_start = 50 + 4 + 2 * 111 + 4 + 23
+    for length in range(len(data)):
+        file.write_bytes(data[:length])
+        if length in range(optional_start, len(data), 4):
+            assert inspect_motion(file).morphs == {"smile"}
+        else:
+            with pytest.raises(ValueError):
+                inspect_motion(file)
+
+
+@pytest.mark.parametrize("offset,replacement", [
+    (0, b"BAD"), (50, struct.pack("<I", 0xffffffff)),
+    (54 + 15 + 4, struct.pack("<f", float("nan"))),
+    (54 + 15 + 4 + 28, b"\xff"),
+])
+def test_reject_corrupt_vmd(tmp_path, offset, replacement):
+    data = bytearray(vmd_bytes())
+    data[offset:offset + len(replacement)] = replacement
+    file = tmp_path / "bad.vmd"
+    file.write_bytes(data)
+    with pytest.raises(ValueError):
+        inspect_motion(file)
+
+
+def test_motion_state_dependencies_and_model_compatibility(tmp_path):
+    model = tmp_path / "model.pmx"
+    model.write_bytes(pmx_bytes())
+    motion = tmp_path / "pose.vpd"
+    motion.write_bytes(vpd_bytes())
+    adapter = MmdAdapter()
+    base = {"morphs": {}, "mouthMorph": "", "blinkMorph": ""}
+    value = adapter.import_state(model, motion, "pose.vpd", base)
+    parsed = adapter.parse_state(model, value)
+    assert parsed["motion"] == "pose.vpd"
+    assert adapter.state_files(model, parsed) == (motion,)
+    for path in ("../pose.vpd", "/pose.vpd", "C:/pose.vpd", "a\\pose.vpd", "%2e%2e/pose.vpd", "pose.vpd?x", "pose.vpd\0"):
+        with pytest.raises((ValueError, PermissionError)):
+            adapter.parse_state(model, {**base, "motion": path})
+    motion.write_bytes(vpd_bytes("other-model-bone"))
+    with pytest.raises(ValueError, match="matching"):
+        adapter.parse_state(model, value)

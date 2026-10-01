@@ -3,6 +3,7 @@ export interface MmdState {
   mouthMorph: string;
   blinkMorph: string;
   camera: MmdCameraState;
+  motion?: string;
 }
 
 export interface MmdCameraState {
@@ -63,7 +64,7 @@ export function parseState(value: unknown): MmdState {
   const input = value as Record<string, unknown>;
   if (
     Object.keys(input)
-      .filter((key) => key !== "camera")
+      .filter((key) => key !== "camera" && key !== "motion")
       .sort()
       .join() !== "blinkMorph,morphs,mouthMorph"
   )
@@ -86,7 +87,24 @@ export function parseState(value: unknown): MmdState {
   if (Object.keys(morphs).length > 512) throw new Error("Too many MMD morphs");
   if (typeof input.mouthMorph !== "string" || typeof input.blinkMorph !== "string")
     throw new Error("Invalid MMD mouth/blink morph");
-  return { morphs, mouthMorph: input.mouthMorph, blinkMorph: input.blinkMorph, camera: parseCamera(input.camera) };
+  const result: MmdState = {
+    morphs,
+    mouthMorph: input.mouthMorph,
+    blinkMorph: input.blinkMorph,
+    camera: parseCamera(input.camera),
+  };
+  if (input.motion !== undefined && typeof input.motion !== "string") throw new Error("Invalid MMD motion path");
+  if (input.motion) {
+    const motion = input.motion as string;
+    if (
+      /[:?#%\\\x00-\x1f]/.test(motion) ||
+      motion.split("/").some((part) => !part || part === "." || part === "..") ||
+      !/\.(vpd|vmd)$/i.test(motion)
+    )
+      throw new Error("Invalid MMD motion path");
+    result.motion = motion;
+  }
+  return result;
 }
 
 export function validateControls(state: MmdState, controls: MmdControls) {

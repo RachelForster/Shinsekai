@@ -8,7 +8,27 @@ from pathlib import Path
 
 from sdk.adapters import ModelAssetAdapter, ModelCapabilities, ModelFiles
 from sdk.path_utils import is_portable_relative_path, safe_child_path
-from core.media.avatar.pmx import texture_references
+from core.media.avatar.pmx import inspect_pmx, PmxInspection
+from core.media.avatar.mmd_motion import inspect_motion, MotionTargets
+
+
+@lru_cache(maxsize=128)
+def _metadata(model: Path, mtime_ns: int, size: int) -> PmxInspection:
+    return inspect_pmx(model.read_bytes())
+
+
+@lru_cache(maxsize=256)
+def _motion_targets(source: Path, mtime_ns: int, size: int) -> MotionTargets:
+    return inspect_motion(source)
+
+
+def _validate_motion(model: Path, source: Path) -> None:
+    stat = source.stat()
+    targets = _motion_targets(source, stat.st_mtime_ns, stat.st_size)
+    stat = model.stat()
+    known = _metadata(model, stat.st_mtime_ns, stat.st_size)
+    if not (targets.bones & known.bones or targets.morphs & known.morphs):
+        raise ValueError("MMD preset has no tracks matching this model")
 
 
 @lru_cache(maxsize=128)
@@ -17,7 +37,7 @@ def _cached_texture_paths(model: Path, mtime_ns: int, size: int) -> tuple[Path, 
     # the same (potentially large) PMX once per image.
     _ = (mtime_ns, size)
     paths: list[Path] = []
-    for texture in texture_references(model.read_bytes()):
+    for texture in _metadata(model, mtime_ns, size).textures:
         raw = texture.replace("\\", "/")
         if not raw:
             continue
@@ -41,7 +61,7 @@ def _texture_paths(model: Path) -> tuple[Path, ...]:
 
 class MmdAdapter(ModelAssetAdapter):
     format_id = "mmd"
-    capabilities = ModelCapabilities(mouth=True, blink=True)
+    capabilities = ModelCapabilities(mouth=True, blink=True, motion=True)
 
     def inspect(self, source: Path) -> ModelFiles:
         source = source.resolve(strict=True)
@@ -55,7 +75,7 @@ class MmdAdapter(ModelAssetAdapter):
         return ModelFiles(entry=source, files=(source, *_texture_paths(source)))
 
     def parse_state(self, model: Path, value: object) -> dict:
-        if not isinstance(value, dict) or set(value) - {"camera"} != {"morphs", "mouthMorph", "blinkMorph"}:
+        if not isinstance(value, dict) or set(value) - {"camera", "motion"} != {"morphs", "mouthMorph", "blinkMorph"}:
             raise ValueError("MMD state requires morphs, mouthMorph, blinkMorph")
         morphs = value["morphs"]
         if not isinstance(morphs, dict) or len(morphs) > 512:
@@ -81,7 +101,24 @@ class MmdAdapter(ModelAssetAdapter):
                 raise ValueError(f"Invalid MMD camera {key}")
         # The loader, not the backend file route, owns semantic morph names.
         self.inspect(model)
-        return {"morphs": dict(morphs), "mouthMorph": value["mouthMorph"], "blinkMorph": value["blinkMorph"], "camera": dict(camera)}
+        result = {"morphs": dict(morphs), "mouthMorph": value["mouthMorph"], "blinkMorph": value["blinkMorph"], "camera": dict(camera)}
+        motion = value.get("motion", "")
+        if not isinstance(motion, str):
+            raise ValueError("Invalid MMD motion path")
+        if motion:
+            if (not is_portable_relative_path(motion) or any(char in motion for char in "\\:?#%")
+                    or any(ord(char) < 32 for char in motion)
+                    or any(part in ("", ".", "..") for part in motion.split("/"))):
+                raise ValueError("MMD motion must be a relative package path")
+            source = safe_child_path(model.parent, motion)
+            _validate_motion(model, source)
+            result["motion"] = motion
+        return result
 
     def state_files(self, model: Path, state: dict) -> tuple[Path, ...]:
-        return ()
+        return (safe_child_path(model.parent, state["motion"]),) if state.get("motion") else ()
+
+    def import_state(self, model: Path, source: Path, relative_path: str, base_state: object) -> dict:
+        _validate_motion(model, source)
+        base = self.parse_state(model, base_state)
+        return {**base, "motion": relative_path}

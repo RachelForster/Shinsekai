@@ -17,6 +17,23 @@ const controls = {
 };
 
 describe("MMD morph state", () => {
+  it("keeps relative motion references and remains compatible with morph-only states", () => {
+    const state = { ...neutralState(), motion: "states/abc/0/motion.vmd" };
+    expect(parseState(state)).toEqual(state);
+    expect(parseState({ ...state, motion: "" })).toEqual(neutralState());
+  });
+  it.each([
+    "../pose.vpd",
+    "/pose.vpd",
+    "C:/pose.vpd",
+    "a\\pose.vpd",
+    "%2e%2e/pose.vpd",
+    "pose.vpd?x",
+    "pose.json",
+    null,
+  ])("rejects unsafe/invalid motion reference %j", (motion) => {
+    expect(() => parseState({ ...neutralState(), motion })).toThrow();
+  });
   it("normalizes older states and preserves saved camera settings", () => {
     expect(parseState({ morphs: {}, mouthMorph: "", blinkMorph: "" }).camera).toEqual(defaultCamera());
     const state = { ...neutralState(), camera: { yaw: 35, pitch: -10, zoom: 2, panX: 0.1, panY: -0.2 } };

@@ -5,7 +5,8 @@ const format: AvatarFormat<MmdState, MmdControls> = {
   id: "mmd",
   label: "MMD (PMX)",
   modelExtensions: [".pmx"],
-  capabilities: { mouth: true, blink: true, motion: false, sampling: "none" },
+  stateExtensions: [".vpd", ".vmd"],
+  capabilities: { mouth: true, blink: true, motion: true, sampling: "none" },
   load: () => import("./module"),
 };
 

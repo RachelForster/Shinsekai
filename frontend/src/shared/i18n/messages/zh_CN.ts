@@ -698,6 +698,12 @@ export const zhCNMessages: Record<MessageKey, string> = {
     "先保存角色并明确选择模型入口文件；模型更换后旧状态保留，需要重新校验。选择将在下次聊天生效。",
   "character.avatar.modelEntry": "本地模型入口",
   "character.avatar.importModel": "导入模型",
+  "character.avatar.presetFiles": "姿势 / 动作文件（可多选）",
+  "character.avatar.importPresets": "批量导入预设",
+  "character.avatar.presetImportHint":
+    "一次最多 100 个文件，使用文件名作为标签，沿用当前预览的镜头和口型/眨眼绑定。VPD 保持姿势；VMD 播放一次后保持最后一帧。",
+  "character.avatar.playPreset": "播放预设",
+  "character.avatar.clearMotion": "移除动作引用",
   "character.avatar.state": "模型状态",
   "character.avatar.newState": "新建状态",
   "character.avatar.editState": "编辑状态",

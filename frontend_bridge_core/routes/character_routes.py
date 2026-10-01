@@ -42,6 +42,14 @@ def _save_model_state(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_execute_character_request(request.state, CharacterOperation.SAVE_MODEL_STATE, request.body))
 
 
+def _import_model_states(request: ApiRequest) -> TaskResponse:
+    body = dict(request.body)
+    return TaskResponse(kind="character-preset-import", title="Import character presets",
+                        message="Preset import queued",
+                        worker=lambda task_id: _execute_character_request(
+                            request.state, CharacterOperation.IMPORT_MODEL_STATES, body))
+
+
 def _generate_character_setting_route(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_generate_character_setting(request.state, request.body))
 
@@ -167,6 +175,8 @@ CHARACTER_ROUTES = (
           handler=_import_character_model, name="characters.model.import"),
     Route(methods=frozenset({"POST"}), pattern="/api/characters/model/state",
           handler=_save_model_state, name="characters.model.state"),
+    Route(methods=frozenset({"POST"}), pattern="/api/characters/model/states/import",
+          handler=_import_model_states, name="characters.model.states.import"),
     Route(
         methods=frozenset({"GET"}),
         pattern="/api/characters",
