@@ -288,3 +288,27 @@ def test_restore_session_ui_replays_raw_media_and_does_not_reuse_raw_sprite(
     assert output.name == "七海千秋"
     assert output.text == "你好"
     assert output.asset_id is None
+
+
+def test_dialog_without_replayed_media_does_not_suppress_initial_sprite(monkeypatch):
+    queue = Queue()
+    monkeypatch.setattr(session_restore, "extract_valid_dialog_from_messages", lambda _messages: [
+        {"character_name": "七海千秋", "speech": "你好", "sprite": "8"},
+    ])
+    restored = session_restore.restore_session_presentation(
+        [{"role": "assistant"}], presentation_queue=queue, presenter=_Window(),
+        config=_config(), tr_i18n=lambda key, **kwargs: key, replay_media=lambda _messages: False,
+    )
+    assert restored is False
+    assert queue.get_nowait().asset_id is None
+
+
+@pytest.mark.parametrize("sprite", [None, "-1", -1])
+def test_legacy_dialog_without_sprite_does_not_report_visual_restore(monkeypatch, sprite):
+    monkeypatch.setattr(session_restore, "extract_valid_dialog_from_messages", lambda _messages: [
+        {"character_name": "七海千秋", "speech": "你好", "sprite": sprite},
+    ])
+    assert session_restore.restore_session_presentation(
+        [{"role": "assistant"}], presentation_queue=Queue(), presenter=_Window(),
+        config=_config(), tr_i18n=lambda key, **kwargs: key,
+    ) is False
