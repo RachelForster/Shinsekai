@@ -58,6 +58,7 @@ def test_character_route_contracts_remain_stable() -> None:
         ("POST", "/api/characters/emotion-tags"),
         ("POST", "/api/characters/model/import"),
         ("POST", "/api/characters/model/state"),
+        ("POST", "/api/characters/model/states/import"),
         ("POST", "/api/characters/sprite-scale"),
         ("POST", "/api/characters/sprite-voice/delete"),
         ("POST", "/api/characters/sprite-voice/text"),
@@ -71,6 +72,21 @@ def test_character_route_contracts_remain_stable() -> None:
         ("PUT", "/api/characters"),
         ("DELETE", "/api/characters/{name}"),
     }
+
+
+def test_batch_presets_route_uses_character_task_and_copies_payload(monkeypatch):
+    state = SimpleNamespace()
+    body = {"name": "Alice", "avatar_type": "mmd", "source_paths": ["pose.vpd", "nod.vmd"]}
+    calls = []
+    monkeypatch.setattr("frontend_bridge_core.routes.character_routes._execute_character_request",
+                        lambda state, operation, payload: calls.append((operation, payload)) or "imported")
+    router = Router(list(CHARACTER_ROUTES))
+    request = _request(router, state, "POST", "/api/characters/model/states/import", body)
+    response = router.match(request.method, request.path).route.handler(request)
+    assert response.kind == "character-preset-import"
+    assert response.worker("task") == "imported"
+    assert calls == [(CharacterOperation.IMPORT_MODEL_STATES, body)]
+    assert calls[0][1] is not body
 
 
 def test_background_route_contracts_remain_stable() -> None:

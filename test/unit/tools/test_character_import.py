@@ -108,7 +108,8 @@ BASIC_CHAR = {
 # ── Import tests ────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("relative_root", [True, False])
-def test_bundled_avatar_import_serve_and_reexport(tmp_path, monkeypatch, relative_root):
+@pytest.mark.parametrize("kind", ["l2d", "mmd"])
+def test_bundled_avatar_import_serve_and_reexport(tmp_path, monkeypatch, relative_root, kind):
     from application.characters.model_files import model_file
     from core.media.avatar.registry import configure_builtin_formats
 
@@ -117,18 +118,26 @@ def test_bundled_avatar_import_serve_and_reexport(tmp_path, monkeypatch, relativ
     source.mkdir()
     monkeypatch.chdir(source)
     with _mock_dirs(source):
-        package_dir = file_util.SPRITE_DIR / "alice/avatars/l2d/original"
+        package_dir = file_util.SPRITE_DIR / f"alice/avatars/{kind}/original"
         package_dir.mkdir(parents=True)
         model = package_dir / "sample.model3.json"
         model.write_text(json.dumps({"Version": 3, "FileReferences": {"Moc": "sample.moc3", "Textures": ["texture.png"]}}))
         (package_dir / "sample.moc3").write_bytes(b"moc")
         (package_dir / "texture.png").write_bytes(b"texture")
+        value = {"parameters": {}, "expressions": [], "motion": ""}
+        if kind == "mmd":
+            from test.fixtures.pmx import pmx_bytes
+            from test.fixtures.mmd_motion import vmd_bytes
+            model = package_dir / "sample.pmx"
+            model.write_bytes(pmx_bytes("texture.png"))
+            (package_dir / "wave.vmd").write_bytes(vmd_bytes())
+            value = {"morphs": {}, "mouthMorph": "", "blinkMorph": "", "motion": "wave.vmd"}
         state_file = package_dir / "smile.json"
-        state_file.write_text(json.dumps({"parameters": {}, "expressions": [], "motion": ""}))
+        state_file.write_text(json.dumps(value))
         voice = package_dir / "smile.wav"
         voice.write_bytes(b"voice")
-        config = CharacterConfig.parse_dic(dict(BASIC_CHAR, sprites=[], avatar_type="l2d", avatars={
-            "l2d": {"model_path": str(model), "sprites": [{"path": str(state_file), "voice_path": str(voice)}],
+        config = CharacterConfig.parse_dic(dict(BASIC_CHAR, sprites=[], avatar_type=kind, avatars={
+            kind: {"model_path": str(model), "sprites": [{"path": str(state_file), "voice_path": str(voice)}],
                     "emotion_tags": "立绘 1：smile\n"},
         }))
         expected = deepcopy(config.avatars)
@@ -143,7 +152,7 @@ def test_bundled_avatar_import_serve_and_reexport(tmp_path, monkeypatch, relativ
         if relative_root:
             monkeypatch.setattr(file_util, "SPRITE_DIR", Path("data/sprite"))
         imported = file_util.import_character(str(output))[0]
-        bank = imported.avatars["l2d"]
+        bank = imported.avatars[kind]
         for path in (bank["model_path"], bank["sprites"][0]["path"], bank["sprites"][0]["voice_path"]):
             assert Path(path).is_absolute() and Path(path).is_file()
         persisted = yaml.safe_load(file_util.CHARACTERS_CONFIG_PATH.read_text(encoding="utf-8"))
@@ -152,8 +161,10 @@ def test_bundled_avatar_import_serve_and_reexport(tmp_path, monkeypatch, relativ
                                     characters=[Character.model_validate(persisted[0])])))
         # Serving must use the destination project, not whichever cwd the caller has.
         monkeypatch.chdir(tmp_path)
-        assert model_file(state, bank["model_path"], "sample.model3.json").read_bytes() == model.read_bytes()
+        assert model_file(state, bank["model_path"], model.name).read_bytes() == model.read_bytes()
         assert model_file(state, bank["model_path"], "smile.json").read_bytes() == state_file.read_bytes()
+        if kind == "mmd":
+            assert model_file(state, bank["model_path"], "wave.vmd").read_bytes() == (package_dir / "wave.vmd").read_bytes()
         monkeypatch.chdir(destination)
         reexport = tmp_path / "reexport.char"
         expected = deepcopy(imported.avatars)
@@ -161,11 +172,91 @@ def test_bundled_avatar_import_serve_and_reexport(tmp_path, monkeypatch, relativ
         assert imported.avatars == expected
         with zipfile.ZipFile(reexport) as package:
             exported = yaml.safe_load(package.read("character.yaml"))[0]
-            exported_bank = exported["avatars"]["l2d"]
+            exported_bank = exported["avatars"][kind]
             for path in (exported_bank["model_path"], exported_bank["sprites"][0]["path"],
                          exported_bank["sprites"][0]["voice_path"]):
                 assert not Path(path).is_absolute()
                 assert f"sprites/alice/{path}" in package.namelist()
+
+
+@pytest.mark.parametrize("failure", ["directory", "non-directory-parent", "truncated"])
+def test_invalid_bundled_mmd_states_fail_before_any_assets_or_config_are_published(tmp_path, monkeypatch, failure):
+    from core.media.avatar.registry import configure_builtin_formats
+    from test.fixtures.pmx import pmx_bytes
+
+    configure_builtin_formats()
+    monkeypatch.chdir(tmp_path)
+    relative = "avatars/mmd/model"
+    motion = "bad.vmd/child.vmd" if failure == "non-directory-parent" else "bad.vmd"
+    config = {**BASIC_CHAR, "sprites": [], "avatar_type": "mmd", "avatars": {
+        "mmd": {"model_path": f"{relative}/model.pmx", "sprites": [{"path": f"{relative}/pose.json"}]},
+    }}
+    archive = tmp_path / "bad.char"
+    with zipfile.ZipFile(archive, "w") as package:
+        package.writestr("character.yaml", yaml.safe_dump([config]))
+        prefix = f"sprites/alice/{relative}"
+        package.writestr(f"{prefix}/model.pmx", pmx_bytes())
+        package.writestr(f"{prefix}/pose.json", json.dumps({
+            "morphs": {}, "mouthMorph": "", "blinkMorph": "", "motion": motion,
+        }))
+        package.writestr(f"{prefix}/bad.vmd/" if failure == "directory" else f"{prefix}/bad.vmd", b"broken")
+    with _mock_dirs(tmp_path):
+        before = file_util.CHARACTERS_CONFIG_PATH.read_bytes()
+        with pytest.raises(ValueError):
+            file_util.import_character(str(archive))
+        assert file_util.CHARACTERS_CONFIG_PATH.read_bytes() == before
+        assert not (file_util.SPRITE_DIR / "alice").exists()
+
+
+def test_char_import_rebuilds_external_dependency_index_and_cold_serving_never_parses_motion(tmp_path, monkeypatch):
+    from application.characters.model_files import model_file
+    from core.media.avatar import mmd
+    from core.media.avatar.registry import configure_builtin_formats
+    from test.fixtures.pmx import pmx_bytes
+    from test.fixtures.mmd_motion import vmd_bytes
+
+    configure_builtin_formats()
+    monkeypatch.chdir(tmp_path)
+    relative = "avatars/mmd/model"
+    config = {**BASIC_CHAR, "sprites": [], "avatar_type": "mmd", "avatars": {
+        "mmd": {"model_path": f"{relative}/model.pmx", "sprites": [{"path": f"{relative}/pose.json"}]},
+    }}
+    archive = tmp_path / "indexed.char"
+    with zipfile.ZipFile(archive, "w") as package:
+        package.writestr("character.yaml", yaml.safe_dump([config]))
+        prefix = f"sprites/alice/{relative}"
+        package.writestr(f"{prefix}/model.pmx", pmx_bytes())
+        package.writestr(f"{prefix}/pose.json", json.dumps({
+            "morphs": {}, "mouthMorph": "", "blinkMorph": "", "motion": "wave.vmd",
+        }))
+        package.writestr(f"{prefix}/wave.vmd", vmd_bytes())
+        package.writestr(f"{prefix}/secret.txt", "not a dependency")
+        package.writestr(f"{prefix}/.pose.json.dependencies.json", json.dumps({"files": [{"path": "secret.txt"}]}))
+    with _mock_dirs(tmp_path):
+        imported = file_util.import_character(str(archive))[0]
+        state = SimpleNamespace(project_root_dir=str(tmp_path), config_manager=SimpleNamespace(
+            config=SimpleNamespace(characters=[Character.model_validate(imported.__dict__)])))
+        mmd._metadata.cache_clear()
+        mmd._cached_texture_paths.cache_clear()
+        monkeypatch.setattr(mmd, "inspect_motion", lambda *args: pytest.fail("Cold resource request parsed motion"))
+        model = imported.avatars["mmd"]["model_path"]
+        assert model_file(state, model, "wave.vmd").is_file()
+        with pytest.raises(PermissionError):
+            model_file(state, model, "secret.txt")
+
+
+def test_char_export_excludes_in_flight_preset_batches(tmp_path, monkeypatch):
+    from core.media.asset_import import PendingAssetBatch
+
+    monkeypatch.chdir(tmp_path)
+    with _mock_dirs(tmp_path):
+        states = file_util.SPRITE_DIR / "alice/avatars/mmd/model/states"
+        with PendingAssetBatch(states) as transaction:
+            (transaction.path / "large.vmd").write_bytes(b"uncommitted")
+            output = tmp_path / "character.char"
+            file_util.export_character([CharacterConfig.parse_dic(BASIC_CHAR)], str(output), open_folder=False)
+            with zipfile.ZipFile(output) as archive:
+                assert not any(".batch-" in name for name in archive.namelist())
 
 
 @pytest.mark.parametrize("typed", [False, True])

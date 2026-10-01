@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { AvatarEditorProps } from "../../contracts";
 import { useI18n } from "../../../../shared/i18n";
-import { Button, Select, TextInput } from "../../../../shared/ui";
+import { Button, PathDisplay, Select, TextInput } from "../../../../shared/ui";
 import {
   cameraLimits,
   defaultCamera,
@@ -22,6 +22,14 @@ export function Editor({ session, value, onChange }: AvatarEditorProps<MmdState,
   return (
     <fieldset className="mmd-editor">
       <legend>MMD / PMX</legend>
+      {value.motion && (
+        <div className="field-row field-row--stack">
+          <PathDisplay path={value.motion} />
+          <Button variant="ghost" onClick={() => onChange({ ...value, motion: "" })}>
+            {t("character.avatar.clearMotion")}
+          </Button>
+        </div>
+      )}
       <fieldset className="mmd-editor">
         <legend>{t("character.avatar.mmd.camera")}</legend>
         {(Object.keys(cameraLimits) as Array<keyof MmdCameraState>).map((key) => (
@@ -52,7 +60,9 @@ export function Editor({ session, value, onChange }: AvatarEditorProps<MmdState,
       {!session.capabilities.mouth && <p role="status">{t("character.avatar.mmd.noMouth")}</p>}
       {!session.capabilities.blink && <p role="status">{t("character.avatar.mmd.noBlink")}</p>}
       <Button
-        onClick={() => onChange({ ...neutralState(value.mouthMorph, value.blinkMorph), camera: value.camera })}
+        onClick={() =>
+          onChange({ ...neutralState(value.mouthMorph, value.blinkMorph), camera: value.camera, motion: value.motion })
+        }
         variant="ghost"
       >
         {t("character.avatar.mmd.reset")}

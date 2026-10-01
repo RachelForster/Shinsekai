@@ -52,6 +52,13 @@ class ModelAssetAdapter(ABC):
     def state_files(self, model: Path, state: dict) -> tuple[Path, ...]:
         """列出状态额外引用的动作、表情等文件，供角色包打包。"""
 
+    def import_state(self, model: Path, source: Path, relative_path: str, base_state: object) -> dict:
+        """校验外部预设，返回引用受管副本的状态；不复制或修改配置。
+
+        可选能力，已有插件无需实现。relative_path 相对于模型入口目录。
+        """
+        raise ValueError(f"{self.format_id} does not support preset import")
+
 
 @dataclass(frozen=True, slots=True)
 class AvatarFormatContribution:

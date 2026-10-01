@@ -30,3 +30,23 @@ it("starts routing when a loaded model's saved state selects a mouth morph", () 
   expect(session.setMouthOpen).toHaveBeenLastCalledWith(0.8);
   unbind();
 });
+
+it("routes speech overlays without mouth bindings and stops every bound instance on unbind", () => {
+  const sessions = [false, true].map((mouth) => ({
+    capabilities: { mouth },
+    setMouthOpen: vi.fn(),
+    setSpeechLevel: vi.fn(),
+  }));
+  const unbind = sessions.map((session) =>
+    bindAvatarVoice("head-only", session as unknown as AvatarSession<unknown, unknown>),
+  );
+  routeAvatarVoice("another-character", 1);
+  expect(sessions[0].setSpeechLevel).not.toHaveBeenCalled();
+  routeAvatarVoice("head-only", 0.8);
+  for (const session of sessions) expect(session.setSpeechLevel).toHaveBeenLastCalledWith(0.8);
+  expect(sessions[0].setMouthOpen).not.toHaveBeenCalled();
+  expect(sessions[1].setMouthOpen).toHaveBeenLastCalledWith(0.8);
+  unbind.forEach((cleanup) => cleanup());
+  routeAvatarVoice("head-only", 1);
+  for (const session of sessions) expect(session.setSpeechLevel).toHaveBeenLastCalledWith(0);
+});

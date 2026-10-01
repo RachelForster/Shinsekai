@@ -194,7 +194,9 @@ def export_character(character_configs: list[CharacterConfig], output_path: str,
             if config.sprite_prefix:
                 sprite_source_dir = SPRITE_DIR / config.sprite_prefix
                 if sprite_source_dir.is_dir():
-                    shutil.copytree(sprite_source_dir, temp_dir / 'sprites' / config.sprite_prefix, dirs_exist_ok=True)
+                    from core.media.asset_import import ignore_pending_batches
+                    shutil.copytree(sprite_source_dir, temp_dir / 'sprites' / config.sprite_prefix,
+                                    dirs_exist_ok=True, ignore=ignore_pending_batches)
 
             # 重写 sprite/voice path 为仅文件名（导入时按文件名匹配重建路径）
             sprites = char_data.get('sprites') or []
@@ -373,6 +375,35 @@ def import_character(input_path: str) -> list[CharacterConfig]:
         # Validate every package entry before copying any assets or changing config.
         for char_data in yaml_data:
             CharacterConfig.parse_dic(char_data=dict(char_data))
+
+        # Revalidate bundled model states before publishing any character.
+        # Never trust dependency indexes supplied by an external .char file.
+        from core.media.avatar.registry import adapter_for, is_registered_format
+        from core.media.avatar.state_dependencies import write_state_index
+        from sdk.path_utils import safe_existing_file_path
+        for char_data in yaml_data:
+            prefix = _safe_package_name(char_data.get('sprite_prefix', ''), "sprite_prefix")
+            package_root = temp_dir / 'sprites' / prefix
+            for kind, bank in (char_data.get('avatars') or {}).items():
+                if not is_registered_format(kind) or not bank.get('model_path'):
+                    continue
+                try:
+                    relative = _safe_package_relpath(bank['model_path'], 'avatar model')
+                except ValueError:
+                    continue  # Preserve unbundled legacy metadata.
+                if not (package_root / relative).is_file():
+                    continue
+                model = safe_existing_file_path(relative, roots=[package_root])
+                adapter = adapter_for(kind)
+                adapter.inspect(model)
+                from core.media.asset_import import PENDING_MARKER
+                if any(model.parent.rglob(PENDING_MARKER)):
+                    raise ValueError("Character package contains an uncommitted avatar import")
+                for sprite in bank.get('sprites', []):
+                    saved = safe_existing_file_path(sprite['path'], roots=[package_root])
+                    saved = safe_existing_file_path(saved, roots=[model.parent])
+                    parsed = adapter.parse_state(model, json.loads(saved.read_text(encoding='utf-8')))
+                    write_state_index(adapter, model, saved, parsed)
 
         # 读取现有配置，用于检测冲突
         existing_names = set()

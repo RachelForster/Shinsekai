@@ -153,6 +153,86 @@ afterEach(() => {
 });
 
 describe("Live2D model lifecycle without licensed SDK assets", () => {
+  it("adds speech head motion to the base pose without baking it into states or transitions", async () => {
+    definition.Groups = [];
+    const session = await start();
+    const state = { ...neutralState(), parameters: { ParamAngleX: 10 } };
+    await session.apply(state, "restore", new AbortController().signal);
+    expect(session.capabilities.mouth).toBe(false);
+    session.setSpeechLevel!(0.8);
+    frame(100);
+    const angles: number[] = [];
+    for (let i = 1; i <= 120; i++) {
+      frame(100 + i * (1000 / 60));
+      angles.push(values[0]);
+    }
+    expect(angles.some((angle) => Math.abs(angle - 10) > 0.2)).toBe(true);
+    expect(angles.every((angle) => Math.abs(angle - 10) < 2.2)).toBe(true);
+    expect(session.readState()).toEqual(state);
+    session.setSpeechLevel!(0);
+    for (let i = 121; i <= 300; i++) frame(100 + i * (1000 / 60));
+    expect(values[0]).toBe(10);
+    await session.apply(
+      { ...neutralState(), parameters: { ParamAngleX: 30 } },
+      "restore",
+      new AbortController().signal,
+    );
+    session.setSpeechLevel!(1);
+    for (let i = 301; i <= 420; i++) {
+      frame(100 + i * (1000 / 60));
+      expect(values[0]).toBeLessThanOrEqual(30);
+    }
+  });
+
+  it("keeps speech head motion out of edit mode and reduced-motion playback", async () => {
+    const preference = { matches: false };
+    vi.stubGlobal(
+      "matchMedia",
+      vi.fn(() => preference),
+    );
+    const session = await start();
+    const state = { ...neutralState(), parameters: { ParamAngleX: 12 } };
+    await session.apply(state, "edit", new AbortController().signal);
+    session.setSpeechLevel!(1);
+    frame(100);
+    frame(200);
+    expect(values[0]).toBe(12);
+    preference.matches = true;
+    await session.apply(state, "restore", new AbortController().signal);
+    for (let i = 0; i < 30; i++) frame(250 + i * 50);
+    expect(values[0]).toBe(12);
+  });
+
+  it("yields head parameters to explicit motions until they finish", async () => {
+    const originalFetch = fetchResource.getMockImplementation()!;
+    fetchResource.mockImplementation((url: string) =>
+      url.endsWith("motion3.json") ? response({ Curves: [{ Target: "Parameter", Id: ids[0] }] }) : originalFetch(url),
+    );
+    model.motionFinished.mockReturnValue(false);
+    const session = await start();
+    await session.apply({ ...neutralState(), motion: "wave.motion3.json" }, "play", new AbortController().signal);
+    session.setSpeechLevel!(1);
+    frame(100);
+    for (let i = 1; i <= 30; i++) frame(100 + i * 50);
+    expect(values[0]).toBe(0);
+    model.motionFinished.mockReturnValue(true);
+    frame(1650);
+    expect(Math.abs(values[0])).toBeGreaterThan(0);
+  });
+
+  it("skips missing head parameters without inventing bindings", async () => {
+    definition.FileReferences = { Moc: "model.moc3", Textures: [] };
+    vi.spyOn(modelData, "getParameterId").mockImplementation((index) => ({
+      getString: () => ({ s: index === 0 ? "CustomParameter" : ids[index] }),
+    }));
+    const session = await start();
+    session.setSpeechLevel!(1);
+    frame(100);
+    frame(200);
+    expect(values[0]).toBe(0);
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
   it("loads declared resources, reports real bindings, resizes and draws", async () => {
     const session = await start();
     expect(session.capabilities).toEqual({ mouth: true, blink: true, motion: true, sampling: "none" });

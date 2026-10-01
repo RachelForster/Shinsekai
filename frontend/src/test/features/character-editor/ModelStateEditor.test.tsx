@@ -22,6 +22,7 @@ let state: unknown;
 let session: AvatarSession<unknown, unknown>;
 let character: Character;
 const importModel = vi.fn();
+const importModelStates = vi.fn();
 const saveModelState = vi.fn();
 const modelUrl = vi.fn((_model: string, path: string) => `http://localhost/api/avatar/file?path=${path}`);
 const fetchState = vi.fn();
@@ -85,7 +86,7 @@ beforeEach(() => {
     }),
   });
   window.__SHINSEKAI_IPC__ = {
-    characters: { importModel, saveModelState },
+    characters: { importModel, importModelStates, saveModelState },
     files: { modelUrl },
   } as unknown as ShinsekaiPlatform;
   pickPath.mockResolvedValue(["C:/models/haru.model3.json"]);
@@ -110,6 +111,55 @@ afterEach(() => {
 });
 
 describe("ModelStateEditor shared controls and repositories", () => {
+  it("batch imports opaque presets through shared multiple selection and preserves preview state", async () => {
+    clearRegisteredAvatarFormats();
+    registerAvatarFormat({
+      ...l2dFormat,
+      stateExtensions: [".pose", ".motion"],
+      load: async () => ({
+        create: async () => session,
+        Editor: () => null,
+      }),
+    });
+    character.avatars.l2d.model_path = "C:/models/haru.model3.json";
+    character.avatars.l2d.sprites = [
+      { path: "C:/models/old.json", voice_path: "", voice_text: "", voice_type: "fallback" },
+    ];
+    const base = { parameters: { ParamAngleX: 12 }, expressions: [], motion: "" };
+    fetchState.mockResolvedValue({ ok: true, json: async () => base });
+    const imported = structuredClone(character);
+    imported.avatars.l2d.sprites.push({ ...character.avatars.l2d.sprites[0], path: "C:/models/new.json" });
+    importModelStates.mockResolvedValue(imported);
+    pickPath.mockResolvedValue(["C:/motions/one.pose", "C:/motions/two.motion"]);
+    const { onSaved } = view();
+    await waitFor(() => expect(session.apply).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Pose / motion files (multiple selection)" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Import presets in batch" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Import presets in batch" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(imported));
+    expect(importModelStates).toHaveBeenCalledWith({
+      name: character.name,
+      avatar_type: "l2d",
+      model_path: character.avatars.l2d.model_path,
+      source_paths: ["C:/motions/one.pose", "C:/motions/two.motion"],
+      state: base,
+    });
+    expect(pickPath).toHaveBeenCalledWith(expect.objectContaining({ multiple: true }));
+  });
+
+  it("replays an existing motion without recreating the loaded model", async () => {
+    character.avatars.l2d.model_path = "C:/models/haru.model3.json";
+    character.avatars.l2d.sprites = [
+      { path: "C:/models/old.json", voice_path: "", voice_text: "", voice_type: "fallback" },
+    ];
+    view();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Play preset" })).toBeEnabled());
+    const before = vi.mocked(session.apply).mock.calls.length;
+    fireEvent.click(screen.getByRole("button", { name: "Play preset" }));
+    await waitFor(() => expect(vi.mocked(session.apply).mock.calls.length).toBeGreaterThan(before));
+    expect(session.apply).toHaveBeenLastCalledWith(neutral, "play", expect.any(AbortSignal));
+    expect(session.dispose).not.toHaveBeenCalled();
+  });
   it("selects, imports and edits an opaque format without any Live2D registration", async () => {
     clearRegisteredAvatarFormats();
     const load = vi.fn(async () => ({

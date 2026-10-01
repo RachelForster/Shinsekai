@@ -32,6 +32,12 @@ class _NullAdapter(ModelAssetAdapter):
 
 
 class TestRegisterAvatarFormat:
+    def test_external_preset_import_is_optional_for_existing_plugins(self):
+        adapter = _NullAdapter()
+        assert adapter.parse_state(Path("model"), {}) == {}
+        with pytest.raises(ValueError, match="does not support"):
+            adapter.import_state(Path("model"), Path("pose"), "managed/pose", {})
+
     def test_normalized_duplicate_is_rejected(self):
         registry = PluginCapabilityRegistry()
         registry.register_avatar_format(" Null ", _NullAdapter)

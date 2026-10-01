@@ -1522,6 +1522,13 @@ export interface ShinsekaiPlatform {
   };
   characters: {
     importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;
+    importModelStates: (input: {
+      name: string;
+      avatar_type: string;
+      model_path: string;
+      source_paths: string[];
+      state: unknown;
+    }) => Promise<Character>;
     saveModelState: (input: {
       name: string;
       avatar_type: string;

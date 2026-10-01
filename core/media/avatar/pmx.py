@@ -4,6 +4,14 @@ from __future__ import annotations
 
 import math
 import struct
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class PmxInspection:
+    textures: tuple[str, ...]
+    bones: frozenset[str]
+    morphs: frozenset[str]
 
 
 class _Reader:
@@ -50,7 +58,7 @@ class _Reader:
         return value
 
 
-def texture_references(data: bytes) -> tuple[str, ...]:
+def inspect_pmx(data: bytes) -> PmxInspection:
     """Validate every mandatory section before returning package dependencies.
 
     Layout matches Babylon's PmxReader for PMX 2.0/2.1, including optional bone
@@ -119,8 +127,9 @@ def texture_references(data: bytes) -> tuple[str, ...]:
     bone_count = reader.count("bone", 26 + bone_index)
     if max_skin_bone >= bone_count:
         raise ValueError("Invalid PMX skin bone index")
+    bones: set[str] = set()
     for _ in range(bone_count):
-        reader.text(encoding)
+        bones.add(reader.text(encoding))
         reader.text(encoding)
         reader.floats(3)
         reader.index(bone_index, bone_count)
@@ -152,8 +161,9 @@ def texture_references(data: bytes) -> tuple[str, ...]:
     # Impulse morphs reference rigid bodies, whose count occurs later.
     max_morph_rigid = -1
     morph_count = reader.count("morph", 14)
+    morphs: set[str] = set()
     for _ in range(morph_count):
-        reader.text(encoding)
+        morphs.add(reader.text(encoding))
         reader.text(encoding)
         reader.enum(4)  # panel
         kind = reader.enum(10)
@@ -226,4 +236,8 @@ def texture_references(data: bytes) -> tuple[str, ...]:
 
     # Like Babylon, tolerate exporter-specific trailing metadata, but never
     # substitute it for a missing required section/count.
-    return textures
+    return PmxInspection(textures, frozenset(bones), frozenset(morphs))
+
+
+def texture_references(data: bytes) -> tuple[str, ...]:
+    return inspect_pmx(data).textures

@@ -1,5 +1,6 @@
 pyyaml
 packaging>=24
+filelock>=3.13,<4
 pydantic
 requests
 huggingface-hub==0.36.2

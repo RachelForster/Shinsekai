@@ -720,6 +720,12 @@ export const enMessages: Record<MessageKey, string> = {
     "Save the character first and select the model entry file. Replacing the model keeps existing states, which need revalidation. The selection takes effect in the next chat.",
   "character.avatar.modelEntry": "Model entry",
   "character.avatar.importModel": "Import model",
+  "character.avatar.presetFiles": "Pose / motion files (multiple selection)",
+  "character.avatar.importPresets": "Import presets in batch",
+  "character.avatar.presetImportHint":
+    "Up to 100 files. Filenames become tags; the current preview's camera and mouth/blink bindings are preserved. VPD holds a pose; VMD plays once and holds its last frame.",
+  "character.avatar.playPreset": "Play preset",
+  "character.avatar.clearMotion": "Remove motion reference",
   "character.avatar.state": "Model state",
   "character.avatar.newState": "New state",
   "character.avatar.editState": "Edit state",

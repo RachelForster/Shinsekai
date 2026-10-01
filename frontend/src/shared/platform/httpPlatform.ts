@@ -932,6 +932,13 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      importModelStates: async (input) => {
+        const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/states/import", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
       importModel: async (input) => {
         const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/import", {
           body: JSON.stringify(input),

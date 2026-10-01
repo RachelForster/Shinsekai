@@ -9,6 +9,7 @@ export function bindAvatarVoice(name: string, session: AvatarSession<unknown, un
   instances.add(session);
   targets.set(name, instances);
   return () => {
+    session.setSpeechLevel?.(0);
     if (session.capabilities.mouth) session.setMouthOpen(0);
     instances.delete(session);
     if (!instances.size) targets.delete(name);
@@ -16,5 +17,8 @@ export function bindAvatarVoice(name: string, session: AvatarSession<unknown, un
 }
 
 export function routeAvatarVoice(name: string, value: number) {
-  for (const session of targets.get(name) ?? []) if (session.capabilities.mouth) session.setMouthOpen(value);
+  for (const session of targets.get(name) ?? []) {
+    session.setSpeechLevel?.(value);
+    if (session.capabilities.mouth) session.setMouthOpen(value);
+  }
 }

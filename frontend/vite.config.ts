@@ -72,6 +72,8 @@ export default defineConfig({
     port: 5173,
   },
   test: {
+    // MMD ships extensionless ESM imports; resolve them through Vite, not Node.
+    server: { deps: { inline: ["babylon-mmd"] } },
     // DOM + coverage workers otherwise saturate large Windows hosts and time out healthy tests.
     maxWorkers: 4,
     minWorkers: 1,

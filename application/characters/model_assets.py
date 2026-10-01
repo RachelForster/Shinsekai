@@ -9,8 +9,60 @@ import uuid
 from pathlib import Path
 
 from config.schema import ModelSprites, Sprite
+from core.media.asset_import import PendingAssetBatch
 from core.media.avatar.registry import adapter_for
+from core.media.avatar.state_dependencies import index_path, write_state_index
 from sdk.path_utils import safe_child_path
+
+
+def import_model_states(use_case, body: dict) -> dict:
+    """Stage an entire batch, then publish it with one rollback-safe config write."""
+    name, kind = str(body["name"]), str(body["avatar_type"]).strip().lower()
+    paths = body["source_paths"]
+    if not isinstance(paths, list) or not 1 <= len(paths) <= 100:
+        raise ValueError("Select between 1 and 100 preset files")
+    character = use_case._character(name)
+    expected = character.model_dump(mode="json")
+    bank = character.avatars[kind].model_copy(deep=True)
+    bank.sprites = [Sprite.model_validate(sprite) for sprite in bank.sprites]
+    if bank.model_path != body["model_path"]:
+        raise ValueError("Model changed; refresh and retry")
+    model = use_case._file(bank.model_path, field="model")
+    sources = [use_case._file(path, field="preset") for path in paths]
+    adapter = adapter_for(kind)
+    tags_to_add: list[str] = []
+    with PendingAssetBatch(safe_child_path(model.parent, "states")) as transaction:
+        staged = transaction.path
+        batch = staged.relative_to(model.parent).as_posix()
+        for index, source in enumerate(sources):
+            # Managed names avoid URL-unsafe exporter filenames and collisions.
+            relative = f"{index}/preset{source.suffix.lower()}"
+            target = safe_child_path(staged, relative)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                adapter.import_state(model, source, f"{batch}/{relative}", body["state"])
+                shutil.copy2(source, target)
+                value = adapter.import_state(model, target, f"{batch}/{relative}", body["state"])
+            except ValueError as error:
+                raise ValueError(f"{source.name}: {error}") from error
+            target.with_name("state.json").write_text(
+                json.dumps(value, ensure_ascii=False, allow_nan=False), encoding="utf-8"
+            )
+            parsed = adapter.parse_state(model, value)
+            write_state_index(adapter, model, target.with_name("state.json"), parsed)
+            tags_to_add.append(" ".join(source.stem.splitlines()))
+        with use_case._mutation_lock:
+            if use_case._character(name).model_dump(mode="json") != expected:
+                raise ValueError("Character changed during preset import; refresh and retry")
+            for index in range(len(sources)):
+                bank.sprites.append(Sprite(path=staged / str(index) / "state.json"))
+            from core.media.asset_tags import numbered_tags, tag_contents
+            old_count = len(bank.sprites) - len(sources)
+            tags = tag_contents(bank.emotion_tags, old_count)
+            bank.emotion_tags = numbered_tags("立绘", [*tags, *tags_to_add])
+            use_case._state.character_manager.save_avatar_bank(name, kind, bank)
+            transaction.commit()
+    return use_case._after_reload(name)
 
 
 def import_model(use_case, body: dict) -> dict:
@@ -74,6 +126,7 @@ def save_model_state(use_case, body: dict) -> dict:
         target.parent.mkdir(parents=True, exist_ok=True)
         try:
             target.write_text(json.dumps(state, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+            write_state_index(adapter_for(kind), model, target, state)
             from core.media.asset_tags import numbered_tags, tag_contents
             tags = tag_contents(bank.emotion_tags, len(bank.sprites))
             sprite = Sprite(path=target) if index == -1 else bank.sprites[index].model_copy(update={"path": target})
@@ -87,5 +140,6 @@ def save_model_state(use_case, body: dict) -> dict:
             use_case._state.character_manager.save_avatar_bank(name, kind, bank)
         except Exception:
             target.unlink(missing_ok=True)
+            index_path(target).unlink(missing_ok=True)
             raise
     return use_case._after_reload(name)
