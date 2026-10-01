@@ -123,6 +123,23 @@
   align-items: start;
 }
 
+.chat-config-dialog__sprite-framing {
+  display: grid;
+  gap: 9px;
+  margin-top: 9px;
+  margin-bottom: 12px;
+}
+
+.chat-config-dialog__framing-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chat-config-dialog__framing-presets .button[aria-pressed="true"] {
+  border-color: var(--chat-config-accent-local);
+}
+
 .chat-config-dialog__range-control {
   display: grid;
   min-width: 0;

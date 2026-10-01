@@ -7,6 +7,8 @@ import type { ChatCommand, ChatTurnOptions } from "../../../shared/platform/type
 import { Button, Select, Switch } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import { ChatStageModal } from "./ChatStageModal";
+import { SpriteFramingControl } from "./SpriteFramingControl";
+import type { VisualFraming } from "../../../modules/character-visual";
 import {
   clampRuntimeNumber,
   runtimeDialogOpacityMax,
@@ -129,6 +131,7 @@ export function ChatConfigDialog({
   onSpriteOffsetXChange,
   onSpriteOffsetYChange,
   onSpriteScaleChange,
+  onSpriteFramingChange,
   onTextSpeedChange,
   onTextStyleChange,
   onTurnOptionsChange,
@@ -137,6 +140,7 @@ export function ChatConfigDialog({
   spriteOffsetX,
   spriteOffsetY,
   spriteScales,
+  spriteFramings,
   sprites,
   textSpeed,
   turnOptions,
@@ -176,6 +180,7 @@ export function ChatConfigDialog({
   onSpriteOffsetXChange: (value: number) => void;
   onSpriteOffsetYChange: (value: number) => void;
   onSpriteScaleChange: (spriteKey: string, value: number) => void;
+  onSpriteFramingChange: (spriteKey: string, value: VisualFraming) => void;
   onTextSpeedChange: (value: number) => void;
   onTextStyleChange: (target: ChatStageTextStyleTarget, patch: ChatStageTextStylePatch) => void;
   onTurnOptionsChange: (options: ChatTurnOptions) => void;
@@ -184,6 +189,7 @@ export function ChatConfigDialog({
   spriteOffsetX: number;
   spriteOffsetY: number;
   spriteScales: Record<string, number>;
+  spriteFramings: Record<string, VisualFraming>;
   sprites: ChatStageSprite[];
   textSpeed: number;
   turnOptions: ChatTurnOptions;
@@ -792,6 +798,7 @@ export function ChatConfigDialog({
 
         <section className="chat-config-dialog__section">
           <h3 className="chat-config-dialog__section-title">{t("chat.config.sectionSprites")}</h3>
+          <p className="chat-config-dialog__empty">{t("chat.config.spriteFramingHint")}</p>
           {sprites.length ? (
             <div className="chat-config-dialog__sprite-list">
               {sprites.map((sprite, index) => {
@@ -799,29 +806,41 @@ export function ChatConfigDialog({
                 const spriteLabel = runtimeSpriteLabel(sprite, index);
                 const value = spriteScales[spriteKey] ?? spriteScales[runtimeSpriteDefaultScaleKey] ?? 1;
                 return (
-                  <label className="chat-config-dialog__row chat-config-dialog__range-row" key={spriteKey}>
-                    <span className="chat-config-dialog__label">{spriteLabel}</span>
-                    <span className="chat-config-dialog__range-control">
-                      <input
-                        aria-label={`${t("chat.config.spriteScale")}: ${spriteLabel}`}
-                        className="chat-config-dialog__range"
-                        max={runtimeSpriteScaleMax}
-                        min={runtimeSpriteScaleMin}
-                        onChange={(event) =>
-                          onSpriteScaleChange(
-                            spriteKey,
-                            clampRuntimeNumber(event.target.value, value, runtimeSpriteScaleMin, runtimeSpriteScaleMax),
-                          )
-                        }
-                        step={runtimeSpriteScaleStep}
-                        type="range"
-                        value={value}
-                      />
-                      <span className="chat-config-dialog__range-value">
-                        {t("chat.config.scaleValue", { value: Math.round(value * 100) })}
+                  <div key={spriteKey}>
+                    <label className="chat-config-dialog__row chat-config-dialog__range-row">
+                      <span className="chat-config-dialog__label">{spriteLabel}</span>
+                      <span className="chat-config-dialog__range-control">
+                        <input
+                          aria-label={`${t("chat.config.spriteScale")}: ${spriteLabel}`}
+                          className="chat-config-dialog__range"
+                          max={runtimeSpriteScaleMax}
+                          min={runtimeSpriteScaleMin}
+                          onChange={(event) =>
+                            onSpriteScaleChange(
+                              spriteKey,
+                              clampRuntimeNumber(
+                                event.target.value,
+                                value,
+                                runtimeSpriteScaleMin,
+                                runtimeSpriteScaleMax,
+                              ),
+                            )
+                          }
+                          step={runtimeSpriteScaleStep}
+                          type="range"
+                          value={value}
+                        />
+                        <span className="chat-config-dialog__range-value">
+                          {t("chat.config.scaleValue", { value: Math.round(value * 100) })}
+                        </span>
                       </span>
-                    </span>
-                  </label>
+                    </label>
+                    <SpriteFramingControl
+                      label={spriteLabel}
+                      value={spriteFramings[spriteKey]}
+                      onChange={(framing) => onSpriteFramingChange(spriteKey, framing)}
+                    />
+                  </div>
                 );
               })}
             </div>

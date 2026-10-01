@@ -21,10 +21,52 @@ import {
   resetChatStageRuntimeThemeAppearance,
   resetPersistedChatStageRuntimeThemeAppearance,
   runtimeSpriteScale,
+  runtimeSpriteFraming,
+  writeChatStageRuntimeConfig,
   subscribeChatStageRuntimeConfig,
 } from "../../../features/chat-stage/runtimeConfig";
 
 describe("chat stage runtime config", () => {
+  it("loads old configs without cropping and sanitizes independently keyed framing values", () => {
+    expect(
+      normalizeChatStageRuntimeConfig({ version: 4, config: { spriteScales: { "Mio-0": 1.2 } } }).spriteFramings,
+    ).toEqual({});
+    const config = normalizeChatStageRuntimeConfig({
+      spriteFramings: {
+        " Mio ": { heightRatio: 0.5, verticalPosition: 0.25 },
+        Ren: { heightRatio: -2, verticalPosition: 4 },
+        bad: null,
+        invalid: "bad",
+        "": { heightRatio: 0.3 },
+      },
+    });
+    expect(config.spriteFramings).toEqual({
+      Mio: { heightRatio: 0.5, verticalPosition: 0.25 },
+      Ren: { heightRatio: 0.2, verticalPosition: 1 },
+    });
+    writeChatStageRuntimeConfig(config);
+    expect(readChatStageRuntimeConfig().spriteFramings).toEqual(config.spriteFramings);
+    expect(resetChatStageRuntimeThemeAppearance(config).spriteFramings).toEqual(config.spriteFramings);
+  });
+  it.each(["static", "l2d", "mmd", "future-format"])(
+    "keeps framing for %s across expression URLs and snapshot IDs",
+    (avatarType) => {
+      const config = normalizeChatStageRuntimeConfig({
+        spriteFramings: { Mio: { heightRatio: 0.5, verticalPosition: 0.25 } },
+      });
+      const sprite = { id: "Mio-0", label: "Mio", characterName: "Mio", path: "/first", modelUrl: "", avatarType };
+      expect(runtimeSpriteFraming(config, sprite, 0)).toEqual({ heightRatio: 0.5, verticalPosition: 0.25 });
+      expect(runtimeSpriteFraming(config, { ...sprite, id: "Mio", path: "/new" }, 1)).toEqual({
+        heightRatio: 0.5,
+        verticalPosition: 0.25,
+      });
+      expect(runtimeSpriteFraming(config, { ...sprite, characterName: "Ren" }, 0)).toEqual({
+        heightRatio: 1,
+        verticalPosition: 0,
+      });
+    },
+  );
+
   beforeEach(() => {
     desktopEventMocks.emit.mockReset();
     desktopEventMocks.emit.mockResolvedValue(undefined);

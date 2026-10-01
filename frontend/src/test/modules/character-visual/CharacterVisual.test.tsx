@@ -62,6 +62,76 @@ afterEach(() => {
 });
 
 describe("CharacterVisual", () => {
+  it("crops static images in a host with a natural aspect ratio and keeps its drag hook", () => {
+    const onMouseDown = vi.fn();
+    const onImageError = vi.fn();
+    const view = render(
+      <CharacterVisual
+        {...props}
+        hitbox
+        onMouseDown={onMouseDown}
+        onImageError={onImageError}
+        framing={{ heightRatio: 0.5, verticalPosition: 0 }}
+        asset={{ ...asset, avatarType: "static", modelUrl: "", url: "/alice.png" }}
+      />,
+    );
+    const image = screen.getByRole("img") as HTMLImageElement;
+    Object.defineProperties(image, { naturalWidth: { value: 400 }, naturalHeight: { value: 800 } });
+    fireEvent.load(image);
+    const host = view.container.querySelector<HTMLElement>(".sprite-layer__image")!;
+    expect(host.style.aspectRatio).toBe("0.5");
+    expect(host.dataset.chatStageHitbox).toBe("true");
+    expect(image.parentElement).toHaveStyle({ transform: "translateY(0%) scale(2)" });
+    fireEvent.mouseDown(image);
+    expect(onMouseDown).toHaveBeenCalledOnce();
+    fireEvent.error(image);
+    expect(onImageError).toHaveBeenCalledOnce();
+    view.rerender(
+      <CharacterVisual {...props} asset={{ ...asset, avatarType: "static", modelUrl: "", url: "/alice.png" }} />,
+    );
+    expect(screen.getByRole("img")).toHaveClass("sprite-layer__image");
+    expect(view.container.querySelector(".character-visual--framed")).toBeNull();
+  });
+
+  it.each(["l2d", "mmd", "future-format"])(
+    "frames %s without changes to the adapter or model lifecycle",
+    async (avatarType) => {
+      const instance = session();
+      const create = vi.fn().mockResolvedValue(instance);
+      registerAvatarFormat({
+        id: avatarType,
+        label: avatarType,
+        capabilities,
+        load: async () => ({ create, Editor: () => null }),
+      });
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+      const view = render(
+        <CharacterVisual
+          {...props}
+          asset={{ ...asset, avatarType }}
+          framing={{ heightRatio: 0.5, verticalPosition: 0 }}
+        />,
+      );
+      await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+      const mount = screen.getByTestId("model-container");
+      expect(mount.parentElement).toHaveStyle({ transform: "translateY(0%) scale(2)" });
+      view.rerender(
+        <CharacterVisual
+          {...props}
+          asset={{ ...asset, avatarType }}
+          framing={{ heightRatio: 0.5, verticalPosition: 1 }}
+        />,
+      );
+      expect(mount.parentElement).toHaveStyle({ transform: "translateY(-100%) scale(2)" });
+      view.rerender(<CharacterVisual {...props} asset={{ ...asset, avatarType }} />);
+      expect(mount.parentElement?.style.transform).toBe("");
+      expect(screen.getByTestId("model-container")).toBe(mount);
+      expect(create).toHaveBeenCalledOnce();
+      expect(instance.apply).toHaveBeenCalledOnce();
+      expect(instance.dispose).not.toHaveBeenCalled();
+    },
+  );
+
   it("preserves static image hooks and resets a broken image on resource change", () => {
     const onImageError = vi.fn();
     const view = render(

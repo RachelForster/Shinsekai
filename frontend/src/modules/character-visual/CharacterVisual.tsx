@@ -4,6 +4,7 @@ import { STATIC_AVATAR_TYPE, type ApplyMode, type AvatarSession, type CharacterV
 import { avatarFormat } from "./registry";
 import { avatarAssetUrl, avatarRuntimeAssetUrl } from "./assetUrl";
 import { bindAvatarVoice } from "./voiceRoute";
+import { visualFramingStyle, type VisualFraming } from "./framing";
 import "./CharacterVisual.css";
 
 export interface CharacterVisualProps {
@@ -15,28 +16,52 @@ export interface CharacterVisualProps {
   mode: ApplyMode;
   voiceCharacterName?: string;
   stateSequence?: number;
+  /** Non-destructive, format-independent framing; omitted means the original view. */
+  framing?: VisualFraming;
   /** Temporary preview access, never persisted as character data. */
   onReady?: (session: AvatarSession<unknown, unknown> | null) => void;
 }
 
 /** The host owns layout; format modules render inside its model container. */
 export function CharacterVisual(props: CharacterVisualProps) {
-  const { asset, className, onImageError, onMouseDown, hitbox } = props;
+  const { asset } = props;
   const avatarType = asset.avatarType.trim().toLowerCase() || STATIC_AVATAR_TYPE;
   if (avatarType === STATIC_AVATAR_TYPE) {
-    return (
-      <img
-        alt={asset.label}
-        className={className}
-        data-chat-stage-hitbox={hitbox ? "true" : undefined}
-        onError={onImageError}
-        onMouseDown={onMouseDown}
-        src={asset.url}
-        key={asset.url}
-      />
-    );
+    return <StaticVisual {...props} key={asset.url} />;
   }
   return <ModelVisual {...props} avatarType={avatarType} key={`${avatarType}:${asset.modelUrl}`} />;
+}
+
+function StaticVisual({ asset, className, onImageError, onMouseDown, hitbox, framing }: CharacterVisualProps) {
+  const [aspectRatio, setAspectRatio] = useState(1);
+  const style = visualFramingStyle(framing);
+  const image = (
+    <img
+      alt={asset.label}
+      className={style ? "character-visual__static-image" : className}
+      data-chat-stage-hitbox={!style && hitbox ? "true" : undefined}
+      onError={onImageError}
+      onLoad={(event) => {
+        const { naturalWidth, naturalHeight } = event.currentTarget;
+        if (naturalWidth > 0 && naturalHeight > 0) setAspectRatio(naturalWidth / naturalHeight);
+      }}
+      onMouseDown={style ? undefined : onMouseDown}
+      src={asset.url}
+    />
+  );
+  if (!style) return image;
+  return (
+    <div
+      className={`${className} character-visual__static-frame character-visual--framed`}
+      style={{ aspectRatio }}
+      data-chat-stage-hitbox={hitbox ? "true" : undefined}
+      onMouseDown={onMouseDown}
+    >
+      <div className="character-visual__framing-surface" style={style}>
+        {image}
+      </div>
+    </div>
+  );
 }
 
 function ModelVisual({
@@ -48,8 +73,10 @@ function ModelVisual({
   mode,
   voiceCharacterName,
   stateSequence,
+  framing,
   onReady,
 }: CharacterVisualProps & { avatarType: string }) {
+  const framingStyle = visualFramingStyle(framing);
   const format = avatarFormat(avatarType);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [session, setSession] = useState<AvatarSession<unknown, unknown> | null>(null);
@@ -142,13 +169,15 @@ function ModelVisual({
 
   return (
     <div
-      className={`${className} character-visual__model`}
+      className={`${className} character-visual__model${framingStyle ? " character-visual--framed" : ""}`}
       data-avatar-type={avatarType}
       data-chat-stage-hitbox={hitbox ? "true" : undefined}
       onMouseDown={onMouseDown}
       aria-label={asset.label}
     >
-      <div ref={containerRef} className="character-visual__viewport" data-testid="model-container" />
+      <div className="character-visual__framing-surface" style={framingStyle}>
+        <div ref={containerRef} className="character-visual__viewport" data-testid="model-container" />
+      </div>
       {error ? (
         <div className="character-visual__error" role="status">
           {error}
