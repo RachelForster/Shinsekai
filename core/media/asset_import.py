@@ -45,6 +45,7 @@ class PendingAssetBatch:
         self.lock_path = self.path.with_name(f"{self.path.name}.lock")
         self.lease = FileLock(str(self.lock_path))
         self.committed = False
+        self.preserved = False
 
     def __enter__(self):
         self.lease.acquire()
@@ -62,6 +63,10 @@ class PendingAssetBatch:
     def commit(self) -> None:
         self.committed = True
 
+    def preserve(self) -> None:
+        """Keep the recovery marker if publication is visible but durability failed."""
+        self.preserved = True
+
     def __exit__(self, error_type, error, traceback):
         try:
             if self.committed:
@@ -70,7 +75,7 @@ class PendingAssetBatch:
                     (self.path / PENDING_MARKER).unlink(missing_ok=True)
                 except OSError:
                     logger.warning("Committed import marker will be recovered: %s", self.path, exc_info=True)
-            elif error_type is None or issubclass(error_type, Exception):
+            elif not self.preserved and (error_type is None or issubclass(error_type, Exception)):
                 checked = _batch_path(self.path.parent, self.path.name)
                 if checked.is_dir():
                     shutil.rmtree(checked)

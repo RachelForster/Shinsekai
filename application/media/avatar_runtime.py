@@ -15,6 +15,7 @@ from application.media.resource_paths import MediaResourcePaths
 from core.media.asset_import import PendingAssetBatch, recover_asset_batches
 from core.media.avatar.registry import adapter_for
 from sdk.path_utils import safe_child_path
+from sdk.file_io import durable_mkdir, durable_rename, sync_directory
 
 
 class AvatarRuntimeService:
@@ -71,7 +72,7 @@ class AvatarRuntimeService:
         files = installer.files(self._source(body), body.get("compiled"))
         if set(files) != set(installer.filenames):
             raise ValueError("Incomplete runtime output")
-        root.mkdir(parents=True, exist_ok=True)
+        durable_mkdir(root)
         with FileLock(str(root / ".install.lock")):
             recover_asset_batches(root, lambda batch: self._manifest(root).get("batch") == batch.name)
             if self.status(format_id)["installed"]:
@@ -82,6 +83,9 @@ class AvatarRuntimeService:
                         handle.write(content)
                         handle.flush()
                         os.fsync(handle.fileno())
+                # Persist the files' directory entries before a manifest can
+                # reference them. The subsequent durable rename also syncs root.
+                sync_directory(batch.path)
                 manifest = {"batch": batch.path.name, "version": installer.version,
                             "files": {name: hashlib.sha256(content).hexdigest() for name, content in files.items()}}
                 temporary = root / f".current-{uuid.uuid4().hex}.json"
@@ -90,8 +94,15 @@ class AvatarRuntimeService:
                         json.dump(manifest, handle)
                         handle.flush()
                         os.fsync(handle.fileno())
-                    os.replace(temporary, root / "current.json")
+                    durable_rename(temporary, root / "current.json", replace=True)
                     batch.commit()
+                except Exception:
+                    # POSIX rename may succeed before directory fsync fails.
+                    # Report failure, but never delete files a visible manifest
+                    # already references; retain the marker for recovery.
+                    if self._manifest(root).get("batch") == batch.path.name:
+                        batch.preserve()
+                    raise
                 finally:
                     temporary.unlink(missing_ok=True)
         return self.status(format_id)

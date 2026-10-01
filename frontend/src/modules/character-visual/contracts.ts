@@ -60,6 +60,8 @@ export interface AvatarFormat<S, C> {
     version: string;
     downloadUrl: string;
     licenseUrls: string[];
+    /** Global runtimes cannot be replaced safely beneath existing model instances. */
+    reloadAfterInstall?: boolean;
     compile(input: unknown, signal: AbortSignal): Promise<string>;
   };
   capabilities: AvatarCapabilities;

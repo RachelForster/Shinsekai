@@ -13,11 +13,11 @@
 
 ### 用户安装
 
-角色编辑器 → 形象类型选择 Live2D → **安装 SDK**。弹窗提供官方下载页和两份软件许可链接；在官网的历史版本中下载 **Cubism SDK for Web 5-r.4**，选择原始 ZIP 并明确勾选许可确认后点击“导入并安装”。无需解压、Node 或 pnpm；版本不符、修改过的 ZIP、编译校验失败和磁盘写入失败均报错，不发布不完整运行时。成功后自动重建当前预览实例，聊天舞台下次加载时也使用同一运行时。不迁移或修改角色银行/状态。
+角色编辑器 → 形象类型选择 Live2D → **安装 SDK**。弹窗提供官方下载页和两份软件许可链接；在官网的历史版本中下载 **Cubism SDK for Web 5-r.4**，选择原始 ZIP 并明确勾选许可确认后点击“导入、安装并刷新”。**请先保存未提交的编辑**：安装成功后刷新整个当前页面，同时清除 SDK 模块与全局 Core 缓存，确保此前用过开发者 public 回退包的预览也切换到已安装的 bridge 运行时。已经打开的其他页面/聊天窗口也需要刷新。无需解压、Node 或 pnpm；版本不符、修改过的 ZIP、编译校验失败和磁盘写入失败均报错，不发布不完整运行时，也不刷新页面。不迁移或修改角色银行/状态。
 
 ZIP 由后端核对固定 SHA-256，仅返回 Framework 的受控 TypeScript 源文件；前端懒加载固定 TypeScript 5.9.3，在浏览器中离线编译并复用 `scripts/l2d-sdk-bridge.mjs`。后端再次验证原始 ZIP 和确定性编译产物哈希，只保存 Core、Framework 编译产物及许可文件，不复制样例或模型。更新桥接模块/编译器/SDK 时必须重新运行下方真浏览器检查并复核、更新产物哈希，不能绕过完整性检查。
 
-安装位置为当前数据根下 `data/runtime/avatars/l2d/`，不写只读安装目录。文件先写入带租约和恢复标记的隐藏批次，`current.json` 原子替换才发布；失败回滚，进程中断后下次状态检查/安装会清理未发布批次，已发布批次不删除。资源通过带 bridge 鉴权的 `/api/avatar/runtime/file` 精确白名单提供，保留桌面/移动端令牌，不从模型目录或 CDN 加载 SDK。共享编排只依赖可选运行时能力，不认识 Cubism；ZIP 校验和编译留在 L2D adapter 内，已有 MMD/插件无需实现该能力。
+安装位置为当前数据根下 `data/runtime/avatars/l2d/`，不写只读安装目录。文件先写入带租约和恢复标记的隐藏批次并 fsync，POSIX 同步批次目录及新建父目录；`current.json` 通过跨平台 durable rename 发布（POSIX 同步父目录，Windows 使用 write-through replace），完成后才清除批次标记。发布前失败回滚；重命名后同步失败向上传播，并保留已被 manifest 引用的批次/标记供恢复。进程中断后下次状态检查/安装会清理未发布批次，已发布批次不删除。资源通过带 bridge 鉴权的 `/api/avatar/runtime/file` 精确白名单提供，保留桌面/移动端令牌，不从模型目录或 CDN 加载 SDK。共享编排只依赖可选运行时能力及其刷新策略，不认识 Cubism；ZIP 校验和编译留在 L2D adapter 内，已有 MMD/插件无需实现该能力。
 
 用户自行安装 SDK **不代表**应用发布方不需要 Live2D 的发布许可/可扩展应用审核；发布方案仍需单独确认。不应把本地测试用的忽略文件或生成运行时打包上传。
 
@@ -38,7 +38,7 @@ pnpm prepare:l2d --sdk-dir <解压后的SDK目录> --accept-sdk-license
 node scripts/verify-l2d-import.mjs --sdk-zip <官方5-r.4.zip> --python <shinsekai环境python.exe>
 ```
 
-检查生产构建中的懒加载编译器、浏览器/重复编译哈希一致、实际后端原子安装以及安装后的 Core/Framework 加载 Haru。测试数据隔离在 `.tmp/l2d-import-verify-*`，不改用户当前数据或联网下载 SDK。
+检查生产构建中的懒加载编译器、浏览器/重复编译哈希一致、实际后端持久化安装，以及先加载 public 回退后刷新页面、仅从安装路径加载 Core/Framework 和 Haru 的路径。测试数据隔离在 `.tmp/l2d-import-verify-*`，不改用户当前数据或联网下载 SDK。
 
 ## 模型与状态
 

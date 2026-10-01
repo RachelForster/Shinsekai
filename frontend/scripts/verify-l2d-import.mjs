@@ -50,9 +50,11 @@ const server = createServer(async (request, response) => {
     const selected =
       url.pathname === "/model.moc3"
         ? path.join(frontend, "public/live2d/models/Haru/Haru.moc3")
-        : url.pathname.startsWith("/runtime/")
-          ? installedFiles[url.pathname.slice(9)]
-          : undefined;
+        : ["/live2d/live2dcubismcore.min.js", "/live2d/cubism-sdk.js"].includes(url.pathname)
+          ? path.join(frontend, "public", url.pathname.slice(1))
+          : url.pathname.startsWith("/runtime/")
+            ? installedFiles[url.pathname.slice(9)]
+            : undefined;
     const file = selected || path.resolve(dist, `.${decodeURIComponent(url.pathname)}`);
     assert.ok(selected || file.startsWith(dist + path.sep));
     response.setHeader("Content-Type", file.endsWith(".js") ? "text/javascript" : "application/octet-stream");
@@ -75,6 +77,21 @@ try {
     requests.some((url) => url.includes("l2d-compiler")),
     false,
   );
+  // Reproduce the review path: this page has already initialized the developer
+  // fallback before the host installs a runtime. A preview remount is not enough
+  // to replace its global Core; installation must navigate to a fresh page.
+  await page.evaluate(async () => {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "/live2d/live2dcubismcore.min.js";
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.append(script);
+    });
+    const sdk = await import("/live2d/cubism-sdk.js");
+    sdk.initialize();
+    globalThis.fallbackSdk = sdk;
+  });
   const compiled = await page.evaluate(
     async ({ prepared, compiler }) => {
       const module = await import(`/web-assets/${compiler}`);
@@ -108,6 +125,10 @@ print(json.dumps({'status':status,'files':{name:str(service.file('l2d',name)) fo
   );
   assert.equal(result.status.installed, true);
   installedFiles = result.files;
+  await page.reload();
+  assert.equal(await page.evaluate(() => typeof globalThis.Live2DCubismCore), "undefined");
+  assert.equal(await page.evaluate(() => typeof globalThis.fallbackSdk), "undefined");
+  const afterReload = requests.length;
   const parameters = await page.evaluate(async () => {
     await new Promise((resolve, reject) => {
       const script = document.createElement("script");
@@ -129,9 +150,15 @@ print(json.dumps({'status':status,'files':{name:str(service.file('l2d',name)) fo
     return count;
   });
   assert.ok(parameters > 0);
+  assert.ok(requests.slice(afterReload).includes("/runtime/live2dcubismcore.min.js"));
+  assert.ok(requests.slice(afterReload).includes("/runtime/cubism-sdk.js"));
+  assert.equal(
+    requests.slice(afterReload).some((url) => url.startsWith("/live2d/")),
+    false,
+  );
   assert.deepEqual(errors, []);
   console.info(
-    `Browser compilation, integrity-checked installation, Core and Haru (${parameters} parameters): passed. Evidence: ${evidence}`,
+    `Browser compilation, durable installation, fallback-to-installed Core/SDK after reload and Haru (${parameters} parameters): passed. Evidence: ${evidence}`,
   );
 } finally {
   await browser?.close();

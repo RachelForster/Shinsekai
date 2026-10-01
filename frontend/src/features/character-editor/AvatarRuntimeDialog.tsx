@@ -10,10 +10,13 @@ export function AvatarRuntimeDialog({
   format,
   onClose,
   onInstalled,
+  onReload = () => window.location.reload(),
 }: {
   format: AvatarFormat<unknown, unknown>;
   onClose(): void;
   onInstalled(): void;
+  /** Host navigation, separate from format-local compilation/rendering. */
+  onReload?(): void;
 }) {
   const { t } = useI18n();
   const runtime = format.runtime!;
@@ -58,7 +61,8 @@ export function AvatarRuntimeDialog({
       signal.throwIfAborted();
       if (!result.installed) throw new Error(t("character.sdk.failed"));
       setInstalled(true);
-      onInstalled();
+      if (runtime.reloadAfterInstall) onReload();
+      else onInstalled();
     } catch (failure) {
       if (!signal.aborted) setError(String(failure));
     } finally {
@@ -88,7 +92,7 @@ export function AvatarRuntimeDialog({
           </Button>
           {!installed && (
             <AsyncButton disabled={checking || !source || !accepted} loading={pending} onClick={install}>
-              {t("character.sdk.import")}
+              {t(runtime.reloadAfterInstall ? "character.sdk.importReload" : "character.sdk.import")}
             </AsyncButton>
           )}
         </>
@@ -97,6 +101,7 @@ export function AvatarRuntimeDialog({
       <p>{t("character.sdk.hint", { name: runtime.name, version: runtime.version })}</p>
       <Button onClick={() => void open(runtime.downloadUrl)}>{t("character.sdk.download")}</Button>
       <p className="field-row__hint">{t("character.sdk.localOnly")}</p>
+      {!installed && runtime.reloadAfterInstall && <p>{t("character.sdk.reloadHint")}</p>}
       {runtime.licenseUrls.map((url, index) => (
         <Button key={url} variant="ghost" onClick={() => void open(url)}>
           {t("character.sdk.license", { index: index + 1 })}

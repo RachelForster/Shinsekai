@@ -8,6 +8,9 @@ const format: AvatarFormat<L2DState, L2DControls> = {
   runtime: {
     name: "Cubism SDK for Web",
     version: "5-r.4",
+    // A full reload clears both the SDK module cache and the global Cubism Core,
+    // including a previously loaded developer public fallback.
+    reloadAfterInstall: true,
     downloadUrl: "https://www.live2d.com/en/sdk/download/web/",
     licenseUrls: [
       "https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html",

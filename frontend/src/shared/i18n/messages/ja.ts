@@ -739,6 +739,9 @@ export const jaMessages: Record<MessageKey, string> = {
   "character.sdk.zip": "SDK ZIP を選択",
   "character.sdk.accept": "上記のソフトウェアライセンス契約を読み、同意しました",
   "character.sdk.import": "インポートしてインストール",
+  "character.sdk.importReload": "インポートしてインストール・再読み込み",
+  "character.sdk.reloadHint":
+    "インストール成功後、ページ全体を再読み込みしてインストール済み SDK に切り替えます。未保存の変更は失われます。先にこの画面を閉じて変更を保存してください。",
   "character.sdk.checking": "SDK を確認中…",
   "character.sdk.installed": "SDK をインストールしました。閉じてモデルをプレビューできます。",
   "character.sdk.missing": "SDK 未インストール",

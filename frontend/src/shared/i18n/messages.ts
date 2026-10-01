@@ -10,6 +10,8 @@ export type MessageKey =
   | "character.sdk.zip"
   | "character.sdk.accept"
   | "character.sdk.import"
+  | "character.sdk.importReload"
+  | "character.sdk.reloadHint"
   | "character.sdk.checking"
   | "character.sdk.installed"
   | "character.sdk.missing"

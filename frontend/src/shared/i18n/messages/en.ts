@@ -739,6 +739,9 @@ export const enMessages: Record<MessageKey, string> = {
   "character.sdk.zip": "Select SDK ZIP",
   "character.sdk.accept": "I have read and agree to the software license agreements above",
   "character.sdk.import": "Import and install",
+  "character.sdk.importReload": "Import, install and reload",
+  "character.sdk.reloadHint":
+    "Successful installation reloads the entire page to select the installed SDK. Unsaved changes will be lost; close this dialog and save them first.",
   "character.sdk.checking": "Checking SDK…",
   "character.sdk.installed": "SDK installed. Close this dialog to preview the model.",
   "character.sdk.missing": "SDK not installed",

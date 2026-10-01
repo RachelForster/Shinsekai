@@ -716,6 +716,9 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "character.sdk.zip": "选择 SDK ZIP",
   "character.sdk.accept": "我已阅读并同意上述软件许可协议",
   "character.sdk.import": "导入并安装",
+  "character.sdk.importReload": "导入、安装并刷新",
+  "character.sdk.reloadHint":
+    "安装成功后将刷新整个页面，以切换到已安装的 SDK。未保存的修改会丢失，请先关闭弹窗保存修改。",
   "character.sdk.checking": "正在检查 SDK…",
   "character.sdk.installed": "SDK 已安装，可以关闭弹窗并预览模型。",
   "character.sdk.missing": "尚未安装 SDK",

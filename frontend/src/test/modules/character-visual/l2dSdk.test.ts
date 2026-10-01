@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSdkLoader } from "../../../modules/character-visual/adapters/l2d/sdk";
+import format from "../../../modules/character-visual/adapters/l2d/format";
 
 const core = vi.hoisted(() => vi.fn(async (signal: AbortSignal) => signal.throwIfAborted()));
 vi.mock("../../../modules/character-visual/adapters/l2d/core", () => ({ loadCore: core }));
@@ -8,6 +9,9 @@ const runtime = { SDK_VERSION: "5-r.4", initialize() {}, createModel() {}, creat
 beforeEach(() => vi.clearAllMocks());
 
 describe("optional local Cubism runtime", () => {
+  it("requires a full page reload after installation to clear both global runtime caches", () => {
+    expect(format.runtime?.reloadAfterInstall).toBe(true);
+  });
   it("loads user-installed runtime assets from the host bridge", async () => {
     const importer = vi.fn(async () => runtime);
     const urls = (file: string) => `http://127.0.0.1:8787/api/avatar/runtime/file?format=l2d&path=${file}&token=test`;

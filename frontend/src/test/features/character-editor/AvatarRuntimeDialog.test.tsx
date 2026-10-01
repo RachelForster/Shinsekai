@@ -41,15 +41,16 @@ afterEach(() => {
   cleanup();
   delete window.__SHINSEKAI_IPC__;
 });
-function view() {
+function view(selectedFormat = format) {
   const onInstalled = vi.fn(),
-    onClose = vi.fn();
+    onClose = vi.fn(),
+    onReload = vi.fn();
   render(
     <I18nProvider language="en">
-      <AvatarRuntimeDialog format={format} onClose={onClose} onInstalled={onInstalled} />
+      <AvatarRuntimeDialog format={selectedFormat} onClose={onClose} onInstalled={onInstalled} onReload={onReload} />
     </I18nProvider>,
   );
-  return { onInstalled, onClose };
+  return { onInstalled, onClose, onReload };
 }
 async function selectAndAccept() {
   await screen.findByText("SDK not installed");
@@ -68,7 +69,7 @@ describe("user-installed format runtime dialog", () => {
     expect(prepare).not.toHaveBeenCalled();
   });
   it("uses the shared ZIP picker, format-local compiler and host commit in order", async () => {
-    const { onInstalled } = view();
+    const { onInstalled, onReload } = view();
     await selectAndAccept();
     fireEvent.click(screen.getByRole("button", { name: "Import and install" }));
     await screen.findByText("SDK installed. Close this dialog to preview the model.");
@@ -78,7 +79,37 @@ describe("user-installed format runtime dialog", () => {
     expect(compile).toHaveBeenCalledWith({ opaque: true }, expect.any(AbortSignal));
     expect(install).toHaveBeenCalledWith("demo", { ...input, compiled: "compiled" });
     expect(onInstalled).toHaveBeenCalledOnce();
+    expect(onReload).not.toHaveBeenCalled();
   });
+  it("reloads the page instead of remounting models that may still use cached fallback SDK/Core", async () => {
+    const { onInstalled, onReload } = view({
+      ...format,
+      runtime: { ...format.runtime!, reloadAfterInstall: true },
+    });
+    await selectAndAccept();
+    expect(screen.getByText(/Unsaved changes will be lost/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Import, install and reload" }));
+    await waitFor(() => expect(onReload).toHaveBeenCalledOnce());
+    expect(install).toHaveBeenCalledOnce();
+    expect(onInstalled).not.toHaveBeenCalled();
+  });
+  it.each([new Error("Disk full"), { installed: false }])(
+    "never reloads after an unsuccessful installation: %j",
+    async (failure) => {
+      if (failure instanceof Error) install.mockRejectedValueOnce(failure);
+      else install.mockResolvedValueOnce(failure);
+      const { onInstalled, onReload } = view({
+        ...format,
+        runtime: { ...format.runtime!, reloadAfterInstall: true },
+      });
+      await selectAndAccept();
+      fireEvent.click(screen.getByRole("button", { name: "Import, install and reload" }));
+      await screen.findByRole("alert");
+      expect(onReload).not.toHaveBeenCalled();
+      expect(onInstalled).not.toHaveBeenCalled();
+      expect(screen.getByRole("button", { name: "Import, install and reload" })).toBeEnabled();
+    },
+  );
   it("reports invalid ZIPs and allows retry without committing", async () => {
     prepare.mockRejectedValueOnce(new Error("Wrong SDK version"));
     view();
@@ -108,9 +139,10 @@ describe("user-installed format runtime dialog", () => {
   });
   it("does not install again when the pinned SDK is already installed", async () => {
     status.mockResolvedValueOnce({ installed: true });
-    view();
+    const { onReload } = view({ ...format, runtime: { ...format.runtime!, reloadAfterInstall: true } });
     await screen.findByText("SDK installed. Close this dialog to preview the model.");
-    expect(screen.queryByRole("button", { name: "Import and install" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Import, install and reload" })).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(onReload).not.toHaveBeenCalled();
   });
 });
