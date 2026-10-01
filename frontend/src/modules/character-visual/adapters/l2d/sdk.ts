@@ -64,13 +64,35 @@ export interface CubismSdk {
 /** Only explicitly prepared local SDK resources are used; never download a licensed SDK implicitly. */
 export function createSdkLoader(importRuntime: (url: string) => Promise<unknown>) {
   let loaded: Promise<CubismSdk> | undefined;
-  return async (signal: AbortSignal): Promise<CubismSdk> => {
-    await loadCore(signal);
+  let retries = 0;
+  const retryUrl = (value: string) => {
+    if (!retries) return value;
+    const url = new URL(value, window.location.href);
+    // Browser module maps can retain a failed import even after SDK installation.
+    url.searchParams.set("sdk_retry", String(retries));
+    return url.href;
+  };
+  return async (signal: AbortSignal, runtimeAssetUrl?: (filename: string) => string): Promise<CubismSdk> => {
+    if (runtimeAssetUrl) {
+      try {
+        await loadCore(signal, runtimeAssetUrl("live2dcubismcore.min.js"));
+      } catch (error) {
+        signal.throwIfAborted();
+        // Keep explicitly prepared developer/public runtimes compatible.
+        await loadCore(signal);
+      }
+    } else await loadCore(signal);
     loaded ??= (async () => {
       try {
         // Absolute same-origin URLs avoid Vite rewriting optional public assets to ?import in dev.
         const url = new URL("/live2d/cubism-sdk.js", window.location.href).href;
-        const sdk = await importRuntime(url);
+        let sdk: unknown;
+        try {
+          sdk = await importRuntime(retryUrl(runtimeAssetUrl ? runtimeAssetUrl("cubism-sdk.js") : url));
+        } catch (error) {
+          if (!runtimeAssetUrl) throw error;
+          sdk = await importRuntime(retryUrl(url));
+        }
         const module = sdk as Partial<CubismSdk> | null;
         if (
           !module ||
@@ -83,9 +105,13 @@ export function createSdkLoader(importRuntime: (url: string) => Promise<unknown>
         return module as CubismSdk;
       } catch (error) {
         loaded = undefined;
-        throw new Error("Cubism SDK runtime is unavailable. Run pnpm prepare:l2d with your licensed 5-r.4 SDK.", {
-          cause: error,
-        });
+        ++retries;
+        throw new Error(
+          "Cubism SDK runtime is unavailable. Open Install SDK in the character model editor (developers: pnpm prepare:l2d).",
+          {
+            cause: error,
+          },
+        );
       }
     })();
     const sdk = await loaded;

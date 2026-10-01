@@ -10,6 +10,7 @@ import { tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
 import { AsyncButton, Button, EmptyState, FilePicker, ImageAssetGallery, PathDisplay, Select } from "../../shared/ui";
 import { ModelStateDialog } from "./ModelStateDialog";
+import { AvatarRuntimeDialog } from "./AvatarRuntimeDialog";
 import "./ModelStateEditor.css";
 
 export function ModelStateEditor({
@@ -26,6 +27,8 @@ export function ModelStateEditor({
   const bank = getCharacterAssets(character);
   const format = avatarFormat(kind);
   const [source, setSource] = useState("");
+  const [runtimeOpen, setRuntimeOpen] = useState(false);
+  const [runtimeRevision, setRuntimeRevision] = useState(0);
   const [presets, setPresets] = useState<string[]>([]);
   const [previewSequence, setPreviewSequence] = useState(0);
   const [ready, setReady] = useState(false);
@@ -45,6 +48,7 @@ export function ModelStateEditor({
   const tags = tagContents(bank?.emotion_tags ?? "", bank?.sprites.length ?? 0);
   useEffect(() => {
     setIndex(0);
+    setRuntimeOpen(false);
     setEditingIndex(null);
     setSource("");
     setPresets([]);
@@ -143,6 +147,11 @@ export function ModelStateEditor({
         {kind !== "static" && format && (
           <>
             <p className="field-row__hint">{t("character.avatar.importHint")}</p>
+            {format.runtime && (
+              <Button disabled={pending} onClick={() => setRuntimeOpen(true)}>
+                {t("character.sdk.setup")}
+              </Button>
+            )}
             <label className="field-row field-row--stack">
               <span className="field-row__label">{t("character.avatar.modelEntry")}</span>
               <span className="field-row__control">
@@ -210,6 +219,7 @@ export function ModelStateEditor({
                 <aside className="asset-inspector">
                   {editingIndex === null && (
                     <CharacterVisual
+                      key={runtimeRevision}
                       className="model-state-editor__preview"
                       asset={{
                         id: modelPath,
@@ -269,6 +279,13 @@ export function ModelStateEditor({
             setEditingIndex(null);
             onSaved(result);
           }}
+        />
+      )}
+      {runtimeOpen && format?.runtime && (
+        <AvatarRuntimeDialog
+          format={format}
+          onClose={() => setRuntimeOpen(false)}
+          onInstalled={() => setRuntimeRevision((value) => value + 1)}
         />
       )}
     </section>

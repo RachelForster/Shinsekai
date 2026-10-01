@@ -386,6 +386,14 @@ def dispatch_file_request(
         else:
             handler._send_media_file(target, send_body=False)
         return True
+    if path == "/api/avatar/runtime/file":
+        from application.media.avatar_runtime import AvatarRuntimeService
+        handler._require_authorized_media_read()
+        query = parse_qs(query_string)
+        service = AvatarRuntimeService(Path(handler.state.project_root_dir))
+        target = service.file((query.get("format") or [""])[0], (query.get("path") or [""])[0])
+        handler._send_local_file(target, send_body=send_body)
+        return True
     if path == "/api/avatar/file":
         from application.characters.model_files import model_file
         handler._require_authorized_media_read()

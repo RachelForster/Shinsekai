@@ -20,3 +20,18 @@ export function avatarAssetUrl(modelUrl: string, relativePath: string): string {
     model.pathname.slice(0, model.pathname.lastIndexOf("/") + 1) + path.split("/").map(encodeURIComponent).join("/");
   return model.toString();
 }
+
+/** The bridge owns writable runtimes; preserve its origin and access token in desktop/mobile hosts. */
+export function avatarRuntimeAssetUrl(modelUrl: string, format: string, filename: string): string {
+  if (!/^[a-z][a-z0-9_-]{0,63}$/.test(format) || !/^[a-zA-Z0-9_.-]+$/.test(filename) || filename.includes("..")) {
+    throw new Error("Invalid avatar runtime resource");
+  }
+  const url = new URL(modelUrl, window.location.href);
+  if (!/^https?:$/.test(url.protocol)) throw new Error("Unsupported avatar model URL");
+  url.pathname = "/api/avatar/runtime/file";
+  url.hash = "";
+  url.searchParams.delete("model_path");
+  url.searchParams.set("format", format);
+  url.searchParams.set("path", filename);
+  return url.toString();
+}

@@ -9,7 +9,7 @@ type Expression = { Parameters: Array<{ Id: string; Value: number; Blend?: strin
 let activeModels = 0;
 
 export async function create(mount: AvatarMount, signal: AbortSignal): Promise<AvatarSession<L2DState, L2DControls>> {
-  const sdk = await loadSdk(signal);
+  const sdk = await loadSdk(signal, mount.runtimeAssetUrl);
   sdk.initialize();
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "display:block;width:100%;height:100%";

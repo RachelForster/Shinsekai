@@ -37,6 +37,9 @@ export default defineConfig({
           }
 
           // Keep the 3D SDK behind the PMX adapter's lazy import.
+          if (has("/typescript/")) {
+            return "l2d-compiler";
+          }
           if (has("/@babylonjs/") || has("/babylon-mmd/")) {
             return "mmd-vendor";
           }

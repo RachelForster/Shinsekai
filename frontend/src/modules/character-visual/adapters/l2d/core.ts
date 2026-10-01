@@ -5,7 +5,7 @@ export function hasCore(): boolean {
 }
 
 /** Core is separately licensed and installed locally, never fetched from a CDN at runtime. */
-export async function loadCore(signal: AbortSignal) {
+export async function loadCore(signal: AbortSignal, url = "/live2d/live2dcubismcore.min.js") {
   signal.throwIfAborted();
   if (!hasCore()) {
     loaded ??= new Promise<void>((resolve, reject) => {
@@ -15,9 +15,13 @@ export async function loadCore(signal: AbortSignal) {
         window.clearTimeout(timer);
         script.remove();
         loaded = undefined;
-        reject(new Error("Cubism Core is missing. Install the licensed Core at /live2d/live2dcubismcore.min.js"));
+        reject(
+          new Error(
+            "Cubism Core is missing. Open Install SDK in the character model editor (developers: pnpm prepare:l2d).",
+          ),
+        );
       };
-      script.src = "/live2d/live2dcubismcore.min.js";
+      script.src = url;
       script.onerror = fail;
       script.onload = () => {
         window.clearTimeout(timer);

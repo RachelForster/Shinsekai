@@ -11,6 +11,7 @@ import {
 } from "../desktop/desktopApi";
 import type {
   ApiConfig,
+  AvatarRuntimeStatus,
   AppConfig,
   AppUpdateInfo,
   AppUpdateResult,
@@ -1128,6 +1129,29 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           body: JSON.stringify(config),
           method: "POST",
         }),
+    },
+    avatarRuntimes: {
+      status: (format) =>
+        requestJson<AvatarRuntimeStatus>(apiBase, `/api/avatar/runtime/${encodeURIComponent(format)}/status`, {
+          method: "POST",
+          body: "{}",
+        }),
+      async prepare(format, input) {
+        const task = await requestJson<TaskSnapshot<unknown>>(
+          apiBase,
+          `/api/avatar/runtime/${encodeURIComponent(format)}/prepare`,
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task);
+      },
+      async install(format, input) {
+        const task = await requestJson<TaskSnapshot<AvatarRuntimeStatus>>(
+          apiBase,
+          `/api/avatar/runtime/${encodeURIComponent(format)}/install`,
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task);
+      },
     },
     modelAssets: {
       async download(input, options) {
