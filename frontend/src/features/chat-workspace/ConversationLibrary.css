@@ -1,4 +1,5 @@
 .conversation-library__header,
+.conversation-library__toolbar,
 .conversation-card__meta,
 .conversation-card__actions {
   display: flex;
@@ -13,6 +14,13 @@
 .conversation-library__header h1 {
   margin: 0;
   font-size: 1.35rem;
+}
+.conversation-library__toolbar {
+  margin-left: auto;
+}
+.conversation-library__mobile-access {
+  display: flex;
+  align-items: center;
 }
 .conversation-library__list {
   display: grid;
