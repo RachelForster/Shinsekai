@@ -26,6 +26,8 @@ pnpm prepare:l2d --sdk-dir ../.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4 --accept-sdk
 
 静态“删除全部立绘”保留 `avatars/` 模型子目录及各类型配置。显式替换模型会清空该类型的活动状态和标签，旧模型及状态文件保留在旧包目录供手动恢复，不再进入提示词、聊天资源候选或编辑器活动列表；在新模型上重新保存的状态才可用，不自动迁移旧编号。`.char` 导入后的模型、状态和语音使用绝对项目路径，导出仅在配置副本中转换为包内相对路径。配置通过同目录临时文件及原子替换提交，写入失败向上传播，模型导入或状态保存回滚新增文件与内存银行。
 
+模型状态保存及 `.char` 导入时，宿主通过格式 adapter 完整校验并生成受控依赖索引；资源路由只查该索引，不逐条重解析银行。索引绑定模型、状态内容和依赖文件信息，外部包提供的索引会重新生成。较早试验版中缺少索引的状态需要通过 `.char` 导出再导入补齐；状态 JSON 和角色配置格式不变，模型入口及声明贴图不受缺失状态索引影响。这一机制复用于 MMD 与插件格式，不在共享层解释 Live2D 参数或 MMD 动作。
+
 状态格式由 L2D 模块解释：
 
 角色编辑器复用 `shared/ui` 的 `Select`、`FilePicker`、`TextInput`、`Button` / `AsyncButton` 和 `Switch`，沿用角色编辑页的 section / field-row 布局及中英日 i18n。Live2D 描述符声明 `.model3.json` 入口过滤，文件选择沿用桌面原生对话框与浏览器降级机制，并保留手输路径。角色导入 / 保存走既有 character repository，模型 URL 和不透明状态读取分别归 files / character/modelStateRepository；格式专属 Editor 与状态类型仍留在设计指定的 adapter 目录。

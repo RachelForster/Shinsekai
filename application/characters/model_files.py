@@ -1,9 +1,9 @@
 """Authorize only declared model dependencies and saved states, never a directory."""
 
-import json
 from pathlib import Path
 
 from core.media.avatar.registry import adapter_for
+from core.media.avatar.state_dependencies import indexed_state_files
 from sdk.path_utils import is_portable_relative_path, safe_child_path, safe_existing_file_path
 
 
@@ -21,17 +21,19 @@ def model_file(state, model_path: str, relative_path: str) -> Path:
             target = safe_child_path(model.parent, relative_path)
             adapter = adapter_for(kind)
             allowed = set(adapter.inspect(model).files)
+            if target in allowed:
+                return target
             for sprite in bank.sprites:
                 try:
                     sprite_path = sprite.get("path", "") if isinstance(sprite, dict) else sprite.path
                     saved = safe_existing_file_path(sprite_path, roots=[model.parent])
-                    parsed = adapter.parse_state(model, json.loads(saved.read_text(encoding="utf-8")))
+                    dependencies = indexed_state_files(model, saved, kind)
                     allowed.add(saved)
-                    allowed.update(adapter.state_files(model, parsed))
-                except (ValueError, PermissionError, FileNotFoundError, KeyError):
+                    allowed.update(dependencies)
+                except (ValueError, OSError, KeyError):
                     # Invalid legacy entries must not block declared model dependencies.
                     continue
-            if target not in allowed:
-                raise PermissionError("File is not a configured model dependency")
-            return target
+                if target in allowed:
+                    return target
+            raise PermissionError("File is not a configured model dependency")
     raise PermissionError("Model is not configured")

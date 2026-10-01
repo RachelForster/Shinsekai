@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+import stat
 import struct
 from dataclasses import dataclass
 from pathlib import Path
@@ -42,9 +43,11 @@ def _vpd(data: bytes) -> MotionTargets:
     bones: set[str] = set()
     morphs: set[str] = set()
     indices: set[tuple[str, str]] = set()
-    remaining = text[header.end():]
-    while remaining.strip():
-        block = re.match(r"\s*(Bone|Morph)(\d+)\{([^\r\n{}]+)\r?\n([^{}]*)\}", remaining)
+    pattern = re.compile(r"\s*(Bone|Morph)(\d+)\{([^\r\n{}]+)\r?\n([^{}]*)\}")
+    position = header.end()
+    end = len(text.rstrip())
+    while position < end:
+        block = pattern.match(text, position)
         if not block:
             raise ValueError("Invalid or truncated VPD block")
         kind, index, name, payload = block.groups()
@@ -64,7 +67,7 @@ def _vpd(data: bytes) -> MotionTargets:
         indices.add((kind, index))
         if len(indices) > 20_000:
             raise ValueError("Too many VPD targets")
-        remaining = remaining[block.end():]
+        position = block.end()
     if len(bones) != int(header[1]):
         raise ValueError("VPD bone count does not match its blocks")
     return MotionTargets(frozenset(bones), frozenset(morphs))
@@ -162,14 +165,19 @@ def _vmd(data: bytes) -> MotionTargets:
 
 
 def inspect_motion(source: Path) -> MotionTargets:
-    if source.stat().st_size > 64 * 1024 * 1024:
-        raise ValueError("MMD preset exceeds 64 MiB")
     parsers = {".vpd": _vpd, ".vmd": _vmd}
     parser = parsers.get(source.suffix.lower())
     if parser is None:
         raise ValueError("MMD presets require .vpd or .vmd")
     try:
+        metadata = source.stat()
+        if not stat.S_ISREG(metadata.st_mode):
+            raise ValueError("MMD preset must be a regular file")
+        if metadata.st_size > 64 * 1024 * 1024:
+            raise ValueError("MMD preset exceeds 64 MiB")
         result = parser(source.read_bytes())
+    except OSError as error:
+        raise ValueError("Cannot read MMD preset file") from error
     except UnicodeDecodeError as error:
         raise ValueError("Invalid MMD preset text encoding") from error
     if not result.bones and not result.morphs:

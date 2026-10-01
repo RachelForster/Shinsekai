@@ -403,6 +403,8 @@ def run(
         auth_token=bridge_auth_token,
     )
     _set_bridge_state(state)
+    from application.characters.import_recovery import recover_model_imports
+    recover_model_imports(state)
     state.chat_stream = ChatStreamService(host=host, bridge_port=port, auth_token=bridge_auth_token)
     state.resource_urls = state.chat_stream.resource_urls
     state.chat_stream.start()

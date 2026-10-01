@@ -13,6 +13,197 @@ from test.fixtures.pmx import pmx_bytes, pmx_sections
 from test.fixtures.mmd_motion import vpd_bytes, vmd_bytes
 
 
+def test_cold_authorization_of_full_batch_only_reads_dependency_indexes(harness, monkeypatch):
+    from core.media.avatar import mmd
+
+    state, use_case, body = _mmd_batch(harness)
+    body["source_paths"] = [body["source_paths"][1]] * 100
+    result = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
+    model = Path(body["model_path"])
+    mmd._metadata.cache_clear()
+    mmd._cached_texture_paths.cache_clear()
+    def unexpected(*args, **kwargs):
+        pytest.fail("Resource authorization reparsed a preset/state")
+    monkeypatch.setattr(mmd, "inspect_motion", unexpected)
+    monkeypatch.setattr(mmd.MmdAdapter, "parse_state", unexpected)
+    original_open = Path.open
+    def bounded_open(path, *args, **kwargs):
+        if path.suffix.lower() in {".vpd", ".vmd"}:
+            pytest.fail("Resource authorization read motion contents")
+        return original_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", bounded_open)
+    assert model_file(state, str(model), model.name) == model
+    saved = Path(result["avatars"]["mmd"]["sprites"][-1]["path"])
+    assert model_file(state, str(model), saved.relative_to(model.parent).as_posix()) == saved
+    value = json.loads(saved.read_text())
+    assert model_file(state, str(model), value["motion"]).is_file()
+
+
+def test_invalid_legacy_motion_entry_does_not_block_model_or_indexed_states(harness):
+    state, use_case, body = _mmd_batch(harness)
+    result = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
+    model = Path(body["model_path"])
+    (model.parent / "directory.vmd").mkdir()
+    bad = model.parent / "legacy.json"
+    bad.write_text(json.dumps({**body["state"], "motion": "directory.vmd"}))
+    bank = state.config_manager.get_character_by_name("Haru").avatars["mmd"]
+    bank.sprites.insert(0, {"path": str(bad)})
+    assert model_file(state, str(model), model.name) == model
+    saved = Path(result["avatars"]["mmd"]["sprites"][0]["path"])
+    assert model_file(state, str(model), saved.relative_to(model.parent).as_posix()) == saved
+    with pytest.raises(PermissionError):
+        model_file(state, str(model), "directory.vmd")
+
+
+@pytest.mark.parametrize("changed", ["state", "motion", "index"])
+def test_dependency_index_fails_closed_if_resources_change(harness, changed):
+    from core.media.avatar.state_dependencies import index_path
+
+    state, use_case, body = _mmd_batch(harness)
+    result = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
+    model = Path(body["model_path"])
+    saved = Path(result["avatars"]["mmd"]["sprites"][0]["path"])
+    value = json.loads(saved.read_text())
+    if changed == "state":
+        saved.write_text(json.dumps({**value, "morphs": {"smile": 0.5}}))
+    elif changed == "motion":
+        (model.parent / value["motion"]).write_bytes(b"tampered")
+    else:
+        index_path(saved).write_text("invalid index")
+    with pytest.raises(PermissionError):
+        model_file(state, str(model), value["motion"])
+    assert model_file(state, str(model), model.name) == model
+
+
+@pytest.mark.parametrize("phase", ["copy", "before-config", "after-config"])
+def test_crashed_preset_batch_is_recovered_without_losing_committed_data(harness, monkeypatch, phase):
+    from application.characters import model_assets
+    from application.characters.import_recovery import recover_model_imports
+    from core.media.asset_import import PENDING_MARKER
+
+    state, use_case, body = _mmd_batch(harness)
+    model = Path(body["model_path"])
+    original_save = state.character_manager.save_avatar_bank
+    original_copy = model_assets.shutil.copy2
+    def interrupted_copy(source, target):
+        Path(target).write_bytes(b"partial copy")
+        raise SystemExit("process exited while staging")
+    def interrupted_save(*args, **kwargs):
+        if phase == "after-config":
+            original_save(*args, **kwargs)
+        raise SystemExit("process exited near commit")
+    with monkeypatch.context() as patch:
+        patch.setattr(model_assets.shutil, "copy2", interrupted_copy if phase == "copy" else original_copy)
+        patch.setattr(state.character_manager, "save_avatar_bank", interrupted_save)
+        with pytest.raises(SystemExit):
+            execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
+    candidates = list(model.parent.glob(f"states/.batch-*/{PENDING_MARKER}"))
+    assert len(candidates) == 1
+    batch = candidates[0].parent
+    state.config_manager.reload()
+    recover_model_imports(state)
+    if phase == "after-config":
+        assert batch.is_dir()
+        bank = state.config_manager.get_character_by_name("Haru").avatars["mmd"]
+        assert len(bank.sprites) == 2
+        saved = Path(bank.sprites[0]["path"])
+        assert model_file(state, str(model), saved.relative_to(model.parent).as_posix()) == saved
+    else:
+        assert not batch.exists()
+        assert state.config_manager.get_character_by_name("Haru").avatars["mmd"].sprites == []
+    assert not list(model.parent.rglob(PENDING_MARKER))
+    assert not list(model.parent.glob("states/.batch-*.lock"))
+    assert model.is_file()
+    recover_model_imports(state)  # Recovery is idempotent.
+
+
+def test_recovery_cleans_interrupted_batch_under_replaced_model(harness, monkeypatch):
+    from application.characters import model_assets
+    from application.characters.import_recovery import recover_model_imports
+    from core.media.asset_import import PENDING_MARKER
+
+    state, use_case, body = _mmd_batch(harness)
+    old_model = Path(body["model_path"])
+    original_copy = model_assets.shutil.copy2
+    def interrupted(source, target):
+        original_copy(source, target)
+        raise SystemExit("interrupted")
+    with monkeypatch.context() as patch:
+        patch.setattr(model_assets.shutil, "copy2", interrupted)
+        with pytest.raises(SystemExit):
+            execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
+    batch = next(old_model.parent.rglob(PENDING_MARKER)).parent
+    replacement = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="mmd",
+                          source_path=str(harness[2].with_name("sample.pmx")))
+    recover_model_imports(state)
+    assert not batch.exists()
+    assert old_model.is_file()
+    assert Path(replacement["avatars"]["mmd"]["model_path"]).is_file()
+
+
+def test_recovery_protects_motion_references_after_all_batch_states_are_overwritten(harness, monkeypatch):
+    from application.characters.import_recovery import recover_model_imports
+    from core.media.asset_import import PendingAssetBatch, PENDING_MARKER
+
+    state, use_case, body = _mmd_batch(harness)
+    # Emulate a commit whose marker cleanup was interrupted.
+    with monkeypatch.context() as patch:
+        patch.setattr(PendingAssetBatch, "commit", lambda self: (_ for _ in ()).throw(SystemExit("after commit")))
+        with pytest.raises(SystemExit):
+            execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
+    state.config_manager.reload()
+    bank = state.config_manager.get_character_by_name("Haru").avatars["mmd"]
+    batch = next(Path(body["model_path"]).parent.rglob(PENDING_MARKER)).parent
+    for index, sprite in enumerate(list(bank.sprites)):
+        saved = Path(sprite["path"])
+        execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="mmd",
+                model_path=body["model_path"], sprite_index=index, path=str(saved),
+                state=json.loads(saved.read_text()), tags="edited")
+    recover_model_imports(state)
+    assert batch.exists()
+    assert len(list(batch.rglob("preset.*"))) == 2
+    assert not (batch / PENDING_MARKER).exists()
+
+
+def test_startup_recovery_defers_when_durable_config_cannot_be_read(harness, monkeypatch):
+    from application.characters.import_recovery import recover_model_imports
+    from core.media.asset_import import PendingAssetBatch, PENDING_MARKER
+
+    state, _, body = _mmd_batch(harness)
+    with pytest.raises(SystemExit), PendingAssetBatch(Path(body["model_path"]).parent / "states") as transaction:
+        (transaction.path / "partial.vmd").write_bytes(b"pending")
+        raise SystemExit("process exited")
+    monkeypatch.setattr(state.config_manager, "reload", lambda: (_ for _ in ()).throw(OSError("config unreadable")))
+    recover_model_imports(state)
+    assert (transaction.path / PENDING_MARKER).is_file()
+    assert (transaction.path / "partial.vmd").is_file()
+
+
+def test_startup_recovery_rejects_redirected_nested_marker_paths(harness, monkeypatch, tmp_path):
+    from application.characters import import_recovery
+    from core.media.asset_import import PENDING_MARKER
+
+    state, _, body = _mmd_batch(harness)
+    model = Path(body["model_path"])
+    owned = model.parent.parent
+    marker = model.parent / "states" / (".batch-" + "a" * 32) / PENDING_MARKER
+    original_rglob = Path.rglob
+    original_safe_child = import_recovery.safe_child_path
+
+    def redirected_marker(root, pattern):
+        return iter([marker]) if root == owned else original_rglob(root, pattern)
+
+    def redirected_path(root, relative):
+        if root == owned and str(relative) == str(marker.relative_to(owned)):
+            return tmp_path / "outside" / PENDING_MARKER
+        return original_safe_child(root, relative)
+
+    monkeypatch.setattr(Path, "rglob", redirected_marker)
+    monkeypatch.setattr(import_recovery, "safe_child_path", redirected_path)
+    monkeypatch.setattr(import_recovery, "recover_asset_batches", lambda *args: pytest.fail("Recovery accepted a redirected path"))
+    import_recovery.recover_model_imports(state)
+
+
 def _mmd_batch(harness):
     state, use_case, entry = harness
     model = entry.with_name("sample.pmx")
