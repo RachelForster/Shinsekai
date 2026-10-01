@@ -625,9 +625,9 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         });
         return waitForTask(apiBase, task, options);
       },
-      async resumeLast(options) {
+      async resumeLast(options, overrides) {
         const task = await requestJson<TaskSnapshot<ChatSnapshot>>(apiBase, "/api/chat/init", {
-          body: JSON.stringify({ mode: "resume-last" }),
+          body: JSON.stringify({ mode: "resume-last", enableMobileAccess: overrides?.enableMobileAccess }),
           method: "POST",
         });
         return waitForTask(apiBase, task, options);

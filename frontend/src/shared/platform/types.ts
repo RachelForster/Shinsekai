@@ -627,6 +627,9 @@ export interface TemplateGenerateInput extends PlayerCharacterOptions {
   voiceLanguage?: string;
 }
 
+/** Explicit device preferences override persisted values when restoring a chat. */
+export type ChatResumeOverrides = Pick<ChatLaunchPayload, "enableMobileAccess">;
+
 export type CharacterPromptMode = "compact" | "full";
 export type MediaSelectionMode = "indexed" | "semantic";
 
@@ -1489,7 +1492,7 @@ export interface ShinsekaiPlatform {
     getSnapshot: () => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;
     launch: (payload: ChatLaunchPayload, options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
-    resumeLast: (options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
+    resumeLast: (options?: TaskProgressOptions<ChatSnapshot>, overrides?: ChatResumeOverrides) => Promise<ChatSnapshot>;
     subscribe: (listener: (snapshot: ChatSnapshot) => void) => () => void;
     // --- 主题 mod 系统 ---
     listThemes: () => Promise<ChatThemeSummary[]>;
