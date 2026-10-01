@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sdk.adapters import ModelAssetAdapter, ModelCapabilities, ModelFiles
 from sdk.path_utils import is_portable_relative_path, safe_child_path
+from core.media.avatar.l2d_sdk import Live2DRuntimeInstaller
 
 
 def _file(root: Path, value: object) -> Path:
@@ -22,6 +23,7 @@ def _file(root: Path, value: object) -> Path:
 class Live2DAdapter(ModelAssetAdapter):
     format_id = "l2d"
     capabilities = ModelCapabilities(mouth=True, blink=True, motion=True)
+    runtime_installer = Live2DRuntimeInstaller()
 
     def inspect(self, source: Path) -> ModelFiles:
         source = source.resolve(strict=True)

@@ -2041,6 +2041,17 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         return delay(config.system_config);
       },
     },
+    avatarRuntimes: {
+      async status() {
+        throw new Error("SDK installation requires a running Shinsekai bridge");
+      },
+      async prepare() {
+        throw new Error("SDK installation requires a running Shinsekai bridge");
+      },
+      async install() {
+        throw new Error("SDK installation requires a running Shinsekai bridge");
+      },
+    },
     modelAssets: {
       async download(input, options) {
         const memoryEmbedding = input.assetId === "memory.embedding";

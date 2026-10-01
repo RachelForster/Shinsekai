@@ -11,14 +11,34 @@
 - Core 与 Haru 仅用于已授权的本地集成试验。`frontend/public/live2d/.gitignore` 排除 Core 脚本与 models，不随此分支提交。
 - SDK 是显式准备的可选本地运行时，源码和类型检查不再引用被忽略的 vendor 产物。干净检出可以构建及运行单元测试；未安装 SDK 时加载 L2D 会明确报错，静态立绘不受影响。Core / Framework 的发布分发方案仍需单独许可审查。
 
-本机 SDK 原始包位于 `.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4/`。用户先阅读并接受 SDK 的 Framework / Core 许可，然后显式运行（不会自动下载 SDK 或复制模型）：
+### 用户安装
+
+角色编辑器 → 形象类型选择 Live2D → **安装 SDK**。弹窗提供官方下载页和两份软件许可链接；在官网的历史版本中下载 **Cubism SDK for Web 5-r.4**，选择原始 ZIP 并明确勾选许可确认后点击“导入并安装”。无需解压、Node 或 pnpm；版本不符、修改过的 ZIP、编译校验失败和磁盘写入失败均报错，不发布不完整运行时。成功后自动重建当前预览实例，聊天舞台下次加载时也使用同一运行时。不迁移或修改角色银行/状态。
+
+ZIP 由后端核对固定 SHA-256，仅返回 Framework 的受控 TypeScript 源文件；前端懒加载固定 TypeScript 5.9.3，在浏览器中离线编译并复用 `scripts/l2d-sdk-bridge.mjs`。后端再次验证原始 ZIP 和确定性编译产物哈希，只保存 Core、Framework 编译产物及许可文件，不复制样例或模型。更新桥接模块/编译器/SDK 时必须重新运行下方真浏览器检查并复核、更新产物哈希，不能绕过完整性检查。
+
+安装位置为当前数据根下 `data/runtime/avatars/l2d/`，不写只读安装目录。文件先写入带租约和恢复标记的隐藏批次，`current.json` 原子替换才发布；失败回滚，进程中断后下次状态检查/安装会清理未发布批次，已发布批次不删除。资源通过带 bridge 鉴权的 `/api/avatar/runtime/file` 精确白名单提供，保留桌面/移动端令牌，不从模型目录或 CDN 加载 SDK。共享编排只依赖可选运行时能力，不认识 Cubism；ZIP 校验和编译留在 L2D adapter 内，已有 MMD/插件无需实现该能力。
+
+用户自行安装 SDK **不代表**应用发布方不需要 Live2D 的发布许可/可扩展应用审核；发布方案仍需单独确认。不应把本地测试用的忽略文件或生成运行时打包上传。
+
+### 开发者本地准备（保留兼容）
+
+开发者也可以对自行下载并解压的 SDK 显式运行（不会自动下载 SDK 或复制模型）：
 
 ```powershell
 cd frontend
-pnpm prepare:l2d --sdk-dir ../.tmp/l2d-sdk/r4/CubismSdkForWeb-5-r.4 --accept-sdk-license
+pnpm prepare:l2d --sdk-dir <解压后的SDK目录> --accept-sdk-license
 ```
 
-脚本核对 SDK 的 CHANGELOG 首个版本为 `5-r.4`，使用已声明的 Vite 依赖将官方 Framework 和本项目的窄桥接模块编译成 `public/live2d/cubism-sdk.js`，同时复制 Core 与许可说明；这些生成文件均被忽略，不随 PR 分发。应用仅按需加载同源本地资源，没有运行时 CDN。`sdk.ts` 定义本应用所需的窄运行时接口，不引用或分发 Core 的专有类型文件。升级 SDK 必须复核桥接模块，不能仅修改版本字符串。
+脚本核对 SDK 的 CHANGELOG 首个版本为 `5-r.4`，使用已声明的 Vite 依赖将官方 Framework 和本项目的窄桥接模块编译成 `public/live2d/cubism-sdk.js`，同时复制 Core 与许可说明；这些生成文件均被忽略，不随 PR 分发。加载器优先使用用户安装的 bridge 运行时，未安装时仍兼容开发者显式准备的同源 public 资源。`sdk.ts` 定义本应用所需的窄运行时接口，不引用或分发 Core 的专有类型文件。升级 SDK 必须复核桥接模块，不能仅修改版本字符串。
+
+真浏览器安装检查（已授权本地 SDK 与 Haru，先 `pnpm build`）：
+
+```powershell
+node scripts/verify-l2d-import.mjs --sdk-zip <官方5-r.4.zip> --python <shinsekai环境python.exe>
+```
+
+检查生产构建中的懒加载编译器、浏览器/重复编译哈希一致、实际后端原子安装以及安装后的 Core/Framework 加载 Haru。测试数据隔离在 `.tmp/l2d-import-verify-*`，不改用户当前数据或联网下载 SDK。
 
 ## 模型与状态
 

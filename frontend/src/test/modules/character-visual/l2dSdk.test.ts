@@ -8,6 +8,23 @@ const runtime = { SDK_VERSION: "5-r.4", initialize() {}, createModel() {}, creat
 beforeEach(() => vi.clearAllMocks());
 
 describe("optional local Cubism runtime", () => {
+  it("loads user-installed runtime assets from the host bridge", async () => {
+    const importer = vi.fn(async () => runtime);
+    const urls = (file: string) => `http://127.0.0.1:8787/api/avatar/runtime/file?format=l2d&path=${file}&token=test`;
+    const signal = new AbortController().signal;
+    await expect(createSdkLoader(importer)(signal, urls)).resolves.toBe(runtime);
+    expect(core).toHaveBeenCalledWith(signal, urls("live2dcubismcore.min.js"));
+    expect(importer).toHaveBeenCalledWith(urls("cubism-sdk.js"));
+  });
+  it("retains explicitly prepared public runtimes when no host runtime exists", async () => {
+    const importer = vi.fn().mockRejectedValueOnce(new Error("missing host runtime")).mockResolvedValue(runtime);
+    const urls = (file: string) => `http://localhost/api/avatar/runtime/file?path=${file}`;
+    await expect(createSdkLoader(importer)(new AbortController().signal, urls)).resolves.toBe(runtime);
+    expect(importer.mock.calls.map(([url]) => url)).toEqual([
+      urls("cubism-sdk.js"),
+      new URL("/live2d/cubism-sdk.js", window.location.href).href,
+    ]);
+  });
   it("loads only the local prepared SDK and shares concurrent imports", async () => {
     const importer = vi.fn(async () => runtime);
     const load = createSdkLoader(importer);
@@ -24,6 +41,7 @@ describe("optional local Cubism runtime", () => {
     const load = createSdkLoader(importer);
     await expect(load(new AbortController().signal)).rejects.toThrow("prepare:l2d");
     await expect(load(new AbortController().signal)).resolves.toBe(runtime);
+    expect(new URL(importer.mock.calls[1][0]).searchParams.get("sdk_retry")).toBe("1");
   });
 
   it.each([null, {}, { ...runtime, SDK_VERSION: "5-r.5" }, { ...runtime, initialize: null }])(

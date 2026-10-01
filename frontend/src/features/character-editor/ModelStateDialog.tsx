@@ -3,7 +3,13 @@ import type { Character } from "../../entities/config/types";
 import { characterAvatarType, getCharacterAssets } from "../../entities/character/assets";
 import { saveCharacterModelState } from "../../entities/character/repository";
 import { modelFileUrl } from "../../entities/files/repository";
-import { avatarFormat, avatarAssetUrl, type AvatarModule, type AvatarSession } from "../../modules/character-visual";
+import {
+  avatarFormat,
+  avatarAssetUrl,
+  avatarRuntimeAssetUrl,
+  type AvatarModule,
+  type AvatarSession,
+} from "../../modules/character-visual";
 import { readAvatarState } from "../../entities/character/modelStateRepository";
 import { tagContents } from "../../shared/assets/assetText";
 import { useI18n } from "../../shared/i18n";
@@ -56,6 +62,7 @@ export function ModelStateDialog({
           element: target,
           modelUrl,
           assetUrl: (relative) => avatarAssetUrl(modelUrl, relative),
+          runtimeAssetUrl: (filename) => avatarRuntimeAssetUrl(modelUrl, kind, filename),
           reportError: (failure) => {
             if (!abort.signal.aborted) setError(failure.message);
           },

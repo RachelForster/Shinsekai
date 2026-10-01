@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type MouseEventHandler, type SyntheticEven
 
 import { STATIC_AVATAR_TYPE, type ApplyMode, type AvatarSession, type CharacterVisualAsset } from "./contracts";
 import { avatarFormat } from "./registry";
-import { avatarAssetUrl } from "./assetUrl";
+import { avatarAssetUrl, avatarRuntimeAssetUrl } from "./assetUrl";
 import { bindAvatarVoice } from "./voiceRoute";
 import "./CharacterVisual.css";
 
@@ -79,6 +79,7 @@ function ModelVisual({
           element: container,
           modelUrl: asset.modelUrl,
           assetUrl: (path) => avatarAssetUrl(asset.modelUrl, path),
+          runtimeAssetUrl: (path) => avatarRuntimeAssetUrl(asset.modelUrl, avatarType, path),
           reportError: (err) => {
             if (!controller.signal.aborted) setError(err.message);
           },

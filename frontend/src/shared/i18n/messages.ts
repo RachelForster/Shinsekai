@@ -1,6 +1,22 @@
 export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
+  | "character.sdk.setup"
+  | "character.sdk.title"
+  | "character.sdk.hint"
+  | "character.sdk.download"
+  | "character.sdk.localOnly"
+  | "character.sdk.license"
+  | "character.sdk.zip"
+  | "character.sdk.accept"
+  | "character.sdk.import"
+  | "character.sdk.checking"
+  | "character.sdk.installed"
+  | "character.sdk.missing"
+  | "character.sdk.validating"
+  | "character.sdk.compiling"
+  | "character.sdk.installing"
+  | "character.sdk.failed"
   | "story.editor.back"
   | "story.canvas.title"
   | "story.canvas.fit"

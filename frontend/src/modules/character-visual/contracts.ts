@@ -16,6 +16,8 @@ export interface AvatarMount {
   element: HTMLElement;
   modelUrl: string;
   assetUrl(relativePath: string): string;
+  /** Optional host-installed runtime resources, served from the bridge rather than the model package. */
+  runtimeAssetUrl?(filename: string): string;
   reportError(error: Error): void;
 }
 
@@ -52,6 +54,14 @@ export interface AvatarFormat<S, C> {
   modelExtensions?: string[];
   /** Optional external preset filters; shared UI can offer batch import. */
   stateExtensions?: string[];
+  /** Optional user-installed runtime; compilation stays format-local and is lazy. */
+  runtime?: {
+    name: string;
+    version: string;
+    downloadUrl: string;
+    licenseUrls: string[];
+    compile(input: unknown, signal: AbortSignal): Promise<string>;
+  };
   capabilities: AvatarCapabilities;
   load(): Promise<AvatarModule<S, C>>;
 }

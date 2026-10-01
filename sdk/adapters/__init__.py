@@ -6,6 +6,7 @@ from sdk.adapters.avatar import (
     ModelAssetAdapter,
     ModelCapabilities,
     ModelFiles,
+    ModelRuntimeInstaller,
 )
 from sdk.adapters.llm import LLMAdapter
 from sdk.adapters.t2i import T2IAdapter
@@ -24,6 +25,7 @@ __all__ = [
     "ModelAssetAdapter",
     "ModelCapabilities",
     "ModelFiles",
+    "ModelRuntimeInstaller",
     "T2IAdapter",
     "TTSAdapter",
     "TranscriptionCallback",

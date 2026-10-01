@@ -6,6 +6,23 @@ from pathlib import Path
 from typing import Callable, ClassVar
 
 
+class ModelRuntimeInstaller(ABC):
+    """Optional, format-owned runtime preparation; no downloads or file mutations."""
+
+    version: str
+    download_url: str
+    license_urls: tuple[str, ...]
+    filenames: tuple[str, ...]
+
+    @abstractmethod
+    def prepare(self, source: Path) -> dict:
+        """Validate a user-provided archive and return bounded compiler inputs."""
+
+    @abstractmethod
+    def files(self, source: Path, compiled: str) -> dict[str, bytes]:
+        """Validate the compiled result and return only approved runtime files."""
+
+
 @dataclass(frozen=True, slots=True)
 class ModelFiles:
     """一个模型入口及其导入所需的完整依赖文件。"""
@@ -39,6 +56,7 @@ class ModelAssetAdapter(ABC):
 
     format_id: ClassVar[str] = ""
     capabilities: ClassVar[ModelCapabilities] = ModelCapabilities()
+    runtime_installer: ClassVar[ModelRuntimeInstaller | None] = None
 
     @abstractmethod
     def inspect(self, source: Path) -> ModelFiles:

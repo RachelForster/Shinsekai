@@ -1,6 +1,6 @@
 /** Public rendering API. No concrete format or character persistence dependency. */
 export { CharacterVisual, type CharacterVisualProps } from "./CharacterVisual";
-export { avatarAssetUrl } from "./assetUrl";
+export { avatarAssetUrl, avatarRuntimeAssetUrl } from "./assetUrl";
 export { avatarFormat, registeredAvatarFormats, registerAvatarFormat } from "./registry";
 export { routeAvatarVoice } from "./voiceRoute";
 export { STATIC_AVATAR_TYPE } from "./contracts";

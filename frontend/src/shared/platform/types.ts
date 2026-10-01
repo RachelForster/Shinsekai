@@ -29,6 +29,18 @@ export interface ModelSprites {
   emotion_tags: string;
 }
 
+export interface AvatarRuntimeStatus {
+  version: string;
+  installed: boolean;
+  download_url: string;
+  license_urls: string[];
+}
+
+export interface AvatarRuntimeImport {
+  source_path: string;
+  accepted_license: boolean;
+}
+
 export interface Character {
   portrait_crop?: PortraitCrop;
   name: string;
@@ -1601,6 +1613,11 @@ export interface ShinsekaiPlatform {
     getTtsBundleRecommendation: () => Promise<TtsBundleRecommendation>;
     saveApi: (config: ApiConfig) => Promise<ApiConfig>;
     saveSystem: (config: SystemConfig) => Promise<SystemConfig>;
+  };
+  avatarRuntimes: {
+    status: (format: string) => Promise<AvatarRuntimeStatus>;
+    prepare: (format: string, input: AvatarRuntimeImport) => Promise<unknown>;
+    install: (format: string, input: AvatarRuntimeImport & { compiled: string }) => Promise<AvatarRuntimeStatus>;
   };
   modelAssets: {
     download: (
