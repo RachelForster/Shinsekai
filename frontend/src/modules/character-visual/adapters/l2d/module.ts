@@ -1,6 +1,6 @@
 import type { ApplyMode, AvatarMount, AvatarSession } from "../../contracts";
 import { loadSdk, type SdkMotion } from "./sdk";
-import { ParameterTransition } from "./parameterTransition";
+import { ParameterTransition } from "../../parameterTransition";
 import { neutralState, packagePath, parseState, validateControls, type L2DControls, type L2DState } from "./state";
 export { Editor } from "./Editor";
 

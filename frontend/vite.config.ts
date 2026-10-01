@@ -36,6 +36,11 @@ export default defineConfig({
             return undefined;
           }
 
+          // Keep the 3D SDK behind the PMX adapter's lazy import.
+          if (has("/@babylonjs/") || has("/babylon-mmd/")) {
+            return "mmd-vendor";
+          }
+
           if (
             has("/react/") ||
             has("/react-dom/") ||

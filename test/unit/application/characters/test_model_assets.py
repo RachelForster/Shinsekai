@@ -9,6 +9,7 @@ from application.characters.model_files import model_file
 from config.character_manager import CharacterManager
 from config.schema import Character
 from core.media.avatar.registry import configure_builtin_formats
+from test.fixtures.pmx import pmx_bytes, pmx_sections
 
 
 @pytest.fixture
@@ -65,6 +66,63 @@ def test_import_save_overwrite_and_authorized_files(harness):
     with pytest.raises(PermissionError): model_file(state, str(entry), "texture.png")
     with pytest.raises(ValueError): execute(use_case, CharacterOperation.SAVE_MODEL_STATE, **{**body, "model_path": "changed"})
     with pytest.raises(ValueError): execute(use_case, CharacterOperation.SAVE_MODEL_STATE, **{**body, "sprite_index": 0, "path": path})
+
+
+def test_pmx_import_state_and_protected_texture_route(harness):
+    state, use_case, entry = harness
+    texture = entry.parent / "TEX" / "face.png"
+    texture.parent.mkdir()
+    texture.write_bytes(b"texture")
+    model_entry = entry.parent / "model.pmx"
+    model_entry.write_bytes(pmx_bytes(r"TEX\face.png"))
+    imported = execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="mmd", source_path=str(model_entry))
+    model = imported["avatars"]["mmd"]["model_path"]
+    assert imported["avatar_type"] == "mmd"
+    assert model_file(state, model, "TEX/face.png").read_bytes() == b"texture"
+    with pytest.raises(PermissionError):
+        model_file(state, model, "sample.moc3")
+    camera = {"yaw": 25, "pitch": -5, "zoom": 1.5, "panX": 0.1, "panY": 0}
+    saved = execute(use_case, CharacterOperation.SAVE_MODEL_STATE, name="Haru", avatar_type="mmd", model_path=model,
+                    sprite_index=-1, path="", state={"morphs": {"笑顔": 0.5}, "mouthMorph": "あ", "blinkMorph": "まばたき", "camera": camera}, tags="happy")
+    state_path = Path(saved["avatars"]["mmd"]["sprites"][0]["path"])
+    restored = json.loads(model_file(state, model, state_path.relative_to(Path(model).parent).as_posix()).read_text())
+    assert restored["morphs"] == {"笑顔": 0.5}
+    assert restored["camera"] == camera
+
+
+@pytest.mark.parametrize("staged", [False, True])
+@pytest.mark.parametrize("invalid", ["truncated", "empty"])
+def test_invalid_pmx_never_replaces_bank_or_leaves_managed_files(harness, monkeypatch, staged, invalid):
+    from application.characters import model_assets
+
+    state, use_case, entry = harness
+    execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="l2d", source_path=str(entry))
+    before = state.config_manager.get_character_by_name("Haru").model_dump(mode="json")
+    root = Path(state.project_root_dir)
+    persisted = (root / "characters.json").read_bytes()
+    managed = root / "data" / "sprite" / "haru" / "avatars"
+    files_before = {path for path in managed.rglob("*") if path.is_file()}
+    sections = pmx_sections()
+    broken = (b"".join(sections[key] for key in ("header", "vertices", "faces", "textures"))
+              if invalid == "truncated" else pmx_bytes(vertex_count=0))
+    source = entry.parent / "model.pmx"
+    source.write_bytes(pmx_bytes() if staged else broken)
+    if staged:
+        original_copy = model_assets.shutil.copy2
+
+        def corrupt_staged_copy(src, dst):
+            result = original_copy(src, dst)
+            if Path(src) == source:
+                Path(dst).write_bytes(broken)
+            return result
+
+        monkeypatch.setattr(model_assets.shutil, "copy2", corrupt_staged_copy)
+    with pytest.raises(ValueError):
+        execute(use_case, CharacterOperation.IMPORT_MODEL, name="Haru", avatar_type="mmd", source_path=str(source))
+    assert state.config_manager.get_character_by_name("Haru").model_dump(mode="json") == before
+    assert (root / "characters.json").read_bytes() == persisted
+    assert {path for path in managed.rglob("*") if path.is_file()} == files_before
+    assert not list(managed.rglob(".import-*"))
 
 
 def test_bad_state_does_not_change_bank(harness):

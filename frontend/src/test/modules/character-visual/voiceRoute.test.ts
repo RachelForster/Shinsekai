@@ -18,3 +18,15 @@ it("routes by the queued voice's character and only actual mouth capability", ()
   expect(a.setMouthOpen).toHaveBeenLastCalledWith(0);
   unbindB();
 });
+
+it("starts routing when a loaded model's saved state selects a mouth morph", () => {
+  const capability = { mouth: false };
+  const session = { capabilities: capability, setMouthOpen: vi.fn() } as unknown as AvatarSession<unknown, unknown>;
+  const unbind = bindAvatarVoice("custom-pmx", session);
+  routeAvatarVoice("custom-pmx", 0.5);
+  expect(session.setMouthOpen).not.toHaveBeenCalled();
+  capability.mouth = true;
+  routeAvatarVoice("custom-pmx", 0.8);
+  expect(session.setMouthOpen).toHaveBeenLastCalledWith(0.8);
+  unbind();
+});

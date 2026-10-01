@@ -123,6 +123,8 @@ def prepare_initial_presentation(
 
     publish_branch_tree()
     ui_updates.post_notification(ready_notification)
+    # A running worker may already have emitted the restored sprite. Never
+    # overwrite it with the initial one, regardless of replay timing or format.
     if show_initial_sprite and not restored_sprite:
         display_initial_sprite(
             resolved_sprite_path,
