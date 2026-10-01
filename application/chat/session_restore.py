@@ -107,12 +107,14 @@ def restore_session_presentation(
                     timeout=0,
                 )
             )
-            restored_character_sprite = True
+            restored_character_sprite = (
+                replay_media is None and last.get("sprite", "-1") not in {None, "-1", -1}
+            )
 
         if replay_media is not None:
-            restored_character_sprite = (
-                replay_media(messages) or restored_character_sprite
-            )
+            # The queued dialog above deliberately has no sprite in this path.
+            # Only media replay knows whether a character visual was queued.
+            restored_character_sprite = bool(replay_media(messages))
 
         if last_choice is not None:
             presentation_queue.put(

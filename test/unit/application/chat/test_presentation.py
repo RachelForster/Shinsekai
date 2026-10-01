@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import ANY, Mock
+from queue import Queue
 
 import pytest
 
@@ -109,11 +110,10 @@ def test_prepare_initial_presentation_restores_media_and_falls_back_to_sprite(
 
 
 @pytest.mark.parametrize("restored_sprite", [False, True])
-def test_enabled_initial_sprite_shows_bank_aware_sprite_even_after_history_restore(
+def test_enabled_initial_sprite_only_falls_back_when_history_restored_no_sprite(
     monkeypatch, restored_sprite,
 ) -> None:
-    """History restore replays dialogs with sprite=None; avatar banks must still
-    get the bank-aware initial sprite from the launch payload path."""
+    """The replay result, not worker scheduling, decides whether to show a fallback."""
     ui = SimpleNamespace(
         post_background=Mock(),
         switch_bgm=Mock(),
@@ -141,11 +141,52 @@ def test_enabled_initial_sprite_shows_bank_aware_sprite_even_after_history_resto
         translate=lambda key, **_kwargs: key,
     )
     restore.assert_called_once()
-    display.assert_called_once_with(
-        "avatar-state.json",
-        config=ANY,
+    if restored_sprite:
+        display.assert_not_called()
+    else:
+        display.assert_called_once_with("avatar-state.json", config=ANY, ui_updates=ui)
+
+
+@pytest.mark.parametrize("immediate", [False, True])
+@pytest.mark.parametrize("initial_path", ["initial.png", "initial-state.json"])
+def test_replayed_history_sprite_wins_with_fast_or_slow_worker(monkeypatch, immediate, initial_path):
+    from application.chat.dialog_media.replay import enqueue_latest_media_replay
+
+    events = []
+    pending = []
+    ui = Mock()
+    ui.update_sprite.side_effect = lambda name, index: events.append((name, index))
+    monkeypatch.setattr(presentation, "display_initial_sprite",
+                        lambda *_args, **_kwargs: ui.update_sprite("Haru", 0))
+    messages = [{"role": "assistant", "content": {"dialog": [
+        {"character_name": "Haru", "speech": "hello", "sprite": "2", "vibe": "happy"},
+    ]}}]
+
+    class ReplayQueue:
+        def put(self, dialog):
+            if immediate:
+                ui.update_sprite(dialog.name, 2)
+            else:
+                pending.append(dialog)
+
+    presentation.prepare_initial_presentation(
+        messages=messages,
+        config=_Config(),
         ui_updates=ui,
+        presentation_queue=Queue(),
+        assets=presentation.ChatPresentationAssets([], [], False),
+        initial_sprite_path=initial_path,
+        welcome_html="welcome",
+        initial_option="start",
+        ready_notification="ready",
+        publish_branch_tree=Mock(),
+        translate=lambda key, **_kwargs: key,
+        replay_media=lambda source: enqueue_latest_media_replay(
+            source, dialog_queue=ReplayQueue(), opencc=SimpleNamespace(convert=lambda value: value)),
     )
+    for dialog in pending:
+        ui.update_sprite(dialog.name, 2)
+    assert events == [("Haru", 2)]
 
 
 @pytest.mark.parametrize("initial_sprite_path", ["sprite.png", ""])

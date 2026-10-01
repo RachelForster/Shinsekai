@@ -3,21 +3,12 @@ import struct
 import pytest
 
 from core.media.avatar.mmd import MmdAdapter
+from core.media.avatar.pmx import texture_references
+from test.fixtures.pmx import pmx_bytes, pmx_sections
 
 
 def _pmx(texture: str) -> bytes:
-    def text(value: str) -> bytes:
-        encoded = value.encode("utf-8")
-        return struct.pack("<i", len(encoded)) + encoded
-
-    return (
-        b"PMX "
-        + struct.pack("<fB", 2.0, 8)
-        + bytes((1, 0, 1, 1, 1, 1, 1, 1))
-        + text("") * 4
-        + struct.pack("<iii", 0, 0, 1)
-        + text(texture)
-    )
+    return pmx_bytes(texture)
 
 
 def test_inspect_pmx_package_with_windows_texture_separator(tmp_path):
@@ -76,3 +67,96 @@ def test_truncated_pmx_fails_closed(tmp_path):
     model.write_bytes(_pmx("tex/eye.png")[:-3])
     with pytest.raises(ValueError):
         MmdAdapter().inspect(model)
+
+
+@pytest.mark.parametrize("version", [2.0, 2.1])
+@pytest.mark.parametrize("index_size", [1, 2, 4])
+@pytest.mark.parametrize("encoding", [0, 1])
+@pytest.mark.parametrize("skin", range(5))
+def test_complete_pmx_variable_sections(tmp_path, version, index_size, encoding, skin):
+    model = tmp_path / "sample.pmx"
+    model.write_bytes(pmx_bytes(version=version, index_size=index_size, encoding=encoding,
+                                skin=skin, rich=True))
+    assert MmdAdapter().inspect(model).files == (model,)
+
+
+@pytest.mark.parametrize("section", ["textures", "materials", "bones", "morphs", "display", "rigid", "joints", "soft"])
+@pytest.mark.parametrize("inside", [False, True])
+def test_reject_pmx_truncated_at_or_inside_required_sections(tmp_path, section, inside):
+    sections = pmx_sections(version=2.1, rich=True)
+    data = b""
+    for name, payload in sections.items():
+        data += payload
+        if name == section:
+            break
+    if inside:
+        data = data[:-1]
+    elif section == "soft":
+        # The last required section must include at least its count.
+        data = data[:-len(sections["soft"])]
+    model = tmp_path / "sample.pmx"
+    model.write_bytes(data)
+    with pytest.raises(ValueError):
+        MmdAdapter().inspect(model)
+
+
+def test_reject_complete_zero_vertex_pmx(tmp_path):
+    sections = pmx_sections(vertex_count=0)
+    sections["faces"] = struct.pack("<i", 0)
+    sections["materials"] = struct.pack("<i", 0)
+    model = tmp_path / "sample.pmx"
+    model.write_bytes(b"".join(sections.values()))
+    with pytest.raises(ValueError, match="no vertices"):
+        MmdAdapter().inspect(model)
+
+
+@pytest.mark.parametrize("section", ["materials", "bones", "morphs", "display", "rigid", "joints", "soft"])
+@pytest.mark.parametrize("count", [-1, 2_000_001])
+def test_reject_invalid_required_section_counts(tmp_path, section, count):
+    sections = pmx_sections(version=2.1, rich=True)
+    sections[section] = struct.pack("<i", count) + sections[section][4:]
+    model = tmp_path / "sample.pmx"
+    model.write_bytes(b"".join(sections.values()))
+    with pytest.raises(ValueError):
+        MmdAdapter().inspect(model)
+
+
+@pytest.mark.parametrize("mutation", ["nan", "inf", "empty faces", "bad face", "partial triangle", "no materials", "bad partition", "bad skin bone"])
+def test_reject_unrenderable_geometry(tmp_path, mutation):
+    sections = pmx_sections()
+    if mutation in ("nan", "inf"):
+        sections["vertices"] = sections["vertices"][:4] + struct.pack("<f", float(mutation)) + sections["vertices"][8:]
+    elif mutation == "empty faces":
+        sections["faces"] = struct.pack("<i", 0)
+    elif mutation == "bad face":
+        sections["faces"] = struct.pack("<iBBB", 3, 0, 1, 3)
+    elif mutation == "partial triangle":
+        sections["faces"] = struct.pack("<iBB", 2, 0, 1)
+    elif mutation == "no materials":
+        sections["materials"] = struct.pack("<i", 0)
+    elif mutation == "bad partition":
+        sections["materials"] = sections["materials"][:-4] + struct.pack("<i", 0)
+    else:
+        sections["vertices"] = sections["vertices"][:37] + b"\x01" + sections["vertices"][38:]
+    model = tmp_path / "sample.pmx"
+    model.write_bytes(b"".join(sections.values()))
+    with pytest.raises(ValueError):
+        MmdAdapter().inspect(model)
+
+
+def test_pmx_21_requires_soft_body_count_even_when_empty(tmp_path):
+    model = tmp_path / "sample.pmx"
+    data = pmx_bytes(version=2.1)
+    model.write_bytes(data[:-4])
+    with pytest.raises(ValueError):
+        MmdAdapter().inspect(model)
+    model.write_bytes(data)
+    assert MmdAdapter().inspect(model).files == (model,)
+
+
+def test_every_truncated_prefix_of_complete_pmx_is_rejected():
+    data = pmx_bytes(version=2.1, rich=True)
+    for length in range(len(data)):
+        with pytest.raises(ValueError):
+            texture_references(data[:length])
+    assert texture_references(data) == ("",)
