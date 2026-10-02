@@ -411,11 +411,50 @@ def test_character_handler_builds_presentation_from_injected_path_strategy(
     )
 
 
+def test_character_handler_bypasses_generation_strategy_when_speech_disabled(
+    mock_app_runtime,
+):
+    mock_app_runtime.config.config.system_config.asr_continuous_during_reply_experimental_enabled = (
+        True
+    )
+    sprite = ResolvedSpriteAsset(
+        asset_id="7",
+        index=6,
+        value={"path": "chosen.png"},
+        voice_type="preset",
+        voice_path="recorded.wav",
+        voice_text="Recorded line",
+    )
+    asset_lookup = MagicMock()
+    sprite_resolver = MagicMock()
+    sprite_resolver.candidates.return_value = ()
+    sprite_resolver.resolve.return_value = sprite
+    generation = MagicMock()
+    handler = CharacterMediaHandler(asset_lookup, generation, sprite_resolver)
+    message = LLMDialogMessage(
+        name="TestChar", text="Hello", asset_id="1", effect="fade"
+    )
+
+    handler.handle(message)
+
+    generation.generate.assert_not_called()
+    assert mock_app_runtime.presentation_queue.get_nowait() == PresentationMessage(
+        audio_path="",
+        name="TestChar",
+        text="Recorded line",
+        asset_id="7",
+        effect="fade",
+        is_final_segment=True,
+    )
+
+
+@pytest.mark.parametrize("continuous_asr", [False, True])
 @pytest.mark.parametrize("read_speech", [True, False])
 @pytest.mark.parametrize("speech", ["New player reply", ""])
 def test_player_media_keeps_ai_text_and_does_not_synthesize_silent_portraits(
-    mock_app_runtime, read_speech, speech,
+    mock_app_runtime, read_speech, speech, continuous_asr,
 ):
+    mock_app_runtime.config.config.system_config.asr_continuous_during_reply_experimental_enabled = continuous_asr
     mock_app_runtime.player_character = "TestChar"
     mock_app_runtime.read_player_speech = read_speech
     sprite = ResolvedSpriteAsset(
@@ -432,7 +471,7 @@ def test_player_media_keeps_ai_text_and_does_not_synthesize_silent_portraits(
     )
     output = mock_app_runtime.presentation_queue.get_nowait()
     assert output.text == speech
-    if read_speech and speech:
+    if read_speech and speech and not continuous_asr:
         generation.generate.assert_called_once()
         assert generation.generate.call_args.args[0].sprite.voice_type == "reference"
         assert output.audio_path == "generated.wav"

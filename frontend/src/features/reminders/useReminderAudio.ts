@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { fileUrl } from "../../entities/files/repository";
+import { getChatSnapshot, subscribeChat } from "../../entities/chat/repository";
 import type { ReminderNotice } from "../../entities/reminder/types";
 import { isReminderWindowVisible, onReminderWindowHidden } from "../../shared/desktop/remindersApi";
 
@@ -24,6 +25,10 @@ export function useReminderAudio(notices: ReminderNotice[]) {
     }
   });
   const [playing, setPlaying] = useState("");
+  const [speechDisabled, setSpeechDisabled] = useState(false);
+  const speechDisabledRef = useRef(false);
+  const sessionPolicyRef = useRef<boolean | null>(null);
+  const policyVersionRef = useRef(0);
   const mutedRef = useRef(muted);
   const seen = useRef(previouslyPlayed());
   const available = useRef(new Set<string>());
@@ -49,7 +54,28 @@ export function useReminderAudio(notices: ReminderNotice[]) {
         const notice = queue.current.shift()!;
         const before = revision.current;
         if (!available.current.has(keyOf(notice)) || !notice.audio_path) continue;
-        if (!(await isReminderWindowVisible().catch(() => false)) || before !== revision.current) continue;
+        const snapshotVersion = policyVersionRef.current;
+        const [visible, policyResult] = await Promise.all([
+          isReminderWindowVisible().catch(() => false),
+          getChatSnapshot({ claimRenderer: false })
+            .then((snapshot) => ({ failed: false as const, snapshot }))
+            .catch(() => ({ failed: true as const, snapshot: null })),
+        ]);
+        if (before !== revision.current) continue;
+        if (snapshotVersion === policyVersionRef.current) {
+          if (!policyResult.failed && policyResult.snapshot !== null) {
+            const disabled = Boolean(policyResult.snapshot.characterSpeechDisabled);
+            sessionPolicyRef.current = disabled;
+            speechDisabledRef.current = disabled;
+            setSpeechDisabled(disabled);
+          } else if (policyResult.failed) {
+            if (sessionPolicyRef.current !== null) {
+              speechDisabledRef.current = sessionPolicyRef.current;
+              setSpeechDisabled(sessionPolicyRef.current);
+            }
+          }
+        }
+        if (!visible || speechDisabledRef.current || sessionPolicyRef.current === null) continue;
         const player = new Audio(fileUrl(notice.audio_path));
         player.volume = Math.max(0, Math.min(1, notice.audio_volume ?? 1));
         audio.current = player;
@@ -71,6 +97,22 @@ export function useReminderAudio(notices: ReminderNotice[]) {
       working.current = false;
     }
   }, []);
+
+  useEffect(
+    () =>
+      subscribeChat(
+        (snapshot) => {
+          policyVersionRef.current += 1;
+          const disabled = Boolean(snapshot.characterSpeechDisabled);
+          sessionPolicyRef.current = disabled;
+          speechDisabledRef.current = disabled;
+          setSpeechDisabled(disabled);
+          if (disabled) stop();
+        },
+        { claimRenderer: false },
+      ),
+    [stop],
+  );
 
   useEffect(() => {
     available.current = new Set(notices.map(keyOf));
@@ -94,6 +136,7 @@ export function useReminderAudio(notices: ReminderNotice[]) {
   }, [stop]);
 
   const toggleMute = () => {
+    if (speechDisabledRef.current) return;
     mutedRef.current = !mutedRef.current;
     setMuted(mutedRef.current);
     try {
@@ -106,10 +149,10 @@ export function useReminderAudio(notices: ReminderNotice[]) {
 
   const replay = (notice: ReminderNotice) => {
     stop();
-    if (mutedRef.current || !notice.audio_path) return;
+    if (mutedRef.current || speechDisabledRef.current || !notice.audio_path) return;
     queue.current.push(notice);
     void pump();
   };
 
-  return { muted, playing, toggleMute, replay, stop };
+  return { muted: muted || speechDisabled, speechDisabled, playing, toggleMute, replay, stop };
 }

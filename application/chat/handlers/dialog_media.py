@@ -31,6 +31,7 @@ from core.messaging.dialog_tokens import (
     match_scene_dialog,
     normalize_character_name,
 )
+from application.chat.voice_policy import character_speech_disabled
 from application.runtime.context import get_app_runtime, emit_presentation_message
 from i18n import tr as tr_i18n
 from sdk.handlers import MessageHandler
@@ -359,6 +360,15 @@ class CharacterMediaHandler(MessageHandler):
             replace(sprite, voice_type="reference")
             if is_player and sprite.voice_type == "preset" else sprite
         )
+        if character_speech_disabled(getattr(rt, "config", None)):
+            for output in self._presentation_messages(
+                character_name=name_s,
+                message=msg,
+                sprite=speech_sprite,
+                audio_paths=(),
+            ):
+                rt.presentation_queue.put(output)
+            return
         generation_request = TtsGenerationRequest(
             runtime=rt,
             character=character_config,

@@ -41,6 +41,107 @@ class TestCharacterMediaHandler:
         assert output.is_system_message is False
         assert output.effect == ""
 
+    @pytest.mark.parametrize("continuous_enabled", [False, True])
+    @pytest.mark.parametrize(
+        "scenario",
+        ["tts_configured", "preset_no_manager", "fallback_no_manager"],
+    )
+    def test_character_speech_suppression_and_preservation(
+        self, mock_app_runtime, tmp_path, continuous_enabled: bool, scenario: str
+    ):
+        runtime = mock_app_runtime
+        runtime.config.config.system_config.asr_continuous_during_reply_experimental_enabled = (
+            continuous_enabled
+        )
+        runtime.ui_update_manager.post_busy_bar = MagicMock()
+
+        char = runtime.config.get_character_by_name("TestChar")
+        original_refer = char.refer_audio_path
+        original_sovits = char.sovits_model_path
+
+        preset_file = tmp_path / "preset.wav"
+        preset_file.write_bytes(b"preset-audio")
+        fallback_file = tmp_path / "fallback.wav"
+        fallback_file.write_bytes(b"fallback-audio")
+
+        if scenario == "tts_configured":
+            runtime.tts_manager = MagicMock()
+            runtime.tts_manager.generate_tts.return_value = "synthesized.wav"
+            char.sprites = [
+                {
+                    "path": "test.png",
+                    "voice_type": "reference",
+                    "voice_path": str(preset_file),
+                    "voice_text": "Ref Line",
+                }
+            ]
+        elif scenario == "preset_no_manager":
+            runtime.tts_manager = None
+            char.sprites = [
+                {
+                    "path": "test.png",
+                    "voice_type": "preset",
+                    "voice_path": str(preset_file),
+                    "voice_text": "Preset Line",
+                }
+            ]
+        else:  # fallback_no_manager
+            runtime.tts_manager = None
+            char.sprites = [
+                {
+                    "path": "test.png",
+                    "voice_type": "fallback",
+                    "voice_path": str(fallback_file),
+                    "voice_text": "",
+                }
+            ]
+
+        original_sprite_voice_type = char.sprites[0]["voice_type"]
+        original_sprite_voice_path = char.sprites[0]["voice_path"]
+
+        handler = CharacterMediaHandler()
+        msg = LLMDialogMessage(name="TestChar", text="Hello", asset_id="1", effect="shake")
+        handler.handle(msg)
+
+        # Saved voice settings remain intact
+        assert char.refer_audio_path == original_refer
+        assert char.sovits_model_path == original_sovits
+        assert char.sprites[0]["voice_type"] == original_sprite_voice_type
+        assert char.sprites[0]["voice_path"] == original_sprite_voice_path
+
+        output = runtime.presentation_queue.get_nowait()
+        assert output.name == "TestChar"
+        assert output.asset_id == "1"
+        assert output.effect == "shake"
+        assert output.is_system_message is False
+        assert output.is_final_segment is True
+
+        if continuous_enabled:
+            # When continuous ASR is enabled: empty audio, no synth, no busy notification
+            assert output.audio_path == ""
+            if scenario == "preset_no_manager":
+                assert output.text == "Preset Line"
+            else:
+                assert output.text == "Hello"
+            if runtime.tts_manager is not None:
+                runtime.tts_manager.generate_tts.assert_not_called()
+            runtime.ui_update_manager.post_busy_bar.assert_not_called()
+        else:
+            # Default/false behavior preserved
+            if scenario == "tts_configured":
+                assert output.audio_path == "synthesized.wav"
+                assert output.text == "Hello"
+                runtime.tts_manager.generate_tts.assert_called_once()
+                runtime.ui_update_manager.post_busy_bar.assert_called_once()
+            elif scenario == "preset_no_manager":
+                assert output.audio_path == preset_file.resolve().as_posix()
+                assert output.text == "Preset Line"
+                runtime.ui_update_manager.post_busy_bar.assert_not_called()
+            else:  # fallback_no_manager
+                assert output.audio_path == fallback_file.resolve().as_posix()
+                assert output.text == "Hello"
+                runtime.ui_update_manager.post_busy_bar.assert_not_called()
+
 
 class TestSpecializedHandlers:
     def test_bgm_handler_matches_bgm(self, mock_app_runtime):

@@ -141,6 +141,7 @@ export interface SystemConfig {
   asr_whisper_model_size: string;
   asr_whisper_device: string;
   asr_whisper_compute_type: string;
+  asr_continuous_during_reply_experimental_enabled: boolean;
   music_volumn: number;
   theme_color: string;
   bgm_path: string;
@@ -1034,6 +1035,11 @@ export interface ChatStoryState {
   }>;
 }
 
+export interface ChatSnapshotOptions {
+  /** Auxiliary windows can read state without claiming chat audio playback. */
+  claimRenderer?: boolean;
+}
+
 export interface ChatSnapshot {
   playerPortrait?: PlayerPortrait | null;
   activePlayback?: {
@@ -1047,6 +1053,9 @@ export interface ChatSnapshot {
   asrEnabled?: boolean;
   asrLoading?: boolean;
   asrRunning?: boolean;
+  asrContinuous?: boolean;
+  /** ID of the ASR utterance that currently owns ``inputDraft``, when any. */
+  asrUtteranceId?: string | null;
   backgroundPath?: string;
   bgmPath?: string;
   busyDurationSeconds?: number;
@@ -1070,6 +1079,7 @@ export interface ChatSnapshot {
     url: string;
   } | null;
   experimentalFeatures?: ChatExperimentalFeatures;
+  characterSpeechDisabled?: boolean;
   historyEntries?: ChatHistoryEntry[];
   historyPath?: string;
   inputDraft: string;
@@ -1129,6 +1139,7 @@ export interface ChatAttachmentInput {
 }
 
 export interface ChatSendPayload {
+  asrUtteranceId?: string;
   attachments: ChatAttachmentInput[];
   text: string;
 }
@@ -1259,9 +1270,15 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "effect.loop.start"; key: string; url: string })
   | (ChatEventBase & { type: "effect.loop.stop"; key: string })
   | (ChatEventBase & { type: "effect.loop.stop-all" })
-  | (ChatEventBase & { type: "asr.partial"; text: string })
-  | (ChatEventBase & { type: "asr.final"; text: string })
-  | (ChatEventBase & { type: "asr.state"; enabled?: boolean; loading?: boolean; running: boolean })
+  | (ChatEventBase & { type: "asr.partial"; text: string; utteranceId?: string; continuous?: boolean })
+  | (ChatEventBase & { type: "asr.final"; text: string; utteranceId?: string; continuous?: boolean })
+  | (ChatEventBase & {
+      type: "asr.state";
+      enabled?: boolean;
+      loading?: boolean;
+      running: boolean;
+      continuous?: boolean;
+    })
   | (ChatEventBase & { type: "reply.finished" })
   | (ChatEventBase & { type: "session.closed"; reason: string });
 
@@ -1486,11 +1503,11 @@ export interface ShinsekaiPlatform {
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;
     getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
-    getSnapshot: () => Promise<ChatSnapshot>;
+    getSnapshot: (options?: ChatSnapshotOptions) => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;
     launch: (payload: ChatLaunchPayload, options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
     resumeLast: (options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
-    subscribe: (listener: (snapshot: ChatSnapshot) => void) => () => void;
+    subscribe: (listener: (snapshot: ChatSnapshot) => void, options?: ChatSnapshotOptions) => () => void;
     // --- 主题 mod 系统 ---
     listThemes: () => Promise<ChatThemeSummary[]>;
     getThemeManifest: (id: string) => Promise<ChatThemeManifest>;

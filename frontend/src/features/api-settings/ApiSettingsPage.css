@@ -255,6 +255,17 @@
 
 /* ── ASR ── */
 
+.asr-continuous-control {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+}
+
+.asr-continuous-control > .field-row__help {
+  margin-top: 8px;
+}
+
 .asr-vosk-hint {
   display: flex;
   flex-wrap: wrap;

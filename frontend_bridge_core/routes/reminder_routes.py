@@ -58,10 +58,13 @@ def _migrate_bedtime(request: ApiRequest):
 
 
 def _presenter(request):
+    from application.chat.runtime_process import _chat_character_speech_disabled
+
     with request.state.task_lock:
         if request.state.reminder_presenter is None:
             request.state.reminder_presenter = ReminderPresenter(
-                request.state.config_manager, request.state.project_root_dir
+                request.state.config_manager, request.state.project_root_dir,
+                speech_disabled=lambda: _chat_character_speech_disabled(request.state),
             )
         return request.state.reminder_presenter
 

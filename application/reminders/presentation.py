@@ -1,6 +1,7 @@
 """Present one standard chat dialog as a desktop reminder, without a chat window."""
 
 import copy
+from collections.abc import Callable
 import logging
 from pathlib import Path
 import threading
@@ -8,13 +9,14 @@ import time
 from types import SimpleNamespace
 
 from application.reminders.workflow import ReminderDialogWorkflow
+from application.chat.voice_policy import character_speech_disabled
 from sdk.messages import LLMDialogMessage
 
 logger = logging.getLogger(__name__)
 
 
 class ReminderPresenter:
-    def __init__(self, config, project_root):
+    def __init__(self, config, project_root, *, speech_disabled: Callable[[], bool] | None = None):
         self.config = config
         self.workflow = ReminderDialogWorkflow(config)
         self.project_root = Path(project_root).resolve()
@@ -23,6 +25,7 @@ class ReminderPresenter:
         self._tts_manager = None
         self._tts_signature = None
         self._tts_adapters = []
+        self._speech_disabled = speech_disabled or (lambda: character_speech_disabled(self.config))
 
     def close(self):
         if self._tts_manager is not None:
@@ -83,6 +86,8 @@ class ReminderPresenter:
             self._slots.release()
 
     def speech(self, payload):
+        if self._speech_disabled():
+            return {"audio_path": None}
         if not isinstance(payload, dict) or not isinstance(payload.get("dialog"), dict):
             raise ValueError("Reminder speech requires a dialog object")
         dialog = LLMDialogMessage.model_validate(payload["dialog"])

@@ -226,6 +226,28 @@ def test_save_api_config_defaults_tts_path_under_project_root(tmp_path):
     assert manager.saved is True
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_save_undeployed_tts_config_with_continuous_asr(tmp_path, enabled):
+    state, manager = _bridge_state_for_config(tmp_path, tmp_path)
+    manager.config.system_config.asr_continuous_during_reply_experimental_enabled = enabled
+    payload = _api_config_with_local_tts().model_dump(mode="json")
+    if not enabled:
+        with pytest.raises(ValueError, match="本地 TTS 引擎需要填写服务启动路径"):
+            _save_api_config(state, payload)
+        assert not manager.saved
+    else:
+        saved = _save_api_config(state, payload)
+        assert saved.tts_provider == payload["tts_provider"]
+        assert saved.gpt_sovits_url == payload["gpt_sovits_url"]
+        assert saved.gpt_sovits_api_path == ""
+        assert manager.saved
+
+
+def test_speech_disabled_still_validates_llm_credentials():
+    with pytest.raises(ValueError):
+        _validate_api_config_for_save(_valid_config(llm_api_key={}), speech_disabled=True)
+
+
 def test_project_root_lookup_supports_legacy_state_and_cwd_fallback(tmp_path, monkeypatch):
     env_root = tmp_path / "legacy env" / "数据 Root"
     easyai_root = tmp_path / "legacy EASYAI env"

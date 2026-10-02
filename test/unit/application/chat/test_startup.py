@@ -64,7 +64,12 @@ class _InitChatContext:
 
 
 class _Config:
-    def __init__(self, *, llm_provider: str = "openai") -> None:
+    def __init__(
+        self,
+        *,
+        llm_provider: str = "openai",
+        continuous_asr: bool = False,
+    ) -> None:
         self.llm_provider = llm_provider
         self.config = SimpleNamespace(
             api_config=SimpleNamespace(
@@ -85,7 +90,10 @@ class _Config:
                 t2i_prompt_node_id="1",
                 t2i_output_node_id="2",
             ),
-            system_config=SimpleNamespace(voice_language="ja"),
+            system_config=SimpleNamespace(
+                voice_language="ja",
+                asr_continuous_during_reply_experimental_enabled=continuous_asr,
+            ),
         )
 
     def get_llm_api_config(self):
@@ -288,3 +296,115 @@ def test_chat_history_presence_requires_a_json_list(tmp_path, monkeypatch) -> No
 
     history_path.write_text("invalid", encoding="utf-8")
     assert startup.chat_history_is_present("history.json") is False
+
+
+@pytest.mark.parametrize("continuous_enabled", [False, True])
+def test_initialize_tts_gates_adapter_creation_by_continuous_speech_policy(
+    continuous_enabled: bool,
+) -> None:
+    calls = []
+    runtime = _runtime(calls, [])
+    service = SimpleNamespace(report=Mock())
+    config = _Config(continuous_asr=continuous_enabled)
+    initial_gpt_sovits_config = config.get_gpt_sovits_config()
+
+    tts_mgr, provider = startup._initialize_tts(
+        _args(),
+        config,
+        service,
+        runtime,
+        phase=lambda _name: nullcontext(),
+    )
+
+    # Saved voice settings remain intact in config
+    assert config.get_gpt_sovits_config() == initial_gpt_sovits_config
+    assert provider == "gpt-sovits"
+
+    if continuous_enabled:
+        assert tts_mgr is None
+        assert [kind for kind, _kwargs in calls] == []
+        service.report.assert_not_called()
+    else:
+        assert tts_mgr is not None
+        assert tts_mgr.adapter == "tts-adapter"
+        assert [kind for kind, _kwargs in calls] == ["tts"]
+
+
+@pytest.mark.parametrize("continuous_enabled", [False, True])
+def test_create_context_respects_character_speech_disabled(
+    monkeypatch, continuous_enabled: bool
+) -> None:
+    calls = []
+    memory_hooks = []
+    runtime = _runtime(calls, memory_hooks)
+    dispatcher = SimpleNamespace(dispatch_init_chat=Mock())
+    plugin_manager = SimpleNamespace(hook_dispatcher=dispatcher)
+    config = _Config(continuous_asr=continuous_enabled)
+    messages = [{"role": "user", "content": "hello"}]
+
+    monkeypatch.setattr(startup, "_import_provider_runtime", lambda: runtime)
+    monkeypatch.setattr(startup, "_load_plugin_manager", lambda *_args: plugin_manager)
+    monkeypatch.setattr(
+        startup, "_load_chat_inputs", lambda *_args, **_kwargs: (messages, "template")
+    )
+
+    context = startup.create_chat_startup_context(
+        _args(),
+        config=config,
+        init_service=SimpleNamespace(report=Mock()),
+        translate=lambda key, **_kwargs: key,
+        output=lambda _message: None,
+    )
+
+    if continuous_enabled:
+        assert context.tts_manager is None
+        assert [kind for kind, _kwargs in calls] == ["t2i", "llm"]
+    else:
+        assert context.tts_manager is not None
+        assert [kind for kind, _kwargs in calls] == ["t2i", "tts", "llm"]
+
+    # Saved voice settings remain untouched
+    assert config.get_gpt_sovits_config() == ("http://tts", "tts-work", "gpt-sovits")
+
+
+@pytest.mark.parametrize(
+    "cfg,expected",
+    [
+        (None, False),
+        (SimpleNamespace(), False),
+        (SimpleNamespace(config=None), False),
+        (SimpleNamespace(config=SimpleNamespace(system_config=None)), False),
+        (
+            SimpleNamespace(
+                config=SimpleNamespace(
+                    system_config=SimpleNamespace(
+                        asr_continuous_during_reply_experimental_enabled=False
+                    )
+                )
+            ),
+            False,
+        ),
+        (
+            SimpleNamespace(
+                config=SimpleNamespace(
+                    system_config=SimpleNamespace(
+                        asr_continuous_during_reply_experimental_enabled=True
+                    )
+                )
+            ),
+            True,
+        ),
+        (
+            SimpleNamespace(
+                system_config=SimpleNamespace(
+                    asr_continuous_during_reply_experimental_enabled=True
+                )
+            ),
+            True,
+        ),
+    ],
+)
+def test_character_speech_disabled_policy_contract(cfg, expected: bool) -> None:
+    from application.chat.voice_policy import character_speech_disabled
+
+    assert character_speech_disabled(cfg) is expected

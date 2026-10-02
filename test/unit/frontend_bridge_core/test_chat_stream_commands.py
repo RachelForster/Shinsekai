@@ -329,6 +329,24 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertEqual(command["payload"]["attachments"][0]["name"], "scene.png")
         self.assertEqual(command["payload"]["attachments"][0]["mimeType"], "image/png")
 
+    def test_send_message_preserves_valid_asr_identity(self):
+        for batch_enabled in (False, True):
+            for identity in ("utterance-b", "", None, 123, "x" * 129):
+                with self.subTest(batch=batch_enabled, identity=identity):
+                    chat_stream = _StubChatStream()
+                    chat_stream.snapshot["turnOptions"] = {"batchEnabled": batch_enabled}
+                    state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
+                    _handle_chat_command(state, {
+                        "type": "send-message",
+                        "payload": {"text": "Edited B", "attachments": [], "asrUtteranceId": identity},
+                    })
+                    forwarded = chat_stream.command[1]["payload"]
+                    self.assertEqual(forwarded["text"], "Edited B")
+                    if identity == "utterance-b":
+                        self.assertEqual(forwarded["asrUtteranceId"], identity)
+                    else:
+                        self.assertNotIn("asrUtteranceId", forwarded)
+
     def test_handle_chat_command_updates_voice_language_for_runtime_session(self):
         chat_stream = _StubChatStream()
         state = SimpleNamespace(

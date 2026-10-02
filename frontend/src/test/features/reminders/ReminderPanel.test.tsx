@@ -35,6 +35,10 @@ vi.mock("../../../shared/desktop/remindersApi", () => ({
 vi.mock("../../../entities/character/repository", () => ({ listCharacters: mocks.people }));
 vi.mock("../../../entities/config/repository", () => ({ getAppConfig: mocks.config }));
 vi.mock("../../../entities/files/repository", () => ({ fileUrl: (path: string) => `/files/${path}` }));
+vi.mock("../../../entities/chat/repository", () => ({
+  getChatSnapshot: vi.fn().mockResolvedValue({ characterSpeechDisabled: false }),
+  subscribeChat: vi.fn().mockReturnValue(() => {}),
+}));
 
 const notice = {
   id: "test-1",

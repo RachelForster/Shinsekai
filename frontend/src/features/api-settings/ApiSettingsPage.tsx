@@ -180,14 +180,92 @@ export function ApiSettingsPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (payload: { api: ApiConfig; system: SystemConfig }) => {
-      const savedApi = await saveApiConfig(payload.api);
-      const savedSystem = await saveSystemConfig(payload.system);
-      return { api: savedApi, system: savedSystem };
+      const preSubmitExperimental = Boolean(data?.system_config?.asr_continuous_during_reply_experimental_enabled);
+      const targetExperimental = Boolean(payload.system.asr_continuous_during_reply_experimental_enabled);
+      const isEnablingExperimental = !preSubmitExperimental && targetExperimental;
+
+      if (isEnablingExperimental) {
+        // Enabling experimental mode requires system first to bypass dormant TTS validation
+        const savedSystem = await saveSystemConfig(payload.system);
+        try {
+          const savedApi = await saveApiConfig(payload.api);
+          return { api: savedApi, system: savedSystem };
+        } catch (apiError) {
+          // Second write (API) failed. Roll back first write (System) to actual saved pre-submit value from data config.
+          const rollbackSystem = data?.system_config;
+          let rollbackError: unknown = null;
+          try {
+            if (rollbackSystem) {
+              await saveSystemConfig(rollbackSystem);
+            }
+          } catch (err) {
+            rollbackError = err;
+          }
+
+          if (rollbackError) {
+            // Rollback failed: refetch actual config/cache so UI shows actual saved state
+            try {
+              await queryClient.refetchQueries({ queryKey: configQueryKey });
+            } catch {
+              /* keep UI query error state for retry */
+            }
+            const primaryMsg =
+              apiError instanceof Error && apiError.message.trim() ? apiError.message : t("api.error.saveFallback");
+            const rollbackMsg =
+              rollbackError instanceof Error && rollbackError.message.trim()
+                ? rollbackError.message
+                : t("system.error.saveFallback");
+            throw new Error(`${primaryMsg}\n${rollbackMsg}`);
+          }
+
+          // Always rethrow original failure even rollback succeeds, don't report success
+          throw apiError;
+        }
+      } else {
+        // Experimental mode unchanged or disabling: restore upstream API-first order
+        const savedApi = await saveApiConfig(payload.api);
+        try {
+          const savedSystem = await saveSystemConfig(payload.system);
+          return { api: savedApi, system: savedSystem };
+        } catch (systemError) {
+          // Second write (System) failed. Roll back first write (API) to actual saved pre-submit value from data config.
+          const rollbackApi = data?.api_config;
+          let rollbackError: unknown = null;
+          try {
+            if (rollbackApi) {
+              await saveApiConfig(rollbackApi);
+            }
+          } catch (err) {
+            rollbackError = err;
+          }
+
+          if (rollbackError) {
+            // Rollback failed: refetch actual config/cache so UI shows actual saved state
+            try {
+              await queryClient.refetchQueries({ queryKey: configQueryKey });
+            } catch {
+              /* keep UI query error state for retry */
+            }
+            const primaryMsg =
+              systemError instanceof Error && systemError.message.trim()
+                ? systemError.message
+                : t("system.error.saveFallback");
+            const rollbackMsg =
+              rollbackError instanceof Error && rollbackError.message.trim()
+                ? rollbackError.message
+                : t("api.error.saveFallback");
+            throw new Error(`${primaryMsg}\n${rollbackMsg}`);
+          }
+
+          // Always rethrow original failure even rollback succeeds, don't report success
+          throw systemError;
+        }
+      }
     },
     onError(error) {
       showToast({
         kind: "error",
-        message: error instanceof Error ? error.message : t("api.error.saveFallback"),
+        message: error instanceof Error && error.message.trim() ? error.message : t("api.error.saveFallback"),
         title: t("common.saveFailed"),
       });
     },
@@ -768,7 +846,7 @@ export function ApiSettingsPage() {
     }
     const ttsProvider = normalizeTtsProvider(draft.tts_provider);
     const isKaggleTts = ttsProvider === "kaggle-gpt-sovits";
-    if (requiresTtsServerConfig(draft.tts_provider)) {
+    if (!systemDraft.asr_continuous_during_reply_experimental_enabled && requiresTtsServerConfig(draft.tts_provider)) {
       if (!draft.gpt_sovits_url.trim()) {
         showToast({
           kind: "error",
