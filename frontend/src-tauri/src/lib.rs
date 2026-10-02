@@ -1626,15 +1626,24 @@ fn chat_window_url(port: u16, auth_token: &str) -> String {
     app_window_url_for_route(port, auth_token, "/chat-stage")
 }
 
+fn live_frontend_origin_for_platform(is_windows: bool) -> String {
+    if is_windows {
+        format!("http://{LIVE_FRONTEND_SCHEME}.localhost")
+    } else {
+        format!("{LIVE_FRONTEND_SCHEME}://localhost")
+    }
+}
+
 fn live_frontend_url_for_route(port: u16, auth_token: &str, route: &str) -> String {
     let encoded = encode_bridge_url(port);
     let encoded_token = encode_query_value(auth_token);
+    let origin = live_frontend_origin_for_platform(cfg!(windows));
     let reload_token = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().to_string())
         .unwrap_or_else(|_| "0".to_string());
     format!(
-        "{LIVE_FRONTEND_SCHEME}://localhost/?shinsekai_bridge={encoded}&shinsekai_bridge_token={encoded_token}&shinsekai_reload={reload_token}#{route}"
+        "{origin}/?shinsekai_bridge={encoded}&shinsekai_bridge_token={encoded_token}&shinsekai_reload={reload_token}#{route}"
     )
 }
 
@@ -2058,15 +2067,30 @@ mod tests {
     fn live_frontend_urls_target_expected_routes() {
         let main = live_frontend_url(8787, "token-1");
         let chat = live_chat_frontend_url(8787, "token-1");
+        let expected_origin = live_frontend_origin_for_platform(cfg!(windows));
 
-        assert!(main
-            .starts_with("shinsekai://localhost/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787"));
+        assert!(main.starts_with(&format!(
+            "{expected_origin}/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787"
+        )));
         assert!(main.contains("shinsekai_bridge_token=token-1"));
         assert!(main.contains("#/settings/api"));
-        assert!(chat
-            .starts_with("shinsekai://localhost/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787"));
+        assert!(chat.starts_with(&format!(
+            "{expected_origin}/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787"
+        )));
         assert!(chat.contains("shinsekai_bridge_token=token-1"));
         assert!(chat.contains("#/chat-stage"));
+    }
+
+    #[test]
+    fn live_frontend_origin_matches_tauri_custom_protocol_mapping() {
+        assert_eq!(
+            live_frontend_origin_for_platform(true),
+            "http://shinsekai.localhost"
+        );
+        assert_eq!(
+            live_frontend_origin_for_platform(false),
+            "shinsekai://localhost"
+        );
     }
 
     #[test]
@@ -2077,6 +2101,11 @@ mod tests {
         assert!(targets[0].1.contains("#/settings/api"));
         assert_eq!(targets[1].0, "chat");
         assert!(targets[1].1.contains("#/chat-stage"));
+        assert!(targets[1].1.starts_with(&format!(
+            "{}/?shinsekai_bridge=http%3A%2F%2F127.0.0.1%3A8787",
+            live_frontend_origin_for_platform(cfg!(windows))
+        )));
+        assert!(targets[1].1.contains("shinsekai_bridge_token=token-1"));
         assert_eq!(targets[2].0, "reminders");
         assert!(targets[2].1.contains("#/reminders"));
     }

@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from application.media.resource_urls import UnconfiguredResourceUrls
 from application.chat.runtime_process import (
     _chat_runtime_mode,
     _chat_runtime_status,
@@ -134,6 +135,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             "status": "speaking",
         }
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_runtime_closing=False,
             chat_session={"sessionId": "session-1"},
             chat_stream=chat_stream,
@@ -276,6 +278,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
     def test_chat_snapshot_includes_runtime_mode(self):
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_session={},
             chat_stream=None,
             config_manager=_ConfigManager(),
@@ -289,6 +292,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
     def test_chat_snapshot_keeps_transparent_background_empty(self):
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_session={"backgroundName": "透明场景"},
             chat_stream=None,
             config_manager=_ConfigManager(),
@@ -302,6 +306,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         self,
     ):
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_session={"backgroundName": ""},
             chat_stream=None,
             config_manager=_ConfigManager(),
@@ -313,6 +318,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
 
     def test_chat_snapshot_uses_explicit_real_background(self):
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_session={"backgroundName": "默认房间"},
             chat_stream=None,
             config_manager=_ConfigManager(),
@@ -473,6 +479,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         config_manager = _ConfigManager()
         config_manager.config.system_config.chat_ui_runtime_mode = "native"
         state = SimpleNamespace(
+            resource_urls=UnconfiguredResourceUrls(),
             chat_session={},
             chat_stream=None,
             config_manager=config_manager,
@@ -535,6 +542,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                     config_manager=config_manager,
                     history_dir=str(history_dir),
                     template_dir_path=str(template_dir),
+                    resource_urls=UnconfiguredResourceUrls(),
                 )
             )
             body = {
@@ -604,6 +612,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                     config_manager=config_manager,
                     history_dir=str(history_dir),
                     template_dir_path=str(template_dir),
+                    resource_urls=UnconfiguredResourceUrls(),
                 )
             )
             body = {
@@ -799,6 +808,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                     config_manager=config_manager,
                     history_dir=str(history_dir),
                     template_dir_path=str(template_dir),
+                    resource_urls=UnconfiguredResourceUrls(),
                 )
             )
 

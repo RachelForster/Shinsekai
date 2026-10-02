@@ -277,6 +277,7 @@ def _start_plugin_loader(state, logger) -> None:
                 PluginRuntimeBindings,
             )
             from ai.vision.fallback_registry import configure_registered_fallbacks
+            from core.media.avatar.registry import configure_registered_formats
             from ai.asr.asr_manager import ASRAdapterFactory
             from ai.llm.llm_manager import LLMAdapterFactory
             from ai.tools.tool_manager import ToolManager
@@ -297,6 +298,7 @@ def _start_plugin_loader(state, logger) -> None:
                     t2i_adapters=T2IAdapterFactory._adapters,
                     create_tool_manager=ToolManager,
                     configure_vision_fallbacks=configure_registered_fallbacks,
+                    configure_avatar_formats=configure_registered_formats,
                     register_mcp_tools=register_mcp_tools,
                 ),
             )
@@ -388,6 +390,8 @@ def run(
         or secrets.token_urlsafe(32)
     )
 
+    from core.media.avatar.registry import configure_builtin_formats
+    configure_builtin_formats()
     state = BridgeState(
         config_manager=config_manager,
         character_manager=CharacterManager(),
@@ -399,7 +403,10 @@ def run(
         auth_token=bridge_auth_token,
     )
     _set_bridge_state(state)
+    from application.characters.import_recovery import recover_model_imports
+    recover_model_imports(state)
     state.chat_stream = ChatStreamService(host=host, bridge_port=port, auth_token=bridge_auth_token)
+    state.resource_urls = state.chat_stream.resource_urls
     state.chat_stream.start()
 
     def create_mobile_http_server(bind_host: str, mobile_port: int) -> ThreadingHTTPServer:

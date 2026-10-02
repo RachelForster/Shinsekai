@@ -11,6 +11,7 @@ import {
 } from "../desktop/desktopApi";
 import type {
   ApiConfig,
+  AvatarRuntimeStatus,
   AppConfig,
   AppUpdateInfo,
   AppUpdateResult,
@@ -933,6 +934,22 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
       },
     },
     characters: {
+      importModelStates: async (input) => {
+        const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/states/import", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
+      importModel: async (input) => {
+        const task = await requestJson<TaskSnapshot<Character>>(apiBase, "/api/characters/model/import", {
+          body: JSON.stringify(input),
+          method: "POST",
+        });
+        return waitForTask(apiBase, task);
+      },
+      saveModelState: (input) =>
+        requestJson<Character>(apiBase, "/api/characters/model/state", { body: JSON.stringify(input), method: "POST" }),
       autoLabelSprites: async (name, options) => {
         const task = await requestJson<TaskSnapshot<ImageAutoLabelResult>>(
           apiBase,
@@ -1114,6 +1131,29 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           method: "POST",
         }),
     },
+    avatarRuntimes: {
+      status: (format) =>
+        requestJson<AvatarRuntimeStatus>(apiBase, `/api/avatar/runtime/${encodeURIComponent(format)}/status`, {
+          method: "POST",
+          body: "{}",
+        }),
+      async prepare(format, input) {
+        const task = await requestJson<TaskSnapshot<unknown>>(
+          apiBase,
+          `/api/avatar/runtime/${encodeURIComponent(format)}/prepare`,
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task);
+      },
+      async install(format, input) {
+        const task = await requestJson<TaskSnapshot<AvatarRuntimeStatus>>(
+          apiBase,
+          `/api/avatar/runtime/${encodeURIComponent(format)}/install`,
+          { method: "POST", body: JSON.stringify(input) },
+        );
+        return waitForTask(apiBase, task);
+      },
+    },
     modelAssets: {
       async download(input, options) {
         const task = await requestJson<TaskSnapshot<ModelAssetDownloadResult>>(apiBase, "/api/model-assets/download", {
@@ -1143,6 +1183,12 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           return path;
         }
         return bridgeUrl(apiBase, `/api/media?path=${encodeURIComponent(path)}`);
+      },
+      modelUrl(modelPath, path) {
+        return bridgeUrl(
+          apiBase,
+          `/api/avatar/file?model_path=${encodeURIComponent(modelPath)}&path=${encodeURIComponent(path)}`,
+        );
       },
       async thumbnailBatch(paths, options) {
         const localPaths = paths.filter((path) => path && !/^(?:https?:|blob:|data:|\/assets\/)/.test(path));

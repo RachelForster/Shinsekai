@@ -71,6 +71,8 @@ from application.story.coordinator import (
 from core.story import SelectChoice
 from application.chat.launch_args import CHAT_LAUNCH_CONFIG_ENV
 from sdk.path_utils import reject_control_chars
+from config.character_assets import get_character_assets
+from application.chat.character_visual import resolve_character_visual
 
 TRANSPARENT_BACKGROUND_NAME = "透明场景"
 _TRANSPARENT_BACKGROUND_ALIAS = "透明背景"
@@ -436,8 +438,22 @@ def _launch_chat(
 
         # 把用户情景放在系统模板末尾（紧跟 closing 提示后）
         effective_user_scenario = _effective_user_scenario(user_scenario)
+        chat_session = getattr(state, "chat_session", {}) or {}
+        player_name = str(chat_session.get("playerCharacter") or "")
+        read_player_speech = bool(chat_session.get("readPlayerSpeech", False))
+        from ai.llm.template.dialog.sections.player import player_runtime_prompt
+
+        player_rules = player_runtime_prompt(
+            state.config_manager,
+            player_name,
+            allow_dialogue=bool(chat_session.get("allowPlayerDialogue", True)),
+            read_speech=read_player_speech,
+            media_selection_mode=media_selection_mode,
+        )
         template = _compose_runtime_template(
-            system_template, effective_user_scenario, effect_context
+            (system_template or "") + ("\n" + player_rules if player_rules else ""),
+            effective_user_scenario,
+            effect_context,
         )
         template_dir = _template_dir(state)
         (template_dir / "_temp.txt").write_text(template, encoding="utf-8")
@@ -486,6 +502,10 @@ def _launch_chat(
         }
         if character_names:
             launch_config["characters"] = json.dumps(character_names, ensure_ascii=False)
+        if player_name:
+            launch_config["player_character"] = player_name
+            launch_config["read_player_speech"] = read_player_speech
+            launch_config["allow_player_dialogue"] = bool(chat_session.get("allowPlayerDialogue", True))
         if stream_endpoint:
             launch_config["stream_endpoint"] = stream_endpoint
         if init_stream_endpoint:
@@ -493,7 +513,7 @@ def _launch_chat(
         if workflow_path:
             launch_config["workflow"] = workflow_path
         env = os.environ.copy()
-        if use_current_template_for_history:
+        if use_current_template_for_history or player_name:
             launch_config["use_current_template_for_history"] = True
         env[CHAT_LAUNCH_CONFIG_ENV] = json.dumps(launch_config, ensure_ascii=False)
         env["SHINSEKAI_PROJECT_ROOT"] = str(project_root)
@@ -554,7 +574,7 @@ def _sprite_path(sprite: Any) -> str:
     return str(sprite.path if hasattr(sprite, "path") else sprite.get("path", ""))
 
 
-def _chat_session_media(state: BridgeState) -> tuple[str, str, list[dict[str, str]]]:
+def _chat_session_media(state: BridgeState) -> tuple[str, str, list[dict[str, Any]]]:
     config = state.config_manager.config
     character_name = str(state.chat_session.get("characterName") or "")
     background_name = str(state.chat_session.get("backgroundName") or "")
@@ -567,9 +587,9 @@ def _chat_session_media(state: BridgeState) -> tuple[str, str, list[dict[str, st
     if character is None:
         character = config.characters[0] if config.characters else None
     sprites = []
-    if character and character.sprites:
-        sprite = character.sprites[0]
-        sprites.append({"id": f"{character.name}-0", "label": character.name, "path": _sprite_path(sprite)})
+    if character and get_character_assets(character).sprites:
+        visual = resolve_character_visual(character, 0, state.resource_urls)
+        sprites.append({"id": f"{character.name}-0", "label": character.name, **visual.snapshot_fields()})
     bg_path = ""
     if background and background.sprites:
         sprite = background.sprites[0]

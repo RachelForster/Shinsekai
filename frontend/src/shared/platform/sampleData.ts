@@ -152,6 +152,8 @@ export const sampleConfig: AppConfig = {
   ],
   characters: [
     {
+      avatar_type: "static",
+      avatars: {},
       name: "Nanami",
       color: DEFAULT_CHARACTER_COLOR,
       sprite_prefix: "nanami",
@@ -342,7 +344,9 @@ export const sampleChatSnapshot: ChatSnapshot = {
   numericInfo: "idle",
   options: ["继续", "查看历史", "切换角色"],
   runtimeMode: "react",
-  sprites: [{ id: "nanami-default", path: "/assets/present_example.png", label: "Nanami" }],
+  sprites: [
+    { avatarType: "static", modelUrl: "", id: "nanami-default", path: "/assets/present_example.png", label: "Nanami" },
+  ],
   stats: [
     { icon: "heart", label: "HP", max: 100, value: 72 },
     { icon: "sparkles", label: "Affinity", max: 100, value: 38 },

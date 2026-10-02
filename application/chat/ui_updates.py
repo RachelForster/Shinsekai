@@ -16,6 +16,8 @@ if TYPE_CHECKING:
 from core.media.effect_bindings import effect_modes
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
+from application.chat.character_visual import resolve_character_visual
+from application.media.resource_urls import ResourceUrls
 from application.chat.history_state import serialize_chat_history_entries
 
 SOUND_EFFECTS_PATH = {
@@ -225,6 +227,11 @@ class HeadlessUIUpdateManager:
         if value:
             self.user_display_name = value
 
+    def set_player_character(self, name: str) -> None:
+        self.player_character = str(name or "").strip()
+        if self.player_character:
+            self.set_user_display_name(self.player_character)
+
     def update_dialog(
         self,
         name: str,
@@ -245,6 +252,9 @@ class HeadlessUIUpdateManager:
         print(f"你: {value}")
 
     def update_sprite(self, character_name: str, sprite_id: int) -> None:
+        pass
+
+    def update_player_portrait(self, character_name: str, sprite_id: int) -> None:
         pass
 
     def switch_bgm(self, new_bgm_path: str) -> None:
@@ -271,9 +281,14 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         chat_history: Optional[MutableSequence[str]] = None,
         bg_group: Optional[List] = None,
         max_sprite_slots: int = 3,
+        *,
+        resource_urls: ResourceUrls,
     ) -> None:
         super().__init__(chat_history=chat_history)
+        if not isinstance(resource_urls, ResourceUrls):
+            raise TypeError("Chat presentation requires both media and model resource URL methods")
         self._sink = sink
+        self._resource_urls = resource_urls
         self.bg_group = list(bg_group or [])
         try:
             normalized_slot_count = int(max_sprite_slots)
@@ -301,9 +316,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         return slot
 
     def _media_url(self, raw_path: str) -> str:
-        if hasattr(self._sink, "media_url"):
-            return str(getattr(self._sink, "media_url")(raw_path) or "")
-        return str(raw_path or "")
+        return self._resource_urls.media_url(raw_path)
 
     def sync_history_entries(self) -> None:
         self._sink.emit({"type": "history.replace", "entries": serialize_chat_history_entries(list(self.chat_history))})
@@ -487,6 +500,26 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
 
     # --- 高层业务组装 → 事件 ---
 
+    def queue_player_portrait(self, name: str, sprite_id: int) -> None:
+        if getattr(self, "_player_input_visible", False):
+            self.update_player_portrait(name, sprite_id)
+        else:
+            self._pending_player_portrait = (name, sprite_id)
+
+    def _apply_player_portrait_for_dialog(self, name: str, speech: str) -> None:
+        from core.messaging.dialog_tokens import NARR_ALIASES, normalize_character_name
+        player = str(getattr(self, "player_character", "") or "")
+        compact = lambda value: re.sub(r'\s+', '', str(value or ''))
+        relevant = bool(player) and (
+            compact(name) == compact(player) or
+            (normalize_character_name(name) in NARR_ALIASES and compact(player) in compact(speech))
+        )
+        self._player_input_visible = False
+        pending = getattr(self, "_pending_player_portrait", None)
+        self._pending_player_portrait = None
+        if relevant and pending is not None:
+            self.update_player_portrait(*pending)
+
     def update_dialog(
         self,
         name: str,
@@ -494,6 +527,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         color: str,
         is_system: bool = True,
     ) -> None:
+        self._apply_player_portrait_for_dialog(name, speech)
         formatted = _format_dialog_html(name, speech, color, is_system)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
@@ -509,6 +543,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self.sync_history_entries()
 
     def record_user_message(self, text: str) -> None:
+        self._player_input_visible = True
+        self._pending_player_portrait = None
         super().record_user_message(text)
         self.sync_history_entries()
 
@@ -521,6 +557,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         color: str = "",
         is_system: bool = True,
     ) -> None:
+        self._apply_player_portrait_for_dialog(speaker, html.unescape(re.sub(r'<[^>]*>', '', full_html)))
         if append_history and str(full_html or "").strip():
             self.chat_history.append(full_html)
         self._sink.emit(
@@ -539,11 +576,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             character_config = get_character_by_name(character_name)
             if character_config is None:
                 raise ValueError(f"未找到角色配置: {character_name}")
-            sprite = character_config.sprites[sprite_id]
-            image_path = str(
-                Path(sprite.get("path", "")) if isinstance(sprite, dict) else Path(getattr(sprite, "path", ""))
-            )
-            scale = float(getattr(character_config, "sprite_scale", 1.0) or 1.0)
+            visual = resolve_character_visual(character_config, sprite_id, self._resource_urls)
         except Exception as e:
             print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
             return
@@ -552,9 +585,41 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             {
                 "type": "sprite.show",
                 "characterName": character_name,
-                "url": self._media_url(image_path),
-                "scale": scale,
+                **visual.event_fields(),
                 "slot": display_slot,
+            }
+        )
+
+    def update_player_portrait(self, character_name: str, sprite_id: int) -> None:
+        try:
+            character_config = get_character_by_name(character_name)
+            if character_config is None:
+                raise ValueError(f"未找到角色配置: {character_name}")
+            sprite = character_config.sprites[sprite_id]
+            image_path = str(
+                Path(sprite.get("path", ""))
+                if isinstance(sprite, dict)
+                else Path(getattr(sprite, "path", ""))
+            )
+        except Exception as error:
+            print(f"StreamingUIUpdateManager: 主控头像解析失败: {error}")
+            return
+        crop = (
+            sprite.get("portrait_crop")
+            if isinstance(sprite, dict)
+            else getattr(sprite, "portrait_crop", None)
+        )
+        crop = crop or getattr(character_config, "portrait_crop", None)
+        self._sink.emit(
+            {
+                "type": "player.portrait.show",
+                "characterName": character_name,
+                "url": self._media_url(image_path),
+                "crop": (
+                    crop.model_dump()
+                    if hasattr(crop, "model_dump")
+                    else (crop or {"x": 0.5, "y": 0.2, "zoom": 1})
+                ),
             }
         )
 
@@ -576,6 +641,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
                 "url": self._media_url(path),
                 "scale": float(scale or 1.0),
                 "slot": self._get_or_create_sprite_slot(resolved_character_name),
+                "avatarType": "static",
+                "modelUrl": "",
             }
         )
         return True

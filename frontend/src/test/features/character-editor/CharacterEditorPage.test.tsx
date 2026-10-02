@@ -142,6 +142,8 @@ vi.mock("../../../entities/character/repository", () => ({
 }));
 
 const character: Character = {
+  avatar_type: "static",
+  avatars: {},
   character_setting: "Quiet student.",
   color: "#66ccff",
   emotion_tags: "Sprite 1: happy\n",
@@ -331,7 +333,7 @@ describe("CharacterEditorPage", () => {
         undefined,
       ),
     );
-    await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("Sora"));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Sora"));
   });
 
   it("updates the cached template selection when a character is renamed", async () => {
@@ -405,7 +407,7 @@ describe("CharacterEditorPage", () => {
         paths: ["D:/new/sora.png"],
       }),
     );
-    await waitFor(() => expect(screen.getByRole("combobox")).toHaveTextContent("Sora"));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Current character" })).toHaveTextContent("Sora"));
   });
 
   it("uploads sprite voice with the displayed default fallback type", async () => {

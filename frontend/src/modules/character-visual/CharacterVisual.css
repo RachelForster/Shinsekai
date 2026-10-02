@@ -1,0 +1,17 @@
+.character-visual__model {
+  position: relative;
+  aspect-ratio: 1;
+}
+
+.character-visual__viewport {
+  position: absolute;
+  inset: 0;
+}
+
+.character-visual__error {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+}

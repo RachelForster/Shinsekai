@@ -30,6 +30,8 @@ def prepare_conversation_edit(state: Any, conversation_id: str, payload: dict) -
         for name in names
     ):
         raise ValueError("conversation contains an unavailable character")
+    from application.chat.player_control import resolve_player
+    resolve_player(state.config_manager, names, payload.get("playerCharacter"))
     if details["kind"] == "story":
         if not details["storyPath"]:
             raise ValueError("the original story is unavailable")

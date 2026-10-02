@@ -1,4 +1,5 @@
 import { getPlatform } from "../../shared/platform/platform";
+import { normalizePlayerOptions } from "../../shared/playerCharacterOptions";
 import type {
   ChatCommand,
   ChatCommandResult,
@@ -45,6 +46,7 @@ export async function getConversationSession(id: string): Promise<TemplateLaunch
     voiceLanguage: options.voiceLanguage || "ja",
     characterPromptMode: options.characterPromptMode,
     primaryCharacters: options.primaryCharacters,
+    ...normalizePlayerOptions(options),
     enableMobileAccess: options.enableMobileAccess,
     background: payload.backgroundName,
     effectNames: payload.effectNames ?? [],

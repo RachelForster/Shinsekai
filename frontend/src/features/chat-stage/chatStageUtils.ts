@@ -9,7 +9,7 @@ interface ChatStagePageLocation {
   protocol: string;
 }
 
-const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost", "tauri.localhost"]);
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost", "tauri.localhost", "shinsekai.localhost"]);
 
 function isLoopbackHost(hostname: string) {
   return LOOPBACK_HOSTS.has(hostname.toLowerCase());
@@ -83,7 +83,7 @@ export function stageAssetUrl(path?: string) {
       // Fall through to the existing path handling.
     }
   }
-  if (/^(?:[a-z][a-z\d+.-]*:|\/assets\/)/i.test(path)) {
+  if (/^(?:https?:|data:|blob:|\/assets\/)/i.test(path)) {
     return path;
   }
   return fileUrl(path);

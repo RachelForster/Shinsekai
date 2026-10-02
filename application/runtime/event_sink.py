@@ -198,6 +198,14 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             next_snapshot["userDisplayName"] = name
         return next_snapshot
 
+    if event_type == "player.portrait.show":
+        next_snapshot["playerPortrait"] = {
+            "characterName": str(event.get("characterName") or ""),
+            "url": str(event.get("url") or ""),
+            "crop": dict(event.get("crop") or {}),
+        }
+        return next_snapshot
+
     if event_type == "sprite.show":
         _clear_transient_notification_state(next_snapshot)
         character_name = str(event.get("characterName") or "")
@@ -219,6 +227,8 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
             "characterName": character_name,
             "scale": event.get("scale"),
             "slot": slot,
+            "avatarType": str(event.get("avatarType") or "static"),
+            "modelUrl": str(event.get("modelUrl") or ""),
         }
         for axis in ("x", "y"):
             if event.get(axis) is not None:
@@ -655,6 +665,9 @@ def build_event(seq: int, payload: Dict[str, Any]) -> Dict[str, Any]:
         "ts": int(time.time() * 1000),
     }
     event.update(payload)
+    if event.get("type") == "sprite.show":
+        event["avatarType"] = str(event.get("avatarType") or "static")
+        event["modelUrl"] = str(event.get("modelUrl") or "")
     return event
 
 

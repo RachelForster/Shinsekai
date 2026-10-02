@@ -275,6 +275,7 @@ def test_desktop_core_runtime_check_does_not_import_optional_packages(tmp_path):
 
         builtins.__import__ = guarded_import
         compatible_versions = {{
+            "filelock": "3.13.0",
             "huggingface-hub": "0.36.2",
             "mcp": "1.2.0",
             "packaging": "24.2",
@@ -480,6 +481,7 @@ def test_runtime_core_requirements_include_bridge_startup_sdks():
     assert "anthropic" in names
     assert "tiktoken" in names
     assert "packaging" in names
+    assert "filelock" in names
     assert "opencc-python-reimplemented" in names
     assert "PySide6" not in names
     assert "Pillow" in names

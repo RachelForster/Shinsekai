@@ -59,6 +59,7 @@ describe("entity repositories", () => {
         saveSystem: vi.fn().mockResolvedValue(systemConfig),
       },
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((paths: string[], options?: { size?: number }) =>
@@ -94,6 +95,10 @@ describe("entity repositories", () => {
     await config.saveSystemConfig(systemConfig);
     await files.browseFiles({ path: "/tmp", showHidden: true });
     expect(files.fileUrl("/tmp/a.png")).toBe("file:///tmp/a.png");
+    expect(files.modelFileUrl("C:\\models\\alice.model3.json")).toBe("/api/avatar/file");
+    expect(platform.files.modelUrl).toHaveBeenCalledWith("C:\\models\\alice.model3.json", "alice.model3.json");
+    files.modelFileUrl("/tmp/alice.model3.json", "states/smile.json");
+    expect(platform.files.modelUrl).toHaveBeenCalledWith("/tmp/alice.model3.json", "states/smile.json");
     expect(files.fileThumbnailUrl("/tmp/a.png", 160)).toBe("thumb://160//tmp/a.png");
     await expect(files.fileThumbnailBatch(["/tmp/a.png", "/tmp/a.png"], 160)).resolves.toEqual({
       "/tmp/a.png": "batch://160//tmp/a.png",
@@ -186,6 +191,7 @@ describe("entity repositories", () => {
     const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
     const platform = {
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((batch: string[], options?: { size?: number }) =>
@@ -210,6 +216,7 @@ describe("entity repositories", () => {
     const paths = ["/tmp/background-a.png", "/tmp/background-b.png"];
     const platform = {
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((batch: string[], options?: { delivery?: "data" | "url"; size?: number }) =>
@@ -245,6 +252,7 @@ describe("entity repositories", () => {
     const paths = Array.from({ length: 130 }, (_, index) => `/tmp/background-${index}.png`);
     const platform = {
       files: {
+        modelUrl: vi.fn(() => "/api/avatar/file"),
         browse: vi.fn().mockResolvedValue({ cwd: "/tmp", entries: [], roots: [] }),
         fileUrl: vi.fn((path: string) => `file://${path}`),
         thumbnailBatch: vi.fn((batch: string[], options?: { size?: number }) => {
@@ -290,6 +298,9 @@ describe("entity repositories", () => {
         uploadImages: vi.fn().mockResolvedValue(background),
       },
       characters: {
+        importModel: vi.fn().mockResolvedValue(character),
+        importModelStates: vi.fn().mockResolvedValue(character),
+        saveModelState: vi.fn().mockResolvedValue(character),
         autoLabelSprites: vi.fn().mockResolvedValue({}),
         delete: vi.fn().mockResolvedValue(undefined),
         deleteAllSprites: vi.fn().mockResolvedValue(character),
@@ -354,6 +365,18 @@ describe("entity repositories", () => {
     await backgrounds.uploadBackgroundBgm({ bgmTags: "music", name: "Room", paths: ["/tmp/a.mp3"] });
     await backgrounds.autoLabelBackgroundImages("Room");
     await characters.saveCharacter(character, "Old Nanami");
+    const modelImport = { name: "Nanami", avatar_type: "l2d", source_path: "/tmp/alice.model3.json" };
+    await expect(characters.importCharacterModel(modelImport)).resolves.toBe(character);
+    const modelState = {
+      name: "Nanami",
+      avatar_type: "l2d",
+      model_path: "/tmp/alice.model3.json",
+      sprite_index: -1,
+      path: "",
+      state: { parameters: {}, expressions: [], motion: "" },
+      tags: "happy",
+    };
+    await expect(characters.saveCharacterModelState(modelState)).resolves.toBe(character);
     await characters.generateCharacterSetting({ name: "Nanami", setting: "kind" });
     await characters.translateCharacterFields({ characterSetting: "kind", emotionTags: "happy", name: "Nanami" });
     await characters.listCharacterMemories("Nanami");
@@ -382,6 +405,8 @@ describe("entity repositories", () => {
       paths: ["/tmp/a.png"],
     });
     expect(platform.characters.save).toHaveBeenCalledWith(character, "Old Nanami");
+    expect(platform.characters.importModel).toHaveBeenCalledWith(modelImport);
+    expect(platform.characters.saveModelState).toHaveBeenCalledWith(modelState);
     expect(platform.characters.autoLabelSprites).toHaveBeenCalledWith("Nanami", undefined);
     expect(platform.characters.remember).toHaveBeenCalledWith("Nanami", "likes tea");
     expect(platform.characters.previewMemoryImport).toHaveBeenCalledWith("Nanami", [historyFile]);

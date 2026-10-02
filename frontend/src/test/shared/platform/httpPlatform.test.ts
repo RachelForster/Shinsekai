@@ -41,6 +41,60 @@ describe("http platform", () => {
     }
   });
 
+  it("uses authenticated task transport for runtime preparation and installation", async () => {
+    const status = {
+      version: "5-r.4",
+      installed: false,
+      download_url: "https://www.live2d.com/en/sdk/download/web/",
+      license_urls: [],
+    };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => mockJsonResponse(status))
+      .mockImplementationOnce(() => mockJsonResponse({ id: "prepare", status: "succeeded", result: { sources: {} } }))
+      .mockImplementationOnce(() =>
+        mockJsonResponse({ id: "install", status: "succeeded", result: { ...status, installed: true } }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787", "secret");
+    const input = { source_path: "sdk.zip", accepted_license: true };
+    expect(await platform.avatarRuntimes.status("l2d")).toEqual(status);
+    expect(await platform.avatarRuntimes.prepare("l2d", input)).toEqual({ sources: {} });
+    expect((await platform.avatarRuntimes.install("l2d", { ...input, compiled: "compiled" })).installed).toBe(true);
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "http://127.0.0.1:8787/api/avatar/runtime/l2d/status",
+      "http://127.0.0.1:8787/api/avatar/runtime/l2d/prepare",
+      "http://127.0.0.1:8787/api/avatar/runtime/l2d/install",
+    ]);
+    expect(fetchMock).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ ...input, compiled: "compiled" }),
+        headers: expect.objectContaining({ "X-Shinsekai-Bridge-Token": "secret" }),
+      }),
+    );
+  });
+  it("imports an opaque preset batch through the existing task transport", async () => {
+    const input = {
+      name: "Alice",
+      avatar_type: "mmd",
+      model_path: "model.pmx",
+      source_paths: ["pose.vpd", "nod.vmd"],
+      state: { opaque: true },
+    };
+    const character = sampleConfig.characters[0];
+    const fetchMock = vi.fn(() => mockJsonResponse({ id: "preset-import", status: "succeeded", result: character }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await createHttpPlatform("http://127.0.0.1:8787").characters.importModelStates(input)).toEqual(character);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/characters/model/states/import",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    );
+  });
   it("uses separate read, save and background suggestion endpoints for story editing", async () => {
     const doc = {
       storyPath: "story.json",

@@ -34,7 +34,11 @@ vi.mock("../../../entities/character/repository", () => ({
   charactersQueryKey: ["characters"],
   listCharacters: () =>
     Promise.resolve(
-      ["小玲", "小明", "小夏", "小雨", "小晴"].map((name) => ({ name, character_setting: `${name}的完整设定` })),
+      ["小玲", "小明", "小夏", "小雨", "小晴"].map((name) => ({
+        name,
+        character_setting: `${name}的完整设定`,
+        sprites: [],
+      })),
     ),
   ensureCharacterBriefs: (...args: unknown[]) => ensureCharacterBriefs(...args),
 }));
@@ -255,6 +259,41 @@ describe("StoryGeneratorPage", () => {
     expect(screen.getByRole("button", { name: "运行剧本" })).toBeEnabled();
   });
 
+  it("stores the selected player character in the generated story", async () => {
+    startStoryGeneration.mockResolvedValue(generatedTask());
+    renderPage();
+
+    fireEvent.click(await screen.findByRole("button", { name: "小玲" }));
+    fireEvent.click(screen.getByRole("button", { name: "主控人物" }));
+    const dialog = screen.getByRole("dialog");
+    const playerSelect = within(dialog).getByRole("combobox", { name: "主控人物（你扮演的角色）" });
+    fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
+    fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
+    fireEvent.keyDown(playerSelect, { key: "Enter" });
+    await waitFor(() => expect(playerSelect).toHaveTextContent("小玲"));
+    const aiDialogue = within(dialog).getByRole("checkbox", { name: "允许 AI 生成主控台词" });
+    expect(aiDialogue).toBeChecked();
+    fireEvent.click(aiDialogue);
+    fireEvent.click(within(dialog).getByRole("button", { name: "确定" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    const playerControls = screen.getByRole("button", { name: "主控人物" }).parentElement!;
+    expect(within(playerControls).getByText("小玲")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
+
+    await waitFor(() =>
+      expect(startStoryGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            playerCharacter: "小玲",
+            readPlayerSpeech: false,
+            allowPlayerDialogue: false,
+          }),
+        }),
+        expect.anything(),
+      ),
+    );
+  });
+
   it("shows automatic recovery without requiring a manual resume action", async () => {
     const task = generatedTask("running");
     task.currentStage = "repair";
@@ -325,6 +364,41 @@ describe("StoryGeneratorPage", () => {
     await waitFor(() => expect(start).toBeEnabled());
     fireEvent.click(start);
     expect(await screen.findByRole("button", { name: "运行剧本" })).toBeDisabled();
+  });
+
+  it("keeps player and NPC roles separate and confirms player settings before configuring NPCs", async () => {
+    startStoryGeneration.mockResolvedValue(generatedTask());
+    renderPage();
+    await screen.findByRole("button", { name: "小玲" });
+    fireEvent.click(screen.getByRole("button", { name: "全选角色" }));
+    fireEvent.click(screen.getByRole("button", { name: "主控人物" }));
+    const playerDialog = screen.getByRole("dialog");
+    const playerSelect = within(playerDialog).getByRole("combobox", { name: "主控人物（你扮演的角色）" });
+    fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
+    fireEvent.keyDown(playerSelect, { key: "ArrowDown" });
+    fireEvent.keyDown(playerSelect, { key: "Enter" });
+    await waitFor(() => expect(playerSelect).toHaveTextContent("小玲"));
+    fireEvent.click(within(playerDialog).getByRole("button", { name: "确定" }));
+    const status = screen.getByText("已选 4 人 · 主次人物尚未设置");
+    fireEvent.click(within(status.parentElement!).getByRole("button", { name: "设置主要人物" }));
+    const rolesDialog = screen.getByRole("dialog", { name: "选择主要人物" });
+    expect(within(rolesDialog).queryByRole("button", { name: /小玲/ })).not.toBeInTheDocument();
+    fireEvent.click(within(rolesDialog).getByRole("button", { name: "应用主次设置" }));
+    await waitFor(() => expect(ensureCharacterBriefs).toHaveBeenCalledWith(["小夏", "小雨", "小晴"]));
+    expect(await screen.findByText("主要人物 1 人 · 次要人物 3 人")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "开始生成" }));
+    await waitFor(() =>
+      expect(startStoryGeneration).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            playerCharacter: "小玲",
+            characterPromptMode: "compact",
+            primaryCharacters: ["小明"],
+          }),
+        }),
+        expect.anything(),
+      ),
+    );
   });
 
   it("uses the shared primary character flow and generates secondary briefs", async () => {

@@ -15,6 +15,8 @@ function renderEn(children: ReactNode) {
 }
 
 const characterDraft: Character = {
+  avatar_type: "static",
+  avatars: {},
   character_setting: "Quiet student.",
   color: "#66ccff",
   emotion_tags: "happy",

@@ -5,6 +5,7 @@ import "./CharacterRoleStatus.css";
 
 interface CharacterRoleStatusProps {
   disabled?: boolean;
+  hasPlayerCharacter?: boolean;
   mode?: CharacterPromptMode;
   onConfigure: () => void;
   onUseAll: () => void;
@@ -14,6 +15,7 @@ interface CharacterRoleStatusProps {
 
 export function CharacterRoleStatus({
   disabled = false,
+  hasPlayerCharacter = false,
   mode,
   onConfigure,
   onUseAll,
@@ -22,7 +24,8 @@ export function CharacterRoleStatus({
 }: CharacterRoleStatusProps) {
   const { t } = useI18n();
 
-  if (selectedCount <= 4) {
+  // Choosing a player removes them from the NPC count, not the NPC role controls.
+  if (!selectedCount || (selectedCount <= 4 && !hasPlayerCharacter)) {
     return null;
   }
 

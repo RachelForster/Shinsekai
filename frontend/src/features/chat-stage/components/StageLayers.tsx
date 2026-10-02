@@ -15,12 +15,15 @@ import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatOption, ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
+import { CharacterVisual } from "../../../modules/character-visual";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import type { ChatStageEffectImage } from "../state/types";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
 import type { DialogHtmlNode, DialogHtmlStyleProperty } from "../dialogTypewriter";
 import { chatStageSpriteAxisCenter, chatStageSpriteCharacterName } from "../state/sprites";
+import { Portrait } from "../../../shared/components/Portrait";
+import type { PlayerPortrait } from "../../../shared/platform/types";
 
 function closestDialogInteractiveElement(target: EventTarget | null) {
   if (!(target instanceof Element)) {
@@ -126,7 +129,7 @@ export function SpriteLayer({
             data-draggable={onDragStart ? "true" : "false"}
             data-slot={sprite.slot ?? index}
             data-speaking={speaking ? "true" : "false"}
-            key={sprite.id}
+            key={chatStageSpriteCharacterName(sprite) || sprite.id}
             style={
               {
                 "--sprite-axis-center": `${axisCenter}%`,
@@ -137,14 +140,21 @@ export function SpriteLayer({
               } as CSSProperties
             }
           >
-            <img
-              alt={sprite.label}
+            <CharacterVisual
+              asset={{
+                id: sprite.id,
+                label: sprite.label,
+                url: stageAssetUrl(sprite.path),
+                avatarType: sprite.avatarType ?? "static",
+                modelUrl: sprite.modelUrl ? stageAssetUrl(sprite.modelUrl) : "",
+              }}
+              hitbox={Boolean(onDragStart)}
               className="sprite-layer__image"
-              data-chat-stage-hitbox={onDragStart ? "true" : undefined}
-              key={sprite.path}
-              onError={hideBrokenStageAsset}
-              onMouseDown={onDragStart}
-              src={stageAssetUrl(sprite.path)}
+              onImageError={hideBrokenStageAsset}
+              onMouseDown={onDragStart ?? (() => {})}
+              mode={sprite.applyMode ?? "play"}
+              voiceCharacterName={chatStageSpriteCharacterName(sprite)}
+              stateSequence={sprite.stateSequence}
             />
           </figure>
         );
@@ -154,6 +164,7 @@ export function SpriteLayer({
 }
 
 export function DialogLayer({
+  playerPortrait,
   canAdvance,
   characterName,
   hidden,
@@ -166,6 +177,7 @@ export function DialogLayer({
   toolbar,
   typing,
 }: {
+  playerPortrait?: PlayerPortrait | null;
   canAdvance: boolean;
   characterName?: string;
   hidden: boolean;
@@ -203,41 +215,47 @@ export function DialogLayer({
   }, [htmlNodes, text]);
 
   return (
-    <section
-      aria-hidden={hidden}
-      aria-live="polite"
-      className={layerClassName("dialog-layer", hidden)}
-      data-chat-stage-hitbox="true"
-      data-has-toolbar={toolbar ? "true" : "false"}
-      data-typing={typing ? "true" : "false"}
-      hidden={hidden}
-      onClick={handleDialogClick}
-    >
-      <ThemeFrame prefix="chat-dialog" />
-      {characterName ? (
-        <p className="dialog-layer__name">
-          <ThemeFrame prefix="chat-name" />
-          <span className="dialog-layer__name-content">{characterName}</span>
-        </p>
-      ) : null}
-      {htmlNodes !== undefined ? (
-        <div className="dialog-layer__body" ref={bodyRef}>
-          <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
-            <div className="dialog-layer__html">{renderDialogHtmlNodes(htmlNodes)}</div>
-            {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
+    <div className="dialog-layer-shell" data-player-portrait={playerPortrait?.url ? "true" : undefined} hidden={hidden}>
+      <section
+        aria-hidden={hidden}
+        aria-live="polite"
+        className={layerClassName("dialog-layer", hidden)}
+        data-chat-stage-hitbox="true"
+        data-has-toolbar={toolbar ? "true" : "false"}
+        data-typing={typing ? "true" : "false"}
+        onClick={handleDialogClick}
+      >
+        <ThemeFrame prefix="chat-dialog" />
+        {playerPortrait?.url ? (
+          <div className="dialog-layer__player-portrait">
+            <Portrait path={playerPortrait.url} crop={playerPortrait.crop} name={playerPortrait.characterName} />
           </div>
-        </div>
-      ) : (
-        <div className="dialog-layer__body" ref={bodyRef}>
-          <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
-            {text}
-            {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
+        ) : null}
+        {characterName ? (
+          <p className="dialog-layer__name">
+            <ThemeFrame prefix="chat-name" />
+            <span className="dialog-layer__name-content">{characterName}</span>
+          </p>
+        ) : null}
+        {htmlNodes !== undefined ? (
+          <div className="dialog-layer__body" ref={bodyRef}>
+            <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
+              <div className="dialog-layer__html">{renderDialogHtmlNodes(htmlNodes)}</div>
+              {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
+            </div>
           </div>
-        </div>
-      )}
-      <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-output" />
-      {toolbar ? <div className="dialog-layer__toolbar">{toolbar}</div> : null}
-    </section>
+        ) : (
+          <div className="dialog-layer__body" ref={bodyRef}>
+            <div className="dialog-layer__text" data-text-direction={textDirection} dir={renderedDirection}>
+              {text}
+              {canAdvance && !typing ? <span aria-hidden className="dialog-layer__ctc" /> : null}
+            </div>
+          </div>
+        )}
+        <PluginSlot onOpenPluginPage={onOpenPluginPage} slot="chat-output" />
+        {toolbar ? <div className="dialog-layer__toolbar">{toolbar}</div> : null}
+      </section>
+    </div>
   );
 }
 

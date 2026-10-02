@@ -1,5 +1,7 @@
 import yaml
 import sys
+import os
+import tempfile
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from pydantic import ValidationError
@@ -347,12 +349,11 @@ class ConfigManager:
     def save_characters_config(self) -> None:
         """独立保存角色列表配置到 characters.yaml"""
         if self._config is None:
-            print("警告：配置未加载或加载失败，无法保存角色配置。")
-            return
+            raise RuntimeError("配置未加载或加载失败，无法保存角色配置。")
             
         print("正在保存 characters.yaml...")
-        # 角色列表需要将每个 Character 实体转换为字典
-        characters_data = [char.model_dump(by_alias=True) for char in self.config.characters]
+        # JSON 模式将嵌套的 Path 转为字符串，避免 YAML 写出 safe_load 无法读取的 Python 标签。
+        characters_data = [char.model_dump(mode="json", by_alias=True) for char in self.config.characters]
         self._save_single_config(self._CHARACTERS_CONFIG_PATH, characters_data)
         print("characters.yaml 保存完成。")
     
@@ -377,14 +378,22 @@ class ConfigManager:
         print("effect.yaml 保存完成。")
 
     def _save_single_config(self, file_path: Path, data: Union[Dict, List]) -> None:
-        """保存单个配置到 YAML 文件"""
+        """Atomically save YAML; callers must observe failures to roll back changes."""
         file_path.parent.mkdir(parents=True, exist_ok=True) # 确保目录存在
+        temporary_path = None
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
-                # 使用 default_flow_style=False 提高 YAML 的可读性
+            with tempfile.NamedTemporaryFile(
+                mode='w', encoding='utf-8', dir=file_path.parent,
+                prefix=f'.{file_path.name}.', suffix='.tmp', delete=False,
+            ) as f:
+                temporary_path = Path(f.name)
                 yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        except Exception as e:
-            print(f"错误：保存配置到 {file_path} 失败: {e}")
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temporary_path, file_path)
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
     def get_background_by_name(self, name: str) -> Optional[Background]:
         for char in self.config.background_list:

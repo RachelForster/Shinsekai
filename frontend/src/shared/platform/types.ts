@@ -1,7 +1,20 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
+export interface PortraitCrop {
+  x: number;
+  y: number;
+  zoom: number;
+}
+
+export interface PlayerPortrait {
+  characterName: string;
+  url: string;
+  crop: PortraitCrop;
+}
+
 export interface Sprite {
+  portrait_crop?: PortraitCrop | null;
   path: string;
   voice_path?: string;
   voice_text?: string;
@@ -10,7 +23,26 @@ export interface Sprite {
 
 export type SpriteVoiceType = "fallback" | "preset" | "reference";
 
+export interface ModelSprites {
+  model_path: string;
+  sprites: Sprite[];
+  emotion_tags: string;
+}
+
+export interface AvatarRuntimeStatus {
+  version: string;
+  installed: boolean;
+  download_url: string;
+  license_urls: string[];
+}
+
+export interface AvatarRuntimeImport {
+  source_path: string;
+  accepted_license: boolean;
+}
+
 export interface Character {
+  portrait_crop?: PortraitCrop;
   name: string;
   color: string;
   sprite_prefix: string;
@@ -19,6 +51,10 @@ export interface Character {
   character_setting: string;
   sprite_scale: number;
   emotion_tags: string;
+  /** 默认 "static"；模型格式为已注册的格式 id。 */
+  avatar_type: string;
+  /** 格式 id → 该格式的模型与资源；static 不在此映射中。 */
+  avatars: Record<string, ModelSprites>;
   gpt_model_path?: string;
   sovits_model_path?: string;
   refer_audio_path?: string;
@@ -504,7 +540,13 @@ export interface PluginConfigActionResult {
   result: Record<string, unknown>;
 }
 
-export interface TemplateSummary {
+export interface PlayerCharacterOptions {
+  playerCharacter?: string;
+  readPlayerSpeech?: boolean;
+  allowPlayerDialogue?: boolean;
+}
+
+export interface TemplateSummary extends PlayerCharacterOptions {
   content: string;
   generationMessage?: string;
   id: string;
@@ -533,7 +575,7 @@ export interface ConversationSummary {
   requiresCharacterSelection?: boolean;
 }
 
-export interface ChatLaunchPayload {
+export interface ChatLaunchPayload extends PlayerCharacterOptions {
   storyPath?: string;
   characterPromptMode?: CharacterPromptMode;
   primaryCharacters?: string[];
@@ -565,7 +607,7 @@ export interface ChatLaunchPayload {
   useCg?: boolean;
 }
 
-export interface TemplateGenerateInput {
+export interface TemplateGenerateInput extends PlayerCharacterOptions {
   backgroundName: string;
   characterPromptMode?: CharacterPromptMode;
   characters: string[];
@@ -589,7 +631,7 @@ export interface TemplateGenerateInput {
 export type CharacterPromptMode = "compact" | "full";
 export type MediaSelectionMode = "indexed" | "semantic";
 
-export interface TemplateLaunchSession {
+export interface TemplateLaunchSession extends PlayerCharacterOptions {
   background: string;
   characterPromptMode?: CharacterPromptMode;
   enableMobileAccess?: boolean;
@@ -882,6 +924,8 @@ export interface ChatSprite {
   slot?: number;
   x?: number;
   y?: number;
+  avatarType: string;
+  modelUrl: string;
 }
 
 export type ChatHistoryRole = "assistant" | "options" | "system" | "user";
@@ -997,6 +1041,7 @@ export interface ChatSnapshotOptions {
 }
 
 export interface ChatSnapshot {
+  playerPortrait?: PlayerPortrait | null;
   activePlayback?: {
     characterName: string;
     playbackId: string;
@@ -1152,6 +1197,7 @@ interface ChatEventBase {
 }
 
 export type ChatStageEvent =
+  | (ChatEventBase & PlayerPortrait & { type: "player.portrait.show" })
   | (ChatEventBase & { type: "snapshot"; snapshot: ChatSnapshot })
   | (ChatEventBase & {
       type: "chat.init.progress" | "chat.init.completed" | "chat.init.failed" | "chat.init.cancelled";
@@ -1180,6 +1226,8 @@ export type ChatStageEvent =
       slot?: number;
       x?: number;
       y?: number;
+      avatarType: string;
+      modelUrl: string;
     })
   | (ChatEventBase & { type: "sprite.remove"; characterName: string })
   | (ChatEventBase & { type: "background.change"; url: string })
@@ -1502,6 +1550,23 @@ export interface ShinsekaiPlatform {
     ) => Promise<StoryGenerationTask>;
   };
   characters: {
+    importModel: (input: { name: string; avatar_type: string; source_path: string }) => Promise<Character>;
+    importModelStates: (input: {
+      name: string;
+      avatar_type: string;
+      model_path: string;
+      source_paths: string[];
+      state: unknown;
+    }) => Promise<Character>;
+    saveModelState: (input: {
+      name: string;
+      avatar_type: string;
+      model_path: string;
+      sprite_index: number;
+      path: string;
+      state: unknown;
+      tags: string;
+    }) => Promise<Character>;
     autoLabelSprites: (
       name: string,
       options?: TaskProgressOptions<ImageAutoLabelResult>,
@@ -1566,6 +1631,11 @@ export interface ShinsekaiPlatform {
     saveApi: (config: ApiConfig) => Promise<ApiConfig>;
     saveSystem: (config: SystemConfig) => Promise<SystemConfig>;
   };
+  avatarRuntimes: {
+    status: (format: string) => Promise<AvatarRuntimeStatus>;
+    prepare: (format: string, input: AvatarRuntimeImport) => Promise<unknown>;
+    install: (format: string, input: AvatarRuntimeImport & { compiled: string }) => Promise<AvatarRuntimeStatus>;
+  };
   modelAssets: {
     download: (
       input: ModelAssetRef,
@@ -1574,6 +1644,7 @@ export interface ShinsekaiPlatform {
     status: (input: ModelAssetRef) => Promise<ModelAssetStatus>;
   };
   files: {
+    modelUrl: (modelPath: string, path: string) => string;
     browse: (options?: { path?: string; showHidden?: boolean }) => Promise<FileBrowserSnapshot>;
     fileUrl: (path: string) => string;
     thumbnailBatch?: (

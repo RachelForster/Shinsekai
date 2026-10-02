@@ -77,6 +77,7 @@ function recoveryAudioCommands(state: ChatStageState, snapshot: ChatSnapshot, sn
   if (activePlayback?.playbackId && activePlayback.url) {
     commands.push({
       kind: "voice-play",
+      characterName: activePlayback.characterName,
       playbackId: activePlayback.playbackId,
       rendererId: activePlayback.rendererId,
       seq: activePlayback.seq,
@@ -143,7 +144,7 @@ export function hydrateFromSnapshot(state: ChatStageState, snapshot: ChatSnapsho
       ...presentation,
       payload: { ...presentation.payload },
     })),
-    sprites: normalizeChatStageSprites(snapshot.sprites.map((sprite) => ({ ...sprite }))),
+    sprites: normalizeChatStageSprites(snapshot.sprites.map((sprite) => ({ ...sprite, applyMode: "restore" }))),
     stats: (snapshot.stats ?? []).map((stat) => ({ ...stat })),
     toolConfirmation: snapshot.toolConfirmation ? { ...snapshot.toolConfirmation } : null,
     turnOptions: { ...emptyChatState.turnOptions, ...snapshot.turnOptions },

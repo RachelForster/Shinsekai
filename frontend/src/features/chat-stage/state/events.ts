@@ -16,6 +16,9 @@ function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { ty
     slot: event.slot,
     x: event.x,
     y: event.y,
+    avatarType: event.avatarType ?? "static",
+    modelUrl: event.modelUrl ?? "",
+    stateSequence: event.seq,
   };
   const sprites = upsertChatStageSprite(state.sprites, nextSprite);
   return withResolvedLayers({
@@ -58,6 +61,12 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
     return state;
   }
   switch (event.type) {
+    case "player.portrait.show":
+      return {
+        ...state,
+        eventSeq: event.seq,
+        playerPortrait: { characterName: event.characterName, url: event.url, crop: event.crop },
+      };
     case "snapshot":
       return hydrateFromSnapshot(
         state,
@@ -293,6 +302,7 @@ export function applyStageEvent(state: ChatStageState, event: ChatStageEvent, re
         },
         audioCommands: appendAudioCommand(state, {
           kind: "voice-play",
+          characterName: event.characterName,
           playbackId: event.playbackId ?? "",
           rendererId: event.rendererId,
           seq: event.seq,

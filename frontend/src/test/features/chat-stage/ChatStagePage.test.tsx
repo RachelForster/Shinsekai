@@ -61,6 +61,7 @@ vi.mock("../../../entities/config/repository", () => ({
 
 vi.mock("../../../entities/files/repository", () => ({
   browseFiles: (options?: { path?: string; showHidden?: boolean }) => mocks.browseFiles(options),
+  fileUrl: (path: string) => path,
 }));
 
 vi.mock("../../../features/chat-stage/theme/ChatThemeProvider", () => ({
@@ -175,7 +176,7 @@ function snapshot(overrides: Partial<ChatSnapshot> = {}): ChatSnapshot {
     inputDraft: "",
     numericInfo: "idle / 2",
     options: [],
-    sprites: [{ id: "mio", label: "Mio", path: "asset://mio.png" }],
+    sprites: [{ avatarType: "static", modelUrl: "", id: "mio", label: "Mio", path: "asset://mio.png" }],
     status: "idle",
     userDisplayName: "Aoi",
     voiceLanguage: "ja",
@@ -539,6 +540,27 @@ describe("ChatStagePage", () => {
     expect(await screen.findByRole("textbox")).toBeDisabled();
   });
 
+  it("renders the player portrait inside the dialogue rather than beside its outer shell", async () => {
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        characterName: "Aoi",
+        playerPortrait: {
+          characterName: "Aoi",
+          url: "asset://aoi-portrait.png",
+          crop: { x: 0.5, y: 0.2, zoom: 1 },
+        },
+      }),
+    );
+    renderPage();
+
+    await screen.findByText("Ready");
+    const dialog = document.querySelector(".dialog-layer")!;
+    const portrait = dialog.querySelector(":scope > .dialog-layer__player-portrait");
+    expect(portrait).toBeInTheDocument();
+    expect(within(portrait as HTMLElement).getByAltText("Aoi")).toBeInTheDocument();
+    expect(document.querySelector(".dialog-layer-shell > .dialog-layer__player-portrait")).toBeNull();
+  });
+
   it("anchors decorative frames to the main chat surfaces", async () => {
     renderPage();
 
@@ -803,7 +825,9 @@ describe("ChatStagePage", () => {
   it("remounts only the sprite image when an expression changes so the switch animation replays", async () => {
     let listener: ((event: ChatStageEvent) => void) | null = null;
     mocks.getChatSnapshot.mockResolvedValue(
-      snapshot({ sprites: [{ id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 }] }),
+      snapshot({
+        sprites: [{ avatarType: "static", modelUrl: "", id: "Mio", label: "Mio", path: "asset://mio.png", slot: 0 }],
+      }),
     );
     mocks.subscribeChatEvents.mockImplementation((next) => {
       listener = next;
@@ -817,6 +841,8 @@ describe("ChatStagePage", () => {
 
     act(() => {
       listener?.({
+        avatarType: "static",
+        modelUrl: "",
         characterName: "Mio",
         scale: 1,
         seq: 1,
@@ -1742,8 +1768,8 @@ describe("ChatStagePage", () => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
         sprites: [
-          { id: "mio", label: "Mio", path: "asset://mio.png" },
-          { id: "ren", label: "Ren", path: "asset://ren.png" },
+          { avatarType: "static", modelUrl: "", id: "mio", label: "Mio", path: "asset://mio.png" },
+          { avatarType: "static", modelUrl: "", id: "ren", label: "Ren", path: "asset://ren.png" },
         ],
       }),
     );
@@ -2308,8 +2334,8 @@ describe("ChatStagePage", () => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
         sprites: [
-          { id: "mio", label: "Mio", path: "asset://mio.png" },
-          { id: "ren", label: "Ren", path: "asset://ren.png" },
+          { avatarType: "static", modelUrl: "", id: "mio", label: "Mio", path: "asset://mio.png" },
+          { avatarType: "static", modelUrl: "", id: "ren", label: "Ren", path: "asset://ren.png" },
         ],
       }),
     );

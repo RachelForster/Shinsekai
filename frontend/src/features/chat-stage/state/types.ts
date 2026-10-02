@@ -29,10 +29,20 @@ export interface ChatStageLayers {
 
 export interface ChatStageSprite extends ChatSprite {
   characterName?: string;
+  applyMode?: "play" | "restore";
+  stateSequence?: number;
 }
 
 export type ChatAudioCommand =
-  | { kind: "voice-play"; playbackId: string; rendererId?: string; seq: number; url: string; volume: number }
+  | {
+      kind: "voice-play";
+      characterName?: string;
+      playbackId: string;
+      rendererId?: string;
+      seq: number;
+      url: string;
+      volume: number;
+    }
   | { kind: "voice-stop"; playbackId: string; seq: number }
   | { kind: "effect-play"; seq: number; url: string }
   | { key: string; kind: "effect-loop-start"; seq: number; url: string }

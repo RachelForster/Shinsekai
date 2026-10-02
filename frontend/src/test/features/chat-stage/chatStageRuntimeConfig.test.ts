@@ -264,7 +264,18 @@ describe("chat stage runtime config", () => {
 
     expect(config.spriteScales).toEqual({ "Mio-0": 1.35, "Mio-1": 0.8, Mio: 1.35 });
     expect(
-      runtimeSpriteScale(config, { characterName: "Mio", id: "Mio-0", label: "Mio", path: "asset://mio.png" }, 0),
+      runtimeSpriteScale(
+        config,
+        {
+          avatarType: "static",
+          modelUrl: "",
+          characterName: "Mio",
+          id: "Mio-0",
+          label: "Mio",
+          path: "asset://mio.png",
+        },
+        0,
+      ),
     ).toBe(1.35);
   });
 

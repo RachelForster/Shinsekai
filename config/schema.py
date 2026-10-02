@@ -37,12 +37,29 @@ def clamp_compact_target_ratio(compact_threshold: float, compact_target_ratio: f
 
 
 # Character Config Models
+class PortraitCrop(BaseModel):
+    """Normalized square viewport: center in the image and zoom over cover size."""
+    x: float = Field(default=0.5, ge=0, le=1)
+    y: float = Field(default=0.2, ge=0, le=1)
+    zoom: float = Field(default=1.0, ge=1, le=8)
+
+
 class Sprite(BaseModel):
     """角色的单个立绘/语音配置"""
     path: FilePath = Field(..., description="立绘图片的文件路径")
     voice_path: Optional[FilePath] = Field(None, description="对应的语音文件的路径 (可选)")
     voice_text: Optional[str] = Field(None, description="语音对应的文本内容 (可选, 存在于某些条目中)")
     voice_type: Optional[str] = Field(None, description="语音类型: fallback、preset 或 reference")
+    portrait_crop: Optional[PortraitCrop] = None
+
+class ModelSprites(BaseModel):
+    """一个模型形象格式（如 l2d / vrm）的模型路径与它自己的资源列表、标签。
+
+    静态形象继续使用根级 ``sprites`` / ``emotion_tags``，不进入 ``Character.avatars``。
+    """
+    model_path: str = Field("", description="模型入口文件路径；未配置时为空字符串")
+    sprites: List[Union[Sprite, dict]] = Field(default_factory=list, description="该格式的状态文件列表（复用 Sprite）")
+    emotion_tags: DefaultIfNone[str] = Field(default="", description="该格式的情绪标签")
 
 class Character(BaseModel):
     """单个角色配置的实体模型"""
@@ -59,7 +76,31 @@ class Character(BaseModel):
     )
     character_setting: DefaultIfNone[str] = Field(default="", description="角色背景、性格和语言习惯的详细描述")
     sprite_scale: DefaultIfNone[float] = Field(default=1.0, description="立绘的缩放比例 (默认值 1.0)")
+    portrait_crop: DefaultIfNone[PortraitCrop] = Field(default_factory=PortraitCrop)
     emotion_tags: DefaultIfNone[str] = Field(default="", description="情绪标签和对应的立绘编号描述")
+    avatar_type: DefaultIfNone[str] = Field(default="static", description="当前选择的形象类型：static 或已注册的模型格式 id")
+    avatars: DefaultIfNone[Dict[str, ModelSprites]] = Field(
+        default_factory=dict,
+        description="模型格式 id → 该格式的模型路径与资源列表；static 不在其中",
+    )
+
+    @field_validator("avatar_type")
+    @classmethod
+    def normalize_avatar_type(cls, value: str) -> str:
+        return value.strip().lower() or "static"
+
+    @field_validator("avatars", mode="before")
+    @classmethod
+    def normalize_avatar_keys(cls, value):
+        if not isinstance(value, dict):
+            return value
+        normalized = {}
+        for key, assets in value.items():
+            format_id = str(key).strip().lower()
+            if not format_id or format_id == "static" or format_id in normalized:
+                raise ValueError(f"invalid or duplicate avatar format: {key!r}")
+            normalized[format_id] = assets
+        return normalized
 
     # gpt-sovits 相关的配置
     gpt_model_path: Optional[str] = Field('', description="角色 GPT 模型的路径 (可选)")

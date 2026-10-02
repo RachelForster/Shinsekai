@@ -14,6 +14,7 @@ from frontend_bridge_core.chat_session import (
 )
 from frontend_bridge_core.routes.background_routes import BACKGROUND_ROUTES
 from frontend_bridge_core.routes.character_routes import CHARACTER_ROUTES
+from frontend_bridge_core.routes.avatar_runtime_routes import AVATAR_RUNTIME_ROUTES
 from frontend_bridge_core.routes.chat_routes import CHAT_ROUTES
 from frontend_bridge_core.routes.effect_routes import EFFECT_ROUTES
 from frontend_bridge_core.routes.file_transport import (
@@ -50,6 +51,7 @@ _API_ROUTER = Router(
         *SYSTEM_ROUTES,
         *STORY_ROUTES,
         *CHARACTER_ROUTES,
+        *AVATAR_RUNTIME_ROUTES,
         *CHAT_ROUTES,
         *BACKGROUND_ROUTES,
         *EFFECT_ROUTES,

@@ -229,6 +229,8 @@ def _import_provider_runtime() -> SimpleNamespace:
     from ai.tools.tool_manager import ToolManager
     from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
     from ai.vision.fallback_registry import configure_registered_fallbacks
+    from core.media.avatar.registry import configure_registered_formats, configure_builtin_formats
+    configure_builtin_formats()
     from plugin_system.host import ensure_plugins_loaded, PluginRuntimeBindings
     from sdk.chat_init import InitChatContext
 
@@ -244,6 +246,7 @@ def _import_provider_runtime() -> SimpleNamespace:
         TTSManager=TTSManager,
         ToolManager=ToolManager,
         configure_registered_fallbacks=configure_registered_fallbacks,
+        configure_registered_formats=configure_registered_formats,
         ensure_plugins_loaded=ensure_plugins_loaded,
         install_memory_hooks=install_memory_hooks,
     )
@@ -266,6 +269,7 @@ def _load_plugin_manager(
             t2i_adapters=runtime.T2IAdapterFactory._adapters,
             create_tool_manager=runtime.ToolManager,
             configure_vision_fallbacks=runtime.configure_registered_fallbacks,
+            configure_avatar_formats=runtime.configure_registered_formats,
             register_mcp_tools=register_mcp_tools,
         ),
     )
