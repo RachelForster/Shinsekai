@@ -1,7 +1,8 @@
 
 import pytest
 
-from application.chat.runtime_process import _chat_snapshot, _handle_chat_command
+from application.chat.build_snapshot import build_chat_snapshot
+from application.chat.dispatch_commands import dispatch_chat_command
 from application.story import (
     JsonGlobalStoryProgressStore,
     JsonStorySessionRepository,
@@ -154,7 +155,7 @@ def test_normal_chat_does_not_project_or_regenerate_scene_history(tmp_path):
     original = [{"id": "normal", "role": "assistant", "text": "模板生成的对话"}]
     state.chat_stream.snapshot["historyEntries"] = original
     command = {"type": "send-message", "cmdId": "turn", "payload": "进去"}
-    _handle_chat_command(state, command)
+    dispatch_chat_command(state, command)
     assert model.requests == []
     assert state.chat_stream.command[1] == command
-    assert _chat_snapshot(state)["historyEntries"] == original
+    assert build_chat_snapshot(state)["historyEntries"] == original

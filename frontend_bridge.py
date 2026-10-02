@@ -424,6 +424,8 @@ def run(
         start_websocket=state.chat_stream.start_mobile_listener,
         stop_websocket=state.chat_stream.stop_mobile_listener,
     )
+    from application.bootstrap.chat_runtime import get_chat_runtime
+    get_chat_runtime(state)
     server = ThreadingHTTPServer((host, port), FrontendBridgeHandler)
     server.state = state  # type: ignore[attr-defined]
     _restart_debug_log(f"server listening host={host} port={port} frontend_dist={resolved_frontend_dist}")

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any, Protocol
 import uuid
+from typing import Any, Protocol
+
+from application.chat import build_snapshot as runtime_build_snapshot
 
 from application.chat import runtime_process
 from application.chat.mobile_access import stop_mobile_access
+from application.chat.lifecycle import ChatLifecycleEvent
 from application.story.coordinator import clear_story_session
 
 
@@ -58,7 +61,7 @@ def stop_chat(
             stop_mobile_access(state)
         finally:
             runtime_process._set_chat_runtime_closing(state, False)
-    closed_snapshot = runtime_process._chat_snapshot(state, "idle", "")
+    closed_snapshot = runtime_build_snapshot.build_chat_snapshot(state, "idle", "")
     if session_id:
         if chat_stream is not None:
             delete_session = getattr(chat_stream, "delete_session", None)
@@ -67,4 +70,6 @@ def stop_chat(
         if str(state.chat_session.get("sessionId") or "").strip() == session_id:
             state.chat_session = {**state.chat_session, "sessionId": ""}
     clear_story_session(state)
+    from application.bootstrap.chat_runtime import get_chat_runtime
+    get_chat_runtime(state).lifecycle.notify(ChatLifecycleEvent("stopped", session_id))
     return closed_snapshot

@@ -27,6 +27,12 @@ SCENE_ALIASES: frozenset[str] = frozenset({SCENE, "场景"})
 BGM_ALIASES: frozenset[str] = frozenset({BGM, "bgm"})  # 仅小写
 CG_ALIASES: frozenset[str] = frozenset({CG, "cg"})  # 允许小写
 
+# History adapters (HTML rows, persisted messages and story scenes) share this
+# role vocabulary while keeping their different source-format parsers.
+SYSTEM_HISTORY_NAMES: frozenset[str] = (
+    COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
+)
+
 SYSTEM_DIALOG_MEDIA_ALIASES: frozenset[str] = (
     NARR_ALIASES | CHOICE_ALIASES | STAT_ALIASES | SCENE_ALIASES
 )

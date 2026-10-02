@@ -592,7 +592,7 @@ def test_failed_import_rolls_back_active_type_and_bank(harness, monkeypatch):
 def test_new_format_reuses_import_startup_events_and_snapshot(harness, monkeypatch):
     """An opaque, non-Cubism format must need no changes to the shared pipeline."""
     from application.chat.initial_sprite import display_initial_sprite, initial_sprite_path_for_characters
-    from application.chat.runtime_process import _chat_session_media
+    from application.chat.session_metadata import chat_session_media
     from application.chat.ui_updates import StreamingUIUpdateManager
     from application.runtime.event_sink import fold_event_into_snapshot, make_empty_chat_snapshot
     from core.media.avatar import registry
@@ -636,7 +636,7 @@ def test_new_format_reuses_import_startup_events_and_snapshot(harness, monkeypat
     restored = fold_event_into_snapshot(make_empty_chat_snapshot(), events[0])["sprites"][0]
     state.chat_session = {"characterName": "Haru"}
     state.resource_urls = urls
-    _, _, initial = _chat_session_media(state)
+    _, _, initial = chat_session_media(state)
     for key in ("avatarType", "modelUrl", "path", "scale"):
         assert initial[0][key] == restored[key]
     relative_state = Path(saved_path).relative_to(Path(model).parent).as_posix()

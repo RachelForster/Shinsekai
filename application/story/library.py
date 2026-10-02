@@ -8,7 +8,7 @@ from typing import Any
 
 from application.chat.history_paths import resolve_history_path_for_project
 from application.chat.conversation_library import saved_conversation_launch
-from application.chat.runtime_process import TRANSPARENT_BACKGROUND_NAME
+from application.chat.session_metadata import TRANSPARENT_BACKGROUND_NAME
 from application.story.persistence import JsonStorySessionRepository
 from application.story.project_loader import load_story_project
 from application.story.selection import normal_template_options

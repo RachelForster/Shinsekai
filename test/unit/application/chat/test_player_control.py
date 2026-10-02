@@ -143,7 +143,7 @@ class PlayerControlTests(unittest.TestCase):
             resolve_player(config, ["阳明"], "神羽")
 
     def test_saved_history_keeps_normal_player_dialog(self):
-        from application.chat.runtime_process import _serialize_history_entries_from_messages
+        from application.chat.read_history import serialize_history_entries_from_messages
 
         messages = [
             {"role": "user", "content": "我才不要（摊开手）"},
@@ -160,7 +160,7 @@ class PlayerControlTests(unittest.TestCase):
                 ),
             },
         ]
-        entries = _serialize_history_entries_from_messages(messages, "神羽")
+        entries = serialize_history_entries_from_messages(messages, "神羽")
         self.assertEqual(
             [entry["text"] for entry in entries],
             ["神羽: 我才不要（摊开手）", "神羽: 我才不要", "阳明: 小心！"],

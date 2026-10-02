@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote
 
-from application.chat.runtime_process import _chat_history_download_file
+from application.chat.read_history import resolve_history_download
 from frontend_bridge_core.media import _media_thumbnail, _media_thumbnail_batch
 from frontend_bridge_core.media_paths import (
     is_absolute_local_media_path_text,
@@ -359,7 +359,7 @@ def dispatch_file_request(
             raise PermissionError("request origin is not allowed")
         query = parse_qs(query_string)
         capability = str((query.get("cap") or [""])[0])
-        history_file = _chat_history_download_file(handler.state, capability)
+        history_file = resolve_history_download(handler.state, capability)
         if send_body:
             handler._send_local_file(history_file, attachment=True)
         else:

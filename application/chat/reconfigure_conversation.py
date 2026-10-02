@@ -10,7 +10,8 @@ from application.chat.conversation_library import (
     conversation_launch_payload,
     current_conversation,
 )
-from application.chat.runtime_process import _chat_process_running, _chat_snapshot
+from application.chat.runtime_process import _chat_process_running
+from application.chat.build_snapshot import build_chat_snapshot
 from application.chat.stop_chat import stop_chat
 from application.story.coordinator import start_or_recover_story_session
 from application.story.library import prepare_story_launch
@@ -57,7 +58,7 @@ def restart_edited_conversation(
             raise RuntimeError(
                 "Another chat is running. Close it before applying these settings."
             )
-        snapshot = _chat_snapshot(state)
+        snapshot = build_chat_snapshot(state)
         turn = snapshot.get("turnState") or {}
         if (
             snapshot.get("status") not in {"idle", "paused", "error"}

@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 
 from application.chat.ui_updates import StreamingUIUpdateManager
-from application.chat.runtime_process import _chat_session_media
+from application.chat.session_metadata import chat_session_media
 from frontend_bridge_core.chat_stream import ChatStreamService
 from frontend_bridge_core.transport.ws_client import WSClientSink
 
@@ -79,7 +79,7 @@ def test_initial_stage_snapshot_respects_selected_avatar_bank(tmp_path, avatar_t
         ),
         resource_urls=ChatStreamService(host="127.0.0.1", bridge_port=8787, auth_token="test-token").resource_urls,
     )
-    background, name, sprites = _chat_session_media(state)
+    background, name, sprites = chat_session_media(state)
     assert background == ""
     assert name == "Haru"
     assert len(sprites) == 1

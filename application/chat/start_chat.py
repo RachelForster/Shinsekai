@@ -5,15 +5,11 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from application.chat.runtime_process import (
-    _chat_process_running,
-    _chat_runtime_closing,
-    _chat_runtime_mode,
-    _chat_snapshot,
-    _chat_stream_initial_snapshot,
-)
+from application.chat.runtime_process import _chat_process_running, _chat_runtime_closing, _chat_runtime_mode
+from application.chat.build_snapshot import build_chat_snapshot, initial_chat_snapshot
 from application.chat.launch_history import persist_confirmed_history_path
 from application.chat.stop_chat import stop_chat
+from application.chat.lifecycle import ChatLifecycleEvent
 from application.runtime.state import BridgeState
 from application.runtime.tasks import (
     TaskCancelled,
@@ -110,13 +106,14 @@ def _cleanup_chat_init(state: BridgeState, session_id: str, *, reason: str) -> N
         _clear_chat_session_id(state, session_id)
 
 
-def _run_chat_init(
+def _initialize_chat(
     state: BridgeState,
     task_id: str,
     launch: Callable[[dict[str, str]], dict[str, Any]],
     *,
     timeout: float,
     before_launch: Callable[[], None] | None = None,
+    session_created: Callable[[str], None],
 ) -> dict[str, Any]:
     if _chat_runtime_closing(state):
         raise RuntimeError("chat runtime is closing; try again shortly")
@@ -129,18 +126,19 @@ def _run_chat_init(
     # Preserve the legacy behavior for an already-running, fully initialized
     # runtime. The async API simply resolves to its current snapshot.
     if _chat_process_running():
-        return _chat_snapshot(state)
+        return build_chat_snapshot(state)
 
     chat_stream = getattr(state, "chat_stream", None)
     if chat_stream is None:
         raise RuntimeError("chat stream service is unavailable")
 
     stream_info = chat_stream.create_session(
-        _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))
+        initial_chat_snapshot(build_chat_snapshot(state, "idle", ""))
     )
     session_id = str(stream_info.get("sessionId") or "").strip()
     if not session_id:
         raise RuntimeError("failed to create chat initialization session")
+    session_created(session_id)
 
     keep_session = _chat_runtime_mode(state) == "react"
     try:
@@ -185,7 +183,7 @@ def _run_chat_init(
         if not bool(launch_result.pop("_chatInitStreamAttached", False)):
             if _chat_process_running():
                 chat_stream.delete_session(session_id)
-                return _chat_snapshot(state)
+                return build_chat_snapshot(state)
             raise ChatInitFailed(
                 "chat runtime did not attach its initialization stream"
             )
@@ -216,7 +214,7 @@ def _run_chat_init(
                         )
                     if not keep_session:
                         chat_stream.delete_session(session_id)
-                    return _chat_snapshot(state)
+                    return build_chat_snapshot(state)
                 if status == "failed":
                     raise ChatInitFailed(
                         _terminal_error(init_task, "chat initialization failed")
@@ -241,6 +239,36 @@ def _run_chat_init(
             state, session_id, reason="Chat initialization did not complete."
         )
         raise
+
+
+def _run_chat_init(
+    state: BridgeState,
+    task_id: str,
+    launch: Callable[[dict[str, str]], dict[str, Any]],
+    *,
+    timeout: float,
+    before_launch: Callable[[], None] | None = None,
+) -> dict[str, Any]:
+    from application.bootstrap.chat_runtime import get_chat_runtime
+
+    lifecycle = get_chat_runtime(state).lifecycle
+    session_id = str(state.chat_session.get("sessionId") or "").strip()
+
+    def created(value: str) -> None:
+        nonlocal session_id
+        session_id = value
+
+    try:
+        result = _initialize_chat(
+            state, task_id, launch, timeout=timeout, before_launch=before_launch,
+            session_created=created,
+        )
+    except BaseException:
+        lifecycle.notify(ChatLifecycleEvent("failed", session_id))
+        raise
+    kind = "failed" if result.get("status") == "error" else "ready"
+    lifecycle.notify(ChatLifecycleEvent(kind, session_id))
+    return result
 
 
 def start_chat(

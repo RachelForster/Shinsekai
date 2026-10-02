@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from application.chat.runtime_process import TRANSPARENT_BACKGROUND_NAME
+from application.chat.session_metadata import TRANSPARENT_BACKGROUND_NAME
 
 
 TEMPLATE_OPTION_KEYS = (

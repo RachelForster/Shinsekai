@@ -11,16 +11,17 @@ from application.chat.launch_history import (
     resolve_chat_history_path,
 )
 from application.chat.mobile_access import configure_mobile_access
-from application.chat.runtime_process import (
+from application.chat.session_metadata import (
     TRANSPARENT_BACKGROUND_NAME,
+    sanitize_session_display_name,
+)
+from application.chat.runtime_process import (
     _chat_process_running,
     _chat_runtime_closing,
     _chat_runtime_mode,
-    _chat_snapshot,
-    _chat_stream_initial_snapshot,
     _launch_chat as _launch_runtime_chat,
-    _sanitize_user_display_name,
 )
+from application.chat.build_snapshot import build_chat_snapshot, initial_chat_snapshot
 from application.chat.start_chat import start_chat
 from application.chat.stop_chat import stop_chat
 from application.chat.templates import (
@@ -212,7 +213,7 @@ def launch_chat(
             state,
             enabled=mobile_access_enabled,
         )
-        return _chat_snapshot(
+        return build_chat_snapshot(
             state,
             None,
             "",
@@ -235,7 +236,7 @@ def launch_chat(
     )
     if start_fresh_history:
         clear_story_session(state)
-    user_display_name = player_character or _sanitize_user_display_name(body.get("userDisplayName"))
+    user_display_name = player_character or sanitize_session_display_name(body.get("userDisplayName"))
     session_base = {
         "playerCharacter": player_character,
         "readPlayerSpeech": bool(body.get("readPlayerSpeech", False)),
@@ -253,7 +254,7 @@ def launch_chat(
     }
     release_unbound_story_session(state, session_base["historyPath"])
     state.chat_session = {**state.chat_session, **session_base}
-    initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))
+    initial_snapshot = initial_chat_snapshot(build_chat_snapshot(state, "idle", ""))
     use_react_runtime = _chat_runtime_mode(state) == "react"
     stream_info = init_stream_info or (
         state.chat_stream.create_session(initial_snapshot)
@@ -296,7 +297,7 @@ def launch_chat(
         if session_id and state.chat_stream is not None:
             state.chat_stream.delete_session(session_id)
         state.chat_session = {**state.chat_session, **session_base}
-        return _chat_snapshot(
+        return build_chat_snapshot(
             state,
             "error",
             message,
@@ -322,7 +323,7 @@ def launch_chat(
         state.chat_stream.update_session_snapshot(
             str(stream_info["sessionId"]),
             {
-                "backgroundPath": _chat_snapshot(state).get("backgroundPath", ""),
+                "backgroundPath": build_chat_snapshot(state).get("backgroundPath", ""),
                 "characterName": first_character,
                 "dialogText": "",
                 "historyPath": history_path.as_posix(),
@@ -357,7 +358,7 @@ def launch_chat(
         })
     except OSError:
         logger.exception("Chat launched but its conversation settings could not be saved")
-    return _chat_snapshot(
+    return build_chat_snapshot(
         state,
         "idle",
         "",
@@ -433,7 +434,7 @@ def resume_last_chat(
         or ""
     )
     selected_bg = str(session.get("background") or TRANSPARENT_BACKGROUND_NAME)
-    user_display_name = player_character or _sanitize_user_display_name(session.get("userDisplayName"))
+    user_display_name = player_character or sanitize_session_display_name(session.get("userDisplayName"))
     session_base = {
         "backgroundName": selected_bg,
         "playerCharacter": player_character,
@@ -458,14 +459,14 @@ def resume_last_chat(
             state,
             enabled=mobile_access_enabled,
         )
-        return _chat_snapshot(
+        return build_chat_snapshot(
             state,
             None,
             "",
             extra={"statusMessage": "进程已经在运行中。"},
         )
     state.chat_session = {**state.chat_session, **session_base}
-    initial_snapshot = _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))
+    initial_snapshot = initial_chat_snapshot(build_chat_snapshot(state, "idle", ""))
     use_react_runtime = _chat_runtime_mode(state) == "react"
     stream_info = init_stream_info or (
         state.chat_stream.create_session(initial_snapshot)
@@ -500,7 +501,7 @@ def resume_last_chat(
         if session_id and state.chat_stream is not None:
             state.chat_stream.delete_session(session_id)
         state.chat_session = {**state.chat_session, **session_base}
-        return _chat_snapshot(
+        return build_chat_snapshot(
             state,
             "error",
             message,
@@ -526,7 +527,7 @@ def resume_last_chat(
         state.chat_stream.update_session_snapshot(
             str(stream_info["sessionId"]),
             {
-                "backgroundPath": _chat_snapshot(state).get("backgroundPath", ""),
+                "backgroundPath": build_chat_snapshot(state).get("backgroundPath", ""),
                 "characterName": first_character,
                 "dialogText": "",
                 "historyPath": history_path.as_posix(),
@@ -541,7 +542,7 @@ def resume_last_chat(
         state,
         enabled=mobile_access_enabled,
     )
-    return _chat_snapshot(
+    return build_chat_snapshot(
         state,
         "idle",
         "",

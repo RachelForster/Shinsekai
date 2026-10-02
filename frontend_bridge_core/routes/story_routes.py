@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from application.chat.runtime_process import _chat_snapshot
+from application.chat.build_snapshot import build_chat_snapshot
 from application.story.coordinator import (
     publish_story_transition,
     start_or_recover_story_session,
@@ -81,7 +81,7 @@ def _start_story(request: ApiRequest) -> JsonResponse:
     )
     patch = story_snapshot_patch(request.state)
     publish_story_transition(request.state, patch)
-    return JsonResponse(_chat_snapshot(request.state, "idle", extra=patch))
+    return JsonResponse(build_chat_snapshot(request.state, "idle", extra=patch))
 
 
 def _generation_task_response(

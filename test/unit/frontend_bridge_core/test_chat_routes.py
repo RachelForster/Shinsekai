@@ -84,7 +84,7 @@ def test_chat_init_preserves_accepted_status(monkeypatch) -> None:
 def test_snapshot_preserves_renderer_query_parameter(monkeypatch) -> None:
     calls: list[str] = []
     monkeypatch.setattr(
-        "frontend_bridge_core.routes.chat_routes._chat_snapshot",
+        "frontend_bridge_core.routes.chat_routes.build_chat_snapshot",
         lambda _state, *, renderer_id: calls.append(renderer_id)
         or {"rendererId": renderer_id},
     )

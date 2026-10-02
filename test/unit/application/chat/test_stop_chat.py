@@ -1,11 +1,13 @@
 from types import SimpleNamespace
 
 from application.chat import stop_chat as stop_chat_action
+from application.bootstrap.chat_runtime import get_chat_runtime
 
 
 def test_stop_chat_composes_runtime_cleanup_with_fake_state(monkeypatch) -> None:
     calls = []
     state = SimpleNamespace(chat_session={"sessionId": ""}, chat_stream=None)
+    get_chat_runtime(state).lifecycle.register(lambda event: calls.append(("notification", event.kind)))
     monkeypatch.setattr(
         stop_chat_action.runtime_process,
         "_set_chat_runtime_closing",
@@ -17,8 +19,8 @@ def test_stop_chat_composes_runtime_cleanup_with_fake_state(monkeypatch) -> None
         lambda **options: calls.append(("shutdown", options)),
     )
     monkeypatch.setattr(
-        stop_chat_action.runtime_process,
-        "_chat_snapshot",
+        stop_chat_action.runtime_build_snapshot,
+        "build_chat_snapshot",
         lambda *_args: {"status": "idle"},
     )
     monkeypatch.setattr(
@@ -44,4 +46,5 @@ def test_stop_chat_composes_runtime_cleanup_with_fake_state(monkeypatch) -> None
         ("mobile", "stopped"),
         ("closing", False),
         ("story", "cleared"),
+        ("notification", "stopped"),
     ]

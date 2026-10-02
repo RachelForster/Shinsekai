@@ -6,6 +6,7 @@ from typing import Any
 from unittest.mock import Mock
 
 from application.chat.start_chat import start_chat
+from application.bootstrap.chat_runtime import get_chat_runtime
 from application.runtime.state import BridgeState
 from application.runtime.tasks import _get_task, _request_task_cancel
 
@@ -61,6 +62,59 @@ def _state() -> BridgeState:
     return state
 
 
+def test_ready_notification_follows_semantic_initialization_outside_locks(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch)
+    calls = []
+
+    def observer(event):
+        assert not state.chat_init_lock.locked()
+        assert not state.chat_runtime_lock.locked()
+        calls.append((event.kind, event.session_id))
+        raise RuntimeError("optional notification must not fail initialization")
+
+    get_chat_runtime(state).lifecycle.register(observer)
+
+    def launch(info):
+        assert calls == []
+        runtime["running"] = True
+        state.chat_session = {"sessionId": info["sessionId"]}
+        state.chat_stream.set_init_task(info["sessionId"], {"status": "succeeded"})
+        return {"status": "idle", "_chatInitStreamAttached": True}
+
+    task = start_chat(state, mode="launch", launch=launch)
+    _wait_for_task(state, task["id"], {"succeeded"})
+    assert calls == [("ready", "init-session-1")]
+
+
+def test_failed_notification_retains_attempt_id_after_required_cleanup(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch)
+    calls = []
+
+    def observer(event):
+        assert runtime["closeReasons"]
+        assert state.chat_stream.deleted_sessions
+        calls.append((event.kind, event.session_id))
+
+    get_chat_runtime(state).lifecycle.register(observer)
+    task = start_chat(state, mode="launch", launch=Mock(side_effect=RuntimeError("failed launch")))
+    _wait_for_task(state, task["id"], {"failed"})
+    assert calls == [("failed", "init-session-1")]
+
+
+def test_dependency_install_result_notifies_failure_not_ready(monkeypatch):
+    state = _state()
+    _patch_runtime(monkeypatch)
+    calls = []
+    get_chat_runtime(state).lifecycle.register(lambda event: calls.append(event.kind))
+    task = start_chat(state, mode="launch", launch=lambda _info: {
+        "status": "error", "runtimeDependencyError": {"kind": "install"},
+    })
+    _wait_for_task(state, task["id"], {"succeeded"})
+    assert calls == ["failed"]
+
+
 def test_rejected_edit_does_not_cleanup_existing_runtime(monkeypatch):
     state = _state()
     runtime = _patch_runtime(monkeypatch)
@@ -107,7 +161,7 @@ def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
         "application.chat.start_chat._chat_runtime_mode", lambda _state: mode
     )
     monkeypatch.setattr(
-        "application.chat.start_chat._chat_snapshot",
+        "application.chat.start_chat.build_chat_snapshot",
         lambda _state, *_args, **_kwargs: {
             **source_snapshot,
             "chatProcessRunning": runtime["running"],
@@ -135,6 +189,8 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
     )
     release_completion = threading.Event()
     launch_calls: list[str] = []
+    lifecycle_events = []
+    get_chat_runtime(state).lifecycle.register(lambda event: lifecycle_events.append(event.kind))
 
     def launch(stream_info: dict[str, str]) -> dict[str, Any]:
         session_id = stream_info["sessionId"]
@@ -181,6 +237,7 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
     assert running["progress"] == 0.45
     assert running["message"] == "Loading memory"
     persist_history_path.assert_not_called()
+    assert lifecycle_events == []
 
     release_completion.set()
     finished = _wait_for_task(state, first["id"], {"succeeded"})
@@ -200,6 +257,7 @@ def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):
     ]
     assert len(launch_calls) == 1
     assert finished["progress"] == 1
+    assert lifecycle_events == ["ready"]
     assert finished["result"]["chatProcessRunning"] is True
     assert state.chat_stream.deleted_sessions == []
     assert state.chat_init_task_id == ""

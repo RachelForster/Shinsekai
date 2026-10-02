@@ -99,5 +99,31 @@
 
 ## 执行记录
 
-- 计划：已起草，主体实现尚未开始。
-- 相关测试、全量测试与推送结果：待实施后填写。
+- 计划先独立提交：`4ea0e367`，随后才开始主体实现。
+- 已提取元数据、历史、快照、命令和剧情职责；进程模块由 1546 行缩至 452 行。
+- 命令、选项子类型、快照贡献者、生命周期观察者按应用实例装配，不共享可变注册表。
+  快照贡献者额外置于 `snapshot_contributions.py`，使其规则可脱离状态构建独立测试。
+- 已迁移所有旧内部调用及测试 patch 目标。这些不是公开 SDK，迁移后不存在旧消费者，
+  因而无需保留薄门面；未留下让新代码继续依赖旧私有入口的兼容别名。
+- 复用现有历史路径策略、文本解析、对话标记和资源 URL 端口；统一三处重复的系统角色
+  名单到 `core/messaging/dialog_tokens.py`。HTML 与 JSON 历史仍各自解析，不混淆格式语义。
+- 分支协调仍按同步 → 发送 → 发布执行；初始化完成/失败后通知，关闭在必需清理后通知。
+  手机 wsUrl 和剧情字段的合并优先级保留原行为。
+- 重构前/职责迁移后/注册接入后，原有 141 项相关回归均通过。
+- 新增注册约束、生命周期和架构边界测试共 17 项；相关及架构测试 52 项通过。
+- 全量 Python：3246 通过、10 跳过（Conda shinsekai，新的短临时根）。
+- 推送使用正常 presubmit 钩子，再次运行 Python、前端格式、类型及单元测试；以实际
+  推送结果为准。不包含本机宣传文档，也未声称做过真实桌面/模型视觉验收。
+
+### 后续能力接入方式
+
+在应用组合根中绑定所属功能的窄端口，再注册该功能，无需修改进程管理和通用分发：
+
+```python
+runtime = get_chat_runtime(state)
+runtime.commands.register("feature-command", feature.handle_command)
+runtime.snapshots.register("feature-panel", {"featurePanel"}, feature.snapshot)
+unregister = runtime.lifecycle.register(feature.observe_lifecycle)
+```
+
+这是应用内部扩展契约，不是新插件 SDK；新增子进程命令仍需满足两端的明确协议与白名单。

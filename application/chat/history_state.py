@@ -8,19 +8,13 @@ from collections.abc import Mapping
 from typing import Any
 
 from core.messaging.dialog_tokens import (
-    BGM_ALIASES,
-    CG_ALIASES,
-    COT_ALIASES,
-    NARR_ALIASES,
-    SCENE_ALIASES,
-    STAT_ALIASES,
+    SYSTEM_HISTORY_NAMES,
     is_option_history_name,
     is_option_history_plain,
     normalize_character_name,
 )
 
 CHAT_HISTORY_PATH = "./data/chat_history"
-_SYSTEM_HISTORY_NAMES = COT_ALIASES | NARR_ALIASES | STAT_ALIASES | SCENE_ALIASES | BGM_ALIASES | CG_ALIASES
 
 chat_history: list[Any] = []
 _history_manager = None
@@ -99,7 +93,7 @@ def _history_entry_role(history_entry: Any) -> str:
     if is_option_history_entry(raw):
         return "options"
     speaker = normalize_character_name(_history_entry_speaker(raw))
-    if speaker in _SYSTEM_HISTORY_NAMES:
+    if speaker in SYSTEM_HISTORY_NAMES:
         return "system"
     if re.search(r"<b[^>]*style=['\"][^'\"]*color\s*:", raw, flags=re.IGNORECASE):
         return "assistant"

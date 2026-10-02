@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.chat.runtime_process import _handle_chat_command
+from application.chat.dispatch_commands import dispatch_chat_command
 from application.story import SceneDialogueItem, SceneTurnResult, StorySession
 from application.story.coordinator import (
     bound_story_session,
@@ -158,7 +158,7 @@ def test_structured_story_choice_uses_deterministic_session() -> None:
     state = _state(enabled=True)
     state.story_session = _story_session(state.config_manager.feature_flags)
 
-    snapshot = _handle_chat_command(
+    snapshot = dispatch_chat_command(
         state,
         {
             "cmdId": "choice-1",
@@ -189,7 +189,7 @@ def test_structured_story_choice_keeps_legacy_error_when_flag_is_off() -> None:
     state = _state(enabled=False)
 
     with pytest.raises(ValueError, match="must be a string"):
-        _handle_chat_command(
+        dispatch_chat_command(
             state,
             {
                 "payload": {"kind": "story-choice"},
@@ -246,7 +246,7 @@ def test_fork_history_creates_a_matching_story_branch() -> None:
     state = _state(enabled=True, fork=True)
     session = _story_session(state.config_manager.feature_flags)
     state.story_session = session
-    _handle_chat_command(
+    dispatch_chat_command(
         state,
         {
             "cmdId": "choice-1",
@@ -260,7 +260,7 @@ def test_fork_history_creates_a_matching_story_branch() -> None:
         },
     )
 
-    snapshot = _handle_chat_command(
+    snapshot = dispatch_chat_command(
         state,
         {"payload": {"userIndex": 0}, "type": "fork-history"},
     )
@@ -311,7 +311,7 @@ def test_fork_history_skips_story_transition_when_flag_is_off() -> None:
     state = _state(enabled=False, fork=True)
     event_seq = state.chat_stream.snapshot["eventSeq"]
 
-    snapshot = _handle_chat_command(
+    snapshot = dispatch_chat_command(
         state,
         {"payload": {"userIndex": 0}, "type": "fork-history"},
     )
@@ -342,7 +342,7 @@ def test_free_text_always_uses_normal_template_runtime(enabled) -> None:
     state = _state(enabled=enabled)
     state.story_scene_service = _SceneService()
     command = {"cmdId": "turn-1", "payload": "你好", "type": "send-message"}
-    snapshot = _handle_chat_command(state, command)
+    snapshot = dispatch_chat_command(state, command)
     assert snapshot["dialogText"] == "你好"
     assert state.chat_stream.command[1] == command
     assert state.chat_stream.published == []

@@ -43,7 +43,7 @@ def edit(tmp_path, monkeypatch):
         "application.chat.reconfigure_conversation._chat_process_running", lambda: True
     )
     monkeypatch.setattr(
-        "application.chat.reconfigure_conversation._chat_snapshot",
+        "application.chat.reconfigure_conversation.build_chat_snapshot",
         lambda _: {"status": "idle"},
     )
     monkeypatch.setattr("application.chat.reconfigure_conversation.stop_chat", stop)
@@ -90,7 +90,7 @@ def test_edit_retains_launch_options_not_exposed_by_editor(edit):
 def test_busy_reply_is_not_interrupted(edit, monkeypatch, snapshot):
     state, record, payload, stop, _ = edit
     monkeypatch.setattr(
-        "application.chat.reconfigure_conversation._chat_snapshot", lambda _: snapshot
+        "application.chat.reconfigure_conversation.build_chat_snapshot", lambda _: snapshot
     )
     with pytest.raises(RuntimeError, match="Wait"):
         restart_edited_conversation(state, record["id"], payload)

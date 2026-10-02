@@ -10,13 +10,10 @@ from application.chat.conversation_library import (
     rename_conversation,
 )
 
-from application.chat.runtime_process import (
-    _chat_history,
-    _chat_runtime_status,
-    _chat_snapshot,
-    _chat_theme_payload,
-    _handle_chat_command,
-)
+from application.chat.read_history import read_chat_history
+from application.chat.runtime_process import _chat_runtime_status
+from application.chat.build_snapshot import build_chat_snapshot, read_chat_theme
+from application.chat.dispatch_commands import dispatch_chat_command
 from application.chat.stop_chat import stop_chat
 from frontend_bridge_core.chat_session import (
     launch_chat,
@@ -45,15 +42,15 @@ def _runtime_status(request: ApiRequest) -> JsonResponse:
 
 def _snapshot(request: ApiRequest) -> JsonResponse:
     renderer_id = str((request.query.get("rendererId") or [""])[0]).strip()[:128]
-    return JsonResponse(_chat_snapshot(request.state, renderer_id=renderer_id))
+    return JsonResponse(build_chat_snapshot(request.state, renderer_id=renderer_id))
 
 
 def _history(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_chat_history(request.state))
+    return JsonResponse(read_chat_history(request.state))
 
 
 def _legacy_theme(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_chat_theme_payload(request.state))
+    return JsonResponse(read_chat_theme(request.state))
 
 
 def _list_themes(request: ApiRequest) -> JsonResponse:
@@ -90,7 +87,7 @@ def _close(request: ApiRequest) -> JsonResponse:
 
 
 def _command(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_handle_chat_command(request.state, request.body))
+    return JsonResponse(dispatch_chat_command(request.state, request.body))
 
 
 def _set_active_theme(request: ApiRequest) -> JsonResponse:

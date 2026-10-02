@@ -11,7 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from urllib.parse import parse_qs, urlencode, urlparse
 
-from application.chat.runtime_process import _handle_chat_command
+from application.chat.dispatch_commands import dispatch_chat_command
 from frontend_bridge_core.chat_stream import ChatStreamService
 from application.runtime.event_sink import fold_event_into_snapshot
 from frontend_bridge_core.transport.ws_client import WSClientSink
@@ -202,7 +202,7 @@ class ChatStreamCommandTests(unittest.TestCase):
                 chat_stream.snapshot["status"] = "idle"
                 chat_stream.snapshot["dialogText"] = "Current dialogue"
                 state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
-                snapshot = _handle_chat_command(state, {"type": command_type})
+                snapshot = dispatch_chat_command(state, {"type": command_type})
                 self.assertEqual(chat_stream.command[1]["type"], command_type)
                 self.assertEqual(snapshot["dialogText"], "Current dialogue")
 
@@ -210,7 +210,7 @@ class ChatStreamCommandTests(unittest.TestCase):
         chat_stream = _StubChatStream()
         state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
 
-        snapshot = _handle_chat_command(state, {"type": "resume-asr"})
+        snapshot = dispatch_chat_command(state, {"type": "resume-asr"})
 
         self.assertEqual(snapshot["status"], "listening")
         self.assertEqual(snapshot["dialogText"], "语音识别已恢复。")
@@ -229,7 +229,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             chat_stream=chat_stream,
         )
 
-        snapshot = _handle_chat_command(
+        snapshot = dispatch_chat_command(
             state,
             {
                 "payload": {
@@ -255,7 +255,7 @@ class ChatStreamCommandTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(ValueError, "invalid"):
-            _handle_chat_command(
+            dispatch_chat_command(
                 state,
                 {
                     "payload": {
@@ -274,7 +274,7 @@ class ChatStreamCommandTests(unittest.TestCase):
         chat_stream.snapshot["characterName"] = "Mio"
         state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
 
-        snapshot = _handle_chat_command(state, {"type": "dialog-advance"})
+        snapshot = dispatch_chat_command(state, {"type": "dialog-advance"})
 
         self.assertEqual(snapshot["status"], "idle")
         self.assertEqual(snapshot["dialogText"], "Current line")
@@ -292,7 +292,7 @@ class ChatStreamCommandTests(unittest.TestCase):
         chat_stream.snapshot["characterName"] = "Nanami"
         state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
 
-        snapshot = _handle_chat_command(state, {"payload": "hello", "type": "send-message"})
+        snapshot = dispatch_chat_command(state, {"payload": "hello", "type": "send-message"})
 
         self.assertEqual(snapshot["status"], "generating")
         self.assertEqual(snapshot["dialogText"], "hello")
@@ -311,7 +311,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             image = Path(temp_dir) / "scene.png"
             image.write_bytes(b"image")
 
-            snapshot = _handle_chat_command(
+            snapshot = dispatch_chat_command(
                 state,
                 {
                     "payload": {
@@ -336,7 +336,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             chat_stream=chat_stream,
         )
 
-        snapshot = _handle_chat_command(state, {"payload": "en", "type": "change-voice-language"})
+        snapshot = dispatch_chat_command(state, {"payload": "en", "type": "change-voice-language"})
 
         self.assertEqual(snapshot["status"], "idle")
         self.assertEqual(snapshot["voiceLanguage"], "en")
@@ -365,7 +365,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             chat_stream=chat_stream,
         )
 
-        snapshot = _handle_chat_command(
+        snapshot = dispatch_chat_command(
             state,
             {
                 "payload": {
@@ -389,7 +389,7 @@ class ChatStreamCommandTests(unittest.TestCase):
         self.assertEqual(snapshot["pluginPagePresentations"], [])
 
         with self.assertRaisesRegex(ValueError, "presentationId is required"):
-            _handle_chat_command(
+            dispatch_chat_command(
                 state,
                 {
                     "payload": {
@@ -409,7 +409,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             config_manager=config_manager,
         )
 
-        snapshot = _handle_chat_command(
+        snapshot = dispatch_chat_command(
             state,
             {
                 "payload": {
@@ -444,7 +444,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             config_manager=config_manager,
         )
 
-        snapshot = _handle_chat_command(state, {"payload": "next fragment", "type": "send-message"})
+        snapshot = dispatch_chat_command(state, {"payload": "next fragment", "type": "send-message"})
 
         self.assertEqual(snapshot["status"], "idle")
         self.assertEqual(snapshot["dialogText"], "Current")
@@ -470,7 +470,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             config_manager=config_manager,
         )
 
-        snapshot = _handle_chat_command(state, {"payload": "Left", "type": "submit-option"})
+        snapshot = dispatch_chat_command(state, {"payload": "Left", "type": "submit-option"})
 
         self.assertEqual(snapshot["status"], "idle")
         self.assertEqual(snapshot["dialogText"], "Choose")
@@ -484,7 +484,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             chat_stream=chat_stream,
         )
 
-        snapshot = _handle_chat_command(
+        snapshot = dispatch_chat_command(
             state,
             {
                 "payload": {
@@ -519,7 +519,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             {"action": "confirm", "confirmationId": "prompt-1", "kind": "other"},
         ):
             with self.subTest(payload=payload), self.assertRaises(ValueError):
-                _handle_chat_command(
+                dispatch_chat_command(
                     state,
                     {"payload": payload, "type": "submit-option"},
                 )
@@ -530,7 +530,7 @@ class ChatStreamCommandTests(unittest.TestCase):
         chat_stream.snapshot["sessionClosedReason"] = "聊天会话已结束。"
         state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
 
-        snapshot = _handle_chat_command(state, {"payload": "hello again", "type": "send-message"})
+        snapshot = dispatch_chat_command(state, {"payload": "hello again", "type": "send-message"})
 
         self.assertEqual(snapshot["status"], "generating")
         self.assertEqual(snapshot["dialogText"], "hello again")
@@ -544,7 +544,7 @@ class ChatStreamCommandTests(unittest.TestCase):
         chat_stream = _StubChatStream()
         state = SimpleNamespace(chat_session={"sessionId": "session-1"}, chat_stream=chat_stream)
 
-        snapshot = _handle_chat_command(state, {"payload": 1, "type": "revert-history"})
+        snapshot = dispatch_chat_command(state, {"payload": 1, "type": "revert-history"})
 
         self.assertEqual(snapshot["status"], "idle")
         self.assertIsNotNone(chat_stream.command)
@@ -563,7 +563,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             config_manager=_config_manager_with_chat_experiments(fork=True),
         )
 
-        snapshot = _handle_chat_command(state, {"payload": {"userIndex": 2}, "type": "fork-history"})
+        snapshot = dispatch_chat_command(state, {"payload": {"userIndex": 2}, "type": "fork-history"})
 
         self.assertEqual(snapshot["status"], "generating")
         self.assertEqual(snapshot["dialogText"], "正在创建对话分支。")
@@ -583,7 +583,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             config_manager=_config_manager_with_chat_experiments(flowchart=True),
         )
 
-        snapshot = _handle_chat_command(state, {"payload": "branch-2", "type": "switch-branch"})
+        snapshot = dispatch_chat_command(state, {"payload": "branch-2", "type": "switch-branch"})
 
         self.assertEqual(snapshot["status"], "idle")
         self.assertEqual(snapshot["dialogText"], "已切换对话分支。")
@@ -603,7 +603,7 @@ class ChatStreamCommandTests(unittest.TestCase):
             config_manager=_config_manager_with_chat_experiments(flowchart=True),
         )
 
-        snapshot = _handle_chat_command(
+        snapshot = dispatch_chat_command(
             state,
             {"payload": {"branchId": "branch-2", "label": "Side route"}, "type": "rename-branch"},
         )
@@ -627,9 +627,9 @@ class ChatStreamCommandTests(unittest.TestCase):
         )
 
         with self.assertRaisesRegex(PermissionError, "Fork 实验功能未启用"):
-            _handle_chat_command(state, {"payload": {"userIndex": 2}, "type": "fork-history"})
+            dispatch_chat_command(state, {"payload": {"userIndex": 2}, "type": "fork-history"})
         with self.assertRaisesRegex(PermissionError, "分支流程图实验功能未启用"):
-            _handle_chat_command(state, {"payload": "branch-2", "type": "switch-branch"})
+            dispatch_chat_command(state, {"payload": "branch-2", "type": "switch-branch"})
 
     def test_handle_chat_command_clear_history_removes_directory_storage_without_runtime_stream(self):
         class _Config:
@@ -654,7 +654,7 @@ class ChatStreamCommandTests(unittest.TestCase):
                 config_manager=config_manager,
             )
 
-            snapshot = _handle_chat_command(state, {"type": "clear-history"})
+            snapshot = dispatch_chat_command(state, {"type": "clear-history"})
 
             self.assertFalse(history_path.exists())
             self.assertEqual(snapshot["historyEntries"], [])

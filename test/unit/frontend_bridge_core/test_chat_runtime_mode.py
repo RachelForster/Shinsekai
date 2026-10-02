@@ -6,12 +6,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from application.media.resource_urls import UnconfiguredResourceUrls
-from application.chat.runtime_process import (
-    _chat_runtime_mode,
-    _chat_runtime_status,
-    _chat_snapshot,
-    _chat_stream_initial_snapshot,
-)
+from application.chat.runtime_process import _chat_runtime_mode, _chat_runtime_status
+from application.chat.build_snapshot import build_chat_snapshot, initial_chat_snapshot
 from frontend_bridge_core.routes.api import (
     BRIDGE_AUTH_HEADER,
     CHAT_RUNTIME_READY_TIMEOUT_SECONDS,
@@ -143,7 +139,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             mobile_access_service=None,
         )
 
-        snapshot = _chat_snapshot(state, renderer_id="renderer-polling")
+        snapshot = build_chat_snapshot(state, renderer_id="renderer-polling")
 
         self.assertEqual(snapshot["dialogText"], "speaking")
         self.assertEqual(chat_stream.snapshot_renderer_ids[0], "renderer-polling")
@@ -160,7 +156,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             "status": "idle",
         }
 
-        initial = _chat_stream_initial_snapshot(previous)
+        initial = initial_chat_snapshot(previous)
 
         self.assertEqual(initial["sprites"], [])
         self.assertEqual(initial["characterName"], "七海千秋")
@@ -257,7 +253,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
                 return_value=False,
             ),
             patch(
-                "frontend_bridge_core.routes.chat_routes._chat_snapshot",
+                "frontend_bridge_core.routes.chat_routes.build_chat_snapshot",
                 side_effect=AssertionError(
                     "runtime status must not build a chat snapshot"
                 ),
@@ -285,7 +281,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
         )
         state.config_manager.config.system_config.chat_ui_runtime_mode = "native"
 
-        snapshot = _chat_snapshot(state, "idle", "react started")
+        snapshot = build_chat_snapshot(state, "idle", "react started")
 
         self.assertEqual(snapshot["runtimeMode"], "react")
         self.assertEqual(snapshot["dialogText"], "react started")
@@ -298,7 +294,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             config_manager=_ConfigManager(),
         )
 
-        snapshot = _chat_snapshot(state, "idle", "")
+        snapshot = build_chat_snapshot(state, "idle", "")
 
         self.assertEqual(snapshot["backgroundPath"], "")
 
@@ -312,7 +308,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             config_manager=_ConfigManager(),
         )
 
-        snapshot = _chat_snapshot(state, "idle", "")
+        snapshot = build_chat_snapshot(state, "idle", "")
 
         self.assertEqual(snapshot["backgroundPath"], "")
 
@@ -324,7 +320,7 @@ class ChatRuntimeModeTests(unittest.TestCase):
             config_manager=_ConfigManager(),
         )
 
-        snapshot = _chat_snapshot(state, "idle", "")
+        snapshot = build_chat_snapshot(state, "idle", "")
 
         self.assertEqual(snapshot["backgroundPath"], "asset://default-bg.png")
 

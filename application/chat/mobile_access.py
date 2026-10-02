@@ -50,6 +50,17 @@ def get_mobile_access_info(state: object) -> MobileAccessInfo | None:
     return port.snapshot() if port is not None else None
 
 
+def mobile_access_snapshot(state: object, *, streaming: bool) -> dict[str, Any]:
+    info = get_mobile_access_info(state)
+    if info is None:
+        return {}
+    patch = {"mobileAccess": info.to_payload()}
+    # Preserve the legacy fallback: only an active stream advertises a websocket URL.
+    if streaming:
+        patch["wsUrl"] = info.websocket_url
+    return patch
+
+
 def configure_mobile_access(
     state: object,
     *,
