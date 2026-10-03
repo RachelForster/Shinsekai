@@ -12,6 +12,7 @@ import { useChatRuntimeClosing } from "./runtimeState";
 const RUNTIME_STATUS_POLL_INTERVAL_MS = 1200;
 
 interface ChatLaunchGuard {
+  runtimeState: ChatRuntimeProcessState["state"] | undefined;
   refreshRuntimeStatus: () => Promise<void>;
   runtimeLaunchDisabled: boolean;
   runtimeClosing: boolean;
@@ -50,6 +51,7 @@ export function useChatLaunchGuard(): ChatLaunchGuard {
   }, [runtimeStatusQuery.refetch]);
 
   return {
+    runtimeState: runtimeStatusQuery.data?.state,
     refreshRuntimeStatus,
     runtimeLaunchDisabled,
     runtimeClosing,

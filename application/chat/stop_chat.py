@@ -6,6 +6,7 @@ from typing import Any, Protocol
 import uuid
 
 from application.chat import runtime_process
+from application.chat.lifecycle import chat_lifecycle_lock
 from application.chat.mobile_access import stop_mobile_access
 from application.story.coordinator import clear_story_session
 
@@ -17,14 +18,34 @@ class ChatStopState(Protocol):
     chat_stream: Any | None
 
 
+class ChatSessionChanged(RuntimeError):
+    """A conditional close targeted a session that is no longer active."""
+
+
 def stop_chat(
     state: ChatStopState,
     *,
     reason: str = "聊天会话已结束。",
     wait_timeout: float = 4.0,
+    expected_session_id: str | None = None,
 ) -> dict[str, Any]:
     """Gracefully stop the runtime, transports, mobile access, and story state."""
 
+    with chat_lifecycle_lock(state):
+        session_id = str(state.chat_session.get("sessionId") or "").strip()
+        if expected_session_id is not None and expected_session_id != session_id:
+            raise ChatSessionChanged(
+                "The current chat has changed. Confirm the new chat before ending it."
+            )
+        return _stop_chat(state, reason=reason, wait_timeout=wait_timeout)
+
+
+def _stop_chat(
+    state: ChatStopState,
+    *,
+    reason: str,
+    wait_timeout: float,
+) -> dict[str, Any]:
     session_id = str(state.chat_session.get("sessionId") or "").strip()
     chat_stream = getattr(state, "chat_stream", None)
     runtime_process._set_chat_runtime_closing(state, True)

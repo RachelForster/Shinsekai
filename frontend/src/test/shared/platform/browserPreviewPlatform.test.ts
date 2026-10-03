@@ -169,7 +169,12 @@ describe("browser preview platform chat themes", () => {
       state: "running",
     });
 
-    const closed = await resolvePreview(platform.chat.close());
+    await expect(platform.chat.close({ expectedSessionId: "another-session" })).rejects.toMatchObject({
+      status: 409,
+      errorCode: "chat_session_changed",
+    });
+    await expect(resolvePreview(platform.chat.getRuntimeStatus())).resolves.toMatchObject({ state: "running" });
+    const closed = await resolvePreview(platform.chat.close({ expectedSessionId: launched.sessionId ?? "" }));
     expect(closed).toMatchObject({ chatProcessRunning: false, chatRuntimeClosing: false });
     await expect(resolvePreview(platform.chat.getRuntimeStatus())).resolves.toEqual({
       chatProcessRunning: false,

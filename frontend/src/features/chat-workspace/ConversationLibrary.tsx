@@ -15,6 +15,7 @@ import {
 import { fileThumbnailUrl } from "../../entities/files/repository";
 import type { ConversationSummary } from "../../shared/platform/types";
 import { ConversationTypeBadge } from "./ConversationTypeBadge";
+import { ActiveConversationPanel } from "./ActiveConversationPanel";
 import { useI18n } from "../../shared/i18n";
 import { Button, Dialog, IconButton, Switch, TextInput } from "../../shared/ui";
 import { useMobileAccessPreference } from "../mobile-access/useMobileAccessPreference";
@@ -51,7 +52,8 @@ export function ConversationLibrary({
   const mobileAccess = useMobileAccessLaunch();
   const mobileAccessHintId = useId();
   const init = useChatInitialization();
-  const { runtimeClosing, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
+  const guard = useChatLaunchGuard();
+  const { runtimeLaunchDisabled, runtimeClosing, updateRuntimeStatusFromSnapshot } = guard;
   const conversations = useQuery({ queryKey: conversationsQueryKey, queryFn: listConversations, staleTime: 0 });
   const isEmpty = conversations.isSuccess && !conversations.data.length;
   const characters = useQuery({ queryKey: charactersQueryKey, queryFn: listCharacters });
@@ -126,12 +128,13 @@ export function ConversationLibrary({
             </span>
           </div>
           {!isEmpty && (
-            <Button variant="primary" disabled={runtimeClosing} onClick={onCreate}>
+            <Button variant="primary" disabled={runtimeLaunchDisabled || init.initializationPending} onClick={onCreate}>
               {t("conversation.new")}
             </Button>
           )}
         </div>
       </div>
+      <ActiveConversationPanel guard={guard} />
       {conversations.isPending && <p role="status">{t("common.loading")}</p>}
       {conversations.isError && <p role="alert">{conversations.error.message}</p>}
       {error && !editing && !deleting && <p role="alert">{error}</p>}
@@ -140,7 +143,7 @@ export function ConversationLibrary({
           <img src="/chat-empty-catgirl.png" alt="" width={240} height={240} />
           <h2>{t("conversation.emptyGreeting")}</h2>
           <p>{t("conversation.empty")}</p>
-          <Button variant="primary" disabled={runtimeClosing} onClick={onCreate}>
+          <Button variant="primary" disabled={runtimeLaunchDisabled || init.initializationPending} onClick={onCreate}>
             {t("conversation.new")}
           </Button>
         </div>
@@ -170,12 +173,12 @@ export function ConversationLibrary({
                     historyPath={item.historyPath}
                     conversationId={item.hasSettings ? item.id : undefined}
                     label={t("conversation.continue")}
-                    disabled={!item.storyPath || runtimeClosing || init.initializationPending}
+                    disabled={!item.storyPath || runtimeLaunchDisabled || init.initializationPending}
                   />
                 ) : (
                   <Button
                     variant="primary"
-                    disabled={runtimeClosing || init.initializationPending}
+                    disabled={runtimeLaunchDisabled || init.initializationPending}
                     onClick={() => (item.hasSettings ? void launch(item) : onEdit(item.id, item.kind))}
                   >
                     {t(item.hasSettings ? "conversation.continue" : "conversation.configureAndContinue")}

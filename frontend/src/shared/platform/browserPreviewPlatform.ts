@@ -1,4 +1,5 @@
 import { createStoryPreviewPlatform } from "./storyPreviewPlatform";
+import { PlatformRequestError } from "./errors";
 import {
   sampleChatSnapshot,
   sampleConfig,
@@ -887,7 +888,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         }
         conversations.delete(id);
       },
-      async close() {
+      async close(options) {
+        if (options?.expectedSessionId !== undefined && options.expectedSessionId !== (chat.sessionId ?? "")) {
+          throw new PlatformRequestError("The current chat has changed.", 409, "chat_session_changed");
+        }
         clearScheduledChatUpdates();
         chat = {
           ...chat,

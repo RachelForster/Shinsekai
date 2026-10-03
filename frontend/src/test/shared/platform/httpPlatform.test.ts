@@ -1287,6 +1287,33 @@ describe("http platform", () => {
     );
   });
 
+  it("reads observer snapshots without claiming an audio renderer and preserves player registration", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => mockJsonResponse({ status: "idle" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+
+    await platform.chat.getSnapshot({ claimRenderer: false });
+    expect(fetchMock.mock.calls[0][0]).toBe("http://127.0.0.1:8787/api/chat/snapshot");
+    await platform.chat.getSnapshot();
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/api\/chat\/snapshot\?rendererId=.+/);
+  });
+
+  it("sends the confirmed session identity when closing a chat", async () => {
+    const fetchMock = vi.fn(() => mockJsonResponse({ status: "idle" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const platform = createHttpPlatform("http://127.0.0.1:8787");
+
+    await platform.chat.close({ expectedSessionId: "session-A" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://127.0.0.1:8787/api/chat/close",
+      expect.objectContaining({
+        method: "POST",
+        keepalive: true,
+        body: JSON.stringify({ expectedSessionId: "session-A" }),
+      }),
+    );
+  });
+
   it("resets transport sequence numbers when reconnecting to a new session", async () => {
     vi.useFakeTimers();
     const snapshot = {
