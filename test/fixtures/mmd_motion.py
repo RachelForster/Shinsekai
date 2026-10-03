@@ -19,3 +19,20 @@ def vmd_bytes(name="root", *, morph="", optional=True):
     if morph:
         result += field(morph, 15) + struct.pack("<If", 0, 0.5)
     return result + (struct.pack("<4I", 0, 0, 0, 0) if optional else b"")
+
+
+def vmd_exporter_bytes(name="root", *, metadata):
+    """Valid motion with exporter metadata the rendering SDK does not use."""
+    data = bytearray(vmd_bytes(name))
+    if metadata == "model-name":
+        data[30:50] = b"a" * 19 + b"\x82"  # Truncated CP932 model label.
+    elif metadata == "interpolation-padding":
+        used = {axis * 16 + point * 4 for axis in range(4) for point in range(4)}
+        for frame in range(2):
+            start = 54 + frame * 111 + 47
+            for index in range(64):
+                if index not in used:
+                    data[start + index] = 0xff
+    else:
+        raise ValueError(f"Unknown VMD metadata fixture: {metadata}")
+    return bytes(data)

@@ -16,3 +16,21 @@ export function vmdBytes(boneName = new TextEncoder().encode("head")): ArrayBuff
   }
   return buffer;
 }
+
+/** Exporter metadata accepted without affecting the SDK's bone evaluation. */
+export function vmdExporterBytes(metadata: "model-name" | "interpolation-padding"): ArrayBuffer {
+  const buffer = vmdBytes();
+  const bytes = new Uint8Array(buffer);
+  if (metadata === "model-name") {
+    bytes.fill(0x61, 30, 49);
+    bytes[49] = 0x82; // CP932 model label cut off halfway through a character.
+  } else {
+    for (let frame = 0; frame < 2; frame++) {
+      const start = 54 + frame * 111 + 47;
+      for (let index = 0; index < 64; index++) {
+        if (index % 4 !== 0) bytes[start + index] = 0xff;
+      }
+    }
+  }
+  return buffer;
+}

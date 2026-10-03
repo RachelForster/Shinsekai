@@ -104,8 +104,8 @@ class _VmdReader:
             raise ValueError("Non-finite VMD parameters")
         return values
 
-    def interpolation(self, size: int) -> None:
-        if any(value > 127 for value in self.read(size)):
+    def interpolation(self, size: int, *, step: int = 1) -> None:
+        if any(value > 127 for value in self.read(size)[::step]):
             raise ValueError("Invalid VMD interpolation")
 
     def flag(self) -> None:
@@ -117,7 +117,9 @@ def _vmd(data: bytes) -> MotionTargets:
     reader = _VmdReader(data)
     if reader.read(30).tobytes().split(b"\0", 1)[0] != b"Vocaloid Motion Data 0002":
         raise ValueError("Expected a VMD 0002 motion")
-    reader.name(20)
+    # The runtime ignores this fixed-width model label, which exporters may
+    # truncate in the middle of a multibyte character. Binding uses track names.
+    reader.read(20)
     bones: set[str] = set()
     morphs: set[str] = set()
     for _ in range(reader.count(111)):
@@ -128,7 +130,9 @@ def _vmd(data: bytes) -> MotionTargets:
         reader.frame()
         reader.floats(3)
         _quaternion(reader.floats(4))
-        reader.interpolation(64)
+        # Match VmdLoader: each 16-byte block uses offsets 0, 4, 8 and 12.
+        # Other bytes contain redundant data, padding and physics metadata.
+        reader.interpolation(64, step=4)
     for _ in range(reader.count(23)):
         name = reader.name(15)
         if not name:

@@ -5,7 +5,7 @@ import pytest
 
 from core.media.avatar.mmd import MmdAdapter
 from core.media.avatar.mmd_motion import inspect_motion
-from test.fixtures.mmd_motion import vpd_bytes, vmd_bytes
+from test.fixtures.mmd_motion import vpd_bytes, vmd_bytes, vmd_exporter_bytes
 from test.fixtures.pmx import pmx_bytes
 
 
@@ -66,6 +66,23 @@ def test_motion_targets_and_encodings(tmp_path, extension, data):
     file = tmp_path / f"motion.{extension}"
     file.write_bytes(data)
     assert inspect_motion(file).bones == {"頭"}
+
+
+@pytest.mark.parametrize("metadata", ["model-name", "interpolation-padding"])
+def test_vmd_ignores_metadata_not_used_by_the_runtime(tmp_path, metadata):
+    source = tmp_path / "exported.vmd"
+    source.write_bytes(vmd_exporter_bytes("頭", metadata=metadata))
+    assert inspect_motion(source).bones == {"頭"}
+
+
+@pytest.mark.parametrize("index", [axis * 16 + point * 4 for axis in range(4) for point in range(4)])
+def test_vmd_rejects_invalid_active_interpolation_parameters(tmp_path, index):
+    data = bytearray(vmd_bytes())
+    data[54 + 47 + index] = 0xff
+    source = tmp_path / "bad.vmd"
+    source.write_bytes(data)
+    with pytest.raises(ValueError, match="interpolation"):
+        inspect_motion(source)
 
 
 @pytest.mark.parametrize("payload", [

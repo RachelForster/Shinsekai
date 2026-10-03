@@ -10,7 +10,7 @@ from config.character_manager import CharacterManager
 from config.schema import Character
 from core.media.avatar.registry import configure_builtin_formats
 from test.fixtures.pmx import pmx_bytes, pmx_sections
-from test.fixtures.mmd_motion import vpd_bytes, vmd_bytes
+from test.fixtures.mmd_motion import vpd_bytes, vmd_bytes, vmd_exporter_bytes
 
 
 def test_cold_authorization_of_full_batch_only_reads_dependency_indexes(harness, monkeypatch):
@@ -220,8 +220,11 @@ def _mmd_batch(harness):
     return state, use_case, body
 
 
-def test_import_mixed_motion_batch_and_serve_managed_copies(harness):
+@pytest.mark.parametrize("metadata", [None, "model-name", "interpolation-padding"])
+def test_import_mixed_motion_batch_and_serve_managed_copies(harness, metadata):
     state, use_case, body = _mmd_batch(harness)
+    if metadata:
+        Path(body["source_paths"][1]).write_bytes(vmd_exporter_bytes(metadata=metadata))
     result = execute(use_case, CharacterOperation.IMPORT_MODEL_STATES, **body)
     bank = result["avatars"]["mmd"]
     assert len(bank["sprites"]) == 2

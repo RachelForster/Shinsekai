@@ -16,7 +16,7 @@ import { PmxObject } from "babylon-mmd/esm/Loader/Parser/pmxObject";
 import { MmdRuntime } from "babylon-mmd/esm/Runtime/mmdRuntime";
 import type { MmdSkinnedMesh } from "babylon-mmd/esm/Runtime/mmdMesh";
 import { loadMotion, MmdMotionPlayer } from "../../../modules/character-visual/adapters/mmd/motion";
-import { vmdBytes } from "../../fixtures/mmdMotion";
+import { vmdBytes, vmdExporterBytes } from "../../fixtures/mmdMotion";
 
 let engine: NullEngine;
 function setup() {
@@ -83,6 +83,17 @@ describe("MMD SDK motion evaluation and smooth pose changes", () => {
     for (let i = 0; i < 12; i++) player.sample(0.1);
     expect(head.rotationQuaternion.y).toBeCloseTo(Math.sin(0.3), 6);
   });
+  it.each(["model-name", "interpolation-padding"] as const)(
+    "plays VMD with unused exporter metadata: %s",
+    async (metadata) => {
+      const { scene, head, player } = setup();
+      const loaded = await loadMotion(scene, "exported.vmd", vmdExporterBytes(metadata));
+      expect(loaded.endFrame).toBe(30);
+      player.set(player.bind(loaded), "play", false);
+      player.sample(1);
+      expect(head.rotationQuaternion.y).toBeCloseTo(Math.sin(0.3), 6);
+    },
+  );
   it("plays once at 30 fps, holds final pose, and restores without replay", () => {
     const { head, model, player, runtime } = setup();
     const bound = player.bind(animation());
