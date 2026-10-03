@@ -136,8 +136,27 @@
   gap: 6px;
 }
 
+.chat-config-dialog__framing-presets .button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border-color: rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: var(--chat-toolbar-color, #fffaf0);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.chat-config-dialog__framing-presets .button:hover:not(:disabled),
 .chat-config-dialog__framing-presets .button[aria-pressed="true"] {
   border-color: var(--chat-config-accent-local);
+  color: var(--chat-config-accent-local);
+  background: color-mix(in oklch, var(--chat-config-accent-local) 18%, transparent);
+}
+
+.chat-config-dialog__framing-presets .button:focus-visible {
+  border-color: var(--chat-config-accent-local);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--chat-config-accent-local) 34%, transparent);
 }
 
 .chat-config-dialog__range-control {
