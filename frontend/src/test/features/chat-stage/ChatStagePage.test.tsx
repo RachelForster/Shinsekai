@@ -1646,8 +1646,22 @@ describe("ChatStagePage", () => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
         sprites: [
-          { avatarType: "static", modelUrl: "", id: "Mio-0", label: "Mio", path: "asset://mio.png" },
-          { avatarType: "static", modelUrl: "", id: "Ren-0", label: "Ren", path: "asset://ren.png" },
+          {
+            identityKey: "character:mio",
+            avatarType: "static",
+            modelUrl: "",
+            id: "Mio-0",
+            label: "Mio",
+            path: "asset://mio.png",
+          },
+          {
+            identityKey: "character:ren",
+            avatarType: "static",
+            modelUrl: "",
+            id: "Ren-0",
+            label: "Ren",
+            path: "asset://ren.png",
+          },
         ],
       }),
     );
@@ -1666,7 +1680,7 @@ describe("ChatStagePage", () => {
     expect(screen.getByAltText("Ren")).toHaveClass("sprite-layer__image");
     await waitFor(() =>
       expect(JSON.parse(localStorage.getItem("shinsekai-chat-stage-runtime-config")!).config.spriteFramings).toEqual({
-        Mio: { heightRatio: 0.5, verticalPosition: 0.25 },
+        "character:mio": { heightRatio: 0.5, verticalPosition: 0.25 },
       }),
     );
     act(() =>
@@ -1676,6 +1690,7 @@ describe("ChatStagePage", () => {
         modelUrl: "",
         characterName: "Mio",
         url: "asset://mio-happy.png",
+        identityKey: "character:mio",
         slot: 0,
         scale: 1,
         seq: 1,

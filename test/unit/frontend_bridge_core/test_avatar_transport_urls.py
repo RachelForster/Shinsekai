@@ -85,6 +85,12 @@ def test_initial_stage_snapshot_respects_selected_avatar_bank(tmp_path, avatar_t
     assert len(sprites) == 1
     assert sprites[0]["avatarType"] == avatar_type
     assert sprites[0]["scale"] == 1.2
+    assert sprites[0]["identityKey"] == "character:haru"
+    sink = SimpleNamespace(events=[], emit=lambda event: sink.events.append(event))
+    with patch("application.chat.ui_updates.get_character_by_name", return_value=character):
+        StreamingUIUpdateManager(sink, resource_urls=state.resource_urls).update_sprite("haru", 0)
+    assert sink.events[0]["characterName"] == "Haru"
+    assert sink.events[0]["identityKey"] == sprites[0]["identityKey"]
     if avatar_type == "demo":
         assert parse_qs(urlsplit(sprites[0]["path"]).query)["path"] == ["states/smile.json"]
         assert urlsplit(sprites[0]["modelUrl"]).path == "/api/avatar/file"

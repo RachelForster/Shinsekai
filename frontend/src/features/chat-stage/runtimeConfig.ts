@@ -549,8 +549,17 @@ function readRuntimeSpriteFramings(value: unknown): Record<string, VisualFraming
   );
 }
 
+export function runtimeSpriteFramingKey(sprite: ChatStageSprite, index: number) {
+  const identity = sprite.identityKey?.trim();
+  if (identity) return identity;
+  // Older producers cannot distinguish character names from image filename labels.
+  // Keep their assets separate rather than persisting an ambiguous display name.
+  const asset = sprite.modelUrl || sprite.path;
+  return asset ? `asset:${asset}` : `sprite:${sprite.id || `slot-${sprite.slot ?? index}`}`;
+}
+
 export function runtimeSpriteFraming(config: ChatStageRuntimeConfig, sprite: ChatStageSprite, index: number) {
-  return normalizeVisualFraming(config.spriteFramings[runtimeSpriteKey(sprite, index)]);
+  return normalizeVisualFraming(config.spriteFramings[runtimeSpriteFramingKey(sprite, index)]);
 }
 
 function runtimeTextColor(value: string, fallback: string, themeVariable: string) {

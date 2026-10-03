@@ -27,6 +27,7 @@ import {
   runtimeNameFontSizeMin,
   runtimeSpriteDefaultScaleKey,
   runtimeSpriteKey,
+  runtimeSpriteFramingKey,
   runtimeSpriteLabel,
   runtimeSpriteOffsetMax,
   runtimeSpriteOffsetMin,
@@ -803,10 +804,11 @@ export function ChatConfigDialog({
             <div className="chat-config-dialog__sprite-list">
               {sprites.map((sprite, index) => {
                 const spriteKey = runtimeSpriteKey(sprite, index);
+                const framingKey = runtimeSpriteFramingKey(sprite, index);
                 const spriteLabel = runtimeSpriteLabel(sprite, index);
                 const value = spriteScales[spriteKey] ?? spriteScales[runtimeSpriteDefaultScaleKey] ?? 1;
                 return (
-                  <div key={spriteKey}>
+                  <div key={framingKey}>
                     <label className="chat-config-dialog__row chat-config-dialog__range-row">
                       <span className="chat-config-dialog__label">{spriteLabel}</span>
                       <span className="chat-config-dialog__range-control">
@@ -837,8 +839,8 @@ export function ChatConfigDialog({
                     </label>
                     <SpriteFramingControl
                       label={spriteLabel}
-                      value={spriteFramings[spriteKey]}
-                      onChange={(framing) => onSpriteFramingChange(spriteKey, framing)}
+                      value={spriteFramings[framingKey]}
+                      onChange={(framing) => onSpriteFramingChange(framingKey, framing)}
                     />
                   </div>
                 );

@@ -260,6 +260,7 @@ def test_streaming_presenter_keeps_character_slot_across_expression_changes() ->
     presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
 
     class _Character:
+        name = "Mio"
         sprite_scale = 1.25
         sprites = [{"path": "neutral.png"}, {"path": "happy.png"}]
 
@@ -268,12 +269,36 @@ def test_streaming_presenter_keeps_character_slot_across_expression_changes() ->
         return_value=_Character(),
     ):
         presenter.update_sprite("Mio", 0)
-        presenter.update_sprite("Mio", 1)
+        presenter.update_sprite("mio", 1)
 
     assert [event["slot"] for event in sink.events] == [0, 0]
+    assert [event["characterName"] for event in sink.events] == ["Mio", "Mio"]
+    assert [event["identityKey"] for event in sink.events] == ["character:mio", "character:mio"]
     assert sink.events[-1]["url"] == "media://happy.png"
     assert sink.events[-1]["avatarType"] == "static"
     assert sink.events[-1]["modelUrl"] == ""
+    presenter.remove_character_sprite("mio")
+    assert not presenter._sprite_lru
+    assert sink.events[-1] == {"type": "sprite.remove", "characterName": "Mio"}
+
+
+def test_unowned_initial_images_have_path_identities_before_transport(tmp_path, monkeypatch) -> None:
+    from application.chat.initial_sprite import display_initial_sprite
+    from application.chat.character_visual import image_visual_identity
+
+    monkeypatch.chdir(tmp_path)
+    sink = _Sink()
+    presenter = StreamingUIUpdateManager(sink, resource_urls=_Urls())
+    config = SimpleNamespace(config=SimpleNamespace(characters=[]))
+    for path in ("a/portrait.png", "b/portrait.png", str(tmp_path / "a/portrait.png")):
+        assert display_initial_sprite(path, config=config, ui_updates=presenter)
+    first, second, repeated = sink.events
+    assert first["characterName"] == second["characterName"] == "portrait"
+    assert first["identityKey"] != second["identityKey"]
+    assert first["identityKey"] == repeated["identityKey"]
+    assert image_visual_identity("a\\portrait.png") == first["identityKey"]
+    snapshot = fold_event_into_snapshot(make_empty_chat_snapshot(), first)
+    assert snapshot["sprites"][0]["identityKey"] == first["identityKey"]
 
 
 def test_model_presentation_uses_its_own_bank_and_preserves_metadata_in_snapshot():
@@ -295,6 +320,7 @@ def test_model_presentation_uses_its_own_bank_and_preserves_metadata_in_snapshot
     assert sprite["avatarType"] == "vrm"
     assert sprite["modelUrl"] == "avatar://mio.vrm/mio.vrm"
     assert sprite["path"] == "avatar://mio.vrm/smile.json"
+    assert sprite["identityKey"] == "character:mio"
 
 
 def test_model_stage_and_static_player_portrait_keep_separate_resource_routes():

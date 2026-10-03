@@ -1241,6 +1241,7 @@ describe("chatStageReducer", () => {
         avatarType: "static",
         modelUrl: "",
         characterName: "Mio",
+        identityKey: "character:mio",
         scale: 1.1,
         seq: 1,
         slot: 0,
@@ -1257,6 +1258,7 @@ describe("chatStageReducer", () => {
     expect(withSprite.sprites).toHaveLength(1);
     expect(withSprite.sprites[0]).toEqual(
       expect.objectContaining({
+        identityKey: "character:mio",
         x: 24,
         y: -18,
       }),
