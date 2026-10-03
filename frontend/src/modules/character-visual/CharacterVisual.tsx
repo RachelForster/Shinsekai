@@ -4,7 +4,7 @@ import { STATIC_AVATAR_TYPE, type ApplyMode, type AvatarSession, type CharacterV
 import { avatarFormat } from "./registry";
 import { avatarAssetUrl, avatarRuntimeAssetUrl } from "./assetUrl";
 import { bindAvatarVoice } from "./voiceRoute";
-import { visualFramingStyle, type VisualFraming } from "./framing";
+import { normalizeVisualFraming, visualFramingStyle, type VisualFraming } from "./framing";
 import "./CharacterVisual.css";
 
 export interface CharacterVisualProps {
@@ -77,6 +77,9 @@ function ModelVisual({
   onReady,
 }: CharacterVisualProps & { avatarType: string }) {
   const framingStyle = visualFramingStyle(framing);
+  const renderScale = 1 / normalizeVisualFraming(framing).heightRatio;
+  const renderScaleRef = useRef(renderScale);
+  renderScaleRef.current = renderScale;
   const format = avatarFormat(avatarType);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [session, setSession] = useState<AvatarSession<unknown, unknown> | null>(null);
@@ -118,7 +121,11 @@ function ModelVisual({
         return;
       }
       created = instance;
-      const resize = () => instance.resize(container.clientWidth, container.clientHeight);
+      const resize = () =>
+        instance.resize(
+          container.clientWidth * renderScaleRef.current,
+          container.clientHeight * renderScaleRef.current,
+        );
       resize();
       if (typeof ResizeObserver !== "undefined") {
         observer = new ResizeObserver(resize);
@@ -140,6 +147,13 @@ function ModelVisual({
       created?.dispose();
     };
   }, [format, avatarType, asset.modelUrl]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!session || !container) return;
+    // CSS framing magnifies the canvas; render enough pixels for that magnification.
+    session.resize(container.clientWidth * renderScale, container.clientHeight * renderScale);
+  }, [session, renderScale]);
 
   useEffect(() => {
     if (!session) return;

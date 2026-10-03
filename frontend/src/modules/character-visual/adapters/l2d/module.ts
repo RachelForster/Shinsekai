@@ -2,6 +2,7 @@ import type { ApplyMode, AvatarMount, AvatarSession } from "../../contracts";
 import { loadSdk, type SdkMotion } from "./sdk";
 import { ParameterTransition } from "../../parameterTransition";
 import { TalkingHeadMotion } from "../../talkingHeadMotion";
+import { avatarRenderSize } from "../../renderSize";
 import { neutralState, packagePath, parseState, validateControls, type L2DControls, type L2DState } from "./state";
 export { Editor } from "./Editor";
 
@@ -304,9 +305,9 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
       },
       resize(width, height) {
         if (disposed) return;
-        const ratio = Math.min(2, window.devicePixelRatio || 1);
-        canvas.width = Math.max(1, Math.min(4096, Math.round(width * ratio)));
-        canvas.height = Math.max(1, Math.min(4096, Math.round(height * ratio)));
+        const pixels = avatarRenderSize(width, height, window.devicePixelRatio);
+        canvas.width = pixels.width;
+        canvas.height = pixels.height;
       },
       dispose,
     };

@@ -251,6 +251,17 @@ describe("Live2D model lifecycle without licensed SDK assets", () => {
     expect(host.querySelector("canvas")!.width).toBe(4096);
   });
 
+  it("preserves model proportions when framed rendering exceeds the canvas limit", async () => {
+    const session = await start();
+    session.resize(3000, 6000);
+    const canvas = host.querySelector("canvas")!;
+    expect([canvas.width, canvas.height]).toEqual([2048, 4096]);
+    frame(100);
+    const [x, y] = matrix.scale.mock.calls.at(-1)!;
+    expect(x).toBeCloseTo(1.425);
+    expect(y).toBeCloseTo(0.7125);
+  });
+
   it("keeps edit state independent of mouth, blink, motion and physics", async () => {
     const session = await start();
     const state = {

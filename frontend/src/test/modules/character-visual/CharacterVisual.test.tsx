@@ -132,6 +132,62 @@ describe("CharacterVisual", () => {
     },
   );
 
+  it("renders half-body and close-up framing at the enlarged surface size", async () => {
+    const instance = session();
+    const create = register(vi.fn().mockResolvedValue(instance));
+    let notifyResize!: () => void;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          notifyResize = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    const view = render(<CharacterVisual {...props} />);
+    const mount = screen.getByTestId("model-container");
+    let width = 300,
+      height = 600;
+    Object.defineProperties(mount, {
+      clientWidth: { get: () => width },
+      clientHeight: { get: () => height },
+    });
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    expect(instance.resize).toHaveBeenLastCalledWith(300, 600);
+
+    view.rerender(<CharacterVisual {...props} framing={{ heightRatio: 0.5, verticalPosition: 0 }} />);
+    expect(instance.resize).toHaveBeenLastCalledWith(600, 1200);
+    view.rerender(<CharacterVisual {...props} framing={{ heightRatio: 0.3, verticalPosition: 0 }} />);
+    expect(instance.resize).toHaveBeenLastCalledWith(1000, 2000);
+    width = 240;
+    height = 480;
+    act(notifyResize);
+    expect(instance.resize).toHaveBeenLastCalledWith(800, 1600);
+    view.rerender(<CharacterVisual {...props} />);
+    expect(instance.resize).toHaveBeenLastCalledWith(240, 480);
+    expect(create).toHaveBeenCalledOnce();
+    expect(instance.apply).toHaveBeenCalledOnce();
+    expect(instance.dispose).not.toHaveBeenCalled();
+  });
+
+  it("uses the latest framing when model creation finishes after a framing change", async () => {
+    const late = deferred<AvatarSession<unknown, unknown>>();
+    const instance = session();
+    const create = register(vi.fn().mockReturnValue(late.promise));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    const view = render(<CharacterVisual {...props} />);
+    const mount = screen.getByTestId("model-container");
+    Object.defineProperties(mount, { clientWidth: { value: 300 }, clientHeight: { value: 600 } });
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    view.rerender(<CharacterVisual {...props} framing={{ heightRatio: 0.3, verticalPosition: 0 }} />);
+    await act(async () => late.resolve(instance));
+    expect(instance.resize).toHaveBeenLastCalledWith(1000, 2000);
+    expect(create).toHaveBeenCalledOnce();
+  });
+
   it("preserves static image hooks and resets a broken image on resource change", () => {
     const onImageError = vi.fn();
     const view = render(
