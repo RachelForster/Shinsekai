@@ -55,7 +55,10 @@ test.beforeEach(async ({ context, page }) => {
           session++;
           return decorate(await launch(payload, options));
         };
-        platform.chat.close = async () => {
+        platform.chat.close = async (options) => {
+          if (options?.expectedSessionId !== undefined && options.expectedSessionId !== "cuj-session-" + session) {
+            throw new Error("The current chat has changed.");
+          }
           fixture.stopCalls++;
           if (fixture.failNextEnd) {
             fixture.failNextEnd = false;

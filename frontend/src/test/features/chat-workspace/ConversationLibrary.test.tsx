@@ -6,6 +6,7 @@ import { ConversationLibrary } from "../../../features/chat-workspace/Conversati
 import { I18nProvider } from "../../../shared/i18n";
 import { ToastProvider } from "../../../shared/ui";
 import { setMobileAccessPreference } from "../../../features/mobile-access/useMobileAccessPreference";
+import { PlatformRequestError } from "../../../shared/platform/errors";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   show: vi.fn(),
   remove: vi.fn(),
   snapshot: vi.fn(),
+  rendererSnapshot: vi.fn(),
   current: vi.fn(),
   close: vi.fn(),
 }));
@@ -29,7 +31,8 @@ vi.mock("../../../entities/chat/repository", async (importOriginal) => ({
   deleteConversation: mocks.remove,
   launchChat: mocks.launch,
   getChatRuntimeStatus: mocks.status,
-  getChatSnapshot: mocks.snapshot,
+  getChatSnapshot: mocks.rendererSnapshot,
+  getChatObserverSnapshot: mocks.snapshot,
   getCurrentConversation: mocks.current,
   closeChat: mocks.close,
 }));
@@ -342,6 +345,7 @@ describe("conversation library", () => {
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     await waitFor(() => expect(mocks.close).toHaveBeenCalledTimes(1));
+    expect(mocks.close).toHaveBeenCalledWith({ expectedSessionId: "runtime-one" });
     expect(within(confirmation).getByRole("button", { name: "Ending…" })).toBeDisabled();
     expect(within(confirmation).getByRole("button", { name: "Cancel" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "New chat" })).toBeDisabled();
@@ -392,6 +396,32 @@ describe("conversation library", () => {
     fireEvent.click(within(confirmation).getByRole("button", { name: "End chat" }));
     expect(await within(confirmation).findByRole("alert")).toHaveTextContent("The current chat has changed");
     expect(mocks.close).not.toHaveBeenCalled();
+  });
+  it("uses observer snapshots for polling and opening the active chat", async () => {
+    mocks.status.mockResolvedValue({ state: "running" });
+    const { client } = page();
+    await screen.findByRole("heading", { name: "Currently chatting: Evening" });
+    const initialReads = mocks.snapshot.mock.calls.length;
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ["chat", "observer-snapshot"], exact: true });
+    });
+    expect(mocks.snapshot.mock.calls.length).toBeGreaterThan(initialReads);
+    fireEvent.click(screen.getByRole("button", { name: "Open chat" }));
+    await waitFor(() => expect(mocks.show).toHaveBeenCalled());
+    expect(mocks.rendererSnapshot).not.toHaveBeenCalled();
+  });
+  it("reports a server session conflict after the fresh snapshot without updating runtime state", async () => {
+    mocks.status.mockResolvedValue({ state: "running" });
+    mocks.close.mockRejectedValueOnce(new PlatformRequestError("session changed", 409, "chat_session_changed"));
+    page();
+    await screen.findByRole("heading", { name: "Currently chatting: Evening" });
+    fireEvent.click(screen.getByRole("button", { name: "End chat" }));
+    const confirmation = screen.getByRole("dialog", { name: "End chat" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "End chat" }));
+    expect(await within(confirmation).findByRole("alert")).toHaveTextContent("The current chat has changed");
+    expect(mocks.close).toHaveBeenCalledWith({ expectedSessionId: "runtime-one" });
+    expect(screen.getByRole("button", { name: "Continue chat" })).toBeDisabled();
+    expect(mocks.rendererSnapshot).not.toHaveBeenCalled();
   });
   it("hides phone controls for a local chat and removes the banner when ended elsewhere", async () => {
     mocks.status.mockResolvedValue({ state: "running" });

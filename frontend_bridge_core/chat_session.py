@@ -5,6 +5,7 @@ from typing import Any
 from application.chat.build_effect_context import build_effect_context
 from application.chat.conversation_library import remember_conversation, saved_conversation_launch
 from application.chat.initial_sprite import initial_sprite_path_for_characters
+from application.chat.lifecycle import chat_lifecycle_lock
 from application.chat.launch_history import (
     persist_confirmed_history_path,
     plan_chat_history_launch,
@@ -167,6 +168,16 @@ def start_chat_initialization(
 
 
 def launch_chat(
+    state: BridgeState,
+    body: dict[str, Any],
+    *,
+    init_stream_info: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    with chat_lifecycle_lock(state):
+        return _launch_chat_locked(state, body, init_stream_info=init_stream_info)
+
+
+def _launch_chat_locked(
     state: BridgeState,
     body: dict[str, Any],
     *,
@@ -381,6 +392,20 @@ def launch_chat(
 
 
 def resume_last_chat(
+    state: BridgeState,
+    *,
+    init_stream_info: dict[str, str] | None = None,
+    enable_mobile_access: bool | None = None,
+) -> dict[str, Any]:
+    with chat_lifecycle_lock(state):
+        return _resume_last_chat_locked(
+            state,
+            init_stream_info=init_stream_info,
+            enable_mobile_access=enable_mobile_access,
+        )
+
+
+def _resume_last_chat_locked(
     state: BridgeState,
     *,
     init_stream_info: dict[str, str] | None = None,

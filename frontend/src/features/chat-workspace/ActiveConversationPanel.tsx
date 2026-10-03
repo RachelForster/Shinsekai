@@ -5,12 +5,14 @@ import { useNavigate } from "react-router-dom";
 
 import {
   chatQueryKey,
+  chatObserverQueryKey,
   conversationsQueryKey,
-  getChatSnapshot,
+  getChatObserverSnapshot,
   getCurrentConversation,
 } from "../../entities/chat/repository";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
+import { platformErrorCode } from "../../shared/platform/errors";
 import { Button, Dialog } from "../../shared/ui";
 import { closeChatRuntime } from "../chat-startup/runtimeState";
 import type { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
@@ -32,8 +34,8 @@ export function ActiveConversationPanel({
   const { runtimeState, runtimeClosing, updateRuntimeStatusFromSnapshot } = guard;
   const active = runtimeState === "running" || runtimeClosing;
   const snapshot = useQuery({
-    queryKey: chatQueryKey,
-    queryFn: getChatSnapshot,
+    queryKey: chatObserverQueryKey,
+    queryFn: getChatObserverSnapshot,
     enabled: active,
     refetchInterval: active ? POLL_INTERVAL_MS : false,
     staleTime: 0,
@@ -63,7 +65,7 @@ export function ActiveConversationPanel({
   const openLocalChat = async () => {
     setError("");
     try {
-      const fresh = await getChatSnapshot();
+      const fresh = await getChatObserverSnapshot();
       await updateRuntimeStatusFromSnapshot(fresh);
       if (fresh.chatProcessRunning && !fresh.chatRuntimeClosing) {
         setQrOpen(false);
@@ -80,11 +82,13 @@ export function ActiveConversationPanel({
     setEnding(true);
     setEndError("");
     try {
-      const fresh = await getChatSnapshot();
+      const fresh = await getChatObserverSnapshot();
       if (fresh.sessionId !== confirmation.sessionId) {
         throw new Error(t("conversation.activeChanged"));
       }
-      const closed = await closeChatRuntime();
+      const closed = await closeChatRuntime({ expectedSessionId: confirmation.sessionId ?? "" });
+      await client.cancelQueries({ queryKey: chatObserverQueryKey, exact: true });
+      client.setQueryData(chatObserverQueryKey, closed);
       await client.cancelQueries({ queryKey: chatQueryKey, exact: true });
       client.setQueryData(chatQueryKey, closed);
       await updateRuntimeStatusFromSnapshot(closed);
@@ -92,7 +96,13 @@ export function ActiveConversationPanel({
       setConfirmation(null);
       await client.invalidateQueries({ queryKey: conversationsQueryKey });
     } catch (reason) {
-      setEndError(reason instanceof Error ? reason.message : String(reason));
+      setEndError(
+        platformErrorCode(reason) === "chat_session_changed"
+          ? t("conversation.activeChanged")
+          : reason instanceof Error
+            ? reason.message
+            : String(reason),
+      );
     } finally {
       endingRef.current = false;
       setEnding(false);

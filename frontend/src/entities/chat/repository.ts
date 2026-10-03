@@ -2,6 +2,7 @@ import { getPlatform } from "../../shared/platform/platform";
 import { normalizePlayerOptions } from "../../shared/playerCharacterOptions";
 import type {
   ChatCommand,
+  ChatCloseOptions,
   ChatCommandResult,
   ChatHistoryEntry,
   ChatLaunchPayload,
@@ -18,6 +19,7 @@ import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "..
 import type { ChatStageEvent } from "../../shared/platform/types";
 
 export const chatQueryKey = ["chat"] as const;
+export const chatObserverQueryKey = ["chat", "observer-snapshot"] as const;
 export const conversationsQueryKey = ["chat", "conversations"] as const;
 
 export const listConversations = () => getPlatform().chat.listConversations();
@@ -72,12 +74,16 @@ export function getChatSnapshot(): Promise<ChatSnapshot> {
   return getPlatform().chat.getSnapshot();
 }
 
+export function getChatObserverSnapshot(): Promise<ChatSnapshot> {
+  return getPlatform().chat.getSnapshot({ claimRenderer: false });
+}
+
 export function getChatRuntimeStatus(): Promise<ChatRuntimeProcessState> {
   return getPlatform().chat.getRuntimeStatus();
 }
 
-export function closeChat(): Promise<ChatSnapshot> {
-  return getPlatform().chat.close();
+export function closeChat(options?: ChatCloseOptions): Promise<ChatSnapshot> {
+  return getPlatform().chat.close(options);
 }
 
 export function getChatTheme(): Promise<ChatThemePayload> {

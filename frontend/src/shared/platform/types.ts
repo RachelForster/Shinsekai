@@ -1039,6 +1039,16 @@ export interface ChatStoryState {
   }>;
 }
 
+export interface ChatSnapshotOptions {
+  /** Only pages with an audio player should claim a polling renderer. Defaults to true. */
+  claimRenderer?: boolean;
+}
+
+export interface ChatCloseOptions {
+  /** Reject the close if the active session has changed. */
+  expectedSessionId?: string;
+}
+
 export interface ChatSnapshot {
   playerPortrait?: PlayerPortrait | null;
   activePlayback?: {
@@ -1488,11 +1498,11 @@ export interface ShinsekaiPlatform {
     prepareConversation: (id: string) => Promise<ChatLaunchPayload>;
     renameConversation: (id: string, title: string) => Promise<ConversationSummary>;
     deleteConversation: (id: string) => Promise<void>;
-    close: () => Promise<ChatSnapshot>;
+    close: (options?: ChatCloseOptions) => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;
     getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
-    getSnapshot: () => Promise<ChatSnapshot>;
+    getSnapshot: (options?: ChatSnapshotOptions) => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;
     launch: (payload: ChatLaunchPayload, options?: TaskProgressOptions<ChatSnapshot>) => Promise<ChatSnapshot>;
     resumeLast: (options?: TaskProgressOptions<ChatSnapshot>, overrides?: ChatResumeOverrides) => Promise<ChatSnapshot>;

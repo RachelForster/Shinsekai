@@ -878,6 +878,31 @@ class ChatStreamCommandTests(unittest.TestCase):
         )
         self.assertEqual(recovered["activePlayback"]["playbackId"], "voice-1")
 
+    def test_observer_polling_cannot_take_audio_from_a_player_or_claim_after_disconnect(self):
+        service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
+        session_id = service.create_session()["sessionId"]
+        session = service._sessions[session_id]
+        # Even an observer present before the player must never enter election.
+        for _ in range(3):
+            service.get_snapshot(session_id)
+        self.assertEqual(session.renderer_seen_at, {})
+        service.get_snapshot(session_id, renderer_id="renderer-player")
+        asyncio.run(service._publish_event(session_id, {
+            "type": "tts.play", "playbackId": "voice-1", "url": "voice.wav",
+        }))
+        for _ in range(3):
+            observed = service.get_snapshot(session_id)
+        self.assertEqual(observed["activePlayback"]["rendererId"], "renderer-player")
+        self.assertEqual(set(session.renderer_seen_at), {"renderer-player"})
+
+        # Losing the old owner still requires a real player to claim playback.
+        session.renderer_seen_at.clear()
+        observed = service.get_snapshot(session_id)
+        self.assertEqual(session.renderer_seen_at, {})
+        recovered = service.get_snapshot(session_id, renderer_id="renderer-new-player")
+        self.assertEqual(recovered["activePlayback"]["rendererId"], "renderer-new-player")
+        self.assertEqual(recovered["activePlayback"]["playbackId"], "voice-1")
+
     def test_chat_stream_folds_chat_init_progress_and_terminal_events(self):
         service = ChatStreamService(host="127.0.0.1", bridge_port=8787)
         session = service.create_session()

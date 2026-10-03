@@ -6,6 +6,8 @@ from typing import Any
 from unittest.mock import Mock
 
 from application.chat.start_chat import start_chat
+from application.chat.lifecycle import chat_lifecycle_lock
+from application.chat.stop_chat import ChatSessionChanged
 from application.runtime.state import BridgeState
 from application.runtime.tasks import _get_task, _request_task_cancel
 
@@ -116,13 +118,41 @@ def _patch_runtime(monkeypatch, *, mode: str = "react") -> dict[str, Any]:
         },
     )
 
-    def close_chat(_state, *, reason: str, **_kwargs):
+    def close_chat(_state, *, reason: str, expected_session_id=None, **_kwargs):
+        if expected_session_id is not None and expected_session_id != str(_state.chat_session.get("sessionId") or ""):
+            raise ChatSessionChanged("chat changed")
         runtime["running"] = False
         runtime["closeReasons"].append(reason)
         return {"status": "idle"}
 
     monkeypatch.setattr("application.chat.start_chat.stop_chat", close_chat)
     return runtime
+
+
+def test_initializing_session_can_end_and_its_cleanup_cannot_stop_a_new_session(monkeypatch):
+    state = _state()
+    runtime = _patch_runtime(monkeypatch)
+    launched = threading.Event()
+
+    def launch(stream_info):
+        state.chat_session = {"sessionId": stream_info["sessionId"]}
+        runtime["running"] = True
+        launched.set()
+        return {"_chatInitStreamAttached": True}
+
+    task = start_chat(state, mode="launch", launch=launch)
+    assert launched.wait(2)
+    # The initialization wait must release the lifecycle lock so a client can
+    # finish A and launch B while A's background task is still unwinding.
+    with chat_lifecycle_lock(state):
+        previous_id = state.chat_session["sessionId"]
+        state.chat_session = {"sessionId": "session-B"}
+    result = _wait_for_task(state, task["id"], {"failed"})
+    assert "chat session changed" in result["error"]
+    assert state.chat_session == {"sessionId": "session-B"}
+    assert runtime["running"] is True
+    assert runtime["closeReasons"] == []
+    assert previous_id in state.chat_stream.deleted_sessions
 
 
 def test_chat_init_deduplicates_and_waits_for_explicit_completion(monkeypatch):

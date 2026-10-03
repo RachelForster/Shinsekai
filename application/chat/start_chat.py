@@ -13,6 +13,7 @@ from application.chat.runtime_process import (
     _chat_stream_initial_snapshot,
 )
 from application.chat.launch_history import persist_confirmed_history_path
+from application.chat.lifecycle import chat_lifecycle_lock
 from application.chat.stop_chat import stop_chat
 from application.runtime.state import BridgeState
 from application.runtime.tasks import (
@@ -90,24 +91,32 @@ def _terminal_error(task: dict[str, Any], fallback: str) -> str:
 
 
 def _clear_chat_session_id(state: BridgeState, session_id: str) -> None:
-    if str(state.chat_session.get("sessionId") or "") != session_id:
-        return
-    state.chat_session = {**state.chat_session, "sessionId": ""}
+    with chat_lifecycle_lock(state):
+        if str(state.chat_session.get("sessionId") or "") != session_id:
+            return
+        state.chat_session = {**state.chat_session, "sessionId": ""}
 
 
-def _cleanup_chat_init(state: BridgeState, session_id: str, *, reason: str) -> None:
-    try:
-        stop_chat(state, reason=reason)
-    except Exception:
-        pass
-    finally:
-        chat_stream = getattr(state, "chat_stream", None)
-        if chat_stream is not None:
-            try:
-                chat_stream.delete_session(session_id)
-            except Exception:
-                pass
-        _clear_chat_session_id(state, session_id)
+def _cleanup_chat_init(
+    state: BridgeState,
+    session_id: str,
+    *,
+    reason: str,
+    expected_session_id: str | None,
+) -> None:
+    with chat_lifecycle_lock(state):
+        try:
+            stop_chat(state, reason=reason, expected_session_id=expected_session_id)
+        except Exception:
+            pass
+        finally:
+            chat_stream = getattr(state, "chat_stream", None)
+            if chat_stream is not None:
+                try:
+                    chat_stream.delete_session(session_id)
+                except Exception:
+                    pass
+            _clear_chat_session_id(state, session_id)
 
 
 def _run_chat_init(
@@ -118,77 +127,87 @@ def _run_chat_init(
     timeout: float,
     before_launch: Callable[[], None] | None = None,
 ) -> dict[str, Any]:
-    if _chat_runtime_closing(state):
-        raise RuntimeError("chat runtime is closing; try again shortly")
-    # Validate before creating an init stream: rejected edits must not clean up
-    # (and consequently stop) the currently running conversation.
-    if before_launch is not None:
-        if _is_task_cancel_requested(state, task_id):
-            raise TaskCancelled()
-        before_launch()
-    # Preserve the legacy behavior for an already-running, fully initialized
-    # runtime. The async API simply resolves to its current snapshot.
-    if _chat_process_running():
-        return _chat_snapshot(state)
-
-    chat_stream = getattr(state, "chat_stream", None)
-    if chat_stream is None:
-        raise RuntimeError("chat stream service is unavailable")
-
-    stream_info = chat_stream.create_session(
-        _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))
-    )
-    session_id = str(stream_info.get("sessionId") or "").strip()
-    if not session_id:
-        raise RuntimeError("failed to create chat initialization session")
-
-    keep_session = _chat_runtime_mode(state) == "react"
+    session_id = ""
+    expected_session_id = None
     try:
-        if _is_task_cancel_requested(state, task_id):
-            raise TaskCancelled()
-        _update_task(
-            state,
-            task_id,
-            message="Starting chat runtime.",
-            phase="launching",
-            progress=0.02,
-        )
-        launch_result = launch(stream_info)
-        if not isinstance(launch_result, dict):
-            raise RuntimeError("chat launch returned an invalid result")
-        pending_history_path = str(
-            launch_result.pop("_pendingHistoryPath", "") or ""
-        ).strip()
-        if str(launch_result.get("status") or "") == "error" and isinstance(
-            launch_result.get("runtimeDependencyError"),
-            dict,
-        ):
-            # A missing runtime dependency is an expected, actionable result.
-            # Keep the task successful so the frontend can open its existing
-            # dependency-install confirmation flow from the returned snapshot.
-            launch_result.pop("_chatInitStreamAttached", None)
-            chat_stream.delete_session(session_id)
-            _clear_chat_session_id(state, session_id)
-            return launch_result
-        if str(launch_result.get("status") or "") == "error":
-            raise ChatInitFailed(
-                str(
-                    launch_result.get("statusMessage")
-                    or launch_result.get("dialogText")
-                    or "chat launch failed"
-                )
-            )
-
-        # A concurrent legacy launch can win between the initial process check
-        # and the launch callback. In that case no init stream was attached and
-        # the existing runtime is already the authoritative result.
-        if not bool(launch_result.pop("_chatInitStreamAttached", False)):
+        # Keep validation, restart, stream creation and process launch atomic.
+        # Release the lock before waiting for asynchronous runtime initialization.
+        with chat_lifecycle_lock(state):
+            if _chat_runtime_closing(state):
+                raise RuntimeError("chat runtime is closing; try again shortly")
+            # Validate before creating an init stream: rejected edits must not clean up
+            # (and consequently stop) the currently running conversation.
+            if before_launch is not None:
+                if _is_task_cancel_requested(state, task_id):
+                    raise TaskCancelled()
+                before_launch()
+            # Preserve the legacy behavior for an already-running, fully initialized
+            # runtime. The async API simply resolves to its current snapshot.
             if _chat_process_running():
-                chat_stream.delete_session(session_id)
                 return _chat_snapshot(state)
-            raise ChatInitFailed(
-                "chat runtime did not attach its initialization stream"
+
+            chat_stream = getattr(state, "chat_stream", None)
+            if chat_stream is None:
+                raise RuntimeError("chat stream service is unavailable")
+
+            expected_session_id = str(state.chat_session.get("sessionId") or "").strip()
+            stream_info = chat_stream.create_session(
+                _chat_stream_initial_snapshot(_chat_snapshot(state, "idle", ""))
             )
+            session_id = str(stream_info.get("sessionId") or "").strip()
+            if not session_id:
+                raise RuntimeError("failed to create chat initialization session")
+
+            keep_session = _chat_runtime_mode(state) == "react"
+            if _is_task_cancel_requested(state, task_id):
+                raise TaskCancelled()
+            _update_task(
+                state,
+                task_id,
+                message="Starting chat runtime.",
+                phase="launching",
+                progress=0.02,
+            )
+            try:
+                launch_result = launch(stream_info)
+            finally:
+                expected_session_id = str(
+                    state.chat_session.get("sessionId") or ""
+                ).strip()
+            if not isinstance(launch_result, dict):
+                raise RuntimeError("chat launch returned an invalid result")
+            pending_history_path = str(
+                launch_result.pop("_pendingHistoryPath", "") or ""
+            ).strip()
+            if str(launch_result.get("status") or "") == "error" and isinstance(
+                launch_result.get("runtimeDependencyError"),
+                dict,
+            ):
+                # A missing runtime dependency is an expected, actionable result.
+                # Keep the task successful so the frontend can open its existing
+                # dependency-install confirmation flow from the returned snapshot.
+                launch_result.pop("_chatInitStreamAttached", None)
+                chat_stream.delete_session(session_id)
+                _clear_chat_session_id(state, session_id)
+                return launch_result
+            if str(launch_result.get("status") or "") == "error":
+                raise ChatInitFailed(
+                    str(
+                        launch_result.get("statusMessage")
+                        or launch_result.get("dialogText")
+                        or "chat launch failed"
+                    )
+                )
+
+            # A callback may resolve to an existing runtime without attaching
+            # its initialization stream.
+            if not bool(launch_result.pop("_chatInitStreamAttached", False)):
+                if _chat_process_running():
+                    chat_stream.delete_session(session_id)
+                    return _chat_snapshot(state)
+                raise ChatInitFailed(
+                    "chat runtime did not attach its initialization stream"
+                )
 
         deadline = time.monotonic() + max(float(timeout), 0.1)
         last_changes: dict[str, Any] | None = None
@@ -196,7 +215,13 @@ def _run_chat_init(
             if _is_task_cancel_requested(state, task_id):
                 raise TaskCancelled()
 
-            snapshot = chat_stream.get_snapshot(session_id)
+            with chat_lifecycle_lock(state):
+                if (
+                    str(state.chat_session.get("sessionId") or "").strip()
+                    != expected_session_id
+                ):
+                    raise ChatInitFailed("chat session changed during initialization")
+                snapshot = chat_stream.get_snapshot(session_id)
             init_task = snapshot.get("initTask") if isinstance(snapshot, dict) else None
             if isinstance(init_task, dict):
                 changes = _safe_task_changes(init_task)
@@ -206,17 +231,25 @@ def _run_chat_init(
 
                 status = str(init_task.get("status") or "").strip().lower()
                 if status == "succeeded":
-                    if pending_history_path and not persist_confirmed_history_path(
-                        state,
-                        pending_history_path,
-                    ):
-                        logger.warning(
-                            "Chat initialized but the selected history path could not be persisted",
-                            extra={"history_path": pending_history_path},
-                        )
-                    if not keep_session:
-                        chat_stream.delete_session(session_id)
-                    return _chat_snapshot(state)
+                    with chat_lifecycle_lock(state):
+                        if (
+                            str(state.chat_session.get("sessionId") or "").strip()
+                            != expected_session_id
+                        ):
+                            raise ChatInitFailed(
+                                "chat session changed during initialization"
+                            )
+                        if pending_history_path and not persist_confirmed_history_path(
+                            state,
+                            pending_history_path,
+                        ):
+                            logger.warning(
+                                "Chat initialized but the selected history path could not be persisted",
+                                extra={"history_path": pending_history_path},
+                            )
+                        if not keep_session:
+                            chat_stream.delete_session(session_id)
+                        return _chat_snapshot(state)
                 if status == "failed":
                     raise ChatInitFailed(
                         _terminal_error(init_task, "chat initialization failed")
@@ -237,9 +270,13 @@ def _run_chat_init(
             f"chat initialization timed out after {int(max(float(timeout), 0.1))} seconds"
         )
     except BaseException:
-        _cleanup_chat_init(
-            state, session_id, reason="Chat initialization did not complete."
-        )
+        if session_id:
+            _cleanup_chat_init(
+                state,
+                session_id,
+                reason="Chat initialization did not complete.",
+                expected_session_id=expected_session_id,
+            )
         raise
 
 

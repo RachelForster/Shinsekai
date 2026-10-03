@@ -576,8 +576,13 @@ describe("entity repositories", () => {
     const themeArchive = new File(["theme"], "theme.zip", { type: "application/zip" });
 
     await chat.getChatSnapshot();
+    expect(platform.chat.getSnapshot).toHaveBeenLastCalledWith();
+    await chat.getChatObserverSnapshot();
+    expect(platform.chat.getSnapshot).toHaveBeenLastCalledWith({ claimRenderer: false });
     await chat.getChatRuntimeStatus();
     await chat.closeChat();
+    await chat.closeChat({ expectedSessionId: "A" });
+    expect(platform.chat.close).toHaveBeenLastCalledWith({ expectedSessionId: "A" });
     await chat.getChatTheme();
     await chat.launchChat(sampleLastLaunch, taskOptions);
     await chat.installMissingRuntimeDependency({ moduleName: "mem0" }, taskOptions);
@@ -670,7 +675,7 @@ describe("entity repositories", () => {
     await musicCover.searchMusicCover({ query: "song", source: "youtube" });
     await musicCover.runMusicCover({ pickIndex: 0, query: "song", skipRvc: false, source: "youtube" }, taskOptions);
 
-    expect(platform.chat.close).toHaveBeenCalledTimes(1);
+    expect(platform.chat.close).toHaveBeenCalledTimes(2);
     expect(platform.chat.launch).toHaveBeenCalledWith(sampleLastLaunch, taskOptions);
     expect(platform.chat.resumeLast).toHaveBeenNthCalledWith(1, taskOptions, undefined);
     expect(platform.chat.resumeLast).toHaveBeenNthCalledWith(2, taskOptions, { enableMobileAccess: true });

@@ -43,6 +43,7 @@ class BridgeState:
     chat_stream: Any = None
     mobile_access_service: MobileAccessPort | None = None
     chat_runtime_lock: threading.Lock = field(default_factory=threading.Lock)
+    chat_lifecycle_lock: Any = field(default_factory=threading.RLock, kw_only=True)
     chat_runtime_closing: bool = False
     history_download_lock: threading.Lock = field(default_factory=threading.Lock)
     history_download_capabilities: dict[str, tuple[str, float]] = field(default_factory=dict)

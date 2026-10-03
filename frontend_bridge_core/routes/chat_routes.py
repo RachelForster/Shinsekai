@@ -17,7 +17,7 @@ from application.chat.runtime_process import (
     _chat_theme_payload,
     _handle_chat_command,
 )
-from application.chat.stop_chat import stop_chat
+from application.chat.stop_chat import ChatSessionChanged, stop_chat
 from frontend_bridge_core.chat_session import (
     launch_chat,
     resume_last_chat,
@@ -86,7 +86,18 @@ def _initialize(request: ApiRequest) -> JsonResponse:
 
 
 def _close(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(stop_chat(request.state))
+    expected_session_id = request.body.get("expectedSessionId")
+    if "expectedSessionId" in request.body and not isinstance(expected_session_id, str):
+        raise ValueError("expectedSessionId must be a string")
+    try:
+        return JsonResponse(
+            stop_chat(request.state, expected_session_id=expected_session_id)
+        )
+    except ChatSessionChanged as exc:
+        return JsonResponse(
+            {"error": str(exc), "errorCode": "chat_session_changed"},
+            HTTPStatus.CONFLICT,
+        )
 
 
 def _command(request: ApiRequest) -> JsonResponse:
