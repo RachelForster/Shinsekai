@@ -250,13 +250,17 @@ def test_import_mixed_motion_batch_and_serve_managed_copies(harness, metadata):
         model_file(state, str(model), "again.vpd")
 
 
-@pytest.mark.parametrize("failure", ["invalid", "incompatible", "persist", "stale"])
+@pytest.mark.parametrize("failure", ["invalid", "active-interpolation", "incompatible", "persist", "stale"])
 def test_motion_batch_is_atomic(harness, monkeypatch, failure):
     state, use_case, body = _mmd_batch(harness)
     before = state.config_manager.get_character_by_name("Haru").model_dump(mode="json")
     model = Path(body["model_path"])
     if failure == "invalid":
         Path(body["source_paths"][1]).write_bytes(b"broken")
+    elif failure == "active-interpolation":
+        motion = bytearray(vmd_bytes())
+        motion[54 + 47 + 1] = 0xff
+        Path(body["source_paths"][1]).write_bytes(motion)
     elif failure == "incompatible":
         Path(body["source_paths"][1]).write_bytes(vmd_bytes("another-rig"))
     elif failure == "persist":

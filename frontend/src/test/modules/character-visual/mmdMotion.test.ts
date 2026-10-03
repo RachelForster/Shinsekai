@@ -90,7 +90,11 @@ describe("MMD SDK motion evaluation and smooth pose changes", () => {
       const loaded = await loadMotion(scene, "exported.vmd", vmdExporterBytes(metadata));
       expect(loaded.endFrame).toBe(30);
       player.set(player.bind(loaded), "play", false);
-      player.sample(1);
+      player.sample(0.5);
+      // Bezier x(1/2) = 1/2, y(1/2) = 1/8; yaw is therefore 0.6 / 8.
+      expect(head.rotationQuaternion.y).toBeCloseTo(Math.sin(0.3 / 8), 6);
+      expect(head.rotationQuaternion.w).toBeCloseTo(Math.cos(0.3 / 8), 6);
+      player.sample(0.5);
       expect(head.rotationQuaternion.y).toBeCloseTo(Math.sin(0.3), 6);
     },
   );

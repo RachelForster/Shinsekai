@@ -104,8 +104,17 @@ class _VmdReader:
             raise ValueError("Non-finite VMD parameters")
         return values
 
-    def interpolation(self, size: int, *, step: int = 1) -> None:
-        if any(value > 127 for value in self.read(size)[::step]):
+    def interpolation(self, size: int) -> None:
+        if any(value > 127 for value in self.read(size)):
+            raise ValueError("Invalid VMD interpolation")
+
+    def bone_interpolation(self) -> None:
+        # Validate the entire leading 4x4 control matrix, then consume all copies.
+        self.interpolation(16)
+        copies = self.read(48)
+        # VmdLoader 1.3 also reads offsets 0, 4, 8 and 12 of each copied block.
+        # Keep those controls bounded; unused copied/padding bytes are opaque.
+        if any(value > 127 for value in copies[::4]):
             raise ValueError("Invalid VMD interpolation")
 
     def flag(self) -> None:
@@ -130,9 +139,7 @@ def _vmd(data: bytes) -> MotionTargets:
         reader.frame()
         reader.floats(3)
         _quaternion(reader.floats(4))
-        # Match VmdLoader: each 16-byte block uses offsets 0, 4, 8 and 12.
-        # Other bytes contain redundant data, padding and physics metadata.
-        reader.interpolation(64, step=4)
+        reader.bone_interpolation()
     for _ in range(reader.count(23)):
         name = reader.name(15)
         if not name:

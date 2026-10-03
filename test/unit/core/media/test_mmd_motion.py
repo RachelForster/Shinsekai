@@ -75,10 +75,11 @@ def test_vmd_ignores_metadata_not_used_by_the_runtime(tmp_path, metadata):
     assert inspect_motion(source).bones == {"頭"}
 
 
-@pytest.mark.parametrize("index", [axis * 16 + point * 4 for axis in range(4) for point in range(4)])
-def test_vmd_rejects_invalid_active_interpolation_parameters(tmp_path, index):
+@pytest.mark.parametrize("frame", [0, 1])
+@pytest.mark.parametrize("index", [*range(16), *range(16, 64, 4)])
+def test_vmd_rejects_invalid_active_interpolation_parameters(tmp_path, frame, index):
     data = bytearray(vmd_bytes())
-    data[54 + 47 + index] = 0xff
+    data[54 + frame * 111 + 47 + index] = 0xff
     source = tmp_path / "bad.vmd"
     source.write_bytes(data)
     with pytest.raises(ValueError, match="interpolation"):
