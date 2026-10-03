@@ -15,7 +15,7 @@ import { startDesktopWindowResize, type DesktopResizeDirection } from "../../../
 import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatOption, ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
-import { CharacterVisual } from "../../../modules/character-visual";
+import { CharacterVisual, type VisualFraming } from "../../../modules/character-visual";
 import { Button, ThemeFrame } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import type { ChatStageEffectImage } from "../state/types";
@@ -99,12 +99,14 @@ export function SpriteLayer({
   hidden,
   onDragStart,
   runtimeScaleForSprite,
+  runtimeFramingForSprite,
   speaker,
   sprites,
 }: {
   hidden: boolean;
   onDragStart?: MouseEventHandler<HTMLElement>;
   runtimeScaleForSprite: (sprite: ChatStageSprite, index: number) => number;
+  runtimeFramingForSprite?: (sprite: ChatStageSprite, index: number) => VisualFraming;
   speaker?: string;
   sprites: ChatStageSprite[];
 }) {
@@ -149,6 +151,7 @@ export function SpriteLayer({
                 modelUrl: sprite.modelUrl ? stageAssetUrl(sprite.modelUrl) : "",
               }}
               hitbox={Boolean(onDragStart)}
+              framing={runtimeFramingForSprite?.(sprite, index)}
               className="sprite-layer__image"
               onImageError={hideBrokenStageAsset}
               onMouseDown={onDragStart ?? (() => {})}

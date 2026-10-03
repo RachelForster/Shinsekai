@@ -8,6 +8,7 @@ import { upsertChatStageSprite } from "./sprites";
 function upsertSprite(state: ChatStageState, event: Extract<ChatStageEvent, { type: "sprite.show" }>): ChatStageState {
   const id = event.characterName;
   const nextSprite: ChatStageSprite = {
+    identityKey: event.identityKey,
     characterName: event.characterName,
     id,
     label: event.characterName,

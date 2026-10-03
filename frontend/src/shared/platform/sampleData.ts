@@ -344,7 +344,14 @@ export const sampleChatSnapshot: ChatSnapshot = {
   options: ["继续", "查看历史", "切换角色"],
   runtimeMode: "react",
   sprites: [
-    { avatarType: "static", modelUrl: "", id: "nanami-default", path: "/assets/present_example.png", label: "Nanami" },
+    {
+      identityKey: "character:nanami",
+      avatarType: "static",
+      modelUrl: "",
+      id: "nanami-default",
+      path: "/assets/present_example.png",
+      label: "Nanami",
+    },
   ],
   stats: [
     { icon: "heart", label: "HP", max: 100, value: 72 },

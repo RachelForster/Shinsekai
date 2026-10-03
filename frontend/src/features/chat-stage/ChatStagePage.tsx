@@ -53,11 +53,13 @@ import {
   readChatStageRuntimeConfig,
   resetChatStageRuntimeThemeAppearance,
   runtimeSpriteScale,
+  runtimeSpriteFraming,
   subscribeChatStageRuntimeConfig,
   writeChatStageRuntimeConfig,
 } from "./runtimeConfig";
 import { useOptionalChatTheme } from "./theme/ChatThemeProvider";
 import { limitChatStageSpritesToSlots } from "./state/sprites";
+import { normalizeVisualFraming, type VisualFraming } from "../../modules/character-visual";
 import { playerPortraitForDialog } from "./state/text";
 import {
   CHAT_ATTACHMENT_LIMIT,
@@ -553,6 +555,13 @@ export function ChatStagePage() {
     setRuntimeConfig((current) => ({ ...current, windowScale }));
   };
 
+  const updateRuntimeSpriteFraming = (spriteKey: string, framing: VisualFraming) => {
+    setRuntimeConfig((current) => ({
+      ...current,
+      spriteFramings: { ...current.spriteFramings, [spriteKey]: normalizeVisualFraming(framing) },
+    }));
+  };
+
   const updateRuntimeConfigThemeColor = (configThemeColor: string) => {
     setRuntimeConfig((current) => ({ ...current, configThemeColor: normalizeThemeColor(configThemeColor) }));
   };
@@ -742,6 +751,7 @@ export function ChatStagePage() {
           hidden={!viewModel.layers.sprites}
           onDragStart={standaloneDesktopWindow ? handleWindowDrag : undefined}
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
+          runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
           sprites={stageSprites}
         />
@@ -894,6 +904,7 @@ export function ChatStagePage() {
           onSpriteOffsetXChange={updateRuntimeSpriteOffsetX}
           onSpriteOffsetYChange={updateRuntimeSpriteOffsetY}
           onSpriteScaleChange={updateRuntimeSpriteScale}
+          onSpriteFramingChange={updateRuntimeSpriteFraming}
           onTextSpeedChange={updateRuntimeTextSpeed}
           onTextStyleChange={updateRuntimeTextStyle}
           onTurnOptionsChange={updateTurnOptions}
@@ -902,6 +913,7 @@ export function ChatStagePage() {
           spriteOffsetX={runtimeConfig.spriteOffsetX}
           spriteOffsetY={runtimeConfig.spriteOffsetY}
           spriteScales={runtimeConfig.spriteScales}
+          spriteFramings={runtimeConfig.spriteFramings}
           sprites={stageSprites}
           textSpeed={typewriterCps}
           turnOptions={state.turnOptions}

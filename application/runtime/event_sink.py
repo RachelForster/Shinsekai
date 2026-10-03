@@ -232,6 +232,8 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         for axis in ("x", "y"):
             if event.get(axis) is not None:
                 next_sprite[axis] = event.get(axis)
+        if event.get("identityKey"):
+            next_sprite["identityKey"] = str(event["identityKey"])
         current.append(next_sprite)
         next_snapshot["sprites"] = current
         return next_snapshot

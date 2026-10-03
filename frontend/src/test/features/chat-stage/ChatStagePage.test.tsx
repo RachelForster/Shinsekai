@@ -1637,6 +1637,80 @@ describe("ChatStagePage", () => {
     expect(document.querySelector(".dialog-layer__html")).toHaveTextContent("Ready");
   });
 
+  it("remembers per-character framing through presets, expression changes and stage reload", async () => {
+    let listener: ((event: ChatStageEvent) => void) | undefined;
+    mocks.subscribeChatEvents.mockImplementation((next) => {
+      listener = next;
+      return vi.fn();
+    });
+    mocks.getChatSnapshot.mockResolvedValue(
+      snapshot({
+        sprites: [
+          {
+            identityKey: "character:mio",
+            avatarType: "static",
+            modelUrl: "",
+            id: "Mio-0",
+            label: "Mio",
+            path: "asset://mio.png",
+          },
+          {
+            identityKey: "character:ren",
+            avatarType: "static",
+            modelUrl: "",
+            id: "Ren-0",
+            label: "Ren",
+            path: "asset://ren.png",
+          },
+        ],
+      }),
+    );
+    const view = renderPage();
+    await screen.findByText("Ready");
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const config = await screen.findByRole("dialog", { name: "Chat appearance settings" });
+    const mio = within(config).getByRole("group", { name: "Sprite framing: Mio" });
+    fireEvent.click(within(mio).getByRole("button", { name: "Half view" }));
+    fireEvent.change(within(mio).getByRole("slider", { name: "Vertical framing position: Mio" }), {
+      target: { value: "25" },
+    });
+    await waitFor(() =>
+      expect(screen.getByAltText("Mio").parentElement).toHaveStyle({ transform: "translateY(-25%) scale(2)" }),
+    );
+    expect(screen.getByAltText("Ren")).toHaveClass("sprite-layer__image");
+    await waitFor(() =>
+      expect(JSON.parse(localStorage.getItem("shinsekai-chat-stage-runtime-config")!).config.spriteFramings).toEqual({
+        "character:mio": { heightRatio: 0.5, verticalPosition: 0.25 },
+      }),
+    );
+    act(() =>
+      listener?.({
+        type: "sprite.show",
+        avatarType: "static",
+        modelUrl: "",
+        characterName: "Mio",
+        url: "asset://mio-happy.png",
+        identityKey: "character:mio",
+        slot: 0,
+        scale: 1,
+        seq: 1,
+        ts: 1,
+        v: 1,
+      }),
+    );
+    expect(screen.getByAltText("Mio")).toHaveAttribute("src", "asset://mio-happy.png");
+    expect(screen.getByAltText("Mio").parentElement).toHaveStyle({ transform: "translateY(-25%) scale(2)" });
+    view.unmount();
+    renderPage();
+    await screen.findByText("Ready");
+    expect(screen.getByAltText("Mio").parentElement).toHaveStyle({ transform: "translateY(-25%) scale(2)" });
+    fireEvent.click(screen.getByRole("button", { name: "Chat appearance settings" }));
+    const restored = await screen.findByRole("group", { name: "Sprite framing: Mio" });
+    fireEvent.click(within(restored).getByRole("button", { name: "Full view" }));
+    expect(screen.getByAltText("Mio")).toHaveClass("sprite-layer__image");
+    expect(document.querySelector(".character-visual--framed")).toBeNull();
+  });
+
   it("applies runtime text speed and dialog opacity from chat config", async () => {
     mocks.getChatSnapshot.mockResolvedValue(
       snapshot({
@@ -1792,6 +1866,7 @@ describe("ChatStagePage", () => {
           Mio: 1.35,
           Ren: 0.8,
         },
+        spriteFramings: {},
         spriteOffsetX: 72,
         spriteOffsetY: -48,
         typewriterCps: 96,

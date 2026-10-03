@@ -3,9 +3,32 @@
   aspect-ratio: 1;
 }
 
-.character-visual__viewport {
+.character-visual__viewport,
+.character-visual__framing-surface {
   position: absolute;
   inset: 0;
+}
+
+.character-visual--framed {
+  overflow: hidden;
+}
+
+:where(.character-visual__static-frame) {
+  position: relative;
+}
+
+.character-visual__static-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.character-visual__static-frame:has(img[data-load-state="error"]) {
+  display: none;
 }
 
 .character-visual__error {

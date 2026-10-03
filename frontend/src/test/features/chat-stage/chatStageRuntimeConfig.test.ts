@@ -21,10 +21,103 @@ import {
   resetChatStageRuntimeThemeAppearance,
   resetPersistedChatStageRuntimeThemeAppearance,
   runtimeSpriteScale,
+  runtimeSpriteFraming,
+  runtimeSpriteFramingKey,
+  writeChatStageRuntimeConfig,
   subscribeChatStageRuntimeConfig,
 } from "../../../features/chat-stage/runtimeConfig";
 
 describe("chat stage runtime config", () => {
+  it("loads old configs without cropping and sanitizes independently keyed framing values", () => {
+    expect(
+      normalizeChatStageRuntimeConfig({ version: 4, config: { spriteScales: { "Mio-0": 1.2 } } }).spriteFramings,
+    ).toEqual({});
+    const config = normalizeChatStageRuntimeConfig({
+      spriteFramings: {
+        " character:mio ": { heightRatio: 0.5, verticalPosition: 0.25 },
+        "character:ren": { heightRatio: -2, verticalPosition: 4 },
+        bad: null,
+        invalid: "bad",
+        "": { heightRatio: 0.3 },
+      },
+    });
+    expect(config.spriteFramings).toEqual({
+      "character:mio": { heightRatio: 0.5, verticalPosition: 0.25 },
+      "character:ren": { heightRatio: 0.2, verticalPosition: 1 },
+    });
+    writeChatStageRuntimeConfig(config);
+    expect(readChatStageRuntimeConfig().spriteFramings).toEqual(config.spriteFramings);
+    expect(resetChatStageRuntimeThemeAppearance(config).spriteFramings).toEqual(config.spriteFramings);
+  });
+  it.each(["static", "l2d", "mmd", "future-format"])(
+    "keeps framing for %s across expression URLs and snapshot IDs",
+    (avatarType) => {
+      const config = normalizeChatStageRuntimeConfig({
+        spriteFramings: { "character:mio": { heightRatio: 0.5, verticalPosition: 0.25 } },
+      });
+      const sprite = {
+        identityKey: "character:mio",
+        id: "Mio-0",
+        label: "Mio",
+        characterName: "Mio",
+        path: "/first",
+        modelUrl: "",
+        avatarType,
+      };
+      expect(runtimeSpriteFraming(config, sprite, 0)).toEqual({ heightRatio: 0.5, verticalPosition: 0.25 });
+      expect(
+        runtimeSpriteFraming(config, { ...sprite, characterName: "mio", label: "mio", id: "mio", path: "/new" }, 1),
+      ).toEqual({
+        heightRatio: 0.5,
+        verticalPosition: 0.25,
+      });
+      expect(
+        runtimeSpriteFraming(config, { ...sprite, identityKey: "character:ren", characterName: "Ren" }, 0),
+      ).toEqual({
+        heightRatio: 1,
+        verticalPosition: 0,
+      });
+    },
+  );
+
+  it("keeps same-filename unowned images separate across URL changes and reloads", () => {
+    const first = {
+      identityKey: "image:/a/portrait.png",
+      id: "portrait",
+      label: "portrait",
+      characterName: "portrait",
+      path: "/media?path=/a/portrait.png&token=old",
+      modelUrl: "",
+      avatarType: "static",
+    };
+    const second = { ...first, identityKey: "image:/b/portrait.png", path: "/media?path=/b/portrait.png&token=old" };
+    const config = normalizeChatStageRuntimeConfig({
+      spriteFramings: { [runtimeSpriteFramingKey(first, 0)]: { heightRatio: 0.3, verticalPosition: 0.4 } },
+    });
+    writeChatStageRuntimeConfig(config);
+    const restored = readChatStageRuntimeConfig();
+    expect(
+      runtimeSpriteFraming(restored, { ...first, id: "portrait:2", path: "/media?path=/a/portrait.png&token=new" }, 2),
+    ).toEqual({ heightRatio: 0.3, verticalPosition: 0.4 });
+    expect(runtimeSpriteFraming(restored, second, 0)).toEqual({ heightRatio: 1, verticalPosition: 0 });
+  });
+
+  it("uses distinct asset fallbacks when older producers provide identical display names", () => {
+    const first = {
+      id: "portrait",
+      label: "portrait",
+      characterName: "portrait",
+      path: "a/portrait.png",
+      modelUrl: "",
+      avatarType: "static",
+    };
+    const second = { ...first, path: "b/portrait.png" };
+    expect(runtimeSpriteFramingKey(first, 0)).not.toBe(runtimeSpriteFramingKey(second, 0));
+    const config = normalizeChatStageRuntimeConfig({ spriteFramings: { portrait: { heightRatio: 0.3 } } });
+    expect(runtimeSpriteFraming(config, first, 0)).toEqual({ heightRatio: 1, verticalPosition: 0 });
+    expect(runtimeSpriteFraming(config, second, 0)).toEqual({ heightRatio: 1, verticalPosition: 0 });
+  });
+
   beforeEach(() => {
     desktopEventMocks.emit.mockReset();
     desktopEventMocks.emit.mockResolvedValue(undefined);

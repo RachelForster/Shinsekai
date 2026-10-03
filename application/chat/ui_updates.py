@@ -16,7 +16,8 @@ if TYPE_CHECKING:
 from core.media.effect_bindings import effect_modes
 from core.messaging.stat_payload import parse_stat_payload
 from core.paths import resource_path
-from application.chat.character_visual import resolve_character_visual
+from config.config_manager import character_name_key
+from application.chat.character_visual import image_visual_identity, resolve_character_visual
 from application.media.resource_urls import ResourceUrls
 from application.chat.history_state import serialize_chat_history_entries
 
@@ -580,6 +581,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         except Exception as e:
             print(f"StreamingUIUpdateManager: 立绘解析失败: {e}")
             return
+        character_name = str(getattr(character_config, "name", "") or character_name)
         display_slot = self._get_or_create_sprite_slot(character_name)
         self._sink.emit(
             {
@@ -638,6 +640,7 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
             {
                 "type": "sprite.show",
                 "characterName": resolved_character_name,
+                "identityKey": image_visual_identity(path),
                 "url": self._media_url(path),
                 "scale": float(scale or 1.0),
                 "slot": self._get_or_create_sprite_slot(resolved_character_name),
@@ -648,6 +651,11 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         return True
 
     def remove_character_sprite(self, character_name: str) -> None:
+        name_key = character_name_key(character_name)
+        character_name = next(
+            (name for name in self._sprite_lru if character_name_key(name) == name_key),
+            character_name,
+        )
         self._sprite_lru.pop(character_name, None)
         self._sink.emit({"type": "sprite.remove", "characterName": character_name})
 

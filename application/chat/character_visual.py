@@ -1,11 +1,19 @@
 """Project a selected character asset for both stage events and snapshots."""
 
 from dataclasses import dataclass
+import os
 from typing import Any
 
 from application.media.resource_urls import ResourceUrls
 from config.character_assets import get_character_assets, get_character_avatar_type
-from core.sprite.selection import sprite_entry_path
+from config.config_manager import character_name_key
+from core.sprite.selection import resolve_runtime_path, sprite_entry_path
+
+
+def image_visual_identity(raw_path: str) -> str:
+    """Identify an unowned image before transport URLs and display labels are added."""
+    path = os.path.normcase(str(resolve_runtime_path(raw_path))).replace("\\", "/")
+    return f"image:{path}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,6 +22,7 @@ class CharacterVisual:
     avatar_type: str
     model_url: str
     scale: float
+    identity_key: str = ""
 
     def event_fields(self) -> dict[str, Any]:
         return {
@@ -21,6 +30,7 @@ class CharacterVisual:
             "avatarType": self.avatar_type,
             "modelUrl": self.model_url,
             "scale": self.scale,
+            "identityKey": self.identity_key,
         }
 
     def snapshot_fields(self) -> dict[str, Any]:
@@ -49,4 +59,6 @@ def resolve_character_visual(
         if isinstance(character, dict)
         else getattr(character, "sprite_scale", 1.0)
     )
-    return CharacterVisual(url, kind, model_url, float(scale or 1.0))
+    name = character.get("name", "") if isinstance(character, dict) else getattr(character, "name", "")
+    identity_key = f"character:{character_name_key(name)}" if name else ""
+    return CharacterVisual(url, kind, model_url, float(scale or 1.0), identity_key)

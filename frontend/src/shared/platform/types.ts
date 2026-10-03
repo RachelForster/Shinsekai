@@ -919,6 +919,8 @@ export interface RuntimeDependencyInstallResult {
 }
 
 export interface ChatSprite {
+  /** Producer-owned identity, independent of display labels, expression URLs and snapshot IDs. */
+  identityKey?: string;
   id: string;
   label: string;
   path: string;
@@ -1212,6 +1214,7 @@ export type ChatStageEvent =
   | (ChatEventBase & { type: "plugin.page.dismiss"; pluginId: string; presentationId: string })
   | (ChatEventBase & {
       type: "sprite.show";
+      identityKey?: string;
       characterName: string;
       url: string;
       scale: number;
