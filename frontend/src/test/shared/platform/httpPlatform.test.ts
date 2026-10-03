@@ -1212,7 +1212,7 @@ describe("http platform", () => {
     );
   });
 
-  it("resumes the last chat through the bridge", async () => {
+  it.each([undefined, false, true])("resumes through the bridge with mobile override %s", async (enabled) => {
     const snapshot = {
       backgroundPath: "",
       characterName: "",
@@ -1242,17 +1242,22 @@ describe("http platform", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const platform = createHttpPlatform("http://127.0.0.1:8787");
-    const result = await platform.chat.resumeLast();
+    const onTaskUpdate = vi.fn();
+    const result = await platform.chat.resumeLast(
+      { onTaskUpdate },
+      enabled === undefined ? undefined : { enableMobileAccess: enabled },
+    );
 
     expect(result.dialogText).toBe("");
     expect(result.statusMessage).toContain("聊天进程已启动");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://127.0.0.1:8787/api/chat/init",
       expect.objectContaining({
-        body: JSON.stringify({ mode: "resume-last" }),
+        body: JSON.stringify({ mode: "resume-last", enableMobileAccess: enabled }),
         method: "POST",
       }),
     );
+    expect(onTaskUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: "succeeded", result: snapshot }));
   });
 
   it("closes the live chat session through the bridge with keepalive enabled", async () => {

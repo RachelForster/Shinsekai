@@ -1413,6 +1413,7 @@ export type MessageKey =
   | "mobileAccess.copy"
   | "mobileAccess.description"
   | "mobileAccess.firewall"
+  | "mobileAccess.launchHint"
   | "mobileAccess.openLocalChat"
   | "mobileAccess.qrAlt"
   | "mobileAccess.title"

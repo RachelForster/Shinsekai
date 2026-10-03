@@ -5,6 +5,7 @@ import type {
   ChatCommandResult,
   ChatHistoryEntry,
   ChatLaunchPayload,
+  ChatResumeOverrides,
   ChatRuntimeProcessState,
   ChatSnapshot,
   RuntimeDependencyInstallInput,
@@ -97,8 +98,11 @@ export function installMissingRuntimeDependency(
   return getPlatform().runtime.installMissingDependency(input, options);
 }
 
-export function resumeLastChat(options?: TaskProgressOptions<ChatSnapshot>): Promise<ChatSnapshot> {
-  return getPlatform().chat.resumeLast(options);
+export function resumeLastChat(
+  options?: TaskProgressOptions<ChatSnapshot>,
+  overrides?: ChatResumeOverrides,
+): Promise<ChatSnapshot> {
+  return getPlatform().chat.resumeLast(options, overrides);
 }
 
 export function sendChatCommand(command: ChatCommand): Promise<ChatCommandResult> {
