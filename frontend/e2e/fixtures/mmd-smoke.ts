@@ -27,16 +27,29 @@ try {
   const root = scene.meshes.find((mesh) => mesh.metadata?.skeleton);
   const skeleton = root?.metadata.skeleton;
   const headIndex = skeleton?.bones.findIndex((bone: { name: string }) => ["頭", "head"].includes(bone.name));
-  const readHeadMatrix = () => {
-    if (!root || !skeleton || headIndex < 0) return [];
-    return Array.from(skeleton.getTransformMatrices(root).slice(headIndex * 16, headIndex * 16 + 16));
+  const findChest = (names: string[]) =>
+    skeleton?.bones.findIndex((bone: { name: string }) =>
+      names.includes(
+        bone.name
+          .trim()
+          .toLowerCase()
+          .replace(/[\s_]+/g, ""),
+      ),
+    ) ?? -1;
+  const preferredChest = findChest(["上半身2", "上半身２", "upperbody2", "chest", "upperchest", "胸腔"]);
+  const chestIndex = preferredChest >= 0 ? preferredChest : findChest(["上半身", "upperbody", "spine"]);
+  const readMatrix = (index: number) => {
+    if (!root || !skeleton || index < 0) return [];
+    return Array.from(skeleton.getTransformMatrices(root).slice(index * 16, index * 16 + 16));
   };
   Object.assign(window, {
     mmdSmoke: {
       session,
       abort,
       hostInput,
-      readHeadMatrix,
+      readHeadMatrix: () => readMatrix(headIndex ?? -1),
+      readChestMatrix: () => readMatrix(chestIndex),
+      readHeadPose: () => skeleton?.bones[headIndex]?.rotationQuaternion.asArray() ?? [],
       routeVoice: (value: number) => routeAvatarVoice("MMD", value),
       unbind,
     },

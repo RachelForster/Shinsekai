@@ -13,6 +13,7 @@ import type { ApplyMode, AvatarMount, AvatarSession } from "../../contracts";
 import { ParameterTransition } from "../../parameterTransition";
 import { TalkingHeadMotion } from "../../talkingHeadMotion";
 import { avatarRenderSize } from "../../renderSize";
+import { BreathingMotion, createBreathingPose } from "./breathing";
 import { createHeadPose } from "./headPose";
 import { createView } from "./view";
 import { loadMotion, MmdMotionPlayer } from "./motion";
@@ -137,6 +138,8 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
       ],
     };
     const bindings = detectBindings(controls.morphs);
+    const breathingPose = createBreathingPose(model.runtimeBones, parsed.bones);
+    const breathing = new BreathingMotion();
     const headPose = createHeadPose(model.runtimeBones, parsed.bones);
     const talkingHead = new TalkingHeadMotion();
     const motions = new MmdMotionPlayer(model);
@@ -202,10 +205,19 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
               Math.max(model.morph.getMorphWeight(current.mouthMorph), smoothMouth),
             );
         }
-        headPose.apply(talkingHead.sample(dt, mode !== "edit" && !reducedMotion?.matches && !motions.hasPose));
+        const ambientMotion = mode !== "edit" && !reducedMotion?.matches;
+        const breath = breathing.sample(dt, ambientMotion && !motions.isAnimating);
+        const speech = talkingHead.sample(dt, ambientMotion && !motions.hasPose);
+        breathingPose.apply(breath.chestPitch);
+        headPose.apply({
+          pitch: speech.pitch + breath.head.pitch,
+          yaw: speech.yaw + breath.head.yaw,
+          roll: speech.roll + breath.head.roll,
+        });
         modelRuntime.beforePhysics(engine.getDeltaTime());
       } catch (error) {
         headPose.restore();
+        breathingPose.restore();
         dispose();
         mount.reportError(error instanceof Error ? error : new Error(String(error)));
       }
@@ -216,10 +228,12 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         modelRuntime.afterPhysics();
       } catch (error) {
         headPose.restore();
+        breathingPose.restore();
         dispose();
         mount.reportError(error instanceof Error ? error : new Error(String(error)));
       } finally {
         headPose.restore();
+        breathingPose.restore();
       }
     });
     engine.runRenderLoop(() => {

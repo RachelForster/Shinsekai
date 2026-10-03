@@ -113,48 +113,58 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
   expect(cameraResult.restored).toEqual(cameraResult.camera);
 
   const headMotion = await page.evaluate(async () => {
-    const { session, routeVoice, readHeadMatrix } = (
+    const { session, routeVoice, readHeadMatrix, readChestMatrix } = (
       window as unknown as {
         mmdSmoke: {
           session: AvatarSession<MmdState, MmdControls>;
           routeVoice(value: number): void;
           readHeadMatrix(): number[];
+          readChestMatrix(): number[];
         };
       }
     ).mmdSmoke;
     const state = { ...session.readState(), mouthMorph: "", blinkMorph: "" };
-    await session.apply(state, "restore", new AbortController().signal);
     routeVoice(0);
     const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
-    await wait(200);
+    await session.apply(state, "edit", new AbortController().signal);
+    await wait(100);
+    const neutral = readHeadMatrix();
+    await session.apply(state, "restore", new AbortController().signal);
+    await wait(600);
     const baseline = readHeadMatrix();
+    const chestBaseline = readChestMatrix();
+    await wait(1200);
+    const breathing = readHeadMatrix();
+    const chestBreathing = readChestMatrix();
     routeVoice(0.8);
     await wait(600);
     const talking = readHeadMatrix();
     const preserved = JSON.stringify(state) === JSON.stringify(session.readState());
     routeVoice(0);
     await wait(3000);
-    const stopped = readHeadMatrix();
     await session.apply(state, "edit", new AbortController().signal);
     routeVoice(1);
     await wait(300);
     const editing = readHeadMatrix();
     await session.apply(state, "restore", new AbortController().signal);
-    return { baseline, talking, stopped, editing, preserved };
+    return { neutral, baseline, breathing, chestBaseline, chestBreathing, talking, editing, preserved };
   });
   const difference = (a: number[], b: number[]) => Math.max(...a.map((value, index) => Math.abs(value - b[index])));
   expect(headMotion.baseline).toHaveLength(16);
+  expect(difference(headMotion.baseline, headMotion.breathing)).toBeGreaterThan(0.00001);
+  if (headMotion.chestBaseline.length)
+    expect(difference(headMotion.chestBaseline, headMotion.chestBreathing)).toBeGreaterThan(0.00001);
   expect(difference(headMotion.baseline, headMotion.talking)).toBeGreaterThan(0.001);
-  expect(difference(headMotion.baseline, headMotion.stopped)).toBeLessThan(0.00001);
-  expect(difference(headMotion.baseline, headMotion.editing)).toBeLessThan(0.00001);
+  expect(difference(headMotion.neutral, headMotion.editing)).toBeLessThan(0.00001);
   expect(headMotion.preserved).toBe(true);
 
   const presets = await page.evaluate(async () => {
-    const { session, readHeadMatrix } = (
+    const { session, readHeadMatrix, readHeadPose } = (
       window as unknown as {
         mmdSmoke: {
           session: AvatarSession<MmdState, MmdControls>;
           readHeadMatrix(): number[];
+          readHeadPose(): number[];
         };
       }
     ).mmdSmoke;
@@ -172,9 +182,10 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
     const middle = readHeadMatrix();
     await wait(1000);
     const end = readHeadMatrix();
+    const endPose = readHeadPose();
     await session.apply({ ...base, motion: "__smoke__/nod.vmd" }, "restore", signal);
     await wait(100);
-    const restored = readHeadMatrix();
+    const restoredPose = readHeadPose();
     await session.apply(base, "edit", signal);
     await wait(100);
     const cleared = readHeadMatrix();
@@ -184,14 +195,16 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
       pose,
       middle,
       end,
-      restored,
+      endPose,
+      restoredPose,
       cleared,
       canvases: document.querySelectorAll("#model canvas").length,
     };
   });
   expect(difference(presets.neutral, presets.pose)).toBeGreaterThan(0.01);
   expect(difference(presets.middle, presets.end)).toBeGreaterThan(0.01);
-  expect(difference(presets.end, presets.restored)).toBeLessThan(0.00001);
+  // Compare persistent inputs: held poses now keep breathing in the rendered matrices.
+  expect(presets.endPose).toEqual(presets.restoredPose);
   expect(difference(presets.neutral, presets.cleared)).toBeLessThan(0.00001);
   expect(presets.canvases).toBe(1);
   expect(requested.filter((path) => path === "__smoke__/nod.vmd")).toHaveLength(1);
@@ -207,7 +220,7 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
     await new Promise((done) => setTimeout(done, 300));
     return readHeadMatrix();
   });
-  expect(difference(headMotion.baseline, reduced)).toBeLessThan(0.00001);
+  expect(difference(headMotion.neutral, reduced)).toBeLessThan(0.00001);
   await page.evaluate(() => {
     const { session, unbind } = (
       window as unknown as {

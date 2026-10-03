@@ -75,6 +75,25 @@ function animation(name = "head", yaw = 0.6) {
 afterEach(() => engine?.dispose());
 
 describe("MMD SDK motion evaluation and smooth pose changes", () => {
+  it("reserves the body for running clips and transitions, then permits breathing on held poses", () => {
+    const { player } = setup();
+    const bound = player.bind(animation());
+    expect(player.isAnimating).toBe(false);
+    player.set(bound, "play", false);
+    expect(player.isAnimating).toBe(true);
+    player.sample(0.5);
+    expect(player.isAnimating).toBe(true);
+    player.sample(0.5);
+    expect(player.hasPose).toBe(true);
+    expect(player.isAnimating).toBe(false);
+    player.set(bound, "restore", false);
+    expect(player.isAnimating).toBe(false);
+    player.set(null, "play", true);
+    expect(player.isAnimating).toBe(true);
+    player.sample(0.4);
+    expect(player.isAnimating).toBe(false);
+  });
+
   it("loads VMD binary through the real SDK loader", async () => {
     const { scene, head, player } = setup();
     const loaded = await loadMotion(scene, "nod.vmd", vmdBytes());

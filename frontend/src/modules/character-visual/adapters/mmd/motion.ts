@@ -67,6 +67,11 @@ export class MmdMotionPlayer {
     return this.animation !== null || this.blend < 1;
   }
 
+  /** Held VPD/VMD poses can breathe; running clips and crossfades own the body. */
+  get isAnimating(): boolean {
+    return this.blend < 1 || Boolean(this.animation && this.playing && this.frame < this.animation.animation.endFrame);
+  }
+
   controlsMorph(name: string): boolean {
     return !!name && !!this.animation?.animation.morphTracks.some((track) => track.name === name);
   }
