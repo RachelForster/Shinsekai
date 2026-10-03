@@ -582,6 +582,8 @@ describe("entity repositories", () => {
     await chat.launchChat(sampleLastLaunch, taskOptions);
     await chat.installMissingRuntimeDependency({ moduleName: "mem0" }, taskOptions);
     await chat.resumeLastChat(taskOptions);
+    await chat.resumeLastChat(taskOptions, { enableMobileAccess: true });
+    await chat.resumeLastChat(taskOptions, { enableMobileAccess: false });
     await chat.sendChatCommand({ payload: "hi", type: "send-message" });
     await chat.getChatHistory();
     expect(chat.subscribeChat(listener)).toBe(unsubscribe);
@@ -670,7 +672,9 @@ describe("entity repositories", () => {
 
     expect(platform.chat.close).toHaveBeenCalledTimes(1);
     expect(platform.chat.launch).toHaveBeenCalledWith(sampleLastLaunch, taskOptions);
-    expect(platform.chat.resumeLast).toHaveBeenCalledWith(taskOptions);
+    expect(platform.chat.resumeLast).toHaveBeenNthCalledWith(1, taskOptions, undefined);
+    expect(platform.chat.resumeLast).toHaveBeenNthCalledWith(2, taskOptions, { enableMobileAccess: true });
+    expect(platform.chat.resumeLast).toHaveBeenNthCalledWith(3, taskOptions, { enableMobileAccess: false });
     expect(platform.runtime.installMissingDependency).toHaveBeenCalledWith({ moduleName: "mem0" }, taskOptions);
     expect(platform.chat.uploadTheme).toHaveBeenCalledWith(themeArchive);
     expect(platform.effects.uploadAudio).toHaveBeenCalledWith({

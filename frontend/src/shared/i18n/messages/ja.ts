@@ -1529,6 +1529,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "mobileAccess.openLocalChat": "この端末でチャットを開く",
   "mobileAccess.qrAlt": "スマートフォン用チャットアクセス QR コード",
   "mobileAccess.title": "スマートフォンアクセスが有効です",
+  "mobileAccess.launchHint":
+    "次のチャットの作成・再開時に適用し、QR コードを表示します。現在のチャットはすぐには切り替わりません。",
   "template.action.launch": "チャット開始",
   "template.action.quickRestart": "クイック再起動",
   "template.action.selectAllCharacters": "全キャラクターを選択",
@@ -1552,7 +1554,7 @@ export const jaMessages: Record<MessageKey, string> = {
   "template.field.showInitialSprite": "初期立ち絵を表示",
   "template.field.maxDialogItems": "最大会話数",
   "template.field.maxSpeechChars": "最大台詞文字数",
-  "template.field.mobileAccess": "スマートフォンからのアクセスを許可",
+  "template.field.mobileAccess": "スマートフォンを接続",
   "template.field.name": "名前",
   "template.field.path": "パス",
   "template.field.scenario": "ユーザーシナリオ",

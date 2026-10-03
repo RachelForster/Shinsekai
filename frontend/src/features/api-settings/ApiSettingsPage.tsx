@@ -25,6 +25,7 @@ import { installMissingRuntimeDependency, resumeLastChat } from "../../entities/
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
+import { useMobileAccessPreference } from "../mobile-access/useMobileAccessPreference";
 import { useAppState } from "../../shared/app-state/AppState";
 import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
@@ -116,6 +117,7 @@ export function ApiSettingsPage() {
   const { showToast } = useToast();
   const { t } = useI18n();
   const { dispatch } = useAppState();
+  const [mobileAccessEnabled] = useMobileAccessPreference();
   const configQuery = useQuery({ queryFn: getAppConfig, queryKey: configQueryKey });
   const ttsBundleRecommendationQuery = useQuery({
     queryFn: getTtsBundleRecommendation,
@@ -227,7 +229,7 @@ export function ApiSettingsPage() {
       if (runtimeLaunchDisabled) {
         throw new Error(t("launch.runtimeBusy"));
       }
-      return runChatInitialization((options) => resumeLastChat(options));
+      return runChatInitialization((options) => resumeLastChat(options, { enableMobileAccess: mobileAccessEnabled }));
     },
     onError(error) {
       void refreshRuntimeStatus();

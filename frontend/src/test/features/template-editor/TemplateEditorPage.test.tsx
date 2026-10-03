@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TemplateEditorPage } from "../../../features/template-editor/TemplateEditorPage";
 import { ChatWorkspacePage } from "../../../features/chat-workspace/ChatWorkspacePage";
+import { setMobileAccessPreference } from "../../../features/mobile-access/useMobileAccessPreference";
 import { buildDefaultTemplateScenario } from "../../../features/template-editor/templateFlow";
 import { I18nProvider, translateMessage } from "../../../shared/i18n/I18nProvider";
 import { PlatformRequestError } from "../../../shared/platform/errors";
@@ -152,6 +153,7 @@ describe("TemplateEditorPage", () => {
   };
   beforeEach(() => {
     vi.resetAllMocks();
+    localStorage.clear();
     mockUseChatLaunchGuard.mockReturnValue({
       refreshRuntimeStatus: mockRefreshRuntimeStatus,
       runtimeLaunchDisabled: false,
@@ -927,7 +929,23 @@ describe("TemplateEditorPage", () => {
     expect(mockSaveTemplateSession).toHaveBeenCalledTimes(1);
   });
 
+  it("does not let restored template settings override the management toolbar's disabled mobile preference", async () => {
+    mockGetTemplateSession.mockResolvedValueOnce({
+      ...savedChat,
+      filenameStub: "Session Draft",
+      enableMobileAccess: true,
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByLabelText("Template name")).toHaveValue("Session Draft"));
+    expect(screen.queryByLabelText("Connect phone")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
+    await waitFor(() =>
+      expect(mockLaunchChat).toHaveBeenCalledWith(expect.objectContaining({ enableMobileAccess: false })),
+    );
+  });
+
   it("shows a QR code after launching with mobile access enabled", async () => {
+    setMobileAccessPreference(true);
     mockLaunchChat.mockResolvedValueOnce({
       dialogText: "launched",
       mobileAccess: {
@@ -943,9 +961,7 @@ describe("TemplateEditorPage", () => {
     renderPage();
 
     expect(await screen.findByDisplayValue("Opening")).toBeInTheDocument();
-    const mobileAccessSwitch = screen.getByLabelText("Allow mobile access");
-    expect(mobileAccessSwitch.closest(".template-character-picker")).not.toBeNull();
-    fireEvent.click(mobileAccessSwitch);
+    expect(screen.queryByLabelText("Connect phone")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Launch chat" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Mobile access is ready" });

@@ -4,6 +4,8 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConversationLibrary } from "../../../features/chat-workspace/ConversationLibrary";
 import { I18nProvider } from "../../../shared/i18n";
+import { ToastProvider } from "../../../shared/ui";
+import { setMobileAccessPreference } from "../../../features/mobile-access/useMobileAccessPreference";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -69,7 +71,9 @@ function page() {
     <QueryClientProvider client={client}>
       <I18nProvider language="en">
         <MemoryRouter>
-          <ConversationLibrary onEdit={onEdit} onCreate={onCreate} />
+          <ToastProvider>
+            <ConversationLibrary onEdit={onEdit} onCreate={onCreate} />
+          </ToastProvider>
         </MemoryRouter>
       </I18nProvider>
     </QueryClientProvider>,
@@ -80,6 +84,7 @@ function page() {
 describe("conversation library", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     mocks.list.mockResolvedValue([entry]);
     mocks.status.mockResolvedValue({ state: "idle" });
     mocks.prepare.mockResolvedValue({
@@ -158,6 +163,69 @@ describe("conversation library", () => {
     expect(mocks.launch).toHaveBeenCalledWith(
       expect.objectContaining({ historyPath: "/saved/one", resetHistory: false, scenario: "Original" }),
       expect.anything(),
+    );
+  });
+  it("places the mobile switch immediately before New chat in the management toolbar", async () => {
+    page();
+    await screen.findByText("Good night");
+    const toggle = screen.getByRole("checkbox", { name: "Connect phone" });
+    const toolbar = toggle.closest(".conversation-library__toolbar") as HTMLElement;
+    const create = within(toolbar).getByRole("button", { name: "New chat" });
+    expect(toggle).not.toBeChecked();
+    expect(toggle.compareDocumentPosition(create) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(toggle).toHaveAccessibleDescription(/Applies when creating or resuming the next chat/);
+    expect(mocks.launch).not.toHaveBeenCalled();
+  });
+  it("keeps the mobile option available when there are no chats yet", async () => {
+    mocks.list.mockResolvedValue([]);
+    page();
+    await screen.findByText(/No chats yet/);
+    const toggle = screen.getByRole("checkbox", { name: "Connect phone" });
+    fireEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    expect(screen.getByRole("button", { name: "New chat" })).toBeEnabled();
+    expect(mocks.launch).not.toHaveBeenCalled();
+  });
+  it.each([false, true])(
+    "uses the toolbar preference %s rather than an old chat's saved mobile flag",
+    async (enabled) => {
+      setMobileAccessPreference(enabled);
+      mocks.prepare.mockResolvedValueOnce({ historyPath: "/saved/one", enableMobileAccess: !enabled });
+      page();
+      fireEvent.click(await screen.findByRole("button", { name: "Continue chat" }));
+      await waitFor(() =>
+        expect(mocks.launch).toHaveBeenCalledWith(
+          expect.objectContaining({ enableMobileAccess: enabled, historyPath: "/saved/one" }),
+          expect.anything(),
+        ),
+      );
+    },
+  );
+  it("shows the existing QR dialog when continuing a chat with mobile access", async () => {
+    mocks.launch.mockResolvedValueOnce({
+      mobileAccess: {
+        enabled: true,
+        host: "192.168.1.20",
+        httpPort: 8789,
+        websocketPort: 8790,
+        qrCodeDataUrl: "data:image/png;base64,dGVzdA==",
+        url: "http://192.168.1.20:8789/",
+        websocketUrl: "ws://192.168.1.20:8790/ws",
+      },
+    });
+    page();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Connect phone" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Continue chat" }));
+    const dialog = await screen.findByRole("dialog", { name: "Mobile access is ready" });
+    expect(within(dialog).getByRole("img", { name: "QR code for mobile chat access" })).toBeVisible();
+    expect(mocks.show).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Open local chat" }));
+    await waitFor(() =>
+      expect(mocks.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          snapshot: { runtimeMode: "react", wsUrl: "ws://192.168.1.20:8790/ws" },
+        }),
+      ),
     );
   });
   it("does not silently launch an older record with unrelated settings", async () => {

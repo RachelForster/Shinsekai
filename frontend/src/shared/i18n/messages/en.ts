@@ -1532,6 +1532,8 @@ export const enMessages: Record<MessageKey, string> = {
   "mobileAccess.openLocalChat": "Open local chat",
   "mobileAccess.qrAlt": "QR code for mobile chat access",
   "mobileAccess.title": "Mobile access is ready",
+  "mobileAccess.launchHint":
+    "Applies when creating or resuming the next chat, then shows a QR code. The current chat is not changed immediately.",
   "template.action.launch": "Launch chat",
   "template.action.quickRestart": "Quick restart",
   "template.action.selectAllCharacters": "Select all characters",
@@ -1555,7 +1557,7 @@ export const enMessages: Record<MessageKey, string> = {
   "template.field.showInitialSprite": "Show initial sprite",
   "template.field.maxDialogItems": "Max dialog items",
   "template.field.maxSpeechChars": "Max speech chars",
-  "template.field.mobileAccess": "Allow mobile access",
+  "template.field.mobileAccess": "Connect phone",
   "template.field.name": "Name",
   "template.field.path": "Path",
   "template.field.scenario": "Scenario",

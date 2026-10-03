@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { configQueryKey } from "../../../entities/config/repository";
 import { ApiSettingsPage } from "../../../features/api-settings/ApiSettingsPage";
+import { setMobileAccessPreference } from "../../../features/mobile-access/useMobileAccessPreference";
 import { reloadPluginService } from "../../../features/plugin-manager/pluginReload";
 import { AppStateProvider } from "../../../shared/app-state/AppState";
 import { I18nProvider } from "../../../shared/i18n";
@@ -50,7 +51,7 @@ vi.mock("../../../entities/chat/repository", () => ({
   chatQueryKey: ["chat"],
   getChatSnapshot: () => mocks.getChatSnapshot(),
   installMissingRuntimeDependency: (...args: unknown[]) => mocks.installMissingRuntimeDependency(...args),
-  resumeLastChat: () => mocks.resumeLastChat(),
+  resumeLastChat: (...args: unknown[]) => mocks.resumeLastChat(...args),
 }));
 
 vi.mock("../../../features/chat-startup/useChatLaunchGuard", () => ({
@@ -119,6 +120,7 @@ function validAppConfig() {
 describe("ApiSettingsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setMobileAccessPreference(false);
     mocks.useChatLaunchGuard.mockReturnValue({
       refreshRuntimeStatus: mocks.refreshRuntimeStatus,
       runtimeLaunchDisabled: false,
@@ -151,6 +153,11 @@ describe("ApiSettingsPage", () => {
     mocks.resumeLastChat.mockResolvedValue({ sessionId: "session-1" });
     mocks.saveApiConfig.mockResolvedValue(sampleConfig.api_config);
     mocks.saveSystemConfig.mockResolvedValue(sampleConfig.system_config);
+  });
+
+  afterEach(() => {
+    cleanup();
+    setMobileAccessPreference(false);
   });
 
   it("places vision understanding and long-term memory after TTS in the navigation and page", async () => {
@@ -312,6 +319,10 @@ describe("ApiSettingsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "加载上次聊天并启动" }));
 
     await waitFor(() => expect(mocks.resumeLastChat).toHaveBeenCalledTimes(1));
+    expect(mocks.resumeLastChat).toHaveBeenCalledWith(
+      { onTaskUpdate: expect.any(Function) },
+      { enableMobileAccess: false },
+    );
     await waitFor(() =>
       expect(mocks.showChatSurface).toHaveBeenCalledWith({
         snapshot: expect.objectContaining({ statusMessage: "已恢复" }),
@@ -321,6 +332,24 @@ describe("ApiSettingsPage", () => {
       expect.objectContaining({ statusMessage: "已恢复" }),
     );
     expect(mocks.getChatSnapshot).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])("resumes with the current device mobile preference (%s)", async (enabled) => {
+    mocks.getAppConfig.mockResolvedValue(validAppConfig());
+    setMobileAccessPreference(!enabled);
+    renderPage();
+    await screen.findByRole("heading", { name: "AI 服务设置" });
+
+    // A toolbar change must also reach a settings page that is already mounted.
+    act(() => setMobileAccessPreference(enabled));
+    fireEvent.click(screen.getByRole("button", { name: "加载上次聊天并启动" }));
+
+    await waitFor(() =>
+      expect(mocks.resumeLastChat).toHaveBeenCalledWith(
+        { onTaskUpdate: expect.any(Function) },
+        { enableMobileAccess: enabled },
+      ),
+    );
   });
 
   it("does not open chat when resume reports a missing runtime dependency", async () => {

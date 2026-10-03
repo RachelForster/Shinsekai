@@ -2,7 +2,6 @@ import { useI18n } from "../../../shared/i18n";
 import { resolveConversationTitle } from "../../../entities/chat/conversationTitle";
 import { Button } from "../../../shared/ui";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   chatQueryKey,
@@ -13,7 +12,8 @@ import {
   prepareConversation,
 } from "../../../entities/chat/repository";
 import { prepareStoryLaunch, startStorySession, storyLibraryQueryKey } from "../../../entities/story/repository";
-import { showChatSurface } from "../../../shared/desktop/chatWindow";
+import { useMobileAccessLaunch } from "../../mobile-access/useMobileAccessLaunch";
+import { useMobileAccessPreference } from "../../mobile-access/useMobileAccessPreference";
 import { ChatInitializationDialog } from "../../chat-startup/ChatInitializationDialog";
 import { useChatInitialization } from "../../chat-startup/useChatInitialization";
 import { useChatLaunchGuard } from "../../chat-startup/useChatLaunchGuard";
@@ -48,7 +48,8 @@ export function StoryLaunchButton({
   conversationTitle?: string;
 }) {
   const { t } = useI18n();
-  const navigate = useNavigate();
+  const [mobileAccessEnabled] = useMobileAccessPreference();
+  const mobileAccess = useMobileAccessLaunch();
   const client = useQueryClient();
   const init = useChatInitialization();
   const { runtimeClosing, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
@@ -72,15 +73,10 @@ export function StoryLaunchButton({
           launched = current;
         } else {
           const payload = await prepareStoryLaunch(storyPath, historyPath);
-          launched = await launchChat(
-            conversationId
-              ? { ...(await prepareConversation(conversationId)), scenario: payload.scenario, storyPath }
-              : {
-                  ...payload,
-                  conversationTitle: historyPath ? undefined : resolveConversationTitle(conversationTitle),
-                },
-            options,
-          );
+          const launchPayload = conversationId
+            ? { ...(await prepareConversation(conversationId)), scenario: payload.scenario, storyPath }
+            : { ...payload, conversationTitle: historyPath ? undefined : resolveConversationTitle(conversationTitle) };
+          launched = await launchChat({ ...launchPayload, enableMobileAccess: mobileAccessEnabled }, options);
           localStorage.setItem(
             pendingAttachmentKey,
             JSON.stringify({ storyPath, historyPath, sessionId: launched.sessionId }),
@@ -93,7 +89,7 @@ export function StoryLaunchButton({
       client.setQueryData(chatQueryKey, snapshot);
       void client.invalidateQueries({ queryKey: storyLibraryQueryKey });
       void client.invalidateQueries({ queryKey: conversationsQueryKey });
-      await showChatSurface({ navigate, snapshot });
+      await mobileAccess.openChat(snapshot);
       localStorage.removeItem(pendingAttachmentKey);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -121,6 +117,7 @@ export function StoryLaunchButton({
         pending={init.initializationPending}
         task={init.initializationTask}
       />
+      {mobileAccess.dialog}
     </>
   );
 }

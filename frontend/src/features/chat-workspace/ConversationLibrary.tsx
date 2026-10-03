@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Pencil, Settings, Trash2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { charactersQueryKey, listCharacters } from "../../entities/character/repository";
 import {
   chatQueryKey,
@@ -16,9 +15,10 @@ import {
 import { fileThumbnailUrl } from "../../entities/files/repository";
 import type { ConversationSummary } from "../../shared/platform/types";
 import { ConversationTypeBadge } from "./ConversationTypeBadge";
-import { showChatSurface } from "../../shared/desktop/chatWindow";
 import { useI18n } from "../../shared/i18n";
-import { Button, Dialog, IconButton, TextInput } from "../../shared/ui";
+import { Button, Dialog, IconButton, Switch, TextInput } from "../../shared/ui";
+import { useMobileAccessPreference } from "../mobile-access/useMobileAccessPreference";
+import { useMobileAccessLaunch } from "../mobile-access/useMobileAccessLaunch";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { useChatInitialization } from "../chat-startup/useChatInitialization";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
@@ -47,7 +47,9 @@ export function ConversationLibrary({
 }) {
   const { t, language } = useI18n();
   const client = useQueryClient();
-  const navigate = useNavigate();
+  const [mobileAccessEnabled, setMobileAccessEnabled] = useMobileAccessPreference();
+  const mobileAccess = useMobileAccessLaunch();
+  const mobileAccessHintId = useId();
   const init = useChatInitialization();
   const { runtimeClosing, updateRuntimeStatusFromSnapshot } = useChatLaunchGuard();
   const conversations = useQuery({ queryKey: conversationsQueryKey, queryFn: listConversations, staleTime: 0 });
@@ -65,11 +67,14 @@ export function ConversationLibrary({
     try {
       const snapshot = await init.runChatInitialization(async (options) => {
         if ((await getChatRuntimeStatus()).state !== "idle") throw new Error(t("story.launch.busy"));
-        return launchChat(await prepareConversation(item.id), options);
+        return launchChat(
+          { ...(await prepareConversation(item.id)), enableMobileAccess: mobileAccessEnabled },
+          options,
+        );
       });
       client.setQueryData(chatQueryKey, snapshot);
       await updateRuntimeStatusFromSnapshot(snapshot);
-      await showChatSurface({ navigate, snapshot });
+      await mobileAccess.openChat(snapshot);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -106,11 +111,26 @@ export function ConversationLibrary({
     <section className="conversation-library">
       <div className="conversation-library__header">
         <h1>{t("conversation.workspace")}</h1>
-        {!isEmpty && (
-          <Button variant="primary" disabled={runtimeClosing} onClick={onCreate}>
-            {t("conversation.new")}
-          </Button>
-        )}
+        <div className="conversation-library__toolbar">
+          <div className="conversation-library__mobile-access" title={t("mobileAccess.launchHint")}>
+            <Switch
+              checked={mobileAccessEnabled}
+              disabled={runtimeClosing || init.initializationPending}
+              aria-describedby={mobileAccessHintId}
+              onChange={(event) => setMobileAccessEnabled(event.target.checked)}
+            >
+              {t("template.field.mobileAccess")}
+            </Switch>
+            <span id={mobileAccessHintId} className="visually-hidden">
+              {t("mobileAccess.launchHint")}
+            </span>
+          </div>
+          {!isEmpty && (
+            <Button variant="primary" disabled={runtimeClosing} onClick={onCreate}>
+              {t("conversation.new")}
+            </Button>
+          )}
+        </div>
       </div>
       {conversations.isPending && <p role="status">{t("common.loading")}</p>}
       {conversations.isError && <p role="alert">{conversations.error.message}</p>}
@@ -239,6 +259,7 @@ export function ConversationLibrary({
         pending={init.initializationPending}
         task={init.initializationTask}
       />
+      {mobileAccess.dialog}
     </section>
   );
 }

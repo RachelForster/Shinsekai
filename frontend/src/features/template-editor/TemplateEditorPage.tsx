@@ -19,6 +19,7 @@ import {
 } from "../../entities/chat/repository";
 import { ChatInitializationDialog } from "../chat-startup/ChatInitializationDialog";
 import { MobileAccessDialog } from "../mobile-access/MobileAccessDialog";
+import { useMobileAccessPreference } from "../mobile-access/useMobileAccessPreference";
 import { useChatInitialization, type ChatInitializationService } from "../chat-startup/useChatInitialization";
 import { compatibleInitialSpritePath } from "../chat-startup/initialSpriteSelection";
 import { useChatLaunchGuard } from "../chat-startup/useChatLaunchGuard";
@@ -162,7 +163,7 @@ export function TemplateEditorPage({
   const [useChoice, setUseChoice] = useState(true);
   const [useNarration, setUseNarration] = useState(true);
   const [useStat, setUseStat] = useState(true);
-  const [mobileAccessEnabled, setMobileAccessEnabled] = useState(false);
+  const [mobileAccessEnabled] = useMobileAccessPreference();
   const [mobileAccessInfo, setMobileAccessInfo] = useState<MobileAccessInfo | null>(null);
   const [maxSpeechChars, setMaxSpeechChars] = useState(0);
   const [maxDialogItems, setMaxDialogItems] = useState(0);
@@ -257,7 +258,6 @@ export function TemplateEditorPage({
     setUseChoice(launchSession.useChoice ?? true);
     setUseNarration(launchSession.useNarration ?? true);
     setUseStat(launchSession.useStat ?? true);
-    setMobileAccessEnabled(launchSession.enableMobileAccess ?? false);
     setMaxSpeechChars(Number(launchSession.maxSpeechChars) || 0);
     setMaxDialogItems(Number(launchSession.maxDialogItems) || 0);
     setInitSpritePath(launchSession.initSpritePath || "");
@@ -935,17 +935,6 @@ export function TemplateEditorPage({
                 open={playerCharacterDialogOpen}
                 onClose={() => setPlayerCharacterDialogOpen(false)}
               />
-
-              <div className="template-mobile-access">
-                <label className="template-toggle-row">
-                  <span>{t("template.field.mobileAccess")}</span>
-                  <Switch
-                    checked={mobileAccessEnabled}
-                    onChange={(event) => setMobileAccessEnabled(event.target.checked)}
-                  />
-                </label>
-                <p>{t("template.mobileAccessHint")}</p>
-              </div>
 
               {effects.length > 0 ? (
                 <div className="template-effect-section">

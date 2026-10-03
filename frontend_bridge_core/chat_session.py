@@ -149,9 +149,16 @@ def start_chat_initialization(
 
         launch = launch_request
     elif mode == "resume-last":
+        enable_mobile_access = body.get("enableMobileAccess")
+        if "enableMobileAccess" in body and not isinstance(enable_mobile_access, bool):
+            raise ValueError("enableMobileAccess must be a boolean")
 
         def resume_request(stream_info: dict[str, str]) -> dict[str, Any]:
-            return resume_last_chat(state, init_stream_info=stream_info)
+            return resume_last_chat(
+                state,
+                init_stream_info=stream_info,
+                enable_mobile_access=enable_mobile_access,
+            )
 
         launch = resume_request
     else:
@@ -377,11 +384,16 @@ def resume_last_chat(
     state: BridgeState,
     *,
     init_stream_info: dict[str, str] | None = None,
+    enable_mobile_access: bool | None = None,
 ) -> dict[str, Any]:
     if _chat_runtime_closing(state):
         raise RuntimeError("聊天会话正在关闭，请稍后再启动。")
     session = _load_template_session_payload(state) or {}
-    mobile_access_enabled = bool(session.get("enableMobileAccess", False))
+    mobile_access_enabled = (
+        bool(session.get("enableMobileAccess", False))
+        if enable_mobile_access is None
+        else enable_mobile_access
+    )
     if not mobile_access_enabled:
         configure_mobile_access(state, enabled=False)
     session_history_path = str(session.get("historyPath") or "").strip()
@@ -398,6 +410,8 @@ def resume_last_chat(
         raise FileNotFoundError("未找到聊天记录（*.json）。请先在主窗口进行过对话。")
     saved_launch = saved_conversation_launch(state, history_path)
     if saved_launch is not None:
+        if enable_mobile_access is not None:
+            saved_launch = {**saved_launch, "enableMobileAccess": enable_mobile_access}
         return launch_chat(state, saved_launch, init_stream_info=init_stream_info)
     template_parts = _resume_template_parts(state)
     session_scenario = str(session.get("scenario") or "")
