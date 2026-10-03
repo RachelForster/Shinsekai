@@ -108,6 +108,15 @@ class _VmdReader:
         if any(value > 127 for value in self.read(size)):
             raise ValueError("Invalid VMD interpolation")
 
+    def bone_interpolation(self) -> None:
+        # Validate the entire leading 4x4 control matrix, then consume all copies.
+        self.interpolation(16)
+        copies = self.read(48)
+        # VmdLoader 1.3 also reads offsets 0, 4, 8 and 12 of each copied block.
+        # Keep those controls bounded; unused copied/padding bytes are opaque.
+        if any(value > 127 for value in copies[::4]):
+            raise ValueError("Invalid VMD interpolation")
+
     def flag(self) -> None:
         if self.read(1)[0] > 1:
             raise ValueError("Invalid VMD flag")
@@ -117,7 +126,9 @@ def _vmd(data: bytes) -> MotionTargets:
     reader = _VmdReader(data)
     if reader.read(30).tobytes().split(b"\0", 1)[0] != b"Vocaloid Motion Data 0002":
         raise ValueError("Expected a VMD 0002 motion")
-    reader.name(20)
+    # The runtime ignores this fixed-width model label, which exporters may
+    # truncate in the middle of a multibyte character. Binding uses track names.
+    reader.read(20)
     bones: set[str] = set()
     morphs: set[str] = set()
     for _ in range(reader.count(111)):
@@ -128,7 +139,7 @@ def _vmd(data: bytes) -> MotionTargets:
         reader.frame()
         reader.floats(3)
         _quaternion(reader.floats(4))
-        reader.interpolation(64)
+        reader.bone_interpolation()
     for _ in range(reader.count(23)):
         name = reader.name(15)
         if not name:

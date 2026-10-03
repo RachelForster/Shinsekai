@@ -12,6 +12,7 @@ import { MmdStandardMaterialProxy } from "babylon-mmd/esm/Runtime/mmdStandardMat
 import type { ApplyMode, AvatarMount, AvatarSession } from "../../contracts";
 import { ParameterTransition } from "../../parameterTransition";
 import { TalkingHeadMotion } from "../../talkingHeadMotion";
+import { avatarRenderSize } from "../../renderSize";
 import { createHeadPose } from "./headPose";
 import { createView } from "./view";
 import { loadMotion, MmdMotionPlayer } from "./motion";
@@ -159,11 +160,9 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
     const names = controls.morphs.map((item) => item.name);
     const resize = (width: number, height: number) => {
       if (disposed) return;
-      const ratio = Math.min(2, window.devicePixelRatio || 1);
-      const pixelWidth = Math.max(1, Math.min(4096, Math.round(width * ratio)));
-      const pixelHeight = Math.max(1, Math.min(4096, Math.round(height * ratio)));
-      engine.setSize(pixelWidth, pixelHeight);
-      view.update(current.camera, pixelWidth, pixelHeight);
+      const pixels = avatarRenderSize(width, height, window.devicePixelRatio);
+      engine.setSize(pixels.width, pixels.height);
+      view.update(current.camera, pixels.width, pixels.height);
     };
     resize(mount.element.clientWidth, mount.element.clientHeight);
     // Transient rotations are inputs to MMD, not edits to its final skinning matrices.

@@ -31,6 +31,7 @@ export interface AvatarSession<S, C> {
   setMouthOpen(value: number): void;
   /** Optional speech overlays, independent of whether this model has a mouth binding. */
   setSpeechLevel?(value: number): void;
+  /** Rendered surface size in CSS pixels, including the host's framing magnification. */
   resize(width: number, height: number): void;
   dispose(): void;
 }
