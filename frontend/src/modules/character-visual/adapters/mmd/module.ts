@@ -3,6 +3,7 @@ import { Color4 } from "@babylonjs/core/Maths/math.color";
 import { LoadAssetContainerAsync } from "@babylonjs/core/Loading/sceneLoader";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { Scene } from "@babylonjs/core/scene";
+import { RegisterMmdOutlineRenderer } from "babylon-mmd/esm/Loader/mmdOutlineRenderer.pure";
 import { MmdStandardMaterialBuilder } from "babylon-mmd/esm/Loader/mmdStandardMaterialBuilder";
 import { PmxReader } from "babylon-mmd/esm/Loader/Parser/pmxReader";
 import { RegisterPmxLoader } from "babylon-mmd/esm/Loader/pmxLoader.pure";
@@ -14,6 +15,7 @@ import { ParameterTransition } from "../../parameterTransition";
 import { TalkingHeadMotion } from "../../talkingHeadMotion";
 import { avatarRenderSize } from "../../renderSize";
 import { BreathingMotion, createBreathingPose } from "./breathing";
+import { BreezeMotion, createBreezePose } from "./breeze";
 import { createHeadPose } from "./headPose";
 import { createView } from "./view";
 import { loadMotion, MmdMotionPlayer } from "./motion";
@@ -57,6 +59,7 @@ function bundledFile(path: string, bytes: ArrayBuffer): File {
 
 export async function create(mount: AvatarMount, signal: AbortSignal): Promise<AvatarSession<MmdState, MmdControls>> {
   RegisterPmxLoader();
+  RegisterMmdOutlineRenderer();
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "display:block;width:100%;height:100%";
   mount.element.append(canvas);
@@ -140,7 +143,14 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
     const bindings = detectBindings(controls.morphs);
     const breathingPose = createBreathingPose(model.runtimeBones, parsed.bones);
     const breathing = new BreathingMotion();
+    const breezePose = createBreezePose(model.runtimeBones, parsed.bones, parsed.rigidBodies);
+    const breeze = new BreezeMotion();
     const headPose = createHeadPose(model.runtimeBones, parsed.bones);
+    const restorePose = () => {
+      breezePose.restore();
+      headPose.restore();
+      breathingPose.restore();
+    };
     const talkingHead = new TalkingHeadMotion();
     const motions = new MmdMotionPlayer(model);
     const motionCache = new Map<string, ReturnType<MmdMotionPlayer["bind"]>>();
@@ -214,10 +224,10 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
           yaw: speech.yaw + breath.head.yaw,
           roll: speech.roll + breath.head.roll,
         });
+        breezePose.apply(breeze.sample(dt, ambientMotion && !motions.isAnimating));
         modelRuntime.beforePhysics(engine.getDeltaTime());
       } catch (error) {
-        headPose.restore();
-        breathingPose.restore();
+        restorePose();
         dispose();
         mount.reportError(error instanceof Error ? error : new Error(String(error)));
       }
@@ -227,13 +237,11 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
       try {
         modelRuntime.afterPhysics();
       } catch (error) {
-        headPose.restore();
-        breathingPose.restore();
+        restorePose();
         dispose();
         mount.reportError(error instanceof Error ? error : new Error(String(error)));
       } finally {
-        headPose.restore();
-        breathingPose.restore();
+        restorePose();
       }
     });
     engine.runRenderLoop(() => {
