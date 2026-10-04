@@ -3,6 +3,10 @@ import type { ComponentType } from "react";
 /** 状态应用模式：play 播放动作、restore 恢复快照、edit 编辑预览。 */
 export type ApplyMode = "play" | "restore" | "edit";
 
+/** Transient conversation cues, independent of saved poses or avatar format. */
+export type AvatarAttention = "idle" | "thinking" | "responding";
+export type AvatarSpeechEvent = "started" | "finished";
+
 /** 一个格式对共享层声明的能力；共享层据此降级而不是按格式名假设。 */
 export interface AvatarCapabilities {
   mouth: boolean;
@@ -31,6 +35,8 @@ export interface AvatarSession<S, C> {
   setMouthOpen(value: number): void;
   /** Optional speech overlays, independent of whether this model has a mouth binding. */
   setSpeechLevel?(value: number): void;
+  setAttention?(value: AvatarAttention): void;
+  notifySpeechEvent?(event: AvatarSpeechEvent): void;
   /** Rendered surface size in CSS pixels, including the host's framing magnification. */
   resize(width: number, height: number): void;
   dispose(): void;

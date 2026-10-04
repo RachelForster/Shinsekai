@@ -110,6 +110,7 @@ export interface ChatStageViewModel {
   busyText?: string;
   cgPath?: string;
   dialogCharacterName?: string;
+  thinkingCharacterName?: string;
   dialogHtml?: string;
   dialogText: string;
   inputDisabled: boolean;

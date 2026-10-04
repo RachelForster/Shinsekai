@@ -1,6 +1,31 @@
 import { it, expect, vi } from "vitest";
-import { bindAvatarVoice, routeAvatarVoice } from "../../../modules/character-visual/voiceRoute";
+import {
+  bindAvatarVoice,
+  routeAvatarVoice,
+  routeAvatarSpeechEvent,
+} from "../../../modules/character-visual/voiceRoute";
 import type { AvatarSession } from "../../../modules/character-visual/contracts";
+
+it("routes speech boundaries only to the voice's character, with optional adapter support", () => {
+  const a = { capabilities: { mouth: false }, notifySpeechEvent: vi.fn() } as unknown as AvatarSession<
+    unknown,
+    unknown
+  >;
+  const b = { capabilities: { mouth: false }, notifySpeechEvent: vi.fn() } as unknown as AvatarSession<
+    unknown,
+    unknown
+  >;
+  const plain = { capabilities: { mouth: false } } as unknown as AvatarSession<unknown, unknown>;
+  const unbind = [bindAvatarVoice("A", a), bindAvatarVoice("B", b), bindAvatarVoice("A", plain)];
+  routeAvatarSpeechEvent("B", "started");
+  routeAvatarSpeechEvent("B", "finished");
+  expect(a.notifySpeechEvent).not.toHaveBeenCalled();
+  expect(b.notifySpeechEvent).toHaveBeenNthCalledWith(1, "started");
+  expect(b.notifySpeechEvent).toHaveBeenNthCalledWith(2, "finished");
+  unbind.forEach((cleanup) => cleanup());
+  routeAvatarSpeechEvent("B", "started");
+  expect(b.notifySpeechEvent).toHaveBeenCalledTimes(2);
+});
 
 it("routes by the queued voice's character and only actual mouth capability", () => {
   const a = { capabilities: { mouth: true }, setMouthOpen: vi.fn() } as unknown as AvatarSession<unknown, unknown>;

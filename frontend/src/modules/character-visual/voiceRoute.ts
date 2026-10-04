@@ -1,4 +1,4 @@
-import type { AvatarSession } from "./contracts";
+import type { AvatarSession, AvatarSpeechEvent } from "./contracts";
 
 // Only chat instances bind here; previews have no character voice route.
 const targets = new Map<string, Set<AvatarSession<unknown, unknown>>>();
@@ -21,4 +21,8 @@ export function routeAvatarVoice(name: string, value: number) {
     session.setSpeechLevel?.(value);
     if (session.capabilities.mouth) session.setMouthOpen(value);
   }
+}
+
+export function routeAvatarSpeechEvent(name: string, event: AvatarSpeechEvent) {
+  for (const session of targets.get(name) ?? []) session.notifySpeechEvent?.(event);
 }

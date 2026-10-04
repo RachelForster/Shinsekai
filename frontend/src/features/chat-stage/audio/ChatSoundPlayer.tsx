@@ -7,7 +7,7 @@ import { currentChatRendererId } from "../../../shared/platform/chatRenderer";
 import { stageAssetUrl } from "../chatStageUtils";
 import type { ChatAudioCommand } from "../state/types";
 import { SoundPlayer, type VoicePlaybackSignal } from "./soundPlayer";
-import { routeAvatarVoice } from "../../../modules/character-visual";
+import { routeAvatarVoice, routeAvatarSpeechEvent } from "../../../modules/character-visual";
 
 export function ChatSoundPlayer({
   bgmPath,
@@ -28,7 +28,7 @@ export function ChatSoundPlayer({
   const { t } = useI18n();
 
   if (!playerRef.current && typeof Audio !== "undefined") {
-    playerRef.current = new SoundPlayer(undefined, routeAvatarVoice);
+    playerRef.current = new SoundPlayer(undefined, routeAvatarVoice, routeAvatarSpeechEvent);
   }
 
   useEffect(() => {

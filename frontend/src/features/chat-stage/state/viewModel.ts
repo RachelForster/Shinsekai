@@ -5,6 +5,20 @@ import {
   systemPromptTextFromState,
 } from "./text";
 import type { ChatStageState, ChatStageViewModel } from "./types";
+import { chatStageSpriteCharacterName } from "./sprites";
+
+function thinkingCharacterName(state: ChatStageState): string | undefined {
+  if (!state.optimisticSubmission || state.status !== "generating" || state.error || state.sessionClosedReason)
+    return undefined;
+  const user = normalizedUserDisplayName(state.userDisplayName);
+  // A reply can arrive before its status update; return attention immediately.
+  if (state.characterName?.trim() && state.characterName.trim() !== user) return undefined;
+  const names = [...new Set(state.sprites.map(chatStageSpriteCharacterName).filter(Boolean))];
+  const previous = state.optimisticSubmission.previous.characterName?.trim();
+  if (previous && previous !== user && names.includes(previous)) return previous;
+  // An unknown addressee in a group is safer than choosing the first character.
+  return names.length === 1 ? names[0] : undefined;
+}
 
 export function buildChatStageViewModel(state: ChatStageState): ChatStageViewModel {
   const pendingBatchText = (state.turnState.pendingMessages ?? []).filter((message) => message.trim()).join("\n");
@@ -39,6 +53,7 @@ export function buildChatStageViewModel(state: ChatStageState): ChatStageViewMod
     busyText: state.busyText,
     cgPath: state.cgPath,
     dialogCharacterName: systemPromptText ? undefined : dialog.characterName,
+    thinkingCharacterName: thinkingCharacterName(state),
     dialogHtml: systemPromptText ? undefined : dialog.dialogHtml,
     dialogText: systemPromptText ? "" : dialog.dialogText,
     inputAttachments: state.inputAttachments,

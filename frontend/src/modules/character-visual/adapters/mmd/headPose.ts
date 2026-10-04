@@ -44,6 +44,7 @@ export function createHeadPose(bones: readonly IMmdRuntimeBone[], metadata: read
     applied = false;
   };
   return {
+    boneNames: selected.map(({ bone }) => bone.name),
     apply({ pitch, yaw, roll }: HeadRotation) {
       restore();
       if (!pitch && !yaw && !roll) return;

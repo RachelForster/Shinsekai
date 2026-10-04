@@ -75,6 +75,25 @@ function animation(name = "head", yaw = 0.6) {
 afterEach(() => engine?.dispose());
 
 describe("MMD SDK motion evaluation and smooth pose changes", () => {
+  it("reserves the body for running clips and transitions, then permits breathing on held poses", () => {
+    const { player } = setup();
+    const bound = player.bind(animation());
+    expect(player.isAnimating).toBe(false);
+    player.set(bound, "play", false);
+    expect(player.isAnimating).toBe(true);
+    player.sample(0.5);
+    expect(player.isAnimating).toBe(true);
+    player.sample(0.5);
+    expect(player.hasPose).toBe(true);
+    expect(player.isAnimating).toBe(false);
+    player.set(bound, "restore", false);
+    expect(player.isAnimating).toBe(false);
+    player.set(null, "play", true);
+    expect(player.isAnimating).toBe(true);
+    player.sample(0.4);
+    expect(player.isAnimating).toBe(false);
+  });
+
   it("loads VMD binary through the real SDK loader", async () => {
     const { scene, head, player } = setup();
     const loaded = await loadMotion(scene, "nod.vmd", vmdBytes());
@@ -104,6 +123,8 @@ describe("MMD SDK motion evaluation and smooth pose changes", () => {
     player.set(bound, "play", false);
     expect(player.controlsMorph("smile")).toBe(true);
     expect(player.controlsMorph("blink")).toBe(false);
+    expect(player.controlsBone("head")).toBe(true);
+    expect(player.controlsBone("arm")).toBe(false);
     for (let i = 0; i < 10; i++) {
       model.morph.resetMorphWeights();
       player.sample(0.05);
@@ -139,6 +160,7 @@ describe("MMD SDK motion evaluation and smooth pose changes", () => {
     expect(arm.rotationQuaternion.y).toBeLessThan(-0.1);
     player.set(null, "play", true);
     expect(player.controlsMorph("smile")).toBe(false);
+    expect(player.controlsBone("head")).toBe(false);
     expect(player.hasPose).toBe(true);
     for (let i = 0; i < 4; i++) player.sample(0.1);
     expect(arm.rotationQuaternion.asArray()).toEqual([0, 0, 0, 1]);

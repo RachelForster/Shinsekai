@@ -52,7 +52,11 @@ export class SoundPlayer {
   private readonly voiceQueue: QueuedVoice[] = [];
   private readonly voiceSignalListeners = new Set<VoicePlaybackSignalListener>();
 
-  constructor(createAudio: AudioFactory = (url) => new Audio(url), onMouth?: MouthListener) {
+  constructor(
+    createAudio: AudioFactory = (url) => new Audio(url),
+    onMouth?: MouthListener,
+    private readonly onVoiceBoundary?: (characterName: string, state: "started" | "finished") => void,
+  ) {
     this.createAudio = createAudio;
     this.analyser = onMouth ? new VoiceAnalyser(onMouth) : null;
   }
@@ -280,6 +284,7 @@ export class SoundPlayer {
     }
     voice.started = true;
     this.analyser?.start(voice.audio, voice.characterName);
+    this.onVoiceBoundary?.(voice.characterName, "started");
     this.emitVoiceSignal(voice.playbackId, "started");
   }
 
@@ -289,6 +294,7 @@ export class SoundPlayer {
     }
     this.currentVoice = null;
     this.analyser?.stop();
+    if (state === "finished") this.onVoiceBoundary?.(voice.characterName, "finished");
     this.emitVoiceSignal(voice.playbackId, state, error);
     const next = this.voiceQueue.shift();
     if (next) {

@@ -33,7 +33,10 @@ export class MmdMotionPlayer {
   private readonly scratchRotation = Quaternion.Identity();
   private readonly identity = Quaternion.Identity();
 
-  constructor(private readonly model: IMmdModel) {
+  constructor(
+    private readonly model: IMmdModel,
+    private readonly defaultRotations: ReadonlyMap<string, Quaternion> = new Map(),
+  ) {
     this.poses = model.skeleton.bones.map((bone) => ({
       bone,
       rest: Vector3.FromArray(bone.getRestMatrix().m, 12),
@@ -67,8 +70,23 @@ export class MmdMotionPlayer {
     return this.animation !== null || this.blend < 1;
   }
 
+  /** Held VPD/VMD poses can breathe; running clips and crossfades own the body. */
+  get isAnimating(): boolean {
+    return this.blend < 1 || Boolean(this.animation && this.playing && this.frame < this.animation.animation.endFrame);
+  }
+
   controlsMorph(name: string): boolean {
     return !!name && !!this.animation?.animation.morphTracks.some((track) => track.name === name);
+  }
+
+  controlsBone(name: string): boolean {
+    const animation = this.animation?.animation;
+    return Boolean(
+      name &&
+      animation &&
+      (animation.boneTracks.some((track) => track.name === name) ||
+        animation.movableBoneTracks.some((track) => track.name === name)),
+    );
   }
 
   sample(dt: number) {
@@ -78,7 +96,10 @@ export class MmdMotionPlayer {
       this.frame = Math.min(this.animation.animation.endFrame, this.animation.animation.startFrame + this.elapsed * 30);
     this.poses.forEach(({ bone, rest }) => {
       bone.position.copyFrom(rest);
-      bone.setRotationQuaternion(this.identity, Space.LOCAL);
+      bone.setRotationQuaternion(
+        this.animation ? this.identity : (this.defaultRotations.get(bone.name) ?? this.identity),
+        Space.LOCAL,
+      );
     });
     this.model.ikSolverStates.fill(1);
     this.animation?.animate(this.frame);

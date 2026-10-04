@@ -34,6 +34,7 @@ function session() {
     apply: vi.fn().mockResolvedValue(undefined),
     readState: () => ({}),
     setMouthOpen: vi.fn(),
+    setAttention: vi.fn(),
     resize: vi.fn(),
     dispose: vi.fn(),
   } satisfies AvatarSession<unknown, unknown>;
@@ -62,6 +63,53 @@ afterEach(() => {
 });
 
 describe("CharacterVisual", () => {
+  it("routes transient attention without reloading the model or pose and clears it in edit mode", async () => {
+    const instance = session();
+    const create = register(vi.fn().mockResolvedValue(instance));
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+    vi.stubGlobal("fetch", fetch);
+    const view = render(<CharacterVisual {...props} attention="thinking" />);
+    await waitFor(() => expect(instance.setAttention).toHaveBeenLastCalledWith("thinking"));
+    await waitFor(() => expect(instance.apply).toHaveBeenCalledOnce());
+    view.rerender(<CharacterVisual {...props} attention="responding" />);
+    expect(instance.setAttention).toHaveBeenLastCalledWith("responding");
+    expect(create).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(instance.apply).toHaveBeenCalledOnce();
+    view.rerender(<CharacterVisual {...props} attention="thinking" mode="edit" />);
+    expect(instance.setAttention).toHaveBeenLastCalledWith("idle");
+    view.unmount();
+    expect(instance.setAttention).toHaveBeenLastCalledWith("idle");
+  });
+
+  it("gives only the addressed sprite a thought, then focuses the actual respondent", async () => {
+    const alice = session(),
+      bob = session();
+    const create = register(vi.fn().mockResolvedValueOnce(alice).mockResolvedValueOnce(bob));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) }));
+    const sprites = ["Alice", "Bob"].map((name) => ({
+      id: name,
+      label: name,
+      path: `/${name}.json`,
+      avatarType: "demo",
+      modelUrl: `/${name}.model`,
+    }));
+    const view = render(
+      <SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} thinkingCharacterName="Bob" sprites={sprites} />,
+    );
+    await waitFor(() => expect(bob.setAttention).toHaveBeenLastCalledWith("thinking"));
+    expect(alice.setAttention).toHaveBeenLastCalledWith("idle");
+    view.rerender(
+      <SpriteLayer hidden={false} runtimeScaleForSprite={() => 1} responding speaker="Alice" sprites={sprites} />,
+    );
+    expect(alice.setAttention).toHaveBeenLastCalledWith("responding");
+    expect(bob.setAttention).toHaveBeenLastCalledWith("idle");
+    view.rerender(<SpriteLayer hidden runtimeScaleForSprite={() => 1} thinkingCharacterName="Bob" sprites={sprites} />);
+    expect(bob.setAttention).toHaveBeenLastCalledWith("idle");
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(alice.apply).toHaveBeenCalledOnce();
+    expect(bob.apply).toHaveBeenCalledOnce();
+  });
   it("crops static images in a host with a natural aspect ratio and keeps its drag hook", () => {
     const onMouseDown = vi.fn();
     const onImageError = vi.fn();

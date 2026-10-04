@@ -1,7 +1,13 @@
 import { avatarAssetUrl } from "../../src/modules/character-visual/assetUrl";
 import { create } from "../../src/modules/character-visual/adapters/mmd/module";
 import { Engine } from "@babylonjs/core/Engines/engine";
-import { bindAvatarVoice, routeAvatarVoice } from "../../src/modules/character-visual/voiceRoute";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
+import {
+  bindAvatarVoice,
+  routeAvatarVoice,
+  routeAvatarSpeechEvent,
+} from "../../src/modules/character-visual/voiceRoute";
 
 const source = new URLSearchParams(location.search).get("source")!;
 const modelUrl = `/api/avatar/file?${new URLSearchParams({ model_path: source, path: source.split(/[\\/]/).at(-1)! })}`;
@@ -27,17 +33,182 @@ try {
   const root = scene.meshes.find((mesh) => mesh.metadata?.skeleton);
   const skeleton = root?.metadata.skeleton;
   const headIndex = skeleton?.bones.findIndex((bone: { name: string }) => ["頭", "head"].includes(bone.name));
-  const readHeadMatrix = () => {
-    if (!root || !skeleton || headIndex < 0) return [];
-    return Array.from(skeleton.getTransformMatrices(root).slice(headIndex * 16, headIndex * 16 + 16));
+  const findChest = (names: string[]) =>
+    skeleton?.bones.findIndex((bone: { name: string }) =>
+      names.includes(
+        bone.name
+          .trim()
+          .toLowerCase()
+          .replace(/[\s_]+/g, ""),
+      ),
+    ) ?? -1;
+  const preferredChest = findChest(["上半身2", "上半身２", "upperbody2", "chest", "upperchest", "胸腔"]);
+  const chestIndex = preferredChest >= 0 ? preferredChest : findChest(["上半身", "upperbody", "spine"]);
+  const readMatrix = (index: number) => {
+    if (!root || !skeleton || index < 0) return [];
+    return Array.from(skeleton.getTransformMatrices(root).slice(index * 16, index * 16 + 16));
+  };
+  const readScreenPosition = (index: number) => {
+    if (!root || !skeleton || index < 0 || !scene.activeCamera) return [];
+    skeleton.getTransformMatrices(root);
+    const world = skeleton.bones[index].getFinalMatrix().multiply(root.getWorldMatrix());
+    const canvas = scene.getEngine().getRenderingCanvas()!;
+    const viewport = scene.activeCamera.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight);
+    const point = Vector3.Project(Vector3.Zero(), world, scene.getTransformMatrix(), viewport);
+    return [point.x, point.y];
+  };
+  // Probe actual eye-weighted geometry, rather than the stationary eye pivot.
+  const eyeMarkers = new Map<string, { index: number; position: Vector3 }>();
+  for (const names of [
+    ["左目", "left eye", "eye_l", "eye.l"],
+    ["右目", "right eye", "eye_r", "eye.r"],
+  ]) {
+    const index = skeleton?.bones.findIndex((bone: { name: string }) => names.includes(bone.name.toLowerCase())) ?? -1;
+    if (index < 0) continue;
+    const points: Vector3[] = [];
+    for (const mesh of root?.metadata.meshes ?? []) {
+      const positions = mesh.getVerticesData(VertexBuffer.PositionKind);
+      const indices = mesh.getVerticesData(VertexBuffer.MatricesIndicesKind);
+      const weights = mesh.getVerticesData(VertexBuffer.MatricesWeightsKind);
+      if (!positions || !indices || !weights) continue;
+      for (let v = 0; v < positions.length / 3; v++)
+        if ([0, 1, 2, 3].some((k) => indices[v * 4 + k] === index && weights[v * 4 + k] > 0.99))
+          points.push(Vector3.FromArray(positions, v * 3));
+    }
+    if (!points.length) continue;
+    const front = Math.min(...points.map((p) => p.z));
+    const surface = points.filter((p) => p.z < front + 0.02);
+    const position = surface.reduce((sum, point) => sum.addInPlace(point), Vector3.Zero()).scale(1 / surface.length);
+    eyeMarkers.set(skeleton.bones[index].name, { index, position });
+  }
+  const readEyeSurfacePosition = (name: string) => {
+    const marker = eyeMarkers.get(name);
+    if (!root || !marker || !scene.activeCamera) return [];
+    const transform = Matrix.FromArray(skeleton.getTransformMatrices(root), marker.index * 16);
+    const world = transform.multiply(root.getWorldMatrix());
+    const canvas = scene.getEngine().getRenderingCanvas()!;
+    const point = Vector3.Project(
+      marker.position,
+      world,
+      scene.getTransformMatrix(),
+      scene.activeCamera.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight),
+    );
+    return [point.x, point.y];
+  };
+  const readEyeRotation = (name: string) => {
+    const index = skeleton?.bones.findIndex((bone: { name: string }) => bone.name === name) ?? -1;
+    if (!root || index < 0 || headIndex < 0) return [];
+    skeleton.getTransformMatrices(root);
+    const relative = skeleton.bones[index]
+      .getFinalMatrix()
+      .multiply(Matrix.Invert(skeleton.bones[headIndex].getFinalMatrix()));
+    return [0, 1, 2, 4, 5, 6, 8, 9, 10].map((i) => relative.m[i]);
+  };
+  // Probe a skinned tip, including blended bone weights; a bone's pivot may barely move.
+  const surfaceMarkers = new Map<string, { position: Vector3; indices: number[]; weights: number[] }>();
+  const readSurfacePosition = (name: string, relativeTo: string) => {
+    const index = skeleton?.bones.findIndex((bone: { name: string }) => bone.name === name) ?? -1;
+    const anchor = skeleton?.bones.findIndex((bone: { name: string }) => bone.name === relativeTo) ?? -1;
+    if (!root || index < 0 || anchor < 0 || !scene.activeCamera) return [];
+    let marker = surfaceMarkers.get(name);
+    if (!marker) {
+      for (const mesh of root.metadata.meshes ?? []) {
+        const positions = mesh.getVerticesData(VertexBuffer.PositionKind);
+        const indices = mesh.getVerticesData(VertexBuffer.MatricesIndicesKind);
+        const weights = mesh.getVerticesData(VertexBuffer.MatricesWeightsKind);
+        if (!positions || !indices || !weights) continue;
+        for (let v = 0; v < positions.length / 3; v++)
+          if (
+            [0, 1, 2, 3].some((k) => indices[v * 4 + k] === index && weights[v * 4 + k] > 0.25) &&
+            (!marker || positions[v * 3 + 1] < marker.position.y)
+          )
+            marker = {
+              position: Vector3.FromArray(positions, v * 3),
+              indices: Array.from(indices.slice(v * 4, v * 4 + 4)),
+              weights: Array.from(weights.slice(v * 4, v * 4 + 4)),
+            };
+      }
+      if (!marker) return [];
+      surfaceMarkers.set(name, marker);
+    }
+    const matrices = skeleton.getTransformMatrices(root);
+    const deformed = marker.indices.reduce(
+      (point, index, i) =>
+        point.addInPlace(
+          Vector3.TransformCoordinates(marker!.position, Matrix.FromArray(matrices, index * 16)).scale(
+            marker!.weights[i],
+          ),
+        ),
+      Vector3.Zero(),
+    );
+    // Remove rigid head/body motion before projection, so breathing cannot pass a wind check.
+    const anchored = Vector3.TransformCoordinates(
+      deformed,
+      Matrix.Invert(skeleton.bones[anchor].getFinalMatrix()).multiply(
+        Matrix.Invert(skeleton.bones[anchor].getAbsoluteInverseBindMatrix()),
+      ),
+    );
+    const canvas = scene.getEngine().getRenderingCanvas()!;
+    const point = Vector3.Project(
+      anchored,
+      root.getWorldMatrix(),
+      scene.getTransformMatrix(),
+      scene.activeCamera.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight),
+    );
+    return [point.x, point.y];
   };
   Object.assign(window, {
     mmdSmoke: {
       session,
       abort,
       hostInput,
-      readHeadMatrix,
+      readHeadMatrix: () => readMatrix(headIndex ?? -1),
+      readChestMatrix: () => readMatrix(chestIndex),
+      readHeadScreenPosition: () => readScreenPosition(headIndex ?? -1),
+      readChestScreenPosition: () => readScreenPosition(chestIndex),
+      readBoneScreenPosition: (name: string) =>
+        readScreenPosition(skeleton?.bones.findIndex((bone: { name: string }) => bone.name === name) ?? -1),
+      readRestBoneScreenPosition: (name: string) => {
+        const index = skeleton?.bones.findIndex((bone: { name: string }) => bone.name === name) ?? -1;
+        if (!root || index < 0 || !scene.activeCamera) return [];
+        const world = Matrix.Invert(skeleton.bones[index].getAbsoluteInverseBindMatrix()).multiply(
+          root.getWorldMatrix(),
+        );
+        const canvas = scene.getEngine().getRenderingCanvas()!;
+        const point = Vector3.Project(
+          Vector3.Zero(),
+          world,
+          scene.getTransformMatrix(),
+          scene.activeCamera.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight),
+        );
+        return [point.x, point.y];
+      },
+      readHeadPose: () => skeleton?.bones[headIndex]?.rotationQuaternion.asArray() ?? [],
+      readHeadYaw: () => {
+        if (!root || headIndex < 0 || chestIndex < 0) return 0;
+        skeleton.getTransformMatrices(root);
+        const relative = skeleton.bones[headIndex]
+          .getFinalMatrix()
+          .multiply(Matrix.Invert(skeleton.bones[chestIndex].getFinalMatrix()));
+        return Math.atan2(relative.m[8], relative.m[10]);
+      },
+      readMorphWeight: (name: string) => {
+        let weight = 0;
+        for (const mesh of root?.metadata.meshes ?? []) {
+          const manager = mesh.morphTargetManager;
+          for (let i = 0; i < (manager?.numTargets ?? 0); i++) {
+            const target = manager.getTarget(i);
+            if (target.name === name) weight = Math.max(weight, target.influence);
+          }
+        }
+        return weight;
+      },
+      eyeNames: [...eyeMarkers.keys()],
+      readEyeSurfacePosition,
+      readEyeRotation,
+      readSurfacePosition,
       routeVoice: (value: number) => routeAvatarVoice("MMD", value),
+      routeSpeechEvent: (event: "started" | "finished") => routeAvatarSpeechEvent("MMD", event),
       unbind,
     },
   });
