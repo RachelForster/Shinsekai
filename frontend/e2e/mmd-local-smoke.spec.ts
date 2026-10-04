@@ -73,7 +73,25 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
       { timeout: 30_000 },
     )
     .toBeGreaterThan(1000);
-  if (process.env.SHINSEKAI_MMD_SCREENSHOT) await page.screenshot({ path: process.env.SHINSEKAI_MMD_SCREENSHOT });
+  const arms = await page.evaluate(() => {
+    const { readBoneScreenPosition, readRestBoneScreenPosition } = (
+      window as unknown as {
+        mmdSmoke: {
+          readBoneScreenPosition(name: string): number[];
+          readRestBoneScreenPosition(name: string): number[];
+        };
+      }
+    ).mmdSmoke;
+    return ["左手首", "右手首"].map((name) => ({
+      resting: readBoneScreenPosition(name),
+      original: readRestBoneScreenPosition(name),
+    }));
+  });
+  for (const arm of arms)
+    if (arm.resting.length) {
+      expect(arm.resting[1] - arm.original[1]).toBeGreaterThan(20);
+      expect(Math.abs(arm.resting[0] - 300)).toBeLessThan(Math.abs(arm.original[0] - 300) - 20);
+    }
   const mouthChangedPixels = await page.evaluate(async () => {
     const canvas = document.querySelector("#model canvas") as HTMLCanvasElement;
     const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
@@ -196,7 +214,7 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
   console.log("MMD idle screen displacement (px):", idleVisibility);
 
   const gaze = await page.evaluate(async () => {
-    const { session, eyeNames, readEyeSurfacePosition, readEyeRotation, readHeadScreenPosition } = (
+    const { session, eyeNames, readEyeSurfacePosition, readEyeRotation, readHeadScreenPosition, readHeadYaw } = (
       window as unknown as {
         mmdSmoke: {
           session: AvatarSession<MmdState, MmdControls>;
@@ -204,6 +222,7 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
           readEyeSurfacePosition(name: string): number[];
           readEyeRotation(name: string): number[];
           readHeadScreenPosition(): number[];
+          readHeadYaw(): number;
         };
       }
     ).mmdSmoke;
@@ -214,17 +233,28 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
     session.setAttention?.("idle");
     await session.apply(state, "edit", signal);
     await wait(150);
+    await session.apply(state, "restore", signal);
+    session.setAttention?.("responding");
+    await wait(150);
     const neutral = eyeNames.map(readEyeRotation);
     const baseX = eyeNames.map((name) => readEyeSurfacePosition(name)[0] - readHeadScreenPosition()[0]);
-    await session.apply(state, "restore", signal);
+    const headBaseline = readHeadYaw();
     session.setAttention?.("thinking");
-    await wait(1100);
+    const started = performance.now();
+    while (performance.now() - started < 2500) {
+      await new Promise(requestAnimationFrame);
+      const eye = readEyeRotation(eyeNames[0]);
+      if (Math.max(...eye.map((value, i) => Math.abs(value - neutral[0][i]))) > 0.006) break;
+    }
+    const earlyHead = readHeadYaw();
+    await wait(650);
+    const followingHead = readHeadYaw();
     const thought = eyeNames.map(readEyeRotation);
     const displacement = eyeNames.map(
       (name, i) => readEyeSurfacePosition(name)[0] - readHeadScreenPosition()[0] - baseX[i],
     );
     session.setAttention?.("responding");
-    await wait(700);
+    await wait(1000);
     const returned = eyeNames.map(readEyeRotation);
     session.setAttention?.("idle");
     // Authored shared-eye tracks must win even when holding a completed VPD pose.
@@ -250,6 +280,9 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
       authoredAfter,
       saved: session.readState(),
       state,
+      headBaseline,
+      earlyHead,
+      followingHead,
     };
   });
   if (gaze) {
@@ -262,8 +295,39 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
     }
     expect(Math.sign(gaze.displacement[0])).toBe(Math.sign(gaze.displacement[1]));
     expect(gaze.saved).toEqual(gaze.state);
+    expect(Math.abs(gaze.earlyHead - gaze.headBaseline)).toBeLessThan(0.002);
+    expect(Math.abs(gaze.followingHead - gaze.headBaseline)).toBeGreaterThan(0.004);
     console.log("MMD thinking eye surface displacement (px):", gaze.displacement);
   }
+
+  const contextualBlink = await page.evaluate(async (blinkMorph: string) => {
+    const { session, routeSpeechEvent, readMorphWeight } = (
+      window as unknown as {
+        mmdSmoke: {
+          session: AvatarSession<MmdState, MmdControls>;
+          routeSpeechEvent(event: "started" | "finished"): void;
+          readMorphWeight(name: string): number;
+        };
+      }
+    ).mmdSmoke;
+    const signal = new AbortController().signal;
+    const state = { ...session.readState(), blinkMorph };
+    const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+    await session.apply(state, "edit", signal);
+    await wait(100);
+    await session.apply(state, "restore", signal);
+    await wait(150);
+    routeSpeechEvent("finished");
+    const weights: number[] = [];
+    for (let i = 0; i < 75; i++) {
+      await wait(20);
+      weights.push(readMorphWeight(blinkMorph));
+    }
+    await session.apply({ ...state, blinkMorph: "" }, "restore", signal);
+    return { peak: Math.max(...weights), ending: weights.at(-1) };
+  }, status.bindings.blinkMorph);
+  expect(contextualBlink.peak).toBeGreaterThan(0.9);
+  expect(contextualBlink.ending).toBe(0);
 
   const presets = await page.evaluate(async () => {
     const { session, readHeadMatrix, readHeadPose } = (
@@ -328,6 +392,7 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
     return readHeadMatrix();
   });
   expect(difference(headMotion.neutral, reduced)).toBeLessThan(0.00001);
+  if (process.env.SHINSEKAI_MMD_SCREENSHOT) await page.screenshot({ path: process.env.SHINSEKAI_MMD_SCREENSHOT });
   await page.evaluate(() => {
     const { session, unbind } = (
       window as unknown as {

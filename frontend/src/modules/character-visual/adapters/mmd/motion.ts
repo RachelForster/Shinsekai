@@ -33,7 +33,10 @@ export class MmdMotionPlayer {
   private readonly scratchRotation = Quaternion.Identity();
   private readonly identity = Quaternion.Identity();
 
-  constructor(private readonly model: IMmdModel) {
+  constructor(
+    private readonly model: IMmdModel,
+    private readonly defaultRotations: ReadonlyMap<string, Quaternion> = new Map(),
+  ) {
     this.poses = model.skeleton.bones.map((bone) => ({
       bone,
       rest: Vector3.FromArray(bone.getRestMatrix().m, 12),
@@ -93,7 +96,10 @@ export class MmdMotionPlayer {
       this.frame = Math.min(this.animation.animation.endFrame, this.animation.animation.startFrame + this.elapsed * 30);
     this.poses.forEach(({ bone, rest }) => {
       bone.position.copyFrom(rest);
-      bone.setRotationQuaternion(this.identity, Space.LOCAL);
+      bone.setRotationQuaternion(
+        this.animation ? this.identity : (this.defaultRotations.get(bone.name) ?? this.identity),
+        Space.LOCAL,
+      );
     });
     this.model.ikSolverStates.fill(1);
     this.animation?.animate(this.frame);

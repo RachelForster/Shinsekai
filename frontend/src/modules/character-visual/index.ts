@@ -2,13 +2,14 @@
 export { CharacterVisual, type CharacterVisualProps } from "./CharacterVisual";
 export { avatarAssetUrl, avatarRuntimeAssetUrl } from "./assetUrl";
 export { avatarFormat, registeredAvatarFormats, registerAvatarFormat } from "./registry";
-export { routeAvatarVoice } from "./voiceRoute";
+export { routeAvatarVoice, routeAvatarSpeechEvent } from "./voiceRoute";
 export { STATIC_AVATAR_TYPE } from "./contracts";
 export { defaultVisualFraming, normalizeVisualFraming, visualFramingMinRatio } from "./framing";
 export type { VisualFraming } from "./framing";
 export type {
   ApplyMode,
   AvatarAttention,
+  AvatarSpeechEvent,
   AvatarCapabilities,
   AvatarEditorProps,
   AvatarFormat,

@@ -39,6 +39,34 @@ function createHarness() {
 }
 
 describe("SoundPlayer", () => {
+  it("emits avatar boundaries for actual queued speakers and does not treat interruption as a sentence ending", async () => {
+    const audio: FakeAudio[] = [];
+    const boundary = vi.fn();
+    const player = new SoundPlayer(
+      (url) => {
+        const item = new FakeAudio(url);
+        audio.push(item);
+        return item as unknown as HTMLAudioElement;
+      },
+      undefined,
+      boundary,
+    );
+    player.playVoice("one", "one.wav", 1, "A");
+    player.playVoice("two", "two.wav", 1, "B");
+    await Promise.resolve();
+    expect(boundary.mock.calls).toEqual([["A", "started"]]);
+    audio[0].finish();
+    await Promise.resolve();
+    expect(boundary.mock.calls).toEqual([
+      ["A", "started"],
+      ["A", "finished"],
+      ["B", "started"],
+    ]);
+    player.stopVoice();
+    audio[1].finish();
+    expect(boundary).toHaveBeenCalledTimes(3);
+    player.dispose();
+  });
   it("retains queued character identity and clears the voice analyser between speakers", async () => {
     const start = vi.spyOn(VoiceAnalyser.prototype, "start").mockImplementation(() => {});
     const stop = vi.spyOn(VoiceAnalyser.prototype, "stop").mockImplementation(() => {});

@@ -10,7 +10,7 @@ import { RegisterPmxLoader } from "babylon-mmd/esm/Loader/pmxLoader.pure";
 import { MmdRuntime } from "babylon-mmd/esm/Runtime/mmdRuntime";
 import { MmdStandardMaterialProxy } from "babylon-mmd/esm/Runtime/mmdStandardMaterialProxy";
 
-import type { ApplyMode, AvatarMount, AvatarSession } from "../../contracts";
+import type { ApplyMode, AvatarAttention, AvatarMount, AvatarSession } from "../../contracts";
 import { ParameterTransition } from "../../parameterTransition";
 import { TalkingHeadMotion } from "../../talkingHeadMotion";
 import { avatarRenderSize } from "../../renderSize";
@@ -18,17 +18,11 @@ import { BreathingMotion, createBreathingPose } from "./breathing";
 import { BreezeMotion, createBreezePose } from "./breeze";
 import { createHeadPose } from "./headPose";
 import { GazeMotion, createGazePose } from "./gaze";
+import { BlinkMotion, type BlinkCue } from "./blink";
 import { createView } from "./view";
 import { loadMotion, MmdMotionPlayer } from "./motion";
-import {
-  blinkClosure,
-  detectBindings,
-  neutralState,
-  parseState,
-  validateControls,
-  type MmdControls,
-  type MmdState,
-} from "./state";
+import { createRestingPose } from "./restingPose";
+import { detectBindings, neutralState, parseState, validateControls, type MmdControls, type MmdState } from "./state";
 export { Editor } from "./Editor";
 
 function packagePath(raw: string): string {
@@ -149,6 +143,7 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
     const headPose = createHeadPose(model.runtimeBones, parsed.bones);
     const gazePose = createGazePose(model.runtimeBones, parsed.bones);
     const gaze = new GazeMotion();
+    const blink = new BlinkMotion();
     const restorePose = () => {
       gazePose.restore();
       breezePose.restore();
@@ -156,7 +151,7 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
       breathingPose.restore();
     };
     const talkingHead = new TalkingHeadMotion();
-    const motions = new MmdMotionPlayer(model);
+    const motions = new MmdMotionPlayer(model, createRestingPose(model.runtimeBones, parsed.bones));
     const motionCache = new Map<string, ReturnType<MmdMotionPlayer["bind"]>>();
     let applicationSequence = 0;
     const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
@@ -168,13 +163,22 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
       sampling: "none" as const,
     };
     let mode: ApplyMode = "restore";
+    let attention: AvatarAttention = "idle";
     let mouth = 0;
     let smoothMouth = 0;
-    let blinkStart = -1;
-    let nextBlink = performance.now() + 3000;
     let hasApplied = false;
     const transition = new ParameterTransition();
     const names = controls.morphs.map((item) => item.name);
+    const cueBlink = (cue: BlinkCue, now = performance.now()) => {
+      if (
+        !disposed &&
+        mode !== "edit" &&
+        !reducedMotion?.matches &&
+        current.blinkMorph &&
+        !motions.controlsMorph(current.blinkMorph)
+      )
+        blink.request(cue, now);
+    };
     const resize = (width: number, height: number) => {
       if (disposed) return;
       const pixels = avatarRenderSize(width, height, window.devicePixelRatio);
@@ -197,21 +201,25 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
           now,
         );
         names.forEach((name, index) => model.morph.setMorphWeight(name, values[index]));
+        const ambientMotion = mode !== "edit" && !reducedMotion?.matches;
+        const gazeActive =
+          ambientMotion &&
+          gazePose.boneNames.length > 0 &&
+          !motions.isAnimating &&
+          !gazePose.boneNames.some((name) => motions.controlsBone(name));
+        const gazeSample = gaze.sample(dt, gazeActive, headPose.boneNames.length > 0 && !motions.hasPose);
+        if (gazeSample.blink) cueBlink("gaze-shift", now);
+        const closure = blink.sample(
+          now,
+          mode !== "edit" && Boolean(current.blinkMorph) && !motions.controlsMorph(current.blinkMorph),
+          !reducedMotion?.matches,
+        );
+        if (current.blinkMorph)
+          model.morph.setMorphWeight(
+            current.blinkMorph,
+            Math.max(model.morph.getMorphWeight(current.blinkMorph), closure),
+          );
         if (mode !== "edit") {
-          if (now >= nextBlink && blinkStart < 0) blinkStart = now;
-          if (blinkStart >= 0) {
-            const elapsed = now - blinkStart;
-            const closure = blinkClosure(elapsed);
-            if (current.blinkMorph && !motions.controlsMorph(current.blinkMorph))
-              model.morph.setMorphWeight(
-                current.blinkMorph,
-                Math.max(model.morph.getMorphWeight(current.blinkMorph), closure),
-              );
-            if (elapsed >= 300) {
-              blinkStart = -1;
-              nextBlink = now + 2500 + Math.random() * 2000;
-            }
-          }
           smoothMouth += (mouth - smoothMouth) * Math.min(1, dt * (mouth > smoothMouth ? 18 : 10));
           if (current.mouthMorph)
             model.morph.setMorphWeight(
@@ -219,22 +227,16 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
               Math.max(model.morph.getMorphWeight(current.mouthMorph), smoothMouth),
             );
         }
-        const ambientMotion = mode !== "edit" && !reducedMotion?.matches;
         const breath = breathing.sample(dt, ambientMotion && !motions.isAnimating);
         const speech = talkingHead.sample(dt, ambientMotion && !motions.hasPose);
         breathingPose.apply(breath.chestPitch, breath.chestLift);
         headPose.apply({
-          pitch: speech.pitch + breath.head.pitch,
-          yaw: speech.yaw + breath.head.yaw,
+          pitch: speech.pitch + breath.head.pitch + gazeSample.head.pitch,
+          yaw: speech.yaw + breath.head.yaw + gazeSample.head.yaw,
           roll: speech.roll + breath.head.roll,
         });
         breezePose.apply(breeze.sample(dt, ambientMotion && !motions.isAnimating));
-        gazePose.apply(
-          gaze.sample(
-            dt,
-            ambientMotion && !motions.isAnimating && !gazePose.boneNames.some((name) => motions.controlsBone(name)),
-          ),
-        );
+        if (gazeActive) gazePose.apply(gazeSample);
         modelRuntime.beforePhysics(engine.getDeltaTime());
       } catch (error) {
         restorePose();
@@ -305,7 +307,15 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         }
       },
       setAttention(value) {
-        if (!disposed) gaze.setAttention(value);
+        if (!disposed && attention !== value) {
+          if (value === "responding") cueBlink("reply-start");
+          else if (attention === "responding" && value === "idle") cueBlink("sentence-end");
+          attention = value;
+          gaze.setAttention(value);
+        }
+      },
+      notifySpeechEvent(event) {
+        cueBlink(event === "started" ? "reply-start" : "sentence-end");
       },
       resize,
       dispose,

@@ -3,7 +3,11 @@ import { create } from "../../src/modules/character-visual/adapters/mmd/module";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
-import { bindAvatarVoice, routeAvatarVoice } from "../../src/modules/character-visual/voiceRoute";
+import {
+  bindAvatarVoice,
+  routeAvatarVoice,
+  routeAvatarSpeechEvent,
+} from "../../src/modules/character-visual/voiceRoute";
 
 const source = new URLSearchParams(location.search).get("source")!;
 const modelUrl = `/api/avatar/file?${new URLSearchParams({ model_path: source, path: source.split(/[\\/]/).at(-1)! })}`;
@@ -111,11 +115,46 @@ try {
       readChestScreenPosition: () => readScreenPosition(chestIndex),
       readBoneScreenPosition: (name: string) =>
         readScreenPosition(skeleton?.bones.findIndex((bone: { name: string }) => bone.name === name) ?? -1),
+      readRestBoneScreenPosition: (name: string) => {
+        const index = skeleton?.bones.findIndex((bone: { name: string }) => bone.name === name) ?? -1;
+        if (!root || index < 0 || !scene.activeCamera) return [];
+        const world = Matrix.Invert(skeleton.bones[index].getAbsoluteInverseBindMatrix()).multiply(
+          root.getWorldMatrix(),
+        );
+        const canvas = scene.getEngine().getRenderingCanvas()!;
+        const point = Vector3.Project(
+          Vector3.Zero(),
+          world,
+          scene.getTransformMatrix(),
+          scene.activeCamera.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight),
+        );
+        return [point.x, point.y];
+      },
       readHeadPose: () => skeleton?.bones[headIndex]?.rotationQuaternion.asArray() ?? [],
+      readHeadYaw: () => {
+        if (!root || headIndex < 0 || chestIndex < 0) return 0;
+        skeleton.getTransformMatrices(root);
+        const relative = skeleton.bones[headIndex]
+          .getFinalMatrix()
+          .multiply(Matrix.Invert(skeleton.bones[chestIndex].getFinalMatrix()));
+        return Math.atan2(relative.m[8], relative.m[10]);
+      },
+      readMorphWeight: (name: string) => {
+        let weight = 0;
+        for (const mesh of root?.metadata.meshes ?? []) {
+          const manager = mesh.morphTargetManager;
+          for (let i = 0; i < (manager?.numTargets ?? 0); i++) {
+            const target = manager.getTarget(i);
+            if (target.name === name) weight = Math.max(weight, target.influence);
+          }
+        }
+        return weight;
+      },
       eyeNames: [...eyeMarkers.keys()],
       readEyeSurfacePosition,
       readEyeRotation,
       routeVoice: (value: number) => routeAvatarVoice("MMD", value),
+      routeSpeechEvent: (event: "started" | "finished") => routeAvatarSpeechEvent("MMD", event),
       unbind,
     },
   });
