@@ -101,6 +101,8 @@ export function SpriteLayer({
   runtimeScaleForSprite,
   runtimeFramingForSprite,
   speaker,
+  responding = false,
+  thinkingCharacterName,
   sprites,
 }: {
   hidden: boolean;
@@ -108,6 +110,8 @@ export function SpriteLayer({
   runtimeScaleForSprite: (sprite: ChatStageSprite, index: number) => number;
   runtimeFramingForSprite?: (sprite: ChatStageSprite, index: number) => VisualFraming;
   speaker?: string;
+  responding?: boolean;
+  thinkingCharacterName?: string;
   sprites: ChatStageSprite[];
 }) {
   const activeSpeaker = speaker?.trim() ?? "";
@@ -157,6 +161,15 @@ export function SpriteLayer({
               onMouseDown={onDragStart ?? (() => {})}
               mode={sprite.applyMode ?? "play"}
               voiceCharacterName={chatStageSpriteCharacterName(sprite)}
+              attention={
+                hidden
+                  ? "idle"
+                  : speaking && responding
+                    ? "responding"
+                    : chatStageSpriteCharacterName(sprite) === thinkingCharacterName
+                      ? "thinking"
+                      : "idle"
+              }
               stateSequence={sprite.stateSequence}
             />
           </figure>

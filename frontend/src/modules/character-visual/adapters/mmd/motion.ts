@@ -76,6 +76,16 @@ export class MmdMotionPlayer {
     return !!name && !!this.animation?.animation.morphTracks.some((track) => track.name === name);
   }
 
+  controlsBone(name: string): boolean {
+    const animation = this.animation?.animation;
+    return Boolean(
+      name &&
+      animation &&
+      (animation.boneTracks.some((track) => track.name === name) ||
+        animation.movableBoneTracks.some((track) => track.name === name)),
+    );
+  }
+
   sample(dt: number) {
     const seconds = Number.isFinite(dt) ? Math.max(0, dt) : 0;
     this.elapsed += seconds;

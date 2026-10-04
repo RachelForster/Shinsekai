@@ -17,6 +17,7 @@ import { avatarRenderSize } from "../../renderSize";
 import { BreathingMotion, createBreathingPose } from "./breathing";
 import { BreezeMotion, createBreezePose } from "./breeze";
 import { createHeadPose } from "./headPose";
+import { GazeMotion, createGazePose } from "./gaze";
 import { createView } from "./view";
 import { loadMotion, MmdMotionPlayer } from "./motion";
 import {
@@ -146,7 +147,10 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
     const breezePose = createBreezePose(model.runtimeBones, parsed.bones, parsed.rigidBodies);
     const breeze = new BreezeMotion();
     const headPose = createHeadPose(model.runtimeBones, parsed.bones);
+    const gazePose = createGazePose(model.runtimeBones, parsed.bones);
+    const gaze = new GazeMotion();
     const restorePose = () => {
+      gazePose.restore();
       breezePose.restore();
       headPose.restore();
       breathingPose.restore();
@@ -225,6 +229,12 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
           roll: speech.roll + breath.head.roll,
         });
         breezePose.apply(breeze.sample(dt, ambientMotion && !motions.isAnimating));
+        gazePose.apply(
+          gaze.sample(
+            dt,
+            ambientMotion && !motions.isAnimating && !gazePose.boneNames.some((name) => motions.controlsBone(name)),
+          ),
+        );
         modelRuntime.beforePhysics(engine.getDeltaTime());
       } catch (error) {
         restorePose();
@@ -289,7 +299,13 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         if (!disposed) mouth = Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
       },
       setSpeechLevel(value) {
-        if (!disposed) talkingHead.setLevel(value);
+        if (!disposed) {
+          talkingHead.setLevel(value);
+          gaze.setSpeechLevel(value);
+        }
+      },
+      setAttention(value) {
+        if (!disposed) gaze.setAttention(value);
       },
       resize,
       dispose,

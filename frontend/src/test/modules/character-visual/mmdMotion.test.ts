@@ -123,6 +123,8 @@ describe("MMD SDK motion evaluation and smooth pose changes", () => {
     player.set(bound, "play", false);
     expect(player.controlsMorph("smile")).toBe(true);
     expect(player.controlsMorph("blink")).toBe(false);
+    expect(player.controlsBone("head")).toBe(true);
+    expect(player.controlsBone("arm")).toBe(false);
     for (let i = 0; i < 10; i++) {
       model.morph.resetMorphWeights();
       player.sample(0.05);
@@ -158,6 +160,7 @@ describe("MMD SDK motion evaluation and smooth pose changes", () => {
     expect(arm.rotationQuaternion.y).toBeLessThan(-0.1);
     player.set(null, "play", true);
     expect(player.controlsMorph("smile")).toBe(false);
+    expect(player.controlsBone("head")).toBe(false);
     expect(player.hasPose).toBe(true);
     for (let i = 0; i < 4; i++) player.sample(0.1);
     expect(arm.rotationQuaternion.asArray()).toEqual([0, 0, 0, 1]);

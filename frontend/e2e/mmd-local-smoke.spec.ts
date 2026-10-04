@@ -26,6 +26,11 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
         body: "Vocaloid Pose Data file\n\nmodel.osm;\n1;\nBone0{頭\n0,0,0;\n0,0.258819,0,0.965926;\n}\n",
       });
     }
+    if (path === "__smoke__/eyes.vpd") {
+      return route.fulfill({
+        body: "Vocaloid Pose Data file\n\nmodel.osm;\n1;\nBone0{両目\n0,0,0;\n0,0.0998334,0,0.995004;\n}\n",
+      });
+    }
     if (path === "__smoke__/nod.vmd") {
       // Shift-JIS encoding of 頭; the motion is synthetic, not a redistributed asset.
       return route.fulfill({ body: Buffer.from(vmdBytes(new Uint8Array([0x93, 0xaa]))) });
@@ -151,6 +156,7 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
     routeVoice(1);
     await wait(300);
     const editing = readHeadMatrix();
+    routeVoice(0);
     await session.apply(state, "restore", new AbortController().signal);
     return { neutral, baseline, breathing, chestBaseline, chestBreathing, talking, editing, preserved };
   });
@@ -188,6 +194,76 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
     expect(idleVisibility.chest).toBeGreaterThan(0.5);
   }
   console.log("MMD idle screen displacement (px):", idleVisibility);
+
+  const gaze = await page.evaluate(async () => {
+    const { session, eyeNames, readEyeSurfacePosition, readEyeRotation, readHeadScreenPosition } = (
+      window as unknown as {
+        mmdSmoke: {
+          session: AvatarSession<MmdState, MmdControls>;
+          eyeNames: string[];
+          readEyeSurfacePosition(name: string): number[];
+          readEyeRotation(name: string): number[];
+          readHeadScreenPosition(): number[];
+        };
+      }
+    ).mmdSmoke;
+    if (eyeNames.length !== 2) return null;
+    const signal = new AbortController().signal;
+    const state = { ...session.readState(), mouthMorph: "", blinkMorph: "" };
+    const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+    session.setAttention?.("idle");
+    await session.apply(state, "edit", signal);
+    await wait(150);
+    const neutral = eyeNames.map(readEyeRotation);
+    const baseX = eyeNames.map((name) => readEyeSurfacePosition(name)[0] - readHeadScreenPosition()[0]);
+    await session.apply(state, "restore", signal);
+    session.setAttention?.("thinking");
+    await wait(1100);
+    const thought = eyeNames.map(readEyeRotation);
+    const displacement = eyeNames.map(
+      (name, i) => readEyeSurfacePosition(name)[0] - readHeadScreenPosition()[0] - baseX[i],
+    );
+    session.setAttention?.("responding");
+    await wait(700);
+    const returned = eyeNames.map(readEyeRotation);
+    session.setAttention?.("idle");
+    // Authored shared-eye tracks must win even when holding a completed VPD pose.
+    const hasController = eyeNames.includes("左目") && eyeNames.includes("右目");
+    let authoredBefore: number[][] = [],
+      authoredAfter: number[][] = [];
+    if (hasController) {
+      await session.apply({ ...state, motion: "__smoke__/eyes.vpd" }, "restore", signal);
+      await wait(150);
+      authoredBefore = eyeNames.map(readEyeRotation);
+      session.setAttention?.("thinking");
+      await wait(1100);
+      authoredAfter = eyeNames.map(readEyeRotation);
+    }
+    session.setAttention?.("idle");
+    await session.apply(state, "restore", signal);
+    return {
+      neutral,
+      thought,
+      returned,
+      displacement,
+      authoredBefore,
+      authoredAfter,
+      saved: session.readState(),
+      state,
+    };
+  });
+  if (gaze) {
+    for (let i = 0; i < 2; i++) {
+      expect(difference(gaze.neutral[i], gaze.thought[i])).toBeGreaterThan(0.01);
+      expect(Math.abs(gaze.displacement[i])).toBeGreaterThan(0.15);
+      expect(difference(gaze.neutral[i], gaze.returned[i])).toBeLessThan(0.001);
+      if (gaze.authoredBefore.length)
+        expect(difference(gaze.authoredBefore[i], gaze.authoredAfter[i])).toBeLessThan(0.00001);
+    }
+    expect(Math.sign(gaze.displacement[0])).toBe(Math.sign(gaze.displacement[1]));
+    expect(gaze.saved).toEqual(gaze.state);
+    console.log("MMD thinking eye surface displacement (px):", gaze.displacement);
+  }
 
   const presets = await page.evaluate(async () => {
     const { session, readHeadMatrix, readHeadPose } = (

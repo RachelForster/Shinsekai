@@ -8,6 +8,7 @@ export { defaultVisualFraming, normalizeVisualFraming, visualFramingMinRatio } f
 export type { VisualFraming } from "./framing";
 export type {
   ApplyMode,
+  AvatarAttention,
   AvatarCapabilities,
   AvatarEditorProps,
   AvatarFormat,

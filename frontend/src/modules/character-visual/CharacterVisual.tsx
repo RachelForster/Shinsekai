@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState, type MouseEventHandler, type SyntheticEvent } from "react";
 
-import { STATIC_AVATAR_TYPE, type ApplyMode, type AvatarSession, type CharacterVisualAsset } from "./contracts";
+import {
+  STATIC_AVATAR_TYPE,
+  type ApplyMode,
+  type AvatarAttention,
+  type AvatarSession,
+  type CharacterVisualAsset,
+} from "./contracts";
 import { avatarFormat } from "./registry";
 import { avatarAssetUrl, avatarRuntimeAssetUrl } from "./assetUrl";
 import { bindAvatarVoice } from "./voiceRoute";
@@ -15,6 +21,7 @@ export interface CharacterVisualProps {
   hitbox: boolean;
   mode: ApplyMode;
   voiceCharacterName?: string;
+  attention?: AvatarAttention;
   stateSequence?: number;
   /** Non-destructive, format-independent framing; omitted means the original view. */
   framing?: VisualFraming;
@@ -72,6 +79,7 @@ function ModelVisual({
   hitbox,
   mode,
   voiceCharacterName,
+  attention = "idle",
   stateSequence,
   framing,
   onReady,
@@ -88,6 +96,12 @@ function ModelVisual({
   useEffect(() => {
     if (session && voiceCharacterName && mode !== "edit") return bindAvatarVoice(voiceCharacterName, session);
   }, [session, voiceCharacterName, mode]);
+
+  useEffect(() => {
+    session?.setAttention?.(mode === "edit" ? "idle" : attention);
+  }, [session, attention, mode]);
+
+  useEffect(() => () => session?.setAttention?.("idle"), [session]);
 
   useEffect(() => {
     const container = containerRef.current;

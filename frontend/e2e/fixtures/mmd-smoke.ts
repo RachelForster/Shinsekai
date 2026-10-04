@@ -1,7 +1,8 @@
 import { avatarAssetUrl } from "../../src/modules/character-visual/assetUrl";
 import { create } from "../../src/modules/character-visual/adapters/mmd/module";
 import { Engine } from "@babylonjs/core/Engines/engine";
-import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { VertexBuffer } from "@babylonjs/core/Buffers/buffer";
 import { bindAvatarVoice, routeAvatarVoice } from "../../src/modules/character-visual/voiceRoute";
 
 const source = new URLSearchParams(location.search).get("source")!;
@@ -52,6 +53,53 @@ try {
     const point = Vector3.Project(Vector3.Zero(), world, scene.getTransformMatrix(), viewport);
     return [point.x, point.y];
   };
+  // Probe actual eye-weighted geometry, rather than the stationary eye pivot.
+  const eyeMarkers = new Map<string, { index: number; position: Vector3 }>();
+  for (const names of [
+    ["左目", "left eye", "eye_l", "eye.l"],
+    ["右目", "right eye", "eye_r", "eye.r"],
+  ]) {
+    const index = skeleton?.bones.findIndex((bone: { name: string }) => names.includes(bone.name.toLowerCase())) ?? -1;
+    if (index < 0) continue;
+    const points: Vector3[] = [];
+    for (const mesh of root?.metadata.meshes ?? []) {
+      const positions = mesh.getVerticesData(VertexBuffer.PositionKind);
+      const indices = mesh.getVerticesData(VertexBuffer.MatricesIndicesKind);
+      const weights = mesh.getVerticesData(VertexBuffer.MatricesWeightsKind);
+      if (!positions || !indices || !weights) continue;
+      for (let v = 0; v < positions.length / 3; v++)
+        if ([0, 1, 2, 3].some((k) => indices[v * 4 + k] === index && weights[v * 4 + k] > 0.99))
+          points.push(Vector3.FromArray(positions, v * 3));
+    }
+    if (!points.length) continue;
+    const front = Math.min(...points.map((p) => p.z));
+    const surface = points.filter((p) => p.z < front + 0.02);
+    const position = surface.reduce((sum, point) => sum.addInPlace(point), Vector3.Zero()).scale(1 / surface.length);
+    eyeMarkers.set(skeleton.bones[index].name, { index, position });
+  }
+  const readEyeSurfacePosition = (name: string) => {
+    const marker = eyeMarkers.get(name);
+    if (!root || !marker || !scene.activeCamera) return [];
+    const transform = Matrix.FromArray(skeleton.getTransformMatrices(root), marker.index * 16);
+    const world = transform.multiply(root.getWorldMatrix());
+    const canvas = scene.getEngine().getRenderingCanvas()!;
+    const point = Vector3.Project(
+      marker.position,
+      world,
+      scene.getTransformMatrix(),
+      scene.activeCamera.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight),
+    );
+    return [point.x, point.y];
+  };
+  const readEyeRotation = (name: string) => {
+    const index = skeleton?.bones.findIndex((bone: { name: string }) => bone.name === name) ?? -1;
+    if (!root || index < 0 || headIndex < 0) return [];
+    skeleton.getTransformMatrices(root);
+    const relative = skeleton.bones[index]
+      .getFinalMatrix()
+      .multiply(Matrix.Invert(skeleton.bones[headIndex].getFinalMatrix()));
+    return [0, 1, 2, 4, 5, 6, 8, 9, 10].map((i) => relative.m[i]);
+  };
   Object.assign(window, {
     mmdSmoke: {
       session,
@@ -64,6 +112,9 @@ try {
       readBoneScreenPosition: (name: string) =>
         readScreenPosition(skeleton?.bones.findIndex((bone: { name: string }) => bone.name === name) ?? -1),
       readHeadPose: () => skeleton?.bones[headIndex]?.rotationQuaternion.asArray() ?? [],
+      eyeNames: [...eyeMarkers.keys()],
+      readEyeSurfacePosition,
+      readEyeRotation,
       routeVoice: (value: number) => routeAvatarVoice("MMD", value),
       unbind,
     },

@@ -753,6 +753,8 @@ export function ChatStagePage() {
           runtimeScaleForSprite={(sprite, index) => runtimeSpriteScale(runtimeConfig, sprite, index)}
           runtimeFramingForSprite={(sprite, index) => runtimeSpriteFraming(runtimeConfig, sprite, index)}
           speaker={viewModel.dialogCharacterName}
+          responding={viewModel.status === "speaking" || viewModel.status === "streaming" || typingDialog}
+          thinkingCharacterName={viewModel.thinkingCharacterName}
           sprites={stageSprites}
         />
         <StatLayer stats={viewModel.stats} />
