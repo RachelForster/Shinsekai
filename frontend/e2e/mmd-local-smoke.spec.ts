@@ -31,6 +31,11 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
         body: "Vocaloid Pose Data file\n\nmodel.osm;\n1;\nBone0{両目\n0,0,0;\n0,0.0998334,0,0.995004;\n}\n",
       });
     }
+    if (path === "__smoke__/hair.vpd") {
+      return route.fulfill({
+        body: "Vocaloid Pose Data file\n\nmodel.osm;\n1;\nBone0{サイドC_左01\n0,0,0;\n0,0,0.0499792,0.9987503;\n}\n",
+      });
+    }
     if (path === "__smoke__/nod.vmd") {
       // Shift-JIS encoding of 頭; the motion is synthetic, not a redistributed asset.
       return route.fulfill({ body: Buffer.from(vmdBytes(new Uint8Array([0x93, 0xaa]))) });
@@ -379,6 +384,68 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
   expect(difference(presets.neutral, presets.cleared)).toBeLessThan(0.00001);
   expect(presets.canvases).toBe(1);
   expect(requested.filter((path) => path === "__smoke__/nod.vmd")).toHaveLength(1);
+
+  const wind = await page.evaluate(async () => {
+    const { session, routeVoice, readSurfacePosition } = (
+      window as unknown as {
+        mmdSmoke: {
+          session: AvatarSession<MmdState, MmdControls>;
+          routeVoice(value: number): void;
+          readSurfacePosition(name: string, relativeTo: string): number[];
+        };
+      }
+    ).mmdSmoke;
+    const probes = [
+      { name: "サイドC_左02", anchor: "頭", minimum: 1.6 },
+      { name: "サイドC_右02", anchor: "頭", minimum: 1.6 },
+      { name: "スカート_4_0", anchor: "下半身", minimum: 0.5 },
+      { name: "スカート_4_9", anchor: "下半身", minimum: 0.5 },
+    ];
+    const state = { ...session.readState(), mouthMorph: "", blinkMorph: "" };
+    const signal = new AbortController().signal;
+    const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+    routeVoice(0);
+    session.setAttention?.("responding");
+    await session.apply(state, "edit", signal);
+    await wait(150);
+    const original = probes.map(({ name, anchor }) => readSurfacePosition(name, anchor));
+    // These probes calibrate Nanami; other locally supplied rigs still run the generic smoke checks.
+    if (original.some((point) => point.length !== 2)) {
+      await session.apply(state, "restore", signal);
+      session.setAttention?.("idle");
+      return null;
+    }
+    await session.apply(state, "restore", signal);
+    const offsets: number[][] = [];
+    for (let i = 0; i < 60; i++) {
+      await wait(200);
+      offsets.push(probes.map(({ name, anchor }, index) => readSurfacePosition(name, anchor)[0] - original[index][0]));
+    }
+    const displacement = probes.map(({ name, minimum }, i) => ({
+      name,
+      minimum,
+      peak: Math.max(...offsets.map((sample) => Math.abs(sample[i]))),
+    }));
+    await session.apply({ ...state, motion: "__smoke__/hair.vpd" }, "restore", signal);
+    await wait(150);
+    const authored = probes.map(({ name, anchor }) => readSurfacePosition(name, anchor)[0]);
+    const authoredOffsets: number[] = [];
+    for (let i = 0; i < 30; i++) {
+      await wait(150);
+      authoredOffsets.push(
+        ...probes.map(({ name, anchor }, index) => Math.abs(readSurfacePosition(name, anchor)[0] - authored[index])),
+      );
+    }
+    await session.apply(state, "restore", signal);
+    session.setAttention?.("idle");
+    return { displacement, authoredDrift: Math.max(...authoredOffsets), preserved: session.readState(), state };
+  });
+  if (wind) {
+    console.log("MMD breeze surface displacement (px):", wind.displacement);
+    for (const { peak, minimum } of wind.displacement) expect(peak).toBeGreaterThan(minimum);
+    expect(wind.authoredDrift).toBeLessThan(0.02);
+    expect(wind.preserved).toEqual(wind.state);
+  }
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   const reduced = await page.evaluate(async () => {

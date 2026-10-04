@@ -104,6 +104,59 @@ try {
       .multiply(Matrix.Invert(skeleton.bones[headIndex].getFinalMatrix()));
     return [0, 1, 2, 4, 5, 6, 8, 9, 10].map((i) => relative.m[i]);
   };
+  // Probe a skinned tip, including blended bone weights; a bone's pivot may barely move.
+  const surfaceMarkers = new Map<string, { position: Vector3; indices: number[]; weights: number[] }>();
+  const readSurfacePosition = (name: string, relativeTo: string) => {
+    const index = skeleton?.bones.findIndex((bone: { name: string }) => bone.name === name) ?? -1;
+    const anchor = skeleton?.bones.findIndex((bone: { name: string }) => bone.name === relativeTo) ?? -1;
+    if (!root || index < 0 || anchor < 0 || !scene.activeCamera) return [];
+    let marker = surfaceMarkers.get(name);
+    if (!marker) {
+      for (const mesh of root.metadata.meshes ?? []) {
+        const positions = mesh.getVerticesData(VertexBuffer.PositionKind);
+        const indices = mesh.getVerticesData(VertexBuffer.MatricesIndicesKind);
+        const weights = mesh.getVerticesData(VertexBuffer.MatricesWeightsKind);
+        if (!positions || !indices || !weights) continue;
+        for (let v = 0; v < positions.length / 3; v++)
+          if (
+            [0, 1, 2, 3].some((k) => indices[v * 4 + k] === index && weights[v * 4 + k] > 0.25) &&
+            (!marker || positions[v * 3 + 1] < marker.position.y)
+          )
+            marker = {
+              position: Vector3.FromArray(positions, v * 3),
+              indices: Array.from(indices.slice(v * 4, v * 4 + 4)),
+              weights: Array.from(weights.slice(v * 4, v * 4 + 4)),
+            };
+      }
+      if (!marker) return [];
+      surfaceMarkers.set(name, marker);
+    }
+    const matrices = skeleton.getTransformMatrices(root);
+    const deformed = marker.indices.reduce(
+      (point, index, i) =>
+        point.addInPlace(
+          Vector3.TransformCoordinates(marker!.position, Matrix.FromArray(matrices, index * 16)).scale(
+            marker!.weights[i],
+          ),
+        ),
+      Vector3.Zero(),
+    );
+    // Remove rigid head/body motion before projection, so breathing cannot pass a wind check.
+    const anchored = Vector3.TransformCoordinates(
+      deformed,
+      Matrix.Invert(skeleton.bones[anchor].getFinalMatrix()).multiply(
+        Matrix.Invert(skeleton.bones[anchor].getAbsoluteInverseBindMatrix()),
+      ),
+    );
+    const canvas = scene.getEngine().getRenderingCanvas()!;
+    const point = Vector3.Project(
+      anchored,
+      root.getWorldMatrix(),
+      scene.getTransformMatrix(),
+      scene.activeCamera.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight),
+    );
+    return [point.x, point.y];
+  };
   Object.assign(window, {
     mmdSmoke: {
       session,
@@ -153,6 +206,7 @@ try {
       eyeNames: [...eyeMarkers.keys()],
       readEyeSurfacePosition,
       readEyeRotation,
+      readSurfacePosition,
       routeVoice: (value: number) => routeAvatarVoice("MMD", value),
       routeSpeechEvent: (event: "started" | "finished") => routeAvatarSpeechEvent("MMD", event),
       unbind,

@@ -1,5 +1,5 @@
 import { Space } from "@babylonjs/core/Maths/math.axis";
-import { Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { PmxObject } from "babylon-mmd/esm/Loader/Parser/pmxObject";
 import type { IMmdRuntimeBone } from "babylon-mmd/esm/Runtime/IMmdRuntimeBone";
 
@@ -18,20 +18,27 @@ export class BreezeMotion {
   private duration = 0;
   private direction = 0;
   private strength = 0;
+  private blend = 1;
 
   constructor(private readonly random: () => number = Math.random) {
-    this.initialDelay = this.nextGust = 3 + this.random() * 4;
+    this.initialDelay = this.nextGust = 2 + this.random() * 2;
   }
 
-  sample(deltaSeconds: number, enabled = true): BreezeOffset {
+  sample(deltaSeconds: number, enabled = true, paused = false): BreezeOffset {
     if (!enabled) {
-      // Restart from calm after editing, a preset transition or reduced motion.
+      // Editing and reduced motion restart from calm; temporary transitions only pause.
       this.elapsed = this.gustStart = this.duration = 0;
       this.nextGust = this.initialDelay;
+      this.blend = 0;
       return { pitch: 0, roll: 0, phase: 0 };
+    }
+    if (paused) {
+      this.blend = 0;
+      return { pitch: 0, roll: 0, phase: this.elapsed * 2.2 };
     }
     const dt = Number.isFinite(deltaSeconds) ? Math.max(0, Math.min(0.05, deltaSeconds)) : 0;
     this.elapsed += dt;
+    this.blend += (1 - this.blend) * (1 - Math.exp(-dt * 6));
     if (this.elapsed >= this.nextGust) {
       this.gustStart = this.nextGust;
       this.duration = 4 + this.random() * 3;
@@ -43,8 +50,11 @@ export class BreezeMotion {
     const progress = this.duration ? (this.elapsed - this.gustStart) / this.duration : 1;
     if (progress <= 0 || progress >= 1) return { pitch: 0, roll: 0, phase };
     const envelope = Math.sin(Math.PI * progress) ** 2;
-    const gust = envelope * this.strength * (0.9 + 0.1 * Math.sin(phase));
-    return { pitch: Math.sin(this.direction) * gust, roll: Math.cos(this.direction) * gust, phase };
+    const gust = envelope * this.strength * (0.9 + 0.1 * Math.sin(phase)) * this.blend;
+    // Favor lateral wind: purely depthward gusts disappear in the default front view.
+    const pitch = Math.sin(this.direction) * 0.45;
+    const roll = (Math.cos(this.direction) < 0 ? -1 : 1) * Math.sqrt(1 - pitch * pitch);
+    return { pitch: pitch * gust, roll: roll * gust, phase };
   }
 }
 
@@ -159,36 +169,67 @@ export function createBreezePose(
   });
   const lengths = new Map<IMmdRuntimeBone, number>();
   for (const binding of chains) lengths.set(binding.root, Math.max(lengths.get(binding.root) ?? 1, binding.depth));
-  const bindings = chains.map((binding) => ({
-    ...binding,
-    // Share the angular budget across the chain; long hair must not curl up.
-    angle:
-      (((binding.kind === "hair" ? 2 : 0.6) * Math.PI) / 180 / lengths.get(binding.root)!) *
-      (0.65 + (0.35 * binding.depth) / lengths.get(binding.root)!),
-    phase: binding.index * 0.73,
-    base: Quaternion.Identity(),
-    delta: Quaternion.Identity(),
-    result: Quaternion.Identity(),
-  }));
+  const positions = bones.map((bone) => Matrix.Invert(bone.linkedBone.getAbsoluteInverseBindMatrix()).getTranslation());
+  const head = bones.findIndex((bone, index) =>
+    namesFor(bone, index).some((name) => ["頭", "head", "头", "頭部", "头部"].includes(name.trim().toLowerCase())),
+  );
+  const bodyHeight =
+    head > 0
+      ? Vector3.Distance(positions[head], positions[0])
+      : positions.length
+        ? Math.max(...positions.map((p) => p.y)) - Math.min(...positions.map((p) => p.y))
+        : 0;
+  const bindings = chains.map((binding) => {
+    const bangs = /前髪|bang/i.test(namesFor(binding.root, indices.get(binding.root)!).join(" "));
+    const budget = binding.kind === "hair" && !bangs ? 8 : 3;
+    return {
+      ...binding,
+      // Share the angular budget across the chain; keep bangs gentler near the face.
+      angle:
+        ((budget * Math.PI) / 180 / lengths.get(binding.root)!) *
+        (0.65 + (0.35 * binding.depth) / lengths.get(binding.root)!),
+      // Keep roots pinned, distributing a small, body-scaled sway along the remaining joints.
+      travel:
+        bangs || binding.depth === 1
+          ? 0
+          : (bodyHeight * (binding.kind === "hair" ? 0.012 : 0.002)) / (lengths.get(binding.root)! - 1),
+      inverseRest: binding.bone.linkedBone.getAbsoluteInverseBindMatrix().clone(),
+      position: Vector3.Zero(),
+      shift: Vector3.Zero(),
+      phase: binding.index * 0.73,
+      base: Quaternion.Identity(),
+      delta: Quaternion.Identity(),
+      result: Quaternion.Identity(),
+    };
+  });
   let applied = false;
   const restore = () => {
     if (!applied) return;
-    for (const { bone, base } of bindings) bone.linkedBone.setRotationQuaternion(base, Space.LOCAL);
+    for (const { bone, base, position } of bindings) {
+      bone.linkedBone.setRotationQuaternion(base, Space.LOCAL);
+      bone.linkedBone.position.copyFrom(position);
+    }
     applied = false;
   };
   return {
+    boneNames: bindings.map(({ bone }) => bone.name),
     apply({ pitch, roll, phase }: BreezeOffset) {
       restore();
       if (![pitch, roll, phase].every(Number.isFinite) || (!pitch && !roll)) return;
-      const x = Math.max(-1, Math.min(1, pitch));
-      const z = Math.max(-1, Math.min(1, roll));
+      const magnitude = Math.max(1, Math.hypot(pitch, roll));
+      const x = pitch / magnitude;
+      const z = roll / magnitude;
       for (const binding of bindings) {
-        const { bone, base, delta, result, angle } = binding;
-        const response = 0.9 + 0.1 * Math.sin(phase + binding.phase);
+        const { bone, base, delta, result, angle, travel, position, shift, inverseRest } = binding;
+        const response = 0.82 + 0.18 * Math.sin(phase + binding.phase);
         base.copyFrom(bone.linkedBone.rotationQuaternion);
+        position.copyFrom(bone.linkedBone.position);
         Quaternion.RotationYawPitchRollToRef(0, x * angle * response, z * angle * response, delta);
         base.multiplyToRef(delta, result);
         bone.linkedBone.setRotationQuaternion(result, Space.LOCAL);
+        shift.set(z * travel * response, 0, -x * travel * response);
+        Vector3.TransformNormalToRef(shift, inverseRest, shift);
+        bone.linkedBone.position.addInPlace(shift);
       }
       applied = true;
     },

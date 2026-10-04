@@ -235,7 +235,13 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
           yaw: speech.yaw + breath.head.yaw + gazeSample.head.yaw,
           roll: speech.roll + breath.head.roll,
         });
-        breezePose.apply(breeze.sample(dt, ambientMotion && !motions.isAnimating));
+        breezePose.apply(
+          breeze.sample(
+            dt,
+            ambientMotion,
+            motions.isAnimating || breezePose.boneNames.some((name) => motions.controlsBone(name)),
+          ),
+        );
         if (gazeActive) gazePose.apply(gazeSample);
         modelRuntime.beforePhysics(engine.getDeltaTime());
       } catch (error) {
