@@ -15,12 +15,14 @@ const gust = { pitch: 0.7, roll: 0.6, phase: 1 };
 const calm = { pitch: 0, roll: 0, phase: 0 };
 let engine: NullEngine;
 
-function setup(hairFlag = flag.IsRotatable) {
+function setup(hairFlag = flag.IsRotatable, namesOverride: Record<number, string> = {}) {
   engine = new NullEngine();
   const scene = new Scene(engine);
   const root = new Mesh("model", scene);
   const skeleton = new Skeleton("rig", "rig", scene);
-  const names = ["head", "髪固定", "前髪1", "前髪2", "前髪3", "スカート", "袖", "胸", "眉毛"];
+  const names = ["head", "髪固定", "前髪1", "前髪2", "前髪3", "スカート", "袖", "胸", "眉毛"].map(
+    (name, index) => namesOverride[index] ?? name,
+  );
   const parents = [-1, 0, 1, 2, 3, 0, 0, 0, 0];
   const linked: Bone[] = [];
   const metadata = names.map((name, i) => ({
@@ -159,6 +161,20 @@ describe("MMD intermittent breeze", () => {
     withoutRibbon.apply(gust);
     expect(linked[6].rotationQuaternion.asArray()).toEqual([0, 0, 0, 1]);
     withoutRibbon.restore();
+  });
+
+  it("recognizes generically named hair descendants without moving the fixed anchor or excluded parts", () => {
+    const { model, metadata, bodies, linked } = setup(flag.IsRotatable, {
+      2: "サイドA_左01",
+      3: "後ろA_左02",
+      4: "eyelash",
+    });
+    const pose = createBreezePose(model.runtimeBones, metadata, bodies);
+    pose.apply(gust);
+    for (const index of [2, 3]) expect(linked[index].rotationQuaternion.w).toBeLessThan(1);
+    for (const index of [0, 1, 4, 6, 7, 8]) expect(linked[index].rotationQuaternion.asArray()).toEqual([0, 0, 0, 1]);
+    pose.restore();
+    for (const bone of linked) expect(bone.rotationQuaternion.asArray()).toEqual([0, 0, 0, 1]);
   });
 
   it.each([0, flag.IsRotatable | flag.HasAxisLimit, flag.IsRotatable | flag.IsIkEnabled])(

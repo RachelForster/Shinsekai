@@ -11,7 +11,7 @@ import type { MmdSkinnedMesh } from "babylon-mmd/esm/Runtime/mmdMesh";
 import { BreathingMotion, createBreathingPose } from "../../../modules/character-visual/adapters/mmd/breathing";
 import { createHeadPose } from "../../../modules/character-visual/adapters/mmd/headPose";
 
-const neutral = { chestPitch: 0, head: { pitch: 0, yaw: 0, roll: 0 } };
+const neutral = { chestPitch: 0, chestLift: 0, head: { pitch: 0, yaw: 0, roll: 0 } };
 const radians = Math.PI / 180;
 const flag = PmxObject.Bone.Flag;
 let engine: NullEngine;
@@ -59,6 +59,8 @@ describe("MMD natural breathing", () => {
     const samples = Array.from({ length: 1200 }, () => motion.sample(1 / 60));
     for (const sample of samples) {
       expect(Math.abs(sample.chestPitch)).toBeLessThanOrEqual(0.6 * radians);
+      expect(sample.chestLift).toBeGreaterThanOrEqual(0);
+      expect(sample.chestLift).toBeLessThanOrEqual(1);
       expect(Math.abs(sample.head.pitch)).toBeLessThanOrEqual(0.24 * radians);
       expect(Math.abs(sample.head.roll)).toBeLessThanOrEqual(0.04 * radians);
       expect(sample.head.yaw).toBe(0);
@@ -115,7 +117,7 @@ describe("MMD natural breathing", () => {
       const originalHead = Array.from(model.runtimeBones[3].worldMatrix);
       const breath = new BreathingMotion(1).sample(0.05);
       for (let i = 0; i < 100; i++) {
-        torsoPose.apply(breath.chestPitch);
+        torsoPose.apply(breath.chestPitch, breath.chestLift);
         headPose.apply({ ...breath.head, yaw: 0.02 }); // Speech and breath share one additive head input.
         runtime.beforePhysics(16);
         runtime.afterPhysics();
@@ -154,6 +156,32 @@ describe("MMD natural breathing", () => {
     expect(spine.rotationQuaternion.x).toBeLessThan(0);
     expect(chest.rotationQuaternion.asArray()).toEqual([0, 0, 0, 1]);
     fallback.restore();
+  });
+
+  it("lifts the upper torso in proportion to its size and restores the authored position without drift", () => {
+    const { chest, head, bones, model, runtime } = setup();
+    const pose = createBreathingPose(model.runtimeBones, bones);
+    const basePosition = chest.position.clone().addInPlaceFromFloats(0.1, 0.2, -0.1);
+    chest.position.copyFrom(basePosition);
+    runtime.beforePhysics(16);
+    runtime.afterPhysics();
+    const originalHeadY = model.runtimeBones[3].worldMatrix[13];
+    for (let i = 0; i < 100; i++) {
+      pose.apply(0, 1);
+      runtime.beforePhysics(16);
+      runtime.afterPhysics();
+      expect(model.runtimeBones[3].worldMatrix[13] - originalHeadY).toBeCloseTo(0.09, 5);
+      expect(chest.position.y - basePosition.y).toBeCloseTo(0.09, 10);
+      expect(chest.position.x).toBe(basePosition.x);
+      expect(chest.position.z).toBe(basePosition.z);
+      expect(head.scaling.asArray()).toEqual([1, 1, 1]);
+      pose.restore();
+      expect(chest.position.asArray()).toEqual(basePosition.asArray());
+    }
+    pose.apply(0, 10);
+    expect(chest.position.y - basePosition.y).toBeCloseTo(0.09, 10);
+    pose.apply(0, NaN);
+    expect(chest.position.asArray()).toEqual(basePosition.asArray());
   });
 
   it.each([0, flag.IsRotatable | flag.HasAxisLimit])("skips restricted chest bones (%s)", (chestFlag) => {

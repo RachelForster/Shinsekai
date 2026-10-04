@@ -80,12 +80,12 @@ const anchors = new Set([
   "hips",
 ]);
 
-function part(names: string[]): Part | undefined {
+function part(names: string[]): Part | "excluded" | undefined {
   const name = names
     .join(" ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .toLowerCase();
-  if (/眉|睫|eyebrow|eyelash|breast|bust|乳|胸/.test(name)) return;
+  if (/眉|睫|eyebrow|eyelash|breast|bust|乳|胸/.test(name)) return "excluded";
   if (
     /髪|毛|ツインテール|ポニーテール|もみあげ/.test(name) ||
     /(?:^|[\s_.-])(?:hair|bangs?|ahoge|sideburns?)(?=$|[\s_.\d-])/.test(name)
@@ -110,28 +110,40 @@ export function createBreezePose(
     bodies.push(body);
     bodiesByBone.set(body.boneIndex, bodies);
   }
+  const indices = new Map(bones.map((bone, index) => [bone, index]));
+  const namesFor = (bone: IMmdRuntimeBone, index: number) => [bone.name, metadata[index]?.englishName ?? ""];
+  const isAnchor = (names: string[]) =>
+    names.some((name) =>
+      anchors.has(
+        name
+          .trim()
+          .toLowerCase()
+          .replace(/[\s_]+/g, ""),
+      ),
+    );
+  const kindFor = (bone: IMmdRuntimeBone, index: number) =>
+    part([
+      ...namesFor(bone, index),
+      ...(bodiesByBone.get(index) ?? []).flatMap((body) => [body.name, body.englishName]),
+    ]);
   const candidates = bones.flatMap((bone, index) => {
     const flag = PmxObject.Bone.Flag;
     if (!(bone.flag & flag.IsRotatable) || bone.flag & (flag.HasAxisLimit | flag.IsIkEnabled | flag.HasAppendRotate))
       return [];
-    const names = [bone.name, metadata[index]?.englishName ?? ""];
-    if (
-      names.some((name) =>
-        anchors.has(
-          name
-            .trim()
-            .toLowerCase()
-            .replace(/[\s_]+/g, ""),
-        ),
-      )
-    )
-      return [];
+    if (isAnchor(namesFor(bone, index))) return [];
     const bodies = bodiesByBone.get(index) ?? [];
     // FollowBone bodies anchor the hair/garment to the character and stay fixed.
     if (bodies.length && bodies.every((body) => body.physicsMode === PmxObject.RigidBody.PhysicsMode.FollowBone))
       return [];
-    const kind = part([...names, ...bodies.flatMap((b) => [b.name, b.englishName])]);
-    return kind ? [{ bone, kind, index }] : [];
+    let kind = kindFor(bone, index);
+    // Hair tips often have generic names (e.g. サイド/後ろ). Their named hair
+    // anchor identifies the chain even when its FollowBone body stays fixed.
+    for (let parent = bone.parentBone; !kind && parent; parent = parent.parentBone) {
+      const parentIndex = indices.get(parent);
+      if (parentIndex === undefined || isAnchor(namesFor(parent, parentIndex))) break;
+      kind = kindFor(parent, parentIndex);
+    }
+    return kind && kind !== "excluded" ? [{ bone, kind, index }] : [];
   });
   const byBone = new Map(candidates.map((binding) => [binding.bone, binding]));
   const chains = candidates.map((binding) => {

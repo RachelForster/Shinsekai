@@ -1,6 +1,7 @@
 import { avatarAssetUrl } from "../../src/modules/character-visual/assetUrl";
 import { create } from "../../src/modules/character-visual/adapters/mmd/module";
 import { Engine } from "@babylonjs/core/Engines/engine";
+import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { bindAvatarVoice, routeAvatarVoice } from "../../src/modules/character-visual/voiceRoute";
 
 const source = new URLSearchParams(location.search).get("source")!;
@@ -42,6 +43,15 @@ try {
     if (!root || !skeleton || index < 0) return [];
     return Array.from(skeleton.getTransformMatrices(root).slice(index * 16, index * 16 + 16));
   };
+  const readScreenPosition = (index: number) => {
+    if (!root || !skeleton || index < 0 || !scene.activeCamera) return [];
+    skeleton.getTransformMatrices(root);
+    const world = skeleton.bones[index].getFinalMatrix().multiply(root.getWorldMatrix());
+    const canvas = scene.getEngine().getRenderingCanvas()!;
+    const viewport = scene.activeCamera.viewport.toGlobal(canvas.clientWidth, canvas.clientHeight);
+    const point = Vector3.Project(Vector3.Zero(), world, scene.getTransformMatrix(), viewport);
+    return [point.x, point.y];
+  };
   Object.assign(window, {
     mmdSmoke: {
       session,
@@ -49,6 +59,10 @@ try {
       hostInput,
       readHeadMatrix: () => readMatrix(headIndex ?? -1),
       readChestMatrix: () => readMatrix(chestIndex),
+      readHeadScreenPosition: () => readScreenPosition(headIndex ?? -1),
+      readChestScreenPosition: () => readScreenPosition(chestIndex),
+      readBoneScreenPosition: (name: string) =>
+        readScreenPosition(skeleton?.bones.findIndex((bone: { name: string }) => bone.name === name) ?? -1),
       readHeadPose: () => skeleton?.bones[headIndex]?.rotationQuaternion.asArray() ?? [],
       routeVoice: (value: number) => routeAvatarVoice("MMD", value),
       unbind,

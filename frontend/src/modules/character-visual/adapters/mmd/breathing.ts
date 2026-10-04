@@ -1,16 +1,17 @@
 import { Space } from "@babylonjs/core/Maths/math.axis";
-import { Quaternion } from "@babylonjs/core/Maths/math.vector";
+import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { PmxObject } from "babylon-mmd/esm/Loader/Parser/pmxObject";
 import type { IMmdRuntimeBone } from "babylon-mmd/esm/Runtime/IMmdRuntimeBone";
 import type { HeadRotation } from "../../talkingHeadMotion";
 
 interface BreathingOffset {
   chestPitch: number;
+  chestLift: number;
   head: HeadRotation;
 }
 
 const radians = Math.PI / 180;
-const neutral = (): BreathingOffset => ({ chestPitch: 0, head: { pitch: 0, yaw: 0, roll: 0 } });
+const neutral = (): BreathingOffset => ({ chestPitch: 0, chestLift: 0, head: { pitch: 0, yaw: 0, roll: 0 } });
 
 /** A soft inhale and a longer exhale, with slight variation between breaths. */
 function breathWave(cycle: number): number {
@@ -43,6 +44,7 @@ export class BreathingMotion {
     const head = breathWave(cycle - 0.035) * amplitude;
     return {
       chestPitch: -0.6 * radians * chest,
+      chestLift: chest,
       head: {
         // Partially compensate for the inherited chest tilt; the head follows gently.
         pitch: 0.24 * radians * head,
@@ -75,23 +77,37 @@ export function createBreathingPose(
   const chest =
     find(["上半身2", "上半身２", "upperbody2", "chest", "upperchest", "胸腔"]) ??
     find(["上半身", "upperbody", "spine"]);
+  // Pitch alone moves mostly in depth and is nearly invisible in the default
+  // front orthographic view. A small lift follows the same inhale/exhale wave.
+  const head = find(["頭", "head", "头", "頭部", "头部"]);
+  let torsoHeight = 0;
+  let ancestor = head;
+  while (ancestor && ancestor !== chest) {
+    torsoHeight += Math.max(0, ancestor.linkedBone.getRestMatrix().m[13]);
+    ancestor = ancestor.parentBone ?? undefined;
+  }
+  const liftDistance = chest && ancestor === chest ? torsoHeight * 0.02 : 0;
   const base = Quaternion.Identity();
+  const basePosition = Vector3.Zero();
   const delta = Quaternion.Identity();
   const result = Quaternion.Identity();
   let applied = false;
   const restore = () => {
     if (!applied || !chest) return;
     chest.linkedBone.setRotationQuaternion(base, Space.LOCAL);
+    chest.linkedBone.position.copyFrom(basePosition);
     applied = false;
   };
   return {
-    apply(pitch: number) {
+    apply(pitch: number, lift = 0) {
       restore();
-      if (!chest || !Number.isFinite(pitch) || !pitch) return;
+      if (!chest || !Number.isFinite(pitch) || !Number.isFinite(lift) || (!pitch && !lift)) return;
       base.copyFrom(chest.linkedBone.rotationQuaternion);
+      basePosition.copyFrom(chest.linkedBone.position);
       Quaternion.RotationYawPitchRollToRef(0, pitch, 0, delta);
       base.multiplyToRef(delta, result);
       chest.linkedBone.setRotationQuaternion(result, Space.LOCAL);
+      chest.linkedBone.position.y += Math.max(0, Math.min(1, lift)) * liftDistance;
       applied = true;
     },
     restore,

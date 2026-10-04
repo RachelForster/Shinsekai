@@ -53,16 +53,21 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
       () => (window as unknown as { mmdSmoke: { hostInput: { mouseDowns: number } } }).mmdSmoke.hostInput.mouseDowns,
     ),
   ).toBe(1);
-  const painted = await page.locator("#model canvas").evaluate((canvas: HTMLCanvasElement) => {
-    const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
-    if (!gl) return 0;
-    const pixels = new Uint8Array(canvas.width * canvas.height * 4);
-    gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-    let count = 0;
-    for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) count++;
-    return count;
-  });
-  expect(painted).toBeGreaterThan(1000);
+  await expect
+    .poll(
+      () =>
+        page.locator("#model canvas").evaluate((canvas: HTMLCanvasElement) => {
+          const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+          if (!gl) return 0;
+          const pixels = new Uint8Array(canvas.width * canvas.height * 4);
+          gl.readPixels(0, 0, canvas.width, canvas.height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+          let count = 0;
+          for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) count++;
+          return count;
+        }),
+      { timeout: 30_000 },
+    )
+    .toBeGreaterThan(1000);
   if (process.env.SHINSEKAI_MMD_SCREENSHOT) await page.screenshot({ path: process.env.SHINSEKAI_MMD_SCREENSHOT });
   const mouthChangedPixels = await page.evaluate(async () => {
     const canvas = document.querySelector("#model canvas") as HTMLCanvasElement;
@@ -157,6 +162,32 @@ test("renders a local PMX with bound mouth and blink morphs", async ({ page }) =
   expect(difference(headMotion.baseline, headMotion.talking)).toBeGreaterThan(0.001);
   expect(difference(headMotion.neutral, headMotion.editing)).toBeLessThan(0.00001);
   expect(headMotion.preserved).toBe(true);
+
+  // A changed matrix can still move entirely in depth. Measure the default
+  // front view across a full breath so the idle motion is actually visible.
+  const idleVisibility = await page.evaluate(async () => {
+    const { readHeadScreenPosition, readChestScreenPosition } = (
+      window as unknown as {
+        mmdSmoke: {
+          readHeadScreenPosition(): number[];
+          readChestScreenPosition(): number[];
+        };
+      }
+    ).mmdSmoke;
+    const head: number[] = [];
+    const chest: number[] = [];
+    for (let i = 0; i < 40; i++) {
+      await new Promise((done) => setTimeout(done, 150));
+      head.push(readHeadScreenPosition()[1]);
+      chest.push(readChestScreenPosition()[1]);
+    }
+    return { head: Math.max(...head) - Math.min(...head), chest: Math.max(...chest) - Math.min(...chest) };
+  });
+  if (headMotion.chestBaseline.length) {
+    expect(idleVisibility.head).toBeGreaterThan(0.5);
+    expect(idleVisibility.chest).toBeGreaterThan(0.5);
+  }
+  console.log("MMD idle screen displacement (px):", idleVisibility);
 
   const presets = await page.evaluate(async () => {
     const { session, readHeadMatrix, readHeadPose } = (

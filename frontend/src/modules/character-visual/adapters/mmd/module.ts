@@ -218,7 +218,7 @@ export async function create(mount: AvatarMount, signal: AbortSignal): Promise<A
         const ambientMotion = mode !== "edit" && !reducedMotion?.matches;
         const breath = breathing.sample(dt, ambientMotion && !motions.isAnimating);
         const speech = talkingHead.sample(dt, ambientMotion && !motions.hasPose);
-        breathingPose.apply(breath.chestPitch);
+        breathingPose.apply(breath.chestPitch, breath.chestLift);
         headPose.apply({
           pitch: speech.pitch + breath.head.pitch,
           yaw: speech.yaw + breath.head.yaw,
