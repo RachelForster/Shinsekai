@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from application.runtime.context import (
     ToolConfirmationController,
+    app_runtime_scope,
+    get_app_runtime,
     resolve_pending_tool_confirmation,
     set_app_runtime,
+    try_get_app_runtime,
 )
 
 
@@ -17,6 +22,25 @@ def _runtime_with_controller() -> ToolConfirmationController:
     controller = ToolConfirmationController()
     set_app_runtime(SimpleNamespace(tool_confirmations=controller))
     return controller
+
+
+def test_runtime_scope_restores_the_previous_context_after_dispatch_errors():
+    shared = SimpleNamespace(presentation_queue="shared")
+    outer = SimpleNamespace(presentation_queue="outer")
+    inner = SimpleNamespace(presentation_queue="inner")
+    set_app_runtime(shared)
+
+    with app_runtime_scope(outer):
+        assert get_app_runtime() is outer
+        with pytest.raises(RuntimeError, match="dispatch failed"):
+            with app_runtime_scope(inner):
+                assert try_get_app_runtime() is inner
+                raise RuntimeError("dispatch failed")
+        assert get_app_runtime() is outer
+
+    assert get_app_runtime() is shared
+    set_app_runtime(None)
+    assert try_get_app_runtime() is None
 
 
 def test_tool_confirmation_requires_the_matching_unpredictable_identifier():

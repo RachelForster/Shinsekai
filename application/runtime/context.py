@@ -8,8 +8,10 @@ from __future__ import annotations
 import json
 import secrets
 import threading
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, List, Optional
+from typing import Any, Iterator, List, Optional
 
 from core.media.effect_image import ImageEffectAsset
 from core.messaging.chat_turn_service import ChatTurnService
@@ -95,6 +97,9 @@ class AppRuntime:
 
 
 _runtime: Optional[AppRuntime] = None
+_scoped_runtime: ContextVar[AppRuntime | None] = ContextVar(
+    "app_runtime", default=None
+)
 
 
 def set_app_runtime(rt: Optional[AppRuntime]) -> None:
@@ -103,13 +108,25 @@ def set_app_runtime(rt: Optional[AppRuntime]) -> None:
 
 
 def get_app_runtime() -> AppRuntime:
-    if _runtime is None:
+    rt = try_get_app_runtime()
+    if rt is None:
         raise RuntimeError("尚未调用 set_app_runtime：请在创建 Worker 之前完成应用上下文注册")
-    return _runtime
+    return rt
 
 
 def try_get_app_runtime() -> Optional[AppRuntime]:
-    return _runtime
+    scoped = _scoped_runtime.get()
+    return scoped if scoped is not None else _runtime
+
+
+@contextmanager
+def app_runtime_scope(rt: AppRuntime) -> Iterator[None]:
+    """Bind a runtime view to this task without changing other workers' state."""
+    token = _scoped_runtime.set(rt)
+    try:
+        yield
+    finally:
+        _scoped_runtime.reset(token)
 
 
 def get_tool_confirmation_controller() -> ToolConfirmationController:

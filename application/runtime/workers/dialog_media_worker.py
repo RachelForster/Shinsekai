@@ -1,6 +1,7 @@
 """Resolve dialog messages into presentation-ready media."""
 
 import threading
+from dataclasses import replace
 from queue import Queue
 from typing import Optional
 
@@ -15,7 +16,12 @@ from sdk.logging import get_logger
 from sdk.logging.timing import tracker
 from sdk.messages import LLMDialogMessage, PresentationMessage
 
-from ..context import emit_presentation_message, get_app_runtime, try_get_app_runtime
+from ..context import (
+    app_runtime_scope,
+    emit_presentation_message,
+    get_app_runtime,
+    try_get_app_runtime,
+)
 from .base import ThreadDagNode
 
 logger = get_logger(__name__)
@@ -137,30 +143,29 @@ class DialogMediaWorker(ThreadDagNode):
             )
 
         def work():
-            original_presentation_queue = None
-            guarded_presentation_queue = None
             try:
-                if rt is not None:
-                    original_presentation_queue = rt.presentation_queue
-                    guarded_presentation_queue = _CancelAwareQueue(
-                        original_presentation_queue,
-                        self._cancel_event,
-                        runtime_cancel_event,
-                    )
-                    rt.presentation_queue = guarded_presentation_queue
                 if cancelled():
                     return
-                self.dialog_media_dispatcher.dispatch(item)
+                if rt is not None:
+                    # Interrupted dispatches can outlive this wait and overlap
+                    # the next turn. Never replace the shared runtime's queue:
+                    # a cancelled wrapper would swallow the next turn's output.
+                    scoped_rt = replace(
+                        rt,
+                        presentation_queue=_CancelAwareQueue(
+                            rt.presentation_queue,
+                            self._cancel_event,
+                            runtime_cancel_event,
+                        ),
+                    )
+                    with app_runtime_scope(scoped_rt):
+                        self.dialog_media_dispatcher.dispatch(item)
+                else:
+                    self.dialog_media_dispatcher.dispatch(item)
             except Exception as e:
                 if not cancelled():
                     error[0] = e
             finally:
-                if (
-                    rt is not None
-                    and guarded_presentation_queue is not None
-                    and rt.presentation_queue is guarded_presentation_queue
-                ):
-                    rt.presentation_queue = original_presentation_queue
                 done.set()
 
         t = threading.Thread(target=work, daemon=True)
