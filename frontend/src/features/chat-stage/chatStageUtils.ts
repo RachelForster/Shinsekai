@@ -60,7 +60,7 @@ export function layerClassName(base: string, hidden: boolean) {
   return classNames(base, hidden && "chat-stage__layer--hidden");
 }
 
-export function hideBrokenStageAsset(event: SyntheticEvent<HTMLImageElement>) {
+export function hideBrokenStageAsset(event: SyntheticEvent<HTMLImageElement | HTMLVideoElement>) {
   event.currentTarget.dataset.loadState = "error";
 }
 

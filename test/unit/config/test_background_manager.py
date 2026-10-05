@@ -22,6 +22,27 @@ def build_manager(backgrounds):
     return manager
 
 
+def test_upload_mixed_image_and_mp4_backgrounds_preserves_bytes_and_tag_order(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setattr("config.background_manager.BACKGROUND_UPLOAD_DIR", str(tmp_path / "uploaded"))
+    sources = []
+    for name in ("day.png", "rain.mp4", "night.gif"):
+        source = tmp_path / name
+        source.write_bytes(name.encode())
+        sources.append(SimpleNamespace(name=str(source)))
+    background = Background(name="School", sprite_prefix="school")
+    manager = build_manager([background])
+
+    _message, paths, tags = manager.upload_sprites("School", sources, "")
+
+    assert [Path(path).name for path in paths] == ["day.png", "rain.mp4", "night.gif"]
+    assert [Path(path).read_bytes() for path in paths] == [b"day.png", b"rain.mp4", b"night.gif"]
+    assert tags == "场景 1：\n场景 2：\n场景 3：\n"
+    assert background.model_dump(mode="json")["sprites"][1]["path"] == paths[1]
+    assert manager._config_manager.save_count == 1
+
+
 def test_add_background_updates_existing_tags():
     background = Background(name="School", sprite_prefix="school", bg_tags="Scene 1: old\n", bgm_tags="Music 1: old\n")
     manager = build_manager([background])

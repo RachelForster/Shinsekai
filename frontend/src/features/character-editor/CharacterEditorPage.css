@@ -197,7 +197,7 @@
   grid-template-columns: minmax(240px, 1fr) minmax(320px, 380px);
 }
 
-.asset-inspector__preview--character img {
+.asset-inspector__preview--character :is(img, video) {
   height: auto;
 }
 

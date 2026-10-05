@@ -1,6 +1,7 @@
 export type FrontendLanguage = "zh_CN" | "en" | "ja";
 
 export type MessageKey =
+  | "visualMedia.videoError"
   | "character.sdk.setup"
   | "character.sdk.title"
   | "character.sdk.hint"

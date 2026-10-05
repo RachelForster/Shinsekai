@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>MP4 visual playback</title>
+    <style>
+      body {
+        background: #25252d;
+        color: white;
+        font: 16px sans-serif;
+      }
+      main {
+        display: flex;
+        gap: 24px;
+        margin-top: 24px;
+      }
+      .panel {
+        position: relative;
+        width: 240px;
+        height: 300px;
+        overflow: hidden;
+      }
+      #preview video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      #covers {
+        width: 220px;
+      }
+      :root {
+        --chat-sprite-runtime-offset-x: 0px;
+        --chat-sprite-runtime-offset-y: 0px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>MP4 sprites, backgrounds and preview</h1>
+    <div id="root"></div>
+    <script type="module" src="./mp4-smoke.tsx"></script>
+  </body>
+</html>

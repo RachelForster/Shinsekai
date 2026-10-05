@@ -12,14 +12,16 @@ import { avatarAssetUrl, avatarRuntimeAssetUrl } from "./assetUrl";
 import { bindAvatarVoice } from "./voiceRoute";
 import { normalizeVisualFraming, visualFramingStyle, type VisualFraming } from "./framing";
 import "./CharacterVisual.css";
+import { VisualMedia, type VisualMediaElement } from "../../shared/ui/VisualMedia";
 
 export interface CharacterVisualProps {
   asset: CharacterVisualAsset;
   className: string;
-  onImageError: (event: SyntheticEvent<HTMLImageElement, Event>) => void;
+  onImageError: (event: SyntheticEvent<VisualMediaElement, Event>) => void;
   onMouseDown: MouseEventHandler<HTMLElement>;
   hitbox: boolean;
   mode: ApplyMode;
+  active?: boolean;
   voiceCharacterName?: string;
   attention?: AvatarAttention;
   stateSequence?: number;
@@ -39,18 +41,18 @@ export function CharacterVisual(props: CharacterVisualProps) {
   return <ModelVisual {...props} avatarType={avatarType} key={`${avatarType}:${asset.modelUrl}`} />;
 }
 
-function StaticVisual({ asset, className, onImageError, onMouseDown, hitbox, framing }: CharacterVisualProps) {
+function StaticVisual({ asset, className, onImageError, onMouseDown, hitbox, framing, active }: CharacterVisualProps) {
   const [aspectRatio, setAspectRatio] = useState(1);
   const style = visualFramingStyle(framing);
   const image = (
-    <img
+    <VisualMedia
       alt={asset.label}
+      active={active}
       className={style ? "character-visual__static-image" : className}
-      data-chat-stage-hitbox={!style && hitbox ? "true" : undefined}
+      hitbox={!style && hitbox}
       onError={onImageError}
-      onLoad={(event) => {
-        const { naturalWidth, naturalHeight } = event.currentTarget;
-        if (naturalWidth > 0 && naturalHeight > 0) setAspectRatio(naturalWidth / naturalHeight);
+      onDimensions={(width, height) => {
+        if (width > 0 && height > 0) setAspectRatio(width / height);
       }}
       onMouseDown={style ? undefined : onMouseDown}
       src={asset.url}

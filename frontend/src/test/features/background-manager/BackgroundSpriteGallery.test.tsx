@@ -76,7 +76,7 @@ describe("BackgroundSpriteGallery", () => {
       sprites: [],
     });
 
-    expect(screen.getByRole("button", { name: "Upload images" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Upload images / videos" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Delete all images" })).toBeDisabled();
   });
 
@@ -110,11 +110,33 @@ describe("BackgroundSpriteGallery", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
     expect(props.onDeleteImage).toHaveBeenCalledWith(1);
 
-    fireEvent.click(screen.getByRole("button", { name: "Upload images" }));
-    expect(screen.getByRole("dialog", { name: "Select image files" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Upload images / videos" }));
+    expect(screen.getByRole("dialog", { name: "Select images or MP4 videos" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Batch image tags" }));
     expect(props.onOpenBulkTags).toHaveBeenCalledTimes(1);
+  });
+
+  it("previews MP4 backgrounds without sending them to the image thumbnail service", async () => {
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => {});
+    const view = renderGallery({
+      sprites: [{ path: "D:/bg/day.png" }, { path: "D:/bg/rain.mp4" }],
+      selectedImageIndex: 1,
+    });
+    await waitFor(() => expect(filesRepositoryMock.fileThumbnailBatch).toHaveBeenCalledOnce());
+    expect(filesRepositoryMock.fileThumbnailBatch.mock.calls[0][0]).toEqual(["D:/bg/day.png"]);
+    const preview = view.container.querySelector<HTMLVideoElement>(".asset-inspector__preview video")!;
+    const cover = view.container.querySelector<HTMLVideoElement>(".image-asset-card video")!;
+    expect(preview).toHaveAttribute("src", "asset://D:/bg/rain.mp4");
+    expect(preview.autoplay).toBe(true);
+    expect(cover.autoplay).toBe(false);
+    expect(play).toHaveBeenCalledOnce();
+    view.unmount();
+    play.mockRestore();
+    pause.mockRestore();
+    load.mockRestore();
   });
 
   it("keeps loaded thumbnails when parent rerenders with the same sprite paths", async () => {
