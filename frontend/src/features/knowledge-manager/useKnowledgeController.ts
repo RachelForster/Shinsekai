@@ -208,6 +208,10 @@ export function useKnowledgeController() {
     });
     return refreshCheck.current;
   };
+  const importSettled = () => {
+    // Also refresh after failed imports: earlier entries may already be persisted.
+    void client.invalidateQueries({ queryKey: ["knowledge"] });
+  };
   const page = searchTerm ? searchPage : entryPage;
   const totalPages = Math.max(1, Math.ceil((activeEntriesQuery.data?.memories.length ?? 0) / 8));
   useEffect(() => {
@@ -279,6 +283,7 @@ export function useKnowledgeController() {
     searchInstances,
     refresh,
     refreshPending,
+    importSettled,
     knowledgeQuery,
     changeKnowledgeQuery: (value: string) => {
       cancelCatalogSearch();
