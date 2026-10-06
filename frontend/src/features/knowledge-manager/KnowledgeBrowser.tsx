@@ -1,14 +1,18 @@
-import { RefreshCw, BookOpen, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
+import { RefreshCw, Trash2, BookOpen, ChevronLeft, ChevronRight, Search, X } from "lucide-react";
 import "./KnowledgeManagerPage.css";
 import { useI18n } from "../../shared/i18n";
 import { Button, AsyncButton, EmptyState, QueryErrorState, TextInput } from "../../shared/ui";
+import { KnowledgeCharactersSection } from "./KnowledgeCharactersSection";
 import { type useKnowledgeController } from "./useKnowledgeController";
+import { KnowledgeDeleteDialogs } from "./KnowledgeDialogs";
 
 export function KnowledgeBrowser({
   controller: c,
+  disabled = false,
   embedded = false,
 }: {
   controller: ReturnType<typeof useKnowledgeController>;
+  disabled?: boolean;
   embedded?: boolean;
 }) {
   const { t } = useI18n();
@@ -19,6 +23,14 @@ export function KnowledgeBrowser({
           <div className="knowledge-browser__header">
             <strong>{c.selectedKnowledge}</strong>
             <div className="page__actions">
+              <Button
+                disabled={disabled || c.writePending || c.bindingPending}
+                onClick={c.requestDeleteKnowledge}
+                variant="danger"
+                icon={<Trash2 aria-hidden className="button__icon" />}
+              >
+                {t("knowledge.deleteKnowledge")}
+              </Button>
               <Button
                 disabled={c.isFetching}
                 onClick={c.refresh}
@@ -31,16 +43,27 @@ export function KnowledgeBrowser({
           </div>
         </>
       ) : null}
-      <KnowledgeEntriesSection controller={c} embedded={embedded} />
+      <KnowledgeEntriesSection controller={c} disabled={disabled} embedded={embedded} />
+      {!embedded || (c.selectedKnowledge && !c.entriesView.isLoading && !c.entriesView.error) ? (
+        <KnowledgeCharactersSection controller={c} disabled={disabled} embedded={embedded} />
+      ) : null}
+      <KnowledgeDeleteDialogs
+        target={c.deleteTarget}
+        pending={c.deletePending}
+        onCancel={c.cancelDelete}
+        onConfirm={c.confirmDelete}
+      />
     </div>
   );
 }
 
 function KnowledgeEntriesSection({
   controller: c,
+  disabled = false,
   embedded = false,
 }: {
   controller: ReturnType<typeof useKnowledgeController>;
+  disabled?: boolean;
   embedded?: boolean;
 }) {
   const { t } = useI18n();
@@ -119,6 +142,14 @@ function KnowledgeEntriesSection({
                     <strong>{entry.memory}</strong>
                     <span>{entry.id}</span>
                   </div>
+                  <AsyncButton
+                    disabled={disabled || !entry.id || c.writePending || c.bindingPending}
+                    loading={c.deletingMemoryId === entry.id}
+                    onClick={() => c.requestDeleteEntry(entry)}
+                    variant="ghost"
+                  >
+                    {t("common.delete")}
+                  </AsyncButton>
                 </div>
               ))}
             </div>
@@ -142,6 +173,22 @@ function KnowledgeEntriesSection({
               />
             </div>
           ) : null}
+          <div className="knowledge-add-row">
+            <TextInput
+              aria-label={t("knowledge.entryPlaceholder")}
+              placeholder={t("knowledge.entryPlaceholder")}
+              value={c.memoryInput}
+              disabled={disabled || c.writePending || c.bindingPending}
+              onChange={(event) => c.setMemoryInput(event.target.value)}
+            />
+            <AsyncButton
+              disabled={disabled || !c.memoryInput.trim() || c.writePending || c.bindingPending}
+              loading={c.addPending}
+              onClick={c.addEntry}
+            >
+              {t("knowledge.addEntry")}
+            </AsyncButton>
+          </div>
         </>
       )}
     </section>

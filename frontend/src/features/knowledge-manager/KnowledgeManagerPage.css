@@ -112,3 +112,51 @@
     justify-content: flex-start;
   }
 }
+
+.knowledge-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-2);
+}
+
+.knowledge-subscription-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-width: 0;
+  gap: var(--space-2);
+  margin-block: var(--space-3);
+}
+
+.knowledge-subscription-picker > .template-character-picker {
+  display: contents;
+}
+
+.knowledge-subscription-picker .template-character-picker__header {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.knowledge-subscription-picker__save {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.knowledge-subscription-picker .template-character-grid {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  max-height: 320px;
+  overflow: auto;
+}
+
+@media (max-width: 640px) {
+  .knowledge-subscription-picker .template-character-picker__header {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .knowledge-subscription-picker .template-character-picker__header .button {
+    width: auto;
+  }
+}

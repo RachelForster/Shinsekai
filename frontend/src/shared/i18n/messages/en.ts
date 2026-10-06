@@ -51,6 +51,18 @@ export const enMessages: Record<MessageKey, string> = {
   "agent.status.failed": "Failed",
   "agent.status.cancelled": "Stopped",
   "agent.status.interrupted": "Interrupted",
+  "knowledge.saveBindings": "Save bindings",
+  "knowledge.noAvailableCharacters":
+    "Create a character to add a binding. Materials can still be managed independently.",
+  "knowledge.addEntry": "Add entry",
+  "knowledge.entryPlaceholder": "Entry content",
+  "knowledge.deleteEntry": "Delete entry",
+  "knowledge.deleteEntryBody": "Delete this entry from material “{knowledgeId}”?\n{content}",
+  "knowledge.deleteKnowledge": "Delete material",
+  "knowledge.deleteKnowledgeBody":
+    "Delete material “{knowledgeId}”? All entries and character bindings will be deleted. Characters will be kept. This cannot be undone.",
+  "knowledge.saved": "Saved",
+  "knowledge.deleted": "Deleted successfully",
   "knowledge.emptyBody": "No entries yet. Add an entry below or import from files.",
   "knowledge.emptyTitle": "No entries",
   "api.knowledge.checkModel": "Check",

@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  addKnowledgeEntry,
+  deleteKnowledgeEntry,
+  deleteKnowledge,
+  batchKnowledgeBindings,
   listKnowledgeEntries,
   listKnowledgeInstances,
   searchKnowledgeEntries,
@@ -10,6 +14,13 @@ import {
 import { useI18n } from "../../shared/i18n";
 import { useToast } from "../../shared/ui";
 import { useKnowledgeModelReadiness } from "./useKnowledgeModelReadiness";
+
+export type KnowledgeDeleteTarget = { knowledgeId: string; memoryId?: string; content?: string };
+type KnowledgeWrite = { knowledgeId: string } & (
+  | { kind: "add-entry"; content: string }
+  | { kind: "delete-entry"; memoryId: string }
+  | { kind: "delete-knowledge" }
+);
 
 export function isKnowledgeLoading(error: unknown) {
   return error instanceof KnowledgeBrowseError && ["loading", "not_started"].includes(error.status);
@@ -49,10 +60,81 @@ export function useKnowledgeController() {
   };
   useEffect(() => cancelCatalogSearch, []);
   const [selectedKnowledge, setSelectedKnowledge] = useState("");
+  const [memoryInput, setMemoryInput] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<KnowledgeDeleteTarget | null>(null);
+  const writeLock = useRef(false);
+  const activeScope = useRef({ knowledgeId: selectedKnowledge });
+  activeScope.current = { knowledgeId: selectedKnowledge };
   const [entryPage, setEntryPage] = useState(1);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [searchPage, setSearchPage] = useState(1);
+
+  const writeMutation = useMutation({
+    mutationFn: async (input: KnowledgeWrite) => {
+      if (!(await ensureKnowledgeModelReady())) return null;
+      if (input.kind === "add-entry") return addKnowledgeEntry(input.knowledgeId, input.content);
+      if (input.kind === "delete-entry") return deleteKnowledgeEntry(input.knowledgeId, input.memoryId);
+      const result = await deleteKnowledge(input.knowledgeId);
+      if (!result.ok) throw new Error(t("knowledge.loadFailed"));
+      return result;
+    },
+    onSuccess(result, input) {
+      if (!result) return;
+      if ("memories" in result) client.setQueryData(["knowledge", "entries", input.knowledgeId], result);
+      else {
+        for (const kind of ["entries", "search", "binding-names"]) {
+          client.removeQueries({ queryKey: ["knowledge", kind, input.knowledgeId] });
+        }
+      }
+      if (activeScope.current.knowledgeId === input.knowledgeId) {
+        if (input.kind === "add-entry") {
+          setMemoryInput("");
+          resetPages();
+        } else {
+          setDeleteTarget(null);
+          if (input.kind === "delete-knowledge") {
+            setSelectedKnowledge("");
+            setKnowledgeQuery("");
+            resetPages();
+          }
+        }
+      }
+      showToast({
+        kind: "success",
+        title: t(input.kind === "add-entry" ? "knowledge.saved" : "knowledge.deleted"),
+      });
+    },
+    onError(error) {
+      showToast({ kind: "error", title: t("common.operationFailed"), message: error.message });
+    },
+    async onSettled() {
+      // A failed knowledge deletion may already have removed entries or bindings.
+      await client.invalidateQueries({ queryKey: ["knowledge"] });
+    },
+  });
+  const runWrite = async (input: KnowledgeWrite) => {
+    if (writeLock.current) return;
+    writeLock.current = true;
+    try {
+      await writeMutation.mutateAsync(input);
+    } catch {
+      /* onError reports the failure; retain the input or confirmation. */
+    } finally {
+      writeLock.current = false;
+    }
+  };
+
+  const batchBindingLock = useRef(false);
+  const batchBindingMutation = useMutation({
+    mutationFn: ({ knowledge, add, remove }: { knowledge: string; add: string[]; remove: string[] }) =>
+      batchKnowledgeBindings(knowledge, add, remove),
+    onSuccess: async (result) => {
+      client.setQueryData(["knowledge", "binding-names", result.knowledge_id], result);
+      await client.invalidateQueries({ queryKey: ["knowledge"] });
+      showToast({ kind: "success", title: t("knowledge.saved") });
+    },
+  });
 
   const resetPages = () => {
     setEntryPage(1);
@@ -85,6 +167,8 @@ export function useKnowledgeController() {
   const activeEntriesQuery = searchTerm ? search : entries;
   const selectKnowledge = (id: string) => {
     cancelCatalogSearch();
+    setMemoryInput("");
+    setDeleteTarget(null);
     setSelectedKnowledge(id);
     setInstancePickerOpen(false);
     resetPages();
@@ -133,7 +217,55 @@ export function useKnowledgeController() {
     setSearchPage((p) => Math.min(p, Math.max(1, Math.ceil((search.data?.memories.length ?? 0) / 8))));
   }, [search.data]);
   return {
+    memoryInput,
+    setMemoryInput,
+    deleteTarget,
+    writePending: writeMutation.isPending,
+    addPending: writeMutation.isPending && writeMutation.variables?.kind === "add-entry",
+    deletePending: writeMutation.isPending && writeMutation.variables?.kind !== "add-entry",
+    deletingMemoryId:
+      writeMutation.isPending && writeMutation.variables?.kind === "delete-entry"
+        ? writeMutation.variables.memoryId
+        : null,
+    addEntry: () => {
+      if (selectedKnowledge && memoryInput.trim())
+        void runWrite({ kind: "add-entry", knowledgeId: selectedKnowledge, content: memoryInput.trim() });
+    },
+    requestDeleteEntry: (entry: { id: string; memory: string }) => {
+      if (selectedKnowledge && entry.id && !writeLock.current)
+        setDeleteTarget({ knowledgeId: selectedKnowledge, memoryId: entry.id, content: entry.memory });
+    },
+    requestDeleteKnowledge: () => {
+      if (selectedKnowledge && !writeLock.current) setDeleteTarget({ knowledgeId: selectedKnowledge });
+    },
+    cancelDelete: () => {
+      if (!writeLock.current) setDeleteTarget(null);
+    },
+    confirmDelete: () => {
+      if (!deleteTarget) return;
+      const scope = { knowledgeId: deleteTarget.knowledgeId };
+      void runWrite(
+        deleteTarget.memoryId
+          ? { ...scope, kind: "delete-entry", memoryId: deleteTarget.memoryId }
+          : { ...scope, kind: "delete-knowledge" },
+      );
+    },
     ...modelReadiness,
+    saveBindings: async (add: string[], remove: string[]) => {
+      if (!selectedKnowledge || batchBindingLock.current || writeLock.current) return false;
+      batchBindingLock.current = true;
+      try {
+        await batchBindingMutation.mutateAsync({ knowledge: selectedKnowledge, add, remove });
+        return true;
+      } catch {
+        return false;
+      } finally {
+        batchBindingLock.current = false;
+      }
+    },
+    batchBindingPending: batchBindingMutation.isPending,
+    bindingPending: batchBindingMutation.isPending,
+    bindingError: batchBindingMutation.variables?.knowledge === selectedKnowledge ? batchBindingMutation.error : null,
     instancePickerOpen,
     setInstancePickerOpen: (value: boolean) => {
       if (!value) closeInstances();
