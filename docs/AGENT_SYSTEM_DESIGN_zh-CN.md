@@ -1,6 +1,6 @@
 # Shinsekai 通用 Agent 系统设计
 
-> 状态：任务核心、Pi Adapter、运行包管理、配置复用、应用生命周期、HTTP 和助手聊天 UI 已实现；业务工具、skills 与角色委托待后续接入。
+> 状态：任务核心、Pi Adapter、运行包管理、配置复用、应用生命周期、HTTP、助手聊天 UI 与首批说明性 skills 已实现；实际业务工具和角色委托待后续接入。技能加载与范围见 [Agent Skills](AGENT_SKILLS_zh-CN.md)。
 > 更新日期：2026-10-06。
 > 范围：通用接口、独立进程、后端适配、宿主工具，以及角色扮演委托 Agent 的完整调用流程。
 > 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，任务核心见 [运行说明](AGENT_TASK_CORE_zh-CN.md)，Pi 见 [接入说明](AGENT_PI_zh-CN.md)，产品入口见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)。业务工具和角色回传仍为实施目标。

@@ -10,6 +10,7 @@ import pytest
 from application.agent.management import AgentService
 from application.agent.pi_configuration import resolve_pi_model
 from application.agent.runtime import AgentRuntime, UI_ORIGIN
+from application.agent.skills import BUNDLED_SKILL_REFS
 from application.runtime.services import ApplicationServices
 from sdk.agent import (
     AgentBackendConfig,
@@ -94,7 +95,9 @@ def test_preparation_failure_keeps_history_and_retry_can_start(tmp_path):
         runtime._thread.join(2)
         runtime.start()
         wait_for(lambda: runtime.snapshot()["status"] == "ready")
-        assert runtime.create_session().owner == UI_ORIGIN
+        session = runtime.create_session()
+        assert session.owner == UI_ORIGIN
+        assert session.skill_refs == BUNDLED_SKILL_REFS
     finally:
         runtime.close()
 

@@ -13,6 +13,7 @@ from ai.llm.claude_url import normalize_claude_base_url_for_sdk
 from core.agent.ipc import fault
 from core.agent.pi_runtime import PiRuntime, PiRuntimeManager, PI_VERSION
 from core.paths import project_root, resource_path
+from application.agent.skills import bundled_skill_paths
 from sdk.agent import AgentBackendConfig
 
 _COMPATIBLE_PROVIDERS = {"ChatGPT", "Deepseek", "Gemini", "豆包", "通义千问", "Ollama"}
@@ -126,6 +127,7 @@ def prepare_pi_agent(
             credential_ref="config:llm:" + binding.provider,
             options={
                 "piVersion": PI_VERSION,
+                "skillLoading": "preload",
                 "models": {binding.reference: binding.model},
                 "policies": {
                     key: str(Path(value).resolve())
@@ -140,7 +142,9 @@ def prepare_pi_agent(
                 },
                 "skills": {
                     key: str(Path(value).resolve())
-                    for key, value in (skill_paths or {}).items()
+                    for key, value in (
+                        bundled_skill_paths() if skill_paths is None else skill_paths
+                    ).items()
                 },
             },
         ),

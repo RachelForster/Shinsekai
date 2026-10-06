@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from application.agent.pi_configuration import prepare_pi_agent, resolve_pi_model
+from application.agent.skills import bundled_skill_paths
 from core.agent.pi_runtime import PiRuntime
 from sdk.agent import AgentRequestError
 
@@ -99,3 +100,15 @@ def test_runtime_setup_reuses_installer(monkeypatch, tmp_path):
     setup = prepare_pi_agent(ModelConfig(), root=tmp_path)
     assert calls == [tmp_path / "runtimes" / "pi"]
     assert setup.backend.backend_id == "pi"
+    assert setup.backend.options["skills"] == bundled_skill_paths()
+    assert setup.backend.options["skillLoading"] == "preload"
+
+
+def test_explicit_empty_skill_mapping_disables_bundled_defaults(tmp_path):
+    setup = prepare_pi_agent(
+        ModelConfig(),
+        root=tmp_path,
+        runtime=PiRuntime(tmp_path / "pi.exe"),
+        skill_paths={},
+    )
+    assert setup.backend.options["skills"] == {}

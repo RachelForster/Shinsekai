@@ -9,6 +9,7 @@ from typing import Callable, Iterator
 
 from application.agent.management import AgentProfile, AgentService
 from application.agent.pi_configuration import prepare_pi_agent, resolve_pi_model
+from application.agent.skills import BUNDLED_SKILL_REFS
 from core.agent.ipc import fault
 from sdk.agent import (
     AgentBackendConfig,
@@ -23,6 +24,7 @@ from sdk.agent import (
 
 UI_ORIGIN = AgentOrigin(kind="user", caller_id="shinsekai-assistant")
 ASSISTANT_PROFILE = AgentProfile(
+    skill_refs=BUNDLED_SKILL_REFS,
     limits=AgentLimits(wall_time_ms=300000, max_tool_calls=20),
 )
 

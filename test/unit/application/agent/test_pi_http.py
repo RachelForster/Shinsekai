@@ -14,6 +14,7 @@ import pytest
 
 from application.agent.pi_configuration import prepare_pi_agent
 from application.agent.runtime import AgentRuntime
+from application.agent.skills import BUNDLED_SKILL_NAMES
 from core.agent.pi_runtime import PiRuntime
 from frontend_bridge_core.routes.api import FrontendBridgeHandler
 from test.unit.application.agent.test_pi_configuration import ModelConfig
@@ -144,6 +145,14 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
                 )
         if behavior == "restart":
             assert len(requests) == 2
+            model_messages = json.dumps(requests[0]["messages"], ensure_ascii=False)
+            # Pi omits its native skill index without read/bash; host preloading
+            # must supply the instructions independently of that index.
+            assert "<available_skills>" not in model_messages
+            for name in BUNDLED_SKILL_NAMES:
+                assert name in model_messages
+            assert "下方已提供完整技能正文" in model_messages
+            assert "python -m sdk.cli create my_plugin" in model_messages
             assert any(
                 message.get("role") == "assistant"
                 and "真实 Pi HTTP" in str(message.get("content"))

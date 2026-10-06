@@ -51,4 +51,4 @@ python -m pytest test/unit/application/agent/test_pi_http.py -q
 
 前端有 1280px 与 390px 的浏览器流程测试。开发环境浏览器预览使用明确标注的示例回复；桌面和 bridge HTTP 使用实际 Pi。
 
-本阶段提供应用生命周期、HTTP 和普通聊天 UI。当前 basic profile 没有业务工具；人物修改、诊断工具、插件开发工具、业务 skills 和角色委托仍属于后续工作。
+本阶段提供应用生命周期、HTTP 和普通聊天 UI，并随新会话加载功能介绍、诊断、人物创建和插件开发四个说明性 skills，见 [技能说明](AGENT_SKILLS_zh-CN.md)。当前 basic profile 没有业务工具；实际人物修改、日志读取、插件文件操作和角色委托仍属于后续工作。

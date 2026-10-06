@@ -153,22 +153,43 @@ class PiAgentBackend:
             text = Path(policy).read_text(encoding="utf-8")
             if len(text.encode("utf-8")) > 65536:
                 raise fault("LIMIT_EXCEEDED", "Pi system policy exceeds its size limit")
-            (root / "policy.md").write_text(text, encoding="utf-8")
+            skill_loading = self.config.options.get("skillLoading", "native")
+            if skill_loading not in ("native", "preload"):
+                raise fault("INVALID_REQUEST", "Unknown Pi skill loading mode")
             skills = []
+            skill_texts = []
             for reference in config.skill_refs:
                 source = self.config.options.get("skills", {}).get(reference)
                 if not source or not Path(source).is_file():
                     raise fault("INVALID_REQUEST", "Pi skill reference is unavailable")
-                # Explicit trusted SKILL.md paths; support files are reached through host tools.
-                target = root / (
-                    "skill-"
-                    + hashlib.sha256(reference.encode()).hexdigest()[:16]
-                    + ".md"
+                source = Path(source).resolve()
+                # Preserve the portable SKILL.md layout and isolate each host reference.
+                target = (
+                    root
+                    / "skills"
+                    / hashlib.sha256(reference.encode()).hexdigest()[:16]
+                    / source.parent.name
+                    / source.name
                 )
-                target.write_text(
-                    Path(source).read_text(encoding="utf-8"), encoding="utf-8"
-                )
+                content = source.read_text(encoding="utf-8")
+                if len(content.encode("utf-8")) > 65536:
+                    raise fault("LIMIT_EXCEEDED", "Pi skill exceeds its size limit")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
                 skills.append(str(target))
+                skill_texts.append(f"## {reference}\n\n{content}")
+            if skill_loading == "preload" and skill_texts:
+                text += (
+                    "\n\n# 宿主预载的任务 skills\n\n"
+                    "下方已提供完整技能正文。根据用户任务匹配使用，无需再读取技能文件。"
+                    "技能说明不授予工具权限；只有当前实际提供的工具可以执行操作。\n\n"
+                    + "\n\n".join(skill_texts)
+                )
+            if len(text.encode("utf-8")) > 65536:
+                raise fault(
+                    "LIMIT_EXCEEDED", "Pi combined system policy exceeds its size limit"
+                )
+            (root / "policy.md").write_text(text, encoding="utf-8")
             marker = {"snapshot": snapshot, "skills": skills, "hasRun": False}
             marker_file.write_text(
                 json.dumps(marker, ensure_ascii=False), encoding="utf-8"
