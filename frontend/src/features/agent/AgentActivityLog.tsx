@@ -25,6 +25,10 @@ const labels: Record<string, MessageKey> = {
   "plugins.registry": "agent.activity.registry",
   "plugins.inspect": "agent.activity.plugin",
   "plugins.install": "agent.activity.installPlugin",
+  "plugins.tools": "agent.activity.pluginTools",
+  playwright_search_web: "agent.activity.webSearch",
+  playwright_navigate: "agent.activity.webNavigate",
+  playwright_get_text: "agent.activity.webRead",
   "app.config": "agent.activity.config",
   "logs.read": "agent.activity.logs",
 };

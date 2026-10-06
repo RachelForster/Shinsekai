@@ -3,6 +3,37 @@ import { emptyTranscript, mergeAgentEvents } from "../../../entities/agent/event
 import type { AgentEventPage } from "../../../shared/platform/agentTypes";
 
 describe("Agent persisted events", () => {
+  it.each([
+    ["playwright_search_web", { query: "人物 作品 百度百科" }, "人物 作品 百度百科"],
+    ["playwright_navigate", { url: "https://example.com/wiki" }, "https://example.com/wiki"],
+    ["playwright_get_text", {}, "com.shinsekai.playwright_browser"],
+  ])("shows the real plugin activity for %s", (toolName, argumentsValue, target) => {
+    const transcript = mergeAgentEvents(emptyTranscript("task"), {
+      taskId: "task",
+      nextSeq: 1,
+      events: [
+        {
+          taskId: "task",
+          schemaVersion: 1,
+          timestamp: "2026-10-07T00:00:00Z",
+          eventSeq: 1,
+          type: "tool.started",
+          payload: {
+            call: {
+              callId: "browser-call",
+              name: "shinsekai.bridge.write",
+              arguments: {
+                operation: "plugins.tools.invoke",
+                params: { plugin_id: "com.shinsekai.playwright_browser", tool_name: toolName },
+                body: { arguments: argumentsValue },
+              },
+            },
+          },
+        },
+      ],
+    });
+    expect(transcript.activities[0]).toMatchObject({ name: toolName, target, status: "running" });
+  });
   it("deduplicates replayed deltas and replaces them with authoritative completed text", () => {
     const event = { taskId: "task", schemaVersion: 1, timestamp: "2026-10-06T00:00:00Z" };
     const page: AgentEventPage = {

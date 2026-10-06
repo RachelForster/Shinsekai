@@ -40,6 +40,7 @@ def test_plugin_route_contracts_remain_stable() -> None:
         ("GET", "/api/plugins/registry"),
         ("GET", "/api/plugins/status"),
         ("GET", "/api/plugins/{plugin_id}/ui"),
+        ("GET", "/api/plugins/{plugin_id}/tools"),
         ("POST", "/api/plugins/app-update/run"),
         ("POST", "/api/plugins/app-update/tags"),
         ("POST", "/api/plugins/install"),
@@ -50,6 +51,7 @@ def test_plugin_route_contracts_remain_stable() -> None:
         ("POST", "/api/plugins/repo-tags"),
         ("POST", "/api/plugins/{plugin_id}/chat-ui/{contribution_id}/run"),
         ("POST", "/api/plugins/{plugin_id}/enabled"),
+        ("POST", "/api/plugins/{plugin_id}/tools/{tool_name}/invoke"),
         ("POST", "/api/plugins/{plugin_id}/ui/{page_id}/actions/{action_id}"),
         ("POST", "/api/plugins/{plugin_id}/ui/{page_id}/config"),
     }

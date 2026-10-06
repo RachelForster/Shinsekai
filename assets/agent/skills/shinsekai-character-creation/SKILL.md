@@ -2,7 +2,7 @@
 name: shinsekai-character-creation
 description: 为 Shinsekai 创建或完善人物，检查浏览器能力，检索百科资料、角色语音和官方立绘，评估 GPT-SoVITS 训练或准备参考语音。在用户要求创建人物、人设、角色档案、收集人物素材或修改现有人物时使用。
 metadata:
-  version: "1.4.0"
+  version: "1.5.0"
 ---
 
 # Shinsekai 人物创建
@@ -15,24 +15,27 @@ metadata:
 
 - 查询插件：read 的 `plugins.list` 仅返回 id、title、enabled、loaded，`plugins.registry` 仅返回 id、displayName、installed，`plugins.status` 查询整体加载状态。确定本次需要的插件后，才用 `plugins.inspect` 和 `params.plugin_id` 读取该插件页面、配置与动作 schema。安装用 write 的 `plugins.install`，`body.source` 使用插件目录返回的 id；启用用 `plugins.enable`，提供 `params.plugin_id` 和 `body.enabled`。
 - 配置浏览器：先 inspect，然后 write 的 `plugins.configure`，提供 `params.plugin_id`、`params.page_id` 及 `body.values`。保留原配置的其他字段；对脱敏字段不要写入脱敏占位符。`plugins.action` 只能使用 inspect 返回的真实页面、动作 ID 和参数，不能虚构网页搜索动作。
+- 使用浏览器工具：read 的 `plugins.tools`，提供 `params.plugin_id`，按需取得该已加载插件的工具名称、说明及 `inputSchema`；随后调用 write 的 `plugins.tools.invoke`，提供 `params.plugin_id`、`params.tool_name` 及 `body.arguments`。浏览器插件的工具通过此入口执行，不需要角色聊天会话，也不需要另装浏览器库或写临时爬虫来替代已经可用的插件。
 - 查询人物：read 的 `characters.list` 只返回名字字符串列表。确认要编辑的名字后，用 `characters.get` 和 `params.name` 读取该人物的完整配置，不批量获取所有人物详情。保存用 write 的 `characters.save`，`body.character` 为完整人物配置，编辑时带 `body.originalName`。保存后通过 `characters.get` 核对。立绘导入用 `characters.sprites.import`，提供 `body.name` 和已存在图片的 `body.paths`，随后重新读取该人物，避免用旧配置覆盖导入结果。
 - 环境查询：read 的 `app.config` 只返回脱敏的 API 和系统设置，不附带人物、背景、特效或插件列表；`tts.environment` 返回现有 GPU 和推理环境推荐，训练依赖、可用显存及数据质量仍需其他检测。需要推理整合包时使用 write 的 `tts.install`，`body.kind` 按实际需求选择。
 - HTTP 202 的 `accepted=true` 仅代表受理。保留返回的 `taskId`，用 read 的 `tasks.get` 和 `params.task_id` 查询；检查 `data.status` 与实际结果后才报告完成。不要在一个回合中反复忙轮询。停止 Agent 不自动取消已提交的 bridge 下载或安装任务；用户要求取消该任务时调用 write 的 `tasks.cancel`。
 - 写入结果未知或响应丢失时先查询实际状态，不能直接重复提交。宿主按同一 Agent task 的 call ID 去重，新的 call ID 不代表自动具备业务幂等性。
 
-这些 HTTP 工具没有网页导航、媒体下载或音频切片接口。Pi 内置 read、文件编辑、写入、搜索和 shell 工具可用于读取技能与资料、检查依赖，以及运行本机已有的下载或音频处理程序；先核对实际可执行文件、参数和结果。Windows 可使用 powershell，支持 bash 的环境也可使用 bash。文件与命令默认工作目录是当前 session 的 workspace，使用真实路径定位其他资源。仅安装浏览器插件不代表 Agent 已获得它的角色聊天工具。CLI 或其他宿主没有注册这两个 HTTP 工具时，按实际工具能力推进，缺少能力的步骤交付草稿与操作说明。
+网页检索与读取按页面需要选择工具：curl 等直接 HTTP 请求能取得有效正文时可直接使用；需要 JavaScript 渲染、点击输入、连续页面会话，或直接请求没有得到有效内容时使用浏览器插件。用户明确指定浏览器时遵守其要求，不因为有浏览器工具就要求所有网页都经过浏览器。媒体下载和音频切片取决于插件提供的工具或本机程序；Pi 内置 read、文件编辑、写入、搜索和 shell 工具可用于读取技能与资料、检查依赖，以及运行本机已有的下载或音频处理程序；先核对实际可执行文件、参数和结果。Windows 可使用 powershell，支持 bash 的环境也可使用 bash。文件与命令默认工作目录是当前 session 的 workspace，使用真实路径定位其他资源。CLI 或其他宿主没有注册这两个 HTTP 工具时，按实际工具能力推进，缺少能力的步骤交付草稿与操作说明。
 
 ## 1. 检查浏览器插件与工具
 
-先检查宿主插件列表、加载状态及当前 Agent 工具目录。浏览器插件已安装、已加载、浏览器可启动和工具已暴露给 Agent 是四个不同状态，分别核对。
+需要浏览器时先检查宿主插件列表、加载状态及当前 Agent 工具目录。浏览器插件已安装、已加载、浏览器可启动和工具已暴露给 Agent 是四个不同状态，分别核对；直接请求已取得有效正文时无需为该页面额外启动浏览器。
 
 - 已有可用浏览器时，保留用户选定的后端，用一次打开页面和读取正文验证可用性。
 - 插件缺失且已有自动安装、配置授权时，通过宿主现有插件安装与配置工具完成；沿用可信插件来源与已有下载机制。已安装但未加载时按工具结果处理启用或重新加载。
 - 缺少安装能力或授权时，给出「插件管理」`/settings/plugins` 的安装步骤和浏览器选项。没有插件查询工具时说明无法检查，不能凭印象报告已安装。
 - 选择插件使用的浏览器：优先用户指定且可启动的后端；没有偏好时，Windows 优先已安装的 Edge，其次 Chrome，再选已安装的 Playwright Chromium。均不可用时，有安装能力及相应授权才下载 Playwright Chromium，否则引导用户安装。默认设置只指插件的浏览器后端。
-- 插件配置以实际 schema 为准。当前 Playwright Browser 的 ID 为 `com.shinsekai.playwright_browser`，`browser_type` 可选 `msedge`、`chrome`、`chromium`、`firefox`、`webkit`。该插件的角色聊天工具注册不会自动变成通用 Agent 工具。
+- 插件配置以实际 schema 为准。当前 Playwright Browser 的 ID 为 `com.shinsekai.playwright_browser`，`browser_type` 可选 `msedge`、`chrome`、`chromium`、`firefox`、`webkit`。通过 `plugins.tools` 查看其真实工具，不依赖插件设置页是否声明网页搜索动作。
+- 常见工具为 `playwright_search_web(query)`、`playwright_navigate(url)`、`playwright_get_text()`；仅在返回目录确实包含这些名称时调用。先搜索人物名与作品，再导航到来源页面并读取正文。调用结构示例：`{"operation":"plugins.tools.invoke","params":{"plugin_id":"com.shinsekai.playwright_browser","tool_name":"playwright_search_web"},"body":{"arguments":{"query":"人物名 作品名 百度百科"}}}`。正文优先使用 `playwright_get_text`，避免为普通资料检索返回截图的原始图像数据。
+- 搜索引擎无结果、不可达或要求验证时，不无限重复同一查询。保留错误事实，使用导航工具打开百度、百度百科、维基百科或萌娘百科的站内搜索，并读取页面；仍不可用时说明具体障碍和需要用户处理的步骤。
 
-没有浏览器工具时，可先依据用户提供的资料写草稿，把在线检索标记为待完成。原创人物直接使用用户的创作要求，不强行检索不存在的人物。
+没有浏览器工具时仍可使用实际可用的直接 HTTP 请求；若也无法取得有效资料，可先依据用户提供的资料写草稿，把在线检索标记为待完成。原创人物直接使用用户的创作要求，不强行检索不存在的人物。
 
 ## 2. 确认身份并收集设定
 

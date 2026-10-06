@@ -75,11 +75,20 @@ export function mergeAgentEvents(previous: AgentTranscript, page: AgentEventPage
         const args = object(call.arguments);
         const params = object(args?.params);
         const body = object(args?.body);
-        const target = params?.name ?? params?.plugin_id ?? body?.name ?? body?.source ?? body?.path;
+        const pluginCall = args?.operation === "plugins.tools.invoke";
+        const pluginArguments = pluginCall ? object(body?.arguments) : null;
+        const target = pluginCall
+          ? (pluginArguments?.query ?? pluginArguments?.url ?? pluginArguments?.selector ?? params?.plugin_id)
+          : (params?.name ?? params?.plugin_id ?? body?.name ?? body?.source ?? body?.path);
         next.activities.push({
           activityId: `host:${call.callId}`,
           kind: "tool",
-          name: typeof args?.operation === "string" ? args.operation : call.name,
+          name:
+            pluginCall && typeof params?.tool_name === "string"
+              ? params.tool_name
+              : typeof args?.operation === "string"
+                ? args.operation
+                : call.name,
           target: typeof target === "string" ? target.slice(0, 512) : "",
           status: "running",
           startedAt: event.timestamp,

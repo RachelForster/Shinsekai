@@ -52,6 +52,8 @@ Agent worker 仍按第一个任务启动，使用桌面发行包已有的 Python
 
 UI 使用事件游标归并文本，重复页不会重复拼接消息，未知事件仍推进游标。完成文本覆盖此前流式片段；会话重新打开时可从持久化事件恢复。HTTP 受理回执丢失后，发送重试使用原 requestId，避免重复执行。
 
+已加载插件的工具可通过 `/api/plugins/{plugin_id}/tools` 按需查询，通过 `/api/plugins/{plugin_id}/tools/{tool_name}/invoke` 调用。Agent 仍只注册两个通用 HTTP 工具，目标插件的 schema 在需要时才读取。`ApplicationServices` 持有插件工具执行线程，连续浏览器调用和关闭浏览器使用同一线程；不需要运行角色聊天。浏览器检索、打开页面和读取正文在执行过程显示对应动作、搜索词和网址。
+
 ## 验证与范围
 
 测试覆盖真实 worker 与 HTTP server、严格读取鉴权、来源与权限防注入、分页错误、提交幂等、恢复暂停、配置变更、退出收尾，以及 UI tab、草稿、取消和输入。官方 Pi binary 的附加测试通过本地模拟模型服务验证 HTTP 对话、应用重启后的原生会话恢复和活动运行退出，不调用用户模型。
@@ -65,4 +67,4 @@ python -m pytest test/unit/application/agent/test_pi_http.py -q
 
 活动测试还覆盖事件重放与去重、交错宿主与原生工具、当前动作在回复输出后保持可见、结束状态、计时、抽屉恢复及两种宽度的布局。官方 Pi 测试验证原生 read、write、edit 和 shell 的开始与结束事件经 worker、数据库与 HTTP 回传。
 
-本阶段提供应用生命周期、HTTP 和普通聊天 UI，新会话由 Pi 按需加载功能介绍、诊断、人物创建和插件开发四个 skills，见 [技能说明](AGENT_SKILLS_zh-CN.md)。桌面助手已可通过 [HTTP 工具](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md) 修改人物、导入已有立绘、读取日志和管理插件；同时开启 Pi 原生文件、搜索及 shell 工具，可编写文件并调用实际可用的本机程序。浏览器和媒体专用接口及角色委托仍需后续接入。升级后新建 session 使用新技能与提示快照。
+本阶段提供应用生命周期、HTTP 和普通聊天 UI，新会话由 Pi 按需加载功能介绍、诊断、人物创建和插件开发四个 skills，见 [技能说明](AGENT_SKILLS_zh-CN.md)。桌面助手已可通过 [HTTP 工具](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md) 修改人物、导入已有立绘、读取日志、管理插件，并调用已加载浏览器插件进行搜索、导航与读取正文；同时开启 Pi 原生文件、搜索及 shell 工具，可编写文件并调用实际可用的本机程序。媒体专用接口及角色委托仍需后续接入。升级后新建 session 使用新增工具操作、人物创建 skill `1.5.0` 和新提示快照。

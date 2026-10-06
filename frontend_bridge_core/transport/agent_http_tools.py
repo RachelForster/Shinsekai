@@ -23,6 +23,7 @@ class _Api:
     path: str
     description: str
     query: tuple[tuple[str, str], ...] = ()
+    timeout: float | None = None
 
 
 READ_APIS = {
@@ -63,6 +64,11 @@ READ_APIS = {
         "/api/plugins/{plugin_id}/ui",
         "params.plugin_id；返回配置页面、schema、动作",
     ),
+    "plugins.tools": _Api(
+        "GET",
+        "/api/plugins/{plugin_id}/tools",
+        "params.plugin_id；仅该已加载插件的工具名称、说明和输入 schema；浏览器检索先查这里",
+    ),
     "tasks.get": _Api(
         "GET", "/api/tasks/{task_id}", "params.task_id；任务状态、进度和结果"
     ),
@@ -78,6 +84,12 @@ READ_APIS = {
     ),
 }
 WRITE_APIS = {
+    "plugins.tools.invoke": _Api(
+        "POST",
+        "/api/plugins/{plugin_id}/tools/{tool_name}/invoke",
+        "params.plugin_id、tool_name；body.arguments 按 plugins.tools 返回的真实 schema 填写；用于浏览器搜索、导航、读取网页",
+        timeout=90,
+    ),
     "characters.save": _Api(
         "POST",
         "/api/characters",
@@ -271,7 +283,7 @@ class BridgeHttpClient:
             )
         )
         connection = http.client.HTTPConnection(
-            self.host, self.port, timeout=self.timeout
+            self.host, self.port, timeout=max(self.timeout, api.timeout or 0)
         )
         try:
             # HTTPConnection uses the fixed address directly, without environment proxies or redirects.
@@ -404,6 +416,7 @@ def build_bridge_http_tools(
             description=(
                 "调用 Shinsekai 已有的 bridge HTTP API。选 operation，params 填操作要求的标识参数，body 填原 JSON 参数。"
                 "人物和插件先查名字或精简列表，仅按任务所需目标查询详情，不批量展开。"
+                "浏览器与其他插件工具通过 plugins.tools 按需发现，再用 plugins.tools.invoke 调用真实工具。"
                 "修改前读取目标现有数据与插件 schema；accepted=true 只代表受理，使用 tasks.get 检查完成。"
             ),
             input_model=model,

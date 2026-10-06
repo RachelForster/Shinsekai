@@ -15,6 +15,7 @@ import pytest
 
 from application.agent.pi_configuration import prepare_pi_agent
 from application.agent.runtime import AgentRuntime
+from application.runtime.services import ApplicationServices
 from ai.agent.backends.pi import PI_BUILTIN_TOOLS
 from application.agent.skills import BUNDLED_SKILL_NAMES, bundled_skill_paths
 from core.agent.pi_runtime import PiRuntime
@@ -22,6 +23,7 @@ from frontend_bridge_core.routes.api import FrontendBridgeHandler
 from frontend_bridge_core.transport.agent_http_tools import build_bridge_http_tools
 from test.unit.application.agent.test_pi_configuration import ModelConfig
 from test.unit.application.agent.test_runtime import wait_for
+from test.unit.application.agent.test_plugin_tools import loaded_tools  # noqa: F401
 
 
 @pytest.mark.skipif(
@@ -29,9 +31,14 @@ from test.unit.application.agent.test_runtime import wait_for
     reason="Set SHINSEKAI_TEST_PI_BINARY to a verified official Pi binary",
 )
 @pytest.mark.parametrize(
-    "behavior", ["restart", "shutdown", "bridge-tools", "native-skills"]
+    "behavior", ["restart", "shutdown", "bridge-tools", "native-skills", "plugin-tools"]
 )
-def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
+def test_official_pi_through_application_lifecycle_and_http(
+    tmp_path, behavior, request
+):
+    if behavior == "plugin-tools":
+        _, plugin_calls, _, _ = request.getfixturevalue("loaded_tools")
+    uses_bridge = behavior in {"bridge-tools", "native-skills", "plugin-tools"}
     requests = []
     received, release = threading.Event(), threading.Event()
 
@@ -45,9 +52,7 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
             assert self.headers["Authorization"] == "Bearer fixture-http-key"
             functions = [tool["function"] for tool in body["tools"]]
             assert set(PI_BUILTIN_TOOLS) <= {tool["name"] for tool in functions}
-            assert len(functions) == len(PI_BUILTIN_TOOLS) + (
-                2 if behavior in {"bridge-tools", "native-skills"} else 0
-            )
+            assert len(functions) == len(PI_BUILTIN_TOOLS) + (2 if uses_bridge else 0)
             if behavior == "shutdown":
                 received.set()
                 release.wait(10)
@@ -61,6 +66,56 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
                 ({}, "stop"),
             ]
             call = None
+            if behavior == "plugin-tools":
+                read_tool = next(
+                    tool["name"]
+                    for tool in functions
+                    if "Host tool shinsekai.bridge.read:" in tool["description"]
+                )
+                write_tool = next(
+                    tool["name"]
+                    for tool in functions
+                    if "Host tool shinsekai.bridge.write:" in tool["description"]
+                )
+                assert not any(
+                    tool["name"].startswith("playwright_") for tool in functions
+                )
+                steps = [
+                    (
+                        read_tool,
+                        {
+                            "operation": "plugins.tools",
+                            "params": {"plugin_id": "fixture.browser"},
+                        },
+                    ),
+                    (
+                        write_tool,
+                        {
+                            "operation": "plugins.tools.invoke",
+                            "params": {
+                                "plugin_id": "fixture.browser",
+                                "tool_name": "playwright_search_web",
+                            },
+                            "body": {"arguments": {"query": "character wiki"}},
+                        },
+                    ),
+                    (
+                        write_tool,
+                        {
+                            "operation": "plugins.tools.invoke",
+                            "params": {
+                                "plugin_id": "fixture.browser",
+                                "tool_name": "playwright_get_text",
+                            },
+                            "body": {"arguments": {}},
+                        },
+                    ),
+                ]
+                index = sum(
+                    message.get("role") == "tool" for message in body["messages"]
+                )
+                if index < len(steps):
+                    call = steps[index]
             if behavior == "bridge-tools" and not any(
                 message.get("role") == "tool" for message in body["messages"]
             ):
@@ -170,10 +225,10 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
     bridge = ThreadingHTTPServer(("127.0.0.1", 0), FrontendBridgeHandler)
     tools = (
         build_bridge_http_tools(*bridge.server_address, "http-bridge-token")
-        if behavior in {"bridge-tools", "native-skills"}
+        if uses_bridge
         else ()
     )
-    if behavior in {"bridge-tools", "native-skills"}:
+    if uses_bridge:
         config.config = SimpleNamespace(
             api_config=config.config.api_config,
             characters=[
@@ -185,7 +240,7 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
     wait_for(lambda: runtime.snapshot()["status"] == "ready")
     bridge.state = SimpleNamespace(
         auth_token="http-bridge-token",
-        services=SimpleNamespace(agent=runtime),
+        services=ApplicationServices(agent=runtime),
         config_manager=config,
     )
     bridge_thread = threading.Thread(target=bridge.serve_forever, daemon=True)
@@ -311,6 +366,25 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
                 / "workspace"
                 / "native-tool-check.txt"
             ).read_text() == "after-edit"
+        if behavior == "plugin-tools":
+            assert len(requests) == 4
+            responses = [
+                json.loads(message["content"])
+                for message in requests[-1]["messages"]
+                if message.get("role") == "tool"
+            ]
+            assert [tool["name"] for tool in responses[0]["data"]["tools"]] == [
+                "playwright_search_web",
+                "playwright_get_text",
+            ]
+            assert responses[1]["data"]["result"]["query"] == "character wiki"
+            assert (
+                responses[2]["data"]["result"]["text"] == "Verified character biography"
+            )
+            assert (
+                sum(event["type"] == "tool.completed" for event in page["events"]) == 3
+            )
+            assert [name for name, _ in plugin_calls] == ["character wiki", "text"]
         if behavior == "restart":
             assert len(requests) == 2
             model_messages = json.dumps(requests[0]["messages"], ensure_ascii=False)
@@ -332,7 +406,7 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
         release.set()
         bridge.shutdown()
         bridge.server_close()
-        runtime.close()
+        bridge.state.services.close()
         model.shutdown()
         model.server_close()
         bridge_thread.join(3)

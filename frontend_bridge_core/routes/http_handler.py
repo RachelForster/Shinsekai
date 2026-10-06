@@ -255,7 +255,8 @@ class BridgeHttpHandler(BaseHTTPRequestHandler):
             return False
 
     def _require_authorized_read(self, path: str) -> None:
-        if path.startswith("/api/agent/"):
+        plugin_tools = path.startswith("/api/plugins/") and path.endswith("/tools")
+        if path.startswith("/api/agent/") or plugin_tools:
             if not self._request_origin_allowed() or not self._has_valid_auth_token():
                 raise PermissionError("invalid Agent bridge authorization")
         # Project-backed static roots share the same LAN authorization boundary

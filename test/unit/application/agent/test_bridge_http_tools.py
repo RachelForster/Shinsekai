@@ -78,7 +78,8 @@ def invoke(bridge, kind, arguments):
 def test_allowlist_matches_existing_json_http_routes():
     for api in (*READ_APIS.values(), *WRITE_APIS.values()):
         params = {
-            name: "fixture" for name in ("plugin_id", "page_id", "action_id", "task_id")
+            name: "fixture"
+            for name in ("plugin_id", "page_id", "action_id", "task_id", "tool_name")
         }
         match = _API_ROUTER.match(api.method, api.path.format(**params))
         assert match is not None, api

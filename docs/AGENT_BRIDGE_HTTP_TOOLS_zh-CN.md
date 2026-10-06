@@ -13,9 +13,9 @@ HTTP 实现位于 `frontend_bridge_core/transport/agent_http_tools.py`。`fronte
 
 模型只提供 `operation`、`params` 和 `body`。地址、HTTP 方法、路径模板及鉴权 header 由宿主确定；不接受模型提供的 URL、headers 或任意接口路径。HTTP 请求直接访问当前 server，不使用环境代理，也不跟随重定向。工具列表不包含 `/api/agent/*`，避免递归请求 Agent 自身。
 
-bridge token 只保存在宿主 HTTP client 中，不传到 worker、提示词或工具 schema。响应中的凭据字段、已识别的秘密值与常见凭据文本会脱敏，同时保留人物正文、插件 schema 等业务内容。单个响应上限为 512 KiB，默认请求超时为 30 秒。
+bridge token 只保存在宿主 HTTP client 中，不传到 worker、提示词或工具 schema。响应中的凭据字段、已识别的秘密值与常见凭据文本会脱敏，同时保留人物正文、插件 schema 等业务内容。单个响应上限为 512 KiB，默认请求超时为 30 秒；插件工具调用为 90 秒，以覆盖浏览器启动与网页导航。
 
-CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与 CLI 均开启 Pi 内置文件、搜索和 shell 工具；MCP 保持关闭。宿主工具与技能引用固定在 session 快照中；升级后新建助手 session 使用按需加载和人物创建 skill `1.4.0`。原生文件与命令结果不经过本 HTTP 适配器的脱敏、call ID 去重或操作记录，详见 [Pi 工具说明](AGENT_PI_zh-CN.md)。
+CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与 CLI 均开启 Pi 内置文件、搜索和 shell 工具；MCP 保持关闭。宿主工具与技能引用固定在 session 快照中；升级后新建助手 session 使用新增插件工具操作和人物创建 skill `1.5.0`。原生文件与命令结果不经过本 HTTP 适配器的脱敏、call ID 去重或操作记录，详见 [Pi 工具说明](AGENT_PI_zh-CN.md)。
 
 ## 已注册操作
 
@@ -31,6 +31,7 @@ CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与
 | `plugins.status` | GET `/api/plugins/status` | 加载状态 |
 | `plugins.registry` | GET `/api/plugins/registry?view=summary` | 仅 `id`、`displayName`、`installed`；`id` 用作安装来源 |
 | `plugins.inspect` | GET `/api/plugins/{plugin_id}/ui` | 页面、配置 schema 和动作 |
+| `plugins.tools` | GET `/api/plugins/{plugin_id}/tools` | 仅指定已加载插件的工具名称、说明、输入 schema、分组和风险 |
 | `tasks.get` | GET `/api/tasks/{task_id}` | bridge 后台任务状态与结果 |
 | `logs.list` | GET `/api/logs` | 日志列表 |
 | `logs.read` | POST `/api/logs/read` | `body.path` |
@@ -45,6 +46,7 @@ CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与
 | `plugins.enable` | POST `/api/plugins/{plugin_id}/enabled` | `body.enabled` |
 | `plugins.configure` | POST `/api/plugins/{plugin_id}/ui/{page_id}/config` | `body.values`，先 inspect |
 | `plugins.action` | POST `/api/plugins/{plugin_id}/ui/{page_id}/actions/{action_id}` | `body.values`，使用插件提供的真实动作 |
+| `plugins.tools.invoke` | POST `/api/plugins/{plugin_id}/tools/{tool_name}/invoke` | `body.arguments`，按目标工具的真实 schema 调用 |
 | `tasks.cancel` | POST `/api/tasks/{task_id}/cancel` | 取消 bridge 后台任务 |
 | `tts.install` | POST `/api/config/tts-bundle/download` | `body.kind`：`genie`、`gptso`、`gptso50` |
 
@@ -85,6 +87,23 @@ CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与
 
 此示例只展示参数结构。实际保存必须保留未要求改变的配置，不能将脱敏占位符写回凭据字段。人物编辑通过 `characters.get` 读取目标的完整配置，保存后仍按该人物名字重新查询核对；当前人物 HTTP API 没有 revision 条件写入。
 
+浏览器插件的设置动作与 LLM 工具是两个入口。先调用 read 的 `plugins.tools`，`params.plugin_id` 为 `com.shinsekai.playwright_browser`；仅在返回目录确实包含相应名称时调用，例如 write：
+
+```json
+{
+  "operation": "plugins.tools.invoke",
+  "params": {
+    "plugin_id": "com.shinsekai.playwright_browser",
+    "tool_name": "playwright_search_web"
+  },
+  "body": {"arguments": {"query": "人物名 作品名 百度百科"}}
+}
+```
+
+`playwright_navigate` 接收 `url`，`playwright_get_text` 的 `arguments` 为 `{}`；网页正文位于 `data.result`。工具目录按插件查询，不提前把所有插件工具 schema 放入模型上下文。插件必须已经加载并启用，调用只能选择目录内、来源属于该插件包的工具；参数校验失败、插件报错不会记为成功执行。目录读取即使在 loopback 也要求 bridge token 和可信 Origin，调用沿用写接口鉴权。
+
+`application/plugins/tools.py` 复用已加载的 ToolManager，由 `ApplicationServices` 持有唯一执行线程。浏览器启动、后续操作和退出清理在同一线程执行，避免多次 HTTP 请求切换线程导致 Playwright 会话失效。不依赖角色聊天进程，也不在 Pi worker 重新加载插件。退出应用时先等待 Agent 工具收尾，再清理使用过的插件及执行线程。助手活动区显示真实插件工具名称，并显示搜索词、网址或定位选择器。
+
 ## 受理、完成与失败
 
 成功返回结构为 `httpStatus`、`data`、`taskId` 和 `accepted`。HTTP 202 的 `accepted=true` 只记录“已提交后台任务”这一操作事实，不能据此声称插件安装或模型下载完成。保留 `taskId`，通过 `tasks.get` 查询 `data.status`、进度和结果；后台状态包括 `queued`、`running`、`succeeded`、`failed`、`cancelled`，成功时的 `phase` 为 `completed`。避免在一个模型回合中反复忙轮询。
@@ -93,7 +112,7 @@ CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与
 
 HTTP 适配器不自动重试写请求。请求失败、响应丢失或无法解析时，写操作记录为 `unknown`，先查询现有状态再决定是否重试。发出请求前发现路径参数错误时记录为 `not_applied`。AgentService 按同一 Agent task 的 call ID 去重；不同 call ID 的同一业务请求仍需按原 API 的语义核对。
 
-HTTP 工具只暴露上表明确选择的 JSON 接口。网页搜索、导航、读取正文，媒体下载、音频切片与合成测试、游戏解包尚无专用 HTTP 接口；Pi 可通过 shell 调用本机实际可用的程序，并通过文件工具编写插件。开启工具不等于相关依赖已安装。安装角色浏览器插件不会自动把它的角色聊天工具注册给 Agent；GPU 推理推荐也不能替代训练资格检查。
+HTTP 工具只暴露上表明确选择的 JSON 接口。已加载浏览器插件的搜索、导航和正文读取可通过插件工具接口调用；插件未安装、未启用、浏览器缺失或搜索服务不可用时仍需按实际错误处理。媒体下载、音频切片与合成测试、游戏解包取决于插件提供的真实工具或本机实际可用的程序；开启工具不等于相关依赖已安装。GPU 推理推荐也不能替代训练资格检查。
 
 ## 验证
 
