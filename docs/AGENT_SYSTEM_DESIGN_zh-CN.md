@@ -1,9 +1,9 @@
 # Shinsekai 通用 Agent 系统设计
 
-> 状态：阶段 A 及阶段 B 的 Pi Adapter、官方运行包管理、模型与凭据复用已实现；产品入口待接入，角色委托暂缓。
+> 状态：任务核心、Pi Adapter、运行包管理、配置复用、应用生命周期、HTTP 和助手聊天 UI 已实现；业务工具、skills 与角色委托待后续接入。
 > 更新日期：2026-10-06。
 > 范围：通用接口、独立进程、后端适配、宿主工具，以及角色扮演委托 Agent 的完整调用流程。
-> 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，任务核心用法见 [运行说明](AGENT_TASK_CORE_zh-CN.md)，Pi 用法见 [接入说明](AGENT_PI_zh-CN.md)。HTTP、前端、业务工具和角色回传仍为实施目标。
+> 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，任务核心见 [运行说明](AGENT_TASK_CORE_zh-CN.md)，Pi 见 [接入说明](AGENT_PI_zh-CN.md)，产品入口见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)。业务工具和角色回传仍为实施目标。
 
 ## 1. 目标与设计决定
 
@@ -489,6 +489,12 @@ except AgentRequestError as exc:
 任务快照、事件、提交幂等记录和终态在 SQLite 事务中保存。数据库使用操作系统文件锁限制唯一 owner。恢复排队任务后需显式 `resume_queue()`；不具备原生恢复能力的旧 session 返回 `SESSION_RESUME_UNAVAILABLE`。角色来源有效性由组合根注入，尚未接入实际聊天生命周期和 inbox。
 
 取消期间已有宿主写操作正常收尾时保留真实 effect；无法在期限内核对时进入 `interrupted`，保留 `unknown`。未收尾的宿主回调继续占用执行槽，`close()` 超时会返回 `SESSION_BUSY` 并保留数据库 ownership，避免另一个实例重放写操作。
+
+### 12.3 应用生命周期与助手入口
+
+`ApplicationServices` 提供 AppRuntime 与 BridgeState 的服务生命周期接口。bridge 持有唯一 AgentRuntime，在后台准备 Pi；准备错误保留历史查询。角色进程不另建服务，也不启用角色委托。
+
+`frontend_bridge_core/routes/agent_routes.py` 投影身份绑定的公共用例，Agent 读取同样要求 bridge token。React 导航栏的助手抽屉按 session 展示 tab，支持新建、流式事件重放、停止和输入。关闭抽屉不停止任务；Tauri、bridge 退出和运行期 shutdown 负责服务收尾。详细契约与现阶段范围见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)。
 
 ## 13. 参考
 

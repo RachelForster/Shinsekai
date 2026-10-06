@@ -2,6 +2,7 @@ import type { ChatThemePayload } from "../theme/chatChromeTheme";
 import type { StorySuggestion } from "./storyEditorTypes";
 import type { ChatThemeManifest, ChatThemeSummary } from "../theme/chatTheme";
 import { PlatformRequestError } from "./errors";
+import { createAgentHttpPlatform } from "./agentHttpPlatform";
 import {
   isTauriDesktop,
   isDesktopBridgeRestarting,
@@ -431,6 +432,7 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
   rememberBridgeAuthToken(apiBase, authToken);
 
   return {
+    agent: createAgentHttpPlatform((path, init) => requestJson(apiBase, path, init)),
     backgrounds: {
       delete: async (name) => {
         await requestJson(apiBase, `/api/backgrounds/${encodePath(name)}`, { method: "DELETE" });

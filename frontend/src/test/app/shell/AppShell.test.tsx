@@ -29,10 +29,10 @@ vi.mock("../../../features/release-highlights/FeatureHighlightsPrompt", () => ({
   ),
 }));
 
-vi.mock("../../../features/tools/ToolsDrawer", () => ({
-  ToolsDrawer: ({ onClose, open }: { onClose: () => void; open: boolean }) =>
+vi.mock("../../../features/agent/AgentDrawer", () => ({
+  AgentDrawer: ({ onClose, open }: { onClose: () => void; open: boolean }) =>
     open ? (
-      <aside aria-label="Tools drawer mock" role="dialog">
+      <aside aria-label="Assistant drawer mock" role="dialog">
         <button onClick={onClose} type="button">
           Close drawer
         </button>
@@ -51,7 +51,7 @@ describe("AppShell", () => {
     );
   });
 
-  it("renders routed content and toggles the lazy tools drawer", async () => {
+  it("renders routed content and toggles the lazy assistant drawer", async () => {
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
@@ -77,10 +77,12 @@ describe("AppShell", () => {
     expect(screen.getByTestId("feature-highlights-prompt")).toHaveAttribute("data-enabled", "true");
     fireEvent.click(screen.getByRole("button", { name: "Show update" }));
     expect(screen.getByTestId("feature-highlights-prompt")).toHaveAttribute("data-enabled", "false");
-    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "Assistant" }));
 
-    expect(await screen.findByRole("dialog", { name: "Tools drawer mock" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Assistant drawer mock" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Tools drawer mock" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Assistant drawer mock" })).not.toBeInTheDocument(),
+    );
   });
 });

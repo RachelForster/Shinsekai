@@ -1,4 +1,5 @@
 import type { ChatThemePayload } from "../theme/chatChromeTheme";
+import type { AgentPlatform } from "./agentTypes";
 import type { ChatThemeManifest, ChatThemeSummary, SaveChatThemeInput } from "../theme/chatTheme";
 
 export interface PortraitCrop {
@@ -1452,6 +1453,7 @@ export interface ModelAssetDownloadResult extends ModelAssetStatus {
 }
 
 export interface ShinsekaiPlatform {
+  agent: AgentPlatform;
   backgrounds: {
     autoLabelImages: (
       name: string,

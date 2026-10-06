@@ -1,4 +1,5 @@
 import { createStoryPreviewPlatform } from "./storyPreviewPlatform";
+import { createAgentPreviewPlatform } from "./agentPreviewPlatform";
 import { PlatformRequestError } from "./errors";
 import {
   sampleChatSnapshot,
@@ -571,6 +572,7 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
     });
 
   return {
+    agent: createAgentPreviewPlatform(),
     backgrounds: {
       async autoLabelImages(name) {
         const background = config.background_list.find((item) => item.name === name);

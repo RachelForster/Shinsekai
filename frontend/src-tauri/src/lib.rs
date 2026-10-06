@@ -97,6 +97,12 @@ impl BridgeProcess {
                         ));
                     }
                 }
+                match send_bridge_agent_close(self.bridge_port, &self.auth_token) {
+                    Ok(()) => restart_debug_log("bridge stop closed Agent runtime"),
+                    Err(error) => {
+                        restart_debug_log(format!("bridge stop Agent close failed error={error}"))
+                    }
+                }
                 match send_bridge_chat_close(self.bridge_port, &self.auth_token) {
                     Ok(()) => restart_debug_log(format!(
                         "bridge stop closed active chat port={}",
@@ -1166,15 +1172,38 @@ fn request_bridge_chat_close(state: &DesktopState, reason: &str) {
 }
 
 fn send_bridge_chat_close(port: u16, auth_token: &str) -> Result<(), String> {
+    send_bridge_close_request(
+        port,
+        auth_token,
+        "/api/chat/close",
+        BRIDGE_CHAT_CLOSE_TIMEOUT,
+    )
+}
+
+fn send_bridge_agent_close(port: u16, auth_token: &str) -> Result<(), String> {
+    send_bridge_close_request(
+        port,
+        auth_token,
+        "/api/agent/runtime/stop",
+        Duration::from_secs(7),
+    )
+}
+
+fn send_bridge_close_request(
+    port: u16,
+    auth_token: &str,
+    path: &str,
+    timeout: Duration,
+) -> Result<(), String> {
     let addr: SocketAddr = format!("{BRIDGE_HOST}:{port}")
         .parse::<SocketAddr>()
         .map_err(|error| error.to_string())?;
     let mut stream = TcpStream::connect_timeout(&addr, Duration::from_millis(200))
         .map_err(|error| error.to_string())?;
     let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
-    let _ = stream.set_read_timeout(Some(BRIDGE_CHAT_CLOSE_TIMEOUT));
+    let _ = stream.set_read_timeout(Some(timeout));
     let request = format!(
-        "POST /api/chat/close HTTP/1.1\r\nHost: {BRIDGE_HOST}\r\nContent-Type: application/json\r\nX-Shinsekai-Bridge-Token: {auth_token}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
+        "POST {path} HTTP/1.1\r\nHost: {BRIDGE_HOST}\r\nContent-Type: application/json\r\nX-Shinsekai-Bridge-Token: {auth_token}\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}"
     );
     stream
         .write_all(request.as_bytes())
@@ -2150,6 +2179,27 @@ mod tests {
         assert!(request.contains("Host: 127.0.0.1\r\n"));
         assert!(request.contains("Content-Type: application/json\r\n"));
         assert!(request.contains("X-Shinsekai-Bridge-Token: token-1\r\n"));
+        assert!(request.ends_with("\r\n\r\n{}"));
+    }
+
+    #[test]
+    fn send_bridge_agent_close_posts_authenticated_runtime_shutdown() {
+        let listener = TcpListener::bind((BRIDGE_HOST, 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buffer = [0_u8; 1024];
+            let read = stream.read(&mut buffer).unwrap();
+            let request = String::from_utf8_lossy(&buffer[..read]).to_string();
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+                .unwrap();
+            request
+        });
+        send_bridge_agent_close(port, "agent-token").unwrap();
+        let request = handle.join().unwrap();
+        assert!(request.starts_with("POST /api/agent/runtime/stop HTTP/1.1\r\n"));
+        assert!(request.contains("X-Shinsekai-Bridge-Token: agent-token\r\n"));
         assert!(request.ends_with("\r\n\r\n{}"));
     }
 

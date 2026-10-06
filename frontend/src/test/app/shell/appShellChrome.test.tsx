@@ -51,9 +51,9 @@ describe("app shell chrome", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders localized primary navigation and toggles the tools button", async () => {
-    const onToolsToggle = vi.fn();
-    renderWithI18n(<SidebarNav onToolsToggle={onToolsToggle} toolsOpen={false} />, ["/settings/plugins"]);
+  it("renders localized primary navigation and toggles the assistant button", async () => {
+    const onAssistantToggle = vi.fn();
+    renderWithI18n(<SidebarNav onAssistantToggle={onAssistantToggle} assistantOpen={false} />, ["/settings/plugins"]);
 
     expect(screen.getByRole("navigation", { name: "设置中心导航" })).toBeInTheDocument();
     expect(screen.getByText("基础设置")).toBeInTheDocument();
@@ -65,10 +65,10 @@ describe("app shell chrome", () => {
     expect(screen.getByRole("link", { name: "AI 服务" })).toHaveAttribute("href", "/settings/api");
     expect(screen.getByRole("link", { name: "插件管理" })).toHaveAttribute("href", "/settings/plugins");
 
-    const tools = screen.getByRole("button", { name: "实用工具" });
-    expect(tools).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(tools);
-    expect(onToolsToggle).toHaveBeenCalledTimes(1);
+    const assistant = screen.getByRole("button", { name: "助手" });
+    expect(assistant).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(assistant);
+    expect(onAssistantToggle).toHaveBeenCalledTimes(1);
   });
 
   it("links the top bar settings action to system settings", () => {

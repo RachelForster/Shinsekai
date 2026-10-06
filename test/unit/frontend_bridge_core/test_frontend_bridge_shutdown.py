@@ -56,7 +56,9 @@ def test_shutdown_bridge_runtime_stops_active_chat_and_stream(monkeypatch):
     def fake_shutdown_active_chat_process(*, wait_timeout, wait_before_signal=0.0):
         calls.append((wait_timeout, wait_before_signal))
 
-    monkeypatch.setattr(chat, "shutdown_active_chat_process", fake_shutdown_active_chat_process)
+    monkeypatch.setattr(
+        chat, "shutdown_active_chat_process", fake_shutdown_active_chat_process
+    )
     frontend_bridge._set_bridge_state(state)
     try:
         frontend_bridge._shutdown_bridge_runtime("unit-test")
@@ -73,7 +75,9 @@ def test_parent_watchdog_exit_cleans_bridge_runtime_before_process_exit(monkeypa
     def fake_exit(code):
         raise SystemExit(code)
 
-    monkeypatch.setattr(frontend_bridge, "_shutdown_bridge_runtime", lambda reason: calls.append(reason))
+    monkeypatch.setattr(
+        frontend_bridge, "_shutdown_bridge_runtime", lambda reason: calls.append(reason)
+    )
     monkeypatch.setattr(frontend_bridge.os, "_exit", fake_exit)
 
     with pytest.raises(SystemExit) as exc:
@@ -81,3 +85,21 @@ def test_parent_watchdog_exit_cleans_bridge_runtime_before_process_exit(monkeypa
 
     assert exc.value.code == 0
     assert calls == ["parent watchdog parent_missing parent_pid=123"]
+
+
+def test_agent_service_closes_before_other_bridge_transports(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        chat, "shutdown_active_chat_process", lambda **kwargs: calls.append("chat")
+    )
+    frontend_bridge._set_bridge_state(
+        SimpleNamespace(
+            services=SimpleNamespace(close=lambda: calls.append("agent")),
+            chat_stream=SimpleNamespace(stop=lambda: calls.append("stream")),
+        )
+    )
+    try:
+        frontend_bridge._shutdown_bridge_runtime("unit-test")
+    finally:
+        frontend_bridge._set_bridge_state(None)
+    assert calls == ["agent", "chat", "stream"]

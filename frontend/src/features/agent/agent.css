@@ -1,0 +1,403 @@
+.agent-drawer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+}
+.agent-drawer-layer[hidden] {
+  display: none;
+}
+.agent-drawer-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  padding: 0;
+  background: var(--color-scrim);
+}
+.agent-drawer,
+.agent-drawer-fallback {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(760px, calc(100vw - var(--shell-sidebar-width, 220px)));
+  height: 100dvh;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-bg-app);
+  box-shadow: -18px 0 40px var(--color-scrim);
+}
+.agent-drawer-fallback {
+  z-index: 40;
+}
+.agent-drawer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.agent-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  min-height: 60px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--color-border);
+}
+.agent-drawer__header h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--color-text-primary);
+  font-size: 16px;
+}
+.agent-drawer__header svg {
+  width: 20px;
+  height: 20px;
+}
+.agent-drawer__close {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+.agent-drawer__close:hover {
+  background: var(--color-surface-hover);
+}
+.agent-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  color: var(--color-text-primary);
+}
+.agent-panel__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px 20px;
+}
+.agent-panel__toolbar p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.agent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.agent-actions a {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.agent-actions a:hover {
+  color: var(--color-accent-primary);
+}
+.agent-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  background: var(--color-accent-bg);
+  font-size: 12px;
+}
+.agent-notice p {
+  flex: 1;
+  margin: 0;
+  line-height: 1.6;
+}
+.agent-notice progress {
+  max-width: 160px;
+  accent-color: var(--color-accent-primary);
+}
+.agent-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+.agent-tab {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+}
+.agent-tab--selected {
+  border-bottom-color: var(--color-accent-primary);
+}
+.agent-tab button {
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-control);
+  color: var(--color-text-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.agent-tab--selected button[role="tab"] {
+  color: var(--color-text-primary);
+}
+.agent-tab button:hover {
+  background: var(--color-surface-hover);
+}
+.agent-tab button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.agent-tab svg {
+  width: 13px;
+  height: 13px;
+}
+.agent-conversation {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+.agent-history {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 24px;
+}
+.agent-empty {
+  display: flex;
+  min-height: 160px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 12px;
+  text-align: center;
+}
+.agent-empty > svg {
+  width: 36px;
+  height: 36px;
+  color: var(--color-accent-primary);
+}
+.agent-empty h3 {
+  margin: 18px 0 8px;
+  font-size: 17px;
+}
+.agent-empty p {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.agent-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+.agent-message {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.75;
+}
+.agent-message--user {
+  max-width: 90%;
+  align-self: flex-end;
+  padding: 12px 16px;
+  border-radius: 16px 16px 4px 16px;
+  background: var(--color-accent-bg);
+}
+.agent-message--assistant {
+  width: 100%;
+}
+.agent-message__role {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+.agent-message__role svg {
+  width: 15px;
+  height: 15px;
+}
+.agent-message__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.agent-task-status {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+.agent-task-status--running,
+.agent-task-status--waiting_input {
+  color: var(--color-accent-primary);
+}
+.agent-message-text {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.agent-message-text pre,
+.agent-tool pre {
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  background: var(--color-control-surface);
+  font-size: 12px;
+  line-height: 1.65;
+  white-space: pre;
+}
+.agent-thinking,
+.agent-message__footer {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.agent-message__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  margin-top: 10px;
+}
+.agent-message__footer svg {
+  width: 13px;
+  height: 13px;
+}
+.agent-tool {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+}
+.agent-tool summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.agent-tool summary span {
+  margin-left: auto;
+  color: var(--color-text-muted);
+}
+.agent-tool svg {
+  width: 14px;
+  height: 14px;
+}
+.agent-input-prompt {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid var(--color-accent-border);
+  border-radius: var(--radius-control);
+  background: var(--color-accent-bg);
+}
+.agent-input-prompt p {
+  margin: 0 0 10px;
+}
+.agent-input-prompt form {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+}
+.agent-error,
+.agent-warning {
+  overflow-wrap: anywhere;
+  color: var(--color-text-primary);
+  padding: 10px 12px;
+  border-left: 2px solid var(--color-accent-primary);
+  background: var(--color-accent-bg);
+  font-size: 12px;
+}
+.agent-error__code {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+.agent-action-error {
+  margin: 0 20px 10px;
+}
+.agent-effect {
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+.agent-composer {
+  flex-shrink: 0;
+  margin: 0 20px 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 14px;
+  background: var(--color-control-surface);
+}
+.agent-composer:focus-within {
+  border-color: var(--color-accent-primary);
+}
+.agent-composer textarea,
+.agent-input-prompt textarea {
+  width: 100%;
+  min-width: 0;
+  max-height: 180px;
+  resize: vertical;
+  border: 0;
+  color: var(--color-text-primary);
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.agent-composer textarea:focus {
+  outline: none;
+}
+.agent-composer textarea::placeholder {
+  color: var(--color-text-muted);
+}
+.agent-composer__footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.agent-composer__footer small {
+  color: var(--color-text-muted);
+  font-size: 10px;
+}
+.agent-composer__footer svg {
+  width: 15px;
+  height: 15px;
+}
+@media (max-width: 640px) {
+  .agent-drawer,
+  .agent-drawer-fallback {
+    width: 100vw;
+  }
+  .agent-history {
+    padding: 16px;
+  }
+  .agent-panel__toolbar {
+    padding: 12px 16px;
+  }
+  .agent-composer {
+    margin: 0 12px 12px;
+  }
+  .agent-composer__footer small {
+    max-width: 170px;
+  }
+}

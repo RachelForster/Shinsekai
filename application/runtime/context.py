@@ -15,6 +15,7 @@ from typing import Any, Iterator, List, Optional
 
 from core.media.effect_image import ImageEffectAsset
 from core.messaging.chat_turn_service import ChatTurnService
+from application.runtime.services import ApplicationServices
 from sdk.agent import AgentRequester, NullAgentRequester
 from sdk.llm_runtime import set_llm_host_runtime
 
@@ -96,6 +97,7 @@ class AppRuntime:
         default_factory=ToolConfirmationController
     )
     agent_requester: AgentRequester = field(default_factory=NullAgentRequester, kw_only=True)
+    services: ApplicationServices = field(default_factory=ApplicationServices, kw_only=True)
 
 
 _runtime: Optional[AppRuntime] = None

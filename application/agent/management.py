@@ -203,6 +203,26 @@ class AgentService:
             self, origin.model_copy(deep=True), tuple(profile_ids), administrator
         )
 
+    def configure_backend(
+        self,
+        backend: AgentBackendConfig,
+        *,
+        worker_environment: Callable[[], Mapping[str, str]] | None = None,
+    ) -> None:
+        """Finish trusted asynchronous preparation before dispatch starts."""
+        with self._cv:
+            self._ensure_open()
+            if self._thread is not None:
+                raise fault("SESSION_BUSY", "Agent dispatch has already started")
+            self.backend_config = backend.model_copy(deep=True)
+            self._supervisor.config = self.backend_config
+            self._supervisor.environment = worker_environment
+            self._descriptor = AgentBackendDescriptor(
+                backend_id=backend.backend_id,
+                version=backend.backend_version,
+                unavailable_reason="Worker starts on the first task",
+            )
+
     def start(self) -> None:
         with self._cv:
             self._ensure_open()
@@ -1135,8 +1155,10 @@ class AgentService:
             if self._active:
                 with self._store.transaction():
                     task = self._task(self._active.task_id)
-                    self._status(task, "cancelling", "Application shutdown")
-                    self._active.cancel_requested = time.monotonic()
+                    if task.status != "cancelling":
+                        self._status(task, "cancelling", "Application shutdown")
+                    if self._active.cancel_requested is None:
+                        self._active.cancel_requested = time.monotonic()
             self._cv.notify_all()
         if self._thread:
             self._thread.join(timeout=timeout)
@@ -1146,8 +1168,9 @@ class AgentService:
                     "Host operation is still settling; Agent database ownership was retained",
                 )
         with self._cv:
-            self._store.close()
-            self._closed = True
+            if not self._closed:
+                self._store.close()
+                self._closed = True
 
     def __enter__(self) -> AgentService:
         self.start()
