@@ -49,6 +49,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "agent.status.failed": "失败",
   "agent.status.cancelled": "已停止",
   "agent.status.interrupted": "已中断",
+  "knowledge.emptyBody": "暂无条目，可在下方添加或从文件导入。",
+  "knowledge.emptyTitle": "暂无条目",
   "api.knowledge.checkModel": "检查",
   "api.knowledge.checking": "正在检查",
   "api.knowledge.dependencyInstallFailed": "资料检索依赖安装失败",

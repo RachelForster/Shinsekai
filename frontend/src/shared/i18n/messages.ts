@@ -49,6 +49,8 @@ export type MessageKey =
   | "agent.status.failed"
   | "agent.status.cancelled"
   | "agent.status.interrupted"
+  | "knowledge.emptyTitle"
+  | "knowledge.emptyBody"
   | "api.knowledge.statusUnknown"
   | "api.knowledge.missingDependency"
   | "api.knowledge.error"

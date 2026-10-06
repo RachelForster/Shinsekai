@@ -51,6 +51,8 @@ export const enMessages: Record<MessageKey, string> = {
   "agent.status.failed": "Failed",
   "agent.status.cancelled": "Stopped",
   "agent.status.interrupted": "Interrupted",
+  "knowledge.emptyBody": "No entries yet. Add an entry below or import from files.",
+  "knowledge.emptyTitle": "No entries",
   "api.knowledge.checkModel": "Check",
   "api.knowledge.checking": "Checking",
   "api.knowledge.dependencyInstallFailed": "Failed to install material retrieval dependencies",

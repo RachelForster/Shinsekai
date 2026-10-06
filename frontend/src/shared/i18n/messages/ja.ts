@@ -50,6 +50,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "agent.status.failed": "失敗",
   "agent.status.cancelled": "停止済み",
   "agent.status.interrupted": "中断",
+  "knowledge.emptyBody": "項目はまだありません。項目を追加するかファイルから読み込んでください。",
+  "knowledge.emptyTitle": "項目はありません",
   "api.knowledge.checkModel": "確認",
   "api.knowledge.checking": "確認中",
   "api.knowledge.dependencyInstallFailed": "資料検索の依存関係をインストールできませんでした",
