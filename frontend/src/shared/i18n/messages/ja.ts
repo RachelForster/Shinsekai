@@ -83,7 +83,8 @@ export const jaMessages: Record<MessageKey, string> = {
   "api.knowledge.checking": "確認中",
   "api.knowledge.dependencyInstallFailed": "資料検索の依存関係をインストールできませんでした",
   "api.knowledge.dependencyInstalled": "資料検索の依存関係をインストールしました",
-  "api.knowledge.description": "キャラクターに紐づく資料の検索とモデルの準備を設定します。長期記憶と埋め込みモデルを共有します。設定は次回のチャット起動時に反映されます。",
+  "api.knowledge.description":
+    "キャラクターに紐づく資料の検索とモデルの準備を設定します。長期記憶と埋め込みモデルを共有します。設定は次回のチャット起動時に反映されます。",
   "api.knowledge.downloadModel": "モデルをダウンロード",
   "api.knowledge.downloading": "資料検索モデルをダウンロード中…",
   "api.knowledge.enableRequiresSetup": "右上のボタンで依存関係とモデルを準備してから資料検索を有効にしてください。",

@@ -85,10 +85,12 @@ export const enMessages: Record<MessageKey, string> = {
   "api.knowledge.checking": "Checking",
   "api.knowledge.dependencyInstallFailed": "Failed to install material retrieval dependencies",
   "api.knowledge.dependencyInstalled": "Material retrieval dependencies installed",
-  "api.knowledge.description": "Controls retrieval of character-bound materials and model preparation. Shares the embedding model with long-term memory. Changes apply when chat next starts.",
+  "api.knowledge.description":
+    "Controls retrieval of character-bound materials and model preparation. Shares the embedding model with long-term memory. Changes apply when chat next starts.",
   "api.knowledge.downloadModel": "Download model",
   "api.knowledge.downloading": "Downloading material retrieval model...",
-  "api.knowledge.enableRequiresSetup": "Use the button above to install dependencies and download the model before enabling material retrieval.",
+  "api.knowledge.enableRequiresSetup":
+    "Use the button above to install dependencies and download the model before enabling material retrieval.",
   "api.knowledge.enabled": "Enable material retrieval",
   "api.knowledge.error": "Material retrieval service is unavailable.",
   "api.knowledge.installDependency": "Install dependency",
@@ -100,7 +102,8 @@ export const enMessages: Record<MessageKey, string> = {
   "api.knowledge.modelStatus": "Status",
   "api.knowledge.recheckModel": "Check again",
   "api.knowledge.searchLimit": "Search Top K per turn",
-  "api.knowledge.searchLimitHelp": "Maximum number of related material entries bound to the characters to inject per turn.",
+  "api.knowledge.searchLimitHelp":
+    "Maximum number of related material entries bound to the characters to inject per turn.",
   "api.knowledge.setupModelMissing": "mem0 is ready · Model not downloaded",
   "api.knowledge.setupReady": "mem0 is ready · Model is ready",
   "api.knowledge.statusUnknown": "Not checked",

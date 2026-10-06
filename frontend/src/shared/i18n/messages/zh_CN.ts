@@ -82,7 +82,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "api.knowledge.checking": "正在检查",
   "api.knowledge.dependencyInstallFailed": "资料检索依赖安装失败",
   "api.knowledge.dependencyInstalled": "资料检索依赖已安装",
-  "api.knowledge.description": "控制聊天时角色绑定资料的检索和模型准备。与长期记忆共用嵌入模型，设置在下次启动聊天时生效。",
+  "api.knowledge.description":
+    "控制聊天时角色绑定资料的检索和模型准备。与长期记忆共用嵌入模型，设置在下次启动聊天时生效。",
   "api.knowledge.downloadModel": "下载模型",
   "api.knowledge.downloading": "正在下载资料检索模型…",
   "api.knowledge.enableRequiresSetup": "请先使用右上角按钮安装依赖并下载模型，再启用资料检索。",
