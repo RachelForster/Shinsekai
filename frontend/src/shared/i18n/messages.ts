@@ -49,6 +49,8 @@ export type MessageKey =
   | "agent.deny"
   | "agent.reply"
   | "agent.inputExpired"
+  | "agent.wallTimeExceeded"
+  | "agent.wallTimeExceededWithLimit"
   | "agent.toolRunning"
   | "agent.toolDone"
   | "agent.toolFailed"

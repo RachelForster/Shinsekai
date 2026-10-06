@@ -5,7 +5,13 @@ import { Link } from "react-router-dom";
 
 import { agentApi, agentQueryKey, listAgentSessions } from "../../entities/agent/repository";
 import { isTerminal, type AgentTranscript } from "../../entities/agent/events";
-import type { AgentArtifact, AgentInputRequest, AgentSession, AgentTask } from "../../shared/platform/agentTypes";
+import type {
+  AgentArtifact,
+  AgentError,
+  AgentInputRequest,
+  AgentSession,
+  AgentTask,
+} from "../../shared/platform/agentTypes";
 import { useI18n } from "../../shared/i18n";
 import type { MessageKey } from "../../shared/i18n";
 import { Button, Dialog, QueryErrorState } from "../../shared/ui";
@@ -99,6 +105,24 @@ function InputPrompt({
   );
 }
 
+function TaskError({ error }: { error: AgentError }) {
+  const { t } = useI18n();
+  const wallTimeExceeded =
+    error.code === "LIMIT_EXCEEDED" &&
+    (error.details?.limit === "wallTimeMs" || error.message === "Agent wall time limit was reached");
+  const limitMs = error.details?.limitMs;
+  const message = wallTimeExceeded
+    ? typeof limitMs === "number" && Number.isFinite(limitMs) && limitMs > 0
+      ? t("agent.wallTimeExceededWithLimit", { seconds: Math.ceil(limitMs / 1000) })
+      : t("agent.wallTimeExceeded")
+    : error.message;
+  return (
+    <p className="agent-error" role="alert">
+      {message} <span className="agent-error__code">{error.code}</span>
+    </p>
+  );
+}
+
 function TaskTurn({
   task,
   transcript,
@@ -147,11 +171,7 @@ function TaskTurn({
             taskId={task.taskId}
           />
         ) : null}
-        {task.error ? (
-          <p className="agent-error" role="alert">
-            {task.error.message} <span className="agent-error__code">{task.error.code}</span>
-          </p>
-        ) : null}
+        {task.error ? <TaskError error={task.error} /> : null}
         {task.result?.warnings.map((warning, index) => (
           <p className="agent-warning" key={index}>
             {warning}

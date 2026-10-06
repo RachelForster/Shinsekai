@@ -49,6 +49,10 @@ export const jaMessages: Record<MessageKey, string> = {
   "agent.deny": "拒否",
   "agent.reply": "回答",
   "agent.inputExpired": "この質問は期限切れです。",
+  "agent.wallTimeExceeded":
+    "実行時間の上限に達したため、タスクが中断されました。新しいメッセージを送信して続けられます。",
+  "agent.wallTimeExceededWithLimit":
+    "実行時間の上限（{seconds} 秒）に達したため、タスクが中断されました。新しいメッセージを送信して続けられます。",
   "agent.toolRunning": "実行中",
   "agent.toolDone": "完了",
   "agent.toolFailed": "失敗",

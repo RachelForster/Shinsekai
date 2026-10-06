@@ -490,7 +490,7 @@ except AgentRequestError as exc:
 
 `application.agent.management.AgentService` 是应用内唯一任务用例入口，通过 `bind()` 返回身份绑定的 `AgentClient` 实现。worker 按需启动；宿主和角色进程不导入 Agent backend。当前 worker 显式注册 `mock` 和 `pi` 后端。
 
-会话创建时固定 profile、工具名单和限额快照；任务请求只能收紧快照中的限额。宿主工具使用 Pydantic 输入、输出模型生成 schema，并检查真实调用结果。工具记录的 `(taskId, callId)` 负责幂等，最终结果中的操作事实和 artifact 来自宿主存储。
+会话创建时固定 profile、工具名单和限额快照；默认情况下任务请求只能收紧快照中的限额。可信宿主可通过 `AgentProfile(use_current_limits=True)` 让新任务采用当前 profile 的执行限额，交互式助手使用该策略且不设墙钟上限，旧会话后续任务也适用。已有任务限额、提交幂等、模型、工具及技能快照保持不变。宿主工具使用 Pydantic 输入、输出模型生成 schema，并检查真实调用结果。工具记录的 `(taskId, callId)` 负责幂等，最终结果中的操作事实和 artifact 来自宿主存储。
 
 任务快照、事件、提交幂等记录和终态在 SQLite 事务中保存。数据库使用操作系统文件锁限制唯一 owner。恢复排队任务后需显式 `resume_queue()`；不具备原生恢复能力的旧 session 返回 `SESSION_RESUME_UNAVAILABLE`。角色来源有效性由组合根注入，尚未接入实际聊天生命周期和 inbox。
 

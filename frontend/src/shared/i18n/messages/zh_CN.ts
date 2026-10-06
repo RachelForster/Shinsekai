@@ -49,6 +49,8 @@ export const zhCNMessages: Record<MessageKey, string> = {
   "agent.deny": "拒绝",
   "agent.reply": "答复",
   "agent.inputExpired": "此问题已过期。",
+  "agent.wallTimeExceeded": "任务达到运行时间上限，已中断。可以发送新消息继续。",
+  "agent.wallTimeExceededWithLimit": "任务达到 {seconds} 秒的运行时间上限，已中断。可以发送新消息继续。",
   "agent.toolRunning": "执行中",
   "agent.toolDone": "已完成",
   "agent.toolFailed": "执行失败",

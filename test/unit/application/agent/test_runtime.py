@@ -7,13 +7,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.agent.management import AgentService
+from application.agent.management import AgentProfile, AgentService
 from application.agent.pi_configuration import resolve_pi_model
 from application.agent.runtime import AgentRuntime, UI_ORIGIN
 from application.agent.skills import BUNDLED_SKILL_REFS
 from application.runtime.services import ApplicationServices
 from sdk.agent import (
     AgentBackendConfig,
+    AgentLimits,
     AgentRequestError,
     AgentSessionRequest,
     AgentTaskRequest,
@@ -102,10 +103,11 @@ def test_preparation_failure_keeps_history_and_retry_can_start(tmp_path):
         runtime.close()
 
 
-def seed_queue(root, config):
+def seed_queue(root, config, *, profile=None):
     service = AgentService(
         root / "agent.sqlite",
         backend=AgentBackendConfig(backend_id="mock", backend_version="1"),
+        profiles=(profile or AgentProfile(),),
     )
     client = service.bind(UI_ORIGIN, administrator=True)
     session = client.create_session(
@@ -126,6 +128,62 @@ def seed_queue(root, config):
     )
     service.close()
     return session, receipt
+
+
+@pytest.mark.parametrize("previous_wall_time_ms", [400, 60000, 300000])
+def test_assistant_new_tasks_drop_wall_limit_in_existing_sessions(
+    tmp_path, previous_wall_time_ms
+):
+    config = ModelConfig()
+    session, pending = seed_queue(
+        tmp_path,
+        config,
+        profile=AgentProfile(
+            limits=AgentLimits(wall_time_ms=previous_wall_time_ms, max_tool_calls=20)
+        ),
+    )
+    runtime = AgentRuntime(config, tmp_path, prepare=mock_setup)
+    try:
+        runtime.start()
+        wait_for(lambda: runtime.snapshot()["status"] == "ready")
+        with runtime.access() as client:
+            assert (
+                client.get_task(pending.task_id).limits.wall_time_ms
+                == previous_wall_time_ms
+            )
+            client.cancel_task(pending.task_id)
+        runtime.resume_queue()
+        with runtime.access() as client:
+            fresh = client.submit_task(
+                AgentTaskRequest(
+                    request_id="continue-old-session",
+                    session_id=session.session_id,
+                    origin=UI_ORIGIN,
+                    input={"text": "continue"},
+                    context=(
+                        {
+                            "kind": "text",
+                            "source": "mock:plan",
+                            "text": json.dumps({"delayMs": 1200}),
+                        },
+                    ),
+                    lifetime="detached",
+                )
+            )
+            task = wait_for(
+                lambda: (
+                    task
+                    if (task := client.get_task(fresh.task_id)).status.is_terminal
+                    else None
+                )
+            )
+            assert task.status == "succeeded"
+            assert task.limits.wall_time_ms is None
+            assert task.limits.max_tool_calls == 20
+            # Permission and skill snapshots are independent of execution limits.
+            assert client.list_sessions().sessions[0].skill_refs == session.skill_refs
+    finally:
+        runtime.close()
 
 
 def test_recovered_queue_waits_for_explicit_resume(tmp_path):

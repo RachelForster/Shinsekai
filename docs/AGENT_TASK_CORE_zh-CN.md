@@ -46,6 +46,8 @@ with AgentService("data/agent/agent.sqlite") as service:
 
 通过 `AgentProfile(tool_names=(...))` 指定工具名单，在 `AgentService(profiles=(...), tools=(...))` 注入注册项。session 会保存 profile 快照。模型、skill 和后端不能自行添加工具。
 
+默认情况下，任务限额采用 session 的 profile 快照，请求只能收紧限额。可信宿主可以通过 `AgentProfile(use_current_limits=True)` 让之后提交的新任务采用当前 profile 的执行限额；不会改写已有任务和提交幂等记录，也不更新 session 的工具、技能及其他权限快照。交互式助手启用此策略，`wall_time_ms=None` 表示不设置任务墙钟上限；其他 profile 默认仍保存限额快照。
+
 写入、执行工具必须返回与当前调用 ID、工具名关联的 `AgentEffect`，说明 `applied`、`not_applied` 或 `unknown`。后端最终结果不能覆盖宿主操作记录；artifact 也由宿主 `publish_text_artifact()` 创建，并按真实 revision 读取。
 
 同一任务中的同一 `callId` 和相同参数返回已记录结果；不同参数返回 `IDEMPOTENCY_CONFLICT`。崩溃留下未完成记录时返回未知结果，不自动执行第二次。工具与外部业务存储之间没有跨库事务，恢复时保留不确定性。

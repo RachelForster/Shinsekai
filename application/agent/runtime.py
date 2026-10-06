@@ -27,7 +27,8 @@ from sdk.agent import (
 UI_ORIGIN = AgentOrigin(kind="user", caller_id="shinsekai-assistant")
 ASSISTANT_PROFILE = AgentProfile(
     skill_refs=BUNDLED_SKILL_REFS,
-    limits=AgentLimits(wall_time_ms=300000, max_tool_calls=20),
+    limits=AgentLimits(max_tool_calls=20),
+    use_current_limits=True,
 )
 
 

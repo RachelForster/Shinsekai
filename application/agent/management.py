@@ -75,6 +75,8 @@ class AgentProfile:
     )
     max_queued_per_caller: int = 8
     input_timeout_ms: int = 60000
+    # Trusted host policy for future tasks; session permissions stay snapshotted.
+    use_current_limits: bool = False
 
     def to_record(self) -> dict:
         return {
@@ -468,7 +470,12 @@ class AgentService:
                 >= record["profile"]["maxQueuedPerCaller"]
             ):
                 raise fault("LIMIT_EXCEEDED", "Agent task queue is full")
-            bounds = AgentLimits.model_validate(record["profile"]["limits"])
+            profile = self.profiles[session.profile_id]
+            bounds = (
+                profile.limits
+                if profile.use_current_limits
+                else AgentLimits.model_validate(record["profile"]["limits"])
+            )
             limits = {}
             for name in AgentLimits.model_fields:
                 values = [
@@ -999,6 +1006,11 @@ class AgentService:
                             error = AgentError(
                                 code="LIMIT_EXCEEDED",
                                 message="Agent wall time limit was reached",
+                                details={
+                                    "limit": "wallTimeMs",
+                                    "limitMs": task.limits.wall_time_ms,
+                                    "elapsedMs": int(elapsed),
+                                },
                             )
                         if error:
                             action = ("interrupt", active, error)

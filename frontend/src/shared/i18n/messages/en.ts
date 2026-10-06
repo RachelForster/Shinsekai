@@ -49,6 +49,9 @@ export const enMessages: Record<MessageKey, string> = {
   "agent.deny": "Decline",
   "agent.reply": "Reply",
   "agent.inputExpired": "This question has expired.",
+  "agent.wallTimeExceeded": "This task reached its time limit and was interrupted. Send a new message to continue.",
+  "agent.wallTimeExceededWithLimit":
+    "This task reached its {seconds}s time limit and was interrupted. Send a new message to continue.",
   "agent.toolRunning": "Running",
   "agent.toolDone": "Completed",
   "agent.toolFailed": "Failed",

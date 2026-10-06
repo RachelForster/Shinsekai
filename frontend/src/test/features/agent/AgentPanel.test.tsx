@@ -217,4 +217,43 @@ describe("Agent conversation", () => {
     result.show();
     expect(screen.getByRole("status")).toHaveTextContent("Get-Content character.json");
   });
+
+  it.each([
+    {
+      error: {
+        code: "LIMIT_EXCEEDED",
+        message: "Agent wall time limit was reached",
+        details: { limit: "wallTimeMs", limitMs: 300000, elapsedMs: 300010 },
+      },
+      expected: "This task reached its 300s time limit and was interrupted. Send a new message to continue.",
+    },
+    {
+      error: { code: "LIMIT_EXCEEDED", message: "Agent wall time limit was reached" },
+      expected: "This task reached its time limit and was interrupted. Send a new message to continue.",
+    },
+    {
+      error: { code: "LIMIT_EXCEEDED", message: "Agent tool call limit was reached" },
+      expected: "Agent tool call limit was reached",
+    },
+  ])("explains a recovered task error: $expected", async ({ error, expected }) => {
+    const session = await api.createSession();
+    const task: AgentTask = {
+      taskId: "interrupted-task",
+      sessionId: session.sessionId,
+      requestId: "previous",
+      input: { text: "a long task" },
+      status: "interrupted",
+      createdAt: "2026-10-06T00:00:00Z",
+      updatedAt: "2026-10-06T00:00:00Z",
+      result: null,
+      error,
+    };
+    api.listTasks = vi.fn(async () => ({ tasks: [task], nextCursor: null }));
+    api.readEvents = vi.fn(async () => ({ taskId: task.taskId, events: [], nextSeq: 0 }));
+    renderPanel();
+    expect(await screen.findByRole("alert")).toHaveTextContent(expected);
+    expect(screen.getByRole("alert")).toHaveTextContent("LIMIT_EXCEEDED");
+    fireEvent.change(screen.getByRole("textbox", { name: "Message" }), { target: { value: "continue" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send" })).toBeEnabled());
+  });
 });
