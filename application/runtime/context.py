@@ -15,6 +15,7 @@ from typing import Any, Iterator, List, Optional
 
 from core.media.effect_image import ImageEffectAsset
 from core.messaging.chat_turn_service import ChatTurnService
+from sdk.agent import AgentRequester, NullAgentRequester
 from sdk.llm_runtime import set_llm_host_runtime
 
 
@@ -94,6 +95,7 @@ class AppRuntime:
     tool_confirmations: ToolConfirmationController = field(
         default_factory=ToolConfirmationController
     )
+    agent_requester: AgentRequester = field(default_factory=NullAgentRequester, kw_only=True)
 
 
 _runtime: Optional[AppRuntime] = None
@@ -320,6 +322,11 @@ class _ApplicationLLMHostRuntime:
         from application.reminders import manage_character_reminders
 
         return manage_character_reminders(request)
+
+    def get_agent_requester(self) -> AgentRequester:
+        rt = try_get_app_runtime()
+        requester = getattr(rt, "agent_requester", None) if rt is not None else None
+        return requester if requester is not None else NullAgentRequester()
 
 
 set_llm_host_runtime(_ApplicationLLMHostRuntime())
