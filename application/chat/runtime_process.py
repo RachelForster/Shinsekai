@@ -506,6 +506,10 @@ def _launch_chat(
         env[CHAT_ATTACHMENTS_ROOT_ENV] = attachment_root
         env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"
         api_config = state.config_manager.config.api_config
+        env["SHINSEKAI_KNOWLEDGE_ENABLED"] = "1" if bool(getattr(api_config, "knowledge_enabled", True)) else "0"
+        env["SHINSEKAI_KNOWLEDGE_SEARCH_LIMIT"] = str(
+            max(1, min(20, int(getattr(api_config, "knowledge_search_limit", 5) or 5)))
+        )
         env["SHINSEKAI_MEMORY_AUTO_ENABLED"] = "1" if bool(getattr(api_config, "memory_auto_enabled", False)) else "0"
         env["SHINSEKAI_MEMORY_EXTRACT_INTERVAL_TURNS"] = str(
             max(1, int(getattr(api_config, "memory_extract_interval_turns", 5) or 5))
@@ -520,7 +524,9 @@ def _launch_chat(
         memory_service_base = str(getattr(chat_stream, "http_base", "") or "").strip()
         if memory_service_base:
             env["SHINSEKAI_MEMORY_SERVICE_URL"] = f"{memory_service_base.rstrip('/')}/api/memory"
+            env["SHINSEKAI_KNOWLEDGE_SERVICE_URL"] = f"{memory_service_base.rstrip('/')}/api/knowledge"
             env["SHINSEKAI_MEMORY_SERVICE_OWNER"] = "0"
+            env["SHINSEKAI_KNOWLEDGE_SERVICE_OWNER"] = "0"
         if str(getattr(state, "auth_token", "") or "").strip():
             env["SHINSEKAI_MEMORY_SERVICE_TOKEN"] = str(state.auth_token)
 

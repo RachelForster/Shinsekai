@@ -176,6 +176,10 @@ def create_chat_startup_context(
                 llm_adapter=llm_adapter,
                 character_names=character_names,
             )
+            runtime.install_knowledge_hooks(
+                plugin_manager.hook_dispatcher,
+                character_names=character_names,
+            )
 
     from application.story.prompt_runtime import install_story_prompt_hooks
 
@@ -224,6 +228,7 @@ def _import_provider_runtime() -> SimpleNamespace:
     from ai.asr.asr_manager import ASRAdapterFactory
     from ai.llm.llm_manager import LLMAdapterFactory, LLMManager
     from ai.memory.hooks import install_memory_hooks
+    from ai.knowledge.hooks import install_knowledge_hooks
     from ai.t2i.t2i_manager import T2IAdapterFactory, T2IManager
     from ai.tools.tool_manager import ToolManager
     from ai.tts.tts_manager import TTSAdapterFactory, TTSManager
@@ -248,6 +253,7 @@ def _import_provider_runtime() -> SimpleNamespace:
         configure_registered_formats=configure_registered_formats,
         ensure_plugins_loaded=ensure_plugins_loaded,
         install_memory_hooks=install_memory_hooks,
+        install_knowledge_hooks=install_knowledge_hooks,
     )
 
 
