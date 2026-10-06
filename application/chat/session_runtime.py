@@ -442,10 +442,13 @@ class _BaseChatSession:
 
     def _install_app_runtime(self) -> None:
         from application.runtime.context import AppRuntime, set_app_runtime
+        from application.runtime.services import ApplicationServices
 
         runtime = self._require_runtime()
+        self.application_services = ApplicationServices()
         set_app_runtime(
             AppRuntime(
+                services=self.application_services,
                 config=self.config,
                 ui_update_manager=self.ui_updates,
                 llm_manager=self.startup.llm_manager,
@@ -656,6 +659,7 @@ class StreamingChatSession(_BaseChatSession):
         runtime = self._require_runtime()
         shutdown_chat_runtime(
             workflow=runtime.workflow,
+            services=getattr(self, "application_services", None),
             pre_shutdown=self.streaming_bindings.runtime_asr.close,
             plugin_shutdown=self._shutdown_plugins,
             tts_shutdown=self._tts_shutdown(),
@@ -709,6 +713,7 @@ class HeadlessChatSession(_BaseChatSession):
             save_history = persist_history
         shutdown_chat_runtime(
             workflow=runtime.workflow,
+            services=getattr(self, "application_services", None),
             plugin_shutdown=self._shutdown_plugins,
             tts_shutdown=self._tts_shutdown(),
             save_history=save_history,

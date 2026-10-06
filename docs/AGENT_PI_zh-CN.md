@@ -1,6 +1,6 @@
 # Pi Adapter 接入
 
-本阶段实现通用 Agent 的 Pi backend。宿主仍使用 `AgentClient` / `AgentService`，Pi 类型和原生 RPC 命令止于 worker 内的 adapter。产品 HTTP、助手 UI 和实际业务工具尚待接入；角色委托暂缓。
+本阶段实现通用 Agent 的 Pi backend。宿主仍使用 `AgentClient` / `AgentService`，Pi 类型和原生 RPC 命令止于 worker 内的 adapter。应用生命周期、HTTP 和助手 UI 已接入，见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)；实际业务工具和角色委托待后续接入。
 
 ## 运行
 
@@ -42,7 +42,7 @@ service.start()
 # 在应用退出时调用 service.close()。
 ```
 
-运行包存放在 `data/agent/runtimes/pi/`；Pi 配置、资源快照和原生 session 存放在 `data/agent/pi-sessions/<session_id>/`。这是应用私有目录，Pi 不读取用户已有 `.pi` 配置、项目 context、MCP 或自动发现的扩展。此次提供 Python 入口；桌面发行包的 worker 入口与应用生命周期装配属于产品接入阶段。
+运行包存放在 `data/agent/runtimes/pi/`；Pi 配置、资源快照和原生 session 存放在 `data/agent/pi-sessions/<session_id>/`。这是应用私有目录，Pi 不读取用户已有 `.pi` 配置、项目 context、MCP 或自动发现的扩展。桌面 bridge 使用现有 Python runtime 启动独立 worker，并负责应用退出时的清理。
 
 API Key 经宿主到 worker 的私有环境传入。公共 DTO、任务数据库、启动参数和 `models.json` 不包含 Key；`models.json` 仅包含环境变量引用。宿主后台启动隐藏 worker，已有进程树管理覆盖它启动的 Pi 子进程。
 

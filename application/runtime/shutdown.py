@@ -11,6 +11,7 @@ from sdk.hooks import iter_shutdown_hooks
 def shutdown_chat_runtime(
     *,
     workflow: Any | None = None,
+    services: Any | None = None,
     pre_shutdown: Callable[[], None] | None = None,
     plugin_shutdown: Callable[[], None] | None = None,
     tts_shutdown: Callable[[], None] | None = None,
@@ -34,6 +35,8 @@ def shutdown_chat_runtime(
         steps.append(("emit_session_closed", emit_session_closed))
     if workflow is not None and hasattr(workflow, "stop"):
         steps.append(("workflow_stop", workflow.stop))
+    if services is not None:
+        steps.append(("application_services_close", services.close))
     # Persist the conversation before plugin and memory shutdown hooks. Those
     # hooks may perform network work, and the parent process may enforce an
     # overall shutdown deadline.

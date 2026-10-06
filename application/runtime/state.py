@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from application.media.resource_urls import ResourceUrls, UnconfiguredResourceUrls
+from application.runtime.services import ApplicationServices
 
 if TYPE_CHECKING:
     from application.chat.mobile_access import MobileAccessPort
@@ -61,6 +62,7 @@ class BridgeState:
     story_generation_service: Any = field(default=None, kw_only=True)
     reminder_presenter: Any = field(default=None, kw_only=True)
     resource_urls: ResourceUrls = field(default_factory=UnconfiguredResourceUrls, kw_only=True)
+    services: ApplicationServices = field(default_factory=ApplicationServices, kw_only=True)
     # Keep this field last so positional construction by older integrations remains compatible.
     project_root_dir: str = field(default_factory=_default_project_root_dir)
 

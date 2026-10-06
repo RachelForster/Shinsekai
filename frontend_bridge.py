@@ -88,6 +88,14 @@ def _forward_plugin_user_input(state, event: dict) -> None:
 
 def _shutdown_bridge_runtime(reason: str) -> None:
     _restart_debug_log(f"bridge runtime shutdown begin reason={reason}")
+    with _bridge_state_lock:
+        state = _bridge_state
+    services = getattr(state, "services", None)
+    if services is not None:
+        try:
+            services.close()
+        except Exception as exc:
+            _restart_debug_log(f"bridge runtime Agent shutdown failed reason={reason} error={exc}")
     try:
         from plugin_system.host import (
             bind_frontend_ui_runtime,
@@ -462,6 +470,7 @@ def run(
         )
     _restart_debug_log("serve_forever enter")
     try:
+        state.services.start_agent(config_manager, Path(resolved_project_root) / "data" / "agent")
         server.serve_forever()
     finally:
         _restart_debug_log("serve_forever exit")

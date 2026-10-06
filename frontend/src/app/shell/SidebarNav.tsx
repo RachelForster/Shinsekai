@@ -11,7 +11,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Star,
-  Wrench,
+  Bot,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { openExternal } from "../../entities/files/repository";
@@ -50,8 +50,8 @@ const maintenanceLinks = [
 ] satisfies SidebarLink[];
 
 type SidebarNavProps = {
-  toolsOpen: boolean;
-  onToolsToggle: () => void;
+  assistantOpen: boolean;
+  onAssistantToggle: () => void;
 };
 
 function formatStars(count: number) {
@@ -101,7 +101,7 @@ function sidebarLinkLabel(link: SidebarLink, language: FrontendLanguage, t: (key
   return link.label?.[language] ?? link.label?.en ?? "";
 }
 
-export function SidebarNav({ onToolsToggle, toolsOpen }: SidebarNavProps) {
+export function SidebarNav({ onAssistantToggle, assistantOpen }: SidebarNavProps) {
   const { language, t } = useI18n();
   const versionQuery = useAppUpdateInfo();
   const rawVersion = versionQuery.data?.version?.trim() ?? "";
@@ -175,14 +175,14 @@ export function SidebarNav({ onToolsToggle, toolsOpen }: SidebarNavProps) {
       <nav aria-label={t("nav.secondary")} className="sidebar__nav sidebar__nav--secondary">
         <div className="sidebar__section-label">{t("nav.groupWorkspace")}</div>
         <button
-          aria-pressed={toolsOpen}
+          aria-pressed={assistantOpen}
           className="sidebar__link sidebar__link--button"
-          onClick={onToolsToggle}
-          title={t("nav.tools")}
+          onClick={onAssistantToggle}
+          title={t("nav.assistant")}
           type="button"
         >
-          <Wrench aria-hidden className="sidebar__icon" />
-          <span className="sidebar__link-label">{t("nav.tools")}</span>
+          <Bot aria-hidden className="sidebar__icon" />
+          <span className="sidebar__link-label">{t("nav.assistant")}</span>
         </button>
       </nav>
     </aside>
