@@ -1,9 +1,9 @@
 # Shinsekai 通用 Agent 系统设计
 
-> 状态：设计草案；已实现 SDK 公共契约及宿主委托端口，运行时尚未实现。
+> 状态：阶段 A 已实现 SDK 公共契约、通用任务核心、持久化、IPC 和独立 mock worker；Pi 与产品入口待接入。
 > 更新日期：2026-10-06。
 > 范围：通用接口、独立进程、后端适配、宿主工具，以及角色扮演委托 Agent 的完整调用流程。
-> 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，其余新增目录、进程、存储与配置为实施目标。
+> 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，任务核心用法见 [运行说明](AGENT_TASK_CORE_zh-CN.md)。HTTP、前端、Pi、业务工具和角色回传仍为实施目标。
 
 ## 1. 目标与设计决定
 
@@ -403,7 +403,7 @@ application/chat/
   delegate_agent.py                   # 聊天 origin、取消绑定、结果 inbox 与回合装配
 ai/agent/
   backends/pi/                       # Pi RPC、资源转换、宿主工具 extension
-  backends/mock/                     # 无外部模型的契约验证后端
+  backends/mock.py                   # 已实现：无外部模型的契约验证后端
 core/agent/
   ipc.py                             # JSONL 编解码、相关 ID 与消息边界
   storage.py                         # SQLite 读写、事务和 schema 迁移
@@ -449,7 +449,7 @@ assets/agent/
 10. **配置与资源**：人物保存冲突可报告；运行包下载中断不损坏旧版本；打包后的 skills 和参考资料可实际读取。
 11. **输入与背压**：待答期间仍可取消；过期回答被拒绝；大量输出不会无限增长内存或丢失终态。
 
-当前已交付公共 DTO、Protocol、未启用时的明确错误及 LLM 宿主委托端口；上述运行时测试仍是后续实现的验收标准。公共契约测试不代表真实 Agent 进程、Pi 或角色结果回传已可运行。
+当前已交付阶段 A 的公共契约、AgentService、调用方绑定客户端、SQLite 存储、双向 JSON-RPC IPC、独立 mock worker、宿主工具注册端口及命令行验证入口。已用真实子进程验证提交、事件重放、取消竞争、输入等待、崩溃恢复与工具幂等。涉及 Pi、真实业务工具、React 和角色投递的场景仍是后续阶段的验收标准。
 
 ### 12.1 已实现的公共接口
 
@@ -476,7 +476,17 @@ except AgentRequestError as exc:
     response = {"ok": False, "error": exc.error.to_wire()}
 ```
 
-公共 DTO 采用冻结字段和 tuple 列表，但任意 JSON 字典仍可能可变；宿主入队前须深拷贝任务快照。SDK 仅校验数据契约，不执行身份鉴别、资源授权、任务状态转换或进程启动。未知事件由传输层识别、跳过并推进游标；未知任务状态仍必须报错。
+公共 DTO 采用冻结字段和 tuple 列表，但任意 JSON 字典仍可能可变；AgentService 入队前会深拷贝任务快照。SDK 仅校验数据契约，身份绑定、任务状态转换和进程启动由 application 实现。已实现未知事件的跳过与游标推进；未知任务状态仍必须报错。
+
+### 12.2 已实现的任务核心
+
+`application.agent.management.AgentService` 是应用内唯一任务用例入口，通过 `bind()` 返回身份绑定的 `AgentClient` 实现。worker 按需启动；宿主和角色进程不导入 backend。当前 worker 显式注册 `mock` 后端，后续 Pi 在 worker 中注册。
+
+会话创建时固定 profile、工具名单和限额快照；任务请求只能收紧快照中的限额。宿主工具使用 Pydantic 输入、输出模型生成 schema，并检查真实调用结果。工具记录的 `(taskId, callId)` 负责幂等，最终结果中的操作事实和 artifact 来自宿主存储。
+
+任务快照、事件、提交幂等记录和终态在 SQLite 事务中保存。数据库使用操作系统文件锁限制唯一 owner。恢复排队任务后需显式 `resume_queue()`；不具备原生恢复能力的旧 session 返回 `SESSION_RESUME_UNAVAILABLE`。角色来源有效性由组合根注入，尚未接入实际聊天生命周期和 inbox。
+
+取消期间已有宿主写操作正常收尾时保留真实 effect；无法在期限内核对时进入 `interrupted`，保留 `unknown`。未收尾的宿主回调继续占用执行槽，`close()` 超时会返回 `SESSION_BUSY` 并保留数据库 ownership，避免另一个实例重放写操作。
 
 ## 13. 参考
 
