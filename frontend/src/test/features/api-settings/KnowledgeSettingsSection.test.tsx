@@ -63,9 +63,12 @@ describe("Knowledge settings", () => {
     const onChange = setup(true);
     await screen.findByText("mem0 已就绪 · 模型已就绪");
     fireEvent.change(screen.getByRole("spinbutton"), { target: { value: "8" } });
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      knowledge_search_limit: 8, memory_search_limit: sampleConfig.api_config.memory_search_limit,
-    }));
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        knowledge_search_limit: 8,
+        memory_search_limit: sampleConfig.api_config.memory_search_limit,
+      }),
+    );
     fireEvent.click(screen.getByRole("checkbox", { name: "启用资料检索" }));
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ knowledge_enabled: false }));
     expect(mocks.status).toHaveBeenCalledTimes(1);
@@ -73,14 +76,19 @@ describe("Knowledge settings", () => {
 
   it("installs dependencies and downloads the shared embedding asset", async () => {
     const missing = { status: "missing_dependency", moduleName: "mem0", packageName: "mem0ai" };
-    mocks.status.mockResolvedValueOnce(missing).mockResolvedValueOnce(missing)
+    mocks.status
+      .mockResolvedValueOnce(missing)
+      .mockResolvedValueOnce(missing)
       .mockResolvedValueOnce({ status: "not_started", modelCached: false })
       .mockResolvedValue({ status: "not_started", modelCached: true });
     setup();
     fireEvent.click(await screen.findByRole("button", { name: "安装依赖" }));
-    await waitFor(() => expect(mocks.download).toHaveBeenCalledWith(
-      { assetId: "memory.embedding" }, expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
-    ));
+    await waitFor(() =>
+      expect(mocks.download).toHaveBeenCalledWith(
+        { assetId: "memory.embedding" },
+        expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
+      ),
+    );
     expect(mocks.install).toHaveBeenCalledWith({ moduleName: "mem0" }, expect.any(Object));
     await screen.findByText("mem0 已就绪 · 模型已就绪");
   });
@@ -90,7 +98,9 @@ describe("Knowledge settings", () => {
     Reflect.deleteProperty(legacy, "knowledge_enabled");
     Reflect.deleteProperty(legacy, "knowledge_search_limit");
     expect(normalizeApiConfigForUi(legacy)).toMatchObject({ knowledge_enabled: false, knowledge_search_limit: 5 });
-    expect(normalizeApiConfigForUi({ ...legacy, knowledge_enabled: false, knowledge_search_limit: 99 }))
-      .toMatchObject({ knowledge_enabled: false, knowledge_search_limit: 20 });
+    expect(normalizeApiConfigForUi({ ...legacy, knowledge_enabled: false, knowledge_search_limit: 99 })).toMatchObject({
+      knowledge_enabled: false,
+      knowledge_search_limit: 20,
+    });
   });
 });
