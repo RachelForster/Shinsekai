@@ -16,7 +16,7 @@ import { useI18n } from "../../../shared/i18n";
 import { PluginSlot, type PluginPageTarget } from "../../../shared/plugin/PluginSlot";
 import type { ChatOption, ChatStat, ChatToolConfirmation } from "../../../shared/platform/types";
 import { CharacterVisual, type VisualFraming } from "../../../modules/character-visual";
-import { Button, ThemeFrame } from "../../../shared/ui";
+import { Button, ThemeFrame, VisualMedia } from "../../../shared/ui";
 import type { ChatStageSprite } from "../chatState";
 import type { ChatStageEffectImage } from "../state/types";
 import { classNames, hideBrokenStageAsset, layerClassName, stageAssetUrl } from "../chatStageUtils";
@@ -55,7 +55,7 @@ export function BackgroundLayer({
       onMouseDown={onDragStart}
     >
       {transparent ? null : <div aria-hidden className="chat-stage__fallback" />}
-      {src ? <img alt="" onError={hideBrokenStageAsset} src={src} /> : null}
+      {src ? <VisualMedia active={!hidden} alt="" onError={hideBrokenStageAsset} src={src} /> : null}
     </div>
   );
 }
@@ -64,7 +64,7 @@ export function CgLayer({ hidden, path }: { hidden: boolean; path?: string }) {
   const src = stageAssetUrl(path);
   return (
     <div aria-hidden={hidden} className={layerClassName("chat-stage__cg", hidden)} hidden={hidden}>
-      {src ? <img alt="" onError={hideBrokenStageAsset} src={src} /> : null}
+      {src ? <VisualMedia active={!hidden} alt="" onError={hideBrokenStageAsset} src={src} /> : null}
     </div>
   );
 }
@@ -147,6 +147,7 @@ export function SpriteLayer({
             }
           >
             <CharacterVisual
+              active={!hidden}
               asset={{
                 id: sprite.id,
                 label: sprite.label,

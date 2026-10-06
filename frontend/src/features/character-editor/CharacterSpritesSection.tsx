@@ -3,6 +3,7 @@ import { Image as ImageIcon, Sparkles, Tags, Trash2, Upload, Volume2 } from "luc
 
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
+import { VISUAL_MEDIA_EXTENSIONS } from "../../shared/assets/visualMedia";
 import { useI18n } from "../../shared/i18n";
 import type { SpriteVoiceType } from "../../shared/platform/types";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
@@ -16,6 +17,7 @@ import {
   NumberInput,
   PathDisplay,
   TextInput,
+  VisualMedia,
 } from "../../shared/ui";
 import {
   SPRITE_SCALE_MAX,
@@ -150,7 +152,7 @@ export function CharacterSpritesSection({
           <span className="field-row__label">{t("character.sprite.selectImages")}</span>
           <span className="field-row__control">
             <FilePicker
-              acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+              acceptedExtensions={VISUAL_MEDIA_EXTENSIONS}
               multiple
               onPathsChange={(paths) => {
                 if (paths.length) {
@@ -195,7 +197,7 @@ export function CharacterSpritesSection({
             <aside className="asset-inspector">
               <div className="asset-inspector__preview asset-inspector__preview--character">
                 {selectedSprite.path ? (
-                  <img alt="" decoding="async" src={fileUrl(selectedSprite.path)} />
+                  <VisualMedia alt="" errorMessage={t("visualMedia.videoError")} src={fileUrl(selectedSprite.path)} />
                 ) : (
                   <ImageIcon aria-hidden className="asset-inspector__fallback" />
                 )}

@@ -388,7 +388,7 @@ describe("CharacterEditorPage", () => {
 
     fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Sora" } });
     fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), { target: { value: "sora" } });
-    fireEvent.click(screen.getByRole("button", { name: "Choose images..." }));
+    fireEvent.click(screen.getByRole("button", { name: "Choose images or MP4 videos..." }));
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
 
     await waitFor(() =>
@@ -759,7 +759,7 @@ describe("CharacterEditorPage", () => {
     expect(await screen.findByText(/Sprite directory must contain ASCII characters only/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Upload" }));
-    await waitFor(() => expect(screen.getAllByText("Choose images...").length).toBeGreaterThan(1));
+    await waitFor(() => expect(screen.getAllByText("Choose images or MP4 videos...").length).toBeGreaterThan(1));
     expect(mockUploadCharacterSprites).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Save scale" }));

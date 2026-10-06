@@ -4,6 +4,7 @@ import { Image as ImageIcon, Save, Sparkles, Tags, Trash2, Upload } from "lucide
 import type { Background } from "../../entities/config/types";
 import { fileThumbnailBatch, fileThumbnailUrl, fileUrl } from "../../entities/files/repository";
 import { useI18n } from "../../shared/i18n";
+import { isMp4Media, VISUAL_MEDIA_EXTENSIONS } from "../../shared/assets/visualMedia";
 import type { ImageAssetGalleryItem } from "../../shared/ui";
 import {
   AsyncButton,
@@ -13,6 +14,7 @@ import {
   PathDisplay,
   PathPickerDialog,
   TextInput,
+  VisualMedia,
 } from "../../shared/ui";
 
 interface BackgroundSpriteGalleryProps {
@@ -83,10 +85,13 @@ export function BackgroundSpriteGallery({
     .join("\0");
   const previousSpritePathKey = useRef(spritePathKey);
   const visibleSprites = useMemo(() => sprites.slice(0, visibleImageCount), [sprites, visibleImageCount]);
-  const spritePaths = useMemo(() => (spritePathKey ? [...new Set(spritePathKey.split("\0"))] : []), [spritePathKey]);
+  const spritePaths = useMemo(
+    () => (spritePathKey ? [...new Set(spritePathKey.split("\0"))].filter((path) => !isMp4Media(path)) : []),
+    [spritePathKey],
+  );
   const visibleSpritePathKey = visibleSprites
     .map((sprite) => sprite.path)
-    .filter(Boolean)
+    .filter((path) => path && !isMp4Media(path))
     .join("\0");
   const visibleSpritePaths = useMemo(
     () => (visibleSpritePathKey ? [...new Set(visibleSpritePathKey.split("\0"))] : []),
@@ -154,9 +159,11 @@ export function BackgroundSpriteGallery({
 
   const backgroundImageItems: ImageAssetGalleryItem[] = visibleSprites.map((sprite, index) => ({
     id: `${sprite.path}-${index}`,
-    imageSrc: sprite.path
-      ? (thumbnailSources[sprite.path] ?? (thumbnailBatchReady ? fileThumbnailUrl(sprite.path, 160) : ""))
-      : "",
+    videoSrc: isMp4Media(sprite.path) ? fileUrl(sprite.path) : undefined,
+    imageSrc:
+      sprite.path && !isMp4Media(sprite.path)
+        ? (thumbnailSources[sprite.path] ?? (thumbnailBatchReady ? fileThumbnailUrl(sprite.path, 160) : ""))
+        : "",
     meta: imageRowTags[index] || "",
     title: sprite.path ? sprite.path.split(/[\\/]/).pop() || `${index + 1}` : `${index + 1}`,
   }));
@@ -233,7 +240,7 @@ export function BackgroundSpriteGallery({
             <aside className="asset-inspector asset-inspector--background">
               <div className="asset-inspector__preview asset-inspector__preview--background">
                 {selectedImage.path ? (
-                  <img alt="" decoding="async" src={fileUrl(selectedImage.path)} />
+                  <VisualMedia alt="" errorMessage={t("visualMedia.videoError")} src={fileUrl(selectedImage.path)} />
                 ) : (
                   <ImageIcon aria-hidden className="asset-inspector__fallback" />
                 )}
@@ -276,7 +283,7 @@ export function BackgroundSpriteGallery({
         ) : null}
       </div>
       <PathPickerDialog
-        acceptedExtensions={[".gif", ".jpeg", ".jpg", ".png", ".webp"]}
+        acceptedExtensions={VISUAL_MEDIA_EXTENSIONS}
         multiple
         onClose={() => setPickerOpen(false)}
         onSelect={(path) => {

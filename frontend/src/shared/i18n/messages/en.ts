@@ -1,6 +1,7 @@
 import type { MessageKey } from "../messages";
 
 export const enMessages: Record<MessageKey, string> = {
+  "visualMedia.videoError": "Unable to play this video. Check the file or use an H.264 MP4 video.",
   "story.editor.back": "Back",
   "story.canvas.title": "Node canvas",
   "story.canvas.fit": "Fit all nodes (F)",
@@ -572,12 +573,12 @@ export const enMessages: Record<MessageKey, string> = {
   "background.asset.select": "Select",
   "background.asset.selectAllBgm": "Select all BGM",
   "background.asset.selectBgm": "Select BGM files",
-  "background.asset.selectImages": "Select image files",
+  "background.asset.selectImages": "Select images or MP4 videos",
   "background.asset.selectedFiles": "{count} files selected",
   "background.asset.tag": "Tag",
   "background.asset.uploadBgm": "Upload BGM",
   "background.asset.uploadError": "Resource upload failed.",
-  "background.asset.uploadImages": "Upload images",
+  "background.asset.uploadImages": "Upload images / videos",
   "background.section.assets": "Resources",
   "background.section.bgm": "Background music",
   "background.section.images": "Background images",
@@ -726,7 +727,7 @@ export const enMessages: Record<MessageKey, string> = {
   "character.section.sprites": "Sprites",
   "character.avatar.title": "Avatar",
   "character.avatar.format": "Avatar format",
-  "character.avatar.static": "Static sprites",
+  "character.avatar.static": "Image / video sprites",
   "character.avatar.unavailable": "{format}: Unavailable",
   "character.avatar.importHint":
     "Save the character first and select the model entry file. Replacing the model keeps existing states, which need revalidation. The selection takes effect in the next chat.",
@@ -802,7 +803,7 @@ export const enMessages: Record<MessageKey, string> = {
   "character.sprite.path": "Sprite path",
   "character.sprite.saveScale": "Save scale",
   "character.sprite.saveTags": "Upload tags",
-  "character.sprite.selectImages": "Choose images...",
+  "character.sprite.selectImages": "Choose images or MP4 videos...",
   "character.sprite.selectedFiles": "{count} files selected",
   "character.sprite.tag": "Sprite tag",
   "character.sprite.deleteVoice": "Delete voice",

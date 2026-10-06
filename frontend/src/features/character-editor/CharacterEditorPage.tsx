@@ -28,6 +28,7 @@ import {
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
 import { baseName, numberedTags, removeTagRows, tagContents } from "../../shared/assets/assetText";
+import { isMp4Media } from "../../shared/assets/visualMedia";
 import { DEFAULT_CHARACTER_COLOR } from "../../shared/constants";
 import { useI18n } from "../../shared/i18n";
 import type {
@@ -695,7 +696,8 @@ export function CharacterEditorPage() {
         badge: sprite.voice_path ? t("character.sprite.hasVoice") : t("character.sprite.noVoice"),
         badgeTone: sprite.voice_path ? ("default" as const) : ("muted" as const),
         id: `${sprite.path}-${index}`,
-        imageSrc: sprite.path ? fileUrl(sprite.path) : "",
+        imageSrc: sprite.path && !isMp4Media(sprite.path) ? fileUrl(sprite.path) : "",
+        videoSrc: isMp4Media(sprite.path) ? fileUrl(sprite.path) : undefined,
         meta: spriteTags[index] || sprite.voice_text || "",
         title: baseName(sprite.path) || `${index + 1}`,
       })),
