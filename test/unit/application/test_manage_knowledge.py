@@ -1,5 +1,7 @@
 """Application knowledge binding, preview, status, and deletion workflows."""
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
 from types import SimpleNamespace
 
 import pytest
@@ -110,3 +112,77 @@ def test_check_knowledge_status_delegates_start_loading_to_runtime(monkeypatch):
     from ai.knowledge import runtime
     monkeypatch.setattr(runtime, "check_mem0_status", lambda *, start_loading: {"start": start_loading})
     assert manage_knowledge.check_knowledge_status(start_loading=False) == {"start": False}
+
+
+def test_delete_knowledge_does_not_wait_for_import_extraction(isolated_knowledge, tmp_path, monkeypatch):
+    from ai.knowledge import imports
+    path = tmp_path / "source.txt"
+    path.write_text("Knowledge setting.", encoding="utf-8")
+    entered, release = Event(), Event()
+    rows = {"old": "target"}
+    install_deletion_store(monkeypatch, rows)
+
+    def extract(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return [{"content": "Knowledge setting.", "knowledge_id": "target"}]
+
+    monkeypatch.setattr(imports.KnowledgeExtractor, "extract_chunk", extract)
+    monkeypatch.setattr(imports, "add_knowledge_entry", lambda *_: {"ok": True})
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        importing = pool.submit(
+            imports.execute_knowledge_import, [path], knowledge_id="target",
+            source_root=tmp_path, max_chunk_tokens=256, llm_adapter=None,
+        )
+        try:
+            assert entered.wait(5)
+            deletion = pool.submit(manage_knowledge.delete_knowledge, "target")
+            assert deletion.result(timeout=2)["deletedEntryCount"] == 1
+            assert rows == {}
+        finally:
+            release.set()
+        assert importing.result(timeout=5)["savedCount"] == 1
+
+
+def test_delete_knowledge_waits_for_import_writes_before_removing_entries(isolated_knowledge, tmp_path, monkeypatch):
+    from ai.knowledge import imports
+    from test.mocks import MockLLMAdapter
+    path = tmp_path / "source.txt"
+    path.write_text("Knowledge setting.", encoding="utf-8")
+    entered, release, deleting = Event(), Event(), Event()
+    rows = {}
+    install_deletion_store(monkeypatch, rows)
+    def remember(*_):
+        entered.set()
+        assert release.wait(5)
+        rows["new"] = "target"
+        return {"ok": True}
+    monkeypatch.setattr(imports, "add_knowledge_entry", remember)
+    def delete():
+        deleting.set()
+        return manage_knowledge.delete_knowledge("target")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        importing = pool.submit(imports.execute_knowledge_import, [path], knowledge_id="target",
+                                source_root=tmp_path, max_chunk_tokens=256,
+                                llm_adapter=MockLLMAdapter(responses=['[{"content":"Knowledge setting."}]']))
+        try:
+            assert entered.wait(5)
+            deletion = pool.submit(delete)
+            assert deleting.wait(5)
+            assert not deletion.done()
+        finally:
+            release.set()
+        assert importing.result(timeout=5)["savedCount"] == 1
+        assert deletion.result(timeout=5)["deletedBindingCount"] == 0
+    assert rows == {}
+    assert bindings.list_knowledge_ids_for_characters(["A"]) == []
+
+
+def test_preview_import_reads_source_without_loading_model(monkeypatch, tmp_path):
+    from ai.knowledge import runtime
+    monkeypatch.setattr(runtime, "get_mem0", lambda: pytest.fail("loaded model"))
+    monkeypatch.setattr(runtime, "start_mem0_loading", lambda **_: pytest.fail("started model"))
+    path = tmp_path / "novel.txt"
+    path.write_text("一段小说。", encoding="utf-8")
+    result = manage_knowledge.preview_import([path], knowledge_id="knowledge", source_root=tmp_path, config_manager=None)
+    assert result["fileCount"] == 1

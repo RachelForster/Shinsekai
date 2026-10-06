@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable, Sequence
 
 def check_knowledge_status(*, start_loading: bool = True, retry: bool = False) -> dict[str, Any]:
     from ai.knowledge.runtime import check_mem0_status
@@ -15,6 +16,50 @@ def search_knowledge(query: str, *, character_names: list[str], limit: int = 5) 
     from ai.knowledge.operations import search_knowledge as search_entries_for_characters
 
     return search_entries_for_characters(query, character_names=character_names, limit=limit)
+
+
+def preview_import(
+    paths: Sequence[str | Path],
+    *,
+    knowledge_id: str,
+    source_root: str | Path,
+    config_manager: Any,
+) -> dict[str, Any]:
+    from ai.memory.extraction import configured_memory_chunk_tokens
+    from ai.knowledge.imports import preview_knowledge_import
+
+    return preview_knowledge_import(
+        paths,
+        knowledge_id=knowledge_id,
+        source_root=source_root,
+        max_chunk_tokens=configured_memory_chunk_tokens(config_manager),
+    )
+
+
+def execute_import(
+    paths: Sequence[str | Path],
+    *,
+    knowledge_id: str,
+    source_root: str | Path,
+    config_manager: Any,
+    progress_callback: Callable[[str, float, str, str | None], None],
+    cancel_callback: Callable[[], None],
+) -> dict[str, Any]:
+    from ai.memory.extraction import (
+        configured_memory_chunk_tokens,
+        create_configured_memory_adapter,
+    )
+    from ai.knowledge.imports import execute_knowledge_import
+
+    return execute_knowledge_import(
+        paths,
+        knowledge_id=knowledge_id,
+        source_root=source_root,
+        llm_adapter=create_configured_memory_adapter(config_manager),
+        max_chunk_tokens=configured_memory_chunk_tokens(config_manager),
+        progress_callback=progress_callback,
+        cancel_callback=cancel_callback,
+    )
 
 
 def list_instances(query: str = "", *, page: int = 1, refresh: bool = False) -> dict[str, Any]:
