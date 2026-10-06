@@ -48,7 +48,9 @@ API Key 经宿主到 worker 的私有环境传入。公共 DTO、任务数据库
 
 ## 工具、输入与事件
 
-宿主工具仍通过 `AgentHostTool.from_models()` 和 profile 注册。随应用提供的 `assets/agent/pi-host-tools.ts` 将工具转换为 Pi 工具，使用合法且稳定的原生名称；回调恢复公共工具名并保留 Pi call ID。
+宿主工具仍通过 `AgentHostTool.from_models()` 和 profile 注册。随应用提供的 `ai/agent/backends/pi_host_tools.ts` 将工具转换为 Pi 工具，使用合法且稳定的原生名称；回调恢复公共工具名并保留 Pi call ID。
+
+这个 extension 是 Pi Adapter 的实现代码，与 `pi.py`、`pi_rpc.py` 放在一起。通用系统策略仍位于 `assets/agent/system-policy.md`，后续 skills 和参考文档也归入 `assets/agent/`。桌面资源准备脚本同时包含 `ai/` 和 `assets/`；adapter 通过 `resource_path()` 定位 extension 文件，再交给 Pi 的 `--extension` 加载。
 
 extension 通过仅监听 loopback、每次任务生成随机 token 的私有通道调用 adapter，再由 `AgentHostPort` 请求宿主执行。Pi 内建工具、MCP 和第三方扩展均不进入当前工具集合。实际校验、授权、幂等及写操作结果仍由宿主记录。
 

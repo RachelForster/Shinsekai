@@ -404,6 +404,7 @@ application/chat/
 ai/agent/
   backends/pi.py                     # 已实现：Pi Adapter 与资源转换
   backends/pi_rpc.py                 # 已实现：Pi 原生 JSONL transport
+  backends/pi_host_tools.ts          # 已实现：Pi 专用宿主工具 extension
   backends/mock.py                   # 已实现：无外部模型的契约验证后端
 core/agent/
   ipc.py                             # JSONL 编解码、相关 ID 与消息边界
@@ -419,7 +420,7 @@ frontend/src/
   entities/agent/                    # 公共 DTO、API repository 和事件归并
   features/agent-assistant/           # 助手会话、任务、工具活动与 artifact UI
 assets/agent/
-  system.md / skills/ / references/
+  system-policy.md / skills/ / references/
 ```
 
 `core/agent/` 提供无应用全局状态的协议和存储能力，任务状态转换、当前运行任务和业务调度属于 application。`ai/agent/` 只能依赖 SDK 窄端口及下层能力，不得导入 application 或 bridge。后端注册表由 worker 组合入口构建，bridge 读取静态后端描述时不导入后端 SDK。

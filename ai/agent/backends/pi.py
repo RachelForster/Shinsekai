@@ -312,7 +312,7 @@ class PiAgentBackend:
             "--no-approve",
             "--no-builtin-tools",
             "--extension",
-            str(resource_path("assets/agent/pi-host-tools.ts")),
+            str(resource_path("ai/agent/backends/pi_host_tools.ts")),
             "--system-prompt",
             str(session.root / "policy.md"),
         ]
