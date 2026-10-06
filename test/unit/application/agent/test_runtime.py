@@ -233,8 +233,8 @@ def test_application_services_has_one_agent_owner(monkeypatch, tmp_path):
     calls = []
 
     class Runtime:
-        def __init__(self, config, root):
-            calls.append((config, root))
+        def __init__(self, config, root, *, tools):
+            calls.append((config, root, tools))
 
         def start(self):
             calls.append("start")
@@ -247,7 +247,7 @@ def test_application_services_has_one_agent_owner(monkeypatch, tmp_path):
     services.start_agent("config", tmp_path)
     services.start_agent("config", tmp_path)
     services.close()
-    assert calls == [("config", tmp_path), "start", "start", "close"]
+    assert calls == [("config", tmp_path, ()), "start", "start", "close"]
 
 
 def test_backend_preparation_is_forbidden_after_dispatch_starts(tmp_path):

@@ -470,7 +470,17 @@ def run(
         )
     _restart_debug_log("serve_forever enter")
     try:
-        state.services.start_agent(config_manager, Path(resolved_project_root) / "data" / "agent")
+        from frontend_bridge_core.transport.agent_http_tools import build_bridge_http_tools
+
+        state.services.start_agent(
+            config_manager,
+            Path(resolved_project_root) / "data" / "agent",
+            tools=build_bridge_http_tools(
+                str(server.server_address[0]),
+                int(server.server_address[1]),
+                bridge_auth_token,
+            ),
+        )
         server.serve_forever()
     finally:
         _restart_debug_log("serve_forever exit")

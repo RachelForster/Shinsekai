@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import threading
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable, Iterator
 
+from application.agent.execute_host_tool import AgentHostTool
 from application.agent.management import AgentProfile, AgentService
 from application.agent.pi_configuration import prepare_pi_agent, resolve_pi_model
 from application.agent.skills import BUNDLED_SKILL_REFS
@@ -42,6 +44,7 @@ class AgentRuntime:
         config_manager,
         root: str | Path,
         *,
+        tools: tuple[AgentHostTool, ...] = (),
         prepare: Callable = prepare_pi_agent,
         service_factory: Callable = AgentService,
     ) -> None:
@@ -49,6 +52,10 @@ class AgentRuntime:
         self.root = Path(root).resolve()
         self._prepare = prepare
         self._service_factory = service_factory
+        self._tools = tools
+        self._profile = replace(
+            ASSISTANT_PROFILE, tool_names=tuple(tool.definition.name for tool in tools)
+        )
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -95,7 +102,8 @@ class AgentRuntime:
                         backend=AgentBackendConfig(
                             backend_id="pi", backend_version="1"
                         ),
-                        profiles=(ASSISTANT_PROFILE,),
+                        profiles=(self._profile,),
+                        tools=self._tools,
                     )
             setup = self._prepare(
                 self.config_manager,
@@ -113,7 +121,8 @@ class AgentRuntime:
                     self._service = self._service_factory(
                         self.root / "agent.sqlite",
                         backend=setup.backend,
-                        profiles=(ASSISTANT_PROFILE,),
+                        profiles=(self._profile,),
+                        tools=self._tools,
                         worker_environment=setup.worker_environment,
                     )
                 else:

@@ -8,6 +8,8 @@
 
 bridge 完成配置和 HTTP server 装配后，调用 `services.start_agent()`。`AgentRuntime` 在后台读取现有模型配置、准备官方 Pi 运行包并启动任务调度。HTTP 的 runtime snapshot 提供阶段和进度，下载不阻塞 bridge 就绪。模型未配置或准备失败时，历史仍可读取；配置好模型后可在助手中重试。
 
+bridge 将实际监听地址、端口和鉴权 token 交给 transport 层的 HTTP 工具工厂，通过 `start_agent(tools=...)` 注册两类业务工具。工具调用复用原有 HTTP routes，模型配置变更后仍保留注册项；凭据不进入工具 schema 或 worker。
+
 Agent worker 仍按第一个任务启动，使用桌面发行包已有的 Python runtime。Tauri 的资源准备脚本已包含 `application/`、`ai/`、`core/` 和 `assets/`，不需要另装 Node。Pi 的进程和配置只在 worker 内创建。
 
 所有 session、task、event 和提交幂等记录保存在项目 `data/agent/agent.sqlite`。应用重启后，已中断的任务保留终态，排队任务暂停；助手提供显式继续执行入口。运行期模型变更时，必须先完成或取消非终态任务，再应用当前模型。旧模型的 session 保留历史，并要求新建 session。
@@ -51,4 +53,4 @@ python -m pytest test/unit/application/agent/test_pi_http.py -q
 
 前端有 1280px 与 390px 的浏览器流程测试。开发环境浏览器预览使用明确标注的示例回复；桌面和 bridge HTTP 使用实际 Pi。
 
-本阶段提供应用生命周期、HTTP 和普通聊天 UI，并随新会话加载功能介绍、诊断、人物创建和插件开发四个说明性 skills，见 [技能说明](AGENT_SKILLS_zh-CN.md)。当前 basic profile 没有业务工具；实际人物修改、日志读取、插件文件操作和角色委托仍属于后续工作。
+本阶段提供应用生命周期、HTTP 和普通聊天 UI，并随新会话加载功能介绍、诊断、人物创建和插件开发四个 skills，见 [技能说明](AGENT_SKILLS_zh-CN.md)。桌面助手已可通过 [HTTP 工具](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md) 修改人物、导入已有立绘、读取日志和管理插件。网页操作、媒体处理、插件文件编写及角色委托仍需后续接入。升级后新建 session 使用新工具快照。

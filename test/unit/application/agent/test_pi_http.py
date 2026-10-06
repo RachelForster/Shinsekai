@@ -17,6 +17,7 @@ from application.agent.runtime import AgentRuntime
 from application.agent.skills import BUNDLED_SKILL_NAMES
 from core.agent.pi_runtime import PiRuntime
 from frontend_bridge_core.routes.api import FrontendBridgeHandler
+from frontend_bridge_core.transport.agent_http_tools import build_bridge_http_tools
 from test.unit.application.agent.test_pi_configuration import ModelConfig
 from test.unit.application.agent.test_runtime import wait_for
 
@@ -25,7 +26,7 @@ from test.unit.application.agent.test_runtime import wait_for
     not os.environ.get("SHINSEKAI_TEST_PI_BINARY"),
     reason="Set SHINSEKAI_TEST_PI_BINARY to a verified official Pi binary",
 )
-@pytest.mark.parametrize("behavior", ["restart", "shutdown"])
+@pytest.mark.parametrize("behavior", ["restart", "shutdown", "bridge-tools"])
 def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
     requests = []
     received, release = threading.Event(), threading.Event()
@@ -38,7 +39,7 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             requests.append(body)
             assert self.headers["Authorization"] == "Bearer fixture-http-key"
-            assert not body.get("tools")
+            assert bool(body.get("tools")) == (behavior == "bridge-tools")
             if behavior == "shutdown":
                 received.set()
                 release.wait(10)
@@ -46,11 +47,42 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.end_headers()
-            for delta, finish in [
+            deltas = [
                 ({"role": "assistant"}, None),
                 ({"content": "真实 Pi HTTP 验证完成。"}, None),
                 ({}, "stop"),
-            ]:
+            ]
+            if behavior == "bridge-tools" and not any(
+                message.get("role") == "tool" for message in body["messages"]
+            ):
+                function = next(
+                    tool["function"]
+                    for tool in body["tools"]
+                    if "shinsekai.bridge.read" in tool["function"]["description"]
+                )
+                deltas = [
+                    ({"role": "assistant"}, None),
+                    (
+                        {
+                            "tool_calls": [
+                                {
+                                    "index": 0,
+                                    "id": "bridge-read-call",
+                                    "type": "function",
+                                    "function": {
+                                        "name": function["name"],
+                                        "arguments": json.dumps(
+                                            {"operation": "characters.list"}
+                                        ),
+                                    },
+                                }
+                            ]
+                        },
+                        None,
+                    ),
+                    ({}, "tool_calls"),
+                ]
+            for delta, finish in deltas:
                 event = {
                     "id": "http-completion",
                     "object": "chat.completion.chunk",
@@ -78,12 +110,23 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
             **kwargs,
         )
 
-    runtime = AgentRuntime(config, tmp_path, prepare=prepare)
+    bridge = ThreadingHTTPServer(("127.0.0.1", 0), FrontendBridgeHandler)
+    tools = (
+        build_bridge_http_tools(*bridge.server_address, "http-bridge-token")
+        if behavior == "bridge-tools"
+        else ()
+    )
+    if behavior == "bridge-tools":
+        config.config = SimpleNamespace(
+            api_config=config.config.api_config, characters=[{"name": "HTTP 人物"}]
+        )
+    runtime = AgentRuntime(config, tmp_path, prepare=prepare, tools=tools)
     runtime.start()
     wait_for(lambda: runtime.snapshot()["status"] == "ready")
-    bridge = ThreadingHTTPServer(("127.0.0.1", 0), FrontendBridgeHandler)
     bridge.state = SimpleNamespace(
-        auth_token="http-bridge-token", services=SimpleNamespace(agent=runtime)
+        auth_token="http-bridge-token",
+        services=SimpleNamespace(agent=runtime),
+        config_manager=config,
     )
     bridge_thread = threading.Thread(target=bridge.serve_forever, daemon=True)
     bridge_thread.start()
@@ -135,7 +178,7 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
             assert any(event["type"] == "message.delta" for event in page["events"])
             if index == 0:
                 runtime.close()
-                runtime = AgentRuntime(config, tmp_path, prepare=prepare)
+                runtime = AgentRuntime(config, tmp_path, prepare=prepare, tools=tools)
                 runtime.start()
                 wait_for(lambda: runtime.snapshot()["status"] == "ready")
                 bridge.state.services.agent = runtime
@@ -143,6 +186,16 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
                     request("GET", "/sessions")["sessions"][0]["sessionId"]
                     == session["sessionId"]
                 )
+        if behavior == "bridge-tools":
+            assert len(requests) == 2
+            messages = requests[-1]["messages"]
+            response = next(
+                json.loads(message["content"])
+                for message in messages
+                if message.get("role") == "tool"
+            )
+            assert response["data"] == [{"name": "HTTP 人物"}]
+            assert any(event["type"] == "tool.completed" for event in page["events"])
         if behavior == "restart":
             assert len(requests) == 2
             model_messages = json.dumps(requests[0]["messages"], ensure_ascii=False)
@@ -161,6 +214,7 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
         for path in tmp_path.rglob("*"):
             if path.is_file() and path.suffix in {".json", ".jsonl", ".sqlite"}:
                 assert b"fixture-http-key" not in path.read_bytes()
+                assert b"http-bridge-token" not in path.read_bytes()
     finally:
         release.set()
         bridge.shutdown()

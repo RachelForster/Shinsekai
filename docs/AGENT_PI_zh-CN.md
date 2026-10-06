@@ -1,6 +1,6 @@
 # Pi Adapter 接入
 
-本阶段实现通用 Agent 的 Pi backend。宿主仍使用 `AgentClient` / `AgentService`，Pi 类型和原生 RPC 命令止于 worker 内的 adapter。应用生命周期、HTTP 和助手 UI 已接入，见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)；实际业务工具和角色委托待后续接入。
+本阶段实现通用 Agent 的 Pi backend。宿主仍使用 `AgentClient` / `AgentService`，Pi 类型和原生 RPC 命令止于 worker 内的 adapter。应用生命周期、HTTP 和助手 UI 已接入，见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)。桌面业务工具已复用现有 HTTP routes；网页、媒体能力及角色委托待后续接入。
 
 ## 运行
 
@@ -12,7 +12,7 @@ python -m application.agent --backend pi --task "介绍你可以如何协助排�
 
 首次使用会下载官方 Pi v1.0.4，显示安装进度，按固定 SHA-256 清单验证后安装。已验证的运行包会复用；无需单独安装 Node 或 Bun。也可以用 `--pi-binary <path>` 指定已安装的同版本官方 binary，worker 会核对版本。
 
-每次 CLI 调用创建一个新 session。应用客户端可保留 `session_id`，向同一 session 继续提交任务。桌面助手和 Pi CLI 的新会话均提供四个随应用发布的 skills，见 [技能说明](AGENT_SKILLS_zh-CN.md)。默认 `basic` profile 没有业务工具；模型可以介绍功能、分析证据和起草内容，不能自行读写应用或文件。
+每次 CLI 调用创建一个新 session。应用客户端可保留 `session_id`，向同一 session 继续提交任务。桌面助手和 Pi CLI 的新会话均提供四个随应用发布的 skills，见 [技能说明](AGENT_SKILLS_zh-CN.md)。CLI 默认 `basic` profile 没有业务工具；桌面 `AgentRuntime` 另外注入 [HTTP 工具](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md)，允许注册范围内的应用查询和操作。
 
 ## 复用现有模块
 

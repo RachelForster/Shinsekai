@@ -1,9 +1,9 @@
 # Shinsekai 通用 Agent 系统设计
 
-> 状态：任务核心、Pi Adapter、运行包管理、配置复用、应用生命周期、HTTP、助手聊天 UI 与首批说明性 skills 已实现；实际业务工具和角色委托待后续接入。技能加载与范围见 [Agent Skills](AGENT_SKILLS_zh-CN.md)。
+> 状态：任务核心、Pi Adapter、运行包管理、配置复用、应用生命周期、HTTP、助手聊天 UI、首批 skills 与 HTTP 业务工具已实现；网页、媒体能力和角色委托待后续接入。技能加载与范围见 [Agent Skills](AGENT_SKILLS_zh-CN.md)。
 > 更新日期：2026-10-06。
 > 范围：通用接口、独立进程、后端适配、宿主工具，以及角色扮演委托 Agent 的完整调用流程。
-> 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，任务核心见 [运行说明](AGENT_TASK_CORE_zh-CN.md)，Pi 见 [接入说明](AGENT_PI_zh-CN.md)，产品入口见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)。业务工具和角色回传仍为实施目标。
+> 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，任务核心见 [运行说明](AGENT_TASK_CORE_zh-CN.md)，Pi 见 [接入说明](AGENT_PI_zh-CN.md)，产品入口见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)，业务工具见 [HTTP 工具说明](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md)。角色回传仍为实施目标。
 
 ## 1. 目标与设计决定
 
@@ -14,7 +14,7 @@ Shinsekai 提供一个独立的 Agent 助手，负责功能介绍、问题诊断
 1. **Agent 必须在独立进程中运行。** Agent 循环、后端 SDK、后端扩展及其依赖不加载到 bridge 或角色扮演进程中。SDK 型后端也必须放进 worker；远端后端仍通过本地 worker 适配。
 2. **Agent 与角色扮演拥有不同的会话、提示词、历史、模型配置和生命周期。** 角色扮演是 Agent 的一个调用方。关闭聊天不会关闭助手面板的任务，Agent 崩溃不会结束角色聊天。
 3. **公共接口以 session、task、event、artifact 为中心。** Pi 的命令名、会话文件和事件类型止于 Pi adapter，不进入前端和角色工具契约。
-4. **业务修改统一经过宿主工具。** Agent 通过明确接口请求角色保存、配置更新和插件安装；宿主复用现有 application 用例，负责校验、提交及界面通知。
+4. **业务修改统一经过宿主工具。** Agent 通过明确接口请求人物保存、配置更新和插件安装；首版 HTTP 工具复用现有 bridge routes 及其业务实现，保留原有校验与资源管理，不要求先迁移所有路由逻辑。具体网络适配位于 bridge transport 层。
 5. **任务采用异步提交。** 提交成功只代表已受理；最终结果、取消结果和实际修改通过任务状态与事件报告。
 6. **第一版按应用实例启动一个 worker，最多运行一个任务。** worker 一次绑定一个后端及版本。同一 session 的任务始终串行，不同调用方排队使用。worker 支持多个逻辑 session，不表示后端可以并发执行。
 
@@ -451,7 +451,7 @@ assets/agent/
 10. **配置与资源**：人物保存冲突可报告；运行包下载中断不损坏旧版本；打包后的 skills 和参考资料可实际读取。
 11. **输入与背压**：待答期间仍可取消；过期回答被拒绝；大量输出不会无限增长内存或丢失终态。
 
-当前已交付阶段 A 的任务核心及阶段 B 的 Pi Adapter、官方运行包管理、配置解析与宿主工具 extension。已用真实子进程验证任务语义，并用官方 Pi binary 和本地模型测试服务验证流式文本、宿主工具、会话恢复、取消和认证失败。真实业务工具、React 和角色投递仍是后续阶段的验收标准。
+当前已交付阶段 A 的任务核心、阶段 B 的 Pi Adapter、官方运行包管理、配置解析与宿主工具 extension，以及阶段 C 的 React 助手、skills 和首批 HTTP 业务工具。已用真实子进程验证任务语义，并用官方 Pi binary 和本地模型测试服务验证流式文本、真实 bridge 工具调用、会话恢复、取消和认证失败。完整人物素材流水线和阶段 D 的角色投递仍是后续验收目标。
 
 ### 12.1 已实现的公共接口
 

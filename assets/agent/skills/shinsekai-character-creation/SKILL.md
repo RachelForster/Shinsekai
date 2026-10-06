@@ -2,12 +2,25 @@
 name: shinsekai-character-creation
 description: 为 Shinsekai 创建或完善人物，检查浏览器能力，检索百科资料、角色语音和官方立绘，评估 GPT-SoVITS 训练或准备参考语音。在用户要求创建人物、人设、角色档案、收集人物素材或修改现有人物时使用。
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
 ---
 
 # Shinsekai 人物创建
 
 从人物身份、资料、声音和立绘形成可用人物。充分利用用户已提供的设定、作品名、版本、素材和安装授权；仅补充会影响结果的关键缺项。每一步依据实际工具结果推进，记录来源、文件和未完成事项。
+
+## 宿主 HTTP 工具
+
+桌面助手提供 `shinsekai.bridge.read` 和 `shinsekai.bridge.write`。按实际工具 schema 选择 `operation`，`params` 只填路径参数，`body` 填已有 HTTP API 的 JSON 请求体。地址和凭据由宿主注入，无需用户提供。
+
+- 查询插件：read 的 `plugins.list`、`plugins.status`、`plugins.registry`；用 `plugins.inspect` 和 `params.plugin_id` 读取插件页面、配置与动作 schema。安装用 write 的 `plugins.install`，`body.source` 来自插件目录；启用用 `plugins.enable`，提供 `params.plugin_id` 和 `body.enabled`。
+- 配置浏览器：先 inspect，然后 write 的 `plugins.configure`，提供 `params.plugin_id`、`params.page_id` 及 `body.values`。保留原配置的其他字段；对脱敏字段不要写入脱敏占位符。`plugins.action` 只能使用 inspect 返回的真实页面、动作 ID 和参数，不能虚构网页搜索动作。
+- 查询人物：read 的 `characters.list`；保存用 write 的 `characters.save`，`body.character` 为完整人物配置，编辑时带 `body.originalName`。保存后重新读取列表核对。立绘导入用 `characters.sprites.import`，提供 `body.name` 和已存在图片的 `body.paths`，随后重新读取人物，避免用旧配置覆盖导入结果。
+- 环境查询：read 的 `app.config` 返回脱敏配置；`tts.environment` 返回现有 GPU 和推理环境推荐，训练依赖、可用显存及数据质量仍需其他检测。需要推理整合包时使用 write 的 `tts.install`，`body.kind` 按实际需求选择。
+- HTTP 202 的 `accepted=true` 仅代表受理。保留返回的 `taskId`，用 read 的 `tasks.get` 和 `params.task_id` 查询；检查 `data.status` 与实际结果后才报告完成。不要在一个回合中反复忙轮询。停止 Agent 不自动取消已提交的 bridge 下载或安装任务；用户要求取消该任务时调用 write 的 `tasks.cancel`。
+- 写入结果未知或响应丢失时先查询实际状态，不能直接重复提交。宿主按同一 Agent task 的 call ID 去重，新的 call ID 不代表自动具备业务幂等性。
+
+这些 HTTP 工具没有网页导航、媒体下载、音频切片或通用文件执行能力。仅安装浏览器插件不代表 Agent 已获得浏览器工具。CLI 或其他宿主没有注册这两个工具时，按下文缺少工具的分支交付草稿与操作步骤。
 
 ## 1. 检查浏览器插件与工具
 
@@ -78,7 +91,7 @@ metadata:
 
 ## 6. 编辑、保存与交付
 
-有查询和保存工具时，先读取现有人物及 revision，再调用已有校验与保存能力。保留用户未要求改变的字段；遇到 revision 冲突先读取新状态并重新核对。
+有查询和保存工具时，先读取现有人物，再调用已有校验与保存能力。保留用户未要求改变的字段；当前 HTTP 人物保存不提供 revision 条件写入，提交前重新核对现有配置，避免覆盖用户同时修改的内容。如果其他工具提供 revision，按其 schema 使用并处理冲突。
 通过已有人物用例保存、导入形象并绑定语音，避免直接改 YAML 绕过校验与资源管理。根据工具结果说明保存了什么，以及形象和语音是否就绪。正在运行的角色聊天有自己的配置快照，不能保证保存后立即改变已有聊天。
 
 没有保存工具时，交付可复制的简介、详细人设和资源清单，并引导用户到「人物管理」`/settings/characters` 填写。明确这是人物草稿，不能声称人物已经创建到应用。
@@ -87,4 +100,4 @@ metadata:
 
 给出人物身份与版本、已保存结果或草稿、资料来源、立绘清单、声音来源、训练判断依据、所用模型或参考语音及未完成事项。明确区分「找到链接」「已下载」「已校验」「已导入」「已合成验证」。某项资源未就绪时继续交付已完成的部分；不要把整个人物报告为全部完成。
 
-当前 basic profile 没有业务工具，也关闭了 Pi 内置工具。仅有此 skill 时，按用户提供的资料起草，并说明浏览器检查、在线检索、下载、硬件检测、训练和保存仍需实际工具；不要模拟工具结果。人物的性格与台词规则只属于角色设定，不改变通用助手的理性与独立判断。
+Pi 内置工具保持关闭，按当前宿主实际注册的工具工作。桌面 HTTP 工具可完成上述查询、插件管理和人物保存；在线检索、媒体处理、训练和合成验证仍需相应工具或插件真实提供的动作。仅有此 skill 时按用户资料起草，不模拟工具结果。人物的性格与台词规则只属于角色设定，不改变通用助手的理性与独立判断。

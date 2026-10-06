@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from application.agent.execute_host_tool import AgentHostTool
     from application.agent.runtime import AgentRuntime
 
 
@@ -18,12 +19,14 @@ class ApplicationServices:
         default_factory=threading.RLock, init=False, repr=False
     )
 
-    def start_agent(self, config_manager, root: str | Path) -> None:
+    def start_agent(
+        self, config_manager, root: str | Path, *, tools: tuple[AgentHostTool, ...] = ()
+    ) -> None:
         from application.agent.runtime import AgentRuntime
 
         with self._lock:
             if self.agent is None:
-                self.agent = AgentRuntime(config_manager, root)
+                self.agent = AgentRuntime(config_manager, root, tools=tools)
             self.agent.start()
 
     def close(self) -> None:
