@@ -33,9 +33,7 @@ def test_bundled_skills_are_portable_and_versioned():
         assert body.strip()
 
 
-def test_all_bundled_skill_instructions_are_available_without_read_tools(
-    monkeypatch, tmp_path
-):
+def test_explicit_preload_can_include_bundled_skill_instructions(monkeypatch, tmp_path):
     async def run():
         backend, config, _, _ = setup(monkeypatch, tmp_path, "normal")
         backend.config = backend.config.model_copy(
@@ -58,6 +56,35 @@ def test_all_bundled_skill_instructions_are_available_without_read_tools(
             assert Path(value).name == "SKILL.md"
             assert Path(value).parent.name in BUNDLED_SKILL_NAMES
         assert len(policy.encode("utf-8")) <= 65536
+
+    asyncio.run(run())
+
+
+def test_native_loading_keeps_bundled_bodies_out_of_system_policy(
+    monkeypatch, tmp_path
+):
+    async def run():
+        backend, config, _, _ = setup(monkeypatch, tmp_path, "normal")
+        backend.config = backend.config.model_copy(
+            update={
+                "options": {
+                    **backend.config.options,
+                    "skills": bundled_skill_paths(),
+                    "skillLoading": "native",
+                }
+            }
+        )
+        session = await backend.open_session(
+            config.model_copy(update={"skill_refs": BUNDLED_SKILL_REFS})
+        )
+        policy = (session.root / "policy.md").read_text(encoding="utf-8")
+        assert policy == "trusted system policy"
+        for snapshot, source in zip(
+            session.marker["skills"], bundled_skill_paths().values()
+        ):
+            assert Path(snapshot).read_text(encoding="utf-8") == Path(source).read_text(
+                encoding="utf-8"
+            )
 
     asyncio.run(run())
 

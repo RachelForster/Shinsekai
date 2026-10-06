@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import os
+import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,7 +15,8 @@ import pytest
 
 from application.agent.pi_configuration import prepare_pi_agent
 from application.agent.runtime import AgentRuntime
-from application.agent.skills import BUNDLED_SKILL_NAMES
+from ai.agent.backends.pi import PI_BUILTIN_TOOLS
+from application.agent.skills import BUNDLED_SKILL_NAMES, bundled_skill_paths
 from core.agent.pi_runtime import PiRuntime
 from frontend_bridge_core.routes.api import FrontendBridgeHandler
 from frontend_bridge_core.transport.agent_http_tools import build_bridge_http_tools
@@ -26,7 +28,9 @@ from test.unit.application.agent.test_runtime import wait_for
     not os.environ.get("SHINSEKAI_TEST_PI_BINARY"),
     reason="Set SHINSEKAI_TEST_PI_BINARY to a verified official Pi binary",
 )
-@pytest.mark.parametrize("behavior", ["restart", "shutdown", "bridge-tools"])
+@pytest.mark.parametrize(
+    "behavior", ["restart", "shutdown", "bridge-tools", "native-skills"]
+)
 def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
     requests = []
     received, release = threading.Event(), threading.Event()
@@ -39,7 +43,11 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
             body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             requests.append(body)
             assert self.headers["Authorization"] == "Bearer fixture-http-key"
-            assert bool(body.get("tools")) == (behavior == "bridge-tools")
+            functions = [tool["function"] for tool in body["tools"]]
+            assert set(PI_BUILTIN_TOOLS) <= {tool["name"] for tool in functions}
+            assert len(functions) == len(PI_BUILTIN_TOOLS) + (
+                2 if behavior in {"bridge-tools", "native-skills"} else 0
+            )
             if behavior == "shutdown":
                 received.set()
                 release.wait(10)
@@ -52,6 +60,7 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
                 ({"content": "真实 Pi HTTP 验证完成。"}, None),
                 ({}, "stop"),
             ]
+            call = None
             if behavior == "bridge-tools" and not any(
                 message.get("role") == "tool" for message in body["messages"]
             ):
@@ -60,6 +69,56 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
                     for tool in body["tools"]
                     if "shinsekai.bridge.read" in tool["function"]["description"]
                 )
+                call = (function["name"], {"operation": "characters.list"})
+            if behavior == "native-skills":
+                messages = body["messages"]
+                system = "\n".join(
+                    str(message["content"])
+                    for message in messages
+                    if message["role"] == "system"
+                )
+                location = next(
+                    value
+                    for value in re.findall(r"<location>(.*?)</location>", system)
+                    if "shinsekai-guide" in value
+                )
+                steps = [
+                    ("read", {"path": location}),
+                    (
+                        "write",
+                        {"path": "native-tool-check.txt", "content": "before-edit"},
+                    ),
+                    (
+                        "edit",
+                        {
+                            "path": "native-tool-check.txt",
+                            "oldText": "before-edit",
+                            "newText": "after-edit",
+                        },
+                    ),
+                    (
+                        "powershell" if os.name == "nt" else "bash",
+                        {
+                            "command": (
+                                "Get-Content -LiteralPath 'native-tool-check.txt'"
+                                if os.name == "nt"
+                                else "cat native-tool-check.txt"
+                            )
+                        },
+                    ),
+                    (
+                        next(
+                            tool["name"]
+                            for tool in functions
+                            if "Host tool shinsekai.bridge.read:" in tool["description"]
+                        ),
+                        {"operation": "characters.list"},
+                    ),
+                ]
+                index = sum(message["role"] == "tool" for message in messages)
+                if index < len(steps):
+                    call = steps[index]
+            if call is not None:
                 deltas = [
                     ({"role": "assistant"}, None),
                     (
@@ -67,13 +126,11 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
                             "tool_calls": [
                                 {
                                     "index": 0,
-                                    "id": "bridge-read-call",
+                                    "id": f"fixture-call-{len(requests)}",
                                     "type": "function",
                                     "function": {
-                                        "name": function["name"],
-                                        "arguments": json.dumps(
-                                            {"operation": "characters.list"}
-                                        ),
+                                        "name": call[0],
+                                        "arguments": json.dumps(call[1]),
                                     },
                                 }
                             ]
@@ -113,10 +170,10 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
     bridge = ThreadingHTTPServer(("127.0.0.1", 0), FrontendBridgeHandler)
     tools = (
         build_bridge_http_tools(*bridge.server_address, "http-bridge-token")
-        if behavior == "bridge-tools"
+        if behavior in {"bridge-tools", "native-skills"}
         else ()
     )
-    if behavior == "bridge-tools":
+    if behavior in {"bridge-tools", "native-skills"}:
         config.config = SimpleNamespace(
             api_config=config.config.api_config, characters=[{"name": "HTTP 人物"}]
         )
@@ -170,7 +227,7 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
                     if (value := request("GET", task_path))
                     else None
                 ),
-                timeout=25,
+                timeout=45 if behavior == "native-skills" else 25,
             )
             assert task["status"] == "succeeded", task["error"]
             assert task["result"]["summary"] == "真实 Pi HTTP 验证完成。"
@@ -186,26 +243,57 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
                     request("GET", "/sessions")["sessions"][0]["sessionId"]
                     == session["sessionId"]
                 )
-        if behavior == "bridge-tools":
-            assert len(requests) == 2
+        if behavior in {"bridge-tools", "native-skills"}:
+            assert len(requests) == (6 if behavior == "native-skills" else 2)
             messages = requests[-1]["messages"]
             response = next(
                 json.loads(message["content"])
-                for message in messages
+                for message in reversed(messages)
                 if message.get("role") == "tool"
             )
             assert response["data"] == [{"name": "HTTP 人物"}]
             assert any(event["type"] == "tool.completed" for event in page["events"])
+        if behavior == "native-skills":
+            initial = "\n".join(
+                message["content"]
+                for message in requests[0]["messages"]
+                if message["role"] == "system"
+            )
+            assert "<available_skills>" in initial
+            for source in bundled_skill_paths().values():
+                assert Path(source).read_text(encoding="utf-8") not in initial
+            result = next(
+                message["content"]
+                for message in requests[1]["messages"]
+                if message["role"] == "tool"
+            )
+            guide = next(
+                Path(source).read_text(encoding="utf-8")
+                for reference, source in bundled_skill_paths().items()
+                if "shinsekai-guide" in reference
+            )
+            assert guide.strip() in result.replace("\r\n", "\n")
+            tool_messages = [
+                message
+                for message in requests[-1]["messages"]
+                if message["role"] == "tool"
+            ]
+            assert "after-edit" in tool_messages[3]["content"]
+            assert (
+                tmp_path
+                / "pi-sessions"
+                / session["sessionId"]
+                / "workspace"
+                / "native-tool-check.txt"
+            ).read_text() == "after-edit"
         if behavior == "restart":
             assert len(requests) == 2
             model_messages = json.dumps(requests[0]["messages"], ensure_ascii=False)
-            # Pi omits its native skill index without read/bash; host preloading
-            # must supply the instructions independently of that index.
-            assert "<available_skills>" not in model_messages
+            assert "<available_skills>" in model_messages
             for name in BUNDLED_SKILL_NAMES:
                 assert name in model_messages
-            assert "下方已提供完整技能正文" in model_messages
-            assert "python -m sdk.cli create my_plugin" in model_messages
+            assert "下方已提供完整技能正文" not in model_messages
+            assert "python -m sdk.cli create my_plugin" not in model_messages
             assert any(
                 message.get("role") == "assistant"
                 and "真实 Pi HTTP" in str(message.get("content"))

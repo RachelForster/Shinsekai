@@ -36,7 +36,7 @@ def callback(request):
 tools = []
 if os.environ.get('SHINSEKAI_PI_TOOLS'):
     tools = json.loads(Path(os.environ['SHINSEKAI_PI_TOOLS']).read_text())
-    callback({'kind':'ready', 'names':[tool['nativeName'] for tool in tools]})
+    callback({'kind':'ready', 'names':[tool['nativeName'] for tool in tools], 'activeTools':sys.argv[sys.argv.index('--tools')+1].split(',')})
 def run():
     if scenario == 'die': os._exit(7)
     root = Path.cwd().parent / 'native'
@@ -125,7 +125,7 @@ def setup(monkeypatch, tmp_path, scenario):
         adapter,
         "PiRpcProcess",
         lambda command, **kwargs: PiRpcProcess(
-            [sys.executable, str(script), scenario], **kwargs
+            [sys.executable, str(script), scenario, *command[1:]], **kwargs
         ),
     )
     policy = tmp_path / "policy.md"

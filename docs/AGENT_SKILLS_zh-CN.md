@@ -23,23 +23,23 @@ assets/agent/
 | `shinsekai-character-creation` | 创建或修改人物、收集人物素材 | 资料与素材流程；桌面可查询与保存人物、导入已有立绘、管理插件 |
 | `shinsekai-plugin-development` | 创建、扩展或修复插件 | 根据现有 SDK 起草代码，提供脚手架和检查流程 |
 
-业务操作以宿主实际注册的工具为准。桌面助手已注入 `shinsekai.bridge.read`、`shinsekai.bridge.write`，复用现有 HTTP API 查询日志和配置、保存人物、导入立绘及管理插件，见 [HTTP 工具说明](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md)。CLI 不自动注册桌面工具。技能在缺少能力时交付草稿与操作步骤，并据真实工具结果声明完成。
+业务操作以实际工具目录为准。桌面助手已注入 `shinsekai.bridge.read`、`shinsekai.bridge.write`，复用现有 HTTP API 查询日志和配置、保存人物、导入立绘及管理插件，见 [HTTP 工具说明](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md)。桌面与 CLI 均开启 Pi 原生文件、搜索和 shell 工具；CLI 不自动注册桌面 HTTP 工具。技能在缺少能力时交付草稿与操作步骤，并据真实工具结果声明完成。
 
 ## 当前加载方式
 
-`application/agent/skills.py` 保存显式技能清单及各技能版本，引用形式为 `skill:<name>@<version>`。人物创建技能已升级到 `1.2.0`，其余保持 `1.0.0`；`ASSISTANT_PROFILE` 选择这四个引用，桌面助手和 Pi CLI 的新会话均使用它们。`prepare_pi_agent()` 默认解析随应用发布的文件路径，显式传入 `skill_paths` 时使用调用方的映射，包括空映射。
+`application/agent/skills.py` 保存显式技能清单及各技能版本，引用形式为 `skill:<name>@<version>`。人物创建技能已升级到 `1.3.0`，其余保持 `1.0.0`；`ASSISTANT_PROFILE` 选择这四个引用，桌面助手和 Pi CLI 的新会话均使用它们。`prepare_pi_agent()` 默认解析随应用发布的文件路径，显式传入 `skill_paths` 时使用调用方的映射，包括空映射。
 
-Pi 内置文件读取工具当前关闭，而且 v1.0.4 在没有 `read` 或 `bash` 工具时不会加入原生技能目录，见 [系统提示实现](https://github.com/earendil-works/pi/blob/v1.0.4/packages/coding-agent/src/core/system-prompt.ts)。首版设置 `skillLoading=preload`：Adapter 在首次打开 Pi 会话时将选定技能保存到独立的 `SKILL.md` 路径，并将完整正文加入系统策略快照；同时保留 Pi 的显式技能注册。合并后的系统策略上限为 65,536 UTF-8 字节。
+当前默认 `skillLoading=native`。Adapter 在首次打开会话时将选定技能保存为独立的 `SKILL.md` 快照，通过显式 `--skill` 路径交给 Pi。系统策略只保存通用行为规则；Pi 原生目录向模型展示名称、简介和路径，由模型根据任务选择并使用 `read` 读取正文。详细流程见 [系统提示实现](https://github.com/earendil-works/pi/blob/v1.0.4/packages/coding-agent/src/core/system-prompt.ts)。四份技能正文不再提前加入系统提示。
 
-技能正文按任务使用，预载不授予任何新工具权限。理性、独立判断和如实报告结果仍由 `system-policy.md` 始终约束。底层的 `skillLoading=native` 选项只保留显式技能注册而不预载正文；完整的按需方案还需要受限资源读取与 Pi 技能目录投影，当前助手使用 preload。
+Pi 的 `read`、`bash`、`powershell`、`edit`、`write`、`grep`、`find`、`ls` 与注册的 HTTP 工具共同可用。理性、独立判断和如实报告结果仍由 `system-policy.md` 始终约束。`skillLoading=preload` 作为显式兼容选项保留，其合并策略仍受 65,536 UTF-8 字节上限约束；旧会话的全文提示快照不会自动缩减，使用新建 session 体验按需加载。
 
 恢复已有 Pi 会话时使用原快照，不重新读取改变后的资源。旧会话的技能引用也保持原值；升级后要体验新技能，应新建助手 session。修改已发布的技能时更新版本和引用，已有快照不自动迁移。
 
-桌面资源准备脚本已经包含 `assets/`，无需新增下载包或另一份模型配置。首批技能是自包含文本；以后增加 `references/` 或 `scripts/` 时，需要同步实现支持文件快照及相应宿主工具。
+桌面资源准备脚本已经包含 `assets/`，无需新增下载包或另一份模型配置。首批技能是自包含文本；以后增加 `references/` 或 `scripts/` 时，需要同步实现支持文件快照。
 
 ## 人物创建流程与工具接入
 
-人物创建 `1.2.0` 的流程如下，技能正文自包含在同一个 `SKILL.md` 中，并说明了 HTTP 工具的参数、异步受理和失败核对方式：
+人物创建 `1.3.0` 的流程如下，技能正文自包含在同一个 `SKILL.md` 中，并说明 HTTP 工具、Pi 文件与 shell 工具的使用方式，以及异步受理和失败核对方式：
 
 1. 查询浏览器插件、加载状态和 Agent 工具是否可用。有安装与配置能力且任务已授权时自动补齐；否则引导安装。保留用户偏好，无偏好时 Windows 优先可启动的 Edge，再选 Chrome 或 Playwright Chromium；只配置插件后端。
 2. 优先检索百度百科、维基百科、萌娘百科，再与官方资料核对；同名或版本不明时列出候选等待用户确认，保留资料来源及推断依据。
@@ -58,14 +58,14 @@ Pi 内置文件读取工具当前关闭，而且 v1.0.4 在没有 `read` 或 `ba
 | --- | --- | --- |
 | 插件查询、安装、配置 | `application/plugins/catalog.py`、`application/plugins/install_plugin.py`、插件前端配置 contribution | 已通过 HTTP 工具接入 |
 | 网页搜索、导航、读取正文 | Playwright Browser 插件，ID `com.shinsekai.playwright_browser` | 当前在角色 ToolManager 注册；Agent 需单独接入 |
-| 媒体搜索、下载、人声分离 | `live/music_cover_pipeline.py` 的 yt-dlp、ffmpeg 和分离能力 | 需要抽取可复用媒体入口，再接 Agent；不直接启动整个翻唱流程 |
+| 媒体搜索、下载、人声分离 | `live/music_cover_pipeline.py` 的 yt-dlp、ffmpeg 和分离能力 | 尚无专用 HTTP 工具；可通过 shell 调用已安装程序，须核对依赖和结果 |
 | GPU 检测与 TTS 环境 | `core/model_assets/tts_environment.py`、现有模型与凭据配置 | 已接推理环境查询与整合包下载；训练检查仍待补充 |
 | 训练、转写、权重检查 | 可选 GPT-SoVITS 训练插件，如 `local.gpt_sovits_batch_trainer` | 已接通用插件动作；插件独立安装，须 inspect 实际能力并核对结果 |
-| 参考音频切片、质量与合成检查 | 既有音频处理和 TTS adapter | 待接入 |
+| 参考音频切片、质量与合成检查 | 既有音频处理和 TTS adapter | 专用接口待接；shell 可执行本机已有音频处理程序，合成仍需可用服务 |
 | 人物保存、语音绑定、立绘导入 | `application/characters/management.py` 的 `CharacterUseCase` | 已接人物保存与已有立绘导入，保留既有校验；音频处理及合成测试待接 |
 | 游戏资源提取 | 用户指定游戏对应的可用工具 | 尚无通用解包入口；缺少能力时提供准备步骤 |
 
-这些能力仍经 `AgentHostTool.from_models()`、`AgentProfile.tool_names` 和 `AgentService.tools` 显式注册。仅安装角色浏览器插件或更新 skill 不会赋予 Agent 新工具；已禁用的 Pi 内置工具也不会自动开启。
+HTTP 能力经 `AgentHostTool.from_models()`、`AgentProfile.tool_names` 和 `AgentService.tools` 显式注册，Pi 原生工具由 Adapter 启用。仅安装角色浏览器插件不会把它的角色工具注册给 Agent；shell 能力也不能替代浏览器、媒体、训练程序及其依赖的安装。
 
 ## 如何编写新技能
 
@@ -93,7 +93,7 @@ metadata:
 
 ## 验证
 
-测试检查技能格式、版本与路径、无读取工具时的正文可用性、恢复快照、合并提示上限，以及默认和自定义映射。官方 Pi 的 HTTP 测试还检查发送给模型的系统消息确实包含完整技能正文，并验证会话重启后继续使用。
+测试检查技能格式、版本与路径、按需模式不预载正文、显式 preload 兼容、恢复快照、合并提示上限，以及默认和自定义映射。官方 Pi 的 HTTP 测试验证首个请求只有技能目录，模型调用原生 `read` 后对应正文进入上下文，同时验证文件写入、编辑、shell、HTTP 工具与会话重启。
 
 ```powershell
 python -m pytest test/unit/application/agent/test_skills.py -q

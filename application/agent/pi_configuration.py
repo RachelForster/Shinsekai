@@ -127,7 +127,7 @@ def prepare_pi_agent(
             credential_ref="config:llm:" + binding.provider,
             options={
                 "piVersion": PI_VERSION,
-                "skillLoading": "preload",
+                "skillLoading": "native",
                 "models": {binding.reference: binding.model},
                 "policies": {
                     key: str(Path(value).resolve())

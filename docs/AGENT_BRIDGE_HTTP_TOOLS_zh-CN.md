@@ -15,7 +15,7 @@ HTTP 实现位于 `frontend_bridge_core/transport/agent_http_tools.py`。`fronte
 
 bridge token 只保存在宿主 HTTP client 中，不传到 worker、提示词或工具 schema。响应中的凭据字段、已识别的秘密值与常见凭据文本会脱敏，同时保留人物正文、插件 schema 等业务内容。单个响应上限为 512 KiB，默认请求超时为 30 秒。
 
-CLI 没有桌面 bridge，因此不自动注册这两个工具。Pi 内置文件、shell、MCP 工具保持关闭。工具与技能引用固定在 session 快照中；升级后新建助手 session 才能使用新工具和人物创建 skill `1.2.0`。
+CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与 CLI 均开启 Pi 内置文件、搜索和 shell 工具；MCP 保持关闭。宿主工具与技能引用固定在 session 快照中；升级后新建助手 session 使用按需加载和人物创建 skill `1.3.0`。原生文件与命令结果不经过本 HTTP 适配器的脱敏、call ID 去重或操作记录，详见 [Pi 工具说明](AGENT_PI_zh-CN.md)。
 
 ## 已注册操作
 
@@ -79,7 +79,7 @@ CLI 没有桌面 bridge，因此不自动注册这两个工具。Pi 内置文件
 
 HTTP 适配器不自动重试写请求。请求失败、响应丢失或无法解析时，写操作记录为 `unknown`，先查询现有状态再决定是否重试。发出请求前发现路径参数错误时记录为 `not_applied`。AgentService 按同一 Agent task 的 call ID 去重；不同 call ID 的同一业务请求仍需按原 API 的语义核对。
 
-当前只暴露上表明确选择的 JSON 接口。网页搜索、导航、读取正文，媒体下载、音频切片与合成测试，通用插件文件编写和游戏解包仍需对应接口或实际插件动作。安装角色浏览器插件不会自动把它的角色聊天工具注册给 Agent；GPU 推理推荐也不能替代训练资格检查。
+HTTP 工具只暴露上表明确选择的 JSON 接口。网页搜索、导航、读取正文，媒体下载、音频切片与合成测试、游戏解包尚无专用 HTTP 接口；Pi 可通过 shell 调用本机实际可用的程序，并通过文件工具编写插件。开启工具不等于相关依赖已安装。安装角色浏览器插件不会自动把它的角色聊天工具注册给 Agent；GPU 推理推荐也不能替代训练资格检查。
 
 ## 验证
 

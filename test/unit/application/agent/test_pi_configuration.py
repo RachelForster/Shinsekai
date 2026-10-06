@@ -101,7 +101,7 @@ def test_runtime_setup_reuses_installer(monkeypatch, tmp_path):
     assert calls == [tmp_path / "runtimes" / "pi"]
     assert setup.backend.backend_id == "pi"
     assert setup.backend.options["skills"] == bundled_skill_paths()
-    assert setup.backend.options["skillLoading"] == "preload"
+    assert setup.backend.options["skillLoading"] == "native"
 
 
 def test_explicit_empty_skill_mapping_disables_bundled_defaults(tmp_path):

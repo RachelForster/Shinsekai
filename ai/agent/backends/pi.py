@@ -37,6 +37,10 @@ from sdk.agent import (
 )
 
 
+# Built-ins shipped by the pinned Pi runtime, alongside profile-selected host tools.
+PI_BUILTIN_TOOLS = ("read", "bash", "powershell", "edit", "write", "grep", "find", "ls")
+
+
 @dataclass
 class _Session:
     config: AgentSessionConfig
@@ -223,7 +227,9 @@ class PiAgentBackend:
                 if not hmac.compare_digest(str(request.get("token", "")), token):
                     raise ValueError("Invalid callback token")
                 if request.get("kind") == "ready":
-                    if request.get("names") != native_names:
+                    if request.get("names") != native_names or set(
+                        request.get("activeTools", [])
+                    ) != set((*PI_BUILTIN_TOOLS, *native_names)):
                         raise ValueError("Pi extension registered different tools")
                     if not ready.done():
                         ready.set_result(True)
@@ -331,13 +337,12 @@ class PiAgentBackend:
             "--no-context-files",
             "--no-mcp",
             "--no-approve",
-            "--no-builtin-tools",
             "--extension",
             str(resource_path("ai/agent/backends/pi_host_tools.ts")),
             "--system-prompt",
             str(session.root / "policy.md"),
         ]
-        command += ["--tools", ",".join(native_names)] if allowed else ["--no-tools"]
+        command += ["--tools", ",".join((*PI_BUILTIN_TOOLS, *native_names))]
         for path in session.marker["skills"]:
             command += ["--skill", path]
         server = await asyncio.start_server(serve, "127.0.0.1", 0, limit=MAX_PI_FRAME)
