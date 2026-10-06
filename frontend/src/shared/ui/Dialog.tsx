@@ -95,6 +95,7 @@ export function Dialog({
 }
 
 interface AlertDialogProps {
+  pending?: boolean;
   body: string;
   cancelLabel?: string;
   closeLabel?: string;
@@ -107,6 +108,7 @@ interface AlertDialogProps {
 }
 
 export function AlertDialog({
+  pending = false,
   body,
   cancelLabel = "Cancel",
   closeLabel,
@@ -120,10 +122,13 @@ export function AlertDialog({
   return (
     <Dialog
       closeLabel={closeLabel}
+      dismissible={!pending}
       footer={
         <>
-          <Button onClick={onCancel}>{cancelLabel}</Button>
-          <Button onClick={onConfirm} variant={confirmVariant}>
+          <Button disabled={pending} onClick={onCancel}>
+            {cancelLabel}
+          </Button>
+          <Button loading={pending} onClick={onConfirm} variant={confirmVariant}>
             {confirmLabel}
           </Button>
         </>

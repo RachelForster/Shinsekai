@@ -40,6 +40,33 @@ describe("AlertDialog", () => {
     vi.clearAllMocks();
   });
 
+  it("blocks dismissal and repeated confirmation while an operation is pending", () => {
+    const onCancel = vi.fn();
+    const onConfirm = vi.fn();
+    const props = {
+      body: "Save changes?",
+      cancelLabel: "Cancel",
+      confirmLabel: "Save",
+      onCancel,
+      onConfirm,
+      open: true,
+      title: "Confirm save",
+    };
+    const view = render(<AlertDialog {...props} pending />);
+
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    view.rerender(<AlertDialog {...props} pending={false} />);
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
   it("labels the dialog and closes on Escape", () => {
     const onCancel = vi.fn();
     const onConfirm = vi.fn();
