@@ -44,6 +44,7 @@ import { AdapterExtraSection } from "./AdapterExtraSection";
 import { ApiLanguageSection } from "./ApiLanguageSection";
 import { AsrSettingsSection } from "./AsrSettingsSection";
 import { LlmConnectionSection } from "./LlmConnectionSection";
+import { KnowledgeSettingsSection } from "./KnowledgeSettingsSection";
 import { MemorySettingsSection } from "./MemorySettingsSection";
 import { ResourceLinksSection } from "./ResourceLinksSection";
 import { T2iSetupSection } from "./T2iSetupSection";
@@ -734,6 +735,7 @@ export function ApiSettingsPage() {
     { id: "api-tts", label: t("api.tts.bundleTitle") },
     { id: "api-vision", label: t("api.vision.title") },
     { id: "api-memory", label: t("api.memory.title") },
+    { id: "api-knowledge", label: t("api.knowledge.title") },
     { id: "api-t2i", label: t("api.t2i.title") },
     { id: "api-asr", label: t("system.asr.title") },
     { id: "api-links", label: t("api.links.title") },
@@ -939,6 +941,12 @@ export function ApiSettingsPage() {
         disabled={saveMutation.isPending}
         draft={draft}
         id="api-memory"
+        onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
+      />
+      <KnowledgeSettingsSection
+        disabled={saveMutation.isPending}
+        draft={draft}
+        id="api-knowledge"
         onChange={(nextDraft) => setDraft(syncCompactRatioDraft(nextDraft))}
       />
       <T2iSetupSection
