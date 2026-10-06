@@ -1,4 +1,4 @@
-"""Standalone mock task runner: python -m application.agent --task "hello"."""
+"""Standalone Agent task runner using mock or the official Pi runtime."""
 
 from __future__ import annotations
 
@@ -20,10 +20,12 @@ from sdk.agent import (
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Run the independent mock Agent task core"
-    )
+    parser = argparse.ArgumentParser(description="Run the independent Agent task core")
     parser.add_argument("--task", required=True)
+    parser.add_argument("--backend", choices=("mock", "pi"), default="mock")
+    parser.add_argument(
+        "--pi-binary", type=Path, help="Use an already installed official Pi binary"
+    )
     parser.add_argument(
         "--database",
         type=Path,
@@ -36,7 +38,26 @@ def main() -> int:
     )
     args = parser.parse_args()
     try:
-        with AgentService(args.database) as service:
+        service_options, model_ref = {}, "mock"
+        if args.backend == "pi":
+            from config.config_manager import ConfigManager
+            from application.agent.pi_configuration import prepare_pi_agent
+            from core.agent.pi_runtime import PiRuntime
+
+            setup = prepare_pi_agent(
+                ConfigManager(),
+                runtime=PiRuntime(args.pi_binary) if args.pi_binary else None,
+                update_task=lambda **progress: print(
+                    json.dumps({"type": "pi.runtime", **progress}, ensure_ascii=False),
+                    flush=True,
+                ),
+            )
+            service_options = {
+                "backend": setup.backend,
+                "worker_environment": setup.worker_environment,
+            }
+            model_ref = setup.model_ref
+        with AgentService(args.database, **service_options) as service:
             if service.queue_paused and not args.resume_queue:
                 raise AgentRequestError(
                     AgentError(
@@ -50,7 +71,7 @@ def main() -> int:
             client = service.bind(origin)
             session = client.create_session(
                 AgentSessionRequest(
-                    backend_id="mock", profile_id="basic", model_ref="mock"
+                    backend_id=args.backend, profile_id="basic", model_ref=model_ref
                 )
             )
             receipt = client.submit_task(

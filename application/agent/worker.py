@@ -103,8 +103,9 @@ class Worker:
             config = AgentBackendConfig.model_validate(params["config"])
             # Explicit registration. No backend implementation is imported by the host.
             from ai.agent.backends.mock import MockAgentBackend
+            from ai.agent.backends.pi import PiAgentBackend
 
-            factories = {"mock": MockAgentBackend}
+            factories = {"mock": MockAgentBackend, "pi": PiAgentBackend}
             if config.backend_id not in factories or config.backend_version != "1":
                 raise fault(
                     "BACKEND_UNAVAILABLE",
@@ -144,8 +145,9 @@ class Worker:
             return {"accepted": True}
         if method == "task.cancel":
             if self.active is not None and params["attemptId"] == self.attempt_id:
+                active = self.active
                 await self.backend.cancel(self.attempt_id)
-                self.active.cancel()
+                active.cancel()
             return {"accepted": True}
         if method == "task.respond":
             answer = AgentInputAnswer.model_validate(params["answer"])

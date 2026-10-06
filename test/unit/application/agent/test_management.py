@@ -18,6 +18,7 @@ from application.agent.execute_host_tool import AgentHostTool
 from core.agent.storage import AgentStore
 from sdk.agent import (
     AgentClient,
+    AgentBackendConfig,
     AgentEffect,
     AgentHostToolCall,
     AgentHostToolResult,
@@ -753,3 +754,21 @@ raise SystemExit(Worker().run())
         task = terminal(client, receipt.task_id)
         assert task.status == "succeeded"
         assert not task.result.effects  # Only the host ledger supplies operation facts.
+
+
+def test_recovered_queue_cannot_switch_backend(tmp_path):
+    database = tmp_path / "agent.sqlite"
+    service = AgentService(database)
+    client, session = client_session(service)
+    receipt = submit(client, session)
+    service.close()
+    with AgentService(
+        database, backend=AgentBackendConfig(backend_id="pi", backend_version="1")
+    ) as restored:
+        client = restored.bind(ORIGIN)
+        assert restored.queue_paused
+        restored.resume_queue()
+        task = terminal(client, receipt.task_id)
+        assert task.status == "failed"
+        assert task.error.code == "SESSION_BACKEND_MISMATCH"
+        assert restored._supervisor.process is None
