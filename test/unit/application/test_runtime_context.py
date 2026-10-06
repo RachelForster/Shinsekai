@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from application.runtime.context import (
+    _ApplicationLLMHostRuntime,
     ToolConfirmationController,
     app_runtime_scope,
     get_app_runtime,
@@ -12,6 +13,7 @@ from application.runtime.context import (
     set_app_runtime,
     try_get_app_runtime,
 )
+from sdk.agent import AgentDelegationRequest, AgentRequestError, NullAgentRequester
 
 
 def teardown_function():
@@ -83,3 +85,24 @@ def test_tool_confirmation_identifiers_are_unique():
 
     assert first.confirmation_id != second.confirmation_id
     assert len(first.confirmation_id) >= 24
+
+
+def test_agent_requester_follows_the_scoped_chat_runtime():
+    host = _ApplicationLLMHostRuntime()
+    shared_requester = NullAgentRequester()
+    scoped_requester = NullAgentRequester()
+    set_app_runtime(SimpleNamespace(agent_requester=shared_requester))
+
+    assert host.get_agent_requester() is shared_requester
+    with app_runtime_scope(SimpleNamespace(agent_requester=scoped_requester)):
+        assert host.get_agent_requester() is scoped_requester
+    assert host.get_agent_requester() is shared_requester
+
+
+@pytest.mark.parametrize("runtime", [None, SimpleNamespace()])
+def test_agent_requester_without_a_bound_runtime_is_explicitly_unavailable(runtime):
+    set_app_runtime(runtime)
+    host = _ApplicationLLMHostRuntime()
+    with pytest.raises(AgentRequestError) as failure:
+        host.get_agent_requester().request_agent(AgentDelegationRequest(task="inspect"))
+    assert failure.value.error.code == "BACKEND_UNAVAILABLE"

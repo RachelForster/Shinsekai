@@ -17,6 +17,7 @@ Quick reference
 - :mod:`sdk.plugin` — 插件入口 (PluginBase)
 - :mod:`sdk.types` — 贡献声明 (SettingsUIContribution, ToolsTabContribution, ChatUIContribution)
 - :mod:`sdk.tool_registry` — LLM 工具注册 (@tool 装饰器)
+- :mod:`sdk.agent` — 通用 Agent 任务、后端与角色委托契约
 - :mod:`sdk.register` — 能力注册表 (PluginCapabilityRegistry)
 - :mod:`sdk.manager` — 插件管理器 (PluginManager)
 - :mod:`sdk.chat_ui_theme` — chat_ui 主题 mod 校验/打包 (validate_manifest, pack_theme; CLI: ``python -m sdk.chat_ui_theme``)
@@ -28,6 +29,26 @@ import importlib
 from typing import Any
 
 __all__ = [
+    "AgentArtifact",
+    "AgentBackend",
+    "AgentBackendCapabilities",
+    "AgentBackendDescriptor",
+    "AgentClient",
+    "AgentDelegationInbox",
+    "AgentDelegationRequest",
+    "AgentError",
+    "AgentEvent",
+    "AgentHostPort",
+    "AgentOrigin",
+    "AgentRequester",
+    "AgentRequestError",
+    "AgentResult",
+    "AgentSession",
+    "AgentTask",
+    "AgentTaskReceipt",
+    "AgentTaskRequest",
+    "AgentTaskStatus",
+    "NullAgentRequester",
     "apply_registered_tools",
     "ASRAdapter",
     "AvatarFormatContribution",
@@ -124,6 +145,27 @@ __all__ = [
 ]
 
 _LAZY_EXPORTS: dict[str, tuple[str, str]] = {
+    # ── agent contracts ──
+    "AgentArtifact": ("sdk.agent", "AgentArtifact"),
+    "AgentBackend": ("sdk.agent", "AgentBackend"),
+    "AgentBackendCapabilities": ("sdk.agent", "AgentBackendCapabilities"),
+    "AgentBackendDescriptor": ("sdk.agent", "AgentBackendDescriptor"),
+    "AgentClient": ("sdk.agent", "AgentClient"),
+    "AgentDelegationInbox": ("sdk.agent", "AgentDelegationInbox"),
+    "AgentDelegationRequest": ("sdk.agent", "AgentDelegationRequest"),
+    "AgentError": ("sdk.agent", "AgentError"),
+    "AgentEvent": ("sdk.agent", "AgentEvent"),
+    "AgentHostPort": ("sdk.agent", "AgentHostPort"),
+    "AgentOrigin": ("sdk.agent", "AgentOrigin"),
+    "AgentRequester": ("sdk.agent", "AgentRequester"),
+    "AgentRequestError": ("sdk.agent", "AgentRequestError"),
+    "AgentResult": ("sdk.agent", "AgentResult"),
+    "AgentSession": ("sdk.agent", "AgentSession"),
+    "AgentTask": ("sdk.agent", "AgentTask"),
+    "AgentTaskReceipt": ("sdk.agent", "AgentTaskReceipt"),
+    "AgentTaskRequest": ("sdk.agent", "AgentTaskRequest"),
+    "AgentTaskStatus": ("sdk.agent", "AgentTaskStatus"),
+    "NullAgentRequester": ("sdk.agent", "NullAgentRequester"),
     # ── adapters ──
     "ASRAdapter": ("sdk.adapters", "ASRAdapter"),
     "AvatarFormatContribution": ("sdk.adapters", "AvatarFormatContribution"),
