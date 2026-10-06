@@ -96,3 +96,8 @@ def test_get_knowledge_status_delegates_to_application_when_dependencies_are_ava
     monkeypatch.setattr(knowledge, "_check_mem0_before_call", lambda: None)
     monkeypatch.setattr(manage_knowledge, "check_knowledge_status", lambda *, start_loading: {"start": start_loading})
     assert knowledge._get_knowledge_status(start_loading=False) == {"start": False}
+
+
+def test_run_knowledge_import_rejects_missing_dependencies_before_accessing_state(missing_runtime):
+    with pytest.raises(RuntimeError, match="incompatible"):
+        knowledge._run_knowledge_import(None, "task", "knowledge", [], source_root=".")

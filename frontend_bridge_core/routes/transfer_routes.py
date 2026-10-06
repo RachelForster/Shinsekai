@@ -35,6 +35,10 @@ from frontend_bridge_core.routes.router import (
     TaskResponse,
 )
 from frontend_bridge_core.routes.uploads import UploadedFiles
+from frontend_bridge_core.knowledge import (
+    _preview_knowledge_import,
+    _run_knowledge_import,
+)
 from sdk.path_utils import safe_project_path
 
 
@@ -232,6 +236,35 @@ def _import_uploaded_character_memories(request: ApiRequest) -> TaskResponse:
     )
 
 
+def _preview_uploaded_knowledge(request: ApiRequest) -> JsonResponse:
+    uploads = _uploads(request)
+    return JsonResponse(
+        _preview_knowledge_import(
+            request.state,
+            str((request.query.get("knowledge_id") or [""])[0]).strip(),
+            uploads.paths,
+            source_root=uploads.root,
+        )
+    )
+
+
+def _import_uploaded_knowledge(request: ApiRequest) -> TaskResponse:
+    uploads = _uploads(request)
+    knowledge_id = str((request.query.get("knowledge_id") or [""])[0]).strip()
+    return TaskResponse(
+        kind="knowledge-import",
+        title=f"导入 {knowledge_id or '资料'} 的资料",
+        message="资料导入任务已排队。",
+        worker=lambda task_id: _run_knowledge_import(
+            request.state,
+            task_id,
+            knowledge_id,
+            uploads.paths,
+            source_root=uploads.root,
+        ),
+    )
+
+
 def _import_uploaded_log(request: ApiRequest) -> JsonResponse:
     uploads = _uploads(request)
     return JsonResponse(_log_snapshot(uploads.paths[0], roots=(uploads.root,)))
@@ -250,6 +283,20 @@ def _upload_chat_attachments(request: ApiRequest) -> JsonResponse:
 
 
 TRANSFER_ROUTES = (
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/import-preview-upload",
+        handler=_preview_uploaded_knowledge,
+        body_kind=BodyKind.MULTIPART,
+        name="knowledge.import_preview_upload",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/import-upload",
+        handler=_import_uploaded_knowledge,
+        body_kind=BodyKind.MULTIPART,
+        name="knowledge.import_upload",
+    ),
     Route(
         methods=frozenset({"POST"}),
         pattern="/api/characters/import",

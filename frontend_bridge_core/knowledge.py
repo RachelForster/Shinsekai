@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
+from typing import Any, Sequence
 
 
 def _check_mem0_before_call() -> dict[str, Any] | None:
@@ -28,6 +29,59 @@ def _get_knowledge_status(*, start_loading: bool = True, retry: bool = False) ->
     from application.knowledge.manage_knowledge import check_knowledge_status
 
     return check_knowledge_status(start_loading=start_loading, **({"retry": True} if retry else {}))
+
+
+def _preview_knowledge_import(
+    state: Any,
+    knowledge_id: str,
+    paths: Sequence[str | Path],
+    *,
+    source_root: str | Path,
+) -> dict[str, Any]:
+    if not str(knowledge_id or "").strip():
+        raise ValueError("knowledge id is required")
+    from application.knowledge.manage_knowledge import preview_import
+
+    return preview_import(
+        paths,
+        knowledge_id=knowledge_id,
+        source_root=source_root,
+        config_manager=state.config_manager,
+    )
+
+
+def _run_knowledge_import(
+    state: Any,
+    task_id: str,
+    knowledge_id: str,
+    paths: Sequence[str | Path],
+    *,
+    source_root: str | Path,
+) -> dict[str, Any]:
+    error = _check_mem0_before_call()
+    if error is not None:
+        # Task workers treat returned dictionaries as success; fail before LLM calls.
+        raise RuntimeError(str(error["message"]))
+    from application.runtime.tasks import TaskCancelled, _append_task_log, _is_task_cancel_requested, _update_task
+    from application.knowledge.manage_knowledge import execute_import
+
+    def report(phase: str, progress: float, message: str, log: str | None) -> None:
+        _update_task(state, task_id, phase=phase, progress=progress, message=message)
+        if log:
+            _append_task_log(state, task_id, log)
+
+    def raise_if_cancelled() -> None:
+        if _is_task_cancel_requested(state, task_id):
+            raise TaskCancelled()
+
+    return execute_import(
+        paths,
+        knowledge_id=knowledge_id,
+        source_root=source_root,
+        config_manager=state.config_manager,
+        progress_callback=report,
+        cancel_callback=raise_if_cancelled,
+    )
 
 
 def _knowledge_search(query: str, character_names: list[str], limit: int = 5) -> dict[str, Any]:
