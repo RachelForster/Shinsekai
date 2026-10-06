@@ -5,15 +5,15 @@ from __future__ import annotations
 from core.paths import resource_path
 
 
-BUNDLED_SKILL_NAMES = (
-    "shinsekai-guide",
-    "shinsekai-diagnostics",
-    "shinsekai-character-creation",
-    "shinsekai-plugin-development",
-)
-BUNDLED_SKILL_VERSION = "1.0.0"
+BUNDLED_SKILL_VERSIONS = {
+    "shinsekai-guide": "1.0.0",
+    "shinsekai-diagnostics": "1.0.0",
+    "shinsekai-character-creation": "1.1.0",
+    "shinsekai-plugin-development": "1.0.0",
+}
+BUNDLED_SKILL_NAMES = tuple(BUNDLED_SKILL_VERSIONS)
 BUNDLED_SKILL_REFS = tuple(
-    f"skill:{name}@{BUNDLED_SKILL_VERSION}" for name in BUNDLED_SKILL_NAMES
+    f"skill:{name}@{version}" for name, version in BUNDLED_SKILL_VERSIONS.items()
 )
 
 

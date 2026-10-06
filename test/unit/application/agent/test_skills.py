@@ -10,7 +10,7 @@ import yaml
 from application.agent.skills import (
     BUNDLED_SKILL_NAMES,
     BUNDLED_SKILL_REFS,
-    BUNDLED_SKILL_VERSION,
+    BUNDLED_SKILL_VERSIONS,
     bundled_skill_paths,
 )
 from sdk.agent import AgentRequestError
@@ -27,8 +27,9 @@ def test_bundled_skills_are_portable_and_versioned():
         assert re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name)
         assert len(name) <= 64
         assert 0 < len(metadata["description"]) <= 1024
-        assert metadata["metadata"]["version"] == BUNDLED_SKILL_VERSION
-        assert reference == f"skill:{name}@{BUNDLED_SKILL_VERSION}"
+        version = BUNDLED_SKILL_VERSIONS[name]
+        assert metadata["metadata"]["version"] == version
+        assert reference == f"skill:{name}@{version}"
         assert body.strip()
 
 
@@ -86,6 +87,11 @@ def test_skill_and_policy_snapshots_survive_source_changes(monkeypatch, tmp_path
         Path(backend.config.options["policies"]["agent:default"]).write_text(
             "Changed policy.", encoding="utf-8"
         )
+        # A skill upgrade may remove the old reference from the current registry.
+        backend.config = backend.config.model_copy(
+            update={"options": {**backend.config.options, "skills": {}}}
+        )
+        source.unlink()
         restored = await backend.open_session(config)
         assert (restored.root / "policy.md").read_text(encoding="utf-8") == policy
         assert (
