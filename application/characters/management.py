@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import sqlite3
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -12,6 +14,8 @@ from urllib.parse import urlparse
 
 from application.media.resource_paths import MediaResourcePaths
 from application.runtime.state import _jsonify
+
+logger = logging.getLogger(__name__)
 
 
 class CharacterOperation(str, Enum):
@@ -243,9 +247,17 @@ class CharacterUseCase:
             raise RuntimeError(message)
         self._state.config_manager.reload()
         if original_name and original_name != saved_name:
+            from application.knowledge.manage_knowledge import rename_character_bindings
             from application.chat.templates import _rename_template_session_character
             from application.chat.conversation_library import update_conversation_character
 
+            try:
+                rename_character_bindings(original_name, saved_name)
+            except sqlite3.Error:
+                logger.exception(
+                    "Character rename succeeded but knowledge bindings could not be migrated: %s -> %s",
+                    original_name, saved_name,
+                )
             try:
                 _rename_template_session_character(self._state, original_name, saved_name)
             except OSError:
@@ -261,6 +273,14 @@ class CharacterUseCase:
         existed = self._state.config_manager.get_character_by_name(name) is not None
         message, names = self._state.character_manager.delete_character(name)
         if existed and self._state.config_manager.get_character_by_name(name) is None:
+            from application.knowledge.manage_knowledge import clear_character_bindings
+
+            try:
+                clear_character_bindings(name)
+            except sqlite3.Error:
+                logger.exception(
+                    "Character deletion succeeded but knowledge bindings could not be cleared: %s", name,
+                )
             update_conversation_character(self._state, name)
         return {"message": message, "names": names}
 
