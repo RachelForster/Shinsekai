@@ -506,7 +506,7 @@ def _launch_chat(
         env[CHAT_ATTACHMENTS_ROOT_ENV] = attachment_root
         env["SHINSEKAI_SUPPRESS_MAIN_ERROR_DIALOG"] = "1"
         api_config = state.config_manager.config.api_config
-        env["SHINSEKAI_KNOWLEDGE_ENABLED"] = "1" if bool(getattr(api_config, "knowledge_enabled", True)) else "0"
+        env["SHINSEKAI_KNOWLEDGE_ENABLED"] = "1" if bool(getattr(api_config, "knowledge_enabled", False)) else "0"
         env["SHINSEKAI_KNOWLEDGE_SEARCH_LIMIT"] = str(
             max(1, min(20, int(getattr(api_config, "knowledge_search_limit", 5) or 5)))
         )

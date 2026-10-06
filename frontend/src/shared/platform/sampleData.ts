@@ -117,7 +117,7 @@ export const sampleConfig: AppConfig = {
     history_recent_messages: 20,
     max_tool_result_chars: 6000,
     max_active_tool_groups: 3,
-    knowledge_enabled: true,
+    knowledge_enabled: false,
     knowledge_search_limit: 5,
     memory_auto_enabled: false,
     memory_extract_interval_turns: 5,

@@ -177,7 +177,7 @@ def install_knowledge_hooks(
     *,
     character_names: list[str] | None = None,
 ) -> KnowledgeHooks | None:
-    if dispatcher is None or not _env_enabled("SHINSEKAI_KNOWLEDGE_ENABLED", True):
+    if dispatcher is None or not _env_enabled("SHINSEKAI_KNOWLEDGE_ENABLED", False):
         return None
     hooks = KnowledgeHooks(
         character_names=character_names,
