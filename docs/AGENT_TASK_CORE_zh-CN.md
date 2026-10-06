@@ -73,4 +73,4 @@ python -m pytest test/unit/application/agent test/unit/core/agent test/unit/sdk/
 
 测试使用真实 worker 子进程，覆盖提交、串行队列、幂等、事件重放、取消、输入、宿主写入竞争、进程崩溃、数据库 owner 和恢复暂停。
 
-下一阶段在 worker 注册 Pi adapter，加入运行包的下载与校验、凭据解析、Pi session 映射及工具 extension。HTTP、React 助手入口、实际人物与诊断工具、skills 以及角色 inbox 按设计的后续阶段接入。
+Pi adapter、运行包下载与校验、现有配置复用、session 映射及工具 extension 已接入，见 [Pi 接入说明](AGENT_PI_zh-CN.md)。HTTP、React 助手入口、实际人物与诊断工具、业务 skills 按后续阶段接入；角色 inbox 暂缓。

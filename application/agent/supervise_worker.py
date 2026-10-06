@@ -8,7 +8,7 @@ import subprocess
 import sys
 import threading
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 
 from core.paths import source_root
 from core.agent.ipc import JsonRpcPeer, fault
@@ -103,8 +103,10 @@ class AgentWorkerSupervisor:
         handler: Callable[[str, dict], object],
         notification: Callable[[str, dict], None],
         command: Sequence[str] | None = None,
+        environment: Callable[[], Mapping[str, str]] | None = None,
     ) -> None:
         self.config, self.handler, self.notification = config, handler, notification
+        self.environment = environment
         self.command = tuple(
             command or (sys.executable, "-m", "application.agent.worker")
         )
@@ -118,6 +120,8 @@ class AgentWorkerSupervisor:
         if self.process is not None:
             raise RuntimeError("Worker must be stopped before starting another")
         env = os.environ.copy()
+        if self.environment:
+            env.update(self.environment())
         env["PYTHONPATH"] = str(source_root()) + os.pathsep + env.get("PYTHONPATH", "")
         flags = (
             {"creationflags": subprocess.CREATE_NO_WINDOW}

@@ -7,7 +7,7 @@ import json
 import threading
 import time
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -116,6 +116,7 @@ class AgentService:
         origin_valid: Callable[[AgentOrigin], bool] | None = None,
         cancel_grace_seconds: float = 2,
         worker_command: Sequence[str] | None = None,
+        worker_environment: Callable[[], Mapping[str, str]] | None = None,
     ) -> None:
         if max_queued < 1 or cancel_grace_seconds <= 0:
             raise ValueError("Queue size and cancellation grace must be positive")
@@ -155,6 +156,7 @@ class AgentService:
             handler=self._host_request,
             notification=self._notification,
             command=worker_command,
+            environment=worker_environment,
         )
         self._store = AgentStore(database_path)
         try:
@@ -842,6 +844,17 @@ class AgentService:
                 self._cv.wait(timeout=0.1)
 
     def _start_execution(self, execution: _Execution) -> None:
+        with self._cv:
+            task = self._task(execution.task_id)
+            record = self._session_record(task.session_id)
+            if (record["backendId"], record["backendVersion"]) != (
+                self.backend_config.backend_id,
+                self.backend_config.backend_version,
+            ):
+                raise fault(
+                    "SESSION_BACKEND_MISMATCH",
+                    "Recovered task belongs to a different backend",
+                )
         if self._supervisor.process is None:
             descriptor = self._supervisor.start()
             with self._cv:

@@ -1,9 +1,9 @@
 # Shinsekai 通用 Agent 系统设计
 
-> 状态：阶段 A 已实现 SDK 公共契约、通用任务核心、持久化、IPC 和独立 mock worker；Pi 与产品入口待接入。
+> 状态：阶段 A 及阶段 B 的 Pi Adapter、官方运行包管理、模型与凭据复用已实现；产品入口待接入，角色委托暂缓。
 > 更新日期：2026-10-06。
 > 范围：通用接口、独立进程、后端适配、宿主工具，以及角色扮演委托 Agent 的完整调用流程。
-> 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，任务核心用法见 [运行说明](AGENT_TASK_CORE_zh-CN.md)。HTTP、前端、Pi、业务工具和角色回传仍为实施目标。
+> 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，任务核心用法见 [运行说明](AGENT_TASK_CORE_zh-CN.md)，Pi 用法见 [接入说明](AGENT_PI_zh-CN.md)。HTTP、前端、业务工具和角色回传仍为实施目标。
 
 ## 1. 目标与设计决定
 
@@ -402,7 +402,9 @@ application/agent/
 application/chat/
   delegate_agent.py                   # 聊天 origin、取消绑定、结果 inbox 与回合装配
 ai/agent/
-  backends/pi/                       # Pi RPC、资源转换、宿主工具 extension
+  backends/pi.py                     # 已实现：Pi Adapter 与资源转换
+  backends/pi_rpc.py                 # 已实现：Pi 原生 JSONL transport
+  backends/pi_host_tools.ts          # 已实现：Pi 专用宿主工具 extension
   backends/mock.py                   # 已实现：无外部模型的契约验证后端
 core/agent/
   ipc.py                             # JSONL 编解码、相关 ID 与消息边界
@@ -418,7 +420,7 @@ frontend/src/
   entities/agent/                    # 公共 DTO、API repository 和事件归并
   features/agent-assistant/           # 助手会话、任务、工具活动与 artifact UI
 assets/agent/
-  system.md / skills/ / references/
+  system-policy.md / skills/ / references/
 ```
 
 `core/agent/` 提供无应用全局状态的协议和存储能力，任务状态转换、当前运行任务和业务调度属于 application。`ai/agent/` 只能依赖 SDK 窄端口及下层能力，不得导入 application 或 bridge。后端注册表由 worker 组合入口构建，bridge 读取静态后端描述时不导入后端 SDK。
@@ -449,7 +451,7 @@ assets/agent/
 10. **配置与资源**：人物保存冲突可报告；运行包下载中断不损坏旧版本；打包后的 skills 和参考资料可实际读取。
 11. **输入与背压**：待答期间仍可取消；过期回答被拒绝；大量输出不会无限增长内存或丢失终态。
 
-当前已交付阶段 A 的公共契约、AgentService、调用方绑定客户端、SQLite 存储、双向 JSON-RPC IPC、独立 mock worker、宿主工具注册端口及命令行验证入口。已用真实子进程验证提交、事件重放、取消竞争、输入等待、崩溃恢复与工具幂等。涉及 Pi、真实业务工具、React 和角色投递的场景仍是后续阶段的验收标准。
+当前已交付阶段 A 的任务核心及阶段 B 的 Pi Adapter、官方运行包管理、配置解析与宿主工具 extension。已用真实子进程验证任务语义，并用官方 Pi binary 和本地模型测试服务验证流式文本、宿主工具、会话恢复、取消和认证失败。真实业务工具、React 和角色投递仍是后续阶段的验收标准。
 
 ### 12.1 已实现的公共接口
 
@@ -480,7 +482,7 @@ except AgentRequestError as exc:
 
 ### 12.2 已实现的任务核心
 
-`application.agent.management.AgentService` 是应用内唯一任务用例入口，通过 `bind()` 返回身份绑定的 `AgentClient` 实现。worker 按需启动；宿主和角色进程不导入 backend。当前 worker 显式注册 `mock` 后端，后续 Pi 在 worker 中注册。
+`application.agent.management.AgentService` 是应用内唯一任务用例入口，通过 `bind()` 返回身份绑定的 `AgentClient` 实现。worker 按需启动；宿主和角色进程不导入 Agent backend。当前 worker 显式注册 `mock` 和 `pi` 后端。
 
 会话创建时固定 profile、工具名单和限额快照；任务请求只能收紧快照中的限额。宿主工具使用 Pydantic 输入、输出模型生成 schema，并检查真实调用结果。工具记录的 `(taskId, callId)` 负责幂等，最终结果中的操作事实和 artifact 来自宿主存储。
 
