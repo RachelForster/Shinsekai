@@ -10,6 +10,8 @@ bridge 完成配置和 HTTP server 装配后，调用 `services.start_agent()`�
 
 bridge 将实际监听地址、端口和鉴权 token 交给 transport 层的 HTTP 工具工厂，通过 `start_agent(tools=...)` 注册两类业务工具。工具调用复用原有 HTTP routes，模型配置变更后仍保留注册项；凭据不进入工具 schema 或 worker。
 
+Agent 查询人物时只取得名字列表，插件列表只取得标识、名称及状态；确定目标后按需读取一个人物或插件的详情。配置查询仅返回 API 和系统设置，避免人物库和资源列表自动进入模型上下文。精简视图由宿主固定，原前端请求保持完整响应。
+
 Agent worker 仍按第一个任务启动，使用桌面发行包已有的 Python runtime。Tauri 的资源准备脚本已包含 `application/`、`ai/`、`core/` 和 `assets/`，不需要另装 Node。Pi 的进程和配置只在 worker 内创建。
 
 所有 session、task、event 和提交幂等记录保存在项目 `data/agent/agent.sqlite`。应用重启后，已中断的任务保留终态，排队任务暂停；助手提供显式继续执行入口。运行期模型变更时，必须先完成或取消非终态任务，再应用当前模型。旧模型的 session 保留历史，并要求新建 session。

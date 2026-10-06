@@ -8,7 +8,7 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StrictStr, field_validator
 
@@ -22,15 +22,42 @@ class _Api:
     method: str
     path: str
     description: str
+    query: tuple[tuple[str, str], ...] = ()
 
 
 READ_APIS = {
     "app.status": _Api("GET", "/api/health", "应用及插件加载状态"),
-    "app.config": _Api("GET", "/api/config", "当前配置，凭据会脱敏"),
-    "characters.list": _Api("GET", "/api/characters", "人物及已有资源配置"),
-    "plugins.list": _Api("GET", "/api/plugins", "已安装插件"),
+    "app.config": _Api(
+        "GET",
+        "/api/config",
+        "仅 API 和系统设置，凭据脱敏，无人物或资源列表",
+        (("view", "agent"),),
+    ),
+    "characters.list": _Api(
+        "GET",
+        "/api/characters",
+        "仅人物名字列表；详情按名字调用 characters.get",
+        (("view", "names"),),
+    ),
+    "characters.get": _Api(
+        "GET",
+        "/api/characters",
+        "params.name；仅该人物的完整配置",
+        (("name", "{name}"),),
+    ),
+    "plugins.list": _Api(
+        "GET",
+        "/api/plugins",
+        "仅插件 id、title、enabled、loaded；详情按插件调用 plugins.inspect",
+        (("view", "summary"),),
+    ),
     "plugins.status": _Api("GET", "/api/plugins/status", "插件加载状态"),
-    "plugins.registry": _Api("GET", "/api/plugins/registry", "可安装插件目录"),
+    "plugins.registry": _Api(
+        "GET",
+        "/api/plugins/registry",
+        "仅可安装插件 id、displayName、installed；id 可作为安装 source",
+        (("view", "summary"),),
+    ),
     "plugins.inspect": _Api(
         "GET",
         "/api/plugins/{plugin_id}/ui",
@@ -98,7 +125,7 @@ class _Arguments(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
     params: dict[str, StrictStr] = Field(
-        default_factory=dict, description="仅填路径参数"
+        default_factory=dict, description="仅填操作要求的标识参数（路径或查询）"
     )
     body: dict[str, JsonValue] = Field(
         default_factory=dict, description="原 HTTP API 的 JSON 请求体"
@@ -212,13 +239,17 @@ class BridgeHttpClient:
         self.port, self._token, self.timeout = port, token, timeout
 
     def request(self, api: _Api, arguments: _Arguments) -> BridgeApiOutput:
-        fields = set(re.findall(r"\{([^}]+)\}", api.path))
+        fields = set(
+            re.findall(
+                r"\{([^}]+)\}", api.path + "".join(value for _, value in api.query)
+            )
+        )
         if set(arguments.params) != fields or any(
             not value for value in arguments.params.values()
         ):
             raise _ApiError(
                 "INVALID_REQUEST",
-                "Bridge path parameters do not match the operation",
+                "Bridge parameters do not match the operation",
                 "not_applied",
             )
         if api.method == "GET" and arguments.body:
@@ -228,6 +259,10 @@ class BridgeHttpClient:
         path = api.path.format(
             **{key: quote(value, safe="") for key, value in arguments.params.items()}
         )
+        if api.query:
+            path += "?" + urlencode(
+                {key: value.format(**arguments.params) for key, value in api.query}
+            )
         body = (
             None
             if api.method == "GET"
@@ -367,8 +402,9 @@ def build_bridge_http_tools(
         return AgentHostTool.from_models(
             name=name,
             description=(
-                "调用 Shinsekai 已有的 bridge HTTP API。选 operation，params 填路径参数，body 填原 JSON 参数。"
-                "先读取现有数据与插件 schema；accepted=true 只代表受理，使用 tasks.get 检查完成。"
+                "调用 Shinsekai 已有的 bridge HTTP API。选 operation，params 填操作要求的标识参数，body 填原 JSON 参数。"
+                "人物和插件先查名字或精简列表，仅按任务所需目标查询详情，不批量展开。"
+                "修改前读取目标现有数据与插件 schema；accepted=true 只代表受理，使用 tasks.get 检查完成。"
             ),
             input_model=model,
             output_model=BridgeApiOutput,

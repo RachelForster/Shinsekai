@@ -118,7 +118,7 @@ def test_existing_http_response_is_redacted_without_losing_character_text(bridge
     assert "private-bridge-token" not in wire
     assert "provider-private-key" not in wire
     assert "another-private-key" not in wire
-    assert requests == [("GET", "/api/config", "private-bridge-token", None)]
+    assert requests == [("GET", "/api/config?view=agent", "private-bridge-token", None)]
     assert not result.effects
 
 
@@ -141,6 +141,38 @@ def test_path_parameters_are_encoded_and_post_read_keeps_original_body(bridge):
         "private-bridge-token",
         {"path": "logs/run.jsonl"},
     )
+
+
+def test_character_name_is_encoded_as_one_fixed_query_parameter(bridge):
+    result = invoke(
+        bridge,
+        0,
+        {"operation": "characters.get", "params": {"name": "目标/角色 &?#+ 甲"}},
+    )
+    assert result.ok
+    assert bridge[1][0][1] == (
+        "/api/characters?name=%E7%9B%AE%E6%A0%87%2F%E8%A7%92%E8%89%B2"
+        "+%26%3F%23%2B+%E7%94%B2"
+    )
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"operation": "characters.list", "params": {"view": "full"}},
+        {"operation": "characters.get"},
+        {"operation": "characters.get", "params": {"name": ""}},
+        {"operation": "characters.get", "params": {"name": "A", "view": "full"}},
+        {"operation": "app.config", "params": {"view": "full"}},
+        {"operation": "plugins.list", "body": {"view": "full"}},
+        {"operation": "plugins.registry", "params": {"view": "full"}},
+    ],
+)
+def test_missing_target_or_overriding_summary_does_not_send_request(bridge, arguments):
+    result = invoke(bridge, 0, arguments)
+    assert not result.ok
+    assert result.error.code == "INVALID_REQUEST"
+    assert not bridge[1]
 
 
 @pytest.mark.parametrize(

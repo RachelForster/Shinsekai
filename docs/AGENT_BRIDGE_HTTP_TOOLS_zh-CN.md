@@ -15,20 +15,21 @@ HTTP 实现位于 `frontend_bridge_core/transport/agent_http_tools.py`。`fronte
 
 bridge token 只保存在宿主 HTTP client 中，不传到 worker、提示词或工具 schema。响应中的凭据字段、已识别的秘密值与常见凭据文本会脱敏，同时保留人物正文、插件 schema 等业务内容。单个响应上限为 512 KiB，默认请求超时为 30 秒。
 
-CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与 CLI 均开启 Pi 内置文件、搜索和 shell 工具；MCP 保持关闭。宿主工具与技能引用固定在 session 快照中；升级后新建助手 session 使用按需加载和人物创建 skill `1.3.0`。原生文件与命令结果不经过本 HTTP 适配器的脱敏、call ID 去重或操作记录，详见 [Pi 工具说明](AGENT_PI_zh-CN.md)。
+CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与 CLI 均开启 Pi 内置文件、搜索和 shell 工具；MCP 保持关闭。宿主工具与技能引用固定在 session 快照中；升级后新建助手 session 使用按需加载和人物创建 skill `1.4.0`。原生文件与命令结果不经过本 HTTP 适配器的脱敏、call ID 去重或操作记录，详见 [Pi 工具说明](AGENT_PI_zh-CN.md)。
 
 ## 已注册操作
 
-`params` 仅包含路径模板中的字段，名称必须匹配；没有路径参数时省略。`body` 沿用原 HTTP API 的 JSON 参数，GET 不接受请求体。工具 schema 的枚举和描述提供当前操作清单。
+`params` 仅包含该操作要求的标识字段，名称必须匹配；没有标识参数时省略。宿主将标识编码进路径或查询参数，并固定列表的精简视图，模型不能覆盖 `view`。`body` 沿用原 HTTP API 的 JSON 参数，GET 不接受请求体。工具 schema 的枚举和描述提供当前操作清单。
 
 | read operation | HTTP API | 参数及用途 |
 | --- | --- | --- |
 | `app.status` | GET `/api/health` | 应用状态 |
-| `app.config` | GET `/api/config` | 脱敏配置 |
-| `characters.list` | GET `/api/characters` | 当前人物和资源配置 |
-| `plugins.list` | GET `/api/plugins` | 已安装插件 |
+| `app.config` | GET `/api/config?view=agent` | 仅脱敏 API 和系统设置 |
+| `characters.list` | GET `/api/characters?view=names` | 仅人物名字字符串列表 |
+| `characters.get` | GET `/api/characters?name=...` | `params.name`；一个人物的完整配置 |
+| `plugins.list` | GET `/api/plugins?view=summary` | 仅 `id`、`title`、`enabled`、`loaded` |
 | `plugins.status` | GET `/api/plugins/status` | 加载状态 |
-| `plugins.registry` | GET `/api/plugins/registry` | 安装来源目录 |
+| `plugins.registry` | GET `/api/plugins/registry?view=summary` | 仅 `id`、`displayName`、`installed`；`id` 用作安装来源 |
 | `plugins.inspect` | GET `/api/plugins/{plugin_id}/ui` | 页面、配置 schema 和动作 |
 | `tasks.get` | GET `/api/tasks/{task_id}` | bridge 后台任务状态与结果 |
 | `logs.list` | GET `/api/logs` | 日志列表 |
@@ -47,7 +48,20 @@ CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与
 | `tasks.cancel` | POST `/api/tasks/{task_id}/cancel` | 取消 bridge 后台任务 |
 | `tts.install` | POST `/api/config/tts-bundle/download` | `body.kind`：`genie`、`gptso`、`gptso50` |
 
-例如检查浏览器配置：
+人物和插件先查名字或精简列表，确定任务目标后再读单项详情，不批量展开无关设定、资源或配置。精简在 HTTP 路由序列化响应前完成，人物库或插件说明较大时，列表不会因这些详情触及 512 KiB 限额。前端不带 `view` 的原有列表与配置请求保持完整响应。
+
+例如 `characters.list` 的 `data` 为 `["Alice", "Bob"]`。只需要编辑 Alice 时，再调用：
+
+```json
+{
+  "operation": "characters.get",
+  "params": {"name": "Alice"}
+}
+```
+
+姓名作为一个查询参数编码，可包含空格、斜杠和特殊符号；目标不存在时返回错误，不回退到全部人物。`app.config` 也不包含人物、背景、特效或插件列表。
+
+例如检查选定的浏览器插件配置：
 
 ```json
 {
@@ -69,7 +83,7 @@ CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与
 }
 ```
 
-此示例只展示参数结构。实际保存必须保留未要求改变的配置，不能将脱敏占位符写回凭据字段。人物编辑也先读取列表，传入完整人物配置，保存后重新查询核对；当前人物 HTTP API 没有 revision 条件写入。
+此示例只展示参数结构。实际保存必须保留未要求改变的配置，不能将脱敏占位符写回凭据字段。人物编辑通过 `characters.get` 读取目标的完整配置，保存后仍按该人物名字重新查询核对；当前人物 HTTP API 没有 revision 条件写入。
 
 ## 受理、完成与失败
 
@@ -83,10 +97,11 @@ HTTP 工具只暴露上表明确选择的 JSON 接口。网页搜索、导航、
 
 ## 验证
 
-测试覆盖注册清单与真实路由匹配、输入校验、路径编码、鉴权 header、响应脱敏、错误与响应限额、后台受理语义、重复工具调用去重和模型变更后保留工具。官方 Pi binary 的 HTTP 测试通过本地模型服务验证完整的 Pi 工具调用、真实 bridge 人物查询和工具结果回传。
+测试覆盖注册清单与真实路由匹配、输入校验、路径与姓名查询编码、鉴权 header、响应脱敏、错误与响应限额、后台受理语义、重复工具调用去重和模型变更后保留工具。真实 HTTP 测试验证超过响应限额的详情集合仍能返回精简列表、单项查询不带其他人物、配置查询不序列化人物库，以及原前端完整响应保持兼容。官方 Pi binary 的 HTTP 测试通过本地模型服务验证完整调用链，确认人物设定没有随名字列表进入模型上下文。
 
 ```powershell
 python -m pytest test/unit/application/agent/test_bridge_http_tools.py -q
+python -m pytest test/unit/frontend_bridge_core/test_agent_query_views.py -q
 $env:SHINSEKAI_TEST_PI_BINARY = "<已验证的官方 pi.exe 路径>"
 python -m pytest test/unit/application/agent/test_pi_http.py -q
 ```

@@ -175,7 +175,10 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
     )
     if behavior in {"bridge-tools", "native-skills"}:
         config.config = SimpleNamespace(
-            api_config=config.config.api_config, characters=[{"name": "HTTP 人物"}]
+            api_config=config.config.api_config,
+            characters=[
+                {"name": "HTTP 人物", "character_setting": "unrequested-setting-marker"}
+            ],
         )
     runtime = AgentRuntime(config, tmp_path, prepare=prepare, tools=tools)
     runtime.start()
@@ -251,7 +254,8 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
                 for message in reversed(messages)
                 if message.get("role") == "tool"
             )
-            assert response["data"] == [{"name": "HTTP 人物"}]
+            assert response["data"] == ["HTTP 人物"]
+            assert "unrequested-setting-marker" not in json.dumps(requests)
             assert any(event["type"] == "tool.completed" for event in page["events"])
         if behavior == "native-skills":
             initial = "\n".join(

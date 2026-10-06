@@ -58,7 +58,17 @@ def inject_bridge_token(state, detail: dict) -> dict:
 
 
 def _list_plugins(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_plugin_rows(plugin_load_snapshot(request.state)))
+    rows = _plugin_rows(plugin_load_snapshot(request.state))
+    if (request.query.get("view") or [""])[0] == "summary":
+        rows = [
+            {
+                key: row[key]
+                for key in ("id", "title", "enabled", "loaded")
+                if key in row
+            }
+            for row in rows
+        ]
+    return JsonResponse(rows)
 
 
 def _list_chat_ui_contributions(_request: ApiRequest) -> JsonResponse:
@@ -78,8 +88,14 @@ def _get_app_update_info(_request: ApiRequest) -> JsonResponse:
     return JsonResponse(get_application_update_info())
 
 
-def _get_plugin_registry(_request: ApiRequest) -> JsonResponse:
-    return JsonResponse(_plugin_registry_rows())
+def _get_plugin_registry(request: ApiRequest) -> JsonResponse:
+    rows = _plugin_registry_rows()
+    if (request.query.get("view") or [""])[0] == "summary":
+        rows = [
+            {key: row[key] for key in ("id", "displayName", "installed") if key in row}
+            for row in rows
+        ]
+    return JsonResponse(rows)
 
 
 def _install_plugin(request: ApiRequest) -> JsonResponse | TaskResponse:

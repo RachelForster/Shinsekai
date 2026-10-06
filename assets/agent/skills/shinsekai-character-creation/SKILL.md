@@ -2,7 +2,7 @@
 name: shinsekai-character-creation
 description: 为 Shinsekai 创建或完善人物，检查浏览器能力，检索百科资料、角色语音和官方立绘，评估 GPT-SoVITS 训练或准备参考语音。在用户要求创建人物、人设、角色档案、收集人物素材或修改现有人物时使用。
 metadata:
-  version: "1.3.0"
+  version: "1.4.0"
 ---
 
 # Shinsekai 人物创建
@@ -11,12 +11,12 @@ metadata:
 
 ## 宿主 HTTP 工具
 
-桌面助手提供 `shinsekai.bridge.read` 和 `shinsekai.bridge.write`。按实际工具 schema 选择 `operation`，`params` 只填路径参数，`body` 填已有 HTTP API 的 JSON 请求体。地址和凭据由宿主注入，无需用户提供。
+桌面助手提供 `shinsekai.bridge.read` 和 `shinsekai.bridge.write`。按实际工具 schema 选择 `operation`，`params` 填该操作要求的标识参数，`body` 填已有 HTTP API 的 JSON 请求体。地址和凭据由宿主注入，无需用户提供。先查名字或精简列表，确定目标后再按需查询单项，不遍历所有人物设定或插件配置。
 
-- 查询插件：read 的 `plugins.list`、`plugins.status`、`plugins.registry`；用 `plugins.inspect` 和 `params.plugin_id` 读取插件页面、配置与动作 schema。安装用 write 的 `plugins.install`，`body.source` 来自插件目录；启用用 `plugins.enable`，提供 `params.plugin_id` 和 `body.enabled`。
+- 查询插件：read 的 `plugins.list` 仅返回 id、title、enabled、loaded，`plugins.registry` 仅返回 id、displayName、installed，`plugins.status` 查询整体加载状态。确定本次需要的插件后，才用 `plugins.inspect` 和 `params.plugin_id` 读取该插件页面、配置与动作 schema。安装用 write 的 `plugins.install`，`body.source` 使用插件目录返回的 id；启用用 `plugins.enable`，提供 `params.plugin_id` 和 `body.enabled`。
 - 配置浏览器：先 inspect，然后 write 的 `plugins.configure`，提供 `params.plugin_id`、`params.page_id` 及 `body.values`。保留原配置的其他字段；对脱敏字段不要写入脱敏占位符。`plugins.action` 只能使用 inspect 返回的真实页面、动作 ID 和参数，不能虚构网页搜索动作。
-- 查询人物：read 的 `characters.list`；保存用 write 的 `characters.save`，`body.character` 为完整人物配置，编辑时带 `body.originalName`。保存后重新读取列表核对。立绘导入用 `characters.sprites.import`，提供 `body.name` 和已存在图片的 `body.paths`，随后重新读取人物，避免用旧配置覆盖导入结果。
-- 环境查询：read 的 `app.config` 返回脱敏配置；`tts.environment` 返回现有 GPU 和推理环境推荐，训练依赖、可用显存及数据质量仍需其他检测。需要推理整合包时使用 write 的 `tts.install`，`body.kind` 按实际需求选择。
+- 查询人物：read 的 `characters.list` 只返回名字字符串列表。确认要编辑的名字后，用 `characters.get` 和 `params.name` 读取该人物的完整配置，不批量获取所有人物详情。保存用 write 的 `characters.save`，`body.character` 为完整人物配置，编辑时带 `body.originalName`。保存后通过 `characters.get` 核对。立绘导入用 `characters.sprites.import`，提供 `body.name` 和已存在图片的 `body.paths`，随后重新读取该人物，避免用旧配置覆盖导入结果。
+- 环境查询：read 的 `app.config` 只返回脱敏的 API 和系统设置，不附带人物、背景、特效或插件列表；`tts.environment` 返回现有 GPU 和推理环境推荐，训练依赖、可用显存及数据质量仍需其他检测。需要推理整合包时使用 write 的 `tts.install`，`body.kind` 按实际需求选择。
 - HTTP 202 的 `accepted=true` 仅代表受理。保留返回的 `taskId`，用 read 的 `tasks.get` 和 `params.task_id` 查询；检查 `data.status` 与实际结果后才报告完成。不要在一个回合中反复忙轮询。停止 Agent 不自动取消已提交的 bridge 下载或安装任务；用户要求取消该任务时调用 write 的 `tasks.cancel`。
 - 写入结果未知或响应丢失时先查询实际状态，不能直接重复提交。宿主按同一 Agent task 的 call ID 去重，新的 call ID 不代表自动具备业务幂等性。
 
@@ -91,7 +91,7 @@ metadata:
 
 ## 6. 编辑、保存与交付
 
-有查询和保存工具时，先读取现有人物，再调用已有校验与保存能力。保留用户未要求改变的字段；当前 HTTP 人物保存不提供 revision 条件写入，提交前重新核对现有配置，避免覆盖用户同时修改的内容。如果其他工具提供 revision，按其 schema 使用并处理冲突。
+有查询和保存工具时，先列人物名字，仅通过 `characters.get` 读取本次要编辑的人物，再调用已有校验与保存能力。保留用户未要求改变的字段；当前 HTTP 人物保存不提供 revision 条件写入，提交前重新核对该人物的现有配置，避免覆盖用户同时修改的内容。如果其他工具提供 revision，按其 schema 使用并处理冲突。
 通过已有人物用例保存、导入形象并绑定语音，避免直接改 YAML 绕过校验与资源管理。根据工具结果说明保存了什么，以及形象和语音是否就绪。正在运行的角色聊天有自己的配置快照，不能保证保存后立即改变已有聊天。
 
 没有保存工具时，交付可复制的简介、详细人设和资源清单，并引导用户到「人物管理」`/settings/characters` 填写。明确这是人物草稿，不能声称人物已经创建到应用。
