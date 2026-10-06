@@ -127,3 +127,164 @@ def test_cold_knowledge_download_does_not_initialize_memory(monkeypatch):
     assert len(downloads) == 1
     assert config["embedder"]["config"]["model"] == "knowledge-downloaded-model"
     assert tasks.current_mem0_task()["status"] == "succeeded"
+
+
+def test_failed_dependency_waits_for_install_then_can_restart(monkeypatch):
+    monkeypatch.setattr(runtime, "_mem0_load_error", ModuleNotFoundError("No module named 'mem0'", name="mem0"))
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _: None)
+    assert runtime.check_mem0_status()["status"] == "missing_dependency"
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _: object())
+    monkeypatch.setattr(importlib, "import_module", lambda _: object())
+    monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: Path("cached"))
+    starts = []
+    monkeypatch.setattr(runtime, "start_mem0_loading", lambda **kwargs: starts.append(kwargs))
+    assert runtime.check_mem0_status()["status"] == "error"
+    assert starts == []
+    assert runtime.check_mem0_status(retry=True)["status"] == "loading"
+    assert starts == [{"retry": True}]
+
+
+def test_initialization_failure_is_reported_and_success_clears_it(monkeypatch):
+    def fail(*_args):
+        raise RuntimeError("bad config")
+    monkeypatch.setattr(runtime, "_create_mem0_instance", fail)
+    with pytest.raises(RuntimeError, match="bad config"):
+        runtime.get_mem0()
+    assert runtime.check_mem0_status(start_loading=False)["error"] == "bad config"
+    assert runtime.check_mem0_status()["status"] == "error"
+    store = object()
+    monkeypatch.setattr(runtime, "_create_mem0_instance", lambda *_: store)
+    runtime.start_mem0_loading(retry=True)
+    assert runtime.get_mem0() is store
+    assert runtime._mem0_load_error is None
+    assert runtime.check_mem0_status()["status"] == "ready"
+
+
+def test_failed_knowledge_polling_does_not_restart(monkeypatch):
+    calls = []
+    def fail(*_args):
+        calls.append(True)
+        raise RuntimeError("download unavailable")
+    monkeypatch.setattr(runtime, "_create_mem0_instance", fail)
+    with pytest.raises(RuntimeError, match="download unavailable"):
+        runtime.get_mem0()
+    for _ in range(3):
+        assert runtime.check_mem0_status()["error"] == "download unavailable"
+        runtime.start_mem0_loading()
+        with pytest.raises(RuntimeError, match="download unavailable"):
+            runtime.get_mem0()
+    assert len(calls) == 1
+
+
+def test_retry_implies_start_even_when_peeking(monkeypatch):
+    monkeypatch.setattr(runtime, "_mem0_load_error", RuntimeError("failed"))
+    monkeypatch.setattr(importlib, "import_module", lambda _: object())
+    monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: None)
+    calls = []
+    monkeypatch.setattr(runtime, "start_mem0_loading", lambda **kwargs: calls.append(kwargs))
+    assert runtime.check_mem0_status(start_loading=False, retry=True)["status"] == "loading"
+    assert calls == [{"retry": True}]
+
+
+def test_get_waits_for_background_creation_and_times_out(monkeypatch):
+    import threading
+    entered = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    caller = threading.get_ident()
+    workers = []
+    store = object()
+
+    def create(*_args):
+        workers.append(threading.get_ident())
+        entered.set()
+        assert release.wait(5)
+        return store
+
+    real_thread = threading.Thread
+    def tracked_thread(**kwargs):
+        target = kwargs.pop("target")
+        def run():
+            try:
+                target()
+            finally:
+                finished.set()
+        return real_thread(target=run, **kwargs)
+
+    monkeypatch.setattr(runtime.threading, "Thread", tracked_thread)
+    monkeypatch.setattr(runtime, "_create_mem0_instance", create)
+    monkeypatch.setattr(runtime, "_GET_MEM0_TIMEOUT_SEC", 0.02)
+    try:
+        with pytest.raises(TimeoutError, match="Knowledge mem0"):
+            runtime.get_mem0()
+        assert entered.is_set()
+        assert workers == [workers[0]] and workers[0] != caller
+        assert runtime._mem0_loading
+    finally:
+        release.set()
+        assert finished.wait(5)
+    assert runtime.get_mem0() is store
+
+
+@pytest.mark.parametrize("module_name", ["sentence_transformers", None])
+def test_background_dependency_error_has_structured_task(monkeypatch, module_name):
+    error = ModuleNotFoundError("dependency unavailable", name=module_name)
+    def fail(*_args):
+        raise error
+    monkeypatch.setattr(runtime, "_create_mem0_instance", fail)
+    monkeypatch.setattr(importlib.util, "find_spec", lambda _: None)
+    with pytest.raises(ModuleNotFoundError):
+        runtime.get_mem0()
+    status = runtime.check_mem0_status(start_loading=False)
+    assert status["status"] == "missing_dependency"
+    assert status["moduleName"] == (module_name or "mem0")
+    assert status["task"]["errorCode"] == "missing_dependency"
+    assert status["task"]["status"] == "failed"
+    assert status["task"]["errorUserMessage"]
+
+
+def test_download_error_and_retry_reset_task(monkeypatch):
+    import httpx
+    request = httpx.Request("GET", "https://example.test/model")
+    response = httpx.Response(503, request=request)
+    error = httpx.HTTPStatusError("unavailable", request=request, response=response)
+    monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: None)
+    def download(*_args, **_kwargs):
+        raise error
+    monkeypatch.setattr(runtime, "download_model_asset", download)
+    with pytest.raises(httpx.HTTPStatusError):
+        runtime.get_mem0()
+    status = runtime.check_mem0_status(start_loading=False)
+    task = status["task"]
+    assert task["httpStatus"] == 503
+    assert task["errorCode"] != "knowledge_initialization_failed"
+    assert status["message"] == task["errorUserMessage"]
+    tasks.set_mem0_task(logs=["previous attempt"], result="old result")
+    snapshots = []
+    store = object()
+    def create(*_args):
+        snapshots.append(tasks.current_mem0_task())
+        return store
+    monkeypatch.setattr(runtime, "embedding_model_snapshot_path", lambda: Path("cached"))
+    monkeypatch.setattr(runtime, "_create_mem0_instance", create)
+    runtime.start_mem0_loading(retry=True)
+    assert runtime.get_mem0() is store
+    clean = snapshots[0]
+    assert clean["error"] == clean["errorCode"] == clean["errorUserMessage"] == ""
+    assert clean["httpStatus"] is None
+    assert clean["logs"] == [] and clean["result"] is None
+    assert runtime.check_mem0_status()["task"]["status"] == "succeeded"
+
+
+def test_thread_start_failure_is_recorded(monkeypatch):
+    def fail():
+        raise RuntimeError("cannot start thread")
+    monkeypatch.setattr(runtime.threading, "Thread", lambda **_: SimpleNamespace(start=fail))
+    with pytest.raises(RuntimeError, match="cannot start thread"):
+        runtime.start_mem0_loading()
+    assert not runtime._mem0_loading
+    status = runtime.check_mem0_status(start_loading=False)
+    assert status["task"]["status"] == "failed"
+    assert status["task"]["errorCode"] == "knowledge_initialization_failed"
+    with pytest.raises(RuntimeError, match="cannot start thread"):
+        runtime.get_mem0()
