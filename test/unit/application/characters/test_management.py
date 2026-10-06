@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
@@ -13,6 +14,12 @@ from application.characters import (
 )
 from config.schema import Character
 from config.character_manager import CharacterManager
+from ai.knowledge import bindings
+
+
+@pytest.fixture(autouse=True)
+def isolated_bindings(tmp_path, monkeypatch):
+    monkeypatch.setattr(bindings, "_database_path", lambda: tmp_path / "knowledge.db")
 
 
 def _character_payload(**overrides):
@@ -181,6 +188,8 @@ def test_save_avatar_banks_survive_config_reload(tmp_path, existing, avatar_fiel
 
 
 def test_character_save_propagates_rename_to_template_session(tmp_path, monkeypatch):
+    bindings.bind_character_knowledge("A", "one")
+    bindings.bind_character_knowledge("A", "two")
     character = make_character()
     use_case = make_use_case(character, tmp_path)
     renamed = []
@@ -207,9 +216,13 @@ def test_character_save_propagates_rename_to_template_session(tmp_path, monkeypa
 
     assert renamed == [("A", "Mika")]
     assert migrated == [("A", "Mika")]
+    assert bindings.list_knowledge_ids_for_characters(["Mika"]) == ["one", "two"]
+    assert bindings.list_knowledge_ids_for_characters(["A"]) == []
 
 
 def test_character_delete_invalidates_conversation_settings(tmp_path, monkeypatch):
+    bindings.bind_character_knowledge("Mika", "one")
+    bindings.bind_character_knowledge("Other", "one")
     use_case = make_use_case(make_character(), tmp_path)
     migrated = []
     monkeypatch.setattr("application.chat.conversation_library.update_conversation_character",
@@ -220,6 +233,96 @@ def test_character_delete_invalidates_conversation_settings(tmp_path, monkeypatc
     monkeypatch.setattr(use_case._state.character_manager, "delete_character", delete, raising=False)
     execute(use_case, CharacterOperation.DELETE, {"name": "Mika"})
     assert migrated == ["Mika"]
+    assert bindings.list_knowledge_ids_for_characters(["Mika"]) == []
+    assert bindings.list_knowledge_ids_for_characters(["Other"]) == ["one"]
+
+
+def test_binding_rename_failure_does_not_interrupt_saved_character_or_sessions(tmp_path, monkeypatch):
+    bindings.bind_character_knowledge("A", "one")
+    use_case = make_use_case(make_character(), tmp_path)
+    events = []
+
+    def save(name, *args, **kwargs):
+        use_case._state.config_manager.character.name = name
+        events.append("saved")
+        return "updated", [name]
+
+    def fail_binding_sync(old, new):
+        assert use_case._state.config_manager.get_character_by_name(new) is not None
+        events.append("binding sync failed")
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(use_case._state.character_manager, "add_character", save)
+    monkeypatch.setattr("application.characters.management.validate_character_payload", lambda *a, **kw: None)
+    monkeypatch.setattr("application.knowledge.manage_knowledge.rename_character_bindings", fail_binding_sync)
+    monkeypatch.setattr("application.chat.templates._rename_template_session_character",
+                        lambda state, old, new: events.append(("template", old, new)))
+    monkeypatch.setattr("application.chat.conversation_library.update_conversation_character",
+                        lambda state, old, new: events.append(("conversation", old, new)))
+
+    try:
+        result = execute(use_case, CharacterOperation.SAVE, {
+            "character": {"color": "#ffffff", "name": "New", "sprite_prefix": "a"},
+            "originalName": "A",
+        })
+    finally:
+        assert use_case._state.config_manager.get_character_by_name("New") is not None
+        assert bindings.list_knowledge_ids_for_characters(["A"]) == ["one"]
+        assert events == [
+            "saved", "binding sync failed", ("template", "A", "New"), ("conversation", "A", "New"),
+        ]
+
+    assert result["name"] == "New"
+
+
+def test_binding_cleanup_failure_does_not_interrupt_deleted_character_or_sessions(tmp_path, monkeypatch):
+    bindings.bind_character_knowledge("Mika", "one")
+    use_case = make_use_case(make_character(), tmp_path)
+    migrated = []
+
+    def delete(name):
+        use_case._state.config_manager.character = SimpleNamespace(name="")
+        return "deleted", []
+
+    def fail_binding_sync(name):
+        assert use_case._state.config_manager.get_character_by_name(name) is None
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(use_case._state.character_manager, "delete_character", delete, raising=False)
+    monkeypatch.setattr("application.knowledge.manage_knowledge.clear_character_bindings", fail_binding_sync)
+    monkeypatch.setattr("application.chat.conversation_library.update_conversation_character",
+                        lambda state, name: migrated.append(name))
+
+    try:
+        result = execute(use_case, CharacterOperation.DELETE, {"name": "Mika"})
+    finally:
+        assert use_case._state.config_manager.get_character_by_name("Mika") is None
+        assert bindings.list_knowledge_ids_for_characters(["Mika"]) == ["one"]
+        assert migrated == ["Mika"]
+
+    assert result == {"message": "deleted", "names": []}
+
+
+def test_failed_character_save_leaves_bindings_unchanged(tmp_path, monkeypatch):
+    bindings.bind_character_knowledge("A", "one")
+    use_case = make_use_case(make_character(), tmp_path)
+    monkeypatch.setattr("application.characters.management.validate_character_payload", lambda *a, **kw: None)
+    monkeypatch.setattr(use_case._state.character_manager, "add_character", lambda *a, **kw: ("保存失败", []))
+    with pytest.raises(RuntimeError, match="保存失败"):
+        execute(use_case, CharacterOperation.SAVE, {
+            "character": {"color": "#ffffff", "name": "Mika", "sprite_prefix": "a"},
+            "originalName": "A",
+        })
+    assert bindings.list_knowledge_ids_for_characters(["A"]) == ["one"]
+    assert bindings.list_knowledge_ids_for_characters(["Mika"]) == []
+
+
+def test_failed_character_delete_leaves_bindings_unchanged(tmp_path, monkeypatch):
+    bindings.bind_character_knowledge("Mika", "one")
+    use_case = make_use_case(make_character(), tmp_path)
+    monkeypatch.setattr(use_case._state.character_manager, "delete_character", lambda name: ("删除失败", [name]), raising=False)
+    execute(use_case, CharacterOperation.DELETE, {"name": "Mika"})
+    assert bindings.list_knowledge_ids_for_characters(["Mika"]) == ["one"]
 
 
 def test_upload_sprite_voice_rejects_invalid_voice_type(tmp_path):
