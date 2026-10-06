@@ -312,4 +312,76 @@ describe("knowledge browser", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete material" }));
     expect(screen.getByRole("dialog")).toHaveTextContent("beta");
   });
+
+  it("adds and removes subscriptions through the character picker", async () => {
+    let names: string[] = [];
+    mocks.bindingNames.mockImplementation(async () => ({ knowledge_id: "alpha", characterNames: names }));
+    mocks.batch.mockImplementation(async (_knowledge, add: string[], remove: string[]) => {
+      names = [...names.filter((name) => !remove.includes(name)), ...add];
+      return { ok: true, knowledge_id: "alpha", characterNames: names };
+    });
+    setup();
+    await chooseKnowledge();
+    const a = await screen.findByRole("button", { name: "A" });
+    const b = screen.getByRole("button", { name: "B" });
+    const save = screen.getByRole("button", { name: "Save bindings" });
+    expect(save).toBeDisabled();
+    fireEvent.click(a);
+    fireEvent.click(b);
+    fireEvent.click(save);
+    await waitFor(() => expect(mocks.batch).toHaveBeenCalledWith("alpha", ["A", "B"], []));
+    await waitFor(() => expect(save).toBeDisabled());
+    expect(a).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(a);
+    fireEvent.click(save);
+    await waitFor(() => expect(mocks.batch).toHaveBeenLastCalledWith("alpha", [], ["A"]));
+    await waitFor(() => expect(save).toBeDisabled());
+    expect(a).toHaveAttribute("aria-pressed", "false");
+    expect(b).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("does not let a slow previous knowledge overwrite the selected knowledge", async () => {
+    let finish!: (value: unknown) => void;
+    mocks.entries.mockImplementation((knowledgeId) =>
+      knowledgeId === "alpha"
+        ? new Promise((resolve) => {
+            finish = resolve;
+          })
+        : Promise.resolve({ knowledge_id: knowledgeId, memories: [{ id: "b", memory: "Beta setting" }], count: 1 }),
+    );
+    setup();
+    await chooseKnowledge();
+    await waitFor(() => expect(mocks.entries).toHaveBeenCalledWith("alpha"));
+    await chooseKnowledge("beta");
+    expect(await screen.findByText("Beta setting")).toBeInTheDocument();
+    await act(async () => finish({ knowledge_id: "alpha", memories: [{ id: "a", memory: "Stale alpha" }], count: 1 }));
+    expect(screen.queryByText("Stale alpha")).not.toBeInTheDocument();
+    expect(screen.getByText("Beta setting")).toBeInTheDocument();
+  });
+
+  it("surfaces catalog errors and retries without showing an empty-knowledge success", async () => {
+    mocks.instances.mockRejectedValueOnce(new Error("dependency unavailable"));
+    setup();
+    fireEvent.click(screen.getByRole("button", { name: "Available materials" }));
+    expect(await screen.findByText("dependency unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("No matching materials")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("option", { name: /alpha/ })).toBeInTheDocument();
+  });
+
+  it("refreshes search results after deleting a matching entry", async () => {
+    setup();
+    await chooseKnowledge();
+    await screen.findByText("First page setting");
+    fireEvent.change(screen.getByRole("textbox", { name: "Search entries" }), { target: { value: "fog" } });
+    fireEvent.click(screen.getByRole("button", { name: "Search" }));
+    await screen.findByText("Fog result");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    mocks.remove.mockResolvedValue({ knowledge_id: "alpha", count: 0, memories: [] });
+    mocks.search.mockResolvedValue({ knowledge_id: "alpha", query: "fog", count: 0, memories: [] });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith("alpha", "match"));
+    await waitFor(() => expect(screen.queryByText("Fog result")).not.toBeInTheDocument());
+    expect(screen.getByRole("textbox", { name: "Search entries" })).toHaveValue("fog");
+  });
 });

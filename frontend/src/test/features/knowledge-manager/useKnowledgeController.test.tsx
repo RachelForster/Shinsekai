@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { useKnowledgeController } from "../../../features/knowledge-manager/useKnowledgeController";
@@ -117,6 +117,60 @@ describe("material catalog search", () => {
     expect(mocks.instances).toHaveBeenCalledTimes(1);
     client.clear();
   });
+
+  it("shows the full catalog after clearing input and resets pagination", async () => {
+    const { client, wrapper } = createWrapper();
+    const { result, unmount } = renderHook(() => useKnowledgeController(), { wrapper });
+    act(() => result.current.changeKnowledgeQuery("fog"));
+    await waitFor(() => expect(mocks.instances).toHaveBeenCalledWith({ query: "fog", page: 1 }));
+    act(() => result.current.setCatalogPage(2));
+    await waitFor(() => expect(mocks.instances).toHaveBeenCalledWith({ query: "fog", page: 2 }));
+    act(() => result.current.changeKnowledgeQuery(""));
+    await waitFor(() => expect(mocks.instances).toHaveBeenCalledWith({ query: "", page: 1 }));
+    expect(result.current.instancePickerOpen).toBe(true);
+    unmount();
+    client.clear();
+  });
+
+  it("does not let an older request replace the current search results", async () => {
+    let finishOld!: (value: unknown) => void;
+    mocks.instances.mockImplementation(({ query }) =>
+      query === "old"
+        ? new Promise((resolve) => {
+            finishOld = resolve;
+          })
+        : Promise.resolve({ count: 1, knowledge: [{ knowledge_id: "new-material" }], page: 1, pageSize: 20 }),
+    );
+    const { client, wrapper } = createWrapper();
+    const { result, unmount } = renderHook(() => useKnowledgeController(), { wrapper });
+    act(() => result.current.changeKnowledgeQuery("old"));
+    await waitFor(() => expect(mocks.instances).toHaveBeenCalledWith({ query: "old", page: 1 }));
+    act(() => result.current.changeKnowledgeQuery("new"));
+    await waitFor(() => expect(result.current.catalog.data?.knowledge[0]?.knowledge_id).toBe("new-material"));
+    await act(async () =>
+      finishOld({ count: 1, knowledge: [{ knowledge_id: "old-material" }], page: 1, pageSize: 20 }),
+    );
+    expect(result.current.catalog.data?.knowledge[0]?.knowledge_id).toBe("new-material");
+    unmount();
+    client.clear();
+  });
+
+  it("does not reopen the catalog after selecting a result before the debounce completes", async () => {
+    vi.useFakeTimers();
+    mocks.entries.mockResolvedValue({ knowledge_id: "alpha", count: 0, memories: [] });
+    const { client, wrapper } = createWrapper();
+    const { result, unmount } = renderHook(() => useKnowledgeController(), { wrapper });
+    act(() => result.current.changeKnowledgeQuery("alpha"));
+    act(() => result.current.searchInstances());
+    act(() => result.current.selectKnowledge("alpha"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300);
+    });
+    expect(result.current.instancePickerOpen).toBe(false);
+    expect(result.current.selectedKnowledge).toBe("alpha");
+    unmount();
+    client.clear();
+  });
 });
 
 describe("Knowledge readiness", () => {
@@ -214,5 +268,101 @@ describe("Knowledge readiness", () => {
     await vi.advanceTimersByTimeAsync(3000);
     expect(mocks.status).toHaveBeenCalledTimes(1);
     expect(mocks.instances).not.toHaveBeenCalled();
+  });
+
+  it("ignores a readiness response that arrives after unmount", async () => {
+    let finish!: (value: { status: string }) => void;
+    mocks.status.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { wrapper } = createWrapper();
+    const { result, unmount } = renderHook(() => useKnowledgeController(), { wrapper });
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.refresh();
+    });
+    unmount();
+    finish({ status: "ready" });
+    await pending;
+    expect(mocks.instances).not.toHaveBeenCalled();
+  });
+
+  it("returns immediately when ready and checks again for a later operation", async () => {
+    mocks.status.mockResolvedValue({ status: "ready" });
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useKnowledgeController(), { wrapper });
+    await act(async () => {
+      await expect(result.current.ensureKnowledgeModelReady()).resolves.toBe(true);
+    });
+    await act(async () => {
+      await expect(result.current.ensureKnowledgeModelReady()).resolves.toBe(true);
+    });
+    expect(mocks.status).toHaveBeenCalledTimes(2);
+    expect(mocks.status).toHaveBeenCalledWith({ startLoading: true, retry: false });
+  });
+
+  it("shares concurrent checks and only observes status while loading", async () => {
+    mocks.status.mockResolvedValueOnce({ status: "loading" }).mockResolvedValueOnce({ status: "ready" });
+    const { wrapper } = createWrapper();
+    const { result, rerender } = renderHook(() => useKnowledgeController(), { wrapper });
+    let pending!: Promise<boolean>;
+    act(() => {
+      pending = result.current.ensureKnowledgeModelReady();
+    });
+    rerender();
+    expect(result.current.ensureKnowledgeModelReady()).toBe(pending);
+    expect(mocks.status).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await pending).toBe(true);
+    });
+    expect(mocks.status.mock.calls).toEqual([
+      [{ startLoading: true, retry: false }],
+      [{ startLoading: false, retry: false }],
+    ]);
+  });
+
+  it.each([
+    ["error", "Knowledge initialization failed"],
+    ["missing_dependency", "Missing Python module: mem0"],
+    ["not_started", undefined],
+  ])("stops on %s without automatically retrying", async (status, message) => {
+    mocks.status.mockResolvedValueOnce({ status: "loading" }).mockResolvedValue({ status, message });
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useKnowledgeController(), { wrapper });
+    let pending!: Promise<boolean>;
+    act(() => {
+      pending = result.current.ensureKnowledgeModelReady();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(await pending).toBe(false);
+    });
+    expect(screen.getByText(message || "Could not load materials. Check model dependencies or retry.")).toBeVisible();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(mocks.status.mock.calls).toEqual([
+      [{ startLoading: true, retry: false }],
+      [{ startLoading: false, retry: false }],
+    ]);
+  });
+
+  it("reports a request failure and allows a new check afterwards", async () => {
+    mocks.status.mockRejectedValueOnce(new Error("status request failed")).mockResolvedValue({ status: "ready" });
+    const { wrapper } = createWrapper();
+    const { result } = renderHook(() => useKnowledgeController(), { wrapper });
+    await act(async () => {
+      expect(await result.current.ensureKnowledgeModelReady()).toBe(false);
+    });
+    expect(screen.getByText("status request failed")).toBeVisible();
+    await act(async () => {
+      await expect(result.current.ensureKnowledgeModelReady()).resolves.toBe(true);
+    });
+    expect(mocks.status).toHaveBeenCalledTimes(2);
   });
 });
