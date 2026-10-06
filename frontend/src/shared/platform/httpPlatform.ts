@@ -32,6 +32,15 @@ import type {
   CharacterMemory,
   CharacterMemoryImportPreview,
   CharacterMemoryImportResult,
+  KnowledgeInstanceList,
+  KnowledgeBindingList,
+  KnowledgeBindingNames,
+  KnowledgeBindingResult,
+  KnowledgeDeleteResult,
+  KnowledgeEntryPage,
+  KnowledgeEntrySearch,
+  KnowledgeImportPreview,
+  KnowledgeImportResult,
   CharacterMemoryList,
   CharacterSettingResult,
   Mem0Status,
@@ -933,6 +942,83 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
           method: "POST",
         });
         return waitForTask(apiBase, task, options);
+      },
+    },
+    knowledge: {
+      getKnowledgeStatus: (options) =>
+        requestJson<Mem0Status>(apiBase, "/api/knowledge/status", {
+          body: JSON.stringify({ startLoading: options?.startLoading ?? false, retry: options?.retry ?? false }),
+          method: "POST",
+        }),
+      importKnowledge: async (knowledgeId, items, options) => {
+        const task = await uploadFiles<TaskSnapshot<KnowledgeImportResult>>(
+          apiBase,
+          `/api/knowledge/import-upload?knowledge_id=${encodeURIComponent(knowledgeId)}`,
+          items,
+        );
+        return waitForTask(apiBase, task, options);
+      },
+      listKnowledgeInstances: ({ query, page, refresh = false }) =>
+        requestJson<KnowledgeInstanceList | Mem0Status>(
+          apiBase,
+          `/api/knowledge/instances?${new URLSearchParams({ query, page: String(page), refresh: String(refresh) })}`,
+        ),
+      listKnowledgeBindings: (characterName, page = 1) =>
+        requestJson<KnowledgeBindingList>(
+          apiBase,
+          `/api/knowledge/bindings?${new URLSearchParams({ character_name: characterName, page: String(page) })}`,
+        ),
+      addKnowledgeBinding: (characterName, knowledgeId) =>
+        requestJson<KnowledgeBindingResult>(apiBase, "/api/knowledge/bindings/add", {
+          method: "POST",
+          body: JSON.stringify({ character_name: characterName, knowledge_id: knowledgeId }),
+        }),
+      listKnowledgeBindingNames: (knowledgeId) =>
+        requestJson<KnowledgeBindingNames>(
+          apiBase,
+          `/api/knowledge/bindings/knowledge?knowledge_id=${encodeURIComponent(knowledgeId)}`,
+        ),
+      batchKnowledgeBindings: (knowledgeId, add, remove) =>
+        requestJson<KnowledgeBindingNames & { ok: true }>(apiBase, "/api/knowledge/bindings/batch", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, add, remove }),
+        }),
+      removeKnowledgeBinding: (characterName, knowledgeId) =>
+        requestJson<KnowledgeBindingResult>(apiBase, "/api/knowledge/bindings/remove", {
+          method: "POST",
+          body: JSON.stringify({ character_name: characterName, knowledge_id: knowledgeId }),
+        }),
+      addKnowledgeEntry: (knowledgeId, content) =>
+        requestJson<KnowledgeEntryPage | Mem0Status>(apiBase, "/api/knowledge/remember-and-list", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, content }),
+        }),
+      deleteKnowledgeEntry: (knowledgeId, memoryId) =>
+        requestJson<KnowledgeEntryPage | Mem0Status>(apiBase, "/api/knowledge/forget-and-list", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, memory_id: memoryId }),
+        }),
+      deleteKnowledge: (knowledgeId) =>
+        requestJson<KnowledgeDeleteResult | Mem0Status>(apiBase, "/api/knowledge/delete", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId }),
+        }),
+      listKnowledgeEntries: (knowledgeId) =>
+        requestJson<KnowledgeEntryPage | Mem0Status>(
+          apiBase,
+          `/api/knowledge/entries?${new URLSearchParams({ knowledge_id: knowledgeId })}`,
+        ),
+      searchKnowledgeEntries: (knowledgeId, query) =>
+        requestJson<KnowledgeEntrySearch | Mem0Status>(apiBase, "/api/knowledge/entries/search", {
+          method: "POST",
+          body: JSON.stringify({ knowledge_id: knowledgeId, query, limit: 200 }),
+        }),
+      previewKnowledgeImport: (knowledgeId, items) => {
+        return uploadFiles<KnowledgeImportPreview>(
+          apiBase,
+          `/api/knowledge/import-preview-upload?knowledge_id=${encodeURIComponent(knowledgeId)}`,
+          items,
+        );
       },
     },
     characters: {
