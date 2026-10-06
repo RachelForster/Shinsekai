@@ -58,6 +58,10 @@ extension 保留启动时启用的 Pi 原生工具，并加入当前 profile 的
 
 Pi RPC 的 `prompt` 响应只代表受理，`agent_end` 也不是整个运行的完成。adapter 持续消费 LF 分帧的 JSONL，直到 `agent_settled` 才生成终态；将文本和 provider 报告的 token 数转换为公共事件。取消先清空排队消息、请求 abort，再确认子进程退出；未确认结束的运行不能报告成功。
 
+Adapter 声明 `activityReporting`，将启动、模型处理、回复生成、自动重试、上下文整理，以及 Pi 原生 `tool_execution_start` / `tool_execution_end` 转成 `activity.updated`。事件形状依据 [Pi v1.0.4 JSON 事件规范](https://github.com/earendil-works/pi/blob/v1.0.4/packages/coding-agent/docs/json.md)。同一活动的开始与结束使用同一个、带 attempt 前缀的 ID。只传递原生工具名、路径或命令摘要、状态；目标最多 512 字符并脱敏，不传递文件正文、命令输出、写入内容或内部推理。
+
+这类事件仅表示执行进度，不替代宿主授权、`tool.started` / `tool.completed` 或写操作 `effects`。Adapter 只转换八个 Pi 内置工具的执行事件；宿主 extension 的工具仍由 AgentService 记录，避免重复。桌面 UI 使用公共活动类型，无需理解 Pi 事件或 RPC 字段。
+
 Pi input、select、confirm 和 editor 请求映射为公共用户输入。外部资源和 artifact 引用需要宿主先物化为文本；未物化引用返回能力错误。当前不声明 token 硬上限或结构化结果能力。
 
 Pi 原生 session 可在下一个任务或 worker 重启后恢复。缺失历史或不匹配的绑定返回明确错误；公共层不会接收原生 session 文件。应用崩溃后的排队任务仍需显式恢复。

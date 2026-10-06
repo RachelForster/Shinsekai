@@ -131,6 +131,7 @@ class AgentBackendCapabilities(AgentContract):
     interactive_input: StrictBool = False
     structured_output: StrictBool = False
     usage_reporting: StrictBool = False
+    activity_reporting: StrictBool = False
     token_limit: StrictBool = False
 
 
@@ -429,6 +430,16 @@ class AgentToolCompleted(AgentContract):
     result: AgentHostToolResult
 
 
+class AgentActivityUpdated(AgentContract):
+    """Observable backend progress, separate from host tool authorization/effects."""
+
+    activity_id: _Identifier
+    kind: Literal["runtime", "model", "tool"]
+    name: Annotated[str, StringConstraints(strict=True, min_length=1, max_length=128)]
+    status: Literal["running", "succeeded", "failed"]
+    target: Annotated[str, StringConstraints(strict=True, max_length=512)] = ""
+
+
 class AgentInputResolved(AgentContract):
     answer: AgentInputAnswer
 
@@ -443,6 +454,7 @@ class AgentEventType(str, Enum):
     MESSAGE_COMPLETED = "message.completed"
     TOOL_STARTED = "tool.started"
     TOOL_COMPLETED = "tool.completed"
+    ACTIVITY_UPDATED = "activity.updated"
     INPUT_REQUESTED = "input.requested"
     INPUT_RESOLVED = "input.resolved"
     ARTIFACT_CREATED = "artifact.created"
@@ -456,6 +468,7 @@ AgentEventPayload = Union[
     AgentMessageCompleted,
     AgentToolStarted,
     AgentToolCompleted,
+    AgentActivityUpdated,
     AgentInputRequest,
     AgentInputResolved,
     AgentArtifactCreated,
@@ -469,6 +482,7 @@ _EVENT_PAYLOAD_TYPES: dict[AgentEventType, type[AgentContract]] = {
     AgentEventType.MESSAGE_COMPLETED: AgentMessageCompleted,
     AgentEventType.TOOL_STARTED: AgentToolStarted,
     AgentEventType.TOOL_COMPLETED: AgentToolCompleted,
+    AgentEventType.ACTIVITY_UPDATED: AgentActivityUpdated,
     AgentEventType.INPUT_REQUESTED: AgentInputRequest,
     AgentEventType.INPUT_RESOLVED: AgentInputResolved,
     AgentEventType.ARTIFACT_CREATED: AgentArtifactCreated,

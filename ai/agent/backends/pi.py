@@ -20,7 +20,9 @@ from ai.agent.backends.pi_rpc import PiRpcProcess, MAX_PI_FRAME
 from core.agent.ipc import fault
 from core.agent.pi_runtime import PI_VERSION
 from core.paths import resource_path
+from sdk.logging.redaction import redact_text
 from sdk.agent import (
+    AgentActivityUpdated,
     AgentBackendCapabilities,
     AgentBackendConfig,
     AgentBackendDescriptor,
@@ -108,6 +110,7 @@ class PiAgentBackend:
                 interactive_input=True,
                 native_session_resume=True,
                 usage_reporting=True,
+                activity_reporting=True,
             ),
         )
 
@@ -353,6 +356,9 @@ class PiAgentBackend:
         usage_seen = False
         submitted = False
         provider_error = ""
+        model_phase = "thinking"
+        native_activities = {}
+        runtime_activities = {}
 
         def event(kind, payload):
             nonlocal seq
@@ -365,7 +371,27 @@ class PiAgentBackend:
                 payload=payload,
             )
 
+        def activity(activity_id, kind, name, status, target=""):
+            for key in ("SHINSEKAI_PI_API_KEY", "SHINSEKAI_PI_HOST_TOKEN"):
+                secret = env.get(key, "")
+                if secret:
+                    target = target.replace(secret, "<redacted>")
+            target = redact_text(target)
+            if len(target) > 512:
+                target = target[:511] + "…"
+            return event(
+                "activity.updated",
+                AgentActivityUpdated(
+                    activity_id=f"{task.attempt_id}:{activity_id}",
+                    kind=kind,
+                    name=name,
+                    status=status,
+                    target=target,
+                ),
+            )
+
         try:
+            yield activity("startup", "runtime", "starting", "running")
             await rpc.start()
             try:
                 await asyncio.wait_for(ready, 10)
@@ -401,6 +427,7 @@ class PiAgentBackend:
                 or disposition.get("disposition") != "started"
             ):
                 raise fault("PROTOCOL_MISMATCH", "Pi did not start the submitted task")
+            yield activity("startup", "runtime", "starting", "succeeded")
             while True:
                 record = await rpc.next_event()
                 kind = record["type"]
@@ -409,9 +436,14 @@ class PiAgentBackend:
                     and record.get("message", {}).get("role") == "assistant"
                 ):
                     message_id = uuid.uuid4().hex
+                    model_phase = "thinking"
+                    yield activity(message_id, "model", model_phase, "running")
                 elif kind == "message_update":
                     update = record.get("assistantMessageEvent", {})
                     if update.get("type") == "text_delta":
+                        if model_phase != "responding":
+                            model_phase = "responding"
+                            yield activity(message_id, "model", model_phase, "running")
                         yield event(
                             "message.delta",
                             {"messageId": message_id, "delta": update["delta"]},
@@ -428,6 +460,16 @@ class PiAgentBackend:
                     )
                     stop_reason = message.get("stopReason")
                     provider_error = str(message.get("errorMessage", ""))
+                    yield activity(
+                        message_id,
+                        "model",
+                        model_phase,
+                        (
+                            "failed"
+                            if stop_reason in ("error", "aborted")
+                            else "succeeded"
+                        ),
+                    )
                     yield event(
                         "message.completed", {"messageId": message_id, "text": summary}
                     )
@@ -442,6 +484,53 @@ class PiAgentBackend:
                             for key, value in zip(usage, values):
                                 usage[key] += value
                             yield event("usage.updated", AgentUsage(**usage))
+                elif (
+                    kind == "tool_execution_start"
+                    and record.get("toolName") in PI_BUILTIN_TOOLS
+                ):
+                    call_id = record.get("toolCallId")
+                    if not isinstance(call_id, str) or not call_id.strip():
+                        continue
+                    name = record["toolName"]
+                    args = record.get("args")
+                    args = args if isinstance(args, dict) else {}
+                    target = args.get(
+                        "command" if name in ("bash", "powershell") else "path", ""
+                    )
+                    target = target if isinstance(target, str) else ""
+                    native_activities[call_id] = (name, target)
+                    yield activity(f"tool:{call_id}", "tool", name, "running", target)
+                elif kind == "tool_execution_end":
+                    binding = native_activities.pop(record.get("toolCallId"), None)
+                    if binding:
+                        name, target = binding
+                        yield activity(
+                            f"tool:{record['toolCallId']}",
+                            "tool",
+                            name,
+                            "failed" if record.get("isError") else "succeeded",
+                            target,
+                        )
+                elif kind in ("auto_retry_start", "compaction_start"):
+                    name = "retrying" if kind == "auto_retry_start" else "compacting"
+                    activity_id = uuid.uuid4().hex
+                    runtime_activities[name] = activity_id
+                    yield activity(activity_id, "runtime", name, "running")
+                elif kind in ("auto_retry_end", "compaction_end"):
+                    name = "retrying" if kind == "auto_retry_end" else "compacting"
+                    activity_id = runtime_activities.pop(name, None)
+                    if activity_id:
+                        failed = (
+                            not record.get("success")
+                            if kind == "auto_retry_end"
+                            else record.get("aborted") or "errorMessage" in record
+                        )
+                        yield activity(
+                            activity_id,
+                            "runtime",
+                            name,
+                            "failed" if failed else "succeeded",
+                        )
                 elif kind == "extension_ui_request":
                     await self._input(rpc, host, record)
                 elif kind == "extension_error":

@@ -311,6 +311,82 @@
   border-radius: var(--radius-control);
   background: var(--color-accent-bg);
 }
+.agent-activity {
+  margin: 12px 0;
+  font-size: 12px;
+}
+.agent-activity__current {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-accent-border);
+  border-radius: var(--radius-control);
+  background: var(--color-accent-bg);
+}
+.agent-activity__current > div,
+.agent-activity__body {
+  flex: 1;
+  min-width: 0;
+}
+.agent-activity svg {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+}
+.agent-activity strong {
+  font-weight: 500;
+}
+.agent-activity small {
+  color: var(--color-text-muted);
+}
+.agent-activity__target {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+.agent-activity__history > summary {
+  padding: 10px 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.agent-activity__history ol {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 4px 0 4px 10px;
+  border-left: 1px solid var(--color-border);
+  list-style: none;
+}
+.agent-activity__step {
+  display: flex;
+  gap: 10px;
+}
+.agent-activity__body > small {
+  display: block;
+  margin-top: 4px;
+}
+.agent-activity__step--failed,
+.agent-activity__step--interrupted {
+  color: var(--color-accent-primary);
+}
+.agent-activity__spinner {
+  animation: agent-activity-spin 1.2s linear infinite;
+}
+@keyframes agent-activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-activity__spinner {
+    animation: none;
+  }
+}
 .agent-input-prompt p {
   margin: 0 0 10px;
 }

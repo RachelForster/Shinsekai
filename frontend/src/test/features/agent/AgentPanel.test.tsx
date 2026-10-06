@@ -163,4 +163,58 @@ describe("Agent conversation", () => {
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("keep this draft");
     expect(api.cancelTask).not.toHaveBeenCalled();
   });
+
+  it("recovers native progress alongside streaming reply text", async () => {
+    const session = await api.createSession();
+    const timestamp = new Date().toISOString();
+    const task: AgentTask = {
+      taskId: "progress-task",
+      sessionId: session.sessionId,
+      requestId: "previous",
+      input: { text: "inspect the character" },
+      status: "running",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      result: null,
+      error: null,
+    };
+    api.listTasks = vi.fn(async () => ({ tasks: [task], nextCursor: null }));
+    api.readEvents = vi.fn(async (_, afterSeq) => ({
+      taskId: task.taskId,
+      nextSeq: 2,
+      events: afterSeq
+        ? []
+        : [
+            {
+              taskId: task.taskId,
+              schemaVersion: 1,
+              timestamp,
+              eventSeq: 1,
+              type: "message.delta",
+              payload: { messageId: "reply", delta: "Checking your files." },
+            },
+            {
+              taskId: task.taskId,
+              schemaVersion: 1,
+              timestamp,
+              eventSeq: 2,
+              type: "activity.updated",
+              payload: {
+                activityId: "attempt:call",
+                kind: "tool",
+                name: "powershell",
+                status: "running",
+                target: "Get-Content character.json",
+              },
+            },
+          ],
+    }));
+    const result = renderPanel(true);
+    expect(await screen.findByText("Checking your files.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Running a command"));
+    expect(screen.getByRole("status")).toHaveTextContent("Get-Content character.json");
+    result.hide();
+    result.show();
+    expect(screen.getByRole("status")).toHaveTextContent("Get-Content character.json");
+  });
 });

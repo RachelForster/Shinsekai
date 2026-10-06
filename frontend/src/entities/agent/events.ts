@@ -1,4 +1,17 @@
-import type { AgentEventPage, AgentInputRequest, AgentTaskStatus, AgentUsage } from "../../shared/platform/agentTypes";
+import type {
+  AgentActivity,
+  AgentEventPage,
+  AgentInputRequest,
+  AgentTaskStatus,
+  AgentUsage,
+} from "../../shared/platform/agentTypes";
+
+export interface AgentActivityEntry extends AgentActivity {
+  startedAt: string;
+  updatedAt: string;
+  eventSeq: number;
+  hostCallId?: string;
+}
 
 export interface AgentTranscript {
   taskId: string;
@@ -11,13 +24,14 @@ export interface AgentTranscript {
     result?: { ok: boolean; data?: unknown; error?: { message: string } | null };
   }>;
   input: AgentInputRequest | null;
+  activities: AgentActivityEntry[];
   usage: AgentUsage | null;
   hydrated: boolean;
   status?: AgentTaskStatus;
 }
 
 export function emptyTranscript(taskId: string): AgentTranscript {
-  return { taskId, nextSeq: 0, messages: [], tools: [], input: null, usage: null, hydrated: false };
+  return { taskId, nextSeq: 0, messages: [], tools: [], activities: [], input: null, usage: null, hydrated: false };
 }
 
 function object(value: unknown): Record<string, unknown> | null {
@@ -32,6 +46,7 @@ export function mergeAgentEvents(previous: AgentTranscript, page: AgentEventPage
     ...previous,
     messages: previous.messages.map((item) => ({ ...item })),
     tools: previous.tools.map((item) => ({ ...item })),
+    activities: (previous.activities ?? []).map((item) => ({ ...item })),
   };
   for (const event of page.events) {
     if (event.taskId !== next.taskId || event.eventSeq <= next.nextSeq) continue;
@@ -55,13 +70,57 @@ export function mergeAgentEvents(previous: AgentTranscript, page: AgentEventPage
         typeof call.callId === "string" &&
         typeof call.name === "string" &&
         !next.tools.some((item) => item.callId === call.callId)
-      )
+      ) {
         next.tools.push({ callId: call.callId, name: call.name, arguments: call.arguments });
+        const args = object(call.arguments);
+        const params = object(args?.params);
+        const body = object(args?.body);
+        const target = params?.name ?? params?.plugin_id ?? body?.name ?? body?.source ?? body?.path;
+        next.activities.push({
+          activityId: `host:${call.callId}`,
+          kind: "tool",
+          name: typeof args?.operation === "string" ? args.operation : call.name,
+          target: typeof target === "string" ? target.slice(0, 512) : "",
+          status: "running",
+          startedAt: event.timestamp,
+          updatedAt: event.timestamp,
+          eventSeq: event.eventSeq,
+          hostCallId: call.callId,
+        });
+      }
     } else if (event.type === "tool.completed") {
       const result = object(payload.result);
       const tool = next.tools.find((item) => item.callId === result?.callId);
-      if (tool && result && typeof result.ok === "boolean")
+      if (tool && result && typeof result.ok === "boolean") {
         tool.result = { ok: result.ok, data: result.data, error: object(result.error) as { message: string } | null };
+        const activity = next.activities.find((item) => item.hostCallId === result.callId);
+        if (activity) {
+          activity.status = result.ok ? "succeeded" : "failed";
+          activity.updatedAt = event.timestamp;
+          activity.eventSeq = event.eventSeq;
+        }
+      }
+    } else if (event.type === "activity.updated") {
+      if (
+        typeof payload.activityId !== "string" ||
+        typeof payload.name !== "string" ||
+        !["runtime", "model", "tool"].includes(String(payload.kind)) ||
+        !["running", "succeeded", "failed"].includes(String(payload.status)) ||
+        typeof payload.target !== "string"
+      )
+        continue;
+      const value = payload as unknown as AgentActivity;
+      const activity = next.activities.find((item) => item.activityId === value.activityId);
+      if (activity) {
+        Object.assign(activity, value, { updatedAt: event.timestamp, eventSeq: event.eventSeq });
+      } else {
+        next.activities.push({
+          ...value,
+          startedAt: event.timestamp,
+          updatedAt: event.timestamp,
+          eventSeq: event.eventSeq,
+        });
+      }
     } else if (event.type === "input.requested") {
       if (typeof payload.inputRequestId === "string" && typeof payload.question === "string")
         next.input = payload as unknown as AgentInputRequest;

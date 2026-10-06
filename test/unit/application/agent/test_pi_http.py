@@ -258,6 +258,27 @@ def test_official_pi_through_application_lifecycle_and_http(tmp_path, behavior):
             assert "unrequested-setting-marker" not in json.dumps(requests)
             assert any(event["type"] == "tool.completed" for event in page["events"])
         if behavior == "native-skills":
+            activities = [
+                event["payload"]
+                for event in page["events"]
+                if event["type"] == "activity.updated"
+            ]
+            tools = [value for value in activities if value["kind"] == "tool"]
+            assert [(value["name"], value["status"]) for value in tools] == [
+                (name, status)
+                for name in (
+                    "read",
+                    "write",
+                    "edit",
+                    "powershell" if os.name == "nt" else "bash",
+                )
+                for status in ("running", "succeeded")
+            ]
+            assert tools[0]["target"].endswith("SKILL.md")
+            assert sum(event["type"] == "tool.started" for event in page["events"]) == 1
+            assert (
+                sum(event["type"] == "tool.completed" for event in page["events"]) == 1
+            )
             initial = "\n".join(
                 message["content"]
                 for message in requests[0]["messages"]

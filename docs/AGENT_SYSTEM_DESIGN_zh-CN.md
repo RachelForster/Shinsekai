@@ -203,6 +203,7 @@ class AgentHostPort(Protocol):
 | `hostTools` | 新世界业务 profile 的必需能力；后端能把自定义工具调用交还宿主执行 |
 | `toolPolicyEnforcement` | 能控制允许的原生和宿主工具集合；当前 Pi 明确启用八个原生工具及 profile 的宿主工具，宿主权限、预算和操作记录仅覆盖宿主调用 |
 | `streamingText` | 可选；不支持时发送完整消息事件 |
+| `activityReporting` | 可选；报告模型、运行期和原生工具的可观察活动，前端使用统一进度契约 |
 | `nativeSessionResume` | 可选；不支持时可用宿主整理的交接内容创建新会话 |
 | `interactiveInput` | 可选；不支持时需在提交前收齐输入，或明确返回能力不支持 |
 | `structuredOutput` | 可选；缺失时保留文本结果，宿主从工具结果提取可靠的结构化数据 |
@@ -245,11 +246,14 @@ queued → running ⇄ waiting_input
 task.status
 message.delta / message.completed
 tool.started / tool.completed
+activity.updated
 input.requested / input.resolved
 artifact.created
 usage.updated
 task.completed
 ```
+
+`activity.updated` 携带 `activityId`、`kind`（runtime、model、tool）、`name`、`status`（running、succeeded、failed）和最多 512 字符的 `target`。开始、阶段变化和结束更新同一活动 ID；ID 在任务内唯一，多次 attempt 应分别命名。它只报告后端可观察的工作，不具有宿主工具执行、授权或 effects 的语义，不能替代任务终态。前端通过事件时间显示耗时，终态后没有结束记录的活动保留未确认状态。
 
 `task.completed` 包含唯一终态、结果和错误，是 UI 停止等待的依据。`message.completed` 是完整消息正文，覆盖拼接的增量文本；进度和消息更新均不能代表任务完成。不要求后端暴露内部思维链，前端展示工作说明、工具活动和可验证结果。
 

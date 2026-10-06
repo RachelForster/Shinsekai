@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Plus, Send, Square, Wrench, X } from "lucide-react";
+import { Bot, Plus, Send, Square, X } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { agentApi, agentQueryKey, listAgentSessions } from "../../entities/agent/repository";
@@ -10,6 +10,7 @@ import { useI18n } from "../../shared/i18n";
 import type { MessageKey } from "../../shared/i18n";
 import { Button, Dialog, QueryErrorState } from "../../shared/ui";
 import { useAgentConversation } from "./useAgentConversation";
+import { AgentActivityLog } from "./AgentActivityLog";
 import "./agent.css";
 
 function MessageText({ text }: { text: string }) {
@@ -105,6 +106,7 @@ function TaskTurn({
   cancelling,
   onAnswered,
   onArtifact,
+  enabled,
 }: {
   task: AgentTask;
   transcript?: AgentTranscript;
@@ -112,6 +114,7 @@ function TaskTurn({
   cancelling: boolean;
   onAnswered: () => void;
   onArtifact: (artifact: AgentArtifact) => void;
+  enabled: boolean;
 }) {
   const { t } = useI18n();
   const messages = transcript?.messages ?? [];
@@ -131,30 +134,11 @@ function TaskTurn({
             {t(`agent.status.${task.status}` as MessageKey)}
           </span>
         </div>
+        <AgentActivityLog enabled={enabled} task={task} transcript={transcript} />
         {messages.map((message) => (
           <MessageText key={message.id} text={message.text} />
         ))}
         {!messages.length && task.result?.summary ? <MessageText text={task.result.summary} /> : null}
-        {!messages.length && !isTerminal(task.status) ? (
-          <span className="agent-thinking">
-            {t(task.status === "queued" ? "agent.status.queued" : "agent.thinking")}
-          </span>
-        ) : null}
-        {transcript?.tools.map((tool) => (
-          <details className="agent-tool" key={tool.callId}>
-            <summary>
-              <Wrench aria-hidden />
-              {tool.name}
-              <span>
-                {t(!tool.result ? "agent.toolRunning" : tool.result.ok ? "agent.toolDone" : "agent.toolFailed")}
-              </span>
-            </summary>
-            <pre>{JSON.stringify(tool.arguments, null, 2)}</pre>
-            {tool.result ? (
-              <pre>{tool.result.ok ? JSON.stringify(tool.result.data, null, 2) : tool.result.error?.message}</pre>
-            ) : null}
-          </details>
-        ))}
         {task.status === "waiting_input" && transcript?.input ? (
           <InputPrompt
             key={transcript.input.inputRequestId}
@@ -454,6 +438,7 @@ export function AgentPanel({ enabled = true, onNavigate }: { enabled?: boolean; 
           <div aria-live="polite" role="log" aria-label={t("agent.history")}>
             {tasks.data?.map((task) => (
               <TaskTurn
+                enabled={enabled}
                 cancelling={cancel.isPending && cancel.variables === task.taskId}
                 key={task.taskId}
                 onAnswered={() => void refresh()}
