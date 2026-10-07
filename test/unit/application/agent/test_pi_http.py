@@ -5,7 +5,6 @@ from __future__ import annotations
 import http.client
 import json
 import os
-import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -24,6 +23,49 @@ from frontend_bridge_core.transport.agent_http_tools import build_bridge_http_to
 from test.unit.application.agent.test_pi_configuration import ModelConfig
 from test.unit.application.agent.test_runtime import wait_for
 from test.unit.application.agent.test_plugin_tools import loaded_tools  # noqa: F401
+
+
+def _skill_location(system: str, skill_name: str) -> str:
+    # Fixed delimiters avoid backtracking on repeated, unterminated tags.
+    for fragment in system.split("<location>")[1:]:
+        value, closing, _ = fragment.partition("</location>")
+        if closing and skill_name in value:
+            return value
+    raise AssertionError(f"Pi did not advertise skill {skill_name}")
+
+
+@pytest.mark.parametrize(
+    "system",
+    [
+        "<location>/skills/other/SKILL.md</location>"
+        "<location>/skills/shinsekai-guide/SKILL.md</location>",
+        "<location>/skills/shinsekai-guide/SKILL.md</location>"
+        + "<location>a" * 100_000,
+        "<location>a" * 100_000
+        + "<location>/skills/shinsekai-guide/SKILL.md</location>",
+    ],
+    ids=["multiple-skills", "unterminated-suffix", "unterminated-prefix"],
+)
+def test_skill_location_handles_repeated_unterminated_tags(system):
+    assert _skill_location(system, "shinsekai-guide") == (
+        "/skills/shinsekai-guide/SKILL.md"
+    )
+
+
+@pytest.mark.parametrize(
+    "system",
+    [
+        "",
+        "<location>/skills/other/SKILL.md</location>",
+        "<location>/skills/shinsekai-guide/SKILL.md",
+        "/skills/shinsekai-guide/SKILL.md</location>",
+        "<location>a" * 100_000,
+    ],
+    ids=["empty", "other-skill", "missing-close", "missing-open", "unclosed-tags"],
+)
+def test_skill_location_requires_a_complete_matching_location(system):
+    with pytest.raises(AssertionError, match="Pi did not advertise skill"):
+        _skill_location(system, "shinsekai-guide")
 
 
 @pytest.mark.skipif(
@@ -132,11 +174,7 @@ def test_official_pi_through_application_lifecycle_and_http(
                     for message in messages
                     if message["role"] == "system"
                 )
-                location = next(
-                    value
-                    for value in re.findall(r"<location>(.*?)</location>", system)
-                    if "shinsekai-guide" in value
-                )
+                location = _skill_location(system, "shinsekai-guide")
                 steps = [
                     ("read", {"path": location}),
                     (
