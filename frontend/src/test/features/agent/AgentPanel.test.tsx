@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentPanel } from "../../../features/agent/AgentPanel";
 import { AgentDrawer } from "../../../features/agent/AgentDrawer";
 import { createAgentPreviewPlatform } from "../../../shared/platform/agentPreviewPlatform";
-import type { AgentPlatform, AgentTask } from "../../../shared/platform/agentTypes";
+import type { AgentEvent, AgentPlatform, AgentTask } from "../../../shared/platform/agentTypes";
 import { I18nProvider } from "../../../shared/i18n";
 
 const mocks = vi.hoisted(() => ({ getPlatform: vi.fn() }));
@@ -37,6 +37,8 @@ describe("Agent conversation", () => {
     renderPanel();
     const create = await screen.findByRole("button", { name: "New session" });
     await waitFor(() => expect(create).toBeEnabled());
+    expect(screen.queryByRole("textbox", { name: "Message" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
     fireEvent.click(create);
     const first = await screen.findByRole("tab", { name: "Session 1" });
     await waitFor(() => expect(first).toHaveAttribute("aria-selected", "true"));
@@ -53,6 +55,74 @@ describe("Agent conversation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close Session 2" }));
     await waitFor(() => expect(screen.queryByRole("tab", { name: "Session 2" })).not.toBeInTheDocument());
     expect(first).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Close Session 1" }));
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Message" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
+  });
+
+  it("renders streaming Markdown and keeps HTML and unsafe links inert", async () => {
+    const session = await api.createSession();
+    const timestamp = new Date().toISOString();
+    const task: AgentTask = {
+      taskId: "markdown-task",
+      sessionId: session.sessionId,
+      requestId: "previous",
+      input: { text: "Keep **these markers** in my prompt" },
+      status: "running",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      result: null,
+      error: null,
+    };
+    const events: AgentEvent[] = [
+      {
+        taskId: task.taskId,
+        schemaVersion: 1,
+        timestamp,
+        eventSeq: 1,
+        type: "message.delta",
+        payload: {
+          messageId: "reply",
+          delta:
+            "# Research\n\n**Complete** and `config`.\n\n- One\n- Two\n\n[Source](https://example.com/reference)\n\n```ts\nconst ready = true;\n",
+        },
+      },
+    ];
+    api.listTasks = vi.fn(async () => ({ tasks: [task], nextCursor: null }));
+    api.readEvents = vi.fn(async (_, afterSeq) => ({
+      taskId: task.taskId,
+      events: events.filter((event) => event.eventSeq > afterSeq),
+      nextSeq: events.length,
+    }));
+    const view = renderPanel();
+    expect(await screen.findByRole("heading", { name: "Research", level: 1 })).toBeInTheDocument();
+    expect(screen.getByText("Complete").tagName).toBe("STRONG");
+    expect(screen.getByText("config").tagName).toBe("CODE");
+    expect(screen.getByText("One").tagName).toBe("LI");
+    expect(screen.getByText("const ready = true;").closest("pre")).toBeInTheDocument();
+    expect(screen.getByText(task.input.text)).toBeInTheDocument();
+    const source = screen.getByRole("link", { name: "Source" });
+    expect(source).toHaveAttribute("href", "https://example.com/reference");
+    expect(source).toHaveAttribute("target", "_blank");
+    expect(source).toHaveAttribute("rel", "noopener noreferrer");
+
+    events.push({
+      ...events[0],
+      eventSeq: 2,
+      payload: {
+        messageId: "reply",
+        delta:
+          "```\n\n> Verified\n\n| Item | State |\n| --- | --- |\n| Browser | Ready |\n\n<script>alert('unsafe')</script>\n\n[Unsafe](javascript:alert)\n",
+      },
+    });
+    await view.client.invalidateQueries({ queryKey: ["agent", "transcript", session.sessionId] });
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("columnheader", { name: "Item" })).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "Browser" })).toBeInTheDocument();
+    expect(screen.getByText("Verified").closest("blockquote")).toBeInTheDocument();
+    expect(view.container.querySelector("script")).toBeNull();
+    expect(screen.getByText("Unsafe")).not.toHaveAttribute("href", expect.stringContaining("javascript:"));
+    expect(screen.getByText("const ready = true;").closest("pre")).toBeInTheDocument();
   });
 
   it("retries a lost acceptance response with the same request ID", async () => {

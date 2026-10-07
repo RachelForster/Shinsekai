@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bot, Plus, Send, Square, X } from "lucide-react";
 import { Link } from "react-router-dom";
+import Markdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { agentApi, agentQueryKey, listAgentSessions } from "../../entities/agent/repository";
 import { isTerminal, type AgentTranscript } from "../../entities/agent/events";
@@ -19,7 +21,26 @@ import { useAgentConversation } from "./useAgentConversation";
 import { AgentActivityLog } from "./AgentActivityLog";
 import "./agent.css";
 
-function MessageText({ text }: { text: string }) {
+const markdownComponents: Components = {
+  a: ({ node: _node, ...props }) => (
+    <a {...props} target={props.href?.startsWith("#") ? undefined : "_blank"} rel="noopener noreferrer" />
+  ),
+  table: ({ node: _node, ...props }) => (
+    <div className="agent-markdown-table">
+      <table {...props} />
+    </div>
+  ),
+};
+
+function MessageText({ text, markdown = false }: { text: string; markdown?: boolean }) {
+  if (markdown)
+    return (
+      <div className="agent-message-text agent-message-text--markdown">
+        <Markdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
+          {text}
+        </Markdown>
+      </div>
+    );
   const blocks = text.split(/```[^\n]*\n([\s\S]*?)(?:```|$)/g);
   return (
     <div className="agent-message-text">
@@ -160,9 +181,9 @@ function TaskTurn({
         </div>
         <AgentActivityLog enabled={enabled} task={task} transcript={transcript} />
         {messages.map((message) => (
-          <MessageText key={message.id} text={message.text} />
+          <MessageText key={message.id} markdown text={message.text} />
         ))}
-        {!messages.length && task.result?.summary ? <MessageText text={task.result.summary} /> : null}
+        {!messages.length && task.result?.summary ? <MessageText markdown text={task.result.summary} /> : null}
         {task.status === "waiting_input" && transcript?.input ? (
           <InputPrompt
             key={transcript.input.inputRequestId}
@@ -476,43 +497,45 @@ export function AgentPanel({ enabled = true, onNavigate }: { enabled?: boolean; 
             {error.message}
           </p>
         ) : null}
-        <form
-          className="agent-composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <textarea
-            aria-label={t("agent.message")}
-            disabled={!session || send.isPending}
-            maxLength={64000}
-            onChange={(event) => setDrafts((current) => ({ ...current, [selected]: event.target.value }))}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                submit();
-              }
+        {session ? (
+          <form
+            className="agent-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
             }}
-            placeholder={t("agent.placeholder")}
-            ref={composer}
-            rows={3}
-            value={draft}
-          />
-          <div className="agent-composer__footer">
-            <small>{t("agent.sendHint")}</small>
-            <Button
-              aria-label={t("agent.send")}
-              disabled={!canSend}
-              icon={<Send aria-hidden />}
-              loading={send.isPending}
-              type="submit"
-              variant="primary"
-            >
-              {t("agent.send")}
-            </Button>
-          </div>
-        </form>
+          >
+            <textarea
+              aria-label={t("agent.message")}
+              disabled={send.isPending}
+              maxLength={64000}
+              onChange={(event) => setDrafts((current) => ({ ...current, [selected]: event.target.value }))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+              placeholder={t("agent.placeholder")}
+              ref={composer}
+              rows={3}
+              value={draft}
+            />
+            <div className="agent-composer__footer">
+              <small>{t("agent.sendHint")}</small>
+              <Button
+                aria-label={t("agent.send")}
+                disabled={!canSend}
+                icon={<Send aria-hidden />}
+                loading={send.isPending}
+                type="submit"
+                variant="primary"
+              >
+                {t("agent.send")}
+              </Button>
+            </div>
+          </form>
+        ) : null}
       </section>
       <Dialog
         closeLabel={t("common.close")}
