@@ -20,7 +20,9 @@ from ai.agent.backends.pi_rpc import PiRpcProcess, MAX_PI_FRAME
 from core.agent.ipc import fault
 from core.agent.pi_runtime import PI_VERSION
 from core.paths import resource_path
+from sdk.logging.redaction import redact_text
 from sdk.agent import (
+    AgentActivityUpdated,
     AgentBackendCapabilities,
     AgentBackendConfig,
     AgentBackendDescriptor,
@@ -35,6 +37,10 @@ from sdk.agent import (
     AgentTaskCompletion,
     AgentUsage,
 )
+
+
+# Built-ins shipped by the pinned Pi runtime, alongside profile-selected host tools.
+PI_BUILTIN_TOOLS = ("read", "bash", "powershell", "edit", "write", "grep", "find", "ls")
 
 
 @dataclass
@@ -104,6 +110,7 @@ class PiAgentBackend:
                 interactive_input=True,
                 native_session_resume=True,
                 usage_reporting=True,
+                activity_reporting=True,
             ),
         )
 
@@ -153,22 +160,43 @@ class PiAgentBackend:
             text = Path(policy).read_text(encoding="utf-8")
             if len(text.encode("utf-8")) > 65536:
                 raise fault("LIMIT_EXCEEDED", "Pi system policy exceeds its size limit")
-            (root / "policy.md").write_text(text, encoding="utf-8")
+            skill_loading = self.config.options.get("skillLoading", "native")
+            if skill_loading not in ("native", "preload"):
+                raise fault("INVALID_REQUEST", "Unknown Pi skill loading mode")
             skills = []
+            skill_texts = []
             for reference in config.skill_refs:
                 source = self.config.options.get("skills", {}).get(reference)
                 if not source or not Path(source).is_file():
                     raise fault("INVALID_REQUEST", "Pi skill reference is unavailable")
-                # Explicit trusted SKILL.md paths; support files are reached through host tools.
-                target = root / (
-                    "skill-"
-                    + hashlib.sha256(reference.encode()).hexdigest()[:16]
-                    + ".md"
+                source = Path(source).resolve()
+                # Preserve the portable SKILL.md layout and isolate each host reference.
+                target = (
+                    root
+                    / "skills"
+                    / hashlib.sha256(reference.encode()).hexdigest()[:16]
+                    / source.parent.name
+                    / source.name
                 )
-                target.write_text(
-                    Path(source).read_text(encoding="utf-8"), encoding="utf-8"
-                )
+                content = source.read_text(encoding="utf-8")
+                if len(content.encode("utf-8")) > 65536:
+                    raise fault("LIMIT_EXCEEDED", "Pi skill exceeds its size limit")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(content, encoding="utf-8")
                 skills.append(str(target))
+                skill_texts.append(f"## {reference}\n\n{content}")
+            if skill_loading == "preload" and skill_texts:
+                text += (
+                    "\n\n# 宿主预载的任务 skills\n\n"
+                    "下方已提供完整技能正文。根据用户任务匹配使用，无需再读取技能文件。"
+                    "技能说明不授予工具权限；只有当前实际提供的工具可以执行操作。\n\n"
+                    + "\n\n".join(skill_texts)
+                )
+            if len(text.encode("utf-8")) > 65536:
+                raise fault(
+                    "LIMIT_EXCEEDED", "Pi combined system policy exceeds its size limit"
+                )
+            (root / "policy.md").write_text(text, encoding="utf-8")
             marker = {"snapshot": snapshot, "skills": skills, "hasRun": False}
             marker_file.write_text(
                 json.dumps(marker, ensure_ascii=False), encoding="utf-8"
@@ -202,7 +230,9 @@ class PiAgentBackend:
                 if not hmac.compare_digest(str(request.get("token", "")), token):
                     raise ValueError("Invalid callback token")
                 if request.get("kind") == "ready":
-                    if request.get("names") != native_names:
+                    if request.get("names") != native_names or set(
+                        request.get("activeTools", [])
+                    ) != set((*PI_BUILTIN_TOOLS, *native_names)):
                         raise ValueError("Pi extension registered different tools")
                     if not ready.done():
                         ready.set_result(True)
@@ -310,13 +340,12 @@ class PiAgentBackend:
             "--no-context-files",
             "--no-mcp",
             "--no-approve",
-            "--no-builtin-tools",
             "--extension",
             str(resource_path("ai/agent/backends/pi_host_tools.ts")),
             "--system-prompt",
             str(session.root / "policy.md"),
         ]
-        command += ["--tools", ",".join(native_names)] if allowed else ["--no-tools"]
+        command += ["--tools", ",".join((*PI_BUILTIN_TOOLS, *native_names))]
         for path in session.marker["skills"]:
             command += ["--skill", path]
         server = await asyncio.start_server(serve, "127.0.0.1", 0, limit=MAX_PI_FRAME)
@@ -327,6 +356,9 @@ class PiAgentBackend:
         usage_seen = False
         submitted = False
         provider_error = ""
+        model_phase = "thinking"
+        native_activities = {}
+        runtime_activities = {}
 
         def event(kind, payload):
             nonlocal seq
@@ -339,7 +371,27 @@ class PiAgentBackend:
                 payload=payload,
             )
 
+        def activity(activity_id, kind, name, status, target=""):
+            for key in ("SHINSEKAI_PI_API_KEY", "SHINSEKAI_PI_HOST_TOKEN"):
+                secret = env.get(key, "")
+                if secret:
+                    target = target.replace(secret, "<redacted>")
+            target = redact_text(target)
+            if len(target) > 512:
+                target = target[:511] + "…"
+            return event(
+                "activity.updated",
+                AgentActivityUpdated(
+                    activity_id=f"{task.attempt_id}:{activity_id}",
+                    kind=kind,
+                    name=name,
+                    status=status,
+                    target=target,
+                ),
+            )
+
         try:
+            yield activity("startup", "runtime", "starting", "running")
             await rpc.start()
             try:
                 await asyncio.wait_for(ready, 10)
@@ -375,6 +427,7 @@ class PiAgentBackend:
                 or disposition.get("disposition") != "started"
             ):
                 raise fault("PROTOCOL_MISMATCH", "Pi did not start the submitted task")
+            yield activity("startup", "runtime", "starting", "succeeded")
             while True:
                 record = await rpc.next_event()
                 kind = record["type"]
@@ -383,9 +436,14 @@ class PiAgentBackend:
                     and record.get("message", {}).get("role") == "assistant"
                 ):
                     message_id = uuid.uuid4().hex
+                    model_phase = "thinking"
+                    yield activity(message_id, "model", model_phase, "running")
                 elif kind == "message_update":
                     update = record.get("assistantMessageEvent", {})
                     if update.get("type") == "text_delta":
+                        if model_phase != "responding":
+                            model_phase = "responding"
+                            yield activity(message_id, "model", model_phase, "running")
                         yield event(
                             "message.delta",
                             {"messageId": message_id, "delta": update["delta"]},
@@ -402,6 +460,16 @@ class PiAgentBackend:
                     )
                     stop_reason = message.get("stopReason")
                     provider_error = str(message.get("errorMessage", ""))
+                    yield activity(
+                        message_id,
+                        "model",
+                        model_phase,
+                        (
+                            "failed"
+                            if stop_reason in ("error", "aborted")
+                            else "succeeded"
+                        ),
+                    )
                     yield event(
                         "message.completed", {"messageId": message_id, "text": summary}
                     )
@@ -416,6 +484,53 @@ class PiAgentBackend:
                             for key, value in zip(usage, values):
                                 usage[key] += value
                             yield event("usage.updated", AgentUsage(**usage))
+                elif (
+                    kind == "tool_execution_start"
+                    and record.get("toolName") in PI_BUILTIN_TOOLS
+                ):
+                    call_id = record.get("toolCallId")
+                    if not isinstance(call_id, str) or not call_id.strip():
+                        continue
+                    name = record["toolName"]
+                    args = record.get("args")
+                    args = args if isinstance(args, dict) else {}
+                    target = args.get(
+                        "command" if name in ("bash", "powershell") else "path", ""
+                    )
+                    target = target if isinstance(target, str) else ""
+                    native_activities[call_id] = (name, target)
+                    yield activity(f"tool:{call_id}", "tool", name, "running", target)
+                elif kind == "tool_execution_end":
+                    binding = native_activities.pop(record.get("toolCallId"), None)
+                    if binding:
+                        name, target = binding
+                        yield activity(
+                            f"tool:{record['toolCallId']}",
+                            "tool",
+                            name,
+                            "failed" if record.get("isError") else "succeeded",
+                            target,
+                        )
+                elif kind in ("auto_retry_start", "compaction_start"):
+                    name = "retrying" if kind == "auto_retry_start" else "compacting"
+                    activity_id = uuid.uuid4().hex
+                    runtime_activities[name] = activity_id
+                    yield activity(activity_id, "runtime", name, "running")
+                elif kind in ("auto_retry_end", "compaction_end"):
+                    name = "retrying" if kind == "auto_retry_end" else "compacting"
+                    activity_id = runtime_activities.pop(name, None)
+                    if activity_id:
+                        failed = (
+                            not record.get("success")
+                            if kind == "auto_retry_end"
+                            else record.get("aborted") or "errorMessage" in record
+                        )
+                        yield activity(
+                            activity_id,
+                            "runtime",
+                            name,
+                            "failed" if failed else "succeeded",
+                        )
                 elif kind == "extension_ui_request":
                     await self._input(rpc, host, record)
                 elif kind == "extension_error":

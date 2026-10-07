@@ -132,6 +132,10 @@ class FrontendConfigContribution:
     ``i18n`` may provide localized labels keyed by UI language, e.g.
     ``{"zh_CN": {"title": "...", "groups": {"main": {"fields": {"enabled": {"label": "..."}}}}}}``.
     Missing localized strings fall back to the base ``title`` / ``schema`` strings.
+
+    A schema field may set ``visibleWhen`` to a mapping such as
+    ``{"adapter": "local"}``. The frontend shows it only when every named
+    draft value equals the corresponding value; hidden fields retain their values.
     """
 
     page_id: str

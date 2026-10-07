@@ -42,6 +42,7 @@ def main() -> int:
         if args.backend == "pi":
             from config.config_manager import ConfigManager
             from application.agent.pi_configuration import prepare_pi_agent
+            from application.agent.runtime import ASSISTANT_PROFILE
             from core.agent.pi_runtime import PiRuntime
 
             setup = prepare_pi_agent(
@@ -55,6 +56,7 @@ def main() -> int:
             service_options = {
                 "backend": setup.backend,
                 "worker_environment": setup.worker_environment,
+                "profiles": (ASSISTANT_PROFILE,),
             }
             model_ref = setup.model_ref
         with AgentService(args.database, **service_options) as service:

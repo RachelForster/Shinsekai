@@ -3,15 +3,19 @@ import { createConnection } from "node:net";
 import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-// Only host-supplied definitions are registered. Calls keep Pi's stable call ID.
+// Add host definitions while preserving the native tools selected at startup.
 export default function (pi: ExtensionAPI) {
   const definitions = JSON.parse(
     readFileSync(process.env.SHINSEKAI_PI_TOOLS!, "utf8"),
   );
   pi.on("session_start", async () => {
     const names = definitions.map((definition: any) => definition.nativeName);
-    await requestHost({ kind: "ready", names });
-    pi.setActiveTools(names);
+    pi.setActiveTools([...new Set([...pi.getActiveTools(), ...names])]);
+    await requestHost({
+      kind: "ready",
+      names,
+      activeTools: pi.getActiveTools(),
+    });
   });
   for (const definition of definitions) {
     pi.registerTool({

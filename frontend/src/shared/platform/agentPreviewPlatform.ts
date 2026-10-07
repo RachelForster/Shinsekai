@@ -100,14 +100,37 @@ export function createAgentPreviewPlatform(): AgentPlatform {
       tasks.push(task);
       events.set(task.taskId, []);
       append(task, "task.status", { status: "running" });
+      append(task, "activity.updated", {
+        activityId: "preview-reply",
+        kind: "model",
+        name: "thinking",
+        status: "running",
+        target: "",
+      });
       const text =
         "这是助手聊天的浏览器预览。连接新世界应用后，可以使用已配置的模型与助手对话。\n\nThis is a browser preview. Connect to the Shinsekai app to chat with your configured model.";
       setTimeout(() => {
-        if (!terminal(task.status)) append(task, "message.delta", { messageId: "reply", delta: text.slice(0, 30) });
+        if (!terminal(task.status)) {
+          append(task, "activity.updated", {
+            activityId: "preview-reply",
+            kind: "model",
+            name: "responding",
+            status: "running",
+            target: "",
+          });
+          append(task, "message.delta", { messageId: "reply", delta: text.slice(0, 30) });
+        }
       }, 150);
       setTimeout(() => {
         if (terminal(task.status)) return;
         append(task, "message.completed", { messageId: "reply", text });
+        append(task, "activity.updated", {
+          activityId: "preview-reply",
+          kind: "model",
+          name: "responding",
+          status: "succeeded",
+          target: "",
+        });
         task.status = "succeeded";
         task.updatedAt = new Date().toISOString();
         task.result = { summary: text, artifacts: [], effects: [], warnings: [] };

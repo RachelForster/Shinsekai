@@ -217,7 +217,60 @@ def test_wall_clock_limit_stops_worker_and_is_structured(service):
     task = terminal(client, receipt.task_id)
     assert task.status == "interrupted"
     assert task.error.code == "LIMIT_EXCEEDED"
+    assert task.error.details["limit"] == "wallTimeMs"
+    assert task.error.details["limitMs"] == 800
+    assert task.error.details["elapsedMs"] >= 800
     wait_for(lambda: service._supervisor.process is None)
+
+
+@pytest.mark.parametrize("use_current_limits", [False, True])
+def test_current_limits_are_host_opt_in_and_only_apply_to_new_tasks(
+    tmp_path, use_current_limits
+):
+    database = tmp_path / "agent.sqlite"
+    original = AgentService(
+        database,
+        profiles=(
+            AgentProfile(limits=AgentLimits(wall_time_ms=800, max_tool_calls=3)),
+        ),
+    )
+    try:
+        client, session = client_session(original)
+        pending = submit(client, session)
+        record = original._session_record(session.session_id)
+    finally:
+        original.close()
+
+    with AgentService(
+        database,
+        profiles=(
+            AgentProfile(
+                limits=AgentLimits(max_tool_calls=20),
+                use_current_limits=use_current_limits,
+            ),
+        ),
+    ) as reopened:
+        client = reopened.bind(ORIGIN)
+        assert reopened._session_record(session.session_id) == record
+        assert client.get_task(pending.task_id).limits == AgentLimits(
+            wall_time_ms=800, max_tool_calls=3
+        )
+        assert submit(client, session).task_id == pending.task_id
+        fresh = submit(client, session, request_id="new-message")
+        assert client.get_task(fresh.task_id).limits == (
+            AgentLimits(max_tool_calls=20)
+            if use_current_limits
+            else AgentLimits(wall_time_ms=800, max_tool_calls=3)
+        )
+        stricter = submit(
+            client,
+            session,
+            request_id="stricter-message",
+            limits=AgentLimits(wall_time_ms=100, max_tool_calls=1),
+        )
+        assert client.get_task(stricter.task_id).limits == AgentLimits(
+            wall_time_ms=100, max_tool_calls=1
+        )
 
 
 def test_unsupported_token_limit_is_not_silently_ignored(service):

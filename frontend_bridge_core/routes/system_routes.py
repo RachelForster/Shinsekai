@@ -29,6 +29,8 @@ def _health(request: ApiRequest) -> JsonResponse:
 
 
 def _get_config(request: ApiRequest) -> JsonResponse:
+    if (request.query.get("view") or [""])[0] == "agent":
+        return JsonResponse(_app_config_response(request.state, settings_only=True))
     return JsonResponse(_app_config_response(request.state))
 
 

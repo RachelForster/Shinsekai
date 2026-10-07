@@ -21,7 +21,22 @@ from frontend_bridge_core.routes.router import (
 
 
 def _list_characters(request: ApiRequest) -> JsonResponse:
-    return JsonResponse(request.state.config_manager.config.characters)
+    characters = request.state.config_manager.config.characters
+
+    def name(character):
+        return character.get("name", "") if isinstance(character, dict) else character.name
+
+    if "name" in request.query:
+        selected = (request.query.get("name") or [""])[0]
+        if not selected.strip():
+            raise ValueError("character name is required")
+        for character in characters:
+            if name(character) == selected:
+                return JsonResponse(character)
+        raise KeyError(f"character not found: {selected}")
+    if (request.query.get("view") or [""])[0] == "names":
+        return JsonResponse([name(character) for character in characters])
+    return JsonResponse(characters)
 
 
 def _save_character_route(request: ApiRequest) -> JsonResponse:

@@ -255,6 +255,109 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
+.agent-message-text--markdown {
+  white-space: normal;
+}
+.agent-message-text--markdown > :first-child {
+  margin-top: 0;
+}
+.agent-message-text--markdown > :last-child {
+  margin-bottom: 0;
+}
+.agent-message-text--markdown p,
+.agent-message-text--markdown ul,
+.agent-message-text--markdown ol,
+.agent-message-text--markdown blockquote {
+  margin: 0.75em 0;
+}
+.agent-message-text--markdown p {
+  white-space: pre-wrap;
+}
+.agent-message-text--markdown h1,
+.agent-message-text--markdown h2,
+.agent-message-text--markdown h3,
+.agent-message-text--markdown h4,
+.agent-message-text--markdown h5,
+.agent-message-text--markdown h6 {
+  margin: 1em 0 0.5em;
+  font-size: 1em;
+  line-height: 1.5;
+}
+.agent-message-text--markdown h1 {
+  font-size: 1.3em;
+}
+.agent-message-text--markdown h2 {
+  font-size: 1.2em;
+}
+.agent-message-text--markdown h3 {
+  font-size: 1.1em;
+}
+.agent-message-text--markdown ul,
+.agent-message-text--markdown ol {
+  padding-left: 1.5em;
+}
+.agent-message-text--markdown li + li {
+  margin-top: 0.25em;
+}
+.agent-message-text--markdown li > ul,
+.agent-message-text--markdown li > ol {
+  margin: 0.25em 0;
+}
+.agent-message-text--markdown .contains-task-list {
+  padding-left: 0;
+  list-style: none;
+}
+.agent-message-text--markdown .task-list-item input {
+  margin-right: 0.5em;
+}
+.agent-message-text--markdown a {
+  color: var(--color-accent-primary);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.agent-message-text--markdown code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--color-control-surface);
+  font-size: 0.9em;
+}
+.agent-message-text--markdown pre code {
+  padding: 0;
+  background: none;
+  font-size: inherit;
+}
+.agent-message-text--markdown blockquote {
+  padding-left: 12px;
+  border-left: 3px solid var(--color-border);
+  color: var(--color-text-muted);
+}
+.agent-message-text--markdown img {
+  max-width: 100%;
+  height: auto;
+}
+.agent-message-text--markdown hr {
+  margin: 1em 0;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+}
+.agent-markdown-table {
+  max-width: 100%;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+.agent-markdown-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.agent-markdown-table th,
+.agent-markdown-table td {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  vertical-align: top;
+}
+.agent-markdown-table th {
+  background: var(--color-control-surface);
+}
 .agent-message-text pre,
 .agent-tool pre {
   max-width: 100%;
@@ -310,6 +413,82 @@
   border: 1px solid var(--color-accent-border);
   border-radius: var(--radius-control);
   background: var(--color-accent-bg);
+}
+.agent-activity {
+  margin: 12px 0;
+  font-size: 12px;
+}
+.agent-activity__current {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-accent-border);
+  border-radius: var(--radius-control);
+  background: var(--color-accent-bg);
+}
+.agent-activity__current > div,
+.agent-activity__body {
+  flex: 1;
+  min-width: 0;
+}
+.agent-activity svg {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  margin-top: 2px;
+}
+.agent-activity strong {
+  font-weight: 500;
+}
+.agent-activity small {
+  color: var(--color-text-muted);
+}
+.agent-activity__target {
+  display: block;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+.agent-activity__history > summary {
+  padding: 10px 0;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+.agent-activity__history ol {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 4px 0 4px 10px;
+  border-left: 1px solid var(--color-border);
+  list-style: none;
+}
+.agent-activity__step {
+  display: flex;
+  gap: 10px;
+}
+.agent-activity__body > small {
+  display: block;
+  margin-top: 4px;
+}
+.agent-activity__step--failed,
+.agent-activity__step--interrupted {
+  color: var(--color-accent-primary);
+}
+.agent-activity__spinner {
+  animation: agent-activity-spin 1.2s linear infinite;
+}
+@keyframes agent-activity-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agent-activity__spinner {
+    animation: none;
+  }
 }
 .agent-input-prompt p {
   margin: 0 0 10px;

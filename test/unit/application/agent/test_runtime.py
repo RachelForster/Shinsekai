@@ -7,16 +7,19 @@ from types import SimpleNamespace
 
 import pytest
 
-from application.agent.management import AgentService
+from application.agent.management import AgentProfile, AgentService
 from application.agent.pi_configuration import resolve_pi_model
 from application.agent.runtime import AgentRuntime, UI_ORIGIN
+from application.agent.skills import BUNDLED_SKILL_REFS
 from application.runtime.services import ApplicationServices
 from sdk.agent import (
     AgentBackendConfig,
+    AgentLimits,
     AgentRequestError,
     AgentSessionRequest,
     AgentTaskRequest,
 )
+from test.unit.application.agent.test_management import applied, host_tool
 
 
 class ModelConfig:
@@ -94,15 +97,18 @@ def test_preparation_failure_keeps_history_and_retry_can_start(tmp_path):
         runtime._thread.join(2)
         runtime.start()
         wait_for(lambda: runtime.snapshot()["status"] == "ready")
-        assert runtime.create_session().owner == UI_ORIGIN
+        session = runtime.create_session()
+        assert session.owner == UI_ORIGIN
+        assert session.skill_refs == BUNDLED_SKILL_REFS
     finally:
         runtime.close()
 
 
-def seed_queue(root, config):
+def seed_queue(root, config, *, profile=None):
     service = AgentService(
         root / "agent.sqlite",
         backend=AgentBackendConfig(backend_id="mock", backend_version="1"),
+        profiles=(profile or AgentProfile(),),
     )
     client = service.bind(UI_ORIGIN, administrator=True)
     session = client.create_session(
@@ -123,6 +129,130 @@ def seed_queue(root, config):
     )
     service.close()
     return session, receipt
+
+
+@pytest.mark.parametrize("previous_wall_time_ms", [400, 60000, 300000])
+def test_assistant_new_tasks_drop_default_limits_in_existing_sessions(
+    tmp_path, previous_wall_time_ms
+):
+    config = ModelConfig()
+    session, pending = seed_queue(
+        tmp_path,
+        config,
+        profile=AgentProfile(
+            limits=AgentLimits(wall_time_ms=previous_wall_time_ms, max_tool_calls=20)
+        ),
+    )
+    runtime = AgentRuntime(config, tmp_path, prepare=mock_setup)
+    try:
+        runtime.start()
+        wait_for(lambda: runtime.snapshot()["status"] == "ready")
+        with runtime.access() as client:
+            assert (
+                client.get_task(pending.task_id).limits.wall_time_ms
+                == previous_wall_time_ms
+            )
+            assert client.get_task(pending.task_id).limits.max_tool_calls == 20
+            client.cancel_task(pending.task_id)
+        runtime.resume_queue()
+        with runtime.access() as client:
+            fresh = client.submit_task(
+                AgentTaskRequest(
+                    request_id="continue-old-session",
+                    session_id=session.session_id,
+                    origin=UI_ORIGIN,
+                    input={"text": "continue"},
+                    context=(
+                        {
+                            "kind": "text",
+                            "source": "mock:plan",
+                            "text": json.dumps({"delayMs": 1200}),
+                        },
+                    ),
+                    lifetime="detached",
+                )
+            )
+            task = wait_for(
+                lambda: (
+                    task
+                    if (task := client.get_task(fresh.task_id)).status.is_terminal
+                    else None
+                )
+            )
+            assert task.status == "succeeded"
+            assert task.limits.wall_time_ms is None
+            assert task.limits.max_tool_calls is None
+            # Permission and skill snapshots are independent of execution limits.
+            assert client.list_sessions().sessions[0].skill_refs == session.skill_refs
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize("max_tool_calls", [None, 2])
+def test_assistant_long_tool_workflow_respects_only_explicit_limits(
+    tmp_path, max_tool_calls
+):
+    calls = []
+
+    def record(task, call):
+        calls.append(call.arguments["value"])
+        return applied(call)
+
+    runtime = AgentRuntime(
+        ModelConfig(), tmp_path, prepare=mock_setup, tools=(host_tool(record),)
+    )
+    try:
+        runtime.start()
+        wait_for(lambda: runtime.snapshot()["status"] == "ready")
+        session = runtime.create_session()
+        with runtime.access() as client:
+            receipt = client.submit_task(
+                AgentTaskRequest(
+                    request_id="long-tool-workflow",
+                    session_id=session.session_id,
+                    origin=UI_ORIGIN,
+                    input={"text": "Run all steps and report the result."},
+                    context=(
+                        {
+                            "kind": "text",
+                            "source": "mock:plan",
+                            "text": json.dumps(
+                                {
+                                    "tools": [
+                                        {
+                                            "callId": f"step-{index}",
+                                            "name": "test.record",
+                                            "arguments": {"value": index},
+                                        }
+                                        for index in range(25)
+                                    ]
+                                }
+                            ),
+                        },
+                    ),
+                    limits=AgentLimits(max_tool_calls=max_tool_calls),
+                    lifetime="detached",
+                )
+            )
+            task = wait_for(
+                lambda: (
+                    task
+                    if (task := client.get_task(receipt.task_id)).status.is_terminal
+                    else None
+                )
+            )
+            assert task.limits.max_tool_calls == max_tool_calls
+            if max_tool_calls is None:
+                assert task.status == "succeeded"
+                assert calls == list(range(25))
+                assert task.result.data["tools"] == [
+                    {"value": index} for index in range(25)
+                ]
+            else:
+                assert task.error.code == "LIMIT_EXCEEDED"
+                assert calls == list(range(max_tool_calls))
+    finally:
+        runtime.close()
 
 
 def test_recovered_queue_waits_for_explicit_resume(tmp_path):
@@ -230,8 +360,8 @@ def test_application_services_has_one_agent_owner(monkeypatch, tmp_path):
     calls = []
 
     class Runtime:
-        def __init__(self, config, root):
-            calls.append((config, root))
+        def __init__(self, config, root, *, tools):
+            calls.append((config, root, tools))
 
         def start(self):
             calls.append("start")
@@ -244,7 +374,7 @@ def test_application_services_has_one_agent_owner(monkeypatch, tmp_path):
     services.start_agent("config", tmp_path)
     services.start_agent("config", tmp_path)
     services.close()
-    assert calls == [("config", tmp_path), "start", "start", "close"]
+    assert calls == [("config", tmp_path, ()), "start", "start", "close"]
 
 
 def test_backend_preparation_is_forbidden_after_dispatch_starts(tmp_path):

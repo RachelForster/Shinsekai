@@ -1,9 +1,9 @@
 # Shinsekai 通用 Agent 系统设计
 
-> 状态：任务核心、Pi Adapter、运行包管理、配置复用、应用生命周期、HTTP 和助手聊天 UI 已实现；业务工具、skills 与角色委托待后续接入。
+> 状态：任务核心、Pi Adapter、运行包管理、配置复用、应用生命周期、HTTP、助手聊天 UI、首批 skills、HTTP 业务工具与浏览器插件工具入口已实现；媒体专用能力和角色委托待后续接入。技能加载与范围见 [Agent Skills](AGENT_SKILLS_zh-CN.md)。
 > 更新日期：2026-10-06。
 > 范围：通用接口、独立进程、后端适配、宿主工具，以及角色扮演委托 Agent 的完整调用流程。
-> 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，任务核心见 [运行说明](AGENT_TASK_CORE_zh-CN.md)，Pi 见 [接入说明](AGENT_PI_zh-CN.md)，产品入口见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)。业务工具和角色回传仍为实施目标。
+> 依赖边界遵循 [项目结构](PROJECT_STRUCTURE.md)。公共契约见 [sdk/agent.py](../sdk/agent.py)，任务核心见 [运行说明](AGENT_TASK_CORE_zh-CN.md)，Pi 见 [接入说明](AGENT_PI_zh-CN.md)，产品入口见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)，业务工具见 [HTTP 工具说明](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md)。角色回传仍为实施目标。
 
 ## 1. 目标与设计决定
 
@@ -14,7 +14,7 @@ Shinsekai 提供一个独立的 Agent 助手，负责功能介绍、问题诊断
 1. **Agent 必须在独立进程中运行。** Agent 循环、后端 SDK、后端扩展及其依赖不加载到 bridge 或角色扮演进程中。SDK 型后端也必须放进 worker；远端后端仍通过本地 worker 适配。
 2. **Agent 与角色扮演拥有不同的会话、提示词、历史、模型配置和生命周期。** 角色扮演是 Agent 的一个调用方。关闭聊天不会关闭助手面板的任务，Agent 崩溃不会结束角色聊天。
 3. **公共接口以 session、task、event、artifact 为中心。** Pi 的命令名、会话文件和事件类型止于 Pi adapter，不进入前端和角色工具契约。
-4. **业务修改统一经过宿主工具。** Agent 通过明确接口请求角色保存、配置更新和插件安装；宿主复用现有 application 用例，负责校验、提交及界面通知。
+4. **业务修改统一经过宿主工具。** Agent 通过明确接口请求人物保存、配置更新和插件安装；首版 HTTP 工具复用现有 bridge routes 及其业务实现，保留原有校验与资源管理，不要求先迁移所有路由逻辑。具体网络适配位于 bridge transport 层。
 5. **任务采用异步提交。** 提交成功只代表已受理；最终结果、取消结果和实际修改通过任务状态与事件报告。
 6. **第一版按应用实例启动一个 worker，最多运行一个任务。** worker 一次绑定一个后端及版本。同一 session 的任务始终串行，不同调用方排队使用。worker 支持多个逻辑 session，不表示后端可以并发执行。
 
@@ -201,8 +201,9 @@ class AgentHostPort(Protocol):
 | 能力 | 处理规则 |
 | --- | --- |
 | `hostTools` | 新世界业务 profile 的必需能力；后端能把自定义工具调用交还宿主执行 |
-| `toolPolicyEnforcement` | 能关闭未允许的原生工具并控制原生工具范围；达不到时不启用需要该约束的 profile |
+| `toolPolicyEnforcement` | 能控制允许的原生和宿主工具集合；当前 Pi 明确启用八个原生工具及 profile 的宿主工具，宿主权限、预算和操作记录仅覆盖宿主调用 |
 | `streamingText` | 可选；不支持时发送完整消息事件 |
+| `activityReporting` | 可选；报告模型、运行期和原生工具的可观察活动，前端使用统一进度契约 |
 | `nativeSessionResume` | 可选；不支持时可用宿主整理的交接内容创建新会话 |
 | `interactiveInput` | 可选；不支持时需在提交前收齐输入，或明确返回能力不支持 |
 | `structuredOutput` | 可选；缺失时保留文本结果，宿主从工具结果提取可靠的结构化数据 |
@@ -245,11 +246,14 @@ queued → running ⇄ waiting_input
 task.status
 message.delta / message.completed
 tool.started / tool.completed
+activity.updated
 input.requested / input.resolved
 artifact.created
 usage.updated
 task.completed
 ```
+
+`activity.updated` 携带 `activityId`、`kind`（runtime、model、tool）、`name`、`status`（running、succeeded、failed）和最多 512 字符的 `target`。开始、阶段变化和结束更新同一活动 ID；ID 在任务内唯一，多次 attempt 应分别命名。它只报告后端可观察的工作，不具有宿主工具执行、授权或 effects 的语义，不能替代任务终态。前端通过事件时间显示耗时，终态后没有结束记录的活动保留未确认状态。
 
 `task.completed` 包含唯一终态、结果和错误，是 UI 停止等待的依据。`message.completed` 是完整消息正文，覆盖拼接的增量文本；进度和消息更新均不能代表任务完成。不要求后端暴露内部思维链，前端展示工作说明、工具活动和可验证结果。
 
@@ -288,6 +292,8 @@ task.completed
 插件文件先写入 Agent workspace，执行检查后再通过安装用例提交。插件校验不得通过在 bridge 内直接 import 新生成的代码完成。现有插件启用后的宿主进程执行方式由插件系统管理。
 
 skills 随应用发布在 `assets/agent/skills/`，首版包括功能介绍、诊断、人物创建和插件开发。宿主保存统一的 skill 内容与版本，adapter 负责转换成后端支持的资源形式；不支持自动 skill 发现的后端，由宿主按 profile 显式提供所需流程。工具名称与 schema 是最终事实来源。
+
+当前 Pi 开启原生文件、搜索和 shell 工具，默认使用原生 skill 目录和按需正文读取。宿主 HTTP 工具继续经过 ToolBroker；原生工具在 Pi 内执行，沿用当前用户的文件与命令权限，其结果保存在 Pi 历史中，尚不形成宿主 `effects` 或消费宿主调用次数预算。角色委托尚未接入，其资源约束仍属于后续设计范围。
 
 理性与独立判断写入始终生效的 Agent 系统策略：区分事实、假设和建议；依据工具结果声明操作完成；证据不足时说明不确定；发现用户前提不成立时明确指出；失败后不得伪造已完成。角色性格、剧情规则和台词格式不进入这份策略。角色摘要和外部文档作为任务数据传入，不提升为系统指令。
 
@@ -451,7 +457,7 @@ assets/agent/
 10. **配置与资源**：人物保存冲突可报告；运行包下载中断不损坏旧版本；打包后的 skills 和参考资料可实际读取。
 11. **输入与背压**：待答期间仍可取消；过期回答被拒绝；大量输出不会无限增长内存或丢失终态。
 
-当前已交付阶段 A 的任务核心及阶段 B 的 Pi Adapter、官方运行包管理、配置解析与宿主工具 extension。已用真实子进程验证任务语义，并用官方 Pi binary 和本地模型测试服务验证流式文本、宿主工具、会话恢复、取消和认证失败。真实业务工具、React 和角色投递仍是后续阶段的验收标准。
+当前已交付阶段 A 的任务核心、阶段 B 的 Pi Adapter、官方运行包管理、配置解析与宿主工具 extension，以及阶段 C 的 React 助手、skills 和首批 HTTP 业务工具。已用真实子进程验证任务语义，并用官方 Pi binary 和本地模型测试服务验证流式文本、真实 bridge 工具调用、会话恢复、取消和认证失败。完整人物素材流水线和阶段 D 的角色投递仍是后续验收目标。
 
 ### 12.1 已实现的公共接口
 
@@ -484,7 +490,7 @@ except AgentRequestError as exc:
 
 `application.agent.management.AgentService` 是应用内唯一任务用例入口，通过 `bind()` 返回身份绑定的 `AgentClient` 实现。worker 按需启动；宿主和角色进程不导入 Agent backend。当前 worker 显式注册 `mock` 和 `pi` 后端。
 
-会话创建时固定 profile、工具名单和限额快照；任务请求只能收紧快照中的限额。宿主工具使用 Pydantic 输入、输出模型生成 schema，并检查真实调用结果。工具记录的 `(taskId, callId)` 负责幂等，最终结果中的操作事实和 artifact 来自宿主存储。
+会话创建时固定 profile、工具名单和限额快照；默认情况下任务请求只能收紧快照中的限额。可信宿主可通过 `AgentProfile(use_current_limits=True)` 让新任务采用当前 profile 的执行限额，交互式助手使用该策略且不设墙钟上限，旧会话后续任务也适用。已有任务限额、提交幂等、模型、工具及技能快照保持不变。宿主工具使用 Pydantic 输入、输出模型生成 schema，并检查真实调用结果。工具记录的 `(taskId, callId)` 负责幂等，最终结果中的操作事实和 artifact 来自宿主存储。
 
 任务快照、事件、提交幂等记录和终态在 SQLite 事务中保存。数据库使用操作系统文件锁限制唯一 owner。恢复排队任务后需显式 `resume_queue()`；不具备原生恢复能力的旧 session 返回 `SESSION_RESUME_UNAVAILABLE`。角色来源有效性由组合根注入，尚未接入实际聊天生命周期和 inbox。
 

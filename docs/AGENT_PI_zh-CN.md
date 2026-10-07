@@ -1,6 +1,6 @@
 # Pi Adapter 接入
 
-本阶段实现通用 Agent 的 Pi backend。宿主仍使用 `AgentClient` / `AgentService`，Pi 类型和原生 RPC 命令止于 worker 内的 adapter。应用生命周期、HTTP 和助手 UI 已接入，见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)；实际业务工具和角色委托待后续接入。
+本阶段实现通用 Agent 的 Pi backend。宿主仍使用 `AgentClient` / `AgentService`，Pi 类型和原生 RPC 命令止于 worker 内的 adapter。应用生命周期、HTTP 和助手 UI 已接入，见 [应用接入说明](AGENT_APP_INTEGRATION_zh-CN.md)。桌面业务工具已复用现有 HTTP routes；网页、媒体能力及角色委托待后续接入。
 
 ## 运行
 
@@ -12,7 +12,7 @@ python -m application.agent --backend pi --task "介绍你可以如何协助排�
 
 首次使用会下载官方 Pi v1.0.4，显示安装进度，按固定 SHA-256 清单验证后安装。已验证的运行包会复用；无需单独安装 Node 或 Bun。也可以用 `--pi-binary <path>` 指定已安装的同版本官方 binary，worker 会核对版本。
 
-每次 CLI 调用创建一个新 session。应用客户端可保留 `session_id`，向同一 session 继续提交任务。CLI 的默认 `basic` profile 没有业务工具；模型只能回答文本，不能自行读写应用或文件。
+每次 CLI 调用创建一个新 session。应用客户端可保留 `session_id`，向同一 session 继续提交任务。桌面助手和 Pi CLI 的新会话均提供四个随应用发布的 skills，由 Pi 的模型按需选择和读取，见 [技能说明](AGENT_SKILLS_zh-CN.md)。两者均开启原生文件、搜索及 shell 工具；CLI 不自动注册应用 HTTP 工具，桌面 `AgentRuntime` 另外注入 [HTTP 工具](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md)。
 
 ## 复用现有模块
 
@@ -52,9 +52,15 @@ API Key 经宿主到 worker 的私有环境传入。公共 DTO、任务数据库
 
 这个 extension 是 Pi Adapter 的实现代码，与 `pi.py`、`pi_rpc.py` 放在一起。通用系统策略仍位于 `assets/agent/system-policy.md`，后续 skills 和参考文档也归入 `assets/agent/`。桌面资源准备脚本同时包含 `ai/` 和 `assets/`；adapter 通过 `resource_path()` 定位 extension 文件，再交给 Pi 的 `--extension` 加载。
 
-extension 通过仅监听 loopback、每次任务生成随机 token 的私有通道调用 adapter，再由 `AgentHostPort` 请求宿主执行。Pi 内建工具、MCP 和第三方扩展均不进入当前工具集合。实际校验、授权、幂等及写操作结果仍由宿主记录。
+extension 保留启动时启用的 Pi 原生工具，并加入当前 profile 的宿主工具；启动握手核对实际活动列表。开启 `read`、`bash`、`powershell`、`edit`、`write`、`grep`、`find`、`ls`，文件与命令的默认工作目录为 `pi-sessions/<session_id>/workspace/`。MCP 与自动发现的第三方扩展保持关闭。
+
+宿主工具通过仅监听 loopback、每次任务生成随机 token 的私有通道调用 adapter，再由 `AgentHostPort` 请求宿主执行，继续执行输入校验、授权、预算、幂等与写操作记录。Pi 原生工具直接在 Pi 进程执行，拥有当前用户的文件和命令权限；workspace 是工作目录，不是沙箱。原生工具结果保存在 Pi 历史中，不经过 HTTP 响应脱敏或宿主 call ID 去重，也不计入宿主 `maxToolCalls`；公共 `effects` 当前只反映宿主操作。取消和退出仍回收 worker、Pi 及其进程树。
 
 Pi RPC 的 `prompt` 响应只代表受理，`agent_end` 也不是整个运行的完成。adapter 持续消费 LF 分帧的 JSONL，直到 `agent_settled` 才生成终态；将文本和 provider 报告的 token 数转换为公共事件。取消先清空排队消息、请求 abort，再确认子进程退出；未确认结束的运行不能报告成功。
+
+Adapter 声明 `activityReporting`，将启动、模型处理、回复生成、自动重试、上下文整理，以及 Pi 原生 `tool_execution_start` / `tool_execution_end` 转成 `activity.updated`。事件形状依据 [Pi v1.0.4 JSON 事件规范](https://github.com/earendil-works/pi/blob/v1.0.4/packages/coding-agent/docs/json.md)。同一活动的开始与结束使用同一个、带 attempt 前缀的 ID。只传递原生工具名、路径或命令摘要、状态；目标最多 512 字符并脱敏，不传递文件正文、命令输出、写入内容或内部推理。
+
+这类事件仅表示执行进度，不替代宿主授权、`tool.started` / `tool.completed` 或写操作 `effects`。Adapter 只转换八个 Pi 内置工具的执行事件；宿主 extension 的工具仍由 AgentService 记录，避免重复。桌面 UI 使用公共活动类型，无需理解 Pi 事件或 RPC 字段。
 
 Pi input、select、confirm 和 editor 请求映射为公共用户输入。外部资源和 artifact 引用需要宿主先物化为文本；未物化引用返回能力错误。当前不声明 token 硬上限或结构化结果能力。
 

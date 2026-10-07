@@ -74,7 +74,12 @@ def test_official_pi_stream_tool_and_session_resume(tmp_path, behavior):
                             "id": "fixture-tool-call",
                             "type": "function",
                             "function": {
-                                "name": body["tools"][0]["function"]["name"],
+                                "name": next(
+                                    tool["function"]["name"]
+                                    for tool in body["tools"]
+                                    if "Host tool test.inspect:"
+                                    in tool["function"]["description"]
+                                ),
                                 "arguments": '{"value":7}',
                             },
                         }

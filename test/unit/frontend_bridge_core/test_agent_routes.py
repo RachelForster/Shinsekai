@@ -99,6 +99,8 @@ def test_http_roundtrip_identity_idempotency_events_and_session_close(live_agent
     assert task["status"] == "succeeded"
     assert task["origin"] == UI_ORIGIN.to_wire()
     assert task["lifetime"] == "detached"
+    assert task["limits"]["wallTimeMs"] is None
+    assert task["limits"]["maxToolCalls"] is None
     status, page = request("GET", task_path + "/events?afterSeq=0&limit=1000")
     assert status == 200
     assert any(event["type"] == "task.completed" for event in page["events"])

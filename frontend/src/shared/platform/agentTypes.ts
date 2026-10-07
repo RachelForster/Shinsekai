@@ -61,6 +61,13 @@ export interface AgentUsage {
   outputTokens: number | null;
   totalTokens: number | null;
 }
+export interface AgentActivity {
+  activityId: string;
+  kind: "runtime" | "model" | "tool";
+  name: string;
+  status: "running" | "succeeded" | "failed";
+  target: string;
+}
 export interface AgentEvent {
   taskId: string;
   eventSeq: number;

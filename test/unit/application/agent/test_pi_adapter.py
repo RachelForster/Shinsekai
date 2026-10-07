@@ -36,7 +36,7 @@ def callback(request):
 tools = []
 if os.environ.get('SHINSEKAI_PI_TOOLS'):
     tools = json.loads(Path(os.environ['SHINSEKAI_PI_TOOLS']).read_text())
-    callback({'kind':'ready', 'names':[tool['nativeName'] for tool in tools]})
+    callback({'kind':'ready', 'names':[tool['nativeName'] for tool in tools], 'activeTools':sys.argv[sys.argv.index('--tools')+1].split(',')})
 def run():
     if scenario == 'die': os._exit(7)
     root = Path.cwd().parent / 'native'
@@ -46,8 +46,21 @@ def run():
     emit({'type':'message_start','message':{'role':'assistant'}})
     text = 'hello\u2028world'
     if scenario == 'tool':
+        emit({'type':'tool_execution_start','toolCallId':'pi-stable-call','toolName':tools[0]['nativeName'],'args':{'value':9}})
         result = callback({'call':{'callId':'pi-stable-call','name':tools[0]['name'],'arguments':{'value':9}}})
+        emit({'type':'tool_execution_end','toolCallId':'pi-stable-call','toolName':tools[0]['nativeName'],'result':result,'isError':False})
         text = json.dumps(result['data'])
+    if scenario in ('native-tool', 'native-error'):
+        emit({'type':'tool_execution_start','toolCallId':'read-call','toolName':'read','args':{'path':'/skills/shinsekai-guide/SKILL.md'}})
+        emit({'type':'tool_execution_update','toolCallId':'read-call','toolName':'read','partialResult':{'content':[{'type':'text','text':'unrequested-file-content'}]}})
+        emit({'type':'tool_execution_end','toolCallId':'read-call','toolName':'read','result':{'content':[{'type':'text','text':'unrequested-file-content'}]},'isError':False})
+        emit({'type':'tool_execution_start','toolCallId':'shell-call','toolName':'powershell','args':{'command':'echo fixture-api-key; password=private-command-password; ' + os.environ['SHINSEKAI_PI_HOST_TOKEN'] + 'x' * 1000}})
+        emit({'type':'tool_execution_end','toolCallId':'shell-call','toolName':'powershell','isError':scenario == 'native-error'})
+        emit({'type':'auto_retry_start','attempt':1,'errorMessage':'fixture-api-key'})
+        emit({'type':'auto_retry_end','success':True})
+        emit({'type':'compaction_start','reason':'threshold'})
+        emit({'type':'compaction_end','aborted':False,'result':{'summary':'unrequested-compaction-summary'}})
+    emit({'type':'message_update','assistantMessageEvent':{'type':'thinking_delta','delta':'unrequested-internal-reasoning'}})
     if scenario == 'input':
         emit({'type':'extension_ui_request','method':'confirm','id':'dialog-1','title':'Confirm','message':'Continue?'})
         answered.wait(5)
@@ -125,7 +138,7 @@ def setup(monkeypatch, tmp_path, scenario):
         adapter,
         "PiRpcProcess",
         lambda command, **kwargs: PiRpcProcess(
-            [sys.executable, str(script), scenario], **kwargs
+            [sys.executable, str(script), scenario, *command[1:]], **kwargs
         ),
     )
     policy = tmp_path / "policy.md"
@@ -207,6 +220,10 @@ def test_adapter_maps_events_and_waits_for_settled(
         if scenario == "tool":
             assert host.calls[0].call_id == "pi-stable-call"
             assert host.calls[0].arguments == {"value": 9}
+            assert not any(
+                event.type == "activity.updated" and event.payload.kind == "tool"
+                for event in events
+            )
         if scenario == "input":
             assert host.questions[0].question == "Confirm\nContinue?"
         assert "fixture-api-key" not in json.dumps(
@@ -220,6 +237,57 @@ def test_adapter_maps_events_and_waits_for_settled(
             with pytest.raises(AgentRequestError) as error:
                 await backend.open_session(config)
             assert error.value.error.code == "SESSION_RESUME_UNAVAILABLE"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("scenario", ["native-tool", "native-error"])
+def test_native_activity_is_bounded_redacted_and_separate_from_host_tools(
+    monkeypatch, tmp_path, scenario
+):
+    async def run():
+        backend, config, task, host = setup(monkeypatch, tmp_path, scenario)
+        session = await backend.open_session(config)
+        events = [event async for event in backend.run(session, task, host)]
+        activities = [
+            event.payload for event in events if event.type == "activity.updated"
+        ]
+        tools = [value for value in activities if value.kind == "tool"]
+        assert [(value.name, value.status) for value in tools] == [
+            ("read", "running"),
+            ("read", "succeeded"),
+            ("powershell", "running"),
+            ("powershell", "failed" if scenario == "native-error" else "succeeded"),
+        ]
+        assert tools[0].activity_id == tools[1].activity_id
+        assert tools[0].activity_id.startswith(task.attempt_id + ":")
+        assert tools[0].target == "/skills/shinsekai-guide/SKILL.md"
+        assert len(tools[2].target) == 512
+        assert "<redacted>" in tools[2].target
+        assert {
+            (value.name, value.status)
+            for value in activities
+            if value.kind == "runtime"
+        } == {
+            (name, status)
+            for name in ("starting", "retrying", "compacting")
+            for status in ("running", "succeeded")
+        }
+        assert any(
+            value.name == "responding" and value.status == "running"
+            for value in activities
+        )
+        wire = json.dumps([event.to_wire() for event in events])
+        for secret in (
+            "fixture-api-key",
+            "private-command-password",
+            "unrequested-file-content",
+            "unrequested-compaction-summary",
+            "unrequested-internal-reasoning",
+        ):
+            assert secret not in wire
+        assert not host.calls
+        assert events[-1].payload.status == "succeeded"
 
     asyncio.run(run())
 

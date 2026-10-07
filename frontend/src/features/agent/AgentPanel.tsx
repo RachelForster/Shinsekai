@@ -1,18 +1,46 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bot, Plus, Send, Square, Wrench, X } from "lucide-react";
+import { Bot, Plus, Send, Square, X } from "lucide-react";
 import { Link } from "react-router-dom";
+import Markdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 import { agentApi, agentQueryKey, listAgentSessions } from "../../entities/agent/repository";
 import { isTerminal, type AgentTranscript } from "../../entities/agent/events";
-import type { AgentArtifact, AgentInputRequest, AgentSession, AgentTask } from "../../shared/platform/agentTypes";
+import type {
+  AgentArtifact,
+  AgentError,
+  AgentInputRequest,
+  AgentSession,
+  AgentTask,
+} from "../../shared/platform/agentTypes";
 import { useI18n } from "../../shared/i18n";
 import type { MessageKey } from "../../shared/i18n";
 import { Button, Dialog, QueryErrorState } from "../../shared/ui";
 import { useAgentConversation } from "./useAgentConversation";
+import { AgentActivityLog } from "./AgentActivityLog";
 import "./agent.css";
 
-function MessageText({ text }: { text: string }) {
+const markdownComponents: Components = {
+  a: ({ node: _node, ...props }) => (
+    <a {...props} target={props.href?.startsWith("#") ? undefined : "_blank"} rel="noopener noreferrer" />
+  ),
+  table: ({ node: _node, ...props }) => (
+    <div className="agent-markdown-table">
+      <table {...props} />
+    </div>
+  ),
+};
+
+function MessageText({ text, markdown = false }: { text: string; markdown?: boolean }) {
+  if (markdown)
+    return (
+      <div className="agent-message-text agent-message-text--markdown">
+        <Markdown components={markdownComponents} remarkPlugins={[remarkGfm]}>
+          {text}
+        </Markdown>
+      </div>
+    );
   const blocks = text.split(/```[^\n]*\n([\s\S]*?)(?:```|$)/g);
   return (
     <div className="agent-message-text">
@@ -98,6 +126,24 @@ function InputPrompt({
   );
 }
 
+function TaskError({ error }: { error: AgentError }) {
+  const { t } = useI18n();
+  const wallTimeExceeded =
+    error.code === "LIMIT_EXCEEDED" &&
+    (error.details?.limit === "wallTimeMs" || error.message === "Agent wall time limit was reached");
+  const limitMs = error.details?.limitMs;
+  const message = wallTimeExceeded
+    ? typeof limitMs === "number" && Number.isFinite(limitMs) && limitMs > 0
+      ? t("agent.wallTimeExceededWithLimit", { seconds: Math.ceil(limitMs / 1000) })
+      : t("agent.wallTimeExceeded")
+    : error.message;
+  return (
+    <p className="agent-error" role="alert">
+      {message} <span className="agent-error__code">{error.code}</span>
+    </p>
+  );
+}
+
 function TaskTurn({
   task,
   transcript,
@@ -105,6 +151,7 @@ function TaskTurn({
   cancelling,
   onAnswered,
   onArtifact,
+  enabled,
 }: {
   task: AgentTask;
   transcript?: AgentTranscript;
@@ -112,6 +159,7 @@ function TaskTurn({
   cancelling: boolean;
   onAnswered: () => void;
   onArtifact: (artifact: AgentArtifact) => void;
+  enabled: boolean;
 }) {
   const { t } = useI18n();
   const messages = transcript?.messages ?? [];
@@ -131,30 +179,11 @@ function TaskTurn({
             {t(`agent.status.${task.status}` as MessageKey)}
           </span>
         </div>
+        <AgentActivityLog enabled={enabled} task={task} transcript={transcript} />
         {messages.map((message) => (
-          <MessageText key={message.id} text={message.text} />
+          <MessageText key={message.id} markdown text={message.text} />
         ))}
-        {!messages.length && task.result?.summary ? <MessageText text={task.result.summary} /> : null}
-        {!messages.length && !isTerminal(task.status) ? (
-          <span className="agent-thinking">
-            {t(task.status === "queued" ? "agent.status.queued" : "agent.thinking")}
-          </span>
-        ) : null}
-        {transcript?.tools.map((tool) => (
-          <details className="agent-tool" key={tool.callId}>
-            <summary>
-              <Wrench aria-hidden />
-              {tool.name}
-              <span>
-                {t(!tool.result ? "agent.toolRunning" : tool.result.ok ? "agent.toolDone" : "agent.toolFailed")}
-              </span>
-            </summary>
-            <pre>{JSON.stringify(tool.arguments, null, 2)}</pre>
-            {tool.result ? (
-              <pre>{tool.result.ok ? JSON.stringify(tool.result.data, null, 2) : tool.result.error?.message}</pre>
-            ) : null}
-          </details>
-        ))}
+        {!messages.length && task.result?.summary ? <MessageText markdown text={task.result.summary} /> : null}
         {task.status === "waiting_input" && transcript?.input ? (
           <InputPrompt
             key={transcript.input.inputRequestId}
@@ -163,11 +192,7 @@ function TaskTurn({
             taskId={task.taskId}
           />
         ) : null}
-        {task.error ? (
-          <p className="agent-error" role="alert">
-            {task.error.message} <span className="agent-error__code">{task.error.code}</span>
-          </p>
-        ) : null}
+        {task.error ? <TaskError error={task.error} /> : null}
         {task.result?.warnings.map((warning, index) => (
           <p className="agent-warning" key={index}>
             {warning}
@@ -454,6 +479,7 @@ export function AgentPanel({ enabled = true, onNavigate }: { enabled?: boolean; 
           <div aria-live="polite" role="log" aria-label={t("agent.history")}>
             {tasks.data?.map((task) => (
               <TaskTurn
+                enabled={enabled}
                 cancelling={cancel.isPending && cancel.variables === task.taskId}
                 key={task.taskId}
                 onAnswered={() => void refresh()}
@@ -471,43 +497,45 @@ export function AgentPanel({ enabled = true, onNavigate }: { enabled?: boolean; 
             {error.message}
           </p>
         ) : null}
-        <form
-          className="agent-composer"
-          onSubmit={(event) => {
-            event.preventDefault();
-            submit();
-          }}
-        >
-          <textarea
-            aria-label={t("agent.message")}
-            disabled={!session || send.isPending}
-            maxLength={64000}
-            onChange={(event) => setDrafts((current) => ({ ...current, [selected]: event.target.value }))}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                submit();
-              }
+        {session ? (
+          <form
+            className="agent-composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
             }}
-            placeholder={t("agent.placeholder")}
-            ref={composer}
-            rows={3}
-            value={draft}
-          />
-          <div className="agent-composer__footer">
-            <small>{t("agent.sendHint")}</small>
-            <Button
-              aria-label={t("agent.send")}
-              disabled={!canSend}
-              icon={<Send aria-hidden />}
-              loading={send.isPending}
-              type="submit"
-              variant="primary"
-            >
-              {t("agent.send")}
-            </Button>
-          </div>
-        </form>
+          >
+            <textarea
+              aria-label={t("agent.message")}
+              disabled={send.isPending}
+              maxLength={64000}
+              onChange={(event) => setDrafts((current) => ({ ...current, [selected]: event.target.value }))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  submit();
+                }
+              }}
+              placeholder={t("agent.placeholder")}
+              ref={composer}
+              rows={3}
+              value={draft}
+            />
+            <div className="agent-composer__footer">
+              <small>{t("agent.sendHint")}</small>
+              <Button
+                aria-label={t("agent.send")}
+                disabled={!canSend}
+                icon={<Send aria-hidden />}
+                loading={send.isPending}
+                type="submit"
+                variant="primary"
+              >
+                {t("agent.send")}
+              </Button>
+            </div>
+          </form>
+        ) : null}
       </section>
       <Dialog
         closeLabel={t("common.close")}
