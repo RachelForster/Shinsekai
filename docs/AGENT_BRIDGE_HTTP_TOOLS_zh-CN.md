@@ -15,7 +15,7 @@ HTTP 实现位于 `frontend_bridge_core/transport/agent_http_tools.py`。`fronte
 
 bridge token 只保存在宿主 HTTP client 中，不传到 worker、提示词或工具 schema。响应中的凭据字段、已识别的秘密值与常见凭据文本会脱敏，同时保留人物正文、插件 schema 等业务内容。单个响应上限为 512 KiB，默认请求超时为 30 秒；插件工具调用为 90 秒，以覆盖浏览器启动与网页导航。
 
-CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与 CLI 均开启 Pi 内置文件、搜索和 shell 工具；MCP 保持关闭。宿主工具与技能引用固定在 session 快照中；升级后新建助手 session 使用新增插件工具操作和人物创建 skill `1.5.0`。原生文件与命令结果不经过本 HTTP 适配器的脱敏、call ID 去重或操作记录，详见 [Pi 工具说明](AGENT_PI_zh-CN.md)。
+CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与 CLI 均开启 Pi 内置文件、搜索和 shell 工具；MCP 保持关闭。宿主工具与技能引用固定在 session 快照中；升级后新建助手 session 使用新增插件工具操作和人物创建 skill `1.5.1`。原生文件与命令结果不经过本 HTTP 适配器的脱敏、call ID 去重或操作记录，详见 [Pi 工具说明](AGENT_PI_zh-CN.md)。
 
 ## 已注册操作
 

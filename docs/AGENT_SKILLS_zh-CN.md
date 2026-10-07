@@ -27,7 +27,7 @@ assets/agent/
 
 ## 当前加载方式
 
-`application/agent/skills.py` 保存显式技能清单及各技能版本，引用形式为 `skill:<name>@<version>`。人物创建技能已升级到 `1.5.0`，其余保持 `1.0.0`；`ASSISTANT_PROFILE` 选择这四个引用，桌面助手和 Pi CLI 的新会话均使用它们。`prepare_pi_agent()` 默认解析随应用发布的文件路径，显式传入 `skill_paths` 时使用调用方的映射，包括空映射。
+`application/agent/skills.py` 保存显式技能清单及各技能版本，引用形式为 `skill:<name>@<version>`。人物创建技能为 `1.5.1`，故障排查为 `1.1.0`，其余保持 `1.0.0`；`ASSISTANT_PROFILE` 选择这四个引用，桌面助手和 Pi CLI 的新会话均使用它们。`prepare_pi_agent()` 默认解析随应用发布的文件路径，显式传入 `skill_paths` 时使用调用方的映射，包括空映射。
 
 当前默认 `skillLoading=native`。Adapter 在首次打开会话时将选定技能保存为独立的 `SKILL.md` 快照，通过显式 `--skill` 路径交给 Pi。系统策略只保存通用行为规则；Pi 原生目录向模型展示名称、简介和路径，由模型根据任务选择并使用 `read` 读取正文。详细流程见 [系统提示实现](https://github.com/earendil-works/pi/blob/v1.0.4/packages/coding-agent/src/core/system-prompt.ts)。四份技能正文不再提前加入系统提示。
 
@@ -39,7 +39,7 @@ Pi 的 `read`、`bash`、`powershell`、`edit`、`write`、`grep`、`find`、`ls
 
 ## 人物创建流程与工具接入
 
-人物创建 `1.5.0` 的流程如下，技能正文自包含在同一个 `SKILL.md` 中，并说明 HTTP 工具、Pi 文件与 shell 工具的使用方式，以及异步受理和失败核对方式。人物先列名字，再通过 `characters.get` 按需读取一个人物；插件先列 id、名称及状态，再通过 `plugins.inspect` 读取目标配置，通过 `plugins.tools` 获取目标插件的工具 schema，再用 `plugins.tools.invoke` 调用。网页资料按页面选择工具：curl 等直接 HTTP 请求取得有效正文时可以使用，需要 JavaScript 渲染、交互或直接请求无效时使用浏览器，用户明确指定浏览器时按其要求执行。搜索失败时转向其他来源或站内搜索，不反复执行同一无结果查询。通用策略也要求仅展开当前任务需要的详情；`app.config` 只返回 API 和系统设置。
+人物创建 `1.5.1` 的流程如下，技能正文自包含在同一个 `SKILL.md` 中，并说明 HTTP 工具、Pi 文件与 shell 工具的使用方式，以及异步受理和失败核对方式。人物先列名字，再通过 `characters.get` 按需读取一个人物；插件先列 id、名称及状态，再通过 `plugins.inspect` 读取目标配置，通过 `plugins.tools` 获取目标插件的工具 schema，再用 `plugins.tools.invoke` 调用。网页资料按页面选择工具：curl 等直接 HTTP 请求取得有效正文时可以使用，需要 JavaScript 渲染、交互或直接请求无效时使用浏览器，用户明确指定浏览器时按其要求执行。工具连续失败时先检查错误与实际状态；导航冲突时确认当前地址，再按顺序导航和读取。没有新证据时不重复相同调用，改用有效来源或已有直接 HTTP 能力，无法完成的部分明确报告。通用策略也要求仅展开当前任务需要的详情；`app.config` 只返回 API 和系统设置。
 
 1. 需要浏览器时查询插件、加载状态和 Agent 工具是否可用。有安装与配置能力且任务已授权时自动补齐；否则引导安装。保留用户偏好，无偏好时 Windows 优先可启动的 Edge，再选 Chrome 或 Playwright Chromium；只配置插件后端。
 2. 优先检索百度百科、维基百科、萌娘百科，再与官方资料核对；同名或版本不明时列出候选等待用户确认，保留资料来源及推断依据。
