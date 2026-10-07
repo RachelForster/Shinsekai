@@ -463,6 +463,7 @@ export interface PluginConfigFieldSchema {
   span?: "full";
   step?: number;
   type: PluginConfigFieldType;
+  visibleWhen?: Record<string, unknown>;
 }
 
 export interface PluginConfigGroupSchema {

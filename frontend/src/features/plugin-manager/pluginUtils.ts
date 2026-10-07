@@ -196,6 +196,9 @@ export function pluginConfigGroupsToFormGroups(
       span: field.span,
       step: field.step,
       type: pluginFieldTypeToFormType(field.type),
+      visibleWhen: field.visibleWhen
+        ? (draft) => Object.entries(field.visibleWhen!).every(([key, expected]) => draft[key] === expected)
+        : undefined,
     })),
     id: group.id,
     title: group.title,
