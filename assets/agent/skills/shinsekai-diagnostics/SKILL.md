@@ -2,7 +2,7 @@
 name: shinsekai-diagnostics
 description: 根据错误、脱敏日志与环境信息排查 Shinsekai 的启动、模型连接、资源加载、语音、插件和助手故障。在用户报告报错、功能失效、无法启动或请求 debug 时使用。
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
 ---
 
 # Shinsekai 故障排查
@@ -12,9 +12,26 @@ metadata:
 ## 收集证据
 
 1. 确定版本、操作系统、桌面发行包或源码启动、实际启动命令、首次失败的步骤、最近改变的配置。
-2. 优先使用已有诊断工具读取脱敏摘要及相关时间段日志；没有这些工具时，请用户提供错误文本及最少必要的上下文。
+2. 按下方日志读取流程，优先使用宿主工具取得脱敏日志，选择与失败阶段、发生时间有关的文件；没有宿主工具时，再检查本机日志或请用户提供最少必要的错误上下文。
 3. 不要求 API Key、完整凭据文件或未脱敏的全量日志。用户意外提供秘密时不重复展示，建议移除并视情况轮换。
 4. 分清用户使用的环境与工具运行环境。检查进程实际可见的 PATH、Python 或模型配置，不能仅凭另一终端验证成功就宣称问题解决。
+
+## 脱敏日志的位置与读取
+
+`<project_root>` 指 Shinsekai 当前使用的项目数据根目录。源码启动时通常是仓库目录，桌面发行包使用实际选择的数据目录；可由 `SHINSEKAI_PROJECT_ROOT` 或 `EASYAI_PROJECT_ROOT` 指定。Pi session 的 workspace 不等于这个目录，不要直接在当前工作目录下猜测 `logs/` 的位置，以宿主日志列表返回的实际路径为准。
+
+| 日志来源 | 默认位置 |
+| --- | --- |
+| 桌面 bridge、应用服务与宿主插件 | `<project_root>/logs/frontend-bridge/` |
+| 角色聊天进程 | `<project_root>/logs/chat/` |
+
+这些目录中的结构化日志文件名为 `YYYYMMDD-HHMMSS-<pid>.jsonl`，轮转文件带 `.1`、`.2` 等后缀。SDK 日志默认脱敏凭据，并隐藏结构化字段中的对话和请求正文；`SHINSEKAI_LOG_CONTENT` 开启时会保留正文，排查时无需开启它。其他或旧版 `.log`、`.txt` 文件不能仅凭所在目录认定已经脱敏。
+
+桌面助手使用 `shinsekai.bridge.read`：
+
+1. 调用 `{"operation":"logs.list"}`，从 `data.files` 中按 `path`、`relativePath`、`app` 和 `modifiedAt` 选择相关进程、相关时间的文件。先看列表，不批量读取全部日志。
+2. 调用 `{"operation":"logs.read","body":{"path":"<列表返回的实际 path>"}}`。宿主会对响应中的凭据再次脱敏；结合 `data.content`、`data.entries` 及 `data.truncated` 分析首条相关错误、上下文和时间顺序，读取被截断时说明证据范围。
+3. 日志过大或宿主工具不可用时，可引导用户在日志页 `/settings/logs` 搜索错误，提供相关时间段的脱敏片段。使用 Pi 原生文件或 shell 工具时，只取所需片段并先过滤秘密；其结果不会经过宿主 HTTP 响应的脱敏处理。
 
 ## 按失败阶段缩小范围
 

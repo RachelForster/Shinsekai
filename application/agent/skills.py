@@ -7,7 +7,7 @@ from core.paths import resource_path
 
 BUNDLED_SKILL_VERSIONS = {
     "shinsekai-guide": "1.0.0",
-    "shinsekai-diagnostics": "1.0.0",
+    "shinsekai-diagnostics": "1.1.0",
     "shinsekai-character-creation": "1.5.0",
     "shinsekai-plugin-development": "1.0.0",
 }
