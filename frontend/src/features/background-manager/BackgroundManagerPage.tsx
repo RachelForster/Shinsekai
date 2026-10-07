@@ -40,6 +40,7 @@ import {
 import { BackgroundMusicSection } from "./BackgroundMusicSection";
 import { BackgroundSpriteGallery } from "./BackgroundSpriteGallery";
 import { BackgroundTagsDialog } from "./BackgroundTagsDialog";
+import { KnowledgeManagerPage } from "../knowledge-manager/KnowledgeManagerPage";
 import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
 import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
 import {
@@ -654,6 +655,7 @@ export function BackgroundManagerPage() {
     { id: "background-info", label: t("background.section.info") },
     { id: "background-images", label: t("background.section.images") },
     { id: "background-bgm", label: t("background.section.bgm") },
+    { id: "background-knowledge", label: t("knowledge.title") },
   ];
 
   return (
@@ -930,6 +932,9 @@ export function BackgroundManagerPage() {
           sortedBgmItems={sortedBgmItems}
           uploadPending={bgmUploadMutation.isPending}
         />
+        <section aria-label={t("knowledge.title")} className="section page-section-anchor" id="background-knowledge">
+          <KnowledgeManagerPage embedded />
+        </section>
       </section>
 
       <BackgroundTagsDialog

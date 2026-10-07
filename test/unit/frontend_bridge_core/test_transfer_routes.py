@@ -35,6 +35,8 @@ def test_transfer_route_contracts_and_body_kinds_remain_explicit() -> None:
         ("POST", "/api/characters/import-upload"),
         ("POST", "/api/characters/memories/import-preview-upload"),
         ("POST", "/api/characters/memories/import-upload"),
+        ("POST", "/api/knowledge/import-preview-upload"),
+        ("POST", "/api/knowledge/import-upload"),
         ("POST", "/api/chat/attachments/upload"),
         ("POST", "/api/chat/themes/upload"),
         ("POST", "/api/effects/export"),
@@ -51,6 +53,8 @@ def test_transfer_route_contracts_and_body_kinds_remain_explicit() -> None:
         "/api/characters/import-upload",
         "/api/characters/memories/import-preview-upload",
         "/api/characters/memories/import-upload",
+        "/api/knowledge/import-preview-upload",
+        "/api/knowledge/import-upload",
         "/api/chat/attachments/upload",
         "/api/chat/themes/upload",
         "/api/effects/import-upload",
@@ -89,6 +93,84 @@ def test_effect_upload_uses_multipart_dispatch_and_cleans_after_response(
 
     assert received == [(state, list(uploaded.paths), (str(uploaded.root),))]
     assert sent == [([{"name": "Spark"}], HTTPStatus.OK)]
+    assert not uploaded.root.exists()
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_knowledge_preview_cleans_upload_after_success_or_failure(tmp_path, monkeypatch, fails):
+    uploaded = _uploaded_files(tmp_path, "knowledge.txt")
+    state = object()
+    calls, sent = [], []
+
+    def preview(received_state, knowledge_id, paths, *, source_root):
+        assert uploaded.root.exists()
+        calls.append((received_state, knowledge_id, paths, source_root))
+        if fails:
+            raise ValueError("invalid knowledge")
+        return {"knowledge_id": knowledge_id}
+
+    monkeypatch.setattr(transfer_routes, "_preview_knowledge_import", preview)
+    handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+    handler.server = SimpleNamespace(state=state)
+    handler.path = "/api/knowledge/import-preview-upload?knowledge_id=w%26x"
+    handler._require_authorized_write = lambda _path: None
+    handler._log_request_exception = lambda _error: None
+    handler._read_upload_files = lambda: uploaded
+    handler._read_json = lambda: pytest.fail("multipart route read JSON")
+    handler._send_json = lambda payload, status=HTTPStatus.OK: sent.append((payload, status))
+    handler.do_POST()
+
+    assert calls == [(state, "w&x", uploaded.paths, uploaded.root)]
+    assert sent[0][1] == (HTTPStatus.BAD_REQUEST if fails else HTTPStatus.OK)
+    assert not uploaded.root.exists()
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_knowledge_import_keeps_upload_until_background_task_finishes(tmp_path, monkeypatch, fails):
+    from frontend_bridge_core.routes import http_handler
+
+    uploaded = _uploaded_files(tmp_path, "knowledge.txt")
+    state = object()
+    pending, calls, sent = [], [], []
+
+    class DeferredThread:
+        def __init__(self, *, target, daemon):
+            self.target = target
+
+        def start(self):
+            pending.append(self.target)
+
+    def worker(received_state, task_id, knowledge_id, paths, *, source_root):
+        assert uploaded.root.exists()
+        calls.append((received_state, task_id, knowledge_id, paths, source_root))
+        if fails:
+            raise ValueError("import failed")
+        return {"ok": True}
+
+    monkeypatch.setattr(transfer_routes, "_run_knowledge_import", worker)
+    monkeypatch.setattr(http_handler.threading, "Thread", DeferredThread)
+    monkeypatch.setattr(http_handler, "_create_task", lambda *a, **kw: {"id": "task-knowledge"})
+    monkeypatch.setattr(http_handler, "_get_task", lambda *a: {"id": "task-knowledge"})
+    monkeypatch.setattr(http_handler, "_run_background_task", lambda state, task_id, work: work())
+    handler = FrontendBridgeHandler.__new__(FrontendBridgeHandler)
+    handler.server = SimpleNamespace(state=state)
+    handler.path = "/api/knowledge/import-upload?knowledge_id=w%26x"
+    handler._require_authorized_write = lambda _path: None
+    handler._log_request_exception = lambda exc: pytest.fail(str(exc))
+    handler._read_upload_files = lambda: uploaded
+    handler._read_json = lambda: pytest.fail("multipart route read JSON")
+    handler._send_json = lambda payload, status=HTTPStatus.OK: sent.append((payload, status))
+    handler.do_POST()
+
+    assert sent == [({"id": "task-knowledge"}, HTTPStatus.ACCEPTED)]
+    assert uploaded.root.exists()
+    assert len(pending) == 1
+    if fails:
+        with pytest.raises(ValueError, match="import failed"):
+            pending[0]()
+    else:
+        pending[0]()
+    assert calls == [(state, "task-knowledge", "w&x", uploaded.paths, uploaded.root)]
     assert not uploaded.root.exists()
 
 

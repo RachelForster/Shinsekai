@@ -129,6 +129,7 @@ def _runtime(calls, memory_hooks):
         T2IManager=_T2iManager,
         TTSAdapterFactory=_AdapterFactory("tts", calls),
         TTSManager=_TtsManager,
+        install_knowledge_hooks=Mock(),
         install_memory_hooks=lambda dispatcher, **kwargs: memory_hooks.append(
             (dispatcher, kwargs)
         ),
@@ -184,6 +185,9 @@ def test_create_context_assembles_providers_messages_and_hooks(monkeypatch) -> N
     assert context.plugin_manager is plugin_manager
     assert bound == [plugin_manager]
     assert [kind for kind, _kwargs in calls] == ["t2i", "tts", "llm"]
+    runtime.install_knowledge_hooks.assert_called_once_with(
+        dispatcher, character_names=["Mika"],
+    )
     assert memory_hooks[0][0] is dispatcher
     assert memory_hooks[0][1]["character_names"] == ["Mika"]
     dispatcher.dispatch_init_chat.assert_called_once_with(_InitChatContext.created[0])
