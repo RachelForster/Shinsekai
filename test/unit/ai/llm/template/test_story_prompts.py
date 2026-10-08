@@ -3,6 +3,7 @@
 import ast
 import json
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -48,6 +49,24 @@ def test_system_prompts_preserve_existing_instructions():
         build_story_assessment_system_section().render(TemplateContext())
         == FIXTURE["assessmentSystem"]
     )
+
+
+def test_random_tool_instructions_are_an_optional_author_section():
+    section = build_story_author_system_section(include_random_tools=True)
+    context = TemplateContext()
+    rendered = section.render(context)
+    assert rendered.startswith(AUTHOR_COMPILER_TEMPLATE + "\n")
+    assert "resolvedRandomRequests" in rendered
+    assert "AUTHORING" in rendered
+    assert "without tool transcripts, seeds, or extra protocol fields" in rendered
+    without_tools = replace(
+        section,
+        children=tuple(
+            replace(child, enabled=False) if child.id == "random_tools" else child
+            for child in section.children
+        ),
+    )
+    assert without_tools.render(context) == AUTHOR_COMPILER_TEMPLATE
 
 
 @pytest.mark.parametrize("case", FIXTURE["authorRequests"])
