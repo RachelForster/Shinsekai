@@ -20,7 +20,7 @@ assets/agent/
 | --- | --- | --- |
 | `shinsekai-guide` | 功能介绍、入口和使用方法 | 根据已有功能提供页面路径和操作步骤 |
 | `shinsekai-diagnostics` | 报错、启动失败或 debug | 分析用户提供的证据，提出并区分修复与验证步骤 |
-| `shinsekai-character-creation` | 创建或修改人物、收集人物素材 | 资料与素材流程；桌面可查询与保存人物、导入已有立绘、管理插件 |
+| `shinsekai-character-creation` | 创建或修改人物、收集人物素材、生成立绘 | 资料与素材流程；桌面可查询与保存人物、通过当前 T2I 或 Gemini 从参考图生成立绘、查询任务、导入立绘、管理插件 |
 | `shinsekai-plugin-development` | 创建、扩展或修复插件 | 根据现有 SDK 起草代码，提供脚手架和检查流程 |
 
 业务操作以实际工具目录为准。桌面助手已注入 `shinsekai.bridge.read`、`shinsekai.bridge.write`，复用现有 HTTP API 查询日志和配置、保存人物、导入立绘及管理插件，见 [HTTP 工具说明](AGENT_BRIDGE_HTTP_TOOLS_zh-CN.md)。桌面与 CLI 均开启 Pi 原生文件、搜索和 shell 工具；CLI 不自动注册桌面 HTTP 工具。技能在缺少能力时交付草稿与操作步骤，并据真实工具结果声明完成。

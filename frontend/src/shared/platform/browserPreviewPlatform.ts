@@ -1949,7 +1949,9 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
           path: `data/sprite/${character.sprite_prefix}/${path.split(/[\\/]/).pop() ?? path}`,
         }));
         character.sprites = [...character.sprites, ...nextSprites];
-        const extraTags = input.paths.map((_, index) => `立绘 ${start + index + 1}：`).join("\n");
+        const extraTags = input.paths
+          .map((_, index) => `立绘 ${start + index + 1}：${input.spriteTags?.[index] ?? ""}`)
+          .join("\n");
         character.emotion_tags = `${input.emotionTags || character.emotion_tags || ""}${extraTags ? `${extraTags}\n` : ""}`;
         return delay(character);
       },
@@ -2723,7 +2725,10 @@ export function createBrowserPreviewPlatform(): ShinsekaiPlatform {
         const taskId = `tools-sprites-${Date.now()}`;
         const outputDir = input.outputDir || `data/sprite/${input.characterName || "preview"}`;
         const result: SpriteGenerationResult = {
-          files: input.prompts.map((_, index) => `${outputDir}/sprite_${String(index + 1).padStart(3, "0")}.png`),
+          files: input.prompts.map(
+            (_, index) => `${outputDir}/sprite_${taskId}_${String(index + 1).padStart(3, "0")}.png`,
+          ),
+          labels: input.autoLabel ? input.prompts.map(() => "smiling, standing, front-facing") : undefined,
           message: `已生成 ${input.prompts.length} 张（输出目录: ${outputDir}）`,
           outputDir,
         };

@@ -28,6 +28,28 @@ def sprite_field(sprite, key):
     return getattr(sprite, key, None) if hasattr(sprite, key) else sprite.get(key)
 
 
+@pytest.mark.parametrize("already_managed", [False, True])
+def test_upload_generated_sprites_appends_tags_without_overwriting_existing_tags(tmp_path, monkeypatch, already_managed):
+    monkeypatch.setattr("config.character_manager.UPLOAD_DIR", str(tmp_path / "sprites"))
+    character = Character(
+        name="Mika", color="#fff", sprite_prefix="mika",
+        sprites=[{"path": "old.png"}], emotion_tags="Sprite 1: hand-written\n",
+    )
+    manager = build_manager([character])
+    source = tmp_path / "sprites" / "mika" if already_managed else tmp_path
+    source.mkdir(parents=True, exist_ok=True)
+    files = [source / "wave.png", source / "calm.png"]
+    for file in files:
+        file.write_bytes(b"image")
+    manager.upload_sprites(
+        "Mika", [SimpleNamespace(name=str(file)) for file in files], "stale tags",
+        sprite_tags=[" smiling, waving ", "calm\nstanding"],
+    )
+    assert character.emotion_tags == "立绘 1：hand-written\n立绘 2：smiling, waving\n立绘 3：calm standing\n"
+    assert len(character.sprites) == 3
+    assert manager._config_manager.save_count == 1
+
+
 @pytest.mark.parametrize("prefix", ["", ".", "../outside"])
 def test_delete_all_sprites_rejects_shared_or_escaping_root(tmp_path, monkeypatch, prefix):
     sprite_root = tmp_path / "sprite"

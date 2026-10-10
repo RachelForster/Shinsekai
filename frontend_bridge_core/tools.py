@@ -13,7 +13,7 @@ from sdk.path_utils import (
     strip_windows_verbatim_prefix as _strip_windows_verbatim_prefix,
 )
 from application.runtime.state import BridgeState
-from application.runtime.tasks import _update_task
+from application.runtime.tasks import TaskCancelled, _is_task_cancel_requested, _update_task
 
 MAX_FILE_BROWSER_ENTRIES = 2000
 
@@ -50,7 +50,7 @@ def _extract_prompt_from_line(line: str) -> str:
     text = line.strip()
     if not text:
         return ""
-    match = re.match(r"^[^:]+[:：]\s*(.+)$", text)
+    match = re.match(r"^(?:sprite|立绘|立ち絵)\s*\d+\s*[:：]\s*(.+)$", text, re.IGNORECASE)
     if match:
         return match.group(1).strip()
     return text
@@ -67,12 +67,12 @@ def _sprite_output_dir(state: BridgeState, character_name: str, requested: Any =
 
 
 def _generate_sprite_prompts(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    from tools.generate_sprites import ImageGenerator
+    from application.image_generation.prompts import generate_sprite_prompts
 
     character_name = str(payload.get("characterName") or "").strip()
     if not character_name:
         raise ValueError("characterName is required")
-    count = int(payload.get("count") or 1)
+    count = int(payload.get("count", 1))
     if count < 1 or count > 100:
         raise ValueError("count must be between 1 and 100")
     character = state.config_manager.get_character_by_name(character_name)
@@ -80,28 +80,46 @@ def _generate_sprite_prompts(state: BridgeState, task_id: str, payload: dict[str
         raise KeyError(f"character not found: {character_name}")
 
     _update_task(state, task_id, message="正在生成立绘提示词。", phase="prompt", progress=0.18)
-    prompts = ImageGenerator().generate_prompts(count, str(character.character_setting or ""))
-    result = {"prompts": [str(item) for item in prompts]}
+    prompts = generate_sprite_prompts(
+        state.config_manager,
+        character_name=character_name,
+        character_setting=str(character.character_setting or ""),
+        count=count,
+    )
+    result = {"prompts": prompts}
     _update_task(state, task_id, message="提示词已生成。", phase="completed", progress=1, result=result)
     return result
 
 
 def _generate_sprites(state: BridgeState, task_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    from tools.generate_sprites import ImageGenerator
+    from application.image_generation.sprites import generate_sprites
 
     character_name = str(payload.get("characterName") or "").strip()
     if not character_name:
         raise ValueError("characterName is required")
-    reference = safe_existing_file_path(
-        str(payload.get("referenceImage") or "").strip(),
-        roots=_local_file_access_roots(state),
-        field="referenceImage",
-    )
+    auto_label = payload.get("autoLabel", False)
+    if not isinstance(auto_label, bool):
+        raise ValueError("autoLabel must be a boolean")
+    seed = payload.get("seed")
+    if seed is not None and (
+        isinstance(seed, bool) or not isinstance(seed, int) or not -1 <= seed < 2**32
+    ):
+        raise ValueError("seed must be -1 or an unsigned 32-bit integer")
+    raw_references = payload.get("referenceImages")
+    if raw_references is None:
+        raw_references = [payload.get("referenceImage") or ""]
+    if not isinstance(raw_references, list) or not 1 <= len(raw_references) <= 10:
+        raise ValueError("referenceImages must be an array containing 1..10 image paths")
+    if any(not isinstance(path, str) or not path.strip() for path in raw_references):
+        raise ValueError("referenceImages must contain non-empty image paths")
+    references = [safe_existing_file_path(
+        path.strip(), roots=_local_file_access_roots(state), field="referenceImages",
+    ) for path in raw_references]
     raw_prompts = payload.get("prompts") or []
     if isinstance(raw_prompts, str):
         prompts = [_extract_prompt_from_line(line) for line in raw_prompts.splitlines()]
     elif isinstance(raw_prompts, list):
-        prompts = [_extract_prompt_from_line(str(item)) for item in raw_prompts]
+        prompts = [str(item).strip() for item in raw_prompts]
     else:
         raise ValueError("prompts must be a list or string")
     prompts = [item for item in prompts if item]
@@ -110,13 +128,40 @@ def _generate_sprites(state: BridgeState, task_id: str, payload: dict[str, Any])
 
     output_dir = _sprite_output_dir(state, character_name, payload.get("outputDir"))
     _update_task(state, task_id, message="正在批量生成立绘。", phase="generate", progress=0.12)
-    files = ImageGenerator().batch_generate_sprites(reference, prompts, output_dir)
+    files = generate_sprites(
+        state.config_manager, reference_images=references, prompts=prompts, output_dir=output_dir,
+        provider=str(payload.get("provider") or "gemini"),
+        seed=seed,
+        on_progress=lambda value, message: _update_task(
+            state, task_id, message=message, phase="generate", progress=0.12 + (0.68 if auto_label else 0.85) * value,
+        ),
+    )
     paths = [Path(item).as_posix() for item in files if item and Path(item).is_file()]
     result = {
         "files": paths,
         "message": f"已生成 {len(paths)} 张（输出目录: {output_dir.as_posix()}）",
         "outputDir": output_dir.as_posix(),
     }
+    if auto_label and paths:
+        from application.image_generation.labels import label_generated_sprites
+        from application.media.auto_annotation import AnnotationCancelled
+
+        def label_progress(completed, total, message, phase):
+            _update_task(
+                state, task_id, message=message, phase=phase,
+                progress=0.8 + 0.19 * completed / max(1, total),
+            )
+
+        _update_task(state, task_id, message="正在智能标注生成的立绘。", phase="annotating", progress=0.8)
+        try:
+            labels, errors = label_generated_sprites(
+                state.config_manager, paths, output_dir=output_dir,
+                on_progress=label_progress,
+                is_cancelled=lambda: _is_task_cancel_requested(state, task_id),
+            )
+        except AnnotationCancelled as exc:
+            raise TaskCancelled(str(exc)) from exc
+        result.update(labels=labels, labelErrors=errors)
     _update_task(state, task_id, message=result["message"], phase="completed", progress=1, result=result)
     return result
 

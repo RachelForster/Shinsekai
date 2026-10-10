@@ -1,8 +1,8 @@
 ---
 name: shinsekai-character-creation
-description: 为 Shinsekai 创建或完善人物，检查浏览器能力，检索百科资料、角色语音和官方立绘，评估 GPT-SoVITS 训练或准备参考语音。在用户要求创建人物、人设、角色档案、收集人物素材或修改现有人物时使用。
+description: 为 Shinsekai 创建或完善人物，检查浏览器能力，检索百科资料、角色语音和官方立绘，基于参考图生成新姿势、表情或服装的立绘，评估 GPT-SoVITS 训练或准备参考语音。在用户要求创建人物、人设、角色档案、收集人物素材、生成立绘或修改现有人物时使用。
 metadata:
-  version: "1.5.1"
+  version: "1.6.3"
 ---
 
 # Shinsekai 人物创建
@@ -17,6 +17,7 @@ metadata:
 - 配置浏览器：先 inspect，然后 write 的 `plugins.configure`，提供 `params.plugin_id`、`params.page_id` 及 `body.values`。保留原配置的其他字段；对脱敏字段不要写入脱敏占位符。`plugins.action` 只能使用 inspect 返回的真实页面、动作 ID 和参数，不能虚构网页搜索动作。
 - 使用浏览器工具：read 的 `plugins.tools`，提供 `params.plugin_id`，按需取得该已加载插件的工具名称、说明及 `inputSchema`；随后调用 write 的 `plugins.tools.invoke`，提供 `params.plugin_id`、`params.tool_name` 及 `body.arguments`。浏览器插件的工具通过此入口执行，不需要角色聊天会话，也不需要另装浏览器库或写临时爬虫来替代已经可用的插件。
 - 查询人物：read 的 `characters.list` 只返回名字字符串列表。确认要编辑的名字后，用 `characters.get` 和 `params.name` 读取该人物的完整配置，不批量获取所有人物详情。保存用 write 的 `characters.save`，`body.character` 为完整人物配置，编辑时带 `body.originalName`。保存后通过 `characters.get` 核对。立绘导入用 `characters.sprites.import`，提供 `body.name` 和已存在图片的 `body.paths`，随后重新读取该人物，避免用旧配置覆盖导入结果。
+- 生成立绘：write 的 `tools.sprites.generate` 复用桌面立绘生成 HTTP API。`body.characterName` 为已保存的人物名，`body.referenceImages` 为按顺序排列的 1–10 个本地图片路径，`body.prompts` 为每张立绘对应的提示词数组，`body.provider` 选择 `configured`（当前 T2I 服务，例如 Qwen-Image-2.1）或 `gemini`，`body.outputDir` 可省略以使用默认生成目录。此 API 返回后台任务，生成成功后还需调用 `characters.sprites.import` 才会添加到人物。可选的 `tools.sprite-prompts.generate` 接受 `body.characterName`、`body.count`（1–100），通过当前配置的 LLM Adapter 生成提示词，复用现有模型、地址、凭据及扩展配置；提示词的 LLM 不受图片服务选择影响。手写提示词不需要调用它。
 - 环境查询：read 的 `app.config` 只返回脱敏的 API 和系统设置，不附带人物、背景、特效或插件列表；`tts.environment` 返回现有 GPU 和推理环境推荐，训练依赖、可用显存及数据质量仍需其他检测。需要推理整合包时使用 write 的 `tts.install`，`body.kind` 按实际需求选择。
 - HTTP 202 的 `accepted=true` 仅代表受理。保留返回的 `taskId`，用 read 的 `tasks.get` 和 `params.task_id` 查询；检查 `data.status` 与实际结果后才报告完成。不要在一个回合中反复忙轮询。停止 Agent 不自动取消已提交的 bridge 下载或安装任务；用户要求取消该任务时调用 write 的 `tasks.cancel`。
 - 写入结果未知或响应丢失时先查询实际状态，不能直接重复提交。宿主按同一 Agent task 的 call ID 去重，新的 call ID 不代表自动具备业务幂等性。
@@ -71,12 +72,37 @@ metadata:
 
 8GB 是此创建流程的保守策略，实际要求与 GPT-SoVITS 版本、训练参数和设备支持相关，不是所有版本的官方最低要求。应用现有的 TTS 整合包推荐用于选择推理环境，不能直接作为训练资格判断。
 
-## 5. 收集立绘和形象资源
+## 5. 收集或生成立绘和形象资源
 
 1. 优先搜索作品官网、官方角色页、官方媒体素材页的完整立绘及表情、服装、形态变体。实际读取页面和资源列表，核对人物与版本，避免把壁纸、截图或同人图误认为官方立绘。
 2. 找到后通过可用下载工具收集本次需要的资源，尽量保留原始尺寸和透明通道；记录来源、变体名称、文件格式与尺寸，检查下载文件确实可解码。官方页面没有列出全部变体时说明覆盖范围，不能声称立绘全集已收齐。
 3. 搜不到或无法下载时，列出缺失素材并请用户提供本地文件。用户提出或接受从本地游戏资源提取时，先确认具体游戏、版本和资源目录，再使用相应的实际可用解包工具输出到独立工作目录；没有工具或格式未知时给出准备步骤。不默认下载整款游戏或执行来源不明的解包程序。
 4. 通过宿主人物资源导入能力登记立绘，按实际 schema 填写名称、路径及标签。图片只能作为静态形象，不能凭图片声称 Live2D 或 MMD 模型已经就绪。
+
+用户需要新姿势、表情、服装，或希望根据参考素材制作立绘时，可复用应用已配置的图像生成服务：
+
+1. 确认目标人物与所需变化；新人物先通过 `characters.save` 保存设定，再生成资源。用 `characters.get` 取得该人物的已有立绘，优先选一张身份和服装清楚的图片作为主参考；也可使用用户提供或实际下载的本地参考图。当前立绘 HTTP API 必须有 1–10 张参考图，不能只传网页 URL 或空数组。路径与图片有效性由实际文件检查确认。
+2. 通过 `app.config` 查看脱敏的 `api_config.t2i_provider` 和对应配置，复用现有模型、Python 环境及凭据。优先 `provider="configured"`；例如配置好的 Qwen-Image-2.1 可进行参考图编辑。Gemini 可作为用户已配置的另一选项。服务、模型或依赖缺失时，说明具体缺项，引导用户到 AI 服务设置或使用已有下载入口准备，不自行覆盖全局 Python 依赖，也不要把脱敏占位符写回凭据。
+3. 每次以原始人物立绘作为第一张主参考图，不把上一张生成结果自动当作下一张的主参考，避免连续漂移。其余参考图仅补充本次需要的细节或明确要求转移的素材。使用简短的编辑指令描述要替换的姿势、手臂位置和表情，指向参考图来保留人物身份，不用人物设定或文字外貌描述重新定义脸、发型、服装和画风。宿主会统一补充保留未要求修改的外观的约束；用户要求换装或修改某项外观时在指令中明确目标。Qwen 多图指令用 `<image1>`、`<image2>` 等标明各图用途，单图直接称参考图。要求完整构图，避免裁掉头、手脚；静态立绘需要透明背景时明确提出，并以实际输出检查为准。先生成一张确认效果，再生成需要的少量变体，避免默认大量占用 GPU。可直接编写提示词；需要自动编写时调用 `tools.sprite-prompts.generate`，使用 `app.config` 中已配置的 LLM。完成后从 `tasks.get` 的 `data.result.prompts` 读取提示词，再提交图片生成。LLM 配置缺失、服务失败或输出格式不符时说明实际错误，也可改为自行编写提示词。
+4. 调用 `tools.sprites.generate` 后保留 `taskId`，通过 `tasks.get` 查看进度和最终状态。任务可能较长，采用有间隔的查询，不连续忙轮询，也不因为等待就重复提交生成。`data.status="succeeded"` 时，从 `data.result.files` 取得真实生成文件；失败时检查任务错误和日志，不将排队或部分文件报告为全部完成。用户要求取消时使用 `tasks.cancel`。
+5. 需要自动标签时在生成请求中设置 `body.autoLabel=true`，复用已配置的视觉服务识别实际图片，读取与 `data.result.files` 对齐的 `data.result.labels`，并检查逐图 `labelErrors`。标注失败不代表图片生成失败；保留文件，可手动填写标签，不把预期动作当作已识别的实际内容。检查生成图片的身份一致性、手脚数量、五官、构图和背景。能预览时展示给用户；没有图像检查能力时明确待确认，不能保证质量。重生成只提交对应的一条提示词和原始参考图，可用 `body.seed=-1` 请求新种子，不能用失败或漂移的产物替代主参考。保留原图，将产物标为 AI 生成变体，不当作官方立绘。用户要求生成并加入人物时，确认可用结果后通过 `characters.sprites.import` 追加实际文件；可选 `body.spriteTags` 为与本次导入 `body.paths` 对齐的标签字符串数组，保留旧立绘标签，随后重新 `characters.get` 核对资源列表。只要求生成或预览时先交付图片，不擅自绑定。
+
+示例（路径必须替换为本次实际存在的本地文件）：
+
+```json
+{
+  "operation": "tools.sprites.generate",
+  "body": {
+    "characterName": "Rafal",
+    "provider": "configured",
+    "autoLabel": true,
+    "referenceImages": ["C:/素材/Rafal/rafal_sprite_01.png"],
+    "prompts": ["保持参考图中人物的脸、发型、服装和画风；改为右手挥手、左手叉腰的站姿，只有两只手臂。全身立绘，头部与手脚完整，透明背景。"]
+  }
+}
+```
+
+手动入口位于「人物管理 → 立绘」，「智能标注」旁的「智能生成立绘」按钮。先保存人物，打开后默认以当前选中的立绘作参考图，可以添加参考图、编辑提示词、选择图像服务。桌面生成结果每排 4 张，每张上方有「重新生成」按钮；自动标注默认开启，标签可修改，添加到人物时随图片一起保存。窄屏减少列数，便于查看图片与按钮。
 
 ## 当前人物字段
 

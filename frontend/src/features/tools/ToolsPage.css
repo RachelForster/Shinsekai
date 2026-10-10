@@ -10,6 +10,16 @@
   margin: 0;
 }
 
+.dialog.sprite-generation-dialog {
+  width: min(1080px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+}
+
+.sprite-generation-dialog .dialog__body {
+  display: grid;
+  gap: var(--space-3);
+}
+
 .tools-grid {
   display: grid;
   min-width: 0;
@@ -82,16 +92,24 @@
   font-weight: 650;
 }
 
+.tool-gallery__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
 .tool-gallery__items {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-content: start;
   gap: var(--space-3);
 }
 
 .tool-gallery__item {
   display: grid;
-  grid-template-rows: 200px auto;
+  grid-template-rows: auto 200px auto auto;
   align-items: start;
   gap: var(--space-2);
   min-width: 0;
@@ -101,8 +119,8 @@
   background: var(--color-surface-hover);
 }
 
-.tool-gallery__item strong,
-.tool-gallery__item span {
+.tool-gallery__details strong,
+.tool-gallery__details span {
   display: block;
   min-width: 0;
   overflow: hidden;
@@ -110,7 +128,7 @@
   white-space: nowrap;
 }
 
-.tool-gallery__item span {
+.tool-gallery__details span {
   color: var(--color-text-muted);
   font-size: 12px;
 }
@@ -138,17 +156,19 @@
   color: var(--color-accent-primary);
 }
 
-.tools-page--embedded .tool-gallery {
-  min-height: 160px;
-  max-height: 260px;
+.tool-gallery__warning {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
 }
 
-.tools-page--embedded .tool-gallery__items {
-  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+.tools-page--embedded .tool-gallery {
+  min-height: 160px;
 }
 
 .tools-page--embedded .tool-gallery__item {
-  grid-template-rows: 148px auto;
+  grid-template-rows: auto 148px auto auto;
 }
 
 .tools-page--embedded .tool-gallery__thumb,
@@ -161,6 +181,16 @@
 @media (max-width: 860px) {
   .tools-grid--three,
   .tools-grid--two {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tool-gallery__items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .tool-gallery__items {
     grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -87,6 +87,50 @@ def test_allowlist_matches_existing_json_http_routes():
         assert not api.path.startswith("/api/agent")
 
 
+@pytest.mark.parametrize(
+    "operation,path,body",
+    [
+        (
+            "tools.sprite-prompts.generate",
+            "/api/tools/sprite-prompts",
+            {"characterName": "Rafal", "count": 2},
+        ),
+        (
+            "tools.sprites.generate",
+            "/api/tools/sprites/generate",
+            {
+                "characterName": "Rafal",
+                "provider": "configured",
+                "referenceImages": ["C:/sprites/main.png", "C:/sprites/pose.png"],
+                "prompts": ["wave pose"],
+                "outputDir": "C:/generated",
+            },
+        ),
+        (
+            "tools.sprites.generate",
+            "/api/tools/sprites/generate",
+            {
+                "characterName": "Rafal",
+                "provider": "gemini",
+                "referenceImages": ["C:/sprites/main.png"],
+                "prompts": ["smile"],
+            },
+        ),
+    ],
+)
+def test_sprite_generation_uses_existing_http_tasks_without_importing(
+    bridge, operation, path, body
+):
+    _, requests, reply = bridge
+    reply.update(status=202, data={"id": "sprite-job", "status": "queued"})
+    result = invoke(bridge, 1, {"operation": operation, "body": body})
+    assert result.ok
+    assert result.data["accepted"]
+    assert result.data["taskId"] == "sprite-job"
+    assert result.effects[0].state == "applied"
+    assert requests == [("POST", path, "private-bridge-token", body)]
+
+
 @pytest.mark.parametrize("model", [BridgeReadInput, BridgeWriteInput])
 def test_model_cannot_choose_url_auth_or_unregistered_operations(model):
     for arguments in (

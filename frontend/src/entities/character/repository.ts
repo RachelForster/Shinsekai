@@ -90,7 +90,12 @@ export function importCharacterMemories(
   return getPlatform().characters.importMemories(name, items, options);
 }
 
-export function uploadCharacterSprites(input: { emotionTags: string; name: string; paths: string[] }) {
+export function uploadCharacterSprites(input: {
+  emotionTags: string;
+  name: string;
+  paths: string[];
+  spriteTags?: string[];
+}) {
   return getPlatform().characters.uploadSprites(input);
 }
 

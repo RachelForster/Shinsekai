@@ -266,10 +266,22 @@ class CharacterUseCase:
 
     def _upload_sprites(self, payload: dict[str, Any]) -> dict[str, Any]:
         name = str(payload.get("name") or "").strip()
+        files = self._files(payload.get("paths") or [])
+        options = {}
+        if "spriteTags" in payload:
+            tags = payload["spriteTags"]
+            if (
+                not isinstance(tags, list)
+                or len(tags) != len(files)
+                or any(not isinstance(tag, str) for tag in tags)
+            ):
+                raise ValueError("spriteTags must contain one string per image")
+            options["sprite_tags"] = tags
         message, _paths, _tags = self._state.character_manager.upload_sprites(
             name,
-            self._files(payload.get("paths") or []),
+            files,
             str(payload.get("emotionTags") or ""),
+            **options,
         )
         if message.startswith("找不到") or message.startswith("请选择") or message.startswith("请先"):
             raise RuntimeError(message)

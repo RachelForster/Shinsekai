@@ -47,6 +47,7 @@ import { CharacterSpritesSection } from "./CharacterSpritesSection";
 import { CharacterVoiceSection } from "./CharacterVoiceSection";
 import { MediaAutoLabelProgressDialog } from "../media-auto-label/MediaAutoLabelProgressDialog";
 import { useVisionAvailability } from "../media-auto-label/useVisionAvailability";
+import { SpriteGenerationPanel } from "../tools/SpriteGenerationPanel";
 import { SpriteTagsDialog } from "./SpriteTagsDialog";
 import {
   SPRITE_SCALE_STEP,
@@ -97,6 +98,13 @@ export function CharacterEditorPage() {
   const [bulkSpriteTagsOpen, setBulkSpriteTagsOpen] = useState(false);
   const [bulkSpriteTagsDraft, setBulkSpriteTagsDraft] = useState("");
   const [autoLabelDialogOpen, setAutoLabelDialogOpen] = useState(false);
+  const [spriteGenerationOpen, setSpriteGenerationOpen] = useState(false);
+  const [spriteGenerationBusy, setSpriteGenerationBusy] = useState(false);
+  const [spriteGenerationTarget, setSpriteGenerationTarget] = useState<{
+    name: string;
+    referenceImages: string[];
+  } | null>(null);
+  const generatedSpriteImportNameRef = useRef<string | null>(null);
   const [autoLabelTask, setAutoLabelTask] = useState<TaskSnapshot<ImageAutoLabelResult> | null>(null);
   const [nameError, setNameError] = useState("");
   const [pronunciationText, setPronunciationText] = useState("");
@@ -133,6 +141,7 @@ export function CharacterEditorPage() {
   const prevSelectedNameRef = useRef<string>("");
   useEffect(() => {
     if (selected && selected.name !== prevSelectedNameRef.current) {
+      generatedSpriteImportNameRef.current = null;
       prevSelectedNameRef.current = selected.name;
       setSelectedName(selected.name);
       setDraft(structuredClone(selected));
@@ -142,6 +151,15 @@ export function CharacterEditorPage() {
       setSelectedSpriteIndex(0);
       setNameError("");
     } else if (selected) {
+      if (selected.name === generatedSpriteImportNameRef.current) {
+        generatedSpriteImportNameRef.current = null;
+        setDraft((current) => ({
+          ...current,
+          sprites: mergeSprites(selected.sprites, current),
+          emotion_tags: selected.emotion_tags,
+        }));
+        return;
+      }
       // same character, just sync draft silently (e.g. after invalidateQueries)
       setDraft(structuredClone(selected));
     }
@@ -1052,6 +1070,10 @@ export function CharacterEditorPage() {
             autoLabelPending={autoLabelMutation.isPending}
             draft={draft}
             emotionTagsPending={emotionTagsMutation.isPending}
+            generateSpritesDisabled={
+              !isSavedCharacter || (spriteGenerationBusy && spriteGenerationTarget?.name !== currentCharacterName)
+            }
+            generateSpritesDisabledReason={!isSavedCharacter ? t("character.sprite.generateSaveFirst") : undefined}
             id="character-sprites"
             onClearSprites={requestClearSprites}
             onAutoLabel={() => {
@@ -1060,6 +1082,15 @@ export function CharacterEditorPage() {
               autoLabelMutation.mutate();
             }}
             onOpenBulkTags={openBulkSpriteTagsDialog}
+            onGenerateSprites={() => {
+              if (spriteGenerationTarget?.name !== currentCharacterName) {
+                setSpriteGenerationTarget({
+                  name: currentCharacterName,
+                  referenceImages: selectedSprite?.path ? [selectedSprite.path] : [],
+                });
+              }
+              setSpriteGenerationOpen(true);
+            }}
             onPendingSpritePathsChange={setPendingSpritePaths}
             onPendingVoicePathChange={updatePendingVoicePath}
             onSaveScale={saveSpriteScaleValue}
@@ -1132,6 +1163,32 @@ export function CharacterEditorPage() {
         onConfirm={confirmBulkSpriteTags}
         open={bulkSpriteTagsOpen}
       />
+
+      {spriteGenerationTarget ? (
+        <SpriteGenerationPanel
+          dialog={{ open: spriteGenerationOpen, onClose: () => setSpriteGenerationOpen(false) }}
+          fixedCharacterName={spriteGenerationTarget.name}
+          initialReferenceImages={spriteGenerationTarget.referenceImages}
+          key={spriteGenerationTarget.name}
+          onBusyChange={setSpriteGenerationBusy}
+          onImportGenerated={async (paths, spriteTags) => {
+            const name = spriteGenerationTarget.name;
+            const saved = queryClient.getQueryData<Character[]>(charactersQueryKey)?.find((item) => item.name === name);
+            const character = await uploadCharacterSprites({
+              name,
+              paths,
+              spriteTags,
+              emotionTags: currentCharacterName === name ? draft.emotion_tags : (saved?.emotion_tags ?? ""),
+            });
+            // Only resource fields should overwrite an unsaved character draft.
+            generatedSpriteImportNameRef.current = character.name;
+            queryClient.setQueryData<Character[]>(charactersQueryKey, (current = []) =>
+              current.map((item) => (item.name === name ? character : item)),
+            );
+            showToast({ kind: "success", title: t("character.sprite.generatedImported") });
+          }}
+        />
+      ) : null}
 
       <AlertDialog
         body={t("character.delete.confirmBody", { name: pendingDelete ?? "" })}

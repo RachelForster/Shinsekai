@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import Mock
 from types import SimpleNamespace
 
 import pytest
@@ -102,6 +103,33 @@ def make_use_case(character, project_root: Path):
 
 def execute(use_case, operation, payload):
     return use_case.execute(parse_character_request(operation, payload))
+
+
+def test_sprite_import_passes_tags_with_matching_files(tmp_path):
+    file = tmp_path / "wave.png"
+    file.write_bytes(b"image")
+    use_case = make_use_case(make_character(), tmp_path)
+    upload = Mock(return_value=("已上传", [], ""))
+    use_case._state.character_manager.upload_sprites = upload
+    execute(use_case, CharacterOperation.UPLOAD_SPRITES, {
+        "name": "Mika", "paths": [str(file)], "spriteTags": ["smiling, waving"],
+    })
+    assert upload.call_args.kwargs == {"sprite_tags": ["smiling, waving"]}
+    assert upload.call_args.args[1][0].name == str(file)
+
+
+@pytest.mark.parametrize("tags", [None, "wave", [], [42], ["wave", "extra"]])
+def test_sprite_import_rejects_misaligned_tags_before_copying_files(tmp_path, tags):
+    file = tmp_path / "wave.png"
+    file.write_bytes(b"image")
+    use_case = make_use_case(make_character(), tmp_path)
+    upload = Mock()
+    use_case._state.character_manager.upload_sprites = upload
+    with pytest.raises(ValueError, match="spriteTags"):
+        execute(use_case, CharacterOperation.UPLOAD_SPRITES, {
+            "name": "Mika", "paths": [str(file)], "spriteTags": tags,
+        })
+    upload.assert_not_called()
 
 
 @pytest.mark.parametrize("existing", [False, True])

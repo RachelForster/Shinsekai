@@ -311,7 +311,14 @@ class CharacterManager:
             return [c.name for c in self._get_characters()]
 
 
-    def upload_sprites(self, character_name: str, sprite_files: List[Any], emotion_tags: str) -> Tuple[str, List[str], str]:
+    def upload_sprites(
+        self,
+        character_name: str,
+        sprite_files: List[Any],
+        emotion_tags: str,
+        *,
+        sprite_tags: Optional[List[str]] = None,
+    ) -> Tuple[str, List[str], str]:
         """
         上传立绘文件并更新角色的立绘列表和情绪标签。
 
@@ -323,6 +330,12 @@ class CharacterManager:
         
         if not sprite_files:
             return "请选择要上传的图片！", [], ''
+        if sprite_tags is not None and (
+            not isinstance(sprite_tags, list)
+            or len(sprite_tags) != len(sprite_files)
+            or any(not isinstance(tag, str) for tag in sprite_tags)
+        ):
+            raise ValueError("sprite_tags must contain one string per image")
         
         character: Optional[Character] = self._config_manager.get_character_by_name(character_name)
         if not character:
@@ -340,7 +353,8 @@ class CharacterManager:
         for i, file in enumerate(sprite_files):
             filename = os.path.basename(file.name)
             dest_path = os.path.join(char_dir, filename)
-            shutil.copyfile(file.name, dest_path)
+            if Path(file.name).resolve(strict=True) != Path(dest_path).resolve():
+                shutil.copyfile(file.name, dest_path)
             
             new_sprite_data = {"path": dest_path}
             character.sprites.append(new_sprite_data)
@@ -348,7 +362,16 @@ class CharacterManager:
             emotion_tags_to_add += f'立绘 {num_existing_sprites + i + 1}：\n'
             
         current_emotion_tags = character.emotion_tags if character.emotion_tags else ""
-        character.emotion_tags = current_emotion_tags + emotion_tags_to_add
+        if sprite_tags is None:
+            character.emotion_tags = current_emotion_tags + emotion_tags_to_add
+        else:
+            from core.media.asset_tags import numbered_tags, tag_contents
+
+            existing_tags = tag_contents(current_emotion_tags, num_existing_sprites)
+            new_tags = [" ".join(tag.split()) for tag in sprite_tags]
+            character.emotion_tags = numbered_tags(
+                "立绘", [*existing_tags, *new_tags]
+            )
 
         self._config_manager.save_characters_config()
 

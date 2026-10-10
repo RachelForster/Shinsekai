@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +23,8 @@ const mockDeleteCharacterSprite = vi.fn();
 const mockDeleteSpriteVoice = vi.fn();
 const mockExportCharacter = vi.fn();
 const mockGenerateCharacterSetting = vi.fn();
+const mockGenerateSprites = vi.fn();
+const mockGenerateSpritePrompts = vi.fn();
 const mockGetMem0Status = vi.fn();
 const mockImportCharacters = vi.fn();
 const mockInstallMissingRuntimeDependency = vi.fn();
@@ -103,6 +105,11 @@ vi.mock("../../../shared/ui", async (importOriginal) => {
 vi.mock("../../../entities/config/repository", () => ({
   configQueryKey: ["config"],
   getAppConfig: () => mockGetAppConfig(),
+}));
+
+vi.mock("../../../entities/tools/repository", () => ({
+  generateSprites: (...args: unknown[]) => mockGenerateSprites(...args),
+  generateSpritePrompts: (...args: unknown[]) => mockGenerateSpritePrompts(...args),
 }));
 
 vi.mock("../../../entities/files/repository", () => ({
@@ -207,6 +214,12 @@ describe("CharacterEditorPage", () => {
     vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
     vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(() => Promise.resolve());
     mockGetAppConfig.mockResolvedValue(structuredClone(sampleConfig));
+    mockGenerateSprites.mockResolvedValue({
+      files: ["D:/generated/wave.png"],
+      outputDir: "D:/generated",
+      message: "Generated",
+    });
+    mockGenerateSpritePrompts.mockResolvedValue({ prompts: ["wave pose"] });
     mockListCharacters.mockResolvedValue([structuredClone(character)]);
     mockDeleteAllCharacterSprites.mockImplementation(async (name: string) => ({
       ...structuredClone(character),
@@ -314,6 +327,152 @@ describe("CharacterEditorPage", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
     await waitFor(() => expect(mockSaveCharacterEmotionTags).toHaveBeenCalledWith("Mika", "Sprite 1: calm\n"));
+  });
+
+  it("generates from the selected sprite and imports without overwriting unsaved character edits", async () => {
+    mockGenerateSprites.mockResolvedValue({
+      files: ["D:/generated/wave.png"],
+      outputDir: "D:/generated",
+      message: "Generated",
+      labels: ["smiling, waving"],
+    });
+    const original = {
+      ...structuredClone(character),
+      sprites: [...character.sprites, { path: "D:/sprites/mika/sprite-b.png" }],
+    };
+    mockListCharacters.mockResolvedValue([original]);
+    mockUploadCharacterSprites.mockImplementation(async (input: { emotionTags: string; paths: string[] }) => ({
+      ...original,
+      emotion_tags: input.emotionTags,
+      sprites: [...original.sprites, ...input.paths.map((path) => ({ path }))],
+    }));
+    renderPage();
+    await screen.findByDisplayValue("Mika");
+    fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Unsaved rename" } });
+    fireEvent.change(screen.getByLabelText("Character setting"), { target: { value: "Unsaved setting" } });
+    fireEvent.click(screen.getByRole("button", { name: /sprite-b\.png/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Generate sprites" }));
+    const dialog = await screen.findByRole("dialog", { name: "Generate sprites · Mika" });
+    expect(within(dialog).getByRole("button", { name: "Reference image 1" })).toHaveTextContent(
+      "D:/sprites/mika/sprite-b.png",
+    );
+    expect(within(dialog).getByRole("combobox", { name: "Character" })).toBeDisabled();
+    fireEvent.change(within(dialog).getByPlaceholderText(/One prompt per line/), { target: { value: "wave pose" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Batch-generate" }));
+    await waitFor(() =>
+      expect(mockGenerateSprites).toHaveBeenCalledWith(
+        {
+          autoLabel: true,
+          characterName: "Mika",
+          outputDir: undefined,
+          prompts: ["wave pose"],
+          provider: "configured",
+          referenceImages: ["D:/sprites/mika/sprite-b.png"],
+        },
+        expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
+      ),
+    );
+    expect(mockGenerateSpritePrompts).not.toHaveBeenCalled();
+    fireEvent.change(await within(dialog).findByLabelText("Tags for sprite 1"), {
+      target: { value: "gentle smile, waving" },
+    });
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Add generated sprites to Mika" }));
+    await waitFor(() =>
+      expect(mockUploadCharacterSprites).toHaveBeenCalledWith({
+        name: "Mika",
+        paths: ["D:/generated/wave.png"],
+        emotionTags: character.emotion_tags,
+        spriteTags: ["gentle smile, waving"],
+      }),
+    );
+    await waitFor(() =>
+      expect(within(dialog).getByRole("button", { name: "Added to character sprites" })).toBeDisabled(),
+    );
+    expect(screen.getByLabelText("Character name")).toHaveValue("Unsaved rename");
+    expect(screen.getByLabelText("Character setting")).toHaveValue("Unsaved setting");
+    expect(mockSaveCharacter).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    expect(screen.getByRole("button", { name: /wave\.png/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /sprite-a\.png/ })).toBeInTheDocument();
+  });
+
+  it("allows retrying a failed sprite import without regenerating the images", async () => {
+    mockUploadCharacterSprites.mockRejectedValueOnce(new Error("Import temporarily unavailable"));
+    renderPage();
+    await screen.findByDisplayValue("Mika");
+    fireEvent.click(screen.getByRole("button", { name: "Generate sprites" }));
+    const dialog = await screen.findByRole("dialog", { name: "Generate sprites · Mika" });
+    fireEvent.change(within(dialog).getByPlaceholderText(/One prompt per line/), { target: { value: "wave pose" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Batch-generate" }));
+    const importButton = await within(dialog).findByRole("button", { name: "Add generated sprites to Mika" });
+    fireEvent.click(importButton);
+    expect(await screen.findByText("Import temporarily unavailable")).toBeInTheDocument();
+    await waitFor(() => expect(importButton).toBeEnabled());
+    expect(within(dialog).getByText("wave.png")).toBeInTheDocument();
+    fireEvent.click(importButton);
+    await waitFor(() => expect(mockUploadCharacterSprites).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(within(dialog).getByRole("button", { name: "Added to character sprites" })).toBeDisabled(),
+    );
+    expect(mockGenerateSprites).toHaveBeenCalledOnce();
+  });
+
+  it("retains a running generation across dialog closure and character changes", async () => {
+    let finish!: (result: { files: string[]; outputDir: string; message: string }) => void;
+    mockGenerateSprites.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    mockListCharacters.mockResolvedValue([character, { ...structuredClone(character), name: "Sora" }]);
+    renderPage();
+    await screen.findByDisplayValue("Mika");
+    fireEvent.click(screen.getByRole("button", { name: "Generate sprites" }));
+    const dialog = await screen.findByRole("dialog", { name: "Generate sprites · Mika" });
+    fireEvent.change(within(dialog).getByPlaceholderText(/One prompt per line/), { target: { value: "wave pose" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Batch-generate" }));
+    await waitFor(() => expect(mockGenerateSprites).toHaveBeenCalledOnce());
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("combobox", { name: "Current character" }));
+    fireEvent.click(screen.getByRole("option", { name: "Sora" }));
+    await waitFor(() => expect(screen.getByLabelText("Character name")).toHaveValue("Sora"));
+    expect(screen.getByRole("button", { name: "Generate sprites" })).toBeDisabled();
+    await act(async () => {
+      finish({ files: ["D:/generated/wave.png"], outputDir: "D:/generated", message: "Generated" });
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Generate sprites" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("combobox", { name: "Current character" }));
+    fireEvent.click(screen.getByRole("option", { name: "Mika" }));
+    await waitFor(() => expect(screen.getByLabelText("Character name")).toHaveValue("Mika"));
+    fireEvent.click(screen.getByRole("button", { name: "Generate sprites" }));
+    const reopened = await screen.findByRole("dialog", { name: "Generate sprites · Mika" });
+    expect(within(reopened).getByPlaceholderText(/One prompt per line/)).toHaveValue("wave pose");
+    fireEvent.click(within(reopened).getByRole("button", { name: "Add generated sprites to Mika" }));
+    await waitFor(() =>
+      expect(mockUploadCharacterSprites).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "Mika",
+          paths: ["D:/generated/wave.png"],
+        }),
+      ),
+    );
+    expect(mockGenerateSprites).toHaveBeenCalledOnce();
+  });
+
+  it("enables sprite generation after saving a new character even without existing sprites", async () => {
+    mockListCharacters.mockResolvedValue([]);
+    renderPage();
+    const generation = await screen.findByRole("button", { name: "Generate sprites" });
+    expect(generation).toBeDisabled();
+    expect(generation).toHaveAttribute("title", "Save the character before generating sprites");
+    fireEvent.change(screen.getByLabelText("Character name"), { target: { value: "Sora" } });
+    fireEvent.change(screen.getByLabelText("Upload directory name (ASCII)"), { target: { value: "sora" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(generation).toBeEnabled());
+    fireEvent.click(generation);
+    const dialog = await screen.findByRole("dialog", { name: "Generate sprites · Sora" });
+    expect(within(dialog).getByRole("button", { name: "Reference image 1" })).toHaveTextContent("Browse");
   });
 
   it("creates a character when saving without an existing current character", async () => {

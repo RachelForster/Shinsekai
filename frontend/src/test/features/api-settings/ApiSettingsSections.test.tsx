@@ -551,6 +551,32 @@ describe("API settings sections", () => {
     );
   });
 
+  it("uses the shared model downloader for Qwen and hides ComfyUI fields", async () => {
+    modelAssetRepositoryMock.getModelAssetStatus.mockResolvedValue({ cached: false });
+    modelAssetRepositoryMock.downloadModelAsset.mockResolvedValue({ cached: true });
+    renderZh(
+      <T2iSetupSection
+        disabled={false}
+        draft={{ ...sampleConfig.api_config, t2i_provider: "qwen-image-2.1" }}
+        errors={{}}
+        extraSchema={{}}
+        extraValues={{}}
+        onAdapterExtraChange={() => {}}
+        onChange={vi.fn()}
+        providerOptions={[{ label: "Qwen-Image-2.1", value: "qwen-image-2.1" }]}
+      />,
+    );
+    expect(screen.queryByPlaceholderText("http://127.0.0.1:8188")).not.toBeInTheDocument();
+    const download = await screen.findByRole("button", { name: "下载模型" });
+    fireEvent.click(download);
+    await waitFor(() =>
+      expect(modelAssetRepositoryMock.downloadModelAsset).toHaveBeenCalledWith(
+        { assetId: "t2i.qwen-image-2.1" },
+        expect.objectContaining({ onTaskUpdate: expect.any(Function) }),
+      ),
+    );
+  });
+
   it("opens resource links through the platform adapter", () => {
     renderZh(<ResourceLinksSection />);
 

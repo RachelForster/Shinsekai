@@ -41,7 +41,9 @@ CLI 没有桌面 bridge，因此不自动注册这两个 HTTP 工具。桌面与
 | write operation | HTTP API | 参数及用途 |
 | --- | --- | --- |
 | `characters.save` | POST `/api/characters` | `body.character`；编辑时带 `body.originalName` |
-| `characters.sprites.import` | POST `/api/characters/sprites/upload` | `body.name`、`body.paths` |
+| `characters.sprites.import` | POST `/api/characters/sprites/upload` | `body.name`、`body.paths`；可选 `body.spriteTags` 为与路径一一对应的新立绘标签，不覆盖旧立绘标签 |
+| `tools.sprite-prompts.generate` | POST `/api/tools/sprite-prompts` | `body.characterName`、`body.count`；使用已配置的 LLM Adapter 编写提示词，返回后台任务 |
+| `tools.sprites.generate` | POST `/api/tools/sprites/generate` | `body.characterName`、`body.referenceImages`（1–10 个本地图片路径）、`body.prompts`；`body.provider` 为 `configured` 或 `gemini`，可选 `body.outputDir`、`body.autoLabel`、`body.seed`（-1 随机）；返回后台任务，启用标注时结果包含与 `files` 对齐的 `labels` 和逐图 `labelErrors` |
 | `plugins.install` | POST `/api/plugins/install` | `body.source`，沿用已有安装和下载机制 |
 | `plugins.enable` | POST `/api/plugins/{plugin_id}/enabled` | `body.enabled` |
 | `plugins.configure` | POST `/api/plugins/{plugin_id}/ui/{page_id}/config` | `body.values`，先 inspect |

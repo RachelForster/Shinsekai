@@ -6,6 +6,7 @@ import type { SchemaErrorMap } from "../../entities/config/schema";
 import { useI18n } from "../../shared/i18n";
 import { Button, FilePicker, Select, TextInput } from "../../shared/ui";
 import { AdapterExtraForm } from "./AdapterExtraForm";
+import { QwenImageModelDownload } from "./QwenImageModelDownload";
 import { applyT2iSetupMode, hasAdapterSchema, inferT2iSetupMode, type T2iSetupMode } from "./apiSettingsUtils";
 
 interface T2iSetupSectionProps {
@@ -45,6 +46,8 @@ export function T2iSetupSection({
   const inferredMode = inferT2iSetupMode(draft);
   const [mode, setSelectedMode] = useState<T2iSetupMode>(inferredMode);
   const active = mode !== "skip";
+  const qwenProvider = draft.t2i_provider.toLowerCase() === "qwen-image-2.1";
+  const comfyProvider = draft.t2i_provider.toLowerCase() === "comfyui";
   const showAdvanced = active || hasAdapterSchema(extraSchema);
 
   useEffect(() => {
@@ -115,34 +118,38 @@ export function T2iSetupSection({
                 </Select>
               </span>
             </label>
-            <label className="field-row">
-              <span className="field-row__label">{t("api.t2i.apiUrl")}</span>
-              <span className="field-row__control">
-                <TextInput
-                  disabled={disabled}
-                  onChange={(event) => onChange(patchT2i(draft, { t2i_api_url: event.target.value }))}
-                  placeholder="http://127.0.0.1:8188"
-                  type="url"
-                  value={draft.t2i_api_url}
-                />
-                {errors.t2i_api_url ? <span className="field-error">{errors.t2i_api_url}</span> : null}
-              </span>
-            </label>
-            <label className="field-row">
-              <span className="field-row__label">{t("api.t2i.workflow")}</span>
-              <span className="field-row__control">
-                <FilePicker
-                  acceptedExtensions={[".json"]}
-                  disabled={disabled}
-                  onChange={(event) => onChange(patchT2i(draft, { t2i_default_workflow_path: event.target.value }))}
-                  onPathChange={(path) => onChange(patchT2i(draft, { t2i_default_workflow_path: path }))}
-                  pickLabel={t("common.chooseFile")}
-                  pickerTitle={t("api.t2i.workflowPick")}
-                  value={draft.t2i_default_workflow_path}
-                />
-              </span>
-            </label>
-            {mode === "local" ? (
+            {!qwenProvider ? (
+              <label className="field-row">
+                <span className="field-row__label">{t("api.t2i.apiUrl")}</span>
+                <span className="field-row__control">
+                  <TextInput
+                    disabled={disabled}
+                    onChange={(event) => onChange(patchT2i(draft, { t2i_api_url: event.target.value }))}
+                    placeholder="http://127.0.0.1:8188"
+                    type="url"
+                    value={draft.t2i_api_url}
+                  />
+                  {errors.t2i_api_url ? <span className="field-error">{errors.t2i_api_url}</span> : null}
+                </span>
+              </label>
+            ) : null}
+            {comfyProvider ? (
+              <label className="field-row">
+                <span className="field-row__label">{t("api.t2i.workflow")}</span>
+                <span className="field-row__control">
+                  <FilePicker
+                    acceptedExtensions={[".json"]}
+                    disabled={disabled}
+                    onChange={(event) => onChange(patchT2i(draft, { t2i_default_workflow_path: event.target.value }))}
+                    onPathChange={(path) => onChange(patchT2i(draft, { t2i_default_workflow_path: path }))}
+                    pickLabel={t("common.chooseFile")}
+                    pickerTitle={t("api.t2i.workflowPick")}
+                    value={draft.t2i_default_workflow_path}
+                  />
+                </span>
+              </label>
+            ) : null}
+            {mode === "local" && comfyProvider ? (
               <label className="field-row">
                 <span className="field-row__label">{t("api.t2i.comfyDir")}</span>
                 <span className="field-row__control">
@@ -159,25 +166,31 @@ export function T2iSetupSection({
               </label>
             ) : null}
           </div>
-          <div className="t2i-setup__actions">
-            <Button
-              disabled={disabled}
-              icon={<Wand2 aria-hidden className="button__icon" />}
-              onClick={() => onChange(applyT2iSetupMode(draft, mode))}
-              variant="ghost"
-            >
-              {t("api.t2i.quickDefaults")}
-            </Button>
-          </div>
+          {qwenProvider ? <p className="field-row__help">{t("api.t2i.qwenHelp")}</p> : null}
+          {qwenProvider && !String(extraValues.model_path ?? "").trim() ? (
+            <QwenImageModelDownload disabled={disabled} />
+          ) : null}
+          {!qwenProvider ? (
+            <div className="t2i-setup__actions">
+              <Button
+                disabled={disabled}
+                icon={<Wand2 aria-hidden className="button__icon" />}
+                onClick={() => onChange(applyT2iSetupMode(draft, mode))}
+                variant="ghost"
+              >
+                {t("api.t2i.quickDefaults")}
+              </Button>
+            </div>
+          ) : null}
         </>
       ) : null}
       {showAdvanced ? (
-        <details className="t2i-setup__advanced">
+        <details className="t2i-setup__advanced" open={qwenProvider || undefined}>
           <summary className="t2i-setup__advanced-summary">
             <Sparkles aria-hidden className="t2i-setup__advanced-icon" />
             {t("api.t2i.advanced")}
           </summary>
-          {active ? (
+          {active && comfyProvider ? (
             <div className="form-grid form-grid--two api-extra-grid">
               <label className="field-row">
                 <span className="field-row__label">{t("api.t2i.promptNode")}</span>

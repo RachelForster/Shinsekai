@@ -1,0 +1,9 @@
+# Install only in the isolated worker environment, after CUDA-enabled PyTorch.
+# The app's Transformers 4 dependencies remain separate.
+diffusers==0.41.0
+transformers==5.19.0
+huggingface-hub==1.33.0
+accelerate==1.12.0
+bitsandbytes==0.49.2
+peft==0.21.2
+Pillow>=11,<13

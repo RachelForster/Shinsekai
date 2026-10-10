@@ -98,7 +98,17 @@ WRITE_APIS = {
     "characters.sprites.import": _Api(
         "POST",
         "/api/characters/sprites/upload",
-        "body.name、body.paths（已存在的图片路径列表）",
+        "body.name、body.paths（已存在的图片路径列表）；可选 spriteTags 为与 paths 对齐的新立绘标签数组",
+    ),
+    "tools.sprite-prompts.generate": _Api(
+        "POST",
+        "/api/tools/sprite-prompts",
+        "body.characterName、body.count；通过已配置的 LLM Adapter 编写立绘提示词，返回后台任务",
+    ),
+    "tools.sprites.generate": _Api(
+        "POST",
+        "/api/tools/sprites/generate",
+        "body.characterName、referenceImages（1–10 个本地图片路径）、prompts；provider 为 configured 或 gemini；可选 outputDir、autoLabel（通过现有视觉服务标注）、seed（-1 随机）；返回生成任务，结果 files 与 labels 对齐，完成后再导入",
     ),
     "plugins.install": _Api(
         "POST", "/api/plugins/install", "body.source 为目录中的插件来源；返回安装任务"

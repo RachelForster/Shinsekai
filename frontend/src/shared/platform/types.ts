@@ -667,8 +667,22 @@ export interface SpritePromptResult {
   prompts: string[];
 }
 
+export interface SpriteGenerationRequest {
+  autoLabel?: boolean;
+  characterName: string;
+  outputDir?: string;
+  prompts: string[];
+  provider?: "configured" | "gemini";
+  referenceImages?: string[];
+  /** Compatibility with older clients. Prefer referenceImages. */
+  referenceImage?: string;
+  seed?: number;
+}
+
 export interface SpriteGenerationResult {
   files: string[];
+  labels?: string[];
+  labelErrors?: { index: number; message: string }[];
   message: string;
   outputDir: string;
 }
@@ -1604,7 +1618,12 @@ export interface ShinsekaiPlatform {
       emotionTags: string;
       name: string;
     }) => Promise<CharacterTranslateResult>;
-    uploadSprites: (input: { emotionTags: string; name: string; paths: string[] }) => Promise<Character>;
+    uploadSprites: (input: {
+      emotionTags: string;
+      name: string;
+      paths: string[];
+      spriteTags?: string[];
+    }) => Promise<Character>;
     uploadSpriteVoice: (input: {
       name: string;
       spriteIndex: number;
@@ -1734,7 +1753,7 @@ export interface ShinsekaiPlatform {
       options?: TaskProgressOptions<SpritePromptResult>,
     ) => Promise<SpritePromptResult>;
     generateSprites: (
-      input: { characterName: string; outputDir?: string; prompts: string[]; referenceImage: string },
+      input: SpriteGenerationRequest,
       options?: TaskProgressOptions<SpriteGenerationResult>,
     ) => Promise<SpriteGenerationResult>;
     removeSpriteBackground: (

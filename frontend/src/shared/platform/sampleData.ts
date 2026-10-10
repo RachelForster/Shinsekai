@@ -58,6 +58,7 @@ export const sampleConfig: AppConfig = {
     t2i: [
       { label: "ComfyUI", schema: {}, value: "comfyui" },
       { label: "Stable Diffusion", schema: {}, value: "stable diffusion" },
+      { label: "Qwen-Image-2.1", schema: {}, value: "qwen-image-2.1" },
     ],
     tts: [
       { label: "不使用", schema: {}, value: "none" },

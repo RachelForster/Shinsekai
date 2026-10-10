@@ -96,6 +96,16 @@ function renderSection(overrides: Partial<Parameters<typeof CharacterSpritesSect
 }
 
 describe("CharacterSpritesSection", () => {
+  it("places sprite generation beside smart labeling and opens it through the callback", () => {
+    const onGenerateSprites = vi.fn();
+    renderSection({ autoLabelAvailable: true, onGenerateSprites });
+    const labeling = screen.getByRole("button", { name: "Smart labeling" });
+    const generation = screen.getByRole("button", { name: "Generate sprites" });
+    expect(labeling.nextElementSibling).toBe(generation);
+    fireEvent.click(generation);
+    expect(onGenerateSprites).toHaveBeenCalledOnce();
+  });
+
   it("only shows the smart-label action when vision is available", () => {
     const onAutoLabel = vi.fn();
     const first = renderSection();

@@ -1,10 +1,11 @@
 from google import genai
-from google.genai import types
 from PIL import Image
 from io import BytesIO
+from contextlib import ExitStack
+from collections.abc import Sequence
 import sys
+import uuid
 from typing import Union, List, Dict, Any
-import json
 from pathlib import Path
 from PIL import Image
 # 获取当前脚本的绝对路径
@@ -17,104 +18,40 @@ from config.config_manager import ConfigManager
 
 config = ConfigManager()
 IMAGE_MODEL = 'gemini-2.5-flash-image'
-PROMPT_GENERATION_MODEL = "gemini-2.5-flash" 
-# 或者 "gemini-2.5-flash"
 
 class ImageGenerator:
     def __init__(self):
-        try:
+        self.client = None
+
+    def _image_client(self):
+        if self.client is None:
             API_KEY = config.config.api_config.llm_api_key.get("Gemini", "")
             self.client = genai.Client(api_key=API_KEY)
-        except Exception as e:
-            print("没有设置Gemini的api key!")
+        return self.client
 
     def generate_prompts(
         self,
         num_sprite: int,
         character_settings: str
     ) -> List[str]:
-        """
-        根据角色设定生成用于立绘制作的文本提示词列表，返回格式为 JSON 数组。
+        """Compatibility entry point using the configured LLM."""
+        from application.image_generation.prompts import generate_sprite_prompts
 
-        Args:
-            client: 初始化的 genai.Client 实例。
-            character_settings: 角色信息
-
-        Returns:
-            一个包含多个文本提示词字符串的列表 (list[str])。
-        """
-        
-        # 将角色设定转换为易于模型理解的字符串
-        settings_str = character_settings
-
-        # 构造系统指令和用户提示
-        system_instruction = (
-            "你是一名专业艺术家和提示词工程师。你的任务是根据提供的角色设定，"
-            f"生成 {num_sprite} 个高质量、详细的 Gemini Image 提示词，"
-            "用于生成该角色的不同姿势的立绘。"
-            "严格遵守以下要求："
-            "1. 每个提示词必须是单独的一条字符串，包括人物的表情和动作,在提示词中加入保持背景纯白色。最终提示词会和一张参考图片一起输入，请假装参考图片存在，并让人物做出一定的表情和姿势"
-            "2. 你的最终输出必须是一个可解析的 JSON 数组 (JSON Array of Strings)，"
-            "   不包含任何额外的解释或文本，例如：[\"prompt 1\", \"prompt 2\", ...]。"
-            "3. 生成的提示词必须符合人物的性格和背景，不允许出现OOC（Out of Character）的情况"
-            "4. 每个提示词开头都是Make the character xxxx （做出一定的表情和姿势）"
+        return generate_sprite_prompts(
+            config,
+            character_name="",
+            character_setting=character_settings,
+            count=num_sprite,
         )
-
-        user_prompt = (
-            f"请根据以下角色设定，生成 {num_sprite} 个高质量的图像生成提示词：\n\n"
-            f"--- 角色设定 ---\n{settings_str}\n\n"
-            f"--- 提示词格式要求 ---\n"
-            f"输出格式必须是严格的 JSON 字符串数组，每个字符串包括人物的表情和动作，保持背景纯白色"
-        )
-        
-        print("-> 正在生成立绘提示词...")
-
-        try:
-            # 使用 generate_content 并强制 JSON 输出
-            response = self.client.models.generate_content(
-                model=PROMPT_GENERATION_MODEL,
-                contents=[user_prompt],
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    # 强制模型输出 mime_type 为 application/json 的内容
-                    response_mime_type="application/json", 
-                ),
-            )
-
-            # 检查并解析 JSON 字符串
-            if response.text:
-                # 移除可能存在的 Markdown 标记，确保纯 JSON
-                json_text = response.text.strip().replace("```json", "").replace("```", "").strip()
-                
-                # 解析 JSON 数组
-                prompts_list = json.loads(json_text)
-                
-                if isinstance(prompts_list, list) and all(isinstance(p, str) for p in prompts_list):
-                    print(f"-> 成功生成 {len(prompts_list)} 条提示词。")
-                    return prompts_list
-                else:
-                    print("-> 警告：模型返回的 JSON 结构不正确（非字符串数组）。")
-                    return [json_text] # 如果解析失败，返回原始文本以便调试
-            else:
-                print("-> 警告：模型未返回任何文本。")
-                return []
-
-        except json.JSONDecodeError as e:
-            print(f"-> 错误：JSON 解析失败。请检查模型输出是否为有效的 JSON 数组。错误: {e}")
-            print(f"-> 模型原始输出: {response.text}")
-            return []
-        except Exception as e:
-            print(f"-> 错误：提示词生成失败。{e}")
-            return []
 
     def generate_picture_with_reference(
         self,
-        image_path: Union[str, Path], # 新增：参考图片路径
+        image_path: Union[str, Path, Sequence[Union[str, Path]]],
         prompt: str,
         output_file: Union[str, Path]
     ):
         """
-        使用 gemini-2.5-flash-image 模型生成单张图片，并包含一张参考图片。
+        使用 gemini-2.5-flash-image 模型生成单张图片，并包含有序参考图片。
 
         Args:
             client: 初始化的 genai.Client 实例。
@@ -125,23 +62,10 @@ class ImageGenerator:
         try:
             # 1. 加载参考图片
             print(f"-> 正在加载参考图片: {image_path}")
-            ref_image = Image.open(image_path)
-
-            # 2. 构造 contents 列表：同时包含文本和图片
-            # 传入的 contents 列表中可以包含多个 Part，其中一个是图片，一个是文本
-            contents = [
-                prompt,
-                ref_image  # PIL Image 对象可以直接作为内容传入
-            ]
-            
-            print(f"-> 正在为 prompt: '{prompt[:50]}...' 生成图片...")
-
-            # 3. 调用 generate_content 方法（而不是 generate_images）
-            # 当输入包含图片时，你需要使用 generate_content
-            response = self.client.models.generate_content(
-                model=IMAGE_MODEL,
-                contents=contents,
-            )
+            paths = [image_path] if isinstance(image_path, (str, Path)) else list(image_path)
+            with ExitStack() as stack:
+                contents = [prompt, *(stack.enter_context(Image.open(path)) for path in paths)]
+                response = self._image_client().models.generate_content(model=IMAGE_MODEL, contents=contents)
 
             # 4. 检查结果并保存图片
             if response.candidates and response.candidates[0].content.parts:
@@ -197,7 +121,7 @@ class ImageGenerator:
         print(f"-> 正在为 prompt: '{prompt[:50]}...' 生成图片...")
         try:
             # 调用模型生成图片
-            result = self.client.models.generate_images(
+            result = self._image_client().models.generate_images(
                 model=IMAGE_MODEL,
                 prompt=prompt,
                 config=dict(
@@ -247,14 +171,17 @@ class ImageGenerator:
         print(f"--- 开始批量生成立绘到目录: {output_path.resolve()} ---")
 
         generated_files = []
+        batch_id = uuid.uuid4().hex[:12]
         for i, prompt in enumerate(prompt_list):
             # 构造输出文件名，例如: sprite_001.png, sprite_002.png...
-            output_file = output_path / f"sprite_{i + 1:03d}.png"
+            output_file = output_path / f"sprite_{batch_id}_{i + 1:03d}.png"
 
             # 调用单张图片生成方法
             result_file = self.generate_picture_with_reference(image_path, prompt, output_file)
             if result_file:
                 generated_files.append(result_file)
+            else:
+                raise RuntimeError(f"Image generation returned no sprite for prompt {i + 1}")
 
         print("--- 批量生成完成 ---")
         return generated_files

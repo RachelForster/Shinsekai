@@ -18,7 +18,7 @@ _TTS_LABEL_PREFS: tuple[tuple[str, str], ...] = (
     ("index-tts", "IndexTTS"),
     ("cosyvoice", "CosyVoice"),
 )
-_PREFERRED_T2I_KEYS_LOWER: tuple[str, ...] = ("comfyui", "stable diffusion")
+_PREFERRED_T2I_KEYS_LOWER: tuple[str, ...] = ("comfyui", "stable diffusion", "qwen-image-2.1")
 
 
 def _adapter_schema(adapter_class: Any | None) -> dict[str, Any]:
@@ -91,6 +91,7 @@ def adapter_catalog() -> dict[str, list[dict[str, Any]]]:
     fixed_t2i_labels = {
         "comfyui": "ComfyUI",
         "stable diffusion": "Stable Diffusion",
+        "qwen-image-2.1": "Qwen-Image-2.1（本地）",
     }
     t2i: list[dict[str, Any]] = []
     for preferred in _PREFERRED_T2I_KEYS_LOWER:

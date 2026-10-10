@@ -546,8 +546,10 @@ from sdk.register import PluginCapabilityRegistry
 
 class StubT2IAdapter(T2IAdapter):
     def generate_image(
-        self, prompt: str, file_path: Optional[str] = None, **kwargs
+        self, prompt: str, file_path: Optional[str] = None, *, reference_images=None, **kwargs
     ) -> Optional[str]:
+        if self.normalize_reference_images(reference_images):
+            raise ValueError("This backend does not support image editing")
         return None
 
     def switch_model(self, model_info: Dict[str, Any]) -> None:

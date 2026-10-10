@@ -128,6 +128,7 @@ export const apiConfigFormSchema: Array<FormGroupSchema<ApiConfig>> = [
         options: [
           { label: "ComfyUI", value: "comfyui" },
           { label: "Stable Diffusion", value: "stable diffusion" },
+          { label: "Qwen-Image-2.1", value: "qwen-image-2.1" },
         ],
         required: true,
         type: "select",

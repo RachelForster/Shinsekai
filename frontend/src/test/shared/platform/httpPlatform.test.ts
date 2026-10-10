@@ -2675,7 +2675,7 @@ describe("http platform", () => {
       title: id,
       updatedAt: 2,
     });
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
       const url = String(input);
       if (url.endsWith("/api/mcp/config/open")) {
         return mockJsonResponse({ path: "/tmp/mcp.json" });
@@ -2693,7 +2693,15 @@ describe("http platform", () => {
         return mockJsonResponse(completedTask("prompts", { prompts: ["smile"] }));
       }
       if (url.endsWith("/api/tools/sprites/generate")) {
-        return mockJsonResponse(completedTask("generate", { images: ["sprite.png"] }));
+        return mockJsonResponse(
+          completedTask("generate", {
+            files: ["sprite.png"],
+            labels: ["smiling"],
+            labelErrors: [],
+            outputDir: "/tmp",
+            message: "generated",
+          }),
+        );
       }
       return mockJsonResponse(completedTask("remove-bg", { failed: [], items: [] }));
     });
@@ -2705,12 +2713,24 @@ describe("http platform", () => {
     await platform.runtime.installMissingDependency({ moduleName: "mem0ai" });
     await platform.tools.cropSprites({ inputDir: "/tmp/sprites", ratio: 1 });
     await platform.tools.generateSpritePrompts({ characterName: "Nanami", count: 1 });
-    await platform.tools.generateSprites({
+    const generated = await platform.tools.generateSprites({
+      autoLabel: true,
       characterName: "Nanami",
       prompts: ["smile"],
-      referenceImage: "/tmp/ref.png",
+      provider: "configured",
+      referenceImages: ["/tmp/ref.png", "/tmp/ref2.png"],
+      seed: 456,
     });
+    expect(generated).toMatchObject({ files: ["sprite.png"], labels: ["smiling"], labelErrors: [] });
     await platform.tools.removeSpriteBackground({ inputDir: "/tmp/sprites" });
+
+    const generateCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/api/tools/sprites/generate"));
+    expect(JSON.parse(String(generateCall?.[1]?.body))).toMatchObject({
+      autoLabel: true,
+      seed: 456,
+      provider: "configured",
+      referenceImages: ["/tmp/ref.png", "/tmp/ref2.png"],
+    });
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "http://127.0.0.1:8787/api/mcp/config/open",

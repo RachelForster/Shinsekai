@@ -186,6 +186,7 @@ export function t2iProviderSelectOptions(catalog: AdapterCatalog | undefined, cu
     catalogOptions(catalog?.t2i, [
       { label: "ComfyUI", value: DEFAULT_T2I_PROVIDER },
       { label: "Stable Diffusion", value: "stable diffusion" },
+      { label: "Qwen-Image-2.1", value: "qwen-image-2.1" },
     ]),
     currentValue,
   );
@@ -270,6 +271,7 @@ export function apiSchemaWithAdapterOptions(
     catalogOptions(catalog?.t2i, [
       { label: "ComfyUI", value: "comfyui" },
       { label: "Stable Diffusion", value: "stable diffusion" },
+      { label: "Qwen-Image-2.1", value: "qwen-image-2.1" },
     ]),
     draft?.t2i_provider ?? "",
   );
@@ -426,6 +428,7 @@ export function inferT2iSetupMode(
     .trim()
     .toLowerCase();
   const defaultUrl = !url || url === DEFAULT_T2I_API_URL;
+  if (provider === "qwen-image-2.1") return "custom";
   const defaultProvider = !provider || provider === DEFAULT_T2I_PROVIDER;
   if (!workflow && !workPath && defaultUrl && defaultProvider) {
     return "skip";
@@ -479,6 +482,7 @@ export function isT2iReadyForSprites(
     .toLowerCase();
   const apiUrl = String(config.t2i_api_url || "").trim();
   const workflow = String(config.t2i_default_workflow_path || "").trim();
+  if (provider === "qwen-image-2.1") return true;
   if (!provider || !apiUrl) {
     return false;
   }

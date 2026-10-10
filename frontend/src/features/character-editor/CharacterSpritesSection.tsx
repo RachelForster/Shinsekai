@@ -1,5 +1,5 @@
 import type { WheelEventHandler } from "react";
-import { Image as ImageIcon, Sparkles, Tags, Trash2, Upload, Volume2 } from "lucide-react";
+import { Image as ImageIcon, Sparkles, Tags, Trash2, Upload, Volume2, WandSparkles } from "lucide-react";
 
 import type { Character, Sprite } from "../../entities/config/types";
 import { fileUrl } from "../../entities/files/repository";
@@ -30,9 +30,12 @@ interface CharacterSpritesSectionProps {
   autoLabelPending?: boolean;
   draft: Character;
   emotionTagsPending: boolean;
+  generateSpritesDisabled?: boolean;
+  generateSpritesDisabledReason?: string;
   id?: string;
   onClearSprites: () => void;
   onAutoLabel?: () => void;
+  onGenerateSprites?: () => void;
   onOpenBulkTags: () => void;
   onPendingSpritePathsChange: (paths: string[]) => void;
   onPendingVoicePathChange: (path: string) => void;
@@ -68,9 +71,12 @@ export function CharacterSpritesSection({
   autoLabelPending = false,
   draft,
   emotionTagsPending,
+  generateSpritesDisabled = false,
+  generateSpritesDisabledReason,
   id,
   onClearSprites,
   onAutoLabel,
+  onGenerateSprites,
   onOpenBulkTags,
   onPendingSpritePathsChange,
   onPendingVoicePathChange,
@@ -123,6 +129,17 @@ export function CharacterSpritesSection({
             >
               {t("mediaAutoLabel.action")}
             </AsyncButton>
+          ) : null}
+          {onGenerateSprites ? (
+            <Button
+              disabled={generateSpritesDisabled}
+              icon={<WandSparkles aria-hidden className="button__icon" />}
+              onClick={onGenerateSprites}
+              title={generateSpritesDisabledReason}
+              variant="ghost"
+            >
+              {t("character.sprite.generate")}
+            </Button>
           ) : null}
           <AsyncButton
             icon={<Upload aria-hidden className="button__icon" />}

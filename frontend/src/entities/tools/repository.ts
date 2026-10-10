@@ -1,6 +1,7 @@
 import { getPlatform } from "../../shared/platform/platform";
 import type {
   BatchToolResult,
+  SpriteGenerationRequest,
   SpriteGenerationResult,
   SpritePromptResult,
   TaskProgressOptions,
@@ -13,10 +14,7 @@ export function generateSpritePrompts(
   return getPlatform().tools.generateSpritePrompts(input, options);
 }
 
-export function generateSprites(
-  input: { characterName: string; outputDir?: string; prompts: string[]; referenceImage: string },
-  options?: TaskProgressOptions<SpriteGenerationResult>,
-) {
+export function generateSprites(input: SpriteGenerationRequest, options?: TaskProgressOptions<SpriteGenerationResult>) {
   return getPlatform().tools.generateSprites(input, options);
 }
 

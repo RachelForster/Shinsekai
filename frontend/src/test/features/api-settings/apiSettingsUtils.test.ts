@@ -60,6 +60,16 @@ function task(status: TaskSnapshot["status"]): TaskSnapshot {
 }
 
 describe("API settings utilities", () => {
+  it("recognizes local Qwen without an HTTP URL or ComfyUI workflow", () => {
+    const qwen = apiConfig({
+      t2i_provider: "qwen-image-2.1",
+      t2i_api_url: "",
+      t2i_default_workflow_path: "",
+      t2i_work_path: "",
+    });
+    expect(inferT2iSetupMode(qwen)).toBe("custom");
+    expect(isT2iReadyForSprites(qwen)).toBe(true);
+  });
   it("normalizes ASR provider aliases and save payloads", () => {
     expect(normalizeAsrProvider("faster-whisper")).toBe("faster_whisper");
     expect(normalizeAsrProvider("RealtimeSTT")).toBe("realtime_stt");

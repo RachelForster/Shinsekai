@@ -1,11 +1,12 @@
-import requests
 import threading
 import queue
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Optional, Dict, Any
 
 from sdk.adapters.t2i import T2IAdapter
 from ai.t2i.t2i_adapter import ComfyUIT2IAdapter, StableDiffusionAdapter
+from ai.t2i.qwen_image21_adapter import QwenImage21Adapter
 
 class T2IAdapterFactory:
     """
@@ -14,6 +15,7 @@ class T2IAdapterFactory:
     _adapters = {
         'stable diffusion': StableDiffusionAdapter,
         'comfyui': ComfyUIT2IAdapter,
+        'qwen-image-2.1': QwenImage21Adapter,
     }
 
     @staticmethod
@@ -67,13 +69,17 @@ class T2IManager:
         """Allows switching the T2I adapter at runtime."""
         self.t2i_adapter = adapter
 
-    def t2i(self, prompt: str, prompt_processor: Optional[Any] = None, **kwargs) -> Optional[str]:
+    def t2i(self, prompt: str, prompt_processor: Optional[Any] = None, *,
+            reference_images: Sequence[str | Path] | None = None, **kwargs) -> Optional[str]:
         """
         Generates T2I image using the currently set adapter and returns the file path.
         """
         if not self.t2i_adapter:
             print("Error: T2I adapter is not set.")
             return None
+        references = T2IAdapter.normalize_reference_images(reference_images)
+        if references:
+            kwargs["reference_images"] = references
 
         print(f"Generating image for prompt: '{prompt[:50]}...'")
 
@@ -111,8 +117,12 @@ class T2IManager:
             finally:
                 self.task_queue.task_done()
 
-    def queue_generation(self, prompt: str, prompt_processor: Optional[Any] = None, **kwargs):
+    def queue_generation(self, prompt: str, prompt_processor: Optional[Any] = None, *,
+                         reference_images: Sequence[str | Path] | None = None, **kwargs):
         """Adds a T2I generation request to the queue."""
+        references = T2IAdapter.normalize_reference_images(reference_images)
+        if references:
+            kwargs["reference_images"] = references
         self.task_queue.put({
             'type': 'generate',
             'prompt': prompt,
@@ -124,4 +134,6 @@ class T2IManager:
         """Shuts down the queue and worker thread."""
         print("Shutting down T2IManager worker thread...")
         self.task_queue.put(None)
+        if self.t2i_adapter:
+            self.t2i_adapter.shutdown()
         self.worker_thread.join()

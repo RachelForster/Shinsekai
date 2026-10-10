@@ -5,6 +5,8 @@ import subprocess
 import base64
 import json
 import time
+from collections.abc import Sequence
+from pathlib import Path
 import requests
 from typing import Optional, Dict, Any
 
@@ -21,11 +23,13 @@ class StableDiffusionAdapter(T2IAdapter):
         self.current_model = default_model
         print(f"StableDiffusionAdapter initialized with API: {self.api_url}")
 
-    def generate_image(self, prompt: str, file_path: Optional[str] = None, **kwargs) -> Optional[str]:
+    def generate_image(self, prompt: str, file_path: Optional[str] = None, *, reference_images: Sequence[str | Path] | None = None, **kwargs) -> Optional[str]:
         """
         Generates a T2I image using the Stable Diffusion API.
         The kwargs dictionary can include parameters like negative_prompt, steps, etc.
         """
+        if self.normalize_reference_images(reference_images):
+            raise ValueError("Stable Diffusion txt2img does not support reference images; select an image-editing adapter")
         # A simplified payload for a standard SD API
         payload = {
             "prompt": prompt,
@@ -101,7 +105,8 @@ class ComfyUIT2IAdapter(T2IAdapter):
                  work_path: str = "",
                  workflow_path: str = "path/to/default_workflow.json",
                  prompt_node_id: str = "6", # Common ID for the CLIPTextEncode (Prompt) node in SD workflows
-                 output_node_id: str = "17"):# Common ID for the SaveImage node
+                 output_node_id: str = "17",
+                 reference_image_node_ids: str = ""):
         """
         初始化 ComfyUI Adapter。
 
@@ -116,6 +121,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
         self.prompt_node_id = prompt_node_id
         self.output_node_id = output_node_id
         self.work_path = work_path
+        self.reference_image_node_ids = reference_image_node_ids
         self.workflow_template = self._load_workflow_template()
         self._start_server_process()
 
@@ -169,7 +175,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
             print(f"Error loading ComfyUI workflow template from {self.workflow_path}: {e}")
             raise
 
-    def generate_image(self, prompt: str, file_path: Optional[str] = None, **kwargs) -> Optional[str]:
+    def generate_image(self, prompt: str, file_path: Optional[str] = None, *, reference_images: Sequence[str | Path] | None = None, **kwargs) -> Optional[str]:
         """
         生成图像。通过修改工作流中的 prompt 节点并提交执行。
 
@@ -212,6 +218,7 @@ class ComfyUIT2IAdapter(T2IAdapter):
                 raise RuntimeError(
                     "ComfyUI is still starting or is not reachable. Please wait until ComfyUI finishes loading, then retry image generation."
                 )
+            self._inject_reference_images(prompt_workflow, reference_images)
             response = requests.post(
                 self.api_url + self.PROMPT_ENDPOINT,
                 json=payload,
@@ -234,6 +241,42 @@ class ComfyUIT2IAdapter(T2IAdapter):
             ) from exc
         except Exception:
             raise
+
+    @staticmethod
+    def get_config_schema() -> Dict[str, Any]:
+        return {"reference_image_node_ids": {
+            "type": "str", "label": "Ordered reference image node IDs (comma-separated; empty: LoadImage nodes)", "default": "",
+        }}
+
+    def _inject_reference_images(self, workflow: Dict[str, Any], reference_images: Sequence[str | Path] | None) -> None:
+        references = self.normalize_reference_images(reference_images)
+        if not references:
+            return
+        nodes = [value.strip() for value in self.reference_image_node_ids.split(",") if value.strip()]
+        if not nodes:
+            nodes = [key for key, node in workflow.items() if isinstance(node, dict) and node.get("class_type") == "LoadImage"]
+        if len(nodes) < len(references) or len(set(nodes)) != len(nodes):
+            raise ValueError("ComfyUI workflow needs one distinct image input node per reference image")
+        for node_id in nodes[:len(references)]:
+            node = workflow.get(node_id)
+            if not isinstance(node, dict) or not isinstance(node.get("inputs"), dict) or "image" not in node["inputs"]:
+                raise ValueError(f"ComfyUI reference node {node_id} has no image input")
+        paths = [Path(path) for path in references]
+        if any(not path.is_file() for path in paths):
+            raise ValueError("reference_images must point to existing local files")
+        for node_id, path in zip(nodes, paths):
+            with path.open("rb") as source:
+                response = requests.post(
+                    self.api_url + "/upload/image", files={"image": (path.name, source)},
+                    data={"type": "input", "overwrite": "false"}, timeout=self.REQUEST_TIMEOUT_SECONDS,
+                )
+            response.raise_for_status()
+            uploaded = response.json()
+            name = str(uploaded.get("name") or "")
+            if not name:
+                raise RuntimeError("ComfyUI returned no uploaded reference image name")
+            folder = str(uploaded.get("subfolder") or "").strip("/")
+            workflow[node_id]["inputs"]["image"] = f"{folder}/{name}" if folder else name
 
     def _find_ksampler_conditioning_node_id(self, workflow: Dict[str, Any], input_name: str) -> str:
         for node in workflow.values():
