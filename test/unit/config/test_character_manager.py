@@ -29,7 +29,7 @@ def sprite_field(sprite, key):
 
 
 @pytest.mark.parametrize("already_managed", [False, True])
-def test_upload_generated_sprites_appends_tags_without_overwriting_existing_tags(tmp_path, monkeypatch, already_managed):
+def test_upload_generated_sprites_saves_merged_tags_once(tmp_path, monkeypatch, already_managed):
     monkeypatch.setattr("config.character_manager.UPLOAD_DIR", str(tmp_path / "sprites"))
     character = Character(
         name="Mika", color="#fff", sprite_prefix="mika",
@@ -43,7 +43,7 @@ def test_upload_generated_sprites_appends_tags_without_overwriting_existing_tags
         file.write_bytes(b"image")
     manager.upload_sprites(
         "Mika", [SimpleNamespace(name=str(file)) for file in files], "stale tags",
-        sprite_tags=[" smiling, waving ", "calm\nstanding"],
+        updated_emotion_tags="立绘 1：hand-written\n立绘 2：smiling, waving\n立绘 3：calm standing\n",
     )
     assert character.emotion_tags == "立绘 1：hand-written\n立绘 2：smiling, waving\n立绘 3：calm standing\n"
     assert len(character.sprites) == 3

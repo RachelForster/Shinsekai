@@ -105,16 +105,20 @@ def execute(use_case, operation, payload):
     return use_case.execute(parse_character_request(operation, payload))
 
 
-def test_sprite_import_passes_tags_with_matching_files(tmp_path):
+def test_sprite_import_merges_tags_with_matching_files(tmp_path):
     file = tmp_path / "wave.png"
     file.write_bytes(b"image")
-    use_case = make_use_case(make_character(), tmp_path)
+    character = make_character()
+    character.emotion_tags = "Sprite 1: hand-written\n"
+    use_case = make_use_case(character, tmp_path)
     upload = Mock(return_value=("已上传", [], ""))
     use_case._state.character_manager.upload_sprites = upload
     execute(use_case, CharacterOperation.UPLOAD_SPRITES, {
-        "name": "Mika", "paths": [str(file)], "spriteTags": ["smiling, waving"],
+        "name": "Mika", "paths": [str(file)], "spriteTags": [" smiling,\nwaving "],
     })
-    assert upload.call_args.kwargs == {"sprite_tags": ["smiling, waving"]}
+    assert upload.call_args.kwargs == {
+        "updated_emotion_tags": "立绘 1：hand-written\n立绘 2：smiling, waving\n"
+    }
     assert upload.call_args.args[1][0].name == str(file)
 
 

@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 from application.media.resource_paths import MediaResourcePaths
 from application.runtime.state import _jsonify
+from core.media.asset_tags import numbered_tags, tag_contents
 
 
 class CharacterOperation(str, Enum):
@@ -276,7 +277,14 @@ class CharacterUseCase:
                 or any(not isinstance(tag, str) for tag in tags)
             ):
                 raise ValueError("spriteTags must contain one string per image")
-            options["sprite_tags"] = tags
+            character = self._character(name)
+            existing_tags = tag_contents(
+                character.emotion_tags, len(character.sprites or [])
+            )
+            new_tags = [" ".join(tag.split()) for tag in tags]
+            options["updated_emotion_tags"] = numbered_tags(
+                "立绘", [*existing_tags, *new_tags]
+            )
         message, _paths, _tags = self._state.character_manager.upload_sprites(
             name,
             files,
