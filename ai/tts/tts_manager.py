@@ -69,7 +69,9 @@ class TTSAdapterFactory:
 
 #  TTS管理器
 class TTSManager:
-    def __init__(self, character_ui_url="http://localhost:7888/alive", tts_server_url="http://127.0.0.1:9880/", *, audio_cache_dir=None, unique_cache_files=False):
+    """Use distinct audio paths so queued playback and browser caches stay aligned."""
+
+    def __init__(self, character_ui_url="http://localhost:7888/alive", tts_server_url="http://127.0.0.1:9880/", *, audio_cache_dir=None, unique_cache_files=True):
         self.audio_cache_dir = Path(audio_cache_dir) if audio_cache_dir else Path("cache") / "audio"
         self.unique_cache_files = unique_cache_files
         self.character_ui_url = character_ui_url

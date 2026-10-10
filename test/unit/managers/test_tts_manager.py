@@ -1,6 +1,8 @@
 """Unit tests for TTSManager — factory, queue behavior, adapter switching."""
 
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -34,6 +36,21 @@ class InvalidAudioTTSAdapter(MockTTSAdapter):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(b"")
         return str(p)
+
+
+class TextAudioTTSAdapter(MockTTSAdapter):
+    """Make a synthesized file's contents identify its source dialog."""
+
+    def __init__(self, barrier=None):
+        super().__init__()
+        self.barrier = barrier
+
+    def generate_speech(self, text, file_path=None, **kwargs):
+        path = Path(file_path)
+        path.write_bytes(text.encode("utf-8"))
+        if self.barrier is not None:
+            self.barrier.wait(timeout=5)
+        return str(path)
 
 
 class TestTTSAdapterFactoryRegistry:
@@ -132,6 +149,53 @@ class TestTTSAdapterFactoryRegistry:
 
 
 class TestTTSManagerWithMock:
+    def test_generated_audio_keeps_each_dialog_after_100_segments(self, tmp_path):
+        mgr = TTSManager(audio_cache_dir=tmp_path)
+        mgr.set_tts_adapter(TextAudioTTSAdapter())
+        texts = [f"Dialog {index}" for index in range(101)]
+        try:
+            paths = [
+                mgr.generate_tts(text=text, ref_audio_path="ref.wav")
+                for text in texts
+            ]
+            assert len(set(paths)) == len(texts)
+            assert [Path(path).read_text(encoding="utf-8") for path in paths] == texts
+        finally:
+            mgr.shutdown()
+
+    def test_generated_audio_survives_manager_restart(self, tmp_path):
+        paths = []
+        texts = ["Before restarting chat", "After restarting chat"]
+        for text in texts:
+            mgr = TTSManager(audio_cache_dir=tmp_path)
+            mgr.set_tts_adapter(TextAudioTTSAdapter())
+            try:
+                paths.append(mgr.generate_tts(text=text, ref_audio_path="ref.wav"))
+            finally:
+                mgr.shutdown()
+        assert paths[0] != paths[1]
+        assert [Path(path).read_text(encoding="utf-8") for path in paths] == texts
+
+    def test_concurrent_managers_preserve_their_own_dialog_audio(self, tmp_path):
+        barrier = threading.Barrier(2)
+        managers = [TTSManager(audio_cache_dir=tmp_path) for _ in range(2)]
+        texts = ["First chat", "Second chat"]
+        for mgr in managers:
+            mgr.set_tts_adapter(TextAudioTTSAdapter(barrier))
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [
+                    pool.submit(mgr.generate_tts, text=text, ref_audio_path="ref.wav")
+                    for mgr, text in zip(managers, texts)
+                ]
+                paths = [future.result(timeout=10) for future in futures]
+            assert paths[0] != paths[1]
+            assert [Path(path).read_text(encoding="utf-8") for path in paths] == texts
+            assert not list(tmp_path.glob("*.part"))
+        finally:
+            for mgr in managers:
+                mgr.shutdown()
+
     def test_set_adapter(self, mock_tts_adapter):
         mgr = TTSManager()
         mgr.set_tts_adapter(mock_tts_adapter)
@@ -160,14 +224,12 @@ class TestTTSManagerWithMock:
         assert call["kwargs"]["character_name"] == "TestChar"
         mgr.shutdown()
 
-    def test_generate_tts_replaces_existing_cache_file_and_removes_part(self, mock_tts_adapter, tmp_path):
-        mgr = TTSManager()
+    def test_generate_tts_publishes_new_audio_atomically_without_replacing_old_audio(self, mock_tts_adapter, tmp_path):
+        mgr = TTSManager(audio_cache_dir=tmp_path)
         mgr.set_tts_adapter(mock_tts_adapter)
-        mgr.audio_cache_dir = tmp_path
 
-        final_audio = tmp_path / "0.wav"
-        part_audio = tmp_path / "0.wav.part"
-        final_audio.write_bytes(b"old audio")
+        old_audio = tmp_path / "0.wav"
+        old_audio.write_bytes(b"old audio")
         ref_audio = tmp_path / "ref.wav"
         ref_audio.write_text("fake ref")
 
@@ -179,7 +241,10 @@ class TestTTSManagerWithMock:
                 prompt_lang="en",
             )
 
-            assert result == str(final_audio)
+            final_audio = Path(result)
+            part_audio = final_audio.with_suffix(".wav.part")
+            assert final_audio != old_audio
+            assert old_audio.read_bytes() == b"old audio"
             assert final_audio.read_bytes() == b"fake audio data"
             assert not part_audio.exists()
             assert mock_tts_adapter.call_history[-1]["file_path"] == str(part_audio)
@@ -210,7 +275,8 @@ class TestTTSManagerWithMock:
         mgr.audio_cache_dir = tmp_path
         result = mgr.generate_tts(text="Hello", ref_audio_path="ref.wav")
         assert result == ""
-        assert not (tmp_path / "0.wav.part").exists()
+        assert not list(tmp_path.glob("*.wav"))
+        assert not list(tmp_path.glob("*.part"))
         assert len(adapter.call_history) == 2
         mgr.shutdown()
 
