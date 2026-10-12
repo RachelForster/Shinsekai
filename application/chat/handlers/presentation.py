@@ -251,6 +251,7 @@ class CharacterDialogUiHandler(UIOutputMessageHandler):
                     speech,
                     color,
                     is_system=False,
+                    **({"voice_id": out.voice_id} if out.voice_id else {}),
                 )
         if not is_continuation or str(effect or "").strip():
             ui.resolve_effect(

@@ -1,8 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Copy, GitFork, RotateCcw, Trash2 } from "lucide-react";
+import { Copy, GitFork, Play, RotateCcw, Save, Trash2 } from "lucide-react";
 
 import type { ChatHistoryEntry } from "../../../shared/platform/types";
-import { Button } from "../../../shared/ui";
+import { Button, Switch } from "../../../shared/ui";
 import { useI18n } from "../../../shared/i18n";
 import { ChatStageModal } from "./ChatStageModal";
 
@@ -111,9 +111,13 @@ export function HistoryDialog({
   onCopy,
   onFork,
   onRefresh,
+  onReplayVoice,
   onRevert,
+  onSaveVoice,
+  onToggleVoiceArchive,
   open,
   userDisplayName,
+  voiceArchiveEnabled,
 }: {
   entries: ChatHistoryEntry[];
   forkEnabled: boolean;
@@ -123,9 +127,13 @@ export function HistoryDialog({
   onCopy: () => void;
   onFork: (userIndex: number) => void;
   onRefresh: () => void;
+  onReplayVoice: (voiceId: string) => void;
   onRevert: (userIndex: number) => void;
+  onSaveVoice: (voiceId: string) => void;
+  onToggleVoiceArchive: (enabled: boolean) => void;
   open: boolean;
   userDisplayName: string;
+  voiceArchiveEnabled: boolean;
 }) {
   const { t } = useI18n();
   const titleId = useId();
@@ -201,6 +209,14 @@ export function HistoryDialog({
       eyebrow={t("chat.actionBar.history")}
       headerActions={
         <>
+          <div className="chat-history__voice-toggle">
+            <label htmlFor="chat-history-voice-archive">{t("chat.history.voiceArchive")}</label>
+            <Switch
+              checked={voiceArchiveEnabled}
+              id="chat-history-voice-archive"
+              onChange={(event) => onToggleVoiceArchive(event.target.checked)}
+            />
+          </div>
           <Button
             aria-label={t("chat.toolbar.copyHistory")}
             className="chat-history__header-action"
@@ -283,6 +299,24 @@ export function HistoryDialog({
                     </div>
                   </header>
                   <p className="chat-history__text">{dialog.body}</p>
+                  {entry.voiceId ? (
+                    <div className="chat-history__actions">
+                      <Button
+                        className="chat-history__voice-button"
+                        icon={<Play aria-hidden className="button__icon" />}
+                        onClick={() => onReplayVoice(entry.voiceId!)}
+                      >
+                        {t("chat.history.replayVoice")}
+                      </Button>
+                      <Button
+                        className="chat-history__voice-button"
+                        icon={<Save aria-hidden className="button__icon" />}
+                        onClick={() => onSaveVoice(entry.voiceId!)}
+                      >
+                        {t("chat.history.saveVoice")}
+                      </Button>
+                    </div>
+                  ) : null}
                   {entry.role === "user" && entry.revertUserIndex != null ? (
                     <div className="chat-history__actions">
                       {forkEnabled ? (

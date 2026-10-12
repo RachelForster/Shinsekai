@@ -82,6 +82,8 @@ _RUNTIME_CHAT_COMMANDS = {
     "finish-asr-hold",
     "cancel-asr-hold",
     "audio-playback-signal",
+    "set-voice-archive",
+    "save-history-voice",
     "cancel-input-batch",
     "change-voice-language",
     "chat-input-state",
@@ -728,6 +730,23 @@ def _chat_history_entries(state: BridgeState) -> list[dict[str, Any]]:
 
 def _chat_history(state: BridgeState) -> list[dict[str, Any]]:
     return _chat_history_entries(state)
+
+
+def _chat_voice_archive(state: BridgeState):
+    from application.chat.voice_archive import VoiceArchive
+
+    history_raw = str(state.chat_session.get("historyPath") or "").strip()
+    if not history_raw:
+        raise ValueError("当前没有聊天存档")
+    return VoiceArchive(_resolve_history_file(state, history_raw))
+
+
+def _chat_voice_info(state: BridgeState, voice_id: str) -> dict[str, int]:
+    return {"segmentCount": _chat_voice_archive(state).count(voice_id)}
+
+
+def _chat_voice_source(state: BridgeState, voice_id: str, index: int) -> Path:
+    return _chat_voice_archive(state).source(voice_id, index)
 
 
 def _chat_snapshot(
@@ -1459,6 +1478,14 @@ def _handle_chat_command(state: BridgeState, body: dict[str, Any]) -> dict[str, 
 
     if command == "skip-speech":
         return _forward_runtime_command("idle", "已跳过当前语音。")
+    if command == "set-voice-archive":
+        if not isinstance(body.get("payload"), bool):
+            raise ValueError("语音存档设置无效")
+        return _forward_runtime_command(_current_runtime_status())
+    if command == "save-history-voice":
+        if not isinstance(body.get("payload"), str):
+            raise ValueError("语音记录无效")
+        return _forward_runtime_command(_current_runtime_status())
     if command == "dialog-advance":
         return _forward_runtime_command("idle")
     if command == "change-voice-language":

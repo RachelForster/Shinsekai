@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote
 
-from application.chat.runtime_process import _chat_history_download_file
+from application.chat.runtime_process import _chat_history_download_file, _chat_voice_source
 from frontend_bridge_core.media import _media_thumbnail, _media_thumbnail_batch
 from frontend_bridge_core.media_paths import (
     is_absolute_local_media_path_text,
@@ -368,6 +368,19 @@ def dispatch_file_request(
                 attachment=True,
                 send_body=False,
             )
+        return True
+    if path == "/api/chat/history-voice-file":
+        handler._require_authorized_media_read()
+        query = parse_qs(query_string)
+        voice_id = str((query.get("voiceId") or [""])[0])
+        try:
+            index = int((query.get("segment") or [""])[0])
+        except ValueError as exc:
+            raise ValueError("语音片段不存在") from exc
+        handler._send_local_file(
+            _chat_voice_source(handler.state, voice_id, index),
+            send_body=send_body,
+        )
         return True
     if path == "/api/download":
         query = parse_qs(query_string)

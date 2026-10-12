@@ -12,6 +12,7 @@ from application.chat.conversation_library import (
 
 from application.chat.runtime_process import (
     _chat_history,
+    _chat_voice_info,
     _chat_runtime_status,
     _chat_snapshot,
     _chat_theme_payload,
@@ -50,6 +51,10 @@ def _snapshot(request: ApiRequest) -> JsonResponse:
 
 def _history(request: ApiRequest) -> JsonResponse:
     return JsonResponse(_chat_history(request.state))
+
+
+def _history_voice(request: ApiRequest) -> JsonResponse:
+    return JsonResponse(_chat_voice_info(request.state, request.params["voice_id"]))
 
 
 def _legacy_theme(request: ApiRequest) -> JsonResponse:
@@ -168,6 +173,13 @@ CHAT_ROUTES = (
         handler=_history,
         body_kind=BodyKind.NONE,
         name="chat.history",
+    ),
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/chat/history-voice/{voice_id}",
+        handler=_history_voice,
+        body_kind=BodyKind.NONE,
+        name="chat.history_voice",
     ),
     Route(
         methods=frozenset({"GET"}),

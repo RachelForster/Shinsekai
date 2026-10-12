@@ -49,6 +49,7 @@ def test_chat_route_contracts_remain_stable() -> None:
         ("POST", "/api/chat/conversations/{conversation_id}/rename"),
         ("DELETE", "/api/chat/themes/{theme_id}"),
         ("GET", "/api/chat/history"),
+        ("GET", "/api/chat/history-voice/{voice_id}"),
         ("GET", "/api/chat/runtime-status"),
         ("GET", "/api/chat/snapshot"),
         ("GET", "/api/chat/theme"),
@@ -63,6 +64,10 @@ def test_chat_route_contracts_remain_stable() -> None:
         ("POST", "/api/chat/themes/active"),
         ("POST", "/api/chat/themes/save"),
     }
+
+
+def test_history_voice_file_path_is_not_captured_as_a_voice_id() -> None:
+    assert Router(list(CHAT_ROUTES)).match("GET", "/api/chat/history-voice-file") is None
 
 
 def test_chat_init_preserves_accepted_status(monkeypatch) -> None:

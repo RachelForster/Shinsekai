@@ -600,6 +600,15 @@ export function createHttpPlatform(baseUrl: string, authToken = ""): ShinsekaiPl
         return result;
       },
       getHistory: () => requestJson<ChatHistoryEntry[]>(apiBase, "/api/chat/history"),
+      getHistoryVoice: async (voiceId) => {
+        const { segmentCount } = await requestJson<{ segmentCount: number }>(
+          apiBase,
+          `/api/chat/history-voice/${encodePath(voiceId)}`,
+        );
+        return Array.from({ length: segmentCount }, (_, index) =>
+          bridgeUrl(apiBase, `/api/chat/history-voice-file?voiceId=${encodeURIComponent(voiceId)}&segment=${index}`),
+        );
+      },
       listConversations: () => requestJson(apiBase, "/api/chat/conversations"),
       deleteConversation: async (id) => {
         await requestJson(apiBase, `/api/chat/conversations/${encodePath(id)}`, { method: "DELETE" });

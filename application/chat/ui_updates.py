@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import logging
 import re
+import threading
 import time
 from collections import OrderedDict
 from pathlib import Path
@@ -239,8 +240,11 @@ class HeadlessUIUpdateManager:
         speech: str,
         color: str,
         is_system: bool = True,
+        voice_id: str = "",
     ) -> None:
         formatted = _format_dialog_html(name, speech, color, is_system)
+        if re.fullmatch(r"[0-9a-f]{32}", voice_id):
+            formatted = formatted.replace("<p ", f"<p data-voice-id='{voice_id}' ", 1)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
             print(f"{name}: {speech}" if name else str(speech or ""))
@@ -300,6 +304,8 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         self._background_url = ""
         self._looping_effects: dict[str, str] = {}
         self.audio_playback_owner = "frontend"
+        self._notification_lock = threading.Lock()
+        self._notification_version = 0
 
     def _get_or_create_sprite_slot(self, character_name: str) -> int:
         """Mirror the legacy Qt SpritePanel character-to-slot LRU."""
@@ -320,12 +326,33 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         return self._resource_urls.media_url(raw_path)
 
     def sync_history_entries(self) -> None:
-        self._sink.emit({"type": "history.replace", "entries": serialize_chat_history_entries(list(self.chat_history))})
+        archive = getattr(self, "voice_archive", None)
+        entries = serialize_chat_history_entries(list(self.chat_history))
+        for entry in entries:
+            if entry.get("voiceId") and (archive is None or not archive.has_voice(entry["voiceId"])):
+                entry.pop("voiceId", None)
+        self._sink.emit({
+            "type": "history.replace",
+            "entries": entries,
+            "voiceArchiveEnabled": bool(archive and archive.enabled),
+        })
 
     # --- 低层 post_* → 事件 ---
 
     def post_notification(self, text: str) -> None:
-        self._sink.emit({"type": "notification.change", "text": text})
+        with self._notification_lock:
+            self._notification_version += 1
+            version = self._notification_version
+            self._sink.emit({"type": "notification.change", "text": text})
+        if text == "语音已保存":
+            def clear_saved_notification() -> None:
+                with self._notification_lock:
+                    if version == self._notification_version:
+                        self._sink.emit({"type": "notification.change", "text": ""})
+
+            timer = threading.Timer(2.5, clear_saved_notification)
+            timer.daemon = True
+            timer.start()
 
     def post_busy_bar(self, text: str, timeout: float = 0.0) -> None:
         if text:
@@ -527,9 +554,12 @@ class StreamingUIUpdateManager(HeadlessUIUpdateManager):
         speech: str,
         color: str,
         is_system: bool = True,
+        voice_id: str = "",
     ) -> None:
         self._apply_player_portrait_for_dialog(name, speech)
         formatted = _format_dialog_html(name, speech, color, is_system)
+        if re.fullmatch(r"[0-9a-f]{32}", voice_id):
+            formatted = formatted.replace("<p ", f"<p data-voice-id='{voice_id}' ", 1)
         if str(speech or "").strip() or str(name or "").strip():
             self.chat_history.append(formatted)
         self._sink.emit(

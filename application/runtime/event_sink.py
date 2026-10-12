@@ -326,6 +326,8 @@ def fold_event_into_snapshot(snapshot: Dict[str, Any], event: Dict[str, Any]) ->
         next_snapshot["historyEntries"] = [
             dict(item) for item in (event.get("entries") or []) if isinstance(item, dict)
         ]
+        if isinstance(event.get("voiceArchiveEnabled"), bool):
+            next_snapshot["voiceArchiveEnabled"] = event["voiceArchiveEnabled"]
         return next_snapshot
 
     if event_type == "conversation.tree":

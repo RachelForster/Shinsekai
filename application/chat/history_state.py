@@ -143,6 +143,9 @@ def serialize_chat_history_entries(history: list[Any]) -> list[dict[str, Any]]:
             "role": role,
             "text": text,
         }
+        voice_match = re.search(r"\bdata-voice-id=['\"]([0-9a-f]{32})['\"]", str(history_entry or ""))
+        if voice_match:
+            item["voiceId"] = voice_match.group(1)
         created_at = _history_entry_created_at(history_entry)
         if created_at is not None:
             item["createdAt"] = created_at

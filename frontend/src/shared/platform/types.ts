@@ -942,6 +942,7 @@ export interface ChatHistoryEntry {
   revertUserIndex?: number;
   role: ChatHistoryRole;
   text: string;
+  voiceId?: string;
 }
 
 export interface ChatConversationBranch {
@@ -1052,6 +1053,7 @@ export interface ChatCloseOptions {
 }
 
 export interface ChatSnapshot {
+  voiceArchiveEnabled?: boolean;
   playerPortrait?: PlayerPortrait | null;
   activePlayback?: {
     characterName: string;
@@ -1155,6 +1157,8 @@ export interface ChatCommand {
   payload?: unknown;
   type:
     | "audio-playback-signal"
+    | "set-voice-archive"
+    | "save-history-voice"
     | "cancel-input-batch"
     | "change-voice-language"
     | "chat-input-state"
@@ -1219,7 +1223,7 @@ export type ChatStageEvent =
     })
   | (ChatEventBase & { type: "dialog.end"; speaker: string; color: string; isSystem: boolean; fullHtml: string })
   | (ChatEventBase & { type: "user.display_name.change"; name: string })
-  | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[] })
+  | (ChatEventBase & { type: "history.replace"; entries: ChatHistoryEntry[]; voiceArchiveEnabled?: boolean })
   | (ChatEventBase & { type: "conversation.tree"; tree: ChatConversationTree })
   | (ChatEventBase & { type: "chat.turn.state"; state: ChatTurnState; options?: ChatTurnOptions })
   | (ChatEventBase & PluginPagePresentation & { type: "plugin.page.present" })
@@ -1504,6 +1508,7 @@ export interface ShinsekaiPlatform {
     close: (options?: ChatCloseOptions) => Promise<ChatSnapshot>;
     command: (command: ChatCommand) => Promise<ChatCommandResult>;
     getHistory: () => Promise<ChatHistoryEntry[]>;
+    getHistoryVoice: (voiceId: string) => Promise<string[]>;
     getRuntimeStatus: () => Promise<ChatRuntimeProcessState>;
     getSnapshot: (options?: ChatSnapshotOptions) => Promise<ChatSnapshot>;
     getTheme: () => Promise<ChatThemePayload>;

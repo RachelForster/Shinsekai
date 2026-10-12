@@ -61,6 +61,7 @@ class PresentationMessage(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     audio_path: str = Field(..., description="生成的语音 / 资源文件的路径")
+    voice_id: str = Field("", description="历史语音的稳定标识")
     name: str = Field(..., alias="character_name", description="实体名称")
     text: Optional[str] = Field("", alias="speech", description="文本内容")
     asset_id: Optional[Union[str, int]] = Field(

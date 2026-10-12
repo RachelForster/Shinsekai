@@ -7,9 +7,12 @@ dialog media worker 用 LLM dialog 处理器（见 handler_registry.MessageHandl
 from __future__ import annotations
 
 import traceback
+import uuid
 from collections.abc import Iterable, Iterator
 from dataclasses import replace
 from typing import List
+
+from application.chat.voice_archive import VoiceArchive
 
 from application.chat.dialog_media import (
     AssetResolver,
@@ -284,6 +287,7 @@ class CharacterMediaHandler(MessageHandler):
         message: LLMDialogMessage,
         sprite: ResolvedSpriteAsset,
         audio_paths: Iterable[str],
+        voice_id: str = "",
     ) -> Iterator[PresentationMessage]:
         speech = message.text or ""
         if sprite.voice_type == "preset" and sprite.voice_path:
@@ -295,6 +299,7 @@ class CharacterMediaHandler(MessageHandler):
             first = index == 0
             yield PresentationMessage(
                 audio_path=audio_path or "",
+                voice_id=voice_id,
                 name=character_name,
                 text=speech if first else "",
                 asset_id=sprite.asset_id,
@@ -378,11 +383,26 @@ class CharacterMediaHandler(MessageHandler):
                 ("",) if player_silent
                 else self.tts_generation_strategy.generate(generation_request)
             )
+            archive = getattr(rt.ui_update_manager, "voice_archive", None)
+            if not isinstance(archive, VoiceArchive):
+                archive = None
+            voice_id = uuid.uuid4().hex if archive is not None else ""
+
+            def track_audio() -> Iterator[str]:
+                for path in audio_paths:
+                    if archive is not None and path:
+                        try:
+                            archive.record(voice_id, path)
+                        except OSError:
+                            traceback.print_exc()
+                    yield path
+
             for output in self._presentation_messages(
                 character_name=name_s,
                 message=msg,
                 sprite=speech_sprite,
-                audio_paths=audio_paths,
+                audio_paths=track_audio(),
+                voice_id=voice_id,
             ):
                 rt.presentation_queue.put(output)
         finally:

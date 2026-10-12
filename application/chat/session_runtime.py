@@ -513,6 +513,7 @@ class StreamingChatSession(_BaseChatSession):
     def run(self) -> None:
         from application.chat.history_state import chat_history
         from application.chat.ui_updates import StreamingUIUpdateManager
+        from application.chat.voice_archive import VoiceArchive
 
         runtime = self._build_runtime()
         with self.initialization.phase("stream.runtime.setup"):
@@ -522,6 +523,7 @@ class StreamingChatSession(_BaseChatSession):
                 chat_history=chat_history,
                 bg_group=runtime.presentation_assets.background_sprites,
             )
+            self.ui_updates.voice_archive = VoiceArchive(self.args.history) if self.args.history else None
             self._configure_stream_runtime()
             player_name = str(getattr(self.args, "player_character", "") or "")
             if player_name:
