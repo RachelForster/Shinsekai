@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 from ai.memory.imports import PreparedMemoryImport, prepare_memory_import
-from ai.knowledge.bindings import knowledge_operation_lock
+from core.knowledge.coordination import knowledge_operation_lock
 from ai.knowledge.extraction import (
     EXPECTED_OUTPUT_TOKENS_PER_CHUNK,
     KnowledgeExtractor,

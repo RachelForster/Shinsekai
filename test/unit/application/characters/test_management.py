@@ -14,7 +14,7 @@ from application.characters import (
 )
 from config.schema import Character
 from config.character_manager import CharacterManager
-from ai.knowledge import bindings
+from core.knowledge import bindings
 
 
 @pytest.fixture(autouse=True)

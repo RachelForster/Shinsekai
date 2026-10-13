@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from ai.knowledge import bindings as b
+from core.knowledge import bindings as b
 
 
 @pytest.fixture(autouse=True)

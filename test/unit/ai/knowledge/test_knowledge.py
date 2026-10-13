@@ -24,7 +24,7 @@ def test_knowledge_config_uses_isolated_storage_and_collection(tmp_path, monkeyp
 
 def test_bindings_resolve_shared_knowledge_once(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    from ai.knowledge.bindings import bind_character_knowledge, list_knowledge_ids_for_characters
+    from core.knowledge.bindings import bind_character_knowledge, list_knowledge_ids_for_characters
 
     bind_character_knowledge("Monika", "ddlc")
     bind_character_knowledge("Sayori", "ddlc")

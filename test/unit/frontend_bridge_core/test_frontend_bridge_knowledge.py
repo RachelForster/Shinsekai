@@ -69,7 +69,8 @@ def test_knowledge_browse_catalog_refresh_requests_runtime_retry(monkeypatch):
 
 
 def test_knowledge_binding_dispatch_supports_crud_without_loading_model(tmp_path, monkeypatch):
-    from ai.knowledge import bindings, runtime
+    from core.knowledge import bindings
+    from ai.knowledge import runtime
     monkeypatch.setattr(bindings, "_database_path", lambda: tmp_path / "knowledge.db")
     monkeypatch.setattr(knowledge, "_get_knowledge_status", lambda **_: pytest.fail("checked model"))
     monkeypatch.setattr(runtime, "get_mem0", lambda: pytest.fail("loaded model"))

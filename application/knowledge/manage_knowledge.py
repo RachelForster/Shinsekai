@@ -103,39 +103,39 @@ def forget_and_list(memory_id: str, knowledge_id: str) -> dict[str, Any]:
 
 
 def add_binding(character_name: str, knowledge_id: str) -> dict[str, Any]:
-    from ai.knowledge.bindings import bind_character_knowledge
+    from core.knowledge.bindings import bind_character_knowledge
     bind_character_knowledge(character_name, knowledge_id)
     return {"ok": True, "characterName": character_name.strip(), "knowledge_id": knowledge_id.strip()}
 
 
 def list_binding_names(knowledge_id: str) -> dict[str, Any]:
-    from ai.knowledge.bindings import list_knowledge_binding_names
+    from core.knowledge.bindings import list_knowledge_binding_names
     return list_knowledge_binding_names(knowledge_id)
 
 
 def batch_bindings(knowledge_id: str, add: list[str], remove: list[str]) -> dict[str, Any]:
-    from ai.knowledge.bindings import batch_knowledge_bindings
+    from core.knowledge.bindings import batch_knowledge_bindings
     return batch_knowledge_bindings(knowledge_id, add, remove)
 
 
 def remove_binding(character_name: str, knowledge_id: str) -> dict[str, Any]:
-    from ai.knowledge.bindings import unbind_character_knowledge
+    from core.knowledge.bindings import unbind_character_knowledge
     deleted = unbind_character_knowledge(character_name, knowledge_id)
     return {"ok": True, "characterName": character_name.strip(), "knowledge_id": knowledge_id.strip(), "deleted": deleted}
 
 
 def list_character_bindings(character_name: str, *, page: int = 1) -> dict[str, Any]:
-    from ai.knowledge.bindings import list_character_knowledge_bindings
+    from core.knowledge.bindings import list_character_knowledge_bindings
     return list_character_knowledge_bindings(character_name, page=page)
 
 
 def rename_character_bindings(old_name: str, new_name: str) -> None:
-    from ai.knowledge.bindings import rename_character_bindings as rename_bindings
+    from core.knowledge.bindings import rename_character_bindings as rename_bindings
     rename_bindings(old_name, new_name)
 
 
 def clear_character_bindings(character_name: str) -> None:
-    from ai.knowledge.bindings import delete_character_bindings
+    from core.knowledge.bindings import delete_character_bindings
     delete_character_bindings(character_name)
 
 

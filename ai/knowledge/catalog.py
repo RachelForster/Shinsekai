@@ -7,7 +7,7 @@ import time
 from typing import Any
 
 from ai.knowledge.storage import scroll_knowledge_records
-from ai.knowledge.bindings import get_knowledge_binding_counts
+from core.knowledge.bindings import get_knowledge_binding_counts
 
 _catalog_lock = threading.Lock()
 _catalog_store: Any = None

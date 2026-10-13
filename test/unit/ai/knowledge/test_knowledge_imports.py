@@ -14,7 +14,7 @@ def test_import_extracts_knowledge_entries_and_preview_matches_requests(tmp_path
     adapter = MockLLMAdapter(responses=['[{"content":"雾港多雾。","knowledge_id":"wrong"}]'])
     writes, bindings = [], []
     monkeypatch.setattr("ai.knowledge.imports.add_knowledge_entry", lambda content, knowledge_id: writes.append((content, knowledge_id)) or {"ok": True})
-    monkeypatch.setattr("ai.knowledge.bindings.bind_character_knowledge", lambda name, knowledge_id: bindings.append((name, knowledge_id)))
+    monkeypatch.setattr("core.knowledge.bindings.bind_character_knowledge", lambda name, knowledge_id: bindings.append((name, knowledge_id)))
     args = dict(knowledge_id="harbor", source_root=tmp_path, max_chunk_tokens=256)
     preview = preview_knowledge_import([source], **args)
     result = execute_knowledge_import([source], llm_adapter=adapter, **args)
@@ -35,7 +35,7 @@ def test_write_failure_does_not_bind_knowledge(tmp_path, monkeypatch, write_resu
     source.write_text("雾港多雾。", encoding="utf-8")
     bindings = []
     monkeypatch.setattr("ai.knowledge.imports.add_knowledge_entry", lambda *args: write_result)
-    monkeypatch.setattr("ai.knowledge.bindings.bind_character_knowledge", lambda *args: bindings.append(args))
+    monkeypatch.setattr("core.knowledge.bindings.bind_character_knowledge", lambda *args: bindings.append(args))
     with pytest.raises(RuntimeError, match="写入资料知识失败"):
         execute_knowledge_import([source], knowledge_id="harbor", source_root=tmp_path,
                              max_chunk_tokens=256, llm_adapter=MockLLMAdapter(responses=['[{"content":"雾港多雾。"}]']))
@@ -47,7 +47,7 @@ def test_bad_extraction_does_not_write_or_bind(tmp_path, monkeypatch):
     source.write_text("雾港多雾。", encoding="utf-8")
     calls = []
     monkeypatch.setattr("ai.knowledge.imports.add_knowledge_entry", lambda *args: calls.append(args))
-    monkeypatch.setattr("ai.knowledge.bindings.bind_character_knowledge", lambda *args: calls.append(args))
+    monkeypatch.setattr("core.knowledge.bindings.bind_character_knowledge", lambda *args: calls.append(args))
     with pytest.raises(KnowledgeExtractionError):
         execute_knowledge_import([source], knowledge_id="harbor", source_root=tmp_path,
                              max_chunk_tokens=256, llm_adapter=MockLLMAdapter(responses=['[{"content":']))

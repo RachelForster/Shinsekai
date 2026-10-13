@@ -6,7 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from ai.knowledge import bindings, catalog, operations as ops
+from core.knowledge import bindings
+from ai.knowledge import catalog, operations as ops
 from application.knowledge import manage_knowledge
 
 
@@ -93,7 +94,8 @@ def test_delete_knowledge_forwards_remote_request_without_accessing_local_store(
 
 
 def test_character_binding_rename_and_clear_preserve_lifecycle_without_loading_model(tmp_path, monkeypatch):
-    from ai.knowledge import bindings, runtime
+    from core.knowledge import bindings
+    from ai.knowledge import runtime
     monkeypatch.setattr(bindings, "_database_path", lambda: tmp_path / "knowledge.db")
     monkeypatch.setattr(runtime, "get_mem0", lambda: pytest.fail("loaded model"))
     monkeypatch.setattr(runtime, "start_mem0_loading", lambda **kw: pytest.fail("started model"))

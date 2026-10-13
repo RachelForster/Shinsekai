@@ -4,7 +4,7 @@ import pytest
 from qdrant_client import QdrantClient, models
 
 from ai.knowledge import catalog
-from ai.knowledge.bindings import bind_character_knowledge
+from core.knowledge.bindings import bind_character_knowledge
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from ai.knowledge import bindings
+from core.knowledge import bindings
 
 
 def test_batch_is_idempotent_and_preserves_other_knowledge_and_unedited_names(tmp_path, monkeypatch):

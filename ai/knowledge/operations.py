@@ -7,10 +7,8 @@ from contextlib import contextmanager
 from typing import Any, Iterable, Iterator
 
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
-from ai.knowledge.bindings import (
-    list_knowledge_ids_for_characters,
-    knowledge_operation_lock as _knowledge_operation_lock,
-)
+from core.knowledge.bindings import list_knowledge_ids_for_characters
+from core.knowledge.coordination import knowledge_operation_lock as _knowledge_operation_lock
 from ai.knowledge.catalog import (
     list_knowledge_catalog,
     invalidate_knowledge_catalog,
@@ -224,7 +222,7 @@ def delete_knowledge_entry(memory_id: str) -> dict[str, Any]:
 
 def delete_knowledge_base(knowledge_id: str) -> dict[str, Any]:
     """Delete entries before bindings, preserving progress when a stage fails."""
-    from ai.knowledge.bindings import delete_knowledge_bindings
+    from core.knowledge.bindings import delete_knowledge_bindings
 
     normalized_knowledge_id = str(knowledge_id or "").strip()
     deleted_entries = deleted_bindings = 0

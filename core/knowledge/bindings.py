@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import sqlite3
-import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterable, Iterator
 
-# Shared by binding mutations, imports and vector writes in the store-owning process.
-knowledge_operation_lock = threading.RLock()
+from core.knowledge.coordination import knowledge_operation_lock
 
 
 def _required(value: str, field: str) -> str:
