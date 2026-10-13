@@ -106,9 +106,6 @@ def add_knowledge_entry(content: str, knowledge_id: str) -> dict[str, Any]:
     try:
         text = _required_text(content, "content")
         normalized_knowledge_id = _required_text(knowledge_id, "knowledge id")
-        remote = request_knowledge_service("remember", {"content": text, "knowledge_id": normalized_knowledge_id})
-        if remote is not None:
-            return remote
         store = get_mem0()
         with _knowledge_operation_lock:
             return _add_entry_if_not_duplicate(store, text, normalized_knowledge_id)
@@ -191,12 +188,9 @@ def search_local_knowledge_entries(knowledge_id: str, query: str, *, limit: int 
 
 
 def list_knowledge_entries(knowledge_id: str, *, limit: int = 200) -> dict[str, Any]:
-    """List one knowledge through the configured bridge or the local store."""
+    """List one knowledge through the local store."""
     try:
         normalized_knowledge_id = _required_text(knowledge_id, "knowledge id")
-        remote = request_knowledge_service("list", {"knowledge_id": normalized_knowledge_id, "limit": limit})
-        if remote is not None:
-            return remote
         return list_local_knowledge_entries(normalized_knowledge_id, limit=limit)
     except Exception as e:
         logger.exception("list_knowledge_entries failed")
@@ -207,9 +201,6 @@ def delete_knowledge_entry(memory_id: str) -> dict[str, Any]:
     """Delete one entry by its memory ID."""
     try:
         mid = _required_text(memory_id, "memory id")
-        remote = request_knowledge_service("forget", {"memory_id": mid})
-        if remote is not None:
-            return remote
         store = get_mem0()
         with _knowledge_operation_lock, _invalidate_catalog_after_write():
             store.delete(mid)
@@ -230,9 +221,6 @@ def delete_knowledge_base(knowledge_id: str) -> dict[str, Any]:
     try:
         if not normalized_knowledge_id:
             raise ValueError("knowledge id is required")
-        remote = request_knowledge_service("delete", {"knowledge_id": normalized_knowledge_id})
-        if remote is not None:
-            return remote
         stage = "initialize"
         store = get_mem0()
         with _knowledge_operation_lock, _invalidate_catalog_after_write():

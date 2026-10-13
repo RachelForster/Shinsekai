@@ -63,7 +63,7 @@ def test_network_failure_never_falls_back_to_local_storage(monkeypatch):
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://bridge")
     monkeypatch.setattr("urllib.request.urlopen", send)
     monkeypatch.setattr(operations, "get_mem0", lambda: pytest.fail("local fallback"))
-    assert "offline" in operations.add_knowledge_entry("fact", "world")["error"]
+    assert "offline" in operations.search_knowledge("fact", character_names=["A"])["error"]
 
 
 @pytest.mark.parametrize("configured,expected", [("", 60.0), ("bad", 60.0), ("0", 60.0), ("-1", 60.0), ("2.5", 2.5)])

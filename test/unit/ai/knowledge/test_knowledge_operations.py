@@ -119,26 +119,3 @@ def test_concurrent_remember_deduplicates_under_lock(monkeypatch):
         results = list(pool.map(lambda _: ops.add_knowledge_entry("same fact", "a"), range(16)))
     assert len(rows) == 1
     assert sum(result["duplicate"] for result in results) == 15
-
-
-@pytest.mark.parametrize("owner,url,remote", [
-    ("1", "http://knowledge", False),
-    (" 1 ", "http://knowledge", False),
-    ("0", "http://knowledge", True),
-    (None, "http://knowledge", True),
-    ("0", "", False),
-    (None, "", False),
-])
-def test_owner_selects_local_or_http_operation(monkeypatch, owner, url, remote):
-    if owner is not None:
-        monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", owner)
-    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", url)
-    deleted, requests = [], []
-    monkeypatch.setattr(ops, "get_mem0", lambda: SimpleNamespace(delete=deleted.append))
-    def request(req, **kwargs):
-        requests.append(req.full_url)
-        return BytesIO(b'{"ok":true}')
-    monkeypatch.setattr(urllib.request, "urlopen", request)
-    assert ops.delete_knowledge_entry("entry")["ok"] is True
-    assert requests == (["http://knowledge/forget"] if remote else [])
-    assert deleted == ([] if remote else ["entry"])

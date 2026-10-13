@@ -85,14 +85,6 @@ def test_delete_knowledge_rejects_blank_id_without_loading_store(isolated_knowle
     assert manage_knowledge.delete_knowledge(" ")["failedStage"] == "validate"
 
 
-def test_delete_knowledge_forwards_remote_request_without_accessing_local_store(isolated_knowledge, monkeypatch):
-    calls = []
-    monkeypatch.setattr(ops, "request_knowledge_service", lambda endpoint, data: calls.append((endpoint, data)) or {"ok": True})
-    monkeypatch.setattr(ops, "get_mem0", lambda: pytest.fail("local store accessed"))
-    assert manage_knowledge.delete_knowledge("target") == {"ok": True}
-    assert calls == [("delete", {"knowledge_id": "target"})]
-
-
 def test_character_binding_rename_and_clear_preserve_lifecycle_without_loading_model(tmp_path, monkeypatch):
     from core.knowledge import bindings
     from ai.knowledge import runtime
