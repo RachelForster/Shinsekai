@@ -24,6 +24,7 @@ from sdk.adapters import (
     VisionFallbackContribution,
 )
 from sdk.chat_init import InitChatContext
+from sdk.chat_process import ChatProcessContext, ChatProcessEvent
 from sdk.frontend_user_input import (
     FrontendUserInputController,
     _controller_for_plugin as _frontend_user_input_controller_for_plugin,
@@ -55,6 +56,7 @@ from sdk.types import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class _ClassEntry:
@@ -350,11 +352,21 @@ class PluginCapabilityRegistry:
 
     def register_frontend_chat_ui(self, contribution: FrontendChatUIContribution) -> None:
         """Register a JSON-only Chat UI item rendered by the host application."""
-        if contribution.slot not in {"chat-dialog-actions", "chat-output", "chat-toolbar", "chat-top-toolbar"}:
+        if contribution.slot not in {
+            "chat-dialog-actions",
+            "chat-output",
+            "chat-toolbar",
+            "chat-top-toolbar",
+        }:
             raise ValueError(f"Unsupported frontend chat UI slot: {contribution.slot}")
         if not contribution.contribution_id.strip() or not contribution.title.strip():
-            raise ValueError("FrontendChatUIContribution requires a non-empty id and title")
-        if len(contribution.contribution_id.strip()) > MAX_FRONTEND_UI_IDENTIFIER_LENGTH:
+            raise ValueError(
+                "FrontendChatUIContribution requires a non-empty id and title"
+            )
+        if (
+            len(contribution.contribution_id.strip())
+            > MAX_FRONTEND_UI_IDENTIFIER_LENGTH
+        ):
             raise ValueError(
                 "FrontendChatUIContribution contribution_id cannot exceed "
                 f"{MAX_FRONTEND_UI_IDENTIFIER_LENGTH} characters"
@@ -445,6 +457,7 @@ class PluginCapabilityRegistry:
 
     def register_compact_hook(self, hook: Callable[[list], None]) -> None:
         """注册精简前回调。回调接收即将被精简的完整消息列表，在 compact_messages() 执行前调用。"""
+
         def _legacy_context_adapter(context: BeforeCompactContext) -> None:
             hook(context.messages)
 
@@ -494,6 +507,16 @@ class PluginCapabilityRegistry:
             critical=critical,
         )
 
+    def register_chat_process_hook(
+        self,
+        event: ChatProcessEvent | str,
+        hook: Callable[[ChatProcessContext], None],
+        *,
+        label: str = "",
+    ) -> None:
+        """Observe bridge-owned process transitions without interfering with cleanup."""
+        self._hook_dispatcher.register_chat_process(event, hook, label=label)
+
     @property
     def llm_adapters(self) -> dict[str, Type[LLMAdapter]]:
         return dict(self._llm_adapters)
@@ -525,7 +548,9 @@ class PluginCapabilityRegistry:
         )
 
     @property
-    def message_handlers(self) -> tuple[list[MessageHandler], list[UIOutputMessageHandler]]:
+    def message_handlers(
+        self,
+    ) -> tuple[list[MessageHandler], list[UIOutputMessageHandler]]:
         return list(self._dialog_media_handlers), list(self._ui_handlers)
 
     @property
