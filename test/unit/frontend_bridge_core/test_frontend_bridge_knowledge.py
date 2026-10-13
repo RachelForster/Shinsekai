@@ -1,6 +1,7 @@
 """Knowledge bridge dependency checks and request dispatch contracts."""
 
 import importlib.util
+from types import SimpleNamespace
 import urllib.request
 
 import pytest
@@ -50,6 +51,34 @@ def test_check_mem0_before_call_reports_unavailable_module(monkeypatch, invalid_
     result = knowledge._check_mem0_before_call()
     assert result["moduleName"] == "mem0"
     assert result["kind"] == "missing_dependency"
+
+
+def test_knowledge_search_dispatch_uses_local_store_when_bridge_owns_service(monkeypatch):
+    from ai.knowledge import operations
+
+    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://self/api/knowledge")
+    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", "1")
+    monkeypatch.setattr(knowledge, "_get_knowledge_status", lambda **kwargs: {"status": "ready"})
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("recursive request"))
+    calls = []
+
+    def bindings(names):
+        assert names == ["A"]
+        return ["world"]
+
+    def search(query, *, filters, limit):
+        calls.append((query, filters, limit))
+        return [{"memory": "The harbor is foggy.", "score": 0.9}]
+
+    monkeypatch.setattr(operations, "list_knowledge_ids_for_characters", bindings)
+    monkeypatch.setattr(operations, "get_mem0", lambda: SimpleNamespace(search=search))
+
+    result = knowledge._knowledge_search("harbor", character_names=["A"], limit=3)
+    assert result == {
+        "query": "harbor", "knowledge_ids": ["world"], "count": 1,
+        "memories": [{"memory": "The harbor is foggy.", "score": 0.9}],
+    }
+    assert calls == [("harbor", {"user_id": "world"}, 3)]
 
 
 def test_knowledge_forget_dispatch_uses_local_store_when_bridge_owns_service(monkeypatch):

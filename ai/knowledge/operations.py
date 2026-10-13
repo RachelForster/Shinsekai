@@ -118,22 +118,19 @@ def search_knowledge(
     query: str,
     *,
     character_names: Iterable[str] = (),
-    knowledge_ids: Iterable[str] = (),
     limit: int = 5,
 ) -> dict[str, Any]:
-    """Search explicit local knowledge IDs or knowledge bound to characters."""
+    """Search knowledge bound to characters through the bridge or local store."""
     try:
         q = str(query or "").strip()
         names = _normalize_identifiers(character_names)
-        requested_knowledge_ids = _normalize_identifiers(knowledge_ids)
         if not q:
             return {"error": "query is required"}
-        if not requested_knowledge_ids:
-            service_result = request_knowledge_service("search", {"query": q, "characterNames": names, "limit": limit})
-            if service_result is not None:
-                return service_result
+        service_result = request_knowledge_service("search", {"query": q, "characterNames": names, "limit": limit})
+        if service_result is not None:
+            return service_result
         resolved_ids = sorted(set(_normalize_identifiers(
-            requested_knowledge_ids or list_knowledge_ids_for_characters(names),
+            list_knowledge_ids_for_characters(names),
         )))
         if not resolved_ids:
             return {"query": q, "knowledge_ids": [], "count": 0, "memories": []}

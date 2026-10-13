@@ -18,20 +18,23 @@ def local_knowledge(monkeypatch):
     monkeypatch.delenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", raising=False)
 
 
-def test_explicit_knowledge_search_never_calls_remote(monkeypatch):
-    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://unused")
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("remote called"))
+def test_character_knowledge_search_merges_and_ranks_bound_knowledge(monkeypatch):
+    def bindings(names):
+        assert names == ["A"]
+        return ["a", "b"]
+    monkeypatch.setattr(ops, "list_knowledge_ids_for_characters", bindings)
     def search(query, *, filters, limit):
         knowledge_id = filters["user_id"]
         return [{"memory": knowledge_id, "score": 0.9 if knowledge_id == "b" else 0.3}]
     monkeypatch.setattr(ops, "get_mem0", lambda: SimpleNamespace(search=search))
-    result = ops.search_knowledge("test", knowledge_ids=["a", "b"], limit=1)
+    result = ops.search_knowledge("test", character_names=["A"], limit=1)
     assert result["knowledge_ids"] == ["a", "b"]
-    assert result["memories"][0]["memory"] == "b"
+    assert result["memories"] == [{"memory": "b", "score": 0.9}]
+    assert result["count"] == 1
 
 
 @pytest.mark.parametrize("operation", [
-    lambda: ops.search_knowledge("test", knowledge_ids=["a"]),
+    lambda: ops.search_knowledge("test", character_names=["A"]),
     lambda: ops.add_knowledge_entry("fact", "a"),
     lambda: ops.delete_knowledge_entry("id"),
     lambda: ops.list_knowledge_entries("a"),
@@ -40,6 +43,7 @@ def test_local_failures_are_error_results(monkeypatch, operation):
     def fail():
         raise RuntimeError("store unavailable")
     monkeypatch.setattr(ops, "get_mem0", fail)
+    monkeypatch.setattr(ops, "list_knowledge_ids_for_characters", lambda names: ["a"])
     assert operation()["error"] == "store unavailable"
 
 

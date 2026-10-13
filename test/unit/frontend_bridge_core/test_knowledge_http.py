@@ -55,6 +55,30 @@ def test_http_error_preserves_status_and_detail(monkeypatch, detail, expected):
     }
 
 
+def test_knowledge_search_dispatch_uses_remote_service_when_bridge_does_not_own_service(monkeypatch):
+    calls = []
+    result = {
+        "query": "harbor", "knowledge_ids": ["world"], "count": 1,
+        "memories": [{"memory": "The harbor is foggy.", "score": 0.9}],
+    }
+
+    def send(request, *, timeout):
+        calls.append((request.full_url, json.loads(request.data)))
+        return BytesIO(json.dumps(result).encode("utf-8"))
+
+    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", "0")
+    monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://bridge/api/knowledge")
+    monkeypatch.setattr("urllib.request.urlopen", send)
+    monkeypatch.setattr(operations, "get_mem0", lambda: pytest.fail("local store accessed"))
+    monkeypatch.setattr(operations, "list_knowledge_ids_for_characters", lambda names: pytest.fail("local bindings accessed"))
+
+    assert operations.search_knowledge("harbor", character_names=["A", "B"], limit=3) == result
+    assert calls == [(
+        "http://bridge/api/knowledge/search",
+        {"query": "harbor", "characterNames": ["A", "B"], "limit": 3},
+    )]
+
+
 def test_network_failure_never_falls_back_to_local_storage(monkeypatch):
     def send(*args, **kwargs):
         raise urllib.error.URLError("offline")
