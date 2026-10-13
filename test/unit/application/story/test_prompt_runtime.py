@@ -312,21 +312,20 @@ def test_llm_message_append_uses_journal_and_hides_recovery_marker_from_provider
 ):
     from ai.llm.llm_manager import LLMManager
     from ai.vision.message_content import normalize_openai_messages
+    from test.mocks import MockLLMAdapter
 
     _, _, _, hooks = running_story(tmp_path)
     hooks.before_chat(context())
     dispatcher = PluginHookDispatcher()
     dispatcher.register_message_added(hooks.message_added)
-    manager = SimpleNamespace(
-        messages=[],
-        _history_file=hooks.history_path,
-        story_prompt_hooks=hooks,
+    manager = LLMManager(
+        MockLLMAdapter(),
+        history_file=hooks.history_path,
         hook_dispatcher=dispatcher,
-        compact_manager=SimpleNamespace(
-            auto_compact_if_needed=lambda messages: messages
-        ),
     )
-    LLMManager.add_message(manager, **response_context().message)
+    manager.messages = []
+    manager.story_prompt_hooks = hooks
+    manager.add_message(**response_context().message)
     assert hooks.journal.load() is None
     assert "_storyTurnId" in manager.messages[0]
     assert "_storyTurnId" not in normalize_openai_messages(manager.messages)[0]

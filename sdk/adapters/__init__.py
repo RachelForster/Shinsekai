@@ -9,6 +9,7 @@ from sdk.adapters.avatar import (
     ModelRuntimeInstaller,
 )
 from sdk.adapters.llm import LLMAdapter
+from sdk.llm_response import ChatResponse, ResponseCodec, ResponseDelta
 from sdk.adapters.t2i import T2IAdapter
 from sdk.adapters.tts import TTSAdapter
 from sdk.adapters.vision import (
@@ -22,6 +23,9 @@ __all__ = [
     "ASRAdapter",
     "AvatarFormatContribution",
     "LLMAdapter",
+    "ChatResponse",
+    "ResponseCodec",
+    "ResponseDelta",
     "ModelAssetAdapter",
     "ModelCapabilities",
     "ModelFiles",
