@@ -1,12 +1,9 @@
-"""HTTP client for the bridge-owned knowledge runtime."""
+"""Transitional configuration and routing for the bridge knowledge service."""
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import urllib.error
-import urllib.request
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -15,7 +12,6 @@ _KNOWLEDGE_SERVICE_OWNER_ENV = "SHINSEKAI_KNOWLEDGE_SERVICE_OWNER"
 _KNOWLEDGE_SERVICE_TIMEOUT_ENV = "SHINSEKAI_KNOWLEDGE_SERVICE_TIMEOUT_SEC"
 _KNOWLEDGE_SERVICE_DEFAULT_TIMEOUT_SEC = 60.0
 _KNOWLEDGE_SERVICE_TOKEN_ENV = "SHINSEKAI_MEMORY_SERVICE_TOKEN"
-_KNOWLEDGE_SERVICE_TOKEN_HEADER = "X-Shinsekai-Bridge-Token"
 
 
 def _knowledge_service_url() -> str:
@@ -43,32 +39,13 @@ def request_knowledge_service(endpoint: str, payload: dict[str, Any]) -> dict[st
     base_url = _knowledge_service_url()
     if not base_url:
         return None
-    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    # Keep the transport import lazy while AI still owns transitional routing.
+    from frontend_bridge_core.routes.knowledge_routes import BridgeKnowledgeHttp
+
     token = str(os.environ.get(_KNOWLEDGE_SERVICE_TOKEN_ENV) or "").strip()
-    if token:
-        headers[_KNOWLEDGE_SERVICE_TOKEN_HEADER] = token
-    try:
-        request = urllib.request.Request(
-            f"{base_url}/{endpoint}",
-            data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-            headers=headers, method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=_knowledge_service_timeout_sec()) as response:
-            result = json.loads(response.read(1024 * 1024).decode("utf-8"))
-        if not isinstance(result, dict):
-            raise ValueError("knowledge service returned a non-object JSON response")
-        return result
-    except urllib.error.HTTPError as exc:
-        logger.exception("Knowledge service request %s failed", endpoint)
-        try:
-            detail = exc.read(4096).decode("utf-8", errors="replace")
-        except Exception:
-            detail = str(exc)
-        message = f"knowledge service HTTP {exc.code}: {detail or exc.reason}"
-        return {"error": message}
-    except Exception as exc:
-        logger.exception("Knowledge service request %s failed", endpoint)
-        return {"error": str(exc)}
+    return BridgeKnowledgeHttp(
+        base_url, token=token, timeout=_knowledge_service_timeout_sec(),
+    ).request(endpoint, payload)
 
 
 def knowledge_service_status(*, start_loading: bool = False, retry: bool = False) -> dict[str, Any] | None:

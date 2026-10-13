@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import json
+import logging
+import urllib.error
+import urllib.request
+from typing import Any
+
 from frontend_bridge_core.routes.router import ApiRequest, BodyKind, JsonResponse, Route
 from frontend_bridge_core.knowledge import (
     _get_knowledge_status,
@@ -8,6 +14,45 @@ from frontend_bridge_core.knowledge import (
     _knowledge_operation,
     _knowledge_search,
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+class BridgeKnowledgeHttp:
+    """Outbound knowledge HTTP adapter; connection settings come from its caller."""
+
+    def __init__(self, base_url: str, *, token: str = "", timeout: float = 60.0) -> None:
+        self.base_url = base_url.rstrip("/")
+        self.token = token
+        self.timeout = timeout
+
+    def request(self, endpoint: str, payload: dict[str, Any]) -> dict[str, Any]:
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        if self.token:
+            headers["X-Shinsekai-Bridge-Token"] = self.token
+        try:
+            request = urllib.request.Request(
+                f"{self.base_url}/{endpoint}",
+                data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                headers=headers, method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                result = json.loads(response.read(1024 * 1024).decode("utf-8"))
+            if not isinstance(result, dict):
+                raise ValueError("knowledge service returned a non-object JSON response")
+            return result
+        except urllib.error.HTTPError as exc:
+            logger.exception("Knowledge service request %s failed", endpoint)
+            try:
+                detail = exc.read(4096).decode("utf-8", errors="replace")
+            except Exception:
+                detail = str(exc)
+            message = f"knowledge service HTTP {exc.code}: {detail or exc.reason}"
+            return {"error": message}
+        except Exception as exc:
+            logger.exception("Knowledge service request %s failed", endpoint)
+            return {"error": str(exc)}
 
 
 def _bindings(request: ApiRequest) -> JsonResponse:
@@ -134,34 +179,97 @@ def _search(request: ApiRequest) -> JsonResponse:
 
 
 KNOWLEDGE_ROUTES = (
-    Route(methods=frozenset({"GET"}), pattern="/api/knowledge/bindings/knowledge",
-          handler=_knowledge_bindings, body_kind=BodyKind.NONE, name="knowledge.bindings.knowledge"),
-    Route(methods=frozenset({"POST"}), pattern="/api/knowledge/bindings/batch",
-          handler=_batch_bindings, name="knowledge.bindings.batch"),
-    Route(methods=frozenset({"GET"}), pattern="/api/knowledge/bindings",
-          handler=_bindings, body_kind=BodyKind.NONE, name="knowledge.bindings.list"),
-    *(Route(methods=frozenset({"GET"}), pattern=f"/api/knowledge/{operation}",
-            handler=_browse, body_kind=BodyKind.NONE, name=f"knowledge.{operation}")
-      for operation in ("instances", "entries")),
-    Route(methods=frozenset({"POST"}), pattern="/api/knowledge/status",
-          handler=_status, name="knowledge.status"),
-    Route(methods=frozenset({"POST"}), pattern="/api/knowledge/list",
-          handler=_knowledge_list, name="knowledge.list"),
-    Route(methods=frozenset({"POST"}), pattern="/api/knowledge/remember",
-          handler=_knowledge_remember, name="knowledge.remember"),
-    Route(methods=frozenset({"POST"}), pattern="/api/knowledge/forget",
-          handler=_knowledge_forget, name="knowledge.forget"),
-    Route(methods=frozenset({"POST"}), pattern="/api/knowledge/delete",
-          handler=_knowledge_delete, name="knowledge.delete"),
-    Route(methods=frozenset({"POST"}), pattern="/api/knowledge/remember-and-list",
-          handler=_knowledge_remember_and_list, name="knowledge.remember-and-list"),
-    Route(methods=frozenset({"POST"}), pattern="/api/knowledge/forget-and-list",
-          handler=_knowledge_forget_and_list, name="knowledge.forget-and-list"),
-    *(Route(methods=frozenset({"POST"}), pattern=f"/api/knowledge/bindings/{operation}",
-            handler=_change_binding, name=f"knowledge.bindings.{operation}")
-      for operation in ("add", "remove")),
-    Route(methods=frozenset({"POST"}), pattern="/api/knowledge/entries/search",
-          handler=_search_entries, name="knowledge.entries.search"),
-    Route(methods=frozenset({"POST"}), pattern="/api/knowledge/search",
-          handler=_search, name="knowledge.search"),
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/knowledge/bindings/knowledge",
+        handler=_knowledge_bindings,
+        body_kind=BodyKind.NONE,
+        name="knowledge.bindings.knowledge",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/bindings/batch",
+        handler=_batch_bindings,
+        name="knowledge.bindings.batch",
+    ),
+    Route(
+        methods=frozenset({"GET"}),
+        pattern="/api/knowledge/bindings",
+        handler=_bindings,
+        body_kind=BodyKind.NONE,
+        name="knowledge.bindings.list",
+    ),
+    *(
+        Route(
+            methods=frozenset({"GET"}),
+            pattern=f"/api/knowledge/{operation}",
+            handler=_browse,
+            body_kind=BodyKind.NONE,
+            name=f"knowledge.{operation}",
+        )
+        for operation in ("instances", "entries")
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/status",
+        handler=_status,
+        name="knowledge.status",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/list",
+        handler=_knowledge_list,
+        name="knowledge.list",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/remember",
+        handler=_knowledge_remember,
+        name="knowledge.remember",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/forget",
+        handler=_knowledge_forget,
+        name="knowledge.forget",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/delete",
+        handler=_knowledge_delete,
+        name="knowledge.delete",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/remember-and-list",
+        handler=_knowledge_remember_and_list,
+        name="knowledge.remember-and-list",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/forget-and-list",
+        handler=_knowledge_forget_and_list,
+        name="knowledge.forget-and-list",
+    ),
+    *(
+        Route(
+            methods=frozenset({"POST"}),
+            pattern=f"/api/knowledge/bindings/{operation}",
+            handler=_change_binding,
+            name=f"knowledge.bindings.{operation}",
+        )
+        for operation in ("add", "remove")
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/entries/search",
+        handler=_search_entries,
+        name="knowledge.entries.search",
+    ),
+    Route(
+        methods=frozenset({"POST"}),
+        pattern="/api/knowledge/search",
+        handler=_search,
+        name="knowledge.search",
+    ),
 )

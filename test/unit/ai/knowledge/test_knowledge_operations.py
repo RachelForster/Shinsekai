@@ -3,6 +3,7 @@ from io import BytesIO
 from types import SimpleNamespace
 import json
 import urllib.error
+import urllib.request
 
 import pytest
 
@@ -19,7 +20,7 @@ def local_knowledge(monkeypatch):
 
 def test_explicit_knowledge_search_never_calls_remote(monkeypatch):
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://unused")
-    monkeypatch.setattr(service.urllib.request, "urlopen", lambda *a, **k: pytest.fail("remote called"))
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("remote called"))
     def search(query, *, filters, limit):
         knowledge_id = filters["user_id"]
         return [{"memory": knowledge_id, "score": 0.9 if knowledge_id == "b" else 0.3}]
@@ -50,7 +51,7 @@ def test_http_failures_are_error_results(monkeypatch, error):
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://knowledge")
     def fail(*a, **k):
         raise error
-    monkeypatch.setattr(service.urllib.request, "urlopen", fail)
+    monkeypatch.setattr(urllib.request, "urlopen", fail)
     assert "error" in ops.knowledge_service_status()
 
 
@@ -60,7 +61,7 @@ def test_remote_status_and_owner_guard(monkeypatch):
     def request(req, **kwargs):
         calls.append((req.full_url, json.loads(req.data), kwargs))
         return BytesIO(b'{"status":"loading"}')
-    monkeypatch.setattr(service.urllib.request, "urlopen", request)
+    monkeypatch.setattr(urllib.request, "urlopen", request)
     monkeypatch.setattr(ops, "get_mem0", lambda: pytest.fail("status loaded local store"))
     assert ops.knowledge_service_status(start_loading=True, retry=True) == {"status": "loading"}
     assert calls[0][0] == "http://knowledge/status"
@@ -75,7 +76,7 @@ def test_remote_status_and_owner_guard(monkeypatch):
 @pytest.mark.parametrize("payload", [b"not json", b"[]"])
 def test_invalid_service_response(monkeypatch, payload):
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://knowledge")
-    monkeypatch.setattr(service.urllib.request, "urlopen", lambda *a, **k: BytesIO(payload))
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: BytesIO(payload))
     assert "error" in ops.knowledge_service_status()
 
 
@@ -137,7 +138,7 @@ def test_owner_selects_local_or_http_operation(monkeypatch, owner, url, remote):
     def request(req, **kwargs):
         requests.append(req.full_url)
         return BytesIO(b'{"ok":true}')
-    monkeypatch.setattr(service.urllib.request, "urlopen", request)
+    monkeypatch.setattr(urllib.request, "urlopen", request)
     assert ops.delete_knowledge_entry("entry")["ok"] is True
     assert requests == (["http://knowledge/forget"] if remote else [])
     assert deleted == ([] if remote else ["entry"])

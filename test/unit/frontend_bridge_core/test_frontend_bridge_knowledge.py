@@ -1,6 +1,7 @@
 """Knowledge bridge dependency checks and request dispatch contracts."""
 
 import importlib.util
+import urllib.request
 
 import pytest
 
@@ -52,12 +53,12 @@ def test_check_mem0_before_call_reports_unavailable_module(monkeypatch, invalid_
 
 
 def test_knowledge_forget_dispatch_uses_local_store_when_bridge_owns_service(monkeypatch):
-    from ai.knowledge import operations, service as knowledge_client
+    from ai.knowledge import operations
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://self/api/knowledge")
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", "1")
     monkeypatch.setattr(knowledge, "_get_knowledge_status", lambda **kwargs: {"status": "ready"})
     monkeypatch.setattr(operations, "get_mem0", lambda: type("Store", (), {"delete": lambda self, mid: None})())
-    monkeypatch.setattr(knowledge_client.urllib.request, "urlopen", lambda *a, **kw: pytest.fail("recursive request"))
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("recursive request"))
     assert knowledge._knowledge_operation("forget", memory_id="id")["ok"] is True
 
 
