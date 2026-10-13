@@ -345,10 +345,21 @@ class CompactManager:
 
         if response:
             try:
+                decode = getattr(self.llm_adapter, "decode_response", None)
+                if callable(decode):
+                    try:
+                        decoded_content = decode(response).content
+                    except (AttributeError, IndexError, KeyError, TypeError):
+                        pass  # Preserve legacy text-only response objects.
+                    else:
+                        if isinstance(decoded_content, str):
+                            return decoded_content
                 if hasattr(response, 'choices') and hasattr(response.choices[0], 'message'):
                     return response.choices[0].message.content
                 elif hasattr(response, 'text'):
                     return response.text
+                elif isinstance(getattr(response, 'content', None), str):
+                    return response.content
                 elif hasattr(response, 'content'):
                     return response.content[0].text
                 else:

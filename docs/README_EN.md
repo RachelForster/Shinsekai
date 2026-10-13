@@ -22,7 +22,7 @@ A desktop assistant for **visual-novel / otome / story-driven RPG** play: let a 
 - **100+ character packs**: choose from more than 100 ready-to-import character packs, or create, import, and export your own `.char` packages.
 - **Plugin extensibility**: the **plugin SDK** adds adapters, settings pages, chat controls, and additional LLM, TTS, ASR, T2I, and tool capabilities.
 - **Local-first data**: defaults live under **`data/`** (`api.yaml`, `system_config.yaml`, characters, history)—easy to back up or fork for your own project.  
-- **Open source**: start from git or a [release bundle](https://github.com/RachelForster/Shinsekai/releases); optional plugins are listed in [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry).
+- **Source available**: start from git or a [release bundle](https://github.com/RachelForster/Shinsekai/releases); optional plugins are listed in [Shinsekai-Plugin-Registry](https://github.com/RachelForster/Shinsekai-Plugin-Registry).
 
 ---
 
@@ -145,4 +145,4 @@ Issues and PRs are welcome. If you redistribute character or voice assets, follo
 
 ## License Notice
 
-Shinsekai is source-available, not open source. You may inspect the source code, build it locally for personal use, and maintain public forks for discussion and contribution. Redistribution, release builds, installer packages, app store distribution, and commercial use are not permitted without written permission. See [LICENSE](../LICENSE).
+Shinsekai is a source-available project. You may inspect the source code, build it locally for personal use, and maintain public forks for discussion and contribution. Redistribution, release builds, installer packages, app store distribution, and commercial use are not permitted without written permission. See [LICENSE](../LICENSE).

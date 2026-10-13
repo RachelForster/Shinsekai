@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterator
+from typing import Any
+
+from sdk.llm_response import ChatResponse, OpenAIResponseCodec, ResponseCodec, ResponseDelta
 
 
 class LLMAdapter(ABC):
@@ -18,6 +22,8 @@ class LLMAdapter(ABC):
           see ``filter_supported_chat_params`` in ``ai.llm.llm_adapter``). Global defaults (temperature,
           penalties, etc.) live in ``ApiConfig``, not in this schema.
     """
+
+    supported_chat_params: frozenset[str] = frozenset()
 
     def __init__(self, **kwargs) -> None:
         self.user_template = ""
@@ -47,6 +53,32 @@ class LLMAdapter(ABC):
         strip provider-incompatible keys (e.g. Gemini does not accept penalty params
         over the OpenAI-compatible bridge)."""
         return set()
+
+    @classmethod
+    def get_supported_chat_params(cls) -> set[str]:
+        """Parameter policy inherited and extendable by adapter subclasses."""
+        return set(cls.supported_chat_params)
+
+    @property
+    def response_codec(self) -> ResponseCodec:
+        """Existing plugins default to OpenAI-compatible response objects."""
+        return OpenAIResponseCodec()
+
+    @property
+    def supports_streaming_tools(self) -> bool:
+        return True
+
+    def assistant_message_metadata(self, reasoning: str) -> dict[str, Any]:
+        """Metadata a provider requires when replaying an assistant turn."""
+        return {}
+
+    def decode_response(self, response: Any) -> ChatResponse:
+        return self.response_codec.decode(response)
+
+    def iter_response_stream(
+        self, response: Any, *, cancelled: Callable[[], bool],
+    ) -> Iterator[ResponseDelta]:
+        return self.response_codec.iter_stream(response, cancelled=cancelled)
 
     @abstractmethod
     def chat(self, messages: list, stream: bool = False, **kwargs):

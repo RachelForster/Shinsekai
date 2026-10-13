@@ -1,5 +1,6 @@
 # llm_adapter.py
 from sdk.adapters import LLMAdapter
+from sdk.llm_response import AnthropicResponseCodec
 from sdk.exception.types import http_client_error_from_exception
 from ai.llm.claude_url import normalize_claude_base_url_for_sdk
 from ai.vision.message_content import normalize_anthropic_user_content, normalize_openai_messages
@@ -32,6 +33,11 @@ def filter_supported_chat_params(adapter_name: str, kwargs: dict) -> dict:
     return {k: v for k, v in kwargs.items() if k in supported}
 
 
+def _filter_adapter_chat_params(adapter: LLMAdapter, kwargs: dict) -> dict:
+    supported = adapter.get_supported_chat_params()
+    return {key: value for key, value in kwargs.items() if key in supported}
+
+
 def _raise_if_http_client_error(exc: BaseException) -> None:
     if http_client_error_from_exception(exc):
         raise exc
@@ -39,6 +45,7 @@ def _raise_if_http_client_error(exc: BaseException) -> None:
 
 class DeepSeekAdapter(LLMAdapter):
     """DeepSeek OpenAI 兼容接口；思考模式见 https://api-docs.deepseek.com/guides/thinking_mode"""
+    supported_chat_params = frozenset(SUPPORTED_CHAT_PARAMS["DeepSeekAdapter"])
 
     def __init__(
         self,
@@ -72,6 +79,11 @@ class DeepSeekAdapter(LLMAdapter):
     def supports_native_vision(self) -> bool:
         return False
 
+    def assistant_message_metadata(self, reasoning: str) -> dict:
+        if self.thinking_enabled and reasoning.strip():
+            return {"reasoning_content": reasoning}
+        return {}
+
     @classmethod
     def get_config_schema(cls) -> dict[str, dict]:
         return {
@@ -94,7 +106,7 @@ class DeepSeekAdapter(LLMAdapter):
             kwargs = dict(kwargs)
             kwargs.pop("reasoning_effort", None)
             kwargs.pop("thinking_enabled", None)
-            kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
+            kwargs = _filter_adapter_chat_params(self, kwargs)
             # 思考模式下 DeepSeek 不支持 temperature / top_p / presence_penalty / frequency_penalty
             if self.thinking_enabled:
                 banned = {
@@ -141,6 +153,8 @@ class DeepSeekAdapter(LLMAdapter):
             return None
 
 class OpenAIAdapter(LLMAdapter):
+    supported_chat_params = frozenset(SUPPORTED_CHAT_PARAMS["OpenAIAdapter"])
+
     def __init__(self, api_key=None, base_url=None, model="gpt-3.5-turbo", **kwargs):
         super().__init__(**kwargs)
         if base_url:
@@ -148,6 +162,10 @@ class OpenAIAdapter(LLMAdapter):
         else:
             self.client = OpenAI(api_key=api_key)
         self.model = model
+
+    @property
+    def supports_streaming_tools(self) -> bool:
+        return self.provider.casefold() != "gemini"
 
     @property
     def supports_native_vision(self) -> bool:
@@ -183,11 +201,10 @@ class OpenAIAdapter(LLMAdapter):
     def chat(self, messages: list, stream: bool = False, response_format={'type': 'json_object'}, **kwargs):
         """Sends a message to the OpenAI LLM."""
         try:
-            kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
+            kwargs = _filter_adapter_chat_params(self, kwargs)
             # 各提供商在 OpenAI 兼容通道下可能不支持某些参数
-            from config.config_manager import ConfigManager
             _unsupported = self.get_unsupported_chat_params(
-                ConfigManager().config.api_config.llm_provider or ""
+                self.provider
             )
             if _unsupported:
                 kwargs = {k: v for k, v in kwargs.items() if k not in _unsupported}
@@ -279,6 +296,12 @@ class GeminiAdapter(LLMAdapter):
         self.user_template = template
 
 class ClaudeAdapter(LLMAdapter):
+    supported_chat_params = frozenset(SUPPORTED_CHAT_PARAMS["ClaudeAdapter"])
+
+    @property
+    def response_codec(self):
+        return AnthropicResponseCodec()
+
     def __init__(self, api_key=None, base_url=None, model="claude-3-5-sonnet-20240620", **kwargs):
         super().__init__(**kwargs)
         import anthropic
@@ -393,7 +416,7 @@ class ClaudeAdapter(LLMAdapter):
 
     def chat(self, messages: list, stream: bool = False, **kwargs):
         try:
-            kwargs = filter_supported_chat_params(type(self).__name__, kwargs)
+            kwargs = _filter_adapter_chat_params(self, kwargs)
             system_msg, cleaned_msgs = self._clean_messages(messages)
 
             # 如果没有消息，Claude 也会报错
