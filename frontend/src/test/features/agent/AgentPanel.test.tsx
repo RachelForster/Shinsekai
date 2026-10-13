@@ -53,8 +53,11 @@ describe("Agent conversation", () => {
     fireEvent.click(second);
     expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("second draft");
     fireEvent.click(screen.getByRole("button", { name: "Close Session 2" }));
-    await waitFor(() => expect(screen.queryByRole("tab", { name: "Session 2" })).not.toBeInTheDocument());
-    expect(first).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => {
+      expect(screen.queryByRole("tab", { name: "Session 2" })).not.toBeInTheDocument();
+      expect(first).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("textbox", { name: "Message" })).toHaveValue("first draft");
+    });
     fireEvent.click(screen.getByRole("button", { name: "Close Session 1" }));
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Message" })).not.toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Send" })).not.toBeInTheDocument();
