@@ -65,3 +65,8 @@ The project architecture tests continue to enforce SDK and layer independence.
 Run the focused tests, followed by the configured Python suite. Tests use canned
 responses and mocked transports; live provider API behavior requires a separate
 smoke test with configured credentials.
+
+`pnpm verify:tauri-resources` and `pnpm verify:packaged-runtime` compare every
+copied Python module in `ai/llm` and `sdk` with the source checkout. Missing modules
+and stale SDK files fail verification before the application ships. Rebuild the
+application resources together when updating an existing local build.

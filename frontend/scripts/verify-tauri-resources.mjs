@@ -1,11 +1,14 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyLlmRuntimeSources } from "./verify-llm-runtime.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const frontendDir = path.resolve(scriptDir, "..");
 const resourcesDir = path.join(frontendDir, "src-tauri", "resources");
 const runtimeMarkerPath = path.join(resourcesDir, "runtime", ".shinsekai-runtime.json");
+
+await verifyLlmRuntimeSources(path.resolve(frontendDir, ".."), resourcesDir);
 
 const runtimeMarker = await readJson(runtimeMarkerPath);
 
