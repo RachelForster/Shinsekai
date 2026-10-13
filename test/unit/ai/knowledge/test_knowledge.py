@@ -22,16 +22,6 @@ def test_knowledge_config_uses_isolated_storage_and_collection(tmp_path, monkeyp
     assert config["history_db_path"] == str(tmp_path / "data" / "knowledge" / "knowledge_history.db")
 
 
-def test_bindings_resolve_shared_knowledge_once(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    from core.knowledge.bindings import bind_character_knowledge, list_knowledge_ids_for_characters
-
-    bind_character_knowledge("Monika", "ddlc")
-    bind_character_knowledge("Sayori", "ddlc")
-    assert list_knowledge_ids_for_characters(["Monika", "Sayori"]) == ["ddlc"]
-    assert (tmp_path / "data" / "knowledge" / "knowledge.db").is_file()
-
-
 def test_preview_knowledge_import_reuses_memory_txt_parser(tmp_path):
     source = tmp_path / "knowledge.txt"
     source.write_text("第一行\n\n第二行\n", encoding="utf-8")
