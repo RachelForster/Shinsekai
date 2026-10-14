@@ -89,16 +89,16 @@ def _knowledge_search(query: str, character_names: list[str], limit: int = 5) ->
 
 
 def _knowledge_operation(operation: str, **kwargs: Any) -> dict[str, Any]:
-    from application.knowledge import manage_knowledge
+    from application.knowledge import manage_knowledge, delete_knowledge
 
     operations = {
         "search": manage_knowledge.search_knowledge,
-        "list": manage_knowledge.list_knowledge,
+        "list": manage_knowledge.list_entries,
         "remember": manage_knowledge.remember_knowledge,
-        "forget": manage_knowledge.forget_knowledge,
-        "delete": manage_knowledge.delete_knowledge,
+        "forget": delete_knowledge.delete_knowledge_entry,
+        "delete": delete_knowledge.delete_knowledge_base,
         "remember-and-list": manage_knowledge.remember_and_list,
-        "forget-and-list": manage_knowledge.forget_and_list,
+        "forget-and-list": delete_knowledge.delete_knowledge_entry_and_list,
     }
     if operation not in operations:
         raise ValueError("unknown knowledge operation")

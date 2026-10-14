@@ -67,9 +67,9 @@ def list_instances(query: str = "", *, page: int = 1, refresh: bool = False) -> 
     return list_knowledge_bases(query, page=page, refresh=refresh)
 
 
-def list_entries(knowledge_id: str) -> dict[str, Any]:
-    from ai.knowledge.operations import list_local_knowledge_entries
-    return list_local_knowledge_entries(knowledge_id)
+def list_entries(knowledge_id: str, *, limit: int = 200) -> dict[str, Any]:
+    from ai.knowledge.operations import list_knowledge_entries
+    return list_knowledge_entries(knowledge_id, limit=limit)
 
 
 def search_entries(knowledge_id: str, query: str, *, limit: int = 200) -> dict[str, Any]:
@@ -77,29 +77,14 @@ def search_entries(knowledge_id: str, query: str, *, limit: int = 200) -> dict[s
     return search_local_knowledge_entries(knowledge_id, query, limit=limit)
 
 
-def list_knowledge(knowledge_id: str, *, limit: int = 200) -> dict[str, Any]:
-    from ai.knowledge.operations import list_knowledge_entries
-    return list_knowledge_entries(knowledge_id, limit=limit)
-
-
 def remember_knowledge(content: str, knowledge_id: str) -> dict[str, Any]:
     from ai.knowledge.operations import add_knowledge_entry
     return add_knowledge_entry(content, knowledge_id)
 
 
-def forget_knowledge(memory_id: str) -> dict[str, Any]:
-    from application.knowledge.delete_knowledge import delete_knowledge_entry
-    return delete_knowledge_entry(memory_id)
-
-
 def remember_and_list(content: str, knowledge_id: str) -> dict[str, Any]:
     from ai.knowledge.operations import add_knowledge_entry_and_list
     return add_knowledge_entry_and_list(content, knowledge_id)
-
-
-def forget_and_list(memory_id: str, knowledge_id: str) -> dict[str, Any]:
-    from application.knowledge.delete_knowledge import delete_knowledge_entry_and_list
-    return delete_knowledge_entry_and_list(memory_id, knowledge_id)
 
 
 def add_binding(character_name: str, knowledge_id: str) -> dict[str, Any]:
@@ -137,9 +122,3 @@ def rename_character_bindings(old_name: str, new_name: str) -> None:
 def clear_character_bindings(character_name: str) -> None:
     from core.knowledge.bindings import delete_character_bindings
     delete_character_bindings(character_name)
-
-
-def delete_knowledge(knowledge_id: str) -> dict[str, Any]:
-    from application.knowledge.delete_knowledge import delete_knowledge_base
-
-    return delete_knowledge_base(knowledge_id)

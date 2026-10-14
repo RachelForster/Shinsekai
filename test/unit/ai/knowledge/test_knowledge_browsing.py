@@ -30,15 +30,15 @@ def test_entry_list_uses_mem0_with_knowledge_filter(monkeypatch, parameter, wrap
     store = SimpleNamespace(get_all=current if parameter == "top_k" else legacy)
     monkeypatch.setattr(browsing, "get_mem0", lambda: store)
     monkeypatch.setattr(storage, "scroll_knowledge_records", lambda *a, **kw: pytest.fail("entry list bypassed Mem0"))
-    listed = browsing.list_local_knowledge_entries("alpha")
+    listed = browsing.list_knowledge_entries("alpha")
     assert listed == {"knowledge_id": "alpha", "count": 3, "memories": [
         {"id": "1", "memory": "setting"}, {"id": "2", "memory": "other"}, {"id": "", "memory": "plain"},
     ]}
-    browsing.list_local_knowledge_entries("alpha", limit=999)
-    browsing.list_local_knowledge_entries("orphan", limit=5)
+    browsing.list_knowledge_entries("alpha", limit=999)
+    browsing.list_knowledge_entries("orphan", limit=5)
     assert calls == [({"user_id": "alpha"}, 200), ({"user_id": "alpha"}, 200), ({"user_id": "orphan"}, 5)]
-    assert browsing.list_local_knowledge_entries("empty") == {"knowledge_id": "empty", "count": 0, "memories": []}
-    assert browsing.list_local_knowledge_entries("")["error"] == "knowledge id is required"
+    assert browsing.list_knowledge_entries("empty") == {"knowledge_id": "empty", "count": 0, "memories": []}
+    assert browsing.list_knowledge_entries("")["error"] == "knowledge id is required"
 
 
 def test_entry_search_uses_explicit_knowledge_and_bounds_limit(knowledge_store):

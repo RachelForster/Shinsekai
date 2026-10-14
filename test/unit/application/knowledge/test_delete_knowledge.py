@@ -8,7 +8,7 @@ import pytest
 
 from ai.knowledge import catalog
 from core.knowledge import bindings
-from application.knowledge import delete_knowledge as deletion, manage_knowledge
+from application.knowledge import delete_knowledge as deletion
 
 
 @pytest.fixture
@@ -44,26 +44,26 @@ def test_delete_knowledge_removes_all_pages_and_bindings_without_touching_other_
     bindings.bind_character_knowledge("B", "target")
     bindings.bind_character_knowledge("A", "other")
     monkeypatch.setattr(catalog, "_catalog_expires", 999)
-    assert manage_knowledge.delete_knowledge(" target ") == {
+    assert deletion.delete_knowledge_base(" target ") == {
         "ok": True, "knowledge_id": "target", "deletedEntryCount": 520, "deletedBindingCount": 2,
     }
     assert events[:4] == ["scroll", "scroll", "scroll", "delete"]
     assert rows == {"other-entry": "other"}
     assert bindings.list_knowledge_ids_for_characters(["A", "B"]) == ["other"]
     assert catalog._catalog_expires == 0
-    assert manage_knowledge.delete_knowledge("target")["deletedEntryCount"] == 0
+    assert deletion.delete_knowledge_base("target")["deletedEntryCount"] == 0
 
 
 def test_delete_knowledge_entry_failure_preserves_bindings_and_allows_retry(isolated_knowledge, monkeypatch):
     rows = {"a": "target", "b": "target"}
     install_deletion_store(monkeypatch, rows, fail_on="b")
     bindings.bind_character_knowledge("A", "target")
-    result = manage_knowledge.delete_knowledge("target")
+    result = deletion.delete_knowledge_base("target")
     assert result["ok"] is False and result["failedStage"] == "entries"
     assert result["deletedEntryCount"] == 1 and result["deletedBindingCount"] == 0
     assert bindings.list_knowledge_ids_for_characters(["A"]) == ["target"]
     install_deletion_store(monkeypatch, rows)
-    assert manage_knowledge.delete_knowledge("target")["deletedBindingCount"] == 1
+    assert deletion.delete_knowledge_base("target")["deletedBindingCount"] == 1
     assert rows == {}
 
 
@@ -74,15 +74,15 @@ def test_delete_knowledge_binding_failure_reports_stage_and_allows_retry(isolate
     def fail(_):
         raise RuntimeError("database locked")
     monkeypatch.setattr(bindings, "delete_knowledge_bindings", fail)
-    result = manage_knowledge.delete_knowledge("target")
+    result = deletion.delete_knowledge_base("target")
     assert result["failedStage"] == "bindings"
     monkeypatch.setattr(bindings, "delete_knowledge_bindings", real_delete)
-    assert manage_knowledge.delete_knowledge("target")["deletedBindingCount"] == 1
+    assert deletion.delete_knowledge_base("target")["deletedBindingCount"] == 1
 
 
 def test_delete_knowledge_rejects_blank_id_without_loading_store(isolated_knowledge, monkeypatch):
     monkeypatch.setattr(deletion, "get_mem0", lambda: pytest.fail("loaded store"))
-    assert manage_knowledge.delete_knowledge(" ")["failedStage"] == "validate"
+    assert deletion.delete_knowledge_base(" ")["failedStage"] == "validate"
 
 
 def test_delete_knowledge_does_not_wait_for_import_extraction(isolated_knowledge, tmp_path, monkeypatch):
@@ -107,8 +107,8 @@ def test_delete_knowledge_does_not_wait_for_import_extraction(isolated_knowledge
         )
         try:
             assert entered.wait(5)
-            deletion = pool.submit(manage_knowledge.delete_knowledge, "target")
-            assert deletion.result(timeout=2)["deletedEntryCount"] == 1
+            deleting_future = pool.submit(deletion.delete_knowledge_base, "target")
+            assert deleting_future.result(timeout=2)["deletedEntryCount"] == 1
             assert rows == {}
         finally:
             release.set()
@@ -131,20 +131,20 @@ def test_delete_knowledge_waits_for_import_writes_before_removing_entries(isolat
     monkeypatch.setattr(imports, "add_knowledge_entry", remember)
     def delete():
         deleting.set()
-        return manage_knowledge.delete_knowledge("target")
+        return deletion.delete_knowledge_base("target")
     with ThreadPoolExecutor(max_workers=2) as pool:
         importing = pool.submit(imports.execute_knowledge_import, [path], knowledge_id="target",
                                 source_root=tmp_path, max_chunk_tokens=256,
                                 llm_adapter=MockLLMAdapter(responses=['[{"content":"Knowledge setting."}]']))
         try:
             assert entered.wait(5)
-            deletion = pool.submit(delete)
+            deleting_future = pool.submit(delete)
             assert deleting.wait(5)
-            assert not deletion.done()
+            assert not deleting_future.done()
         finally:
             release.set()
         assert importing.result(timeout=5)["savedCount"] == 1
-        assert deletion.result(timeout=5)["deletedBindingCount"] == 0
+        assert deleting_future.result(timeout=5)["deletedBindingCount"] == 0
     assert rows == {}
     assert bindings.list_knowledge_ids_for_characters(["A"]) == []
 

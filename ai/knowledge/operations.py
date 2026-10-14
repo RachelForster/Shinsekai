@@ -141,7 +141,7 @@ def list_knowledge_bases(
         return {"error": str(e)}
 
 
-def list_local_knowledge_entries(knowledge_id: str, *, limit: int = 200) -> dict[str, Any]:
+def list_knowledge_entries(knowledge_id: str, *, limit: int = 200) -> dict[str, Any]:
     """Browse one local knowledge through Mem0, returning normalized rows."""
     try:
         with _knowledge_operation_lock:
@@ -151,7 +151,7 @@ def list_local_knowledge_entries(knowledge_id: str, *, limit: int = 200) -> dict
             entries = list_store_entries(store, normalized_knowledge_id, bounded_limit)
             return {"knowledge_id": normalized_knowledge_id, "count": len(entries), "memories": entries}
     except Exception as e:
-        logger.exception("list_local_knowledge_entries failed")
+        logger.exception("list_knowledge_entries failed")
         return {"error": str(e)}
 
 
@@ -167,16 +167,6 @@ def search_local_knowledge_entries(knowledge_id: str, query: str, *, limit: int 
             return {"knowledge_id": normalized_knowledge_id, "query": text, "count": len(entries), "memories": entries}
     except Exception as e:
         logger.exception("search_local_knowledge_entries failed")
-        return {"error": str(e)}
-
-
-def list_knowledge_entries(knowledge_id: str, *, limit: int = 200) -> dict[str, Any]:
-    """List one knowledge through the local store."""
-    try:
-        normalized_knowledge_id = _required_text(knowledge_id, "knowledge id")
-        return list_local_knowledge_entries(normalized_knowledge_id, limit=limit)
-    except Exception as e:
-        logger.exception("list_knowledge_entries failed")
         return {"error": str(e)}
 
 

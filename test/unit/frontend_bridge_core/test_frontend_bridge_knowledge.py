@@ -113,13 +113,13 @@ def test_knowledge_binding_dispatch_supports_crud_without_loading_model(tmp_path
 
 def test_knowledge_delete_returns_loading_without_calling_application(monkeypatch):
     monkeypatch.setattr(knowledge, "_get_knowledge_status", lambda **_: {"status": "loading"})
-    monkeypatch.setattr(manage_knowledge, "delete_knowledge", lambda **_: pytest.fail("deleted before ready"))
+    monkeypatch.setattr("application.knowledge.delete_knowledge.delete_knowledge_base", lambda **_: pytest.fail("deleted before ready"))
     assert knowledge._knowledge_operation("delete", knowledge_id="w") == {"status": "loading"}
 
 
 def test_knowledge_delete_dispatches_to_application_when_runtime_is_ready(monkeypatch):
     monkeypatch.setattr(knowledge, "_get_knowledge_status", lambda **_: {"status": "ready"})
-    monkeypatch.setattr(manage_knowledge, "delete_knowledge", lambda **kw: {"ok": True, **kw})
+    monkeypatch.setattr("application.knowledge.delete_knowledge.delete_knowledge_base", lambda **kw: {"ok": True, **kw})
     assert knowledge._knowledge_operation("delete", knowledge_id="w") == {"ok": True, "knowledge_id": "w"}
 
 
