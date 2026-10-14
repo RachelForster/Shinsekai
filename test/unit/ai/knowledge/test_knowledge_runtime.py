@@ -13,7 +13,8 @@ from types import SimpleNamespace
 import pytest
 
 
-from ai.knowledge import runtime, tasks
+from ai.knowledge import runtime
+from application.knowledge import tasks
 
 
 @pytest.fixture(autouse=True)

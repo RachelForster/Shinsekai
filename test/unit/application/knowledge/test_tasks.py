@@ -1,4 +1,4 @@
-from ai.knowledge import tasks
+from application.knowledge import tasks
 
 def test_knowledge_tasks_are_independent_and_return_snapshots(monkeypatch):
     from ai.memory import tasks as memory_tasks

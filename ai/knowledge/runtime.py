@@ -22,7 +22,7 @@ from ai.memory.config import (
 )
 from ai.memory.constants import EMBEDDING_MODEL
 from ai.knowledge.config import build_knowledge_mem0_config
-from ai.knowledge.tasks import current_mem0_task, set_mem0_task
+from application.knowledge.tasks import current_mem0_task, set_mem0_task
 
 logger = logging.getLogger(__name__)
 
