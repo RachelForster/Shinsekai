@@ -26,7 +26,7 @@ def preview_import(
     config_manager: Any,
 ) -> dict[str, Any]:
     from ai.memory.extraction import configured_memory_chunk_tokens
-    from ai.knowledge.imports import preview_knowledge_import
+    from application.knowledge.import_knowledge import preview_knowledge_import
 
     return preview_knowledge_import(
         paths,
@@ -49,7 +49,7 @@ def execute_import(
         configured_memory_chunk_tokens,
         create_configured_memory_adapter,
     )
-    from ai.knowledge.imports import execute_knowledge_import
+    from application.knowledge.import_knowledge import execute_knowledge_import
 
     return execute_knowledge_import(
         paths,

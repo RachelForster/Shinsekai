@@ -86,7 +86,7 @@ def test_delete_knowledge_rejects_blank_id_without_loading_store(isolated_knowle
 
 
 def test_delete_knowledge_does_not_wait_for_import_extraction(isolated_knowledge, tmp_path, monkeypatch):
-    from ai.knowledge import imports
+    from application.knowledge import import_knowledge as imports
     path = tmp_path / "source.txt"
     path.write_text("Knowledge setting.", encoding="utf-8")
     entered, release = Event(), Event()
@@ -116,7 +116,7 @@ def test_delete_knowledge_does_not_wait_for_import_extraction(isolated_knowledge
 
 
 def test_delete_knowledge_waits_for_import_writes_before_removing_entries(isolated_knowledge, tmp_path, monkeypatch):
-    from ai.knowledge import imports
+    from application.knowledge import import_knowledge as imports
     from test.mocks import MockLLMAdapter
     path = tmp_path / "source.txt"
     path.write_text("Knowledge setting.", encoding="utf-8")

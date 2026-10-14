@@ -4,7 +4,7 @@ import pytest
 
 from ai.memory.token_estimator import estimate_message_tokens
 from ai.knowledge.extraction import EXPECTED_OUTPUT_TOKENS_PER_CHUNK, KnowledgeExtractionError
-from ai.knowledge.imports import execute_knowledge_import, preview_knowledge_import
+from application.knowledge.import_knowledge import execute_knowledge_import, preview_knowledge_import
 from test.mocks import MockLLMAdapter
 
 
@@ -12,15 +12,13 @@ def test_import_extracts_knowledge_entries_and_preview_matches_requests(tmp_path
     source = tmp_path / "knowledge.txt"
     source.write_text("哈" * 600, encoding="utf-8")
     adapter = MockLLMAdapter(responses=['[{"content":"雾港多雾。","knowledge_id":"wrong"}]'])
-    writes, bindings = [], []
-    monkeypatch.setattr("ai.knowledge.imports.add_knowledge_entry", lambda content, knowledge_id: writes.append((content, knowledge_id)) or {"ok": True})
-    monkeypatch.setattr("core.knowledge.bindings.bind_character_knowledge", lambda name, knowledge_id: bindings.append((name, knowledge_id)))
+    writes = []
+    monkeypatch.setattr("application.knowledge.import_knowledge.add_knowledge_entry", lambda content, knowledge_id: writes.append((content, knowledge_id)) or {"ok": True})
     args = dict(knowledge_id="harbor", source_root=tmp_path, max_chunk_tokens=256)
     preview = preview_knowledge_import([source], **args)
     result = execute_knowledge_import([source], llm_adapter=adapter, **args)
     assert len(adapter.call_history) == result["chunkCount"] > 1
     assert writes == [("雾港多雾。", "harbor")]
-    assert bindings == []
     assert "characterName" not in result
     assert result["duplicateCount"] == result["chunkCount"] - 1
     assert result["memories"] == ["雾港多雾。"]
@@ -30,25 +28,36 @@ def test_import_extracts_knowledge_entries_and_preview_matches_requests(tmp_path
 
 
 @pytest.mark.parametrize("write_result", [{}, {"ok": False}, {"status": "failed"}, None])
-def test_write_failure_does_not_bind_knowledge(tmp_path, monkeypatch, write_result):
+def test_import_raises_on_write_failure(tmp_path, monkeypatch, write_result):
     source = tmp_path / "knowledge.txt"
     source.write_text("雾港多雾。", encoding="utf-8")
-    bindings = []
-    monkeypatch.setattr("ai.knowledge.imports.add_knowledge_entry", lambda *args: write_result)
-    monkeypatch.setattr("core.knowledge.bindings.bind_character_knowledge", lambda *args: bindings.append(args))
+    monkeypatch.setattr("application.knowledge.import_knowledge.add_knowledge_entry", lambda *args: write_result)
     with pytest.raises(RuntimeError, match="写入资料知识失败"):
         execute_knowledge_import([source], knowledge_id="harbor", source_root=tmp_path,
                              max_chunk_tokens=256, llm_adapter=MockLLMAdapter(responses=['[{"content":"雾港多雾。"}]']))
-    assert bindings == []
 
 
-def test_bad_extraction_does_not_write_or_bind(tmp_path, monkeypatch):
+def test_bad_extraction_does_not_write(tmp_path, monkeypatch):
     source = tmp_path / "knowledge.txt"
     source.write_text("雾港多雾。", encoding="utf-8")
     calls = []
-    monkeypatch.setattr("ai.knowledge.imports.add_knowledge_entry", lambda *args: calls.append(args))
-    monkeypatch.setattr("core.knowledge.bindings.bind_character_knowledge", lambda *args: calls.append(args))
+    monkeypatch.setattr("application.knowledge.import_knowledge.add_knowledge_entry", lambda *args: calls.append(args))
     with pytest.raises(KnowledgeExtractionError):
         execute_knowledge_import([source], knowledge_id="harbor", source_root=tmp_path,
                              max_chunk_tokens=256, llm_adapter=MockLLMAdapter(responses=['[{"content":']))
     assert calls == []
+
+
+def test_preview_knowledge_import_counts_nonempty_txt_lines(tmp_path):
+    source = tmp_path / "knowledge.txt"
+    source.write_text("第一行\n\n第二行\n", encoding="utf-8")
+
+    preview = preview_knowledge_import(
+        [source],
+        knowledge_id="ddlc",
+        source_root=tmp_path,
+        max_chunk_tokens=256,
+    )
+    assert preview["fileCount"] == 1
+    assert preview["dialogueLineCount"] == 2
+    assert preview["chunkCount"] == 1

@@ -1,4 +1,4 @@
-"""Knowledge import with shared file preparation and setting extraction."""
+"""Knowledge import use cases coordinating preparation, extraction, and writes."""
 
 from __future__ import annotations
 
