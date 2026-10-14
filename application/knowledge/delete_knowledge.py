@@ -36,19 +36,18 @@ def _collect_knowledge_entry_ids(store: Any, knowledge_id: str) -> list[str]:
         cursor = str(next_cursor)
 
 
-def delete_knowledge_entry(memory_id: str) -> dict[str, Any]:
-    """Delete one entry by its memory ID."""
+def delete_knowledge_entry(store: Any, memory_id: str) -> dict[str, Any]:
+    """Delete one entry using the supplied instance, invalidating the catalog."""
+    mid = str(memory_id or "").strip()
+    if not mid:
+        return {"error": "memory id is required"}
     try:
-        mid = str(memory_id or "").strip()
-        if not mid:
-            raise ValueError("memory id is required")
-        store = get_mem0()
         with knowledge_operation_lock, _invalidate_catalog_after_write():
             store.delete(mid)
         return {"ok": True, "memory_id": mid}
-    except Exception as e:
+    except Exception as exc:
         logger.exception("delete_knowledge_entry failed")
-        return {"error": str(e)}
+        return {"error": str(exc)}
 
 
 def delete_knowledge_base(knowledge_id: str) -> dict[str, Any]:
@@ -84,7 +83,15 @@ def delete_knowledge_entry_and_list(memory_id: str, knowledge_id: str) -> dict[s
     """Return the selected knowledge's entries after a successful deletion."""
     if not str(knowledge_id or "").strip():
         return {"error": "knowledge id is required"}
-    result = delete_knowledge_entry(memory_id)
-    if result.get("ok") is not True:
-        return result
-    return list_knowledge_entries(knowledge_id)
+    mid = str(memory_id or "").strip()
+    if not mid:
+        return {"error": "memory id is required"}
+    try:
+        store = get_mem0()
+        result = delete_knowledge_entry(store, mid)
+        if result.get("ok") is not True:
+            return result
+        return list_knowledge_entries(store, knowledge_id)
+    except Exception as exc:
+        logger.exception("delete_knowledge_entry_and_list failed")
+        return {"error": str(exc)}

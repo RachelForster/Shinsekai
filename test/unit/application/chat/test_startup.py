@@ -129,7 +129,7 @@ def _runtime(calls, memory_hooks):
         T2IManager=_T2iManager,
         TTSAdapterFactory=_AdapterFactory("tts", calls),
         TTSManager=_TtsManager,
-        install_knowledge_hooks=Mock(),
+        install_knowledge_hooks=Mock(return_value=None),
         install_memory_hooks=lambda dispatcher, **kwargs: memory_hooks.append(
             (dispatcher, kwargs)
         ),

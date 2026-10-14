@@ -95,7 +95,7 @@ def _knowledge_operation(operation: str, **kwargs: Any) -> dict[str, Any]:
         "search": manage_knowledge.search_knowledge,
         "list": manage_knowledge.list_entries,
         "remember": manage_knowledge.remember_knowledge,
-        "forget": delete_knowledge.delete_knowledge_entry,
+        "forget": manage_knowledge.forget_knowledge,
         "delete": delete_knowledge.delete_knowledge_base,
         "remember-and-list": manage_knowledge.remember_and_list,
         "forget-and-list": delete_knowledge.delete_knowledge_entry_and_list,

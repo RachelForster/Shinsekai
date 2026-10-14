@@ -18,6 +18,7 @@ from ai.knowledge.extraction import (
     estimate_knowledge_extraction_input_tokens,
 )
 from ai.knowledge.operations import add_knowledge_entry
+from ai.knowledge.runtime import get_mem0
 
 
 @dataclass(frozen=True)
@@ -156,6 +157,9 @@ def execute_knowledge_import(
     unique, duplicate_count = deduplicate_knowledge_entries(extracted)
     saved = 0
     stored_duplicates = 0
+    if unique and cancel_callback:
+        cancel_callback()
+    store = get_mem0() if unique else None
     with knowledge_operation_lock:
         for index, item in enumerate(unique, start=1):
             if cancel_callback:
@@ -167,7 +171,7 @@ def execute_knowledge_import(
                     f"正在写入资料知识（{index}/{len(unique)}）。",
                     None,
                 )
-            result = add_knowledge_entry(item["content"], item["knowledge_id"])
+            result = add_knowledge_entry(store, item["content"], item["knowledge_id"])
             if not isinstance(result, dict) or result.get("ok") is not True:
                 detail = (result.get("error") or result.get("message") or result.get("status")) if isinstance(result, dict) else result
                 raise RuntimeError(f"写入资料知识失败：{detail or 'unknown error'}")

@@ -87,6 +87,7 @@ def test_delete_knowledge_rejects_blank_id_without_loading_store(isolated_knowle
 
 def test_delete_knowledge_does_not_wait_for_import_extraction(isolated_knowledge, tmp_path, monkeypatch):
     from application.knowledge import import_knowledge as imports
+    monkeypatch.setattr(imports, "get_mem0", lambda: object())
     path = tmp_path / "source.txt"
     path.write_text("Knowledge setting.", encoding="utf-8")
     entered, release = Event(), Event()
@@ -117,6 +118,7 @@ def test_delete_knowledge_does_not_wait_for_import_extraction(isolated_knowledge
 
 def test_delete_knowledge_waits_for_import_writes_before_removing_entries(isolated_knowledge, tmp_path, monkeypatch):
     from application.knowledge import import_knowledge as imports
+    monkeypatch.setattr(imports, "get_mem0", lambda: object())
     from test.mocks import MockLLMAdapter
     path = tmp_path / "source.txt"
     path.write_text("Knowledge setting.", encoding="utf-8")
@@ -151,29 +153,49 @@ def test_delete_knowledge_waits_for_import_writes_before_removing_entries(isolat
 
 def test_forget_invalidates_catalog(monkeypatch):
     deleted = []
-    monkeypatch.setattr(deletion, "get_mem0", lambda: SimpleNamespace(delete=deleted.append))
+    store = SimpleNamespace(delete=deleted.append)
     monkeypatch.setattr(catalog, "_catalog_expires", 999.0)
-    assert deletion.delete_knowledge_entry("entry") == {"ok": True, "memory_id": "entry"}
+    assert deletion.delete_knowledge_entry(store, "entry") == {"ok": True, "memory_id": "entry"}
     assert deleted == ["entry"]
     assert catalog._catalog_expires == 0
 
 
 def test_delete_entry_store_failure_is_an_error_result(monkeypatch):
-    def fail():
+    def fail(mid):
         raise RuntimeError("store unavailable")
-    monkeypatch.setattr(deletion, "get_mem0", fail)
-    assert deletion.delete_knowledge_entry("id")["error"] == "store unavailable"
+    store = SimpleNamespace(delete=fail)
+    assert deletion.delete_knowledge_entry(store, "id")["error"] == "store unavailable"
+
+
+def test_delete_entry_rejects_blank_id_without_touching_store():
+    assert deletion.delete_knowledge_entry(object(), " ") == {"error": "memory id is required"}
 
 
 @pytest.mark.parametrize("result", [{"status": "loading"}, {"status": "missing_dependency"}, {"error": "failed"}])
 def test_forget_and_list_preserves_failure(monkeypatch, result):
+    monkeypatch.setattr(deletion, "get_mem0", lambda: object())
     monkeypatch.setattr(deletion, "delete_knowledge_entry", lambda *a: result)
     monkeypatch.setattr(deletion, "list_knowledge_entries", lambda *a: pytest.fail("listed after failure"))
     assert deletion.delete_knowledge_entry_and_list("id", "a") == result
 
 
 def test_forget_and_list_returns_selected_knowledge(monkeypatch):
+    monkeypatch.setattr(deletion, "get_mem0", lambda: object())
     monkeypatch.setattr(deletion, "delete_knowledge_entry", lambda *a: {"ok": True})
-    monkeypatch.setattr(deletion, "list_knowledge_entries", lambda knowledge_id: {"knowledge_id": knowledge_id, "memories": []})
+    monkeypatch.setattr(deletion, "list_knowledge_entries", lambda store, knowledge_id: {"knowledge_id": knowledge_id, "memories": []})
     assert deletion.delete_knowledge_entry_and_list("id", "b")["knowledge_id"] == "b"
     assert "error" in deletion.delete_knowledge_entry_and_list("id", "")
+
+
+def test_delete_and_list_reuses_store(monkeypatch):
+    acquired, events = [], []
+    store = SimpleNamespace(
+        delete=lambda mid: events.append(("delete", mid)),
+        get_all=lambda *, filters, limit: events.append(("list", filters)) or [],
+    )
+    monkeypatch.setattr(deletion, "get_mem0", lambda: acquired.append(store) or store)
+    assert deletion.delete_knowledge_entry_and_list(" id ", "a") == {
+        "knowledge_id": "a", "count": 0, "memories": [],
+    }
+    assert acquired == [store]
+    assert events == [("delete", "id"), ("list", {"user_id": "a"})]

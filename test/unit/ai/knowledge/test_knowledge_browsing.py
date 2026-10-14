@@ -28,17 +28,16 @@ def test_entry_list_uses_mem0_with_knowledge_filter(monkeypatch, parameter, wrap
     def current(*, filters, top_k, **kwargs):
         return result(filters, top_k)
     store = SimpleNamespace(get_all=current if parameter == "top_k" else legacy)
-    monkeypatch.setattr(browsing, "get_mem0", lambda: store)
     monkeypatch.setattr(storage, "scroll_knowledge_records", lambda *a, **kw: pytest.fail("entry list bypassed Mem0"))
-    listed = browsing.list_knowledge_entries("alpha")
+    listed = browsing.list_knowledge_entries(store, "alpha")
     assert listed == {"knowledge_id": "alpha", "count": 3, "memories": [
         {"id": "1", "memory": "setting"}, {"id": "2", "memory": "other"}, {"id": "", "memory": "plain"},
     ]}
-    browsing.list_knowledge_entries("alpha", limit=999)
-    browsing.list_knowledge_entries("orphan", limit=5)
+    browsing.list_knowledge_entries(store, "alpha", limit=999)
+    browsing.list_knowledge_entries(store, "orphan", limit=5)
     assert calls == [({"user_id": "alpha"}, 200), ({"user_id": "alpha"}, 200), ({"user_id": "orphan"}, 5)]
-    assert browsing.list_knowledge_entries("empty") == {"knowledge_id": "empty", "count": 0, "memories": []}
-    assert browsing.list_knowledge_entries("")["error"] == "knowledge id is required"
+    assert browsing.list_knowledge_entries(store, "empty") == {"knowledge_id": "empty", "count": 0, "memories": []}
+    assert browsing.list_knowledge_entries(store, "")["error"] == "knowledge id is required"
 
 
 def test_entry_search_uses_explicit_knowledge_and_bounds_limit(knowledge_store):
@@ -47,7 +46,7 @@ def test_entry_search_uses_explicit_knowledge_and_bounds_limit(knowledge_store):
         calls.append((query, filters, top_k))
         return {"results": [{"id": "1", "memory": "setting"}]}
     knowledge_store.search = search
-    result = browsing.search_local_knowledge_entries("alpha", "test", limit=999)
+    result = browsing.search_local_knowledge_entries(knowledge_store, "alpha", "test", limit=999)
     assert calls == [("test", {"user_id": "alpha"}, 200)]
     assert result["memories"] == [{"id": "1", "memory": "setting"}]
 
@@ -62,9 +61,9 @@ def test_local_entry_search_does_not_call_knowledge_service(knowledge_store, mon
     knowledge_store.search = search
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://127.0.0.1:8787/api/knowledge")
     monkeypatch.delenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", raising=False)
-    monkeypatch.setattr(browsing, "request_knowledge_service", forbidden_request)
+    monkeypatch.setattr("ai.knowledge.service.request_knowledge_service", forbidden_request)
 
-    result = browsing.search_local_knowledge_entries("alpha", "test")
+    result = browsing.search_local_knowledge_entries(knowledge_store, "alpha", "test")
 
     assert result == {
         "knowledge_id": "alpha",

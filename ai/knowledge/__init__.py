@@ -2,22 +2,17 @@
 
 from ai.knowledge.operations import (
     list_knowledge_entries,
-    add_knowledge_entry_and_list,
-    knowledge_service_status,
     list_knowledge_bases,
     search_local_knowledge_entries,
     add_knowledge_entry,
     search_knowledge,
 )
-from ai.knowledge.hooks import KnowledgeHooks, install_knowledge_hooks
+from ai.knowledge.service import knowledge_service_status
 from ai.knowledge.runtime import check_mem0_status as check_knowledge_status
 
 __all__ = [
-    "KnowledgeHooks",
     "check_knowledge_status",
-    "install_knowledge_hooks",
     "list_knowledge_entries",
-    "add_knowledge_entry_and_list",
     "knowledge_service_status",
     "list_knowledge_bases",
     "search_local_knowledge_entries",

@@ -1,4 +1,4 @@
-"""User-facing knowledge operations and local/bridge routing."""
+"""Knowledge operations using an explicitly supplied local store."""
 
 from __future__ import annotations
 
@@ -7,16 +7,10 @@ from contextlib import contextmanager
 from typing import Any, Iterable, Iterator
 
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
-from core.knowledge.bindings import list_knowledge_ids_for_characters
 from core.knowledge.coordination import knowledge_operation_lock as _knowledge_operation_lock
 from ai.knowledge.catalog import (
     list_knowledge_catalog,
     invalidate_knowledge_catalog,
-)
-from ai.knowledge.runtime import get_mem0
-from ai.knowledge.service import (
-    request_knowledge_service,
-    knowledge_service_status as knowledge_service_status,
 )
 from ai.knowledge.storage import (
     format_knowledge_entry,
@@ -87,12 +81,11 @@ def _search_across_knowledge_bases(
     return candidates[:max(1, int(limit))]
 
 
-def add_knowledge_entry(content: str, knowledge_id: str) -> dict[str, Any]:
+def add_knowledge_entry(store: Any, content: str, knowledge_id: str) -> dict[str, Any]:
     """Store a fact in one knowledge, skipping exact or semantic duplicates."""
     try:
         text = _required_text(content, "content")
         normalized_knowledge_id = _required_text(knowledge_id, "knowledge id")
-        store = get_mem0()
         with _knowledge_operation_lock:
             return _add_entry_if_not_duplicate(store, text, normalized_knowledge_id)
     except Exception as e:
@@ -101,26 +94,21 @@ def add_knowledge_entry(content: str, knowledge_id: str) -> dict[str, Any]:
 
 
 def search_knowledge(
+    store: Any,
     query: str,
     *,
-    character_names: Iterable[str] = (),
+    knowledge_ids: Iterable[str] = (),
     limit: int = 5,
 ) -> dict[str, Any]:
-    """Search knowledge bound to characters through the bridge or local store."""
+    """Search selected knowledge bases and rank matches across them."""
     try:
         q = str(query or "").strip()
-        names = _normalize_identifiers(character_names)
         if not q:
             return {"error": "query is required"}
-        service_result = request_knowledge_service("search", {"query": q, "characterNames": names, "limit": limit})
-        if service_result is not None:
-            return service_result
-        resolved_ids = sorted(set(_normalize_identifiers(
-            list_knowledge_ids_for_characters(names),
-        )))
+        resolved_ids = sorted(set(_normalize_identifiers(knowledge_ids)))
         if not resolved_ids:
             return {"query": q, "knowledge_ids": [], "count": 0, "memories": []}
-        rows = _search_across_knowledge_bases(get_mem0(), q, resolved_ids, limit)
+        rows = _search_across_knowledge_bases(store, q, resolved_ids, limit)
         return {"query": q, "knowledge_ids": resolved_ids, "count": len(rows), "memories": rows}
     except Exception as e:
         logger.exception("search_knowledge 失败")
@@ -128,25 +116,24 @@ def search_knowledge(
 
 
 def list_knowledge_bases(
-    query: str = "", *, page: int = 1, page_size: int = 20, refresh: bool = False,
+    store: Any, query: str = "", *, page: int = 1, page_size: int = 20, refresh: bool = False,
 ) -> dict[str, Any]:
     """List knowledge matching an ID, with paginated counts."""
     try:
         with _knowledge_operation_lock:
             return list_knowledge_catalog(
-                get_mem0(), query, page=page, page_size=page_size, refresh=refresh,
+                store, query, page=page, page_size=page_size, refresh=refresh,
             )
     except Exception as e:
         logger.exception("list_knowledge_bases failed")
         return {"error": str(e)}
 
 
-def list_knowledge_entries(knowledge_id: str, *, limit: int = 200) -> dict[str, Any]:
+def list_knowledge_entries(store: Any, knowledge_id: str, *, limit: int = 200) -> dict[str, Any]:
     """Browse one local knowledge through Mem0, returning normalized rows."""
     try:
         with _knowledge_operation_lock:
             normalized_knowledge_id = _required_text(knowledge_id, "knowledge id")
-            store = get_mem0()
             bounded_limit = max(1, min(200, int(limit)))
             entries = list_store_entries(store, normalized_knowledge_id, bounded_limit)
             return {"knowledge_id": normalized_knowledge_id, "count": len(entries), "memories": entries}
@@ -155,24 +142,16 @@ def list_knowledge_entries(knowledge_id: str, *, limit: int = 200) -> dict[str, 
         return {"error": str(e)}
 
 
-def search_local_knowledge_entries(knowledge_id: str, query: str, *, limit: int = 200) -> dict[str, Any]:
+def search_local_knowledge_entries(store: Any, knowledge_id: str, query: str, *, limit: int = 200) -> dict[str, Any]:
     """Search one local knowledge and format matches for the entry browser."""
     try:
         with _knowledge_operation_lock:
             normalized_knowledge_id, text = str(knowledge_id or "").strip(), str(query or "").strip()
             if not normalized_knowledge_id or not text:
                 raise ValueError("knowledge id and query are required")
-            rows = search_store_entries(get_mem0(), text, normalized_knowledge_id, max(1, min(200, int(limit))))
+            rows = search_store_entries(store, text, normalized_knowledge_id, max(1, min(200, int(limit))))
             entries = [format_knowledge_entry(row, include_text=True) for row in rows if isinstance(row, dict)]
             return {"knowledge_id": normalized_knowledge_id, "query": text, "count": len(entries), "memories": entries}
     except Exception as e:
         logger.exception("search_local_knowledge_entries failed")
         return {"error": str(e)}
-
-
-def add_knowledge_entry_and_list(content: str, knowledge_id: str) -> dict[str, Any]:
-    """Return the selected knowledge's entries after a successful write."""
-    result = add_knowledge_entry(content, knowledge_id)
-    if result.get("ok") is not True:
-        return result
-    return list_knowledge_entries(knowledge_id)

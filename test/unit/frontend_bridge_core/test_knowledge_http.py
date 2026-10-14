@@ -6,7 +6,8 @@ import urllib.error
 
 import pytest
 
-from ai.knowledge import operations, service
+from ai.knowledge import service
+from application.knowledge import manage_knowledge
 from frontend_bridge_core.routes.knowledge_routes import BridgeKnowledgeHttp
 
 
@@ -69,10 +70,10 @@ def test_knowledge_search_dispatch_uses_remote_service_when_bridge_does_not_own_
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", "0")
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://bridge/api/knowledge")
     monkeypatch.setattr("urllib.request.urlopen", send)
-    monkeypatch.setattr(operations, "get_mem0", lambda: pytest.fail("local store accessed"))
-    monkeypatch.setattr(operations, "list_knowledge_ids_for_characters", lambda names: pytest.fail("local bindings accessed"))
+    monkeypatch.setattr(manage_knowledge, "get_mem0", lambda: pytest.fail("local store accessed"))
+    monkeypatch.setattr(manage_knowledge, "list_knowledge_ids_for_characters", lambda names: pytest.fail("local bindings accessed"))
 
-    assert operations.search_knowledge("harbor", character_names=["A", "B"], limit=3) == result
+    assert manage_knowledge.search_knowledge("harbor", character_names=["A", "B"], limit=3) == result
     assert calls == [(
         "http://bridge/api/knowledge/search",
         {"query": "harbor", "characterNames": ["A", "B"], "limit": 3},
@@ -86,8 +87,8 @@ def test_network_failure_never_falls_back_to_local_storage(monkeypatch):
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", "0")
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://bridge")
     monkeypatch.setattr("urllib.request.urlopen", send)
-    monkeypatch.setattr(operations, "get_mem0", lambda: pytest.fail("local fallback"))
-    assert "offline" in operations.search_knowledge("fact", character_names=["A"])["error"]
+    monkeypatch.setattr(manage_knowledge, "get_mem0", lambda: pytest.fail("local fallback"))
+    assert "offline" in manage_knowledge.search_knowledge("fact", character_names=["A"])["error"]
 
 
 @pytest.mark.parametrize("configured,expected", [("", 60.0), ("bad", 60.0), ("0", 60.0), ("-1", 60.0), ("2.5", 2.5)])

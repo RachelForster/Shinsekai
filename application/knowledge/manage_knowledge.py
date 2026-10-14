@@ -6,16 +6,42 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from ai.knowledge.runtime import get_mem0
+from core.knowledge.bindings import list_knowledge_ids_for_characters
+
+
 def check_knowledge_status(*, start_loading: bool = True, retry: bool = False) -> dict[str, Any]:
     from ai.knowledge.runtime import check_mem0_status
 
     return check_mem0_status(start_loading=start_loading, **({"retry": True} if retry else {}))
 
 
-def search_knowledge(query: str, *, character_names: list[str], limit: int = 5) -> dict[str, Any]:
-    from ai.knowledge.operations import search_knowledge as search_entries_for_characters
+def _with_store(operation: Callable[..., dict[str, Any]], *args: Any, **kwargs: Any) -> dict[str, Any]:
+    """Acquire the instance at the application boundary and preserve error results."""
+    try:
+        return operation(get_mem0(), *args, **kwargs)
+    except Exception as exc:
+        return {"error": str(exc)}
 
-    return search_entries_for_characters(query, character_names=character_names, limit=limit)
+
+def search_knowledge(query: str, *, character_names: list[str], limit: int = 5) -> dict[str, Any]:
+    from ai.knowledge.operations import search_knowledge as search_store
+    from ai.knowledge.service import request_knowledge_service
+
+    try:
+        text = str(query or "").strip()
+        names = [name for value in character_names if (name := str(value or "").strip())]
+        if not text:
+            return {"error": "query is required"}
+        remote = request_knowledge_service("search", {"query": text, "characterNames": names, "limit": limit})
+        if remote is not None:
+            return remote
+        knowledge_ids = list_knowledge_ids_for_characters(names)
+        if not knowledge_ids:
+            return {"query": text, "knowledge_ids": [], "count": 0, "memories": []}
+        return _with_store(search_store, text, knowledge_ids=knowledge_ids, limit=limit)
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 def preview_import(
@@ -64,27 +90,56 @@ def execute_import(
 
 def list_instances(query: str = "", *, page: int = 1, refresh: bool = False) -> dict[str, Any]:
     from ai.knowledge.operations import list_knowledge_bases
-    return list_knowledge_bases(query, page=page, refresh=refresh)
+    return _with_store(list_knowledge_bases, query, page=page, refresh=refresh)
 
 
 def list_entries(knowledge_id: str, *, limit: int = 200) -> dict[str, Any]:
     from ai.knowledge.operations import list_knowledge_entries
-    return list_knowledge_entries(knowledge_id, limit=limit)
+    if not str(knowledge_id or "").strip():
+        return {"error": "knowledge id is required"}
+    return _with_store(list_knowledge_entries, knowledge_id, limit=limit)
 
 
 def search_entries(knowledge_id: str, query: str, *, limit: int = 200) -> dict[str, Any]:
     from ai.knowledge.operations import search_local_knowledge_entries
-    return search_local_knowledge_entries(knowledge_id, query, limit=limit)
+    if not str(knowledge_id or "").strip() or not str(query or "").strip():
+        return {"error": "knowledge id and query are required"}
+    return _with_store(search_local_knowledge_entries, knowledge_id, query, limit=limit)
 
 
 def remember_knowledge(content: str, knowledge_id: str) -> dict[str, Any]:
     from ai.knowledge.operations import add_knowledge_entry
-    return add_knowledge_entry(content, knowledge_id)
+    if not str(content or "").strip():
+        return {"error": "content is required"}
+    if not str(knowledge_id or "").strip():
+        return {"error": "knowledge id is required"}
+    return _with_store(add_knowledge_entry, content, knowledge_id)
+
+
+def forget_knowledge(memory_id: str) -> dict[str, Any]:
+    """Acquire the instance for the standalone deletion endpoint."""
+    from application.knowledge.delete_knowledge import delete_knowledge_entry
+
+    if not str(memory_id or "").strip():
+        return {"error": "memory id is required"}
+    return _with_store(delete_knowledge_entry, memory_id)
 
 
 def remember_and_list(content: str, knowledge_id: str) -> dict[str, Any]:
-    from ai.knowledge.operations import add_knowledge_entry_and_list
-    return add_knowledge_entry_and_list(content, knowledge_id)
+    from ai.knowledge.operations import add_knowledge_entry, list_knowledge_entries
+
+    if not str(content or "").strip():
+        return {"error": "content is required"}
+    if not str(knowledge_id or "").strip():
+        return {"error": "knowledge id is required"}
+    try:
+        store = get_mem0()
+        result = add_knowledge_entry(store, content, knowledge_id)
+        if result.get("ok") is not True:
+            return result
+        return list_knowledge_entries(store, knowledge_id)
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 def add_binding(character_name: str, knowledge_id: str) -> dict[str, Any]:

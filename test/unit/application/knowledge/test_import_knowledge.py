@@ -8,12 +8,19 @@ from application.knowledge.import_knowledge import execute_knowledge_import, pre
 from test.mocks import MockLLMAdapter
 
 
+@pytest.fixture(autouse=True)
+def supplied_store(monkeypatch):
+    store = object()
+    monkeypatch.setattr("application.knowledge.import_knowledge.get_mem0", lambda: store)
+    return store
+
+
 def test_import_extracts_knowledge_entries_and_preview_matches_requests(tmp_path, monkeypatch):
     source = tmp_path / "knowledge.txt"
     source.write_text("哈" * 600, encoding="utf-8")
     adapter = MockLLMAdapter(responses=['[{"content":"雾港多雾。","knowledge_id":"wrong"}]'])
     writes = []
-    monkeypatch.setattr("application.knowledge.import_knowledge.add_knowledge_entry", lambda content, knowledge_id: writes.append((content, knowledge_id)) or {"ok": True})
+    monkeypatch.setattr("application.knowledge.import_knowledge.add_knowledge_entry", lambda store, content, knowledge_id: writes.append((content, knowledge_id)) or {"ok": True})
     args = dict(knowledge_id="harbor", source_root=tmp_path, max_chunk_tokens=256)
     preview = preview_knowledge_import([source], **args)
     result = execute_knowledge_import([source], llm_adapter=adapter, **args)
@@ -81,3 +88,36 @@ def test_preparation_uses_knowledge_target_and_preserves_preview_fields(tmp_path
         "name": "notes.txt", "kind": "txt", "dialogueLineCount": 1,
         "dialogueCharacters": 5, "sourceTokens": preview["sourceTokens"], "chunkCount": 1,
     }]
+
+
+def test_import_reuses_one_store_for_all_writes(tmp_path, monkeypatch, supplied_store):
+    source = tmp_path / "notes.txt"
+    source.write_text("雾港多雾。港口封闭。", encoding="utf-8")
+    acquired, writes = [], []
+    monkeypatch.setattr("application.knowledge.import_knowledge.get_mem0", lambda: acquired.append(supplied_store) or supplied_store)
+    monkeypatch.setattr("application.knowledge.import_knowledge.add_knowledge_entry", lambda store, content, knowledge_id: writes.append((store, content, knowledge_id)) or {"ok": True})
+    result = execute_knowledge_import(
+        [source], knowledge_id="harbor", source_root=tmp_path, max_chunk_tokens=256,
+        llm_adapter=MockLLMAdapter(responses=['[{"content":"雾港多雾。"},{"content":"港口封闭。"}]']),
+    )
+    assert acquired == [supplied_store]
+    assert result["savedCount"] == 2
+    assert all(store is supplied_store and knowledge_id == "harbor" for store, _, knowledge_id in writes)
+
+
+def test_cancel_before_writes_does_not_acquire_store(tmp_path, monkeypatch):
+    source = tmp_path / "notes.txt"
+    source.write_text("雾港多雾。", encoding="utf-8")
+    monkeypatch.setattr("application.knowledge.import_knowledge.get_mem0", lambda: pytest.fail("loaded cancelled import"))
+    checks = []
+
+    def cancel():
+        checks.append(True)
+        if len(checks) == 2:
+            raise RuntimeError("cancelled")
+
+    with pytest.raises(RuntimeError, match="cancelled"):
+        execute_knowledge_import(
+            [source], knowledge_id="harbor", source_root=tmp_path, max_chunk_tokens=256,
+            llm_adapter=MockLLMAdapter(responses=['[{"content":"雾港多雾。"}]']), cancel_callback=cancel,
+        )
