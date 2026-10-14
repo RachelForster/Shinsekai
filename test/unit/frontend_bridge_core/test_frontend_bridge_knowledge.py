@@ -82,11 +82,11 @@ def test_knowledge_search_dispatch_uses_local_store_when_bridge_owns_service(mon
 
 
 def test_knowledge_forget_dispatch_uses_local_store_when_bridge_owns_service(monkeypatch):
-    from ai.knowledge import operations
+    from application.knowledge import delete_knowledge as deletion
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_URL", "http://self/api/knowledge")
     monkeypatch.setenv("SHINSEKAI_KNOWLEDGE_SERVICE_OWNER", "1")
     monkeypatch.setattr(knowledge, "_get_knowledge_status", lambda **kwargs: {"status": "ready"})
-    monkeypatch.setattr(operations, "get_mem0", lambda: type("Store", (), {"delete": lambda self, mid: None})())
+    monkeypatch.setattr(deletion, "get_mem0", lambda: type("Store", (), {"delete": lambda self, mid: None})())
     monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: pytest.fail("recursive request"))
     assert knowledge._knowledge_operation("forget", memory_id="id")["ok"] is True
 

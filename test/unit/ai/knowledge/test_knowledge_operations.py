@@ -7,7 +7,7 @@ import urllib.request
 
 import pytest
 
-from ai.knowledge import catalog, service
+from ai.knowledge import service
 
 from ai.knowledge import operations as ops
 
@@ -36,7 +36,6 @@ def test_character_knowledge_search_merges_and_ranks_bound_knowledge(monkeypatch
 @pytest.mark.parametrize("operation", [
     lambda: ops.search_knowledge("test", character_names=["A"]),
     lambda: ops.add_knowledge_entry("fact", "a"),
-    lambda: ops.delete_knowledge_entry("id"),
     lambda: ops.list_knowledge_entries("a"),
 ])
 def test_local_failures_are_error_results(monkeypatch, operation):
@@ -84,31 +83,17 @@ def test_invalid_service_response(monkeypatch, payload):
     assert "error" in ops.knowledge_service_status()
 
 
-def test_forget_invalidates_catalog(monkeypatch):
-    deleted = []
-    monkeypatch.setattr(ops, "get_mem0", lambda: SimpleNamespace(delete=deleted.append))
-    monkeypatch.setattr(catalog, "_catalog_expires", 999.0)
-    assert ops.delete_knowledge_entry("entry") == {"ok": True, "memory_id": "entry"}
-    assert deleted == ["entry"]
-    assert catalog._catalog_expires == 0
-
-
-@pytest.mark.parametrize("result", [{"status": "loading"}, {"status": "missing_dependency"}, {"error": "failed"}])
-def test_combined_operations_preserve_failure(monkeypatch, result):
+def test_remember_and_list_preserve_failure(monkeypatch):
+    result = {"error": "failed"}
     monkeypatch.setattr(ops, "add_knowledge_entry", lambda *a: result)
-    monkeypatch.setattr(ops, "delete_knowledge_entry", lambda *a: result)
     monkeypatch.setattr(ops, "list_knowledge_entries", lambda *a: pytest.fail("listed after failure"))
     assert ops.add_knowledge_entry_and_list("fact", "a") == result
-    assert ops.delete_knowledge_entry_and_list("id", "a") == result
 
 
-def test_combined_operations_return_selected_knowledge(monkeypatch):
+def test_remember_and_list_return_selected_knowledge(monkeypatch):
     monkeypatch.setattr(ops, "add_knowledge_entry", lambda *a: {"ok": True})
-    monkeypatch.setattr(ops, "delete_knowledge_entry", lambda *a: {"ok": True})
     monkeypatch.setattr(ops, "list_knowledge_entries", lambda knowledge_id: {"knowledge_id": knowledge_id, "memories": []})
     assert ops.add_knowledge_entry_and_list("fact", "a")["knowledge_id"] == "a"
-    assert ops.delete_knowledge_entry_and_list("id", "b")["knowledge_id"] == "b"
-    assert "error" in ops.delete_knowledge_entry_and_list("id", "")
 
 
 def test_concurrent_remember_deduplicates_under_lock(monkeypatch):

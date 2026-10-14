@@ -2,11 +2,8 @@
 
 from ai.knowledge.operations import (
     list_knowledge_entries,
-    delete_knowledge_entry,
     add_knowledge_entry_and_list,
-    delete_knowledge_entry_and_list,
     knowledge_service_status,
-    delete_knowledge_base,
     list_knowledge_bases,
     list_local_knowledge_entries,
     search_local_knowledge_entries,
@@ -21,11 +18,8 @@ __all__ = [
     "check_knowledge_status",
     "install_knowledge_hooks",
     "list_knowledge_entries",
-    "delete_knowledge_entry",
     "add_knowledge_entry_and_list",
-    "delete_knowledge_entry_and_list",
     "knowledge_service_status",
-    "delete_knowledge_base",
     "list_knowledge_bases",
     "list_local_knowledge_entries",
     "search_local_knowledge_entries",

@@ -88,7 +88,7 @@ def remember_knowledge(content: str, knowledge_id: str) -> dict[str, Any]:
 
 
 def forget_knowledge(memory_id: str) -> dict[str, Any]:
-    from ai.knowledge.operations import delete_knowledge_entry
+    from application.knowledge.delete_knowledge import delete_knowledge_entry
     return delete_knowledge_entry(memory_id)
 
 
@@ -98,7 +98,7 @@ def remember_and_list(content: str, knowledge_id: str) -> dict[str, Any]:
 
 
 def forget_and_list(memory_id: str, knowledge_id: str) -> dict[str, Any]:
-    from ai.knowledge.operations import delete_knowledge_entry_and_list
+    from application.knowledge.delete_knowledge import delete_knowledge_entry_and_list
     return delete_knowledge_entry_and_list(memory_id, knowledge_id)
 
 
@@ -140,6 +140,6 @@ def clear_character_bindings(character_name: str) -> None:
 
 
 def delete_knowledge(knowledge_id: str) -> dict[str, Any]:
-    from ai.knowledge.operations import delete_knowledge_base
+    from application.knowledge.delete_knowledge import delete_knowledge_base
 
     return delete_knowledge_base(knowledge_id)
