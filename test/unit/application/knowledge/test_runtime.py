@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 
-from ai.knowledge import runtime
+from application.knowledge import runtime
 from application.knowledge import tasks
 
 

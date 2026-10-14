@@ -6,12 +6,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from ai.knowledge.runtime import get_mem0
+from application.knowledge.runtime import get_mem0
 from core.knowledge.bindings import list_knowledge_ids_for_characters
 
 
 def check_knowledge_status(*, start_loading: bool = True, retry: bool = False) -> dict[str, Any]:
-    from ai.knowledge.runtime import check_mem0_status
+    from application.knowledge.runtime import check_mem0_status
 
     return check_mem0_status(start_loading=start_loading, **({"retry": True} if retry else {}))
 

@@ -18,7 +18,7 @@ from ai.knowledge.extraction import (
     estimate_knowledge_extraction_input_tokens,
 )
 from ai.knowledge.operations import add_knowledge_entry
-from ai.knowledge.runtime import get_mem0
+from application.knowledge.runtime import get_mem0
 
 
 @dataclass(frozen=True)

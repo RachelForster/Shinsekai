@@ -9,7 +9,6 @@ from ai.knowledge import storage
 @pytest.fixture
 def knowledge_store(monkeypatch):
     store = SimpleNamespace()
-    monkeypatch.setattr(browsing, 'get_mem0', lambda: store)
     return store
 
 

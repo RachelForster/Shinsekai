@@ -8,7 +8,7 @@ from typing import Any, Iterator
 
 from ai.knowledge.catalog import invalidate_knowledge_catalog
 from ai.knowledge.operations import list_knowledge_entries
-from ai.knowledge.runtime import get_mem0
+from application.knowledge.runtime import get_mem0
 from ai.knowledge.storage import scroll_knowledge_records
 from core.knowledge.coordination import knowledge_operation_lock
 
