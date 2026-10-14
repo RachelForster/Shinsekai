@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import importlib.util
-import os
 import logging
 import threading
 import time
@@ -21,17 +20,12 @@ from ai.memory.config import (
     embedding_model_snapshot_path,
 )
 from ai.memory.constants import EMBEDDING_MODEL
-from ai.knowledge.config import build_knowledge_mem0_config
+from ai.knowledge.config import configure_mem0_environment, create_knowledge_mem0
 from application.knowledge.tasks import current_mem0_task, set_mem0_task
 
 logger = logging.getLogger(__name__)
 
-def _configure_mem0_environment() -> None:
-    """Match Memory's local-by-default telemetry policy; preserve opt-in."""
-    os.environ.setdefault("MEM0_TELEMETRY", "False")
-
-
-_configure_mem0_environment()
+configure_mem0_environment()
 
 _mem0: Any = None
 _mem0_load_error: BaseException | None = None
@@ -51,12 +45,6 @@ def _preload_embedding_model() -> str:
     if not snapshot_path:
         raise RuntimeError("knowledge embedding model snapshot is unavailable")
     return snapshot_path
-
-
-def _create_mem0_instance(memory_type: Any, snapshot_path: str) -> Any:
-    config = build_knowledge_mem0_config()
-    config["embedder"]["config"]["model"] = snapshot_path
-    return memory_type.from_config(config)
 
 
 def _dependency_from_error(error: BaseException) -> dict[str, Any]:
@@ -124,7 +112,7 @@ def start_mem0_loading(*, retry: bool = False) -> None:
         global _mem0, _mem0_loading
         stage = "dependency"
         try:
-            _configure_mem0_environment()
+            configure_mem0_environment()
             from mem0 import Memory
 
             stage = "download"
@@ -134,7 +122,7 @@ def start_mem0_loading(*, retry: bool = False) -> None:
                 phase="initialize", status="running", progress=0.96,
                 message="Initializing knowledge.",
             )
-            store = _create_mem0_instance(Memory, snapshot_path)
+            store = create_knowledge_mem0(Memory, snapshot_path)
             with _lock:
                 set_mem0_task(
                     phase="completed", status="succeeded", progress=1.0,
@@ -199,7 +187,7 @@ def check_mem0_status(*, start_loading: bool = True, retry: bool = False) -> dic
         if not retry:
             message = str(task.get("errorUserMessage") or error) if task else str(error)
             return {"status": "error", "error": str(error), "message": message, **task_fields}
-    _configure_mem0_environment()
+    configure_mem0_environment()
     try:
         importlib.import_module("mem0")
     except ImportError as exc:
