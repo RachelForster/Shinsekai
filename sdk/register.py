@@ -25,6 +25,7 @@ from sdk.adapters import (
 )
 from sdk.chat_init import InitChatContext
 from sdk.chat_process import ChatProcessContext, ChatProcessEvent
+from sdk.chat_session import ChatSessionContext, ChatSessionEvent
 from sdk.frontend_user_input import (
     FrontendUserInputController,
     _controller_for_plugin as _frontend_user_input_controller_for_plugin,
@@ -506,6 +507,15 @@ class PluginCapabilityRegistry:
             weight=weight,
             critical=critical,
         )
+
+    def register_chat_session_hook(
+        self,
+        event: ChatSessionEvent | str,
+        hook: Callable[[ChatSessionContext], None],
+        *,
+        label: str = ""
+    ) -> None:
+        self._hook_dispatcher.register_chat_session(event, hook, label=label)
 
     def register_chat_process_hook(
         self,

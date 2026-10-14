@@ -122,12 +122,19 @@ def _shutdown_bridge_runtime(reason: str) -> None:
         if presenter is not None:
             presenter.close()
         try:
-            from application.chat.mobile_access import stop_mobile_access
+            from application.chat.runtime_process import _session_lifecycle
 
-            stop_mobile_access(state)
+            lifecycle = _session_lifecycle(state)
+            try:
+                lifecycle.closing(reason)
+            finally:
+                try:
+                    lifecycle.ended(reason)
+                finally:
+                    lifecycle.dispose()
         except Exception as exc:
             _restart_debug_log(
-                f"bridge runtime mobile access stop failed reason={reason} error={exc}"
+                f"bridge runtime session cleanup failed reason={reason} error={exc}"
             )
     chat_stream = getattr(state, "chat_stream", None) if state is not None else None
     if chat_stream is not None:

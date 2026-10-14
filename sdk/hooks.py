@@ -12,6 +12,7 @@ from typing import Any
 
 from sdk.chat_init import InitChatCancelled, InitChatContext
 from sdk.chat_process import ChatProcessContext, ChatProcessEvent
+from sdk.chat_session import ChatSessionContext, ChatSessionEvent
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,11 @@ class PluginHookEvent(str, Enum):
     CHAT_PROCESS_STOPPING = ChatProcessEvent.STOPPING.value
     CHAT_PROCESS_STOPPED = ChatProcessEvent.STOPPED.value
     CHAT_PROCESS_FAILED = ChatProcessEvent.FAILED.value
+    CHAT_SESSION_CONNECTED = ChatSessionEvent.CONNECTED.value
+    CHAT_SESSION_READY = ChatSessionEvent.READY.value
+    CHAT_SESSION_CLOSING = ChatSessionEvent.CLOSING.value
+    CHAT_SESSION_ENDED = ChatSessionEvent.ENDED.value
+    CHAT_SESSION_FAILED = ChatSessionEvent.FAILED.value
 
 
 @dataclass(frozen=True)
@@ -268,6 +274,25 @@ class PluginHookDispatcher:
             raise TypeError("Chat process dispatch requires ChatProcessContext")
         self.dispatch(context.event.value, context)
 
+    def register_chat_session(
+        self,
+        event: ChatSessionEvent | str,
+        hook: Callable[[ChatSessionContext], None],
+        *,
+        label: str = ""
+    ) -> None:
+        event_key = self._normalize_event(event.value if isinstance(event, ChatSessionEvent) else event)
+        if event_key.value not in {item.value for item in ChatSessionEvent}:
+            raise ValueError("A chat-session lifecycle event is required")
+        if not callable(hook):
+            raise TypeError("Chat session hook must be callable")
+        self.register(event_key, hook, label=label)
+
+    def dispatch_chat_session(self, context: ChatSessionContext) -> None:
+        if not isinstance(context, ChatSessionContext):
+            raise TypeError("Chat session dispatch requires ChatSessionContext")
+        self.dispatch(context.event.value, context)
+
     @property
     def legacy_compact_hooks(self) -> list[Callable[[list[dict[str, Any]]], None]]:
         return [
@@ -294,6 +319,11 @@ class PluginHookDispatcher:
                 raise ValueError(
                     "Chat process context does not match the dispatched event"
                 )
+        if event_key.value in {item.value for item in ChatSessionEvent}:
+            if not isinstance(context, ChatSessionContext):
+                raise TypeError("Chat session dispatch requires ChatSessionContext")
+            if context.event.value != event_key.value:
+                raise ValueError("Chat session context does not match the dispatched event")
         for registration in list(self._hooks[event_key]):
             try:
                 registration.hook(context)

@@ -101,6 +101,110 @@ def test_duplicate_launch_skips_preparation_and_hooks(supervisor):
     supervisor.fixture_popen.assert_called_once()
 
 
+@pytest.mark.parametrize("exit_code,phase", [(0, Phase.STOPPED), (7, Phase.FAILED)])
+def test_exit_after_start_is_reported_once_and_releases_owned_log(
+    supervisor, exit_code, phase
+):
+    launch(supervisor)
+    context = supervisor.fixture_events[0]
+    assert context.launch_id
+    handle = supervisor.resources.log
+    supervisor.fixture_child.poll = lambda: exit_code
+    assert not supervisor.running()
+    assert not supervisor.running()
+    supervisor.shutdown()
+    assert [event.event for event in supervisor.fixture_events] == [
+        Phase.STARTING,
+        Phase.STARTED,
+        phase,
+    ]
+    terminal = supervisor.fixture_events[-1]
+    assert terminal.launch_id == context.launch_id
+    assert terminal.session_id == "fixture-session"
+    assert terminal.exit_code == exit_code
+    assert handle.closed
+    assert supervisor.resources.process is None
+
+
+def test_stale_exit_cannot_release_replacement_process_or_its_log(supervisor):
+    launch(supervisor)
+    original = supervisor.fixture_child
+    context = supervisor.fixture_events[-1]
+    replacement, handle = FakeChild(), io.StringIO()
+    supervisor.resources.process = replacement
+    supervisor.resources.log = handle
+    original.running = False
+    supervisor.observe_exit(original, context)
+    assert supervisor.resources.process is replacement
+    assert supervisor.resources.log is handle
+    assert not handle.closed
+    assert len(supervisor.fixture_events) == 2
+
+
+def test_relaunch_detects_old_exit_before_discarding_its_identity(supervisor):
+    launch(supervisor)
+    previous_id = supervisor.fixture_events[0].launch_id
+    supervisor.fixture_child.running = False
+    replacement = FakeChild(["timeout", 0])
+    supervisor.fixture_popen.return_value = replacement
+    launch(supervisor)
+    assert [event.event for event in supervisor.fixture_events] == [
+        Phase.STARTING,
+        Phase.STARTED,
+        Phase.STOPPED,
+        Phase.STARTING,
+        Phase.STARTED,
+    ]
+    assert supervisor.fixture_events[2].launch_id == previous_id
+    assert supervisor.fixture_events[3].launch_id != previous_id
+    supervisor.shutdown()
+
+
+def test_required_terminal_handler_runs_after_process_gate_is_released(supervisor):
+    launch(supervisor)
+    calls = []
+
+    def handler(context):
+        if context.event is Phase.STOPPED:
+            entered = Event()
+            thread = Thread(
+                target=lambda: (
+                    supervisor._gate.acquire(),
+                    entered.set(),
+                    supervisor._gate.release(),
+                )
+            )
+            thread.start()
+            try:
+                assert entered.wait(2)
+                assert supervisor.resources.log is None
+                calls.append(context)
+            finally:
+                thread.join(2)
+
+    supervisor.handle_event = handler
+    supervisor.shutdown()
+    assert len(calls) == 1
+
+
+def test_background_monitor_detects_exit_without_status_requests(supervisor):
+    supervisor.watch_exits = True
+    supervisor.watch_interval = 0.01
+    seen = Event()
+
+    def observer(context):
+        supervisor.fixture_events.append(context)
+        if context.event is Phase.FAILED:
+            seen.set()
+
+    supervisor.publish = observer
+    launch(supervisor)
+    supervisor.fixture_child.poll = lambda: 9
+    assert seen.wait(2)
+    assert supervisor.fixture_events[-1].exit_code == 9
+    assert supervisor.resources.log is None
+
+
 def test_launch_rejection_has_one_terminal_failure_without_stopping_a_child(supervisor):
     assert supervisor.launch(lambda: LaunchRejected("missing entry")) == "missing entry"
     supervisor.shutdown()

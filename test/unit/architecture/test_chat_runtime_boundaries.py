@@ -19,6 +19,9 @@ ROOT = Path(__file__).resolve().parents[3]
         "runtime_projection",
         "runtime_story",
         "runtime_commands",
+        "events",
+        "session_lifecycle",
+        "lifecycle_diagnostics",
     ],
 )
 def test_chat_services_do_not_import_facade_transport_or_plugin_host(module):

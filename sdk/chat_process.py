@@ -29,6 +29,7 @@ class ChatProcessContext:
     exit_code: int | None = None
     reason: str = ""
     error: BaseException | None = None
+    launch_id: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "event", ChatProcessEvent(self.event))

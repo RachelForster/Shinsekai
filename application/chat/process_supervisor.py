@@ -10,6 +10,7 @@ from pathlib import Path
 import signal
 import subprocess
 import threading
+import uuid
 from collections.abc import Callable
 from typing import TextIO
 
@@ -120,6 +121,9 @@ class ChatProcessSupervisor:
         resources: ProcessResources | None = None,
         publish: LifecyclePublisher | None = None,
         spawn: Callable[..., tuple[ChildProcess, Path]] | None = None,
+        handle_event: LifecyclePublisher | None = None,
+        watch_exits: bool = False,
+        watch_interval: float = 0.1,
     ) -> None:
         self.system, self.log_path, self.hidden_kwargs = system, log_path, hidden_kwargs
         self.stop_child, self.wait_exit, self.monotonic = (
@@ -132,26 +136,59 @@ class ChatProcessSupervisor:
             resources if resources is not None else MemoryProcessResources()
         )
         self.publish = publish or (lambda _context: None)
+        self.handle_event = handle_event or (lambda _context: None)
+        self.watch_exits, self.watch_interval = watch_exits, watch_interval
         self.spawn_child = spawn or self.spawn
         self._gate = threading.RLock()
         self._transitioning = False
+        self._terminal_events: list[ChatProcessContext] | None = None
+        self._delivery = threading.local()
         self._owner: tuple[ChildProcess, ChatProcessContext] | None = None
 
     @contextmanager
     def _transition(self):
-        with self._gate:
-            if self._transitioning:
-                # Observers may query status, but cannot recursively start/stop
-                # a transition whose lifecycle notification is still running.
-                yield False
-                return
-            self._transitioning = True
-            try:
-                yield True
-            finally:
-                self._transitioning = False
+        terminal_events: list[ChatProcessContext] = []
+        try:
+            with self._gate:
+                if self._transitioning:
+                    yield False
+                    return
+                self._transitioning = True
+                self._terminal_events = terminal_events
+                try:
+                    yield True
+                finally:
+                    self._terminal_events = None
+                    self._transitioning = False
+        finally:
+            # Session cleanup may acquire a bridge lifecycle lock. Deliver only
+            # after releasing the process gate to avoid opposite lock ordering.
+            for context in terminal_events:
+                self._deliver(context)
 
     def _notify(self, context: ChatProcessContext) -> None:
+        if (
+            context.event in {ChatProcessEvent.STOPPED, ChatProcessEvent.FAILED}
+            and self._terminal_events is not None
+        ):
+            self._terminal_events.append(context)
+            return
+        self._deliver(context)
+
+    def _deliver(self, context: ChatProcessContext) -> None:
+        # Application handlers report failures to the owner. The legacy publish
+        # callback remains an observation boundary for optional extensions.
+        previous = getattr(self._delivery, "active", False)
+        self._delivery.active = True
+        try:
+            try:
+                self.handle_event(context)
+            finally:
+                self._observe(context)
+        finally:
+            self._delivery.active = previous
+
+    def _observe(self, context: ChatProcessContext) -> None:
         try:
             self.publish(context)
         except Exception:
@@ -162,7 +199,57 @@ class ChatProcessSupervisor:
     def running(self) -> bool:
         with self.resources.lock:
             child = self.resources.process
-            return child is not None and child.poll() is None
+            running = child is not None and child.poll() is None
+            owner = self._owner
+        if child is not None and not running and owner is not None:
+            self.observe_exit(child, owner[1])
+        return running
+
+    def observe_exit(self, child: ChildProcess, context: ChatProcessContext) -> None:
+        with self._transition() as acquired:
+            if not acquired:
+                return
+            with self.resources.lock:
+                if (
+                    self.resources.process is not child
+                    or self._owner is None
+                    or self._owner[0] is not child
+                    or self._owner[1].launch_id != context.launch_id
+                ):
+                    return
+                exit_code = child.poll()
+                if exit_code is None:
+                    return
+                handle, self.resources.log = self.resources.log, None
+                self.resources.process = None
+                self._owner = None
+            self._close(handle)
+            self._notify(
+                replace(
+                    context,
+                    event=(
+                        ChatProcessEvent.STOPPED
+                        if exit_code == 0
+                        else ChatProcessEvent.FAILED
+                    ),
+                    exit_code=exit_code,
+                    reason="exited" if exit_code == 0 else "unexpected_exit",
+                )
+            )
+
+    def _watch_exit(self, child: ChildProcess, context: ChatProcessContext) -> None:
+        delay = threading.Event()
+        while not delay.wait(max(0.01, self.watch_interval)):
+            with self.resources.lock:
+                if self.resources.process is not child:
+                    return
+            try:
+                if child.poll() is not None:
+                    self.observe_exit(child, context)
+                    return
+            except Exception:
+                logger.exception("Chat exit monitoring or application cleanup failed")
+                return
 
     @staticmethod
     def _close(handle: TextIO | None) -> None:
@@ -214,7 +301,11 @@ class ChatProcessSupervisor:
         prepare: Callable[[], LaunchPlan | LaunchRejected],
         *,
         session_id: str = "",
+        launch_id: str = "",
     ) -> str:
+        if getattr(self._delivery, "active", False):
+            return "聊天进程正在启动或关闭中。"
+        self.running()
         with self._transition() as acquired:
             if not acquired:
                 return "聊天进程正在启动或关闭中。"
@@ -226,7 +317,9 @@ class ChatProcessSupervisor:
                 self._owner = None
             self.close_log()
             context = ChatProcessContext(
-                ChatProcessEvent.STARTING, session_id=session_id
+                ChatProcessEvent.STARTING,
+                session_id=session_id,
+                launch_id=launch_id or uuid.uuid4().hex,
             )
             child = None
             try:
@@ -250,6 +343,13 @@ class ChatProcessSupervisor:
                     exit_code = child.wait(timeout=1.2)
                 except subprocess.TimeoutExpired:
                     self._notify(replace(context, event=ChatProcessEvent.STARTED))
+                    if self.watch_exits:
+                        threading.Thread(
+                            target=self._watch_exit,
+                            args=(child, context),
+                            name=f"chat-exit-{context.launch_id[:8]}",
+                            daemon=True,
+                        ).start()
                     return f"聊天进程已启动！PID: {child.pid}"
                 self.close_log()
                 with self.resources.lock:
@@ -293,6 +393,8 @@ class ChatProcessSupervisor:
     def shutdown(
         self, *, wait_timeout: float = 1.2, wait_before_signal: float = 0.0
     ) -> None:
+        if getattr(self._delivery, "active", False):
+            return
         with self._transition() as acquired:
             if not acquired:
                 return
@@ -301,6 +403,7 @@ class ChatProcessSupervisor:
             if child is None:
                 self.close_log()
                 return
+            already_exited = child.poll() is not None
             context = (
                 self._owner[1]
                 if self._owner is not None and self._owner[0] is child
@@ -332,7 +435,9 @@ class ChatProcessSupervisor:
                 exit_code = child.poll()
                 event = (
                     ChatProcessEvent.STOPPED
-                    if error is None and exit_code is not None
+                    if error is None
+                    and exit_code is not None
+                    and (not already_exited or exit_code == 0)
                     else ChatProcessEvent.FAILED
                 )
                 self._notify(
@@ -341,7 +446,11 @@ class ChatProcessSupervisor:
                         event=event,
                         exit_code=exit_code,
                         error=error,
-                        reason="shutdown",
+                        reason=(
+                            "unexpected_exit"
+                            if already_exited and exit_code != 0
+                            else "shutdown"
+                        ),
                     )
                 )
                 if self._owner is not None and self._owner[0] is child:

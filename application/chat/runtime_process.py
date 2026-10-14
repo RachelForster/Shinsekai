@@ -55,6 +55,13 @@ from application.chat.process_supervisor import (
     tail_text,
 )
 from application.chat.launch_preparation import ChatLaunchPreparation
+from application.chat.events import LifecycleEvents
+from application.chat.lifecycle_diagnostics import LifecycleDiagnostics
+from application.chat.session_lifecycle import ChatSessionLifecycle, SessionEffects
+from application.chat.mobile_access import configure_mobile_access, stop_mobile_access
+from application.chat.launch_history import persist_confirmed_history_path
+from sdk.chat_process import ChatProcessContext
+from sdk.chat_session import ChatSessionContext
 from application.chat.runtime_commands import (
     ChatCommandRouter,
     HistoryCommands,
@@ -245,6 +252,8 @@ def _launch_chat(
     workflow_path: str = "",
     media_selection_mode: str = "indexed",
     use_current_template_for_history: bool = False,
+    session_id: str | None = None,
+    launch_id: str = "",
 ) -> str:
     return _supervisor.launch(
         lambda: _launch_preparation.prepare(
@@ -266,9 +275,14 @@ def _launch_chat(
             media_selection_mode=media_selection_mode,
             use_current_template_for_history=use_current_template_for_history,
         ),
-        session_id=str(
-            (getattr(state, "chat_session", {}) or {}).get("sessionId") or ""
-        ).strip(),
+        session_id=(
+            str(session_id).strip()
+            if session_id is not None
+            else str(
+                (getattr(state, "chat_session", {}) or {}).get("sessionId") or ""
+            ).strip()
+        ),
+        launch_id=launch_id,
     )
 
 
@@ -478,7 +492,38 @@ def _publish_process_lifecycle(context):
 
     dispatcher = get_plugin_hook_dispatcher()
     if dispatcher is not None:
-        dispatcher.dispatch_chat_process(context)
+        if isinstance(context, ChatProcessContext):
+            dispatcher.dispatch_chat_process(context)
+        elif isinstance(context, ChatSessionContext):
+            dispatcher.dispatch_chat_session(context)
+
+
+def _session_lifecycle(state, **effects) -> ChatSessionLifecycle:
+    service = getattr(state, "chat_session_lifecycle", None)
+    if service is None:
+        service = ChatSessionLifecycle(
+            state,
+            _application_events,
+            SessionEffects(
+                configure_mobile=lambda state, **kwargs: configure_mobile_access(
+                    state, **kwargs
+                ),
+                stop_mobile=lambda state: stop_mobile_access(state),
+                remember_history=lambda state, path: persist_confirmed_history_path(
+                    state, path
+                ),
+                clear_story=lambda state: clear_story_session(state),
+            ),
+        )
+        state.chat_session_lifecycle = service
+    for name, callback in effects.items():
+        setattr(service.effects, name, callback)
+    return service
+
+
+_application_events = LifecycleEvents()
+_application_events.subscribe(LifecycleDiagnostics())
+_application_events.subscribe(_publish_process_lifecycle)
 
 
 _process_system = ProcessSystem(
@@ -497,7 +542,8 @@ _supervisor = ChatProcessSupervisor(
     monotonic=lambda: time.monotonic(),
     failed_launch=lambda code, path: _failed_launch_message(code, path),
     resources=_LegacyProcessResources(),
-    publish=lambda context: _publish_process_lifecycle(context),
+    handle_event=lambda context: _application_events.emit(context),
+    watch_exits=True,
     spawn=lambda command, **kwargs: _popen_chat_process(command, **kwargs),
 )
 _launch_preparation = ChatLaunchPreparation(

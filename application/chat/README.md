@@ -5,6 +5,50 @@ implementation combined process ownership, launch preparation, transport
 snapshots, history download capabilities, story persistence and command routing.
 Characterization tests exercise the original entry points before extraction.
 
+## Application lifecycle delivery
+
+The application owns `LifecycleEvents` even when no plugins are installed or
+plugin loading has not completed. Required application handlers run first; every
+handler is attempted and their errors propagate as `LifecycleDispatchError`.
+Optional observers, including the SDK plugin dispatcher, run afterward with
+exception isolation. Observers see a required-handler error in their immutable
+context when the originating context did not already contain an error.
+
+`ChatProcessContext` now carries a unique `launch_id` alongside `session_id`.
+Launch and resume pass the newly created stream identity explicitly, before the
+bridge binds it as its active session. The supervisor monitors owned children
+in the background and also detects exits during status reads. Exit delivery is
+idempotent and occurs after the process gate and log are released; a stale exit
+cannot release a replacement child's resources. Ordinary observer reentrancy
+cannot recursively start or stop a process transition.
+
+`ChatSessionLifecycle` owns session side effects through required application
+handlers, scoped to the session and launch ID. SDK session observation hooks are
+registered through `register_chat_session_hook`:
+
+- `CONNECTED`: the transport producer is attached. Legacy synchronous/headless
+  entry points retain their existing confirmation boundary at this milestone.
+- `READY`: asynchronous initialization explicitly succeeded. React asynchronous
+  launches enable mobile access and remember the confirmed history path here,
+  rather than on child `STARTED`. Legacy `CONNECTED` does not claim model readiness.
+- `CLOSING`: close the transport notification and stop mobile access. A normal
+  stop captures its final snapshot after these effects and before deletion.
+- `ENDED`: delete the owned stream and clear the owned story/session state.
+- `FAILED`: attempt rollback of all owned session effects; an error in one
+  cleanup step does not prevent the remaining steps, and failures remain visible.
+
+Initialization cleanup releases its exact stream identity idempotently, while a
+delayed exit or old close cannot clear a newer launch, even for the same session
+ID. Bridge watchdog shutdown uses the same session lifecycle and unregisters its
+application subscription afterward. Structured lifecycle diagnostics observe
+events separately, recording identity, exit code and elapsed time without launch
+configuration or mutable host state.
+
+Child signalling/termination and process log release remain in the supervisor.
+Conversation history saving remains in the child's ordered shutdown orchestration,
+before plugin/memory shutdown hooks. None of these operations depends on optional
+plugin observers.
+
 | Module | Responsibility | Dependencies |
 | --- | --- | --- |
 | `runtime_process.py` | Compatibility entry points and default service wiring | Existing bridge state and host adapters |

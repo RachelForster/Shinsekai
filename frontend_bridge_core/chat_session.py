@@ -20,6 +20,7 @@ from application.chat.runtime_process import (
     _chat_snapshot,
     _chat_stream_initial_snapshot,
     _launch_chat as _launch_runtime_chat,
+    _session_lifecycle,
     _sanitize_user_display_name,
 )
 from application.chat.start_chat import start_chat
@@ -110,12 +111,17 @@ def wait_for_chat_runtime_ready(
         return
     if wait_for_producer(session_id, timeout=timeout):
         return
+    error = RuntimeError("启动失败: 实时聊天会话未就绪，请稍后重试。")
+    lifecycle = _session_lifecycle(state)
+    launch_id = lifecycle.adopt_current().launch_id
     try:
         stop_chat(state, reason="聊天会话启动超时。")
     finally:
-        chat_stream.delete_session(session_id)
-        state.chat_session = {**state.chat_session, "sessionId": ""}
-    raise RuntimeError("启动失败: 实时聊天会话未就绪，请稍后重试。")
+        try:
+            lifecycle.release_stream(session_id)
+        finally:
+            lifecycle.report_failure(error, session_id=session_id, launch_id=launch_id)
+    raise error
 
 
 def start_chat_initialization(
@@ -283,36 +289,53 @@ def _launch_chat_locked(
         body.get("effectNames") if isinstance(body.get("effectNames"), list) else [],
     )
     effect_names_str = ",".join(effect_context.selected_names)
-    message = _launch_runtime_chat(
+    lifecycle = _session_lifecycle(
         state,
-        character_names=characters,
-        effect_names=effect_names_str,
-        effect_context=effect_context,
-        history_file=history_path.as_posix(),
-        init_sprite_path=init_sprite_path,
-        show_initial_sprite=body.get("showInitialSprite", True) is not False,
-        room_id=room_id,
-        selected_bg=str(body.get("backgroundName") or ""),
-        system_template=system_template,
-        use_cg=bool(body.get("useCg")),
-        user_scenario=user_scenario,
-        stream_endpoint=(
-            str(stream_info.get("producerEndpoint") or "") if use_react_runtime else ""
-        ),
-        init_stream_endpoint=(
-            str(stream_info.get("producerEndpoint") or "")
-            if not use_react_runtime
-            else ""
-        ),
-        workflow_path=str(body.get("workflowPath") or ""),
-        media_selection_mode=media_selection_mode,
-        **({"use_current_template_for_history": True} if body.get("useCurrentTemplateForHistory") else {}),
+        configure_mobile=lambda state, **options: configure_mobile_access(state, **options),
+        remember_history=lambda state, path: persist_confirmed_history_path(state, path),
+    )
+    launch_id = lifecycle.begin(
+        str(stream_info.get("sessionId") or ""),
+        history_path=history_path if init_stream_info is None else "",
+        mobile_enabled=mobile_access_enabled,
+        mobile_on_connected=init_stream_info is None or not use_react_runtime,
+        remember_on_connected=init_stream_info is None,
+    )
+    message = lifecycle.launch(
+        lambda: _launch_runtime_chat(
+            state,
+            session_id=str(stream_info.get("sessionId") or ""),
+            launch_id=launch_id,
+            character_names=characters,
+            effect_names=effect_names_str,
+            effect_context=effect_context,
+            history_file=history_path.as_posix(),
+            init_sprite_path=init_sprite_path,
+            show_initial_sprite=body.get("showInitialSprite", True) is not False,
+            room_id=room_id,
+            selected_bg=str(body.get("backgroundName") or ""),
+            system_template=system_template,
+            use_cg=bool(body.get("useCg")),
+            user_scenario=user_scenario,
+            stream_endpoint=(
+                str(stream_info.get("producerEndpoint") or "") if use_react_runtime else ""
+            ),
+            init_stream_endpoint=(
+                str(stream_info.get("producerEndpoint") or "") if not use_react_runtime else ""
+            ),
+            workflow_path=str(body.get("workflowPath") or ""),
+            media_selection_mode=media_selection_mode,
+            **(
+                {"use_current_template_for_history": True}
+                if body.get("useCurrentTemplateForHistory")
+                else {}
+            ),
+        )
     )
     dependency_error = runtime_dependency_error_from_text(message)
     if dependency_error:
         session_id = str(stream_info.get("sessionId") or "")
-        if session_id and state.chat_stream is not None:
-            state.chat_stream.delete_session(session_id)
+        lifecycle.failed(message)
         state.chat_session = {**state.chat_session, **session_base}
         return _chat_snapshot(
             state,
@@ -321,9 +344,7 @@ def _launch_chat_locked(
             extra={"runtimeDependencyError": dependency_error},
         )
     if message.startswith("启动失败"):
-        session_id = str(stream_info.get("sessionId") or "")
-        if session_id and state.chat_stream is not None:
-            state.chat_stream.delete_session(session_id)
+        lifecycle.failed(message)
         raise RuntimeError(message)
     state.chat_session = {
         **state.chat_session,
@@ -351,18 +372,7 @@ def _launch_chat_locked(
             },
         )
         wait_for_chat_runtime_ready(state, stream_info)
-    configure_mobile_access(
-        state,
-        enabled=mobile_access_enabled,
-    )
-    if init_stream_info is None and not persist_confirmed_history_path(
-        state,
-        history_path,
-    ):
-        logger.warning(
-            "Chat launched but the selected history path could not be persisted",
-            extra={"history_path": history_path.as_posix()},
-        )
+    lifecycle.connected()
     try:
         remember_conversation(state, history_path, {
             **body,
@@ -511,33 +521,42 @@ def _resume_last_chat_locked(
         if use_react_runtime and state.chat_stream is not None
         else {}
     )
-    message = _launch_runtime_chat(
+    lifecycle = _session_lifecycle(
         state,
-        character_names=selected_characters,
-        history_file=history_path.as_posix(),
-        init_sprite_path=init_sprite_path,
-        show_initial_sprite=session.get("showInitialSprite", True) is not False,
-        room_id=room_id,
-        selected_bg=selected_bg,
-        system_template=system_template,
-        use_cg=bool(session.get("useCg", False)),
-        user_scenario=scenario,
-        stream_endpoint=(
-            str(stream_info.get("producerEndpoint") or "") if use_react_runtime else ""
-        ),
-        init_stream_endpoint=(
-            str(stream_info.get("producerEndpoint") or "")
-            if not use_react_runtime
-            else ""
-        ),
-        workflow_path=str(session.get("workflowPath") or ""),
-        media_selection_mode=media_selection_mode,
+        configure_mobile=lambda state, **options: configure_mobile_access(state, **options),
+    )
+    launch_id = lifecycle.begin(
+        str(stream_info.get("sessionId") or ""),
+        mobile_enabled=mobile_access_enabled,
+        mobile_on_connected=init_stream_info is None or not use_react_runtime,
+    )
+    message = lifecycle.launch(
+        lambda: _launch_runtime_chat(
+            state,
+            session_id=str(stream_info.get("sessionId") or ""),
+            launch_id=launch_id,
+            character_names=selected_characters,
+            history_file=history_path.as_posix(),
+            init_sprite_path=init_sprite_path,
+            show_initial_sprite=session.get("showInitialSprite", True) is not False,
+            room_id=room_id,
+            selected_bg=selected_bg,
+            system_template=system_template,
+            use_cg=bool(session.get("useCg", False)),
+            user_scenario=scenario,
+            stream_endpoint=(
+                str(stream_info.get("producerEndpoint") or "") if use_react_runtime else ""
+            ),
+            init_stream_endpoint=(
+                str(stream_info.get("producerEndpoint") or "") if not use_react_runtime else ""
+            ),
+            workflow_path=str(session.get("workflowPath") or ""),
+            media_selection_mode=media_selection_mode,
+        )
     )
     dependency_error = runtime_dependency_error_from_text(message)
     if dependency_error:
-        session_id = str(stream_info.get("sessionId") or "")
-        if session_id and state.chat_stream is not None:
-            state.chat_stream.delete_session(session_id)
+        lifecycle.failed(message)
         state.chat_session = {**state.chat_session, **session_base}
         return _chat_snapshot(
             state,
@@ -546,9 +565,7 @@ def _resume_last_chat_locked(
             extra={"runtimeDependencyError": dependency_error},
         )
     if message.startswith("启动失败"):
-        session_id = str(stream_info.get("sessionId") or "")
-        if session_id and state.chat_stream is not None:
-            state.chat_stream.delete_session(session_id)
+        lifecycle.failed(message)
         raise RuntimeError(message)
     state.chat_session = {
         **state.chat_session,
@@ -576,10 +593,7 @@ def _resume_last_chat_locked(
             },
         )
         wait_for_chat_runtime_ready(state, stream_info)
-    configure_mobile_access(
-        state,
-        enabled=mobile_access_enabled,
-    )
+    lifecycle.connected()
     return _chat_snapshot(
         state,
         "idle",
