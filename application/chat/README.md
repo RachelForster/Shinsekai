@@ -5,6 +5,29 @@ implementation combined process ownership, launch preparation, transport
 snapshots, history download capabilities, story persistence and command routing.
 Characterization tests exercise the original entry points before extraction.
 
+| Module | Responsibility | Dependencies |
+| --- | --- | --- |
+| `runtime_process.py` | Compatibility entry points and default service wiring | Existing bridge state and host adapters |
+| `process_supervisor.py` | Child/log ownership, serialized lifecycle, bounded termination | Process primitives, resource slots, observer callback |
+| `launch_preparation.py` | Templates, configuration and trusted launch plan | Root/entrypoint callbacks and existing config helpers |
+| `runtime_projection.py` | Snapshot composition, identity and media defaults | History callback, runtime status and story/mobile projections |
+| `runtime_history.py` | History projection and expiring download capabilities | Path/read/name callbacks, clock and token factory |
+| `runtime_story.py` | Story history persistence and branch coordination | History and story ports |
+| `runtime_commands.py` | Registered command handlers and transport delivery policy | Ports and callbacks required by each handler group |
+| `runtime_ports.py` | Structural contracts and callable adapters | Standard library and SDK lifecycle types |
+
+Handlers extend `ChatCommandRouter` through `register`; the router and shared
+delivery policy do not need new command branches. Local handlers must explicitly
+opt out of child transport. History, story, snapshot and process tests can supply
+small substitutes without constructing the plugin host or frontend transport.
+
+The process-global slots remain at the compatibility boundary because existing
+watchdog and bridge callers share one active child. Services do not import that
+facade. A supervisor can also own independent in-memory resources for testing or
+another host composition. Observers run outside the resource mutex; recursive
+start/stop calls during a lifecycle notification are ignored, while concurrent
+requests serialize. Duplicate starts do not prepare configuration or emit hooks.
+
 ## Lifecycle assessment
 
 `init_chat` already reports provider/plugin initialization in the child process.
@@ -22,6 +45,11 @@ Register observers through `PluginCapabilityRegistry.register_chat_process_hook`
 - `STOPPING`: shutdown has selected the child it owns.
 - `STOPPED`: the child exited and its owned log has been released.
 - `FAILED`: launch/preparation or shutdown failed, including an early exit.
+
+Failed launches do not subsequently emit `STOPPED` for the same exited child.
+Shutdown emits `STOPPED` only after confirming exit; a child that remains alive
+after the bounded termination attempt produces `FAILED`. The existing shutdown
+call's return/exception contract remains unchanged.
 
 The context contains session ID, PID, exit code, reason and the original error.
 It exposes no host state, environment or launch configuration. These are
