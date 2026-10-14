@@ -4,7 +4,7 @@ import pytest
 
 from ai.memory.token_estimator import estimate_message_tokens
 from ai.knowledge.extraction import EXPECTED_OUTPUT_TOKENS_PER_CHUNK, KnowledgeExtractionError
-from application.knowledge.import_knowledge import execute_knowledge_import, preview_knowledge_import
+from application.knowledge.import_knowledge import execute_knowledge_import, prepare_knowledge_import, preview_knowledge_import
 from test.mocks import MockLLMAdapter
 
 
@@ -61,3 +61,23 @@ def test_preview_knowledge_import_counts_nonempty_txt_lines(tmp_path):
     assert preview["fileCount"] == 1
     assert preview["dialogueLineCount"] == 2
     assert preview["chunkCount"] == 1
+
+
+def test_preparation_uses_knowledge_target_and_preserves_preview_fields(tmp_path):
+    source = tmp_path / "notes.txt"
+    source.write_text("雾港多雾。", encoding="utf-8")
+    prepared = prepare_knowledge_import(
+        [source], knowledge_id=" harbor ", source_root=tmp_path, max_chunk_tokens=256,
+    )
+    assert prepared.knowledge_id == "harbor"
+    assert not hasattr(prepared, "character_name")
+    preview = prepared.preview_payload()
+    assert set(preview) == {
+        "fileCount", "dialogueLineCount", "dialogueCharacters", "sourceTokens",
+        "chunkCount", "estimatedInputTokens", "estimatedOutputTokens",
+        "estimatedTotalTokens", "files", "warnings",
+    }
+    assert preview["files"] == [{
+        "name": "notes.txt", "kind": "txt", "dialogueLineCount": 1,
+        "dialogueCharacters": 5, "sourceTokens": preview["sourceTokens"], "chunkCount": 1,
+    }]
