@@ -235,6 +235,8 @@ jobs:
         shell: bash
         env:
           NO_STRIP: "1"
+          # Tauri otherwise hides the DMG script's stdout/stderr on failure.
+          RUST_LOG: ${{ runner.os == 'macOS' && 'tauri_bundler::utils=debug' || '' }}
         run: |
           if [[ "${{ matrix.bundles }}" == "none" ]]; then
             pnpm tauri build --ci --no-bundle --config '{"bundle":{"createUpdaterArtifacts":false}}'
