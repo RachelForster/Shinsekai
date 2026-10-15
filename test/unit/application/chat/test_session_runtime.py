@@ -665,8 +665,9 @@ def test_streaming_shutdown_supplies_all_lifecycle_callbacks(monkeypatch) -> Non
     assert transport.events[-1]["type"] == "session.closed"
 
 
+@pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("available", [False, True])
-def test_session_registers_communication_callbacks_after_plugin_loading(monkeypatch, available):
+def test_session_registers_knowledge_only_when_enabled_and_available(monkeypatch, enabled, available):
     transport = _Transport(streaming=False)
     transport.knowledge_search = Mock() if available else None
     transport.knowledge_status = Mock() if available else None
@@ -679,12 +680,15 @@ def test_session_registers_communication_callbacks_after_plugin_loading(monkeypa
         on_plugins_loaded(SimpleNamespace(hook_dispatcher=dispatcher))
         return _startup(config)
     monkeypatch.setattr(session_runtime, "create_chat_startup_context", build)
-    session_runtime.create_chat_session(_options(stream_endpoint="", headless=True), transport)
-    if available:
+    options = _options(stream_endpoint="", headless=True)
+    options.config.config = SimpleNamespace(api_config=SimpleNamespace(knowledge_enabled=enabled))
+    session_runtime.create_chat_session(options, transport)
+    if enabled and available:
         register.assert_called_once_with(
             dispatcher, search_func=transport.knowledge_search, status_func=transport.knowledge_status,
         )
-        transport.knowledge_search.assert_not_called()
-        transport.knowledge_status.assert_not_called()
     else:
         register.assert_not_called()
+    if available:
+        transport.knowledge_search.assert_not_called()
+        transport.knowledge_status.assert_not_called()

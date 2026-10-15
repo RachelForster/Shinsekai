@@ -85,15 +85,11 @@ def create_transport(
     stream_endpoint = str(getattr(args, "stream_endpoint", "") or "").strip()
     init_endpoint = str(getattr(args, "init_stream_endpoint", "") or "").strip()
     transport = transport or ChatSessionTransport()
-    if options.config.config.api_config.knowledge_enabled:
-        from frontend_bridge_core.transport.knowledge_http import (
-            request_knowledge_search, request_knowledge_status,
-        )
-        transport.knowledge_search = request_knowledge_search
-        transport.knowledge_status = request_knowledge_status
-    else:
-        transport.knowledge_search = None
-        transport.knowledge_status = None
+    from frontend_bridge_core.transport.knowledge_http import (
+        request_knowledge_search, request_knowledge_status,
+    )
+    transport.knowledge_search = request_knowledge_search
+    transport.knowledge_status = request_knowledge_status
     bootstrap_sink = transport.init_sink
 
     if stream_endpoint:

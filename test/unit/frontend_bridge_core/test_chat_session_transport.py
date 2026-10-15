@@ -136,8 +136,7 @@ def test_runtime_transport_reuses_early_stream_connection(monkeypatch) -> None:
     create_sink.assert_not_called()
 
 
-@pytest.mark.parametrize("enabled", [True, False])
-def test_transport_supplies_knowledge_functions_by_config(monkeypatch, enabled):
+def test_transport_supplies_knowledge_functions_without_product_config(monkeypatch):
     from frontend_bridge_core.transport.knowledge_http import (
         request_knowledge_search, request_knowledge_status,
     )
@@ -145,11 +144,8 @@ def test_transport_supplies_knowledge_functions_by_config(monkeypatch, enabled):
     monkeypatch.setattr("urllib.request.urlopen", send)
     options = SimpleNamespace(
         args=SimpleNamespace(stream_endpoint="", init_stream_endpoint=""),
-        config=SimpleNamespace(config=SimpleNamespace(
-            api_config=SimpleNamespace(knowledge_enabled=enabled),
-        )),
     )
     transport = chat_session.create_transport(options)
-    assert transport.knowledge_search is (request_knowledge_search if enabled else None)
-    assert transport.knowledge_status is (request_knowledge_status if enabled else None)
+    assert transport.knowledge_search is request_knowledge_search
+    assert transport.knowledge_status is request_knowledge_status
     send.assert_not_called()

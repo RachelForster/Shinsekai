@@ -260,7 +260,12 @@ def create_chat_session(
         )
         search = getattr(transport, "knowledge_search", None)
         status = getattr(transport, "knowledge_status", None)
-        if plugin_manager is not None and search is not None and status is not None:
+        if (
+            options.config.config.api_config.knowledge_enabled
+            and plugin_manager is not None
+            and search is not None
+            and status is not None
+        ):
             from application.knowledge.hooks import install_knowledge_hooks
             install_knowledge_hooks(
                 plugin_manager.hook_dispatcher, search_func=search, status_func=status,
