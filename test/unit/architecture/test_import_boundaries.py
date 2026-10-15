@@ -81,6 +81,7 @@ FORBIDDEN_IMPORTS = {
     ),
     "ai": frozenset(
         {
+            "application",
             "asr",
             "frontend_bridge_core",
             "llm",
