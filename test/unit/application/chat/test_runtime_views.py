@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from application.chat import composition as chat
+from application.chat.history import paths as history_paths
 from test.unit.application.chat.runtime_process_fakes import make_state, write_messages
 
 
@@ -117,15 +118,38 @@ def test_history_falls_back_to_disk_only_when_stream_has_no_history(state):
     assert chat._history_projection.entries(state) == []
 
 
-def test_unc_history_is_not_accessed(state, monkeypatch):
+@pytest.mark.parametrize(
+    "history_path",
+    [
+        r"\\server\share\history.json",
+        "//server/share/history.json",
+        r"\\?\UNC\server\share\history.json",
+    ],
+)
+def test_unc_history_is_not_accessed(state, monkeypatch, history_path):
+    # UNC is a Windows policy; isolate it without changing pathlib's host OS.
+    monkeypatch.setattr(history_paths, "os", SimpleNamespace(name="nt"))
     state.chat_stream = None
-    state.chat_session["historyPath"] = r"\\server\share\history.json"
+    state.chat_session["historyPath"] = history_path
     reader = MagicMock(side_effect=AssertionError("must not access network history"))
     monkeypatch.setattr(chat._history_projection, "resolve", reader)
     assert chat._history_projection.entries(state) == []
     chat._story_history.persist_choice(state, "choice", "Player")
     chat._story_history.persist_scene(state, "message", "Player", [])
     reader.assert_not_called()
+
+
+def test_windows_style_history_path_uses_normal_resolution_on_posix(state, monkeypatch):
+    path = write_messages(state, [{"role": "user", "content": "local"}])
+    monkeypatch.setattr(history_paths, "os", SimpleNamespace(name="posix"))
+    state.chat_stream = None
+    raw = r"\\server\share\history.json"
+    state.chat_session["historyPath"] = raw
+    resolve = MagicMock(return_value=path)
+    monkeypatch.setattr(chat._history_projection, "resolve", resolve)
+
+    assert chat._history_projection.entries(state)[0]["text"] == "你: local"
+    resolve.assert_called_once_with(state, raw)
 
 
 def test_stream_snapshot_precedence_renderer_and_mobile_transport(state, monkeypatch):
