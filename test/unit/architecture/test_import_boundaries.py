@@ -983,7 +983,7 @@ def test_bridge_facing_application_use_cases_have_explicit_action_names() -> Non
 
 def test_active_host_code_does_not_import_legacy_ai_namespaces() -> None:
     legacy_roots = {"asr", "llm", "t2i", "tts"}
-    retired_knowledge = {"bindings", "imports", "runtime", "tasks", "hooks", "service"}
+    retired_knowledge = {"bindings", "imports", "runtime", "tasks", "hooks", "service", "catalog", "storage"}
     retired_modules = {f"ai.knowledge.{name}" for name in retired_knowledge}
     assert not any(
         (REPO_ROOT / "ai/knowledge" / f"{name}.py").exists()

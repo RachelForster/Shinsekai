@@ -26,7 +26,6 @@ def test_character_knowledge_search_merges_and_ranks_bound_knowledge(monkeypatch
 @pytest.mark.parametrize("operation", [
     lambda store: ops.search_knowledge(store, "test", knowledge_ids=["a"]),
     lambda store: ops.add_knowledge_entry(store, "fact", "a"),
-    lambda store: ops.list_knowledge_entries(store, "a"),
 ])
 def test_local_failures_are_error_results(monkeypatch, operation):
     def fail(*args, **kwargs):
@@ -46,3 +45,24 @@ def test_concurrent_remember_deduplicates_under_lock(monkeypatch):
         results = list(pool.map(lambda _: ops.add_knowledge_entry(store, "same fact", "a"), range(16)))
     assert len(rows) == 1
     assert sum(result["duplicate"] for result in results) == 15
+
+
+@pytest.mark.parametrize("parameter", ["limit", "top_k"])
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_entry_search_adapts_mem0_without_losing_fields(parameter, wrapped):
+    calls = []
+    rows = [{"id": "1", "memory": "setting", "score": 0.8}]
+
+    def result(query, filters, count):
+        calls.append((query, filters, count))
+        return {"results": rows} if wrapped else rows
+
+    def legacy(query, *, filters, limit):
+        return result(query, filters, limit)
+
+    def current(query, *, filters, top_k):
+        return result(query, filters, top_k)
+
+    store = SimpleNamespace(search=current if parameter == "top_k" else legacy)
+    assert ops.search_knowledge(store, "test", knowledge_ids=["alpha"], limit=5)["memories"] == rows
+    assert calls == [("test", {"user_id": "alpha"}, 5)]

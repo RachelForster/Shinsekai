@@ -3,40 +3,12 @@ from types import SimpleNamespace
 import pytest
 
 from ai.knowledge import operations as browsing
-from ai.knowledge import storage
 
 
 @pytest.fixture
 def knowledge_store(monkeypatch):
     store = SimpleNamespace()
     return store
-
-
-@pytest.mark.parametrize("parameter", ["limit", "top_k"])
-@pytest.mark.parametrize("wrapped", [False, True])
-def test_entry_list_uses_mem0_with_knowledge_filter(monkeypatch, parameter, wrapped):
-    calls = []
-    def result(filters, count):
-        calls.append((filters, count))
-        rows = [{"id": "1", "memory": "setting"}, {"id": "2", "content": "other"}, "plain"]
-        if filters["user_id"] == "empty":
-            rows = []
-        return {"results": rows} if wrapped else rows
-    def legacy(*, filters, limit):
-        return result(filters, limit)
-    def current(*, filters, top_k, **kwargs):
-        return result(filters, top_k)
-    store = SimpleNamespace(get_all=current if parameter == "top_k" else legacy)
-    monkeypatch.setattr(storage, "scroll_knowledge_records", lambda *a, **kw: pytest.fail("entry list bypassed Mem0"))
-    listed = browsing.list_knowledge_entries(store, "alpha")
-    assert listed == {"knowledge_id": "alpha", "count": 3, "memories": [
-        {"id": "1", "memory": "setting"}, {"id": "2", "memory": "other"}, {"id": "", "memory": "plain"},
-    ]}
-    browsing.list_knowledge_entries(store, "alpha", limit=999)
-    browsing.list_knowledge_entries(store, "orphan", limit=5)
-    assert calls == [({"user_id": "alpha"}, 200), ({"user_id": "alpha"}, 200), ({"user_id": "orphan"}, 5)]
-    assert browsing.list_knowledge_entries(store, "empty") == {"knowledge_id": "empty", "count": 0, "memories": []}
-    assert browsing.list_knowledge_entries(store, "")["error"] == "knowledge id is required"
 
 
 def test_entry_search_uses_explicit_knowledge_and_bounds_limit(knowledge_store):

@@ -94,7 +94,7 @@ def _knowledge_operation(operation: str, **kwargs: Any) -> dict[str, Any]:
 
     operations = {
         "search": search_knowledge.search_knowledge,
-        "list": manage_knowledge.list_entries,
+        "list": manage_knowledge.get_knowledge_entries,
         "remember": manage_knowledge.remember_knowledge,
         "forget": manage_knowledge.forget_knowledge,
         "delete": delete_knowledge.delete_knowledge_base,
@@ -114,7 +114,7 @@ def _knowledge_browse(operation: str, **kwargs: Any) -> dict[str, Any]:
 
     operations = {
         "instances": manage_knowledge.list_instances,
-        "entries": manage_knowledge.list_entries,
+        "entries": manage_knowledge.get_knowledge_entries,
         "entries/search": manage_knowledge.search_entries,
     }
     if operation not in operations:

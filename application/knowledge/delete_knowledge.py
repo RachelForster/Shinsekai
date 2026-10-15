@@ -3,37 +3,14 @@
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
-from ai.knowledge.catalog import invalidate_knowledge_catalog
-from ai.knowledge.operations import list_knowledge_entries
+from core.knowledge.catalog import collect_knowledge_entry_ids, invalidate_catalog_after_write
+from application.knowledge.manage_knowledge import read_knowledge_entries
 from application.knowledge.runtime import get_mem0
-from ai.knowledge.storage import scroll_knowledge_records
 from core.knowledge.coordination import knowledge_operation_lock
 
 logger = logging.getLogger(__name__)
-
-
-@contextmanager
-def _invalidate_catalog_after_write() -> Iterator[None]:
-    """Invalidate even when deletion fails after partially changing data."""
-    try:
-        yield
-    finally:
-        invalidate_knowledge_catalog()
-
-
-def _collect_knowledge_entry_ids(store: Any, knowledge_id: str) -> list[str]:
-    """Collect every entry before deletion so scrolling sees a stable collection."""
-    ids: set[str] = set()
-    cursor = None
-    while True:
-        records, next_cursor = scroll_knowledge_records(store, knowledge_id=knowledge_id, cursor=cursor, limit=256)
-        ids.update(str(record.id) for record in records)
-        if next_cursor is None:
-            return sorted(ids)
-        cursor = str(next_cursor)
 
 
 def delete_knowledge_entry(store: Any, memory_id: str) -> dict[str, Any]:
@@ -42,7 +19,7 @@ def delete_knowledge_entry(store: Any, memory_id: str) -> dict[str, Any]:
     if not mid:
         return {"error": "memory id is required"}
     try:
-        with knowledge_operation_lock, _invalidate_catalog_after_write():
+        with knowledge_operation_lock, invalidate_catalog_after_write():
             store.delete(mid)
         return {"ok": True, "memory_id": mid}
     except Exception as exc:
@@ -62,9 +39,11 @@ def delete_knowledge_base(knowledge_id: str) -> dict[str, Any]:
             raise ValueError("knowledge id is required")
         stage = "initialize"
         store = get_mem0()
-        with knowledge_operation_lock, _invalidate_catalog_after_write():
+        with knowledge_operation_lock, invalidate_catalog_after_write():
             stage = "collect"
-            ids = _collect_knowledge_entry_ids(store, normalized_knowledge_id)
+            ids = collect_knowledge_entry_ids(
+                store.vector_store.client, store.vector_store.collection_name, normalized_knowledge_id,
+            )
             stage = "entries"
             for memory_id in ids:
                 store.delete(memory_id)
@@ -91,7 +70,7 @@ def delete_knowledge_entry_and_list(memory_id: str, knowledge_id: str) -> dict[s
         result = delete_knowledge_entry(store, mid)
         if result.get("ok") is not True:
             return result
-        return list_knowledge_entries(store, knowledge_id)
+        return read_knowledge_entries(store.get_all, knowledge_id)
     except Exception as exc:
         logger.exception("delete_knowledge_entry_and_list failed")
         return {"error": str(exc)}

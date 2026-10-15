@@ -22,13 +22,13 @@ def missing_runtime(monkeypatch):
 
 def test_knowledge_browse_entries_returns_loading_without_querying_store(monkeypatch):
     monkeypatch.setattr(knowledge, "_get_knowledge_status", lambda **kwargs: {"status": "loading"})
-    monkeypatch.setattr(manage_knowledge, "list_entries", lambda **kwargs: pytest.fail("queried unready store"))
+    monkeypatch.setattr(manage_knowledge, "get_knowledge_entries", lambda **kwargs: pytest.fail("queried unready store"))
     assert knowledge._knowledge_browse("entries", knowledge_id="w") == {"status": "loading"}
 
 
 def test_knowledge_browse_entries_delegates_when_runtime_is_ready(monkeypatch):
     monkeypatch.setattr(knowledge, "_get_knowledge_status", lambda **kwargs: {"status": "ready"})
-    monkeypatch.setattr(manage_knowledge, "list_entries", lambda **kwargs: kwargs)
+    monkeypatch.setattr(manage_knowledge, "get_knowledge_entries", lambda **kwargs: kwargs)
     assert knowledge._knowledge_browse("entries", knowledge_id="w") == {"knowledge_id": "w"}
 
 

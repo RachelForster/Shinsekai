@@ -3,22 +3,24 @@
 from __future__ import annotations
 
 import logging
-from contextlib import contextmanager
-from typing import Any, Iterable, Iterator
+from typing import Any, Iterable
 
 from ai.memory.deduplication import find_duplicate_memory, semantic_deduplication_threshold
 from core.knowledge.coordination import knowledge_operation_lock as _knowledge_operation_lock
-from ai.knowledge.catalog import (
-    list_knowledge_catalog,
-    invalidate_knowledge_catalog,
-)
-from ai.knowledge.storage import (
-    format_knowledge_entry,
-    list_store_entries,
-    search_store_entries,
-)
+from core.knowledge.catalog import format_knowledge_entry, invalidate_catalog_after_write, pagination_arguments
 
 logger = logging.getLogger(__name__)
+
+
+def _search_store_entries(store: Any, query: str, knowledge_id: str, limit: int) -> list[Any]:
+    result = store.search(
+        query, filters={"user_id": knowledge_id}, **pagination_arguments(store.search, limit),
+    )
+    if isinstance(result, dict):
+        rows = result.get("results") or []
+    else:
+        rows = result if isinstance(result, list) else []
+    return list(rows)
 
 
 def _required_text(value: str, field: str) -> str:
@@ -32,18 +34,9 @@ def _normalize_identifiers(values: Iterable[str]) -> list[str]:
     return [text for value in values if (text := str(value or "").strip())]
 
 
-@contextmanager
-def _invalidate_catalog_after_write() -> Iterator[None]:
-    """Invalidate even if a store write fails after partially changing data."""
-    try:
-        yield
-    finally:
-        invalidate_knowledge_catalog()
-
-
 def _add_entry_if_not_duplicate(store: Any, content: str, knowledge_id: str) -> dict[str, Any]:
     """Deduplicate and write atomically under the caller's operation lock."""
-    candidates = search_store_entries(store, content, knowledge_id, 5)
+    candidates = _search_store_entries(store, content, knowledge_id, 5)
     duplicate = find_duplicate_memory(
         content, candidates, threshold=semantic_deduplication_threshold(),
     )
@@ -61,7 +54,7 @@ def _add_entry_if_not_duplicate(store: Any, content: str, knowledge_id: str) -> 
             "existing_memory": duplicate.memory,
         })
         return result
-    with _invalidate_catalog_after_write():
+    with invalidate_catalog_after_write():
         store.add(content, user_id=knowledge_id, infer=False)
     return result
 
@@ -73,7 +66,7 @@ def _search_across_knowledge_bases(
     candidates: list[Any] = []
     for knowledge_id in knowledge_ids:
         with _knowledge_operation_lock:
-            candidates.extend(search_store_entries(store, query, knowledge_id, max(1, int(limit))))
+            candidates.extend(_search_store_entries(store, query, knowledge_id, max(1, int(limit))))
     candidates.sort(
         key=lambda row: float(row.get("score") or 0) if isinstance(row, dict) else 0,
         reverse=True,
@@ -115,33 +108,6 @@ def search_knowledge(
         return {"error": str(e)}
 
 
-def list_knowledge_bases(
-    store: Any, query: str = "", *, page: int = 1, page_size: int = 20, refresh: bool = False,
-) -> dict[str, Any]:
-    """List knowledge matching an ID, with paginated counts."""
-    try:
-        with _knowledge_operation_lock:
-            return list_knowledge_catalog(
-                store, query, page=page, page_size=page_size, refresh=refresh,
-            )
-    except Exception as e:
-        logger.exception("list_knowledge_bases failed")
-        return {"error": str(e)}
-
-
-def list_knowledge_entries(store: Any, knowledge_id: str, *, limit: int = 200) -> dict[str, Any]:
-    """Browse one local knowledge through Mem0, returning normalized rows."""
-    try:
-        with _knowledge_operation_lock:
-            normalized_knowledge_id = _required_text(knowledge_id, "knowledge id")
-            bounded_limit = max(1, min(200, int(limit)))
-            entries = list_store_entries(store, normalized_knowledge_id, bounded_limit)
-            return {"knowledge_id": normalized_knowledge_id, "count": len(entries), "memories": entries}
-    except Exception as e:
-        logger.exception("list_knowledge_entries failed")
-        return {"error": str(e)}
-
-
 def search_local_knowledge_entries(store: Any, knowledge_id: str, query: str, *, limit: int = 200) -> dict[str, Any]:
     """Search one local knowledge and format matches for the entry browser."""
     try:
@@ -149,7 +115,7 @@ def search_local_knowledge_entries(store: Any, knowledge_id: str, query: str, *,
             normalized_knowledge_id, text = str(knowledge_id or "").strip(), str(query or "").strip()
             if not normalized_knowledge_id or not text:
                 raise ValueError("knowledge id and query are required")
-            rows = search_store_entries(store, text, normalized_knowledge_id, max(1, min(200, int(limit))))
+            rows = _search_store_entries(store, text, normalized_knowledge_id, max(1, min(200, int(limit))))
             entries = [format_knowledge_entry(row, include_text=True) for row in rows if isinstance(row, dict)]
             return {"knowledge_id": normalized_knowledge_id, "query": text, "count": len(entries), "memories": entries}
     except Exception as e:

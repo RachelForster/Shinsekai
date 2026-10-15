@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from ai.knowledge import catalog
+from core.knowledge import catalog
 from core.knowledge import bindings
 from application.knowledge import delete_knowledge as deletion
 
@@ -20,7 +20,10 @@ def isolated_knowledge(tmp_path, monkeypatch):
 
 def install_deletion_store(monkeypatch, rows, *, fail_on=None):
     events = []
-    def scroll(store, *, knowledge_id, cursor, limit):
+    client = object()
+    def scroll(actual_client, collection_name, *, knowledge_id, cursor, limit):
+        assert actual_client is client
+        assert collection_name == "knowledge"
         assert knowledge_id == "target"
         events.append("scroll")
         ids = sorted(key for key, entry_knowledge_id in rows.items() if entry_knowledge_id == knowledge_id)
@@ -32,8 +35,8 @@ def install_deletion_store(monkeypatch, rows, *, fail_on=None):
         if mid == fail_on:
             raise RuntimeError("write failed")
         del rows[mid]
-    monkeypatch.setattr(deletion, "scroll_knowledge_records", scroll)
-    monkeypatch.setattr(deletion, "get_mem0", lambda: SimpleNamespace(delete=delete))
+    monkeypatch.setattr(catalog, "scroll_knowledge_records", scroll)
+    monkeypatch.setattr(deletion, "get_mem0", lambda: SimpleNamespace(delete=delete, vector_store=SimpleNamespace(client=client, collection_name="knowledge")))
     return events
 
 
@@ -83,6 +86,26 @@ def test_delete_knowledge_binding_failure_reports_stage_and_allows_retry(isolate
 def test_delete_knowledge_rejects_blank_id_without_loading_store(isolated_knowledge, monkeypatch):
     monkeypatch.setattr(deletion, "get_mem0", lambda: pytest.fail("loaded store"))
     assert deletion.delete_knowledge_base(" ")["failedStage"] == "validate"
+
+
+def test_collect_failure_does_not_start_deletion(isolated_knowledge, monkeypatch):
+    rows = {str(i): "target" for i in range(520)}
+    events = install_deletion_store(monkeypatch, rows)
+    bindings.bind_character_knowledge("A", "target")
+    original_scroll = catalog.scroll_knowledge_records
+
+    def fail_second_page(*args, **kwargs):
+        if kwargs["cursor"] is not None:
+            raise RuntimeError("scan interrupted")
+        return original_scroll(*args, **kwargs)
+
+    monkeypatch.setattr(catalog, "scroll_knowledge_records", fail_second_page)
+    result = deletion.delete_knowledge_base("target")
+    assert result["failedStage"] == "collect"
+    assert result["deletedEntryCount"] == result["deletedBindingCount"] == 0
+    assert events == ["scroll"]
+    assert len(rows) == 520
+    assert bindings.list_knowledge_ids_for_characters(["A"]) == ["target"]
 
 
 def test_delete_knowledge_does_not_wait_for_import_extraction(isolated_knowledge, tmp_path, monkeypatch):
@@ -173,16 +196,16 @@ def test_delete_entry_rejects_blank_id_without_touching_store():
 
 @pytest.mark.parametrize("result", [{"status": "loading"}, {"status": "missing_dependency"}, {"error": "failed"}])
 def test_forget_and_list_preserves_failure(monkeypatch, result):
-    monkeypatch.setattr(deletion, "get_mem0", lambda: object())
+    monkeypatch.setattr(deletion, "get_mem0", lambda: SimpleNamespace(get_all=lambda **kwargs: []))
     monkeypatch.setattr(deletion, "delete_knowledge_entry", lambda *a: result)
-    monkeypatch.setattr(deletion, "list_knowledge_entries", lambda *a: pytest.fail("listed after failure"))
+    monkeypatch.setattr(deletion, "read_knowledge_entries", lambda *a: pytest.fail("listed after failure"))
     assert deletion.delete_knowledge_entry_and_list("id", "a") == result
 
 
 def test_forget_and_list_returns_selected_knowledge(monkeypatch):
-    monkeypatch.setattr(deletion, "get_mem0", lambda: object())
+    monkeypatch.setattr(deletion, "get_mem0", lambda: SimpleNamespace(get_all=lambda **kwargs: []))
     monkeypatch.setattr(deletion, "delete_knowledge_entry", lambda *a: {"ok": True})
-    monkeypatch.setattr(deletion, "list_knowledge_entries", lambda store, knowledge_id: {"knowledge_id": knowledge_id, "memories": []})
+    monkeypatch.setattr(deletion, "read_knowledge_entries", lambda get_all, knowledge_id: {"knowledge_id": knowledge_id, "memories": []})
     assert deletion.delete_knowledge_entry_and_list("id", "b")["knowledge_id"] == "b"
     assert "error" in deletion.delete_knowledge_entry_and_list("id", "")
 
